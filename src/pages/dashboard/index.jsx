@@ -1,0 +1,312 @@
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
+import BusinessSidebar from "components/ui/BusinessSidebar";
+import Icon from "components/AppIcon";
+import MetricCard from "./components/MetricCard";
+import ActivityFeed from "./components/ActivityFeed";
+import CatalogLinkWidget from "./components/CatalogLinkWidget";
+import QuickAccessWidget from "./components/QuickAccessWidget";
+import GettingStartedSection from "./components/GettingStartedSection";
+import NewOrderToast from "./components/NewOrderToast";
+import NotificationBell from "./components/NotificationBell";
+import { useAuth } from "../../contexts/AuthContext";
+import { getProducts, getOrders, getOrdersByDay, getTopProducts, getMonthlyRevenue } from "../../services/waBusinessService";
+import { supabase } from "../../lib/supabase";
+import OrdersByDayCard from "./components/OrdersByDayCard";
+import TopProductsCard from "./components/TopProductsCard";
+import MonthlyRevenueCard from "./components/MonthlyRevenueCard";
+
+
+export default function Dashboard() {
+  const navigate = useNavigate();
+  const { user, business, businessLoading } = useAuth();
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [copyToast, setCopyToast] = useState(false);
+  const [products, setProducts] = useState([]);
+  const [orders, setOrders] = useState([]);
+  const [dataLoading, setDataLoading] = useState(true);
+  const [ordersByDay, setOrdersByDay] = useState([]);
+  const [topProducts, setTopProducts] = useState([]);
+  const [monthlyRevenue, setMonthlyRevenue] = useState(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(true);
+
+  // Realtime state
+  const [realtimeStatus, setRealtimeStatus] = useState('disconnected'); // 'connected' | 'reconnecting' | 'disconnected'
+  const [newOrderToasts, setNewOrderToasts] = useState([]);
+  const [notifications, setNotifications] = useState([]);
+  const [liveOrderCount, setLiveOrderCount] = useState(null); // null = use computed
+  const [newOrderIds, setNewOrderIds] = useState(new Set());
+  const channelRef = useRef(null);
+
+  const catalogUrl = business?.slug
+    ? `${window.location?.origin}/catalogo/${business?.slug}`
+    : '';
+
+  useEffect(() => {
+    if (!business?.id) { setDataLoading(false); return; }
+    const loadData = async () => {
+      setDataLoading(true);
+      try {
+        const [productsResponse, ordersResponse] = await Promise.all([
+          getProducts(business?.id),
+          getOrders(business?.id),
+        ]);
+        setProducts(productsResponse?.data || []);
+        setOrders(ordersResponse?.data || []);
+      } catch (err) {
+        console.error('Dashboard load error:', err);
+      } finally {
+        setDataLoading(false);
+      }
+    };
+    loadData();
+  }, [business?.id]);
+
+  useEffect(() => {
+    if (!business?.id) { setAnalyticsLoading(false); return; }
+    const loadAnalytics = async () => {
+      setAnalyticsLoading(true);
+      try {
+        const [dayRes, topRes, revRes] = await Promise.all([
+          getOrdersByDay(business?.id, 7),
+          getTopProducts(business?.id, 5),
+          getMonthlyRevenue(business?.id),
+        ]);
+        setOrdersByDay(dayRes?.data || []);
+        setTopProducts(topRes?.data || []);
+        setMonthlyRevenue(revRes?.data || null);
+      } catch (err) {
+        console.error('Analytics load error:', err);
+      } finally {
+        setAnalyticsLoading(false);
+      }
+    };
+    loadAnalytics();
+  }, [business?.id]);
+
+  // Supabase Realtime subscription
+  useEffect(() => {
+    if (!business?.id) return;
+
+    const channelName = `wa_orders_business_${business?.id}`;
+    const channel = supabase?.channel(channelName)?.on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'wa_orders',
+          filter: `business_id=eq.${business?.id}`,
+        },
+        (payload) => {
+          const newOrder = payload?.new;
+          if (!newOrder) return;
+
+          // Map snake_case to camelCase for consistency
+          const mappedOrder = {
+            id: newOrder?.id,
+            customerName: newOrder?.customer_name || newOrder?.customerName || '',
+            totalAmount: newOrder?.total_amount ?? newOrder?.totalAmount ?? 0,
+            status: newOrder?.status || 'pending',
+            createdAt: newOrder?.created_at || newOrder?.createdAt || new Date()?.toISOString(),
+          };
+
+          // Prepend to orders list
+          setOrders(prev => [mappedOrder, ...prev]);
+
+          // Increment live order count
+          setLiveOrderCount(prev => (prev !== null ? prev + 1 : null));
+
+          // Add to new order IDs for highlight animation
+          setNewOrderIds(prev => new Set([...prev, mappedOrder?.id]));
+          setTimeout(() => {
+            setNewOrderIds(prev => {
+              const next = new Set(prev);
+              next?.delete(mappedOrder?.id);
+              return next;
+            });
+          }, 2500);
+
+          // Show toast
+          const toastId = Date.now();
+          setNewOrderToasts(prev => [...prev, { id: toastId, order: mappedOrder }]);
+
+          // Add to notifications
+          setNotifications(prev => [
+            { id: toastId, customerName: mappedOrder?.customerName, createdAt: mappedOrder?.createdAt, read: false },
+            ...prev,
+          ]);
+        }
+      )?.subscribe((status) => {
+        if (status === 'SUBSCRIBED') setRealtimeStatus('connected');
+        else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') setRealtimeStatus('reconnecting');
+        else if (status === 'CLOSED') setRealtimeStatus('disconnected');
+      });
+
+    channelRef.current = channel;
+    setRealtimeStatus('reconnecting');
+
+    return () => {
+      supabase?.removeChannel(channel);
+      channelRef.current = null;
+      setRealtimeStatus('disconnected');
+    };
+  }, [business?.id]);
+
+  const handleDismissToast = useCallback((id) => {
+    setNewOrderToasts(prev => prev?.filter(t => t?.id !== id));
+  }, []);
+
+  const handleMarkAllRead = useCallback(() => {
+    setNotifications(prev => prev?.map(n => ({ ...n, read: true })));
+  }, []);
+
+  const activeProducts = products?.filter(p => p?.isActive)?.length ?? 0;
+  const inactiveProducts = products?.filter(p => !p?.isActive)?.length ?? 0;
+  const recentOrders = orders?.filter(o => {
+    const diff = (Date.now() - new Date(o?.createdAt)) / (1000 * 60 * 60 * 24);
+    return diff <= 30;
+  })?.length ?? 0;
+
+  const displayOrderCount = liveOrderCount !== null ? liveOrderCount : recentOrders;
+
+  const METRICS = [
+    { title: 'Total productos', value: dataLoading ? '...' : String(products?.length ?? 0), subtitle: dataLoading ? 'Cargando...' : `${activeProducts} activos · ${inactiveProducts} inactivos`, iconName: 'Package', trend: 'up', trendValue: `${activeProducts} activos` },
+    { title: 'Pedidos recientes', value: dataLoading ? '...' : String(displayOrderCount), subtitle: 'Últimos 30 días', iconName: 'ShoppingCart', trend: 'up', trendValue: `${orders?.length ?? 0} total` },
+    { title: 'Visitas al catálogo', value: '—', subtitle: 'Próximamente', iconName: 'Eye', trend: 'up', trendValue: 'Analytics en camino' },
+  ];
+
+  const handleCopy = () => {
+    if (!catalogUrl) return;
+    navigator.clipboard?.writeText(catalogUrl)?.catch(() => {});
+    setCopyToast(true);
+    setTimeout(() => setCopyToast(false), 2500);
+  };
+
+  const handleShare = () => {
+    if (!catalogUrl) return;
+    const url = `https://wa.me/?text=${encodeURIComponent(`¡Hola! Te comparto el catálogo de ${business?.name}: ${catalogUrl}`)}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const sidebarWidth = sidebarCollapsed ? 'var(--sidebar-collapsed-width)' : 'var(--sidebar-width)';
+
+  if (businessLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--color-background)' }}>
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: 'var(--color-primary)', borderTopColor: 'transparent' }} />
+          <p className="text-sm" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Cargando tu negocio...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen" style={{ backgroundColor: 'var(--color-background)' }}>
+      <BusinessSidebar isCollapsed={sidebarCollapsed} onCollapsedChange={setSidebarCollapsed} />
+      <main className="min-h-screen transition-all duration-200" style={{ marginLeft: typeof window !== 'undefined' && window.innerWidth >= 1024 ? sidebarWidth : '0', transition: 'margin-left var(--transition-base)' }}>
+        <div className="sticky top-0 z-50 border-b px-4 md:px-6 lg:px-8 py-0 flex items-center justify-between gap-3" style={{ backgroundColor: '#FFFFFF', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-xs)', height: '60px' }}>
+          <div className="w-11 lg:w-0 flex-shrink-0" aria-hidden="true" />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Dashboard</h1>
+              {business?.currency && (
+                <span className="hidden sm:inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: 'rgba(124,58,237,0.08)', color: 'var(--color-primary)', fontFamily: 'var(--font-caption)' }}>
+                  <Icon name="Zap" size={10} color="var(--color-primary)" />
+                  {business?.currency}
+                </span>
+              )}
+              {/* Connection status indicator */}
+              {realtimeStatus === 'connected' && (
+                <span className="hidden sm:inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: 'rgba(16,185,129,0.08)', color: '#059669', fontFamily: 'var(--font-caption)' }}>
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                  En vivo
+                </span>
+              )}
+              {realtimeStatus === 'reconnecting' && (
+                <span className="hidden sm:inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: 'rgba(245,158,11,0.08)', color: '#D97706', fontFamily: 'var(--font-caption)' }}>
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                  Reconectando...
+                </span>
+              )}
+            </div>
+            <p className="text-xs hidden sm:block" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Bienvenido de vuelta, <strong>{business?.name || user?.email}</strong></p>
+          </div>
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <NotificationBell notifications={notifications} onMarkAllRead={handleMarkAllRead} />
+            <button onClick={() => navigate('/business-configuration')} className="w-9 h-9 flex items-center justify-center rounded-lg transition-all duration-150 hover:bg-muted" style={{ color: 'var(--color-muted-foreground)' }} aria-label="Configuración">
+              <Icon name="Settings" size={17} color="currentColor" />
+            </button>
+            <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 ml-1" style={{ background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)' }}>
+              {business?.name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0)?.toUpperCase() || 'U'}
+            </div>
+          </div>
+        </div>
+
+        <div className="px-4 md:px-6 lg:px-8 py-6 md:py-8 max-w-screen-xl mx-auto page-enter pb-20 lg:pb-8">
+          {!business && !businessLoading && (
+            <div className="mb-6 flex items-start gap-3 p-4 rounded-xl border slide-up" style={{ backgroundColor: 'rgba(124,58,237,0.05)', borderColor: 'rgba(124,58,237,0.2)' }}>
+              <Icon name="AlertCircle" size={18} color="var(--color-primary)" />
+              <div>
+                <p className="text-sm font-semibold" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>Configura tu negocio</p>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Completa la configuración para empezar a recibir pedidos.</p>
+              </div>
+              <button onClick={() => navigate('/business-configuration')} className="ml-auto text-xs font-medium px-3 py-1.5 rounded-lg" style={{ backgroundColor: 'var(--color-primary)', color: '#fff', fontFamily: 'var(--font-caption)' }}>Configurar</button>
+            </div>
+          )}
+
+          {/* Getting Started / Action Cards */}
+          <GettingStartedSection
+            productCount={products?.length ?? 0}
+            business={business}
+            catalogUrl={catalogUrl}
+            onCopy={handleCopy}
+          />
+
+          <section aria-label="Métricas del negocio" className="mb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {METRICS?.map((metric, idx) => (<div key={idx} className="stagger-item"><MetricCard {...metric} loading={dataLoading} /></div>))}
+            </div>
+          </section>
+
+          {/* Analytics Cards */}
+          <section aria-label="Analíticas" className="mb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="stagger-item"><OrdersByDayCard data={ordersByDay} loading={analyticsLoading} /></div>
+              <div className="stagger-item"><TopProductsCard data={topProducts} loading={analyticsLoading} /></div>
+              <div className="stagger-item"><MonthlyRevenueCard data={monthlyRevenue} loading={analyticsLoading} /></div>
+            </div>
+          </section>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+            <section aria-label="Actividad reciente" className="lg:col-span-2">
+              <ActivityFeed orders={orders} loading={dataLoading} newOrderIds={newOrderIds} />
+            </section>
+            <div className="flex flex-col gap-5">
+              <section aria-label="Enlace del catálogo">
+                <CatalogLinkWidget catalogUrl={catalogUrl} businessName={business?.name || ''} />
+              </section>
+              <section aria-label="Acceso rápido"><QuickAccessWidget /></section>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      {copyToast && (
+        <div className="fixed bottom-6 right-6 z-toast flex items-center gap-2.5 px-4 py-3 rounded-xl shadow-lg toast-enter" style={{ backgroundColor: 'var(--color-foreground)', color: '#FFFFFF', fontFamily: 'var(--font-caption)', fontSize: '0.875rem' }} role="status" aria-live="polite">
+          <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(255,255,255,0.15)' }}><Icon name="Check" size={12} color="#FFFFFF" /></div>
+          ¡Enlace copiado al portapapeles!
+        </div>
+      )}
+
+      {/* New order toasts - top right */}
+      <div className="fixed top-20 right-6 flex flex-col gap-3 pointer-events-none" style={{ zIndex: 400 }}>
+        {newOrderToasts?.map(t => (
+          <div key={t?.id} className="pointer-events-auto">
+            <NewOrderToast order={t?.order} onDismiss={() => handleDismissToast(t?.id)} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,422 @@
+import { supabase } from '../lib/supabase';
+
+// Helpers
+
+const generateSlug = async (name) => {
+  const base = name?.toLowerCase()?.replace(/[^a-z0-9\s-]/g, '')?.replace(/\s+/g, '-')?.replace(/-+/g, '-')?.trim();
+  let slug = base;
+  let counter = 0;
+  while (true) {
+    const { data } = await supabase?.from('wa_businesses')?.select('id')?.eq('slug', slug)?.maybeSingle();
+    if (!data) break;
+    counter++;
+    slug = `${base}-${counter}`;
+  }
+  return slug;
+};
+
+const mapBusinessFromDb = (row) => {
+  const designSettings = row?.design_settings || null;
+  return {
+  id: row?.id,
+  userId: row?.user_id,
+  name: row?.name,
+  description: row?.description,
+  whatsapp: row?.whatsapp,
+  email: row?.email,
+  address: row?.address,
+  city: row?.city,
+  country: row?.country,
+  currency: row?.currency,
+  logoUrl: row?.logo_url || designSettings?.logoUrl || null,
+  coverImageUrl: row?.cover_image_url || designSettings?.headerImageUrl || designSettings?.coverImageUrl || null,
+  slug: row?.slug,
+  isActive: row?.is_active,
+  designSettings,
+  bankName: row?.bank_name || '',
+  bankAccountType: row?.bank_account_type || '',
+  bankAccountNumber: row?.bank_account_number || '',
+  bankAccountHolder: row?.bank_account_holder || '',
+  bankRut: row?.bank_rut || '',
+  bankEmail: row?.bank_email || '',
+  orderMessageTemplate: row?.order_message_template || null,
+  createdAt: row?.created_at,
+  updatedAt: row?.updated_at,
+};
+};
+
+const mapProductFromDb = (row) => ({
+  id: row?.id,
+  businessId: row?.business_id,
+  name: row?.name,
+  description: row?.description,
+  price: parseFloat(row?.price),
+  imageUrl: row?.image_url,
+  isActive: row?.is_active,
+  sortOrder: row?.sort_order,
+  category: row?.category || null,
+  hasOptions: row?.has_options || false,
+  optionsDescription: row?.options_description || null,
+  createdAt: row?.created_at,
+  updatedAt: row?.updated_at,
+});
+
+const mapOrderFromDb = (row) => ({
+  id: row?.id,
+  businessId: row?.business_id,
+  customerName: row?.customer_name,
+  customerPhone: row?.customer_phone,
+  totalAmount: parseFloat(row?.total_amount),
+  status: row?.status || 'new',
+  notes: row?.notes,
+  internalNotes: row?.internal_notes,
+  items: (row?.wa_order_items || [])?.map(item => ({
+    id: item?.id,
+    orderId: item?.order_id,
+    productId: item?.product_id,
+    productName: item?.product_name,
+    productPrice: parseFloat(item?.product_price),
+    quantity: item?.quantity,
+    subtotal: parseFloat(item?.subtotal),
+  })),
+  createdAt: row?.created_at,
+  updatedAt: row?.updated_at,
+});
+
+// wa_businesses
+
+export const getMyBusiness = async () => {
+  const { data: { session } } = await supabase?.auth?.getSession();
+  const user = session?.user;
+  if (!user) {
+    console.warn('[waBusinessService] getMyBusiness: no authenticated user in session');
+    return { data: null, error: { message: 'Not authenticated' } };
+  }
+  console.log('[waBusinessService] getMyBusiness: fetching for user_id =', user?.id);
+  const { data, error } = await supabase?.from('wa_businesses')?.select('*')?.eq('user_id', user?.id)?.maybeSingle();
+  if (error) {
+    console.error('[waBusinessService] getMyBusiness error:', error);
+    return { data: null, error };
+  }
+  console.log('[waBusinessService] getMyBusiness result:', data ? `found id=${data?.id}` : 'not found');
+  return { data: data ? mapBusinessFromDb(data) : null, error: null };
+};
+
+export const getBusinessBySlug = async (slug) => {
+  const { data, error } = await supabase?.from('wa_businesses')?.select('*')?.eq('slug', slug)?.eq('is_active', true)?.maybeSingle();
+  if (error) return { data: null, error };
+  return { data: data ? mapBusinessFromDb(data) : null, error: null };
+};
+
+export const createBusiness = async (businessData) => {
+  const { data: { user } } = await supabase?.auth?.getUser();
+  if (!user) return { data: null, error: { message: 'Not authenticated' } };
+  let slug = await generateSlug(businessData?.name);
+  const { data, error } = await supabase?.from('wa_businesses')?.insert({
+      user_id: user?.id,
+      name: businessData?.name,
+      description: businessData?.description || null,
+      whatsapp: businessData?.whatsapp || '',
+      email: businessData?.email || null,
+      address: businessData?.address || null,
+      city: businessData?.city || null,
+      country: businessData?.country || null,
+      currency: businessData?.currency || 'CLP',
+      logo_url: businessData?.logoUrl || null,
+      slug,
+      is_active: true,
+    })?.select()?.single();
+  if (error) return { data: null, error };
+  return { data: mapBusinessFromDb(data), error: null };
+};
+
+export const createBusinessForUser = async (userId, businessData) => {
+  if (!userId) return { data: null, error: { message: 'Not authenticated' } };
+  let slug = await generateSlug(businessData?.name);
+  const { data, error } = await supabase?.from('wa_businesses')?.insert({
+      user_id: userId,
+      name: businessData?.name,
+      description: businessData?.description || null,
+      whatsapp: businessData?.whatsapp || '',
+      email: businessData?.email || null,
+      address: businessData?.address || null,
+      city: businessData?.city || null,
+      country: businessData?.country || null,
+      currency: businessData?.currency || 'CLP',
+      logo_url: businessData?.logoUrl || null,
+      slug,
+      is_active: true,
+    })?.select()?.single();
+  if (error) return { data: null, error };
+  return { data: mapBusinessFromDb(data), error: null };
+};
+
+export async function updateBusiness(businessId, updates) {
+  const { data: { session } } = await supabase?.auth?.getSession();
+  const user = session?.user;
+  if (!user) {
+    console.warn('[waBusinessService] updateBusiness: no authenticated user');
+    return { data: null, error: { message: 'Not authenticated' } };
+  }
+  console.log('[waBusinessService] updateBusiness: businessId =', businessId, '| user_id =', user?.id);
+  const dbUpdates = {};
+  if (updates?.name !== undefined)        dbUpdates.name = updates?.name;
+  if (updates?.description !== undefined) dbUpdates.description = updates?.description;
+  if (updates?.whatsapp !== undefined)    dbUpdates.whatsapp = updates?.whatsapp;
+  if (updates?.email !== undefined)       dbUpdates.email = updates?.email;
+  if (updates?.address !== undefined)     dbUpdates.address = updates?.address;
+  if (updates?.city !== undefined)        dbUpdates.city = updates?.city;
+  if (updates?.country !== undefined)     dbUpdates.country = updates?.country;
+  if (updates?.currency !== undefined)    dbUpdates.currency = updates?.currency;
+  if (updates?.logoUrl !== undefined)     dbUpdates.logo_url = updates?.logoUrl;
+  if (updates?.coverImageUrl !== undefined) dbUpdates.cover_image_url = updates?.coverImageUrl;
+  if (updates?.slug !== undefined)        dbUpdates.slug = updates?.slug;
+  if (updates?.isActive !== undefined)    dbUpdates.is_active = updates?.isActive;
+  if (updates?.designSettings !== undefined) dbUpdates.design_settings = updates?.designSettings;
+  if (updates?.bankName !== undefined)          dbUpdates.bank_name = updates?.bankName;
+  if (updates?.bankAccountType !== undefined)   dbUpdates.bank_account_type = updates?.bankAccountType;
+  if (updates?.bankAccountNumber !== undefined) dbUpdates.bank_account_number = updates?.bankAccountNumber;
+  if (updates?.bankAccountHolder !== undefined) dbUpdates.bank_account_holder = updates?.bankAccountHolder;
+  if (updates?.bankRut !== undefined)           dbUpdates.bank_rut = updates?.bankRut;
+  if (updates?.bankEmail !== undefined)         dbUpdates.bank_email = updates?.bankEmail;
+  console.log('[waBusinessService] updateBusiness: payload =', dbUpdates);
+  const { data, error } = await supabase?.from('wa_businesses')?.update(dbUpdates)?.eq('id', businessId)?.eq('user_id', user?.id)?.select()?.single();
+  if (error) {
+    console.error('[waBusinessService] updateBusiness error:', error);
+    return { data: null, error };
+  }
+  console.log('[waBusinessService] updateBusiness success: updated id =', data?.id);
+  return { data: mapBusinessFromDb(data), error: null };
+}
+
+export const uploadBusinessLogo = async (file, businessId) => {
+  const ext = file?.name?.split('.')?.pop();
+  const path = `logos/${businessId}/${Date.now()}.${ext}`;
+  const { error: uploadError } = await supabase?.storage?.from('wa-business-logos')?.upload(path, file, { upsert: true });
+  if (uploadError) return { url: null, error: uploadError };
+  const { data } = supabase?.storage?.from('wa-business-logos')?.getPublicUrl(path);
+  return { url: data?.publicUrl, error: null };
+};
+
+export const uploadBusinessCover = async (file, businessId) => {
+  const ext = file?.name?.split('.')?.pop();
+  const path = `covers/${businessId}/${Date.now()}.${ext}`;
+  const { error: uploadError } = await supabase?.storage?.from('wa-business-covers')?.upload(path, file, { upsert: true });
+  if (uploadError) return { url: null, error: uploadError };
+  const { data } = supabase?.storage?.from('wa-business-covers')?.getPublicUrl(path);
+  return { url: data?.publicUrl, error: null };
+};
+
+// wa_products
+
+export const getProducts = async (businessId) => {
+  const { data, error } = await supabase?.from('wa_products')?.select('*')?.eq('business_id', businessId)?.order('sort_order', { ascending: true });
+  if (error) return { data: null, error };
+  return { data: (data || [])?.map(mapProductFromDb), error: null };
+};
+
+export const getProduct = async (productId) => {
+  const { data, error } = await supabase?.from('wa_products')?.select('*')?.eq('id', productId)?.single();
+  if (error) return { data: null, error };
+  return { data: mapProductFromDb(data), error: null };
+};
+
+export const createProduct = async (businessId, productData) => {
+  const { data, error } = await supabase?.from('wa_products')?.insert({
+    business_id: businessId,
+    name: productData?.name,
+    description: productData?.description || null,
+    price: productData?.price,
+    image_url: productData?.imageUrl || null,
+    is_active: productData?.isActive !== undefined ? productData?.isActive : true,
+    sort_order: productData?.sortOrder || 0,
+    category: productData?.category || null,
+    has_options: productData?.hasOptions || false,
+    options_description: productData?.optionsDescription || null,
+  })?.select()?.single();
+  if (error) return { data: null, error };
+  return { data: mapProductFromDb(data), error: null };
+};
+
+export const updateProduct = async (productId, productData) => {
+  const dbUpdates = {};
+  if (productData?.name !== undefined)        dbUpdates.name = productData?.name;
+  if (productData?.description !== undefined) dbUpdates.description = productData?.description;
+  if (productData?.price !== undefined)       dbUpdates.price = productData?.price;
+  if (productData?.imageUrl !== undefined)    dbUpdates.image_url = productData?.imageUrl;
+  if (productData?.isActive !== undefined)    dbUpdates.is_active = productData?.isActive;
+  if (productData?.sortOrder !== undefined)   dbUpdates.sort_order = productData?.sortOrder;
+  if (productData?.hasOptions !== undefined)  dbUpdates.has_options = productData?.hasOptions;
+  if (productData?.optionsDescription !== undefined) dbUpdates.options_description = productData?.optionsDescription;
+  const { data, error } = await supabase?.from('wa_products')?.update(dbUpdates)?.eq('id', productId)?.select()?.single();
+  if (error) return { data: null, error };
+  return { data: mapProductFromDb(data), error: null };
+};
+
+export const deleteProduct = async (productId) => {
+  const { error } = await supabase?.from('wa_products')?.delete()?.eq('id', productId);
+  if (error) return { error };
+  return { error: null };
+};
+
+export const uploadProductImage = async (file, businessId, productId) => {
+  const ext = file?.name?.split('.')?.pop();
+  const path = `products/${businessId}/${productId || Date.now()}.${ext}`;
+  const { error: uploadError } = await supabase?.storage?.from('wa-product-images')?.upload(path, file, { upsert: true });
+  if (uploadError) return { url: null, error: uploadError };
+  const { data } = supabase?.storage?.from('wa-product-images')?.getPublicUrl(path);
+  return { url: data?.publicUrl, error: null };
+};
+
+// wa_orders
+
+export const getOrders = async (businessId) => {
+  const { data, error } = await supabase
+    ?.from('wa_orders')
+    ?.select('*, wa_order_items(*)')
+    ?.eq('business_id', businessId)
+    ?.order('created_at', { ascending: false });
+  if (error) return { data: null, error };
+  return { data: (data || [])?.map(mapOrderFromDb), error: null };
+};
+
+export const updateOrder = async (orderId, updates) => {
+  const dbUpdates = {};
+  if (updates?.status !== undefined)        dbUpdates.status = updates?.status;
+  if (updates?.notes !== undefined)         dbUpdates.notes = updates?.notes;
+  if (updates?.internalNotes !== undefined) dbUpdates.internal_notes = updates?.internalNotes;
+  const { data, error } = await supabase?.from('wa_orders')?.update(dbUpdates)?.eq('id', orderId)?.select()?.single();
+  if (error) return { data: null, error };
+  return { data: mapOrderFromDb(data), error: null };
+};
+
+export const createOrder = async (businessId, orderData, items) => {
+  const { data: order, error: orderError } = await supabase?.from('wa_orders')?.insert({
+      business_id: businessId,
+      customer_name: orderData?.customerName || null,
+      customer_phone: orderData?.customerPhone || null,
+      total_amount: orderData?.totalAmount || 0,
+      status: 'new',
+      notes: orderData?.notes || null,
+    })?.select()?.single();
+  if (orderError) return { data: null, error: orderError };
+  if (items?.length > 0) {
+    const itemRows = items?.map(item => ({
+      order_id: order?.id,
+      product_id: item?.productId || null,
+      product_name: item?.productName,
+      product_price: item?.productPrice,
+      quantity: item?.quantity,
+      subtotal: item?.subtotal,
+    }));
+    const { error: itemsError } = await supabase?.from('wa_order_items')?.insert(itemRows);
+    if (itemsError) return { data: null, error: itemsError };
+  }
+  return { data: mapOrderFromDb(order), error: null };
+};
+
+function deleteProducts(...args) {
+  // eslint-disable-next-line no-console
+  console.warn('Placeholder: deleteProducts is not implemented yet.', args);
+  return null;
+}
+
+export { deleteProducts };
+
+export async function getPublicProducts(businessId) {
+  const { data, error } = await supabase
+    ?.from('wa_products')
+    ?.select('*')
+    ?.eq('business_id', businessId)
+    ?.eq('is_active', true)
+    ?.order('sort_order', { ascending: true });
+  if (error) return { data: null, error };
+  return { data: (data || [])?.map(mapProductFromDb), error: null };
+}
+
+// Analytics
+
+export const getOrdersByDay = async (businessId, days = 7) => {
+  const since = new Date();
+  since?.setDate(since?.getDate() - (days - 1));
+  since?.setHours(0, 0, 0, 0);
+  const { data, error } = await supabase
+    ?.from('wa_orders')
+    ?.select('created_at')
+    ?.eq('business_id', businessId)
+    ?.gte('created_at', since?.toISOString());
+  if (error) return { data: null, error };
+  // Build a map of date -> count for the last `days` days
+  const counts = {};
+  for (let i = 0; i < days; i++) {
+    const d = new Date();
+    d?.setDate(d?.getDate() - (days - 1 - i));
+    const key = d?.toISOString()?.slice(0, 10);
+    counts[key] = 0;
+  }
+  (data || [])?.forEach(row => {
+    const key = row?.created_at?.slice(0, 10);
+    if (key && counts?.[key] !== undefined) counts[key]++;
+  });
+  const result = Object.entries(counts)?.map(([date, count]) => ({ date, count }));
+  return { data: result, error: null };
+};
+
+export const getTopProducts = async (businessId, limit = 5) => {
+  const { data, error } = await supabase
+    ?.from('wa_order_items')
+    ?.select('product_id, product_name, quantity, subtotal, wa_orders!inner(business_id)')
+    ?.eq('wa_orders.business_id', businessId);
+  if (error) return { data: null, error };
+  // Aggregate by product
+  const map = {};
+  (data || [])?.forEach(item => {
+    const key = item?.product_id || item?.product_name;
+    if (!map?.[key]) map[key] = { productName: item?.product_name, totalQty: 0, totalRevenue: 0 };
+    map[key].totalQty += item?.quantity || 0;
+    map[key].totalRevenue += parseFloat(item?.subtotal) || 0;
+  });
+  const sorted = Object.values(map)?.sort((a, b) => b?.totalQty - a?.totalQty)?.slice(0, limit);
+  return { data: sorted, error: null };
+};
+
+export const getMonthlyRevenue = async (businessId) => {
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)?.toISOString();
+  const { data, error } = await supabase
+    ?.from('wa_orders')
+    ?.select('total_amount')
+    ?.eq('business_id', businessId)
+    ?.gte('created_at', startOfMonth);
+  if (error) return { data: null, error };
+  const total = (data || [])?.reduce((sum, row) => sum + (parseFloat(row?.total_amount) || 0), 0);
+  const count = (data || [])?.length;
+  return { data: { total, count }, error: null };
+};
+
+// ——— Admin panel ———
+
+export const getBusinessesForAdmin = async () => {
+  const { data, error } = await supabase
+    ?.from('wa_businesses')
+    ?.select('*')
+    ?.order('created_at', { ascending: false });
+  if (error) return { data: null, error };
+  return { data: (data || []).map(mapBusinessFromDb), error: null };
+};
+
+export const getAdminStats = async () => {
+  const [b, p, o] = await Promise.all([
+    supabase?.from('wa_businesses')?.select('id', { count: 'exact', head: true }),
+    supabase?.from('wa_products')?.select('id', { count: 'exact', head: true }),
+    supabase?.from('wa_orders')?.select('id', { count: 'exact', head: true }),
+  ]);
+  return {
+    data: {
+      totalBusinesses: b?.count ?? 0,
+      totalProducts: p?.count ?? 0,
+      totalOrders: o?.count ?? 0,
+    },
+    error: b?.error || p?.error || o?.error || null,
+  };
+};
