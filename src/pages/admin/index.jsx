@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Icon from 'components/AppIcon';
 import BusinessSidebar from 'components/ui/BusinessSidebar';
+import { useIsDesktop } from 'hooks/useMediaQuery';
 import { getBusinessesForAdmin, getAdminStats } from 'services/waBusinessService';
+import AdminRubrosSection from './components/AdminRubrosSection';
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
@@ -11,6 +13,7 @@ export default function AdminDashboard() {
   const [businesses, setBusinesses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const isDesktop = useIsDesktop();
   const sidebarWidth = sidebarCollapsed ? 'var(--sidebar-collapsed-width)' : 'var(--sidebar-width)';
 
   useEffect(() => {
@@ -32,9 +35,9 @@ export default function AdminDashboard() {
   const formatDate = (d) => (d ? new Date(d).toLocaleDateString('es-CL', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: 'var(--color-background)' }}>
+    <div className="panel-root min-h-screen" style={{ backgroundColor: 'var(--color-background)' }}>
       <BusinessSidebar isCollapsed={sidebarCollapsed} onCollapsedChange={setSidebarCollapsed} />
-      <main className="min-h-screen transition-all duration-200" style={{ marginLeft: typeof window !== 'undefined' && window.innerWidth >= 1024 ? sidebarWidth : '0', transition: 'margin-left var(--transition-base)' }}>
+      <main className="panel-main min-h-screen w-full max-w-full min-w-0 overflow-x-hidden transition-all duration-200" style={{ marginLeft: isDesktop ? sidebarWidth : 0, transition: 'margin-left var(--transition-base)' }}>
         <div className="sticky top-0 z-50 border-b px-4 md:px-6 lg:px-8 py-4 flex items-center justify-between" style={{ backgroundColor: '#FFFFFF', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-xs)' }}>
           <div>
             <h1 className="text-lg font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>
@@ -50,7 +53,7 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        <div className="p-4 md:p-6 lg:p-8 max-w-5xl">
+        <div className="p-4 md:p-6 lg:p-8 max-w-5xl pb-20 lg:pb-8">
           {error && (
             <div className="mb-4 px-4 py-3 rounded-xl border flex items-center gap-2" style={{ borderColor: 'var(--color-error)', backgroundColor: 'rgba(239,68,68,0.08)', color: 'var(--color-error)' }}>
               <Icon name="AlertCircle" size={18} />
@@ -70,7 +73,7 @@ export default function AdminDashboard() {
               </div>
             ) : (
               <div className="flex flex-wrap gap-3">
-                <div className="flex items-center gap-3 px-4 py-4 rounded-xl border min-w-[160px]" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-card)' }}>
+                <div className="flex items-center gap-3 px-4 py-4 rounded-xl border min-w-0 flex-1 basis-40 sm:basis-auto sm:flex-initial sm:min-w-[160px]" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-card)' }}>
                   <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'var(--color-primary)', color: '#fff' }}>
                     <Icon name="Store" size={20} color="#fff" />
                   </div>
@@ -79,7 +82,7 @@ export default function AdminDashboard() {
                     <p className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Negocios</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-3 px-4 py-4 rounded-xl border min-w-[160px]" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-card)' }}>
+                <div className="flex items-center gap-3 px-4 py-4 rounded-xl border min-w-0 flex-1 basis-40 sm:basis-auto sm:flex-initial sm:min-w-[160px]" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-card)' }}>
                   <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'var(--color-primary)', color: '#fff' }}>
                     <Icon name="Package" size={20} color="#fff" />
                   </div>
@@ -88,7 +91,7 @@ export default function AdminDashboard() {
                     <p className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Productos</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-3 px-4 py-4 rounded-xl border min-w-[160px]" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-card)' }}>
+                <div className="flex items-center gap-3 px-4 py-4 rounded-xl border min-w-0 flex-1 basis-40 sm:basis-auto sm:flex-initial sm:min-w-[160px]" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-card)' }}>
                   <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'var(--color-primary)', color: '#fff' }}>
                     <Icon name="ShoppingCart" size={20} color="#fff" />
                   </div>
@@ -99,6 +102,16 @@ export default function AdminDashboard() {
                 </div>
               </div>
             )}
+          </section>
+
+          <section className="mb-8">
+            <h2 className="text-base font-bold mb-3" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>
+              Rubros y categorías
+            </h2>
+            <p className="text-sm mb-4" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+              Gestiona los rubros (sectores) y las categorías de cada uno. Los negocios eligen un rubro y solo ven las categorías de ese rubro en productos y catálogo.
+            </p>
+            <AdminRubrosSection />
           </section>
 
           <section className="mb-8">

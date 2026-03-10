@@ -1,22 +1,22 @@
 import React, { useState } from 'react';
 import Icon from 'components/AppIcon';
 import Image from 'components/AppImage';
+import { formatCLP } from 'utils/formatCLP';
 
-const CURRENCY_SYMBOLS = {
-  MXN: '$', COP: '$', ARS: '$', PEN: 'S/', CLP: '$', USD: '$', EUR: '€',
-};
-
-export default function ProductPreview({ nombre, precio, currency, descripcion, activo, featured, images }) {
+export default function ProductPreview({ nombre, precio, descripcion, activo, featured, images }) {
+  const imageList = images?.length ? images : [];
   const [activeIdx, setActiveIdx] = useState(0);
-  const mainImage = images?.[activeIdx] || images?.[0];
-  const symbol = CURRENCY_SYMBOLS?.[currency] || '$';
-  const priceNum = parseFloat(precio);
-  const formattedPrice = !isNaN(priceNum) && priceNum > 0
-    ? `${symbol}${priceNum?.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-    : null;
+  const safeIdx = Math.min(activeIdx, Math.max(0, imageList.length - 1));
+  const mainImage = imageList[safeIdx];
+  const priceNum = Number(precio);
+  const formattedPrice = Number.isFinite(priceNum) && priceNum > 0 ? formatCLP(priceNum) : null;
 
-  // Reset active index if images change
-  const safeIdx = Math.min(activeIdx, Math.max(0, (images?.length || 1) - 1));
+  const goPrev = () => setActiveIdx(i => (i <= 0 ? imageList.length - 1 : i - 1));
+  const goNext = () => setActiveIdx(i => (i >= imageList.length - 1 ? 0 : i + 1));
+
+  React.useEffect(() => {
+    setActiveIdx(0);
+  }, [imageList.length]);
 
   return (
     <div>
@@ -75,13 +75,35 @@ export default function ProductPreview({ nombre, precio, currency, descripcion, 
 
           {/* Product image */}
           <div className="relative aspect-square w-full overflow-hidden" style={{ backgroundColor: '#f0f0f0' }}>
-            {mainImage ? (
-              <Image src={mainImage?.url} alt={mainImage?.alt || nombre} className="w-full h-full object-cover" />
+            {mainImage?.url ? (
+              <Image key={`img-${safeIdx}-${mainImage?.url}`} src={mainImage.url} alt={mainImage?.alt || nombre} className="w-full h-full object-cover" />
             ) : (
               <div className="w-full h-full flex flex-col items-center justify-center gap-2">
                 <Icon name="ImageOff" size={28} color="#ccc" />
                 <span style={{ fontSize: '0.65rem', color: '#aaa', fontFamily: 'var(--font-caption)' }}>Sin imagen</span>
               </div>
+            )}
+
+            {/* Flechas anterior/siguiente */}
+            {imageList.length > 1 && (
+              <>
+                <button
+                  type="button"
+                  onClick={goPrev}
+                  className="absolute left-1 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-black/50 flex items-center justify-center text-white hover:bg-black/70 transition-colors"
+                  aria-label="Imagen anterior"
+                >
+                  <Icon name="ChevronLeft" size={14} color="#fff" />
+                </button>
+                <button
+                  type="button"
+                  onClick={goNext}
+                  className="absolute right-1 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-black/50 flex items-center justify-center text-white hover:bg-black/70 transition-colors"
+                  aria-label="Siguiente imagen"
+                >
+                  <Icon name="ChevronRight" size={14} color="#fff" />
+                </button>
+              </>
             )}
 
             {/* Featured badge */}
@@ -96,35 +118,37 @@ export default function ProductPreview({ nombre, precio, currency, descripcion, 
             )}
 
             {/* Image counter */}
-            {images?.length > 1 && (
+            {imageList.length > 1 && (
               <div
                 className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded-full"
                 style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
               >
                 <span style={{ fontSize: '0.6rem', color: '#fff', fontFamily: 'var(--font-data)' }}>
-                  {safeIdx + 1}/{images?.length}
+                  {safeIdx + 1}/{imageList.length}
                 </span>
               </div>
             )}
           </div>
 
           {/* Thumbnail strip */}
-          {images?.length > 1 && (
-            <div className="flex gap-1.5 px-2.5 py-2" style={{ backgroundColor: '#fff', borderBottom: '1px solid #f0f0f0' }}>
-              {images?.slice(0, 5)?.map((img, i) => (
+          {imageList.length > 1 && (
+            <div className="flex gap-1.5 px-2.5 py-2 overflow-x-auto" style={{ backgroundColor: '#fff', borderBottom: '1px solid #f0f0f0' }}>
+              {imageList.slice(0, 5).map((img, i) => (
                 <button
-                  key={img?.id}
+                  key={`thumb-${i}-${img?.id}`}
+                  type="button"
                   onClick={() => setActiveIdx(i)}
-                  className="flex-shrink-0 rounded-md overflow-hidden transition-all duration-150"
+                  className="flex-shrink-0 rounded-md overflow-hidden transition-all duration-150 cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-violet-500"
                   style={{
-                    width: '28px',
-                    height: '28px',
+                    width: '32px',
+                    height: '32px',
                     border: `2px solid ${i === safeIdx ? 'var(--color-primary)' : '#e5e5e5'}`,
                     borderRadius: '6px',
-                    opacity: i === safeIdx ? 1 : 0.65,
+                    opacity: i === safeIdx ? 1 : 0.7,
                     transform: i === safeIdx ? 'scale(1.08)' : 'scale(1)',
                   }}
                   aria-label={`Ver imagen ${i + 1}`}
+                  aria-pressed={i === safeIdx}
                 >
                   <Image src={img?.url} alt={img?.alt} className="w-full h-full object-cover" />
                 </button>

@@ -1,14 +1,7 @@
 import React from 'react';
 import Image from 'components/AppImage';
 import Icon from 'components/AppIcon';
-
-function formatPrice(price, currency) {
-  try {
-    return new Intl.NumberFormat('es-CO', { style: 'currency', currency: currency || 'USD', maximumFractionDigits: 0 })?.format(price);
-  } catch {
-    return `$${price}`;
-  }
-}
+import { formatCLP } from 'utils/formatCLP';
 
 const THEME_STYLES = {
   minimal: {
@@ -55,7 +48,7 @@ const CATALOG_STYLE_PROPS = {
   destacado: { shadow: '0 4px 16px rgba(0,0,0,0.16)', radius: '14px', gap: '10px', imgHeight: '60px' },
 };
 
-function ProductListItem({ product, t, primaryColor, fontFamily, currency, cardSettings, styleProps }) {
+function ProductListItem({ product, t, primaryColor, fontFamily, cardSettings, styleProps }) {
   return (
     <div
       className="flex items-center gap-2.5 p-2.5 border"
@@ -85,7 +78,7 @@ function ProductListItem({ product, t, primaryColor, fontFamily, currency, cardS
         )}
         {cardSettings?.showPrice && (
           <p className="text-xs font-bold mt-0.5" style={{ color: t?.priceColor || primaryColor, fontFamily }}>
-            {formatPrice(product?.price, currency)}
+            {formatCLP(product?.price)}
           </p>
         )}
       </div>
@@ -99,7 +92,7 @@ function ProductListItem({ product, t, primaryColor, fontFamily, currency, cardS
   );
 }
 
-function ProductGridItem({ product, t, primaryColor, fontFamily, currency, cardSettings, styleProps }) {
+function ProductGridItem({ product, t, primaryColor, fontFamily, cardSettings, styleProps }) {
   return (
     <div
       className="overflow-hidden border"
@@ -118,7 +111,7 @@ function ProductGridItem({ product, t, primaryColor, fontFamily, currency, cardS
         <p className="text-xs font-semibold truncate" style={{ color: t?.headerText, fontFamily }}>{product?.name}</p>
         {cardSettings?.showPrice && (
           <p className="text-xs font-bold" style={{ color: t?.priceColor || primaryColor, fontFamily }}>
-            {formatPrice(product?.price, currency)}
+            {formatCLP(product?.price)}
           </p>
         )}
         <div
@@ -132,7 +125,7 @@ function ProductGridItem({ product, t, primaryColor, fontFamily, currency, cardS
   );
 }
 
-function ProductCardItem({ product, t, primaryColor, fontFamily, currency, cardSettings, styleProps }) {
+function ProductCardItem({ product, t, primaryColor, fontFamily, cardSettings, styleProps }) {
   return (
     <div
       className="overflow-hidden border"
@@ -157,7 +150,7 @@ function ProductCardItem({ product, t, primaryColor, fontFamily, currency, cardS
         <div className="flex items-center justify-between mt-1.5 gap-1">
           {cardSettings?.showPrice && (
             <p className="text-xs font-bold" style={{ color: t?.priceColor || primaryColor, fontFamily }}>
-              {formatPrice(product?.price, currency)}
+              {formatCLP(product?.price)}
             </p>
           )}
           <div
@@ -180,6 +173,8 @@ export default function MobilePreviewPanel({ storeName, storeSlug, logoUrl, prod
   const font = design?.font || 'Inter';
   const designLogoUrl = design?.logoUrl || logoUrl;
   const headerImageUrl = design?.headerImageUrl || '';
+  const coverFit = design?.coverFit === 'contain' ? 'contain' : 'cover';
+  const coverPosition = ['top', 'center', 'bottom'].includes(design?.coverPosition) ? design.coverPosition : 'center';
   const catalogLayout = design?.catalogLayout || 'list';
   const catalogStyle = design?.catalogStyle || 'clasico';
   const cardSettings = design?.cardSettings || { showPrice: true, showDescription: true, showStock: false, showWhatsApp: true };
@@ -193,7 +188,7 @@ export default function MobilePreviewPanel({ storeName, storeSlug, logoUrl, prod
     ? { background: `linear-gradient(135deg, ${primaryColor} 0%, #4F46E5 100%)` }
     : { backgroundColor: t?.headerBg };
 
-  const productItemProps = { t, primaryColor, fontFamily, currency, cardSettings, styleProps };
+  const productItemProps = { t, primaryColor, fontFamily, cardSettings, styleProps };
 
   return (
     <div className="flex flex-col items-center">
@@ -226,11 +221,21 @@ export default function MobilePreviewPanel({ storeName, storeSlug, logoUrl, prod
 
           {/* Cover image banner */}
           {headerImageUrl ? (
-            <div className="relative w-full" style={{ height: '72px' }}>
+            <div
+              className="relative w-full overflow-hidden"
+              style={{
+                height: '72px',
+                backgroundColor: coverFit === 'contain' ? (primaryColor || '#7C3AED') : undefined,
+              }}
+            >
               <Image
                 src={headerImageUrl}
                 alt="Portada del catálogo en vista previa"
-                className="w-full h-full object-cover"
+                className="w-full h-full"
+                style={{
+                  objectFit: coverFit,
+                  objectPosition: coverFit === 'cover' ? coverPosition : 'center',
+                }}
               />
               <div className="absolute inset-0" style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.45) 100%)' }} />
               {/* Logo overlaid on cover */}

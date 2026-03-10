@@ -2,6 +2,8 @@ import React from 'react';
 import Image from 'components/AppImage';
 import Icon from 'components/AppIcon';
 
+const COVER_POSITION_MAP = { top: 'top', center: 'center', bottom: 'bottom' };
+
 export default function StoreHeaderCard({
   storeName,
   storeSlug,
@@ -9,6 +11,9 @@ export default function StoreHeaderCard({
   coverImageUrl,
   businessLogoUrl,
   businessCoverImageUrl,
+  coverFit,
+  coverPosition,
+  primaryColor,
   pendingLogoFile,
   pendingCoverFile,
   editingName,
@@ -30,6 +35,9 @@ export default function StoreHeaderCard({
     (logoUrl && logoUrl !== businessLogoUrl) ||
     (coverImageUrl && coverImageUrl !== businessCoverImageUrl);
   const showSaveLogoCover = hasLogoOrCoverChanges && onSaveLogoAndCover;
+  const fit = coverFit === 'contain' ? 'contain' : 'cover';
+  const position = COVER_POSITION_MAP[coverPosition] || 'center';
+  const bgWhenContain = primaryColor || 'var(--color-border)';
   return (
     <div
       className="rounded-2xl border bg-white overflow-hidden"
@@ -45,7 +53,7 @@ export default function StoreHeaderCard({
         title="Cambiar imagen de portada"
         style={{
           background: coverImageUrl
-            ? undefined
+            ? (fit === 'contain' ? bgWhenContain : undefined)
             : 'linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #0f4c2a 100%)',
         }}
       >
@@ -53,7 +61,11 @@ export default function StoreHeaderCard({
           <Image
             src={coverImageUrl}
             alt="Portada del negocio"
-            className="w-full h-full object-cover"
+            className="w-full h-full"
+            style={{
+              objectFit: fit,
+              objectPosition: fit === 'cover' ? position : 'center',
+            }}
           />
         )}
         {/* Hover overlay */}

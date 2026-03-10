@@ -124,6 +124,9 @@
 html {
   scroll-behavior: smooth;
   scroll-padding-top: 80px;
+  overflow-x: hidden;
+  width: 100%;
+  max-width: 100%;
 }
 
 body {
@@ -135,6 +138,39 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+  overflow-x: hidden;
+  width: 100%;
+  max-width: 100%;
+}
+
+#root,
+.dhiwise-code,
+.app-shell {
+  overflow-x: hidden;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* Panel autenticado: en móvil el contenido debe ocupar todo el ancho, sin margen lateral */
+.panel-root {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+@media (max-width: 1023px) {
+  .panel-main {
+    margin-left: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+  .sidebar-desktop {
+    display: none !important;
+  }
 }
 
 @media (max-width: 640px) {

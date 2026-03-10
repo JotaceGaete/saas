@@ -1,7 +1,8 @@
 import React from 'react';
 import Icon from 'components/AppIcon';
 
-export default function SaveBar({ isEditing, isSaving, saveSuccess, onSave, onSaveAndNew, onCancel }) {
+export default function SaveBar({ isEditing, isSaving, saveSuccess, saveDisabled, onSave, onSaveAndNew, onCancel }) {
+  const saveButtonDisabled = isSaving || saveDisabled;
   return (
     <div
       className="sticky bottom-0 z-10 border-t px-4 md:px-6 lg:px-8"
@@ -61,7 +62,7 @@ export default function SaveBar({ isEditing, isSaving, saveSuccess, onSave, onSa
           {!isEditing && (
             <button
               onClick={onSaveAndNew}
-              disabled={isSaving}
+              disabled={saveButtonDisabled}
               className="hidden sm:flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-semibold border transition-all duration-150 hover:bg-muted hover:-translate-y-px active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed"
               style={{
                 borderColor: 'var(--color-border)',
@@ -77,7 +78,7 @@ export default function SaveBar({ isEditing, isSaving, saveSuccess, onSave, onSa
 
           <button
             onClick={onSave}
-            disabled={isSaving}
+            disabled={saveButtonDisabled}
             className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white transition-all duration-150 hover:-translate-y-px active:scale-[0.97] disabled:opacity-60 disabled:cursor-not-allowed"
             style={{
               backgroundColor: saveSuccess ? '#059669' : 'var(--color-primary)',

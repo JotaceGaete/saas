@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useCart } from '../../contexts/CartContext';
 import { createOrder, getBusinessBySlug } from '../../services/waBusinessService';
 import Icon from '../../components/AppIcon';
+import { formatCLP } from '../../utils/formatCLP';
 
 export default function OrderConfirmation() {
   const { slug } = useParams();
@@ -13,10 +14,6 @@ export default function OrderConfirmation() {
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
-
-  const formatPrice = (price) => {
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })?.format(price);
-  };
 
   const validate = () => {
     const errs = {};
@@ -48,13 +45,13 @@ export default function OrderConfirmation() {
       }, orderItems);
 
       // Build WhatsApp message
-      const lines = items?.map(i => `• ${i?.quantity}x ${i?.name} — ${formatPrice(i?.price * i?.quantity)}`);
+      const lines = items?.map(i => `• ${i?.quantity}x ${i?.name} — ${formatCLP(i?.price * i?.quantity)}`);
       const message = [
         `Hola, me gustaría hacer este pedido:`,
         ``,
         ...lines,
         ``,
-        `Total: ${formatPrice(total)}`,
+        `Total: ${formatCLP(total)}`,
         ``,
         `Nombre: ${customerName?.trim()}`,
         customerPhone?.trim() ? `Teléfono: ${customerPhone?.trim()}` : '',
@@ -117,7 +114,7 @@ export default function OrderConfirmation() {
                 )}
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold truncate" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>{item?.name}</p>
-                  <p className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-data)' }}>{formatPrice(item?.price)}</p>
+                  <p className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-data)' }}>{formatCLP(item?.price)}</p>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <button onClick={() => updateQuantity(item?.id, item?.quantity - 1)} className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors" style={{ backgroundColor: 'var(--color-muted)', color: 'var(--color-foreground)' }}>
@@ -136,7 +133,7 @@ export default function OrderConfirmation() {
           </div>
           <div className="px-4 py-3 border-t flex items-center justify-between" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface-subtle)' }}>
             <span className="text-sm font-semibold" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}>Total</span>
-            <span className="text-lg font-bold" style={{ fontFamily: 'var(--font-data)', color: 'var(--color-primary)' }}>{formatPrice(total)}</span>
+            <span className="text-lg font-bold" style={{ fontFamily: 'var(--font-data)', color: 'var(--color-primary)' }}>{formatCLP(total)}</span>
           </div>
         </div>
 

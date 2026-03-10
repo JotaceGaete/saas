@@ -342,7 +342,7 @@ export default function DesignCustomization({
             className="relative rounded-xl overflow-hidden border-2 flex items-center justify-center group cursor-pointer transition-all hover:border-violet-400"
             style={{
               borderColor: design?.headerImageUrl ? primaryColor : 'var(--color-border)',
-              backgroundColor: '#f0f0f8',
+              backgroundColor: (design?.headerImageUrl && (design?.coverFit || 'cover') === 'contain') ? (primaryColor || '#f0f0f8') : '#f0f0f8',
               aspectRatio: '16/5',
               minHeight: '80px',
             }}
@@ -353,7 +353,11 @@ export default function DesignCustomization({
                 <Image
                   src={design?.headerImageUrl}
                   alt="Imagen de portada del catálogo"
-                  className="w-full h-full object-cover"
+                  className="w-full h-full"
+                  style={{
+                    objectFit: (design?.coverFit || 'cover') === 'contain' ? 'contain' : 'cover',
+                    objectPosition: (design?.coverFit || 'cover') === 'cover' ? (design?.coverPosition || 'center') : 'center',
+                  }}
                 />
                 <div
                   className="absolute inset-0 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity gap-1"
@@ -401,7 +405,101 @@ export default function DesignCustomization({
               </button>
             )}
           </div>
+          {/* Ajuste de visualización del banner */}
+          {design?.headerImageUrl && (
+            <div className="flex flex-col gap-3 pt-2 border-t" style={{ borderColor: 'var(--color-border)' }}>
+              <p className="text-xs font-semibold" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Visualización del banner</p>
+              <div className="flex flex-wrap gap-3">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="coverFit"
+                    checked={(design?.coverFit || 'cover') === 'cover'}
+                    onChange={() => onChange?.({ ...design, coverFit: 'cover' })}
+                    className="rounded-full border-2"
+                    style={{ borderColor: 'var(--color-border)', accentColor: primaryColor }}
+                  />
+                  <span className="text-xs" style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-caption)' }}>Rellenar banner</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="coverFit"
+                    checked={(design?.coverFit || 'cover') === 'contain'}
+                    onChange={() => onChange?.({ ...design, coverFit: 'contain' })}
+                    className="rounded-full border-2"
+                    style={{ borderColor: 'var(--color-border)', accentColor: primaryColor }}
+                  />
+                  <span className="text-xs" style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-caption)' }}>Mostrar imagen completa</span>
+                </label>
+              </div>
+              {(design?.coverFit || 'cover') === 'cover' && (
+                <>
+                  <p className="text-xs font-semibold mt-1" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Posición de la imagen</p>
+                  <div className="flex flex-wrap gap-3">
+                    {[
+                      { value: 'top', label: 'Arriba' },
+                      { value: 'center', label: 'Centro' },
+                      { value: 'bottom', label: 'Abajo' },
+                    ].map(({ value, label }) => (
+                      <label key={value} className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="coverPosition"
+                          checked={(design?.coverPosition || 'center') === value}
+                          onChange={() => onChange?.({ ...design, coverPosition: value })}
+                          className="rounded-full border-2"
+                          style={{ borderColor: 'var(--color-border)', accentColor: primaryColor }}
+                        />
+                        <span className="text-xs" style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-caption)' }}>{label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </div>
+      </SectionCard>
+
+      {/* 2b. Usar categorías en el catálogo (opcional) */}
+      <SectionCard icon="Tags" title="Categorías en el catálogo" subtitle="Activa para mostrar filtros por categoría. Las categorías dependen del rubro que elijas en Configuración.">
+        <label
+          className="flex items-center justify-between px-4 py-3 rounded-xl border cursor-pointer transition-all"
+          style={{
+            borderColor: design?.useCategories ? primaryColor : 'var(--color-border)',
+            backgroundColor: design?.useCategories ? `${primaryColor}08` : '#fafafa',
+          }}
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: design?.useCategories ? `${primaryColor}18` : '#f0f0f8' }}>
+              <Icon name="Tags" size={14} color={design?.useCategories ? primaryColor : '#a0a0b8'} />
+            </div>
+            <span className="text-sm font-medium" style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-caption)' }}>Usar categorías en el catálogo</span>
+          </div>
+          <div
+            className="relative w-10 h-5.5 rounded-full transition-all flex-shrink-0 cursor-pointer"
+            style={{
+              width: '40px',
+              height: '22px',
+              backgroundColor: design?.useCategories ? primaryColor : '#d1d5db',
+            }}
+            onClick={(e) => { e.preventDefault(); onChange?.({ ...design, useCategories: !design?.useCategories }); }}
+          >
+            <div
+              className="absolute top-0.5 rounded-full bg-white transition-all"
+              style={{
+                width: '18px',
+                height: '18px',
+                left: design?.useCategories ? '20px' : '2px',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+              }}
+            />
+          </div>
+        </label>
+        <p className="mt-2 text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+          Asigna un <strong>rubro principal</strong> en la pestaña Configuración. Las categorías disponibles se definen por ese rubro (ej. Ropa, Ferretería).
+        </p>
       </SectionCard>
 
       {/* 3. Store Logo */}

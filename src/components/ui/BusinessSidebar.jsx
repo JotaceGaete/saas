@@ -327,9 +327,9 @@ export default function BusinessSidebar({ isCollapsed = false, onCollapsedChange
         </aside>
       )}
 
-      {/* Desktop sidebar */}
+      {/* Desktop sidebar: no ocupar espacio en móvil; solo visible desde lg */}
       <aside
-        className="hidden lg:flex flex-col fixed top-0 left-0 h-full z-navigation border-r"
+        className="sidebar-desktop hidden lg:flex flex-col fixed top-0 left-0 h-full z-navigation border-r"
         style={{
           width: collapsed ? 'var(--sidebar-collapsed-width)' : 'var(--sidebar-width)',
           backgroundColor: '#FFFFFF',

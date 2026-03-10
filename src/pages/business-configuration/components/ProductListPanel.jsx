@@ -2,16 +2,9 @@ import React, { useState } from 'react';
 import Image from 'components/AppImage';
 import Icon from 'components/AppIcon';
 import { deleteProduct } from '../../../services/waBusinessService';
+import { formatCLP } from 'utils/formatCLP';
 
-function formatPrice(price, currency) {
-  try {
-    return new Intl.NumberFormat('es-CO', { style: 'currency', currency: currency || 'USD', maximumFractionDigits: 0 })?.format(price);
-  } catch {
-    return `$${price}`;
-  }
-}
-
-function ProductRow({ product, currency, onEdit, onDelete }) {
+function ProductRow({ product, onEdit, onDelete }) {
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
@@ -57,7 +50,7 @@ function ProductRow({ product, currency, onEdit, onDelete }) {
           className="text-sm font-medium"
           style={{ color: 'var(--color-primary)', fontFamily: 'var(--font-data)' }}
         >
-          {formatPrice(product?.price, currency)}
+          {formatCLP(product?.price)}
         </p>
       </div>
 
@@ -156,7 +149,6 @@ export default function ProductListPanel({ products, loading, onAddProduct, onEd
           <ProductRow
             key={product?.id}
             product={product}
-            currency={currency}
             onEdit={onEditProduct}
             onDelete={handleDelete}
           />

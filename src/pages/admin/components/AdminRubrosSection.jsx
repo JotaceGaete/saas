@@ -1,0 +1,271 @@
+import React, { useState, useEffect } from 'react';
+import Icon from 'components/AppIcon';
+import {
+  getRubros,
+  getCategoriesByRubroId,
+  createRubro,
+  updateRubro,
+  deleteRubro,
+  createRubroCategory,
+  updateRubroCategory,
+  deleteRubroCategory,
+} from 'services/waBusinessService';
+
+export default function AdminRubrosSection() {
+  const [rubros, setRubros] = useState([]);
+  const [categoriesByRubro, setCategoriesByRubro] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [expandedRubro, setExpandedRubro] = useState(null);
+  const [editingRubro, setEditingRubro] = useState(null);
+  const [editingCategory, setEditingCategory] = useState(null);
+  const [newRubroName, setNewRubroName] = useState('');
+  const [newCategoryName, setNewCategoryName] = useState({});
+  const [saving, setSaving] = useState(false);
+
+  const loadRubros = async () => {
+    const { data, error: err } = await getRubros();
+    if (err) { setError(err?.message || 'Error al cargar rubros'); return; }
+    setRubros(data || []);
+    setError(null);
+  };
+
+  const loadCategoriesForRubro = async (rubroId) => {
+    const { data } = await getCategoriesByRubroId(rubroId);
+    setCategoriesByRubro((prev) => ({ ...prev, [rubroId]: data || [] }));
+  };
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      await loadRubros();
+      setLoading(false);
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (expandedRubro && !categoriesByRubro[expandedRubro]) {
+      loadCategoriesForRubro(expandedRubro);
+    }
+  }, [expandedRubro]);
+
+  const slugFromName = (name) =>
+    (name || '').toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') || 'rubro';
+
+  const handleCreateRubro = async (e) => {
+    e?.preventDefault?.();
+    const name = newRubroName?.trim();
+    if (!name) return;
+    setSaving(true);
+    const { data, error: err } = await createRubro({ name, slug: slugFromName(name) });
+    setSaving(false);
+    if (err) { setError(err?.message || 'Error al crear rubro'); return; }
+    setNewRubroName('');
+    await loadRubros();
+  };
+
+  const handleUpdateRubro = async (id, payload) => {
+    setSaving(true);
+    const { error: err } = await updateRubro(id, payload);
+    setSaving(false);
+    if (err) { setError(err?.message || 'Error al actualizar'); return; }
+    setEditingRubro(null);
+    await loadRubros();
+  };
+
+  const handleDeleteRubro = async (id) => {
+    if (!window.confirm('¿Eliminar este rubro y todas sus categorías?')) return;
+    setSaving(true);
+    const { error: err } = await deleteRubro(id);
+    setSaving(false);
+    if (err) { setError(err?.message || 'Error al eliminar'); return; }
+    setExpandedRubro((prev) => (prev === id ? null : prev));
+    await loadRubros();
+    setCategoriesByRubro((prev) => { const next = { ...prev }; delete next[id]; return next; });
+  };
+
+  const handleCreateCategory = async (rubroId) => {
+    const name = (newCategoryName[rubroId] || '').trim();
+    if (!name) return;
+    setSaving(true);
+    const { error: err } = await createRubroCategory({ rubroId, name });
+    setSaving(false);
+    if (err) { setError(err?.message || 'Error al crear categoría'); return; }
+    setNewCategoryName((prev) => ({ ...prev, [rubroId]: '' }));
+    await loadCategoriesForRubro(rubroId);
+  };
+
+  const handleUpdateCategory = async (id, rubroId, payload) => {
+    setSaving(true);
+    const { error: err } = await updateRubroCategory(id, payload);
+    setSaving(false);
+    if (err) { setError(err?.message || 'Error al actualizar'); return; }
+    setEditingCategory(null);
+    await loadCategoriesForRubro(rubroId);
+  };
+
+  const handleDeleteCategory = async (id, rubroId) => {
+    if (!window.confirm('¿Eliminar esta categoría?')) return;
+    setSaving(true);
+    const { error: err } = await deleteRubroCategory(id);
+    setSaving(false);
+    if (err) { setError(err?.message || 'Error al eliminar'); return; }
+    await loadCategoriesForRubro(rubroId);
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center gap-2 py-6 text-sm" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+        <svg className="animate-spin" width="18" height="18" viewBox="0 0 24 24" fill="none">
+          <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.2" />
+          <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+        </svg>
+        Cargando rubros…
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {error && (
+        <div className="px-4 py-3 rounded-xl border flex items-center gap-2" style={{ borderColor: 'var(--color-error)', backgroundColor: 'rgba(239,68,68,0.08)', color: 'var(--color-error)' }}>
+          <Icon name="AlertCircle" size={18} />
+          <span className="text-sm" style={{ fontFamily: 'var(--font-caption)' }}>{error}</span>
+          <button type="button" onClick={() => setError(null)} className="ml-auto text-xs underline">Cerrar</button>
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <form onSubmit={handleCreateRubro} className="flex gap-2 flex-wrap items-center">
+          <input
+            type="text"
+            value={newRubroName}
+            onChange={(e) => setNewRubroName(e?.target?.value)}
+            placeholder="Nuevo rubro (ej: Ropa)"
+            className="px-3 py-2 rounded-lg border text-sm w-48"
+            style={{ borderColor: 'var(--color-border)', fontFamily: 'var(--font-caption)' }}
+          />
+          <button
+            type="submit"
+            disabled={saving || !newRubroName?.trim()}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-50"
+            style={{ backgroundColor: 'var(--color-primary)', fontFamily: 'var(--font-caption)' }}
+          >
+            <Icon name="Plus" size={14} color="#fff" />
+            Agregar rubro
+          </button>
+        </form>
+      </div>
+
+      <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-card)' }}>
+        <table className="w-full text-left" style={{ fontFamily: 'var(--font-caption)' }}>
+          <thead>
+            <tr className="text-xs font-semibold" style={{ backgroundColor: 'var(--color-muted)', color: 'var(--color-muted-foreground)' }}>
+              <th className="px-4 py-3 w-8" />
+              <th className="px-4 py-3">Rubro</th>
+              <th className="px-4 py-3">Slug</th>
+              <th className="px-4 py-3 text-right">Acciones</th>
+            </tr>
+          </thead>
+          <tbody style={{ color: 'var(--color-foreground)' }}>
+            {rubros.map((rubro) => (
+              <React.Fragment key={rubro.id}>
+                <tr className="border-b" style={{ borderColor: 'var(--color-border)' }}>
+                  <td className="px-4 py-2">
+                    <button
+                      type="button"
+                      onClick={() => setExpandedRubro((prev) => (prev === rubro.id ? null : rubro.id))}
+                      className="p-1 rounded hover:bg-muted"
+                      aria-label={expandedRubro === rubro.id ? 'Cerrar' : 'Ver categorías'}
+                    >
+                      <Icon name={expandedRubro === rubro.id ? 'ChevronDown' : 'ChevronRight'} size={16} color="currentColor" />
+                    </button>
+                  </td>
+                  <td className="px-4 py-2">
+                    {editingRubro === rubro.id ? (
+                      <input
+                        type="text"
+                        defaultValue={rubro.name}
+                        onKeyDown={(e) => { if (e?.key === 'Enter') handleUpdateRubro(rubro.id, { name: e?.target?.value }); if (e?.key === 'Escape') setEditingRubro(null); }}
+                        onBlur={(e) => { const v = e?.target?.value?.trim(); if (v && v !== rubro.name) handleUpdateRubro(rubro.id, { name: v }); setEditingRubro(null); }}
+                        className="px-2 py-1 text-sm border rounded w-40"
+                        style={{ borderColor: 'var(--color-border)' }}
+                        autoFocus
+                      />
+                    ) : (
+                      <span className="font-medium">{rubro.name}</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-2 text-sm" style={{ color: 'var(--color-muted-foreground)' }}>{rubro.slug}</td>
+                  <td className="px-4 py-2 text-right">
+                    {editingRubro !== rubro.id && (
+                      <>
+                        <button type="button" onClick={() => setEditingRubro(rubro.id)} className="p-1.5 rounded hover:bg-muted mr-1" title="Editar"><Icon name="Pencil" size={14} color="currentColor" /></button>
+                        <button type="button" onClick={() => handleDeleteRubro(rubro.id)} className="p-1.5 rounded hover:bg-red-50 text-red-600" title="Eliminar"><Icon name="Trash2" size={14} color="currentColor" /></button>
+                      </>
+                    )}
+                  </td>
+                </tr>
+                {expandedRubro === rubro.id && (
+                  <tr style={{ backgroundColor: 'rgba(0,0,0,0.02)' }}>
+                    <td colSpan={4} className="px-4 py-3">
+                      <div className="pl-6 space-y-2">
+                        <p className="text-xs font-semibold mb-2" style={{ color: 'var(--color-muted-foreground)' }}>Categorías de este rubro</p>
+                        <ul className="space-y-1">
+                          {(categoriesByRubro[rubro.id] || []).map((cat) => (
+                            <li key={cat.id} className="flex items-center gap-2">
+                              {editingCategory === cat.id ? (
+                                <input
+                                  type="text"
+                                  defaultValue={cat.name}
+                                  onKeyDown={(e) => { if (e?.key === 'Enter') handleUpdateCategory(cat.id, rubro.id, { name: e?.target?.value }); if (e?.key === 'Escape') setEditingCategory(null); }}
+                                  onBlur={(e) => { const v = e?.target?.value?.trim(); if (v && v !== cat.name) handleUpdateCategory(cat.id, rubro.id, { name: v }); setEditingCategory(null); }}
+                                  className="px-2 py-1 text-sm border rounded flex-1 max-w-xs"
+                                  style={{ borderColor: 'var(--color-border)' }}
+                                  autoFocus
+                                />
+                              ) : (
+                                <span className="text-sm">{cat.name}</span>
+                              )}
+                              {editingCategory !== cat.id && (
+                                <>
+                                  <button type="button" onClick={() => setEditingCategory(cat.id)} className="p-1 rounded hover:bg-muted" title="Editar"><Icon name="Pencil" size={12} color="currentColor" /></button>
+                                  <button type="button" onClick={() => handleDeleteCategory(cat.id, rubro.id)} className="p-1 rounded hover:bg-red-50 text-red-600" title="Eliminar"><Icon name="Trash2" size={12} color="currentColor" /></button>
+                                </>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                        <div className="flex gap-2 items-center mt-2">
+                          <input
+                            type="text"
+                            value={newCategoryName[rubro.id] ?? ''}
+                            onChange={(e) => setNewCategoryName((prev) => ({ ...prev, [rubro.id]: e?.target?.value }))}
+                            placeholder="Nueva categoría"
+                            className="px-2 py-1.5 text-sm border rounded w-48"
+                            style={{ borderColor: 'var(--color-border)' }}
+                            onKeyDown={(e) => { if (e?.key === 'Enter') { e.preventDefault(); handleCreateCategory(rubro.id); } }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleCreateCategory(rubro.id)}
+                            disabled={saving || !(newCategoryName[rubro.id] || '')?.trim()}
+                            className="inline-flex items-center gap-1 px-2 py-1.5 rounded text-xs font-medium text-white disabled:opacity-50"
+                            style={{ backgroundColor: 'var(--color-primary)' }}
+                          >
+                            <Icon name="Plus" size={12} color="#fff" />
+                            Agregar categoría
+                          </button>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </React.Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}

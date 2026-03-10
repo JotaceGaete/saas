@@ -1,13 +1,9 @@
 import React from "react";
 import Icon from "components/AppIcon";
 import { SkeletonCard } from "../../../components/ui/Skeleton";
+import { formatCLP } from "../../../utils/formatCLP";
 
 const MONTH_NAMES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-
-const formatCLP = (n) => {
-  if (n >= 1_000_000) return `$${(n / 1_000_000)?.toFixed(1)?.replace('.', ',')} M`;
-  return `$${Math.round(n)?.toLocaleString('es-CL')}`;
-};
 
 export default function MonthlyRevenueCard({ data, loading }) {
   if (loading) return <SkeletonCard />;

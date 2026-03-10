@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import BusinessSidebar from "components/ui/BusinessSidebar";
+import { useIsDesktop } from "hooks/useMediaQuery";
 import ProductFilters from "./components/ProductFilters";
 import ProductTable from "./components/ProductTable";
 import BulkActionBar from "./components/BulkActionBar";
@@ -8,12 +9,14 @@ import DeleteConfirmDialog from "./components/DeleteConfirmDialog";
 import ProductStatsBar from "./components/ProductStatsBar";
 import Icon from '../../components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../components/ui/Toast';
 import { getProducts, updateProduct, deleteProduct, deleteProducts, createProduct } from '../../services/waBusinessService';
 
 
 export default function ProductManagement() {
   const navigate = useNavigate();
-  const { business } = useAuth();
+  const toast = useToast();
+  const { business, user, businessLoading, refreshBusiness } = useAuth();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -27,6 +30,15 @@ export default function ProductManagement() {
   const [sortDir, setSortDir] = useState("asc");
   const [selectedIds, setSelectedIds] = useState([]);
   const [deleteDialog, setDeleteDialog] = useState({ open: false, isBulk: false, targetId: null });
+  const [deleting, setDeleting] = useState(false);
+  const refreshAttempted = React.useRef(false);
+
+  useEffect(() => {
+    if (user && !business && !businessLoading && !refreshAttempted.current) {
+      refreshAttempted.current = true;
+      refreshBusiness();
+    }
+  }, [user, business, businessLoading, refreshBusiness]);
 
   useEffect(() => {
     if (!business?.id) { setLoading(false); return; }
@@ -90,7 +102,7 @@ export default function ProductManagement() {
   const handleDuplicate = useCallback(async (id) => {
     const product = products?.find(p => p?.id === id);
     if (!product || !business?.id) return;
-    const { data } = await createProduct(business?.id, { name: `${product?.name} (copia)`, description: product?.description, price: product?.price, imageUrl: product?.imageUrl, isActive: false, sortOrder: product?.sortOrder });
+    const { data } = await createProduct(business?.id, { name: `${product?.name} (copia)`, description: product?.description, price: product?.price, imageUrl: product?.imageUrl, images: product?.images, isActive: false, sortOrder: product?.sortOrder });
     if (data) setProducts(prev => [...prev, data]);
   }, [products, business?.id]);
 
@@ -98,24 +110,43 @@ export default function ProductManagement() {
   const handleBulkDelete = useCallback(() => { setDeleteDialog({ open: true, isBulk: true, targetId: null }); }, []);
 
   const handleConfirmDelete = useCallback(async () => {
-    if (deleteDialog?.isBulk) {
-      const { error: err } = await deleteProducts(selectedIds);
-      if (!err) { setProducts(prev => prev?.filter(p => !selectedIds?.includes(p?.id))); setSelectedIds([]); }
-    } else {
-      const { error: err } = await deleteProduct(deleteDialog?.targetId);
-      if (!err) setProducts(prev => prev?.filter(p => p?.id !== deleteDialog?.targetId));
+    setDeleting(true);
+    try {
+      if (deleteDialog?.isBulk) {
+        const { error: err } = await deleteProducts(selectedIds);
+        if (err) {
+          toast?.error('Error al eliminar: ' + (err?.message || 'Intenta de nuevo.'));
+          setDeleteDialog({ open: false, isBulk: false, targetId: null });
+          return;
+        }
+        setProducts(prev => prev?.filter(p => !selectedIds?.includes(p?.id)));
+        setSelectedIds([]);
+        toast?.success(selectedIds?.length === 1 ? 'Producto eliminado.' : `${selectedIds?.length} productos eliminados.`);
+      } else {
+        const id = deleteDialog?.targetId;
+        if (!id) { setDeleteDialog({ open: false, isBulk: false, targetId: null }); return; }
+        const { error: err } = await deleteProduct(id);
+        if (err) {
+          toast?.error('Error al eliminar: ' + (err?.message || 'Intenta de nuevo.'));
+          setDeleteDialog({ open: false, isBulk: false, targetId: null });
+          return;
+        }
+        setProducts(prev => prev?.filter(p => p?.id !== id));
+        toast?.success('Producto eliminado.');
+      }
+      setDeleteDialog({ open: false, isBulk: false, targetId: null });
+    } finally {
+      setDeleting(false);
     }
-    setDeleteDialog({ open: false, isBulk: false, targetId: null });
-  }, [deleteDialog, selectedIds]);
+  }, [deleteDialog, selectedIds, toast]);
 
   const handleCancelDelete = useCallback(() => { setDeleteDialog({ open: false, isBulk: false, targetId: null }); }, []);
+  const isDesktop = useIsDesktop();
   const sidebarWidth = sidebarCollapsed ? "var(--sidebar-collapsed-width)" : "var(--sidebar-width)";
-  const CURRENCY = business?.currency || 'USD';
-
   return (
-    <div className="min-h-screen" style={{ backgroundColor: 'var(--color-background)' }}>
+    <div className="panel-root min-h-screen" style={{ backgroundColor: 'var(--color-background)' }}>
       <BusinessSidebar isCollapsed={sidebarCollapsed} onCollapsedChange={setSidebarCollapsed} />
-      <main className="min-h-screen transition-all duration-200" style={{ marginLeft: typeof window !== 'undefined' && window.innerWidth >= 1024 ? sidebarWidth : '0', transition: 'margin-left var(--transition-base)' }}>
+      <main className="panel-main min-h-screen w-full max-w-full min-w-0 overflow-x-hidden transition-all duration-200" style={{ marginLeft: isDesktop ? sidebarWidth : 0, transition: 'margin-left var(--transition-base)' }}>
         <div className="sticky top-0 z-50 border-b px-4 md:px-6 lg:px-8 flex items-center justify-between gap-3" style={{ backgroundColor: '#FFFFFF', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-xs)', height: '60px' }}>
           <div className="w-11 lg:w-0 flex-shrink-0" aria-hidden="true" />
           <div className="flex-1 min-w-0">
@@ -153,12 +184,22 @@ export default function ProductManagement() {
                 <ProductFilters searchQuery={searchQuery} onSearchChange={setSearchQuery} statusFilter={statusFilter} onStatusChange={setStatusFilter} categoryFilter={categoryFilter} onCategoryChange={setCategoryFilter} priceMin={priceMin} onPriceMinChange={setPriceMin} priceMax={priceMax} onPriceMaxChange={setPriceMax} />
               </div>
               {selectedIds?.length > 0 && (<div className="mb-4"><BulkActionBar selectedCount={selectedIds?.length} onDelete={handleBulkDelete} onDeselect={() => setSelectedIds([])} /></div>)}
-              <ProductTable products={filteredProducts} selectedIds={selectedIds} onSelectAll={handleSelectAll} onSelectOne={handleSelectOne} onToggleStatus={handleToggleStatus} onEdit={handleEdit} onDuplicate={handleDuplicate} onDeleteRequest={handleDeleteRequest} sortField={sortField} sortDir={sortDir} onSort={handleSort} currency={CURRENCY} />
+              <ProductTable products={filteredProducts} selectedIds={selectedIds} onSelectAll={handleSelectAll} onSelectOne={handleSelectOne} onToggleStatus={handleToggleStatus} onEdit={handleEdit} onDuplicate={handleDuplicate} onDeleteRequest={handleDeleteRequest} sortField={sortField} sortDir={sortDir} onSort={handleSort} />
             </>
           )}
         </div>
       </main>
-      {deleteDialog?.open && (<DeleteConfirmDialog isBulk={deleteDialog?.isBulk} count={selectedIds?.length} onConfirm={handleConfirmDelete} onCancel={handleCancelDelete} />)}
+      {deleteDialog?.open && (
+        <DeleteConfirmDialog
+          isOpen={deleteDialog?.open}
+          isBulk={deleteDialog?.isBulk}
+          count={selectedIds?.length}
+          productName={products?.find(p => p?.id === deleteDialog?.targetId)?.name}
+          isDeleting={deleting}
+          onConfirm={handleConfirmDelete}
+          onCancel={handleCancelDelete}
+        />
+      )}
     </div>
   );
 }

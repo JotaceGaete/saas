@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import Icon from 'components/AppIcon';
 import BusinessSidebar from 'components/ui/BusinessSidebar';
+import { useIsDesktop } from 'hooks/useMediaQuery';
 import ImageUploadSection from './components/ImageUploadSection';
 import ProductFormFields from './components/ProductFormFields';
 import VariantManager from './components/VariantManager';
@@ -10,12 +11,12 @@ import ProductPreview from './components/ProductPreview';
 import SaveBar from './components/SaveBar';
 import ProductOptionsSection from './components/ProductOptionsSection';
 import { useAuth } from '../../contexts/AuthContext';
-import { getProduct, createProduct, updateProduct, uploadProductImage } from '../../services/waBusinessService';
+import { getProduct, createProduct, updateProduct, uploadProductImage, getMyBusiness, getCategoriesByRubroId } from '../../services/waBusinessService';
+import { convertUnsupportedImageToJpeg } from '../../utils/imageUploadUtils';
 
 const EMPTY_FORM = {
   nombre: '',
   precio: '',
-  currency: 'USD',
   descripcion: '',
   categoria: '',
   stock: '',
@@ -30,7 +31,8 @@ export default function ProductEditor() {
   const [searchParams] = useSearchParams();
   const productId = searchParams?.get('id');
   const isEditing = !!productId;
-  const { business } = useAuth();
+  const { business, user, businessLoading, refreshBusiness } = useAuth();
+  const refreshAttempted = React.useRef(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [formData, setFormData] = useState({ ...EMPTY_FORM });
   const [images, setImages] = useState([]);
@@ -40,10 +42,7 @@ export default function ProductEditor() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [pageLoading, setPageLoading] = useState(isEditing);
-
-  useEffect(() => {
-    if (business?.currency) setFormData(prev => ({ ...prev, currency: business?.currency }));
-  }, [business?.currency]);
+  const [rubroCategories, setRubroCategories] = useState([]);
 
   useEffect(() => {
     if (!isEditing || !productId) return;
@@ -54,17 +53,19 @@ export default function ProductEditor() {
         if (error || !data) { navigate('/product-management'); return; }
         setFormData({
           nombre: data?.name || '',
-          precio: String(data?.price || ''),
-          currency: business?.currency || 'USD',
+          precio: data?.price != null ? Number(data.price) : '',
           descripcion: data?.description || '',
-          categoria: '',
+          categoria: data?.category ?? '',
           stock: '',
           activo: data?.isActive !== undefined ? data?.isActive : true,
           featured: data?.featured || false,
           hasOptions: data?.hasOptions || false,
           optionsDescription: data?.optionsDescription || '',
         });
-        if (data?.imageUrl) setImages([{ id: 1, url: data?.imageUrl, alt: data?.name, name: 'product-image' }]);
+        const loadedImages = Array.isArray(data?.images) && data.images.length > 0
+          ? data.images.map((url, i) => ({ id: `loaded-${i}-${url}`, url, alt: data?.name, name: `product-image-${i}`, status: 'uploaded' }))
+          : (data?.imageUrl ? [{ id: 1, url: data.imageUrl, alt: data?.name, name: 'product-image', status: 'uploaded' }] : []);
+        if (loadedImages.length) setImages(loadedImages);
       } catch (e) { navigate('/product-management'); }
       finally { setPageLoading(false); }
     };
@@ -75,50 +76,131 @@ export default function ProductEditor() {
     if (saveSuccess) { const t = setTimeout(() => setSaveSuccess(false), 3000); return () => clearTimeout(t); }
   }, [saveSuccess]);
 
+  // Si el contexto no tiene negocio pero el usuario está autenticado, intentar refrescar una vez
+  useEffect(() => {
+    if (user && !business && !businessLoading && !refreshAttempted.current) {
+      refreshAttempted.current = true;
+      refreshBusiness();
+    }
+  }, [user, business, businessLoading, refreshBusiness]);
+
+  // Categorías del rubro del negocio (para selector cuando useCategories está activo)
+  useEffect(() => {
+    if (!business?.rubroId || !business?.designSettings?.useCategories) {
+      setRubroCategories([]);
+      return;
+    }
+    getCategoriesByRubroId(business.rubroId).then(({ data }) => setRubroCategories(data || []));
+  }, [business?.rubroId, business?.designSettings?.useCategories]);
+
   const handleFieldChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
     if (errors?.[field]) setErrors(prev => { const e = { ...prev }; delete e?.[field]; return e; });
   };
 
+  const handleUploadRequested = React.useCallback(async (imageId, file) => {
+    if (!business?.id || !file) return;
+    setImages(prev => prev?.map(img => img?.id === imageId ? { ...img, status: 'uploading' } : img));
+    let fileToUpload = file;
+    try {
+      fileToUpload = await convertUnsupportedImageToJpeg(file);
+    } catch (e) {
+      setImages(prev => prev?.map(img => img?.id === imageId ? { ...img, status: 'error', error: e?.message || 'No se pudo procesar la imagen' } : img));
+      return;
+    }
+    const { url, error: uploadErr } = await uploadProductImage(fileToUpload, business.id, productId || undefined);
+    setImages(prev => prev?.map(img => {
+      if (img?.id !== imageId) return img;
+      if (uploadErr) {
+        const errMsg = typeof uploadErr?.message === 'string' ? uploadErr.message : (uploadErr?.error_description || JSON.stringify(uploadErr) || 'Error al subir');
+        return { ...img, status: 'error', error: errMsg };
+      }
+      if (img?.url?.startsWith?.('blob:')) URL.revokeObjectURL(img.url);
+      return { ...img, url, status: 'uploaded', file: undefined, error: undefined };
+    }));
+  }, [business?.id, productId]);
+
+  const hasPendingOrUploadingImages = (images || []).some(img =>
+    img?.status === 'pending' || img?.status === 'uploading' || (img?.file && img?.status !== 'uploaded' && img?.status !== 'error')
+  );
+
   const validate = () => {
     const newErrors = {};
     if (!formData?.nombre?.trim()) newErrors.nombre = 'El nombre del producto es obligatorio.';
-    if (!formData?.precio || isNaN(parseFloat(formData?.precio)) || parseFloat(formData?.precio) <= 0) newErrors.precio = 'Ingresa un precio válido mayor a 0.';
+    const priceNum = Number(formData?.precio);
+    if (formData?.precio === '' || formData?.precio === null || formData?.precio === undefined || !Number.isFinite(priceNum) || priceNum <= 0) newErrors.precio = 'Ingresa un precio válido (entero mayor a 0).';
     return newErrors;
   };
 
   const handleSave = async (andNew = false) => {
     const validationErrors = validate();
     if (Object.keys(validationErrors)?.length > 0) { setErrors(validationErrors); window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
-    if (!business?.id) { setErrors({ general: 'No se encontró el negocio. Configura tu negocio primero.' }); return; }
+    if (hasPendingOrUploadingImages) {
+      setErrors(prev => ({ ...prev, general: 'Espera a que terminen de subir todas las imágenes.' }));
+      return;
+    }
+    let biz = business;
+    if (!biz?.id) {
+      const { data: fetched } = await getMyBusiness();
+      if (fetched) {
+        biz = fetched;
+        refreshBusiness();
+      } else {
+        setErrors({
+          general: 'No se encontró tu negocio. Ve a Mi Tienda para crear o completar la configuración.',
+          configPath: '/business-configuration',
+        });
+        return;
+      }
+    }
     setIsSaving(true);
     try {
       let imageUrl = null;
       const firstImage = images?.[0];
-      if (firstImage?.file) {
-        const { url, error: uploadErr } = await uploadProductImage(firstImage?.file, business?.id);
-        if (!uploadErr) imageUrl = url;
+      const uploadedFirst = firstImage?.status === 'uploaded' && firstImage?.url;
+      if (uploadedFirst) {
+        imageUrl = firstImage.url;
+      } else if (firstImage?.file) {
+        let fileToUpload = firstImage.file;
+        try {
+          fileToUpload = await convertUnsupportedImageToJpeg(firstImage.file);
+        } catch (e) {
+          setErrors(prev => ({ ...prev, general: 'No se pudo procesar la imagen: ' + (e?.message || 'Usa JPG o PNG.') }));
+          return;
+        }
+        const { url, error: uploadErr } = await uploadProductImage(fileToUpload, biz?.id, productId || undefined);
+        if (uploadErr) {
+          setErrors(prev => ({ ...prev, general: 'Error al subir la imagen: ' + (uploadErr?.message || 'Intenta de nuevo.') }));
+          return;
+        }
+        imageUrl = url;
       } else if (firstImage?.url && !firstImage?.url?.startsWith('blob:')) {
         imageUrl = firstImage?.url;
       }
+      const imagesUrls = (images || [])
+        ?.filter(i => (i?.status === 'uploaded' && i?.url) || (i?.url && !i?.url?.startsWith?.('blob:')))
+        ?.map(i => i?.url) ?? [];
+      const finalImageUrl = imageUrl || imagesUrls?.[0] || null;
       const productData = {
         name: formData?.nombre,
         description: formData?.descripcion || null,
-        price: formData?.precio,
-        imageUrl,
+        price: Math.round(Number(formData?.precio)),
+        imageUrl: finalImageUrl,
+        images: imagesUrls?.length ? imagesUrls : (finalImageUrl ? [finalImageUrl] : []),
         isActive: formData?.activo,
         featured: formData?.featured,
         hasOptions: formData?.hasOptions,
         optionsDescription: formData?.hasOptions ? (formData?.optionsDescription || null) : null,
+        category: formData?.categoria?.trim() || null,
       };
       const result = isEditing
         ? await updateProduct(productId, productData)
-        : await createProduct(business?.id, productData);
+        : await createProduct(biz?.id, productData);
       if (result?.error) { setErrors({ general: result?.error?.message || 'Error al guardar el producto.' }); return; }
       setIsSaving(false);
       setSaveSuccess(true);
       if (andNew) {
-        setFormData({ ...EMPTY_FORM, currency: business?.currency || 'USD' });
+        setFormData({ ...EMPTY_FORM });
         setImages([]);
         setVariants([]);
         setErrors({});
@@ -132,6 +214,7 @@ export default function ProductEditor() {
   };
 
   const handleCancel = () => navigate('/product-management');
+  const isDesktop = useIsDesktop();
   const sidebarWidth = sidebarCollapsed ? 64 : 240;
 
   if (pageLoading) {
@@ -146,11 +229,12 @@ export default function ProductEditor() {
   }
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: 'var(--color-background)' }}>
+    <div className="panel-root min-h-screen" style={{ backgroundColor: 'var(--color-background)' }}>
       <BusinessSidebar isCollapsed={sidebarCollapsed} onCollapsedChange={setSidebarCollapsed} />
       <div
-        className="flex flex-col min-h-screen"
-        style={{ marginLeft: `${sidebarWidth}px`, transition: 'margin-left var(--transition-base)' }}
+        role="main"
+        className="panel-main flex flex-col min-h-screen w-full max-w-full min-w-0 overflow-x-hidden"
+        style={{ marginLeft: isDesktop ? sidebarWidth : 0, transition: 'margin-left var(--transition-base)' }}
       >
         {/* Header */}
         <header
@@ -214,7 +298,7 @@ export default function ProductEditor() {
         </header>
 
         {/* Main content */}
-        <div className="flex-1 px-4 md:px-6 lg:px-8 py-6 pb-0 page-enter">
+        <div className="flex-1 px-4 md:px-6 lg:px-8 py-6 pb-20 lg:pb-0 page-enter">
           <div className="max-w-6xl mx-auto">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
 
@@ -229,13 +313,27 @@ export default function ProductEditor() {
                     role="alert"
                   >
                     <Icon name="AlertCircle" size={17} color="var(--color-error)" className="flex-shrink-0 mt-0.5" />
-                    <div>
-                      <p className="text-sm font-semibold" style={{ color: 'var(--color-error)', fontFamily: 'var(--font-caption)' }}>Por favor corrige los siguientes errores:</p>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold" style={{ color: 'var(--color-error)', fontFamily: 'var(--font-caption)' }}>
+                        {errors?.configPath ? 'Configuración requerida' : 'Por favor corrige los siguientes errores:'}
+                      </p>
                       <ul className="mt-1 space-y-0.5">
-                        {Object.values(errors)?.map((err, i) => (
-                          <li key={i} className="text-xs" style={{ color: 'var(--color-error)', fontFamily: 'var(--font-caption)' }}>• {err}</li>
-                        ))}
+                        {Object.entries(errors)
+                          ?.filter(([k]) => k !== 'configPath')
+                          ?.map(([k, err]) => (
+                            <li key={k} className="text-xs" style={{ color: 'var(--color-error)', fontFamily: 'var(--font-caption)' }}>• {err}</li>
+                          ))}
                       </ul>
+                      {errors?.configPath && (
+                        <button
+                          type="button"
+                          onClick={() => navigate(errors.configPath)}
+                          className="mt-3 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors"
+                          style={{ backgroundColor: 'var(--color-primary)', color: '#fff', fontFamily: 'var(--font-caption)' }}
+                        >
+                          Ir a Mi Tienda
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}
@@ -254,7 +352,7 @@ export default function ProductEditor() {
                       {images?.length}/5
                     </span>
                   </div>
-                  <ImageUploadSection images={images} onImagesChange={setImages} businessId={business?.id} />
+                  <ImageUploadSection images={images} onImagesChange={setImages} businessId={business?.id} onUploadRequested={handleUploadRequested} />
                 </div>
 
                 {/* Basic info */}
@@ -268,7 +366,13 @@ export default function ProductEditor() {
                     </div>
                     <h2 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>Información básica</h2>
                   </div>
-                  <ProductFormFields formData={formData} errors={errors} onChange={handleFieldChange} />
+                  <ProductFormFields
+                    formData={formData}
+                    errors={errors}
+                    onChange={handleFieldChange}
+                    useCategories={business?.designSettings?.useCategories === true && !!business?.rubroId}
+                    categories={rubroCategories}
+                  />
                 </div>
 
                 {/* Visibility & Featured toggles */}
@@ -349,7 +453,6 @@ export default function ProductEditor() {
                   <ProductPreview
                     nombre={formData?.nombre}
                     precio={formData?.precio}
-                    currency={formData?.currency}
                     descripcion={formData?.descripcion}
                     activo={formData?.activo}
                     featured={formData?.featured}
@@ -366,6 +469,7 @@ export default function ProductEditor() {
           isEditing={isEditing}
           isSaving={isSaving}
           saveSuccess={saveSuccess}
+          saveDisabled={hasPendingOrUploadingImages}
           onSave={() => handleSave(false)}
           onSaveAndNew={() => handleSave(true)}
           onCancel={handleCancel}

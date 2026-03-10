@@ -2,7 +2,12 @@ import React, { useState, useRef } from 'react';
 import Icon from 'components/AppIcon';
 import Image from 'components/AppImage';
 
-export default function ImageUploadSection({ images, onImagesChange, businessId }) {
+const STATUS_PENDING = 'pending';
+const STATUS_UPLOADING = 'uploading';
+const STATUS_UPLOADED = 'uploaded';
+const STATUS_ERROR = 'error';
+
+export default function ImageUploadSection({ images, onImagesChange, businessId, onUploadRequested }) {
   const [isDragging, setIsDragging] = useState(false);
   const [dragOverId, setDragOverId] = useState(null);
   const [draggingId, setDraggingId] = useState(null);
@@ -11,12 +16,28 @@ export default function ImageUploadSection({ images, onImagesChange, businessId 
   const handleFiles = (files) => {
     const fileArray = Array.from(files)?.filter(f => f?.type?.startsWith('image/'));
     if (fileArray?.length === 0) return;
-    fileArray?.forEach(file => {
+    const currentLength = (images || [])?.length;
+    const toAdd = fileArray?.slice(0, Math.max(0, 5 - currentLength)) ?? [];
+    const newItems = toAdd.map((file, index) => {
+      const id = `img-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 9)}`;
       const previewUrl = URL.createObjectURL(file);
-      onImagesChange(prev => {
-        if ((prev || [])?.length >= 5) return prev;
-        return [...(prev || []), { id: Date.now() + Math.random(), url: previewUrl, alt: `Imagen de producto: ${file?.name}`, name: file?.name, file }];
-      });
+      return {
+        id,
+        url: previewUrl,
+        alt: `Imagen de producto: ${file?.name}`,
+        name: file?.name,
+        file,
+        status: STATUS_PENDING,
+      };
+    });
+    onImagesChange(prev => {
+      if ((prev || [])?.length >= 5) return prev;
+      return [...(prev || []), ...newItems];
+    });
+    newItems.forEach((item) => {
+      if (businessId && typeof onUploadRequested === 'function') {
+        onUploadRequested(item.id, item.file);
+      }
     });
   };
 
@@ -155,12 +176,12 @@ export default function ImageUploadSection({ images, onImagesChange, businessId 
                   </span>
                 )}
 
-                {/* Pending upload badge */}
-                {img?.file && (
+                {/* Upload status badge */}
+                {img?.status === STATUS_PENDING && img?.file && (
                   <span
                     className="absolute bottom-1 left-1 rounded px-1 py-0.5"
                     style={{
-                      backgroundColor: 'rgba(0,0,0,0.55)',
+                      backgroundColor: 'rgba(245,158,11,0.95)',
                       color: '#fff',
                       fontFamily: 'var(--font-caption)',
                       fontSize: '0.58rem',
@@ -168,6 +189,58 @@ export default function ImageUploadSection({ images, onImagesChange, businessId 
                   >
                     Pendiente
                   </span>
+                )}
+                {img?.status === STATUS_UPLOADING && (
+                  <span
+                    className="absolute bottom-1 left-1 rounded px-1 py-0.5 flex items-center gap-0.5"
+                    style={{
+                      backgroundColor: 'rgba(0,0,0,0.7)',
+                      color: '#fff',
+                      fontFamily: 'var(--font-caption)',
+                      fontSize: '0.58rem',
+                    }}
+                  >
+                    <span className="inline-block w-2.5 h-2.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Subiendo...
+                  </span>
+                )}
+                {img?.status === STATUS_ERROR && (
+                  <div className="absolute inset-0 flex flex-col justify-end p-1.5 gap-0.5 bg-black/60 rounded-xl">
+                    <span
+                      className="rounded px-1 py-0.5 text-center"
+                      style={{
+                        backgroundColor: 'rgba(239,68,68,0.95)',
+                        color: '#fff',
+                        fontFamily: 'var(--font-caption)',
+                        fontSize: '0.58rem',
+                      }}
+                    >
+                      Error
+                    </span>
+                    {img?.error && (
+                      <p
+                        className="text-[0.5rem] leading-tight line-clamp-2 text-white/95 px-0.5"
+                        style={{ fontFamily: 'var(--font-caption)' }}
+                        title={img.error}
+                      >
+                        {img.error}
+                      </p>
+                    )}
+                    {img?.file && (
+                      <button
+                        type="button"
+                        onClick={(e) => { e?.stopPropagation(); onUploadRequested?.(img?.id, img?.file); }}
+                        className="rounded px-1 py-0.5 text-center text-white font-semibold"
+                        style={{
+                          backgroundColor: 'var(--color-primary)',
+                          fontFamily: 'var(--font-caption)',
+                          fontSize: '0.55rem',
+                        }}
+                      >
+                        Reintentar
+                      </button>
+                    )}
+                  </div>
                 )}
 
                 {/* Delete button */}

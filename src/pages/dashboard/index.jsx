@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import BusinessSidebar from "components/ui/BusinessSidebar";
+import { useIsDesktop } from "hooks/useMediaQuery";
 import Icon from "components/AppIcon";
 import MetricCard from "./components/MetricCard";
 import ActivityFeed from "./components/ActivityFeed";
@@ -19,8 +20,9 @@ import MonthlyRevenueCard from "./components/MonthlyRevenueCard";
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { user, business, businessLoading } = useAuth();
+  const { user, business, businessLoading, refreshBusiness } = useAuth();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const dashboardRefreshAttempted = useRef(false);
   const [copyToast, setCopyToast] = useState(false);
   const [products, setProducts] = useState([]);
   const [orders, setOrders] = useState([]);
@@ -41,6 +43,14 @@ export default function Dashboard() {
   const catalogUrl = business?.slug
     ? `${window.location?.origin}/catalogo/${business?.slug}`
     : '';
+
+  // Un intento de refrescar el negocio si el contexto llegó vacío (p. ej. estado desactualizado)
+  useEffect(() => {
+    if (user && !business && !businessLoading && !dashboardRefreshAttempted.current) {
+      dashboardRefreshAttempted.current = true;
+      refreshBusiness();
+    }
+  }, [user, business, businessLoading, refreshBusiness]);
 
   useEffect(() => {
     if (!business?.id) { setDataLoading(false); return; }
@@ -188,6 +198,7 @@ export default function Dashboard() {
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
+  const isDesktop = useIsDesktop();
   const sidebarWidth = sidebarCollapsed ? 'var(--sidebar-collapsed-width)' : 'var(--sidebar-width)';
 
   if (businessLoading) {
@@ -202,20 +213,14 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: 'var(--color-background)' }}>
+    <div className="panel-root min-h-screen" style={{ backgroundColor: 'var(--color-background)' }}>
       <BusinessSidebar isCollapsed={sidebarCollapsed} onCollapsedChange={setSidebarCollapsed} />
-      <main className="min-h-screen transition-all duration-200" style={{ marginLeft: typeof window !== 'undefined' && window.innerWidth >= 1024 ? sidebarWidth : '0', transition: 'margin-left var(--transition-base)' }}>
+      <main className="panel-main min-h-screen w-full max-w-full min-w-0 overflow-x-hidden transition-all duration-200" style={{ marginLeft: isDesktop ? sidebarWidth : 0, transition: 'margin-left var(--transition-base)' }}>
         <div className="sticky top-0 z-50 border-b px-4 md:px-6 lg:px-8 py-0 flex items-center justify-between gap-3" style={{ backgroundColor: '#FFFFFF', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-xs)', height: '60px' }}>
           <div className="w-11 lg:w-0 flex-shrink-0" aria-hidden="true" />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Dashboard</h1>
-              {business?.currency && (
-                <span className="hidden sm:inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: 'rgba(124,58,237,0.08)', color: 'var(--color-primary)', fontFamily: 'var(--font-caption)' }}>
-                  <Icon name="Zap" size={10} color="var(--color-primary)" />
-                  {business?.currency}
-                </span>
-              )}
               {/* Connection status indicator */}
               {realtimeStatus === 'connected' && (
                 <span className="hidden sm:inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: 'rgba(16,185,129,0.08)', color: '#059669', fontFamily: 'var(--font-caption)' }}>

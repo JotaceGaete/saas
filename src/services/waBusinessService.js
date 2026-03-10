@@ -32,6 +32,7 @@ const mapBusinessFromDb = (row) => {
   coverImageUrl: row?.cover_image_url || designSettings?.headerImageUrl || designSettings?.coverImageUrl || null,
   slug: row?.slug,
   isActive: row?.is_active,
+  rubroId: row?.rubro_id || null,
   designSettings,
   bankName: row?.bank_name || '',
   bankAccountType: row?.bank_account_type || '',
@@ -45,21 +46,25 @@ const mapBusinessFromDb = (row) => {
 };
 };
 
-const mapProductFromDb = (row) => ({
-  id: row?.id,
-  businessId: row?.business_id,
-  name: row?.name,
-  description: row?.description,
-  price: parseFloat(row?.price),
-  imageUrl: row?.image_url,
-  isActive: row?.is_active,
-  sortOrder: row?.sort_order,
-  category: row?.category || null,
-  hasOptions: row?.has_options || false,
-  optionsDescription: row?.options_description || null,
-  createdAt: row?.created_at,
-  updatedAt: row?.updated_at,
-});
+const mapProductFromDb = (row) => {
+  const imagesArray = Array.isArray(row?.images) ? row.images : (row?.image_url ? [row.image_url] : []);
+  return {
+    id: row?.id,
+    businessId: row?.business_id,
+    name: row?.name,
+    description: row?.description,
+    price: parseFloat(row?.price),
+    imageUrl: row?.image_url || imagesArray?.[0] || null,
+    images: imagesArray,
+    isActive: row?.is_active,
+    sortOrder: row?.sort_order,
+    category: row?.category || null,
+    hasOptions: row?.has_options || false,
+    optionsDescription: row?.options_description || null,
+    createdAt: row?.created_at,
+    updatedAt: row?.updated_at,
+  };
+};
 
 const mapOrderFromDb = (row) => ({
   id: row?.id,
@@ -173,6 +178,7 @@ export async function updateBusiness(businessId, updates) {
   if (updates?.slug !== undefined)        dbUpdates.slug = updates?.slug;
   if (updates?.isActive !== undefined)    dbUpdates.is_active = updates?.isActive;
   if (updates?.designSettings !== undefined) dbUpdates.design_settings = updates?.designSettings;
+  if (updates?.rubroId !== undefined) dbUpdates.rubro_id = updates?.rubroId || null;
   if (updates?.bankName !== undefined)          dbUpdates.bank_name = updates?.bankName;
   if (updates?.bankAccountType !== undefined)   dbUpdates.bank_account_type = updates?.bankAccountType;
   if (updates?.bankAccountNumber !== undefined) dbUpdates.bank_account_number = updates?.bankAccountNumber;
@@ -222,12 +228,15 @@ export const getProduct = async (productId) => {
 };
 
 export const createProduct = async (businessId, productData) => {
+  const imagesArr = Array.isArray(productData?.images) ? productData.images : [];
+  const imageUrl = productData?.imageUrl ?? imagesArr?.[0] ?? null;
   const { data, error } = await supabase?.from('wa_products')?.insert({
     business_id: businessId,
     name: productData?.name,
     description: productData?.description || null,
     price: productData?.price,
-    image_url: productData?.imageUrl || null,
+    image_url: imageUrl,
+    images: imagesArr?.length > 0 ? imagesArr : (imageUrl ? [imageUrl] : []),
     is_active: productData?.isActive !== undefined ? productData?.isActive : true,
     sort_order: productData?.sortOrder || 0,
     category: productData?.category || null,
@@ -248,6 +257,8 @@ export const updateProduct = async (productId, productData) => {
   if (productData?.sortOrder !== undefined)   dbUpdates.sort_order = productData?.sortOrder;
   if (productData?.hasOptions !== undefined)  dbUpdates.has_options = productData?.hasOptions;
   if (productData?.optionsDescription !== undefined) dbUpdates.options_description = productData?.optionsDescription;
+  if (productData?.category !== undefined) dbUpdates.category = productData?.category || null;
+  if (productData?.images !== undefined) dbUpdates.images = Array.isArray(productData.images) ? productData.images : (productData?.imageUrl ? [productData.imageUrl] : []);
   const { data, error } = await supabase?.from('wa_products')?.update(dbUpdates)?.eq('id', productId)?.select()?.single();
   if (error) return { data: null, error };
   return { data: mapProductFromDb(data), error: null };
@@ -260,8 +271,9 @@ export const deleteProduct = async (productId) => {
 };
 
 export const uploadProductImage = async (file, businessId, productId) => {
-  const ext = file?.name?.split('.')?.pop();
-  const path = `products/${businessId}/${productId || Date.now()}.${ext}`;
+  const ext = file?.name?.split('.')?.pop() || 'jpg';
+  const unique = productId ? `${productId}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}` : `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  const path = `products/${businessId}/${unique}.${ext}`;
   const { error: uploadError } = await supabase?.storage?.from('wa-product-images')?.upload(path, file, { upsert: true });
   if (uploadError) return { url: null, error: uploadError };
   const { data } = supabase?.storage?.from('wa-product-images')?.getPublicUrl(path);
@@ -315,13 +327,12 @@ export const createOrder = async (businessId, orderData, items) => {
   return { data: mapOrderFromDb(order), error: null };
 };
 
-function deleteProducts(...args) {
-  // eslint-disable-next-line no-console
-  console.warn('Placeholder: deleteProducts is not implemented yet.', args);
-  return null;
-}
-
-export { deleteProducts };
+export const deleteProducts = async (productIds) => {
+  if (!productIds?.length) return { error: null };
+  const { error } = await supabase?.from('wa_products')?.delete()?.in('id', productIds);
+  if (error) return { error };
+  return { error: null };
+};
 
 export async function getPublicProducts(businessId) {
   const { data, error } = await supabase
@@ -419,4 +430,98 @@ export const getAdminStats = async () => {
     },
     error: b?.error || p?.error || o?.error || null,
   };
+};
+
+// ——— Rubros y categorías por rubro ———
+
+const mapRubroFromDb = (row) => ({
+  id: row?.id,
+  name: row?.name,
+  slug: row?.slug,
+  sortOrder: row?.sort_order ?? 0,
+  createdAt: row?.created_at,
+  updatedAt: row?.updated_at,
+});
+
+const mapRubroCategoryFromDb = (row) => ({
+  id: row?.id,
+  rubroId: row?.rubro_id,
+  name: row?.name,
+  sortOrder: row?.sort_order ?? 0,
+  createdAt: row?.created_at,
+  updatedAt: row?.updated_at,
+});
+
+/** Lista todos los rubros (para selector de negocio y admin). */
+export const getRubros = async () => {
+  const { data, error } = await supabase?.from('wa_rubros')?.select('*')?.order('sort_order', { ascending: true });
+  if (error) return { data: null, error };
+  return { data: (data || []).map(mapRubroFromDb), error: null };
+};
+
+/** Categorías de un rubro (para formulario de producto y catálogo público). */
+export const getCategoriesByRubroId = async (rubroId) => {
+  if (!rubroId) return { data: [], error: null };
+  const { data, error } = await supabase
+    ?.from('wa_rubro_categories')
+    ?.select('*')
+    ?.eq('rubro_id', rubroId)
+    ?.order('sort_order', { ascending: true });
+  if (error) return { data: null, error };
+  return { data: (data || []).map(mapRubroCategoryFromDb), error: null };
+};
+
+// ——— Admin: CRUD rubros ———
+
+export const createRubro = async (payload) => {
+  const { data, error } = await supabase?.from('wa_rubros')?.insert({
+    name: payload?.name,
+    slug: payload?.slug || payload?.name?.toLowerCase()?.replace(/\s+/g, '-')?.replace(/[^a-z0-9-]/g, '') || 'rubro',
+    sort_order: payload?.sortOrder ?? 0,
+  })?.select()?.single();
+  if (error) return { data: null, error };
+  return { data: mapRubroFromDb(data), error: null };
+};
+
+export const updateRubro = async (id, payload) => {
+  const db = {};
+  if (payload?.name !== undefined) db.name = payload.name;
+  if (payload?.slug !== undefined) db.slug = payload.slug;
+  if (payload?.sortOrder !== undefined) db.sort_order = payload.sortOrder;
+  const { data, error } = await supabase?.from('wa_rubros')?.update(db)?.eq('id', id)?.select()?.single();
+  if (error) return { data: null, error };
+  return { data: mapRubroFromDb(data), error: null };
+};
+
+export const deleteRubro = async (id) => {
+  const { error } = await supabase?.from('wa_rubros')?.delete()?.eq('id', id);
+  if (error) return { error };
+  return { error: null };
+};
+
+// ——— Admin: CRUD categorías por rubro ———
+
+export const createRubroCategory = async (payload) => {
+  const { data, error } = await supabase?.from('wa_rubro_categories')?.insert({
+    rubro_id: payload?.rubroId,
+    name: payload?.name,
+    sort_order: payload?.sortOrder ?? 0,
+  })?.select()?.single();
+  if (error) return { data: null, error };
+  return { data: mapRubroCategoryFromDb(data), error: null };
+};
+
+export const updateRubroCategory = async (id, payload) => {
+  const db = {};
+  if (payload?.name !== undefined) db.name = payload.name;
+  if (payload?.sortOrder !== undefined) db.sort_order = payload.sortOrder;
+  const { data, error } = await supabase?.from('wa_rubro_categories')?.update(db)?.eq('id', id)?.select()?.single();
+  if (error) return { data: null, error };
+  return { data: mapRubroCategoryFromDb(data), error: null };
+};
+
+export const deleteRubroCategory = async (id) => {
+  const { error } = await supabase?.from('wa_rubro_categories')?.delete()?.eq('id', id);
+  if (error) return { error };
+  return { error: null };
 };

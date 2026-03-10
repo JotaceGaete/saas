@@ -1,5 +1,6 @@
 import React from 'react';
 import Icon from 'components/AppIcon';
+import { formatCLP } from '../../../utils/formatCLP';
 
 const STATUS_CONFIG = {
   pending:   { label: 'Pendiente',  color: '#F59E0B', bg: 'rgba(245,158,11,0.1)',  icon: 'Clock' },
@@ -71,7 +72,7 @@ export default function ActivityFeed({ orders = [], loading = false, newOrderIds
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>{order?.customerName}</p>
-                  <p className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>${order?.totalAmount?.toFixed(2)} · {timeAgo(order?.createdAt)}</p>
+                  <p className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>{formatCLP(order?.totalAmount)} · {timeAgo(order?.createdAt)}</p>
                 </div>
                 <span className="text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0" style={{ backgroundColor: isNew ? 'rgba(16,185,129,0.1)' : cfg?.bg, color: isNew ? '#059669' : cfg?.color, fontFamily: 'var(--font-caption)' }}>
                   {isNew ? '¡Nuevo!' : cfg?.label}

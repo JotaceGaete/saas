@@ -1,34 +1,14 @@
 import React from 'react';
 import Input from 'components/ui/Input';
-
-
-const CURRENCIES = [
-  { value: 'MXN', label: 'MXN $' },
-  { value: 'COP', label: 'COP $' },
-  { value: 'ARS', label: 'ARS $' },
-  { value: 'PEN', label: 'PEN S/' },
-  { value: 'CLP', label: 'CLP $' },
-  { value: 'USD', label: 'USD $' },
-  { value: 'EUR', label: 'EUR €' },
-];
-
-const CATEGORIES = [
-  { value: '', label: 'Sin categoría' },
-  { value: 'ropa', label: 'Ropa y accesorios' },
-  { value: 'alimentos', label: 'Alimentos y bebidas' },
-  { value: 'hogar', label: 'Hogar y decoración' },
-  { value: 'belleza', label: 'Belleza y cuidado personal' },
-  { value: 'tecnologia', label: 'Tecnología' },
-  { value: 'juguetes', label: 'Juguetes y juegos' },
-  { value: 'deportes', label: 'Deportes y fitness' },
-  { value: 'otros', label: 'Otros' },
-];
+import { formatCLPInput, parseCLPInput } from 'utils/formatCLP';
 
 const MAX_NAME = 80;
 const MAX_DESC = 300;
 
-export default function ProductFormFields({ formData, errors, onChange }) {
+/** useCategories: si el negocio tiene categorías activadas. categories: array de { id, name } del negocio. */
+export default function ProductFormFields({ formData, errors, onChange, useCategories = false, categories = [] }) {
   const handleChange = (field, value) => onChange(field, value);
+  const categoryOptions = Array.isArray(categories) ? categories.filter((c) => c?.name?.trim()) : [];
 
   return (
     <div className="space-y-5">
@@ -51,41 +31,23 @@ export default function ProductFormFields({ formData, errors, onChange }) {
           required
         />
       </div>
-      {/* Precio + Moneda */}
+      {/* Precio (CLP, solo enteros, formato con punto como separador de miles) */}
       <div>
         <label className="block text-sm font-medium mb-1" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}>
-          Precio <span style={{ color: 'var(--color-error)' }}>*</span>
+          Precio (CLP) <span style={{ color: 'var(--color-error)' }}>*</span>
         </label>
-        <div className="flex gap-2">
-          <select
-            value={formData?.currency}
-            onChange={(e) => handleChange('currency', e?.target?.value)}
-            className="flex-shrink-0 px-3 py-2 rounded-md border text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-            style={{
-              borderColor: 'var(--color-input)',
-              backgroundColor: 'var(--color-card)',
-              color: 'var(--color-foreground)',
-              fontFamily: 'var(--font-caption)',
-              borderRadius: 'var(--radius-sm)',
-              minWidth: '90px',
-            }}
-            aria-label="Moneda"
-          >
-            {CURRENCIES?.map(c => (
-              <option key={c?.value} value={c?.value}>{c?.label}</option>
-            ))}
-          </select>
-          <div className="flex-1">
-            <Input
-              type="number"
-              placeholder="0.00"
-              value={formData?.precio}
-              onChange={(e) => handleChange('precio', e?.target?.value)}
-              error={errors?.precio}
-              required
-            />
-          </div>
-        </div>
+        <Input
+          type="text"
+          inputMode="numeric"
+          placeholder="Ej: 150.000"
+          value={formatCLPInput(formData?.precio)}
+          onChange={(e) => {
+            const raw = parseCLPInput(e?.target?.value);
+            handleChange('precio', raw === '' ? '' : raw);
+          }}
+          error={errors?.precio}
+          required
+        />
       </div>
       {/* Descripción */}
       <div>
@@ -116,29 +78,32 @@ export default function ProductFormFields({ formData, errors, onChange }) {
           <p className="mt-1 text-xs" style={{ color: 'var(--color-error)', fontFamily: 'var(--font-caption)' }}>{errors?.descripcion}</p>
         )}
       </div>
-      {/* Categoría */}
-      <div>
-        <label className="block text-sm font-medium mb-1" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}>
-          Categoría
-        </label>
-        <select
-          value={formData?.categoria}
-          onChange={(e) => handleChange('categoria', e?.target?.value)}
-          className="w-full px-3 py-2 rounded-md border text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-          style={{
-            borderColor: 'var(--color-input)',
-            backgroundColor: 'var(--color-card)',
-            color: 'var(--color-foreground)',
-            fontFamily: 'var(--font-caption)',
-            borderRadius: 'var(--radius-sm)',
-          }}
-          aria-label="Categoría del producto"
-        >
-          {CATEGORIES?.map(c => (
-            <option key={c?.value} value={c?.value}>{c?.label}</option>
-          ))}
-        </select>
-      </div>
+      {/* Categoría (solo si el negocio tiene categorías activadas) */}
+      {useCategories && (
+        <div>
+          <label className="block text-sm font-medium mb-1" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}>
+            Categoría
+          </label>
+          <select
+            value={formData?.categoria ?? ''}
+            onChange={(e) => handleChange('categoria', e?.target?.value)}
+            className="w-full px-3 py-2 rounded-md border text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            style={{
+              borderColor: 'var(--color-input)',
+              backgroundColor: 'var(--color-card)',
+              color: 'var(--color-foreground)',
+              fontFamily: 'var(--font-caption)',
+              borderRadius: 'var(--radius-sm)',
+            }}
+            aria-label="Categoría del producto"
+          >
+            <option value="">Otros (sin categoría)</option>
+            {categoryOptions?.map((c) => (
+              <option key={c?.id} value={c?.name ?? ''}>{c?.name}</option>
+            ))}
+          </select>
+        </div>
+      )}
       {/* Inventario */}
       <div>
         <label className="block text-sm font-medium mb-1" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}>

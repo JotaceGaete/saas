@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import BusinessSidebar from 'components/ui/BusinessSidebar';
+import { useIsDesktop } from 'hooks/useMediaQuery';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
 import { getOrders, updateOrder } from '../../services/waBusinessService';
@@ -7,6 +8,7 @@ import { useToast } from '../../components/ui/Toast';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import PrintOrderModal from './components/PrintOrderModal';
+import { formatCLP } from '../../utils/formatCLP';
 
 const ORDER_STATUSES = [
   { key: 'new',       label: 'Nuevo',       color: '#6366F1', bg: '#EEF2FF', icon: 'Sparkles' },
@@ -91,7 +93,7 @@ function StatusDropdown({ currentStatus, orderId, onUpdate }) {
   );
 }
 
-function OrderCard({ order, currency, onUpdate, businessName }) {
+function OrderCard({ order, onUpdate, businessName }) {
   const [notesOpen, setNotesOpen] = useState(false);
   const [noteText, setNoteText] = useState(order?.internalNotes || '');
   const [savingNote, setSavingNote] = useState(false);
@@ -173,7 +175,7 @@ function OrderCard({ order, currency, onUpdate, businessName }) {
                 </span>
               </div>
               <span className="text-sm font-semibold flex-shrink-0" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>
-                {currency} {item?.subtotal?.toLocaleString('es', { minimumFractionDigits: 2 })}
+                {formatCLP(item?.subtotal)}
               </span>
             </div>
           )) : (
@@ -204,7 +206,7 @@ function OrderCard({ order, currency, onUpdate, businessName }) {
             Imprimir pedido
           </button>
           <span className="text-sm font-bold" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-heading)' }}>
-            Total: {currency} {order?.totalAmount?.toLocaleString('es', { minimumFractionDigits: 2 })}
+            Total: {formatCLP(order?.totalAmount)}
           </span>
         </div>
       </div>
@@ -248,7 +250,6 @@ function OrderCard({ order, currency, onUpdate, businessName }) {
       {showPrint && (
         <PrintOrderModal
           order={order}
-          currency={currency}
           businessName={businessName}
           onClose={() => setShowPrint(false)}
         />
@@ -266,6 +267,7 @@ export default function OrdersPage() {
   const [filterStatus, setFilterStatus] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
 
+  const isDesktop = useIsDesktop();
   const sidebarWidth = sidebarCollapsed ? 'var(--sidebar-collapsed-width)' : 'var(--sidebar-width)';
 
   const loadOrders = useCallback(async () => {
@@ -306,8 +308,6 @@ export default function OrdersPage() {
 
   const countByStatus = (key) => orders?.filter(o => (o?.status || 'new') === key)?.length;
 
-  const currency = business?.currency || 'USD';
-
   if (businessLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--color-background)' }}>
@@ -317,13 +317,13 @@ export default function OrdersPage() {
   }
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: 'var(--color-background)' }}>
+    <div className="panel-root min-h-screen" style={{ backgroundColor: 'var(--color-background)' }}>
       <BusinessSidebar isCollapsed={sidebarCollapsed} onCollapsedChange={setSidebarCollapsed} />
       <main
-        className="transition-all duration-200"
-        style={{ marginLeft: sidebarWidth, minHeight: '100vh' }}
+        className="panel-main min-h-screen w-full max-w-full min-w-0 overflow-x-hidden transition-all duration-200"
+        style={{ marginLeft: isDesktop ? sidebarWidth : 0, minHeight: '100vh', transition: 'margin-left var(--transition-base)' }}
       >
-        <div className="max-w-6xl mx-auto px-6 py-8">
+        <div className="w-full max-w-6xl mx-auto px-4 md:px-6 py-6 md:py-8 pb-20 lg:pb-8">
           {/* Page header */}
           <div className="mb-8">
             <div className="flex items-center gap-3 mb-1">
@@ -459,7 +459,6 @@ export default function OrdersPage() {
                 <OrderCard
                   key={order?.id}
                   order={order}
-                  currency={currency}
                   onUpdate={handleUpdate}
                   businessName={business?.name}
                 />

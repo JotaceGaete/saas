@@ -5,11 +5,13 @@ import { AuthProvider } from './contexts/AuthContext';
 
 function App() {
   return (
-    <AuthProvider>
-      <ToastProvider>
-        <Routes />
-      </ToastProvider>
-    </AuthProvider>
+    <div className="app-shell" style={{ width: '100%', maxWidth: '100%', overflowX: 'hidden', minHeight: '100vh' }}>
+      <AuthProvider>
+        <ToastProvider>
+          <Routes />
+        </ToastProvider>
+      </AuthProvider>
+    </div>
   );
 }
 

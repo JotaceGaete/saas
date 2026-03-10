@@ -2,8 +2,9 @@ import React, { useRef } from 'react';
 import Icon from 'components/AppIcon';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { formatCLP } from 'utils/formatCLP';
 
-export default function PrintOrderModal({ order, currency, businessName, onClose }) {
+export default function PrintOrderModal({ order, businessName, onClose }) {
   const printRef = useRef(null);
 
   const formattedDate = order?.createdAt
@@ -174,7 +175,7 @@ export default function PrintOrderModal({ order, currency, businessName, onClose
                 <div className="total-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderTop: '2px solid #000', marginTop: '8px' }}>
                   <span className="total-label" style={{ fontSize: '14px', fontWeight: 'bold', textTransform: 'uppercase' }}>TOTAL</span>
                   <span className="total-amount" style={{ fontSize: '20px', fontWeight: 'bold' }}>
-                    {currency} {order?.totalAmount?.toLocaleString('es', { minimumFractionDigits: 0 })}
+                    {formatCLP(order?.totalAmount)}
                   </span>
                 </div>
 

@@ -2,7 +2,7 @@ import React from "react";
 import Icon from "components/AppIcon";
 import Button from "components/ui/Button";
 
-export default function DeleteConfirmDialog({ isOpen, isBulk, count, productName, onConfirm, onCancel }) {
+export default function DeleteConfirmDialog({ isOpen, isBulk, count, productName, isDeleting, onConfirm, onCancel }) {
   if (!isOpen) return null;
 
   return (
@@ -36,11 +36,18 @@ export default function DeleteConfirmDialog({ isOpen, isBulk, count, productName
             </p>
           </div>
           <div className="flex gap-3 w-full">
-            <Button variant="outline" fullWidth onClick={onCancel}>
+            <Button variant="outline" fullWidth onClick={onCancel} disabled={isDeleting}>
               Cancelar
             </Button>
-            <Button variant="destructive" fullWidth onClick={onConfirm} iconName="Trash2" iconPosition="left" iconSize={15}>
-              Eliminar
+            <Button variant="destructive" fullWidth onClick={onConfirm} disabled={isDeleting} iconName={isDeleting ? undefined : "Trash2"} iconPosition="left" iconSize={15}>
+              {isDeleting ? (
+                <>
+                  <span className="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-1.5" />
+                  Eliminando...
+                </>
+              ) : (
+                'Eliminar'
+              )}
             </Button>
           </div>
         </div>
