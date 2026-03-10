@@ -70,6 +70,11 @@ const CATALOG_LAYOUTS = [
   { id: 'card', label: 'Tarjeta', description: 'Tarjetas grandes con imagen', icon: 'CreditCard' },
 ];
 
+const CATALOG_VIEW_MODES = [
+  { id: 'featured', label: 'Vista destacada', description: '1 columna en móvil, tarjetas grandes, imagen protagonista', icon: 'LayoutGrid' },
+  { id: 'compact', label: 'Vista compacta', description: '2 columnas en móvil, tarjetas pequeñas, ideal para muchos productos', icon: 'LayoutList' },
+];
+
 function SectionCard({ icon, title, subtitle, children, accent }) {
   return (
     <div
@@ -237,6 +242,7 @@ export default function DesignCustomization({
   const selectedTheme = design?.theme || 'minimal';
   const selectedFont = design?.font || 'Inter';
   const selectedLayout = design?.catalogLayout || 'list';
+  const selectedViewMode = design?.catalogViewMode || 'featured';
   const cardSettings = design?.cardSettings || { showPrice: true, showDescription: true, showStock: false, showWhatsApp: true };
   const storeHeader = design?.storeHeader || { showStoreName: true, showDescription: true, showWhatsAppButton: true };
 
@@ -603,6 +609,40 @@ export default function DesignCustomization({
                 </p>
                 <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
                   {style?.description}
+                </p>
+              </div>
+            </button>
+          ))}
+        </div>
+      </SectionCard>
+
+      {/* Vista del catálogo (móvil): destacada vs compacta */}
+      <SectionCard icon="Smartphone" title="Vista del catálogo en móvil" subtitle="Elige cómo se muestran los productos en celulares">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {CATALOG_VIEW_MODES?.map(mode => (
+            <button
+              key={mode?.id}
+              onClick={() => onChange?.({ ...design, catalogViewMode: mode?.id })}
+              className="relative flex flex-col gap-2 p-4 rounded-xl border-2 transition-all text-left"
+              style={{
+                borderColor: selectedViewMode === mode?.id ? primaryColor : 'var(--color-border)',
+                backgroundColor: selectedViewMode === mode?.id ? `${primaryColor}08` : '#fafafa',
+              }}
+            >
+              {selectedViewMode === mode?.id && (
+                <div className="absolute top-2 right-2 w-5 h-5 rounded-full flex items-center justify-center" style={{ backgroundColor: primaryColor }}>
+                  <Icon name="Check" size={11} color="#fff" />
+                </div>
+              )}
+              <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: selectedViewMode === mode?.id ? `${primaryColor}20` : '#f0f0f8' }}>
+                <Icon name={mode?.icon} size={18} color={selectedViewMode === mode?.id ? primaryColor : '#a0a0b8'} />
+              </div>
+              <div>
+                <p className="text-xs font-bold" style={{ color: selectedViewMode === mode?.id ? primaryColor : 'var(--color-text-primary)', fontFamily: 'var(--font-caption)' }}>
+                  {mode?.label}
+                </p>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+                  {mode?.description}
                 </p>
               </div>
             </button>

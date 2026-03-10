@@ -117,6 +117,7 @@ export default function BusinessConfiguration() {
     coverFit: 'cover',
     coverPosition: 'center',
     catalogLayout: 'list',
+    catalogViewMode: 'featured',
     useCategories: false,
     categories: [],
     storeHeader: {
@@ -186,6 +187,7 @@ export default function BusinessConfiguration() {
         setDesign(prev => ({
           ...prev,
           ...ds,
+          catalogViewMode: ds?.catalogViewMode === 'compact' ? 'compact' : 'featured',
           useCategories: ds?.useCategories === true,
           categories: Array.isArray(ds?.categories) ? ds.categories : prev.categories,
           storeHeader: { ...prev.storeHeader, ...(ds.storeHeader || {}) },

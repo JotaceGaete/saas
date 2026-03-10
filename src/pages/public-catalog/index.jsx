@@ -126,6 +126,30 @@ function CatalogInner({ slug }) {
     });
   }, [products, searchQuery, selectedCategory, priceRange, useCategories]);
 
+  // Bloques por categoría: solo cuando useCategories; orden = orden de categorías; solo bloques con productos
+  const productsByBlock = useMemo(() => {
+    if (!useCategories || categories?.length === 0) return null;
+    const order = categories.filter((c) => c !== 'all');
+    const blocks = [];
+    for (const cat of order) {
+      const prods = filteredProducts.filter((p) =>
+        cat === 'Otros' ? !p?.category?.trim() : p?.category === cat
+      );
+      if (prods.length > 0) blocks.push({ categoryName: cat, products: prods });
+    }
+    return blocks;
+  }, [useCategories, categories, filteredProducts]);
+
+  // Para render: con categorías y "Todos" → varios bloques; con categoría elegida → un solo bloque
+  const blocksToRender =
+    !useCategories || !categories?.length
+      ? null
+      : selectedCategory === 'all'
+        ? productsByBlock
+        : filteredProducts?.length > 0
+          ? [{ categoryName: selectedCategory, products: filteredProducts }]
+          : [];
+
   const hasActiveFilters = searchQuery?.trim() || (useCategories && selectedCategory !== 'all') || priceRange?.[0] > 0 || priceRange?.[1] < maxPrice;
 
   const clearFilters = () => {
@@ -179,6 +203,7 @@ function CatalogInner({ slug }) {
   const theme = { primaryColor, primaryColorDark, primaryRgba: (a) => hexToRgba(primaryColor, a) };
   const cardSettings = { showPrice: true, showDescription: true, showStock: false, showWhatsApp: true, ...design?.cardSettings };
   const storeHeader = { showStoreName: true, showDescription: true, showWhatsAppButton: true, ...design?.storeHeader };
+  const catalogViewMode = design?.catalogViewMode === 'compact' ? 'compact' : 'featured';
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -339,10 +364,10 @@ function CatalogInner({ slug }) {
           {/* Category filter bar (solo cuando el negocio tiene categorías activadas) */}
           <div className="flex items-center gap-2">
             {useCategories && categories?.length > 0 && (
-              <div className="flex items-center gap-2 overflow-x-auto flex-1 scrollbar-hide pb-0.5 min-w-0">
+              <div className="flex items-center gap-2 overflow-x-auto overflow-y-hidden flex-1 scrollbar-hide pb-0.5 min-w-0 snap-x snap-mandatory [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" style={{ WebkitOverflowScrolling: 'touch' }}>
                 <button
                   onClick={() => setSelectedCategory('all')}
-                  className={`flex-shrink-0 px-4 py-1.5 rounded-full text-xs font-bold border transition-all ${
+                  className={`flex-shrink-0 snap-start px-4 py-1.5 rounded-full text-xs font-bold border transition-all ${
                     selectedCategory === 'all' ? 'text-white border-transparent shadow-sm' : 'border-gray-200 text-gray-600 bg-white hover:bg-gray-50'
                   }`}
                   style={selectedCategory === 'all' ? { background: `linear-gradient(135deg, ${primaryColor}, ${primaryColorDark})` } : {}}
@@ -353,7 +378,7 @@ function CatalogInner({ slug }) {
                   <button
                     key={cat}
                     onClick={() => setSelectedCategory(cat)}
-                    className={`flex-shrink-0 px-4 py-1.5 rounded-full text-xs font-bold border transition-all ${
+                    className={`flex-shrink-0 snap-start px-4 py-1.5 rounded-full text-xs font-bold border transition-all ${
                       selectedCategory === cat
                         ? 'text-white border-transparent shadow-sm'
                         : 'border-gray-200 text-gray-600 bg-white hover:bg-gray-50'
@@ -411,7 +436,7 @@ function CatalogInner({ slug }) {
         </div>
       </div>
 
-      {/* ── Products Grid (responsive: 1/2/4/5 columnas) ── */}
+      {/* ── Products: listado plano o bloques por categoría ── */}
       <div className="max-w-7xl mx-auto px-4 py-3 pb-32 sm:pb-36">
         {/* Product count */}
         <p className="text-xs text-gray-400 font-medium mb-3">
@@ -431,7 +456,11 @@ function CatalogInner({ slug }) {
               )}
             </div>
             <p className="text-sm font-medium text-gray-400">
-              {hasActiveFilters ? 'No hay productos con estos filtros' : 'No hay productos disponibles'}
+              {searchQuery?.trim()
+                ? `No hay resultados para «${searchQuery.trim()}». Prueba con otro término o limpia los filtros.`
+                : hasActiveFilters
+                  ? 'No hay productos con estos filtros'
+                  : 'No hay productos disponibles'}
             </p>
             {hasActiveFilters && (
               <button
@@ -443,9 +472,47 @@ function CatalogInner({ slug }) {
               </button>
             )}
           </div>
+        ) : blocksToRender && blocksToRender.length > 0 ? (
+          /* Bloques por categoría (tabs + secciones con título) */
+          <div className="space-y-8 md:space-y-10">
+            {blocksToRender.map((block) => (
+              <section key={block.categoryName} className="scroll-mt-24">
+                <h2 className="text-base md:text-lg font-bold text-gray-900 mb-3 md:mb-4" style={{ fontFamily: 'DM Sans, sans-serif' }}>
+                  {block.categoryName}
+                </h2>
+                <div
+                  className={
+                    catalogViewMode === 'compact'
+                      ? 'grid grid-cols-2 md:grid-cols-2 min-[1200px]:grid-cols-4 min-[1400px]:grid-cols-5 gap-2 sm:gap-3'
+                      : 'grid grid-cols-1 md:grid-cols-2 min-[1200px]:grid-cols-4 min-[1400px]:grid-cols-5 gap-3 sm:gap-4'
+                  }
+                >
+                  {block.products?.map((product) => (
+                    <ProductCard
+                      key={product?.id}
+                      product={product}
+                      formatPrice={formatPrice}
+                      onOpen={openProduct}
+                      theme={theme}
+                      cardSettings={cardSettings}
+                      useCategories={useCategories}
+                      compact={catalogViewMode === 'compact'}
+                    />
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 min-[1200px]:grid-cols-4 min-[1400px]:grid-cols-5 gap-3 sm:gap-4">
-            {filteredProducts?.map(product => (
+          /* Listado plano (sin categorías o sin bloques) */
+          <div
+            className={
+              catalogViewMode === 'compact'
+                ? 'grid grid-cols-2 md:grid-cols-2 min-[1200px]:grid-cols-4 min-[1400px]:grid-cols-5 gap-2 sm:gap-3'
+                : 'grid grid-cols-1 md:grid-cols-2 min-[1200px]:grid-cols-4 min-[1400px]:grid-cols-5 gap-3 sm:gap-4'
+            }
+          >
+            {filteredProducts?.map((product) => (
               <ProductCard
                 key={product?.id}
                 product={product}
@@ -454,6 +521,7 @@ function CatalogInner({ slug }) {
                 theme={theme}
                 cardSettings={cardSettings}
                 useCategories={useCategories}
+                compact={catalogViewMode === 'compact'}
               />
             ))}
           </div>
@@ -769,7 +837,8 @@ function OrderPanel({ business, formatPrice, onClose, theme }) {
 }
 
 // ─── Product Card ─────────────────────────────────────────────────────────────
-function ProductCard({ product, formatPrice, onOpen, theme, cardSettings, useCategories = false }) {
+// compact: vista compacta (2 cols móvil), tarjeta pequeña; una sola imagen + badge +N si hay más
+function ProductCard({ product, formatPrice, onOpen, theme, cardSettings, useCategories = false, compact = false }) {
   const primaryColor = theme?.primaryColor || '#25D366';
   const primaryColorDark = theme?.primaryColorDark || '#128C7E';
   const showPrice = cardSettings?.showPrice !== false;
@@ -803,12 +872,14 @@ function ProductCard({ product, formatPrice, onOpen, theme, cardSettings, useCat
 
   return (
     <div
-      className="group text-left rounded-2xl overflow-hidden bg-white flex flex-col h-full transition-all duration-200 ease-out md:hover:translate-y-[-4px] md:hover:shadow-lg"
+      className={`group text-left overflow-hidden bg-white flex flex-col h-full transition-all duration-200 ease-out md:hover:translate-y-[-4px] md:hover:shadow-lg ${
+        compact ? 'rounded-xl' : 'rounded-2xl'
+      }`}
       style={{ boxShadow: '0 2px 10px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.04)' }}
     >
-      {/* Imagen ~70% de la tarjeta */}
-      <button onClick={() => onOpen(product)} className="block w-full text-left flex-[7] min-h-0 flex flex-col">
-        <div className="w-full flex-1 min-h-0 overflow-hidden bg-gray-50 relative rounded-t-2xl">
+      {/* Una sola imagen; badge +N si hay más */}
+      <button onClick={() => onOpen(product)} className={`block w-full text-left min-h-0 flex flex-col ${compact ? 'flex-[5]' : 'flex-[7]'}`}>
+        <div className={`w-full flex-1 min-h-0 overflow-hidden bg-gray-50 relative ${compact ? 'rounded-t-xl min-h-[72px]' : 'rounded-t-2xl'}`}>
           {imgs[0] ? (
             <img
               src={imgs[0]}
@@ -816,23 +887,22 @@ function ProductCard({ product, formatPrice, onOpen, theme, cardSettings, useCat
               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
             />
           ) : (
-            <div className="w-full h-full min-h-[120px] flex items-center justify-center bg-gray-100">
-              <Icon name="ImageOff" size={32} color="#D1D5DB" />
+            <div className={`w-full h-full flex items-center justify-center bg-gray-100 ${compact ? 'min-h-[72px]' : 'min-h-[120px]'}`}>
+              <Icon name="ImageOff" size={compact ? 20 : 32} color="#D1D5DB" />
             </div>
           )}
-          {/* Indicador múltiples imágenes (esquina) */}
           {extraImages > 0 && (
             <div
-              className="absolute top-2 right-2 flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-semibold text-white shadow"
+              className="absolute top-1 right-1 flex items-center gap-0.5 px-1 py-0.5 rounded text-[9px] font-semibold text-white shadow"
               style={{ backgroundColor: 'rgba(0,0,0,0.55)' }}
             >
-              <Icon name="Images" size={10} color="#fff" />
+              <Icon name="Images" size={8} color="#fff" />
               +{extraImages}
             </div>
           )}
           {qty > 0 && (
             <div
-              className="absolute top-2 left-2 w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black text-white shadow"
+              className={`absolute top-1 left-1 rounded-full flex items-center justify-center text-white shadow ${compact ? 'w-5 h-5 text-[10px] font-black' : 'w-6 h-6 text-[11px] font-black'}`}
               style={{ background: `linear-gradient(135deg, ${primaryColor}, ${primaryColorDark})` }}
             >
               {qty}
@@ -840,67 +910,63 @@ function ProductCard({ product, formatPrice, onOpen, theme, cardSettings, useCat
           )}
           {product?.hasOptions && (
             <div
-              className="absolute bottom-2 left-2 flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold"
+              className="absolute bottom-1 left-1 flex items-center gap-0.5 px-1 py-0.5 rounded text-[9px] font-semibold"
               style={{ backgroundColor: 'rgba(234,179,8,0.9)', color: '#713f12' }}
             >
-              <Icon name="ListChecks" size={9} color="#713f12" />
+              <Icon name="ListChecks" size={8} color="#713f12" />
               Opciones
             </div>
           )}
         </div>
       </button>
 
-      {/* Info ~30%, menos padding */}
-      <div className="p-2 flex flex-col flex-[3] min-h-0">
+      <div className={`flex flex-col min-h-0 ${compact ? 'p-1.5 flex-[3]' : 'p-2 flex-[3]'}`}>
         {useCategories && product?.category && (
-          <span className="inline-block text-[10px] font-semibold rounded-md px-1.5 py-0.5 mb-1 self-start" style={{ color: primaryColorDark, backgroundColor: theme?.primaryRgba?.(0.12) || 'rgba(37,211,102,0.12)' }}>
+          <span className="inline-block text-[10px] font-semibold rounded px-1 py-0.5 mb-0.5 self-start" style={{ color: primaryColorDark, backgroundColor: theme?.primaryRgba?.(0.12) || 'rgba(37,211,102,0.12)' }}>
             {product?.category}
           </span>
         )}
-        <h3 className="text-xs font-semibold text-gray-800 line-clamp-2 mb-1 leading-snug flex-1 min-h-0">
+        <h3 className={`text-gray-800 line-clamp-2 leading-snug flex-1 min-h-0 ${compact ? 'text-[11px] font-semibold mb-0.5' : 'text-xs font-semibold mb-1'}`}>
           {product?.name}
         </h3>
         {showDescription && product?.description && (
-          <p className="text-xs text-gray-500 line-clamp-2 mb-1 leading-snug">{product?.description}</p>
+          <p className={`text-gray-500 leading-snug ${compact ? 'text-[10px] line-clamp-1 mb-0.5' : 'text-xs line-clamp-2 mb-1'}`}>{product?.description}</p>
         )}
         {showPrice && (
-          <p className="text-lg font-extrabold text-gray-900 mb-2 leading-none">
+          <p className={`font-extrabold text-gray-900 leading-none ${compact ? 'text-sm mb-1' : 'text-lg mb-2'}`}>
             {formatPrice(product?.price)}
           </p>
         )}
-        {!showPrice && <div className="mb-2" />}
+        {!showPrice && <div className={compact ? 'mb-1' : 'mb-2'} />}
 
-        {/* Botón Agregar más compacto */}
         {qty === 0 ? (
           <button
             onClick={handleAdd}
-            className={`w-full py-2 sm:py-1.5 rounded-xl flex items-center justify-center gap-1 text-xs font-bold text-white transition-all duration-150 active:scale-95 ${
-              bump ? 'scale-105' : ''
+            className={`w-full rounded-xl flex items-center justify-center gap-0.5 text-white transition-all duration-150 active:scale-95 ${bump ? 'scale-105' : ''} ${
+              compact ? 'py-1.5 text-[11px] font-bold rounded-lg' : 'py-2 sm:py-1.5 text-xs font-bold'
             }`}
             style={{ background: `linear-gradient(135deg, ${primaryColor}, ${primaryColorDark})` }}
           >
-            <Icon name="Plus" size={12} color="#FFFFFF" />
+            <Icon name="Plus" size={compact ? 10 : 12} color="#FFFFFF" />
             Agregar
           </button>
         ) : (
           <div
-            className={`flex items-center justify-between rounded-xl overflow-hidden transition-all duration-150 ${
-              bump ? 'scale-105' : ''
-            }`}
+            className={`flex items-center justify-between rounded-xl overflow-hidden transition-all duration-150 ${bump ? 'scale-105' : ''} ${compact ? 'rounded-lg' : ''}`}
             style={{ background: `linear-gradient(135deg, ${primaryColor}, ${primaryColorDark})` }}
           >
             <button
               onClick={handleDecrease}
-              className="flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 text-white hover:bg-white/20 transition-colors active:scale-90"
+              className={`flex items-center justify-center text-white hover:bg-white/20 transition-colors active:scale-90 ${compact ? 'w-6 h-6' : 'w-8 h-8 sm:w-9 sm:h-9'}`}
             >
-              <Icon name="Minus" size={14} color="#FFFFFF" />
+              <Icon name="Minus" size={compact ? 10 : 14} color="#FFFFFF" />
             </button>
-            <span className="text-sm font-black text-white">{qty}</span>
+            <span className={`text-white font-black ${compact ? 'text-xs' : 'text-sm'}`}>{qty}</span>
             <button
               onClick={handleIncrease}
-              className="flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 text-white hover:bg-white/20 transition-colors active:scale-90"
+              className={`flex items-center justify-center text-white hover:bg-white/20 transition-colors active:scale-90 ${compact ? 'w-6 h-6' : 'w-8 h-8 sm:w-9 sm:h-9'}`}
             >
-              <Icon name="Plus" size={14} color="#FFFFFF" />
+              <Icon name="Plus" size={compact ? 10 : 14} color="#FFFFFF" />
             </button>
           </div>
         )}

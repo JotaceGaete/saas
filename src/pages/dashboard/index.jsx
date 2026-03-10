@@ -52,25 +52,42 @@ export default function Dashboard() {
     }
   }, [user, business, businessLoading, refreshBusiness]);
 
+  const loadDashboardData = useCallback(async () => {
+    if (!business?.id) return;
+    setDataLoading(true);
+    try {
+      const [productsResponse, ordersResponse] = await Promise.all([
+        getProducts(business?.id),
+        getOrders(business?.id),
+      ]);
+      setProducts(productsResponse?.data || []);
+      if (ordersResponse?.error) {
+        console.error('[Dashboard] getOrders error:', ordersResponse?.error);
+        setOrders([]);
+      } else {
+        setOrders(ordersResponse?.data || []);
+      }
+    } catch (err) {
+      console.error('Dashboard load error:', err);
+    } finally {
+      setDataLoading(false);
+    }
+  }, [business?.id]);
+
   useEffect(() => {
     if (!business?.id) { setDataLoading(false); return; }
-    const loadData = async () => {
-      setDataLoading(true);
-      try {
-        const [productsResponse, ordersResponse] = await Promise.all([
-          getProducts(business?.id),
-          getOrders(business?.id),
-        ]);
-        setProducts(productsResponse?.data || []);
-        setOrders(ordersResponse?.data || []);
-      } catch (err) {
-        console.error('Dashboard load error:', err);
-      } finally {
-        setDataLoading(false);
-      }
+    loadDashboardData();
+  }, [business?.id, loadDashboardData]);
+
+  // Refresco al recuperar foco (p. ej. volver del catálogo tras enviar pedido) por si realtime no disparó
+  useEffect(() => {
+    if (!business?.id) return;
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') loadDashboardData();
     };
-    loadData();
-  }, [business?.id]);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [business?.id, loadDashboardData]);
 
   useEffect(() => {
     if (!business?.id) { setAnalyticsLoading(false); return; }

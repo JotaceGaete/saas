@@ -14,6 +14,7 @@ export default function OrderConfirmation() {
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
+  const [submitError, setSubmitError] = useState(null);
 
   const validate = () => {
     const errs = {};
@@ -25,9 +26,14 @@ export default function OrderConfirmation() {
     const errs = validate();
     if (Object.keys(errs)?.length > 0) { setErrors(errs); return; }
     setLoading(true);
+    setSubmitError(null);
     try {
-      const { data: biz } = await getBusinessBySlug(slug);
-      if (!biz) { setLoading(false); return; }
+      const { data: biz, error: bizError } = await getBusinessBySlug(slug);
+      if (bizError || !biz) {
+        setSubmitError('No se pudo cargar la tienda. Intenta de nuevo.');
+        setLoading(false);
+        return;
+      }
 
       const orderItems = items?.map(item => ({
         productId: item?.id,
@@ -37,14 +43,20 @@ export default function OrderConfirmation() {
         subtotal: item?.price * item?.quantity,
       }));
 
-      await createOrder(biz?.id, {
+      const { data: order, error: orderError } = await createOrder(biz.id, {
         customerName: customerName?.trim(),
         customerPhone: customerPhone?.trim() || null,
         totalAmount: total,
         notes: notes?.trim() || null,
       }, orderItems);
 
-      // Build WhatsApp message
+      if (orderError) {
+        setSubmitError(orderError?.message || 'No se pudo guardar el pedido. Intenta de nuevo.');
+        setLoading(false);
+        return;
+      }
+
+      // Solo después de guardar bien: abrir WhatsApp y salir
       const lines = items?.map(i => `• ${i?.quantity}x ${i?.name} — ${formatCLP(i?.price * i?.quantity)}`);
       const message = [
         `Hola, me gustaría hacer este pedido:`,
@@ -66,6 +78,7 @@ export default function OrderConfirmation() {
       navigate(`/catalog/${slug}`);
     } catch (e) {
       console.error(e);
+      setSubmitError(e?.message || 'Ocurrió un error. Intenta de nuevo.');
     } finally {
       setLoading(false);
     }
@@ -183,6 +196,12 @@ export default function OrderConfirmation() {
       {/* Fixed Bottom CTA */}
       <div className="fixed bottom-0 left-0 right-0 z-50 p-4" style={{ backgroundColor: 'var(--color-background)', borderTop: '1px solid var(--color-border)' }}>
         <div className="max-w-lg mx-auto">
+          {submitError && (
+            <div className="mb-3 flex items-center gap-2 px-3 py-2.5 rounded-xl border bg-red-50" style={{ borderColor: 'var(--color-error)' }}>
+              <Icon name="AlertCircle" size={18} style={{ color: 'var(--color-error)', flexShrink: 0 }} />
+              <p className="text-sm font-medium" style={{ color: 'var(--color-error)', fontFamily: 'var(--font-caption)' }}>{submitError}</p>
+            </div>
+          )}
           <button
             onClick={handleConfirm}
             disabled={loading}

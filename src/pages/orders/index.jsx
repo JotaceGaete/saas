@@ -284,6 +284,14 @@ export default function OrdersPage() {
 
   useEffect(() => { loadOrders(); }, [loadOrders]);
 
+  // Refresco al recuperar foco (p. ej. volver del catálogo tras enviar pedido)
+  useEffect(() => {
+    if (!business?.id) return;
+    const onVisible = () => { if (document.visibilityState === 'visible') loadOrders(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [business?.id, loadOrders]);
+
   const handleUpdate = useCallback(async (orderId, updates) => {
     const { error } = await updateOrder(orderId, updates);
     if (error) {

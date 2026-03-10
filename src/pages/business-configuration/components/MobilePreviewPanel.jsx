@@ -176,8 +176,10 @@ export default function MobilePreviewPanel({ storeName, storeSlug, logoUrl, prod
   const coverFit = design?.coverFit === 'contain' ? 'contain' : 'cover';
   const coverPosition = ['top', 'center', 'bottom'].includes(design?.coverPosition) ? design.coverPosition : 'center';
   const catalogLayout = design?.catalogLayout || 'list';
+  const catalogViewMode = design?.catalogViewMode === 'compact' ? 'compact' : 'featured';
   const catalogStyle = design?.catalogStyle || 'clasico';
   const cardSettings = design?.cardSettings || { showPrice: true, showDescription: true, showStock: false, showWhatsApp: true };
+  const previewLayout = catalogViewMode === 'compact' ? 'grid' : catalogLayout;
 
   const t = THEME_STYLES?.[theme] || THEME_STYLES?.minimal;
   const styleProps = CATALOG_STYLE_PROPS?.[catalogStyle] || CATALOG_STYLE_PROPS?.clasico;
@@ -302,13 +304,13 @@ export default function MobilePreviewPanel({ storeName, storeSlug, logoUrl, prod
           {/* Divider */}
           <div className="border-t mx-4 mb-3" style={{ borderColor: t?.divider }} />
 
-          {/* Product list */}
+          {/* Product list (vista compacta = 2 cols; vista destacada = según catalogLayout) */}
           <div
-            className={catalogLayout === 'grid' ? 'grid grid-cols-2 px-3' : 'px-3 flex flex-col'}
+            className={previewLayout === 'grid' ? 'grid grid-cols-2 px-3' : 'px-3 flex flex-col'}
             style={{ gap: styleProps?.gap }}
           >
             {visibleProducts?.length === 0 ? (
-              <div className={`text-center py-6 ${catalogLayout === 'grid' ? 'col-span-2' : ''}`}>
+              <div className={`text-center py-6 ${previewLayout === 'grid' ? 'col-span-2' : ''}`}>
                 <div className="w-10 h-10 rounded-full flex items-center justify-center mx-auto mb-2" style={{ backgroundColor: t?.emptyBg }}>
                   <Icon name="Package" size={18} color={t?.cardBorder} />
                 </div>
@@ -316,10 +318,10 @@ export default function MobilePreviewPanel({ storeName, storeSlug, logoUrl, prod
               </div>
             ) : (
               visibleProducts?.map((product) => {
-                if (catalogLayout === 'grid') {
+                if (previewLayout === 'grid') {
                   return <ProductGridItem key={product?.id} product={product} {...productItemProps} />;
                 }
-                if (catalogLayout === 'card') {
+                if (previewLayout === 'card') {
                   return <ProductCardItem key={product?.id} product={product} {...productItemProps} />;
                 }
                 return <ProductListItem key={product?.id} product={product} {...productItemProps} />;
@@ -351,10 +353,15 @@ export default function MobilePreviewPanel({ storeName, storeSlug, logoUrl, prod
       </div>
 
       {/* Style indicator */}
-      <div className="mt-4 flex items-center gap-2">
-        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: primaryColor }} />
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-2">
+          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: primaryColor }} />
+          <span className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+            Estilo: {design?.catalogStyle === 'minimal' ? 'Minimal' : design?.catalogStyle === 'destacado' ? 'Destacado' : 'Clásico'}
+          </span>
+        </div>
         <span className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-          Estilo: {design?.catalogStyle === 'minimal' ? 'Minimal' : design?.catalogStyle === 'destacado' ? 'Destacado' : 'Clásico'}
+          · Vista: {catalogViewMode === 'compact' ? 'Compacta' : 'Destacada'}
         </span>
       </div>
 
