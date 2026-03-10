@@ -13,6 +13,7 @@ import NotificationBell from "./components/NotificationBell";
 import { useAuth } from "../../contexts/AuthContext";
 import { getProducts, getOrders, getOrdersByDay, getTopProducts, getMonthlyRevenue } from "../../services/waBusinessService";
 import { supabase } from "../../lib/supabase";
+import { getAppBaseUrl } from "../../config/appUrl";
 import OrdersByDayCard from "./components/OrdersByDayCard";
 import TopProductsCard from "./components/TopProductsCard";
 import MonthlyRevenueCard from "./components/MonthlyRevenueCard";
@@ -40,8 +41,9 @@ export default function Dashboard() {
   const [newOrderIds, setNewOrderIds] = useState(new Set());
   const channelRef = useRef(null);
 
-  const catalogUrl = business?.slug
-    ? `${window.location?.origin}/catalogo/${business?.slug}`
+  const baseUrl = getAppBaseUrl() || (typeof window !== 'undefined' ? window.location?.origin : '');
+  const catalogUrl = business?.slug && baseUrl
+    ? `${baseUrl}/catalogo/${business?.slug}`
     : '';
 
   // Un intento de refrescar el negocio si el contexto llegó vacío (p. ej. estado desactualizado)

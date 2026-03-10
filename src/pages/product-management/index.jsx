@@ -94,17 +94,25 @@ export default function ProductManagement() {
     const product = products?.find(p => p?.id === id);
     if (!product) return;
     const { error: err } = await updateProduct(id, { isActive: !product?.isActive });
-    if (!err) setProducts(prev => prev?.map(p => p?.id === id ? { ...p, isActive: !p?.isActive } : p));
-  }, [products]);
+    if (err) {
+      toast?.error(err?.message || 'No se pudo actualizar.');
+      return;
+    }
+    setProducts(prev => prev?.map(p => p?.id === id ? { ...p, isActive: !p?.isActive } : p));
+  }, [products, toast]);
 
   const handleEdit = useCallback((id) => { navigate(`/product-editor?id=${id}`); }, [navigate]);
 
   const handleDuplicate = useCallback(async (id) => {
     const product = products?.find(p => p?.id === id);
     if (!product || !business?.id) return;
-    const { data } = await createProduct(business?.id, { name: `${product?.name} (copia)`, description: product?.description, price: product?.price, imageUrl: product?.imageUrl, images: product?.images, isActive: false, sortOrder: product?.sortOrder });
+    const { data, error: err } = await createProduct(business?.id, { name: `${product?.name} (copia)`, description: product?.description, price: product?.price, imageUrl: product?.imageUrl, images: product?.images, isActive: false, sortOrder: product?.sortOrder });
+    if (err) {
+      toast?.error(err?.message || 'No se pudo duplicar.');
+      return;
+    }
     if (data) setProducts(prev => [...prev, data]);
-  }, [products, business?.id]);
+  }, [products, business?.id, toast]);
 
   const handleDeleteRequest = useCallback((id) => { setDeleteDialog({ open: true, isBulk: false, targetId: id }); }, []);
   const handleBulkDelete = useCallback(() => { setDeleteDialog({ open: true, isBulk: true, targetId: null }); }, []);

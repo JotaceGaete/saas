@@ -18,6 +18,8 @@ import ProductListPanel from './components/ProductListPanel';
 import MobilePreviewPanel from './components/MobilePreviewPanel';
 import DesignCustomization from './components/DesignCustomization';
 import WhatsAppMessageTemplate from './components/WhatsAppMessageTemplate';
+import { getPlanLimits, getPlanLabel } from '../../constants/plans';
+import { getAppBaseUrl } from '../../config/appUrl';
 
 function Toast({ message, type, onClose }) {
   return (
@@ -403,7 +405,7 @@ export default function BusinessConfiguration() {
   const isLoading = businessLoading || businessFetchLoading;
   const isDesktop = useIsDesktop();
   const sidebarWidth = sidebarCollapsed ? 'var(--sidebar-collapsed-width)' : 'var(--sidebar-width)';
-  const catalogUrl = `${window.location?.origin}/catalog/${storeSlug || business?.slug || 'mi-tienda'}`;
+  const catalogUrl = `${getAppBaseUrl() || window.location?.origin || ''}/catalog/${storeSlug || business?.slug || 'mi-tienda'}`;
 
   const inputClass = [
     'w-full px-3 py-2.5 rounded-lg border text-sm outline-none transition-all',
@@ -664,6 +666,38 @@ export default function BusinessConfiguration() {
               className="rounded-2xl border p-6 lg:p-8"
               style={{ backgroundColor: '#ffffff', borderColor: 'var(--color-border)', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}
             >
+              {/* Plan actual */}
+              {business?.id && (
+                <div
+                  className="rounded-xl border p-4 mb-6 flex flex-wrap items-center justify-between gap-4"
+                  style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}
+                >
+                  <div>
+                    <p className="text-sm font-medium" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Plan actual</p>
+                    <p className="text-base font-bold mt-0.5" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-text-primary)' }}>
+                      {getPlanLabel(business?.planSlug ?? 'starter')}
+                    </p>
+                    <p className="text-xs mt-1" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+                      {(() => {
+                        const activeCount = products.filter(p => p?.isActive).length;
+                        const { maxProducts } = getPlanLimits(business?.planSlug ?? 'starter');
+                        return maxProducts == null
+                          ? `${activeCount} productos activos (ilimitados)`
+                          : `${activeCount} de ${maxProducts} productos activos`;
+                      })()}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/planes')}
+                    className="px-4 py-2 rounded-lg text-sm font-medium transition-opacity hover:opacity-90"
+                    style={{ backgroundColor: 'var(--color-primary)', color: '#fff' }}
+                  >
+                    Ver planes
+                  </button>
+                </div>
+              )}
+
               <div className="flex items-center gap-3 mb-6">
                 <div
                   className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"

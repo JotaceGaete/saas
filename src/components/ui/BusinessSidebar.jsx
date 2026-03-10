@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
+import { getPlanLabel } from '../../constants/plans';
 
 const NAV_ITEMS = [
   { label: 'Dashboard', path: '/dashboard', icon: 'LayoutDashboard' },
@@ -209,6 +210,15 @@ export default function BusinessSidebar({ isCollapsed = false, onCollapsedChange
               >
                 <button
                   type="button"
+                  onClick={(e) => { e.stopPropagation(); setUserMenuOpen(false); navigate('/planes'); }}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 text-left text-sm hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}
+                >
+                  <Icon name="CreditCard" size={14} color="var(--color-muted-foreground)" />
+                  Ver planes
+                </button>
+                <button
+                  type="button"
                   onClick={(e) => { e.stopPropagation(); handleLogout(); }}
                   className="w-full flex items-center gap-3 px-3 py-2.5 text-left text-sm hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}
@@ -235,7 +245,7 @@ export default function BusinessSidebar({ isCollapsed = false, onCollapsedChange
               </div>
               <div className="flex-1 overflow-hidden text-left">
                 <p className="text-xs font-semibold text-foreground truncate" style={{ fontFamily: 'var(--font-caption)' }}>{userLabel}</p>
-                <p className="text-xs truncate" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Plan Básico</p>
+                <p className="text-xs truncate" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>{getPlanLabel(business?.planSlug)}</p>
               </div>
               <Icon name={userMenuOpen ? 'ChevronUp' : 'ChevronDown'} size={13} color="var(--color-muted-foreground)" className="flex-shrink-0" />
             </button>
@@ -247,6 +257,15 @@ export default function BusinessSidebar({ isCollapsed = false, onCollapsedChange
                 className="absolute bottom-full left-0 right-0 mb-1 py-1 rounded-lg border shadow-lg"
                 style={{ backgroundColor: '#FFFFFF', borderColor: 'var(--color-border)', minWidth: '160px', zIndex: 9999 }}
               >
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setUserMenuOpen(false); navigate('/planes'); }}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 text-left text-sm hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}
+                >
+                  <Icon name="CreditCard" size={14} color="var(--color-muted-foreground)" />
+                  Ver planes
+                </button>
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); handleLogout(); }}

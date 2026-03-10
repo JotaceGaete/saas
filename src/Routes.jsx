@@ -15,6 +15,7 @@ import OrderConfirmation from './pages/order-confirmation';
 import Orders from './pages/orders';
 import Login from './pages/login';
 import AdminDashboard from './pages/admin';
+import PlansPage from './pages/plans';
 
 const Routes = () => {
   return (
@@ -32,6 +33,8 @@ const Routes = () => {
         <Route path="/product-editor" element={<ProductEditor />} />
         <Route path="/orders" element={<Orders />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/planes" element={<PlansPage />} />
+        <Route path="/plans" element={<PlansPage />} />
         <Route path="/catalog/:slug" element={<PublicCatalog />} />
         <Route path="/catalog/:slug/checkout" element={<OrderConfirmation />} />
         <Route path="/catalogo/:slug" element={<PublicCatalog />} />

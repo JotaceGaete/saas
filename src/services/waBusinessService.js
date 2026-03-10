@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { getPlanLimits } from '../constants/plans';
 
 // Helpers
 
@@ -41,6 +42,7 @@ const mapBusinessFromDb = (row) => {
   bankRut: row?.bank_rut || '',
   bankEmail: row?.bank_email || '',
   orderMessageTemplate: row?.order_message_template || null,
+  planSlug: row?.plan_slug || 'starter',
   createdAt: row?.created_at,
   updatedAt: row?.updated_at,
 };
@@ -185,6 +187,7 @@ export async function updateBusiness(businessId, updates) {
   if (updates?.bankAccountHolder !== undefined) dbUpdates.bank_account_holder = updates?.bankAccountHolder;
   if (updates?.bankRut !== undefined)           dbUpdates.bank_rut = updates?.bankRut;
   if (updates?.bankEmail !== undefined)         dbUpdates.bank_email = updates?.bankEmail;
+  if (updates?.planSlug !== undefined)         dbUpdates.plan_slug = updates?.planSlug;
   console.log('[waBusinessService] updateBusiness: payload =', dbUpdates);
   const { data, error } = await supabase?.from('wa_businesses')?.update(dbUpdates)?.eq('id', businessId)?.eq('user_id', user?.id)?.select()?.single();
   if (error) {
@@ -227,7 +230,24 @@ export const getProduct = async (productId) => {
   return { data: mapProductFromDb(data), error: null };
 };
 
+/** Cuenta de productos activos del negocio (para límites de plan). */
+export const getActiveProductCount = async (businessId) => {
+  const { count, error } = await supabase?.from('wa_products')?.select('id', { count: 'exact', head: true })?.eq('business_id', businessId)?.eq('is_active', true);
+  if (error) return 0;
+  return count ?? 0;
+};
+
 export const createProduct = async (businessId, productData) => {
+  const { data: biz } = await supabase?.from('wa_businesses')?.select('plan_slug')?.eq('id', businessId)?.single();
+  const planSlug = biz?.plan_slug || 'starter';
+  const { maxProducts } = getPlanLimits(planSlug);
+  if (maxProducts != null) {
+    const activeCount = await getActiveProductCount(businessId);
+    const willBeActive = productData?.isActive !== false;
+    if (willBeActive && activeCount >= maxProducts) {
+      return { data: null, error: { message: `Has alcanzado el límite de ${maxProducts} productos activos de tu plan. Actualiza a Pro o Business para más.` } };
+    }
+  }
   const imagesArr = Array.isArray(productData?.images) ? productData.images : [];
   const imageUrl = productData?.imageUrl ?? imagesArr?.[0] ?? null;
   const { data, error } = await supabase?.from('wa_products')?.insert({
@@ -248,6 +268,19 @@ export const createProduct = async (businessId, productData) => {
 };
 
 export const updateProduct = async (productId, productData) => {
+  if (productData?.isActive === true) {
+    const { data: product } = await supabase?.from('wa_products')?.select('business_id, is_active')?.eq('id', productId)?.single();
+    if (product?.business_id) {
+      const { data: biz } = await supabase?.from('wa_businesses')?.select('plan_slug')?.eq('id', product.business_id)?.single();
+      const { maxProducts } = getPlanLimits(biz?.plan_slug || 'starter');
+      if (maxProducts != null && !product?.is_active) {
+        const activeCount = await getActiveProductCount(product.business_id);
+        if (activeCount >= maxProducts) {
+          return { data: null, error: { message: `Límite de ${maxProducts} productos activos. Desactiva uno o actualiza tu plan.` } };
+        }
+      }
+    }
+  }
   const dbUpdates = {};
   if (productData?.name !== undefined)        dbUpdates.name = productData?.name;
   if (productData?.description !== undefined) dbUpdates.description = productData?.description;
