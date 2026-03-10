@@ -5,6 +5,7 @@ import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
 import { getOrders, updateOrder } from '../../services/waBusinessService';
 import { useToast } from '../../components/ui/Toast';
+import { supabase } from '../../lib/supabase';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import PrintOrderModal from './components/PrintOrderModal';
@@ -292,6 +293,23 @@ export default function OrdersPage() {
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, [business?.id, loadOrders]);
 
+  // Realtime: cuando llega un pedido nuevo, refrescar lista para que aparezca al instante
+  useEffect(() => {
+    if (!business?.id) return;
+    const channelName = `wa_orders_business_${business.id}`;
+    const ch = supabase
+      ?.channel(channelName)
+      ?.on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'wa_orders', filter: `business_id=eq.${business.id}` },
+        () => loadOrders()
+      )
+      ?.subscribe();
+    return () => {
+      if (ch) supabase?.removeChannel(ch);
+    };
+  }, [business?.id, loadOrders]);
+
   const handleUpdate = useCallback(async (orderId, updates) => {
     const { error } = await updateOrder(orderId, updates);
     if (error) {
@@ -333,7 +351,7 @@ export default function OrdersPage() {
       >
         <div className="w-full max-w-6xl mx-auto px-4 md:px-6 py-6 md:py-8 pb-20 lg:pb-8">
           {/* Page header */}
-          <div className="mb-8">
+          <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="flex items-center gap-3 mb-1">
               <div
                 className="w-9 h-9 rounded-xl flex items-center justify-center"
@@ -348,6 +366,16 @@ export default function OrdersPage() {
                 </p>
               </div>
             </div>
+            <button
+              type="button"
+              onClick={() => loadOrders()}
+              disabled={loading}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl border text-sm font-medium transition-colors hover:bg-muted disabled:opacity-60"
+              style={{ borderColor: 'var(--color-border)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)', backgroundColor: '#fff' }}
+            >
+              <Icon name="RefreshCw" size={14} className={loading ? 'animate-spin' : ''} />
+              Refrescar
+            </button>
           </div>
 
           {/* Status summary strip */}

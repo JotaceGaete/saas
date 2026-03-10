@@ -4,6 +4,7 @@ import { getBusinessBySlug, getPublicProducts, getCategoriesByRubroId } from '..
 import Icon from '../../components/AppIcon';
 import { CartProvider, useCart } from '../../contexts/CartContext';
 import { formatCLP } from '../../utils/formatCLP';
+import { useIsDesktop } from '../../hooks/useMediaQuery';
 
 // Normalizar imágenes del producto: array (vacío o con URLs)
 function getProductImages(product) {
@@ -66,6 +67,7 @@ function CatalogInner({ slug }) {
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   const { itemCount } = useCart();
+  const isDesktop = useIsDesktop();
 
   useEffect(() => {
     if (!slug) return;
@@ -204,6 +206,14 @@ function CatalogInner({ slug }) {
   const cardSettings = { showPrice: true, showDescription: true, showStock: false, showWhatsApp: true, ...design?.cardSettings };
   const storeHeader = { showStoreName: true, showDescription: true, showWhatsAppButton: true, ...design?.storeHeader };
   const catalogViewMode = design?.catalogViewMode === 'compact' ? 'compact' : 'featured';
+  // En escritorio siempre tarjetas grandes (como en la imagen); compact solo en móvil
+  const useCompactCard = catalogViewMode === 'compact' && !isDesktop;
+  const gridClass =
+    isDesktop
+      ? 'grid grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4'
+      : catalogViewMode === 'compact'
+        ? 'grid grid-cols-2 gap-2 sm:gap-3'
+        : 'grid grid-cols-1 gap-3 sm:gap-4';
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -480,13 +490,7 @@ function CatalogInner({ slug }) {
                 <h2 className="text-base md:text-lg font-bold text-gray-900 mb-3 md:mb-4" style={{ fontFamily: 'DM Sans, sans-serif' }}>
                   {block.categoryName}
                 </h2>
-                <div
-                  className={
-                    catalogViewMode === 'compact'
-                      ? 'grid grid-cols-2 md:grid-cols-2 min-[1200px]:grid-cols-4 min-[1400px]:grid-cols-5 gap-2 sm:gap-3'
-                      : 'grid grid-cols-1 md:grid-cols-2 min-[1200px]:grid-cols-4 min-[1400px]:grid-cols-5 gap-3 sm:gap-4'
-                  }
-                >
+                <div className={gridClass}>
                   {block.products?.map((product) => (
                     <ProductCard
                       key={product?.id}
@@ -496,7 +500,7 @@ function CatalogInner({ slug }) {
                       theme={theme}
                       cardSettings={cardSettings}
                       useCategories={useCategories}
-                      compact={catalogViewMode === 'compact'}
+                      compact={useCompactCard}
                     />
                   ))}
                 </div>
@@ -505,13 +509,7 @@ function CatalogInner({ slug }) {
           </div>
         ) : (
           /* Listado plano (sin categorías o sin bloques) */
-          <div
-            className={
-              catalogViewMode === 'compact'
-                ? 'grid grid-cols-2 md:grid-cols-2 min-[1200px]:grid-cols-4 min-[1400px]:grid-cols-5 gap-2 sm:gap-3'
-                : 'grid grid-cols-1 md:grid-cols-2 min-[1200px]:grid-cols-4 min-[1400px]:grid-cols-5 gap-3 sm:gap-4'
-            }
-          >
+          <div className={gridClass}>
             {filteredProducts?.map((product) => (
               <ProductCard
                 key={product?.id}
@@ -521,7 +519,7 @@ function CatalogInner({ slug }) {
                 theme={theme}
                 cardSettings={cardSettings}
                 useCategories={useCategories}
-                compact={catalogViewMode === 'compact'}
+                compact={useCompactCard}
               />
             ))}
           </div>

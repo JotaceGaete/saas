@@ -124,26 +124,23 @@ export default function Dashboard() {
           table: 'wa_orders',
           filter: `business_id=eq.${business?.id}`,
         },
-        (payload) => {
+        async (payload) => {
           const newOrder = payload?.new;
           if (!newOrder) return;
 
-          // Map snake_case to camelCase for consistency
           const mappedOrder = {
             id: newOrder?.id,
             customerName: newOrder?.customer_name || newOrder?.customerName || '',
             totalAmount: newOrder?.total_amount ?? newOrder?.totalAmount ?? 0,
-            status: newOrder?.status || 'pending',
+            status: newOrder?.status || 'new',
             createdAt: newOrder?.created_at || newOrder?.createdAt || new Date()?.toISOString(),
           };
 
-          // Prepend to orders list
-          setOrders(prev => [mappedOrder, ...prev]);
+          // Refrescar lista completa para que el nuevo pedido aparezca con ítems (no solo payload mínimo)
+          const { data: ordersData } = await getOrders(business?.id);
+          if (ordersData) setOrders(ordersData);
 
-          // Increment live order count
           setLiveOrderCount(prev => (prev !== null ? prev + 1 : null));
-
-          // Add to new order IDs for highlight animation
           setNewOrderIds(prev => new Set([...prev, mappedOrder?.id]));
           setTimeout(() => {
             setNewOrderIds(prev => {
@@ -153,11 +150,8 @@ export default function Dashboard() {
             });
           }, 2500);
 
-          // Show toast
           const toastId = Date.now();
           setNewOrderToasts(prev => [...prev, { id: toastId, order: mappedOrder }]);
-
-          // Add to notifications
           setNotifications(prev => [
             { id: toastId, customerName: mappedOrder?.customerName, createdAt: mappedOrder?.createdAt, read: false },
             ...prev,
