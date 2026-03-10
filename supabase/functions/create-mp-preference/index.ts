@@ -24,11 +24,13 @@ Deno.serve(async (req) => {
     return new Response('ok', { headers: corsHeaders });
   }
 
-  const authHeader = req.headers.get('Authorization') ?? req.headers.get('authorization') ?? '';
-  const hasAuthHeader = !!authHeader && authHeader.toLowerCase().startsWith('bearer ');
-  console.log('[create-mp-preference] Authorization header present:', !!authHeader, 'starts with Bearer:', hasAuthHeader);
+  const authHeader =
+    (req.headers.get('Authorization') ?? req.headers.get('authorization') ?? '').trim();
+  const hasAuthHeader = authHeader.length > 0;
+  const startsWithBearer = authHeader.toLowerCase().startsWith('bearer ');
+  console.log('[create-mp-preference] Authorization header present:', hasAuthHeader, 'starts with Bearer:', startsWithBearer);
 
-  if (!hasAuthHeader) {
+  if (!hasAuthHeader || !startsWithBearer) {
     console.log('[create-mp-preference] missing or invalid Authorization header');
     return jsonResponse({ error: 'User not authenticated' }, 401);
   }
@@ -39,27 +41,36 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: 'User not authenticated' }, 401);
   }
 
+  const tokenPreview = token.length >= 12 ? `${token.slice(0, 12)}...` : '(short)';
+  console.log('[create-mp-preference] extracted token first 12 chars (masked):', tokenPreview);
+
   const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
   const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+  if (anonKey && token === anonKey) {
+    console.error('[create-mp-preference] rejected: Authorization token is the anon/apikey key, not a user JWT');
+    return jsonResponse({ error: 'Invalid user token' }, 401);
+  }
+
   const supabase = createClient(supabaseUrl, anonKey, {
     global: { headers: { Authorization: `Bearer ${token}` } },
   });
 
   const { data: userData, error: userError } = await supabase.auth.getUser(token);
-  let user = userData?.user ?? null;
 
   if (userError) {
     console.error('[create-mp-preference] auth.getUser error:', userError.message, 'status:', userError.status);
+    const isInvalidUserToken =
+      /missing sub claim|invalid claim|invalid jwt|invalid token/i.test(userError.message ?? '');
+    if (isInvalidUserToken) {
+      return jsonResponse({ error: 'Invalid user token' }, 401);
+    }
   }
-  if (!user) {
-    const { data: sessionData } = await supabase.auth.getSession();
-    user = sessionData?.session?.user ?? null;
-    if (user) console.log('[create-mp-preference] user from getSession() fallback');
-  }
+
+  const user = userData?.user ?? null;
   console.log('[create-mp-preference] authenticated user id:', user?.id ?? '(none)');
 
   if (!user?.id) {
-    return jsonResponse({ error: 'User not authenticated' }, 401);
+    return jsonResponse({ error: 'Invalid user token' }, 401);
   }
 
   let body: Record<string, unknown>;
