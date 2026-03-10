@@ -70,12 +70,31 @@ Deno.serve(async (req) => {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
 
+  const mpApiStatus = paymentRes.status;
+  const mpApiBody = await paymentRes.text();
+  console.log('[mp-webhook] Mercado Pago API status:', mpApiStatus, 'body (truncated):', mpApiBody?.slice(0, 200));
+
   if (!paymentRes.ok) {
-    console.error('[mp-webhook] Mercado Pago API error:', paymentRes.status, await paymentRes.text());
-    return jsonResponse({ ok: false, error: 'Payment fetch failed' }, 500);
+    if (mpApiStatus === 401) {
+      console.error('[mp-webhook] Mercado Pago API 401: invalid credentials');
+      return jsonResponse({ ok: false, error: 'Invalid Mercado Pago API credentials' }, 500);
+    }
+    if (mpApiStatus === 404 || (mpApiStatus >= 400 && mpApiStatus < 500)) {
+      console.log('[mp-webhook] event ignored: payment not found or simulation (MP API', mpApiStatus + ')');
+      return jsonResponse({ ok: true, ignored: true, reason: 'payment not found or simulation' }, 200);
+    }
+    console.log('[mp-webhook] event ignored: Mercado Pago API error', mpApiStatus, '(treated as simulation/not found)');
+    return jsonResponse({ ok: true, ignored: true, reason: 'payment not found or simulation' }, 200);
   }
 
-  const payment = (await paymentRes.json()) as { status?: string; external_reference?: string };
+  let payment: { status?: string; external_reference?: string };
+  try {
+    payment = (JSON.parse(mpApiBody) as { status?: string; external_reference?: string }) ?? {};
+  } catch {
+    console.log('[mp-webhook] event ignored: invalid payment response body');
+    return jsonResponse({ ok: true, ignored: true, reason: 'payment not found or simulation' }, 200);
+  }
+
   const paymentStatus = payment?.status ?? '';
   const externalRef = payment?.external_reference;
 
