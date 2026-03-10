@@ -450,7 +450,6 @@ export default function BusinessConfiguration() {
           <div className="flex items-center gap-2">
             <a
               href={catalogUrl}
-              target="_blank"
               rel="noopener noreferrer"
               className="hidden sm:flex items-center gap-1.5 text-sm font-medium transition-colors hover:opacity-70"
               style={{ color: 'var(--color-primary)', fontFamily: 'var(--font-caption)' }}

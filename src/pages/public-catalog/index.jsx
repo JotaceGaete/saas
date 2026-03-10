@@ -182,8 +182,36 @@ function CatalogInner({ slug }) {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Cabecera móvil: Volver + nombre/logo — solo en móvil, navegación clara sin hamburguesa */}
+      {!loading && !notFound && business && (
+        <header className="fixed top-0 left-0 right-0 z-50 bg-white border-b border-gray-200 shadow-sm md:hidden" role="banner">
+          <div className="flex items-center h-14 px-4 gap-3">
+            <button
+              type="button"
+              onClick={() => window.history.back()}
+              className="flex-shrink-0 flex items-center justify-center w-10 h-10 -ml-1 rounded-lg text-gray-600 hover:bg-gray-100 active:bg-gray-200 transition-colors"
+              aria-label="Volver"
+            >
+              <Icon name="ArrowLeft" size={22} color="currentColor" />
+            </button>
+            <div className="flex-1 min-w-0 flex items-center gap-2.5">
+              {business?.logoUrl ? (
+                <img src={business.logoUrl} alt="" className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
+              ) : (
+                <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: `linear-gradient(135deg, ${primaryColor}, ${primaryColorDark})` }}>
+                  <Icon name="Store" size={16} color="#FFFFFF" />
+                </div>
+              )}
+              <span className="font-bold text-gray-900 truncate text-base" style={{ fontFamily: 'DM Sans, sans-serif' }}>
+                {business?.name}
+              </span>
+            </div>
+          </div>
+        </header>
+      )}
+
       {/* ── Header: banner + tarjeta de identidad ── */}
-      <div className="bg-white shadow-sm">
+      <div className="bg-white shadow-sm pt-14 md:pt-0">
         {/* 1. Banner — solo fondo visual, sin texto encima */}
         <div
           className="h-[80px] sm:h-[110px] md:h-[130px] w-full relative overflow-hidden"

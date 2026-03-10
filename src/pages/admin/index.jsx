@@ -157,7 +157,6 @@ export default function AdminDashboard() {
                             {b.slug ? (
                               <a
                                 href={`/catalogo/${b.slug}`}
-                                target="_blank"
                                 rel="noopener noreferrer"
                                 className="inline-flex items-center gap-1 text-sm font-medium"
                                 style={{ color: 'var(--color-primary)' }}

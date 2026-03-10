@@ -126,7 +126,8 @@ export default function GettingStartedSection({
         navigate(card?.path);
         break;
       case "open_catalog":
-        if (catalogUrl) window.open(catalogUrl, "_blank", "noopener,noreferrer");
+        if (business?.slug) navigate(`/catalogo/${business.slug}`);
+        else if (catalogUrl) window.location.href = catalogUrl;
         break;
       case "share_whatsapp": {
         if (!catalogUrl) return;
