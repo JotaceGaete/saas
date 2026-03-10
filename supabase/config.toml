@@ -1,0 +1,4 @@
+# Supabase project config (optional).
+# Edge Functions: mp-webhook is a public endpoint called by Mercado Pago; no user JWT.
+[functions.mp-webhook]
+verify_jwt = false

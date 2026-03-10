@@ -40,11 +40,17 @@ export default function Dashboard() {
   const [liveOrderCount, setLiveOrderCount] = useState(null); // null = use computed
   const [newOrderIds, setNewOrderIds] = useState(new Set());
   const channelRef = useRef(null);
+  const [dismissedExpiredBanner, setDismissedExpiredBanner] = useState(false);
 
   const baseUrl = getAppBaseUrl() || (typeof window !== 'undefined' ? window.location?.origin : '');
   const catalogUrl = business?.slug && baseUrl
     ? `${baseUrl}/catalogo/${business?.slug}`
     : '';
+
+  const planExpiresAt = business?.planExpiresAt ?? null;
+  const isPaidPlan = business?.planSlug === 'pro' || business?.planSlug === 'business';
+  const isPlanExpired = isPaidPlan && planExpiresAt && new Date(planExpiresAt) <= new Date();
+  const showExpiredBanner = typeof sessionStorage !== 'undefined' && sessionStorage.getItem('showPlanExpiredBanner') === '1';
 
   // Un intento de refrescar el negocio si el contexto llegó vacío (p. ej. estado desactualizado)
   useEffect(() => {
@@ -270,6 +276,30 @@ export default function Dashboard() {
                 <p className="text-xs mt-0.5" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Completa la configuración para empezar a recibir pedidos.</p>
               </div>
               <button onClick={() => navigate('/business-configuration')} className="ml-auto text-xs font-medium px-3 py-1.5 rounded-lg" style={{ backgroundColor: 'var(--color-primary)', color: '#fff', fontFamily: 'var(--font-caption)' }}>Configurar</button>
+            </div>
+          )}
+
+          {(showExpiredBanner || isPlanExpired) && !dismissedExpiredBanner && (
+            <div className="mb-6 flex items-start gap-3 p-4 rounded-xl border" style={{ backgroundColor: 'rgba(239,68,68,0.06)', borderColor: 'rgba(239,68,68,0.25)' }}>
+              <Icon name="AlertCircle" size={18} color="#dc2626" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>Tu plan ha expirado</p>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Renueva para seguir usando las funciones Pro.</p>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <button onClick={() => { if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem('showPlanExpiredBanner'); navigate('/planes'); }} className="text-xs font-medium px-3 py-1.5 rounded-lg text-white" style={{ backgroundColor: 'var(--color-primary)', fontFamily: 'var(--font-caption)' }}>Renovar</button>
+                <button onClick={() => { if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem('showPlanExpiredBanner'); setDismissedExpiredBanner(true); }} className="text-xs font-medium px-2 py-1.5 rounded-lg" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Cerrar</button>
+              </div>
+            </div>
+          )}
+
+          {isPaidPlan && planExpiresAt && !isPlanExpired && (
+            <div className="mb-6 flex items-center gap-3 p-3 rounded-xl border" style={{ backgroundColor: 'var(--color-muted)', borderColor: 'var(--color-border)' }}>
+              <Icon name="Calendar" size={16} color="var(--color-muted-foreground)" />
+              <span className="text-sm" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-text-secondary)' }}>
+                Tu plan vence el: <strong>{new Date(planExpiresAt).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })}</strong>
+              </span>
+              <button onClick={() => navigate('/planes')} className="text-xs font-medium px-2 py-1 rounded-lg" style={{ color: 'var(--color-primary)', fontFamily: 'var(--font-caption)' }}>Ver planes</button>
             </div>
           )}
 

@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { createBusinessForUser, getMyBusiness } from '../services/waBusinessService';
+import { createBusinessForUser, getMyBusiness, updateBusiness } from '../services/waBusinessService';
 
 const AuthContext = createContext({})
 
@@ -22,7 +22,18 @@ export const AuthProvider = ({ children }) => {
       setBusinessLoading(true)
       try {
         const { data } = await getMyBusiness()
-        if (data) setBusiness(data)
+        if (data) {
+          const isPaid = data.planSlug === 'pro' || data.planSlug === 'business'
+          const expired = data.planExpiresAt && new Date(data.planExpiresAt) <= new Date()
+          if (isPaid && expired) {
+            await updateBusiness(data.id, { planSlug: 'starter', planExpiresAt: null })
+            const { data: updated } = await getMyBusiness()
+            setBusiness(updated || data)
+            if (typeof sessionStorage !== 'undefined') sessionStorage.setItem('showPlanExpiredBanner', '1')
+          } else {
+            setBusiness(data)
+          }
+        }
       } catch (err) {
         console.error('Business load error:', err)
       } finally {

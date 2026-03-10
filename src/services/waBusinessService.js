@@ -3,6 +3,15 @@ import { getPlanLimits } from '../constants/plans';
 
 // Helpers
 
+/** Plan efectivo para límites y seguridad: pro/business solo si plan_expires_at > now(). */
+export function getEffectivePlanSlug(planSlug, planExpiresAt) {
+  if (!planSlug || !['pro', 'business'].includes(planSlug)) return planSlug || 'starter';
+  if (!planExpiresAt) return planSlug;
+  const exp = new Date(planExpiresAt);
+  if (isNaN(exp.getTime()) || exp <= new Date()) return 'starter';
+  return planSlug;
+}
+
 const generateSlug = async (name) => {
   const base = name?.toLowerCase()?.replace(/[^a-z0-9\s-]/g, '')?.replace(/\s+/g, '-')?.replace(/-+/g, '-')?.trim();
   let slug = base;
@@ -43,6 +52,7 @@ const mapBusinessFromDb = (row) => {
   bankEmail: row?.bank_email || '',
   orderMessageTemplate: row?.order_message_template || null,
   planSlug: row?.plan_slug || 'starter',
+  planExpiresAt: row?.plan_expires_at ?? null,
   createdAt: row?.created_at,
   updatedAt: row?.updated_at,
 };
@@ -188,6 +198,7 @@ export async function updateBusiness(businessId, updates) {
   if (updates?.bankRut !== undefined)           dbUpdates.bank_rut = updates?.bankRut;
   if (updates?.bankEmail !== undefined)         dbUpdates.bank_email = updates?.bankEmail;
   if (updates?.planSlug !== undefined)         dbUpdates.plan_slug = updates?.planSlug;
+  if (updates?.planExpiresAt !== undefined)    dbUpdates.plan_expires_at = updates?.planExpiresAt ?? null;
   console.log('[waBusinessService] updateBusiness: payload =', dbUpdates);
   const { data, error } = await supabase?.from('wa_businesses')?.update(dbUpdates)?.eq('id', businessId)?.eq('user_id', user?.id)?.select()?.single();
   if (error) {
@@ -238,9 +249,14 @@ export const getActiveProductCount = async (businessId) => {
 };
 
 export const createProduct = async (businessId, productData) => {
-  const { data: biz } = await supabase?.from('wa_businesses')?.select('plan_slug')?.eq('id', businessId)?.single();
+  const { data: biz } = await supabase?.from('wa_businesses')?.select('plan_slug, plan_expires_at')?.eq('id', businessId)?.single();
   const planSlug = biz?.plan_slug || 'starter';
-  const { maxProducts } = getPlanLimits(planSlug);
+  const planExpiresAt = biz?.plan_expires_at ?? null;
+  const effectivePlan = getEffectivePlanSlug(planSlug, planExpiresAt);
+  if (effectivePlan !== planSlug && ['pro', 'business'].includes(planSlug)) {
+    await supabase?.from('wa_businesses')?.update({ plan_slug: 'starter', plan_expires_at: null })?.eq('id', businessId);
+  }
+  const { maxProducts } = getPlanLimits(effectivePlan);
   if (maxProducts != null) {
     const activeCount = await getActiveProductCount(businessId);
     const willBeActive = productData?.isActive !== false;
@@ -271,8 +287,13 @@ export const updateProduct = async (productId, productData) => {
   if (productData?.isActive === true) {
     const { data: product } = await supabase?.from('wa_products')?.select('business_id, is_active')?.eq('id', productId)?.single();
     if (product?.business_id) {
-      const { data: biz } = await supabase?.from('wa_businesses')?.select('plan_slug')?.eq('id', product.business_id)?.single();
-      const { maxProducts } = getPlanLimits(biz?.plan_slug || 'starter');
+      const { data: biz } = await supabase?.from('wa_businesses')?.select('plan_slug, plan_expires_at')?.eq('id', product.business_id)?.single();
+      const planSlug = biz?.plan_slug || 'starter';
+      const effectivePlan = getEffectivePlanSlug(planSlug, biz?.plan_expires_at ?? null);
+      if (effectivePlan !== planSlug && ['pro', 'business'].includes(planSlug)) {
+        await supabase?.from('wa_businesses')?.update({ plan_slug: 'starter', plan_expires_at: null })?.eq('id', product.business_id);
+      }
+      const { maxProducts } = getPlanLimits(effectivePlan);
       if (maxProducts != null && !product?.is_active) {
         const activeCount = await getActiveProductCount(product.business_id);
         if (activeCount >= maxProducts) {
