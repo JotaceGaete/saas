@@ -12,127 +12,152 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+function jsonResponse(body: Record<string, unknown>, status: number) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
 
-  try {
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-      return new Response(JSON.stringify({ error: 'No autorizado' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
+  const authHeader = req.headers.get('Authorization') ?? req.headers.get('authorization') ?? '';
+  const hasAuthHeader = !!authHeader && authHeader.toLowerCase().startsWith('bearer ');
+  console.log('[create-mp-preference] Authorization header present:', !!authHeader, 'starts with Bearer:', hasAuthHeader);
 
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: authHeader } } }
-    );
-
-    const { data: { user } } = await supabase.auth.getUser(authHeader.replace('Bearer ', ''));
-    if (!user?.id) {
-      return new Response(JSON.stringify({ error: 'No autorizado' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    const body = await req.json().catch(() => ({}));
-    const planSlug = body?.planSlug;
-    const price = planSlug && PLAN_PRICES[planSlug];
-    if (!planSlug || price == null || price <= 0) {
-      return new Response(JSON.stringify({ error: 'Plan no válido o sin precio' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    const { data: business, error: bizError } = await supabase
-      .from('wa_businesses')
-      .select('id')
-      .limit(1)
-      .maybeSingle();
-
-    if (bizError || !business?.id) {
-      return new Response(JSON.stringify({ error: 'No se encontró tu negocio' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    const accessToken = Deno.env.get('MP_ACCESS_TOKEN');
-    if (!accessToken) {
-      return new Response(JSON.stringify({ error: 'Mercado Pago no configurado' }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    const appBaseUrl = Deno.env.get('APP_BASE_URL')?.trim() || 'https://app.gong.cl';
-    const base = appBaseUrl.replace(/\/$/, '');
-    const successUrl = body?.success_url || `${base}/plans?payment=success`;
-    const failureUrl = body?.failure_url || `${base}/plans?payment=failure`;
-    const pendingUrl = body?.pending_url || `${base}/plans?payment=pending`;
-
-    const notificationUrl = Deno.env.get('MP_WEBHOOK_URL') || '';
-    const preferencePayload = {
-      items: [
-        {
-          title: PLAN_LABELS[planSlug] || planSlug,
-          quantity: 1,
-          unit_price: price,
-          currency_id: 'CLP',
-        },
-      ],
-      back_urls: {
-        success: successUrl,
-        failure: failureUrl,
-        pending: pendingUrl,
-      },
-      auto_return: 'approved' as const,
-      external_reference: `${business.id}:${planSlug}`,
-      ...(notificationUrl && { notification_url: notificationUrl }),
-    };
-
-    const mpRes = await fetch('https://api.mercadopago.com/checkout/preferences', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${accessToken}`,
-      },
-      body: JSON.stringify(preferencePayload),
-    });
-
-    if (!mpRes.ok) {
-      const errText = await mpRes.text();
-      console.error('Mercado Pago error:', mpRes.status, errText);
-      return new Response(JSON.stringify({ error: 'Error al crear el pago en Mercado Pago' }), {
-        status: 502,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    const preference = await mpRes.json();
-    const initPoint = preference?.init_point || preference?.sandbox_init_point;
-    if (!initPoint) {
-      return new Response(JSON.stringify({ error: 'Respuesta inválida de Mercado Pago' }), {
-        status: 502,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    return new Response(JSON.stringify({ init_point: initPoint }), {
-      status: 200,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
-  } catch (e) {
-    console.error(e);
-    return new Response(JSON.stringify({ error: 'Error interno' }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+  if (!hasAuthHeader) {
+    console.log('[create-mp-preference] missing or invalid Authorization header');
+    return jsonResponse({ error: 'User not authenticated' }, 401);
   }
+
+  const token = authHeader.replace(/^\s*Bearer\s+/i, '').trim();
+  if (!token) {
+    console.log('[create-mp-preference] empty token after Bearer');
+    return jsonResponse({ error: 'User not authenticated' }, 401);
+  }
+
+  const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+  const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+  const supabase = createClient(supabaseUrl, anonKey, {
+    global: { headers: { Authorization: `Bearer ${token}` } },
+  });
+
+  const { data: userData, error: userError } = await supabase.auth.getUser(token);
+  let user = userData?.user ?? null;
+
+  if (userError) {
+    console.error('[create-mp-preference] auth.getUser error:', userError.message, 'status:', userError.status);
+  }
+  if (!user) {
+    const { data: sessionData } = await supabase.auth.getSession();
+    user = sessionData?.session?.user ?? null;
+    if (user) console.log('[create-mp-preference] user from getSession() fallback');
+  }
+  console.log('[create-mp-preference] authenticated user id:', user?.id ?? '(none)');
+
+  if (!user?.id) {
+    return jsonResponse({ error: 'User not authenticated' }, 401);
+  }
+
+  let body: Record<string, unknown>;
+  try {
+    body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+  } catch {
+    body = {};
+  }
+  console.log('[create-mp-preference] request body:', JSON.stringify(body));
+
+  const planSlug = body?.planSlug as string | undefined;
+  const price = planSlug && PLAN_PRICES[planSlug];
+  console.log('[create-mp-preference] planSlug:', planSlug, 'price:', price);
+
+  if (!planSlug || price == null || price <= 0) {
+    return jsonResponse({ error: 'Plan no válido o sin precio' }, 400);
+  }
+
+  const { data: business, error: bizError } = await supabase
+    .from('wa_businesses')
+    .select('id')
+    .limit(1)
+    .maybeSingle();
+
+  console.log('[create-mp-preference] business lookup result:', business ? { id: business.id } : 'null', 'error:', bizError?.message ?? '(none)');
+
+  if (bizError) {
+    console.error('[create-mp-preference] business query error:', bizError);
+    return jsonResponse({ error: 'Business not found for user' }, 404);
+  }
+  if (!business?.id) {
+    return jsonResponse({ error: 'Business not found for user' }, 404);
+  }
+
+  const accessToken = Deno.env.get('MP_ACCESS_TOKEN');
+  if (!accessToken) {
+    console.error('[create-mp-preference] MP_ACCESS_TOKEN missing');
+    return jsonResponse({ error: 'MP_ACCESS_TOKEN missing' }, 500);
+  }
+
+  const appBaseUrl = Deno.env.get('APP_BASE_URL')?.trim() || 'https://app.gong.cl';
+  const base = appBaseUrl.replace(/\/$/, '');
+  const successUrl = (body?.success_url as string) || `${base}/plans?payment=success`;
+  const failureUrl = (body?.failure_url as string) || `${base}/plans?payment=failure`;
+  const pendingUrl = (body?.pending_url as string) || `${base}/plans?payment=pending`;
+
+  const notificationUrl = Deno.env.get('MP_WEBHOOK_URL') || '';
+  const preferencePayload = {
+    items: [
+      {
+        title: PLAN_LABELS[planSlug] || planSlug,
+        quantity: 1,
+        unit_price: price,
+        currency_id: 'CLP',
+      },
+    ],
+    back_urls: {
+      success: successUrl,
+      failure: failureUrl,
+      pending: pendingUrl,
+    },
+    auto_return: 'approved' as const,
+    external_reference: `${business.id}:${planSlug}`,
+    ...(notificationUrl && { notification_url: notificationUrl }),
+  };
+
+  const mpRes = await fetch('https://api.mercadopago.com/checkout/preferences', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(preferencePayload),
+  });
+
+  const mpBody = await mpRes.text();
+  if (!mpRes.ok) {
+    console.error('[create-mp-preference] Mercado Pago API error:', mpRes.status, mpBody);
+    let errPayload: Record<string, unknown>;
+    try {
+      errPayload = { error: 'Mercado Pago preference creation failed', mp_response: JSON.parse(mpBody) };
+    } catch {
+      errPayload = { error: 'Mercado Pago preference creation failed', mp_response: mpBody };
+    }
+    return jsonResponse(errPayload, 500);
+  }
+
+  let preference: { init_point?: string; sandbox_init_point?: string };
+  try {
+    preference = JSON.parse(mpBody) as { init_point?: string; sandbox_init_point?: string };
+  } catch {
+    return jsonResponse({ error: 'Invalid Mercado Pago response' }, 500);
+  }
+
+  const initPoint = preference?.init_point || preference?.sandbox_init_point;
+  if (!initPoint) {
+    return jsonResponse({ error: 'Mercado Pago response missing init_point', mp_response: preference }, 500);
+  }
+
+  return jsonResponse({ init_point: initPoint }, 200);
 });
