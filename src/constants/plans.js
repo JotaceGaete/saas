@@ -12,6 +12,14 @@ export const PLAN_LABELS = Object.freeze({
   business: 'Business',
 });
 
+/** Orden para saber upgrade (subir) vs downgrade (bajar). */
+export const PLAN_ORDER = Object.freeze({
+  starter: 0,
+  control: 1,
+  pro: 2,
+  business: 3,
+});
+
 /** Precios en CLP (Chile). starter = gratis. control = 500 (solo pruebas MP). */
 export const PLAN_PRICES_CLP = Object.freeze({
   starter: 0,
@@ -64,4 +72,32 @@ export function getPlanLabel(planSlug) {
  */
 export function getPlanPrice(planSlug) {
   return PLAN_PRICES_CLP[planSlug] ?? 0;
+}
+
+/**
+ * Tipo de cambio: 'upgrade' | 'downgrade' | 'renewal'.
+ * @param {string} currentSlug
+ * @param {string} targetSlug
+ * @returns {'upgrade'|'downgrade'|'renewal'}
+ */
+export function getPlanChangeType(currentSlug, targetSlug) {
+  const current = PLAN_ORDER[currentSlug] ?? 0;
+  const target = PLAN_ORDER[targetSlug] ?? 0;
+  if (target > current) return 'upgrade';
+  if (target < current) return 'downgrade';
+  return 'renewal';
+}
+
+/**
+ * Texto del botón de acción para cambiar de plan.
+ * @param {string} currentSlug
+ * @param {string} targetSlug
+ * @returns {string}
+ */
+export function getPlanActionButtonLabel(currentSlug, targetSlug) {
+  const type = getPlanChangeType(currentSlug, targetSlug);
+  const label = getPlanLabel(targetSlug);
+  if (type === 'upgrade') return `Subir a ${label}`;
+  if (type === 'downgrade') return `Cambiar a ${label}`;
+  return 'Renovar plan';
 }

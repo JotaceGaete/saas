@@ -6,7 +6,7 @@ import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { getAppBaseUrl } from '../../config/appUrl';
-import { PLAN_SLUGS, getPlanLimits, getPlanLabel, getPlanPrice } from '../../constants/plans';
+import { PLAN_SLUGS, getPlanLimits, getPlanLabel, getPlanPrice, getPlanActionButtonLabel } from '../../constants/plans';
 
 export default function PlansPage() {
   const navigate = useNavigate();
@@ -309,7 +309,7 @@ export default function PlansPage() {
                         ) : (
                           <>
                             <Icon name="Wallet" size={16} color="#fff" />
-                            Pagar con Mercado Pago
+                            {getPlanActionButtonLabel(currentPlan, slug)}
                           </>
                         )}
                       </button>
