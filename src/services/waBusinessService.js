@@ -395,7 +395,16 @@ export const updateOrder = async (orderId, updates) => {
 
 export const createOrder = async (businessId, orderData, items) => {
   const totalAmount = Number(orderData?.totalAmount) || 0;
-  const { data: order, error: orderError } = await supabase?.from('wa_orders')?.insert({
+
+  // Generar UUID client-side para tener el ID del pedido independientemente de si
+  // el RETURNING de Supabase lo devuelve (los usuarios anónimos no pueden hacer SELECT
+  // en wa_orders por RLS, así que .select().single() fallaría para ellos).
+  const orderId = (typeof crypto !== 'undefined' && crypto?.randomUUID)
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+
+  const { error: orderError } = await supabase?.from('wa_orders')?.insert({
+      id: orderId,
       business_id: businessId,
       customer_name: (orderData?.customerName || '').trim() || null,
       customer_phone: orderData?.customerPhone?.trim() || null,
@@ -406,11 +415,12 @@ export const createOrder = async (businessId, orderData, items) => {
       order_status: 'pedido',
       payment_status: 'pendiente',
       notes: orderData?.notes?.trim() || null,
-    })?.select()?.single();
+    });
   if (orderError) return { data: null, error: orderError };
+
   if (items?.length > 0) {
     const itemRows = items?.map(item => ({
-      order_id: order?.id,
+      order_id: orderId,
       product_id: item?.productId || null,
       product_name: item?.productName || '',
       product_price: Number(item?.productPrice) || 0,
@@ -421,7 +431,22 @@ export const createOrder = async (businessId, orderData, items) => {
     const { error: itemsError } = await supabase?.from('wa_order_items')?.insert(itemRows);
     if (itemsError) return { data: null, error: itemsError };
   }
-  return { data: mapOrderFromDb(order), error: null };
+
+  return {
+    data: {
+      id: orderId,
+      businessId,
+      totalAmount,
+      status: 'pedido',
+      paymentStatus: 'pendiente',
+      customerName: (orderData?.customerName || '').trim() || null,
+      customerPhone: orderData?.customerPhone?.trim() || null,
+      notes: orderData?.notes?.trim() || null,
+      items: [],
+      createdAt: new Date().toISOString(),
+    },
+    error: null,
+  };
 };
 
 export const deleteProducts = async (productIds) => {

@@ -71,7 +71,7 @@ export default function Dashboard() {
       ]);
       setProducts(productsResponse?.data || []);
       if (ordersResponse?.error) {
-        console.error('[Dashboard] getOrders error:', ordersResponse?.error);
+        console.error('[Dashboard] getOrders error:', ordersResponse?.error?.message || ordersResponse?.error);
         setOrders([]);
       } else {
         setOrders(ordersResponse?.data || []);
