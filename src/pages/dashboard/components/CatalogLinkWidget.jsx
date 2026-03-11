@@ -102,20 +102,41 @@ export default function CatalogLinkWidget({ catalogUrl, businessName }) {
         <Icon name="Globe" size={13} color="var(--color-muted-foreground)" className="flex-shrink-0" />
         <span className="flex-1 text-xs truncate" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-data)' }}>{catalogUrl}</span>
       </div>
-      <div className="grid grid-cols-2 gap-2 mb-3">
-        <Button variant={copied ? 'success' : 'outline'} iconName={copied ? 'Check' : 'Copy'} iconPosition="left" iconSize={13} size="sm" fullWidth onClick={handleCopy}>
+      <div className="grid grid-cols-3 gap-2 mb-3">
+        <button
+          onClick={handleCopy}
+          className="flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-sm font-medium transition-all duration-200 hover:opacity-90 active:scale-95"
+          style={{
+            backgroundColor: copied ? 'rgba(16,185,129,0.12)' : 'rgba(124,58,237,0.08)',
+            color: copied ? '#059669' : 'var(--color-primary)',
+            fontFamily: 'var(--font-caption)',
+            border: `1px solid ${copied ? 'rgba(16,185,129,0.25)' : 'var(--color-border)'}`,
+          }}
+        >
+          <Icon name={copied ? 'Check' : 'Copy'} size={13} color={copied ? '#059669' : 'var(--color-primary)'} />
           {copied ? '¡Copiado!' : 'Copiar'}
-        </Button>
+        </button>
+        <a
+          href={catalogUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-sm font-medium transition-all duration-200 hover:opacity-90"
+          style={{ backgroundColor: 'rgba(14,165,233,0.08)', color: '#0EA5E9', border: '1px solid rgba(14,165,233,0.2)', fontFamily: 'var(--font-caption)' }}
+          aria-label="Ver catálogo"
+        >
+          <Icon name="ExternalLink" size={13} color="#0EA5E9" />
+          Ver
+        </a>
         <a
           href={whatsappShareUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-white transition-all duration-200 hover:opacity-90"
+          className="flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-sm font-medium text-white transition-all duration-200 hover:opacity-90"
           style={{ backgroundColor: '#25D366', fontFamily: 'var(--font-caption)' }}
           aria-label="Compartir catálogo por WhatsApp"
         >
           <Icon name="MessageCircle" size={13} color="#fff" />
-          WhatsApp
+          WA
         </a>
       </div>
       <button

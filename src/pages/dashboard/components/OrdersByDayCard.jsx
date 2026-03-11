@@ -41,19 +41,27 @@ export default function OrdersByDayCard({ data, loading }) {
           <Icon name="BarChart2" size={17} color="var(--color-primary)" />
         </div>
       </div>
-      <div style={{ height: 72 }}>
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={chartData} barSize={14} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
-            <XAxis dataKey="label" tick={{ fontSize: 10, fill: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }} axisLine={false} tickLine={false} />
-            <Tooltip content={<CustomTooltip />} cursor={false} />
-            <Bar dataKey="count" radius={[4, 4, 0, 0]}>
-              {chartData?.map((entry, i) => (
-                <Cell key={i} fill={entry?.count === maxVal && maxVal > 0 ? 'var(--color-primary)' : 'rgba(124,58,237,0.25)'} />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
+
+      {total === 0 ? (
+        <div className="flex flex-col items-center justify-center gap-2 py-3" style={{ height: 72 }}>
+          <Icon name="BarChart2" size={22} color="var(--color-muted-foreground)" />
+          <p className="text-xs text-center" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Sin pedidos en los últimos 7 días</p>
+        </div>
+      ) : (
+        <div style={{ height: 72 }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={chartData} barSize={14} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
+              <XAxis dataKey="label" tick={{ fontSize: 10, fill: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }} axisLine={false} tickLine={false} />
+              <Tooltip content={<CustomTooltip />} cursor={false} />
+              <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                {chartData?.map((entry, i) => (
+                  <Cell key={i} fill={entry?.count === maxVal && maxVal > 0 ? 'var(--color-primary)' : 'rgba(124,58,237,0.25)'} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
     </div>
   );
 }

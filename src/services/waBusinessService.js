@@ -526,7 +526,32 @@ export const getMonthlyRevenue = async (businessId) => {
   if (error) return { data: null, error };
   const total = (data || [])?.reduce((sum, row) => sum + (parseFloat(row?.total_amount) || 0), 0);
   const count = (data || [])?.length;
-  return { data: { total, count }, error: null };
+  const avgTicket = count > 0 ? Math.round(total / count) : 0;
+  return { data: { total, count, avgTicket }, error: null };
+};
+
+export const getPendingOrdersCount = async (businessId) => {
+  if (!businessId) return { data: 0, error: null };
+  const { count, error } = await supabase
+    ?.from('wa_orders')
+    ?.select('id', { count: 'exact', head: true })
+    ?.eq('business_id', businessId)
+    ?.eq('order_status', 'pedido');
+  if (error) return { data: 0, error };
+  return { data: count ?? 0, error: null };
+};
+
+export const getWeeklyOrdersCount = async (businessId) => {
+  if (!businessId) return { data: 0, error: null };
+  const since = new Date();
+  since.setDate(since.getDate() - 7);
+  const { count, error } = await supabase
+    ?.from('wa_orders')
+    ?.select('id', { count: 'exact', head: true })
+    ?.eq('business_id', businessId)
+    ?.gte('created_at', since.toISOString());
+  if (error) return { data: 0, error };
+  return { data: count ?? 0, error: null };
 };
 
 /** Estadísticas de pedidos del negocio: totales, últimos 7/30 días, ingresos mes, por estado */

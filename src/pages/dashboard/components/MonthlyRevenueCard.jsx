@@ -10,6 +10,7 @@ export default function MonthlyRevenueCard({ data, loading }) {
 
   const total = data?.total ?? 0;
   const count = data?.count ?? 0;
+  const avgTicket = data?.avgTicket ?? (count > 0 ? Math.round(total / count) : 0);
   const monthName = MONTH_NAMES?.[new Date()?.getMonth()];
 
   return (
@@ -33,11 +34,17 @@ export default function MonthlyRevenueCard({ data, loading }) {
         </p>
       </div>
 
-      <div className="flex items-center gap-1.5 pt-1 border-t" style={{ borderColor: 'var(--color-border)' }}>
+      <div className="flex items-center gap-2 pt-1 border-t" style={{ borderColor: 'var(--color-border)' }}>
         <div className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold" style={{ backgroundColor: 'rgba(16,185,129,0.1)', color: '#059669', fontFamily: 'var(--font-caption)' }}>
           <Icon name="Calendar" size={11} color="#059669" />
           Mes actual
         </div>
+        {count > 0 && (
+          <div className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: 'rgba(124,58,237,0.08)', color: 'var(--color-primary)', fontFamily: 'var(--font-caption)' }}>
+            <Icon name="Receipt" size={11} color="var(--color-primary)" />
+            Ticket prom. {formatCLP(avgTicket)}
+          </div>
+        )}
       </div>
     </div>
   );
