@@ -6,3 +6,11 @@ verify_jwt = false
 # create-mp-preference validates the JWT itself via supabase.auth.getUser().
 [functions.create-mp-preference]
 verify_jwt = false
+
+# plan-change-preview: same, JWT validated inside for auth.uid().
+[functions.plan-change-preview]
+verify_jwt = false
+
+# Aplica downgrades programados; puede llamarse con JWT o service_role (cron).
+[functions.apply-scheduled-plan-changes]
+verify_jwt = false

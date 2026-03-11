@@ -53,6 +53,8 @@ const mapBusinessFromDb = (row) => {
   orderMessageTemplate: row?.order_message_template || null,
   planSlug: row?.plan_slug || 'starter',
   planExpiresAt: row?.plan_expires_at ?? null,
+  scheduledPlanSlug: row?.scheduled_plan_slug ?? null,
+  scheduledChangeAt: row?.scheduled_change_at ?? null,
   createdAt: row?.created_at,
   updatedAt: row?.updated_at,
 };

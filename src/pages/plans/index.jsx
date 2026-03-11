@@ -15,6 +15,8 @@ export default function PlansPage() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [paymentMessage, setPaymentMessage] = useState(null);
   const [loadingPlanSlug, setLoadingPlanSlug] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [previewPlanSlug, setPreviewPlanSlug] = useState(null);
   const isDesktop = useIsDesktop();
   const sidebarWidth = sidebarCollapsed ? 'var(--sidebar-collapsed-width)' : 'var(--sidebar-width)';
   const currentPlan = business?.planSlug || 'starter';
@@ -34,68 +36,117 @@ export default function PlansPage() {
     }
   }, [searchParams, setSearchParams, refreshBusiness]);
 
+  const fetchPlanPreview = async (targetPlanSlug) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) return null;
+    const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
+    const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
+    const res = await fetch(`${supabaseUrl}/functions/v1/plan-change-preview`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}`, apikey: anonKey },
+      body: JSON.stringify({ targetPlanSlug }),
+    });
+    if (!res.ok) return null;
+    return res.json().catch(() => null);
+  };
+
   const handlePayWithMercadoPago = async (planSlug) => {
-    const price = getPlanPrice(planSlug);
-    if (price <= 0) return;
+    if (getPlanPrice(planSlug) <= 0) return;
     setLoadingPlanSlug(planSlug);
     setPaymentMessage(null);
+    setPreview(null);
+    setPreviewPlanSlug(null);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) {
         setPaymentMessage({ type: 'error', text: 'Debes iniciar sesión para contratar un plan.' });
         return;
       }
-      // Logs antes de create-mp-preference (no enviamos businessId; la función resuelve por auth)
-      console.log('[plans] auth.user.id:', user?.id ?? session?.user?.id);
-      console.log('[plans] myBusiness.id:', business?.id);
-      console.log('[plans] myBusiness.user_id:', business?.userId);
-      console.log('[plans] planSlug (antes de create-mp-preference):', planSlug);
-
       const token = session.access_token;
       const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
-      const isAnonKey = !!anonKey && token === anonKey;
-      if (isAnonKey) {
+      if (!!anonKey && token === anonKey) {
         setPaymentMessage({ type: 'error', text: 'Error de autenticación: token inválido.' });
         return;
       }
 
+      const previewData = await fetchPlanPreview(planSlug);
+      if (!previewData) {
+        setPaymentMessage({ type: 'error', text: 'No se pudo obtener el resumen del cambio de plan.' });
+        return;
+      }
+
+      if (previewData.changeType === 'downgrade') {
+        setPaymentMessage({ type: 'info', text: previewData.message || 'El cambio se aplicará al vencer tu plan actual. No se realiza ningún cargo.' });
+        return;
+      }
+
+      setPreview(previewData);
+      setPreviewPlanSlug(planSlug);
+    } catch (err) {
+      setPaymentMessage({ type: 'error', text: err?.message || 'Error al cargar el resumen.' });
+    } finally {
+      setLoadingPlanSlug(null);
+    }
+  };
+
+  const confirmPayWithMercadoPago = async () => {
+    if (!previewPlanSlug) return;
+    setLoadingPlanSlug(previewPlanSlug);
+    setPaymentMessage(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        setPaymentMessage({ type: 'error', text: 'Debes iniciar sesión.' });
+        return;
+      }
+      const token = session.access_token;
+      const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
       const baseUrl = getAppBaseUrl() || window.location?.origin || '';
-      const body = {
-        planSlug,
-        success_url: `${baseUrl}/plans?payment=success`,
-        failure_url: `${baseUrl}/plans?payment=failure`,
-        pending_url: `${baseUrl}/plans?payment=pending`,
-        origin: baseUrl,
-      };
       const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
-      const functionUrl = `${supabaseUrl}/functions/v1/create-mp-preference`;
-      const res = await fetch(functionUrl, {
+      const res = await fetch(`${supabaseUrl}/functions/v1/create-mp-preference`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-          apikey: anonKey,
-        },
-        body: JSON.stringify(body),
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, apikey: anonKey },
+        body: JSON.stringify({
+          planSlug: previewPlanSlug,
+          success_url: `${baseUrl}/plans?payment=success`,
+          failure_url: `${baseUrl}/plans?payment=failure`,
+          pending_url: `${baseUrl}/plans?payment=pending`,
+          origin: baseUrl,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        if (data?.reason) console.log('[plans] function returned', res.status, 'reason:', data.reason, 'details:', data.details);
+        if (data?.changeType === 'downgrade') {
+          setPaymentMessage({ type: 'info', text: data?.message || 'El cambio se aplicará al vencer tu plan actual.' });
+          setPreview(null);
+          setPreviewPlanSlug(null);
+          return;
+        }
         throw new Error(data?.error ?? res.statusText ?? 'Error al crear preferencia de pago');
       }
       if (data?.error) throw new Error(data.error);
+      if (data?.applied) {
+        setPaymentMessage({ type: 'success', text: 'Plan actualizado correctamente. No se requirió pago (crédito por tiempo restante).' });
+        setPreview(null);
+        setPreviewPlanSlug(null);
+        refreshBusiness?.();
+        return;
+      }
       if (data?.init_point) {
-        console.log('[plans] checkout_iniciado', { planSlug, init_point_preview: data.init_point.slice(0, 50) + '...' });
         window.location.href = data.init_point;
         return;
       }
       throw new Error('No se recibió enlace de pago');
     } catch (err) {
-      const message = err?.message || err?.error || 'Error al iniciar el pago con Mercado Pago.';
-      setPaymentMessage({ type: 'error', text: message });
+      setPaymentMessage({ type: 'error', text: err?.message || 'Error al iniciar el pago.' });
     } finally {
       setLoadingPlanSlug(null);
     }
+  };
+
+  const cancelPreview = () => {
+    setPreview(null);
+    setPreviewPlanSlug(null);
   };
 
   if (businessLoading) {
@@ -126,8 +177,16 @@ export default function PlansPage() {
                 <h1 className="text-xl font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Planes</h1>
                 <p className="text-sm" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
                   Tu plan actual: <strong>{getPlanLabel(currentPlan)}</strong>
-                  {business?.planExpiresAt && (currentPlan === 'pro' || currentPlan === 'business') && new Date(business.planExpiresAt) > new Date() && (
+                  {business?.planExpiresAt && (currentPlan === 'control' || currentPlan === 'pro' || currentPlan === 'business') && new Date(business.planExpiresAt) > new Date() && (
                     <span className="block text-xs mt-0.5">Vence el {new Date(business.planExpiresAt).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
+                  )}
+                  {business?.scheduledPlanSlug && (
+                    <span className="block text-xs mt-1" style={{ color: 'var(--color-primary)' }}>
+                      Tu plan cambiará a <strong>{getPlanLabel(business.scheduledPlanSlug)}</strong>
+                      {business.scheduledChangeAt
+                        ? ` el ${new Date(business.scheduledChangeAt).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })}`
+                        : ''}
+                    </span>
                   )}
                 </p>
               </div>
@@ -145,6 +204,48 @@ export default function PlansPage() {
             >
               <Icon name={paymentMessage.type === 'success' ? 'CheckCircle' : paymentMessage.type === 'error' ? 'AlertCircle' : 'Info'} size={18} color="currentColor" />
               <span className="text-sm" style={{ fontFamily: 'var(--font-caption)' }}>{paymentMessage.text}</span>
+            </div>
+          )}
+
+          {preview && previewPlanSlug && (
+            <div className="mb-6 rounded-xl border p-5" style={{ backgroundColor: 'var(--color-muted)', borderColor: 'var(--color-primary)' }}>
+              <h3 className="text-sm font-semibold mb-3" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>Resumen antes de pagar</h3>
+              <ul className="space-y-1.5 text-sm mb-4" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
+                <li>Plan actual: <strong>{getPlanLabel(preview.currentPlanSlug)}</strong></li>
+                <li>Plan destino: <strong>{getPlanLabel(preview.targetPlanSlug)}</strong></li>
+                <li>Días restantes: <strong>{preview.daysRemaining}</strong></li>
+                {preview.creditAmount > 0 && (
+                  <li>Crédito aplicado: <strong>${preview.creditAmount.toLocaleString('es-CL')} CLP</strong></li>
+                )}
+                <li>Precio del plan: <strong>${preview.targetPlanPrice.toLocaleString('es-CL')} CLP</strong></li>
+                {preview.effectiveAt && (
+                  <li>Vigente desde: <strong>{new Date(preview.effectiveAt).toLocaleDateString('es-CL', { dateStyle: 'medium' })}</strong></li>
+                )}
+                <li className="pt-2 border-t" style={{ borderColor: 'var(--color-border)' }}>
+                  Total a pagar: <strong className="text-base" style={{ color: 'var(--color-foreground)' }}>
+                    {preview.finalAmount === 0 ? 'Sin cargo (crédito aplicado)' : `$${preview.finalAmount.toLocaleString('es-CL')} CLP`}
+                  </strong>
+                </li>
+              </ul>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={confirmPayWithMercadoPago}
+                  disabled={!!loadingPlanSlug}
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+                  style={{ backgroundColor: '#009EE3' }}
+                >
+                  {loadingPlanSlug ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : preview.finalAmount === 0 ? <><Icon name="CheckCircle" size={16} color="#fff" /> Confirmar cambio (sin cargo)</> : <><Icon name="Wallet" size={16} color="#fff" /> Confirmar y pagar</>}
+                </button>
+                <button
+                  type="button"
+                  onClick={cancelPreview}
+                  className="px-4 py-2.5 rounded-lg text-sm font-medium transition-opacity hover:opacity-90"
+                  style={{ color: 'var(--color-muted-foreground)', border: '1px solid var(--color-border)' }}
+                >
+                  Cancelar
+                </button>
+              </div>
             </div>
           )}
 

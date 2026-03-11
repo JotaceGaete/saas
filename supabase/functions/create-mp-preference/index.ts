@@ -4,12 +4,93 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const PLAN_PRICES: Record<string, number> = { control: 500, pro: 5000, business: 10000 };
-const PLAN_LABELS: Record<string, string> = {
-  control: 'Plan Control',
-  pro: 'Plan Pro',
-  business: 'Plan Business',
+// Catálogo centralizado (misma lógica que plan-change-preview)
+const PLAN_ORDER: Record<string, number> = { starter: 0, control: 1, pro: 2, business: 3 };
+const PLAN_CATALOG: Record<string, { displayName: string; price: number; durationDays: number }> = {
+  starter:  { displayName: 'Starter',  price: 0,     durationDays: 30 },
+  control:  { displayName: 'Plan Control', price: 500,  durationDays: 30 },
+  pro:      { displayName: 'Plan Pro', price: 5000, durationDays: 30 },
+  business: { displayName: 'Plan Business', price: 10000, durationDays: 30 },
 };
+const PRORATION_FORMULA_VERSION = '2024-03-exact-time';
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+type ChangeType = 'upgrade' | 'renewal' | 'downgrade';
+
+function computePlanChange(
+  currentPlanSlug: string,
+  planExpiresAt: string | null,
+  targetPlanSlug: string,
+): {
+  changeType: ChangeType;
+  finalAmount: number;
+  daysRemaining: number;
+  creditAmount: number;
+  currentPlanPrice: number;
+  targetPlanPrice: number;
+  effectiveAt?: string;
+  scheduledChange?: { targetPlanSlug: string; effectiveAt: string };
+  prorationFormulaVersion: string;
+} {
+  const now = Date.now();
+  const currentOrder = PLAN_ORDER[currentPlanSlug] ?? 0;
+  const targetOrder = PLAN_ORDER[targetPlanSlug] ?? 0;
+  const currentPlanPrice = PLAN_CATALOG[currentPlanSlug]?.price ?? 0;
+  const targetPlanPrice = PLAN_CATALOG[targetPlanSlug]?.price ?? 0;
+
+  let changeType: ChangeType = 'renewal';
+  if (targetOrder > currentOrder) changeType = 'upgrade';
+  else if (targetOrder < currentOrder) changeType = 'downgrade';
+
+  let remainingMs = 0;
+  if (planExpiresAt) {
+    const exp = new Date(planExpiresAt).getTime();
+    remainingMs = Math.max(0, exp - now);
+  }
+  const msPerPeriod = (PLAN_CATALOG[currentPlanSlug]?.durationDays ?? 30) * MS_PER_DAY;
+  const remainingDaysFraction = msPerPeriod > 0
+    ? Math.min((remainingMs / msPerPeriod) * (PLAN_CATALOG[currentPlanSlug]?.durationDays ?? 30), 30)
+    : 0;
+  const daysRemaining = Math.floor(remainingDaysFraction);
+
+  let creditAmount = 0;
+  if (changeType === 'upgrade' && currentPlanPrice > 0) {
+    const rawCredit = (currentPlanPrice / 30) * remainingDaysFraction;
+    creditAmount = Math.floor(rawCredit);
+    creditAmount = Math.min(creditAmount, currentPlanPrice);
+  }
+
+  let finalAmount = targetPlanPrice;
+  if (changeType === 'upgrade') {
+    finalAmount = Math.max(0, Math.floor(targetPlanPrice - creditAmount));
+  } else if (changeType === 'downgrade') finalAmount = 0;
+
+  let effectiveAt: string | undefined;
+  let scheduledChange: { targetPlanSlug: string; effectiveAt: string } | undefined;
+  if (changeType === 'downgrade' && planExpiresAt) {
+    effectiveAt = new Date(planExpiresAt).toISOString();
+    scheduledChange = { targetPlanSlug, effectiveAt };
+  } else if (changeType === 'renewal' || changeType === 'upgrade') {
+    if (planExpiresAt) {
+      const exp = new Date(planExpiresAt).getTime();
+      effectiveAt = exp > now ? planExpiresAt : new Date(now).toISOString();
+    } else {
+      effectiveAt = new Date(now).toISOString();
+    }
+  }
+
+  return {
+    changeType,
+    finalAmount,
+    daysRemaining,
+    creditAmount,
+    currentPlanPrice,
+    targetPlanPrice,
+    effectiveAt,
+    scheduledChange,
+    prorationFormulaVersion: PRORATION_FORMULA_VERSION,
+  };
+}
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -77,10 +158,10 @@ Deno.serve(async (req) => {
   }
 
   const planSlug = body?.planSlug as string | undefined;
-  const price    = planSlug ? PLAN_PRICES[planSlug] : undefined;
+  const price    = planSlug ? PLAN_CATALOG[planSlug]?.price : undefined;
   console.log('[create-mp-preference] planSlug:', planSlug ?? '(none)', '| price:', price ?? '(inválido)');
-  if (!planSlug || price == null || price <= 0) {
-    return jsonResponse({ error: 'Plan no válido o sin precio' }, 400);
+  if (!planSlug || !PLAN_ORDER[planSlug]) {
+    return jsonResponse({ error: 'Plan no válido' }, 400);
   }
 
   // ── 3. Resolver negocio con SERVICE_ROLE (sin RLS, sin ambigüedad) ─────────
@@ -88,7 +169,7 @@ Deno.serve(async (req) => {
 
   const { data: businesses, error: bizError } = await adminClient
     .from('wa_businesses')
-    .select('id, user_id, name')
+    .select('id, user_id, name, plan_slug, plan_expires_at')
     .eq('user_id', user.id);
 
   const rowCount = businesses?.length ?? 0;
@@ -120,17 +201,116 @@ Deno.serve(async (req) => {
   console.log('[create-mp-preference] business.id elegido:', business.id);
   console.log('[create-mp-preference] business.user_id confirmado:', business.user_id);
 
-  // ── 4. Crear registro de pago pendiente en wa_payments ────────────────────
+  // ── 4. Calcular tipo de cambio y monto final (prorrateo en upgrades) ───────
+  const currentPlanSlug = (business as { plan_slug?: string }).plan_slug ?? 'starter';
+  const planExpiresAt   = (business as { plan_expires_at?: string | null }).plan_expires_at ?? null;
+  const planChange      = computePlanChange(currentPlanSlug, planExpiresAt, planSlug);
+
+  if (planChange.changeType === 'downgrade') {
+    const effectiveAt = planExpiresAt ?? new Date().toISOString();
+    const { error: updateErr } = await adminClient
+      .from('wa_businesses')
+      .update({
+        scheduled_plan_slug: planSlug,
+        scheduled_change_at: effectiveAt,
+      })
+      .eq('id', business.id);
+    if (updateErr) {
+      console.error('[create-mp-preference] error al persistir downgrade programado:', updateErr.message);
+      return jsonResponse({ error: 'No se pudo programar el cambio de plan' }, 500);
+    }
+    console.log('[create-mp-preference] downgrade programado en BD', {
+      businessId: business.id,
+      scheduled_plan_slug: planSlug,
+      scheduled_change_at: effectiveAt,
+    });
+    return jsonResponse({
+      error:      'Downgrade no requiere pago',
+      changeType:  'downgrade',
+      message:    'El cambio a un plan inferior se aplicará al vencer tu plan actual. No se realiza ningún cargo.',
+      scheduledChange: { targetPlanSlug: planSlug, effectiveAt },
+    }, 400);
+  }
+
+  const finalAmount = planChange.finalAmount;
+  const metadata = {
+    currentPlanSlug,
+    currentPlanPrice: planChange.currentPlanPrice,
+    targetPlanSlug:   planSlug,
+    targetPlanPrice:  planChange.targetPlanPrice,
+    daysRemaining:    planChange.daysRemaining,
+    creditAmount:     planChange.creditAmount,
+    finalAmount:      planChange.finalAmount,
+    changeType:       planChange.changeType,
+    computedAt:       new Date().toISOString(),
+    prorationFormulaVersion: planChange.prorationFormulaVersion,
+    effectiveAt:      planChange.effectiveAt ?? null,
+    scheduledChange:  planChange.scheduledChange ?? null,
+  };
+  console.log('[create-mp-preference] planChange', metadata);
+
+  // ── Upgrade con finalAmount === 0: aplicar cambio interno, no crear preferencia MP ──
+  if (finalAmount === 0) {
+    const effectiveAtMs = planChange.effectiveAt ? new Date(planChange.effectiveAt).getTime() : Date.now();
+    const newExpiresAt = new Date(effectiveAtMs + 30 * MS_PER_DAY).toISOString();
+    const { error: bizUpdateErr } = await adminClient
+      .from('wa_businesses')
+      .update({ plan_slug: planSlug, plan_expires_at: newExpiresAt })
+      .eq('id', business.id);
+    if (bizUpdateErr) {
+      console.error('[create-mp-preference] error al aplicar upgrade gratis:', bizUpdateErr.message);
+      return jsonResponse({ error: 'No se pudo aplicar el cambio de plan' }, 500);
+    }
+    const internalMetadata = {
+      ...metadata,
+      provider: 'internal_proration',
+    };
+    const { data: internalPayment, error: paymentInsertError } = await adminClient
+      .from('wa_payments')
+      .insert({
+        business_id:         business.id,
+        user_id:             user.id,
+        plan_slug:           planSlug,
+        amount:              0,
+        currency:            'CLP',
+        status:              'approved',
+        external_reference:  'internal_proration',
+        metadata:            internalMetadata,
+        plan_activated_at:   new Date().toISOString(),
+        plan_expires_at:     newExpiresAt,
+      })
+      .select('id')
+      .single();
+    if (paymentInsertError || !internalPayment?.id) {
+      console.error('[create-mp-preference] error al registrar pago interno:', paymentInsertError?.message);
+      return jsonResponse({ error: 'No se pudo registrar el pago interno' }, 500);
+    }
+    console.log('[create-mp-preference] upgrade aplicado sin MP (finalAmount=0)', {
+      businessId: business.id,
+      planSlug,
+      plan_expires_at: newExpiresAt,
+      paymentId: internalPayment.id,
+    });
+    return jsonResponse({
+      applied:        true,
+      planSlug,
+      plan_expires_at: newExpiresAt,
+      payment_id:     internalPayment.id,
+    }, 200);
+  }
+
+  // ── 5. Crear registro de pago pendiente en wa_payments ────────────────────
   const { data: paymentRow, error: paymentInsertError } = await adminClient
     .from('wa_payments')
     .insert({
       business_id:        business.id,
       user_id:            user.id,
       plan_slug:          planSlug,
-      amount:             price,
+      amount:             finalAmount,
       currency:           'CLP',
       status:             'pending',
-      external_reference: 'pending', // se actualiza justo después con el ID real
+      external_reference: 'pending',
+      metadata,
     })
     .select('id')
     .single();
@@ -158,9 +338,9 @@ Deno.serve(async (req) => {
 
   const preferencePayload = {
     items: [{
-      title:      PLAN_LABELS[planSlug] ?? planSlug,
+      title:      PLAN_CATALOG[planSlug]?.displayName ?? planSlug,
       quantity:   1,
-      unit_price: price,
+      unit_price: finalAmount,
       currency_id: 'CLP',
     }],
     back_urls: { success: successUrl, failure: failureUrl, pending: pendingUrl },
@@ -208,7 +388,7 @@ Deno.serve(async (req) => {
   const isSandbox = !!preference?.sandbox_init_point;
   console.log('[create-mp-preference] preference_created', {
     planSlug,
-    planLabel:    PLAN_LABELS[planSlug],
+    planLabel:    PLAN_CATALOG[planSlug]?.displayName,
     businessId:   business.id,
     paymentId,
     preferenceId: preference?.id,
