@@ -83,47 +83,49 @@ export default function Dashboard() {
     }
   }, [business?.id]);
 
+  const loadAnalytics = useCallback(async () => {
+    if (!business?.id) return;
+    setAnalyticsLoading(true);
+    try {
+      const [dayRes, topRes, revRes, visitRes] = await Promise.all([
+        getOrdersByDay(business?.id, 7),
+        getTopProducts(business?.id, 5),
+        getMonthlyRevenue(business?.id),
+        getBusinessVisitStats(business?.id),
+      ]);
+      setOrdersByDay(dayRes?.data || []);
+      setTopProducts(topRes?.data || []);
+      setMonthlyRevenue(revRes?.data || null);
+      setVisitStats(visitRes?.data ?? null);
+    } catch (err) {
+      console.error('Analytics load error:', err);
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  }, [business?.id]);
+
   useEffect(() => {
     if (!business?.id) { setDataLoading(false); return; }
     loadDashboardData();
   }, [business?.id, loadDashboardData]);
 
-  // Refresco al recuperar foco (p. ej. volver del catálogo tras enviar pedido) por si realtime no disparó
+  useEffect(() => {
+    if (!business?.id) { setAnalyticsLoading(false); return; }
+    loadAnalytics();
+  }, [business?.id, loadAnalytics]);
+
+  // Refresco al recuperar foco (p. ej. volver del catálogo tras enviar pedido)
   useEffect(() => {
     if (!business?.id) return;
     const onVisible = () => {
       if (document.visibilityState === 'visible') {
         loadDashboardData();
-        getBusinessVisitStats(business.id).then(({ data }) => { if (data) setVisitStats(data); });
+        loadAnalytics();
       }
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
-  }, [business?.id, loadDashboardData]);
-
-  useEffect(() => {
-    if (!business?.id) { setAnalyticsLoading(false); return; }
-    const loadAnalytics = async () => {
-      setAnalyticsLoading(true);
-      try {
-        const [dayRes, topRes, revRes, visitRes] = await Promise.all([
-          getOrdersByDay(business?.id, 7),
-          getTopProducts(business?.id, 5),
-          getMonthlyRevenue(business?.id),
-          getBusinessVisitStats(business?.id),
-        ]);
-        setOrdersByDay(dayRes?.data || []);
-        setTopProducts(topRes?.data || []);
-        setMonthlyRevenue(revRes?.data || null);
-        setVisitStats(visitRes?.data ?? null);
-      } catch (err) {
-        console.error('Analytics load error:', err);
-      } finally {
-        setAnalyticsLoading(false);
-      }
-    };
-    loadAnalytics();
-  }, [business?.id]);
+  }, [business?.id, loadDashboardData, loadAnalytics]);
 
   // Supabase Realtime subscription
   useEffect(() => {
@@ -150,9 +152,10 @@ export default function Dashboard() {
             createdAt: newOrder?.created_at || newOrder?.createdAt || new Date()?.toISOString(),
           };
 
-          // Refrescar lista completa para que el nuevo pedido aparezca con ítems (no solo payload mínimo)
+          // Refrescar lista de pedidos y todas las analíticas para que el dashboard refleje el nuevo pedido
           const { data: ordersData } = await getOrders(business?.id);
           if (ordersData) setOrders(ordersData);
+          loadAnalytics();
 
           setLiveOrderCount(prev => (prev !== null ? prev + 1 : null));
           setNewOrderIds(prev => new Set([...prev, mappedOrder?.id]));
@@ -185,7 +188,7 @@ export default function Dashboard() {
       channelRef.current = null;
       setRealtimeStatus('disconnected');
     };
-  }, [business?.id]);
+  }, [business?.id, loadAnalytics]);
 
   const handleDismissToast = useCallback((id) => {
     setNewOrderToasts(prev => prev?.filter(t => t?.id !== id));

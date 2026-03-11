@@ -1,5 +1,7 @@
 import React from 'react';
 import Icon from 'components/AppIcon';
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
 import { formatCLP } from '../../../utils/formatCLP';
 
 const STATUS_CONFIG = {
@@ -21,7 +23,7 @@ function timeAgo(dateStr) {
 }
 
 export default function ActivityFeed({ orders = [], loading = false, newOrderIds = new Set() }) {
-  const recentOrders = orders?.slice(0, 6) ?? [];
+  const recentOrders = orders?.slice(0, 10) ?? [];
 
   return (
     <div className="rounded-xl border p-5" style={{ backgroundColor: 'var(--color-card)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-sm)' }}>
@@ -33,7 +35,7 @@ export default function ActivityFeed({ orders = [], loading = false, newOrderIds
           <h3 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>Actividad reciente</h3>
         </div>
         {recentOrders?.length > 0 && (
-          <span className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>{recentOrders?.length} pedidos</span>
+          <span className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Últimos {recentOrders?.length} pedidos</span>
         )}
       </div>
       {loading ? (
@@ -75,7 +77,13 @@ export default function ActivityFeed({ orders = [], loading = false, newOrderIds
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>{order?.customerName}</p>
-                  <p className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>{formatCLP(order?.totalAmount)} · {timeAgo(order?.createdAt)}</p>
+                  <p className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                    {formatCLP(order?.totalAmount)}
+                    {order?.createdAt && (
+                      <> · {format(new Date(order.createdAt), "d MMM yyyy, HH:mm", { locale: es })}</>
+                    )}
+                    {order?.createdAt && <span className="opacity-75"> · {timeAgo(order.createdAt)}</span>}
+                  </p>
                 </div>
                 <span className="text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0" style={{ backgroundColor: isNew ? 'rgba(16,185,129,0.1)' : cfg?.bg, color: isNew ? '#059669' : cfg?.color, fontFamily: 'var(--font-caption)' }}>
                   {isNew ? '¡Nuevo!' : cfg?.label}
