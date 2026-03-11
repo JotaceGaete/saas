@@ -3,10 +3,13 @@ import Icon from 'components/AppIcon';
 import { formatCLP } from '../../../utils/formatCLP';
 
 const STATUS_CONFIG = {
-  pending:   { label: 'Pendiente',  color: '#F59E0B', bg: 'rgba(245,158,11,0.1)',  icon: 'Clock' },
-  confirmed: { label: 'Confirmado', color: '#7C3AED', bg: 'rgba(124,58,237,0.1)', icon: 'CheckCircle' },
-  completed: { label: 'Completado', color: '#10B981', bg: 'rgba(16,185,129,0.1)', icon: 'CheckCircle2' },
-  cancelled: { label: 'Cancelado',  color: '#EF4444', bg: 'rgba(239,68,68,0.1)',  icon: 'XCircle' },
+  pedido:         { label: 'Pedido',         color: '#6366F1', bg: 'rgba(99,102,241,0.1)',  icon: 'ShoppingBag' },
+  en_preparacion: { label: 'En preparación',  color: '#F59E0B', bg: 'rgba(245,158,11,0.1)',  icon: 'ChefHat' },
+  enviado:        { label: 'Enviado',        color: '#0EA5E9', bg: 'rgba(14,165,233,0.1)',  icon: 'Truck' },
+  entregado:      { label: 'Entregado',      color: '#10B981', bg: 'rgba(16,185,129,0.1)',  icon: 'PackageCheck' },
+  cancelado:      { label: 'Cancelado',      color: '#6B7280', bg: 'rgba(107,114,128,0.1)',  icon: 'XCircle' },
+  pending:        { label: 'Pedido',         color: '#6366F1', bg: 'rgba(99,102,241,0.1)',   icon: 'ShoppingBag' },
+  new:            { label: 'Pedido',         color: '#6366F1', bg: 'rgba(99,102,241,0.1)',   icon: 'ShoppingBag' },
 };
 
 function timeAgo(dateStr) {

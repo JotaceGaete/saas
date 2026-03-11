@@ -10,18 +10,32 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import PrintOrderModal from './components/PrintOrderModal';
 import { formatCLP } from '../../utils/formatCLP';
+import OrderDetailDrawer from './components/OrderDetailDrawer';
 
 const ORDER_STATUSES = [
-  { key: 'new',       label: 'Nuevo',       color: '#6366F1', bg: '#EEF2FF', icon: 'Sparkles' },
-  { key: 'confirmed', label: 'Confirmado',  color: '#0EA5E9', bg: '#E0F2FE', icon: 'CheckCircle' },
-  { key: 'preparing', label: 'Preparando',  color: '#F59E0B', bg: '#FEF3C7', icon: 'ChefHat' },
-  { key: 'completed', label: 'Completado',  color: '#10B981', bg: '#D1FAE5', icon: 'PackageCheck' },
+  { key: 'pedido',        label: 'Pedido',        color: '#6366F1', bg: '#EEF2FF', icon: 'ShoppingBag' },
+  { key: 'en_preparacion', label: 'En preparación', color: '#F59E0B', bg: '#FEF3C7', icon: 'ChefHat' },
+  { key: 'enviado',       label: 'Enviado',       color: '#0EA5E9', bg: '#E0F2FE', icon: 'Truck' },
+  { key: 'entregado',     label: 'Entregado',     color: '#10B981', bg: '#D1FAE5', icon: 'PackageCheck' },
+  { key: 'cancelado',     label: 'Cancelado',     color: '#6B7280', bg: '#F3F4F6', icon: 'XCircle' },
+];
+
+const PAYMENT_STATUSES = [
+  { key: 'pendiente', label: 'Pendiente', color: '#F59E0B', bg: '#FEF3C7', icon: 'Clock' },
+  { key: 'pagado',    label: 'Pagado',    color: '#10B981', bg: '#D1FAE5', icon: 'DollarSign' },
+  { key: 'anulado',   label: 'Anulado',   color: '#6B7280', bg: '#F3F4F6', icon: 'XCircle' },
 ];
 
 const STATUS_MAP = Object.fromEntries(ORDER_STATUSES?.map(s => [s?.key, s]));
+const PAYMENT_STATUS_MAP = Object.fromEntries(PAYMENT_STATUSES?.map(s => [s?.key, s]));
+
+function orderShortId(id) {
+  if (!id) return '—';
+  return String(id).slice(0, 8).toUpperCase();
+}
 
 function StatusBadge({ status }) {
-  const s = STATUS_MAP?.[status] || STATUS_MAP?.new;
+  const s = STATUS_MAP?.[status] || STATUS_MAP?.pedido;
   return (
     <span
       className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold"
@@ -94,7 +108,81 @@ function StatusDropdown({ currentStatus, orderId, onUpdate }) {
   );
 }
 
-function OrderCard({ order, onUpdate, businessName }) {
+function PaymentStatusBadge({ paymentStatus }) {
+  const s = PAYMENT_STATUS_MAP?.[paymentStatus] || PAYMENT_STATUS_MAP?.pendiente;
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold"
+      style={{ color: s?.color, backgroundColor: s?.bg }}
+    >
+      <Icon name={s?.icon} size={11} />
+      {s?.label}
+    </span>
+  );
+}
+
+function PaymentStatusDropdown({ currentPaymentStatus, orderId, onUpdate }) {
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const handleSelect = async (key) => {
+    if (key === currentPaymentStatus) { setOpen(false); return; }
+    setSaving(true);
+    setOpen(false);
+    await onUpdate(orderId, { paymentStatus: key });
+    setSaving(false);
+  };
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen(o => !o)}
+        disabled={saving}
+        className="flex items-center gap-1.5 transition-all duration-150 hover:opacity-80 active:scale-95 disabled:opacity-50"
+      >
+        <PaymentStatusBadge paymentStatus={currentPaymentStatus} />
+        {saving
+          ? <div className="w-3 h-3 border border-t-transparent rounded-full animate-spin" style={{ borderColor: 'var(--color-primary)' }} />
+          : <Icon name="ChevronDown" size={12} color="var(--color-muted-foreground)" />
+        }
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div
+            className="absolute left-0 top-full mt-1.5 z-20 rounded-xl border overflow-hidden"
+            style={{
+              backgroundColor: '#fff',
+              borderColor: 'var(--color-border)',
+              boxShadow: 'var(--shadow-lg)',
+              minWidth: '140px',
+            }}
+          >
+            {PAYMENT_STATUSES?.map(s => (
+              <button
+                key={s?.key}
+                onClick={() => handleSelect(s?.key)}
+                className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-sm hover:bg-muted transition-colors"
+                style={{ fontFamily: 'var(--font-caption)' }}
+              >
+                <span
+                  className="w-2 h-2 rounded-full flex-shrink-0"
+                  style={{ backgroundColor: s?.color }}
+                />
+                <span className={currentPaymentStatus === s?.key ? 'font-semibold text-foreground' : 'text-muted-foreground'}>
+                  {s?.label}
+                </span>
+                {currentPaymentStatus === s?.key && <Icon name="Check" size={12} color={s?.color} className="ml-auto" />}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function OrderCard({ order, onUpdate, businessName, onOpenDetail }) {
   const [notesOpen, setNotesOpen] = useState(false);
   const [noteText, setNoteText] = useState(order?.internalNotes || '');
   const [savingNote, setSavingNote] = useState(false);
@@ -130,6 +218,9 @@ function OrderCard({ order, onUpdate, businessName }) {
             {order?.customerName?.charAt(0)?.toUpperCase() || '?'}
           </div>
           <div className="min-w-0">
+            <p className="text-xs font-medium mb-0.5" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+              #{orderShortId(order?.id)}
+            </p>
             <p className="font-semibold text-sm text-foreground truncate" style={{ fontFamily: 'var(--font-heading)' }}>
               {order?.customerName || 'Sin nombre'}
             </p>
@@ -150,7 +241,21 @@ function OrderCard({ order, onUpdate, businessName }) {
           </div>
         </div>
         <div className="flex flex-col items-end gap-2 flex-shrink-0">
-          <StatusDropdown currentStatus={order?.status || 'new'} orderId={order?.id} onUpdate={onUpdate} />
+          <div className="flex flex-wrap items-center gap-2 justify-end">
+            <StatusDropdown currentStatus={order?.status || 'pedido'} orderId={order?.id} onUpdate={onUpdate} />
+            <PaymentStatusDropdown currentPaymentStatus={order?.paymentStatus || 'pendiente'} orderId={order?.id} onUpdate={onUpdate} />
+          </div>
+          {(order?.paymentStatus || 'pendiente') !== 'pagado' && (
+            <button
+              type="button"
+              onClick={() => onUpdate(order?.id, { paymentStatus: 'pagado' })}
+              className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg transition-all hover:opacity-90"
+              style={{ backgroundColor: 'rgba(16,185,129,0.12)', color: '#059669', fontFamily: 'var(--font-caption)' }}
+            >
+              <Icon name="DollarSign" size={12} />
+              Marcar como pagado
+            </button>
+          )}
           <span className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
             {formattedDate}
           </span>
@@ -197,14 +302,24 @@ function OrderCard({ order, onUpdate, businessName }) {
           <Icon name="StickyNote" size={13} />
           {order?.internalNotes ? 'Ver nota interna' : 'Agregar nota interna'}
         </button>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {onOpenDetail && (
+            <button
+              onClick={() => onOpenDetail(order)}
+              className="flex items-center gap-1.5 text-xs font-medium transition-all hover:opacity-80 active:scale-95 px-2.5 py-1.5 rounded-lg border"
+              style={{ borderColor: 'var(--color-border)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
+            >
+              <Icon name="Eye" size={12} />
+              Ver detalle
+            </button>
+          )}
           <button
             onClick={() => setShowPrint(true)}
             className="flex items-center gap-1.5 text-xs font-medium transition-all hover:opacity-80 active:scale-95 px-2.5 py-1.5 rounded-lg"
             style={{ color: 'var(--color-primary)', backgroundColor: 'rgba(124,58,237,0.08)', fontFamily: 'var(--font-caption)' }}
           >
             <Icon name="Printer" size={12} color="var(--color-primary)" />
-            Imprimir pedido
+            Imprimir
           </button>
           <span className="text-sm font-bold" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-heading)' }}>
             Total: {formatCLP(order?.totalAmount)}
@@ -267,6 +382,7 @@ export default function OrdersPage() {
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [detailOrder, setDetailOrder] = useState(null);
 
   const isDesktop = useIsDesktop();
   const sidebarWidth = sidebarCollapsed ? 'var(--sidebar-collapsed-width)' : 'var(--sidebar-width)';
@@ -319,20 +435,23 @@ export default function OrdersPage() {
       setOrders(prev => prev?.map(o =>
         o?.id === orderId ? { ...o, ...updates } : o
       ));
+      if (detailOrder?.id === orderId) setDetailOrder(prev => prev ? { ...prev, ...updates } : null);
     }
-  }, [toast]);
+  }, [toast, detailOrder?.id]);
 
   const filteredOrders = orders?.filter(o => {
-    const matchStatus = filterStatus === 'all' || (o?.status || 'new') === filterStatus;
-    const q = searchQuery?.toLowerCase();
+    const status = o?.status || 'pedido';
+    const matchStatus = filterStatus === 'all' || status === filterStatus;
+    const q = searchQuery?.toLowerCase()?.trim();
     const matchSearch = !q ||
       o?.customerName?.toLowerCase()?.includes(q) ||
-      o?.customerPhone?.toLowerCase()?.includes(q) ||
+      (o?.customerPhone && String(o.customerPhone).toLowerCase().includes(q)) ||
+      (o?.id && String(o.id).toLowerCase().includes(q)) ||
       o?.items?.some(i => i?.productName?.toLowerCase()?.includes(q));
     return matchStatus && matchSearch;
   });
 
-  const countByStatus = (key) => orders?.filter(o => (o?.status || 'new') === key)?.length;
+  const countByStatus = (key) => orders?.filter(o => (o?.status || 'pedido') === key)?.length;
 
   if (businessLoading) {
     return (
@@ -379,7 +498,26 @@ export default function OrdersPage() {
           </div>
 
           {/* Status summary strip */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+            <button
+              onClick={() => setFilterStatus('all')}
+              className="rounded-xl border p-3.5 text-left transition-all duration-150 hover:shadow-sm active:scale-[0.98]"
+              style={{
+                borderColor: filterStatus === 'all' ? 'var(--color-primary)' : 'var(--color-border)',
+                backgroundColor: filterStatus === 'all' ? 'rgba(124,58,237,0.08)' : '#fff',
+                boxShadow: filterStatus === 'all' ? '0 0 0 1px var(--color-primary)' : 'var(--shadow-xs)',
+              }}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <Icon name="LayoutGrid" size={18} color="var(--color-primary)" />
+                <span className="text-xl font-bold" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-heading)' }}>
+                  {orders?.length ?? 0}
+                </span>
+              </div>
+              <p className="text-xs font-semibold" style={{ color: filterStatus === 'all' ? 'var(--color-primary)' : 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                Todos
+              </p>
+            </button>
             {ORDER_STATUSES?.map(s => (
               <button
                 key={s?.key}
@@ -497,9 +635,25 @@ export default function OrdersPage() {
                   order={order}
                   onUpdate={handleUpdate}
                   businessName={business?.name}
+                  onOpenDetail={setDetailOrder}
                 />
               ))}
             </div>
+          )}
+
+          {detailOrder && (
+            <OrderDetailDrawer
+              order={detailOrder}
+              businessName={business?.name}
+              onClose={() => setDetailOrder(null)}
+              onUpdate={handleUpdate}
+              statusOptions={ORDER_STATUSES}
+              paymentStatusOptions={PAYMENT_STATUSES}
+              StatusBadge={StatusBadge}
+              PaymentStatusBadge={PaymentStatusBadge}
+              formatCLP={formatCLP}
+              orderShortId={orderShortId}
+            />
           )}
         </div>
       </main>

@@ -80,13 +80,20 @@ const mapProductFromDb = (row) => {
   };
 };
 
+const ORDER_STATUS_VALID = ['pedido', 'en_preparacion', 'enviado', 'entregado', 'cancelado'];
+const PAYMENT_STATUS_VALID = ['pendiente', 'pagado', 'anulado'];
+
 const mapOrderFromDb = (row) => ({
   id: row?.id,
   businessId: row?.business_id,
   customerName: row?.customer_name,
   customerPhone: row?.customer_phone,
+  customerEmail: row?.customer_email ?? null,
   totalAmount: parseFloat(row?.total_amount),
-  status: row?.status || 'new',
+  subtotal: row?.subtotal != null ? parseFloat(row?.subtotal) : null,
+  currency: row?.currency ?? 'CLP',
+  status: ORDER_STATUS_VALID.includes(row?.order_status) ? row?.order_status : 'pedido',
+  paymentStatus: PAYMENT_STATUS_VALID.includes(row?.payment_status) ? row?.payment_status : 'pendiente',
   notes: row?.notes,
   internalNotes: row?.internal_notes,
   items: (row?.wa_order_items || [])?.map(item => ({
@@ -97,6 +104,7 @@ const mapOrderFromDb = (row) => ({
     productPrice: parseFloat(item?.product_price),
     quantity: item?.quantity,
     subtotal: parseFloat(item?.subtotal),
+    selectedOptions: item?.selected_options ?? [],
   })),
   createdAt: row?.created_at,
   updatedAt: row?.updated_at,
@@ -338,19 +346,46 @@ export const uploadProductImage = async (file, businessId, productId) => {
 
 // wa_orders
 
-export const getOrders = async (businessId) => {
+export const getOrders = async (businessId, opts = {}) => {
+  if (!businessId) return { data: [], error: null };
+  let q = supabase
+    ?.from('wa_orders')
+    ?.select('*, wa_order_items(*)', { count: opts.countOnly ? 'exact' : undefined })
+    ?.eq('business_id', businessId)
+    ?.order('created_at', { ascending: false });
+  if (opts.status && opts.status !== 'all') q = q?.eq('order_status', opts.status);
+  if (opts.search?.trim()) {
+    const s = opts.search.trim();
+    q = q?.or(`customer_name.ilike.%${s}%,customer_phone.ilike.%${s}%,id.ilike.%${s}%`);
+  }
+  if (opts.limit) q = q?.limit(opts.limit);
+  if (opts.offset) q = q?.range(opts.offset, opts.offset + (opts.limit || 50) - 1);
+  const { data, error, count } = await q;
+  if (error) return { data: null, error, total: 0 };
+  return { data: (data || [])?.map(mapOrderFromDb), error: null, total: count ?? (data?.length ?? 0) };
+};
+
+export const getOrderById = async (orderId) => {
+  if (!orderId) return { data: null, error: { message: 'orderId required' } };
   const { data, error } = await supabase
     ?.from('wa_orders')
     ?.select('*, wa_order_items(*)')
-    ?.eq('business_id', businessId)
-    ?.order('created_at', { ascending: false });
+    ?.eq('id', orderId)
+    ?.maybeSingle();
   if (error) return { data: null, error };
-  return { data: (data || [])?.map(mapOrderFromDb), error: null };
+  return { data: data ? mapOrderFromDb(data) : null, error: null };
 };
 
 export const updateOrder = async (orderId, updates) => {
   const dbUpdates = {};
-  if (updates?.status !== undefined)        dbUpdates.status = updates?.status;
+  if (updates?.status !== undefined) {
+    const s = updates?.status;
+    if (ORDER_STATUS_VALID.includes(s)) dbUpdates.order_status = s;
+  }
+  if (updates?.paymentStatus !== undefined) {
+    const p = updates?.paymentStatus;
+    if (PAYMENT_STATUS_VALID.includes(p)) dbUpdates.payment_status = p;
+  }
   if (updates?.notes !== undefined)         dbUpdates.notes = updates?.notes;
   if (updates?.internalNotes !== undefined) dbUpdates.internal_notes = updates?.internalNotes;
   const { data, error } = await supabase?.from('wa_orders')?.update(dbUpdates)?.eq('id', orderId)?.select()?.single();
@@ -359,23 +394,29 @@ export const updateOrder = async (orderId, updates) => {
 };
 
 export const createOrder = async (businessId, orderData, items) => {
+  const totalAmount = Number(orderData?.totalAmount) || 0;
   const { data: order, error: orderError } = await supabase?.from('wa_orders')?.insert({
       business_id: businessId,
-      customer_name: orderData?.customerName || null,
-      customer_phone: orderData?.customerPhone || null,
-      total_amount: orderData?.totalAmount || 0,
-      status: 'new',
-      notes: orderData?.notes || null,
+      customer_name: (orderData?.customerName || '').trim() || null,
+      customer_phone: orderData?.customerPhone?.trim() || null,
+      customer_email: orderData?.customerEmail?.trim() || null,
+      total_amount: totalAmount,
+      subtotal: orderData?.subtotal != null ? Number(orderData.subtotal) : totalAmount,
+      currency: orderData?.currency || 'CLP',
+      order_status: 'pedido',
+      payment_status: 'pendiente',
+      notes: orderData?.notes?.trim() || null,
     })?.select()?.single();
   if (orderError) return { data: null, error: orderError };
   if (items?.length > 0) {
     const itemRows = items?.map(item => ({
       order_id: order?.id,
       product_id: item?.productId || null,
-      product_name: item?.productName,
-      product_price: item?.productPrice,
-      quantity: item?.quantity,
-      subtotal: item?.subtotal,
+      product_name: item?.productName || '',
+      product_price: Number(item?.productPrice) || 0,
+      quantity: Math.max(1, parseInt(item?.quantity, 10) || 1),
+      subtotal: Number(item?.subtotal) || 0,
+      selected_options: item?.selectedOptions ?? [],
     }));
     const { error: itemsError } = await supabase?.from('wa_order_items')?.insert(itemRows);
     if (itemsError) return { data: null, error: itemsError };
@@ -447,6 +488,7 @@ export const getTopProducts = async (businessId, limit = 5) => {
   return { data: sorted, error: null };
 };
 
+/** Ingresos del mes: solo pedidos con payment_status = 'pagado' y created_at en el mes actual */
 export const getMonthlyRevenue = async (businessId) => {
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)?.toISOString();
@@ -454,12 +496,131 @@ export const getMonthlyRevenue = async (businessId) => {
     ?.from('wa_orders')
     ?.select('total_amount')
     ?.eq('business_id', businessId)
+    ?.eq('payment_status', 'pagado')
     ?.gte('created_at', startOfMonth);
   if (error) return { data: null, error };
   const total = (data || [])?.reduce((sum, row) => sum + (parseFloat(row?.total_amount) || 0), 0);
   const count = (data || [])?.length;
   return { data: { total, count }, error: null };
 };
+
+/** Estadísticas de pedidos del negocio: totales, últimos 7/30 días, ingresos mes, por estado */
+export const getBusinessOrderStats = async (businessId) => {
+  if (!businessId) return { data: null, error: null };
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+  const sevenDaysAgo = new Date(now);
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  const thirtyDaysAgo = new Date(now);
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+  const [allRes, paidMonthRes, byStatusRes] = await Promise.all([
+    supabase?.from('wa_orders')?.select('id, created_at, order_status, payment_status, total_amount')?.eq('business_id', businessId),
+    supabase?.from('wa_orders')?.select('total_amount')?.eq('business_id', businessId)?.eq('payment_status', 'pagado')?.gte('created_at', startOfMonth),
+    supabase?.from('wa_orders')?.select('order_status')?.eq('business_id', businessId),
+  ]);
+
+  if (allRes?.error) return { data: null, error: allRes.error };
+  const orders = allRes?.data || [];
+  const totalOrders = orders.length;
+  const last7 = orders.filter(o => new Date(o?.created_at) >= sevenDaysAgo).length;
+  const last30 = orders.filter(o => new Date(o?.created_at) >= thirtyDaysAgo).length;
+  const monthlyRevenue = (paidMonthRes?.data || []).reduce((s, r) => s + (parseFloat(r?.total_amount) || 0), 0);
+  const byStatus = {};
+  (byStatusRes?.data || []).forEach(r => {
+    const st = r?.order_status || 'pedido';
+    byStatus[st] = (byStatus[st] || 0) + 1;
+  });
+
+  return {
+    data: {
+      totalOrders,
+      last7Days: last7,
+      last30Days: last30,
+      monthlyRevenue,
+      byStatus,
+    },
+    error: null,
+  };
+};
+
+// ——— Visitas al catálogo público ———
+
+const VISIT_THROTTLE_MS = 30 * 60 * 1000; // 30 min
+
+function getOrCreateVisitorId() {
+  if (typeof sessionStorage === 'undefined') return null;
+  let id = sessionStorage.getItem('wa_visitor_id');
+  if (!id) {
+    id = `v_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`;
+    sessionStorage.setItem('wa_visitor_id', id);
+  }
+  return id;
+}
+
+function shouldThrottleVisit(slug) {
+  if (typeof sessionStorage === 'undefined') return true;
+  const key = `wa_visit_${slug}`;
+  const last = sessionStorage.getItem(key);
+  if (!last) return false;
+  const t = parseInt(last, 10);
+  if (Number.isNaN(t)) return false;
+  return Date.now() - t < VISIT_THROTTLE_MS;
+}
+
+function markVisitDone(slug) {
+  if (typeof sessionStorage === 'undefined') return;
+  sessionStorage.setItem(`wa_visit_${slug}`, String(Date.now()));
+}
+
+/**
+ * Registra una visita al catálogo público. Throttle client-side: no envía si ya se registró en los últimos 30 min para este slug.
+ * @param {string} slug - Slug del negocio
+ * @param {string} [path] - Ruta actual, ej. /catalogo/mi-tienda
+ */
+export async function recordCatalogVisit(slug, path) {
+  if (!slug?.trim()) return { recorded: false, error: null };
+  if (shouldThrottleVisit(slug)) return { recorded: false, throttled: true, error: null };
+
+  const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
+  if (!supabaseUrl) return { recorded: false, error: { message: 'Missing Supabase URL' } };
+
+  const visitorId = getOrCreateVisitorId();
+  const body = { slug: slug.trim(), path: path || null, visitor_id: visitorId };
+
+  try {
+    const res = await fetch(`${supabaseUrl}/functions/v1/record-catalog-visit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data?.recorded) markVisitDone(slug);
+    return { recorded: !!data?.recorded, throttled: data?.reason === 'throttled', error: res.ok ? null : (data?.error || { message: res.statusText }) };
+  } catch (err) {
+    return { recorded: false, error: { message: err?.message || 'Network error' } };
+  }
+}
+
+/**
+ * Estadísticas de visitas al catálogo del negocio (solo dueño).
+ * @returns {{ data: { totalVisits, visits30d, visits7d, visitsToday } | null, error }}
+ */
+export async function getBusinessVisitStats(businessId) {
+  if (!businessId) return { data: null, error: null };
+  const { data, error } = await supabase?.rpc('wa_get_business_visit_stats', { p_business_id: businessId });
+  if (error) return { data: null, error };
+  if (data?.error) return { data: null, error: { message: data.error } };
+  return {
+    data: {
+      totalVisits: data?.totalVisits ?? 0,
+      visits30d: data?.visits30d ?? 0,
+      visits7d: data?.visits7d ?? 0,
+      visitsToday: data?.visitsToday ?? 0,
+    },
+    error: null,
+  };
+}
 
 // ——— Admin panel ———
 

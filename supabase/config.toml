@@ -14,3 +14,7 @@ verify_jwt = false
 # Aplica downgrades programados; puede llamarse con JWT o service_role (cron).
 [functions.apply-scheduled-plan-changes]
 verify_jwt = false
+
+# Registro de visitas al catálogo público; sin JWT (llamado desde catálogo anónimo).
+[functions.record-catalog-visit]
+verify_jwt = false

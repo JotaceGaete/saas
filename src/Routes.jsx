@@ -15,6 +15,7 @@ import OrderConfirmation from './pages/order-confirmation';
 import Orders from './pages/orders';
 import Login from './pages/login';
 import AdminDashboard from './pages/admin';
+import AdminPaymentsPage from './pages/admin/AdminPaymentsPage';
 import PlansPage from './pages/plans';
 
 const Routes = () => {
@@ -40,6 +41,7 @@ const Routes = () => {
         <Route path="/catalogo/:slug" element={<PublicCatalog />} />
         <Route path="/catalogo/:slug/checkout" element={<OrderConfirmation />} />
         <Route path="/admin" element={<RequireAdmin><AdminDashboard /></RequireAdmin>} />
+        <Route path="/admin/payments" element={<RequireAdmin><AdminPaymentsPage /></RequireAdmin>} />
         <Route path="*" element={<NotFound />} />
       </RouterRoutes>
       </ErrorBoundary>

@@ -82,6 +82,12 @@ Deno.serve(async (req) => {
   if (existingEvents && existingEvents.length > 0) {
     console.log('[mp-webhook] idempotency: mp_payment_id', dataId,
       'ya procesado como approved en', existingEvents[0].processed_at);
+    await db.from('wa_admin_notifications').insert({
+      type:    'duplicate_ignored',
+      title:   'Pago duplicado ignorado',
+      body:    `mp_payment_id ${dataId} ya estaba procesado como approved.`,
+      payload: { mp_payment_id: dataId },
+    }).then(() => {}, () => {});
     return jsonResponse({ ok: true, ignored: true, reason: 'already_processed' }, 200);
   }
 
@@ -105,6 +111,12 @@ Deno.serve(async (req) => {
       mp_status:     `mp_api_error_${mpRes.status}`,
       raw_payload:   body as Record<string, unknown>,
     });
+    await db.from('wa_admin_notifications').insert({
+      type:    'webhook_error',
+      title:   'Webhook MP con error',
+      body:    `GET payment/${dataId} devolvió ${mpRes.status}.`,
+      payload: { mp_payment_id: dataId, mp_status: mpRes.status },
+    }).then(() => {}, () => {});
     return jsonResponse({ ok: true, ignored: true, reason: 'mp_api_error' }, 200);
   }
 

@@ -11,7 +11,7 @@ import GettingStartedSection from "./components/GettingStartedSection";
 import NewOrderToast from "./components/NewOrderToast";
 import NotificationBell from "./components/NotificationBell";
 import { useAuth } from "../../contexts/AuthContext";
-import { getProducts, getOrders, getOrdersByDay, getTopProducts, getMonthlyRevenue } from "../../services/waBusinessService";
+import { getProducts, getOrders, getOrdersByDay, getTopProducts, getMonthlyRevenue, getBusinessVisitStats } from "../../services/waBusinessService";
 import { supabase } from "../../lib/supabase";
 import { getAppBaseUrl } from "../../config/appUrl";
 import OrdersByDayCard from "./components/OrdersByDayCard";
@@ -31,6 +31,7 @@ export default function Dashboard() {
   const [ordersByDay, setOrdersByDay] = useState([]);
   const [topProducts, setTopProducts] = useState([]);
   const [monthlyRevenue, setMonthlyRevenue] = useState(null);
+  const [visitStats, setVisitStats] = useState(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(true);
 
   // Realtime state
@@ -91,7 +92,10 @@ export default function Dashboard() {
   useEffect(() => {
     if (!business?.id) return;
     const onVisible = () => {
-      if (document.visibilityState === 'visible') loadDashboardData();
+      if (document.visibilityState === 'visible') {
+        loadDashboardData();
+        getBusinessVisitStats(business.id).then(({ data }) => { if (data) setVisitStats(data); });
+      }
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
@@ -102,14 +106,16 @@ export default function Dashboard() {
     const loadAnalytics = async () => {
       setAnalyticsLoading(true);
       try {
-        const [dayRes, topRes, revRes] = await Promise.all([
+        const [dayRes, topRes, revRes, visitRes] = await Promise.all([
           getOrdersByDay(business?.id, 7),
           getTopProducts(business?.id, 5),
           getMonthlyRevenue(business?.id),
+          getBusinessVisitStats(business?.id),
         ]);
         setOrdersByDay(dayRes?.data || []);
         setTopProducts(topRes?.data || []);
         setMonthlyRevenue(revRes?.data || null);
+        setVisitStats(visitRes?.data ?? null);
       } catch (err) {
         console.error('Analytics load error:', err);
       } finally {
@@ -140,7 +146,7 @@ export default function Dashboard() {
             id: newOrder?.id,
             customerName: newOrder?.customer_name || newOrder?.customerName || '',
             totalAmount: newOrder?.total_amount ?? newOrder?.totalAmount ?? 0,
-            status: newOrder?.status || 'new',
+            status: newOrder?.order_status || newOrder?.status || 'pedido',
             createdAt: newOrder?.created_at || newOrder?.createdAt || new Date()?.toISOString(),
           };
 
@@ -198,10 +204,23 @@ export default function Dashboard() {
 
   const displayOrderCount = liveOrderCount !== null ? liveOrderCount : recentOrders;
 
+  const visits30d = visitStats?.visits30d ?? 0;
+  const visitsToday = visitStats?.visitsToday ?? 0;
+  const visits7d = visitStats?.visits7d ?? 0;
+  const totalVisits = visitStats?.totalVisits ?? 0;
+  const hasAnyVisits = totalVisits > 0;
+
   const METRICS = [
     { title: 'Total productos', value: dataLoading ? '...' : String(products?.length ?? 0), subtitle: dataLoading ? 'Cargando...' : `${activeProducts} activos · ${inactiveProducts} inactivos`, iconName: 'Package', trend: 'up', trendValue: `${activeProducts} activos` },
     { title: 'Pedidos recientes', value: dataLoading ? '...' : String(displayOrderCount), subtitle: 'Últimos 30 días', iconName: 'ShoppingCart', trend: 'up', trendValue: `${orders?.length ?? 0} total` },
-    { title: 'Visitas al catálogo', value: '—', subtitle: 'Próximamente', iconName: 'Eye', trend: 'up', trendValue: 'Analytics en camino' },
+    {
+      title: 'Visitas al catálogo',
+      value: analyticsLoading ? '...' : String(visits30d),
+      subtitle: hasAnyVisits ? 'Últimos 30 días' : 'Sin visitas aún',
+      iconName: 'Eye',
+      trend: hasAnyVisits ? 'up' : null,
+      trendValue: hasAnyVisits ? `+${visitsToday} hoy${visits7d > 0 ? ` · ${visits7d} en 7 días` : ''}` : '',
+    },
   ];
 
   const handleCopy = () => {

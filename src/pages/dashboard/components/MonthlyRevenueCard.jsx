@@ -29,7 +29,7 @@ export default function MonthlyRevenueCard({ data, loading }) {
           {formatCLP(total)}
         </p>
         <p className="text-xs mt-1.5" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-          {monthName} · {count} pedido{count !== 1 ? 's' : ''}
+          {monthName} · {count} pedido{count !== 1 ? 's' : ''} pagado{count !== 1 ? 's' : ''}
         </p>
       </div>
 

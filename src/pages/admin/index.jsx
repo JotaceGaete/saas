@@ -62,9 +62,20 @@ export default function AdminDashboard() {
           )}
 
           <section className="mb-8">
-            <h2 className="text-base font-bold mb-3" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>
-              Estadísticas
-            </h2>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>
+                Estadísticas
+              </h2>
+              <button
+                type="button"
+                onClick={() => navigate('/admin/payments')}
+                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-opacity hover:opacity-90"
+                style={{ color: 'var(--color-primary)', border: '1px solid var(--color-primary)', fontFamily: 'var(--font-caption)' }}
+              >
+                <Icon name="CreditCard" size={14} color="var(--color-primary)" />
+                Pagos y Suscripciones
+              </button>
+            </div>
             {loading ? (
               <div className="flex gap-3 flex-wrap">
                 {[1, 2, 3].map((i) => (

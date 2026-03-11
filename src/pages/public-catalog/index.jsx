@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
-import { getBusinessBySlug, getPublicProducts, getCategoriesByRubroId } from '../../services/waBusinessService';
+import { getBusinessBySlug, getPublicProducts, getCategoriesByRubroId, recordCatalogVisit } from '../../services/waBusinessService';
 import Icon from '../../components/AppIcon';
 import { CartProvider, useCart } from '../../contexts/CartContext';
 import { formatCLP } from '../../utils/formatCLP';
@@ -79,6 +79,8 @@ function CatalogInner({ slug }) {
     const { data: biz, error: bizErr } = await getBusinessBySlug(slug);
     if (bizErr || !biz) { setNotFound(true); setLoading(false); return; }
     setBusiness(biz);
+    const path = typeof window !== 'undefined' ? window.location?.pathname || `/catalogo/${slug}` : `/catalogo/${slug}`;
+    recordCatalogVisit(slug, path).catch(() => {});
     const { data: prods } = await getPublicProducts(biz?.id);
     const loadedProducts = prods || [];
     setProducts(loadedProducts);
