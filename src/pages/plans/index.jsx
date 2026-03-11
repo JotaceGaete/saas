@@ -69,7 +69,6 @@ export default function PlansPage() {
         origin: baseUrl,
       };
       const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
-      const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
       const functionUrl = `${supabaseUrl}/functions/v1/create-mp-preference`;
       const res = await fetch(functionUrl, {
         method: 'POST',
