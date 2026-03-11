@@ -135,14 +135,28 @@ Deno.serve(async (req) => {
   const planExpiresAt = expiresAt.toISOString();
 
   const supabase = createClient(supabaseUrl, serviceRoleKey);
-  const { error } = await supabase
+
+  let updatePayload: { plan_slug: string; plan_expires_at?: string } = { plan_slug: planSlug, plan_expires_at: planExpiresAt };
+  let { error } = await supabase
     .from('wa_businesses')
-    .update({ plan_slug: planSlug, plan_expires_at: planExpiresAt })
+    .update(updatePayload)
     .eq('id', businessId);
 
   if (error) {
-    console.error('[mp-webhook] Update plan_slug failed:', error);
-    return jsonResponse({ ok: false, error: 'Database update failed' }, 500);
+    const isPlanExpiresAtMissing =
+      error?.message?.includes('plan_expires_at') || error?.code === 'PGRST204';
+    if (isPlanExpiresAtMissing) {
+      console.log('[mp-webhook] plan_expires_at column missing or schema cache stale, updating only plan_slug');
+      updatePayload = { plan_slug: planSlug };
+      const retry = await supabase.from('wa_businesses').update(updatePayload).eq('id', businessId);
+      if (retry.error) {
+        console.error('[mp-webhook] Update plan_slug failed:', retry.error);
+        return jsonResponse({ ok: false, error: 'Database update failed' }, 500);
+      }
+    } else {
+      console.error('[mp-webhook] Update plan_slug failed:', error);
+      return jsonResponse({ ok: false, error: 'Database update failed' }, 500);
+    }
   }
 
   console.log('[mp-webhook] payment_approved', {

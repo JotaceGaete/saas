@@ -11,7 +11,7 @@ import { PLAN_SLUGS, getPlanLimits, getPlanLabel, getPlanPrice } from '../../con
 export default function PlansPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { business, businessLoading, refreshBusiness } = useAuth();
+  const { user, business, businessLoading, refreshBusiness } = useAuth();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [paymentMessage, setPaymentMessage] = useState(null);
   const [loadingPlanSlug, setLoadingPlanSlug] = useState(null);
@@ -45,16 +45,15 @@ export default function PlansPage() {
         setPaymentMessage({ type: 'error', text: 'Debes iniciar sesión para contratar un plan.' });
         return;
       }
+      // Logs antes de create-mp-preference (no enviamos businessId; la función resuelve por auth)
+      console.log('[plans] auth.user.id:', user?.id ?? session?.user?.id);
+      console.log('[plans] myBusiness.id:', business?.id);
+      console.log('[plans] myBusiness.user_id:', business?.userId);
+      console.log('[plans] planSlug (antes de create-mp-preference):', planSlug);
+
       const token = session.access_token;
-      const tokenPreview = token.length >= 12 ? `${token.slice(0, 12)}...` : '(short)';
-      const looksLikeJwt = token.split('.').length === 3;
       const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
       const isAnonKey = !!anonKey && token === anonKey;
-      console.log('[plans] before invoke: session.user.id:', session?.user?.id);
-      console.log('[plans] before invoke: session.access_token exists:', !!session?.access_token);
-      console.log('[plans] before invoke: token first 12 chars (masked):', tokenPreview);
-      console.log('[plans] before invoke: token looks like JWT (3 parts):', looksLikeJwt);
-      console.log('[plans] before invoke: token === anon key?', isAnonKey);
       if (isAnonKey) {
         setPaymentMessage({ type: 'error', text: 'Error de autenticación: token inválido.' });
         return;
@@ -226,7 +225,7 @@ export default function PlansPage() {
 
           <div className="mt-8 rounded-xl border p-4" style={{ backgroundColor: 'var(--color-muted)', borderColor: 'var(--color-border)' }}>
             <p className="text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
-              Los planes Pro y Business se pagan con Mercado Pago (mercadopago.cl). Tras el pago, tu plan se actualiza de forma automática.
+              Los planes de pago (Plan Control, Pro y Business) se pagan con Mercado Pago (mercadopago.cl). Tras el pago, tu plan se actualiza de forma automática.
             </p>
             <button
               type="button"

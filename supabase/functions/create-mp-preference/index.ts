@@ -73,13 +73,16 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: 'Plan no válido o sin precio' }, 400);
   }
 
+  // Resolver negocio solo por usuario autenticado (no confiar en body.businessId)
   const { data: business, error: bizError } = await supabase
     .from('wa_businesses')
-    .select('id')
-    .limit(1)
+    .select('id, user_id')
+    .eq('user_id', user.id)
     .maybeSingle();
 
-  console.log('[create-mp-preference] business lookup result:', business ? { id: business.id } : 'null', 'error:', bizError?.message ?? '(none)');
+  console.log('[create-mp-preference] authenticated user id:', user.id);
+  console.log('[create-mp-preference] business from wa_businesses (by user_id):', business ? { id: business.id, user_id: business.user_id } : 'null');
+  console.log('[create-mp-preference] business lookup error:', bizError?.message ?? '(none)');
 
   if (bizError) {
     console.error('[create-mp-preference] business query error:', bizError);
@@ -87,6 +90,11 @@ Deno.serve(async (req) => {
   }
   if (!business?.id) {
     return jsonResponse({ error: 'Business not found for user' }, 404);
+  }
+
+  if (business.user_id !== user.id) {
+    console.error('[create-mp-preference] 403: business does not belong to authenticated user', { businessUserId: business.user_id, authUserId: user.id });
+    return jsonResponse({ error: 'Forbidden: business does not belong to user', reason: 'ownership_mismatch' }, 403);
   }
 
   const accessToken = Deno.env.get('MP_ACCESS_TOKEN');
@@ -102,6 +110,9 @@ Deno.serve(async (req) => {
   const pendingUrl = (body?.pending_url as string) || `${base}/plans?payment=pending`;
 
   const notificationUrl = Deno.env.get('MP_WEBHOOK_URL') || '';
+  const externalReference = `${business.id}:${planSlug}`;
+  console.log('[create-mp-preference] external_reference (final):', externalReference);
+
   const preferencePayload = {
     items: [
       {
@@ -117,7 +128,7 @@ Deno.serve(async (req) => {
       pending: pendingUrl,
     },
     auto_return: 'approved' as const,
-    external_reference: `${business.id}:${planSlug}`,
+    external_reference: externalReference,
     ...(notificationUrl && { notification_url: notificationUrl }),
   };
 
