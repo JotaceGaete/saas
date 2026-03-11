@@ -40,8 +40,19 @@ export default function PlansPage() {
     setLoadingPlanSlug(planSlug);
     setPaymentMessage(null);
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        setPaymentMessage({ type: 'error', text: 'Debes iniciar sesión para contratar un plan.' });
+        navigate('/login');
+        return;
+      }
+      await supabase.auth.refreshSession();
+      const { data: { session: refreshed } } = await supabase.auth.getSession();
+      const token = refreshed?.access_token ?? session.access_token;
+
       const baseUrl = getAppBaseUrl() || window.location?.origin || '';
       const { data, error } = await supabase.functions.invoke('create-mp-preference', {
+        headers: { Authorization: `Bearer ${token}` },
         body: {
           planSlug,
           success_url: `${baseUrl}/plans?payment=success`,
@@ -58,7 +69,8 @@ export default function PlansPage() {
       }
       throw new Error('No se recibió enlace de pago');
     } catch (err) {
-      setPaymentMessage({ type: 'error', text: err?.message || 'Error al iniciar el pago con Mercado Pago.' });
+      const message = err?.message || err?.error || 'Error al iniciar el pago con Mercado Pago.';
+      setPaymentMessage({ type: 'error', text: message });
     } finally {
       setLoadingPlanSlug(null);
     }
