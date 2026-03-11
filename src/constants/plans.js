@@ -1,19 +1,21 @@
 /**
  * Planes del producto: nombres y límites numéricos.
- * starter = gratis, pro = intermedio, business = superior.
+ * starter = gratis, control = prueba MP, pro = intermedio, business = superior.
  */
 
-export const PLAN_SLUGS = Object.freeze(['starter', 'pro', 'business']);
+export const PLAN_SLUGS = Object.freeze(['starter', 'control', 'pro', 'business']);
 
 export const PLAN_LABELS = Object.freeze({
   starter: 'Starter',
+  control: 'Plan Control',
   pro: 'Pro',
   business: 'Business',
 });
 
-/** Precios en CLP (Chile). starter = gratis. */
+/** Precios en CLP (Chile). starter = gratis. control = 500 (solo pruebas MP). */
 export const PLAN_PRICES_CLP = Object.freeze({
   starter: 0,
+  control: 500,
   pro: 5000,
   business: 10000,
 });
@@ -21,6 +23,10 @@ export const PLAN_PRICES_CLP = Object.freeze({
 /** Límites por plan. null = ilimitado */
 export const PLAN_LIMITS = Object.freeze({
   starter: {
+    maxProducts: 10,
+    maxOrdersPerMonth: 30,
+  },
+  control: {
     maxProducts: 10,
     maxOrdersPerMonth: 30,
   },

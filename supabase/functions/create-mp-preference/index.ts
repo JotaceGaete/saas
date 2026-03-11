@@ -5,8 +5,8 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const PLAN_PRICES: Record<string, number> = { pro: 5000, business: 10000 };
-const PLAN_LABELS: Record<string, string> = { pro: 'Plan Pro', business: 'Plan Business' };
+const PLAN_PRICES: Record<string, number> = { control: 500, pro: 5000, business: 10000 };
+const PLAN_LABELS: Record<string, string> = { control: 'Plan Control', pro: 'Plan Pro', business: 'Plan Business' };
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -65,6 +65,9 @@ Deno.serve(async (req) => {
   const planSlug = body?.planSlug as string | undefined;
   const price = planSlug && PLAN_PRICES[planSlug];
   console.log('[create-mp-preference] planSlug:', planSlug, 'price:', price);
+  if (planSlug === 'control') {
+    console.log('[create-mp-preference] plan_control_used (prueba Mercado Pago)');
+  }
 
   if (!planSlug || price == null || price <= 0) {
     return jsonResponse({ error: 'Plan no válido o sin precio' }, 400);
@@ -151,5 +154,12 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: 'Mercado Pago response missing init_point', mp_response: preference }, 500);
   }
 
+  const isSandbox = !!preference?.sandbox_init_point;
+  console.log('[create-mp-preference] preference_created', {
+    planSlug,
+    businessId: business.id,
+    init_point_preview: initPoint.slice(0, 50) + '...',
+    sandbox: isSandbox,
+  });
   return jsonResponse({ init_point: initPoint }, 200);
 });

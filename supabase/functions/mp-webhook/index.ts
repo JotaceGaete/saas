@@ -48,7 +48,7 @@ Deno.serve(async (req) => {
   const data = body?.data as { id?: string } | undefined;
   const dataId = data?.id != null ? String(data.id) : '';
 
-  console.log('[mp-webhook] notification type:', type, 'payment id:', dataId || '(none)');
+  console.log('[mp-webhook] webhook_received', { type, payment_id: dataId || null });
 
   if (type !== 'payment') {
     console.log('[mp-webhook] ignored: type is not payment');
@@ -98,10 +98,10 @@ Deno.serve(async (req) => {
   const paymentStatus = payment?.status ?? '';
   const externalRef = payment?.external_reference;
 
-  console.log('[mp-webhook] payment status:', paymentStatus, 'external_reference:', externalRef ?? '(none)');
+  console.log('[mp-webhook] payment_status', { status: paymentStatus, external_reference: externalRef ?? null });
 
   if (paymentStatus !== 'approved') {
-    console.log('[mp-webhook] ignored: payment not approved');
+    console.log('[mp-webhook] payment_not_approved', { status: paymentStatus, action: 'ignored' });
     return jsonResponse({ ok: true }, 200);
   }
 
@@ -113,9 +113,13 @@ Deno.serve(async (req) => {
   const parts = externalRef.split(':');
   const businessId = parts[0];
   const planSlug = parts[1];
-  if (!businessId || !planSlug || !['pro', 'business'].includes(planSlug)) {
+  const allowedPlans = ['control', 'pro', 'business'];
+  if (!businessId || !planSlug || !allowedPlans.includes(planSlug)) {
     console.log('[mp-webhook] ignored: invalid external_reference format');
     return jsonResponse({ ok: true }, 200);
+  }
+  if (planSlug === 'control') {
+    console.log('[mp-webhook] plan_control_used (prueba Mercado Pago)');
   }
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
@@ -141,6 +145,11 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: false, error: 'Database update failed' }, 500);
   }
 
-  console.log('[mp-webhook] success: businessId=', businessId, 'planSlug=', planSlug, 'expiresAt=', planExpiresAt);
+  console.log('[mp-webhook] payment_approved', {
+    businessId,
+    planSlug,
+    planExpiresAt,
+    table: 'wa_businesses',
+  });
   return jsonResponse({ ok: true }, 200);
 });

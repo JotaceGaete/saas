@@ -86,6 +86,7 @@ export default function PlansPage() {
       }
       if (data?.error) throw new Error(data.error);
       if (data?.init_point) {
+        console.log('[plans] checkout_iniciado', { planSlug, init_point_preview: data.init_point.slice(0, 50) + '...' });
         window.location.href = data.init_point;
         return;
       }
