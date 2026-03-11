@@ -43,25 +43,48 @@ export default function PlansPage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) {
         setPaymentMessage({ type: 'error', text: 'Debes iniciar sesión para contratar un plan.' });
-        navigate('/login');
         return;
       }
-      await supabase.auth.refreshSession();
-      const { data: { session: refreshed } } = await supabase.auth.getSession();
-      const token = refreshed?.access_token ?? session.access_token;
+      const token = session.access_token;
+      const tokenPreview = token.length >= 12 ? `${token.slice(0, 12)}...` : '(short)';
+      const looksLikeJwt = token.split('.').length === 3;
+      const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
+      const isAnonKey = !!anonKey && token === anonKey;
+      console.log('[plans] before invoke: session.user.id:', session?.user?.id);
+      console.log('[plans] before invoke: session.access_token exists:', !!session?.access_token);
+      console.log('[plans] before invoke: token first 12 chars (masked):', tokenPreview);
+      console.log('[plans] before invoke: token looks like JWT (3 parts):', looksLikeJwt);
+      console.log('[plans] before invoke: token === anon key?', isAnonKey);
+      if (isAnonKey) {
+        setPaymentMessage({ type: 'error', text: 'Error de autenticación: token inválido.' });
+        return;
+      }
 
       const baseUrl = getAppBaseUrl() || window.location?.origin || '';
-      const { data, error } = await supabase.functions.invoke('create-mp-preference', {
-        headers: { Authorization: `Bearer ${token}` },
-        body: {
-          planSlug,
-          success_url: `${baseUrl}/plans?payment=success`,
-          failure_url: `${baseUrl}/plans?payment=failure`,
-          pending_url: `${baseUrl}/plans?payment=pending`,
-          origin: baseUrl,
+      const body = {
+        planSlug,
+        success_url: `${baseUrl}/plans?payment=success`,
+        failure_url: `${baseUrl}/plans?payment=failure`,
+        pending_url: `${baseUrl}/plans?payment=pending`,
+        origin: baseUrl,
+      };
+      const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
+      const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
+      const functionUrl = `${supabaseUrl}/functions/v1/create-mp-preference`;
+      const res = await fetch(functionUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          apikey: anonKey,
         },
+        body: JSON.stringify(body),
       });
-      if (error) throw error;
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (data?.reason) console.log('[plans] function returned', res.status, 'reason:', data.reason, 'details:', data.details);
+        throw new Error(data?.error ?? res.statusText ?? 'Error al crear preferencia de pago');
+      }
       if (data?.error) throw new Error(data.error);
       if (data?.init_point) {
         window.location.href = data.init_point;

@@ -31,24 +31,26 @@ Deno.serve(async (req) => {
   console.log('[create-mp-preference] Authorization header present:', hasAuthHeader, 'starts with Bearer:', startsWithBearer);
 
   if (!hasAuthHeader || !startsWithBearer) {
-    console.log('[create-mp-preference] missing or invalid Authorization header');
-    return jsonResponse({ error: 'User not authenticated' }, 401);
+    console.log('[create-mp-preference] 401 reason: missing_or_invalid_authorization_header');
+    return jsonResponse({ error: 'User not authenticated', reason: 'missing_or_invalid_header' }, 401);
   }
 
   const token = authHeader.replace(/^\s*Bearer\s+/i, '').trim();
   if (!token) {
-    console.log('[create-mp-preference] empty token after Bearer');
-    return jsonResponse({ error: 'User not authenticated' }, 401);
+    console.log('[create-mp-preference] 401 reason: empty_token');
+    return jsonResponse({ error: 'User not authenticated', reason: 'empty_token' }, 401);
   }
 
   const tokenPreview = token.length >= 12 ? `${token.slice(0, 12)}...` : '(short)';
-  console.log('[create-mp-preference] extracted token first 12 chars (masked):', tokenPreview);
+  const looksLikeJwt = token.split('.').length === 3;
+  console.log('[create-mp-preference] received token first 12 chars (masked):', tokenPreview);
+  console.log('[create-mp-preference] received token looks like JWT (3 parts):', looksLikeJwt);
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
   const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
   if (anonKey && token === anonKey) {
-    console.error('[create-mp-preference] rejected: Authorization token is the anon/apikey key, not a user JWT');
-    return jsonResponse({ error: 'Invalid user token' }, 401);
+    console.error('[create-mp-preference] 401 reason: wrong_token_anon_key_sent');
+    return jsonResponse({ error: 'Invalid user token', reason: 'anon_key_sent' }, 401);
   }
 
   const supabase = createClient(supabaseUrl, anonKey, {
@@ -62,7 +64,8 @@ Deno.serve(async (req) => {
     const isInvalidUserToken =
       /missing sub claim|invalid claim|invalid jwt|invalid token/i.test(userError.message ?? '');
     if (isInvalidUserToken) {
-      return jsonResponse({ error: 'Invalid user token' }, 401);
+      console.error('[create-mp-preference] 401 reason: get_user_failed', userError.message);
+      return jsonResponse({ error: 'Invalid user token', reason: 'get_user_failed', details: userError.message }, 401);
     }
   }
 
@@ -70,7 +73,8 @@ Deno.serve(async (req) => {
   console.log('[create-mp-preference] authenticated user id:', user?.id ?? '(none)');
 
   if (!user?.id) {
-    return jsonResponse({ error: 'Invalid user token' }, 401);
+    console.log('[create-mp-preference] 401 reason: no_user_after_get_user');
+    return jsonResponse({ error: 'Invalid user token', reason: 'no_user_after_get_user' }, 401);
   }
 
   let body: Record<string, unknown>;
