@@ -21,14 +21,23 @@ function jsonResponse(body: Record<string, unknown>, status: number) {
 }
 
 Deno.serve(async (req) => {
+  // 1. OPTIONS must be first, before any auth check
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
 
-  const authHeader =
-    (req.headers.get('Authorization') ?? req.headers.get('authorization') ?? '').trim();
+  // 2. Debug logs (method, header presence, prefix)
+  const authHeader = (req.headers.get('authorization') ?? '').trim();
+  const apikeyHeader = req.headers.get('apikey') ?? '';
+  const authPrefix = authHeader.length >= 20 ? authHeader.slice(0, 20) + '...' : authHeader || '(empty)';
+  console.log('[create-mp-preference] method:', req.method);
+  console.log('[create-mp-preference] authorization present:', authHeader.length > 0);
+  console.log('[create-mp-preference] apikey present:', apikeyHeader.length > 0);
+  console.log('[create-mp-preference] authorization prefix:', authPrefix);
+
+  // 3. Validate header format — this 401 body is different from the gateway one
   if (!authHeader || !authHeader.toLowerCase().startsWith('bearer ')) {
-    return jsonResponse({ error: 'User not authenticated', reason: 'missing_or_invalid_header' }, 401);
+    return jsonResponse({ error: 'User not authenticated', reason: 'missing_or_invalid_header', source: 'function' }, 401);
   }
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';

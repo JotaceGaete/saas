@@ -2,3 +2,7 @@
 # Edge Functions: mp-webhook is a public endpoint called by Mercado Pago; no user JWT.
 [functions.mp-webhook]
 verify_jwt = false
+
+# create-mp-preference validates the JWT itself via supabase.auth.getUser().
+[functions.create-mp-preference]
+verify_jwt = false
