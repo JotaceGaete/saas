@@ -1,5 +1,6 @@
 // Create Mercado Pago checkout preference for plan upgrade (Pro / Business).
-// Requires: Authorization Bearer <user_jwt>, body: { planSlug: 'pro' | 'business', success_url?, failure_url? }
+// JWT is verified by the Supabase gateway before the request reaches this function.
+// Requires: Authorization Bearer <user_jwt> (gateway-validated), body: { planSlug, success_url?, failure_url?, ... }
 // Returns: { init_point } to redirect the user to MP checkout.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -26,56 +27,23 @@ Deno.serve(async (req) => {
 
   const authHeader =
     (req.headers.get('Authorization') ?? req.headers.get('authorization') ?? '').trim();
-  const hasAuthHeader = authHeader.length > 0;
-  const startsWithBearer = authHeader.toLowerCase().startsWith('bearer ');
-  console.log('[create-mp-preference] Authorization header present:', hasAuthHeader, 'starts with Bearer:', startsWithBearer);
-
-  if (!hasAuthHeader || !startsWithBearer) {
-    console.log('[create-mp-preference] 401 reason: missing_or_invalid_authorization_header');
+  if (!authHeader || !authHeader.toLowerCase().startsWith('bearer ')) {
     return jsonResponse({ error: 'User not authenticated', reason: 'missing_or_invalid_header' }, 401);
   }
 
-  const token = authHeader.replace(/^\s*Bearer\s+/i, '').trim();
-  if (!token) {
-    console.log('[create-mp-preference] 401 reason: empty_token');
-    return jsonResponse({ error: 'User not authenticated', reason: 'empty_token' }, 401);
-  }
-
-  const tokenPreview = token.length >= 12 ? `${token.slice(0, 12)}...` : '(short)';
-  const looksLikeJwt = token.split('.').length === 3;
-  console.log('[create-mp-preference] received token first 12 chars (masked):', tokenPreview);
-  console.log('[create-mp-preference] received token looks like JWT (3 parts):', looksLikeJwt);
-
   const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
   const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
-  if (anonKey && token === anonKey) {
-    console.error('[create-mp-preference] 401 reason: wrong_token_anon_key_sent');
-    return jsonResponse({ error: 'Invalid user token', reason: 'anon_key_sent' }, 401);
-  }
-
   const supabase = createClient(supabaseUrl, anonKey, {
-    global: { headers: { Authorization: `Bearer ${token}` } },
+    global: { headers: { Authorization: authHeader } },
   });
 
-  const { data: userData, error: userError } = await supabase.auth.getUser(token);
-
-  if (userError) {
-    console.error('[create-mp-preference] auth.getUser error:', userError.message, 'status:', userError.status);
-    const isInvalidUserToken =
-      /missing sub claim|invalid claim|invalid jwt|invalid token/i.test(userError.message ?? '');
-    if (isInvalidUserToken) {
-      console.error('[create-mp-preference] 401 reason: get_user_failed', userError.message);
-      return jsonResponse({ error: 'Invalid user token', reason: 'get_user_failed', details: userError.message }, 401);
-    }
-  }
-
+  const { data: userData } = await supabase.auth.getUser();
   const user = userData?.user ?? null;
-  console.log('[create-mp-preference] authenticated user id:', user?.id ?? '(none)');
-
   if (!user?.id) {
-    console.log('[create-mp-preference] 401 reason: no_user_after_get_user');
-    return jsonResponse({ error: 'Invalid user token', reason: 'no_user_after_get_user' }, 401);
+    console.log('[create-mp-preference] 401 reason: gateway_auth_missing_user');
+    return jsonResponse({ error: 'User not authenticated', reason: 'gateway_auth_missing_user' }, 401);
   }
+  console.log('[create-mp-preference] user id:', user.id);
 
   let body: Record<string, unknown>;
   try {
