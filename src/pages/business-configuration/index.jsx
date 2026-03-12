@@ -5,7 +5,6 @@ import { useIsDesktop } from 'hooks/useMediaQuery';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
 import {
-  createBusiness,
   updateBusiness,
   uploadBusinessLogo,
   uploadBusinessCover,
@@ -13,6 +12,7 @@ import {
   getMyBusiness,
   getRubros,
 } from '../../services/waBusinessService';
+import StoreCreationStep from '../business-registration/components/StoreCreationStep';
 import StoreHeaderCard from './components/StoreHeaderCard';
 import ProductListPanel from './components/ProductListPanel';
 import MobilePreviewPanel from './components/MobilePreviewPanel';
@@ -59,7 +59,7 @@ function SettingsField({ label, children, hint }) {
 
 export default function BusinessConfiguration() {
   const navigate = useNavigate();
-  const { business: ctxBusiness, businessLoading, refreshBusiness } = useAuth();
+  const { user, loading, business: ctxBusiness, businessLoading, refreshBusiness } = useAuth();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [products, setProducts] = useState([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
@@ -74,11 +74,6 @@ export default function BusinessConfiguration() {
   // Local resolved business — may come from context or a direct fetch
   const [business, setBusiness] = useState(null);
   const [businessFetchLoading, setBusinessFetchLoading] = useState(false);
-
-  // Formulario para crear negocio (cuando hay user pero no hay business en BD)
-  const [createForm, setCreateForm] = useState({ name: '', whatsapp: '', description: '', currency: 'CLP' });
-  const [isCreatingBusiness, setIsCreatingBusiness] = useState(false);
-  const [createBusinessError, setCreateBusinessError] = useState(null);
 
   // Store header state
   const [editingName, setEditingName] = useState(false);
@@ -142,6 +137,12 @@ export default function BusinessConfiguration() {
   useEffect(() => {
     if (ctxBusiness) setBusiness(ctxBusiness);
   }, [ctxBusiness]);
+
+  useEffect(() => {
+    if (!loading && !user) {
+      navigate('/business-registration', { replace: true });
+    }
+  }, [loading, user, navigate]);
 
   // Si el contexto no tiene negocio tras cargar, hacer fetch directo y actualizar el contexto
   // para que el resto de la app (p. ej. Product Editor) vea el negocio.
@@ -370,38 +371,6 @@ export default function BusinessConfiguration() {
     }
   };
 
-  const handleCreateBusiness = async (e) => {
-    e?.preventDefault?.();
-    const name = (createForm?.name || '').trim();
-    const whatsapp = (createForm?.whatsapp || '').trim();
-    if (!name) { setCreateBusinessError('El nombre del negocio es obligatorio.'); return; }
-    if (!whatsapp) { setCreateBusinessError('El número de WhatsApp es obligatorio.'); return; }
-    setCreateBusinessError(null);
-    setIsCreatingBusiness(true);
-    try {
-      const { data: newBiz, error } = await createBusiness({
-        name,
-        whatsapp,
-        description: (createForm?.description || '').trim() || null,
-        currency: createForm?.currency || 'CLP',
-      });
-      if (error) {
-        setCreateBusinessError(error?.message || 'Error al crear el negocio.');
-        return;
-      }
-      if (newBiz) {
-        setBusiness(newBiz);
-        await refreshBusiness();
-        setCreateForm({ name: '', whatsapp: '', description: '', currency: 'CLP' });
-        showToast('¡Tienda creada! Ya puedes editar logo, portada y más.', 'success');
-      }
-    } catch (err) {
-      setCreateBusinessError(err?.message || 'Error inesperado.');
-    } finally {
-      setIsCreatingBusiness(false);
-    }
-  };
-
   const isLoading = businessLoading || businessFetchLoading;
   const isDesktop = useIsDesktop();
   const sidebarWidth = sidebarCollapsed ? 'var(--sidebar-collapsed-width)' : 'var(--sidebar-width)';
@@ -423,6 +392,39 @@ export default function BusinessConfiguration() {
     { id: 'settings', label: 'Configuración', icon: 'Settings' },
     { id: 'design', label: 'Diseño', icon: 'Palette' },
   ];
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--color-background)' }}>
+        <svg className="animate-spin" width={32} height={32} viewBox="0 0 24 24" fill="none">
+          <circle cx="12" cy="12" r="10" stroke="rgba(124,58,237,0.2)" strokeWidth="3" />
+          <path d="M12 2a10 10 0 0 1 10 10" stroke="#7C3AED" strokeWidth="3" strokeLinecap="round" />
+        </svg>
+      </div>
+    );
+  }
+
+  if (!user) return null;
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--color-background)' }}>
+        <div className="flex flex-col items-center gap-3">
+          <svg className="animate-spin" width={32} height={32} viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="10" stroke="rgba(124,58,237,0.2)" strokeWidth="3" />
+            <path d="M12 2a10 10 0 0 1 10 10" stroke="#7C3AED" strokeWidth="3" strokeLinecap="round" />
+          </svg>
+          <p className="text-sm" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+            Verificando tu negocio...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!business?.id) {
+    return <StoreCreationStep user={user} businessLoading={false} />;
+  }
 
   return (
     <div className="panel-root min-h-screen" style={{ backgroundColor: '#f7f7f9' }}>
@@ -499,7 +501,7 @@ export default function BusinessConfiguration() {
                   </div>
                   <h2 className="text-lg font-bold mb-2" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-text-primary)' }}>Crea tu tienda primero</h2>
                   <p className="text-sm mb-6" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
-                    Ve a la pestaña <strong>Configuración</strong> y completa el formulario &quot;Crear mi tienda&quot;. Luego podrás agregar logo, portada y productos.
+                    Ve a la pestaña <strong>Configuración</strong> y completa la configuración inicial del negocio. Luego podrás agregar logo, portada y productos.
                   </p>
                   <button
                     type="button"
@@ -585,82 +587,7 @@ export default function BusinessConfiguration() {
                 <span className="ml-3 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Cargando datos del negocio...</span>
               </div>
             ) : !business?.id ? (
-              <div className="rounded-2xl border p-6 lg:p-8" style={{ backgroundColor: '#ffffff', borderColor: 'var(--color-border)', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(139,92,246,0.1)' }}>
-                    <Icon name="Store" size={18} color="var(--color-primary)" />
-                  </div>
-                  <div>
-                    <h2 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-text-primary)' }}>Crear mi tienda</h2>
-                    <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Completa los datos mínimos para crear tu negocio. Luego podrás agregar logo, portada y más.</p>
-                  </div>
-                </div>
-                <form onSubmit={handleCreateBusiness} className="flex flex-col gap-5">
-                  {createBusinessError && (
-                    <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: 'rgba(239,68,68,0.08)', color: 'var(--color-error)', fontFamily: 'var(--font-caption)' }}>
-                      {createBusinessError}
-                    </div>
-                  )}
-                  <SettingsField label="Nombre del negocio" hint="Obligatorio">
-                    <input
-                      type="text"
-                      className={inputClass}
-                      style={inputStyle}
-                      placeholder="Ej: Mi Tienda"
-                      value={createForm?.name}
-                      onChange={e => { setCreateForm(prev => ({ ...prev, name: e?.target?.value })); setCreateBusinessError(null); }}
-                      required
-                    />
-                  </SettingsField>
-                  <SettingsField label="WhatsApp" hint="Con código de país. Ej: +521234567890">
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2">
-                        <Icon name="MessageCircle" size={16} color="#25D366" />
-                      </span>
-                      <input
-                        type="tel"
-                        className={inputClass}
-                        style={{ ...inputStyle, paddingLeft: '2.25rem' }}
-                        placeholder="+521234567890"
-                        value={createForm?.whatsapp}
-                        onChange={e => { setCreateForm(prev => ({ ...prev, whatsapp: e?.target?.value })); setCreateBusinessError(null); }}
-                        required
-                      />
-                    </div>
-                  </SettingsField>
-                  <SettingsField label="Descripción" hint="Opcional">
-                    <textarea
-                      rows={2}
-                      className={inputClass}
-                      style={inputStyle}
-                      placeholder="Breve descripción del negocio..."
-                      value={createForm?.description}
-                      onChange={e => setCreateForm(prev => ({ ...prev, description: e?.target?.value }))}
-                    />
-                  </SettingsField>
-                  <button
-                    type="submit"
-                    disabled={isCreatingBusiness}
-                    className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold text-white transition-opacity disabled:opacity-60"
-                    style={{ background: 'linear-gradient(135deg, var(--color-primary) 0%, #7c3aed 100%)' }}
-                  >
-                    {isCreatingBusiness ? (
-                      <>
-                        <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
-                        Creando...
-                      </>
-                    ) : (
-                      <>
-                        <Icon name="Plus" size={15} color="#fff" />
-                        Crear mi tienda
-                      </>
-                    )}
-                  </button>
-                </form>
-                <p className="mt-4 text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-                  Ya tienes sesión iniciada. El negocio se creará asociado a tu cuenta. No uses &quot;Crear cuenta&quot; para esto.
-                </p>
-              </div>
+              <StoreCreationStep user={user} businessLoading={isLoading} />
             ) : (
             <div
               className="rounded-2xl border p-6 lg:p-8"

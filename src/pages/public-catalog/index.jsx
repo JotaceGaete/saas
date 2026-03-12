@@ -1,10 +1,23 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
+import { Helmet } from 'react-helmet';
 import { getBusinessBySlug, getPublicProducts, getCategoriesByRubroId, recordCatalogVisit, createOrder } from '../../services/waBusinessService';
 import Icon from '../../components/AppIcon';
 import { CartProvider, useCart } from '../../contexts/CartContext';
 import { formatCLP } from '../../utils/formatCLP';
 import { useIsDesktop } from '../../hooks/useMediaQuery';
+import { getAppBaseUrl } from '../../config/appUrl';
+
+/** Build absolute URL for OG image; prefers logo → cover → generated fallback with store name */
+function getCatalogOgImageUrl(business, baseUrl) {
+  const origin = baseUrl || (typeof window !== 'undefined' ? window.location?.origin : '') || '';
+  const logo = business?.logoUrl?.trim();
+  const cover = business?.coverImageUrl?.trim();
+  if (logo) return logo.startsWith('http') ? logo : `${origin}${logo.startsWith('/') ? '' : '/'}${logo}`;
+  if (cover) return cover.startsWith('http') ? cover : `${origin}${cover.startsWith('/') ? '' : '/'}${cover}`;
+  const name = (business?.name || 'Catálogo').replace(/[^a-zA-Z0-9\s]/g, '').trim() || 'Catalogo';
+  return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=7C3AED&color=fff&size=1200&format=png`;
+}
 
 // Normalizar imágenes del producto: array (vacío o con URLs)
 function getProductImages(product) {
@@ -217,8 +230,39 @@ function CatalogInner({ slug }) {
         ? 'grid grid-cols-2 gap-2 sm:gap-3'
         : 'grid grid-cols-1 gap-3 sm:gap-4';
 
+  const storeName = business?.name || 'Catálogo';
+  const catalogTitle = `Catálogo de ${storeName}`;
+  const catalogDescription = 'Revisa productos y haz tu pedido por WhatsApp.';
+  const baseUrl = getAppBaseUrl();
+  const canonicalPath = `/catalogo/${slug}`;
+  const canonicalUrl = baseUrl ? `${baseUrl}${canonicalPath}` : (typeof window !== 'undefined' ? `${window.location?.origin || ''}${window.location?.pathname || canonicalPath}` : '');
+  const ogImage = getCatalogOgImageUrl(business, baseUrl);
+
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Dynamic Open Graph / social preview for this store.
+          Note: Crawlers (WhatsApp, Facebook, etc.) often do not run JS, so they may see the default index.html meta.
+          For correct preview on first share, use SSR or an edge/server function that injects OG tags for /catalogo/:slug. */}
+      {!loading && !notFound && business && (
+        <Helmet>
+          <title>{catalogTitle}</title>
+          <meta name="description" content={catalogDescription} />
+          <meta property="og:type" content="website" />
+          <meta property="og:url" content={canonicalUrl} />
+          <meta property="og:title" content={catalogTitle} />
+          <meta property="og:description" content={catalogDescription} />
+          <meta property="og:image" content={ogImage} />
+          <meta property="og:image:width" content="1200" />
+          <meta property="og:image:height" content="630" />
+          <meta property="og:locale" content="es_ES" />
+          <meta name="twitter:card" content="summary_large_image" />
+          <meta name="twitter:title" content={catalogTitle} />
+          <meta name="twitter:description" content={catalogDescription} />
+          <meta name="twitter:image" content={ogImage} />
+          <link rel="canonical" href={canonicalUrl} />
+        </Helmet>
+      )}
+
       {/* Cabecera móvil: Volver + nombre/logo — solo en móvil, navegación clara sin hamburguesa */}
       {!loading && !notFound && business && (
         <header className="fixed top-0 left-0 right-0 z-50 bg-white border-b border-gray-200 shadow-sm md:hidden" role="banner">

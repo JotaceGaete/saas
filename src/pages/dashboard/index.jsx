@@ -20,12 +20,14 @@ import {
   getBusinessVisitStats,
   getPendingOrdersCount,
   getWeeklyOrdersCount,
+  getPlanUsage,
 } from "../../services/waBusinessService";
 import { supabase } from "../../lib/supabase";
 import { getAppBaseUrl } from "../../config/appUrl";
 import OrdersByDayCard from "./components/OrdersByDayCard";
 import TopProductsCard from "./components/TopProductsCard";
 import MonthlyRevenueCard from "./components/MonthlyRevenueCard";
+import PlanUsageCard from "./components/PlanUsageCard";
 
 
 export default function Dashboard() {
@@ -44,6 +46,8 @@ export default function Dashboard() {
   const [analyticsLoading, setAnalyticsLoading] = useState(true);
   const [pendingOrdersCount, setPendingOrdersCount] = useState(0);
   const [weeklyOrdersCount, setWeeklyOrdersCount] = useState(0);
+  const [planUsage, setPlanUsage] = useState(null);
+  const [planUsageLoading, setPlanUsageLoading] = useState(true);
 
   // Realtime state
   const [realtimeStatus, setRealtimeStatus] = useState('disconnected');
@@ -124,6 +128,19 @@ export default function Dashboard() {
     }
   }, [business?.id]);
 
+  const loadPlanUsage = useCallback(async () => {
+    if (!business?.id) return;
+    setPlanUsageLoading(true);
+    try {
+      const res = await getPlanUsage(business?.id);
+      setPlanUsage(res?.data ?? null);
+    } catch (err) {
+      console.error('[PlanUsage] error:', err);
+    } finally {
+      setPlanUsageLoading(false);
+    }
+  }, [business?.id]);
+
   useEffect(() => {
     if (!business?.id) { setDataLoading(false); return; }
     loadDashboardData();
@@ -133,6 +150,11 @@ export default function Dashboard() {
     if (!business?.id) { setAnalyticsLoading(false); return; }
     loadAnalytics();
   }, [business?.id, loadAnalytics]);
+
+  useEffect(() => {
+    if (!business?.id) { setPlanUsageLoading(false); return; }
+    loadPlanUsage();
+  }, [business?.id, loadPlanUsage]);
 
   useEffect(() => {
     if (!business?.id) return;
@@ -174,6 +196,7 @@ export default function Dashboard() {
           const { data: ordersData } = await getOrders(business?.id);
           if (ordersData) setOrders(ordersData);
           loadAnalytics();
+          loadPlanUsage();
 
           // Actualizar contadores en tiempo real
           setPendingOrdersCount(prev => prev + 1);
@@ -208,7 +231,7 @@ export default function Dashboard() {
       channelRef.current = null;
       setRealtimeStatus('disconnected');
     };
-  }, [business?.id, loadAnalytics]);
+  }, [business?.id, loadAnalytics, loadPlanUsage]);
 
   const handleDismissToast = useCallback((id) => {
     setNewOrderToasts(prev => prev?.filter(t => t?.id !== id));
@@ -332,7 +355,7 @@ export default function Dashboard() {
 
   const handleShare = () => {
     if (!catalogUrl) return;
-    const url = `https://wa.me/?text=${encodeURIComponent(`¡Hola! Te comparto el catálogo de ${business?.name}: ${catalogUrl}`)}`;
+    const url = `https://wa.me/?text=${encodeURIComponent(`Ver catálogo de ${business?.name}: ${catalogUrl}`)}`;
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
@@ -355,7 +378,7 @@ export default function Dashboard() {
       <BusinessSidebar isCollapsed={sidebarCollapsed} onCollapsedChange={setSidebarCollapsed} />
       <main className="panel-main min-h-screen w-full max-w-full min-w-0 overflow-x-hidden transition-all duration-200" style={{ marginLeft: isDesktop ? sidebarWidth : 0, transition: 'margin-left var(--transition-base)' }}>
         {/* Header */}
-        <div className="sticky top-0 z-50 border-b px-4 md:px-6 lg:px-8 py-0 flex items-center justify-between gap-3" style={{ backgroundColor: '#FFFFFF', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-xs)', height: '60px' }}>
+        <div className="sticky top-0 z-50 border-b px-4 md:px-6 lg:px-6 py-0 flex items-center justify-between gap-3" style={{ backgroundColor: '#FFFFFF', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-xs)', height: '60px' }}>
           <div className="w-11 lg:w-0 flex-shrink-0" aria-hidden="true" />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
@@ -386,7 +409,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="px-4 md:px-6 lg:px-8 py-6 md:py-8 max-w-screen-xl mx-auto page-enter pb-20 lg:pb-8">
+        <div className="px-4 md:px-6 lg:px-6 py-5 lg:py-6 page-enter pb-20 lg:pb-8" style={{ maxWidth: '1100px' }}>
 
           {/* Banner: negocio sin configurar */}
           {!business && !businessLoading && (
@@ -436,7 +459,7 @@ export default function Dashboard() {
 
           {/* ── Bloque de alertas ── */}
           {alerts.length > 0 && (
-            <section className="mb-5">
+            <section className="mb-6">
               <div className="flex flex-col gap-2">
                 {alerts.map(alert => (
                   <div
@@ -462,8 +485,8 @@ export default function Dashboard() {
           )}
 
           {/* ── Métricas principales ── */}
-          <section aria-label="Métricas del negocio" className="mb-5">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 md:gap-4">
+          <section aria-label="Métricas del negocio" className="mb-6">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 md:gap-4 lg:gap-5">
               {METRICS?.map((metric, idx) => (
                 <div key={idx} className="stagger-item">
                   <MetricCard
@@ -483,8 +506,8 @@ export default function Dashboard() {
           </section>
 
           {/* ── Analíticas ── */}
-          <section aria-label="Analíticas" className="mb-5">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <section aria-label="Analíticas" className="mb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 lg:gap-5">
               <div className="stagger-item"><OrdersByDayCard data={ordersByDay} loading={analyticsLoading} /></div>
               <div className="stagger-item"><TopProductsCard data={topProducts} loading={analyticsLoading} /></div>
               <div className="stagger-item"><MonthlyRevenueCard data={monthlyRevenue} loading={analyticsLoading} /></div>
@@ -492,11 +515,14 @@ export default function Dashboard() {
           </section>
 
           {/* ── Feed + Widgets ── */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 lg:gap-5">
             <section aria-label="Actividad reciente" className="lg:col-span-2">
               <ActivityFeed orders={orders} loading={dataLoading} newOrderIds={newOrderIds} />
             </section>
-            <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-5">
+              <section aria-label="Tu plan">
+                <PlanUsageCard data={planUsage} loading={planUsageLoading} />
+              </section>
               <section aria-label="Enlace del catálogo">
                 <CatalogLinkWidget catalogUrl={catalogUrl} businessName={business?.name || ''} />
               </section>

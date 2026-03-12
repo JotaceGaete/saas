@@ -117,7 +117,7 @@ export const getMyBusiness = async () => {
   const user = session?.user;
   if (!user) {
     console.warn('[waBusinessService] getMyBusiness: no authenticated user in session');
-    return { data: null, error: { message: 'Not authenticated' } };
+    return { data: null, error: { message: 'Usuario no autenticado' } };
   }
   console.log('[waBusinessService] getMyBusiness: fetching for user_id =', user?.id);
   const { data, error } = await supabase?.from('wa_businesses')?.select('*')?.eq('user_id', user?.id)?.maybeSingle();
@@ -137,7 +137,7 @@ export const getBusinessBySlug = async (slug) => {
 
 export const createBusiness = async (businessData) => {
   const { data: { user } } = await supabase?.auth?.getUser();
-  if (!user) return { data: null, error: { message: 'Not authenticated' } };
+  if (!user) return { data: null, error: { message: 'Usuario no autenticado' } };
   let slug = await generateSlug(businessData?.name);
   const { data, error } = await supabase?.from('wa_businesses')?.insert({
       user_id: user?.id,
@@ -158,7 +158,7 @@ export const createBusiness = async (businessData) => {
 };
 
 export const createBusinessForUser = async (userId, businessData) => {
-  if (!userId) return { data: null, error: { message: 'Not authenticated' } };
+  if (!userId) return { data: null, error: { message: 'Usuario no autenticado' } };
   let slug = await generateSlug(businessData?.name);
   const { data, error } = await supabase?.from('wa_businesses')?.insert({
       user_id: userId,
@@ -183,7 +183,7 @@ export async function updateBusiness(businessId, updates) {
   const user = session?.user;
   if (!user) {
     console.warn('[waBusinessService] updateBusiness: no authenticated user');
-    return { data: null, error: { message: 'Not authenticated' } };
+    return { data: null, error: { message: 'Usuario no autenticado' } };
   }
   console.log('[waBusinessService] updateBusiness: businessId =', businessId, '| user_id =', user?.id);
   const dbUpdates = {};
@@ -396,9 +396,42 @@ export const updateOrder = async (orderId, updates) => {
 export const createOrder = async (businessId, orderData, items) => {
   const totalAmount = Number(orderData?.totalAmount) || 0;
 
-  // Generar UUID client-side para tener el ID del pedido independientemente de si
-  // el RETURNING de Supabase lo devuelve (los usuarios anónimos no pueden hacer SELECT
-  // en wa_orders por RLS, así que .select().single() fallaría para ellos).
+  // ─── Validar límite de pedidos por mes del plan ───────────────────────────
+  const { data: biz } = await supabase
+    ?.from('wa_businesses')
+    ?.select('plan_slug, plan_expires_at')
+    ?.eq('id', businessId)
+    ?.single();
+
+  if (biz) {
+    const effectivePlan = getEffectivePlanSlug(biz?.plan_slug || 'starter', biz?.plan_expires_at ?? null);
+    const { maxOrdersPerMonth } = getPlanLimits(effectivePlan);
+
+    if (maxOrdersPerMonth != null) {
+      const startOfMonth = new Date();
+      startOfMonth.setDate(1);
+      startOfMonth.setHours(0, 0, 0, 0);
+      const { count: monthCount } = await supabase
+        ?.from('wa_orders')
+        ?.select('id', { count: 'exact', head: true })
+        ?.eq('business_id', businessId)
+        ?.gte('created_at', startOfMonth.toISOString());
+
+      if ((monthCount ?? 0) >= maxOrdersPerMonth) {
+        const label = maxOrdersPerMonth === 30 ? 'Starter/Control' : effectivePlan;
+        return {
+          data: null,
+          error: {
+            message: `Este catálogo alcanzó el límite de ${maxOrdersPerMonth} pedidos del mes (plan ${label}). El negocio debe actualizar su plan para seguir recibiendo pedidos.`,
+            code: 'PLAN_LIMIT_EXCEEDED',
+          },
+        };
+      }
+    }
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // Generar UUID client-side para evitar problemas de RLS con usuarios anónimos.
   const orderId = (typeof crypto !== 'undefined' && crypto?.randomUUID)
     ? crypto.randomUUID()
     : `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
@@ -672,9 +705,70 @@ export async function getBusinessVisitStats(businessId) {
   };
 }
 
+// ——— Uso del plan actual (para dashboard) ———
+
+/**
+ * Devuelve el uso actual de productos y pedidos del negocio vs los límites de su plan.
+ * Usa el RPC wa_get_plan_usage que aplica auto-downgrade si el plan venció.
+ */
+export const getPlanUsage = async (businessId) => {
+  if (!businessId) return { data: null, error: null };
+  const { data, error } = await supabase?.rpc('wa_get_plan_usage', { p_business_id: businessId });
+  if (error) {
+    // Fallback JS si la función RPC aún no fue creada
+    const { data: biz } = await supabase?.from('wa_businesses')?.select('plan_slug, plan_expires_at')?.eq('id', businessId)?.single();
+    const planSlug      = biz?.plan_slug || 'starter';
+    const effectivePlan = getEffectivePlanSlug(planSlug, biz?.plan_expires_at ?? null);
+    const limits        = getPlanLimits(effectivePlan);
+    const now           = new Date();
+    const startOfMonth  = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    const [activeRes, orderRes] = await Promise.all([
+      supabase?.from('wa_products')?.select('id', { count: 'exact', head: true })?.eq('business_id', businessId)?.eq('is_active', true),
+      supabase?.from('wa_orders')?.select('id', { count: 'exact', head: true })?.eq('business_id', businessId)?.gte('created_at', startOfMonth),
+    ]);
+    return {
+      data: {
+        planSlug,
+        effectivePlan,
+        planExpiresAt:    biz?.plan_expires_at ?? null,
+        activeProducts:   activeRes?.count ?? 0,
+        maxProducts:      limits.maxProducts,
+        ordersThisMonth:  orderRes?.count ?? 0,
+        maxOrdersPerMonth: limits.maxOrdersPerMonth,
+      },
+      error: null,
+    };
+  }
+  return { data, error: null };
+};
+
 // ——— Admin panel ———
 
 export const getBusinessesForAdmin = async () => {
+  // Intenta usar la vista enriquecida; si no existe, cae al SELECT básico
+  const { data: viewData, error: viewErr } = await supabase
+    ?.from('wa_admin_business_overview')
+    ?.select('*')
+    ?.order('created_at', { ascending: false });
+
+  if (!viewErr && viewData) {
+    return {
+      data: viewData.map(row => ({
+        ...mapBusinessFromDb(row),
+        totalProducts:   row.total_products   ?? 0,
+        activeProducts:  row.active_products  ?? 0,
+        totalOrders:     row.total_orders     ?? 0,
+        ordersThisMonth: row.orders_this_month ?? 0,
+        effectivePlan:   row.effective_plan   ?? row.plan_slug ?? 'starter',
+        userEmail:       row.user_email       ?? null,
+        userCreatedAt:   row.user_created_at  ?? null,
+        isDemoSuspected: row.is_demo_suspected ?? false,
+      })),
+      error: null,
+    };
+  }
+
+  // Fallback
   const { data, error } = await supabase
     ?.from('wa_businesses')
     ?.select('*')
@@ -684,19 +778,58 @@ export const getBusinessesForAdmin = async () => {
 };
 
 export const getAdminStats = async () => {
-  const [b, p, o] = await Promise.all([
+  const [b, p, o, planStats] = await Promise.all([
     supabase?.from('wa_businesses')?.select('id', { count: 'exact', head: true }),
     supabase?.from('wa_products')?.select('id', { count: 'exact', head: true }),
     supabase?.from('wa_orders')?.select('id', { count: 'exact', head: true }),
+    supabase?.rpc('wa_admin_plan_stats').then(r => r?.data ?? {}),
   ]);
+
+  // Distribución por plan desde la tabla (fallback si RPC no existe)
+  let byPlan = planStats ?? {};
+  if (!planStats || Object.keys(planStats).length === 0) {
+    const { data: planRows } = await supabase
+      ?.from('wa_businesses')
+      ?.select('plan_slug');
+    if (planRows) {
+      byPlan = planRows.reduce((acc, r) => {
+        const slug = r.plan_slug || 'starter';
+        acc[slug] = (acc[slug] || 0) + 1;
+        return acc;
+      }, {});
+    }
+  }
+
   return {
     data: {
       totalBusinesses: b?.count ?? 0,
-      totalProducts: p?.count ?? 0,
-      totalOrders: o?.count ?? 0,
+      totalProducts:   p?.count ?? 0,
+      totalOrders:     o?.count ?? 0,
+      byPlan,
     },
     error: b?.error || p?.error || o?.error || null,
   };
+};
+
+/** Negocios sospechosos / demo (para admin) */
+export const getAdminSuspiciousInfo = async () => {
+  const { data, error } = await supabase?.rpc('wa_admin_suspicious_businesses');
+  if (error || !data) {
+    // Fallback JS simple
+    const { data: rows } = await supabase
+      ?.from('wa_businesses')
+      ?.select('id, name, slug, plan_slug, user_id');
+    const counts = {};
+    (rows || []).forEach(r => { counts[r.user_id] = (counts[r.user_id] || 0) + 1; });
+    const multiUsers = Object.entries(counts)
+      .filter(([, c]) => c > 1)
+      .map(([userId, count]) => ({ userId, count }));
+    const demos = (rows || []).filter(r =>
+      /test|demo|prueba/i.test(r.name || '') || /test|demo/i.test(r.slug || '')
+    );
+    return { data: { multiBusinessUsers: multiUsers, demoBusinesses: demos }, error: null };
+  }
+  return { data, error: null };
 };
 
 // ——— Rubros y categorías por rubro ———

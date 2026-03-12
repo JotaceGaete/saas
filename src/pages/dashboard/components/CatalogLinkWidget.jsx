@@ -13,7 +13,7 @@ export default function CatalogLinkWidget({ catalogUrl, businessName }) {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const whatsappShareUrl = `https://wa.me/?text=${encodeURIComponent(`¡Hola! Te comparto el catálogo de ${businessName}: ${catalogUrl}`)}`;
+  const whatsappShareUrl = `https://wa.me/?text=${encodeURIComponent(`Ver catálogo de ${businessName}: ${catalogUrl}`)}`;
 
   const handleDownloadQR = () => {
     const canvas = document.createElement('canvas');
@@ -45,7 +45,7 @@ export default function CatalogLinkWidget({ catalogUrl, businessName }) {
       try {
         await navigator.share({
           title: `Catálogo de ${businessName}`,
-          text: `¡Visita nuestro catálogo!`,
+          text: `Ver catálogo de ${businessName}`,
           url: catalogUrl,
         });
       } catch {}

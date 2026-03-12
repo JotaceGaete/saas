@@ -131,7 +131,7 @@ export default function GettingStartedSection({
         break;
       case "share_whatsapp": {
         if (!catalogUrl) return;
-        const msg = `¡Hola! Te comparto el catálogo de ${business?.name || "mi tienda"}: ${catalogUrl}`;
+        const msg = `Ver catálogo de ${business?.name || "mi tienda"}: ${catalogUrl}`;
         window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank", "noopener,noreferrer");
         break;
       }
