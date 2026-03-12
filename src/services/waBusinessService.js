@@ -36,6 +36,7 @@ const mapBusinessFromDb = (row) => {
   email: row?.email,
   address: row?.address,
   city: row?.city,
+  region: row?.region,
   country: row?.country,
   currency: row?.currency,
   logoUrl: row?.logo_url || designSettings?.logoUrl || null,
@@ -147,6 +148,7 @@ export const createBusiness = async (businessData) => {
       email: businessData?.email || null,
       address: businessData?.address || null,
       city: businessData?.city || null,
+      region: businessData?.region || null,
       country: businessData?.country || null,
       currency: businessData?.currency || 'CLP',
       logo_url: businessData?.logoUrl || null,
@@ -168,6 +170,7 @@ export const createBusinessForUser = async (userId, businessData) => {
       email: businessData?.email || null,
       address: businessData?.address || null,
       city: businessData?.city || null,
+      region: businessData?.region || null,
       country: businessData?.country || null,
       currency: businessData?.currency || 'CLP',
       logo_url: businessData?.logoUrl || null,
@@ -193,6 +196,7 @@ export async function updateBusiness(businessId, updates) {
   if (updates?.email !== undefined)       dbUpdates.email = updates?.email;
   if (updates?.address !== undefined)     dbUpdates.address = updates?.address;
   if (updates?.city !== undefined)        dbUpdates.city = updates?.city;
+  if (updates?.region !== undefined)      dbUpdates.region = updates?.region;
   if (updates?.country !== undefined)     dbUpdates.country = updates?.country;
   if (updates?.currency !== undefined)    dbUpdates.currency = updates?.currency;
   if (updates?.logoUrl !== undefined)     dbUpdates.logo_url = updates?.logoUrl;
@@ -666,21 +670,36 @@ export async function recordCatalogVisit(slug, path) {
   if (shouldThrottleVisit(slug)) return { recorded: false, throttled: true, error: null };
 
   const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
-  if (!supabaseUrl) return { recorded: false, error: { message: 'Missing Supabase URL' } };
+  if (!supabaseUrl) {
+    console.warn('[record-catalog-visit] Missing VITE_SUPABASE_URL');
+    return { recorded: false, error: { message: 'Missing Supabase URL' } };
+  }
 
   const visitorId = getOrCreateVisitorId();
   const body = { slug: slug.trim(), path: path || null, visitor_id: visitorId };
 
+  const url = `${supabaseUrl}/functions/v1/record-catalog-visit`;
   try {
-    const res = await fetch(`${supabaseUrl}/functions/v1/record-catalog-visit`, {
+    const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
     const data = await res.json().catch(() => ({}));
+    // Temporary: deployment verification
+    console.log('[record-catalog-visit]', {
+      url: url.replace(/https?:\/\/[^/]+/, '[SUPABASE]'),
+      status: res.status,
+      ok: res.ok,
+      body: data,
+    });
+    if (!res.ok) {
+      console.warn('[record-catalog-visit] non-OK response', res.status, data);
+    }
     if (res.ok && data?.recorded) markVisitDone(slug);
     return { recorded: !!data?.recorded, throttled: data?.reason === 'throttled', error: res.ok ? null : (data?.error || { message: res.statusText }) };
   } catch (err) {
+    console.error('[record-catalog-visit] fetch failed', err?.message, err);
     return { recorded: false, error: { message: err?.message || 'Network error' } };
   }
 }

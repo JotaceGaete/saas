@@ -93,7 +93,9 @@ function CatalogInner({ slug }) {
     if (bizErr || !biz) { setNotFound(true); setLoading(false); return; }
     setBusiness(biz);
     const path = typeof window !== 'undefined' ? window.location?.pathname || `/catalogo/${slug}` : `/catalogo/${slug}`;
-    recordCatalogVisit(slug, path).catch(() => {});
+    recordCatalogVisit(slug, path)
+      .then((r) => console.log('[public-catalog] recordCatalogVisit result', { slug, recorded: r?.recorded, throttled: r?.throttled, error: r?.error }))
+      .catch((e) => console.error('[public-catalog] recordCatalogVisit error', slug, e));
     const { data: prods } = await getPublicProducts(biz?.id);
     const loadedProducts = prods || [];
     setProducts(loadedProducts);

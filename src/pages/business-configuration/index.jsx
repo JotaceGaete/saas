@@ -18,6 +18,7 @@ import ProductListPanel from './components/ProductListPanel';
 import MobilePreviewPanel from './components/MobilePreviewPanel';
 import DesignCustomization from './components/DesignCustomization';
 import WhatsAppMessageTemplate from './components/WhatsAppMessageTemplate';
+import ChileWhatsAppField from 'components/ChileWhatsAppField';
 import { getPlanLimits, getPlanLabel } from '../../constants/plans';
 import { getAppBaseUrl } from '../../config/appUrl';
 
@@ -92,7 +93,8 @@ export default function BusinessConfiguration() {
     email: '',
     address: '',
     city: '',
-    country: '',
+    region: '',
+    country: 'Chile',
     currency: 'CLP',
     rubroId: '',
     bankName: '',
@@ -174,7 +176,8 @@ export default function BusinessConfiguration() {
         email: business?.email || '',
         address: business?.address || '',
         city: business?.city || '',
-        country: business?.country || '',
+        region: business?.region || '',
+        country: business?.country || 'Chile',
         currency: business?.currency || 'CLP',
         rubroId: business?.rubroId || '',
         bankName: business?.bankName || '',
@@ -303,7 +306,8 @@ export default function BusinessConfiguration() {
       email: form?.email,
       address: form?.address,
       city: form?.city,
-      country: form?.country,
+      region: form?.region,
+      country: form?.country || 'Chile',
       currency: 'CLP',
       rubroId: form?.rubroId || null,
       bankName: form?.bankName,
@@ -671,22 +675,13 @@ export default function BusinessConfiguration() {
                   />
                 </SettingsField>
 
-                {/* WhatsApp */}
-                <SettingsField label="Número de WhatsApp" hint="Incluye el código de país. Ej: +521234567890">
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2">
-                      <Icon name="MessageCircle" size={16} color="#25D366" />
-                    </span>
-                    <input
-                      type="tel"
-                      className={inputClass}
-                      style={{ ...inputStyle, paddingLeft: '2.25rem' }}
-                      placeholder="+521234567890"
-                      value={form?.whatsapp}
-                      onChange={e => handleFormChange('whatsapp', e?.target?.value)}
-                    />
-                  </div>
-                </SettingsField>
+                {/* WhatsApp (Chile: +56 fijo, 9 dígitos desde 9) */}
+                <ChileWhatsAppField
+                  label="Número de WhatsApp"
+                  hint="Formato Chile: 9 dígitos comenzando con 9. Ej: 93443682"
+                  value={form?.whatsapp}
+                  onChange={(v) => handleFormChange('whatsapp', v)}
+                />
 
                 {/* Email */}
                 <SettingsField label="Correo electrónico" hint="Correo de contacto del negocio (opcional)">
@@ -705,8 +700,8 @@ export default function BusinessConfiguration() {
                   </div>
                 </SettingsField>
 
-                {/* Address */}
-                <SettingsField label="Dirección" hint="Dirección física del negocio (opcional)">
+                {/* Address (Chile: Dirección, Comuna, Región, País fijo) */}
+                <SettingsField label="Dirección" hint="Calle, número, depto (opcional)">
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2">
                       <Icon name="MapPin" size={16} color="var(--color-text-tertiary)" />
@@ -715,36 +710,44 @@ export default function BusinessConfiguration() {
                       type="text"
                       className={inputClass}
                       style={{ ...inputStyle, paddingLeft: '2.25rem' }}
-                      placeholder="Calle, número, colonia..."
+                      placeholder="Ej: Av. Providencia 1234, of. 56"
                       value={form?.address}
                       onChange={e => handleFormChange('address', e?.target?.value)}
                     />
                   </div>
                 </SettingsField>
 
-                {/* City + Country */}
-                <div className="grid grid-cols-2 gap-4">
-                  <SettingsField label="Ciudad">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <SettingsField label="Comuna" hint="Ej: Providencia, Las Condes">
                     <input
                       type="text"
                       className={inputClass}
                       style={inputStyle}
-                      placeholder="Ciudad de México"
+                      placeholder="Ej: Providencia"
                       value={form?.city}
                       onChange={e => handleFormChange('city', e?.target?.value)}
                     />
                   </SettingsField>
-                  <SettingsField label="País">
+                  <SettingsField label="Región" hint="Ej: Metropolitana, Valparaíso">
                     <input
                       type="text"
                       className={inputClass}
                       style={inputStyle}
-                      placeholder="México"
-                      value={form?.country}
-                      onChange={e => handleFormChange('country', e?.target?.value)}
+                      placeholder="Ej: Metropolitana"
+                      value={form?.region}
+                      onChange={e => handleFormChange('region', e?.target?.value)}
                     />
                   </SettingsField>
                 </div>
+
+                <SettingsField label="País" hint="Fijo para Chile">
+                  <div
+                    className={inputClass}
+                    style={{ ...inputStyle, cursor: 'default', backgroundColor: 'var(--color-muted)' }}
+                  >
+                    Chile
+                  </div>
+                </SettingsField>
 
                 {/* Bank account section */}
                 <div className="pt-4 mt-2 border-t" style={{ borderColor: 'var(--color-border)' }}>
@@ -882,7 +885,8 @@ export default function BusinessConfiguration() {
                         email: business?.email || '',
                         address: business?.address || '',
                         city: business?.city || '',
-                        country: business?.country || '',
+                        region: business?.region || '',
+                        country: business?.country || 'Chile',
                         currency: business?.currency || 'CLP',
                         rubroId: business?.rubroId || '',
                         bankName: business?.bankName || '',

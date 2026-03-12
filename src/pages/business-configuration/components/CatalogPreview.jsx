@@ -47,7 +47,7 @@ export default function CatalogPreview({ config }) {
               {config?.nombre || 'Nombre del negocio'}
             </p>
             <p className="text-xs text-muted-foreground" style={{ fontFamily: 'var(--font-caption)' }}>
-              {config?.ciudad ? `${config?.ciudad}, ${config?.pais}` : 'Ciudad, País'}
+              {config?.city || config?.ciudad ? `${config?.city || config?.ciudad}, ${config?.country || config?.pais || 'Chile'}` : 'Comuna, Chile'}
             </p>
           </div>
         </div>
