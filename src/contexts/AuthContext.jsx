@@ -48,6 +48,9 @@ export const AuthProvider = ({ children }) => {
 
   const authStateHandlers = {
     onChange: (event, session) => {
+      if (typeof window !== 'undefined' && window.__AUTH_DEBUG__) {
+        console.log('[Auth] onAuthStateChange', event, session ? { user: session.user?.id, hasRefreshToken: !!session.refresh_token } : null)
+      }
       setUser(session?.user ?? null)
       setLoading(false)
       if (session?.user) {
@@ -59,18 +62,50 @@ export const AuthProvider = ({ children }) => {
   }
 
   useEffect(() => {
-    supabase?.auth?.getSession()?.then(({ data: { session } }) => {
+    let cancelled = false
+    const init = async () => {
+      const { data: { session } } = await supabase?.auth?.getSession() ?? { data: { session: null } }
+      if (cancelled) return
+      if (typeof window !== 'undefined' && window.__AUTH_DEBUG__) {
+        console.log('[Auth] getSession result', session ? { user: session.user?.id, hasRefreshToken: !!session.refresh_token } : 'no session')
+      }
+      if (session?.user) {
+        const { data: { user: freshUser }, error } = await supabase?.auth?.getUser() ?? {}
+        if (cancelled) return
+        if (error) {
+          const msg = error?.message ?? ''
+          if (msg.includes('Refresh Token') || msg.includes('refresh_token') || msg.includes('JWT')) {
+            if (typeof window !== 'undefined' && window.__AUTH_DEBUG__) {
+              console.warn('[Auth] invalid/expired session, clearing', msg)
+            }
+            await supabase?.auth?.signOut({ scope: 'local' })
+            authStateHandlers?.onChange('SIGNED_OUT', null)
+            return
+          }
+        }
+        if (freshUser) {
+          authStateHandlers?.onChange(null, session)
+          return
+        }
+      }
       authStateHandlers?.onChange(null, session)
-    })
+    }
+    init()
     const { data: { subscription } } = supabase?.auth?.onAuthStateChange(
       authStateHandlers?.onChange
     )
-    return () => subscription?.unsubscribe()
+    return () => {
+      cancelled = true
+      subscription?.unsubscribe()
+    }
   }, [])
 
   const signIn = async (email, password) => {
     try {
       const { data, error } = await supabase?.auth?.signInWithPassword({ email, password })
+      if (typeof window !== 'undefined' && window.__AUTH_DEBUG__) {
+        console.log('[Auth] signIn result', error ? { error: error?.message } : { session: !!data?.session, hasRefreshToken: !!data?.session?.refresh_token })
+      }
       return { data, error }
     } catch (error) {
       return { error: { message: 'Network error. Please try again.' } }
@@ -132,6 +167,9 @@ export const AuthProvider = ({ children }) => {
   const signOut = async () => {
     try {
       const { error } = await supabase?.auth?.signOut()
+      if (typeof window !== 'undefined' && window.__AUTH_DEBUG__) {
+        console.log('[Auth] signOut done', error ? { error: error?.message } : 'ok')
+      }
       if (!error) {
         setUser(null)
         businessOperations?.clear()
