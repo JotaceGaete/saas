@@ -2,9 +2,11 @@ import React, { useState } from 'react';
 import Icon from 'components/AppIcon';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import TransferPaymentSection from './TransferPaymentSection';
 
 export default function OrderDetailDrawer({
   order,
+  business,
   businessName,
   onClose,
   onUpdate,
@@ -154,6 +156,8 @@ export default function OrderDetailDrawer({
             </div>
             <p className="text-xs mt-2" style={{ color: 'var(--color-muted-foreground)' }}>Actual: {PaymentStatusBadge && <PaymentStatusBadge paymentStatus={currentPaymentStatus} />}</p>
           </div>
+
+          <TransferPaymentSection order={order} business={business} formatCLP={formatCLP} />
 
           <div>
             <p className="text-xs font-semibold mb-2" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Productos</p>

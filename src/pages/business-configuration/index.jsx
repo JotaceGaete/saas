@@ -756,8 +756,8 @@ export default function BusinessConfiguration() {
                       <Icon name="Landmark" size={14} color="var(--color-primary)" />
                     </div>
                     <div>
-                      <h3 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-text-primary)' }}>Datos bancarios</h3>
-                      <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Para recibir pagos por transferencia bancaria</p>
+                      <h3 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-text-primary)' }}>Cobros por transferencia</h3>
+                      <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Usa estos datos para responder pedidos más rápido desde tu panel.</p>
                     </div>
                   </div>
 

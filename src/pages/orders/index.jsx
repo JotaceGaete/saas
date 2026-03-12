@@ -9,6 +9,7 @@ import { supabase } from '../../lib/supabase';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import PrintOrderModal from './components/PrintOrderModal';
+import TransferPaymentSection from './components/TransferPaymentSection';
 import { formatCLP } from '../../utils/formatCLP';
 import OrderDetailDrawer from './components/OrderDetailDrawer';
 
@@ -182,7 +183,7 @@ function PaymentStatusDropdown({ currentPaymentStatus, orderId, onUpdate }) {
   );
 }
 
-function OrderCard({ order, onUpdate, businessName, onOpenDetail }) {
+function OrderCard({ order, onUpdate, businessName, onOpenDetail, business, formatCLP: formatCLPFn }) {
   const [notesOpen, setNotesOpen] = useState(false);
   const [noteText, setNoteText] = useState(order?.internalNotes || '');
   const [savingNote, setSavingNote] = useState(false);
@@ -288,6 +289,10 @@ function OrderCard({ order, onUpdate, businessName, onOpenDetail }) {
             <p className="text-sm" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Sin productos registrados</p>
           )}
         </div>
+      </div>
+      {/* Cobros por transferencia (solo cuando el pago está pendiente) */}
+      <div className="px-5 py-3">
+        <TransferPaymentSection order={order} business={business} formatCLP={formatCLPFn || formatCLP} />
       </div>
       {/* Footer */}
       <div
@@ -636,6 +641,8 @@ export default function OrdersPage() {
                   onUpdate={handleUpdate}
                   businessName={business?.name}
                   onOpenDetail={setDetailOrder}
+                  business={business}
+                  formatCLP={formatCLP}
                 />
               ))}
             </div>
@@ -644,6 +651,7 @@ export default function OrdersPage() {
           {detailOrder && (
             <OrderDetailDrawer
               order={detailOrder}
+              business={business}
               businessName={business?.name}
               onClose={() => setDetailOrder(null)}
               onUpdate={handleUpdate}
