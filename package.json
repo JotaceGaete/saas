@@ -60,7 +60,8 @@
   "scripts": {
     "start": "vite",
     "build": "vite build --sourcemap",
-    "serve": "vite preview"
+    "serve": "vite preview",
+    "migrate:images-r2": "node scripts/migrate-images-to-r2.mjs"
   },
   "eslintConfig": {
     "extends": [
@@ -81,6 +82,7 @@
     ]
   },
   "devDependencies": {
+    "@aws-sdk/client-s3": "^3.700.0",
     "@tailwindcss/aspect-ratio": "^0.4.2",
     "@tailwindcss/container-queries": "^0.1.1",
     "@tailwindcss/line-clamp": "^0.1.0",

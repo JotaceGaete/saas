@@ -223,22 +223,67 @@ export async function updateBusiness(businessId, updates) {
   return { data: mapBusinessFromDb(data), error: null };
 }
 
+// ——— Upload a R2 (Cloudflare) vía presigned URL ———
+// Usa el mismo cliente supabase de la app (lib/supabase.js con VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY).
+// Solo se envía el JWT del usuario (session.access_token), nunca la anon key como Bearer.
+async function uploadToR2(file, { type, businessId, productId }) {
+  const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
+  if (!supabaseUrl) return { url: null, error: { message: 'Missing Supabase URL' } };
+
+  console.warn('[uploadToR2] start', {
+    type,
+    businessId: businessId ?? null,
+    productId: productId ?? null,
+    fileName: file?.name ?? null,
+    contentType: file?.type ?? null,
+    fileSize: file?.size ?? null,
+  });
+  const { data: { session } } = await supabase.auth.getSession();
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  // Logs temporales para depurar 401 en upload-image-r2 (no imprimir el token completo)
+  console.log('[uploadToR2] session exists:', !!session);
+  console.log('[uploadToR2] session.access_token exists:', !!session?.access_token);
+  console.log('[uploadToR2] access_token length:', session?.access_token ? session.access_token.length : 0);
+  console.log('[uploadToR2] userData.user exists:', !!userData?.user);
+  console.log('[uploadToR2] user id:', userData?.user?.id ?? null);
+  console.log('[uploadToR2] userError:', userError ? {
+    message: userError.message,
+    status: userError.status ?? null,
+    name: userError.name ?? null,
+  } : null);
+  if (!session?.access_token || !userData?.user) {
+    return { url: null, error: { message: 'Usuario no autenticado o sesión inválida' } };
+  }
+  const accessToken = String(session.access_token).trim();
+  const fileName = file?.name || 'upload';
+  const contentType = file?.type || 'image/jpeg';
+  const res = await fetch(`${supabaseUrl}/functions/v1/upload-image-r2`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({ type, businessId, productId: productId || undefined, fileName, contentType }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) return { url: null, error: typeof data?.error === 'string' ? { message: data.error } : (data?.error || { message: res.statusText }) };
+  const { uploadUrl, publicUrl } = data;
+  if (!uploadUrl || !publicUrl) return { url: null, error: { message: 'Respuesta inválida del servidor' } };
+  const putRes = await fetch(uploadUrl, {
+    method: 'PUT',
+    headers: { 'Content-Type': contentType },
+    body: file,
+  });
+  if (!putRes.ok) return { url: null, error: { message: 'Error al subir el archivo a almacenamiento' } };
+  return { url: publicUrl, error: null };
+}
+
 export const uploadBusinessLogo = async (file, businessId) => {
-  const ext = file?.name?.split('.')?.pop();
-  const path = `logos/${businessId}/${Date.now()}.${ext}`;
-  const { error: uploadError } = await supabase?.storage?.from('wa-business-logos')?.upload(path, file, { upsert: true });
-  if (uploadError) return { url: null, error: uploadError };
-  const { data } = supabase?.storage?.from('wa-business-logos')?.getPublicUrl(path);
-  return { url: data?.publicUrl, error: null };
+  return uploadToR2(file, { type: 'logo', businessId });
 };
 
 export const uploadBusinessCover = async (file, businessId) => {
-  const ext = file?.name?.split('.')?.pop();
-  const path = `covers/${businessId}/${Date.now()}.${ext}`;
-  const { error: uploadError } = await supabase?.storage?.from('wa-business-covers')?.upload(path, file, { upsert: true });
-  if (uploadError) return { url: null, error: uploadError };
-  const { data } = supabase?.storage?.from('wa-business-covers')?.getPublicUrl(path);
-  return { url: data?.publicUrl, error: null };
+  return uploadToR2(file, { type: 'cover', businessId });
 };
 
 // wa_products
@@ -339,13 +384,7 @@ export const deleteProduct = async (productId) => {
 };
 
 export const uploadProductImage = async (file, businessId, productId) => {
-  const ext = file?.name?.split('.')?.pop() || 'jpg';
-  const unique = productId ? `${productId}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}` : `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-  const path = `products/${businessId}/${unique}.${ext}`;
-  const { error: uploadError } = await supabase?.storage?.from('wa-product-images')?.upload(path, file, { upsert: true });
-  if (uploadError) return { url: null, error: uploadError };
-  const { data } = supabase?.storage?.from('wa-product-images')?.getPublicUrl(path);
-  return { url: data?.publicUrl, error: null };
+  return uploadToR2(file, { type: 'product', businessId, productId });
 };
 
 // wa_orders
