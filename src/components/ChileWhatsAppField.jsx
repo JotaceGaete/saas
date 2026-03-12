@@ -1,20 +1,22 @@
 import React, { useState, useCallback } from 'react';
 
 const CHILE_PREFIX = '+56';
-const CHILE_MOBILE_LENGTH = 9; // 9 + 8 digits (must start with 9)
+const CHILE_MOBILE_LENGTH = 9; // 9 digits total, first must be 9
 
 /**
- * Chile WhatsApp: +56 fixed, user enters 9 digits only (must start with 9).
- * Stored value: +569XXXXXXXX
- * UI: +56 | 9________  placeholder 93443682
+ * Chile WhatsApp: +56 fixed (visual only). Input holds only local 9 digits (e.g. 956956956).
+ * On submit parent gets E.164: +56956956956.
+ * No prepending 56/569 on keypress — displayValue is local number only.
  */
 export default function ChileWhatsAppField({ value, onChange, error: externalError, label = 'Número de WhatsApp', hint, id }) {
   const [touched, setTouched] = useState(false);
 
+  // From stored value (E.164 or legacy) derive only the 9-digit local part for the input.
   const rawFromValue = (v) => {
     if (!v) return '';
     const s = String(v).replace(/\D/g, '');
-    return v?.startsWith(CHILE_PREFIX) ? s.slice(0, CHILE_MOBILE_LENGTH) : s.slice(-CHILE_MOBILE_LENGTH);
+    if (s.startsWith('56')) return s.slice(2, 2 + CHILE_MOBILE_LENGTH);
+    return s.slice(0, CHILE_MOBILE_LENGTH);
   };
 
   const displayValue = rawFromValue(value);
@@ -74,7 +76,7 @@ export default function ChileWhatsAppField({ value, onChange, error: externalErr
           type="tel"
           inputMode="numeric"
           autoComplete="tel"
-          placeholder="93443682"
+          placeholder="956956956"
           value={displayValue}
           onChange={handleChange}
           onBlur={() => setTouched(true)}
