@@ -61,7 +61,8 @@
     "start": "vite",
     "build": "vite build --sourcemap",
     "serve": "vite preview",
-    "migrate:images-r2": "node scripts/migrate-images-to-r2.mjs"
+    "migrate:images-r2": "node scripts/migrate-images-to-r2.mjs",
+    "pwa:icons": "node scripts/generate-pwa-icons.mjs"
   },
   "eslintConfig": {
     "extends": [
@@ -90,8 +91,10 @@
     "@vitejs/plugin-react": "4.3.4",
     "autoprefixer": "10.4.2",
     "postcss": "8.4.8",
+    "pureimage": "^0.4.18",
     "tailwindcss": "3.4.6",
     "vite": "5.0.0",
+    "vite-plugin-pwa": "^1.2.0",
     "vite-tsconfig-paths": "3.6.0"
   }
 }
