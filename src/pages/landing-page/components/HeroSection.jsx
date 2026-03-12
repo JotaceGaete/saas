@@ -101,10 +101,10 @@ export default function HeroSection() {
             <div className="flex items-center gap-4 mt-8 justify-center lg:justify-start flex-wrap">
               <div className="flex -space-x-2.5">
                 {[
-                { src: "https://img.rocket.new/generatedImages/rocket_gen_img_19f6c3715-1773064930094.png", alt: "Emprendedora satisfecha usando CatálogoApp" },
-                { src: "https://img.rocket.new/generatedImages/rocket_gen_img_123919a54-1773064935660.png", alt: "Emprendedor satisfecho usando CatálogoApp" },
-                { src: "https://img.rocket.new/generatedImages/rocket_gen_img_19f6c3715-1773064930094.png", alt: "Emprendedora satisfecha usando CatálogoApp" },
-                { src: "https://img.rocket.new/generatedImages/rocket_gen_img_123919a54-1773064935660.png", alt: "Emprendedor satisfecho usando CatálogoApp" }]?.
+                { src: "https://img.rocket.new/generatedImages/rocket_gen_img_19f6c3715-1773064930094.png", alt: "Emprendedora satisfecha usando Gong" },
+                { src: "https://img.rocket.new/generatedImages/rocket_gen_img_123919a54-1773064935660.png", alt: "Emprendedor satisfecho usando Gong" },
+                { src: "https://img.rocket.new/generatedImages/rocket_gen_img_19f6c3715-1773064930094.png", alt: "Emprendedora satisfecha usando Gong" },
+                { src: "https://img.rocket.new/generatedImages/rocket_gen_img_123919a54-1773064935660.png", alt: "Emprendedor satisfecho usando Gong" }]?.
                 map((person, i) =>
                 <img
                   key={i}

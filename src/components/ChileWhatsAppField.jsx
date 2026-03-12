@@ -76,7 +76,7 @@ export default function ChileWhatsAppField({ value, onChange, error: externalErr
           type="tel"
           inputMode="numeric"
           autoComplete="tel"
-          placeholder="956956956"
+          placeholder="956123456"
           value={displayValue}
           onChange={handleChange}
           onBlur={() => setTouched(true)}

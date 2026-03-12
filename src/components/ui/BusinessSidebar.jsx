@@ -98,7 +98,7 @@ export default function BusinessSidebar({ isCollapsed = false, onCollapsedChange
         {!collapsed && (
           <div className="overflow-hidden">
             <span className="block font-bold text-sm leading-tight truncate" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.015em' }}>
-              CatálogoApp
+              Gong
             </span>
             <span className="block text-xs mt-0.5" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
               Panel de Negocios

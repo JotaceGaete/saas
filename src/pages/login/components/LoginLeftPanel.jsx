@@ -13,7 +13,7 @@ export default function LoginLeftPanel() {
           <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center">
             <Icon name="MessageCircle" size={20} color="#fff" />
           </div>
-          <span className="text-white font-bold text-lg" style={{ fontFamily: 'var(--font-heading)' }}>CatálogoWA</span>
+          <span className="text-white font-bold text-lg" style={{ fontFamily: 'var(--font-heading)' }}>Gong</span>
         </div>
 
         {/* Headline */}
@@ -30,7 +30,7 @@ export default function LoginLeftPanel() {
         {/* Testimonial quote */}
         <div className="bg-white/10 rounded-2xl p-5">
           <p className="text-white/90 text-sm leading-relaxed mb-3" style={{ fontFamily: 'var(--font-body)' }}>
-            "Desde que uso CatálogoWA mis ventas aumentaron un 40%. Mis clientes pueden ver el catálogo y hacer pedidos sin llamarme."
+            "Desde que uso Gong mis ventas aumentaron un 40%. Mis clientes pueden ver el catálogo y hacer pedidos sin llamarme."
           </p>
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">

@@ -26,7 +26,7 @@ export default function LandingFooter() {
                 className="font-bold text-sm tracking-tight"
                 style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}
               >
-                CatálogoApp
+                Gong
               </span>
             </div>
             <p className="text-xs max-w-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
@@ -55,7 +55,7 @@ export default function LandingFooter() {
 
           {/* Copyright */}
           <p className="text-xs flex-shrink-0" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-            © {new Date()?.getFullYear()} CatálogoApp
+            © {new Date()?.getFullYear()} Gong
           </p>
         </div>
       </div>
