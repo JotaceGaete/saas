@@ -406,34 +406,36 @@ export default function GettingStartedSection({
             <button
               key={i}
               onClick={() => handleCardAction(card)}
-              className="flex flex-col items-center gap-2.5 p-4 rounded-xl border text-center transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md group cursor-pointer"
+              className="flex flex-col items-center gap-2.5 p-4 rounded-xl border text-center transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md group cursor-pointer min-w-0"
               style={{
                 backgroundColor: "#FFFFFF",
                 borderColor: "var(--color-border)",
               }}
             >
               <div
-                className="w-11 h-11 rounded-xl flex items-center justify-center transition-transform duration-200 group-hover:scale-105"
+                className="w-11 h-11 rounded-xl flex items-center justify-center transition-transform duration-200 group-hover:scale-105 flex-shrink-0"
                 style={{ backgroundColor: card?.accentBg }}
               >
                 <Icon name={card?.icon} size={20} color={card?.accent} />
               </div>
-              <div>
+              <div className="min-w-0 w-full">
                 <p
-                  className="text-sm font-semibold leading-tight"
+                  className="text-sm font-semibold leading-tight truncate"
                   style={{
                     color: "var(--color-foreground)",
                     fontFamily: "var(--font-caption)",
                   }}
+                  title={card?.title}
                 >
                   {card?.title}
                 </p>
                 <p
-                  className="text-xs mt-0.5 hidden sm:block"
+                  className="text-xs mt-0.5 hidden sm:block truncate"
                   style={{
                     color: "var(--color-muted-foreground)",
                     fontFamily: "var(--font-caption)",
                   }}
+                  title={card?.description}
                 >
                   {card?.description}
                 </p>

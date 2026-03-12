@@ -71,9 +71,9 @@ export default function ProductTable({
 
   return (
     <>
-      {/* Desktop Table */}
-      <div className="hidden md:block rounded-xl border overflow-hidden" style={{ backgroundColor: '#FFFFFF', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-sm)' }}>
-        <div className="overflow-x-auto">
+      {/* Desktop Table: outer wrapper constrains width so overflow-x-auto scrolls inside, avoiding page overflow on mobile/tablet */}
+      <div className="hidden md:block w-full max-w-full min-w-0 rounded-xl border overflow-hidden" style={{ backgroundColor: '#FFFFFF', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-sm)' }}>
+        <div className="overflow-x-auto min-w-0 overflow-x-touch">
           <table className="w-full min-w-[700px]">
             <thead>
               <tr className="border-b" style={{ backgroundColor: 'var(--color-muted)', borderColor: 'var(--color-border)' }}>

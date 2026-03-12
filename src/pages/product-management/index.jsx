@@ -170,7 +170,7 @@ export default function ProductManagement() {
           </div>
         </div>
 
-        <div className="px-4 md:px-6 lg:px-8 py-6 max-w-screen-xl mx-auto page-enter pb-20 lg:pb-8">
+        <div className="px-4 md:px-6 lg:px-8 py-6 max-w-screen-xl mx-auto page-enter pb-20 lg:pb-8 w-full max-w-full min-w-0">
           {error && (
             <div className="mb-4 flex items-center gap-2 p-3 rounded-lg border scale-in" style={{ backgroundColor: 'rgba(239,68,68,0.05)', borderColor: 'rgba(239,68,68,0.2)' }}>
               <Icon name="AlertCircle" size={16} color="var(--color-error)" />

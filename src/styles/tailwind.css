@@ -509,6 +509,26 @@ p {
 .stagger-item:nth-child(4) { animation-delay: 180ms; }
 .stagger-item:nth-child(5) { animation-delay: 240ms; }
 
+/* Mobile app layout: full-width, touch-friendly, full viewport */
+@media (max-width: 767px) {
+  .app-shell {
+    width: 100%;
+    max-width: 100%;
+    min-height: 100vh;
+    min-height: 100dvh;
+    padding-left: 0;
+    padding-right: 0;
+  }
+  .panel-main {
+    padding-left: 12px;
+    padding-right: 12px;
+    padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+    min-height: 100vh;
+    min-height: 100dvh;
+    max-width: 100%;
+  }
+}
+
 /* Mobile bottom nav */
 .mobile-bottom-nav {
   position: fixed;
@@ -518,7 +538,7 @@ p {
   z-index: var(--z-navigation);
   background: var(--color-card);
   border-top: 1px solid var(--color-border);
-  padding: 8px 0 env(safe-area-inset-bottom, 8px);
+  padding: 8px 0 max(env(safe-area-inset-bottom), 8px);
   box-shadow: 0 -4px 16px rgba(15, 23, 42, 0.06);
 }
 
@@ -529,5 +549,9 @@ p {
   }
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
+  }
+  /* iOS horizontal scroll: smooth touch scrolling inside overflow container */
+  .overflow-x-touch {
+    -webkit-overflow-scrolling: touch;
   }
 }

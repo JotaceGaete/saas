@@ -409,7 +409,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="px-4 md:px-6 lg:px-6 py-5 lg:py-6 page-enter pb-20 lg:pb-8" style={{ maxWidth: '1100px' }}>
+        <div className="px-4 md:px-6 lg:px-6 py-5 lg:py-6 page-enter pb-20 lg:pb-8 w-full max-w-full min-w-0" style={{ maxWidth: '1100px' }}>
 
           {/* Banner: negocio sin configurar */}
           {!business && !businessLoading && (
@@ -488,7 +488,7 @@ export default function Dashboard() {
           <section aria-label="Métricas del negocio" className="mb-6">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 md:gap-4 lg:gap-5">
               {METRICS?.map((metric, idx) => (
-                <div key={idx} className="stagger-item">
+                <div key={idx} className="stagger-item min-w-0">
                   <MetricCard
                     title={metric.title}
                     value={metric.value}
@@ -508,18 +508,18 @@ export default function Dashboard() {
           {/* ── Analíticas ── */}
           <section aria-label="Analíticas" className="mb-6">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 lg:gap-5">
-              <div className="stagger-item"><OrdersByDayCard data={ordersByDay} loading={analyticsLoading} /></div>
-              <div className="stagger-item"><TopProductsCard data={topProducts} loading={analyticsLoading} /></div>
-              <div className="stagger-item"><MonthlyRevenueCard data={monthlyRevenue} loading={analyticsLoading} /></div>
+              <div className="stagger-item min-w-0"><OrdersByDayCard data={ordersByDay} loading={analyticsLoading} /></div>
+              <div className="stagger-item min-w-0"><TopProductsCard data={topProducts} loading={analyticsLoading} /></div>
+              <div className="stagger-item min-w-0"><MonthlyRevenueCard data={monthlyRevenue} loading={analyticsLoading} /></div>
             </div>
           </section>
 
           {/* ── Feed + Widgets ── */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 lg:gap-5">
-            <section aria-label="Actividad reciente" className="lg:col-span-2">
+            <section aria-label="Actividad reciente" className="lg:col-span-2 min-w-0">
               <ActivityFeed orders={orders} loading={dataLoading} newOrderIds={newOrderIds} />
             </section>
-            <div className="flex flex-col gap-5">
+            <div className="flex flex-col gap-5 min-w-0">
               <section aria-label="Tu plan">
                 <PlanUsageCard data={planUsage} loading={planUsageLoading} />
               </section>

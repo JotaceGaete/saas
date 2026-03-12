@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import Icon from 'components/AppIcon';
+import MobileBottomNav from 'components/MobileBottomNav';
+import FloatingActionButton from 'components/FloatingActionButton';
 import { useAuth } from '../../contexts/AuthContext';
 import { getPlanLabel } from '../../constants/plans';
 
@@ -17,13 +19,6 @@ const NAV_ITEMS = [
   },
   { label: 'Pedidos', path: '/orders', icon: 'ShoppingCart' },
   { label: 'Configuración', path: '/business-configuration', icon: 'Settings' },
-];
-
-const MOBILE_NAV = [
-  { label: 'Inicio', path: '/dashboard', icon: 'LayoutDashboard' },
-  { label: 'Productos', path: '/product-management', icon: 'Package' },
-  { label: 'Pedidos', path: '/orders', icon: 'ShoppingCart' },
-  { label: 'Config', path: '/business-configuration', icon: 'Settings' },
 ];
 
 export default function BusinessSidebar({ isCollapsed = false, onCollapsedChange }) {
@@ -382,38 +377,9 @@ export default function BusinessSidebar({ isCollapsed = false, onCollapsedChange
       </aside>
 
       {/* Mobile bottom navigation */}
-      <nav className="mobile-bottom-nav lg:hidden" aria-label="Navegación inferior">
-        <div className="flex items-center justify-around px-2">
-          {MOBILE_NAV?.map((item) => {
-            const active = location?.pathname === item?.path || location?.pathname?.startsWith(item?.path + '/');
-            return (
-              <button
-                key={item?.path}
-                onClick={() => navigate(item?.path)}
-                className="flex flex-col items-center gap-1 px-3 py-2 rounded-xl transition-all duration-150 min-w-[56px]"
-                style={{ color: active ? 'var(--color-primary)' : 'var(--color-muted-foreground)' }}
-                aria-label={item?.label}
-                aria-current={active ? 'page' : undefined}
-              >
-                <Icon name={item?.icon} size={20} color="currentColor" />
-                <span className="text-xs font-medium" style={{ fontFamily: 'var(--font-caption)', fontSize: '10px' }}>{item?.label}</span>
-              </button>
-            );
-          })}
-          {isAdmin && (
-            <button
-              onClick={() => navigate('/admin')}
-              className="flex flex-col items-center gap-1 px-3 py-2 rounded-xl transition-all duration-150 min-w-[56px]"
-              style={{ color: location?.pathname === '/admin' ? 'var(--color-error)' : 'var(--color-muted-foreground)' }}
-              aria-label="Panel admin"
-              aria-current={location?.pathname === '/admin' ? 'page' : undefined}
-            >
-              <Icon name="Shield" size={20} color="currentColor" />
-              <span className="text-xs font-medium" style={{ fontFamily: 'var(--font-caption)', fontSize: '10px' }}>Admin</span>
-            </button>
-          )}
-        </div>
-      </nav>
+      <MobileBottomNav />
+      {/* FAB: Add product — visible on mobile on main app pages */}
+      <FloatingActionButton to="/product-editor" label="Agregar producto" icon="Plus" />
     </>
   );
 }

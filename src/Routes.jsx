@@ -2,6 +2,7 @@ import React from "react";
 import { BrowserRouter, Routes as RouterRoutes, Route } from "react-router-dom";
 import ScrollToTop from "components/ScrollToTop";
 import ErrorBoundary from "components/ErrorBoundary";
+import AnimatedLayout from "components/AnimatedLayout";
 import NotFound from "pages/NotFound";
 import RequireAdmin from "components/RequireAdmin";
 import BusinessRegistration from './pages/business-registration';
@@ -22,28 +23,29 @@ const Routes = () => {
   return (
     <BrowserRouter>
       <ErrorBoundary>
-      <ScrollToTop />
-      <RouterRoutes>
-        {/* Define your route here */}
-        <Route path="/" element={<BusinessConfiguration />} />
-        <Route path="/business-registration" element={<BusinessRegistration />} />
-        <Route path="/landing-page" element={<LandingPage />} />
-        <Route path="/business-configuration" element={<BusinessConfiguration />} />
-        <Route path="/product-management" element={<ProductManagement />} />
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/product-editor" element={<ProductEditor />} />
-        <Route path="/orders" element={<Orders />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/planes" element={<PlansPage />} />
-        <Route path="/plans" element={<PlansPage />} />
-        <Route path="/catalog/:slug" element={<PublicCatalog />} />
-        <Route path="/catalog/:slug/checkout" element={<OrderConfirmation />} />
-        <Route path="/catalogo/:slug" element={<PublicCatalog />} />
-        <Route path="/catalogo/:slug/checkout" element={<OrderConfirmation />} />
-        <Route path="/admin" element={<RequireAdmin><AdminDashboard /></RequireAdmin>} />
-        <Route path="/admin/payments" element={<RequireAdmin><AdminPaymentsPage /></RequireAdmin>} />
-        <Route path="*" element={<NotFound />} />
-      </RouterRoutes>
+        <ScrollToTop />
+        <RouterRoutes>
+          <Route element={<AnimatedLayout />}>
+            <Route path="/" element={<BusinessConfiguration />} />
+            <Route path="/business-registration" element={<BusinessRegistration />} />
+            <Route path="/landing-page" element={<LandingPage />} />
+            <Route path="/business-configuration" element={<BusinessConfiguration />} />
+            <Route path="/product-management" element={<ProductManagement />} />
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/product-editor" element={<ProductEditor />} />
+            <Route path="/orders" element={<Orders />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/planes" element={<PlansPage />} />
+            <Route path="/plans" element={<PlansPage />} />
+            <Route path="/catalog/:slug" element={<PublicCatalog />} />
+            <Route path="/catalog/:slug/checkout" element={<OrderConfirmation />} />
+            <Route path="/catalogo/:slug" element={<PublicCatalog />} />
+            <Route path="/catalogo/:slug/checkout" element={<OrderConfirmation />} />
+            <Route path="/admin" element={<RequireAdmin><AdminDashboard /></RequireAdmin>} />
+            <Route path="/admin/payments" element={<RequireAdmin><AdminPaymentsPage /></RequireAdmin>} />
+            <Route path="*" element={<NotFound />} />
+          </Route>
+        </RouterRoutes>
       </ErrorBoundary>
     </BrowserRouter>
   );
