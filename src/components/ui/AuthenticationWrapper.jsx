@@ -9,7 +9,7 @@ const TRUST_ITEMS = [
 ];
 
 const TESTIMONIAL = {
-  quote: '"Mis ventas subieron un 40% desde que uso Gong. Mis clientes pueden ver todo desde su celular."',
+  quote: '"Mis ventas subieron un 40% desde que uso VentALink. Mis clientes pueden ver todo desde su celular."',
   name: 'Mariana López',
   role: 'Dulces Mariana · Repostería',
 };
@@ -41,7 +41,7 @@ export default function AuthenticationWrapper({ children, title, subtitle, showB
             <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ backgroundColor: 'rgba(255,255,255,0.2)' }}>
               <Icon name="ShoppingBag" size={18} color="#FFFFFF" />
             </div>
-            <span className="font-bold text-white text-lg tracking-tight" style={{ fontFamily: 'var(--font-heading)' }}>Gong</span>
+            <span className="font-bold text-white text-lg tracking-tight" style={{ fontFamily: 'var(--font-heading)' }}>VentALink</span>
           </button>
         </div>
 
@@ -92,7 +92,7 @@ export default function AuthenticationWrapper({ children, title, subtitle, showB
         {/* Bottom */}
         <div className="relative z-10">
           <p className="text-xs text-white/50" style={{ fontFamily: 'var(--font-caption)' }}>
-            © {new Date()?.getFullYear()} Gong
+            © {new Date()?.getFullYear()} VentALink
           </p>
         </div>
       </div>
@@ -109,7 +109,7 @@ export default function AuthenticationWrapper({ children, title, subtitle, showB
             <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)' }}>
               <Icon name="ShoppingBag" size={15} color="#FFFFFF" />
             </div>
-            <span className="font-bold text-sm" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>Gong</span>
+            <span className="font-bold text-sm" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>VentALink</span>
           </button>
           {showBackToHome && (
             <button

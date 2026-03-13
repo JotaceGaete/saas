@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Icon from 'components/AppIcon';
 import { isPWA } from 'utils/isPWA';
 
-const STORAGE_KEY = 'gong_install_banner_dismissed';
+const STORAGE_KEY = 'ventalink_install_banner_dismissed';
 
 function getPlatform() {
   if (typeof navigator === 'undefined') return null;
@@ -51,7 +51,7 @@ export default function InstallAppBanner() {
         {platform === 'ios' ? (
           <>
             <p className="text-sm font-semibold" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>
-              Instala Gong en tu teléfono
+              Instala VentALink en tu teléfono
             </p>
             <p className="text-xs mt-0.5" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
               Toca Compartir → Añadir a la pantalla de inicio

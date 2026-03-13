@@ -47,7 +47,7 @@ export default function RegistrationForm({ mode = 'register', onModeChange, onRe
         <div>
           <div className="flex items-center gap-3 mb-12">
             <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center"><Icon name="MessageCircle" size={20} color="#fff" /></div>
-            <span className="text-white font-bold text-lg" style={{ fontFamily: 'var(--font-heading)' }}>Gong</span>
+            <span className="text-white font-bold text-lg" style={{ fontFamily: 'var(--font-heading)' }}>VentALink</span>
           </div>
           <h2 className="text-3xl xl:text-4xl font-bold text-white mb-4" style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.03em', lineHeight: 1.2 }}>
             {mode === 'register' ? 'Crea tu catálogo digital en minutos' : 'Bienvenido de vuelta'}
@@ -69,7 +69,7 @@ export default function RegistrationForm({ mode = 'register', onModeChange, onRe
         <div className="w-full max-w-md">
           <div className="flex items-center gap-2 mb-8 lg:hidden">
             <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'var(--color-primary)' }}><Icon name="MessageCircle" size={16} color="#fff" /></div>
-            <span className="font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>Gong</span>
+            <span className="font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>VentALink</span>
           </div>
 
           <h1 className="text-2xl font-bold mb-1" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>{mode === 'register' ? 'Crear cuenta' : 'Iniciar sesión'}</h1>

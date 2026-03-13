@@ -25,7 +25,7 @@ export function getCountryCode() {
 export const COUNTRY_LABELS = Object.freeze({
   [COUNTRY_AR]: {
     countryName: 'Argentina',
-    flag: '\u{1F1E6}\u{1F1F7}',
+    flag: '🇦🇷',
     currency: 'ARS',
     currencyName: 'Peso argentino',
     /** Etiqueta del campo que en Chile es "Comuna" */
@@ -53,7 +53,7 @@ export const COUNTRY_LABELS = Object.freeze({
   },
   [COUNTRY_CL]: {
     countryName: 'Chile',
-    flag: '\u{1F1E8}\u{1F1F1}',
+    flag: '🇨🇱',
     currency: 'CLP',
     currencyName: 'Peso chileno',
     cityLabel: 'Comuna',

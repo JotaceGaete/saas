@@ -57,7 +57,7 @@ export default function LandingNavbar() {
               className="font-bold text-sm tracking-tight"
               style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}
             >
-              Gong
+              VentALink
             </span>
           </button>
 
@@ -128,7 +128,7 @@ export default function LandingNavbar() {
               <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)' }}>
                 <Icon name="ShoppingBag" size={13} color="#FFFFFF" />
               </div>
-              <span className="font-bold text-sm" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>Gong</span>
+              <span className="font-bold text-sm" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>VentALink</span>
             </div>
             <button
               onClick={() => setMobileMenuOpen(false)}

@@ -1,6 +1,6 @@
 {
-  "short_name": "Gong",
-  "name": "Gong - Catálogo WhatsApp",
+  "short_name": "VentALink",
+  "name": "VentALink - Catálogo WhatsApp",
   "description": "Crea tu catálogo de productos por WhatsApp en minutos",
   "start_url": "/?source=pwa",
   "scope": "/",
