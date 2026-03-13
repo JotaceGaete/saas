@@ -23,8 +23,42 @@ jobs:
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
+          set -euo pipefail
           DATE=$(date +%F)
-          pg_dump "$SUPABASE_DB_URL" | gzip > backups/supabase-backup-$DATE.sql.gz
+
+          if [ -z "${SUPABASE_DB_URL:-}" ]; then
+            echo "SUPABASE_DB_URL is empty"
+            exit 1
+          fi
+
+          FINAL_URL="${SUPABASE_DB_URL}"
+
+          case "$FINAL_URL" in
+            *\?*)
+              FINAL_URL="${FINAL_URL}&sslmode=require"
+              ;;
+            *)
+              FINAL_URL="${FINAL_URL}?sslmode=require"
+              ;;
+          esac
+
+          echo "Creating backup for $DATE"
+          pg_dump "$FINAL_URL" | gzip > "backups/supabase-backup-$DATE.sql.gz"
+
+          FILE="backups/supabase-backup-$DATE.sql.gz"
+
+          if [ ! -s "$FILE" ]; then
+            echo "Backup file was not created or is empty"
+            exit 1
+          fi
+
+          SIZE=$(stat -c%s "$FILE")
+          echo "Backup size: $SIZE bytes"
+
+          if [ "$SIZE" -lt 1024 ]; then
+            echo "Backup file is suspiciously small"
+            exit 1
+          fi
 
       - name: Upload backup artifact
         uses: actions/upload-artifact@v4
