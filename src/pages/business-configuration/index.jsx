@@ -443,7 +443,7 @@ export default function BusinessConfiguration() {
       >
         {/* Top bar */}
         <header
-          className="sticky top-0 z-30 border-b flex items-center justify-between px-4 sm:px-6 lg:px-8"
+          className="sticky top-0 z-30 border-b flex items-center justify-between px-4 sm:px-5 lg:px-5"
           style={{
             backgroundColor: '#ffffff',
             borderColor: 'var(--color-border)',
@@ -477,7 +477,7 @@ export default function BusinessConfiguration() {
 
         {/* Tabs */}
         <div
-          className="flex items-center gap-1 px-4 sm:px-6 lg:px-10 border-b overflow-x-auto scrollbar-hide"
+          className="flex items-center gap-1 px-4 sm:px-5 lg:px-5 border-b overflow-x-auto scrollbar-hide"
           style={{ backgroundColor: '#ffffff', borderColor: 'var(--color-border)' }}
         >
           {tabs?.map(tab => (
@@ -501,7 +501,7 @@ export default function BusinessConfiguration() {
         {activeTab === 'store' && (
           <div className="flex flex-col lg:flex-row gap-0 min-h-[calc(100vh-108px)] pb-20 lg:pb-0">
             {!business?.id ? (
-              <div className="flex-1 min-w-0 px-4 sm:px-6 lg:px-10 py-12 flex flex-col items-center justify-center">
+              <div className="flex-1 min-w-0 px-4 sm:px-5 lg:px-5 py-12 flex flex-col items-center justify-center">
                 <div className="rounded-2xl border p-8 max-w-md text-center" style={{ backgroundColor: '#ffffff', borderColor: 'var(--color-border)' }}>
                   <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ backgroundColor: 'rgba(139,92,246,0.1)' }}>
                     <Icon name="Store" size={28} color="var(--color-primary)" />
@@ -524,7 +524,7 @@ export default function BusinessConfiguration() {
             ) : (
             <>
             {/* Center content */}
-            <div className="flex-1 min-w-0 px-4 sm:px-6 lg:px-10 py-6 lg:py-8 max-w-3xl">
+            <div className="flex-1 min-w-0 px-4 sm:px-5 lg:px-5 py-6 lg:py-8 max-w-3xl">
               <StoreHeaderCard
                 storeName={storeName}
                 storeSlug={storeSlug}
@@ -584,7 +584,7 @@ export default function BusinessConfiguration() {
 
         {/* Tab: Configuración */}
         {activeTab === 'settings' && (
-          <div className="px-4 sm:px-6 lg:px-10 py-6 lg:py-8 max-w-2xl pb-20 lg:pb-8">
+          <div className="px-4 sm:px-5 lg:px-5 py-6 lg:py-8 max-w-2xl pb-20 lg:pb-8">
             {isLoading ? (
               <div className="flex items-center justify-center py-20">
                 <svg className="animate-spin" width="28" height="28" viewBox="0 0 24 24" fill="none">
@@ -961,7 +961,7 @@ export default function BusinessConfiguration() {
 
         {/* Tab: Diseño */}
         {activeTab === 'design' && (
-          <div className="w-full max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 min-h-[calc(100vh-108px)] pb-20 lg:pb-8">
+          <div className="w-full max-w-6xl mx-auto px-4 sm:px-5 lg:px-5 min-h-[calc(100vh-108px)] pb-20 lg:pb-8">
             {/* Mobile: 1 columna. Desktop (lg+): 2 columnas equilibradas, preview sticky */}
             <div className="flex flex-col lg:grid lg:grid-cols-[1fr_minmax(340px,380px)] lg:gap-8 xl:gap-10">
               {/* Columna izquierda: formulario de edición */}
