@@ -1,0 +1,67 @@
+name: Supabase Daily Backup to R2 (Gong.cl)
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install PostgreSQL 17 client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget ca-certificates gnupg lsb-release gzip
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo wget --quiet -O /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-17
+
+      - name: Install Rclone
+        run: sudo apt-get install -y rclone
+
+      - name: Create backup folder
+        run: mkdir -p backups
+
+      - name: Dump database
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          DATE=$(date +%F_%H-%M)
+          
+          FINAL_URL="${SUPABASE_DB_URL}"
+          [[ "$FINAL_URL" == *\?* ]] && FINAL_URL="${FINAL_URL}&sslmode=require" || FINAL_URL="${FINAL_URL}?sslmode=require"
+
+          echo "Iniciando backup de base de datos..."
+          /usr/lib/postgresql/17/bin/pg_dump "$FINAL_URL" | gzip > "backups/supabase-backup-$DATE.sql.gz"
+
+      - name: Upload to Cloudflare R2
+        env:
+          # Usa estos nombres exactos en tus Secrets de GitHub
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          # Tu Account ID extraído de la URL que pasaste
+          R2_ACCOUNT_ID: "df2db09c7e5c3e81be99a6984812ac80"
+          BUCKET_NAME: "saasgong"
+        run: |
+          export RCLONE_CONFIG_R2_TYPE=s3
+          export RCLONE_CONFIG_R2_PROVIDER=Cloudflare
+          export RCLONE_CONFIG_R2_ACCESS_KEY_ID=$R2_ACCESS_KEY_ID
+          export RCLONE_CONFIG_R2_SECRET_ACCESS_KEY=$R2_SECRET_ACCESS_KEY
+          export RCLONE_CONFIG_R2_ENDPOINT="https://$R2_ACCOUNT_ID.r2.cloudflarestorage.com"
+          export RCLONE_CONFIG_R2_ACL=private
+
+          echo "Subiendo backup al bucket $BUCKET_NAME..."
+          rclone copy backups/ r2:$BUCKET_NAME/backups/ --progress
+          
+          echo "Verificando subida en: https://media.gong.cl/backups/"
+
+      - name: Cleanup
+        run: rm -rf backups/
