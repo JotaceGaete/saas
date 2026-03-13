@@ -97,25 +97,27 @@ export default function AuthStep({ onRegister, onLogin, isLoading, authError, on
             </p>
 
             {mode === 'register' && (
-              <ul className="space-y-2 mb-8">
-                {BENEFITS.map((text, i) => (
-                  <motion.li
-                    key={text}
-                    initial={{ opacity: 0, x: -6 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ duration: 0.28, delay: 0.18 + i * 0.07 }}
-                    className="flex items-center gap-2.5 text-white/95 text-sm"
-                    style={{ fontFamily: 'var(--font-body)' }}
-                  >
-                    <span className="text-[#86efac] font-bold text-base leading-none">✔</span>
-                    {text}
-                  </motion.li>
-                ))}
-              </ul>
-              <p className="text-white/70 text-xs flex items-center gap-2 mt-2" style={{ fontFamily: 'var(--font-caption)' }}>
-                <span className="text-lg leading-none" aria-hidden="true">{countryLabels.flag}</span>
-                {countryLabels.heroSubtitle}
-              </p>
+              <>
+                <ul className="space-y-2 mb-8">
+                  {BENEFITS.map((text, i) => (
+                    <motion.li
+                      key={text}
+                      initial={{ opacity: 0, x: -6 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.28, delay: 0.18 + i * 0.07 }}
+                      className="flex items-center gap-2.5 text-white/95 text-sm"
+                      style={{ fontFamily: 'var(--font-body)' }}
+                    >
+                      <span className="text-[#86efac] font-bold text-base leading-none">✔</span>
+                      {text}
+                    </motion.li>
+                  ))}
+                </ul>
+                <p className="text-white/70 text-xs flex items-center gap-2 mt-2" style={{ fontFamily: 'var(--font-caption)' }}>
+                  <span className="text-lg leading-none" aria-hidden="true">{countryLabels.flag}</span>
+                  {countryLabels.heroSubtitle}
+                </p>
+              </>
             )}
           </motion.div>
 
