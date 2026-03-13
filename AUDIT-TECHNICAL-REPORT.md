@@ -1,7 +1,7 @@
 # Informe técnico de auditoría — Catálogo WhatsApp (Rocket.new)
 
 ## 1. Arquitectura del proyecto
-
+#
 ### Framework y stack
 - **Framework:** React 18 con Vite 5.
 - **Lenguaje:** JavaScript (JSX); no hay TypeScript.
