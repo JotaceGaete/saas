@@ -7,6 +7,8 @@ import { CartProvider, useCart } from '../../contexts/CartContext';
 import { formatCLP } from '../../utils/formatCLP';
 import { useIsDesktop } from '../../hooks/useMediaQuery';
 import { getAppBaseUrl } from '../../config/appUrl';
+import BrandingFooter from '../../components/BrandingFooter';
+import { hasViralBranding, getOrderMessageBrandingSuffix } from '../../utils/branding';
 
 /** Build absolute URL for OG image; prefers logo → cover → generated fallback with store name */
 function getCatalogOgImageUrl(business, baseUrl) {
@@ -572,6 +574,8 @@ function CatalogInner({ slug }) {
             ))}
           </div>
         )}
+
+        <BrandingFooter business={business} />
       </div>
 
       {/* Floating Cart Button */}
@@ -786,6 +790,7 @@ function OrderPanel({ business, formatPrice, onClose, theme }) {
         let message = `Hola, quiero hacer este pedido:\n\n${lines?.join('\n')}\n\n*Total estimado: ${formatPrice(total)}*`;
         if (customerName?.trim()) message += `\n\nNombre: ${customerName?.trim()}`;
         if (notes?.trim()) message += `\nComentario: ${notes?.trim()}`;
+        if (hasViralBranding(business)) message += `\n\n${getOrderMessageBrandingSuffix()}`;
         const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
         window.open(url, '_blank');
       }
