@@ -1,41 +1,43 @@
-# Despliegue en https://app.gong.cl
+# Despliegue (VentALink por país)
+
+Este documento describe el despliegue con dominios por país: **https://cl.ventalink.app** y **https://ar.ventalink.app**.
 
 ## URL base
 
-La app está configurada para funcionar bajo **https://app.gong.cl**.
+La app usa la misma base para enlaces públicos del catálogo, planes, QR y Mercado Pago. Se obtiene así:
+
+- **Código:** `getAppBaseUrl()` y `getPublicCatalogUrl(slug)` en `src/config/appUrl.js`.
+- **Prioridad:** variable de entorno `VITE_APP_URL` (en el build) → si no existe, `window.location.origin` en runtime.
+
+Para que los enlaces compartidos usen el dominio correcto (cl o ar), en cada proyecto de Vercel:
+
+- **Opción recomendada:** no definir `VITE_APP_URL`. La app usará el dominio desde el que se abre (cl.ventalink.app o ar.ventalink.app).
+- **Opción alternativa:** definir `VITE_APP_URL` por deploy: en el proyecto de Chile `https://cl.ventalink.app`, en el de Argentina `https://ar.ventalink.app`.
 
 ## Variables de entorno en Vercel
 
-Configura en el proyecto de Vercel (Settings > Environment Variables) **todas** para Production (y Preview si quieres):
-
 | Variable | Valor | Obligatoria |
 |----------|--------|-------------|
-| `VITE_APP_URL` | `https://app.gong.cl` | **Sí** (para enlaces públicos del catálogo, planes, QR, Mercado Pago) |
 | `VITE_SUPABASE_URL` | `https://tu-proyecto.supabase.co` | Sí |
 | `VITE_SUPABASE_ANON_KEY` | tu anon key de Supabase | Sí |
-
-Otras variables que ya uses (OpenAI, etc.) según necesidad.
+| `VITE_APP_URL` | Opcional. Si no se define, se usa el dominio actual (recomendado para cl/ar). | No |
 
 ## Supabase (Dashboard)
 
 - **Authentication > URL Configuration**:  
-  - **Site URL**: `https://app.gong.cl`  
-  - **Redirect URLs**: añade `https://app.gong.cl/**` si usas redirects de auth.
+  - **Site URL:** el dominio principal (ej. `https://cl.ventalink.app`).  
+  - **Redirect URLs:** añade `https://cl.ventalink.app/**`, `https://ar.ventalink.app/**`, etc., según los dominios que uses.
 
 ## Edge Functions (Mercado Pago)
 
-- **create-mp-preference**: las `back_urls` por defecto son:
-  - success: `https://app.gong.cl/plans?payment=success`
-  - failure: `https://app.gong.cl/plans?payment=failure`
-  - pending: `https://app.gong.cl/plans?payment=pending`
-- Opcional: en Supabase > Edge Functions > Secrets puedes definir `APP_BASE_URL=https://app.gong.cl` (ya es el valor por defecto en código).
+- **create-mp-preference:** el front envía `success_url`, `failure_url` y `pending_url` con el dominio actual. Opcional en Supabase > Edge Functions > Secrets: `APP_BASE_URL` (ej. `https://cl.ventalink.app`) como fallback.
 
 ## Rutas públicas
 
-- App panel: `https://app.gong.cl/dashboard`, `/business-configuration`, `/planes`, etc.
-- Catálogo público: `https://app.gong.cl/catalog/:slug` o `https://app.gong.cl/catalogo/:slug`
-- Planes (y retorno MP): `https://app.gong.cl/planes` y `https://app.gong.cl/plans`
+- Panel: `/dashboard`, `/business-configuration`, `/planes`, etc.
+- Catálogo público: **`/catalogo/:slug`** (URL compartible vía `getPublicCatalogUrl(slug)`).
+- Planes y retorno MP: `/planes`, `/plans`.
 
-## Dominio en Vercel
+## Dominios en Vercel
 
-En el proyecto de Vercel, añade el dominio **app.gong.cl** (Domains) y apunta el DNS del subdominio a Vercel según las instrucciones que muestre la consola.
+En el proyecto de Vercel, añade los dominios **cl.ventalink.app** y **ar.ventalink.app** (o el que corresponda) y configura el DNS según las instrucciones de Vercel.

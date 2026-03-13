@@ -11,7 +11,6 @@ const ALLOWED_ORIGINS = [
   'https://www.ventalink.app',
   'https://cl.ventalink.app',
   'https://ar.ventalink.app',
-  'https://app.gong.cl',
   'http://localhost:4028',
   'http://localhost:3000',
   'http://127.0.0.1:4028',

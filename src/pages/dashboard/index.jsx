@@ -23,7 +23,7 @@ import {
   getPlanUsage,
 } from "../../services/waBusinessService";
 import { supabase } from "../../lib/supabase";
-import { getAppBaseUrl } from "../../config/appUrl";
+import { getPublicCatalogUrl } from "../../config/appUrl";
 import OrdersByDayCard from "./components/OrdersByDayCard";
 import TopProductsCard from "./components/TopProductsCard";
 import MonthlyRevenueCard from "./components/MonthlyRevenueCard";
@@ -58,10 +58,7 @@ export default function Dashboard() {
   const channelRef = useRef(null);
   const [dismissedExpiredBanner, setDismissedExpiredBanner] = useState(false);
 
-  const baseUrl = getAppBaseUrl() || (typeof window !== 'undefined' ? window.location?.origin : '');
-  const catalogUrl = business?.slug && baseUrl
-    ? `${baseUrl}/catalogo/${business?.slug}`
-    : '';
+  const catalogUrl = getPublicCatalogUrl(business?.slug ?? '');
 
   const planExpiresAt = business?.planExpiresAt ?? null;
   const isPaidPlan = business?.planSlug === 'pro' || business?.planSlug === 'business';

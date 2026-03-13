@@ -22,7 +22,7 @@ import ChileWhatsAppField from 'components/ChileWhatsAppField';
 import ArgentinaWhatsAppField from 'components/ArgentinaWhatsAppField';
 import { getCountryCode, getCountryLabels } from '../../config/country';
 import { getPlanLimits, getPlanLabel } from '../../constants/plans';
-import { getAppBaseUrl } from '../../config/appUrl';
+import { getPublicCatalogUrl } from '../../config/appUrl';
 
 function Toast({ message, type, onClose }) {
   return (
@@ -381,7 +381,7 @@ export default function BusinessConfiguration() {
   const isLoading = businessLoading || businessFetchLoading;
   const isDesktop = useIsDesktop();
   const sidebarWidth = sidebarCollapsed ? 'var(--sidebar-collapsed-width)' : 'var(--sidebar-width)';
-  const catalogUrl = `${getAppBaseUrl() || window.location?.origin || ''}/catalog/${storeSlug || business?.slug || 'mi-tienda'}`;
+  const catalogUrl = getPublicCatalogUrl(storeSlug || business?.slug || 'mi-tienda');
 
   const inputClass = [
     'w-full px-3 py-2.5 rounded-lg border text-sm outline-none transition-all',

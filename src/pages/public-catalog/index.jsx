@@ -6,7 +6,7 @@ import Icon from '../../components/AppIcon';
 import { CartProvider, useCart } from '../../contexts/CartContext';
 import { formatCLP } from '../../utils/formatCLP';
 import { useIsDesktop } from '../../hooks/useMediaQuery';
-import { getAppBaseUrl } from '../../config/appUrl';
+import { getAppBaseUrl, getPublicCatalogUrl } from '../../config/appUrl';
 import BrandingFooter from '../../components/BrandingFooter';
 import { hasViralBranding, getOrderMessageBrandingSuffix } from '../../utils/branding';
 
@@ -238,8 +238,7 @@ function CatalogInner({ slug }) {
   const catalogTitle = `Catálogo de ${storeName}`;
   const catalogDescription = 'Revisa productos y haz tu pedido por WhatsApp.';
   const baseUrl = getAppBaseUrl();
-  const canonicalPath = `/catalogo/${slug}`;
-  const canonicalUrl = baseUrl ? `${baseUrl}${canonicalPath}` : (typeof window !== 'undefined' ? `${window.location?.origin || ''}${window.location?.pathname || canonicalPath}` : '');
+  const canonicalUrl = getPublicCatalogUrl(slug) || (typeof window !== 'undefined' ? `${window.location?.origin || ''}${window.location?.pathname || `/catalogo/${slug}`}` : '');
   const ogImage = getCatalogOgImageUrl(business, baseUrl);
 
   return (

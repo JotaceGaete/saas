@@ -6,7 +6,7 @@ import { useIsDesktop } from 'hooks/useMediaQuery';
 import { getBusinessesForAdmin, getAdminStats, getAdminSuspiciousInfo } from 'services/waBusinessService';
 import AdminRubrosSection from './components/AdminRubrosSection';
 import { getPlanLabel, getPlanColors, PLAN_SLUGS } from '../../constants/plans';
-import { getAppBaseUrl } from '../../config/appUrl';
+import { getPublicCatalogUrl } from '../../config/appUrl';
 
 const PLAN_ICON = { starter: 'User', control: 'Zap', pro: 'Star', business: 'Building' };
 
@@ -25,7 +25,6 @@ export default function AdminDashboard() {
   const isDesktop  = useIsDesktop();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const sidebarWidth = sidebarCollapsed ? 'var(--sidebar-collapsed-width)' : 'var(--sidebar-width)';
-  const baseUrl    = getAppBaseUrl() || (typeof window !== 'undefined' ? window.location?.origin : '');
 
   const [stats,     setStats]     = useState({ totalBusinesses: 0, totalProducts: 0, totalOrders: 0, byPlan: {} });
   const [businesses, setBusinesses] = useState([]);
@@ -302,7 +301,7 @@ export default function AdminDashboard() {
                             <td className="px-3 py-3 text-right">
                               {b.slug ? (
                                 <a
-                                  href={`${baseUrl}/catalogo/${b.slug}`}
+                                  href={getPublicCatalogUrl(b.slug)}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="inline-flex items-center gap-1 text-xs font-medium"

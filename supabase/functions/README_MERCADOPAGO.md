@@ -31,5 +31,5 @@
 1. Usuario elige Pro o Business en `/planes` o `/plans` y hace clic en "Pagar con Mercado Pago".
 2. El front llama a la Edge Function `create-mp-preference` (con JWT del usuario).
 3. La función crea una preferencia en Mercado Pago con `external_reference = businessId:planSlug` y devuelve `init_point`.
-4. El usuario es redirigido a Mercado Pago, paga y vuelve a `https://app.gong.cl/plans?payment=success` (o failure/pending).
+4. El usuario es redirigido a Mercado Pago, paga y vuelve a la URL de retorno del front (ej. `https://cl.ventalink.app/plans?payment=success` o failure/pending).
 5. Mercado Pago envía un webhook a `mp-webhook`; si el pago está aprobado, se actualiza `wa_businesses.plan_slug` para ese negocio.

@@ -4,8 +4,8 @@ La app Gong es instalable como PWA: el usuario puede añadirla a la pantalla de 
 
 ## Cómo instalar (usuario)
 
-- **Android (Chrome):** Abre `https://app.gong.cl` → menú (⋮) → “Instalar app” o “Añadir a la pantalla de inicio”.
-- **iOS (Safari):** Abre `https://app.gong.cl` → botón compartir (□↑) → “Añadir a la pantalla de inicio”.
+- **Android (Chrome):** Abre la app (ej. `https://cl.ventalink.app` o `https://ar.ventalink.app`) → menú (⋮) → “Instalar app” o “Añadir a la pantalla de inicio”.
+- **iOS (Safari):** Abre la app en Safari → botón compartir (□↑) → “Añadir a la pantalla de inicio”.
 
 ## Qué está configurado
 
