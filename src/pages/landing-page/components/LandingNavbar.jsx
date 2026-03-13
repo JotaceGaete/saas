@@ -29,7 +29,7 @@ export default function LandingNavbar() {
   return (
     <>
       <nav
-        className="fixed top-0 left-0 right-0 z-navigation transition-all duration-300"
+        className="fixed top-0 left-0 right-0 z-navigation transition-all duration-300 w-full max-w-full overflow-x-hidden"
         style={{
           backgroundColor: scrolled ? 'rgba(255,255,255,0.92)' : 'rgba(255,255,255,0)',
           borderBottom: scrolled ? '1px solid var(--color-border)' : '1px solid transparent',
@@ -40,7 +40,7 @@ export default function LandingNavbar() {
         role="navigation"
         aria-label="Navegación principal"
       >
-        <div className="max-w-screen-xl mx-auto px-4 md:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
+        <div className="w-full max-w-screen-xl mx-auto px-4 md:px-6 lg:px-8 h-16 flex items-center justify-between gap-4 min-w-0">
           {/* Logo */}
           <button
             onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}

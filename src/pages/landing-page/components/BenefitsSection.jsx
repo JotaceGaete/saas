@@ -13,7 +13,7 @@ const BENEFITS = [
 export default function BenefitsSection() {
   return (
     <section id="beneficios" className="py-20 md:py-28" style={{ backgroundColor: '#FFFFFF' }}>
-      <div className="max-w-screen-xl mx-auto px-4 md:px-6 lg:px-8">
+      <div className="w-full max-w-screen-xl mx-auto px-4 md:px-6 lg:px-8 min-w-0">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6 mb-14 md:mb-16">
           <div className="max-w-xl">

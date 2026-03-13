@@ -11,14 +11,14 @@ import LandingFooter from "./components/LandingFooter";
 export default function LandingPage() {
   return (
     <div
-      className="min-h-screen"
+      className="min-h-screen w-full max-w-full min-w-0 overflow-x-hidden"
       style={{ backgroundColor: "var(--color-background)" }}
     >
       {/* Fixed navigation */}
       <LandingNavbar />
 
       {/* Main content */}
-      <main role="main">
+      <main role="main" className="w-full max-w-full min-w-0 overflow-x-hidden">
         {/* Hero */}
         <HeroSection />
 

@@ -6,7 +6,7 @@ import InstallAppBanner from './components/InstallAppBanner';
 
 function App() {
   return (
-    <div className="app-shell" style={{ width: '100%', maxWidth: '100%', overflowX: 'hidden', minHeight: '100vh' }}>
+    <div className="app-shell min-w-0" style={{ width: '100%', maxWidth: '100vw', overflowX: 'hidden', minHeight: '100vh' }}>
       <AuthProvider>
         <ToastProvider>
           <Routes />

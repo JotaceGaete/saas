@@ -24,7 +24,7 @@ export default function HeroSection() {
         <div style={{ background: 'radial-gradient(circle at 15% 80%, rgba(109,40,217,0.05) 0%, transparent 40%)' }} className="absolute inset-0" />
       </div>
 
-      <div className="max-w-screen-xl mx-auto px-4 md:px-6 lg:px-8">
+      <div className="w-full max-w-screen-xl mx-auto px-4 md:px-6 lg:px-8 min-w-0">
         <div className="flex flex-col lg:flex-row items-center gap-12 lg:gap-16">
           {/* Text content */}
           <div

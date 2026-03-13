@@ -13,7 +13,7 @@ export default function CtaSection() {
 
   return (
     <section className="py-20 md:py-28" style={{ backgroundColor: 'var(--color-background)' }}>
-      <div className="max-w-screen-xl mx-auto px-4 md:px-6 lg:px-8">
+      <div className="w-full max-w-screen-xl mx-auto px-4 md:px-6 lg:px-8 min-w-0">
         {/* Stats row */}
         <div className="grid grid-cols-3 gap-4 md:gap-8 mb-14 max-w-2xl mx-auto">
           {STATS?.map((s, i) => (

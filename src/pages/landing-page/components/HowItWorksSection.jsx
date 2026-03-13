@@ -26,7 +26,7 @@ const STEPS = [
 export default function HowItWorksSection() {
   return (
     <section id="como-funciona" className="py-20 md:py-28" style={{ backgroundColor: 'var(--color-background)' }}>
-      <div className="max-w-screen-xl mx-auto px-4 md:px-6 lg:px-8">
+      <div className="w-full max-w-screen-xl mx-auto px-4 md:px-6 lg:px-8 min-w-0">
         {/* Header */}
         <div className="max-w-2xl mb-14 md:mb-16">
           <span

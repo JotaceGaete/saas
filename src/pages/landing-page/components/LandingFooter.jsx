@@ -7,11 +7,11 @@ export default function LandingFooter() {
 
   return (
     <footer
-      className="border-t py-10"
+      className="border-t py-10 w-full max-w-full overflow-x-hidden"
       style={{ backgroundColor: '#FFFFFF', borderColor: 'var(--color-border)' }}
       role="contentinfo"
     >
-      <div className="max-w-screen-xl mx-auto px-4 md:px-6 lg:px-8">
+      <div className="w-full max-w-screen-xl mx-auto px-4 md:px-6 lg:px-8 min-w-0">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-8">
           {/* Brand */}
           <div>
