@@ -11,15 +11,35 @@ const ALLOWED_ORIGINS = [
   'https://www.ventalink.app',
   'https://cl.ventalink.app',
   'https://ar.ventalink.app',
+  'https://app.gong.cl', // migración
   'http://localhost:4028',
   'http://localhost:3000',
   'http://127.0.0.1:4028',
   'http://127.0.0.1:3000',
 ];
 
+/** Orígenes permitidos por hostname (PWA puede enviar origin de nuestro dominio). */
+function isAllowedOriginHost(origin: string): boolean {
+  try {
+    const u = new URL(origin);
+    return u.origin === origin && (
+      u.hostname === 'ventalink.app' ||
+      u.hostname.endsWith('.ventalink.app') ||
+      u.hostname === 'app.gong.cl'
+    );
+  } catch {
+    return false;
+  }
+}
+
 function getCorsHeaders(req: Request): Record<string, string> {
-  const origin = req.headers.get('origin') ?? '';
-  const allowOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  const origin = (req.headers.get('origin') ?? '').trim();
+  const allowOrigin =
+    ALLOWED_ORIGINS.includes(origin)
+      ? origin
+      : isAllowedOriginHost(origin)
+        ? origin
+        : ALLOWED_ORIGINS[0];
   return {
     'Access-Control-Allow-Origin': allowOrigin,
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
