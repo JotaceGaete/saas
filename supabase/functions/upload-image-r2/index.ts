@@ -6,15 +6,29 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { S3Client, PutObjectCommand } from 'npm:@aws-sdk/client-s3@3.700.0';
 import { getSignedUrl } from 'npm:@aws-sdk/s3-request-presigner@3.700.0';
 
-const CORS_ORIGIN = Deno.env.get('CORS_ORIGIN') || 'http://localhost:4028';
+const ALLOWED_ORIGINS = [
+  'https://ventalink.app',
+  'https://www.ventalink.app',
+  'https://cl.ventalink.app',
+  'https://ar.ventalink.app',
+  'https://app.gong.cl',
+  'http://localhost:4028',
+  'http://localhost:3000',
+  'http://127.0.0.1:4028',
+  'http://127.0.0.1:3000',
+];
 
-const corsHeaders: Record<string, string> = {
-  'Access-Control-Allow-Origin': CORS_ORIGIN,
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-};
+function getCorsHeaders(req: Request): Record<string, string> {
+  const origin = req.headers.get('origin') ?? '';
+  const allowOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  return {
+    'Access-Control-Allow-Origin': allowOrigin,
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  };
+}
 
-function jsonResponse(body: Record<string, unknown>, status: number) {
+function jsonResponse(body: Record<string, unknown>, status: number, corsHeaders: Record<string, string>) {
   return new Response(JSON.stringify(body), {
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -36,6 +50,7 @@ function buildKey(type: UploadType, businessId: string, fileName: string, produc
 
 Deno.serve(async (req) => {
   const method = req.method;
+  const corsHeaders = getCorsHeaders(req);
 
   if (method === 'OPTIONS') {
     console.log('[upload-image-r2] OPTIONS preflight');
@@ -44,7 +59,7 @@ Deno.serve(async (req) => {
 
   if (method !== 'POST') {
     console.log('[upload-image-r2] method not allowed:', method);
-    return jsonResponse({ error: 'Method not allowed' }, 405);
+    return jsonResponse({ error: 'Method not allowed' }, 405, corsHeaders);
   }
 
   console.log('[upload-image-r2] POST request');
@@ -52,7 +67,7 @@ Deno.serve(async (req) => {
   try {
     const authHeader = (req.headers.get('authorization') ?? '').trim();
     if (!authHeader || !authHeader.toLowerCase().startsWith('bearer ')) {
-      return jsonResponse({ error: 'User not authenticated' }, 401);
+      return jsonResponse({ error: 'User not authenticated' }, 401, corsHeaders);
     }
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
@@ -63,22 +78,22 @@ Deno.serve(async (req) => {
     const { data: userData } = await userClient.auth.getUser();
     const user = userData?.user ?? null;
     if (!user?.id) {
-      return jsonResponse({ error: 'User not authenticated' }, 401);
+      return jsonResponse({ error: 'User not authenticated' }, 401, corsHeaders);
     }
 
     let body: { type?: string; businessId?: string; productId?: string; fileName?: string; contentType?: string };
     try {
       body = (await req.json().catch(() => ({}))) as typeof body;
     } catch {
-      return jsonResponse({ error: 'Invalid JSON' }, 400);
+      return jsonResponse({ error: 'Invalid JSON' }, 400, corsHeaders);
     }
 
     const type = (body?.type ?? '') as UploadType;
     if (!['logo', 'cover', 'product'].includes(type)) {
-      return jsonResponse({ error: 'type must be logo, cover, or product' }, 400);
+      return jsonResponse({ error: 'type must be logo, cover, or product' }, 400, corsHeaders);
     }
     const businessId = typeof body?.businessId === 'string' ? body.businessId.trim() : '';
-    if (!businessId) return jsonResponse({ error: 'businessId is required' }, 400);
+    if (!businessId) return jsonResponse({ error: 'businessId is required' }, 400, corsHeaders);
     const fileName = typeof body?.fileName === 'string' ? body.fileName.trim() : `upload.${type === 'product' ? 'jpg' : 'png'}`;
     const contentType = typeof body?.contentType === 'string' ? body.contentType.trim() : 'image/jpeg';
     const productId = typeof body?.productId === 'string' ? body.productId.trim() || undefined : undefined;
@@ -86,7 +101,7 @@ Deno.serve(async (req) => {
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
     if (!serviceRoleKey) {
       console.error('[upload-image-r2] Missing SUPABASE_SERVICE_ROLE_KEY');
-      return jsonResponse({ error: 'Server configuration error' }, 500);
+      return jsonResponse({ error: 'Server configuration error' }, 500, corsHeaders);
     }
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
     const { data: biz, error: bizError } = await adminClient
@@ -95,7 +110,7 @@ Deno.serve(async (req) => {
       .eq('id', businessId)
       .maybeSingle();
     if (bizError || !biz?.id || (biz as { user_id?: string }).user_id !== user.id) {
-      return jsonResponse({ error: 'Business not found or access denied' }, 403);
+      return jsonResponse({ error: 'Business not found or access denied' }, 403, corsHeaders);
     }
 
     const accountId = Deno.env.get('R2_ACCOUNT_ID') ?? '';
@@ -112,7 +127,7 @@ Deno.serve(async (req) => {
     if (!publicBaseUrl) missingR2.push('R2_PUBLIC_URL');
     if (missingR2.length > 0) {
       console.error('[upload-image-r2] Missing R2 secrets:', missingR2.join(', '));
-      return jsonResponse({ error: 'Storage not configured', missing: missingR2 }, 500);
+      return jsonResponse({ error: 'Storage not configured', missing: missingR2 }, 500, corsHeaders);
     }
 
     const key = buildKey(type, businessId, fileName, productId);
@@ -138,16 +153,17 @@ Deno.serve(async (req) => {
       );
     } catch (err) {
       console.error('[upload-image-r2] getSignedUrl error', err);
-      return jsonResponse({ error: 'Failed to generate upload URL' }, 500);
+      return jsonResponse({ error: 'Failed to generate upload URL' }, 500, corsHeaders);
     }
 
     const publicUrl = `${publicBaseUrl}/${key}`;
-    return jsonResponse({ uploadUrl, publicUrl, key }, 200);
+    return jsonResponse({ uploadUrl, publicUrl, key }, 200, corsHeaders);
   } catch (err) {
     console.error('[upload-image-r2] Unhandled error', err);
     return jsonResponse(
       { error: 'Internal server error', message: err instanceof Error ? err.message : String(err) },
-      500
+      500,
+      corsHeaders
     );
   }
 });
