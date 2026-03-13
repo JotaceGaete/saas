@@ -24,7 +24,7 @@ jobs:
           sudo apt-get install -y postgresql-client-17
 
       - name: Verify pg_dump version
-        run: pg_dump --version
+        run: /usr/lib/postgresql/17/bin/pg_dump --version
 
       - name: Create backup folder
         run: mkdir -p backups
@@ -37,12 +37,13 @@ jobs:
           DATE=$(date +%F)
 
           if [ -z "${SUPABASE_DB_URL:-}" ]; then
-            echo "SUPABASE_DB_URL is empty"
+            echo "Error: SUPABASE_DB_URL is empty"
             exit 1
           fi
 
           FINAL_URL="${SUPABASE_DB_URL}"
 
+          # Añadir sslmode=require si no está presente
           case "$FINAL_URL" in
             *\?*)
               FINAL_URL="${FINAL_URL}&sslmode=require"
@@ -52,13 +53,15 @@ jobs:
               ;;
           esac
 
-          echo "Creating backup for $DATE"
-          pg_dump "$FINAL_URL" | gzip > "backups/supabase-backup-$DATE.sql.gz"
+          echo "Creating backup for $DATE using pg_dump v17"
+          
+          # Forzamos el uso del binario de la versión 17
+          /usr/lib/postgresql/17/bin/pg_dump "$FINAL_URL" | gzip > "backups/supabase-backup-$DATE.sql.gz"
 
           FILE="backups/supabase-backup-$DATE.sql.gz"
 
           if [ ! -s "$FILE" ]; then
-            echo "Backup file was not created or is empty"
+            echo "Error: Backup file was not created or is empty"
             exit 1
           fi
 
@@ -66,7 +69,7 @@ jobs:
           echo "Backup size: $SIZE bytes"
 
           if [ "$SIZE" -lt 1024 ]; then
-            echo "Backup file is suspiciously small"
+            echo "Warning: Backup file is suspiciously small"
             exit 1
           fi
 
@@ -75,3 +78,4 @@ jobs:
         with:
           name: supabase-backup
           path: backups/*.sql.gz
+          retention-days: 7
