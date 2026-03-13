@@ -81,6 +81,7 @@ export default function AuthStep({ onRegister, onLogin, isLoading, authError, on
               <Icon name="MessageCircle" size={22} color="#fff" />
             </div>
             <span className="text-white font-bold text-xl" style={{ fontFamily: 'var(--font-heading)' }}>Gong</span>
+            <span className="text-base opacity-70 ml-1" aria-label={countryLabels.countryName}>{countryLabels.flag}</span>
           </motion.div>
 
           <motion.div
@@ -111,6 +112,10 @@ export default function AuthStep({ onRegister, onLogin, isLoading, authError, on
                   </motion.li>
                 ))}
               </ul>
+              <p className="text-white/50 text-xs flex items-center gap-1.5" style={{ fontFamily: 'var(--font-caption)' }}>
+                <span className="text-sm">{countryLabels.flag}</span>
+                {countryLabels.heroSubtitle}
+              </p>
             )}
           </motion.div>
 
@@ -185,13 +190,15 @@ export default function AuthStep({ onRegister, onLogin, isLoading, authError, on
               <Icon name="MessageCircle" size={18} color="#fff" />
             </div>
             <span className="font-bold text-lg" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>Gong</span>
+            <span className="text-sm opacity-60 ml-0.5">{countryLabels.flag}</span>
           </div>
 
           <h1 className="text-2xl sm:text-3xl font-bold mb-1" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.03em' }}>
             {mode === 'register' ? 'Crear cuenta' : 'Iniciar sesión'}
           </h1>
-          <p className="text-sm mb-6" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+          <p className="text-sm mb-6 flex items-center gap-1.5" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
             {mode === 'register' ? 'Solo toma un minuto.' : 'Ingresa tus credenciales.'}
+            <span className="text-xs opacity-50">{countryLabels.flag}</span>
           </p>
 
           {authError && (
