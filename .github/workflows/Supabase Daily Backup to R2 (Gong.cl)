@@ -8,6 +8,9 @@ on:
 jobs:
   backup:
     runs-on: ubuntu-latest
+    # Necesitamos permisos de escritura para actualizar el archivo en el repo
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout repository
@@ -41,13 +44,12 @@ jobs:
 
           echo "Iniciando backup de base de datos..."
           /usr/lib/postgresql/17/bin/pg_dump "$FINAL_URL" | gzip > "backups/supabase-backup-$DATE.sql.gz"
+          echo "BACKUP_FILENAME=supabase-backup-$DATE.sql.gz" >> $GITHUB_ENV
 
       - name: Upload to Cloudflare R2
         env:
-          # Usa estos nombres exactos en tus Secrets de GitHub
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          # Tu Account ID extraído de la URL que pasaste
           R2_ACCOUNT_ID: "df2db09c7e5c3e81be99a6984812ac80"
           BUCKET_NAME: "saasgong"
         run: |
@@ -56,12 +58,23 @@ jobs:
           export RCLONE_CONFIG_R2_ACCESS_KEY_ID=$R2_ACCESS_KEY_ID
           export RCLONE_CONFIG_R2_SECRET_ACCESS_KEY=$R2_SECRET_ACCESS_KEY
           export RCLONE_CONFIG_R2_ENDPOINT="https://$R2_ACCOUNT_ID.r2.cloudflarestorage.com"
-          export RCLONE_CONFIG_R2_ACL=private
-
-          echo "Subiendo backup al bucket $BUCKET_NAME..."
-          rclone copy backups/ r2:$BUCKET_NAME/backups/ --progress
           
-          echo "Verificando subida en: https://media.gong.cl/backups/"
+          rclone copy backups/ r2:$BUCKET_NAME/backups/ --progress
+
+      - name: Update Last Backup Status in Repo
+        run: |
+          DATE=$(date '+%Y-%m-%d %H:%M:%S')
+          echo "# Último Backup Exitoso" > LAST_BACKUP.md
+          echo "El respaldo se realizó correctamente el: **$DATE** (UTC)" >> LAST_BACKUP.md
+          echo "" >> LAST_BACKUP.md
+          echo "Archivo en R2: \`$BACKUP_FILENAME\`" >> LAST_BACKUP.md
+          echo "Ver en: [media.gong.cl](https://media.gong.cl/backups/)" >> LAST_BACKUP.md
+          
+          git config --global user.name "GitHub Action"
+          git config --global user.email "action@github.com"
+          git add LAST_BACKUP.md
+          git commit -m "Update last backup status [skip ci]" || echo "No changes to commit"
+          git push
 
       - name: Cleanup
         run: rm -rf backups/
