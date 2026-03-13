@@ -4,6 +4,9 @@ import Icon from 'components/AppIcon';
 import { useAuth } from '../../../contexts/AuthContext';
 import { createBusiness } from '../../../services/waBusinessService';
 import WhatsAppField from './WhatsAppField';
+import { getCountryLabels } from '../../../config/country';
+
+const defaultLabels = getCountryLabels();
 
 export default function StoreCreationStep({ user, businessLoading }) {
   const navigate = useNavigate();
@@ -13,7 +16,7 @@ export default function StoreCreationStep({ user, businessLoading }) {
     businessName: user?.user_metadata?.name || '',
     whatsapp:     user?.user_metadata?.whatsapp || '',
     description:  '',
-    currency:     'CLP',
+    currency:     defaultLabels.currency,
   });
   const [errors, setErrors]     = useState({});
   const [saving, setSaving]     = useState(false);
@@ -44,6 +47,7 @@ export default function StoreCreationStep({ user, businessLoading }) {
         whatsapp:    formData.whatsapp.trim(),
         description: formData.description.trim() || null,
         currency:    formData.currency,
+        country:     defaultLabels.countryName,
       });
       if (error) {
         setSaveError(error.message || 'No se pudo crear el negocio. Intenta de nuevo.');

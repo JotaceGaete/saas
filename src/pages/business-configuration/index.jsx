@@ -19,6 +19,8 @@ import MobilePreviewPanel from './components/MobilePreviewPanel';
 import DesignCustomization from './components/DesignCustomization';
 import WhatsAppMessageTemplate from './components/WhatsAppMessageTemplate';
 import ChileWhatsAppField from 'components/ChileWhatsAppField';
+import ArgentinaWhatsAppField from 'components/ArgentinaWhatsAppField';
+import { getCountryCode, getCountryLabels } from '../../config/country';
 import { getPlanLimits, getPlanLabel } from '../../constants/plans';
 import { getAppBaseUrl } from '../../config/appUrl';
 
@@ -86,7 +88,8 @@ export default function BusinessConfiguration() {
   const [pendingCoverFile, setPendingCoverFile] = useState(null);
   const coverInputRef = useRef(null);
 
-  // Business settings form state
+  const defaultCountryLabels = getCountryLabels();
+  // Business settings form state (defaults según país del dominio)
   const [form, setForm] = useState({
     description: '',
     whatsapp: '',
@@ -94,8 +97,8 @@ export default function BusinessConfiguration() {
     address: '',
     city: '',
     region: '',
-    country: 'Chile',
-    currency: 'CLP',
+    country: defaultCountryLabels.countryName,
+    currency: defaultCountryLabels.currency,
     rubroId: '',
     bankName: '',
     bankAccountType: '',
@@ -177,8 +180,8 @@ export default function BusinessConfiguration() {
         address: business?.address || '',
         city: business?.city || '',
         region: business?.region || '',
-        country: business?.country || 'Chile',
-        currency: business?.currency || 'CLP',
+        country: business?.country || defaultCountryLabels.countryName,
+        currency: business?.currency || defaultCountryLabels.currency,
         rubroId: business?.rubroId || '',
         bankName: business?.bankName || '',
         bankAccountType: business?.bankAccountType || '',
@@ -307,8 +310,8 @@ export default function BusinessConfiguration() {
       address: form?.address,
       city: form?.city,
       region: form?.region,
-      country: form?.country || 'Chile',
-      currency: 'CLP',
+      country: form?.country || defaultCountryLabels.countryName,
+      currency: form?.currency || defaultCountryLabels.currency,
       rubroId: form?.rubroId || null,
       bankName: form?.bankName,
       bankAccountType: form?.bankAccountType,
@@ -556,7 +559,7 @@ export default function BusinessConfiguration() {
                   onAddProduct={() => navigate('/product-editor')}
                   onEditProduct={(id) => navigate(`/product-editor?id=${id}`)}
                   onReload={loadProducts}
-                  currency={business?.currency || 'CLP'}
+                  currency={business?.currency || defaultCountryLabels.currency}
                 />
               </div>
             </div>
@@ -570,7 +573,7 @@ export default function BusinessConfiguration() {
                 storeSlug={storeSlug || business?.slug || ''}
                 logoUrl={logoUrl}
                 products={products}
-                currency={business?.currency || 'CLP'}
+                currency={business?.currency || defaultCountryLabels.currency}
                 design={design}
               />
             </div>
@@ -675,13 +678,22 @@ export default function BusinessConfiguration() {
                   />
                 </SettingsField>
 
-                {/* WhatsApp (Chile: +56 fijo, 9 dígitos desde 9) */}
-                <ChileWhatsAppField
-                  label="Número de WhatsApp"
-                  hint="Formato Chile: 9 dígitos comenzando con 9. Ej: 93443682"
-                  value={form?.whatsapp}
-                  onChange={(v) => handleFormChange('whatsapp', v)}
-                />
+                {/* WhatsApp según país (Argentina +54 10 dígitos / Chile +56 9 dígitos) */}
+                {getCountryCode() === 'AR' ? (
+                  <ArgentinaWhatsAppField
+                    label="Número de WhatsApp"
+                    hint={defaultCountryLabels.whatsappHint}
+                    value={form?.whatsapp}
+                    onChange={(v) => handleFormChange('whatsapp', v)}
+                  />
+                ) : (
+                  <ChileWhatsAppField
+                    label="Número de WhatsApp"
+                    hint={defaultCountryLabels.whatsappHint}
+                    value={form?.whatsapp}
+                    onChange={(v) => handleFormChange('whatsapp', v)}
+                  />
+                )}
 
                 {/* Email */}
                 <SettingsField label="Correo electrónico" hint="Correo de contacto del negocio (opcional)">
@@ -700,7 +712,7 @@ export default function BusinessConfiguration() {
                   </div>
                 </SettingsField>
 
-                {/* Address (Chile: Dirección, Comuna, Región, País fijo) */}
+                {/* Dirección: etiquetas según país (Comuna/Región vs Ciudad/Provincia) */}
                 <SettingsField label="Dirección" hint="Calle, número, depto (opcional)">
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2">
@@ -710,7 +722,7 @@ export default function BusinessConfiguration() {
                       type="text"
                       className={inputClass}
                       style={{ ...inputStyle, paddingLeft: '2.25rem' }}
-                      placeholder="Ej: Av. Providencia 1234, of. 56"
+                      placeholder={defaultCountryLabels.addressPlaceholder}
                       value={form?.address}
                       onChange={e => handleFormChange('address', e?.target?.value)}
                     />
@@ -718,34 +730,34 @@ export default function BusinessConfiguration() {
                 </SettingsField>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <SettingsField label="Comuna" hint="Ej: Providencia, Las Condes">
+                  <SettingsField label={defaultCountryLabels.cityLabel} hint={defaultCountryLabels.cityPlaceholder}>
                     <input
                       type="text"
                       className={inputClass}
                       style={inputStyle}
-                      placeholder="Ej: Providencia"
+                      placeholder={defaultCountryLabels.cityPlaceholder}
                       value={form?.city}
                       onChange={e => handleFormChange('city', e?.target?.value)}
                     />
                   </SettingsField>
-                  <SettingsField label="Región" hint="Ej: Metropolitana, Valparaíso">
+                  <SettingsField label={defaultCountryLabels.regionLabel} hint={defaultCountryLabels.regionPlaceholder}>
                     <input
                       type="text"
                       className={inputClass}
                       style={inputStyle}
-                      placeholder="Ej: Metropolitana"
+                      placeholder={defaultCountryLabels.regionPlaceholder}
                       value={form?.region}
                       onChange={e => handleFormChange('region', e?.target?.value)}
                     />
                   </SettingsField>
                 </div>
 
-                <SettingsField label="País" hint="Fijo para Chile">
+                <SettingsField label="País" hint={`Fijo para ${defaultCountryLabels.countryName}`}>
                   <div
                     className={inputClass}
                     style={{ ...inputStyle, cursor: 'default', backgroundColor: 'var(--color-muted)' }}
                   >
-                    Chile
+                    {defaultCountryLabels.countryName}
                   </div>
                 </SettingsField>
 
@@ -775,14 +787,14 @@ export default function BusinessConfiguration() {
                           type="text"
                           className={inputClass}
                           style={{ ...inputStyle, paddingLeft: '2.25rem' }}
-                          placeholder="Ej: Banco de Chile, BancoEstado, Santander..."
+                          placeholder={defaultCountryLabels.bankPlaceholder}
                           value={form?.bankName}
                           onChange={e => handleFormChange('bankName', e?.target?.value)}
                         />
                       </div>
                     </SettingsField>
 
-                    {/* Tipo de cuenta */}
+                    {/* Tipo de cuenta (opciones según país) */}
                     <SettingsField label="Tipo de cuenta">
                       <div className="relative">
                         <span className="absolute left-3 top-1/2 -translate-y-1/2">
@@ -795,10 +807,9 @@ export default function BusinessConfiguration() {
                           onChange={e => handleFormChange('bankAccountType', e?.target?.value)}
                         >
                           <option value="">Seleccionar tipo...</option>
-                          <option value="cuenta_corriente">Cuenta Corriente</option>
-                          <option value="cuenta_vista">Cuenta Vista</option>
-                          <option value="cuenta_ahorro">Cuenta de Ahorro</option>
-                          <option value="cuenta_rut">Cuenta RUT</option>
+                          {defaultCountryLabels.bankAccountTypes.map(({ value, label }) => (
+                            <option key={value} value={value}>{label}</option>
+                          ))}
                         </select>
                       </div>
                     </SettingsField>
@@ -837,7 +848,7 @@ export default function BusinessConfiguration() {
                           />
                         </div>
                       </SettingsField>
-                      <SettingsField label="RUT" hint="Ej: 12.345.678-9">
+                      <SettingsField label={defaultCountryLabels.idNumberLabel} hint={defaultCountryLabels.idNumberPlaceholder}>
                         <div className="relative">
                           <span className="absolute left-3 top-1/2 -translate-y-1/2">
                             <Icon name="IdCard" size={16} color="var(--color-text-tertiary)" />
@@ -846,7 +857,7 @@ export default function BusinessConfiguration() {
                             type="text"
                             className={inputClass}
                             style={{ ...inputStyle, paddingLeft: '2.25rem' }}
-                            placeholder="12.345.678-9"
+                            placeholder={defaultCountryLabels.idNumberPlaceholder}
                             value={form?.bankRut}
                             onChange={e => handleFormChange('bankRut', e?.target?.value)}
                           />
@@ -886,8 +897,8 @@ export default function BusinessConfiguration() {
                         address: business?.address || '',
                         city: business?.city || '',
                         region: business?.region || '',
-                        country: business?.country || 'Chile',
-                        currency: business?.currency || 'CLP',
+                        country: business?.country || defaultCountryLabels.countryName,
+                        currency: business?.currency || defaultCountryLabels.currency,
                         rubroId: business?.rubroId || '',
                         bankName: business?.bankName || '',
                         bankAccountType: business?.bankAccountType || '',
@@ -974,7 +985,7 @@ export default function BusinessConfiguration() {
                   storeSlug={storeSlug || business?.slug || ''}
                   logoUrl={logoUrl}
                   products={products}
-                  currency={business?.currency || 'CLP'}
+                  currency={business?.currency || defaultCountryLabels.currency}
                   design={design}
                 />
               </div>

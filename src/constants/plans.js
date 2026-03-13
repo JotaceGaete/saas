@@ -35,6 +35,14 @@ export const PLAN_PRICES_CLP = Object.freeze({
   business: 10000,
 });
 
+/** Precios en ARS (Argentina). Ajustar según tu estrategia de precios. */
+export const PLAN_PRICES_ARS = Object.freeze({
+  starter:  0,
+  control:  500,
+  pro:      15000,
+  business: 30000,
+});
+
 /**
  * Límites por plan. null = ilimitado.
  * maxBusinesses = cuántos negocios puede tener el usuario (por ahora 1 para todos).
@@ -96,6 +104,17 @@ export function getPlanColors(planSlug) {
  * @returns {number}
  */
 export function getPlanPrice(planSlug) {
+  return PLAN_PRICES_CLP[planSlug] ?? 0;
+}
+
+/**
+ * Precio del plan según país (CLP o ARS).
+ * @param {string} planSlug
+ * @param {'AR'|'CL'} [countryCode] - Si no se pasa, se asume CL (CLP).
+ * @returns {number}
+ */
+export function getPlanPriceByCountry(planSlug, countryCode) {
+  if (countryCode === 'AR') return PLAN_PRICES_ARS[planSlug] ?? 0;
   return PLAN_PRICES_CLP[planSlug] ?? 0;
 }
 

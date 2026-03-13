@@ -1,38 +1,23 @@
 import React from "react";
 import Icon from "components/AppIcon";
 import Image from "components/AppImage";
+import { getCountryCode } from "config/country";
 
-const TESTIMONIALS = [
-{
-  name: "Mariana López",
-  business: "Dulces Mariana · Repostería",
-  avatar: "https://img.rocket.new/generatedImages/rocket_gen_img_143f257e5-1773083367740.png",
-  avatarAlt: "Mujer joven sonriente con cabello oscuro rizado, emprendedora de repostería artesanal en Santiago Chile",
-  quote: "Antes mis clientes me pedían por mensaje y yo tenía que buscar las fotos una por una. Ahora comparto mi link y listo. ¡Mis ventas subieron un 40%!",
-  stars: 5,
-  country: "🇨🇱 Santiago"
-},
-{
-  name: "Carlos Mendoza",
-  business: "Ropa Urbana CM · Moda",
-  avatar: "https://img.rocket.new/generatedImages/rocket_gen_img_1683266f7-1773083366598.png",
-  avatarAlt: "Hombre joven con barba corta y camisa casual, dueño de tienda de ropa urbana en Valparaíso Chile",
-  quote: "Mis clientes pueden ver todos mis productos con fotos y precios. El pedido llega directo a mi WhatsApp ya organizado. Súper práctico.",
-  stars: 5,
-  country: "🇨🇱 Valparaíso"
-},
-{
-  name: "Sofía Ramírez",
-  business: "Plantas & Flores SR · Jardinería",
-  avatar: "https://img.rocket.new/generatedImages/rocket_gen_img_1b24a9b98-1773083367419.png",
-  avatarAlt: "Mujer adulta con sonrisa amable y cabello castaño, emprendedora de plantas y flores en Concepción Chile",
-  quote: "Nunca pensé que podría tener una tienda online tan bonita. Mis clientes me dicen que parece una tienda de verdad. ¡Muy recomendado!",
-  stars: 5,
-  country: "🇨🇱 Concepción"
-}];
+const TESTIMONIALS_CL = [
+  { name: "Mariana López", business: "Dulces Mariana · Repostería", avatar: "https://img.rocket.new/generatedImages/rocket_gen_img_143f257e5-1773083367740.png", avatarAlt: "Emprendedora de repostería en Santiago Chile", quote: "Antes mis clientes me pedían por mensaje y yo tenía que buscar las fotos una por una. Ahora comparto mi link y listo. ¡Mis ventas subieron un 40%!", stars: 5, city: "Santiago", flag: "🇨🇱" },
+  { name: "Carlos Mendoza", business: "Ropa Urbana CM · Moda", avatar: "https://img.rocket.new/generatedImages/rocket_gen_img_1683266f7-1773083366598.png", avatarAlt: "Dueño de tienda de ropa en Valparaíso Chile", quote: "Mis clientes pueden ver todos mis productos con fotos y precios. El pedido llega directo a mi WhatsApp ya organizado. Súper práctico.", stars: 5, city: "Valparaíso", flag: "🇨🇱" },
+  { name: "Sofía Ramírez", business: "Plantas & Flores SR · Jardinería", avatar: "https://img.rocket.new/generatedImages/rocket_gen_img_1b24a9b98-1773083367419.png", avatarAlt: "Emprendedora de plantas y flores en Concepción Chile", quote: "Nunca pensé que podría tener una tienda online tan bonita. Mis clientes me dicen que parece una tienda de verdad. ¡Muy recomendado!", stars: 5, city: "Concepción", flag: "🇨🇱" },
+];
 
+const TESTIMONIALS_AR = [
+  { name: "Mariana López", business: "Dulces Mariana · Repostería", avatar: "https://img.rocket.new/generatedImages/rocket_gen_img_143f257e5-1773083367740.png", avatarAlt: "Emprendedora de repostería en Buenos Aires Argentina", quote: "Antes mis clientes me pedían por mensaje y yo tenía que buscar las fotos una por una. Ahora comparto mi link y listo. ¡Mis ventas subieron un 40%!", stars: 5, city: "Buenos Aires", flag: "🇦🇷" },
+  { name: "Carlos Mendoza", business: "Ropa Urbana CM · Moda", avatar: "https://img.rocket.new/generatedImages/rocket_gen_img_1683266f7-1773083366598.png", avatarAlt: "Dueño de tienda de ropa en Córdoba Argentina", quote: "Mis clientes pueden ver todos mis productos con fotos y precios. El pedido llega directo a mi WhatsApp ya organizado. Súper práctico.", stars: 5, city: "Córdoba", flag: "🇦🇷" },
+  { name: "Sofía Ramírez", business: "Plantas & Flores SR · Jardinería", avatar: "https://img.rocket.new/generatedImages/rocket_gen_img_1b24a9b98-1773083367419.png", avatarAlt: "Emprendedora de plantas y flores en Mendoza Argentina", quote: "Nunca pensé que podría tener una tienda online tan bonita. Mis clientes me dicen que parece una tienda de verdad. ¡Muy recomendado!", stars: 5, city: "Mendoza", flag: "🇦🇷" },
+];
 
 export default function TestimonialsSection() {
+  const country = getCountryCode();
+  const TESTIMONIALS = country === "AR" ? TESTIMONIALS_AR : TESTIMONIALS_CL;
   return (
     <section id="testimonios" className="py-20 md:py-28" style={{ backgroundColor: 'var(--color-background)' }}>
       <div className="w-full max-w-screen-xl mx-auto px-4 md:px-6 lg:px-8 min-w-0">
@@ -77,7 +62,7 @@ export default function TestimonialsSection() {
                   <p className="text-sm font-semibold truncate" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}>{t?.name}</p>
                   <p className="text-xs truncate" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>{t?.business}</p>
                 </div>
-                <span className="ml-auto text-base flex-shrink-0" aria-label={`País: ${t?.country}`}>{t?.country}</span>
+                <span className="ml-auto text-base flex-shrink-0" aria-label={`Ciudad: ${t?.city}`}>{t?.flag} {t?.city}</span>
               </div>
             </div>
           )}

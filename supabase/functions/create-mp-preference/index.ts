@@ -4,14 +4,27 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-// Catálogo centralizado (misma lógica que plan-change-preview)
+// Catálogo centralizado (misma lógica que plan-change-preview). AR = Argentina (ARS), CL = Chile (CLP).
 const PLAN_ORDER: Record<string, number> = { starter: 0, control: 1, pro: 2, business: 3 };
-const PLAN_CATALOG: Record<string, { displayName: string; price: number; durationDays: number }> = {
+type PlanCatalog = Record<string, { displayName: string; price: number; durationDays: number }>;
+
+const PLAN_CATALOG_CL: PlanCatalog = {
   starter:  { displayName: 'Starter',  price: 0,     durationDays: 30 },
   control:  { displayName: 'Plan Control', price: 500,  durationDays: 30 },
   pro:      { displayName: 'Plan Pro', price: 5000, durationDays: 30 },
   business: { displayName: 'Plan Business', price: 10000, durationDays: 30 },
 };
+
+const PLAN_CATALOG_AR: PlanCatalog = {
+  starter:  { displayName: 'Starter',  price: 0,     durationDays: 30 },
+  control:  { displayName: 'Plan Control', price: 500,  durationDays: 30 },
+  pro:      { displayName: 'Plan Pro', price: 15000, durationDays: 30 },
+  business: { displayName: 'Plan Business', price: 30000, durationDays: 30 },
+};
+
+function getPlanCatalog(country: string | undefined): PlanCatalog {
+  return country === 'AR' ? PLAN_CATALOG_AR : PLAN_CATALOG_CL;
+}
 const PRORATION_FORMULA_VERSION = '2024-03-exact-time';
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -21,6 +34,7 @@ function computePlanChange(
   currentPlanSlug: string,
   planExpiresAt: string | null,
   targetPlanSlug: string,
+  catalog: PlanCatalog = PLAN_CATALOG_CL,
 ): {
   changeType: ChangeType;
   finalAmount: number;
@@ -35,8 +49,8 @@ function computePlanChange(
   const now = Date.now();
   const currentOrder = PLAN_ORDER[currentPlanSlug] ?? 0;
   const targetOrder = PLAN_ORDER[targetPlanSlug] ?? 0;
-  const currentPlanPrice = PLAN_CATALOG[currentPlanSlug]?.price ?? 0;
-  const targetPlanPrice = PLAN_CATALOG[targetPlanSlug]?.price ?? 0;
+  const currentPlanPrice = catalog[currentPlanSlug]?.price ?? 0;
+  const targetPlanPrice = catalog[targetPlanSlug]?.price ?? 0;
 
   let changeType: ChangeType = 'renewal';
   if (targetOrder > currentOrder) changeType = 'upgrade';
@@ -47,9 +61,9 @@ function computePlanChange(
     const exp = new Date(planExpiresAt).getTime();
     remainingMs = Math.max(0, exp - now);
   }
-  const msPerPeriod = (PLAN_CATALOG[currentPlanSlug]?.durationDays ?? 30) * MS_PER_DAY;
+  const msPerPeriod = (catalog[currentPlanSlug]?.durationDays ?? 30) * MS_PER_DAY;
   const remainingDaysFraction = msPerPeriod > 0
-    ? Math.min((remainingMs / msPerPeriod) * (PLAN_CATALOG[currentPlanSlug]?.durationDays ?? 30), 30)
+    ? Math.min((remainingMs / msPerPeriod) * (catalog[currentPlanSlug]?.durationDays ?? 30), 30)
     : 0;
   const daysRemaining = Math.floor(remainingDaysFraction);
 
@@ -121,7 +135,8 @@ Deno.serve(async (req) => {
   const anonKey          = Deno.env.get('SUPABASE_ANON_KEY')         ?? '';
   const serviceRoleKey   = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
   const mpAccessToken    = Deno.env.get('MP_ACCESS_TOKEN')           ?? '';
-  const appBaseUrl       = (Deno.env.get('APP_BASE_URL') ?? 'https://app.gong.cl').replace(/\/$/, '');
+  // Fallback solo si el front no envía success_url; con ar/cl el front envía las URLs según dominio.
+  const appBaseUrl = (Deno.env.get('APP_BASE_URL') ?? 'https://cl.ventalink.app').replace(/\/$/, '');
   const notificationUrl  = Deno.env.get('MP_WEBHOOK_URL')            ?? '';
 
   if (!serviceRoleKey) {
@@ -158,8 +173,11 @@ Deno.serve(async (req) => {
   }
 
   const planSlug = body?.planSlug as string | undefined;
-  const price    = planSlug ? PLAN_CATALOG[planSlug]?.price : undefined;
-  console.log('[create-mp-preference] planSlug:', planSlug ?? '(none)', '| price:', price ?? '(inválido)');
+  const country  = (body?.country as string) ?? 'CL';
+  const catalog  = getPlanCatalog(country);
+  const currencyId = country === 'AR' ? 'ARS' : 'CLP';
+  const price    = planSlug ? catalog[planSlug]?.price : undefined;
+  console.log('[create-mp-preference] planSlug:', planSlug ?? '(none)', '| country:', country, '| currency:', currencyId, '| price:', price ?? '(inválido)');
   if (!planSlug || !PLAN_ORDER[planSlug]) {
     return jsonResponse({ error: 'Plan no válido' }, 400);
   }
@@ -204,7 +222,7 @@ Deno.serve(async (req) => {
   // ── 4. Calcular tipo de cambio y monto final (prorrateo en upgrades) ───────
   const currentPlanSlug = (business as { plan_slug?: string }).plan_slug ?? 'starter';
   const planExpiresAt   = (business as { plan_expires_at?: string | null }).plan_expires_at ?? null;
-  const planChange      = computePlanChange(currentPlanSlug, planExpiresAt, planSlug);
+  const planChange      = computePlanChange(currentPlanSlug, planExpiresAt, planSlug, catalog);
 
   if (planChange.changeType === 'downgrade') {
     const effectiveAt = planExpiresAt ?? new Date().toISOString();
@@ -272,7 +290,7 @@ Deno.serve(async (req) => {
         user_id:             user.id,
         plan_slug:           planSlug,
         amount:              0,
-        currency:            'CLP',
+        currency:            currencyId,
         status:              'approved',
         external_reference:  'internal_proration',
         metadata:            internalMetadata,
@@ -307,7 +325,7 @@ Deno.serve(async (req) => {
       user_id:            user.id,
       plan_slug:          planSlug,
       amount:             finalAmount,
-      currency:           'CLP',
+      currency:           currencyId,
       status:             'pending',
       external_reference: 'pending',
       metadata,
@@ -338,10 +356,10 @@ Deno.serve(async (req) => {
 
   const preferencePayload = {
     items: [{
-      title:      PLAN_CATALOG[planSlug]?.displayName ?? planSlug,
+      title:      catalog[planSlug]?.displayName ?? planSlug,
       quantity:   1,
       unit_price: finalAmount,
-      currency_id: 'CLP',
+      currency_id: currencyId,
     }],
     back_urls: { success: successUrl, failure: failureUrl, pending: pendingUrl },
     auto_return: 'approved' as const,
@@ -388,7 +406,7 @@ Deno.serve(async (req) => {
   const isSandbox = !!preference?.sandbox_init_point;
   console.log('[create-mp-preference] preference_created', {
     planSlug,
-    planLabel:    PLAN_CATALOG[planSlug]?.displayName,
+    planLabel:    catalog[planSlug]?.displayName,
     businessId:   business.id,
     paymentId,
     preferenceId: preference?.id,

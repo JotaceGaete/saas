@@ -1,7 +1,7 @@
 /**
  * URL base pública de la app (frontend).
- * En producción: https://app.gong.cl
- * Configurar en Vercel: VITE_APP_URL=https://app.gong.cl
+ * En producción: https://cl.ventalink.app o https://ar.ventalink.app según país.
+ * Configurar en Vercel: VITE_APP_URL con el dominio del deploy (o dejar vacío para usar window.location.origin).
  * En desarrollo sin variable: usa window.location.origin.
  */
 const BASE_URL = import.meta.env?.VITE_APP_URL?.trim() || '';

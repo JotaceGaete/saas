@@ -1,8 +1,10 @@
 import React from 'react';
 import Image from 'components/AppImage';
 import Icon from 'components/AppIcon';
+import { getCountryLabels } from 'config/country';
 
 export default function CatalogPreview({ config }) {
+  const labels = getCountryLabels();
   return (
     <div
       className="rounded-xl border overflow-hidden"
@@ -47,7 +49,7 @@ export default function CatalogPreview({ config }) {
               {config?.nombre || 'Nombre del negocio'}
             </p>
             <p className="text-xs text-muted-foreground" style={{ fontFamily: 'var(--font-caption)' }}>
-              {config?.city || config?.ciudad ? `${config?.city || config?.ciudad}, ${config?.country || config?.pais || 'Chile'}` : 'Comuna, Chile'}
+              {config?.city || config?.ciudad ? `${config?.city || config?.ciudad}, ${config?.country || config?.pais || labels.countryName}` : `${labels.cityLabel}, ${labels.countryName}`}
             </p>
           </div>
         </div>

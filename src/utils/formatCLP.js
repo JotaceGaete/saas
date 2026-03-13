@@ -43,3 +43,30 @@ export function parseCLPInput(str) {
   if (digits === '') return '';
   return parseInt(digits, 10);
 }
+
+// --- ARS (Argentina) y helper por moneda ---
+
+/**
+ * Formatea un monto como precio ARS para mostrar en la UI.
+ * @param {number|string} amount
+ * @returns {string} Ej: "$ 15.000"
+ */
+export function formatARS(amount) {
+  const n = typeof amount === 'number' ? amount : Number(amount);
+  if (Number.isNaN(n) || n < 0) return '$ 0';
+  const integer = Math.round(n);
+  const str = String(integer);
+  const withDots = str.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return `$ ${withDots}`;
+}
+
+/**
+ * Formatea un monto según la moneda (CLP o ARS). Misma lógica de miles con punto.
+ * @param {number|string} amount
+ * @param {'CLP'|'ARS'} currency
+ * @returns {string}
+ */
+export function formatCurrency(amount, currency) {
+  if (currency === 'ARS') return formatARS(amount);
+  return formatCLP(amount);
+}

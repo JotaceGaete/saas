@@ -1,16 +1,24 @@
 import React from "react";
 import Icon from "components/AppIcon";
+import { getCountryLabels } from "config/country";
 
-const BENEFITS = [
+const BENEFITS_BASE = [
   { icon: "Smartphone", title: "100% Mobile-First", description: "Diseñado para que tus clientes naveguen y compren fácilmente desde su celular.", featured: true },
   { icon: "Link", title: "Link único de catálogo", description: "Comparte un solo enlace en Instagram, Facebook o WhatsApp y tus clientes ven todo." },
   { icon: "MessageCircle", title: "Pedidos a WhatsApp", description: "El mensaje del pedido se genera solo con todos los productos y cantidades seleccionadas." },
   { icon: "Image", title: "Fotos de productos", description: "Sube imágenes de alta calidad para que tus productos luzcan profesionales." },
   { icon: "BarChart2", title: "Dashboard con métricas", description: "Visualiza tus productos activos, pedidos recientes y el rendimiento de tu catálogo." },
-  { icon: "Globe", title: "Hecho para Chile", description: "Diseñado para emprendedores chilenos. Precios en pesos, WhatsApp local y soporte en español.", chile: true },
+  { icon: "Globe", titleKey: "benefitsTitle", descriptionKey: "benefitsDescription", countrySpecific: true },
 ];
 
 export default function BenefitsSection() {
+  const labels = getCountryLabels();
+  const BENEFITS = BENEFITS_BASE.map((b) => {
+    if (b.countrySpecific) {
+      return { ...b, title: labels.benefitsTitle, description: labels.benefitsDescription };
+    }
+    return { ...b, title: b.title, description: b.description };
+  });
   return (
     <section id="beneficios" className="py-20 md:py-28" style={{ backgroundColor: '#FFFFFF' }}>
       <div className="w-full max-w-screen-xl mx-auto px-4 md:px-6 lg:px-8 min-w-0">

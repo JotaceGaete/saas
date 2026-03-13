@@ -2,10 +2,12 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Icon from "components/AppIcon";
 import Button from "components/ui/Button";
+import { getCountryLabels } from "config/country";
 
 export default function HeroSection() {
   const navigate = useNavigate();
   const [mounted, setMounted] = useState(false);
+  const labels = getCountryLabels();
 
   useEffect(() => {
     const t = setTimeout(() => setMounted(true), 100);
@@ -129,9 +131,9 @@ export default function HeroSection() {
               </div>
             </div>
 
-            {/* Chile subtitle */}
+            {/* Subtitle según país */}
             <p className="text-xs mt-3 text-center lg:text-left" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-              🇨🇱 Hecho para negocios que venden por WhatsApp en Chile
+              {labels.heroSubtitle}
             </p>
           </div>
 

@@ -5,12 +5,25 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 // Catálogo centralizado: orden, slug, displayName, price, durationDays
 const PLAN_ORDER: Record<string, number> = { starter: 0, control: 1, pro: 2, business: 3 };
-const PLAN_CATALOG: Record<string, { displayName: string; price: number; durationDays: number }> = {
+type PlanCatalog = Record<string, { displayName: string; price: number; durationDays: number }>;
+
+const PLAN_CATALOG_CL: PlanCatalog = {
   starter:  { displayName: 'Starter',  price: 0,     durationDays: 30 },
   control:  { displayName: 'Plan Control', price: 500,  durationDays: 30 },
   pro:      { displayName: 'Plan Pro', price: 5000, durationDays: 30 },
   business: { displayName: 'Plan Business', price: 10000, durationDays: 30 },
 };
+
+const PLAN_CATALOG_AR: PlanCatalog = {
+  starter:  { displayName: 'Starter',  price: 0,     durationDays: 30 },
+  control:  { displayName: 'Plan Control', price: 500,  durationDays: 30 },
+  pro:      { displayName: 'Plan Pro', price: 15000, durationDays: 30 },
+  business: { displayName: 'Plan Business', price: 30000, durationDays: 30 },
+};
+
+function getPlanCatalog(country: string | undefined): PlanCatalog {
+  return country === 'AR' ? PLAN_CATALOG_AR : PLAN_CATALOG_CL;
+}
 
 const PRORATION_FORMULA_VERSION = '2024-03-exact-time';
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -21,6 +34,7 @@ function computePlanChange(
   currentPlanSlug: string,
   planExpiresAt: string | null,
   targetPlanSlug: string,
+  catalog: PlanCatalog = PLAN_CATALOG_CL,
 ): {
   currentPlanSlug: string;
   currentPlanPrice: number;
@@ -39,9 +53,9 @@ function computePlanChange(
   const now = Date.now();
   const currentOrder = PLAN_ORDER[currentPlanSlug] ?? 0;
   const targetOrder = PLAN_ORDER[targetPlanSlug] ?? 0;
-  const currentPlanPrice = PLAN_CATALOG[currentPlanSlug]?.price ?? 0;
-  const targetPlanPrice = PLAN_CATALOG[targetPlanSlug]?.price ?? 0;
-  const durationDays = PLAN_CATALOG[targetPlanSlug]?.durationDays ?? 30;
+  const currentPlanPrice = catalog[currentPlanSlug]?.price ?? 0;
+  const targetPlanPrice = catalog[targetPlanSlug]?.price ?? 0;
+  const durationDays = catalog[targetPlanSlug]?.durationDays ?? 30;
 
   let changeType: ChangeType = 'renewal';
   if (targetOrder > currentOrder) changeType = 'upgrade';
@@ -53,9 +67,9 @@ function computePlanChange(
     const exp = new Date(planExpiresAt).getTime();
     remainingMs = Math.max(0, exp - now);
   }
-  const msPerPeriod = (PLAN_CATALOG[currentPlanSlug]?.durationDays ?? 30) * MS_PER_DAY;
+  const msPerPeriod = (catalog[currentPlanSlug]?.durationDays ?? 30) * MS_PER_DAY;
   const remainingDaysFraction = msPerPeriod > 0
-    ? Math.min((remainingMs / msPerPeriod) * (PLAN_CATALOG[currentPlanSlug]?.durationDays ?? 30), 30)
+    ? Math.min((remainingMs / msPerPeriod) * (catalog[currentPlanSlug]?.durationDays ?? 30), 30)
     : 0;
   const daysRemaining = Math.floor(remainingDaysFraction);
 
@@ -148,15 +162,19 @@ Deno.serve(async (req) => {
   }
 
   let targetPlanSlug: string | undefined;
+  let country: string | undefined;
   if (req.method === 'GET') {
     const url = new URL(req.url);
     targetPlanSlug = url.searchParams.get('targetPlanSlug') ?? undefined;
+    country = url.searchParams.get('country') ?? undefined;
   } else {
     try {
       const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
       targetPlanSlug = body?.targetPlanSlug as string | undefined;
+      country = body?.country as string | undefined;
     } catch {
       targetPlanSlug = undefined;
+      country = undefined;
     }
   }
 
@@ -187,7 +205,8 @@ Deno.serve(async (req) => {
   const currentPlanSlug = (biz as { plan_slug?: string }).plan_slug ?? 'starter';
   const planExpiresAt = (biz as { plan_expires_at?: string | null }).plan_expires_at ?? null;
 
-  const preview = computePlanChange(currentPlanSlug, planExpiresAt, targetPlanSlug);
+  const catalog = getPlanCatalog(country);
+  const preview = computePlanChange(currentPlanSlug, planExpiresAt, targetPlanSlug, catalog);
 
   console.log('[plan-change-preview]', {
     currentPlanSlug,

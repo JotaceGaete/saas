@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import Icon from 'components/AppIcon';
 import WhatsAppField from './WhatsAppField';
 import PasswordStrengthIndicator from './PasswordStrengthIndicator';
+import { getCountryLabels } from 'config/country';
 
 const BENEFITS = [
   'Sin comisiones',
@@ -19,6 +20,7 @@ const FEATURE_CARDS = [
 ];
 
 export default function AuthStep({ onRegister, onLogin, isLoading, authError, onClearError }) {
+  const countryLabels = getCountryLabels();
   const [mode, setMode] = useState('register');
   const [formData, setFormData] = useState({ businessName: '', email: '', password: '', confirmPassword: '', whatsapp: '' });
   const [errors, setErrors] = useState({});
@@ -229,7 +231,7 @@ export default function AuthStep({ onRegister, onLogin, isLoading, authError, on
                     value={formData.whatsapp}
                     onChange={val => update('whatsapp', val)}
                     error={errors.whatsapp}
-                    hint="Formato Chile: 9 dígitos comenzando con 9."
+                    hint={countryLabels.whatsappHint}
                   />
                 </div>
               </>

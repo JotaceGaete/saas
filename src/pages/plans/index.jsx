@@ -6,7 +6,9 @@ import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { getAppBaseUrl } from '../../config/appUrl';
-import { PLAN_SLUGS, getPlanLimits, getPlanLabel, getPlanPrice, getPlanActionButtonLabel } from '../../constants/plans';
+import { getCountryCode, getCurrency } from '../../config/country';
+import { formatCurrency } from '../../utils/formatCLP';
+import { PLAN_SLUGS, getPlanLimits, getPlanLabel, getPlanPriceByCountry, getPlanActionButtonLabel } from '../../constants/plans';
 
 export default function PlansPage() {
   const navigate = useNavigate();
@@ -20,6 +22,9 @@ export default function PlansPage() {
   const isDesktop = useIsDesktop();
   const sidebarWidth = sidebarCollapsed ? 'var(--sidebar-collapsed-width)' : 'var(--sidebar-width)';
   const currentPlan = business?.planSlug || 'starter';
+  const countryCode = getCountryCode();
+  const currency = getCurrency(countryCode);
+  const getPlanPrice = (slug) => getPlanPriceByCountry(slug, countryCode);
 
   useEffect(() => {
     const payment = searchParams.get('payment');
@@ -44,7 +49,7 @@ export default function PlansPage() {
     const res = await fetch(`${supabaseUrl}/functions/v1/plan-change-preview`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}`, apikey: anonKey },
-      body: JSON.stringify({ targetPlanSlug }),
+      body: JSON.stringify({ targetPlanSlug, country: countryCode }),
     });
     if (!res.ok) return null;
     return res.json().catch(() => null);
@@ -108,6 +113,7 @@ export default function PlansPage() {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, apikey: anonKey },
         body: JSON.stringify({
           planSlug: previewPlanSlug,
+          country: countryCode,
           success_url: `${baseUrl}/plans?payment=success`,
           failure_url: `${baseUrl}/plans?payment=failure`,
           pending_url: `${baseUrl}/plans?payment=pending`,
@@ -215,15 +221,15 @@ export default function PlansPage() {
                 <li>Plan destino: <strong>{getPlanLabel(preview.targetPlanSlug)}</strong></li>
                 <li>Días restantes: <strong>{preview.daysRemaining}</strong></li>
                 {preview.creditAmount > 0 && (
-                  <li>Crédito aplicado: <strong>${preview.creditAmount.toLocaleString('es-CL')} CLP</strong></li>
+                  <li>Crédito aplicado: <strong>{formatCurrency(preview.creditAmount, currency)}</strong></li>
                 )}
-                <li>Precio del plan: <strong>${preview.targetPlanPrice.toLocaleString('es-CL')} CLP</strong></li>
+                <li>Precio del plan: <strong>{formatCurrency(preview.targetPlanPrice, currency)}</strong></li>
                 {preview.effectiveAt && (
-                  <li>Vigente desde: <strong>{new Date(preview.effectiveAt).toLocaleDateString('es-CL', { dateStyle: 'medium' })}</strong></li>
+                  <li>Vigente desde: <strong>{new Date(preview.effectiveAt).toLocaleDateString(currency === 'ARS' ? 'es-AR' : 'es-CL', { dateStyle: 'medium' })}</strong></li>
                 )}
                 <li className="pt-2 border-t" style={{ borderColor: 'var(--color-border)' }}>
                   Total a pagar: <strong className="text-base" style={{ color: 'var(--color-foreground)' }}>
-                    {preview.finalAmount === 0 ? 'Sin cargo (crédito aplicado)' : `$${preview.finalAmount.toLocaleString('es-CL')} CLP`}
+                    {preview.finalAmount === 0 ? 'Sin cargo (crédito aplicado)' : formatCurrency(preview.finalAmount, currency)}
                   </strong>
                 </li>
               </ul>
@@ -275,10 +281,10 @@ export default function PlansPage() {
                   </div>
                   <div className="mb-4">
                     <p className="text-2xl font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>
-                      {getPlanPrice(slug) === 0 ? 'Gratis' : `$${getPlanPrice(slug).toLocaleString('es-CL')}`}
+                      {getPlanPrice(slug) === 0 ? 'Gratis' : formatCurrency(getPlanPrice(slug), currency)}
                     </p>
                     <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-                      {getPlanPrice(slug) === 0 ? '' : 'pago único · CLP'}
+                      {getPlanPrice(slug) === 0 ? '' : `pago único · ${currency}`}
                     </p>
                   </div>
                   <ul className="space-y-2 mb-6 flex-1">
