@@ -57,21 +57,13 @@ function getCurrencyForCountry(countryCode: string): string {
   return CURRENCY_BY_COUNTRY[code] ?? 'CLP';
 }
 
-/** Documentos de prueba por país para sandbox cuando el usuario no tiene document. */
-const SANDBOX_TEST_DOCUMENT_BY_COUNTRY: Record<string, string> = {
-  AR: '20123456789',
-  BO: '1234567890',
-  BR: '52998224725',
-  CO: '1234567890',
-  CR: '123456789',
-  EC: '1234567890',
-  GT: '1234567890123',
-  MX: 'ROAC860524',
-  PA: '123456789',
-  PE: '12345678',
-  PY: '1234567890',
-  UY: '12345678',
-};
+/**
+ * Convierte el monto interno (unidad principal, ej. ARS 14553) al formato dLocal Go (unidad mínima).
+ * Todas las monedas soportadas (ARS, CLP, BRL, etc.) usan 2 decimales → factor 100.
+ */
+function amountToDlocalMinorUnit(amountInMainUnit: number): number {
+  return Math.round(Number(amountInMainUnit) * 100);
+}
 
 function resolveBusinessCountryCode(
   business: { country_code?: string | null; country?: string | null; currency?: string | null },
@@ -313,21 +305,19 @@ Deno.serve(async (req) => {
   const successUrl = (body?.success_url as string) || '';
   const cancelUrl = (body?.cancel_url as string) || '';
 
+  const amountForDlocal = amountToDlocalMinorUnit(planChange.finalAmount);
+
   const payerName = (user.user_metadata?.full_name as string) || (user.email ?? 'Usuario').split('@')[0];
   const rawDocument = (user.user_metadata?.document as string)?.trim() || '';
-  const isSandbox = baseUrl.includes('api-sbx');
-  const payerDocument = rawDocument
-    ? String(rawDocument).slice(0, 30)
-    : (isSandbox ? (SANDBOX_TEST_DOCUMENT_BY_COUNTRY[countryCode] ?? '12345678') : '');
 
   const payer: { name: string; email: string; document?: string } = {
     name: payerName.slice(0, 100),
     email: (user.email ?? `user-${user.id}@placeholder.local`).slice(0, 100),
   };
-  if (payerDocument) payer.document = payerDocument;
+  if (rawDocument) payer.document = String(rawDocument).slice(0, 30);
 
   const dlocalPayload = {
-    amount: planChange.finalAmount,
+    amount: amountForDlocal,
     currency: currencyId,
     payment_method_flow: 'REDIRECT',
     payment_method_id: 'CARD',
@@ -339,13 +329,10 @@ Deno.serve(async (req) => {
     ...(cancelUrl && { back_url: cancelUrl }),
   };
 
-  console.log('[dlocal-payload] countryCode:', countryCode);
+  console.log('[dlocal-payload] planChange.finalAmount:', planChange.finalAmount);
+  console.log('[dlocal-payload] amountForDlocal:', amountForDlocal);
   console.log('[dlocal-payload] currencyId:', currencyId);
-  console.log('[dlocal-payload] payment_method_flow:', dlocalPayload.payment_method_flow);
-  console.log('[dlocal-payload] payment_method_id:', dlocalPayload.payment_method_id);
-  console.log('[dlocal-payload] payer:', JSON.stringify(payer));
-  console.log('[dlocal-payload] success_url:', successUrl || '(empty)');
-  console.log('[dlocal-payload] cancel_url / back_url:', cancelUrl || '(empty)');
+  console.log('[dlocal-payload] countryCode:', countryCode);
   console.log('[dlocal-payload] dlocalPayload:', JSON.stringify(dlocalPayload));
 
   const credentials = btoa(`${apiKey}:${secretKey}`);
