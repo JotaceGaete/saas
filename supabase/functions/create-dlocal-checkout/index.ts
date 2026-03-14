@@ -149,6 +149,8 @@ Deno.serve(async (req) => {
   const secretKey = Deno.env.get('DLOCAL_GO_SECRET_KEY') ?? '';
   const baseUrl = (Deno.env.get('DLOCAL_GO_BASE_URL') ?? 'https://api-sbx.dlocalgo.com').replace(/\/$/, '');
   const webhookUrl = Deno.env.get('DLOCAL_GO_WEBHOOK_URL') ?? '';
+  console.log('DLOCAL_BASE_URL:', baseUrl);
+  console.log('DLOCAL_API_KEY:', apiKey?.slice(0, 5));
 
   if (!serviceRoleKey) return jsonResponse({ error: 'Server configuration error' }, 500);
   if (!apiKey || !secretKey) return jsonResponse({ error: 'dLocal Go not configured' }, 500);
@@ -293,11 +295,13 @@ Deno.serve(async (req) => {
     ...(cancelUrl && { back_url: cancelUrl }),
   };
 
+  const credentials = btoa(`${apiKey}:${secretKey}`);
+  console.log('Calling dLocal with baseUrl:', baseUrl);
   const dlocalRes = await fetch(`${baseUrl}/v1/payments`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}:${secretKey}`,
+      Authorization: `Basic ${credentials}`,
     },
     body: JSON.stringify(dlocalPayload),
   });
