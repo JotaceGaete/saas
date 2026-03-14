@@ -57,14 +57,6 @@ function getCurrencyForCountry(countryCode: string): string {
   return CURRENCY_BY_COUNTRY[code] ?? 'CLP';
 }
 
-/**
- * Monto para dLocal Go: el API espera unidad principal (ej. 14553 para ARS 14.553),
- * no unidad mínima. Ver docs dLocal: amount = "Transaction amount in the currency".
- */
-function amountForDlocalPayload(amountInMainUnit: number): number {
-  return Number(amountInMainUnit);
-}
-
 function resolveBusinessCountryCode(
   business: { country_code?: string | null; country?: string | null; currency?: string | null },
   fallbackCountry?: string,
@@ -306,7 +298,7 @@ Deno.serve(async (req) => {
   const successUrl = (body?.success_url as string) || '';
   const cancelUrl = (body?.cancel_url as string) || '';
 
-  const amountForDlocal = amountForDlocalPayload(planChange.finalAmount);
+  const amountForDlocal = Math.round(planChange.finalAmount);
 
   const payerName = (user.user_metadata?.full_name as string) || (user.email ?? 'Usuario').split('@')[0];
   const rawDocument = (user.user_metadata?.document as string)?.trim() || '';
