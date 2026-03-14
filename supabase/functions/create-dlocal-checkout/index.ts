@@ -300,6 +300,9 @@ Deno.serve(async (req) => {
 
   const amountForDlocal = Math.round(planChange.finalAmount);
 
+  console.log('[dlocal-version] amount-mode=main-unit (no multiplication, value sent as-is)');
+  console.log('[dlocal-audit] EXACT amount sent to dLocal:', amountForDlocal, '| planChange.finalAmount:', planChange.finalAmount);
+
   const payerName = (user.user_metadata?.full_name as string) || (user.email ?? 'Usuario').split('@')[0];
   const rawDocument = (user.user_metadata?.document as string)?.trim() || '';
 
@@ -342,7 +345,7 @@ Deno.serve(async (req) => {
   const dlocalBody = await dlocalRes.text();
 
   console.log('[dlocal-response] status:', dlocalRes.status, 'bodyLength:', dlocalBody?.length);
-  console.log('[dlocal-response] rawBody:', dlocalBody?.slice(0, 500) ?? '(empty)');
+  console.log('[dlocal-response] rawBody (full for audit):', dlocalBody ?? '(empty)');
 
   if (!dlocalRes.ok) {
     console.log('[dlocal-checkout] CANCELLED_REASON: dLocal devolvió error HTTP', dlocalRes.status, 'paymentId:', paymentId);
@@ -384,6 +387,8 @@ Deno.serve(async (req) => {
     provider_payment_id: providerPaymentId,
     metadata: mergedMetadata,
   }).eq('id', paymentId);
+
+  console.log('[dlocal-audit] payment row updated | paymentId (wa_payments.id):', paymentId, '| provider_payment_id:', providerPaymentId);
 
   return jsonResponse({ redirect_url: redirectUrl, payment_id: paymentId }, 200);
 });

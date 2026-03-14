@@ -134,6 +134,9 @@ Deno.serve(async (req) => {
       updatePayload.plan_expires_at = planExpiresAt.toISOString();
     }
     await db.from('wa_payments').update(updatePayload).eq('id', paymentRecord.id);
+    console.log('[dlocal-webhook] wa_payments updated', { payment_id: paymentRecord.id, status: updatePayload.status, rawStatus: payload?.status });
+  } else {
+    console.log('[dlocal-webhook] no paymentRecord found for order_id or provider_payment_id, wa_payments NOT updated');
   }
 
   if (status === 'approved' && paymentRecord && ALLOWED_PLANS.includes(paymentRecord.plan_slug)) {
