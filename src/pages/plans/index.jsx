@@ -7,9 +7,28 @@ import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { getAppBaseUrl } from '../../config/appUrl';
 import { getCountryCode, getCurrency } from '../../config/country';
-import { getPaymentProvider } from '../../config/paymentProvider';
+import { getPaymentProvider, PAYMENT_COUNTRY_CODES } from '../../config/paymentProvider';
 import { formatCurrency } from '../../utils/formatCLP';
 import { PLAN_SLUGS, getPlanLimits, getPlanLabel, getPlanPriceByCountry, getPlanActionButtonLabel } from '../../constants/plans';
+
+const PAYMENT_DEBUG_PREFIX = '[plans-payment-debug]';
+const SUPPORTED_PAYMENT_COUNTRIES = new Set(PAYMENT_COUNTRY_CODES);
+
+function normalizeCountryCode(value) {
+  if (!value || typeof value !== 'string') return null;
+  const code = value.toUpperCase().trim();
+  if (SUPPORTED_PAYMENT_COUNTRIES.has(code)) return code;
+  return null;
+}
+
+function resolveCountryCode({ hostnameCountryCode, businessCountryCode, userCountryCode }) {
+  // En ar.ventalink.app siempre forzamos AR para evitar caer en CL por datos legacy.
+  if (hostnameCountryCode === 'AR') return 'AR';
+  if (businessCountryCode) return businessCountryCode;
+  if (userCountryCode) return userCountryCode;
+  if (hostnameCountryCode) return hostnameCountryCode;
+  return 'CL';
+}
 
 export default function PlansPage() {
   const navigate = useNavigate();
@@ -24,10 +43,26 @@ export default function PlansPage() {
   const isDesktop = useIsDesktop();
   const sidebarWidth = sidebarCollapsed ? 'var(--sidebar-collapsed-width)' : 'var(--sidebar-width)';
   const currentPlan = business?.planSlug || 'starter';
-  const countryCode = (business?.countryCode || getCountryCode() || 'CL').toUpperCase();
+  const hostnameCountryCode = normalizeCountryCode(getCountryCode());
+  const businessCountryCode = normalizeCountryCode(business?.countryCode);
+  const userCountryCode = normalizeCountryCode(user?.user_metadata?.country_code ?? user?.user_metadata?.country);
+  const countryCode = resolveCountryCode({ hostnameCountryCode, businessCountryCode, userCountryCode });
   const currency = getCurrency(countryCode);
   const paymentProvider = getPaymentProvider(countryCode);
   const getPlanPrice = (slug) => getPlanPriceByCountry(slug, countryCode);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    console.info(PAYMENT_DEBUG_PREFIX, {
+      event: 'provider_resolution',
+      hostname: window.location?.hostname ?? null,
+      hostnameCountryCode,
+      businessCountryCode,
+      userCountryCode,
+      resolvedCountryCode: countryCode,
+      resolvedProvider: paymentProvider,
+    });
+  }, [hostnameCountryCode, businessCountryCode, userCountryCode, countryCode, paymentProvider]);
 
   useEffect(() => {
     const payment = searchParams.get('payment');
@@ -59,6 +94,14 @@ export default function PlansPage() {
   };
 
   const handlePayWithMercadoPago = async (planSlug) => {
+    console.info(PAYMENT_DEBUG_PREFIX, {
+      event: 'click_plan_button',
+      handler: 'handlePayWithMercadoPago',
+      planSlug,
+      resolvedCountryCode: countryCode,
+      resolvedProvider: paymentProvider,
+      selectedPaymentProviderBefore: selectedPaymentProvider,
+    });
     if (getPlanPrice(planSlug) <= 0) return;
     setSelectedPaymentProvider('mercado_pago');
     setLoadingPlanSlug(planSlug);
@@ -99,6 +142,14 @@ export default function PlansPage() {
   };
 
   const handlePayWithDlocal = async (planSlug) => {
+    console.info(PAYMENT_DEBUG_PREFIX, {
+      event: 'click_plan_button',
+      handler: 'handlePayWithDlocal',
+      planSlug,
+      resolvedCountryCode: countryCode,
+      resolvedProvider: paymentProvider,
+      selectedPaymentProviderBefore: selectedPaymentProvider,
+    });
     if (getPlanPrice(planSlug) <= 0) return;
     setSelectedPaymentProvider('dlocal_go');
     setLoadingPlanSlug(planSlug);
@@ -135,6 +186,14 @@ export default function PlansPage() {
   };
 
   const confirmPayWithDlocal = async () => {
+    console.info(PAYMENT_DEBUG_PREFIX, {
+      event: 'confirm_payment',
+      handler: 'confirmPayWithDlocal',
+      planSlug: previewPlanSlug,
+      resolvedCountryCode: countryCode,
+      resolvedProvider: paymentProvider,
+      selectedPaymentProvider,
+    });
     if (!previewPlanSlug) return;
     setLoadingPlanSlug(previewPlanSlug);
     setPaymentMessage(null);
@@ -186,6 +245,14 @@ export default function PlansPage() {
   };
 
   const confirmPayWithMercadoPago = async () => {
+    console.info(PAYMENT_DEBUG_PREFIX, {
+      event: 'confirm_payment',
+      handler: 'confirmPayWithMercadoPago',
+      planSlug: previewPlanSlug,
+      resolvedCountryCode: countryCode,
+      resolvedProvider: paymentProvider,
+      selectedPaymentProvider,
+    });
     if (!previewPlanSlug) return;
     setLoadingPlanSlug(previewPlanSlug);
     setPaymentMessage(null);
