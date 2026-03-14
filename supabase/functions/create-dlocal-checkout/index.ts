@@ -35,6 +35,40 @@ function normalizeCountryCode(value: string | undefined): string {
   return 'CL';
 }
 
+function resolveBusinessCountryCode(
+  business: { country_code?: string | null; country?: string | null; currency?: string | null },
+  fallbackCountry?: string,
+): string {
+  const direct = normalizeCountryCode(business.country_code ?? undefined);
+  if (business.country_code) return direct;
+
+  const countryRaw = (business.country ?? '').toUpperCase().trim();
+  const countryAliases: Record<string, string> = {
+    ARGENTINA: 'AR',
+    CHILE: 'CL',
+    BOLIVIA: 'BO',
+    BRASIL: 'BR',
+    BRAZIL: 'BR',
+    COLOMBIA: 'CO',
+    'COSTA RICA': 'CR',
+    ECUADOR: 'EC',
+    GUATEMALA: 'GT',
+    MEXICO: 'MX',
+    PANAMA: 'PA',
+    PERU: 'PE',
+    PARAGUAY: 'PY',
+    URUGUAY: 'UY',
+  };
+  if (countryRaw && countryAliases[countryRaw]) return countryAliases[countryRaw];
+  if (countryRaw) return normalizeCountryCode(countryRaw);
+
+  const currency = (business.currency ?? '').toUpperCase().trim();
+  if (currency === 'ARS') return 'AR';
+  if (currency === 'CLP') return 'CL';
+
+  return normalizeCountryCode(fallbackCountry);
+}
+
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 type ChangeType = 'upgrade' | 'renewal' | 'downgrade';
 
@@ -150,7 +184,10 @@ Deno.serve(async (req) => {
   const business = businesses[0];
   if (business.user_id !== user.id) return jsonResponse({ error: 'Forbidden' }, 403);
 
-  const countryCode = normalizeCountryCode((business as { country_code?: string | null }).country_code ?? fallbackCountry);
+  const countryCode = resolveBusinessCountryCode(
+    business as { country_code?: string | null; country?: string | null; currency?: string | null },
+    fallbackCountry,
+  );
   if (countryCode === 'CL') {
     return jsonResponse({ error: 'En Chile los pagos se procesan con Mercado Pago', country_code: countryCode }, 400);
   }

@@ -34,6 +34,38 @@ function normalizeCountryCode(value: string | undefined): string {
   return 'CL';
 }
 
+function resolveBusinessCountryCode(
+  business: { country_code?: string | null; country?: string | null; currency?: string | null },
+): string {
+  if (business.country_code) return normalizeCountryCode(business.country_code ?? undefined);
+
+  const countryRaw = (business.country ?? '').toUpperCase().trim();
+  const countryAliases: Record<string, string> = {
+    ARGENTINA: 'AR',
+    CHILE: 'CL',
+    BOLIVIA: 'BO',
+    BRASIL: 'BR',
+    BRAZIL: 'BR',
+    COLOMBIA: 'CO',
+    'COSTA RICA': 'CR',
+    ECUADOR: 'EC',
+    GUATEMALA: 'GT',
+    MEXICO: 'MX',
+    PANAMA: 'PA',
+    PERU: 'PE',
+    PARAGUAY: 'PY',
+    URUGUAY: 'UY',
+  };
+  if (countryRaw && countryAliases[countryRaw]) return countryAliases[countryRaw];
+  if (countryRaw) return normalizeCountryCode(countryRaw);
+
+  const currency = (business.currency ?? '').toUpperCase().trim();
+  if (currency === 'ARS') return 'AR';
+  if (currency === 'CLP') return 'CL';
+
+  return 'CL';
+}
+
 const PRORATION_FORMULA_VERSION = '2024-03-exact-time';
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -209,7 +241,9 @@ Deno.serve(async (req) => {
 
   const currentPlanSlug = (biz as { plan_slug?: string }).plan_slug ?? 'starter';
   const planExpiresAt = (biz as { plan_expires_at?: string | null }).plan_expires_at ?? null;
-  const countryCode = normalizeCountryCode((biz as { country_code?: string | null }).country_code ?? undefined);
+  const countryCode = resolveBusinessCountryCode(
+    biz as { country_code?: string | null; country?: string | null; currency?: string | null },
+  );
 
   const catalog = getPlanCatalog(countryCode);
   const preview = computePlanChange(currentPlanSlug, planExpiresAt, targetPlanSlug, catalog);

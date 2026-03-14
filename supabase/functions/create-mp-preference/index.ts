@@ -34,6 +34,40 @@ function normalizeCountryCode(value: string | undefined): string {
   }
   return 'CL';
 }
+
+function resolveBusinessCountryCode(
+  business: { country_code?: string | null; country?: string | null; currency?: string | null },
+  fallbackCountry?: string,
+): string {
+  const direct = normalizeCountryCode(business.country_code ?? undefined);
+  if (business.country_code) return direct;
+
+  const countryRaw = (business.country ?? '').toUpperCase().trim();
+  const countryAliases: Record<string, string> = {
+    ARGENTINA: 'AR',
+    CHILE: 'CL',
+    BOLIVIA: 'BO',
+    BRASIL: 'BR',
+    BRAZIL: 'BR',
+    COLOMBIA: 'CO',
+    'COSTA RICA': 'CR',
+    ECUADOR: 'EC',
+    GUATEMALA: 'GT',
+    MEXICO: 'MX',
+    PANAMA: 'PA',
+    PERU: 'PE',
+    PARAGUAY: 'PY',
+    URUGUAY: 'UY',
+  };
+  if (countryRaw && countryAliases[countryRaw]) return countryAliases[countryRaw];
+  if (countryRaw) return normalizeCountryCode(countryRaw);
+
+  const currency = (business.currency ?? '').toUpperCase().trim();
+  if (currency === 'ARS') return 'AR';
+  if (currency === 'CLP') return 'CL';
+
+  return normalizeCountryCode(fallbackCountry);
+}
 const PRORATION_FORMULA_VERSION = '2024-03-exact-time';
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -228,7 +262,10 @@ Deno.serve(async (req) => {
   console.log('[create-mp-preference] business.id elegido:', business.id);
   console.log('[create-mp-preference] business.user_id confirmado:', business.user_id);
 
-  const countryCode = normalizeCountryCode((business as { country_code?: string | null }).country_code ?? undefined);
+  const countryCode = resolveBusinessCountryCode(
+    business as { country_code?: string | null; country?: string | null; currency?: string | null },
+    fallbackCountry,
+  );
   if (countryCode !== 'CL') {
     return jsonResponse({ error: 'Mercado Pago solo está disponible para Chile', country_code: countryCode }, 400);
   }
