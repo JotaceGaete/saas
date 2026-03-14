@@ -26,6 +26,15 @@ function getPlanCatalog(country: string | undefined): PlanCatalog {
   return country === 'AR' ? PLAN_CATALOG_AR : PLAN_CATALOG_CL;
 }
 
+function normalizeCountryCode(value: string | undefined): string {
+  const code = (value ?? '').toUpperCase().trim();
+  if (!code) return 'CL';
+  if (['AR', 'BO', 'BR', 'CL', 'CO', 'CR', 'EC', 'GT', 'MX', 'PA', 'PE', 'PY', 'UY'].includes(code)) {
+    return code;
+  }
+  return 'CL';
+}
+
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 type ChangeType = 'upgrade' | 'renewal' | 'downgrade';
 
@@ -125,16 +134,14 @@ Deno.serve(async (req) => {
   }
 
   const planSlug = body?.planSlug as string | undefined;
-  const country = (body?.country as string) ?? 'CL';
-  const catalog = getPlanCatalog(country);
-  const currencyId = country === 'AR' ? 'ARS' : 'CLP';
+  const fallbackCountry = normalizeCountryCode((body?.country as string | undefined) ?? 'CL');
 
   if (!planSlug || !PLAN_ORDER[planSlug]) return jsonResponse({ error: 'Plan no válido' }, 400);
 
   const adminClient = createClient(supabaseUrl, serviceRoleKey);
   const { data: businesses, error: bizError } = await adminClient
     .from('wa_businesses')
-    .select('id, user_id, name, plan_slug, plan_expires_at')
+    .select('*')
     .eq('user_id', user.id);
 
   if (bizError || !businesses?.length) return jsonResponse({ error: 'Business not found for user' }, 404);
@@ -142,6 +149,13 @@ Deno.serve(async (req) => {
 
   const business = businesses[0];
   if (business.user_id !== user.id) return jsonResponse({ error: 'Forbidden' }, 403);
+
+  const countryCode = normalizeCountryCode((business as { country_code?: string | null }).country_code ?? fallbackCountry);
+  if (countryCode === 'CL') {
+    return jsonResponse({ error: 'En Chile los pagos se procesan con Mercado Pago', country_code: countryCode }, 400);
+  }
+  const catalog = getPlanCatalog(countryCode);
+  const currencyId = countryCode === 'AR' ? 'ARS' : 'CLP';
 
   const currentPlanSlug = (business as { plan_slug?: string }).plan_slug ?? 'starter';
   const planExpiresAt = (business as { plan_expires_at?: string | null }).plan_expires_at ?? null;
@@ -230,7 +244,7 @@ Deno.serve(async (req) => {
     currency: currencyId,
     payment_method_flow: 'REDIRECT',
     payment_method_id: 'CARD',
-    country: country === 'AR' ? 'AR' : 'CL',
+    country: countryCode,
     payer: {
       name: payerName.slice(0, 100),
       email: (user.email ?? `user-${user.id}@placeholder.local`).slice(0, 100),

@@ -25,6 +25,15 @@ const PLAN_CATALOG_AR: PlanCatalog = {
 function getPlanCatalog(country: string | undefined): PlanCatalog {
   return country === 'AR' ? PLAN_CATALOG_AR : PLAN_CATALOG_CL;
 }
+
+function normalizeCountryCode(value: string | undefined): string {
+  const code = (value ?? '').toUpperCase().trim();
+  if (!code) return 'CL';
+  if (['AR', 'BO', 'BR', 'CL', 'CO', 'CR', 'EC', 'GT', 'MX', 'PA', 'PE', 'PY', 'UY'].includes(code)) {
+    return code;
+  }
+  return 'CL';
+}
 const PRORATION_FORMULA_VERSION = '2024-03-exact-time';
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -173,11 +182,11 @@ Deno.serve(async (req) => {
   }
 
   const planSlug = body?.planSlug as string | undefined;
-  const country  = (body?.country as string) ?? 'CL';
-  const catalog  = getPlanCatalog(country);
-  const currencyId = country === 'AR' ? 'ARS' : 'CLP';
-  const price    = planSlug ? catalog[planSlug]?.price : undefined;
-  console.log('[create-mp-preference] planSlug:', planSlug ?? '(none)', '| country:', country, '| currency:', currencyId, '| price:', price ?? '(inválido)');
+  const fallbackCountry = normalizeCountryCode((body?.country as string | undefined) ?? 'CL');
+  const fallbackCatalog = getPlanCatalog(fallbackCountry);
+  const fallbackCurrencyId = fallbackCountry === 'AR' ? 'ARS' : 'CLP';
+  const price    = planSlug ? fallbackCatalog[planSlug]?.price : undefined;
+  console.log('[create-mp-preference] planSlug:', planSlug ?? '(none)', '| fallbackCountry:', fallbackCountry, '| fallbackCurrency:', fallbackCurrencyId, '| price:', price ?? '(inválido)');
   if (!planSlug || !PLAN_ORDER[planSlug]) {
     return jsonResponse({ error: 'Plan no válido' }, 400);
   }
@@ -187,7 +196,7 @@ Deno.serve(async (req) => {
 
   const { data: businesses, error: bizError } = await adminClient
     .from('wa_businesses')
-    .select('id, user_id, name, plan_slug, plan_expires_at')
+    .select('*')
     .eq('user_id', user.id);
 
   const rowCount = businesses?.length ?? 0;
@@ -218,6 +227,13 @@ Deno.serve(async (req) => {
 
   console.log('[create-mp-preference] business.id elegido:', business.id);
   console.log('[create-mp-preference] business.user_id confirmado:', business.user_id);
+
+  const countryCode = normalizeCountryCode((business as { country_code?: string | null }).country_code ?? undefined);
+  if (countryCode !== 'CL') {
+    return jsonResponse({ error: 'Mercado Pago solo está disponible para Chile', country_code: countryCode }, 400);
+  }
+  const catalog = getPlanCatalog(countryCode);
+  const currencyId = countryCode === 'AR' ? 'ARS' : 'CLP';
 
   // ── 4. Calcular tipo de cambio y monto final (prorrateo en upgrades) ───────
   const currentPlanSlug = (business as { plan_slug?: string }).plan_slug ?? 'starter';

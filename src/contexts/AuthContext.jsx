@@ -141,6 +141,8 @@ export const AuthProvider = ({ children }) => {
               whatsapp: businessData?.whatsapp || '',
               description: businessData?.description || '',
               currency: businessData?.currency || 'CLP',
+              country: businessData?.country || null,
+              countryCode: businessData?.countryCode || null,
             })
             if (bizErr) {
               console.error('Business creation error:', bizErr)

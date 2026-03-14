@@ -25,6 +25,15 @@ function getPlanCatalog(country: string | undefined): PlanCatalog {
   return country === 'AR' ? PLAN_CATALOG_AR : PLAN_CATALOG_CL;
 }
 
+function normalizeCountryCode(value: string | undefined): string {
+  const code = (value ?? '').toUpperCase().trim();
+  if (!code) return 'CL';
+  if (['AR', 'BO', 'BR', 'CL', 'CO', 'CR', 'EC', 'GT', 'MX', 'PA', 'PE', 'PY', 'UY'].includes(code)) {
+    return code;
+  }
+  return 'CL';
+}
+
 const PRORATION_FORMULA_VERSION = '2024-03-exact-time';
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -162,19 +171,15 @@ Deno.serve(async (req) => {
   }
 
   let targetPlanSlug: string | undefined;
-  let country: string | undefined;
   if (req.method === 'GET') {
     const url = new URL(req.url);
     targetPlanSlug = url.searchParams.get('targetPlanSlug') ?? undefined;
-    country = url.searchParams.get('country') ?? undefined;
   } else {
     try {
       const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
       targetPlanSlug = body?.targetPlanSlug as string | undefined;
-      country = body?.country as string | undefined;
     } catch {
       targetPlanSlug = undefined;
-      country = undefined;
     }
   }
 
@@ -190,7 +195,7 @@ Deno.serve(async (req) => {
   const adminClient = createClient(supabaseUrl, serviceRoleKey);
   const { data: biz, error: bizError } = await adminClient
     .from('wa_businesses')
-    .select('id, user_id, plan_slug, plan_expires_at')
+    .select('*')
     .eq('user_id', user.id)
     .maybeSingle();
 
@@ -204,8 +209,9 @@ Deno.serve(async (req) => {
 
   const currentPlanSlug = (biz as { plan_slug?: string }).plan_slug ?? 'starter';
   const planExpiresAt = (biz as { plan_expires_at?: string | null }).plan_expires_at ?? null;
+  const countryCode = normalizeCountryCode((biz as { country_code?: string | null }).country_code ?? undefined);
 
-  const catalog = getPlanCatalog(country);
+  const catalog = getPlanCatalog(countryCode);
   const preview = computePlanChange(currentPlanSlug, planExpiresAt, targetPlanSlug, catalog);
 
   console.log('[plan-change-preview]', {

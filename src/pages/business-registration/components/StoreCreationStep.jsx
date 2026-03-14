@@ -4,9 +4,10 @@ import Icon from 'components/AppIcon';
 import { useAuth } from '../../../contexts/AuthContext';
 import { createBusiness } from '../../../services/waBusinessService';
 import WhatsAppField from './WhatsAppField';
-import { getCountryLabels } from '../../../config/country';
+import { getCountryCode, getCountryLabels } from '../../../config/country';
 
 const defaultLabels = getCountryLabels();
+const defaultCountryCode = getCountryCode();
 
 export default function StoreCreationStep({ user, businessLoading }) {
   const navigate = useNavigate();
@@ -48,6 +49,7 @@ export default function StoreCreationStep({ user, businessLoading }) {
         description: formData.description.trim() || null,
         currency:    formData.currency,
         country:     defaultLabels.countryName,
+        countryCode: defaultCountryCode,
       });
       if (error) {
         setSaveError(error.message || 'No se pudo crear el negocio. Intenta de nuevo.');

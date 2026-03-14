@@ -3,6 +3,39 @@ import { getPlanLimits } from '../constants/plans';
 
 // Helpers
 
+const SUPPORTED_COUNTRY_CODES = new Set(['AR', 'BO', 'BR', 'CL', 'CO', 'CR', 'EC', 'GT', 'MX', 'PA', 'PE', 'PY', 'UY']);
+
+function normalizeCountryCode(value, currencyHint) {
+  const raw = (value || '').toString().trim().toUpperCase();
+  if (SUPPORTED_COUNTRY_CODES.has(raw)) return raw;
+
+  const aliases = {
+    ARGENTINA: 'AR',
+    CHILE: 'CL',
+    BOLIVIA: 'BO',
+    BRASIL: 'BR',
+    BRAZIL: 'BR',
+    COLOMBIA: 'CO',
+    'COSTA RICA': 'CR',
+    ECUADOR: 'EC',
+    GUATEMALA: 'GT',
+    MEXICO: 'MX',
+    PANAMA: 'PA',
+    PARAGUAY: 'PY',
+    PERU: 'PE',
+    URUGUAY: 'UY',
+  };
+
+  const normalizedAlias = raw.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ');
+  if (aliases[normalizedAlias]) return aliases[normalizedAlias];
+
+  const currency = (currencyHint || '').toString().trim().toUpperCase();
+  if (currency === 'ARS') return 'AR';
+  if (currency === 'CLP') return 'CL';
+
+  return 'CL';
+}
+
 /** Plan efectivo para límites y seguridad: pro/business solo si plan_expires_at > now(). */
 export function getEffectivePlanSlug(planSlug, planExpiresAt) {
   if (!planSlug || !['pro', 'business'].includes(planSlug)) return planSlug || 'starter';
@@ -38,6 +71,7 @@ const mapBusinessFromDb = (row) => {
   city: row?.city,
   region: row?.region,
   country: row?.country,
+  countryCode: normalizeCountryCode(row?.country_code ?? row?.country, row?.currency),
   currency: row?.currency,
   logoUrl: row?.logo_url || designSettings?.logoUrl || null,
   coverImageUrl: row?.cover_image_url || designSettings?.headerImageUrl || designSettings?.coverImageUrl || null,
@@ -150,6 +184,7 @@ export const createBusiness = async (businessData) => {
       city: businessData?.city || null,
       region: businessData?.region || null,
       country: businessData?.country || null,
+      country_code: normalizeCountryCode(businessData?.countryCode ?? businessData?.country, businessData?.currency),
       currency: businessData?.currency || 'CLP',
       logo_url: businessData?.logoUrl || null,
       slug,
@@ -172,6 +207,7 @@ export const createBusinessForUser = async (userId, businessData) => {
       city: businessData?.city || null,
       region: businessData?.region || null,
       country: businessData?.country || null,
+      country_code: normalizeCountryCode(businessData?.countryCode ?? businessData?.country, businessData?.currency),
       currency: businessData?.currency || 'CLP',
       logo_url: businessData?.logoUrl || null,
       slug,
@@ -198,6 +234,8 @@ export async function updateBusiness(businessId, updates) {
   if (updates?.city !== undefined)        dbUpdates.city = updates?.city;
   if (updates?.region !== undefined)      dbUpdates.region = updates?.region;
   if (updates?.country !== undefined)     dbUpdates.country = updates?.country;
+  if (updates?.countryCode !== undefined) dbUpdates.country_code = normalizeCountryCode(updates?.countryCode, updates?.currency);
+  else if (updates?.country !== undefined) dbUpdates.country_code = normalizeCountryCode(updates?.country, updates?.currency);
   if (updates?.currency !== undefined)    dbUpdates.currency = updates?.currency;
   if (updates?.logoUrl !== undefined)     dbUpdates.logo_url = updates?.logoUrl;
   if (updates?.coverImageUrl !== undefined) dbUpdates.cover_image_url = updates?.coverImageUrl;

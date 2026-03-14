@@ -24,7 +24,7 @@ export default function PlansPage() {
   const isDesktop = useIsDesktop();
   const sidebarWidth = sidebarCollapsed ? 'var(--sidebar-collapsed-width)' : 'var(--sidebar-width)';
   const currentPlan = business?.planSlug || 'starter';
-  const countryCode = getCountryCode();
+  const countryCode = (business?.countryCode || getCountryCode() || 'CL').toUpperCase();
   const currency = getCurrency(countryCode);
   const paymentProvider = getPaymentProvider(countryCode);
   const getPlanPrice = (slug) => getPlanPriceByCountry(slug, countryCode);
@@ -52,7 +52,7 @@ export default function PlansPage() {
     const res = await fetch(`${supabaseUrl}/functions/v1/plan-change-preview`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}`, apikey: anonKey },
-      body: JSON.stringify({ targetPlanSlug, country: countryCode }),
+      body: JSON.stringify({ targetPlanSlug }),
     });
     if (!res.ok) return null;
     return res.json().catch(() => null);
@@ -151,7 +151,6 @@ export default function PlansPage() {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
         body: JSON.stringify({
           planSlug: previewPlanSlug,
-          country: countryCode,
           success_url: `${baseUrl}/plans?payment=success`,
           cancel_url: `${baseUrl}/plans?payment=failure`,
         }),
@@ -205,7 +204,6 @@ export default function PlansPage() {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, apikey: anonKey },
         body: JSON.stringify({
           planSlug: previewPlanSlug,
-          country: countryCode,
           success_url: `${baseUrl}/plans?payment=success`,
           failure_url: `${baseUrl}/plans?payment=failure`,
           pending_url: `${baseUrl}/plans?payment=pending`,
