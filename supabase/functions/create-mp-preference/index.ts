@@ -292,6 +292,7 @@ Deno.serve(async (req) => {
         amount:              0,
         currency:            currencyId,
         status:              'approved',
+        provider:            'internal_proration',
         external_reference:  'internal_proration',
         metadata:            internalMetadata,
         plan_activated_at:   new Date().toISOString(),

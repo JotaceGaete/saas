@@ -7,6 +7,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { getAppBaseUrl } from '../../config/appUrl';
 import { getCountryCode, getCurrency } from '../../config/country';
+import { getPaymentProvider } from '../../config/paymentProvider';
 import { formatCurrency } from '../../utils/formatCLP';
 import { PLAN_SLUGS, getPlanLimits, getPlanLabel, getPlanPriceByCountry, getPlanActionButtonLabel } from '../../constants/plans';
 
@@ -19,11 +20,13 @@ export default function PlansPage() {
   const [loadingPlanSlug, setLoadingPlanSlug] = useState(null);
   const [preview, setPreview] = useState(null);
   const [previewPlanSlug, setPreviewPlanSlug] = useState(null);
+  const [selectedPaymentProvider, setSelectedPaymentProvider] = useState('mercado_pago'); // 'mercado_pago' | 'dlocal_go'
   const isDesktop = useIsDesktop();
   const sidebarWidth = sidebarCollapsed ? 'var(--sidebar-collapsed-width)' : 'var(--sidebar-width)';
   const currentPlan = business?.planSlug || 'starter';
   const countryCode = getCountryCode();
   const currency = getCurrency(countryCode);
+  const paymentProvider = getPaymentProvider(countryCode);
   const getPlanPrice = (slug) => getPlanPriceByCountry(slug, countryCode);
 
   useEffect(() => {
@@ -57,6 +60,7 @@ export default function PlansPage() {
 
   const handlePayWithMercadoPago = async (planSlug) => {
     if (getPlanPrice(planSlug) <= 0) return;
+    setSelectedPaymentProvider('mercado_pago');
     setLoadingPlanSlug(planSlug);
     setPaymentMessage(null);
     setPreview(null);
@@ -89,6 +93,94 @@ export default function PlansPage() {
       setPreviewPlanSlug(planSlug);
     } catch (err) {
       setPaymentMessage({ type: 'error', text: err?.message || 'Error al cargar el resumen.' });
+    } finally {
+      setLoadingPlanSlug(null);
+    }
+  };
+
+  const handlePayWithDlocal = async (planSlug) => {
+    if (getPlanPrice(planSlug) <= 0) return;
+    setSelectedPaymentProvider('dlocal_go');
+    setLoadingPlanSlug(planSlug);
+    setPaymentMessage(null);
+    setPreview(null);
+    setPreviewPlanSlug(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        setPaymentMessage({ type: 'error', text: 'Debes iniciar sesión para contratar un plan.' });
+        return;
+      }
+      const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
+      if (anonKey && session.access_token === anonKey) {
+        setPaymentMessage({ type: 'error', text: 'Error de autenticación: token inválido.' });
+        return;
+      }
+      const previewData = await fetchPlanPreview(planSlug);
+      if (!previewData) {
+        setPaymentMessage({ type: 'error', text: 'No se pudo obtener el resumen del cambio de plan.' });
+        return;
+      }
+      if (previewData.changeType === 'downgrade') {
+        setPaymentMessage({ type: 'info', text: previewData.message || 'El cambio se aplicará al vencer tu plan actual. No se realiza ningún cargo.' });
+        return;
+      }
+      setPreview(previewData);
+      setPreviewPlanSlug(planSlug);
+    } catch (err) {
+      setPaymentMessage({ type: 'error', text: err?.message || 'Error al cargar el resumen.' });
+    } finally {
+      setLoadingPlanSlug(null);
+    }
+  };
+
+  const confirmPayWithDlocal = async () => {
+    if (!previewPlanSlug) return;
+    setLoadingPlanSlug(previewPlanSlug);
+    setPaymentMessage(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        setPaymentMessage({ type: 'error', text: 'Debes iniciar sesión.' });
+        return;
+      }
+      const baseUrl = getAppBaseUrl() || window.location?.origin || '';
+      const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
+      const res = await fetch(`${supabaseUrl}/functions/v1/create-dlocal-checkout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({
+          planSlug: previewPlanSlug,
+          country: countryCode,
+          success_url: `${baseUrl}/plans?payment=success`,
+          cancel_url: `${baseUrl}/plans?payment=failure`,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (data?.changeType === 'downgrade') {
+          setPaymentMessage({ type: 'info', text: data?.message || 'El cambio se aplicará al vencer tu plan actual.' });
+          setPreview(null);
+          setPreviewPlanSlug(null);
+          return;
+        }
+        throw new Error(data?.error ?? res.statusText ?? 'Error al crear checkout');
+      }
+      if (data?.error) throw new Error(data.error);
+      if (data?.applied) {
+        setPaymentMessage({ type: 'success', text: 'Plan actualizado correctamente. No se requirió pago (crédito por tiempo restante).' });
+        setPreview(null);
+        setPreviewPlanSlug(null);
+        refreshBusiness?.();
+        return;
+      }
+      if (data?.redirect_url) {
+        window.location.href = data.redirect_url;
+        return;
+      }
+      throw new Error('No se recibió enlace de pago');
+    } catch (err) {
+      setPaymentMessage({ type: 'error', text: err?.message || 'Error al iniciar el pago.' });
     } finally {
       setLoadingPlanSlug(null);
     }
@@ -236,7 +328,7 @@ export default function PlansPage() {
               <div className="flex gap-3">
                 <button
                   type="button"
-                  onClick={confirmPayWithMercadoPago}
+                  onClick={selectedPaymentProvider === 'dlocal_go' ? confirmPayWithDlocal : confirmPayWithMercadoPago}
                   disabled={!!loadingPlanSlug}
                   className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
                   style={{ backgroundColor: '#009EE3' }}
@@ -303,22 +395,41 @@ export default function PlansPage() {
                         Tu plan actual
                       </span>
                     ) : getPlanPrice(slug) > 0 ? (
-                      <button
-                        type="button"
-                        disabled={!!loadingPlanSlug}
-                        onClick={() => handlePayWithMercadoPago(slug)}
-                        className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
-                        style={{ backgroundColor: '#009EE3' }}
-                      >
-                        {loadingPlanSlug === slug ? (
-                          <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        ) : (
-                          <>
-                            <Icon name="Wallet" size={16} color="#fff" />
-                            {getPlanActionButtonLabel(currentPlan, slug)}
-                          </>
-                        )}
-                      </button>
+                      paymentProvider === 'mercado_pago' ? (
+                        <button
+                          type="button"
+                          disabled={!!loadingPlanSlug}
+                          onClick={() => handlePayWithMercadoPago(slug)}
+                          className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+                          style={{ backgroundColor: '#009EE3' }}
+                        >
+                          {loadingPlanSlug === slug ? (
+                            <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <>
+                              <Icon name="Wallet" size={16} color="#fff" />
+                              {getPlanActionButtonLabel(currentPlan, slug)}
+                            </>
+                          )}
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={!!loadingPlanSlug}
+                          onClick={() => handlePayWithDlocal(slug)}
+                          className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+                          style={{ backgroundColor: 'var(--color-primary)' }}
+                        >
+                          {loadingPlanSlug === slug ? (
+                            <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <>
+                              <Icon name="CreditCard" size={16} color="#fff" />
+                              {getPlanActionButtonLabel(currentPlan, slug)}
+                            </>
+                          )}
+                        </button>
+                      )
                     ) : (
                       <span className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
                         Plan gratuito
@@ -332,7 +443,9 @@ export default function PlansPage() {
 
           <div className="mt-8 rounded-xl border p-4" style={{ backgroundColor: 'var(--color-muted)', borderColor: 'var(--color-border)' }}>
             <p className="text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
-              Los planes de pago (Plan Control, Pro y Business) se pagan con Mercado Pago (mercadopago.cl). Tras el pago, tu plan se actualiza de forma automática.
+              {paymentProvider === 'mercado_pago'
+                ? 'En Chile los planes de pago se procesan con Mercado Pago. Tras el pago, tu plan se activa automáticamente.'
+                : 'Los planes de pago se procesan con dLocal Go. Tras el pago aprobado, tu plan se activa automáticamente.'}
             </p>
             <button
               type="button"

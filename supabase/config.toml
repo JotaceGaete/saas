@@ -22,3 +22,11 @@ verify_jwt = false
 # upload-image-r2 valida el JWT dentro de la función con supabase.auth.getUser().
 [functions.upload-image-r2]
 verify_jwt = false
+
+# create-dlocal-checkout: JWT validado dentro para auth.uid().
+[functions.create-dlocal-checkout]
+verify_jwt = false
+
+# dlocal-webhook: público, llamado por dLocal Go.
+[functions.dlocal-webhook]
+verify_jwt = false
