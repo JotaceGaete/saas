@@ -58,11 +58,11 @@ function getCurrencyForCountry(countryCode: string): string {
 }
 
 /**
- * Convierte el monto interno (unidad principal, ej. ARS 14553) al formato dLocal Go (unidad mínima).
- * Todas las monedas soportadas (ARS, CLP, BRL, etc.) usan 2 decimales → factor 100.
+ * Monto para dLocal Go: el API espera unidad principal (ej. 14553 para ARS 14.553),
+ * no unidad mínima. Ver docs dLocal: amount = "Transaction amount in the currency".
  */
-function amountToDlocalMinorUnit(amountInMainUnit: number): number {
-  return Math.round(Number(amountInMainUnit) * 100);
+function amountForDlocalPayload(amountInMainUnit: number): number {
+  return Number(amountInMainUnit);
 }
 
 function resolveBusinessCountryCode(
@@ -305,7 +305,7 @@ Deno.serve(async (req) => {
   const successUrl = (body?.success_url as string) || '';
   const cancelUrl = (body?.cancel_url as string) || '';
 
-  const amountForDlocal = amountToDlocalMinorUnit(planChange.finalAmount);
+  const amountForDlocal = amountForDlocalPayload(planChange.finalAmount);
 
   const payerName = (user.user_metadata?.full_name as string) || (user.email ?? 'Usuario').split('@')[0];
   const rawDocument = (user.user_metadata?.document as string)?.trim() || '';
@@ -347,8 +347,15 @@ Deno.serve(async (req) => {
   });
 
   const dlocalBody = await dlocalRes.text();
+
+  console.log('[dlocal-response] status:', dlocalRes.status, 'bodyLength:', dlocalBody?.length);
+  console.log('[dlocal-response] rawBody:', dlocalBody?.slice(0, 500) ?? '(empty)');
+
   if (!dlocalRes.ok) {
-    await adminClient.from('wa_payments').update({ status: 'cancelled' }).eq('id', paymentId);
+    console.log('[dlocal-checkout] CANCELLED_REASON: dLocal devolvió error HTTP', dlocalRes.status, 'paymentId:', paymentId);
+    const { data: currentRowErr } = await adminClient.from('wa_payments').select('metadata').eq('id', paymentId).single();
+    const errMetadata = { ...((currentRowErr?.metadata as Record<string, unknown>) || {}), raw_dlocal_error_response: dlocalBody?.slice(0, 2000) ?? null };
+    await adminClient.from('wa_payments').update({ status: 'cancelled', metadata: errMetadata }).eq('id', paymentId);
     let errPayload: Record<string, unknown>;
     try {
       errPayload = { error: 'dLocal Go error', detail: JSON.parse(dlocalBody) };
@@ -362,6 +369,7 @@ Deno.serve(async (req) => {
   try {
     dlocalPayment = JSON.parse(dlocalBody);
   } catch {
+    console.log('[dlocal-checkout] CANCELLED_REASON: error de parseo de respuesta JSON, paymentId:', paymentId);
     await adminClient.from('wa_payments').update({ status: 'cancelled' }).eq('id', paymentId);
     return jsonResponse({ error: 'Invalid dLocal Go response' }, 502);
   }
@@ -370,9 +378,12 @@ Deno.serve(async (req) => {
   const providerPaymentId = dlocalPayment?.id ? String(dlocalPayment.id) : null;
 
   if (!redirectUrl) {
+    console.log('[dlocal-checkout] CANCELLED_REASON: dLocal no devolvió redirect_url, paymentId:', paymentId);
     await adminClient.from('wa_payments').update({ status: 'cancelled' }).eq('id', paymentId);
     return jsonResponse({ error: 'dLocal Go no devolvió URL de pago' }, 502);
   }
+
+  console.log('[dlocal-response] parsed:', JSON.stringify(dlocalPayment));
 
   const { data: currentRow } = await adminClient.from('wa_payments').select('metadata').eq('id', paymentId).single();
   const mergedMetadata = { ...((currentRow?.metadata as Record<string, unknown>) || {}), raw_dlocal_response: dlocalPayment };

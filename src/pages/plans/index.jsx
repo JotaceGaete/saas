@@ -36,6 +36,7 @@ export default function PlansPage() {
   const { user, business, businessLoading, refreshBusiness } = useAuth();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [paymentMessage, setPaymentMessage] = useState(null);
+  const [paymentReturnStatus, setPaymentReturnStatus] = useState(null); // 'success' | 'failure' | 'pending' al volver del checkout
   const [loadingPlanSlug, setLoadingPlanSlug] = useState(null);
   const [preview, setPreview] = useState(null);
   const [previewPlanSlug, setPreviewPlanSlug] = useState(null);
@@ -67,9 +68,10 @@ export default function PlansPage() {
   useEffect(() => {
     const payment = searchParams.get('payment');
     if (payment === 'success') {
-      setPaymentMessage({ type: 'success', text: 'Pago realizado. Tu plan se ha actualizado.' });
-      refreshBusiness?.();
+      setPaymentReturnStatus('success');
+      setPaymentMessage({ type: 'info', text: 'Verificando tu pago…' });
       setSearchParams({}, { replace: true });
+      refreshBusiness?.();
     } else if (payment === 'failure') {
       setPaymentMessage({ type: 'error', text: 'El pago no pudo completarse. Intenta de nuevo.' });
       setSearchParams({}, { replace: true });
@@ -78,6 +80,35 @@ export default function PlansPage() {
       setSearchParams({}, { replace: true });
     }
   }, [searchParams, setSearchParams, refreshBusiness]);
+
+  // Solo mostrar éxito cuando la BD confirma: wa_payments.status = approved (no por success_url ni query params)
+  useEffect(() => {
+    if (paymentReturnStatus !== 'success' || !user || businessLoading) return;
+    let cancelled = false;
+    (async () => {
+      const { data: lastPayment } = await supabase
+        .from('wa_payments')
+        .select('id, status, plan_slug, created_at')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (cancelled) return;
+      setPaymentReturnStatus(null);
+      if (!lastPayment) {
+        setPaymentMessage({ type: 'info', text: 'El pago está en proceso. Cuando se acredite, tu plan se actualizará.' });
+        return;
+      }
+      if (lastPayment.status === 'approved') {
+        setPaymentMessage({ type: 'success', text: 'Pago realizado. Tu plan se ha actualizado.' });
+      } else if (lastPayment.status === 'cancelled' || lastPayment.status === 'rejected') {
+        setPaymentMessage({ type: 'error', text: 'El pago no pudo completarse. Intenta de nuevo.' });
+      } else {
+        setPaymentMessage({ type: 'info', text: 'El pago está en proceso. Cuando se acredite, tu plan se actualizará.' });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [paymentReturnStatus, user, businessLoading]);
 
   const fetchPlanPreview = async (targetPlanSlug) => {
     const { data: { session } } = await supabase.auth.getSession();

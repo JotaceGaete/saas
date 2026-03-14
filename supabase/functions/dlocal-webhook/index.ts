@@ -46,6 +46,8 @@ Deno.serve(async (req) => {
   const orderId = payload?.order_id != null ? String(payload.order_id) : '';
   const status = normalizeStatus((payload?.status as string) ?? '');
 
+  console.log('[dlocal-webhook] received', { paymentId, orderId, status, rawStatus: payload?.status });
+
   if (!paymentId) return jsonResponse({ ok: false, error: 'Missing payment id' }, 400);
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
@@ -108,6 +110,8 @@ Deno.serve(async (req) => {
     paymentRecord = row;
   }
 
+  console.log('[dlocal-webhook] paymentRecord', paymentRecord ? { id: paymentRecord.id, business_id: paymentRecord.business_id, plan_slug: paymentRecord.plan_slug } : null);
+
   await db.from('wa_payment_events').insert({
     payment_id: paymentRecord?.id ?? null,
     provider: 'dlocal_go',
@@ -142,6 +146,7 @@ Deno.serve(async (req) => {
       plan_expires_at: planExpiresAt.toISOString(),
     }).eq('id', paymentRecord.business_id);
     if (bizErr) console.error('[dlocal-webhook] error updating wa_businesses:', bizErr.message);
+    else console.log('[dlocal-webhook] wa_businesses updated', { business_id: paymentRecord.business_id, plan_slug: paymentRecord.plan_slug });
   }
 
   return jsonResponse({ ok: true }, 200);
