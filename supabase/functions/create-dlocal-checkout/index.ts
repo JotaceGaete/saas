@@ -35,6 +35,44 @@ function normalizeCountryCode(value: string | undefined): string {
   return 'CL';
 }
 
+/** Moneda ISO 4217 por país para dLocal Go. */
+const CURRENCY_BY_COUNTRY: Record<string, string> = {
+  AR: 'ARS',
+  BO: 'BOB',
+  BR: 'BRL',
+  CL: 'CLP',
+  CO: 'COP',
+  CR: 'CRC',
+  EC: 'USD',
+  GT: 'GTQ',
+  MX: 'MXN',
+  PA: 'USD',
+  PE: 'PEN',
+  PY: 'PYG',
+  UY: 'UYU',
+};
+
+function getCurrencyForCountry(countryCode: string): string {
+  const code = (countryCode ?? '').toUpperCase().trim();
+  return CURRENCY_BY_COUNTRY[code] ?? 'CLP';
+}
+
+/** Documentos de prueba por país para sandbox cuando el usuario no tiene document. */
+const SANDBOX_TEST_DOCUMENT_BY_COUNTRY: Record<string, string> = {
+  AR: '20123456789',
+  BO: '1234567890',
+  BR: '52998224725',
+  CO: '1234567890',
+  CR: '123456789',
+  EC: '1234567890',
+  GT: '1234567890123',
+  MX: 'ROAC860524',
+  PA: '123456789',
+  PE: '12345678',
+  PY: '1234567890',
+  UY: '12345678',
+};
+
 function resolveBusinessCountryCode(
   business: { country_code?: string | null; country?: string | null; currency?: string | null },
   fallbackCountry?: string,
@@ -194,7 +232,7 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: 'En Chile los pagos se procesan con Mercado Pago', country_code: countryCode }, 400);
   }
   const catalog = getPlanCatalog(countryCode);
-  const currencyId = countryCode === 'AR' ? 'ARS' : 'CLP';
+  const currencyId = getCurrencyForCountry(countryCode);
 
   const currentPlanSlug = (business as { plan_slug?: string }).plan_slug ?? 'starter';
   const planExpiresAt = (business as { plan_expires_at?: string | null }).plan_expires_at ?? null;
@@ -276,7 +314,17 @@ Deno.serve(async (req) => {
   const cancelUrl = (body?.cancel_url as string) || '';
 
   const payerName = (user.user_metadata?.full_name as string) || (user.email ?? 'Usuario').split('@')[0];
-  const payerDocument = (user.user_metadata?.document as string) || '00000000';
+  const rawDocument = (user.user_metadata?.document as string)?.trim() || '';
+  const isSandbox = baseUrl.includes('api-sbx');
+  const payerDocument = rawDocument
+    ? String(rawDocument).slice(0, 30)
+    : (isSandbox ? (SANDBOX_TEST_DOCUMENT_BY_COUNTRY[countryCode] ?? '12345678') : '');
+
+  const payer: { name: string; email: string; document?: string } = {
+    name: payerName.slice(0, 100),
+    email: (user.email ?? `user-${user.id}@placeholder.local`).slice(0, 100),
+  };
+  if (payerDocument) payer.document = payerDocument;
 
   const dlocalPayload = {
     amount: planChange.finalAmount,
@@ -284,16 +332,21 @@ Deno.serve(async (req) => {
     payment_method_flow: 'REDIRECT',
     payment_method_id: 'CARD',
     country: countryCode,
-    payer: {
-      name: payerName.slice(0, 100),
-      email: (user.email ?? `user-${user.id}@placeholder.local`).slice(0, 100),
-      document: String(payerDocument).slice(0, 30),
-    },
+    payer,
     order_id: String(paymentId),
     ...(webhookUrl && { notification_url: webhookUrl }),
     ...(successUrl && { success_url: successUrl }),
     ...(cancelUrl && { back_url: cancelUrl }),
   };
+
+  console.log('[dlocal-payload] countryCode:', countryCode);
+  console.log('[dlocal-payload] currencyId:', currencyId);
+  console.log('[dlocal-payload] payment_method_flow:', dlocalPayload.payment_method_flow);
+  console.log('[dlocal-payload] payment_method_id:', dlocalPayload.payment_method_id);
+  console.log('[dlocal-payload] payer:', JSON.stringify(payer));
+  console.log('[dlocal-payload] success_url:', successUrl || '(empty)');
+  console.log('[dlocal-payload] cancel_url / back_url:', cancelUrl || '(empty)');
+  console.log('[dlocal-payload] dlocalPayload:', JSON.stringify(dlocalPayload));
 
   const credentials = btoa(`${apiKey}:${secretKey}`);
   console.log('Calling dLocal with baseUrl:', baseUrl);
