@@ -23,10 +23,11 @@ verify_jwt = false
 [functions.upload-image-r2]
 verify_jwt = false
 
-# create-dlocal-checkout: JWT validado dentro para auth.uid().
-[functions.create-dlocal-checkout]
+# dLocal Go: integración eliminada. create-dlocal-checkout y dlocal-webhook son stubs 410 (no en uso).
+
+# Paddle: checkout (JWT validado dentro) y webhook público.
+[functions.create-paddle-checkout]
 verify_jwt = false
 
-# dlocal-webhook: público, llamado por dLocal Go.
-[functions.dlocal-webhook]
+[functions.paddle-webhook]
 verify_jwt = false

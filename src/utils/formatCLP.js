@@ -61,12 +61,24 @@ export function formatARS(amount) {
 }
 
 /**
- * Formatea un monto según la moneda (CLP o ARS). Misma lógica de miles con punto.
+ * Formatea un monto como precio USD para mostrar en la UI.
  * @param {number|string} amount
- * @param {'CLP'|'ARS'} currency
+ * @returns {string} Ej: "US$ 15.00"
+ */
+export function formatUSD(amount) {
+  const n = typeof amount === 'number' ? amount : Number(amount);
+  if (Number.isNaN(n) || n < 0) return 'US$ 0.00';
+  return `US$ ${Number(n).toFixed(2)}`;
+}
+
+/**
+ * Formatea un monto según la moneda (CLP, ARS o USD).
+ * @param {number|string} amount
+ * @param {'CLP'|'ARS'|'USD'} currency
  * @returns {string}
  */
 export function formatCurrency(amount, currency) {
   if (currency === 'ARS') return formatARS(amount);
+  if (currency === 'USD') return formatUSD(amount);
   return formatCLP(amount);
 }

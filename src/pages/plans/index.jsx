@@ -40,7 +40,6 @@ export default function PlansPage() {
   const [loadingPlanSlug, setLoadingPlanSlug] = useState(null);
   const [preview, setPreview] = useState(null);
   const [previewPlanSlug, setPreviewPlanSlug] = useState(null);
-  const [selectedPaymentProvider, setSelectedPaymentProvider] = useState('mercado_pago'); // 'mercado_pago' | 'dlocal_go'
   const isDesktop = useIsDesktop();
   const sidebarWidth = sidebarCollapsed ? 'var(--sidebar-collapsed-width)' : 'var(--sidebar-width)';
   const currentPlan = business?.planSlug || 'starter';
@@ -48,9 +47,9 @@ export default function PlansPage() {
   const businessCountryCode = normalizeCountryCode(business?.countryCode);
   const userCountryCode = normalizeCountryCode(user?.user_metadata?.country_code ?? user?.user_metadata?.country);
   const countryCode = resolveCountryCode({ hostnameCountryCode, businessCountryCode, userCountryCode });
-  const currency = getCurrency(countryCode);
   const paymentProvider = getPaymentProvider(countryCode);
-  const getPlanPrice = (slug) => getPlanPriceByCountry(slug, countryCode);
+  const currency = paymentProvider === 'paddle' ? 'USD' : getCurrency(countryCode);
+  const getPlanPrice = (slug) => getPlanPriceByCountry(slug, countryCode, paymentProvider);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -110,18 +109,51 @@ export default function PlansPage() {
     return () => { cancelled = true; };
   }, [paymentReturnStatus, user, businessLoading]);
 
-  const fetchPlanPreview = async (targetPlanSlug) => {
+  const fetchPlanPreview = async (targetPlanSlug, provider) => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session?.access_token) return null;
     const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
     const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
+    const body = { targetPlanSlug };
+    if (provider) body.provider = provider;
     const res = await fetch(`${supabaseUrl}/functions/v1/plan-change-preview`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}`, apikey: anonKey },
-      body: JSON.stringify({ targetPlanSlug }),
+      body: JSON.stringify(body),
     });
     if (!res.ok) return null;
     return res.json().catch(() => null);
+  };
+
+  const handlePayWithPaddle = async (planSlug) => {
+    console.info(PAYMENT_DEBUG_PREFIX, { event: 'click_plan_button', handler: 'handlePayWithPaddle', planSlug, resolvedCountryCode: countryCode });
+    if (getPlanPrice(planSlug) <= 0) return;
+    setLoadingPlanSlug(planSlug);
+    setPaymentMessage(null);
+    setPreview(null);
+    setPreviewPlanSlug(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        setPaymentMessage({ type: 'error', text: 'Debes iniciar sesión para contratar un plan.' });
+        return;
+      }
+      const previewData = await fetchPlanPreview(planSlug, 'paddle');
+      if (!previewData) {
+        setPaymentMessage({ type: 'error', text: 'No se pudo obtener el resumen del cambio de plan.' });
+        return;
+      }
+      if (previewData.changeType === 'downgrade') {
+        setPaymentMessage({ type: 'info', text: previewData.message || 'El cambio se aplicará al vencer tu plan actual. No se realiza ningún cargo.' });
+        return;
+      }
+      setPreview(previewData);
+      setPreviewPlanSlug(planSlug);
+    } catch (err) {
+      setPaymentMessage({ type: 'error', text: err?.message || 'Error al cargar el resumen.' });
+    } finally {
+      setLoadingPlanSlug(null);
+    }
   };
 
   const handlePayWithMercadoPago = async (planSlug) => {
@@ -131,10 +163,8 @@ export default function PlansPage() {
       planSlug,
       resolvedCountryCode: countryCode,
       resolvedProvider: paymentProvider,
-      selectedPaymentProviderBefore: selectedPaymentProvider,
     });
     if (getPlanPrice(planSlug) <= 0) return;
-    setSelectedPaymentProvider('mercado_pago');
     setLoadingPlanSlug(planSlug);
     setPaymentMessage(null);
     setPreview(null);
@@ -172,96 +202,35 @@ export default function PlansPage() {
     }
   };
 
-  const handlePayWithDlocal = async (planSlug) => {
-    console.info(PAYMENT_DEBUG_PREFIX, {
-      event: 'click_plan_button',
-      handler: 'handlePayWithDlocal',
-      planSlug,
-      resolvedCountryCode: countryCode,
-      resolvedProvider: paymentProvider,
-      selectedPaymentProviderBefore: selectedPaymentProvider,
-    });
-    if (getPlanPrice(planSlug) <= 0) return;
-    setSelectedPaymentProvider('dlocal_go');
-    setLoadingPlanSlug(planSlug);
-    setPaymentMessage(null);
-    setPreview(null);
-    setPreviewPlanSlug(null);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) {
-        setPaymentMessage({ type: 'error', text: 'Debes iniciar sesión para contratar un plan.' });
-        return;
-      }
-      const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
-      if (anonKey && session.access_token === anonKey) {
-        setPaymentMessage({ type: 'error', text: 'Error de autenticación: token inválido.' });
-        return;
-      }
-      const previewData = await fetchPlanPreview(planSlug);
-      if (!previewData) {
-        setPaymentMessage({ type: 'error', text: 'No se pudo obtener el resumen del cambio de plan.' });
-        return;
-      }
-      if (previewData.changeType === 'downgrade') {
-        setPaymentMessage({ type: 'info', text: previewData.message || 'El cambio se aplicará al vencer tu plan actual. No se realiza ningún cargo.' });
-        return;
-      }
-      setPreview(previewData);
-      setPreviewPlanSlug(planSlug);
-    } catch (err) {
-      setPaymentMessage({ type: 'error', text: err?.message || 'Error al cargar el resumen.' });
-    } finally {
-      setLoadingPlanSlug(null);
-    }
-  };
-
-  const confirmPayWithDlocal = async () => {
-    console.info(PAYMENT_DEBUG_PREFIX, {
-      event: 'confirm_payment',
-      handler: 'confirmPayWithDlocal',
-      planSlug: previewPlanSlug,
-      resolvedCountryCode: countryCode,
-      resolvedProvider: paymentProvider,
-      selectedPaymentProvider,
-    });
+  const confirmPayWithPaddle = async () => {
     if (!previewPlanSlug) return;
     setLoadingPlanSlug(previewPlanSlug);
     setPaymentMessage(null);
     try {
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError) {
-        console.error('[auth-debug] getSession error:', sessionError.message);
-      }
+      const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) {
         setPaymentMessage({ type: 'error', text: 'Debes iniciar sesión.' });
         return;
       }
-      const accessToken = session.access_token;
-      console.log('[auth-debug] dlocal tokenLength:', accessToken.length);
-      console.log('[auth-debug] dlocal tokenPreview:', accessToken.slice(0, 20));
-
-      // Conservar el host actual (ar.ventalink.app / cl.ventalink.app) para no redirigir al usuario a otro país
       const returnBaseUrl = (typeof window !== 'undefined' && window.location?.origin)
         ? window.location.origin.replace(/\/$/, '')
         : (getAppBaseUrl() || '');
       const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
-      const payload = {
-        planSlug: previewPlanSlug,
-        success_url: `${returnBaseUrl}/plans?payment=success`,
-        cancel_url: `${returnBaseUrl}/plans?payment=failure`,
-      };
-
-      const res = await fetch(`${supabaseUrl}/functions/v1/create-dlocal-checkout`, {
+      const res = await fetch(`${supabaseUrl}/functions/v1/create-paddle-checkout`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
+          Authorization: `Bearer ${session.access_token}`,
+          apikey: import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '',
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          planSlug: previewPlanSlug,
+          success_url: `${returnBaseUrl}/plans?payment=success`,
+          failure_url: `${returnBaseUrl}/plans?payment=failure`,
+          country: countryCode,
+        }),
       });
       const data = await res.json().catch(() => ({}));
-
       if (!res.ok) {
         if (data?.changeType === 'downgrade') {
           setPaymentMessage({ type: 'info', text: data?.message || 'El cambio se aplicará al vencer tu plan actual.' });
@@ -297,8 +266,6 @@ export default function PlansPage() {
       handler: 'confirmPayWithMercadoPago',
       planSlug: previewPlanSlug,
       resolvedCountryCode: countryCode,
-      resolvedProvider: paymentProvider,
-      selectedPaymentProvider,
     });
     if (!previewPlanSlug) return;
     setLoadingPlanSlug(previewPlanSlug);
@@ -432,7 +399,7 @@ export default function PlansPage() {
                 )}
                 <li>Precio del plan: <strong>{formatCurrency(preview.targetPlanPrice, currency)}</strong></li>
                 {preview.effectiveAt && (
-                  <li>Vigente desde: <strong>{new Date(preview.effectiveAt).toLocaleDateString(currency === 'ARS' ? 'es-AR' : 'es-CL', { dateStyle: 'medium' })}</strong></li>
+                  <li>Vigente desde: <strong>{new Date(preview.effectiveAt).toLocaleDateString(currency === 'ARS' ? 'es-AR' : currency === 'USD' ? 'en-US' : 'es-CL', { dateStyle: 'medium' })}</strong></li>
                 )}
                 <li className="pt-2 border-t" style={{ borderColor: 'var(--color-border)' }}>
                   Total a pagar: <strong className="text-base" style={{ color: 'var(--color-foreground)' }}>
@@ -443,10 +410,10 @@ export default function PlansPage() {
               <div className="flex gap-3">
                 <button
                   type="button"
-                  onClick={selectedPaymentProvider === 'dlocal_go' ? confirmPayWithDlocal : confirmPayWithMercadoPago}
+                  onClick={paymentProvider === 'paddle' ? confirmPayWithPaddle : confirmPayWithMercadoPago}
                   disabled={!!loadingPlanSlug}
                   className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
-                  style={{ backgroundColor: '#009EE3' }}
+                  style={{ backgroundColor: paymentProvider === 'paddle' ? '#383838' : '#009EE3' }}
                 >
                   {loadingPlanSlug ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : preview.finalAmount === 0 ? <><Icon name="CheckCircle" size={16} color="#fff" /> Confirmar cambio (sin cargo)</> : <><Icon name="Wallet" size={16} color="#fff" /> Confirmar y pagar</>}
                 </button>
@@ -527,23 +494,27 @@ export default function PlansPage() {
                             </>
                           )}
                         </button>
-                      ) : (
+                      ) : paymentProvider === 'paddle' ? (
                         <button
                           type="button"
                           disabled={!!loadingPlanSlug}
-                          onClick={() => handlePayWithDlocal(slug)}
+                          onClick={() => handlePayWithPaddle(slug)}
                           className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
-                          style={{ backgroundColor: 'var(--color-primary)' }}
+                          style={{ backgroundColor: '#383838' }}
                         >
                           {loadingPlanSlug === slug ? (
                             <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                           ) : (
                             <>
-                              <Icon name="CreditCard" size={16} color="#fff" />
+                              <Icon name="Wallet" size={16} color="#fff" />
                               {getPlanActionButtonLabel(currentPlan, slug)}
                             </>
                           )}
                         </button>
+                      ) : (
+                        <span className="text-sm font-medium" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                          Pago con tarjeta próximamente en tu país
+                        </span>
                       )
                     ) : (
                       <span className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
@@ -560,7 +531,9 @@ export default function PlansPage() {
             <p className="text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
               {paymentProvider === 'mercado_pago'
                 ? 'En Chile los planes de pago se procesan con Mercado Pago. Tras el pago, tu plan se activa automáticamente.'
-                : 'Los planes de pago se procesan con dLocal Go. Tras el pago aprobado, tu plan se activa automáticamente.'}
+                : paymentProvider === 'paddle'
+                  ? 'Fuera de Chile los pagos se procesan con Paddle (tarjeta, PayPal, etc.). Tras el pago, tu plan se activa automáticamente.'
+                  : 'Pago con tarjeta disponible próximamente en tu país.'}
             </p>
             <button
               type="button"

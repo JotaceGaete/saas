@@ -21,7 +21,15 @@ const PLAN_CATALOG_AR: PlanCatalog = {
   business: { displayName: 'Plan Business', price: 30000, durationDays: 30 },
 };
 
-function getPlanCatalog(country: string | undefined): PlanCatalog {
+const PLAN_CATALOG_USD: PlanCatalog = {
+  starter:  { displayName: 'Starter',  price: 0,   durationDays: 30 },
+  control:  { displayName: 'Plan Control', price: 5,   durationDays: 30 },
+  pro:      { displayName: 'Plan Pro', price: 15,  durationDays: 30 },
+  business: { displayName: 'Plan Business', price: 30, durationDays: 30 },
+};
+
+function getPlanCatalog(country: string | undefined, provider?: string): PlanCatalog {
+  if (provider === 'paddle') return PLAN_CATALOG_USD;
   return country === 'AR' ? PLAN_CATALOG_AR : PLAN_CATALOG_CL;
 }
 
@@ -203,13 +211,16 @@ Deno.serve(async (req) => {
   }
 
   let targetPlanSlug: string | undefined;
+  let providerHint: string | undefined;
   if (req.method === 'GET') {
     const url = new URL(req.url);
     targetPlanSlug = url.searchParams.get('targetPlanSlug') ?? undefined;
+    providerHint = url.searchParams.get('provider') ?? undefined;
   } else {
     try {
       const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
       targetPlanSlug = body?.targetPlanSlug as string | undefined;
+      providerHint = body?.provider as string | undefined;
     } catch {
       targetPlanSlug = undefined;
     }
@@ -245,7 +256,7 @@ Deno.serve(async (req) => {
     biz as { country_code?: string | null; country?: string | null; currency?: string | null },
   );
 
-  const catalog = getPlanCatalog(countryCode);
+  const catalog = getPlanCatalog(countryCode, providerHint);
   const preview = computePlanChange(currentPlanSlug, planExpiresAt, targetPlanSlug, catalog);
 
   console.log('[plan-change-preview]', {

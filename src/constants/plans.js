@@ -43,6 +43,14 @@ export const PLAN_PRICES_ARS = Object.freeze({
   business: 30000,
 });
 
+/** Precios en USD (Paddle, fuera de Chile). */
+export const PLAN_PRICES_USD = Object.freeze({
+  starter:  0,
+  control:  5,
+  pro:      15,
+  business: 30,
+});
+
 /**
  * Límites por plan. null = ilimitado.
  * maxBusinesses = cuántos negocios puede tener el usuario (por ahora 1 para todos).
@@ -108,12 +116,14 @@ export function getPlanPrice(planSlug) {
 }
 
 /**
- * Precio del plan según país (CLP o ARS).
+ * Precio del plan según país (CLP o ARS) o proveedor (USD para Paddle).
  * @param {string} planSlug
- * @param {'AR'|'CL'} [countryCode] - Si no se pasa, se asume CL (CLP).
+ * @param {'AR'|'CL'|string} [countryCode] - Si no se pasa, se asume CL (CLP).
+ * @param {'mercado_pago'|'paddle'|null} [paymentProvider] - Si 'paddle', devuelve precio en USD.
  * @returns {number}
  */
-export function getPlanPriceByCountry(planSlug, countryCode) {
+export function getPlanPriceByCountry(planSlug, countryCode, paymentProvider) {
+  if (paymentProvider === 'paddle') return PLAN_PRICES_USD[planSlug] ?? 0;
   if (countryCode === 'AR') return PLAN_PRICES_ARS[planSlug] ?? 0;
   return PLAN_PRICES_CLP[planSlug] ?? 0;
 }
