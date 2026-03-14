@@ -155,7 +155,7 @@ export default function ProductManagement() {
     <div className="panel-root min-h-screen" style={{ backgroundColor: 'var(--color-background)' }}>
       <BusinessSidebar isCollapsed={sidebarCollapsed} onCollapsedChange={setSidebarCollapsed} />
       <main className="panel-main min-h-screen w-full max-w-full min-w-0 overflow-x-hidden transition-all duration-200" style={{ marginLeft: isDesktop ? sidebarWidth : 0, transition: 'margin-left var(--transition-base)' }}>
-        <div className="sticky top-0 z-50 border-b px-4 md:px-6 lg:px-8 flex items-center justify-between gap-3" style={{ backgroundColor: '#FFFFFF', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-xs)', height: '60px' }}>
+        <div className="sticky top-0 z-50 border-b px-4 md:px-6 lg:pl-4 lg:pr-8 flex items-center justify-between gap-3" style={{ backgroundColor: '#FFFFFF', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-xs)', height: '60px' }}>
           <div className="w-11 lg:w-0 flex-shrink-0" aria-hidden="true" />
           <div className="flex-1 min-w-0">
             <h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Gestión de Productos</h1>
@@ -170,7 +170,7 @@ export default function ProductManagement() {
           </div>
         </div>
 
-        <div className="px-4 md:px-6 lg:px-8 py-6 max-w-screen-xl mx-auto page-enter pb-20 lg:pb-8 w-full max-w-full min-w-0">
+        <div className="px-4 md:px-6 lg:pl-4 lg:pr-8 py-6 max-w-screen-xl mx-auto page-enter pb-20 lg:pb-8 w-full max-w-full min-w-0">
           {error && (
             <div className="mb-4 flex items-center gap-2 p-3 rounded-lg border scale-in" style={{ backgroundColor: 'rgba(239,68,68,0.05)', borderColor: 'rgba(239,68,68,0.2)' }}>
               <Icon name="AlertCircle" size={16} color="var(--color-error)" />

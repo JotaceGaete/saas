@@ -375,7 +375,7 @@ export default function Dashboard() {
       <BusinessSidebar isCollapsed={sidebarCollapsed} onCollapsedChange={setSidebarCollapsed} />
       <main className="panel-main min-h-screen w-full max-w-full min-w-0 overflow-x-hidden transition-all duration-200" style={{ marginLeft: isDesktop ? sidebarWidth : 0, transition: 'margin-left var(--transition-base)' }}>
         {/* Header */}
-        <div className="sticky top-0 z-50 border-b px-4 md:px-6 lg:px-6 py-0 flex items-center justify-between gap-3" style={{ backgroundColor: '#FFFFFF', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-xs)', height: '60px' }}>
+        <div className="sticky top-0 z-50 border-b px-4 md:px-6 lg:pl-4 lg:pr-6 py-0 flex items-center justify-between gap-3" style={{ backgroundColor: '#FFFFFF', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-xs)', height: '60px' }}>
           <div className="w-11 lg:w-0 flex-shrink-0" aria-hidden="true" />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
@@ -406,7 +406,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="px-4 md:px-6 lg:px-6 py-5 lg:py-6 page-enter pb-20 lg:pb-8 w-full max-w-full min-w-0" style={{ maxWidth: '1100px' }}>
+        <div className="px-4 md:px-6 lg:pl-4 lg:pr-6 py-5 lg:py-6 page-enter pb-20 lg:pb-8 w-full max-w-full min-w-0" style={{ maxWidth: '1100px' }}>
 
           {/* Banner: negocio sin configurar */}
           {!business && !businessLoading && (

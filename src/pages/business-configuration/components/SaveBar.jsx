@@ -7,7 +7,7 @@ export default function SaveBar({ isDirty, isSaving, onSave, onDiscard }) {
 
   return (
     <div
-      className="fixed bottom-0 left-0 right-0 z-50 border-t px-4 md:px-6 lg:px-8"
+      className="fixed bottom-0 left-0 right-0 z-50 border-t px-4 md:px-6 lg:pl-4 lg:pr-8"
       style={{
         backgroundColor: '#FFFFFF',
         borderColor: 'var(--color-border)',

@@ -298,7 +298,7 @@ export default function ProductEditor() {
         </header>
 
         {/* Main content */}
-        <div className="flex-1 px-4 md:px-6 lg:px-8 py-6 pb-20 lg:pb-0 page-enter">
+        <div className="flex-1 px-4 md:px-6 lg:pl-4 lg:pr-8 py-6 pb-20 lg:pb-0 page-enter">
           <div className="max-w-6xl mx-auto">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
 

@@ -5,7 +5,7 @@ export default function SaveBar({ isEditing, isSaving, saveSuccess, saveDisabled
   const saveButtonDisabled = isSaving || saveDisabled;
   return (
     <div
-      className="sticky bottom-0 z-10 border-t px-4 md:px-6 lg:px-8"
+      className="sticky bottom-0 z-10 border-t px-4 md:px-6 lg:pl-4 lg:pr-8"
       style={{
         backgroundColor: 'var(--color-card)',
         borderColor: 'var(--color-border)',

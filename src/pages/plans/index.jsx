@@ -377,7 +377,7 @@ export default function PlansPage() {
         className="panel-main min-h-screen w-full max-w-full min-w-0 overflow-x-hidden transition-all duration-200"
         style={{ marginLeft: isDesktop ? sidebarWidth : 0, minHeight: '100vh', transition: 'margin-left var(--transition-base)' }}
       >
-        <div className="w-full max-w-4xl mx-auto px-4 md:px-6 py-6 md:py-8 pb-20 lg:pb-8">
+        <div className="w-full max-w-4xl mx-auto px-4 md:px-6 lg:pl-4 lg:pr-6 py-6 md:py-8 pb-20 lg:pb-8">
           <div className="mb-8">
             <div className="flex items-center gap-3 mb-1">
               <div
