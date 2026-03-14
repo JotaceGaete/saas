@@ -18,6 +18,10 @@ import Login from './pages/login';
 import AdminDashboard from './pages/admin';
 import AdminPaymentsPage from './pages/admin/AdminPaymentsPage';
 import PlansPage from './pages/plans';
+import PublicPricingPage from './pages/legal/PublicPricingPage';
+import TermsPage from './pages/legal/TermsPage';
+import PrivacyPage from './pages/legal/PrivacyPage';
+import RefundsPage from './pages/legal/RefundsPage';
 
 const Routes = () => {
   return (
@@ -36,7 +40,10 @@ const Routes = () => {
             <Route path="/orders" element={<Orders />} />
             <Route path="/login" element={<Login />} />
             <Route path="/planes" element={<PlansPage />} />
-            <Route path="/plans" element={<PlansPage />} />
+            <Route path="/plans" element={<PublicPricingPage />} />
+            <Route path="/terms" element={<TermsPage />} />
+            <Route path="/privacy" element={<PrivacyPage />} />
+            <Route path="/refunds" element={<RefundsPage />} />
             <Route path="/catalog/:slug" element={<PublicCatalog />} />
             <Route path="/catalog/:slug/checkout" element={<OrderConfirmation />} />
             <Route path="/catalogo/:slug" element={<PublicCatalog />} />

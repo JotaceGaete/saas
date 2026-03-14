@@ -225,8 +225,8 @@ export default function PlansPage() {
         },
         body: JSON.stringify({
           planSlug: previewPlanSlug,
-          success_url: `${returnBaseUrl}/plans?payment=success`,
-          failure_url: `${returnBaseUrl}/plans?payment=failure`,
+          success_url: `${returnBaseUrl}/planes?payment=success`,
+          failure_url: `${returnBaseUrl}/planes?payment=failure`,
           country: countryCode,
         }),
       });
@@ -288,9 +288,9 @@ export default function PlansPage() {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, apikey: anonKey },
         body: JSON.stringify({
           planSlug: previewPlanSlug,
-          success_url: `${returnBaseUrl}/plans?payment=success`,
-          failure_url: `${returnBaseUrl}/plans?payment=failure`,
-          pending_url: `${returnBaseUrl}/plans?payment=pending`,
+          success_url: `${returnBaseUrl}/planes?payment=success`,
+          failure_url: `${returnBaseUrl}/planes?payment=failure`,
+          pending_url: `${returnBaseUrl}/planes?payment=pending`,
           origin: returnBaseUrl,
         }),
       });
