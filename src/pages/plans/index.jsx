@@ -241,12 +241,15 @@ export default function PlansPage() {
       console.log('[auth-debug] dlocal tokenLength:', accessToken.length);
       console.log('[auth-debug] dlocal tokenPreview:', accessToken.slice(0, 20));
 
-      const baseUrl = getAppBaseUrl() || window.location?.origin || '';
+      // Conservar el host actual (ar.ventalink.app / cl.ventalink.app) para no redirigir al usuario a otro país
+      const returnBaseUrl = (typeof window !== 'undefined' && window.location?.origin)
+        ? window.location.origin.replace(/\/$/, '')
+        : (getAppBaseUrl() || '');
       const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
       const payload = {
         planSlug: previewPlanSlug,
-        success_url: `${baseUrl}/plans?payment=success`,
-        cancel_url: `${baseUrl}/plans?payment=failure`,
+        success_url: `${returnBaseUrl}/plans?payment=success`,
+        cancel_url: `${returnBaseUrl}/plans?payment=failure`,
       };
 
       const res = await fetch(`${supabaseUrl}/functions/v1/create-dlocal-checkout`, {
@@ -308,17 +311,20 @@ export default function PlansPage() {
       }
       const token = session.access_token;
       const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
-      const baseUrl = getAppBaseUrl() || window.location?.origin || '';
+      // Conservar el host actual para no redirigir a otro país tras el pago
+      const returnBaseUrl = (typeof window !== 'undefined' && window.location?.origin)
+        ? window.location.origin.replace(/\/$/, '')
+        : (getAppBaseUrl() || '');
       const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
       const res = await fetch(`${supabaseUrl}/functions/v1/create-mp-preference`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, apikey: anonKey },
         body: JSON.stringify({
           planSlug: previewPlanSlug,
-          success_url: `${baseUrl}/plans?payment=success`,
-          failure_url: `${baseUrl}/plans?payment=failure`,
-          pending_url: `${baseUrl}/plans?payment=pending`,
-          origin: baseUrl,
+          success_url: `${returnBaseUrl}/plans?payment=success`,
+          failure_url: `${returnBaseUrl}/plans?payment=failure`,
+          pending_url: `${returnBaseUrl}/plans?payment=pending`,
+          origin: returnBaseUrl,
         }),
       });
       const data = await res.json().catch(() => ({}));

@@ -302,6 +302,7 @@ Deno.serve(async (req) => {
   const externalReference = `waP:${paymentId}:${business.id}:${planSlug}`;
   await adminClient.from('wa_payments').update({ external_reference: externalReference }).eq('id', paymentId);
 
+  // success_url y back_url deben venir del frontend con el origin actual (ar./cl.ventalink.app) para no cambiar de país al volver
   const successUrl = (body?.success_url as string) || '';
   const cancelUrl = (body?.cancel_url as string) || '';
 
