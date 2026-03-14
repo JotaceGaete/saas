@@ -198,31 +198,39 @@ export default function PlansPage() {
     setLoadingPlanSlug(previewPlanSlug);
     setPaymentMessage(null);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) {
+        console.error('[auth-debug] getSession error:', sessionError.message);
+      }
       if (!session?.access_token) {
         setPaymentMessage({ type: 'error', text: 'Debes iniciar sesión.' });
         return;
       }
+      console.log('[auth-debug] dlocal invoke tokenLength:', session.access_token.length);
+      console.log('[auth-debug] dlocal invoke tokenPreview:', session.access_token.slice(0, 20));
       const baseUrl = getAppBaseUrl() || window.location?.origin || '';
-      const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
-      const res = await fetch(`${supabaseUrl}/functions/v1/create-dlocal-checkout`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({
-          planSlug: previewPlanSlug,
-          success_url: `${baseUrl}/plans?payment=success`,
-          cancel_url: `${baseUrl}/plans?payment=failure`,
-        }),
+      const payload = {
+        planSlug: previewPlanSlug,
+        success_url: `${baseUrl}/plans?payment=success`,
+        cancel_url: `${baseUrl}/plans?payment=failure`,
+      };
+
+      const { data, error } = await supabase.functions.invoke('create-dlocal-checkout', {
+        body: payload,
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        if (data?.changeType === 'downgrade') {
-          setPaymentMessage({ type: 'info', text: data?.message || 'El cambio se aplicará al vencer tu plan actual.' });
+
+      if (error) {
+        let errorPayload = null;
+        if (error?.context && typeof error.context.json === 'function') {
+          errorPayload = await error.context.json().catch(() => null);
+        }
+        if (errorPayload?.changeType === 'downgrade') {
+          setPaymentMessage({ type: 'info', text: errorPayload?.message || 'El cambio se aplicará al vencer tu plan actual.' });
           setPreview(null);
           setPreviewPlanSlug(null);
           return;
         }
-        throw new Error(data?.error ?? res.statusText ?? 'Error al crear checkout');
+        throw new Error(errorPayload?.error ?? error?.message ?? 'Error al crear checkout');
       }
       if (data?.error) throw new Error(data.error);
       if (data?.applied) {
