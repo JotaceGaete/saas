@@ -47,7 +47,7 @@ function logAndReturn(response: Response, label: string) {
   return response;
 }
 
-const SYSTEM_PROMPT = `Eres un optimizador de publicaciones para ventas online. Recibes un texto básico del usuario y devuelves un título y una descripción mejorados.
+const SYSTEM_PROMPT = `Eres un optimizador de publicaciones para ventas online. Recibes un texto básico del usuario y devuelves datos estructurados para publicar el producto.
 
 Reglas obligatorias:
 - Corrige faltas de ortografía.
@@ -58,8 +58,15 @@ Reglas obligatorias:
 - Descripción: máximo 80 palabras. Título: corto y atractivo.
 - Mantén siempre la información original; solo mejora la forma.
 
-Responde ÚNICAMENTE con un JSON válido, sin texto antes ni después, con esta estructura exacta:
-{"title": "Título optimizado del producto", "description": "Descripción mejorada para vender el producto"}`;
+Campos del JSON de salida:
+- "title": título optimizado del producto, corto y atractivo.
+- "description": descripción mejorada, máximo 80 palabras, tono comercial simple.
+- "benefits": array de 2 a 4 frases cortas que destacan beneficios reales del producto (sin inventar).
+- "call_to_action": frase corta de llamada a la acción (ej: "¡Pedí el tuyo hoy!", "Disponible para entrega inmediata.").
+- "hashtags": array de 5 a 8 hashtags sin el símbolo #, solo texto limpio, relevantes al producto, útiles para Instagram, en el mismo idioma del usuario, sin repetir palabras innecesarias, sin inventar marcas.
+
+Responde ÚNICAMENTE con un JSON válido, sin texto antes ni después, sin bloques de código, con esta estructura exacta:
+{"title":"","description":"","benefits":[],"call_to_action":"","hashtags":[]}`;
 
 Deno.serve(async (req) => {
   const origin = req.headers.get('origin') ?? '';
@@ -179,9 +186,15 @@ Deno.serve(async (req) => {
     const codeBlockMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
     if (codeBlockMatch) content = codeBlockMatch[1].trim();
 
-    let result: { title?: string; description?: string };
+    let result: {
+      title?: string;
+      description?: string;
+      benefits?: unknown;
+      call_to_action?: string;
+      hashtags?: unknown;
+    };
     try {
-      result = JSON.parse(content) as { title?: string; description?: string };
+      result = JSON.parse(content);
     } catch {
       console.error('[improve-product-description] JSON de IA no parseable:', content.slice(0, 200));
       return logAndReturn(jsonResponse({ error: 'La IA no devolvió el formato esperado. Intenta de nuevo.' }, 500, corsHeaders), 'invalid_ai_json');
@@ -189,12 +202,33 @@ Deno.serve(async (req) => {
 
     const title = typeof result?.title === 'string' ? result.title.trim() : '';
     const description = typeof result?.description === 'string' ? result.description.trim() : '';
-    console.log('[improve-product-description] resultado final | title=', title, '| description.length=', description.length);
+
+    const benefits = Array.isArray(result?.benefits)
+      ? (result.benefits as unknown[]).filter((b): b is string => typeof b === 'string' && b.trim().length > 0).map((b) => b.trim())
+      : [];
+
+    const call_to_action = typeof result?.call_to_action === 'string' ? result.call_to_action.trim() : '';
+
+    const hashtags = Array.isArray(result?.hashtags)
+      ? (result.hashtags as unknown[])
+          .filter((h): h is string => typeof h === 'string' && h.trim().length > 0)
+          .map((h) => h.trim().replace(/^#/, ''))
+          .slice(0, 8)
+      : [];
+
+    console.log('[improve-product-description] resultado final | title=', title, '| description.length=', description.length, '| benefits=', benefits.length, '| hashtags=', hashtags.length);
+
     if (!description) {
       return logAndReturn(jsonResponse({ error: 'No se obtuvo descripción de la IA' }, 500, corsHeaders), 'missing_description');
     }
 
-    return logAndReturn(jsonResponse({ title: title || undefined, description }, 200, corsHeaders), 'success');
+    return logAndReturn(jsonResponse({
+      title: title || undefined,
+      description,
+      benefits,
+      call_to_action: call_to_action || undefined,
+      hashtags,
+    }, 200, corsHeaders), 'success');
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Error interno';
     console.error('[improve-product-description] unhandled_error:', error);

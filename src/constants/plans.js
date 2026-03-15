@@ -1,20 +1,23 @@
 /**
  * Planes del producto: nombres, límites numéricos y helpers.
- * starter = gratis, control = prueba MP, pro = intermedio, business = superior.
+ * starter = gratis (hasta 10 productos / 30 pedidos mes).
+ * pro     = pago o trial 7 días (hasta 50 productos / pedidos ilimitados).
+ * business = superior (productos ilimitados / pedidos ilimitados).
  */
 
-export const PLAN_SLUGS = Object.freeze(['starter', 'control', 'pro', 'business']);
+/** Duración del período de prueba PRO para nuevos usuarios. */
+export const TRIAL_DURATION_DAYS = 7;
+
+export const PLAN_SLUGS = Object.freeze(['starter', 'pro', 'business']);
 
 export const PLAN_LABELS = Object.freeze({
   starter:  'Starter',
-  control:  'Plan Control',
   pro:      'Pro',
   business: 'Business',
 });
 
 export const PLAN_COLORS = Object.freeze({
   starter:  { color: '#6B7280', bg: 'rgba(107,114,128,0.1)' },
-  control:  { color: '#6366F1', bg: 'rgba(99,102,241,0.1)' },
   pro:      { color: '#7C3AED', bg: 'rgba(124,58,237,0.1)' },
   business: { color: '#059669', bg: 'rgba(16,185,129,0.1)' },
 });
@@ -22,23 +25,20 @@ export const PLAN_COLORS = Object.freeze({
 /** Orden para saber upgrade (subir) vs downgrade (bajar). */
 export const PLAN_ORDER = Object.freeze({
   starter:  0,
-  control:  1,
-  pro:      2,
-  business: 3,
+  pro:      1,
+  business: 2,
 });
 
-/** Precios en CLP (Chile). starter = gratis. control = 500 (solo pruebas MP). */
+/** Precios en CLP (Chile). starter = gratis. */
 export const PLAN_PRICES_CLP = Object.freeze({
   starter:  0,
-  control:  500,
   pro:      5000,
   business: 10000,
 });
 
-/** Precios en ARS (Argentina). Ajustar según tu estrategia de precios. */
+/** Precios en ARS (Argentina). */
 export const PLAN_PRICES_ARS = Object.freeze({
   starter:  0,
-  control:  500,
   pro:      15000,
   business: 30000,
 });
@@ -46,7 +46,6 @@ export const PLAN_PRICES_ARS = Object.freeze({
 /** Precios en USD (Paddle, fuera de Chile). */
 export const PLAN_PRICES_USD = Object.freeze({
   starter:  0,
-  control:  5,
   pro:      15,
   business: 30,
 });
@@ -57,11 +56,6 @@ export const PLAN_PRICES_USD = Object.freeze({
  */
 export const PLAN_LIMITS = Object.freeze({
   starter: {
-    maxProducts:       10,
-    maxOrdersPerMonth: 30,
-    maxBusinesses:     1,
-  },
-  control: {
     maxProducts:       10,
     maxOrdersPerMonth: 30,
     maxBusinesses:     1,
@@ -118,8 +112,8 @@ export function getPlanPrice(planSlug) {
 /**
  * Precio del plan según país (CLP o ARS) o proveedor (USD para Paddle).
  * @param {string} planSlug
- * @param {'AR'|'CL'|string} [countryCode] - Si no se pasa, se asume CL (CLP).
- * @param {'mercado_pago'|'paddle'|null} [paymentProvider] - Si 'paddle', devuelve precio en USD.
+ * @param {'AR'|'CL'|string} [countryCode]
+ * @param {'mercado_pago'|'paddle'|null} [paymentProvider]
  * @returns {number}
  */
 export function getPlanPriceByCountry(planSlug, countryCode, paymentProvider) {

@@ -23,13 +23,20 @@ export const AuthProvider = ({ children }) => {
       try {
         const { data } = await getMyBusiness()
         if (data) {
-          const isPaid = data.planSlug === 'pro' || data.planSlug === 'business'
-          const expired = data.planExpiresAt && new Date(data.planExpiresAt) <= new Date()
-          if (isPaid && expired) {
-            await updateBusiness(data.id, { planSlug: 'starter', planExpiresAt: null })
+          const isPaidOrTrial = data.planSlug === 'pro' || data.planSlug === 'business'
+          const now = new Date()
+
+          const paidExpired  = isPaidOrTrial && data.planExpiresAt  && new Date(data.planExpiresAt)  <= now
+          const trialExpired = isPaidOrTrial && data.trialExpiresAt && new Date(data.trialExpiresAt) <= now
+                               && !data.planExpiresAt  // solo trial, sin pago activo
+
+          if (paidExpired || trialExpired) {
+            await updateBusiness(data.id, { planSlug: 'starter', planExpiresAt: null, trialExpiresAt: null })
             const { data: updated } = await getMyBusiness()
             setBusiness(updated || data)
-            if (typeof sessionStorage !== 'undefined') sessionStorage.setItem('showPlanExpiredBanner', '1')
+            if (typeof sessionStorage !== 'undefined') {
+              sessionStorage.setItem(trialExpired ? 'showTrialExpiredBanner' : 'showPlanExpiredBanner', '1')
+            }
           } else {
             setBusiness(data)
           }

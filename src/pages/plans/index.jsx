@@ -357,7 +357,12 @@ export default function PlansPage() {
                 <h1 className="text-xl font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Planes</h1>
                 <p className="text-sm" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
                   Tu plan actual: <strong>{getPlanLabel(currentPlan)}</strong>
-                  {business?.planExpiresAt && (currentPlan === 'control' || currentPlan === 'pro' || currentPlan === 'business') && new Date(business.planExpiresAt) > new Date() && (
+                  {business?.trialExpiresAt && !business?.planExpiresAt && (currentPlan === 'pro' || currentPlan === 'business') && new Date(business.trialExpiresAt) > new Date() && (
+                    <span className="block text-xs mt-0.5 font-medium" style={{ color: '#D97706' }}>
+                      ✨ Período de prueba · vence el {new Date(business.trialExpiresAt).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })}
+                    </span>
+                  )}
+                  {business?.planExpiresAt && (currentPlan === 'pro' || currentPlan === 'business') && new Date(business.planExpiresAt) > new Date() && (
                     <span className="block text-xs mt-0.5">Vence el {new Date(business.planExpiresAt).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
                   )}
                   {business?.scheduledPlanSlug && (
@@ -428,6 +433,33 @@ export default function PlansPage() {
               </div>
             </div>
           )}
+
+          {/* Banner de trial activo */}
+          {business?.trialExpiresAt && !business?.planExpiresAt && (currentPlan === 'pro' || currentPlan === 'business') && (() => {
+            const trialExp = new Date(business.trialExpiresAt);
+            const now = new Date();
+            if (trialExp <= now) return null;
+            const daysLeft = Math.ceil((trialExp - now) / (1000 * 60 * 60 * 24));
+            return (
+              <div
+                className="mb-6 rounded-xl border px-5 py-4 flex items-start gap-3"
+                style={{ backgroundColor: 'rgba(245,158,11,0.08)', borderColor: '#F59E0B' }}
+              >
+                <span className="text-xl leading-none mt-0.5">✨</span>
+                <div>
+                  <p className="text-sm font-semibold" style={{ color: '#92400E', fontFamily: 'var(--font-heading)' }}>
+                    Estás probando el plan Pro gratis
+                  </p>
+                  <p className="text-xs mt-0.5" style={{ color: '#B45309', fontFamily: 'var(--font-caption)' }}>
+                    {daysLeft === 1
+                      ? 'Queda 1 día de prueba.'
+                      : `Quedan ${daysLeft} días de prueba.`}
+                    {' '}Elige un plan antes de que expire para no perder el acceso a tus productos y pedidos ilimitados.
+                  </p>
+                </div>
+              </div>
+            );
+          })()}
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-5">
             {PLAN_SLUGS.map((slug) => {

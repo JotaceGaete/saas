@@ -621,6 +621,11 @@ export default function BusinessConfiguration() {
                           : `${activeCount} de ${maxProducts} productos activos`;
                       })()}
                     </p>
+                    {business?.trialExpiresAt && !business?.planExpiresAt && (business?.planSlug === 'pro' || business?.planSlug === 'business') && new Date(business.trialExpiresAt) > new Date() && (
+                      <p className="text-xs mt-1 font-medium" style={{ color: '#D97706', fontFamily: 'var(--font-caption)' }}>
+                        ✨ Prueba gratuita · vence el {new Date(business.trialExpiresAt).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })}
+                      </p>
+                    )}
                     {business?.planExpiresAt && (business?.planSlug === 'pro' || business?.planSlug === 'business') && new Date(business.planExpiresAt) > new Date() && (
                       <p className="text-xs mt-1" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
                         Vence el: {new Date(business.planExpiresAt).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })}

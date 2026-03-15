@@ -140,6 +140,14 @@ export default function ProductEditor() {
         descripcion: improvedDesc.slice(0, 300),
         ...((!prev?.nombre?.trim() && improvedTitle) ? { nombre: improvedTitle.slice(0, 80) } : {}),
       }));
+
+      // Mostrar hashtags en un toast para que el usuario los pueda copiar
+      const hashtags = Array.isArray(data?.hashtags) && data.hashtags.length > 0
+        ? data.hashtags.filter((h) => typeof h === 'string').map((h) => `#${h}`).join(' ')
+        : null;
+      if (hashtags) {
+        toast.success(`Hashtags sugeridos: ${hashtags}`);
+      }
     } catch (err) {
       console.error('[Mejorar con IA] Excepción:', err);
       toast.error('Error de conexión. Intenta de nuevo.');
