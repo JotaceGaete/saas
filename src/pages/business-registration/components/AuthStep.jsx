@@ -71,17 +71,21 @@ export default function AuthStep({ onRegister, onLogin, isLoading, authError, on
         style={{ background: 'linear-gradient(145deg, #7C3AED 0%, #5B21B6 55%, #4C1D95 100%)' }}
       >
         <div>
+          {/* Logo VentALink (marca + redes) */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.35 }}
-            className="flex items-center gap-3 mb-8 md:mb-10"
+            className="mb-6 md:mb-8"
           >
-            <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
-              <Icon name="MessageCircle" size={22} color="#fff" />
+            <img
+              src="/logo-ventalink-redes.png"
+              alt="VentALink - Unifica todas tus ventas por WhatsApp, Instagram, YouTube, Facebook, TikTok o Mail"
+              className="w-full max-w-[320px] h-auto object-contain"
+            />
+            <div className="mt-3 flex items-center justify-between flex-wrap gap-2">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-sm bg-white/15 text-white/95" aria-label={countryLabels.countryName} title={countryLabels.countryName}>{countryLabels.flag} {countryLabels.countryName}</span>
             </div>
-            <span className="text-white font-bold text-xl" style={{ fontFamily: 'var(--font-heading)' }}>VentALink</span>
-            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-sm bg-white/15 text-white/95 ml-2" aria-label={countryLabels.countryName} title={countryLabels.countryName}>{countryLabels.flag} {countryLabels.countryName}</span>
           </motion.div>
 
           <motion.div
@@ -186,13 +190,14 @@ export default function AuthStep({ onRegister, onLogin, isLoading, authError, on
           transition={{ duration: 0.4, delay: 0.12 }}
           className="w-full max-w-[420px]"
         >
-          {/* Logo móvil */}
-          <div className="flex items-center gap-2 mb-6 lg:hidden">
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ backgroundColor: 'var(--color-primary)' }}>
-              <Icon name="MessageCircle" size={18} color="#fff" />
-            </div>
-            <span className="font-bold text-lg" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>VentALink</span>
-            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs bg-violet-100 text-violet-700 ml-1.5" title={countryLabels.countryName}>{countryLabels.flag} {countryLabels.countryName}</span>
+          {/* Logo móvil (misma marca) */}
+          <div className="mb-6 lg:hidden">
+            <img
+              src="/logo-ventalink-redes.png"
+              alt="VentALink"
+              className="w-full max-w-[240px] h-auto object-contain"
+            />
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs bg-violet-100 text-violet-700 mt-2" title={countryLabels.countryName}>{countryLabels.flag} {countryLabels.countryName}</span>
           </div>
 
           <h1 className="text-2xl sm:text-3xl font-bold mb-1" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.03em' }}>

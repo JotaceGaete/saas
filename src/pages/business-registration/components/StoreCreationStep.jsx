@@ -87,16 +87,25 @@ export default function StoreCreationStep({ user, businessLoading }) {
     <div className="min-h-screen flex items-center justify-center p-6" style={{ backgroundColor: 'var(--color-background)' }}>
       <div className="w-full max-w-md">
 
+        {/* Logo VentALink */}
+        <div className="mb-6">
+          <img
+            src="/logo-ventalink-redes.png"
+            alt="VentALink"
+            className="w-full max-w-[280px] h-auto object-contain mx-auto"
+          />
+        </div>
+
         {/* Header */}
         <div className="flex items-center gap-3 mb-8">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: 'var(--color-primary)' }}>
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: 'var(--color-primary)' }}>
             <Icon name="Store" size={20} color="#fff" />
           </div>
-          <div>
+          <div className="min-w-0">
             <h1 className="text-xl font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>
               Crear tu tienda
             </h1>
-            <p className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+            <p className="text-xs truncate" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
               Sesión iniciada como <strong>{user?.email}</strong>
             </p>
           </div>

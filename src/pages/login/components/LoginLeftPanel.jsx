@@ -11,24 +11,23 @@ export default function LoginLeftPanel() {
       style={{ background: 'linear-gradient(135deg, #7C3AED 0%, #5B21B6 60%, #4C1D95 100%)' }}
     >
       <div>
-        {/* Logo como marca */}
-        <div className="flex items-center gap-3 mb-12">
-          <div className="h-9 flex items-center">
+        {/* Logo como marca (solo icono, sin texto) */}
+        <div className="flex items-center mb-12">
+          <div className="h-16 flex items-center">
             <img
               src={LOGO_SRC}
               alt="VentALink"
-              className="h-9 w-auto object-contain"
+              className="h-16 w-auto object-contain"
               onError={(e) => {
                 e.target.style.display = 'none';
                 const fb = e.target.parentElement?.querySelector('.logo-fallback');
                 if (fb) { fb.classList.remove('hidden'); fb.style.display = 'flex'; }
               }}
             />
-            <div className="logo-fallback hidden w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center" aria-hidden>
-              <Icon name="MessageCircle" size={20} color="#fff" />
+            <div className="logo-fallback hidden w-16 h-16 rounded-xl bg-white/20 flex items-center justify-center" aria-hidden>
+              <Icon name="MessageCircle" size={32} color="#fff" />
             </div>
           </div>
-          <span className="text-white font-bold text-lg" style={{ fontFamily: 'var(--font-heading)' }}>VentALink</span>
         </div>
 
         {/* Headline */}
