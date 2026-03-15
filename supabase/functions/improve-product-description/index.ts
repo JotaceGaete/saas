@@ -83,17 +83,20 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
     const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
     const openaiKey = Deno.env.get('OPENAI_API_KEY') ?? '';
-    console.log('[improve-product-description] OPENAI_API_KEY configurada:', !!openaiKey);
+    const keyPresent = !!openaiKey;
+    const keyHint = keyPresent ? openaiKey.slice(0, 7) + '...' : '(vacía)';
+    console.log('[improve-product-description] OPENAI_API_KEY presente:', keyPresent, '| prefijo:', keyHint);
 
     if (!openaiKey) {
-      console.error('[improve-product-description] OPENAI_API_KEY no configurada');
-      return logAndReturn(jsonResponse({ error: 'Servicio no configurado' }, 500, corsHeaders), 'missing_openai_key');
+      console.error('[improve-product-description] OPENAI_API_KEY no está configurada en los secrets de la función');
+      return logAndReturn(jsonResponse({ error: 'Servicio no configurado: falta OPENAI_API_KEY' }, 500, corsHeaders), 'missing_openai_key');
     }
 
     const userClient = createClient(supabaseUrl, anonKey, {
       global: { headers: { Authorization: authHeader } },
     });
-    const { data: { user } } = await userClient.auth.getUser();
+    const { data: { user }, error: authError } = await userClient.auth.getUser();
+    console.log('[improve-product-description] auth user_id:', user?.id ?? null, '| auth error:', authError?.message ?? null);
     if (!user?.id) {
       return logAndReturn(jsonResponse({ error: 'No autorizado' }, 401, corsHeaders), 'auth_invalid');
     }
@@ -104,6 +107,7 @@ Deno.serve(async (req) => {
     } catch {
       return logAndReturn(jsonResponse({ error: 'Cuerpo inválido' }, 400, corsHeaders), 'invalid_body');
     }
+    console.log('[improve-product-description] body recibido: text.length=', (body?.text ?? '').length, '| productName=', body?.productName ?? '');
 
     const rawText = typeof body?.text === 'string' ? body.text.trim() : '';
     const text = rawText.length > MAX_INPUT_LENGTH ? rawText.slice(0, MAX_INPUT_LENGTH) : rawText;
@@ -119,39 +123,56 @@ Deno.serve(async (req) => {
       return logAndReturn(jsonResponse({ error: 'Envía "text" y/o "productName"' }, 400, corsHeaders), 'missing_input');
     }
 
-    const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${openaiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: userMessage },
-        ],
-        max_tokens: 350,
-        temperature: 0.5,
-      }),
-    });
+    console.log('[improve-product-description] llamando a OpenAI | userMessage.length=', userMessage.length);
+    let openaiRes: Response;
+    try {
+      openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${openaiKey}`,
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [
+            { role: 'system', content: SYSTEM_PROMPT },
+            { role: 'user', content: userMessage },
+          ],
+          max_tokens: 350,
+          temperature: 0.5,
+        }),
+      });
+    } catch (fetchErr) {
+      console.error('[improve-product-description] fetch a OpenAI falló (red/timeout):', fetchErr);
+      return logAndReturn(jsonResponse({ error: 'No se pudo conectar con el servicio de IA. Intenta de nuevo.' }, 500, corsHeaders), 'openai_fetch_error');
+    }
 
     const openaiBody = await openaiRes.text();
+    console.log('[improve-product-description] OpenAI status:', openaiRes.status, '| body (primeros 300):', openaiBody.slice(0, 300));
+
     if (!openaiRes.ok) {
-      console.error('[improve-product-description] OpenAI error:', openaiRes.status, openaiRes.statusText, openaiBody.slice(0, 500));
-      return logAndReturn(jsonResponse({ error: 'Error al mejorar el texto. Intenta de nuevo.' }, 502, corsHeaders), 'openai_error');
+      console.error('[improve-product-description] OpenAI respondió error:', openaiRes.status, openaiRes.statusText, openaiBody.slice(0, 500));
+      // 401 = API key inválida, 429 = cuota/rate limit, otros = error OpenAI
+      const hint = openaiRes.status === 401
+        ? 'API key inválida o sin permisos'
+        : openaiRes.status === 429
+          ? 'Cuota de OpenAI agotada o rate limit'
+          : 'Error en el servicio de IA';
+      return logAndReturn(jsonResponse({ error: `${hint}. Intenta de nuevo.` }, 500, corsHeaders), 'openai_error');
     }
 
     let parsed: { choices?: Array<{ message?: { content?: string } }> };
     try {
       parsed = JSON.parse(openaiBody);
     } catch {
-      return logAndReturn(jsonResponse({ error: 'Respuesta inválida del servicio' }, 502, corsHeaders), 'invalid_openai_response');
+      console.error('[improve-product-description] JSON de OpenAI no parseable:', openaiBody.slice(0, 200));
+      return logAndReturn(jsonResponse({ error: 'Respuesta inválida del servicio de IA' }, 500, corsHeaders), 'invalid_openai_response');
     }
 
     let content = parsed?.choices?.[0]?.message?.content?.trim() ?? '';
+    console.log('[improve-product-description] content de IA (primeros 200):', content.slice(0, 200));
     if (!content) {
-      return logAndReturn(jsonResponse({ error: 'No se obtuvo respuesta' }, 502, corsHeaders), 'empty_openai_content');
+      return logAndReturn(jsonResponse({ error: 'La IA no devolvió contenido' }, 500, corsHeaders), 'empty_openai_content');
     }
 
     // Quitar posible bloque de código markdown
@@ -162,14 +183,15 @@ Deno.serve(async (req) => {
     try {
       result = JSON.parse(content) as { title?: string; description?: string };
     } catch {
-      console.error('[improve-product-description] JSON inválido:', content.slice(0, 200));
-      return logAndReturn(jsonResponse({ error: 'La IA no devolvió un formato válido. Intenta de nuevo.' }, 502, corsHeaders), 'invalid_ai_json');
+      console.error('[improve-product-description] JSON de IA no parseable:', content.slice(0, 200));
+      return logAndReturn(jsonResponse({ error: 'La IA no devolvió el formato esperado. Intenta de nuevo.' }, 500, corsHeaders), 'invalid_ai_json');
     }
 
     const title = typeof result?.title === 'string' ? result.title.trim() : '';
     const description = typeof result?.description === 'string' ? result.description.trim() : '';
+    console.log('[improve-product-description] resultado final | title=', title, '| description.length=', description.length);
     if (!description) {
-      return logAndReturn(jsonResponse({ error: 'No se obtuvo descripción' }, 502, corsHeaders), 'missing_description');
+      return logAndReturn(jsonResponse({ error: 'No se obtuvo descripción de la IA' }, 500, corsHeaders), 'missing_description');
     }
 
     return logAndReturn(jsonResponse({ title: title || undefined, description }, 200, corsHeaders), 'success');
