@@ -125,32 +125,20 @@ export default function AuthStep({ onRegister, onLogin, isLoading, authError, on
             )}
           </motion.div>
 
-          {/* Product preview card — subtle float */}
+          {/* Banner VentALink — Unifica tus ventas por redes (grande en este sector) */}
           {mode === 'register' && (
             <motion.div
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.45, delay: 0.3 }}
-              className="relative"
+              className="mt-6 sm:mt-8"
             >
-              <motion.div
-                animate={{ y: [0, -4, 0] }}
-                transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
-                className="rounded-2xl bg-white/10 backdrop-blur p-4 max-w-[200px] sm:max-w-[240px] border border-white/20"
-                style={{ boxShadow: '0 20px 40px -12px rgba(0,0,0,0.25)' }}
-              >
-                <div className="rounded-xl overflow-hidden bg-white/5 mb-3 aspect-square flex items-center justify-center">
-                  <div className="w-14 h-14 rounded-xl bg-white/20 flex items-center justify-center">
-                    <Icon name="Image" size={28} color="rgba(255,255,255,0.85)" />
-                  </div>
-                </div>
-                <p className="text-white font-semibold text-sm truncate mb-1" style={{ fontFamily: 'var(--font-caption)' }}>Producto ejemplo</p>
-                <p className="text-white/90 text-sm font-medium mb-3" style={{ fontFamily: 'var(--font-caption)' }}>$12.990</p>
-                <div className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-[#25D366] text-white text-xs font-semibold" style={{ fontFamily: 'var(--font-caption)' }}>
-                  <Icon name="MessageCircle" size={14} color="#fff" />
-                  Pedir por WhatsApp
-                </div>
-              </motion.div>
+              <img
+                src="/logo-ventalink-redes.png"
+                alt="VentALink — Unifica todas tus ventas por WhatsApp, Instagram, YouTube, Facebook, TikTok o Mail"
+                className="w-full max-w-[420px] sm:max-w-[480px] h-auto rounded-2xl border-2 border-white/25 shadow-2xl object-contain"
+                style={{ boxShadow: '0 20px 50px -12px rgba(0,0,0,0.35)' }}
+              />
             </motion.div>
           )}
         </div>
