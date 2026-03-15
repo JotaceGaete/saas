@@ -4,20 +4,19 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-// Catálogo centralizado (misma lógica que plan-change-preview). AR = Argentina (ARS), CL = Chile (CLP).
-const PLAN_ORDER: Record<string, number> = { starter: 0, control: 1, pro: 2, business: 3 };
+// Planes válidos actuales; legacy 'control' mapeado a starter para prorrateo.
+const VALID_PLAN_SLUGS = ['starter', 'pro', 'business'];
+const PLAN_ORDER: Record<string, number> = { starter: 0, control: 0, pro: 1, business: 2 };
 type PlanCatalog = Record<string, { displayName: string; price: number; durationDays: number }>;
 
 const PLAN_CATALOG_CL: PlanCatalog = {
   starter:  { displayName: 'Starter',  price: 0,     durationDays: 30 },
-  control:  { displayName: 'Plan Control', price: 500,  durationDays: 30 },
   pro:      { displayName: 'Plan Pro', price: 5000, durationDays: 30 },
   business: { displayName: 'Plan Business', price: 10000, durationDays: 30 },
 };
 
 const PLAN_CATALOG_AR: PlanCatalog = {
   starter:  { displayName: 'Starter',  price: 0,     durationDays: 30 },
-  control:  { displayName: 'Plan Control', price: 500,  durationDays: 30 },
   pro:      { displayName: 'Plan Pro', price: 15000, durationDays: 30 },
   business: { displayName: 'Plan Business', price: 30000, durationDays: 30 },
 };
@@ -221,7 +220,7 @@ Deno.serve(async (req) => {
   const fallbackCurrencyId = fallbackCountry === 'AR' ? 'ARS' : 'CLP';
   const price    = planSlug ? fallbackCatalog[planSlug]?.price : undefined;
   console.log('[create-mp-preference] planSlug:', planSlug ?? '(none)', '| fallbackCountry:', fallbackCountry, '| fallbackCurrency:', fallbackCurrencyId, '| price:', price ?? '(inválido)');
-  if (!planSlug || !PLAN_ORDER[planSlug]) {
+  if (!planSlug || !VALID_PLAN_SLUGS.includes(planSlug)) {
     return jsonResponse({ error: 'Plan no válido' }, 400);
   }
 
@@ -273,7 +272,8 @@ Deno.serve(async (req) => {
   const currencyId = countryCode === 'AR' ? 'ARS' : 'CLP';
 
   // ── 4. Calcular tipo de cambio y monto final (prorrateo en upgrades) ───────
-  const currentPlanSlug = (business as { plan_slug?: string }).plan_slug ?? 'starter';
+  const rawPlan = (business as { plan_slug?: string }).plan_slug ?? 'starter';
+  const currentPlanSlug = rawPlan === 'control' ? 'starter' : rawPlan;
   const planExpiresAt   = (business as { plan_expires_at?: string | null }).plan_expires_at ?? null;
   const planChange      = computePlanChange(currentPlanSlug, planExpiresAt, planSlug, catalog);
 

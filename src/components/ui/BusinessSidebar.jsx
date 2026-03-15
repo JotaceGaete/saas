@@ -209,6 +209,25 @@ export default function BusinessSidebar({ isCollapsed = false, onCollapsedChange
                   {!collapsed && <span className="flex-1 text-left truncate">Pagos y Suscripciones</span>}
                 </button>
               </li>
+              <li role="listitem">
+                <button
+                  onClick={() => navigate('/admin/users')}
+                  aria-current={location?.pathname?.startsWith('/admin/users') ? 'page' : undefined}
+                  className={[
+                    'nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium',
+                    'min-h-[42px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-all duration-150',
+                    location?.pathname?.startsWith('/admin/users') ? 'text-primary font-semibold' : 'text-muted-foreground hover:text-foreground hover:bg-muted',
+                    collapsed ? 'justify-center' : '',
+                  ]?.join(' ')}
+                  style={{
+                    fontFamily: 'var(--font-caption)',
+                    backgroundColor: location?.pathname?.startsWith('/admin/users') ? 'rgba(239,68,68,0.07)' : undefined,
+                  }}
+                >
+                  <Icon name="Users" size={17} color={location?.pathname?.startsWith('/admin/users') ? 'var(--color-error)' : 'currentColor'} className="flex-shrink-0" />
+                  {!collapsed && <span className="flex-1 text-left truncate">Usuarios</span>}
+                </button>
+              </li>
             </>
           )}
         </ul>

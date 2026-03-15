@@ -8,7 +8,7 @@ import AdminRubrosSection from './components/AdminRubrosSection';
 import { getPlanLabel, getPlanColors, PLAN_SLUGS } from '../../constants/plans';
 import { getPublicCatalogUrl } from '../../config/appUrl';
 
-const PLAN_ICON = { starter: 'User', control: 'Zap', pro: 'Star', business: 'Building' };
+const PLAN_ICON = { starter: 'User', pro: 'Star', business: 'Building' };
 
 function PlanBadge({ slug }) {
   const label  = getPlanLabel(slug);
@@ -100,10 +100,16 @@ export default function AdminDashboard() {
           <section className="mb-6">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>Estadísticas globales</h2>
+              <div className="flex items-center gap-2">
+              <button onClick={() => navigate('/admin/users')} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-opacity hover:opacity-90" style={{ color: 'var(--color-primary)', border: '1px solid var(--color-primary)', fontFamily: 'var(--font-caption)' }}>
+                <Icon name="Users" size={13} color="var(--color-primary)" />
+                Usuarios
+              </button>
               <button onClick={() => navigate('/admin/payments')} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-opacity hover:opacity-90" style={{ color: 'var(--color-primary)', border: '1px solid var(--color-primary)', fontFamily: 'var(--font-caption)' }}>
                 <Icon name="CreditCard" size={13} color="var(--color-primary)" />
                 Pagos
               </button>
+            </div>
             </div>
 
             {loading ? (

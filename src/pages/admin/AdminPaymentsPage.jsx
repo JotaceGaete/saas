@@ -29,7 +29,6 @@ const STATUS_OPTIONS = [
 const PLAN_OPTIONS = [
   { value: '', label: 'Todos los planes' },
   { value: 'starter', label: 'Starter' },
-  { value: 'control', label: 'Plan Control' },
   { value: 'pro', label: 'Pro' },
   { value: 'business', label: 'Business' },
 ];
@@ -641,7 +640,7 @@ function ChangePlanForm({ businessId, currentPlan, onChangePlan }) {
   return (
     <div className="flex flex-wrap items-end gap-2">
       <select value={newPlan} onChange={(e) => setNewPlan(e.target.value)} className="rounded border px-2 py-1 text-sm" style={{ borderColor: 'var(--color-border)' }}>
-        {['starter', 'control', 'pro', 'business'].map((slug) => (
+        {['starter', 'pro', 'business'].map((slug) => (
           <option key={slug} value={slug}>{getPlanLabel(slug)}</option>
         ))}
       </select>

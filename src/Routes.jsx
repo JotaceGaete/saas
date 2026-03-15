@@ -17,6 +17,9 @@ import Orders from './pages/orders';
 import Login from './pages/login';
 import AdminDashboard from './pages/admin';
 import AdminPaymentsPage from './pages/admin/AdminPaymentsPage';
+import AdminUsersPage from './pages/admin/AdminUsersPage';
+import AdminUserDetailPage from './pages/admin/AdminUserDetailPage';
+import AdminUserNewPage from './pages/admin/AdminUserNewPage';
 import PlansPage from './pages/plans';
 import PublicPricingPage from './pages/legal/PublicPricingPage';
 import TermsPage from './pages/legal/TermsPage';
@@ -50,6 +53,9 @@ const Routes = () => {
             <Route path="/catalogo/:slug/checkout" element={<OrderConfirmation />} />
             <Route path="/admin" element={<RequireAdmin><AdminDashboard /></RequireAdmin>} />
             <Route path="/admin/payments" element={<RequireAdmin><AdminPaymentsPage /></RequireAdmin>} />
+            <Route path="/admin/users" element={<RequireAdmin><AdminUsersPage /></RequireAdmin>} />
+            <Route path="/admin/users/new" element={<RequireAdmin><AdminUserNewPage /></RequireAdmin>} />
+            <Route path="/admin/users/:userId" element={<RequireAdmin><AdminUserDetailPage /></RequireAdmin>} />
             <Route path="*" element={<NotFound />} />
           </Route>
         </RouterRoutes>

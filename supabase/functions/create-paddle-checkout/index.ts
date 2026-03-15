@@ -5,12 +5,12 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const PLAN_ORDER: Record<string, number> = { starter: 0, control: 1, pro: 2, business: 3 };
+const VALID_PLAN_SLUGS = ['starter', 'pro', 'business'];
+const PLAN_ORDER: Record<string, number> = { starter: 0, control: 0, pro: 1, business: 2 };
 type PlanCatalog = Record<string, { displayName: string; price: number; durationDays: number }>;
 
 const PLAN_CATALOG_USD: PlanCatalog = {
   starter:  { displayName: 'Starter',  price: 0,     durationDays: 30 },
-  control:  { displayName: 'Plan Control', price: 5,   durationDays: 30 },
   pro:      { displayName: 'Plan Pro', price: 15,  durationDays: 30 },
   business: { displayName: 'Plan Business', price: 30, durationDays: 30 },
 };
@@ -179,7 +179,7 @@ Deno.serve(async (req) => {
 
   const planSlug = body?.planSlug as string | undefined;
   const fallbackCountry = normalizeCountryCode((body?.country as string | undefined) ?? '');
-  if (!planSlug || !PLAN_ORDER[planSlug]) {
+  if (!planSlug || !VALID_PLAN_SLUGS.includes(planSlug)) {
     return jsonResponse({ error: 'Plan no válido' }, 400);
   }
 
@@ -210,7 +210,8 @@ Deno.serve(async (req) => {
   }
 
   const catalog = PLAN_CATALOG_USD;
-  const currentPlanSlug = (business as { plan_slug?: string }).plan_slug ?? 'starter';
+  const rawPlan = (business as { plan_slug?: string }).plan_slug ?? 'starter';
+  const currentPlanSlug = rawPlan === 'control' ? 'starter' : rawPlan;
   const planExpiresAt = (business as { plan_expires_at?: string | null }).plan_expires_at ?? null;
   const planChange = computePlanChange(currentPlanSlug, planExpiresAt, planSlug, catalog);
 
