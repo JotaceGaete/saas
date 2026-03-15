@@ -71,21 +71,13 @@ export default function AuthStep({ onRegister, onLogin, isLoading, authError, on
         style={{ background: 'linear-gradient(145deg, #7C3AED 0%, #5B21B6 55%, #4C1D95 100%)' }}
       >
         <div>
-          {/* Logo VentALink (marca + redes) */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.35 }}
             className="mb-6 md:mb-8"
           >
-            <img
-              src="/logo-ventalink-redes.png"
-              alt="VentALink - Unifica todas tus ventas por WhatsApp, Instagram, YouTube, Facebook, TikTok o Mail"
-              className="w-full max-w-[320px] h-auto object-contain"
-            />
-            <div className="mt-3 flex items-center justify-between flex-wrap gap-2">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-sm bg-white/15 text-white/95" aria-label={countryLabels.countryName} title={countryLabels.countryName}>{countryLabels.flag} {countryLabels.countryName}</span>
-            </div>
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-sm bg-white/15 text-white/95" aria-label={countryLabels.countryName} title={countryLabels.countryName}>{countryLabels.flag} {countryLabels.countryName}</span>
           </motion.div>
 
           <motion.div
@@ -125,18 +117,18 @@ export default function AuthStep({ onRegister, onLogin, isLoading, authError, on
             )}
           </motion.div>
 
-          {/* Banner VentALink — Unifica tus ventas por redes (grande en este sector) */}
+          {/* Banner VentALink — Unifica tus ventas por redes (centrado) */}
           {mode === 'register' && (
             <motion.div
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.45, delay: 0.3 }}
-              className="mt-6 sm:mt-8"
+              className="mt-6 sm:mt-8 flex justify-center"
             >
               <img
                 src="/logo-ventalink-redes.png"
                 alt="VentALink — Unifica todas tus ventas por WhatsApp, Instagram, YouTube, Facebook, TikTok o Mail"
-                className="w-full max-w-[420px] sm:max-w-[480px] h-auto rounded-2xl border-2 border-white/25 shadow-2xl object-contain"
+                className="w-full max-w-[420px] sm:max-w-[480px] h-auto rounded-2xl border-2 border-white/25 shadow-2xl object-contain mx-auto"
                 style={{ boxShadow: '0 20px 50px -12px rgba(0,0,0,0.35)' }}
               />
             </motion.div>
