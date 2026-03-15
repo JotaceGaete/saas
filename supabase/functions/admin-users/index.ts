@@ -52,7 +52,7 @@ Deno.serve(async (req) => {
     const page = Math.max(1, parseInt(url.searchParams.get('page') ?? '1', 10));
     const perPage = Math.min(100, Math.max(10, parseInt(url.searchParams.get('per_page') ?? '50', 10)));
 
-    const { data: listData, error: listError } = await adminClient.auth.admin.listUsers({ page, perPage });
+    const { data: listData, error: listError } = await adminClient.auth.admin.listUsers({ page, per_page: perPage });
     if (listError) {
       console.error('[admin-users] listUsers error:', listError.message);
       return jsonResponse({ error: listError.message }, 500);
