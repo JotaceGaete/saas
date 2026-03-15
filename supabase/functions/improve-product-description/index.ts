@@ -6,15 +6,32 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const MAX_INPUT_LENGTH = 300;
 
-const CORS_ALLOW_HEADERS = 'authorization, x-client-info, apikey, content-type';
-const CORS_ALLOW_METHODS = 'POST, OPTIONS';
+function isAllowedOrigin(origin: string | null): boolean {
+  if (!origin) return false;
 
-function getCorsHeaders(req: Request): Record<string, string> {
-  const origin = req.headers.get('origin');
+  const allowed = [
+    'https://cl.ventalink.app',
+    'https://ar.ventalink.app',
+    'http://localhost:4028',
+  ];
+
+  if (allowed.includes(origin)) return true;
+
+  try {
+    const url = new URL(origin);
+    return url.hostname.endsWith('.vercel.app');
+  } catch {
+    return false;
+  }
+}
+
+function buildCorsHeaders(origin: string | null): Record<string, string> {
+  const allowOrigin = isAllowedOrigin(origin) ? origin : 'https://cl.ventalink.app';
   return {
-    'Access-Control-Allow-Origin': origin || '*',
-    'Access-Control-Allow-Headers': CORS_ALLOW_HEADERS,
-    'Access-Control-Allow-Methods': CORS_ALLOW_METHODS,
+    'Access-Control-Allow-Origin': allowOrigin,
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Vary': 'Origin',
   };
 }
 
@@ -40,9 +57,12 @@ Responde ÚNICAMENTE con un JSON válido, sin texto antes ni después, con esta 
 {"title": "Título optimizado del producto", "description": "Descripción mejorada para vender el producto"}`;
 
 Deno.serve(async (req) => {
-  const corsHeaders = getCorsHeaders(req);
+  // 1. CORS: obtener origin, loguear y construir headers. OPTIONS se resuelve aquí sin req.json() ni auth.
+  const origin = req.headers.get('origin');
+  console.log('[improve-product-description] Origin recibido:', origin ?? '(none)');
 
-  // Preflight: responder sin redirigir, status 204 y headers CORS completos
+  const corsHeaders = buildCorsHeaders(origin);
+
   if (req.method === 'OPTIONS') {
     return new Response(null, {
       status: 204,
