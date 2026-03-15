@@ -7,7 +7,7 @@ const MAX_NAME = 80;
 const MAX_DESC = 300;
 
 /** useCategories: si el negocio tiene categorías activadas. categories: array de { id, name } del negocio. */
-/** onImproveWithAi: (text, productName) => Promise<string> — opcional, para botón "Mejorar con IA". */
+/** onImproveWithAi: (text, productName) => Promise<void> — opcional; optimiza título y descripción y el padre actualiza el formulario. */
 export default function ProductFormFields({ formData, errors, onChange, useCategories = false, categories = [], onImproveWithAi, isImprovingDescription = false }) {
   const handleChange = (field, value) => onChange(field, value);
   const categoryOptions = Array.isArray(categories) ? categories.filter((c) => c?.name?.trim()) : [];
@@ -66,10 +66,7 @@ export default function ProductFormFields({ formData, errors, onChange, useCateg
                 type="button"
                 onClick={async () => {
                   try {
-                    const improved = await onImproveWithAi(formData?.descripcion ?? '', formData?.nombre ?? '');
-                    if (improved && typeof improved === 'string') {
-                      handleChange('descripcion', improved.slice(0, MAX_DESC));
-                    }
+                    await onImproveWithAi(formData?.descripcion ?? '', formData?.nombre ?? '');
                   } catch (_) {
                     // Error manejado por el padre (toast)
                   }

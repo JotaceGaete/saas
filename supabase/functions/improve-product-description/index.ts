@@ -1,8 +1,10 @@
-// improve-product-description — mejora el texto de descripción de producto con IA.
+// improve-product-description — optimizador de publicaciones para ventas (título + descripción).
 // Requiere JWT. Usa OpenAI gpt-4o-mini para bajo costo.
-// Reglas: máximo 80 palabras, tono comercial simple, español neutro.
+// Entrada máx. 300 caracteres. Salida JSON: { title, description }.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+const MAX_INPUT_LENGTH = 300;
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -16,14 +18,19 @@ function jsonResponse(body: Record<string, unknown>, status: number) {
   });
 }
 
-const SYSTEM_PROMPT = `Eres un redactor comercial. Tu tarea es mejorar descripciones de productos para tiendas online.
+const SYSTEM_PROMPT = `Eres un optimizador de publicaciones para ventas online. Recibes un texto básico del usuario y devuelves un título y una descripción mejorados.
 
-Reglas estrictas:
-- Máximo 80 palabras. Si el texto resultante supera 80 palabras, recórtalo sin cambiar el tono.
-- Tono: comercial, simple, fácil de leer. Sin exageraciones ni frases grandilocuentes.
-- Español neutro (evitar jerga muy local).
-- Objetivo: que el cliente entienda el producto y quiera comprarlo, sin sensacionalismo.
-- Responde ÚNICAMENTE con el texto mejorado, sin explicaciones ni prefijos.`;
+Reglas obligatorias:
+- Corrige faltas de ortografía.
+- Mejora la redacción y haz el texto más vendedor.
+- NO inventes características que no estén en el texto original.
+- NO agregues precios si no aparecen en el texto.
+- Usa español claro y natural.
+- Descripción: máximo 80 palabras. Título: corto y atractivo.
+- Mantén siempre la información original; solo mejora la forma.
+
+Responde ÚNICAMENTE con un JSON válido, sin texto antes ni después, con esta estructura exacta:
+{"title": "Título optimizado del producto", "description": "Descripción mejorada para vender el producto"}`;
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
@@ -58,13 +65,14 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: 'Cuerpo inválido' }, 400);
   }
 
-  const text = typeof body?.text === 'string' ? body.text.trim() : '';
+  const rawText = typeof body?.text === 'string' ? body.text.trim() : '';
+  const text = rawText.length > MAX_INPUT_LENGTH ? rawText.slice(0, MAX_INPUT_LENGTH) : rawText;
   const productName = typeof body?.productName === 'string' ? body.productName.trim() : '';
 
   const userMessage = text
-    ? `Mejora esta descripción de producto${productName ? ` (producto: ${productName})` : ''}:\n\n${text}`
+    ? `Optimiza esta publicación para vender${productName ? ` (nombre de producto: ${productName})` : ''}. Devuelve solo el JSON con "title" y "description".\n\nTexto del usuario:\n${text}`
     : productName
-      ? `Redacta una descripción corta y atractiva para este producto: "${productName}". Máximo 80 palabras, tono comercial simple, español neutro. Responde solo con el texto.`
+      ? `Genera un título y una descripción de producto para vender: "${productName}". Devuelve solo el JSON con "title" y "description".`
       : '';
 
   if (!userMessage) {
@@ -83,8 +91,8 @@ Deno.serve(async (req) => {
         { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user', content: userMessage },
       ],
-      max_tokens: 200,
-      temperature: 0.6,
+      max_tokens: 350,
+      temperature: 0.5,
     }),
   });
 
@@ -101,10 +109,28 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: 'Respuesta inválida del servicio' }, 502);
   }
 
-  const content = parsed?.choices?.[0]?.message?.content?.trim() ?? '';
+  let content = parsed?.choices?.[0]?.message?.content?.trim() ?? '';
   if (!content) {
-    return jsonResponse({ error: 'No se obtuvo texto' }, 502);
+    return jsonResponse({ error: 'No se obtuvo respuesta' }, 502);
   }
 
-  return jsonResponse({ improved: content }, 200);
+  // Quitar posible bloque de código markdown
+  const codeBlockMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (codeBlockMatch) content = codeBlockMatch[1].trim();
+
+  let result: { title?: string; description?: string };
+  try {
+    result = JSON.parse(content) as { title?: string; description?: string };
+  } catch {
+    console.error('[improve-product-description] JSON inválido:', content.slice(0, 200));
+    return jsonResponse({ error: 'La IA no devolvió un formato válido. Intenta de nuevo.' }, 502);
+  }
+
+  const title = typeof result?.title === 'string' ? result.title.trim() : '';
+  const description = typeof result?.description === 'string' ? result.description.trim() : '';
+  if (!description) {
+    return jsonResponse({ error: 'No se obtuvo descripción' }, 502);
+  }
+
+  return jsonResponse({ title: title || undefined, description }, 200);
 });

@@ -108,11 +108,12 @@ export default function ProductEditor() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) {
         toast.warning('Inicia sesión para usar esta función');
-        return null;
+        return;
       }
       const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
       const endpoint = `${supabaseUrl}/functions/v1/improve-product-description`;
       console.log('[Mejorar con IA] Endpoint:', endpoint);
+      const inputText = (text || '').slice(0, 300);
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: {
@@ -120,19 +121,28 @@ export default function ProductEditor() {
           Authorization: `Bearer ${session.access_token}`,
           apikey: import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '',
         },
-        body: JSON.stringify({ text: text || '', productName: productName || '' }),
+        body: JSON.stringify({ text: inputText, productName: productName || '' }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         console.error('[Mejorar con IA] Error API:', res.status, res.statusText, data);
         toast.error(data?.error ?? 'No se pudo mejorar la descripción');
-        return null;
+        return;
       }
-      return data?.improved ?? null;
+      const improvedTitle = typeof data?.title === 'string' ? data.title.trim() : '';
+      const improvedDesc = typeof data?.description === 'string' ? data.description.trim() : '';
+      if (!improvedDesc) {
+        toast.error('No se obtuvo descripción. Intenta de nuevo.');
+        return;
+      }
+      setFormData((prev) => ({
+        ...prev,
+        descripcion: improvedDesc.slice(0, 300),
+        ...((!prev?.nombre?.trim() && improvedTitle) ? { nombre: improvedTitle.slice(0, 80) } : {}),
+      }));
     } catch (err) {
       console.error('[Mejorar con IA] Excepción:', err);
       toast.error('Error de conexión. Intenta de nuevo.');
-      return null;
     } finally {
       setIsImprovingDescription(false);
     }
