@@ -30,10 +30,22 @@ export default function LoginForm({ onSubmit, isLoading, authError }) {
 
   return (
     <div className="w-full max-w-md">
-      {/* Mobile logo */}
+      {/* Mobile logo (marca VentALink) */}
       <div className="flex items-center gap-2 mb-8 lg:hidden">
-        <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'var(--color-primary)' }}>
-          <Icon name="MessageCircle" size={16} color="#fff" />
+        <div className="h-8 flex items-center">
+          <img
+            src="/logo-ventalink.png"
+            alt="VentALink"
+            className="h-8 w-auto object-contain"
+            onError={(e) => {
+              e.target.style.display = 'none';
+              const fb = e.target.parentElement?.querySelector('.logo-fallback');
+              if (fb) { fb.classList.remove('hidden'); fb.style.display = 'flex'; }
+            }}
+          />
+          <div className="logo-fallback hidden w-8 h-8 rounded-lg items-center justify-center" style={{ backgroundColor: 'var(--color-primary)' }} aria-hidden>
+            <Icon name="MessageCircle" size={16} color="#fff" />
+          </div>
         </div>
         <span className="font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>VentALink</span>
       </div>
