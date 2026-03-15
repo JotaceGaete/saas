@@ -6,12 +6,19 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const MAX_INPUT_LENGTH = 300;
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+const CORS_ALLOW_HEADERS = 'authorization, x-client-info, apikey, content-type';
+const CORS_ALLOW_METHODS = 'POST, OPTIONS';
 
-function jsonResponse(body: Record<string, unknown>, status: number) {
+function getCorsHeaders(req: Request): Record<string, string> {
+  const origin = req.headers.get('origin');
+  return {
+    'Access-Control-Allow-Origin': origin || '*',
+    'Access-Control-Allow-Headers': CORS_ALLOW_HEADERS,
+    'Access-Control-Allow-Methods': CORS_ALLOW_METHODS,
+  };
+}
+
+function jsonResponse(body: Record<string, unknown>, status: number, corsHeaders: Record<string, string>) {
   return new Response(JSON.stringify(body), {
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -33,11 +40,19 @@ Responde ÚNICAMENTE con un JSON válido, sin texto antes ni después, con esta 
 {"title": "Título optimizado del producto", "description": "Descripción mejorada para vender el producto"}`;
 
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+  const corsHeaders = getCorsHeaders(req);
+
+  // Preflight: responder sin redirigir, status 204 y headers CORS completos
+  if (req.method === 'OPTIONS') {
+    return new Response(null, {
+      status: 204,
+      headers: corsHeaders,
+    });
+  }
 
   const authHeader = (req.headers.get('authorization') ?? '').trim();
   if (!authHeader || !authHeader.toLowerCase().startsWith('bearer ')) {
-    return jsonResponse({ error: 'No autorizado' }, 401);
+    return jsonResponse({ error: 'No autorizado' }, 401, corsHeaders);
   }
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
@@ -47,7 +62,7 @@ Deno.serve(async (req) => {
 
   if (!openaiKey) {
     console.error('[improve-product-description] OPENAI_API_KEY no configurada');
-    return jsonResponse({ error: 'Servicio no configurado' }, 500);
+    return jsonResponse({ error: 'Servicio no configurado' }, 500, corsHeaders);
   }
 
   const userClient = createClient(supabaseUrl, anonKey, {
@@ -55,14 +70,14 @@ Deno.serve(async (req) => {
   });
   const { data: { user } } = await userClient.auth.getUser();
   if (!user?.id) {
-    return jsonResponse({ error: 'No autorizado' }, 401);
+    return jsonResponse({ error: 'No autorizado' }, 401, corsHeaders);
   }
 
   let body: { text?: string; productName?: string };
   try {
     body = (await req.json().catch(() => ({}))) as { text?: string; productName?: string };
   } catch {
-    return jsonResponse({ error: 'Cuerpo inválido' }, 400);
+    return jsonResponse({ error: 'Cuerpo inválido' }, 400, corsHeaders);
   }
 
   const rawText = typeof body?.text === 'string' ? body.text.trim() : '';
@@ -76,7 +91,7 @@ Deno.serve(async (req) => {
       : '';
 
   if (!userMessage) {
-    return jsonResponse({ error: 'Envía "text" y/o "productName"' }, 400);
+    return jsonResponse({ error: 'Envía "text" y/o "productName"' }, 400, corsHeaders);
   }
 
   const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -99,19 +114,19 @@ Deno.serve(async (req) => {
   const openaiBody = await openaiRes.text();
   if (!openaiRes.ok) {
     console.error('[improve-product-description] OpenAI error:', openaiRes.status, openaiRes.statusText, openaiBody.slice(0, 500));
-    return jsonResponse({ error: 'Error al mejorar el texto. Intenta de nuevo.' }, 502);
+    return jsonResponse({ error: 'Error al mejorar el texto. Intenta de nuevo.' }, 502, corsHeaders);
   }
 
   let parsed: { choices?: Array<{ message?: { content?: string } }> };
   try {
     parsed = JSON.parse(openaiBody);
   } catch {
-    return jsonResponse({ error: 'Respuesta inválida del servicio' }, 502);
+    return jsonResponse({ error: 'Respuesta inválida del servicio' }, 502, corsHeaders);
   }
 
   let content = parsed?.choices?.[0]?.message?.content?.trim() ?? '';
   if (!content) {
-    return jsonResponse({ error: 'No se obtuvo respuesta' }, 502);
+    return jsonResponse({ error: 'No se obtuvo respuesta' }, 502, corsHeaders);
   }
 
   // Quitar posible bloque de código markdown
@@ -123,14 +138,14 @@ Deno.serve(async (req) => {
     result = JSON.parse(content) as { title?: string; description?: string };
   } catch {
     console.error('[improve-product-description] JSON inválido:', content.slice(0, 200));
-    return jsonResponse({ error: 'La IA no devolvió un formato válido. Intenta de nuevo.' }, 502);
+    return jsonResponse({ error: 'La IA no devolvió un formato válido. Intenta de nuevo.' }, 502, corsHeaders);
   }
 
   const title = typeof result?.title === 'string' ? result.title.trim() : '';
   const description = typeof result?.description === 'string' ? result.description.trim() : '';
   if (!description) {
-    return jsonResponse({ error: 'No se obtuvo descripción' }, 502);
+    return jsonResponse({ error: 'No se obtuvo descripción' }, 502, corsHeaders);
   }
 
-  return jsonResponse({ title: title || undefined, description }, 200);
+  return jsonResponse({ title: title || undefined, description }, 200, corsHeaders);
 });
