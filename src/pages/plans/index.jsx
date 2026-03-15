@@ -22,8 +22,9 @@ function normalizeCountryCode(value) {
 }
 
 function resolveCountryCode({ hostnameCountryCode, businessCountryCode, userCountryCode }) {
-  // En ar.ventalink.app siempre forzamos AR para evitar caer en CL por datos legacy.
+  // Prioridad para moneda: si el hostname es CL o AR, usarlo (pantalla vista en Chile/Argentina).
   if (hostnameCountryCode === 'AR') return 'AR';
+  if (hostnameCountryCode === 'CL') return 'CL';
   if (businessCountryCode) return businessCountryCode;
   if (userCountryCode) return userCountryCode;
   if (hostnameCountryCode) return hostnameCountryCode;
@@ -54,6 +55,11 @@ export default function PlansPage() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    const planPrices = PLAN_SLUGS.reduce((acc, slug) => ({ ...acc, [slug]: getPlanPriceByCountry(slug, countryCode, paymentProvider) }), {});
+    console.log('[plans-debug] hostname:', window.location?.hostname);
+    console.log('[plans-debug] country detected:', countryCode);
+    console.log('[plans-debug] currency detected:', currency);
+    console.log('[plans-debug] plan prices:', planPrices);
     console.info(PAYMENT_DEBUG_PREFIX, {
       event: 'provider_resolution',
       hostname: window.location?.hostname ?? null,
@@ -63,7 +69,7 @@ export default function PlansPage() {
       resolvedCountryCode: countryCode,
       resolvedProvider: paymentProvider,
     });
-  }, [hostnameCountryCode, businessCountryCode, userCountryCode, countryCode, paymentProvider]);
+  }, [hostnameCountryCode, businessCountryCode, userCountryCode, countryCode, paymentProvider, currency]);
 
   useEffect(() => {
     const payment = searchParams.get('payment');

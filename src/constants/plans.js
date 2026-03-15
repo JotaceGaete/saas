@@ -117,8 +117,9 @@ export function getPlanPrice(planSlug) {
  * @returns {number}
  */
 export function getPlanPriceByCountry(planSlug, countryCode, paymentProvider) {
-  if (paymentProvider === 'paddle') return PLAN_PRICES_USD[planSlug] ?? 0;
+  if (countryCode === 'CL') return PLAN_PRICES_CLP[planSlug] ?? 0;
   if (countryCode === 'AR') return PLAN_PRICES_ARS[planSlug] ?? 0;
+  if (paymentProvider === 'paddle') return PLAN_PRICES_USD[planSlug] ?? 0;
   return PLAN_PRICES_CLP[planSlug] ?? 0;
 }
 
