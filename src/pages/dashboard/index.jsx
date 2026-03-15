@@ -21,6 +21,7 @@ import {
   getPendingOrdersCount,
   getWeeklyOrdersCount,
   getPlanUsage,
+  getEffectivePlanSlug,
 } from "../../services/waBusinessService";
 import { supabase } from "../../lib/supabase";
 import { getPublicCatalogUrl } from "../../config/appUrl";
@@ -61,6 +62,8 @@ export default function Dashboard() {
   const catalogUrl = getPublicCatalogUrl(business?.slug ?? '');
 
   const planExpiresAt = business?.planExpiresAt ?? null;
+  const effectivePlan = getEffectivePlanSlug(business?.planSlug, business?.planExpiresAt, business?.trialExpiresAt);
+  const isStarterPlan = effectivePlan === 'starter';
   const isPaidPlan = business?.planSlug === 'pro' || business?.planSlug === 'business';
   const isPlanExpired = isPaidPlan && planExpiresAt && new Date(planExpiresAt) <= new Date();
   const showExpiredBanner = typeof sessionStorage !== 'undefined' && sessionStorage.getItem('showPlanExpiredBanner') === '1';
@@ -343,6 +346,8 @@ export default function Dashboard() {
     },
   ];
 
+  const metricsToShow = isStarterPlan ? METRICS.filter((m) => m.title === 'Total productos') : METRICS;
+
   const handleCopy = () => {
     if (!catalogUrl) return;
     navigator.clipboard?.writeText(catalogUrl)?.catch(() => {});
@@ -481,11 +486,11 @@ export default function Dashboard() {
             </section>
           )}
 
-          {/* ── Métricas principales ── */}
+          {/* ── Métricas principales (Starter solo ve Total productos) ── */}
           <section aria-label="Métricas del negocio" className="mb-6">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 md:gap-4 lg:gap-5">
-              {METRICS?.map((metric, idx) => (
-                <div key={idx} className="stagger-item min-w-0">
+              {metricsToShow?.map((metric, idx) => (
+                <div key={metric.title} className="stagger-item min-w-0" style={metricsToShow.length === 1 ? { maxWidth: '320px' } : undefined}>
                   <MetricCard
                     title={metric.title}
                     value={metric.value}
@@ -495,21 +500,23 @@ export default function Dashboard() {
                     trendValue={metric.trendValue}
                     variant={metric.variant}
                     onClick={metric.onClick}
-                    loading={idx < 3 ? dataLoading : analyticsLoading}
+                    loading={metric.title === 'Total productos' ? dataLoading : idx < 2 ? dataLoading : analyticsLoading}
                   />
                 </div>
               ))}
             </div>
           </section>
 
-          {/* ── Analíticas ── */}
-          <section aria-label="Analíticas" className="mb-6">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 lg:gap-5">
-              <div className="stagger-item min-w-0"><OrdersByDayCard data={ordersByDay} loading={analyticsLoading} /></div>
-              <div className="stagger-item min-w-0"><TopProductsCard data={topProducts} loading={analyticsLoading} /></div>
-              <div className="stagger-item min-w-0"><MonthlyRevenueCard data={monthlyRevenue} loading={analyticsLoading} /></div>
-            </div>
-          </section>
+          {/* ── Analíticas (solo Pro y Business) ── */}
+          {!isStarterPlan && (
+            <section aria-label="Analíticas" className="mb-6">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 lg:gap-5">
+                <div className="stagger-item min-w-0"><OrdersByDayCard data={ordersByDay} loading={analyticsLoading} /></div>
+                <div className="stagger-item min-w-0"><TopProductsCard data={topProducts} loading={analyticsLoading} /></div>
+                <div className="stagger-item min-w-0"><MonthlyRevenueCard data={monthlyRevenue} loading={analyticsLoading} /></div>
+              </div>
+            </section>
+          )}
 
           {/* ── Feed + Widgets ── */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 lg:gap-5">

@@ -57,7 +57,7 @@ export default function CtaSection() {
               className="inline-flex items-center justify-center w-14 h-14 rounded-2xl mb-6"
               style={{ backgroundColor: 'rgba(255,255,255,0.15)' }}
             >
-              <Icon name="Rocket" size={24} color="#fff" />
+              <Icon name="Zap" size={24} color="#fff" />
             </div>
 
             <h2

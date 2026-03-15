@@ -118,18 +118,31 @@ function CatalogInner({ slug }) {
 
   const formatPrice = (price) => formatCLP(price);
 
-  // Derivar useCategories y categoryNames desde business y rubroCategories (antes de useMemos)
+  // Derivar useCategories y categoryNames desde business y rubroCategories
   const design = business?.designSettings || {};
   const useCategories = design?.useCategories === true && !!business?.rubroId;
   const categoryNames = (rubroCategories || []).map((c) => c?.name?.trim()).filter(Boolean);
 
-  // Categorías para tabs: solo cuando useCategories está activo (Todos + definidas + Otros)
-  const categories = useMemo(() => {
-    if (!useCategories) return [];
-    return ['all', ...categoryNames, 'Otros'];
-  }, [useCategories, categoryNames]);
+  // Categorías visibles en el filtro: solo las que tienen al menos un producto activo
+  const visibleCategories = useMemo(() => {
+    if (!useCategories || !products?.length) return [];
+    const withProducts = categoryNames.filter((name) =>
+      products.some((p) => (p?.category || '').trim() === name)
+    );
+    const hasOtros = products.some((p) => !(p?.category || '').trim());
+    return [...withProducts, ...(hasOtros ? ['Otros'] : [])];
+  }, [useCategories, categoryNames, products]);
 
-  // Filtered products
+  const showTodosButton = visibleCategories.length > 1;
+
+  // Si solo hay una categoría visible, seleccionarla para que el único botón quede activo
+  useEffect(() => {
+    if (visibleCategories.length === 1 && selectedCategory === 'all') {
+      setSelectedCategory(visibleCategories[0]);
+    }
+  }, [visibleCategories.length, visibleCategories[0], selectedCategory]);
+
+  // Filtered products (por búsqueda, categoría seleccionada y precio)
   const filteredProducts = useMemo(() => {
     return products?.filter(p => {
       const matchesSearch = !searchQuery?.trim() ||
@@ -147,29 +160,18 @@ function CatalogInner({ slug }) {
     });
   }, [products, searchQuery, selectedCategory, priceRange, useCategories]);
 
-  // Bloques por categoría: solo cuando useCategories; orden = orden de categorías; solo bloques con productos
-  const productsByBlock = useMemo(() => {
-    if (!useCategories || categories?.length === 0) return null;
-    const order = categories.filter((c) => c !== 'all');
-    const blocks = [];
-    for (const cat of order) {
-      const prods = filteredProducts.filter((p) =>
-        cat === 'Otros' ? !p?.category?.trim() : p?.category === cat
-      );
-      if (prods.length > 0) blocks.push({ categoryName: cat, products: prods });
-    }
-    return blocks;
-  }, [useCategories, categories, filteredProducts]);
-
-  // Para render: con categorías y "Todos" → varios bloques; con categoría elegida → un solo bloque
-  const blocksToRender =
-    !useCategories || !categories?.length
-      ? null
-      : selectedCategory === 'all'
-        ? productsByBlock
-        : filteredProducts?.length > 0
-          ? [{ categoryName: selectedCategory, products: filteredProducts }]
-          : [];
+  // Orden: sortOrder ascendente, luego createdAt descendente (más recientes al final si mismo sortOrder)
+  const sortedProducts = useMemo(() => {
+    if (!filteredProducts?.length) return [];
+    return [...filteredProducts].sort((a, b) => {
+      const orderA = a?.sortOrder != null ? Number(a.sortOrder) : Infinity;
+      const orderB = b?.sortOrder != null ? Number(b.sortOrder) : Infinity;
+      if (orderA !== orderB) return orderA - orderB;
+      const dateA = new Date(a?.createdAt || 0).getTime();
+      const dateB = new Date(b?.createdAt || 0).getTime();
+      return dateB - dateA;
+    });
+  }, [filteredProducts]);
 
   const hasActiveFilters = searchQuery?.trim() || (useCategories && selectedCategory !== 'all') || priceRange?.[0] > 0 || priceRange?.[1] < maxPrice;
 
@@ -225,14 +227,19 @@ function CatalogInner({ slug }) {
   const cardSettings = { showPrice: true, showDescription: true, showStock: false, showWhatsApp: true, ...design?.cardSettings };
   const storeHeader = { showStoreName: true, showDescription: true, showWhatsAppButton: true, ...design?.storeHeader };
   const catalogViewMode = design?.catalogViewMode === 'compact' ? 'compact' : 'featured';
-  // En escritorio siempre tarjetas grandes (como en la imagen); compact solo en móvil
   const useCompactCard = catalogViewMode === 'compact' && !isDesktop;
+  // Grid con min-width para que las tarjetas no queden demasiado angostas ni demasiado anchas
   const gridClass =
     isDesktop
-      ? 'grid grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4'
+      ? 'grid gap-3 md:gap-4'
       : catalogViewMode === 'compact'
         ? 'grid grid-cols-2 gap-2 sm:gap-3'
         : 'grid grid-cols-1 gap-3 sm:gap-4';
+  const gridStyle = isDesktop
+    ? { gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }
+    : catalogViewMode === 'compact'
+      ? {}
+      : {};
 
   const storeName = business?.name || 'Catálogo';
   const catalogTitle = `Catálogo de ${storeName}`;
@@ -420,20 +427,22 @@ function CatalogInner({ slug }) {
       {/* ── Filtros (sticky) — menos espacio vertical. Categorías solo si useCategories ── */}
       <div className="bg-white border-b border-gray-100 sticky top-0 z-30 shadow-sm">
         <div className="max-w-5xl mx-auto px-4 py-2 space-y-2">
-          {/* Category filter bar (solo cuando el negocio tiene categorías activadas) */}
+          {/* Category filter bar: solo categorías con al menos un producto; "Todos" solo si hay más de una categoría */}
           <div className="flex items-center gap-2">
-            {useCategories && categories?.length > 0 && (
+            {useCategories && visibleCategories.length > 0 && (
               <div className="flex items-center gap-2 overflow-x-auto overflow-y-hidden flex-1 scrollbar-hide pb-0.5 min-w-0 snap-x snap-mandatory [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" style={{ WebkitOverflowScrolling: 'touch' }}>
-                <button
-                  onClick={() => setSelectedCategory('all')}
-                  className={`flex-shrink-0 snap-start px-4 py-1.5 rounded-full text-xs font-bold border transition-all ${
-                    selectedCategory === 'all' ? 'text-white border-transparent shadow-sm' : 'border-gray-200 text-gray-600 bg-white hover:bg-gray-50'
-                  }`}
-                  style={selectedCategory === 'all' ? { background: `linear-gradient(135deg, ${primaryColor}, ${primaryColorDark})` } : {}}
-                >
-                  Todos
-                </button>
-                {categories.filter((c) => c !== 'all').map((cat) => (
+                {showTodosButton && (
+                  <button
+                    onClick={() => setSelectedCategory('all')}
+                    className={`flex-shrink-0 snap-start px-4 py-1.5 rounded-full text-xs font-bold border transition-all ${
+                      selectedCategory === 'all' ? 'text-white border-transparent shadow-sm' : 'border-gray-200 text-gray-600 bg-white hover:bg-gray-50'
+                    }`}
+                    style={selectedCategory === 'all' ? { background: `linear-gradient(135deg, ${primaryColor}, ${primaryColorDark})` } : {}}
+                  >
+                    Todos
+                  </button>
+                )}
+                {visibleCategories.map((cat) => (
                   <button
                     key={cat}
                     onClick={() => setSelectedCategory(cat)}
@@ -499,13 +508,13 @@ function CatalogInner({ slug }) {
       <div className="max-w-7xl mx-auto px-4 py-3 pb-32 sm:pb-36">
         {/* Product count */}
         <p className="text-xs text-gray-400 font-medium mb-3">
-          {filteredProducts?.length} {filteredProducts?.length === 1 ? 'producto' : 'productos'}
-          {hasActiveFilters && products?.length !== filteredProducts?.length && (
+          {sortedProducts?.length} {sortedProducts?.length === 1 ? 'producto' : 'productos'}
+          {hasActiveFilters && products?.length !== sortedProducts?.length && (
             <span> de {products?.length}</span>
           )}
         </p>
 
-        {filteredProducts?.length === 0 ? (
+        {sortedProducts?.length === 0 ? (
           <div className="text-center py-20">
             <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center mx-auto mb-4">
               {hasActiveFilters ? (
@@ -531,35 +540,10 @@ function CatalogInner({ slug }) {
               </button>
             )}
           </div>
-        ) : blocksToRender && blocksToRender.length > 0 ? (
-          /* Bloques por categoría (tabs + secciones con título) */
-          <div className="space-y-8 md:space-y-10">
-            {blocksToRender.map((block) => (
-              <section key={block.categoryName} className="scroll-mt-24">
-                <h2 className="text-base md:text-lg font-bold text-gray-900 mb-3 md:mb-4" style={{ fontFamily: 'DM Sans, sans-serif' }}>
-                  {block.categoryName}
-                </h2>
-                <div className={gridClass}>
-                  {block.products?.map((product) => (
-                    <ProductCard
-                      key={product?.id}
-                      product={product}
-                      formatPrice={formatPrice}
-                      onOpen={openProduct}
-                      theme={theme}
-                      cardSettings={cardSettings}
-                      useCategories={useCategories}
-                      compact={useCompactCard}
-                    />
-                  ))}
-                </div>
-              </section>
-            ))}
-          </div>
         ) : (
-          /* Listado plano (sin categorías o sin bloques) */
-          <div className={gridClass}>
-            {filteredProducts?.map((product) => (
+          /* Una sola grilla continua (vista Todos o categoría seleccionada) */
+          <div className={gridClass} style={gridStyle}>
+            {sortedProducts.map((product) => (
               <ProductCard
                 key={product?.id}
                 product={product}

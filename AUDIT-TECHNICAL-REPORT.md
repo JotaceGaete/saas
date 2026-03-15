@@ -1,4 +1,4 @@
-# Informe técnico de auditoría — Catálogo WhatsApp (Rocket.new)
+# Informe técnico de auditoría — Catálogo WhatsApp
 
 ## 1. Arquitectura del proyecto
 #
@@ -7,7 +7,7 @@
 - **Lenguaje:** JavaScript (JSX); no hay TypeScript.
 - **Estilos:** Tailwind CSS (con plugins: forms, aspect-ratio, container-queries, line-clamp, typography, animate, fluid-type, elevation).
 - **Build:** Vite (`vite build --sourcemap`). Punto de entrada: `src/index.jsx` → `App.jsx` → `Routes.jsx`.
-- **Dependencias críticas (rocketCritical):** react, react-dom, @reduxjs/toolkit, redux, react-router-dom, @dhiwise/component-tagger, vite, @vitejs/plugin-react, vite-tsconfig-paths, tailwindcss, autoprefixer, postcss. No deben eliminarse ni modificarse.
+- **Dependencias críticas:** react, react-dom, @reduxjs/toolkit, redux, react-router-dom, @dhiwise/component-tagger, vite, @vitejs/plugin-react, vite-tsconfig-paths, tailwindcss, autoprefixer, postcss. No deben eliminarse ni modificarse.
 
 ### Estructura de carpetas principales
 ```

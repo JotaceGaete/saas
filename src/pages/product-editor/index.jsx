@@ -11,7 +11,7 @@ import ProductPreview from './components/ProductPreview';
 import SaveBar from './components/SaveBar';
 import ProductOptionsSection from './components/ProductOptionsSection';
 import { useAuth } from '../../contexts/AuthContext';
-import { getProduct, createProduct, updateProduct, uploadProductImage, getMyBusiness, getCategoriesByRubroId } from '../../services/waBusinessService';
+import { getProduct, createProduct, updateProduct, uploadProductImage, getMyBusiness, getCategoriesByRubroId, getEffectivePlanSlug } from '../../services/waBusinessService';
 import { convertUnsupportedImageToJpeg } from '../../utils/imageUploadUtils';
 import { useToast } from '../../components/ui/Toast';
 import { supabase } from '../../lib/supabase';
@@ -47,6 +47,9 @@ export default function ProductEditor() {
   const [rubroCategories, setRubroCategories] = useState([]);
   const [isImprovingDescription, setIsImprovingDescription] = useState(false);
   const toast = useToast();
+
+  const effectivePlan = getEffectivePlanSlug(business?.planSlug, business?.planExpiresAt, business?.trialExpiresAt);
+  const canUseAi = effectivePlan === 'pro' || effectivePlan === 'business';
 
   useEffect(() => {
     if (!isEditing || !productId) return;
@@ -430,7 +433,7 @@ export default function ProductEditor() {
                     onChange={handleFieldChange}
                     useCategories={business?.designSettings?.useCategories === true && !!business?.rubroId}
                     categories={rubroCategories}
-                    onImproveWithAi={handleImproveWithAi}
+                    onImproveWithAi={canUseAi ? handleImproveWithAi : undefined}
                     isImprovingDescription={isImprovingDescription}
                   />
                 </div>
