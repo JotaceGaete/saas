@@ -26,7 +26,7 @@ function isAllowedOrigin(origin: string | null): boolean {
 }
 
 function buildCorsHeaders(origin: string | null): Record<string, string> {
-  const allowOrigin = isAllowedOrigin(origin) ? origin : 'https://cl.ventalink.app';
+  const allowOrigin = isAllowedOrigin(origin) ? origin : 'https://ar.ventalink.app';
   return {
     'Access-Control-Allow-Origin': allowOrigin,
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -40,6 +40,11 @@ function jsonResponse(body: Record<string, unknown>, status: number, corsHeaders
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
+}
+
+function logAndReturn(response: Response, label: string) {
+  console.log('[improve-product-description] response', label, 'status=', response.status);
+  return response;
 }
 
 const SYSTEM_PROMPT = `Eres un optimizador de publicaciones para ventas online. Recibes un texto básico del usuario y devuelves un título y una descripción mejorados.
@@ -57,115 +62,120 @@ Responde ÚNICAMENTE con un JSON válido, sin texto antes ni después, con esta 
 {"title": "Título optimizado del producto", "description": "Descripción mejorada para vender el producto"}`;
 
 Deno.serve(async (req) => {
-  // 1. CORS: obtener origin, loguear y construir headers. OPTIONS se resuelve aquí sin req.json() ni auth.
-  const origin = req.headers.get('origin');
-  console.log('[improve-product-description] Origin recibido:', origin ?? '(none)');
-
+  const origin = req.headers.get('origin') ?? '';
   const corsHeaders = buildCorsHeaders(origin);
+  console.log('[improve-product-description] method=', req.method, 'origin=', origin || '(none)');
 
   if (req.method === 'OPTIONS') {
-    return new Response(null, {
-      status: 204,
+    console.log('[improve-product-description] handling preflight');
+    return logAndReturn(new Response('ok', {
+      status: 200,
       headers: corsHeaders,
+    }), 'preflight');
+  }
+
+  try {
+    const authHeader = (req.headers.get('authorization') ?? '').trim();
+    if (!authHeader || !authHeader.toLowerCase().startsWith('bearer ')) {
+      return logAndReturn(jsonResponse({ error: 'No autorizado' }, 401, corsHeaders), 'auth_missing');
+    }
+
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+    const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+    const openaiKey = Deno.env.get('OPENAI_API_KEY') ?? '';
+    console.log('[improve-product-description] OPENAI_API_KEY configurada:', !!openaiKey);
+
+    if (!openaiKey) {
+      console.error('[improve-product-description] OPENAI_API_KEY no configurada');
+      return logAndReturn(jsonResponse({ error: 'Servicio no configurado' }, 500, corsHeaders), 'missing_openai_key');
+    }
+
+    const userClient = createClient(supabaseUrl, anonKey, {
+      global: { headers: { Authorization: authHeader } },
     });
+    const { data: { user } } = await userClient.auth.getUser();
+    if (!user?.id) {
+      return logAndReturn(jsonResponse({ error: 'No autorizado' }, 401, corsHeaders), 'auth_invalid');
+    }
+
+    let body: { text?: string; productName?: string };
+    try {
+      body = (await req.json().catch(() => ({}))) as { text?: string; productName?: string };
+    } catch {
+      return logAndReturn(jsonResponse({ error: 'Cuerpo inválido' }, 400, corsHeaders), 'invalid_body');
+    }
+
+    const rawText = typeof body?.text === 'string' ? body.text.trim() : '';
+    const text = rawText.length > MAX_INPUT_LENGTH ? rawText.slice(0, MAX_INPUT_LENGTH) : rawText;
+    const productName = typeof body?.productName === 'string' ? body.productName.trim() : '';
+
+    const userMessage = text
+      ? `Optimiza esta publicación para vender${productName ? ` (nombre de producto: ${productName})` : ''}. Devuelve solo el JSON con "title" y "description".\n\nTexto del usuario:\n${text}`
+      : productName
+        ? `Genera un título y una descripción de producto para vender: "${productName}". Devuelve solo el JSON con "title" y "description".`
+        : '';
+
+    if (!userMessage) {
+      return logAndReturn(jsonResponse({ error: 'Envía "text" y/o "productName"' }, 400, corsHeaders), 'missing_input');
+    }
+
+    const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${openaiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'user', content: userMessage },
+        ],
+        max_tokens: 350,
+        temperature: 0.5,
+      }),
+    });
+
+    const openaiBody = await openaiRes.text();
+    if (!openaiRes.ok) {
+      console.error('[improve-product-description] OpenAI error:', openaiRes.status, openaiRes.statusText, openaiBody.slice(0, 500));
+      return logAndReturn(jsonResponse({ error: 'Error al mejorar el texto. Intenta de nuevo.' }, 502, corsHeaders), 'openai_error');
+    }
+
+    let parsed: { choices?: Array<{ message?: { content?: string } }> };
+    try {
+      parsed = JSON.parse(openaiBody);
+    } catch {
+      return logAndReturn(jsonResponse({ error: 'Respuesta inválida del servicio' }, 502, corsHeaders), 'invalid_openai_response');
+    }
+
+    let content = parsed?.choices?.[0]?.message?.content?.trim() ?? '';
+    if (!content) {
+      return logAndReturn(jsonResponse({ error: 'No se obtuvo respuesta' }, 502, corsHeaders), 'empty_openai_content');
+    }
+
+    // Quitar posible bloque de código markdown
+    const codeBlockMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (codeBlockMatch) content = codeBlockMatch[1].trim();
+
+    let result: { title?: string; description?: string };
+    try {
+      result = JSON.parse(content) as { title?: string; description?: string };
+    } catch {
+      console.error('[improve-product-description] JSON inválido:', content.slice(0, 200));
+      return logAndReturn(jsonResponse({ error: 'La IA no devolvió un formato válido. Intenta de nuevo.' }, 502, corsHeaders), 'invalid_ai_json');
+    }
+
+    const title = typeof result?.title === 'string' ? result.title.trim() : '';
+    const description = typeof result?.description === 'string' ? result.description.trim() : '';
+    if (!description) {
+      return logAndReturn(jsonResponse({ error: 'No se obtuvo descripción' }, 502, corsHeaders), 'missing_description');
+    }
+
+    return logAndReturn(jsonResponse({ title: title || undefined, description }, 200, corsHeaders), 'success');
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Error interno';
+    console.error('[improve-product-description] unhandled_error:', error);
+    return logAndReturn(jsonResponse({ error: message }, 500, corsHeaders), 'unhandled_error');
   }
-
-  const authHeader = (req.headers.get('authorization') ?? '').trim();
-  if (!authHeader || !authHeader.toLowerCase().startsWith('bearer ')) {
-    return jsonResponse({ error: 'No autorizado' }, 401, corsHeaders);
-  }
-
-  const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
-  const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
-  const openaiKey = Deno.env.get('OPENAI_API_KEY') ?? '';
-  console.log('[improve-product-description] OPENAI_API_KEY configurada:', !!openaiKey);
-
-  if (!openaiKey) {
-    console.error('[improve-product-description] OPENAI_API_KEY no configurada');
-    return jsonResponse({ error: 'Servicio no configurado' }, 500, corsHeaders);
-  }
-
-  const userClient = createClient(supabaseUrl, anonKey, {
-    global: { headers: { Authorization: authHeader } },
-  });
-  const { data: { user } } = await userClient.auth.getUser();
-  if (!user?.id) {
-    return jsonResponse({ error: 'No autorizado' }, 401, corsHeaders);
-  }
-
-  let body: { text?: string; productName?: string };
-  try {
-    body = (await req.json().catch(() => ({}))) as { text?: string; productName?: string };
-  } catch {
-    return jsonResponse({ error: 'Cuerpo inválido' }, 400, corsHeaders);
-  }
-
-  const rawText = typeof body?.text === 'string' ? body.text.trim() : '';
-  const text = rawText.length > MAX_INPUT_LENGTH ? rawText.slice(0, MAX_INPUT_LENGTH) : rawText;
-  const productName = typeof body?.productName === 'string' ? body.productName.trim() : '';
-
-  const userMessage = text
-    ? `Optimiza esta publicación para vender${productName ? ` (nombre de producto: ${productName})` : ''}. Devuelve solo el JSON con "title" y "description".\n\nTexto del usuario:\n${text}`
-    : productName
-      ? `Genera un título y una descripción de producto para vender: "${productName}". Devuelve solo el JSON con "title" y "description".`
-      : '';
-
-  if (!userMessage) {
-    return jsonResponse({ error: 'Envía "text" y/o "productName"' }, 400, corsHeaders);
-  }
-
-  const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${openaiKey}`,
-    },
-    body: JSON.stringify({
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: userMessage },
-      ],
-      max_tokens: 350,
-      temperature: 0.5,
-    }),
-  });
-
-  const openaiBody = await openaiRes.text();
-  if (!openaiRes.ok) {
-    console.error('[improve-product-description] OpenAI error:', openaiRes.status, openaiRes.statusText, openaiBody.slice(0, 500));
-    return jsonResponse({ error: 'Error al mejorar el texto. Intenta de nuevo.' }, 502, corsHeaders);
-  }
-
-  let parsed: { choices?: Array<{ message?: { content?: string } }> };
-  try {
-    parsed = JSON.parse(openaiBody);
-  } catch {
-    return jsonResponse({ error: 'Respuesta inválida del servicio' }, 502, corsHeaders);
-  }
-
-  let content = parsed?.choices?.[0]?.message?.content?.trim() ?? '';
-  if (!content) {
-    return jsonResponse({ error: 'No se obtuvo respuesta' }, 502, corsHeaders);
-  }
-
-  // Quitar posible bloque de código markdown
-  const codeBlockMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (codeBlockMatch) content = codeBlockMatch[1].trim();
-
-  let result: { title?: string; description?: string };
-  try {
-    result = JSON.parse(content) as { title?: string; description?: string };
-  } catch {
-    console.error('[improve-product-description] JSON inválido:', content.slice(0, 200));
-    return jsonResponse({ error: 'La IA no devolvió un formato válido. Intenta de nuevo.' }, 502, corsHeaders);
-  }
-
-  const title = typeof result?.title === 'string' ? result.title.trim() : '';
-  const description = typeof result?.description === 'string' ? result.description.trim() : '';
-  if (!description) {
-    return jsonResponse({ error: 'No se obtuvo descripción' }, 502, corsHeaders);
-  }
-
-  return jsonResponse({ title: title || undefined, description }, 200, corsHeaders);
 });
