@@ -29,6 +29,7 @@ import OrdersByDayCard from "./components/OrdersByDayCard";
 import TopProductsCard from "./components/TopProductsCard";
 import MonthlyRevenueCard from "./components/MonthlyRevenueCard";
 import PlanUsageCard from "./components/PlanUsageCard";
+import TrialConversionBanner from "./components/TrialConversionBanner";
 
 
 export default function Dashboard() {
@@ -62,13 +63,24 @@ export default function Dashboard() {
   const catalogUrl = getPublicCatalogUrl(business?.slug ?? '');
 
   const planExpiresAt = business?.planExpiresAt ?? null;
+  const trialExpiresAt = business?.trialExpiresAt ?? null;
   const effectivePlan = getEffectivePlanSlug(business?.planSlug, business?.planExpiresAt, business?.trialExpiresAt);
   const isStarterPlan = effectivePlan === 'starter';
   const isPaidPlan = business?.planSlug === 'pro' || business?.planSlug === 'business';
   const isPlanExpired = isPaidPlan && planExpiresAt && new Date(planExpiresAt) <= new Date();
   const showExpiredBanner = typeof sessionStorage !== 'undefined' && sessionStorage.getItem('showPlanExpiredBanner') === '1';
 
-  // Días hasta vencimiento del plan
+  // Pro Trial: plan pro/business, trial activo (trialExpiresAt en el futuro), sin plan pagado (sin planExpiresAt)
+  const isProTrial =
+    (business?.planSlug === 'pro' || business?.planSlug === 'business') &&
+    trialExpiresAt &&
+    new Date(trialExpiresAt) > new Date() &&
+    !planExpiresAt;
+  const trialDaysLeft = isProTrial && trialExpiresAt
+    ? Math.ceil((new Date(trialExpiresAt) - new Date()) / (1000 * 60 * 60 * 24))
+    : 0;
+
+  // Días hasta vencimiento del plan (pago)
   const daysUntilExpiry = planExpiresAt
     ? Math.ceil((new Date(planExpiresAt) - new Date()) / (1000 * 60 * 60 * 24))
     : null;
@@ -423,6 +435,11 @@ export default function Dashboard() {
               </div>
               <button onClick={() => navigate('/business-configuration')} className="ml-auto text-xs font-medium px-3 py-1.5 rounded-lg" style={{ backgroundColor: 'var(--color-primary)', color: '#fff', fontFamily: 'var(--font-caption)' }}>Configurar</button>
             </div>
+          )}
+
+          {/* Banner: valor desbloqueado (solo Pro Trial) */}
+          {isProTrial && (
+            <TrialConversionBanner trialDaysLeft={trialDaysLeft} trialExpiresAt={trialExpiresAt} />
           )}
 
           {/* Banner: plan expirado */}
