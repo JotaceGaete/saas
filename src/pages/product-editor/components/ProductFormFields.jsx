@@ -1,4 +1,5 @@
 import React from 'react';
+import Icon from 'components/AppIcon';
 import Input from 'components/ui/Input';
 import { formatCLPInput, parseCLPInput } from 'utils/formatCLP';
 
@@ -6,7 +7,8 @@ const MAX_NAME = 80;
 const MAX_DESC = 300;
 
 /** useCategories: si el negocio tiene categorías activadas. categories: array de { id, name } del negocio. */
-export default function ProductFormFields({ formData, errors, onChange, useCategories = false, categories = [] }) {
+/** onImproveWithAi: (text, productName) => Promise<string> — opcional, para botón "Mejorar con IA". */
+export default function ProductFormFields({ formData, errors, onChange, useCategories = false, categories = [], onImproveWithAi, isImprovingDescription = false }) {
   const handleChange = (field, value) => onChange(field, value);
   const categoryOptions = Array.isArray(categories) ? categories.filter((c) => c?.name?.trim()) : [];
 
@@ -51,13 +53,45 @@ export default function ProductFormFields({ formData, errors, onChange, useCateg
       </div>
       {/* Descripción */}
       <div>
-        <div className="flex items-end justify-between mb-1">
+        <div className="flex items-end justify-between mb-1 flex-wrap gap-2">
           <label className="block text-sm font-medium" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}>
             Descripción corta
           </label>
-          <span className="text-xs" style={{ color: (formData?.descripcion?.length || 0) > MAX_DESC * 0.9 ? 'var(--color-warning)' : 'var(--color-muted-foreground)', fontFamily: 'var(--font-data)' }}>
-            {formData?.descripcion?.length || 0}/{MAX_DESC}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs" style={{ color: (formData?.descripcion?.length || 0) > MAX_DESC * 0.9 ? 'var(--color-warning)' : 'var(--color-muted-foreground)', fontFamily: 'var(--font-data)' }}>
+              {formData?.descripcion?.length || 0}/{MAX_DESC}
+            </span>
+            {typeof onImproveWithAi === 'function' && (
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    const improved = await onImproveWithAi(formData?.descripcion ?? '', formData?.nombre ?? '');
+                    if (improved && typeof improved === 'string') {
+                      handleChange('descripcion', improved.slice(0, MAX_DESC));
+                    }
+                  } catch (_) {
+                    // Error manejado por el padre (toast)
+                  }
+                }}
+                disabled={isImprovingDescription}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-opacity hover:opacity-90 disabled:opacity-50"
+                style={{
+                  backgroundColor: 'rgba(124,58,237,0.1)',
+                  color: 'var(--color-primary)',
+                  fontFamily: 'var(--font-caption)',
+                }}
+                aria-label="Mejorar descripción con IA"
+              >
+                {isImprovingDescription ? (
+                  <span className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <Icon name="Sparkles" size={12} color="var(--color-primary)" />
+                )}
+                Mejorar con IA
+              </button>
+            )}
+          </div>
         </div>
         <textarea
           placeholder="Describe brevemente tu producto: materiales, características, usos..."

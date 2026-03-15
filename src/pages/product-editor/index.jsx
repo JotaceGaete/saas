@@ -13,6 +13,8 @@ import ProductOptionsSection from './components/ProductOptionsSection';
 import { useAuth } from '../../contexts/AuthContext';
 import { getProduct, createProduct, updateProduct, uploadProductImage, getMyBusiness, getCategoriesByRubroId } from '../../services/waBusinessService';
 import { convertUnsupportedImageToJpeg } from '../../utils/imageUploadUtils';
+import { useToast } from '../../components/ui/Toast';
+import { supabase } from '../../lib/supabase';
 
 const EMPTY_FORM = {
   nombre: '',
@@ -43,6 +45,8 @@ export default function ProductEditor() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [pageLoading, setPageLoading] = useState(isEditing);
   const [rubroCategories, setRubroCategories] = useState([]);
+  const [isImprovingDescription, setIsImprovingDescription] = useState(false);
+  const toast = useToast();
 
   useEffect(() => {
     if (!isEditing || !productId) return;
@@ -97,6 +101,42 @@ export default function ProductEditor() {
     setFormData(prev => ({ ...prev, [field]: value }));
     if (errors?.[field]) setErrors(prev => { const e = { ...prev }; delete e?.[field]; return e; });
   };
+
+  const handleImproveWithAi = React.useCallback(async (text, productName) => {
+    setIsImprovingDescription(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        toast.warning('Inicia sesión para usar esta función');
+        return null;
+      }
+      const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
+      const endpoint = `${supabaseUrl}/functions/v1/improve-product-description`;
+      console.log('[Mejorar con IA] Endpoint:', endpoint);
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+          apikey: import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '',
+        },
+        body: JSON.stringify({ text: text || '', productName: productName || '' }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        console.error('[Mejorar con IA] Error API:', res.status, res.statusText, data);
+        toast.error(data?.error ?? 'No se pudo mejorar la descripción');
+        return null;
+      }
+      return data?.improved ?? null;
+    } catch (err) {
+      console.error('[Mejorar con IA] Excepción:', err);
+      toast.error('Error de conexión. Intenta de nuevo.');
+      return null;
+    } finally {
+      setIsImprovingDescription(false);
+    }
+  }, [toast]);
 
   const handleUploadRequested = React.useCallback(async (imageId, file) => {
     if (!business?.id || !file) return;
@@ -372,6 +412,8 @@ export default function ProductEditor() {
                     onChange={handleFieldChange}
                     useCategories={business?.designSettings?.useCategories === true && !!business?.rubroId}
                     categories={rubroCategories}
+                    onImproveWithAi={handleImproveWithAi}
+                    isImprovingDescription={isImprovingDescription}
                   />
                 </div>
 

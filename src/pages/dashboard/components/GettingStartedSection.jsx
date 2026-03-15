@@ -7,7 +7,7 @@ const STEPS = [
   {
     number: 1,
     title: "Configura tu tienda",
-    description: "Agrega tu logo, WhatsApp y descripción",
+    description: "Agrega logo, portada (banner) y WhatsApp",
     icon: "Settings2",
     cta: "Ir a configuración",
     path: "/business-configuration",
@@ -87,9 +87,15 @@ export default function GettingStartedSection({
   const qrPrintRef = useRef(null);
 
   const hasWhatsapp = !!(business?.whatsapp);
+  const hasLogo = !!(business?.logoUrl?.trim());
+  const hasBanner = !!(business?.coverImageUrl?.trim());
   const hasProducts = productCount > 0;
 
-  const stepCompleted = [hasWhatsapp, hasProducts, false];
+  const stepCompleted = [
+    hasWhatsapp && hasLogo && hasBanner,
+    hasProducts,
+    false,
+  ];
   const completedCount = stepCompleted?.filter(Boolean)?.length;
   const allCompleted = completedCount === 3;
 

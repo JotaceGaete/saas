@@ -31,3 +31,7 @@ verify_jwt = false
 
 [functions.paddle-webhook]
 verify_jwt = false
+
+# Mejora de descripción de producto con IA (JWT validado dentro).
+[functions.improve-product-description]
+verify_jwt = false

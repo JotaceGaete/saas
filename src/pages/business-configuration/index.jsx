@@ -572,6 +572,7 @@ export default function BusinessConfiguration() {
                 storeName={storeName || business?.name || 'Mi Tienda'}
                 storeSlug={storeSlug || business?.slug || ''}
                 logoUrl={logoUrl}
+                coverImageUrl={coverImageUrl || business?.coverImageUrl}
                 products={products}
                 currency={business?.currency || defaultCountryLabels.currency}
                 design={design}
@@ -984,6 +985,7 @@ export default function BusinessConfiguration() {
                   storeName={storeName || business?.name || 'Mi Tienda'}
                   storeSlug={storeSlug || business?.slug || ''}
                   logoUrl={logoUrl}
+                  coverImageUrl={coverImageUrl || business?.coverImageUrl}
                   products={products}
                   currency={business?.currency || defaultCountryLabels.currency}
                   design={design}

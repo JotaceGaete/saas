@@ -165,14 +165,14 @@ function ProductCardItem({ product, t, primaryColor, fontFamily, cardSettings, s
   );
 }
 
-export default function MobilePreviewPanel({ storeName, storeSlug, logoUrl, products, currency, design }) {
+export default function MobilePreviewPanel({ storeName, storeSlug, logoUrl, coverImageUrl, products, currency, design }) {
   const visibleProducts = products?.slice(0, 4) || [];
 
   const theme = design?.theme || 'minimal';
   const primaryColor = design?.primaryColor || '#7C3AED';
   const font = design?.font || 'Inter';
   const designLogoUrl = design?.logoUrl || logoUrl;
-  const headerImageUrl = design?.headerImageUrl || '';
+  const headerImageUrl = (coverImageUrl && coverImageUrl.trim()) ? coverImageUrl.trim() : (design?.headerImageUrl || '');
   const coverFit = design?.coverFit === 'contain' ? 'contain' : 'cover';
   const coverPosition = ['top', 'center', 'bottom'].includes(design?.coverPosition) ? design.coverPosition : 'center';
   const catalogLayout = design?.catalogLayout || 'list';
