@@ -6,8 +6,11 @@ const BENEFITS_BASE = [
   { icon: "Smartphone", title: "100% Mobile-First", description: "Diseñado para que tus clientes naveguen y compren fácilmente desde su celular.", featured: true },
   { icon: "Link", title: "Link único de catálogo", description: "Comparte un solo enlace en Instagram, Facebook o WhatsApp y tus clientes ven todo." },
   { icon: "MessageCircle", title: "Pedidos a WhatsApp", description: "El mensaje del pedido se genera solo con todos los productos y cantidades seleccionadas." },
-  { icon: "Image", title: "Fotos de productos", description: "Sube imágenes de alta calidad para que tus productos luzcan profesionales." },
-  { icon: "BarChart2", title: "Dashboard con métricas", description: "Visualiza tus productos activos, pedidos recientes y el rendimiento de tu catálogo." },
+  { icon: "Sparkles", title: "IA para descripciones", description: "Mejora la descripción de tus productos con un clic: texto comercial, llamada a la acción y hashtags (planes Pro/Business)." },
+  { icon: "Image", title: "Fotos y variantes", description: "Múltiples imágenes por producto y opciones como talles o colores para vender más." },
+  { icon: "BarChart2", title: "Dashboard en tiempo real", description: "Métricas, pedidos por día, productos más vendidos y notificación al instante cuando llega un pedido." },
+  { icon: "Palette", title: "Catálogo personalizable", description: "Temas, colores, fuentes y estilo del catálogo para que tu tienda se vea como vos querés." },
+  { icon: "Truck", title: "Entregas y pagos", description: "Configurá retiro, entrega local o envío nacional; efectivo, transferencia, MercadoPago y más." },
   { icon: "Globe", titleKey: "benefitsTitle", descriptionKey: "benefitsDescription", countrySpecific: true },
 ];
 

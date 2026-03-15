@@ -126,6 +126,7 @@ export default function BusinessConfiguration() {
       showStoreName: true,
       showDescription: true,
       showWhatsAppButton: true,
+      descriptionColor: '',
     },
     cardSettings: {
       showPrice: true,
@@ -673,15 +674,22 @@ export default function BusinessConfiguration() {
                 </SettingsField>
 
                 {/* Description */}
-                <SettingsField label="Descripción del negocio" hint="Aparece en la página principal de tu catálogo">
+                <SettingsField
+                  label="Descripción del negocio"
+                  hint="Aparece destacada en la página principal de tu catálogo. Máximo 280 caracteres."
+                >
                   <textarea
                     rows={3}
+                    maxLength={280}
                     className={inputClass}
                     style={inputStyle}
                     placeholder="Ej: Tienda de ropa y accesorios para toda la familia..."
                     value={form?.description}
                     onChange={e => handleFormChange('description', e?.target?.value)}
                   />
+                  <p className="text-xs mt-1.5" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+                    {(form?.description ?? '').length}/280
+                  </p>
                 </SettingsField>
 
                 {/* WhatsApp según país (Argentina +54 10 dígitos / Chile +56 9 dígitos) */}

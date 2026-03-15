@@ -373,7 +373,15 @@ function CatalogInner({ slug }) {
                     </div>
                   )}
                   {storeHeader?.showDescription !== false && business?.description && (
-                    <p className="text-sm text-gray-500 leading-relaxed line-clamp-2">{business?.description}</p>
+                    <p
+                      className="text-base font-medium leading-relaxed line-clamp-3 mt-1"
+                      style={{
+                        color: storeHeader?.descriptionColor || undefined,
+                        ...(!storeHeader?.descriptionColor && { color: '#374151' }),
+                      }}
+                    >
+                      {business?.description}
+                    </p>
                   )}
                 </div>
               </div>

@@ -1,8 +1,8 @@
 /**
  * Planes del producto: nombres, límites numéricos y helpers.
- * starter = gratis (hasta 10 productos / 30 pedidos mes).
- * pro     = pago o trial 7 días (hasta 50 productos / pedidos ilimitados).
- * business = superior (productos ilimitados / pedidos ilimitados).
+ * starter = gratis (10 productos, 30 pedidos/mes; sin estadísticas ni IA).
+ * pro     = pago o trial 7 días (50 productos, pedidos ilimitados, estadísticas, IA).
+ * business = Full (productos y pedidos ilimitados, estadísticas completas, IA ilimitada).
  */
 
 /** Duración del período de prueba PRO para nuevos usuarios. */
@@ -13,7 +13,7 @@ export const PLAN_SLUGS = Object.freeze(['starter', 'pro', 'business']);
 export const PLAN_LABELS = Object.freeze({
   starter:  'Starter',
   pro:      'Pro',
-  business: 'Business',
+  business: 'Full',
 });
 
 export const PLAN_COLORS = Object.freeze({
@@ -29,11 +29,11 @@ export const PLAN_ORDER = Object.freeze({
   business: 2,
 });
 
-/** Precios en CLP (Chile). starter = gratis. */
+/** Precios en CLP (Chile) / mes. starter = gratis. */
 export const PLAN_PRICES_CLP = Object.freeze({
   starter:  0,
   pro:      5000,
-  business: 10000,
+  business: 9000,
 });
 
 /** Precios en ARS (Argentina). */

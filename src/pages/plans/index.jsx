@@ -48,7 +48,8 @@ export default function PlansPage() {
   const userCountryCode = normalizeCountryCode(user?.user_metadata?.country_code ?? user?.user_metadata?.country);
   const countryCode = resolveCountryCode({ hostnameCountryCode, businessCountryCode, userCountryCode });
   const paymentProvider = getPaymentProvider(countryCode);
-  const currency = paymentProvider === 'paddle' ? 'USD' : getCurrency(countryCode);
+  // Chile: CLP; Argentina: ARS; otros: USD (Paddle).
+  const currency = countryCode === 'CL' ? 'CLP' : countryCode === 'AR' ? 'ARS' : 'USD';
   const getPlanPrice = (slug) => getPlanPriceByCountry(slug, countryCode, paymentProvider);
 
   useEffect(() => {
@@ -490,18 +491,38 @@ export default function PlansPage() {
                       {getPlanPrice(slug) === 0 ? 'Gratis' : formatCurrency(getPlanPrice(slug), currency)}
                     </p>
                     <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-                      {getPlanPrice(slug) === 0 ? '' : `pago único · ${currency}`}
+                      {getPlanPrice(slug) === 0 ? '' : `por mes · ${currency}`}
                     </p>
                   </div>
                   <ul className="space-y-2 mb-6 flex-1">
                     <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
                       <Icon name="Package" size={14} color="var(--color-muted-foreground)" />
-                      Productos activos: {limits.maxProducts == null ? 'Ilimitados' : limits.maxProducts}
+                      Productos: {limits.maxProducts == null ? 'Ilimitados' : limits.maxProducts}
                     </li>
                     <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
                       <Icon name="ShoppingCart" size={14} color="var(--color-muted-foreground)" />
                       Pedidos/mes: {limits.maxOrdersPerMonth == null ? 'Ilimitados' : limits.maxOrdersPerMonth}
                     </li>
+                    {slug === 'starter' && (
+                      <>
+                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Sin estadísticas ni ingresos del mes</li>
+                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Sin productos más vendidos</li>
+                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Sin asistencia de IA</li>
+                      </>
+                    )}
+                    {slug === 'pro' && (
+                      <>
+                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Panel completo y estadísticas</li>
+                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Asistencia de IA para descripciones</li>
+                      </>
+                    )}
+                    {slug === 'business' && (
+                      <>
+                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Panel completo</li>
+                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Estadísticas completas</li>
+                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>IA ilimitada</li>
+                      </>
+                    )}
                   </ul>
                   <div className="pt-4 border-t" style={{ borderColor: 'var(--color-border)' }}>
                     {isCurrent ? (

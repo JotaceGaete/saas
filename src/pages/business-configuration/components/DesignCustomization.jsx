@@ -833,6 +833,40 @@ export default function DesignCustomization({
                   </label>
                 ))}
               </div>
+              {/* Color del texto de la descripción */}
+              <p className="text-xs font-bold mt-4 mb-2" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Color del texto de la descripción</p>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { value: '', label: 'Por defecto' },
+                  { value: '#374151', label: 'Gris oscuro' },
+                  { value: '#1f2937', label: 'Casi negro' },
+                  { value: primaryColor, label: 'Color principal' },
+                  { value: '#059669', label: 'Verde' },
+                  { value: '#0284c7', label: 'Azul' },
+                ].map(({ value, label }) => {
+                  const isSelected = (storeHeader?.descriptionColor || '') === value;
+                  return (
+                    <button
+                      key={value || 'default'}
+                      type="button"
+                      onClick={() => onChange?.({ ...design, storeHeader: { ...storeHeader, descriptionColor: value } })}
+                      className="flex items-center gap-2 px-3 py-2 rounded-lg border-2 transition-all"
+                      style={{
+                        borderColor: isSelected ? primaryColor : 'var(--color-border)',
+                        backgroundColor: isSelected ? `${primaryColor}08` : '#fafafa',
+                      }}
+                      title={label}
+                    >
+                      {value ? (
+                        <span className="w-5 h-5 rounded-full border border-gray-200" style={{ backgroundColor: value }} />
+                      ) : (
+                        <span className="w-5 h-5 rounded-full border border-gray-300 bg-white" />
+                      )}
+                      <span className="text-xs font-medium" style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-caption)' }}>{label}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             {/* Product Card Settings */}
