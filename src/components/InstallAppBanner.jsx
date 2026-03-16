@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Icon from 'components/AppIcon';
 import { isPWA } from 'utils/isPWA';
+import { useAuth } from 'contexts/AuthContext';
 
 const STORAGE_KEY = 'ventalink_install_banner_dismissed';
 
@@ -12,12 +13,22 @@ function getPlatform() {
   return null;
 }
 
+/**
+ * Banner de instalación PWA. Solo se muestra a usuarios logueados (dueños del catálogo).
+ * Visitantes del catálogo público no ven el banner.
+ */
 export default function InstallAppBanner() {
+  const { user } = useAuth();
   const [visible, setVisible] = useState(false);
   const [platform, setPlatform] = useState(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    if (!user) {
+      setVisible(false);
+      setPlatform(null);
+      return;
+    }
     if (isPWA()) return;
     const dismissed = sessionStorage.getItem(STORAGE_KEY);
     if (dismissed === '1') return;
@@ -26,7 +37,7 @@ export default function InstallAppBanner() {
       setPlatform(p);
       setVisible(true);
     }
-  }, []);
+  }, [user]);
 
   const dismiss = () => {
     setVisible(false);

@@ -338,12 +338,12 @@ END;
 $$;
 
 -- 12. Permisos
-GRANT EXECUTE ON FUNCTION public.wa_get_effective_plan TO authenticated, anon, service_role;
-GRANT EXECUTE ON FUNCTION public.wa_plan_max_products TO service_role;
-GRANT EXECUTE ON FUNCTION public.wa_plan_max_orders_per_month TO service_role;
-GRANT EXECUTE ON FUNCTION public.wa_check_product_limit TO authenticated, anon, service_role;
-GRANT EXECUTE ON FUNCTION public.wa_check_order_limit TO authenticated, anon, service_role;
-GRANT EXECUTE ON FUNCTION public.wa_get_plan_usage TO authenticated, service_role;
-GRANT EXECUTE ON FUNCTION public.wa_expire_trials TO service_role;
+GRANT EXECUTE ON FUNCTION public.wa_get_effective_plan(TEXT, TIMESTAMPTZ, TIMESTAMPTZ) TO authenticated, anon, service_role;
+GRANT EXECUTE ON FUNCTION public.wa_plan_max_products(TEXT) TO service_role;
+GRANT EXECUTE ON FUNCTION public.wa_plan_max_orders_per_month(TEXT) TO service_role;
+GRANT EXECUTE ON FUNCTION public.wa_check_product_limit(UUID) TO authenticated, anon, service_role;
+GRANT EXECUTE ON FUNCTION public.wa_check_order_limit(UUID) TO authenticated, anon, service_role;
+GRANT EXECUTE ON FUNCTION public.wa_get_plan_usage(UUID) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.wa_expire_trials() TO service_role;
 
 NOTIFY pgrst, 'reload schema';

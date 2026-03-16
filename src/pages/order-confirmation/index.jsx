@@ -1,25 +1,45 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useCart } from '../../contexts/CartContext';
 import { createOrder, getBusinessBySlug } from '../../services/waBusinessService';
 import Icon from '../../components/AppIcon';
 import { formatCLP } from '../../utils/formatCLP';
 import { appendBranding } from '../../utils/branding';
+import { isRestaurantBusiness } from '../../utils/businessType';
 
 export default function OrderConfirmation() {
   const { slug } = useParams();
   const navigate = useNavigate();
   const { items, total, updateQuantity, removeItem, clearCart } = useCart();
   const [customerName, setCustomerName] = useState('');
-  const [customerPhone, setCustomerPhone] = useState('');
+  const [serviceType, setServiceType] = useState('mesa');
+  const [tableReference, setTableReference] = useState('');
+  const [deliveryAddress, setDeliveryAddress] = useState('');
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
   const [submitError, setSubmitError] = useState(null);
+  const [business, setBusiness] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!slug) return;
+      const { data } = await getBusinessBySlug(slug);
+      if (!cancelled) setBusiness(data || null);
+    })();
+    return () => { cancelled = true; };
+  }, [slug]);
+
+  const isRestaurant = isRestaurantBusiness(business);
+  const requiresTable = isRestaurant && serviceType === 'mesa';
+  const requiresDeliveryAddress = isRestaurant && serviceType === 'delivery';
 
   const validate = () => {
     const errs = {};
-    if (!customerName?.trim()) errs.customerName = 'El nombre es requerido';
+    if (!customerName?.trim()) errs.customerName = 'Por favor ingresa tu nombre.';
+    if (requiresTable && !tableReference?.trim()) errs.tableReference = 'Por favor ingresa tu mesa.';
+    if (requiresDeliveryAddress && !deliveryAddress?.trim()) errs.deliveryAddress = 'Por favor ingresa la dirección de entrega.';
     return errs;
   };
 
@@ -46,7 +66,13 @@ export default function OrderConfirmation() {
 
       const { data: order, error: orderError } = await createOrder(biz.id, {
         customerName: customerName?.trim(),
-        customerPhone: customerPhone?.trim() || null,
+        serviceType: isRestaurantBusiness(biz) ? serviceType : null,
+        tableReference: isRestaurantBusiness(biz) && serviceType === 'mesa'
+          ? tableReference?.trim()
+          : null,
+        deliveryAddress: isRestaurantBusiness(biz) && serviceType === 'delivery'
+          ? deliveryAddress?.trim()
+          : null,
         totalAmount: total,
         notes: notes?.trim() || null,
       }, orderItems);
@@ -61,18 +87,24 @@ export default function OrderConfirmation() {
       }
 
       // Solo después de guardar bien: abrir WhatsApp y salir
-      const lines = items?.map(i => `• ${i?.quantity}x ${i?.name} — ${formatCLP(i?.price * i?.quantity)}`);
+      const lines = items?.map(i => `- ${i?.quantity} ${i?.name}`);
+      const serviceTypeLabel = serviceType === 'delivery'
+        ? 'Delivery'
+        : serviceType === 'pickup'
+          ? 'Retiro en mostrador'
+          : 'Mesa';
       const baseMessage = [
-        `Hola, me gustaría hacer este pedido:`,
-        ``,
-        ...lines,
-        ``,
-        `Total: ${formatCLP(total)}`,
+        `Hola, quiero hacer un pedido.`,
         ``,
         `Nombre: ${customerName?.trim()}`,
-        customerPhone?.trim() ? `Teléfono: ${customerPhone?.trim()}` : '',
-        notes?.trim() ? `Notas: ${notes?.trim()}` : '',
-      ]?.filter(l => l !== undefined && !(l === '' && lines?.length === 0))?.join('\n')?.trim();
+        isRestaurantBusiness(biz) ? `Tipo: ${serviceTypeLabel}` : null,
+        isRestaurantBusiness(biz) && serviceType === 'mesa' ? `Mesa: ${tableReference?.trim()}` : null,
+        isRestaurantBusiness(biz) && serviceType === 'delivery' ? `Dirección: ${deliveryAddress?.trim()}` : null,
+        ``,
+        `Pedido:`,
+        ...lines,
+        notes?.trim() ? `\nComentario:\n${notes?.trim()}` : '',
+      ]?.filter(Boolean)?.join('\n')?.trim();
       const message = appendBranding(baseMessage, biz);
 
       const whatsappNumber = biz?.whatsapp?.replace(/[^0-9]/g, '');
@@ -162,7 +194,7 @@ export default function OrderConfirmation() {
           </div>
           <div className="px-4 py-4 space-y-4">
             <div>
-              <label className="block text-xs font-semibold mb-1.5" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}>Nombre <span style={{ color: 'var(--color-error)' }}>*</span></label>
+              <label className="block text-xs font-semibold mb-1.5" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}>Tu nombre <span style={{ color: 'var(--color-error)' }}>*</span></label>
               <input
                 type="text"
                 value={customerName}
@@ -173,17 +205,61 @@ export default function OrderConfirmation() {
               />
               {errors?.customerName && <p className="text-xs mt-1" style={{ color: 'var(--color-error)', fontFamily: 'var(--font-caption)' }}>{errors?.customerName}</p>}
             </div>
-            <div>
-              <label className="block text-xs font-semibold mb-1.5" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}>Teléfono <span style={{ color: 'var(--color-muted-foreground)' }}>(opcional)</span></label>
-              <input
-                type="tel"
-                value={customerPhone}
-                onChange={e => setCustomerPhone(e?.target?.value)}
-                placeholder="+1 234 567 8900"
-                className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none transition-all"
-                style={{ borderColor: 'var(--color-border)', fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)', backgroundColor: '#FFFFFF' }}
-              />
-            </div>
+            {isRestaurant && (
+              <>
+                <div>
+                  <label className="block text-xs font-semibold mb-1.5" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}>Tipo de pedido <span style={{ color: 'var(--color-error)' }}>*</span></label>
+                  <select
+                    value={serviceType}
+                    onChange={(e) => {
+                      setServiceType(e?.target?.value);
+                      if (e?.target?.value !== 'mesa') setErrors(prev => ({ ...prev, tableReference: '' }));
+                      if (e?.target?.value !== 'delivery') setErrors(prev => ({ ...prev, deliveryAddress: '' }));
+                    }}
+                    className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none transition-all"
+                    style={{ borderColor: 'var(--color-border)', fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)', backgroundColor: '#FFFFFF' }}
+                  >
+                    <option value="mesa">Mesa</option>
+                    <option value="pickup">Retiro en mostrador</option>
+                    <option value="delivery">Delivery</option>
+                  </select>
+                </div>
+                {serviceType === 'mesa' && (
+                  <div>
+                    <label className="block text-xs font-semibold mb-1.5" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}>
+                      Mesa <span style={{ color: 'var(--color-error)' }}>*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={tableReference}
+                      onChange={e => { setTableReference(e?.target?.value); setErrors(prev => ({ ...prev, tableReference: '' })); }}
+                      placeholder="Ej: 7, 12, A3, Terraza, Barra"
+                      maxLength={24}
+                      className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none transition-all"
+                      style={{ borderColor: errors?.tableReference ? 'var(--color-error)' : 'var(--color-border)', fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)', backgroundColor: '#FFFFFF' }}
+                    />
+                    {errors?.tableReference && <p className="text-xs mt-1" style={{ color: 'var(--color-error)', fontFamily: 'var(--font-caption)' }}>{errors?.tableReference}</p>}
+                  </div>
+                )}
+                {serviceType === 'delivery' && (
+                  <div>
+                    <label className="block text-xs font-semibold mb-1.5" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}>
+                      Dirección de entrega <span style={{ color: 'var(--color-error)' }}>*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={deliveryAddress}
+                      onChange={e => { setDeliveryAddress(e?.target?.value); setErrors(prev => ({ ...prev, deliveryAddress: '' })); }}
+                      placeholder="Ej: Av. Providencia 1234, Depto 52"
+                      maxLength={160}
+                      className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none transition-all"
+                      style={{ borderColor: errors?.deliveryAddress ? 'var(--color-error)' : 'var(--color-border)', fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)', backgroundColor: '#FFFFFF' }}
+                    />
+                    {errors?.deliveryAddress && <p className="text-xs mt-1" style={{ color: 'var(--color-error)', fontFamily: 'var(--font-caption)' }}>{errors?.deliveryAddress}</p>}
+                  </div>
+                )}
+              </>
+            )}
             <div>
               <label className="block text-xs font-semibold mb-1.5" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}>Notas <span style={{ color: 'var(--color-muted-foreground)' }}>(opcional)</span></label>
               <textarea

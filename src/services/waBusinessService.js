@@ -114,6 +114,7 @@ const generateSlug = async (name) => {
 
 const mapBusinessFromDb = (row) => {
   const designSettings = row?.design_settings || null;
+  const rubroRow = Array.isArray(row?.wa_rubros) ? row.wa_rubros?.[0] : row?.wa_rubros;
   return {
   id: row?.id,
   userId: row?.user_id,
@@ -132,6 +133,8 @@ const mapBusinessFromDb = (row) => {
   slug: row?.slug,
   isActive: row?.is_active,
   rubroId: row?.rubro_id || null,
+  rubroName: rubroRow?.name ?? row?.rubro_name ?? null,
+  rubroSlug: rubroRow?.slug ?? row?.rubro_slug ?? null,
   designSettings,
   bankName: row?.bank_name || '',
   bankAccountType: row?.bank_account_type || '',
@@ -181,6 +184,9 @@ const mapOrderFromDb = (row) => ({
   customerName: row?.customer_name,
   customerPhone: row?.customer_phone,
   customerEmail: row?.customer_email ?? null,
+  serviceType: row?.service_type ?? null,
+  tableReference: row?.table_reference ?? null,
+  deliveryAddress: row?.delivery_address ?? null,
   totalAmount: parseFloat(row?.total_amount),
   subtotal: row?.subtotal != null ? parseFloat(row?.subtotal) : null,
   currency: row?.currency ?? 'CLP',
@@ -233,7 +239,12 @@ export const getBusinessByIdForAdmin = async (businessId) => {
 };
 
 export const getBusinessBySlug = async (slug) => {
-  const { data, error } = await supabase?.from('wa_businesses')?.select('*')?.eq('slug', slug)?.eq('is_active', true)?.maybeSingle();
+  const { data, error } = await supabase
+    ?.from('wa_businesses')
+    ?.select('*, wa_rubros(name, slug)')
+    ?.eq('slug', slug)
+    ?.eq('is_active', true)
+    ?.maybeSingle();
   if (error) return { data: null, error };
   return { data: data ? mapBusinessFromDb(data) : null, error: null };
 };
@@ -619,6 +630,9 @@ export const createOrder = async (businessId, orderData, items) => {
       customer_name: (orderData?.customerName || '').trim() || null,
       customer_phone: orderData?.customerPhone?.trim() || null,
       customer_email: orderData?.customerEmail?.trim() || null,
+      service_type: orderData?.serviceType || null,
+      table_reference: orderData?.tableReference?.trim() || null,
+      delivery_address: orderData?.deliveryAddress?.trim() || null,
       total_amount: totalAmount,
       subtotal: orderData?.subtotal != null ? Number(orderData.subtotal) : totalAmount,
       currency: orderData?.currency || 'CLP',
@@ -659,6 +673,9 @@ export const createOrder = async (businessId, orderData, items) => {
       paymentStatus: 'pendiente',
       customerName: (orderData?.customerName || '').trim() || null,
       customerPhone: orderData?.customerPhone?.trim() || null,
+      serviceType: orderData?.serviceType || null,
+      tableReference: orderData?.tableReference?.trim() || null,
+      deliveryAddress: orderData?.deliveryAddress?.trim() || null,
       notes: orderData?.notes?.trim() || null,
       items: [],
       createdAt: new Date().toISOString(),

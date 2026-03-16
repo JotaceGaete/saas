@@ -9,6 +9,7 @@ import { useIsDesktop } from '../../hooks/useMediaQuery';
 import { getAppBaseUrl, getPublicCatalogUrl } from '../../config/appUrl';
 import BrandingFooter from '../../components/BrandingFooter';
 import { appendBranding, hasViralBranding, getOrderMessageBrandingSuffix } from '../../utils/branding';
+import { isRestaurantBusiness } from '../../utils/businessType';
 
 /** Build absolute URL for OG image; prefers logo → cover → generated fallback with store name */
 function getCatalogOgImageUrl(business, baseUrl) {
@@ -739,9 +740,16 @@ function OrderPanel({ business, formatPrice, onClose, theme }) {
   const primaryRgba = theme?.primaryRgba || (() => 'rgba(37,211,102,0.35)');
   const { items, updateQuantity, removeItem, total, clearCart } = useCart();
   const [customerName, setCustomerName] = useState('');
+  const [serviceType, setServiceType] = useState('mesa');
+  const [tableReference, setTableReference] = useState('');
+  const [deliveryAddress, setDeliveryAddress] = useState('');
   const [notes, setNotes] = useState('');
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState(null);
+  const [fieldErrors, setFieldErrors] = useState({});
+  const isRestaurant = isRestaurantBusiness(business);
+  const requiresTable = isRestaurant && serviceType === 'mesa';
+  const requiresDeliveryAddress = isRestaurant && serviceType === 'delivery';
 
   useEffect(() => {
     document.body.style.overflow = 'hidden';
@@ -754,6 +762,13 @@ function OrderPanel({ business, formatPrice, onClose, theme }) {
 
   const sendWhatsApp = async () => {
     if (sending) return;
+    const nextErrors = {};
+    if (!customerName?.trim()) nextErrors.customerName = 'Por favor ingresa tu nombre.';
+    if (requiresTable && !tableReference?.trim()) nextErrors.tableReference = 'Por favor ingresa tu mesa.';
+    if (requiresDeliveryAddress && !deliveryAddress?.trim()) nextErrors.deliveryAddress = 'Por favor ingresa la dirección de entrega.';
+    setFieldErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0) return;
+
     setSendError(null);
     setSending(true);
 
@@ -769,7 +784,14 @@ function OrderPanel({ business, formatPrice, onClose, theme }) {
       }));
 
       const { error: orderError } = await createOrder(business?.id, {
-        customerName: customerName?.trim() || null,
+        customerName: customerName?.trim(),
+        serviceType: isRestaurant ? serviceType : null,
+        tableReference: isRestaurant && serviceType === 'mesa'
+          ? tableReference?.trim()
+          : null,
+        deliveryAddress: isRestaurant && serviceType === 'delivery'
+          ? deliveryAddress?.trim()
+          : null,
         totalAmount: total,
         notes: notes?.trim() || null,
       }, orderItems);
@@ -787,11 +809,21 @@ function OrderPanel({ business, formatPrice, onClose, theme }) {
       const phone = business?.whatsapp?.replace(/\D/g, '');
       if (phone) {
         const lines = items?.map(item =>
-          `${item?.quantity} × ${item?.name} — ${formatPrice(item?.price * item?.quantity)}`
+          `- ${item?.quantity} ${item?.name}`
         );
-        let message = `Hola, quiero hacer este pedido:\n\n${lines?.join('\n')}\n\nTotal: ${formatPrice(total)}`;
-        if (customerName?.trim()) message += `\n\nNombre: ${customerName?.trim()}`;
-        if (notes?.trim()) message += `\nComentario: ${notes?.trim()}`;
+        let message = `Hola, quiero hacer un pedido.\n\nNombre: ${customerName?.trim()}`;
+        if (isRestaurant) {
+          const serviceTypeLabel = serviceType === 'delivery'
+            ? 'Delivery'
+            : serviceType === 'pickup'
+              ? 'Retiro en mostrador'
+              : 'Mesa';
+          message += `\nTipo: ${serviceTypeLabel}`;
+          if (serviceType === 'mesa') message += `\nMesa: ${tableReference?.trim()}`;
+          if (serviceType === 'delivery') message += `\nDirección: ${deliveryAddress?.trim()}`;
+        }
+        message += `\n\nPedido:\n${lines?.join('\n')}`;
+        if (notes?.trim()) message += `\n\nComentario:\n${notes?.trim()}`;
         if (hasViralBranding(business)) message += `\n\n${getOrderMessageBrandingSuffix(business)}`;
         const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
         window.open(url, '_blank');
@@ -897,24 +929,98 @@ function OrderPanel({ business, formatPrice, onClose, theme }) {
             <span className="text-lg font-black" style={{ color: primaryColorDark }}>{formatPrice(total)}</span>
           </div>
 
-          {/* Total */}
-          <div className="flex items-center justify-between rounded-2xl px-4 py-3 border" style={{ backgroundColor: primaryRgba(0.08), borderColor: primaryRgba(0.25) }}>
-            <span className="text-sm font-semibold text-gray-700">Total estimado</span>
-            <span className="text-lg font-black" style={{ color: primaryColorDark }}>{formatPrice(total)}</span>
-          </div>
-
           {/* Customer name */}
           <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1.5">Tu nombre <span className="text-gray-400 font-normal">(opcional)</span></label>
+            <label className="block text-xs font-semibold text-gray-600 mb-1.5">Tu nombre <span className="text-red-500">*</span></label>
             <input
               type="text"
               value={customerName}
-              onChange={e => setCustomerName(e?.target?.value)}
+              onChange={e => {
+                setCustomerName(e?.target?.value);
+                if (fieldErrors?.customerName) {
+                  setFieldErrors((prev) => ({ ...prev, customerName: undefined }));
+                }
+              }}
               placeholder="Ej: Juan García"
               className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:border-transparent transition-all"
               style={{ ['--tw-ring-color']: primaryColor }}
             />
+            {fieldErrors?.customerName && (
+              <p className="text-xs text-red-600 mt-1.5">{fieldErrors.customerName}</p>
+            )}
           </div>
+
+          {isRestaurant && (
+            <>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Tipo de pedido <span className="text-red-500">*</span></label>
+                <select
+                  value={serviceType}
+                  onChange={(e) => {
+                    setServiceType(e?.target?.value);
+                    if (e?.target?.value !== 'mesa') {
+                      setFieldErrors((prev) => ({ ...prev, tableReference: undefined }));
+                    }
+                    if (e?.target?.value !== 'delivery') {
+                      setFieldErrors((prev) => ({ ...prev, deliveryAddress: undefined }));
+                    }
+                  }}
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:border-transparent transition-all"
+                  style={{ ['--tw-ring-color']: primaryColor }}
+                >
+                  <option value="mesa">Mesa</option>
+                  <option value="pickup">Retiro en mostrador</option>
+                  <option value="delivery">Delivery</option>
+                </select>
+              </div>
+
+              {serviceType === 'mesa' && (
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">Mesa <span className="text-red-500">*</span></label>
+                  <input
+                    type="text"
+                    value={tableReference}
+                    onChange={(e) => {
+                      setTableReference(e?.target?.value);
+                      if (fieldErrors?.tableReference) {
+                        setFieldErrors((prev) => ({ ...prev, tableReference: undefined }));
+                      }
+                    }}
+                    placeholder="Ej: 7, 12, A3, Terraza, Barra"
+                    maxLength={24}
+                    className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:border-transparent transition-all"
+                    style={{ ['--tw-ring-color']: primaryColor }}
+                  />
+                  {fieldErrors?.tableReference && (
+                    <p className="text-xs text-red-600 mt-1.5">{fieldErrors.tableReference}</p>
+                  )}
+                </div>
+              )}
+
+              {serviceType === 'delivery' && (
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1.5">Dirección de entrega <span className="text-red-500">*</span></label>
+                  <input
+                    type="text"
+                    value={deliveryAddress}
+                    onChange={(e) => {
+                      setDeliveryAddress(e?.target?.value);
+                      if (fieldErrors?.deliveryAddress) {
+                        setFieldErrors((prev) => ({ ...prev, deliveryAddress: undefined }));
+                      }
+                    }}
+                    placeholder="Ej: Av. Providencia 1234, Depto 52"
+                    maxLength={160}
+                    className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:border-transparent transition-all"
+                    style={{ ['--tw-ring-color']: primaryColor }}
+                  />
+                  {fieldErrors?.deliveryAddress && (
+                    <p className="text-xs text-red-600 mt-1.5">{fieldErrors.deliveryAddress}</p>
+                  )}
+                </div>
+              )}
+            </>
+          )}
 
           {/* Notes */}
           <div>

@@ -1,3 +1,7 @@
+-- Eliminar overload de 2 args para que solo exista wa_get_effective_plan(TEXT, TIMESTAMPTZ, TIMESTAMPTZ)
+-- y las llamadas con 2 args usen el 3º por defecto (NULL). Evita "function is not unique".
+DROP FUNCTION IF EXISTS public.wa_get_effective_plan(TEXT, TIMESTAMPTZ);
+
 CREATE OR REPLACE FUNCTION public.wa_plan_max_products(p_plan TEXT)
 RETURNS INT LANGUAGE plpgsql STABLE SECURITY DEFINER AS $$
 BEGIN
