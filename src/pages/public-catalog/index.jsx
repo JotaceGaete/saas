@@ -780,8 +780,10 @@ function OrderPanel({ business, formatPrice, onClose, theme }) {
       // 2. Pedido guardado correctamente → abrir WhatsApp
       const phone = business?.whatsapp?.replace(/\D/g, '');
       if (phone) {
-        const lines = items?.map(item => `• ${item?.name} x${item?.quantity} — ${formatPrice(item?.price * item?.quantity)}`);
-        let message = `Hola, quiero hacer este pedido:\n\n${lines?.join('\n')}\n\n*Total estimado: ${formatPrice(total)}*`;
+        const lines = items?.map(item =>
+          `${item?.quantity} × ${item?.name} — ${formatPrice(item?.price * item?.quantity)}`
+        );
+        let message = `Hola, quiero hacer este pedido:\n\n${lines?.join('\n')}\n\nTotal: ${formatPrice(total)}`;
         if (customerName?.trim()) message += `\n\nNombre: ${customerName?.trim()}`;
         if (notes?.trim()) message += `\nComentario: ${notes?.trim()}`;
         if (hasViralBranding(business)) message += `\n\n${getOrderMessageBrandingSuffix()}`;
@@ -824,45 +826,70 @@ function OrderPanel({ business, formatPrice, onClose, theme }) {
         </div>
 
         {/* Scrollable content */}
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
-          {/* Items */}
-          {items?.map(item => (
-            <div key={item?.id} className="flex items-center gap-3 bg-gray-50 rounded-2xl p-3">
-              {/* Image */}
-              <div className="w-14 h-14 rounded-xl overflow-hidden bg-gray-100 flex-shrink-0">
-                {item?.imageUrl ? (
-                  <img src={item?.imageUrl} alt={item?.name} className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center">
-                    <Icon name="ImageOff" size={20} color="#D1D5DB" />
-                  </div>
-                )}
-              </div>
-              {/* Info */}
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-gray-800 truncate">{item?.name}</p>
-                <p className="text-xs text-gray-500 mt-0.5">{formatPrice(item?.price)} c/u</p>
-                <p className="text-sm font-bold text-gray-900 mt-0.5">{formatPrice(item?.price * item?.quantity)}</p>
-              </div>
-              {/* Quantity controls */}
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <button
-                  onClick={() => updateQuantity(item?.id, item?.quantity - 1)}
-                  className="w-7 h-7 rounded-full bg-white border border-gray-200 flex items-center justify-center transition-all hover:bg-gray-100 active:scale-90 shadow-sm"
-                >
-                  <Icon name="Minus" size={12} color="#374151" />
-                </button>
-                <span className="text-sm font-bold text-gray-900 w-5 text-center">{item?.quantity}</span>
-                <button
-                  onClick={() => updateQuantity(item?.id, item?.quantity + 1)}
-                  className="w-7 h-7 rounded-full flex items-center justify-center transition-all active:scale-90 shadow-sm"
-                  style={{ background: `linear-gradient(135deg, ${primaryColor}, ${primaryColorDark})` }}
-                >
-                  <Icon name="Plus" size={12} color="#FFFFFF" />
-                </button>
-              </div>
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+          {/* Detalle del pedido */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-xs font-semibold tracking-wide text-gray-500 uppercase">
+                Detalle del pedido
+              </h3>
+              <span className="text-xs text-gray-400">
+                {items?.length} {items?.length === 1 ? 'producto' : 'productos'}
+              </span>
             </div>
-          ))}
+            <div
+              className="space-y-3 rounded-2xl bg-gray-50/80 border border-gray-100"
+              style={{ maxHeight: '210px', overflowY: 'auto' }}
+            >
+              {items?.map(item => (
+                <div key={item?.id} className="flex items-center gap-3 px-3 py-2.5">
+                  {/* Image */}
+                  <div className="w-12 h-12 rounded-xl overflow-hidden bg-gray-100 flex-shrink-0">
+                    {item?.imageUrl ? (
+                      <img src={item?.imageUrl} alt={item?.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <Icon name="ImageOff" size={18} color="#D1D5DB" />
+                      </div>
+                    )}
+                  </div>
+                  {/* Info */}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-800 truncate">{item?.name}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      {item?.quantity} × {formatPrice(item?.price)} c/u
+                    </p>
+                    <p className="text-sm font-bold text-gray-900 mt-0.5">
+                      {formatPrice(item?.price * item?.quantity)}
+                    </p>
+                  </div>
+                  {/* Quantity controls */}
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <button
+                      onClick={() => updateQuantity(item?.id, item?.quantity - 1)}
+                      className="w-7 h-7 rounded-full bg-white border border-gray-200 flex items-center justify-center transition-all hover:bg-gray-100 active:scale-90 shadow-sm"
+                    >
+                      <Icon name="Minus" size={12} color="#374151" />
+                    </button>
+                    <span className="text-sm font-bold text-gray-900 w-5 text-center">{item?.quantity}</span>
+                    <button
+                      onClick={() => updateQuantity(item?.id, item?.quantity + 1)}
+                      className="w-7 h-7 rounded-full flex items-center justify-center transition-all active:scale-90 shadow-sm"
+                      style={{ background: `linear-gradient(135deg, ${primaryColor}, ${primaryColorDark})` }}
+                    >
+                      <Icon name="Plus" size={12} color="#FFFFFF" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Total */}
+          <div className="flex items-center justify-between rounded-2xl px-4 py-3 border" style={{ backgroundColor: primaryRgba(0.08), borderColor: primaryRgba(0.25) }}>
+            <span className="text-sm font-semibold text-gray-700">Total estimado</span>
+            <span className="text-lg font-black" style={{ color: primaryColorDark }}>{formatPrice(total)}</span>
+          </div>
 
           {/* Total */}
           <div className="flex items-center justify-between rounded-2xl px-4 py-3 border" style={{ backgroundColor: primaryRgba(0.08), borderColor: primaryRgba(0.25) }}>
