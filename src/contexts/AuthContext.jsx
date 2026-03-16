@@ -200,11 +200,6 @@ export const AuthProvider = ({ children }) => {
     user?.user_metadata?.role === 'admin'
   )
 
-  const isAdmin = !!(
-    user?.app_metadata?.role === 'admin' ||
-    user?.user_metadata?.role === 'admin'
-  )
-
   const impersonateBusiness = async (businessObj) => {
     if (!isAdmin || !businessObj) return
     setImpersonatedBusiness(businessObj)

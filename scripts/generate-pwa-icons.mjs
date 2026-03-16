@@ -1,30 +1,59 @@
 /**
- * Genera iconos PWA (192x192 y 512x512) en public/.
+ * Genera iconos PWA y favicons en public/ desde la imagen fuente.
+ * Fuente: public/ventalink-icon-source.png
+ * Genera: favicon.ico, favicon-16x16.png, favicon-32x32.png, apple-touch-icon.png (180),
+ *         icon-192.png, icon-512.png
  * Ejecutar: node scripts/generate-pwa-icons.mjs
  */
-import { make, encodePNGToStream } from 'pureimage';
+import { make, encodePNGToStream, decodePNGFromStream } from 'pureimage';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import pngToIco from 'png-to-ico';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, '..', 'public');
-const themeColor = '#7C3AED';
+const sourcePath = path.join(publicDir, 'ventalink-icon-source.png');
 
-async function generateIcon(size) {
+async function generateIconFromSource(sourceBitmap, size, outputName = null) {
+  const name = outputName ?? `icon-${size}.png`;
   const bitmap = make(size, size);
   const ctx = bitmap.getContext('2d');
-  ctx.fillStyle = themeColor;
-  ctx.fillRect(0, 0, size, size);
-  const outPath = path.join(publicDir, `icon-${size}.png`);
+  const w = sourceBitmap.width;
+  const h = sourceBitmap.height;
+  ctx.drawImage(sourceBitmap, 0, 0, w, h, 0, 0, size, size);
+  const outPath = path.join(publicDir, name);
   const stream = fs.createWriteStream(outPath);
   await encodePNGToStream(bitmap, stream);
   console.log(`Generado: ${outPath}`);
+  return outPath;
 }
 
 async function main() {
-  await generateIcon(192);
-  await generateIcon(512);
+  if (!fs.existsSync(sourcePath)) {
+    console.error(`No se encontró la imagen fuente: ${sourcePath}`);
+    process.exit(1);
+  }
+  const readStream = fs.createReadStream(sourcePath);
+  const sourceBitmap = await decodePNGFromStream(readStream);
+
+  // Favicons
+  await generateIconFromSource(sourceBitmap, 16, 'favicon-16x16.png');
+  await generateIconFromSource(sourceBitmap, 32, 'favicon-32x32.png');
+  // Apple touch icon (180x180)
+  await generateIconFromSource(sourceBitmap, 180, 'apple-touch-icon.png');
+  // PWA icons
+  await generateIconFromSource(sourceBitmap, 192, 'icon-192.png');
+  await generateIconFromSource(sourceBitmap, 512, 'icon-512.png');
+
+  // favicon.ico (multi-size desde 16 y 32)
+  const path16 = path.join(publicDir, 'favicon-16x16.png');
+  const path32 = path.join(publicDir, 'favicon-32x32.png');
+  const icoBuf = await pngToIco([path16, path32]);
+  fs.writeFileSync(path.join(publicDir, 'favicon.ico'), icoBuf);
+  console.log('Generado: ' + path.join(publicDir, 'favicon.ico'));
+
+  console.log('Iconos PWA y favicons generados correctamente.');
 }
 
 main().catch((err) => {

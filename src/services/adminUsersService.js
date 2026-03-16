@@ -4,12 +4,33 @@
  */
 import { supabase } from '../lib/supabase';
 
-const FUNCTIONS_BASE = `${(import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '')}/functions/v1/admin-users`;
+const VITE_SUPABASE_URL = import.meta.env?.VITE_SUPABASE_URL ?? '';
+const FUNCTIONS_BASE = `${VITE_SUPABASE_URL.replace(/\/$/, '')}/functions/v1/admin-users`;
 
 async function getAuthHeaders() {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
   const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
+
+  // Logs temporales: verificar env y headers (no imprimir valores sensibles completos)
+  if (typeof window !== 'undefined') {
+    const hasUrl = !!VITE_SUPABASE_URL;
+    const hasAnon = !!anonKey;
+    const headersPreview = {
+      'Content-Type': 'application/json',
+      Authorization: token ? `Bearer ${token.slice(0, 20)}...` : '(vacío)',
+      apikey: hasAnon ? `(presente, ${anonKey.length} chars)` : '(vacío o undefined)',
+    };
+    console.log('[adminUsersService] getAuthHeaders:', {
+      VITE_SUPABASE_URL: hasUrl ? VITE_SUPABASE_URL : '(vacío)',
+      VITE_SUPABASE_ANON_KEY: hasAnon ? `presente, length=${anonKey.length}` : 'NO DEFINIDO',
+      anonKeyFinal: hasAnon ? `length=${anonKey.length}` : 'vacío',
+      headersKeys: ['Content-Type', 'Authorization', 'apikey'],
+      apikeyInHeaders: hasAnon,
+      headersPreview,
+    });
+  }
+
   if (!token) return null;
   return {
     'Content-Type': 'application/json',
@@ -25,6 +46,16 @@ export async function listAdminUsers(opts = {}) {
   const page = opts.page ?? 1;
   const perPage = opts.per_page ?? 50;
   const url = `${FUNCTIONS_BASE}?page=${page}&per_page=${perPage}`;
+
+  if (typeof window !== 'undefined') {
+    console.log('[adminUsersService] listAdminUsers fetch:', {
+      url,
+      hasApikey: !!headers.apikey,
+      apikeyLength: headers.apikey?.length ?? 0,
+      headerNames: Object.keys(headers),
+    });
+  }
+
   const res = await fetch(url, { method: 'GET', headers });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) return { data: null, error: { message: data?.error ?? 'Error al listar usuarios' } };
