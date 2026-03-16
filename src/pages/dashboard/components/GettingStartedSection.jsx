@@ -104,12 +104,7 @@ export default function GettingStartedSection({
 
   const handleCopyLink = () => {
     if (!catalogUrl) return;
-    const shareMessage = getCatalogShareMessage({
-      businessName: business?.name,
-      catalogUrl,
-      plan: business?.planSlug,
-    });
-    navigator.clipboard?.writeText(shareMessage)?.catch(() => {});
+    navigator.clipboard?.writeText(catalogUrl)?.catch(() => {});
     setCopyToast(true);
     onCopy?.();
     setTimeout(() => setCopyToast(false), 2500);

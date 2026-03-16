@@ -365,12 +365,7 @@ export default function Dashboard() {
 
   const handleCopy = () => {
     if (!catalogUrl) return;
-    const shareMessage = getCatalogShareMessage({
-      businessName: business?.name,
-      catalogUrl,
-      plan: business?.planSlug,
-    });
-    navigator.clipboard?.writeText(shareMessage)?.catch(() => {});
+    navigator.clipboard?.writeText(catalogUrl)?.catch(() => {});
     setCopyToast(true);
     setTimeout(() => setCopyToast(false), 2500);
   };

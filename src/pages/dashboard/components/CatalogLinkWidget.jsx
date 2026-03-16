@@ -14,7 +14,7 @@ export default function CatalogLinkWidget({ catalogUrl, businessName, businessPl
   });
 
   const handleCopy = () => {
-    navigator.clipboard?.writeText(shareMessage)?.catch(() => {});
+    navigator.clipboard?.writeText(catalogUrl || '')?.catch(() => {});
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -56,7 +56,7 @@ export default function CatalogLinkWidget({ catalogUrl, businessName, businessPl
         });
       } catch {}
     } else {
-      navigator.clipboard?.writeText(shareMessage)?.catch(() => {});
+      navigator.clipboard?.writeText(catalogUrl || '')?.catch(() => {});
     }
   };
 
