@@ -24,7 +24,7 @@ const NAV_ITEMS = [
 export default function BusinessSidebar({ isCollapsed = false, onCollapsedChange }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, business, signOut, isAdmin } = useAuth();
+  const { user, business, signOut, isAdmin, isImpersonating, stopImpersonation } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(isCollapsed);
   const [expandedItems, setExpandedItems] = useState({});
@@ -251,6 +251,17 @@ export default function BusinessSidebar({ isCollapsed = false, onCollapsedChange
                   <Icon name="CreditCard" size={14} color="var(--color-muted-foreground)" />
                   Ver planes
                 </button>
+                {isAdmin && isImpersonating && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); stopImpersonation(); setUserMenuOpen(false); }}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 text-left text-sm hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}
+                  >
+                    <Icon name="UserX" size={14} color="var(--color-muted-foreground)" />
+                    Salir de modo admin
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); handleLogout(); }}

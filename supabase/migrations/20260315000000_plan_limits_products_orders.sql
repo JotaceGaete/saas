@@ -28,24 +28,34 @@ ALTER TABLE public.wa_products
   ALTER COLUMN status SET DEFAULT 'active';
 -- Trigger: mantener is_active y status sincronizados
 CREATE OR REPLACE FUNCTION public.wa_products_sync_is_active()
-RETURNS TRIGGER LANGUAGE plpgsql AS $$
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
 BEGIN
+  -- INSERT: si no viene status, lo inferimos desde is_active; si viene, manda status.
   IF TG_OP = 'INSERT' THEN
-    IF NEW.status IS NOT NULL THEN
-      NEW.is_active := (NEW.status = 'active');
-    ELSIF NEW.is_active IS NOT NULL THEN
-      NEW.status := CASE WHEN NEW.is_active THEN 'active' ELSE 'inactive' END;
-    ELSE
-      NEW.status := 'active';
-      NEW.is_active := TRUE;
-    END IF;
-  ELSE
-    IF NEW.status IS NOT NULL THEN
-      NEW.is_active := (NEW.status = 'active');
-    ELSIF NEW.is_active IS NOT NULL THEN
-      NEW.status := CASE WHEN NEW.is_active THEN 'active' ELSE 'inactive' END;
+    IF NEW.status IS NULL THEN
+      NEW.status := CASE
+        WHEN COALESCE(NEW.is_active, TRUE) THEN 'active'
+        ELSE 'inactive'
+      END;
     END IF;
   END IF;
+
+  -- UPDATE: si no viene status explícito, conservar el anterior o inferir desde is_active.
+  IF TG_OP = 'UPDATE' THEN
+    IF NEW.status IS NULL THEN
+      IF NEW.is_active IS NULL THEN
+        NEW.status := OLD.status;
+      ELSE
+        NEW.status := CASE WHEN NEW.is_active THEN 'active' ELSE 'inactive' END;
+      END IF;
+    END IF;
+  END IF;
+
+  -- En todos los casos: is_active se deriva SIEMPRE de status.
+  NEW.is_active := (NEW.status = 'active');
+
   RETURN NEW;
 END;
 $$;

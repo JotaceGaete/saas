@@ -65,7 +65,9 @@ export default function Dashboard() {
   const planExpiresAt = business?.planExpiresAt ?? null;
   const trialExpiresAt = business?.trialExpiresAt ?? null;
   const effectivePlan = getEffectivePlanSlug(business?.planSlug, business?.planExpiresAt, business?.trialExpiresAt);
-  const isStarterPlan = effectivePlan === 'starter';
+  // Para la UI del dashboard consideramos Starter cuando el slug actual es 'starter'.
+  // Solo Pro / Business (incluyendo trials vigentes) ven estadísticas avanzadas.
+  const isStarterPlan = (business?.planSlug || 'starter') === 'starter';
   const isPaidPlan = business?.planSlug === 'pro' || business?.planSlug === 'business';
   const isPlanExpired = isPaidPlan && planExpiresAt && new Date(planExpiresAt) <= new Date();
   const showExpiredBanner = typeof sessionStorage !== 'undefined' && sessionStorage.getItem('showPlanExpiredBanner') === '1';

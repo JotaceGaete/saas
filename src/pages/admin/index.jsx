@@ -109,6 +109,10 @@ export default function AdminDashboard() {
                 <Icon name="CreditCard" size={13} color="var(--color-primary)" />
                 Pagos
               </button>
+              <button onClick={() => navigate('/admin/audit-log')} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-opacity hover:opacity-90" style={{ color: 'var(--color-primary)', border: '1px solid var(--color-primary)', fontFamily: 'var(--font-caption)' }}>
+                <Icon name="ClipboardList" size={13} color="var(--color-primary)" />
+                Auditoría
+              </button>
             </div>
             </div>
 
@@ -305,18 +309,29 @@ export default function AdminDashboard() {
                               {formatDate(b.createdAt)}
                             </td>
                             <td className="px-3 py-3 text-right">
-                              {b.slug ? (
-                                <a
-                                  href={getPublicCatalogUrl(b.slug)}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-1 text-xs font-medium"
-                                  style={{ color: 'var(--color-primary)' }}
+                              <div className="inline-flex items-center gap-2">
+                                {b.slug && (
+                                  <a
+                                    href={getPublicCatalogUrl(b.slug)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 text-xs font-medium"
+                                    style={{ color: 'var(--color-primary)' }}
+                                  >
+                                    Catálogo
+                                    <Icon name="ExternalLink" size={11} color="var(--color-primary)" />
+                                  </a>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => navigate(`/admin/businesses/${b.id}`)}
+                                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border"
+                                  style={{ borderColor: 'var(--color-border)', fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}
                                 >
-                                  Catálogo
-                                  <Icon name="ExternalLink" size={11} color="var(--color-primary)" />
-                                </a>
-                              ) : '—'}
+                                  <Icon name="Eye" size={12} />
+                                  Ver
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         );

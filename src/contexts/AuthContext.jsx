@@ -13,6 +13,7 @@ export const useAuth = () => {
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null)
   const [business, setBusiness] = useState(null)
+  const [impersonatedBusiness, setImpersonatedBusiness] = useState(null)
   const [loading, setLoading] = useState(true)
   const [businessLoading, setBusinessLoading] = useState(false)
 
@@ -181,6 +182,7 @@ export const AuthProvider = ({ children }) => {
       }
       if (!error) {
         setUser(null)
+        setImpersonatedBusiness(null)
         businessOperations?.clear()
       }
       return { error }
@@ -198,9 +200,25 @@ export const AuthProvider = ({ children }) => {
     user?.user_metadata?.role === 'admin'
   )
 
+  const isAdmin = !!(
+    user?.app_metadata?.role === 'admin' ||
+    user?.user_metadata?.role === 'admin'
+  )
+
+  const impersonateBusiness = async (businessObj) => {
+    if (!isAdmin || !businessObj) return
+    setImpersonatedBusiness(businessObj)
+  }
+
+  const stopImpersonation = () => {
+    setImpersonatedBusiness(null)
+  }
+
   const value = {
     user,
-    business,
+    business: impersonatedBusiness || business,
+    realBusiness: business,
+    isImpersonating: !!impersonatedBusiness,
     loading,
     businessLoading,
     signIn,
@@ -208,7 +226,9 @@ export const AuthProvider = ({ children }) => {
     signOut,
     refreshBusiness,
     isAuthenticated: !!user,
-    isAdmin
+    isAdmin,
+    impersonateBusiness,
+    stopImpersonation
   }
 
   return (

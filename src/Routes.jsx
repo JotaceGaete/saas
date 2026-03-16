@@ -18,8 +18,10 @@ import Login from './pages/login';
 import AdminDashboard from './pages/admin';
 import AdminPaymentsPage from './pages/admin/AdminPaymentsPage';
 import AdminUsersPage from './pages/admin/AdminUsersPage';
+import AdminBusinessDetailPage from './pages/admin/AdminBusinessDetailPage';
 import AdminUserDetailPage from './pages/admin/AdminUserDetailPage';
 import AdminUserNewPage from './pages/admin/AdminUserNewPage';
+import AdminAuditLogPage from './pages/admin/AdminAuditLogPage';
 import PlansPage from './pages/plans';
 import PublicPricingPage from './pages/legal/PublicPricingPage';
 import TermsPage from './pages/legal/TermsPage';
@@ -56,6 +58,8 @@ const Routes = () => {
             <Route path="/admin/users" element={<RequireAdmin><AdminUsersPage /></RequireAdmin>} />
             <Route path="/admin/users/new" element={<RequireAdmin><AdminUserNewPage /></RequireAdmin>} />
             <Route path="/admin/users/:userId" element={<RequireAdmin><AdminUserDetailPage /></RequireAdmin>} />
+            <Route path="/admin/businesses/:businessId" element={<RequireAdmin><AdminBusinessDetailPage /></RequireAdmin>} />
+            <Route path="/admin/audit-log" element={<RequireAdmin><AdminAuditLogPage /></RequireAdmin>} />
             <Route path="*" element={<NotFound />} />
           </Route>
         </RouterRoutes>

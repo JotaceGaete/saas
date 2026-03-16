@@ -193,6 +193,17 @@ export const getMyBusiness = async () => {
   return { data: data ? mapBusinessFromDb(data) : null, error: null };
 };
 
+export const getBusinessByIdForAdmin = async (businessId) => {
+  if (!businessId) return { data: null, error: { message: 'businessId required' } };
+  const { data, error } = await supabase
+    ?.from('wa_businesses')
+    ?.select('*')
+    ?.eq('id', businessId)
+    ?.maybeSingle();
+  if (error) return { data: null, error };
+  return { data: data ? mapBusinessFromDb(data) : null, error: null };
+};
+
 export const getBusinessBySlug = async (slug) => {
   const { data, error } = await supabase?.from('wa_businesses')?.select('*')?.eq('slug', slug)?.eq('is_active', true)?.maybeSingle();
   if (error) return { data: null, error };
@@ -384,7 +395,11 @@ export const getProduct = async (productId) => {
 
 /** Cuenta de productos activos del negocio (para límites de plan). */
 export const getActiveProductCount = async (businessId) => {
-  const { count, error } = await supabase?.from('wa_products')?.select('id', { count: 'exact', head: true })?.eq('business_id', businessId)?.eq('is_active', true);
+  const { count, error } = await supabase
+    ?.from('wa_products')
+    ?.select('id', { count: 'exact', head: true })
+    ?.eq('business_id', businessId)
+    ?.eq('status', 'active');
   if (error) return 0;
   return count ?? 0;
 };
@@ -454,9 +469,8 @@ export const updateProduct = async (productId, productData) => {
   if (productData?.imageUrl !== undefined)    dbUpdates.image_url = productData?.imageUrl;
   if (productData?.status !== undefined && ['active', 'inactive', 'archived'].includes(productData.status)) {
     dbUpdates.status = productData.status;
-    dbUpdates.is_active = productData.status === 'active';
   } else if (productData?.isActive !== undefined) {
-    dbUpdates.is_active = productData?.isActive;
+    dbUpdates.status = productData.isActive ? 'active' : 'inactive';
   }
   if (productData?.sortOrder !== undefined)   dbUpdates.sort_order = productData?.sortOrder;
   if (productData?.hasOptions !== undefined)  dbUpdates.has_options = productData?.hasOptions;

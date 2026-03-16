@@ -136,6 +136,42 @@ export async function markAllAdminNotificationsRead() {
   return { error: null };
 }
 
+// ——— Audit log global ———
+
+export async function getAdminAuditLog(opts = {}) {
+  let q = supabase
+    .from('wa_admin_audit_log')
+    .select('*', { count: 'exact' })
+    .order('created_at', { ascending: false });
+
+  if (opts.entityType) {
+    q = q.eq('entity_type', opts.entityType);
+  }
+  if (opts.entityId) {
+    q = q.eq('entity_id', opts.entityId);
+  }
+  if (opts.action) {
+    q = q.eq('action', opts.action);
+  }
+  if (opts.adminUserId) {
+    q = q.eq('admin_user_id', opts.adminUserId);
+  }
+  if (opts.dateFrom) {
+    q = q.gte('created_at', opts.dateFrom);
+  }
+  if (opts.dateTo) {
+    q = q.lte('created_at', opts.dateTo);
+  }
+
+  const limit = Math.min(Number(opts.limit) || 50, 200);
+  const offset = Number(opts.offset) || 0;
+  q = q.range(offset, offset + limit - 1);
+
+  const { data, error, count } = await q;
+  if (error) return { data: [], total: 0, error };
+  return { data: data || [], total: count ?? 0, error: null };
+}
+
 // ——— Acciones admin ———
 
 export async function adminExtendPlan(businessId, days, reason = null) {
