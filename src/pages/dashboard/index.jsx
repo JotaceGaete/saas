@@ -30,6 +30,7 @@ import TopProductsCard from "./components/TopProductsCard";
 import MonthlyRevenueCard from "./components/MonthlyRevenueCard";
 import PlanUsageCard from "./components/PlanUsageCard";
 import TrialConversionBanner from "./components/TrialConversionBanner";
+import { getCatalogShareMessage } from "../../utils/branding";
 
 
 export default function Dashboard() {
@@ -364,14 +365,24 @@ export default function Dashboard() {
 
   const handleCopy = () => {
     if (!catalogUrl) return;
-    navigator.clipboard?.writeText(catalogUrl)?.catch(() => {});
+    const shareMessage = getCatalogShareMessage({
+      businessName: business?.name,
+      catalogUrl,
+      plan: business?.planSlug,
+    });
+    navigator.clipboard?.writeText(shareMessage)?.catch(() => {});
     setCopyToast(true);
     setTimeout(() => setCopyToast(false), 2500);
   };
 
   const handleShare = () => {
     if (!catalogUrl) return;
-    const url = `https://wa.me/?text=${encodeURIComponent(`Ver catálogo de ${business?.name}: ${catalogUrl}`)}`;
+    const shareMessage = getCatalogShareMessage({
+      businessName: business?.name,
+      catalogUrl,
+      plan: business?.planSlug,
+    });
+    const url = `https://wa.me/?text=${encodeURIComponent(shareMessage)}`;
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
@@ -547,10 +558,10 @@ export default function Dashboard() {
                 <PlanUsageCard data={planUsage} loading={planUsageLoading} />
               </section>
               <section aria-label="Enlace del catálogo">
-                <CatalogLinkWidget catalogUrl={catalogUrl} businessName={business?.name || ''} />
+                <CatalogLinkWidget catalogUrl={catalogUrl} businessName={business?.name || ''} businessPlanSlug={business?.planSlug} />
               </section>
               <section aria-label="Acceso rápido">
-                <QuickAccessWidget catalogUrl={catalogUrl} />
+                <QuickAccessWidget catalogUrl={catalogUrl} businessName={business?.name || ''} businessPlanSlug={business?.planSlug} />
               </section>
             </div>
           </div>

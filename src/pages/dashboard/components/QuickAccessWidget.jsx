@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Icon from "components/AppIcon";
+import { appendBranding } from "../../../utils/branding";
 
 const STATUS_MESSAGE_TEMPLATE = `Nuevo catálogo disponible 👇
 
@@ -8,12 +9,12 @@ Mira nuestros productos y haz tu pedido directo por WhatsApp:
 
 {catalog_url}`;
 
-export default function QuickAccessWidget({ catalogUrl }) {
+export default function QuickAccessWidget({ catalogUrl, businessName, businessPlanSlug }) {
   const navigate = useNavigate();
   const [showStatusModal, setShowStatusModal] = useState(false);
 
   const statusMessage = catalogUrl
-    ? STATUS_MESSAGE_TEMPLATE.replace('{catalog_url}', catalogUrl)
+    ? appendBranding(STATUS_MESSAGE_TEMPLATE.replace('{catalog_url}', catalogUrl), businessPlanSlug)
     : '';
 
   const handleCopyStatusMessage = () => {

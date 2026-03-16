@@ -4,6 +4,7 @@ import { useCart } from '../../contexts/CartContext';
 import { createOrder, getBusinessBySlug } from '../../services/waBusinessService';
 import Icon from '../../components/AppIcon';
 import { formatCLP } from '../../utils/formatCLP';
+import { appendBranding } from '../../utils/branding';
 
 export default function OrderConfirmation() {
   const { slug } = useParams();
@@ -61,7 +62,7 @@ export default function OrderConfirmation() {
 
       // Solo después de guardar bien: abrir WhatsApp y salir
       const lines = items?.map(i => `• ${i?.quantity}x ${i?.name} — ${formatCLP(i?.price * i?.quantity)}`);
-      const message = [
+      const baseMessage = [
         `Hola, me gustaría hacer este pedido:`,
         ``,
         ...lines,
@@ -72,6 +73,7 @@ export default function OrderConfirmation() {
         customerPhone?.trim() ? `Teléfono: ${customerPhone?.trim()}` : '',
         notes?.trim() ? `Notas: ${notes?.trim()}` : '',
       ]?.filter(l => l !== undefined && !(l === '' && lines?.length === 0))?.join('\n')?.trim();
+      const message = appendBranding(baseMessage, biz);
 
       const whatsappNumber = biz?.whatsapp?.replace(/[^0-9]/g, '');
       const waUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`;

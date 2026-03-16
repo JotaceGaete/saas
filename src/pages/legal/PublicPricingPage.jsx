@@ -129,6 +129,12 @@ export default function PublicPricingPage() {
                     {limits.maxProducts == null ? 'Productos ilimitados' : `${limits.maxProducts} productos`}
                     {' · '}
                     {limits.maxOrdersPerMonth == null ? 'Pedidos ilimitados' : `${limits.maxOrdersPerMonth} pedidos/mes`}
+                    {' · '}
+                    {plan.id === 'starter'
+                      ? 'Branding Ventalink incluido'
+                      : plan.id === 'pro'
+                        ? 'Branding discreto'
+                        : 'Sin branding'}
                   </p>
                   <Link
                     to="/business-registration"

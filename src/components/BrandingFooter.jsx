@@ -1,12 +1,16 @@
 import React from 'react';
-import { hasViralBranding, VENTALINK_URL } from '../utils/branding';
+import { getBrandingMessage } from '../utils/branding';
 
 /**
- * Footer de branding "Creado con Ventalink" para catálogo público.
- * Solo debe renderizarse cuando hasViralBranding(business) === true.
+ * Footer de branding para catálogo público.
+ * Starter: versión comercial.
+ * Pro: versión discreta.
+ * Full/Business: sin branding.
  */
 export default function BrandingFooter({ business, className = '' }) {
-  if (!hasViralBranding(business)) return null;
+  const branding = getBrandingMessage(business);
+  if (!branding) return null;
+  const lines = branding.split('\n');
 
   return (
     <footer
@@ -17,19 +21,21 @@ export default function BrandingFooter({ business, className = '' }) {
         fontFamily: 'var(--font-caption), system-ui, sans-serif',
       }}
     >
-      <p className="mb-0.5">Creado con Ventalink</p>
-      <p className="mb-1">
-        <a
-          href={VENTALINK_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="underline hover:text-gray-600 transition-colors"
-          style={{ color: 'inherit' }}
-        >
-          Crear tu catálogo gratis
-        </a>
-      </p>
-      <p className="text-[11px] opacity-80">{VENTALINK_URL}</p>
+      {lines.map((line) => (
+        <p key={line} className="mb-0.5">
+          {line.startsWith('http') ? (
+            <a
+              href={line}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-gray-600 transition-colors"
+              style={{ color: 'inherit' }}
+            >
+              {line}
+            </a>
+          ) : line}
+        </p>
+      ))}
     </footer>
   );
 }

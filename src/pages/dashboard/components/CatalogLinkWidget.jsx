@@ -1,19 +1,25 @@
 import React, { useState, useRef } from "react";
 import Icon from "components/AppIcon";
 import Button from "components/ui/Button";
+import { getCatalogShareMessage } from "../../../utils/branding";
 
-export default function CatalogLinkWidget({ catalogUrl, businessName }) {
+export default function CatalogLinkWidget({ catalogUrl, businessName, businessPlanSlug }) {
   const [copied, setCopied] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const qrRef = useRef(null);
+  const shareMessage = getCatalogShareMessage({
+    businessName,
+    catalogUrl,
+    plan: businessPlanSlug,
+  });
 
   const handleCopy = () => {
-    navigator.clipboard?.writeText(catalogUrl)?.catch(() => {});
+    navigator.clipboard?.writeText(shareMessage)?.catch(() => {});
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const whatsappShareUrl = `https://wa.me/?text=${encodeURIComponent(`Ver catálogo de ${businessName}: ${catalogUrl}`)}`;
+  const whatsappShareUrl = `https://wa.me/?text=${encodeURIComponent(shareMessage)}`;
 
   const handleDownloadQR = () => {
     const canvas = document.createElement('canvas');
@@ -45,12 +51,12 @@ export default function CatalogLinkWidget({ catalogUrl, businessName }) {
       try {
         await navigator.share({
           title: `Catálogo de ${businessName}`,
-          text: `Ver catálogo de ${businessName}`,
+          text: shareMessage,
           url: catalogUrl,
         });
       } catch {}
     } else {
-      navigator.clipboard?.writeText(catalogUrl)?.catch(() => {});
+      navigator.clipboard?.writeText(shareMessage)?.catch(() => {});
     }
   };
 

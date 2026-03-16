@@ -8,7 +8,7 @@ import { formatCLP } from '../../utils/formatCLP';
 import { useIsDesktop } from '../../hooks/useMediaQuery';
 import { getAppBaseUrl, getPublicCatalogUrl } from '../../config/appUrl';
 import BrandingFooter from '../../components/BrandingFooter';
-import { hasViralBranding, getOrderMessageBrandingSuffix } from '../../utils/branding';
+import { appendBranding, hasViralBranding, getOrderMessageBrandingSuffix } from '../../utils/branding';
 
 /** Build absolute URL for OG image; prefers logo → cover → generated fallback with store name */
 function getCatalogOgImageUrl(business, baseUrl) {
@@ -181,10 +181,15 @@ function CatalogInner({ slug }) {
     setPriceRange([0, maxPrice]);
   };
 
-  const buildSingleWhatsAppUrl = (product) => {
+  const buildSingleWhatsAppMessage = (product) => {
     const storeName = business?.name || 'la tienda';
+    const message = `Hola! Me interesa el producto:\n\n*${product?.name}*\nPrecio: ${formatPrice(product?.price)}\n\nTienda: ${storeName}`;
+    return appendBranding(message, business);
+  };
+
+  const buildSingleWhatsAppUrl = (product) => {
     const phone = business?.whatsapp?.replace(/\D/g, '');
-    let message = `Hola! Me interesa el producto:\n\n*${product?.name}*\nPrecio: ${formatPrice(product?.price)}\n\nTienda: ${storeName}`;
+    const message = buildSingleWhatsAppMessage(product);
     return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
   };
 
@@ -589,6 +594,7 @@ function CatalogInner({ slug }) {
           business={business}
           formatPrice={formatPrice}
           whatsAppUrl={buildSingleWhatsAppUrl(selectedProduct)}
+          whatsAppMessage={buildSingleWhatsAppMessage(selectedProduct)}
           onClose={closeProduct}
           theme={theme}
           cardSettings={cardSettings}
@@ -786,7 +792,7 @@ function OrderPanel({ business, formatPrice, onClose, theme }) {
         let message = `Hola, quiero hacer este pedido:\n\n${lines?.join('\n')}\n\nTotal: ${formatPrice(total)}`;
         if (customerName?.trim()) message += `\n\nNombre: ${customerName?.trim()}`;
         if (notes?.trim()) message += `\nComentario: ${notes?.trim()}`;
-        if (hasViralBranding(business)) message += `\n\n${getOrderMessageBrandingSuffix()}`;
+        if (hasViralBranding(business)) message += `\n\n${getOrderMessageBrandingSuffix(business)}`;
         const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
         window.open(url, '_blank');
       }
@@ -1107,7 +1113,7 @@ function ProductCard({ product, formatPrice, onOpen, theme, cardSettings, useCat
 }
 
 // ─── Product Modal ────────────────────────────────────────────────────────────
-function ProductModal({ product, business, formatPrice, whatsAppUrl, onClose, theme, cardSettings, useCategories = false }) {
+function ProductModal({ product, business, formatPrice, whatsAppUrl, whatsAppMessage, onClose, theme, cardSettings, useCategories = false }) {
   const primaryColor = theme?.primaryColor || '#25D366';
   const primaryColorDark = theme?.primaryColorDark || '#128C7E';
   const primaryRgba = theme?.primaryRgba || (() => 'rgba(37,211,102,0.35)');
@@ -1116,6 +1122,7 @@ function ProductModal({ product, business, formatPrice, whatsAppUrl, onClose, th
   const { addItem, items } = useCart();
   const cartItem = items?.find(i => i?.id === product?.id);
   const qty = cartItem?.quantity || 0;
+  const [copiedProductMessage, setCopiedProductMessage] = useState(false);
 
   const productImages = getProductImages(product);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -1292,6 +1299,19 @@ function ProductModal({ product, business, formatPrice, whatsAppUrl, onClose, th
             <Icon name="MessageCircle" size={16} color="#6B7280" />
             Solo este producto por WhatsApp
           </a>
+          <button
+            type="button"
+            onClick={() => {
+              if (!whatsAppMessage) return;
+              navigator.clipboard?.writeText(whatsAppMessage)?.catch(() => {});
+              setCopiedProductMessage(true);
+              setTimeout(() => setCopiedProductMessage(false), 1800);
+            }}
+            className="mt-2 flex items-center justify-center gap-2 w-full py-2.5 rounded-2xl text-xs font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50 transition-all"
+          >
+            <Icon name={copiedProductMessage ? 'Check' : 'Copy'} size={14} color="#6B7280" />
+            {copiedProductMessage ? 'Texto copiado' : 'Copiar texto del producto'}
+          </button>
         </div>
       </div>
     </div>

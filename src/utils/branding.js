@@ -1,34 +1,53 @@
-/**
- * Branding viral para plan Free (Starter).
- * Un único punto de verdad: si el negocio debe mostrar branding "Creado con Ventalink".
- */
-
-const FREE_PLAN_SLUG = 'starter';
 const VENTALINK_URL = 'https://ventalink.app';
 
-/**
- * Indica si el negocio debe mostrar el branding viral (solo plan Free/Starter).
- * @param {Object|string} businessOrPlanSlug - Objeto con { planSlug } o string con el slug del plan
- * @returns {boolean}
- */
-export function hasViralBranding(businessOrPlanSlug) {
-  const slug =
-    typeof businessOrPlanSlug === 'string'
-      ? businessOrPlanSlug
-      : businessOrPlanSlug?.planSlug ?? businessOrPlanSlug?.plan_slug;
-  return slug === FREE_PLAN_SLUG;
+function normalizePlanSlug(businessOrPlanSlug) {
+  const raw = typeof businessOrPlanSlug === 'string'
+    ? businessOrPlanSlug
+    : businessOrPlanSlug?.planSlug ?? businessOrPlanSlug?.plan_slug;
+  const slug = (raw || '').toString().trim().toLowerCase();
+  if (slug === 'full') return 'business';
+  return slug || 'starter';
 }
 
 /**
- * Texto a añadir al final del mensaje de pedido por WhatsApp cuando el negocio es Free.
- * @returns {string}
+ * Branding dinámico por plan:
+ * - starter/free: branding comercial completo
+ * - pro: branding discreto
+ * - business/full: sin branding
  */
-export function getOrderMessageBrandingSuffix() {
+export function getBrandingMessage(businessOrPlanSlug) {
+  const plan = normalizePlanSlug(businessOrPlanSlug);
+  if (plan === 'business') return '';
+  if (plan === 'pro') {
+    return [
+      'Powered by Ventalink',
+      VENTALINK_URL,
+    ].join('\n');
+  }
   return [
-    'Pedido enviado desde Ventalink',
-    'Crea tu catálogo gratis:',
+    '🚀 Catálogo creado con Ventalink',
+    'Crea el tuyo gratis',
     VENTALINK_URL,
   ].join('\n');
+}
+
+export function appendBranding(message, businessOrPlanSlug) {
+  const branding = getBrandingMessage(businessOrPlanSlug);
+  if (!branding) return message;
+  return `${message}\n\n${branding}`;
+}
+
+export function getCatalogShareMessage({ businessName, catalogUrl, plan }) {
+  const base = `Ver catálogo de ${businessName || 'mi tienda'}: ${catalogUrl || ''}`.trim();
+  return appendBranding(base, plan);
+}
+
+export function hasViralBranding(businessOrPlanSlug) {
+  return !!getBrandingMessage(businessOrPlanSlug);
+}
+
+export function getOrderMessageBrandingSuffix(businessOrPlanSlug) {
+  return getBrandingMessage(businessOrPlanSlug);
 }
 
 export { VENTALINK_URL };

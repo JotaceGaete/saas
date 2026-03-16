@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import Icon from "components/AppIcon";
 import { QRCodeSVG } from "qrcode.react";
+import { getCatalogShareMessage } from "../../../utils/branding";
 
 const STEPS = [
   {
@@ -103,7 +104,12 @@ export default function GettingStartedSection({
 
   const handleCopyLink = () => {
     if (!catalogUrl) return;
-    navigator.clipboard?.writeText(catalogUrl)?.catch(() => {});
+    const shareMessage = getCatalogShareMessage({
+      businessName: business?.name,
+      catalogUrl,
+      plan: business?.planSlug,
+    });
+    navigator.clipboard?.writeText(shareMessage)?.catch(() => {});
     setCopyToast(true);
     onCopy?.();
     setTimeout(() => setCopyToast(false), 2500);
@@ -137,7 +143,11 @@ export default function GettingStartedSection({
         break;
       case "share_whatsapp": {
         if (!catalogUrl) return;
-        const msg = `Ver catálogo de ${business?.name || "mi tienda"}: ${catalogUrl}`;
+        const msg = getCatalogShareMessage({
+          businessName: business?.name,
+          catalogUrl,
+          plan: business?.planSlug,
+        });
         window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank", "noopener,noreferrer");
         break;
       }
