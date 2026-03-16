@@ -166,8 +166,9 @@ export default function DesignPage() {
         </header>
 
         <div className="w-full max-w-6xl mx-auto px-4 py-6 lg:py-8 min-h-[calc(100vh-108px)] pb-24 lg:pb-8">
-          <div className="flex flex-col lg:grid lg:grid-cols-[1fr_minmax(340px,380px)] lg:gap-8 xl:gap-10">
-            <div className="min-w-0 py-6 lg:py-8 overflow-y-auto">
+          <div className="flex flex-col lg:grid lg:grid-cols-[1fr_minmax(340px,380px)] lg:gap-8 xl:gap-10 lg:items-start">
+            {/* Columna izquierda: opciones de diseño (scroll con la página en desktop) */}
+            <div className="min-w-0 w-full py-6 lg:py-8">
               <DesignCustomization
                 design={design}
                 onChange={setDesign}
@@ -178,11 +179,12 @@ export default function DesignPage() {
                 designOnly
               />
             </div>
+            {/* Columna derecha: vista previa sticky en desktop; normal en móvil */}
             <div
-              className="flex flex-col items-center justify-start py-6 lg:py-8 lg:sticky lg:top-24 lg:self-start w-full max-w-[380px] lg:max-w-none mx-auto lg:mx-0 rounded-xl border lg:rounded-2xl"
+              className="flex flex-col items-center justify-start w-full max-w-[380px] mx-auto lg:mx-0 py-6 lg:py-8 lg:sticky lg:top-[5.5rem] lg:self-start lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto rounded-xl border lg:rounded-2xl"
               style={{ borderColor: 'var(--color-border)', backgroundColor: '#f7f7f9' }}
             >
-              <p className="text-xs font-semibold mb-3" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+              <p className="text-xs font-semibold mb-3 flex-shrink-0" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
                 Vista previa
               </p>
               <MobilePreviewPanel
