@@ -32,8 +32,8 @@ export const PLAN_ORDER = Object.freeze({
 /** Precios en CLP (Chile) / mes. starter = gratis. */
 export const PLAN_PRICES_CLP = Object.freeze({
   starter:  0,
-  pro:      5000,
-  business: 9000,
+  pro:      5990,
+  business: 9990,
 });
 
 /** Precios en ARS (Argentina). */
