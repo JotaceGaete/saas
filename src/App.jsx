@@ -2,7 +2,6 @@ import React from 'react';
 import Routes from './Routes';
 import { ToastProvider } from './components/ui/Toast';
 import { AuthProvider } from './contexts/AuthContext';
-import InstallAppBanner from './components/InstallAppBanner';
 
 function App() {
   return (
@@ -10,7 +9,6 @@ function App() {
       <AuthProvider>
         <ToastProvider>
           <Routes />
-          <InstallAppBanner />
         </ToastProvider>
       </AuthProvider>
     </div>

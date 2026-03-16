@@ -1,5 +1,6 @@
 import React from 'react';
 import Icon from 'components/AppIcon';
+import FeatureExplainCards from 'components/FeatureExplainCards';
 
 const LOGO_SRC = '/logo-ventalink.png';
 const DEMO_IMAGE_SRC = '/demo-dashboard.png';
@@ -61,20 +62,8 @@ export default function LoginLeftPanel() {
         </div>
       </div>
 
-      {/* Trust indicators */}
-      <div className="grid grid-cols-2 gap-3">
-        {[
-          { icon: 'Package', label: 'Gestión de productos' },
-          { icon: 'ShoppingCart', label: 'Pedidos por WhatsApp' },
-          { icon: 'Link', label: 'Catálogo público' },
-          { icon: 'BarChart2', label: 'Estadísticas' },
-        ]?.map(f => (
-          <div key={f?.label} className="flex items-center gap-2.5 bg-white/10 rounded-xl p-3">
-            <Icon name={f?.icon} size={16} color="rgba(255,255,255,0.9)" />
-            <span className="text-white/90 text-xs font-medium" style={{ fontFamily: 'var(--font-caption)' }}>{f?.label}</span>
-          </div>
-        ))}
-      </div>
+      {/* Funciones del panel: al tocar se muestra explicación y opción de ir a la sección */}
+      <FeatureExplainCards variant="grid" />
     </div>
   );
 }

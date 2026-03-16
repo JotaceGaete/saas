@@ -4,6 +4,7 @@ import Button from 'components/ui/Button';
 import Input from 'components/ui/Input';
 import WhatsAppField from './WhatsAppField';
 import PasswordStrengthIndicator from './PasswordStrengthIndicator';
+import FeatureExplainCards from 'components/FeatureExplainCards';
 
 export default function RegistrationForm({ mode = 'register', onModeChange, onRegister, onLogin, isLoading, authError }) {
   const [formData, setFormData] = useState({ businessName: '', email: '', password: '', confirmPassword: '', whatsapp: '' });
@@ -56,14 +57,7 @@ export default function RegistrationForm({ mode = 'register', onModeChange, onRe
             {mode === 'register' ? 'Gestiona tus productos y recibe pedidos directamente por WhatsApp.' : 'Accede a tu panel para gestionar tu catálogo y pedidos.'}
           </p>
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          {[{ icon: 'Package', label: 'Gestión de productos' }, { icon: 'ShoppingCart', label: 'Pedidos por WhatsApp' }, { icon: 'Link', label: 'Catálogo público' }, { icon: 'BarChart2', label: 'Estadísticas' }]?.map(f => (
-            <div key={f?.label} className="flex items-center gap-2.5 bg-white/10 rounded-xl p-3">
-              <Icon name={f?.icon} size={16} color="rgba(255,255,255,0.9)" />
-              <span className="text-white/90 text-xs font-medium" style={{ fontFamily: 'var(--font-caption)' }}>{f?.label}</span>
-            </div>
-          ))}
-        </div>
+        <FeatureExplainCards variant="grid" />
       </div>
       <div className="flex-1 flex flex-col items-center justify-center p-6 md:p-10">
         <div className="w-full max-w-md">

@@ -11,6 +11,7 @@ import ChileWhatsAppField from 'components/ChileWhatsAppField';
 import ArgentinaWhatsAppField from 'components/ArgentinaWhatsAppField';
 import { getCountryCode, getCountryLabels } from '../../config/country';
 import CatalogAndOrdersConfig from './components/CatalogAndOrdersConfig';
+import InstallAppBlock from './components/InstallAppBlock';
 
 function Toast({ message, type, onClose }) {
   return (
@@ -59,6 +60,15 @@ export default function BusinessConfiguration() {
   const [businessFetchLoading, setBusinessFetchLoading] = useState(false);
 
   const defaultCountryLabels = getCountryLabels();
+  const [bankForm, setBankForm] = useState({
+    bankName: '',
+    bankAccountType: '',
+    bankAccountNumber: '',
+    bankAccountHolder: '',
+    bankRut: '',
+    bankEmail: '',
+  });
+
   const [form, setForm] = useState({
     name: '',
     slug: '',
@@ -99,6 +109,11 @@ export default function BusinessConfiguration() {
       showStock: false,
       showWhatsApp: true,
     },
+    showAddress: false,
+    businessHours: '',
+    shippingMethods: '',
+    shippingCost: '',
+    retiroEnTienda: false,
   });
 
   const toastTimer = useRef(null);
@@ -156,9 +171,22 @@ export default function BusinessConfiguration() {
           categories: Array.isArray(ds?.categories) ? ds.categories : prev.categories,
           storeHeader: { ...prev.storeHeader, ...(ds.storeHeader || {}) },
           cardSettings: { ...prev.cardSettings, ...(ds.cardSettings || {}) },
+          showAddress: ds?.showAddress === true,
+          businessHours: ds?.businessHours ?? '',
+          shippingMethods: ds?.shippingMethods ?? '',
+          shippingCost: ds?.shippingCost ?? '',
+          retiroEnTienda: ds?.retiroEnTienda === true,
         }));
       }
       if (business?.orderMessageTemplate) setOrderMessageTemplate(business?.orderMessageTemplate);
+      setBankForm({
+        bankName: business?.bankName || '',
+        bankAccountType: business?.bankAccountType || '',
+        bankAccountNumber: business?.bankAccountNumber || '',
+        bankAccountHolder: business?.bankAccountHolder || '',
+        bankRut: business?.bankRut || '',
+        bankEmail: business?.bankEmail || '',
+      });
     }
   }, [business?.id]);
 
@@ -197,6 +225,12 @@ export default function BusinessConfiguration() {
       rubroId: form?.rubroId || null,
       designSettings: design,
       orderMessageTemplate,
+      bankName: bankForm?.bankName,
+      bankAccountType: bankForm?.bankAccountType,
+      bankAccountNumber: bankForm?.bankAccountNumber,
+      bankAccountHolder: bankForm?.bankAccountHolder,
+      bankRut: bankForm?.bankRut,
+      bankEmail: bankForm?.bankEmail,
     };
     try {
       const { data: updated, error } = await updateBusiness(bizId, payload);
@@ -474,6 +508,14 @@ export default function BusinessConfiguration() {
                         rubroId: business?.rubroId || '',
                       });
                       setOrderMessageTemplate(business?.orderMessageTemplate || '');
+                      setBankForm({
+                        bankName: business?.bankName || '',
+                        bankAccountType: business?.bankAccountType || '',
+                        bankAccountNumber: business?.bankAccountNumber || '',
+                        bankAccountHolder: business?.bankAccountHolder || '',
+                        bankRut: business?.bankRut || '',
+                        bankEmail: business?.bankEmail || '',
+                      });
                       if (business?.designSettings) {
                         const ds = business.designSettings;
                         setDesign(prev => ({
@@ -484,6 +526,11 @@ export default function BusinessConfiguration() {
                           categories: Array.isArray(ds?.categories) ? ds.categories : prev.categories,
                           storeHeader: { ...prev.storeHeader, ...(ds.storeHeader || {}) },
                           cardSettings: { ...prev.cardSettings, ...(ds.cardSettings || {}) },
+                          showAddress: ds?.showAddress === true,
+                          businessHours: ds?.businessHours ?? '',
+                          shippingMethods: ds?.shippingMethods ?? '',
+                          shippingCost: ds?.shippingCost ?? '',
+                          retiroEnTienda: ds?.retiroEnTienda === true,
                         }));
                       }
                     }
@@ -527,6 +574,86 @@ export default function BusinessConfiguration() {
               </div>
             </div>
 
+            {/* Información para el catálogo (horario, dirección, envíos, retiro) */}
+            <div className="rounded-2xl border p-6 lg:p-8 mb-8" style={{ backgroundColor: '#ffffff', borderColor: 'var(--color-border)', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
+              <div className="flex items-center gap-3 mb-5">
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(139,92,246,0.1)' }}>
+                  <Icon name="Info" size={18} color="var(--color-primary)" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-text-primary)' }}>Información para el catálogo</h2>
+                  <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Horario, dirección, envíos y retiro en tienda (opcional, para dar más confianza)</p>
+                </div>
+              </div>
+              <div className="flex flex-col gap-5">
+                <SettingsField label="Horario de atención" hint="Ej: Lun–Vie 9:00–18:00, Sáb 10:00–14:00">
+                  <textarea
+                    rows={2}
+                    className={inputClass}
+                    style={inputStyle}
+                    placeholder="Opcional"
+                    value={design?.businessHours ?? ''}
+                    onChange={e => setDesign(prev => ({ ...prev, businessHours: e?.target?.value ?? '' }))}
+                  />
+                </SettingsField>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-caption)' }}>
+                    Mostrar dirección en el catálogo
+                  </label>
+                  <p className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>Si está activado, se muestra la dirección (calle, ciudad, etc.) y un enlace para ver en mapa</p>
+                  <label className="inline-flex items-center gap-2 cursor-pointer mt-1">
+                    <input
+                      type="checkbox"
+                      checked={design?.showAddress === true}
+                      onChange={e => setDesign(prev => ({ ...prev, showAddress: e?.target?.checked }))}
+                      className="w-4 h-4 rounded border-gray-300"
+                      style={{ accentColor: 'var(--color-primary)' }}
+                    />
+                    <span className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>Mostrar dirección</span>
+                  </label>
+                </div>
+                <SettingsField label="Métodos de envío" hint="Ej: Correo, mensajería, envío a domicilio">
+                  <input
+                    type="text"
+                    className={inputClass}
+                    style={inputStyle}
+                    placeholder="Opcional"
+                    value={design?.shippingMethods ?? ''}
+                    onChange={e => setDesign(prev => ({ ...prev, shippingMethods: e?.target?.value ?? '' }))}
+                  />
+                </SettingsField>
+                <SettingsField label="Costo de envío" hint="Ej: Desde $X según zona, o gratis sobre $Y">
+                  <input
+                    type="text"
+                    className={inputClass}
+                    style={inputStyle}
+                    placeholder="Opcional"
+                    value={design?.shippingCost ?? ''}
+                    onChange={e => setDesign(prev => ({ ...prev, shippingCost: e?.target?.value ?? '' }))}
+                  />
+                </SettingsField>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-caption)' }}>
+                    Retiro en tienda
+                  </label>
+                  <p className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>Mostrar en el catálogo que se puede retirar en tu local</p>
+                  <label className="inline-flex items-center gap-2 cursor-pointer mt-1">
+                    <input
+                      type="checkbox"
+                      checked={design?.retiroEnTienda === true}
+                      onChange={e => setDesign(prev => ({ ...prev, retiroEnTienda: e?.target?.checked }))}
+                      className="w-4 h-4 rounded border-gray-300"
+                      style={{ accentColor: 'var(--color-primary)' }}
+                    />
+                    <span className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>Ofrecer retiro en tienda</span>
+                  </label>
+                </div>
+              </div>
+              <p className="text-xs mt-4" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+                Guarda los cambios con el botón &quot;Guardar configuración&quot; de la sección Datos del negocio.
+              </p>
+            </div>
+
             <div className="rounded-2xl border p-6 lg:p-8 mb-8" style={{ backgroundColor: '#ffffff', borderColor: 'var(--color-border)', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
               <div className="flex items-center gap-3 mb-5">
                 <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(139,92,246,0.1)' }}>
@@ -540,14 +667,69 @@ export default function BusinessConfiguration() {
               <CatalogAndOrdersConfig design={design} onChange={setDesign} />
             </div>
 
+            {/* Mensajes y pagos: plantilla WhatsApp + datos para transferencia */}
             {business?.id && (
-              <WhatsAppMessageTemplate
-                value={orderMessageTemplate}
-                onChange={setOrderMessageTemplate}
-                isSaving={isSaving}
-                onSave={handleSaveSettings}
-              />
+              <div className="rounded-2xl border p-6 lg:p-8 mb-8" style={{ backgroundColor: '#ffffff', borderColor: 'var(--color-border)', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
+                <div className="flex items-center gap-3 mb-5">
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(139,92,246,0.1)' }}>
+                    <Icon name="MessageCircle" size={18} color="var(--color-primary)" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-text-primary)' }}>Mensajes y pagos</h2>
+                    <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Plantilla de pedido y datos para cobros por transferencia</p>
+                  </div>
+                </div>
+                <WhatsAppMessageTemplate
+                  value={orderMessageTemplate}
+                  onChange={setOrderMessageTemplate}
+                  isSaving={isSaving}
+                  onSave={handleSaveSettings}
+                />
+                <div className="pt-6 mt-6 border-t" style={{ borderColor: 'var(--color-border)' }}>
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(139,92,246,0.1)' }}>
+                      <Icon name="Landmark" size={14} color="var(--color-primary)" />
+                    </div>
+                    <h3 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-text-primary)' }}>Cobros por transferencia</h3>
+                  </div>
+                  <p className="text-xs mb-4" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+                    Usa estos datos para responder al cliente o completar mensajes de pago sin escribir siempre lo mismo.
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <SettingsField label="Banco" hint="Nombre del banco donde recibes transferencias">
+                      <input type="text" className={inputClass} style={inputStyle} placeholder={defaultCountryLabels.bankPlaceholder} value={bankForm?.bankName} onChange={e => setBankForm(prev => ({ ...prev, bankName: e.target.value }))} />
+                    </SettingsField>
+                    <SettingsField label="Tipo de cuenta">
+                      <select className={inputClass} style={{ ...inputStyle, cursor: 'pointer' }} value={bankForm?.bankAccountType} onChange={e => setBankForm(prev => ({ ...prev, bankAccountType: e.target.value }))}>
+                        <option value="">Seleccionar...</option>
+                        {(defaultCountryLabels.bankAccountTypes || []).map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
+                      </select>
+                    </SettingsField>
+                    <div className="sm:col-span-2">
+                      <SettingsField label="Número de cuenta">
+                        <input type="text" className={inputClass} style={inputStyle} placeholder="Ej: 00123456789" value={bankForm?.bankAccountNumber} onChange={e => setBankForm(prev => ({ ...prev, bankAccountNumber: e.target.value }))} />
+                      </SettingsField>
+                    </div>
+                    <SettingsField label="Titular">
+                      <input type="text" className={inputClass} style={inputStyle} placeholder="Nombre completo" value={bankForm?.bankAccountHolder} onChange={e => setBankForm(prev => ({ ...prev, bankAccountHolder: e.target.value }))} />
+                    </SettingsField>
+                    <SettingsField label={defaultCountryLabels.idNumberLabel} hint={defaultCountryLabels.idNumberPlaceholder}>
+                      <input type="text" className={inputClass} style={inputStyle} placeholder={defaultCountryLabels.idNumberPlaceholder} value={bankForm?.bankRut} onChange={e => setBankForm(prev => ({ ...prev, bankRut: e.target.value }))} />
+                    </SettingsField>
+                    <div className="sm:col-span-2">
+                      <SettingsField label="Email (transferencias)">
+                        <input type="email" className={inputClass} style={inputStyle} placeholder="transferencias@ejemplo.com" value={bankForm?.bankEmail} onChange={e => setBankForm(prev => ({ ...prev, bankEmail: e.target.value }))} />
+                      </SettingsField>
+                    </div>
+                  </div>
+                  <p className="text-xs mt-4" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+                    Guarda los cambios con el botón &quot;Guardar configuración&quot; de la sección Datos del negocio.
+                  </p>
+                </div>
+              </div>
             )}
+
+            <InstallAppBlock />
           </>
           )}
         </div>

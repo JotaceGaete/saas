@@ -22,18 +22,24 @@ function getCatalogOgImageUrl(business, baseUrl) {
   return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=7C3AED&color=fff&size=1200&format=png`;
 }
 
-// Normalizar imágenes del producto: array (vacío o con URLs)
+// Normalizar imágenes del producto: la primera es siempre imageUrl (misma que la tarjeta);
+// el resto viene de product.images para galería. Así el modal usa la misma URL que la tarjeta.
 function getProductImages(product) {
-  const list = Array.isArray(product?.images) && product.images.length > 0
-    ? product.images
-    : (product?.imageUrl ? [product.imageUrl] : []);
-  // Quitar duplicados manteniendo orden (por si imageUrl repite el primero de images)
+  const primary = product?.imageUrl || null;
+  const extra = Array.isArray(product?.images) && product.images.length > 0 ? product.images : [];
   const seen = new Set();
-  return list.filter((url) => {
-    if (!url || seen.has(url)) return false;
-    seen.add(url);
-    return true;
-  });
+  const result = [];
+  if (primary) {
+    result.push(primary);
+    seen.add(primary);
+  }
+  for (const url of extra) {
+    if (url && !seen.has(url)) {
+      result.push(url);
+      seen.add(url);
+    }
+  }
+  return result;
 }
 
 // Helpers para aplicar color principal del negocio en el catálogo
@@ -232,6 +238,15 @@ function CatalogInner({ slug }) {
   const theme = { primaryColor, primaryColorDark, primaryRgba: (a) => hexToRgba(primaryColor, a) };
   const cardSettings = { showPrice: true, showDescription: true, showStock: false, showWhatsApp: true, ...design?.cardSettings };
   const storeHeader = { showStoreName: true, showDescription: true, showWhatsAppButton: true, ...design?.storeHeader };
+  const fullAddress = [business?.address, business?.city, business?.region, business?.country].filter(Boolean).join(', ');
+  const mapsSearchUrl = fullAddress ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(fullAddress)}` : '';
+  const showAddressInCatalog = design?.showAddress === true && fullAddress;
+  const hasCatalogInfo =
+    (design?.businessHours ?? '').trim() !== '' ||
+    showAddressInCatalog ||
+    (design?.shippingMethods ?? '').trim() !== '' ||
+    (design?.shippingCost ?? '').trim() !== '' ||
+    design?.retiroEnTienda === true;
   const catalogViewMode = design?.catalogViewMode === 'compact' ? 'compact' : 'featured';
   const useCompactCard = catalogViewMode === 'compact' && !isDesktop;
   // Grid con min-width para que las tarjetas no queden demasiado angostas ni demasiado anchas
@@ -414,6 +429,86 @@ function CatalogInner({ slug }) {
             </div>
           </div>
         </div>
+
+        {/* 2b. Información adicional (horario, dirección, envíos, retiro) */}
+        {hasCatalogInfo && (
+          <div className="max-w-5xl mx-auto px-4 mt-3">
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+              <div className="p-4 sm:p-5 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 text-sm">
+                {(design?.businessHours ?? '').trim() !== '' && (
+                  <div className="flex items-start gap-2">
+                    <Icon name="Clock" size={16} className="flex-shrink-0 mt-0.5" color="#6B7280" />
+                    <div>
+                      <span className="font-semibold text-gray-500 block mb-0.5">Horario</span>
+                      <span className="text-gray-800 whitespace-pre-line">{design.businessHours.trim()}</span>
+                    </div>
+                  </div>
+                )}
+                {showAddressInCatalog && (
+                  <div className="flex items-start gap-2">
+                    <Icon name="MapPin" size={16} className="flex-shrink-0 mt-0.5" color="#6B7280" />
+                    <div>
+                      <span className="font-semibold text-gray-500 block mb-0.5">Dirección</span>
+                      {mapsSearchUrl ? (
+                        <a
+                          href={mapsSearchUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-gray-800 hover:underline focus:outline-none focus:underline"
+                          style={{ color: primaryColor }}
+                        >
+                          {fullAddress}
+                        </a>
+                      ) : (
+                        <span className="text-gray-800">{fullAddress}</span>
+                      )}
+                      {mapsSearchUrl && (
+                        <span className="block mt-1">
+                          <a
+                            href={mapsSearchUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs font-medium hover:underline"
+                            style={{ color: primaryColor }}
+                          >
+                            Ver en mapa
+                          </a>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {(design?.shippingMethods ?? '').trim() !== '' && (
+                  <div className="flex items-start gap-2">
+                    <Icon name="Truck" size={16} className="flex-shrink-0 mt-0.5" color="#6B7280" />
+                    <div>
+                      <span className="font-semibold text-gray-500 block mb-0.5">Envíos</span>
+                      <span className="text-gray-800">{design.shippingMethods.trim()}</span>
+                    </div>
+                  </div>
+                )}
+                {(design?.shippingCost ?? '').trim() !== '' && (
+                  <div className="flex items-start gap-2">
+                    <Icon name="Package" size={16} className="flex-shrink-0 mt-0.5" color="#6B7280" />
+                    <div>
+                      <span className="font-semibold text-gray-500 block mb-0.5">Costo de envío</span>
+                      <span className="text-gray-800">{design.shippingCost.trim()}</span>
+                    </div>
+                  </div>
+                )}
+                {design?.retiroEnTienda === true && (
+                  <div className="flex items-start gap-2 sm:col-span-2">
+                    <Icon name="Store" size={16} className="flex-shrink-0 mt-0.5" color="#6B7280" />
+                    <div>
+                      <span className="font-semibold text-gray-500 block mb-0.5">Retiro en tienda</span>
+                      <span className="text-gray-800">Disponible</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* 3. Buscador — debajo de la tarjeta */}
         <div className="max-w-3xl mx-auto px-4 pt-4 pb-3">
@@ -1218,6 +1313,36 @@ function ProductCard({ product, formatPrice, onOpen, theme, cardSettings, useCat
   );
 }
 
+// Miniatura del modal con fallback si la imagen falla al cargar
+function ThumbnailButton({ url, productName, index, isSelected, primaryColor, onSelect }) {
+  const [error, setError] = useState(false);
+  if (!url) return null;
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className="flex-shrink-0 w-14 h-14 rounded-lg overflow-hidden border-2 transition-all bg-gray-100 flex items-center justify-center"
+      style={{
+        borderColor: isSelected ? primaryColor : 'transparent',
+        boxShadow: isSelected ? `0 0 0 2px ${primaryColor}` : 'none',
+      }}
+    >
+      {error ? (
+        <Icon name="ImageOff" size={20} color="#D1D5DB" />
+      ) : (
+        <img
+          src={url}
+          alt={`${productName ?? 'Producto'} ${index + 1}`}
+          className="w-full h-full object-cover"
+          loading="lazy"
+          decoding="async"
+          onError={() => setError(true)}
+        />
+      )}
+    </button>
+  );
+}
+
 // ─── Product Modal ────────────────────────────────────────────────────────────
 function ProductModal({ product, business, formatPrice, whatsAppUrl, whatsAppMessage, onClose, theme, cardSettings, useCategories = false }) {
   const primaryColor = theme?.primaryColor || '#25D366';
@@ -1232,11 +1357,19 @@ function ProductModal({ product, business, formatPrice, whatsAppUrl, whatsAppMes
 
   const productImages = getProductImages(product);
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [imageLoadError, setImageLoadError] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
   const touchStartX = React.useRef(0);
   const touchEndX = React.useRef(0);
 
   useEffect(() => { setSelectedIndex(0); }, [product?.id]);
   const mainUrl = productImages[selectedIndex];
+
+  // Reset error/loaded al cambiar de imagen o de producto
+  useEffect(() => {
+    setImageLoadError(false);
+    setImageLoaded(false);
+  }, [mainUrl, product?.id]);
 
   const goPrev = (e) => { e?.stopPropagation(); setSelectedIndex(i => (i <= 0 ? productImages.length - 1 : i - 1)); };
   const goNext = (e) => { e?.stopPropagation(); setSelectedIndex(i => (i >= productImages.length - 1 ? 0 : i + 1)); };
@@ -1283,8 +1416,24 @@ function ProductModal({ product, business, formatPrice, whatsAppUrl, whatsAppMes
             onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
           >
-            {mainUrl ? (
-              <img src={mainUrl} alt={product?.name} className="w-full h-full object-contain" draggable={false} />
+            {mainUrl && !imageLoadError ? (
+              <>
+                {!imageLoaded && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
+                    <div className="w-8 h-8 border-2 border-gray-300 border-t-gray-500 rounded-full animate-spin" />
+                  </div>
+                )}
+                <img
+                  src={mainUrl}
+                  alt={product?.name ?? 'Producto'}
+                  className="w-full h-full object-contain"
+                  style={{ opacity: imageLoaded ? 1 : 0, transition: 'opacity 0.2s ease-out' }}
+                  draggable={false}
+                  decoding="async"
+                  onLoad={() => setImageLoaded(true)}
+                  onError={() => setImageLoadError(true)}
+                />
+              </>
             ) : (
               <div className="w-full h-full flex items-center justify-center">
                 <Icon name="ImageOff" size={48} color="#D1D5DB" />
@@ -1329,18 +1478,15 @@ function ProductModal({ product, business, formatPrice, whatsAppUrl, whatsAppMes
           {productImages.length > 1 && (
             <div className="flex gap-1.5 p-2 overflow-x-auto bg-gray-50 border-b" style={{ borderColor: 'var(--color-border)' }}>
               {productImages.map((url, i) => (
-                <button
+                <ThumbnailButton
                   key={url + i}
-                  type="button"
-                  onClick={() => setSelectedIndex(i)}
-                  className="flex-shrink-0 w-14 h-14 rounded-lg overflow-hidden border-2 transition-all"
-                  style={{
-                    borderColor: selectedIndex === i ? primaryColor : 'transparent',
-                    boxShadow: selectedIndex === i ? `0 0 0 2px ${primaryColor}` : 'none',
-                  }}
-                >
-                  <img src={url} alt={`${product?.name} ${i + 1}`} className="w-full h-full object-cover" />
-                </button>
+                  url={url}
+                  productName={product?.name}
+                  index={i}
+                  isSelected={selectedIndex === i}
+                  primaryColor={primaryColor}
+                  onSelect={() => setSelectedIndex(i)}
+                />
               ))}
             </div>
           )}
