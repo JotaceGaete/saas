@@ -6,8 +6,9 @@ import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { getAppBaseUrl } from '../../config/appUrl';
-import { getCountryCode, getCurrency } from '../../config/country';
+import { getCountryCode, getCurrency, getCountryLabels } from '../../config/country';
 import { getPaymentProvider, PAYMENT_COUNTRY_CODES } from '../../config/paymentProvider';
+import { updateBusiness } from '../../services/waBusinessService';
 import { formatCurrency } from '../../utils/formatCLP';
 import { PLAN_SLUGS, getPlanLimits, getPlanLabel, getPlanPriceByCountry, getPlanActionButtonLabel } from '../../constants/plans';
 
@@ -41,7 +42,18 @@ export default function PlansPage() {
   const [loadingPlanSlug, setLoadingPlanSlug] = useState(null);
   const [preview, setPreview] = useState(null);
   const [previewPlanSlug, setPreviewPlanSlug] = useState(null);
+  const [bankForm, setBankForm] = useState({
+    bankName: '',
+    bankAccountType: '',
+    bankAccountNumber: '',
+    bankAccountHolder: '',
+    bankRut: '',
+    bankEmail: '',
+  });
+  const [isSavingBank, setIsSavingBank] = useState(false);
+  const [bankToast, setBankToast] = useState(null);
   const isDesktop = useIsDesktop();
+  const defaultCountryLabels = getCountryLabels();
   const sidebarWidth = sidebarCollapsed ? 'var(--sidebar-collapsed-width)' : 'var(--sidebar-width)';
   const currentPlan = business?.planSlug || 'starter';
   const hostnameCountryCode = normalizeCountryCode(getCountryCode());
@@ -70,6 +82,19 @@ export default function PlansPage() {
       resolvedProvider: paymentProvider,
     });
   }, [hostnameCountryCode, businessCountryCode, userCountryCode, countryCode, paymentProvider, currency]);
+
+  useEffect(() => {
+    if (business?.id && (business?.bankName != null || business?.bankAccountNumber != null)) {
+      setBankForm({
+        bankName: business?.bankName || '',
+        bankAccountType: business?.bankAccountType || '',
+        bankAccountNumber: business?.bankAccountNumber || '',
+        bankAccountHolder: business?.bankAccountHolder || '',
+        bankRut: business?.bankRut || '',
+        bankEmail: business?.bankEmail || '',
+      });
+    }
+  }, [business?.id, business?.bankName, business?.bankAccountType, business?.bankAccountNumber, business?.bankAccountHolder, business?.bankRut, business?.bankEmail]);
 
   useEffect(() => {
     const payment = searchParams.get('payment');
@@ -336,6 +361,37 @@ export default function PlansPage() {
     setPreviewPlanSlug(null);
   };
 
+  const handleBankFormChange = (field, value) => {
+    setBankForm(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleSaveBank = async () => {
+    if (!business?.id) return;
+    setIsSavingBank(true);
+    setBankToast(null);
+    try {
+      const { error } = await updateBusiness(business.id, {
+        bankName: bankForm.bankName,
+        bankAccountType: bankForm.bankAccountType,
+        bankAccountNumber: bankForm.bankAccountNumber,
+        bankAccountHolder: bankForm.bankAccountHolder,
+        bankRut: bankForm.bankRut,
+        bankEmail: bankForm.bankEmail,
+      });
+      if (error) {
+        setBankToast({ type: 'error', text: error?.message || 'Error al guardar' });
+        return;
+      }
+      await refreshBusiness?.();
+      setBankToast({ type: 'success', text: 'Datos de transferencia guardados' });
+      setTimeout(() => setBankToast(null), 3500);
+    } catch (e) {
+      setBankToast({ type: 'error', text: e?.message || 'Error inesperado' });
+    } finally {
+      setIsSavingBank(false);
+    }
+  };
+
   if (businessLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--color-background)' }}>
@@ -352,38 +408,58 @@ export default function PlansPage() {
         style={{ marginLeft: isDesktop ? sidebarWidth : 0, minHeight: '100vh', transition: 'margin-left var(--transition-base)' }}
       >
         <div className="w-full max-w-4xl mx-auto px-4 md:px-6 lg:pl-4 lg:pr-6 py-6 md:py-8 pb-20 lg:pb-8">
-          <div className="mb-8">
-            <div className="flex items-center gap-3 mb-1">
-              <div
-                className="w-9 h-9 rounded-xl flex items-center justify-center"
-                style={{ background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)' }}
-              >
-                <Icon name="CreditCard" size={17} color="#fff" />
-              </div>
-              <div>
-                <h1 className="text-xl font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Planes</h1>
-                <p className="text-sm" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-                  Tu plan actual: <strong>{getPlanLabel(currentPlan)}</strong>
-                  {business?.trialExpiresAt && !business?.planExpiresAt && (currentPlan === 'pro' || currentPlan === 'business') && new Date(business.trialExpiresAt) > new Date() && (
-                    <span className="block text-xs mt-0.5 font-medium" style={{ color: '#D97706' }}>
-                      ✨ Período de prueba · vence el {new Date(business.trialExpiresAt).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })}
-                    </span>
-                  )}
-                  {business?.planExpiresAt && (currentPlan === 'pro' || currentPlan === 'business') && new Date(business.planExpiresAt) > new Date() && (
-                    <span className="block text-xs mt-0.5">Vence el {new Date(business.planExpiresAt).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
-                  )}
-                  {business?.scheduledPlanSlug && (
-                    <span className="block text-xs mt-1" style={{ color: 'var(--color-primary)' }}>
-                      Tu plan cambiará a <strong>{getPlanLabel(business.scheduledPlanSlug)}</strong>
-                      {business.scheduledChangeAt
-                        ? ` el ${new Date(business.scheduledChangeAt).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })}`
-                        : ''}
-                    </span>
-                  )}
-                </p>
-              </div>
-            </div>
+          <div className="mb-6">
+            <h1 className="text-xl font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Plan y facturación</h1>
+            <p className="text-sm mt-0.5" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Gestiona tu plan y datos para cobros por transferencia</p>
           </div>
+
+          {/* Tu plan */}
+          {business?.id && (
+            <div
+              className="mb-6 rounded-xl border p-5 flex flex-wrap items-center justify-between gap-4"
+              style={{ backgroundColor: 'rgba(124,58,237,0.06)', borderColor: 'var(--color-primary)' }}
+            >
+              <div>
+                <p className="text-sm font-medium" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Tu plan</p>
+                <p className="text-lg font-bold mt-0.5" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>
+                  {getPlanLabel(currentPlan)}
+                </p>
+                <p className="text-xs mt-1" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+                  {(() => {
+                    const limits = getPlanLimits(currentPlan);
+                    const products = limits.maxProducts == null ? 'Productos ilimitados' : `Hasta ${limits.maxProducts} productos`;
+                    const orders = limits.maxOrdersPerMonth == null ? 'Pedidos ilimitados' : `${limits.maxOrdersPerMonth} pedidos/mes`;
+                    return `${products} · ${orders}`;
+                  })()}
+                </p>
+                {business?.trialExpiresAt && !business?.planExpiresAt && (currentPlan === 'pro' || currentPlan === 'business') && new Date(business.trialExpiresAt) > new Date() && (
+                  <p className="text-xs mt-1 font-medium" style={{ color: '#D97706', fontFamily: 'var(--font-caption)' }}>
+                    ✨ Prueba gratuita · vence el {new Date(business.trialExpiresAt).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })}
+                  </p>
+                )}
+                {business?.planExpiresAt && (currentPlan === 'pro' || currentPlan === 'business') && new Date(business.planExpiresAt) > new Date() && (
+                  <p className="text-xs mt-1" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+                    Vence el {new Date(business.planExpiresAt).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })}
+                  </p>
+                )}
+                {business?.scheduledPlanSlug && (
+                  <p className="text-xs mt-1" style={{ color: 'var(--color-primary)', fontFamily: 'var(--font-caption)' }}>
+                    Cambio a <strong>{getPlanLabel(business.scheduledPlanSlug)}</strong>
+                    {business.scheduledChangeAt ? ` el ${new Date(business.scheduledChangeAt).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })}` : ''}
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => document.getElementById('planes-grid')?.scrollIntoView({ behavior: 'smooth' })}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90"
+                style={{ backgroundColor: 'var(--color-primary)' }}
+              >
+                <Icon name="TrendingUp" size={16} color="#fff" />
+                Mejorar plan
+              </button>
+            </div>
+          )}
 
           {paymentMessage && (
             <div
@@ -468,7 +544,7 @@ export default function PlansPage() {
             );
           })()}
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-5">
+          <div id="planes-grid" className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-5">
             {PLAN_SLUGS.map((slug) => {
               const limits = getPlanLimits(slug);
               const isCurrent = currentPlan === slug;
@@ -589,6 +665,121 @@ export default function PlansPage() {
             })}
           </div>
 
+          {/* Cobros por transferencia */}
+          {business?.id && (
+            <div className="mt-8 rounded-2xl border p-6" style={{ backgroundColor: '#ffffff', borderColor: 'var(--color-border)' }}>
+              <div className="flex items-center gap-3 mb-5">
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(139,92,246,0.1)' }}>
+                  <Icon name="Landmark" size={18} color="var(--color-primary)" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-text-primary)' }}>Cobros por transferencia</h2>
+                  <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Datos para que tus clientes te paguen por transferencia</p>
+                </div>
+              </div>
+              {bankToast && (
+                <div
+                  className="mb-4 rounded-lg px-4 py-2 flex items-center gap-2 text-sm"
+                  style={{
+                    backgroundColor: bankToast.type === 'success' ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
+                    color: bankToast.type === 'success' ? '#059669' : '#dc2626',
+                    fontFamily: 'var(--font-caption)',
+                  }}
+                >
+                  <Icon name={bankToast.type === 'success' ? 'CheckCircle' : 'AlertCircle'} size={16} />
+                  {bankToast.text}
+                </div>
+              )}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold mb-1.5" style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-caption)' }}>Banco</label>
+                  <input
+                    type="text"
+                    className="w-full px-3 py-2.5 rounded-lg border text-sm outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500"
+                    style={{ borderColor: 'var(--color-border)', fontFamily: 'var(--font-caption)' }}
+                    placeholder={defaultCountryLabels.bankPlaceholder}
+                    value={bankForm.bankName}
+                    onChange={e => handleBankFormChange('bankName', e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold mb-1.5" style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-caption)' }}>Tipo de cuenta</label>
+                  <select
+                    className="w-full px-3 py-2.5 rounded-lg border text-sm outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500"
+                    style={{ borderColor: 'var(--color-border)', fontFamily: 'var(--font-caption)', cursor: 'pointer' }}
+                    value={bankForm.bankAccountType}
+                    onChange={e => handleBankFormChange('bankAccountType', e.target.value)}
+                  >
+                    <option value="">Seleccionar...</option>
+                    {(defaultCountryLabels.bankAccountTypes || []).map(({ value, label }) => (
+                      <option key={value} value={value}>{label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-semibold mb-1.5" style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-caption)' }}>Número de cuenta</label>
+                  <input
+                    type="text"
+                    className="w-full px-3 py-2.5 rounded-lg border text-sm outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500"
+                    style={{ borderColor: 'var(--color-border)', fontFamily: 'var(--font-caption)' }}
+                    placeholder="Ej: 00123456789"
+                    value={bankForm.bankAccountNumber}
+                    onChange={e => handleBankFormChange('bankAccountNumber', e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold mb-1.5" style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-caption)' }}>Titular</label>
+                  <input
+                    type="text"
+                    className="w-full px-3 py-2.5 rounded-lg border text-sm outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500"
+                    style={{ borderColor: 'var(--color-border)', fontFamily: 'var(--font-caption)' }}
+                    placeholder="Nombre completo"
+                    value={bankForm.bankAccountHolder}
+                    onChange={e => handleBankFormChange('bankAccountHolder', e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold mb-1.5" style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-caption)' }}>{defaultCountryLabels.idNumberLabel}</label>
+                  <input
+                    type="text"
+                    className="w-full px-3 py-2.5 rounded-lg border text-sm outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500"
+                    style={{ borderColor: 'var(--color-border)', fontFamily: 'var(--font-caption)' }}
+                    placeholder={defaultCountryLabels.idNumberPlaceholder}
+                    value={bankForm.bankRut}
+                    onChange={e => handleBankFormChange('bankRut', e.target.value)}
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-semibold mb-1.5" style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-caption)' }}>Email (transferencias)</label>
+                  <input
+                    type="email"
+                    className="w-full px-3 py-2.5 rounded-lg border text-sm outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500"
+                    style={{ borderColor: 'var(--color-border)', fontFamily: 'var(--font-caption)' }}
+                    placeholder="transferencias@ejemplo.com"
+                    value={bankForm.bankEmail}
+                    onChange={e => handleBankFormChange('bankEmail', e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="mt-5 flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleSaveBank}
+                  disabled={isSavingBank}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+                  style={{ backgroundColor: 'var(--color-primary)' }}
+                >
+                  {isSavingBank ? (
+                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Icon name="Save" size={14} color="#fff" />
+                  )}
+                  {isSavingBank ? 'Guardando...' : 'Guardar datos'}
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="mt-8 rounded-xl border p-4" style={{ backgroundColor: 'var(--color-muted)', borderColor: 'var(--color-border)' }}>
             <p className="text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
               {paymentProvider === 'mercado_pago'
@@ -597,15 +788,6 @@ export default function PlansPage() {
                   ? 'Fuera de Chile los pagos se procesan con Paddle (tarjeta, PayPal, etc.). Tras el pago, tu plan se activa automáticamente.'
                   : 'Pago con tarjeta disponible próximamente en tu país.'}
             </p>
-            <button
-              type="button"
-              onClick={() => navigate('/business-configuration')}
-              className="mt-3 inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90"
-              style={{ backgroundColor: 'var(--color-primary)' }}
-            >
-              <Icon name="Settings" size={14} color="#fff" />
-              Ir a Configuración
-            </button>
           </div>
         </div>
       </main>

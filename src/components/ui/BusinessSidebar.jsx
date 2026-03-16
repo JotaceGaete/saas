@@ -7,18 +7,13 @@ import { useAuth } from '../../contexts/AuthContext';
 import { getPlanLabel } from '../../constants/plans';
 
 const NAV_ITEMS = [
-  { label: 'Dashboard', path: '/dashboard', icon: 'LayoutDashboard' },
-  {
-    label: 'Productos',
-    path: '/product-management',
-    icon: 'Package',
-    subItems: [
-      { label: 'Catálogo', path: '/product-management' },
-      { label: 'Nuevo Producto', path: '/product-editor' },
-    ],
-  },
+  { label: 'Mi tienda', path: '/dashboard', icon: 'Store' },
+  { label: 'Productos', path: '/product-management', icon: 'Package' },
   { label: 'Pedidos', path: '/orders', icon: 'ShoppingCart' },
   { label: 'Configuración', path: '/business-configuration', icon: 'Settings' },
+  { label: 'Diseño', path: '/design', icon: 'Palette' },
+  { label: 'Plan y facturación', path: '/planes', icon: 'CreditCard' },
+  { label: 'Ayuda', path: '/ayuda', icon: 'HelpCircle' },
 ];
 
 export default function BusinessSidebar({ isCollapsed = false, onCollapsedChange }) {

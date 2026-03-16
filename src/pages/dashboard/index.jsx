@@ -30,7 +30,9 @@ import TopProductsCard from "./components/TopProductsCard";
 import MonthlyRevenueCard from "./components/MonthlyRevenueCard";
 import PlanUsageCard from "./components/PlanUsageCard";
 import TrialConversionBanner from "./components/TrialConversionBanner";
+import MobilePreviewPanel from "../business-configuration/components/MobilePreviewPanel";
 import { getCatalogShareMessage } from "../../utils/branding";
+import { getCountryLabels } from "../../config/country";
 
 
 export default function Dashboard() {
@@ -547,6 +549,56 @@ export default function Dashboard() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 lg:gap-5">
             <section aria-label="Actividad reciente" className="lg:col-span-2 min-w-0">
               <ActivityFeed orders={orders} loading={dataLoading} newOrderIds={newOrderIds} />
+              {/* Productos recientes (solo en desktop debajo del feed; en móvil después de widgets) */}
+              <section aria-label="Productos recientes" className="mt-5 lg:mt-6">
+                <div className="rounded-xl border p-4" style={{ backgroundColor: '#ffffff', borderColor: 'var(--color-border)' }}>
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>Productos recientes</h3>
+                    <button
+                      type="button"
+                      onClick={() => navigate('/product-management')}
+                      className="text-xs font-medium"
+                      style={{ color: 'var(--color-primary)', fontFamily: 'var(--font-caption)' }}
+                    >
+                      Ver todos
+                    </button>
+                  </div>
+                  {dataLoading ? (
+                    <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Cargando...</p>
+                  ) : (products?.length ?? 0) === 0 ? (
+                    <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Aún no tienes productos.</p>
+                  ) : (
+                    <ul className="flex flex-col gap-2">
+                      {(products?.slice(0, 5) || []).map((p) => (
+                        <li key={p?.id}>
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/product-editor?id=${p?.id}`)}
+                            className="w-full flex items-center gap-3 text-left rounded-lg p-2 transition-colors hover:bg-muted"
+                          >
+                            <div className="w-10 h-10 rounded-lg bg-muted overflow-hidden flex-shrink-0">
+                              {p?.imageUrl ? (
+                                <img src={p.imageUrl} alt="" className="w-full h-full object-cover" />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center">
+                                  <Icon name="Package" size={18} color="var(--color-muted-foreground)" />
+                                </div>
+                              )}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-medium truncate" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}>{p?.name || 'Sin nombre'}</p>
+                              <p className="text-xs truncate" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+                                {p?.isActive ? 'Activo' : 'Inactivo'} · {p?.price != null ? `${business?.currency || getCountryLabels().currency} ${Number(p.price).toLocaleString()}` : ''}
+                              </p>
+                            </div>
+                            <Icon name="ChevronRight" size={14} color="var(--color-muted-foreground)" />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </section>
             </section>
             <div className="flex flex-col gap-5 min-w-0">
               <section aria-label="Tu plan">
@@ -558,6 +610,24 @@ export default function Dashboard() {
               <section aria-label="Acceso rápido">
                 <QuickAccessWidget catalogUrl={catalogUrl} businessName={business?.name || ''} businessPlanSlug={business?.planSlug} />
               </section>
+              {business?.id && (
+                <section aria-label="Vista previa del catálogo">
+                  <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--color-border)', backgroundColor: '#f7f7f9' }}>
+                    <p className="text-xs font-semibold px-3 py-2" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Vista previa móvil</p>
+                    <div className="flex justify-center p-3">
+                      <MobilePreviewPanel
+                        storeName={business?.name || 'Mi Tienda'}
+                        storeSlug={business?.slug || ''}
+                        logoUrl={business?.logoUrl || business?.designSettings?.logoUrl}
+                        coverImageUrl={business?.coverImageUrl || business?.designSettings?.headerImageUrl}
+                        products={products || []}
+                        currency={business?.currency || getCountryLabels().currency}
+                        design={business?.designSettings || {}}
+                      />
+                    </div>
+                  </div>
+                </section>
+              )}
             </div>
           </div>
         </div>

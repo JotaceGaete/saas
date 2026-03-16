@@ -1,5 +1,5 @@
 import React from "react";
-import { BrowserRouter, Routes as RouterRoutes, Route } from "react-router-dom";
+import { BrowserRouter, Routes as RouterRoutes, Route, Navigate } from "react-router-dom";
 import ScrollToTop from "components/ScrollToTop";
 import ErrorBoundary from "components/ErrorBoundary";
 import AnimatedLayout from "components/AnimatedLayout";
@@ -11,6 +11,8 @@ import BusinessConfiguration from './pages/business-configuration';
 import ProductManagement from './pages/product-management';
 import Dashboard from './pages/dashboard';
 import ProductEditor from './pages/product-editor';
+import DesignPage from './pages/design';
+import HelpPage from './pages/help';
 import PublicCatalog from './pages/public-catalog';
 import OrderConfirmation from './pages/order-confirmation';
 import Orders from './pages/orders';
@@ -35,7 +37,7 @@ const Routes = () => {
         <ScrollToTop />
         <RouterRoutes>
           <Route element={<AnimatedLayout />}>
-            <Route path="/" element={<BusinessConfiguration />} />
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/business-registration" element={<BusinessRegistration />} />
             <Route path="/landing-page" element={<LandingPage />} />
             <Route path="/business-configuration" element={<BusinessConfiguration />} />
@@ -43,6 +45,8 @@ const Routes = () => {
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/product-editor" element={<ProductEditor />} />
             <Route path="/orders" element={<Orders />} />
+            <Route path="/design" element={<DesignPage />} />
+            <Route path="/ayuda" element={<HelpPage />} />
             <Route path="/login" element={<Login />} />
             <Route path="/planes" element={<PlansPage />} />
             <Route path="/plans" element={<PublicPricingPage />} />

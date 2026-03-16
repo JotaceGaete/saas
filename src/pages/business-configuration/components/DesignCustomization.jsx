@@ -184,6 +184,7 @@ export default function DesignCustomization({
   isSaving,
   onSave,
   showToast,
+  designOnly = false,
 }) {
   const logoInputRef = useRef(null);
   const coverInputRef = useRef(null);
@@ -468,7 +469,8 @@ export default function DesignCustomization({
         </div>
       </SectionCard>
 
-      {/* 2b. Usar categorías en el catálogo (opcional) */}
+      {/* 2b. Usar categorías en el catálogo (opcional) — solo en Configuración, no en Diseño */}
+      {!designOnly && (
       <SectionCard icon="Tags" title="Categorías en el catálogo" subtitle="Activa para mostrar filtros por categoría. Las categorías dependen del rubro que elijas en Configuración.">
         <label
           className="flex items-center justify-between px-4 py-3 rounded-xl border cursor-pointer transition-all"
@@ -507,6 +509,7 @@ export default function DesignCustomization({
           Asigna un <strong>rubro principal</strong> en la pestaña Configuración. Las categorías disponibles se definen por ese rubro (ej. Ropa, Ferretería).
         </p>
       </SectionCard>
+      )}
 
       {/* 3. Store Logo */}
       <SectionCard icon="CircleUser" title="Logo de la tienda" subtitle="Aparece centrado en el encabezado, sobre el nombre de la tienda">
@@ -616,7 +619,8 @@ export default function DesignCustomization({
         </div>
       </SectionCard>
 
-      {/* Vista del catálogo (móvil): destacada vs compacta */}
+      {/* Vista del catálogo (móvil): destacada vs compacta — solo en Configuración */}
+      {!designOnly && (
       <SectionCard icon="Smartphone" title="Vista del catálogo en móvil" subtitle="Elige cómo se muestran los productos en celulares">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {CATALOG_VIEW_MODES?.map(mode => (
@@ -649,6 +653,7 @@ export default function DesignCustomization({
           ))}
         </div>
       </SectionCard>
+      )}
 
       {/* Save button */}
       <div className="flex items-center justify-end gap-3 pt-2">
@@ -757,7 +762,8 @@ export default function DesignCustomization({
               </div>
             </div>
 
-            {/* Catalog Layout */}
+            {/* Catalog Layout — solo en Configuración (Pedidos y catálogo) */}
+            {!designOnly && (
             <div>
               <p className="text-xs font-bold mb-3" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Diseño del catálogo</p>
               <div className="grid grid-cols-3 gap-3">
@@ -787,8 +793,10 @@ export default function DesignCustomization({
                 ))}
               </div>
             </div>
+            )}
 
-            {/* Store Header Options */}
+            {/* Store Header Options — solo en Configuración */}
+            {!designOnly && (
             <div>
               <p className="text-xs font-bold mb-3" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Encabezado de la tienda</p>
               <div className="flex flex-col gap-2">
@@ -868,8 +876,10 @@ export default function DesignCustomization({
                 })}
               </div>
             </div>
+            )}
 
-            {/* Product Card Settings */}
+            {/* Product Card Settings — solo en Configuración */}
+            {!designOnly && (
             <div>
               <p className="text-xs font-bold mb-3" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Tarjeta de producto</p>
               <div className="flex flex-col gap-2">
@@ -924,6 +934,7 @@ export default function DesignCustomization({
                 ))}
               </div>
             </div>
+            )}
           </div>
         )}
       </div>

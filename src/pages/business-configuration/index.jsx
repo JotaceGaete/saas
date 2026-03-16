@@ -1,28 +1,16 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import BusinessSidebar from 'components/ui/BusinessSidebar';
 import { useIsDesktop } from 'hooks/useMediaQuery';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
-import {
-  updateBusiness,
-  uploadBusinessLogo,
-  uploadBusinessCover,
-  getProducts,
-  getMyBusiness,
-  getRubros,
-} from '../../services/waBusinessService';
+import { updateBusiness, getMyBusiness, getRubros } from '../../services/waBusinessService';
 import StoreCreationStep from '../business-registration/components/StoreCreationStep';
-import StoreHeaderCard from './components/StoreHeaderCard';
-import ProductListPanel from './components/ProductListPanel';
-import MobilePreviewPanel from './components/MobilePreviewPanel';
-import DesignCustomization from './components/DesignCustomization';
 import WhatsAppMessageTemplate from './components/WhatsAppMessageTemplate';
 import ChileWhatsAppField from 'components/ChileWhatsAppField';
 import ArgentinaWhatsAppField from 'components/ArgentinaWhatsAppField';
 import { getCountryCode, getCountryLabels } from '../../config/country';
-import { getPlanLimits, getPlanLabel } from '../../constants/plans';
-import { getPublicCatalogUrl } from '../../config/appUrl';
+import CatalogAndOrdersConfig from './components/CatalogAndOrdersConfig';
 
 function Toast({ message, type, onClose }) {
   return (
@@ -64,33 +52,16 @@ export default function BusinessConfiguration() {
   const navigate = useNavigate();
   const { user, loading, business: ctxBusiness, businessLoading, refreshBusiness } = useAuth();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [products, setProducts] = useState([]);
-  const [loadingProducts, setLoadingProducts] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [toast, setToast] = useState(null);
-  const [activeTab, setActiveTab] = useState('store');
-
-  // Add this block - WhatsApp message template state
   const [orderMessageTemplate, setOrderMessageTemplate] = useState('');
-  const [isSavingTemplate, setIsSavingTemplate] = useState(false);
-
-  // Local resolved business — may come from context or a direct fetch
   const [business, setBusiness] = useState(null);
   const [businessFetchLoading, setBusinessFetchLoading] = useState(false);
 
-  // Store header state
-  const [editingName, setEditingName] = useState(false);
-  const [storeName, setStoreName] = useState('');
-  const [storeSlug, setStoreSlug] = useState('');
-  const [logoUrl, setLogoUrl] = useState('');
-  const [pendingLogoFile, setPendingLogoFile] = useState(null);
-  const [coverImageUrl, setCoverImageUrl] = useState('');
-  const [pendingCoverFile, setPendingCoverFile] = useState(null);
-  const coverInputRef = useRef(null);
-
   const defaultCountryLabels = getCountryLabels();
-  // Business settings form state (defaults según país del dominio)
   const [form, setForm] = useState({
+    name: '',
+    slug: '',
     description: '',
     whatsapp: '',
     email: '',
@@ -100,12 +71,6 @@ export default function BusinessConfiguration() {
     country: defaultCountryLabels.countryName,
     currency: defaultCountryLabels.currency,
     rubroId: '',
-    bankName: '',
-    bankAccountType: '',
-    bankAccountNumber: '',
-    bankAccountHolder: '',
-    bankRut: '',
-    bankEmail: '',
   });
   const [rubros, setRubros] = useState([]);
 
@@ -137,7 +102,6 @@ export default function BusinessConfiguration() {
   });
 
   const toastTimer = useRef(null);
-  const fileInputRef = useRef(null);
 
   // Sincronizar negocio local desde el contexto cuando este se actualice
   useEffect(() => {
@@ -167,14 +131,11 @@ export default function BusinessConfiguration() {
     }
   }, [businessLoading, ctxBusiness, refreshBusiness]);
 
-  // Rellenar formulario y cabecera cuando el negocio esté resuelto
   useEffect(() => {
     if (business) {
-      setStoreName(business?.name || '');
-      setStoreSlug(business?.slug || '');
-      setLogoUrl(business?.logoUrl || '');
-      setCoverImageUrl(business?.coverImageUrl || '');
       setForm({
+        name: business?.name || '',
+        slug: business?.slug || '',
         description: business?.description || '',
         whatsapp: business?.whatsapp || '',
         email: business?.email || '',
@@ -184,14 +145,7 @@ export default function BusinessConfiguration() {
         country: business?.country || defaultCountryLabels.countryName,
         currency: business?.currency || defaultCountryLabels.currency,
         rubroId: business?.rubroId || '',
-        bankName: business?.bankName || '',
-        bankAccountType: business?.bankAccountType || '',
-        bankAccountNumber: business?.bankAccountNumber || '',
-        bankAccountHolder: business?.bankAccountHolder || '',
-        bankRut: business?.bankRut || '',
-        bankEmail: business?.bankEmail || '',
       });
-      // Populate design settings (merge profundo para no perder cardSettings/storeHeader parciales)
       if (business?.designSettings) {
         const ds = business.designSettings;
         setDesign(prev => ({
@@ -204,33 +158,13 @@ export default function BusinessConfiguration() {
           cardSettings: { ...prev.cardSettings, ...(ds.cardSettings || {}) },
         }));
       }
-      // Populate WhatsApp template
-      if (business?.orderMessageTemplate) {
-        setOrderMessageTemplate(business?.orderMessageTemplate);
-      }
+      if (business?.orderMessageTemplate) setOrderMessageTemplate(business?.orderMessageTemplate);
     }
-  }, [business?.id]);
-
-  useEffect(() => {
-    if (!business?.id) { setLoadingProducts(false); return; }
-    loadProducts();
   }, [business?.id]);
 
   useEffect(() => {
     getRubros().then(({ data }) => setRubros(data || []));
   }, []);
-
-  const loadProducts = async () => {
-    setLoadingProducts(true);
-    try {
-      const { data } = await getProducts(business?.id);
-      setProducts(data || []);
-    } catch (e) {
-      setProducts([]);
-    } finally {
-      setLoadingProducts(false);
-    }
-  };
 
   const showToast = (message, type = 'success') => {
     if (toastTimer?.current) clearTimeout(toastTimer?.current);
@@ -238,65 +172,10 @@ export default function BusinessConfiguration() {
     toastTimer.current = setTimeout(() => setToast(null), 3500);
   };
 
-  const handleLogoFileChange = (e) => {
-    const file = e?.target?.files?.[0];
-    if (!file) return;
-    const url = URL.createObjectURL(file);
-    setLogoUrl(url);
-    setPendingLogoFile(file);
-  };
-
-  const handleCoverFileChange = (e) => {
-    const file = e?.target?.files?.[0];
-    if (!file) return;
-    const url = URL.createObjectURL(file);
-    setCoverImageUrl(url);
-    setPendingCoverFile(file);
-  };
-
   const handleFormChange = (field, value) => {
     setForm(prev => ({ ...prev, [field]: value }));
   };
 
-  // Save store header (name, slug, logo)
-  const handleSaveName = async () => {
-    if (!business?.id) return;
-    setIsSaving(true);
-    try {
-      let finalLogoUrl = logoUrl;
-      if (pendingLogoFile) {
-        const { url, error: uploadErr } = await uploadBusinessLogo(pendingLogoFile, business?.id);
-        if (uploadErr) { showToast('Error al subir logo', 'error'); setIsSaving(false); return; }
-        finalLogoUrl = url;
-        setPendingLogoFile(null);
-        setLogoUrl(url);
-      }
-      let finalCoverUrl = coverImageUrl;
-      if (pendingCoverFile) {
-        const { url, error: uploadErr } = await uploadBusinessCover(pendingCoverFile, business?.id);
-        if (uploadErr) { showToast('Error al subir imagen de portada', 'error'); setIsSaving(false); return; }
-        finalCoverUrl = url;
-        setPendingCoverFile(null);
-        setCoverImageUrl(url);
-      }
-      const { error } = await updateBusiness(business?.id, {
-        name: storeName,
-        slug: storeSlug,
-        logoUrl: finalLogoUrl,
-        coverImageUrl: finalCoverUrl,
-      });
-      if (error) { showToast('Error al guardar: ' + error?.message, 'error'); return; }
-      await refreshBusiness();
-      setEditingName(false);
-      showToast('¡Guardado exitosamente!', 'success');
-    } catch (e) {
-      showToast('Error inesperado', 'error');
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  // Save business settings form
   const handleSaveSettings = async () => {
     const bizId = business?.id;
     if (!bizId) {
@@ -305,6 +184,8 @@ export default function BusinessConfiguration() {
     }
     setIsSaving(true);
     const payload = {
+      name: form?.name?.trim() || business?.name,
+      slug: (form?.slug?.trim() || business?.slug || '').replace(/\s+/g, '-').toLowerCase(),
       description: form?.description,
       whatsapp: form?.whatsapp,
       email: form?.email,
@@ -314,12 +195,8 @@ export default function BusinessConfiguration() {
       country: form?.country || defaultCountryLabels.countryName,
       currency: form?.currency || defaultCountryLabels.currency,
       rubroId: form?.rubroId || null,
-      bankName: form?.bankName,
-      bankAccountType: form?.bankAccountType,
-      bankAccountNumber: form?.bankAccountNumber,
-      bankAccountHolder: form?.bankAccountHolder,
-      bankRut: form?.bankRut,
-      bankEmail: form?.bankEmail,
+      designSettings: design,
+      orderMessageTemplate,
     };
     try {
       const { data: updated, error } = await updateBusiness(bizId, payload);
@@ -338,51 +215,9 @@ export default function BusinessConfiguration() {
     }
   };
 
-  // Save design settings
-  const handleSaveDesign = async () => {
-    const bizId = business?.id;
-    if (!bizId) { showToast('No se encontró el negocio.', 'error'); return; }
-    setIsSaving(true);
-    try {
-      const { data: updated, error } = await updateBusiness(bizId, { designSettings: design });
-      if (error) { showToast('Error al guardar diseño: ' + (error?.message || ''), 'error'); return; }
-      if (updated) setBusiness(updated);
-      await refreshBusiness();
-      showToast('¡Diseño guardado!', 'success');
-    } catch (e) {
-      showToast('Error inesperado: ' + (e?.message || ''), 'error');
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleSaveTemplate = async () => {
-    const bizId = business?.id;
-    if (!bizId) {
-      showToast('No se encontró el negocio.', 'error');
-      return;
-    }
-    setIsSavingTemplate(true);
-    try {
-      const { data: updated, error } = await updateBusiness(bizId, { orderMessageTemplate });
-      if (error) {
-        showToast('Error al guardar plantilla: ' + (error?.message || ''), 'error');
-        return;
-      }
-      if (updated) setBusiness(updated);
-      await refreshBusiness();
-      showToast('¡Plantilla guardada!', 'success');
-    } catch (e) {
-      showToast('Error inesperado: ' + (e?.message || ''), 'error');
-    } finally {
-      setIsSavingTemplate(false);
-    }
-  };
-
   const isLoading = businessLoading || businessFetchLoading;
   const isDesktop = useIsDesktop();
   const sidebarWidth = sidebarCollapsed ? 'var(--sidebar-collapsed-width)' : 'var(--sidebar-width)';
-  const catalogUrl = getPublicCatalogUrl(storeSlug || business?.slug || 'mi-tienda');
 
   const inputClass = [
     'w-full px-3 py-2.5 rounded-lg border text-sm outline-none transition-all',
@@ -394,12 +229,6 @@ export default function BusinessConfiguration() {
     color: 'var(--color-text-primary)',
     fontFamily: 'var(--font-caption)',
   };
-
-  const tabs = [
-    { id: 'store', label: 'Mi Tienda', icon: 'Store' },
-    { id: 'settings', label: 'Configuración', icon: 'Settings' },
-    { id: 'design', label: 'Diseño', icon: 'Palette' },
-  ];
 
   if (loading) {
     return (
@@ -442,7 +271,6 @@ export default function BusinessConfiguration() {
         className="panel-main min-h-screen w-full max-w-full min-w-0 overflow-x-hidden transition-all"
         style={{ marginLeft: isDesktop ? sidebarWidth : 0, transition: 'margin-left var(--transition-base)' }}
       >
-        {/* Top bar */}
         <header
           className="sticky top-0 z-30 border-b flex items-center justify-between px-4 sm:px-4 lg:px-4"
           style={{
@@ -452,198 +280,28 @@ export default function BusinessConfiguration() {
             boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
           }}
         >
-          <div className="flex items-center gap-3">
-            <div className="w-11 lg:w-0 flex-shrink-0" aria-hidden="true" />
-            <h1
-              className="text-base font-bold text-foreground"
-              style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
-            >
-              Mi Tienda
-            </h1>
-          </div>
-          <div className="flex items-center gap-2">
-            <a
-              href={catalogUrl}
-              rel="noopener noreferrer"
-              className="hidden sm:flex items-center gap-1.5 text-sm font-medium transition-colors hover:opacity-70"
-              style={{ color: 'var(--color-primary)', fontFamily: 'var(--font-caption)' }}
-            >
-              <span className="truncate max-w-[200px]">
-                {catalogUrl?.replace('https://', '')?.replace('http://', '')}
-              </span>
-              <Icon name="ExternalLink" size={14} color="var(--color-primary)" />
-            </a>
-          </div>
+          <h1 className="text-base font-bold text-foreground" style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}>
+            Configuración
+          </h1>
         </header>
 
-        {/* Tabs */}
-        <div
-          className="flex items-center gap-1 px-4 sm:px-5 lg:px-5 border-b overflow-x-auto scrollbar-hide"
-          style={{ backgroundColor: '#ffffff', borderColor: 'var(--color-border)' }}
-        >
-          {tabs?.map(tab => (
-            <button
-              key={tab?.id}
-              onClick={() => setActiveTab(tab?.id)}
-              className="flex items-center gap-2 px-4 py-3 text-sm font-medium transition-all border-b-2 -mb-px"
-              style={{
-                borderColor: activeTab === tab?.id ? 'var(--color-primary)' : 'transparent',
-                color: activeTab === tab?.id ? 'var(--color-primary)' : 'var(--color-text-secondary)',
-                fontFamily: 'var(--font-caption)',
-              }}
-            >
-              <Icon name={tab?.icon} size={15} color={activeTab === tab?.id ? 'var(--color-primary)' : 'var(--color-text-secondary)'} />
-              {tab?.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Tab: Mi Tienda */}
-        {activeTab === 'store' && (
-          <div className="flex flex-col lg:flex-row gap-0 min-h-[calc(100vh-108px)] pb-20 lg:pb-0">
-            {!business?.id ? (
-              <div className="flex-1 min-w-0 px-4 sm:px-4 lg:px-4 py-12 flex flex-col items-center justify-center">
-                <div className="rounded-2xl border p-8 max-w-md text-center" style={{ backgroundColor: '#ffffff', borderColor: 'var(--color-border)' }}>
-                  <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ backgroundColor: 'rgba(139,92,246,0.1)' }}>
-                    <Icon name="Store" size={28} color="var(--color-primary)" />
-                  </div>
-                  <h2 className="text-lg font-bold mb-2" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-text-primary)' }}>Crea tu tienda primero</h2>
-                  <p className="text-sm mb-6" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
-                    Ve a la pestaña <strong>Configuración</strong> y completa la configuración inicial del negocio. Luego podrás agregar logo, portada y productos.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('settings')}
-                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold text-white"
-                    style={{ background: 'linear-gradient(135deg, var(--color-primary) 0%, #7c3aed 100%)' }}
-                  >
-                    <Icon name="Settings" size={16} color="#fff" />
-                    Ir a Configuración
-                  </button>
-                </div>
-              </div>
-            ) : (
-            <>
-            {/* Center content */}
-            <div className="flex-1 min-w-0 px-4 sm:px-4 lg:px-4 py-6 lg:py-8 max-w-3xl">
-              <StoreHeaderCard
-                storeName={storeName}
-                storeSlug={storeSlug}
-                logoUrl={logoUrl}
-                coverImageUrl={coverImageUrl}
-                businessLogoUrl={business?.logoUrl}
-                businessCoverImageUrl={business?.coverImageUrl}
-                coverFit={design?.coverFit}
-                coverPosition={design?.coverPosition}
-                primaryColor={design?.primaryColor}
-                pendingLogoFile={!!pendingLogoFile}
-                pendingCoverFile={!!pendingCoverFile}
-                editingName={editingName}
-                isSaving={isSaving}
-                onEditName={() => setEditingName(true)}
-                onCancelEdit={() => { setEditingName(false); setStoreName(business?.name || ''); }}
-                onSaveName={handleSaveName}
-                onSaveLogoAndCover={handleSaveName}
-                onNameChange={setStoreName}
-                onSlugChange={setStoreSlug}
-                onLogoClick={() => fileInputRef?.current?.click()}
-                fileInputRef={fileInputRef}
-                onLogoFileChange={handleLogoFileChange}
-                coverInputRef={coverInputRef}
-                onCoverFileChange={handleCoverFileChange}
-                onCoverClick={() => coverInputRef?.current?.click()}
-              />
-              <div className="mt-6">
-                <ProductListPanel
-                  products={products}
-                  loading={loadingProducts}
-                  onAddProduct={() => navigate('/product-editor')}
-                  onEditProduct={(id) => navigate(`/product-editor?id=${id}`)}
-                  onReload={loadProducts}
-                  currency={business?.currency || defaultCountryLabels.currency}
-                />
-              </div>
+        <div className="px-4 sm:px-5 lg:px-5 py-6 lg:py-8 max-w-2xl pb-20 lg:pb-8">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-20">
+              <svg className="animate-spin" width="28" height="28" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="10" stroke="rgba(139,92,246,0.2)" strokeWidth="3" />
+                <path d="M12 2a10 10 0 0 1 10 10" stroke="var(--color-primary)" strokeWidth="3" strokeLinecap="round" />
+              </svg>
+              <span className="ml-3 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Cargando...</span>
             </div>
-            {/* Right: mobile preview */}
+          ) : !business?.id ? (
+            <StoreCreationStep user={user} businessLoading={isLoading} />
+          ) : (
+          <>
             <div
-              className="hidden xl:flex flex-col items-center justify-start py-8 px-6 flex-shrink-0"
-              style={{ width: '380px', borderLeft: '1px solid var(--color-border)', backgroundColor: '#f7f7f9' }}
-            >
-              <MobilePreviewPanel
-                storeName={storeName || business?.name || 'Mi Tienda'}
-                storeSlug={storeSlug || business?.slug || ''}
-                logoUrl={logoUrl}
-                coverImageUrl={coverImageUrl || business?.coverImageUrl}
-                products={products}
-                currency={business?.currency || defaultCountryLabels.currency}
-                design={design}
-              />
-            </div>
-            </>
-            )}
-          </div>
-        )}
-
-        {/* Tab: Configuración */}
-        {activeTab === 'settings' && (
-          <div className="px-4 sm:px-5 lg:px-5 py-6 lg:py-8 max-w-2xl pb-20 lg:pb-8">
-            {isLoading ? (
-              <div className="flex items-center justify-center py-20">
-                <svg className="animate-spin" width="28" height="28" viewBox="0 0 24 24" fill="none">
-                  <circle cx="12" cy="12" r="10" stroke="rgba(139,92,246,0.2)" strokeWidth="3" />
-                  <path d="M12 2a10 10 0 0 1 10 10" stroke="var(--color-primary)" strokeWidth="3" strokeLinecap="round" />
-                </svg>
-                <span className="ml-3 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Cargando datos del negocio...</span>
-              </div>
-            ) : !business?.id ? (
-              <StoreCreationStep user={user} businessLoading={isLoading} />
-            ) : (
-            <div
-              className="rounded-2xl border p-6 lg:p-8"
+              className="rounded-2xl border p-6 lg:p-8 mb-8"
               style={{ backgroundColor: '#ffffff', borderColor: 'var(--color-border)', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}
             >
-              {/* Plan actual */}
-              {business?.id && (
-                <div
-                  className="rounded-xl border p-4 mb-6 flex flex-wrap items-center justify-between gap-4"
-                  style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}
-                >
-                  <div>
-                    <p className="text-sm font-medium" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Plan actual</p>
-                    <p className="text-base font-bold mt-0.5" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-text-primary)' }}>
-                      {getPlanLabel(business?.planSlug ?? 'starter')}
-                    </p>
-                    <p className="text-xs mt-1" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-                      {(() => {
-                        const activeCount = products.filter(p => p?.isActive).length;
-                        const { maxProducts } = getPlanLimits(business?.planSlug ?? 'starter');
-                        return maxProducts == null
-                          ? `${activeCount} productos activos (ilimitados)`
-                          : `${activeCount} de ${maxProducts} productos activos`;
-                      })()}
-                    </p>
-                    {business?.trialExpiresAt && !business?.planExpiresAt && (business?.planSlug === 'pro' || business?.planSlug === 'business') && new Date(business.trialExpiresAt) > new Date() && (
-                      <p className="text-xs mt-1 font-medium" style={{ color: '#D97706', fontFamily: 'var(--font-caption)' }}>
-                        ✨ Prueba gratuita · vence el {new Date(business.trialExpiresAt).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })}
-                      </p>
-                    )}
-                    {business?.planExpiresAt && (business?.planSlug === 'pro' || business?.planSlug === 'business') && new Date(business.planExpiresAt) > new Date() && (
-                      <p className="text-xs mt-1" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-                        Vence el: {new Date(business.planExpiresAt).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })}
-                      </p>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => navigate('/planes')}
-                    className="px-4 py-2 rounded-lg text-sm font-medium transition-opacity hover:opacity-90"
-                    style={{ backgroundColor: 'var(--color-primary)', color: '#fff' }}
-                  >
-                    Ver planes
-                  </button>
-                </div>
-              )}
-
               <div className="flex items-center gap-3 mb-6">
                 <div
                   className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
@@ -658,7 +316,29 @@ export default function BusinessConfiguration() {
               </div>
 
               <div className="flex flex-col gap-5">
-                {/* Rubro principal */}
+                <SettingsField label="Nombre del negocio" hint="Nombre que verán tus clientes en el catálogo">
+                  <input
+                    type="text"
+                    className={inputClass}
+                    style={inputStyle}
+                    placeholder="Ej: Mi Tienda"
+                    value={form?.name}
+                    onChange={e => handleFormChange('name', e?.target?.value)}
+                  />
+                </SettingsField>
+                <SettingsField label="Enlace del catálogo (slug)" hint="Parte de la URL pública. Solo letras, números y guiones.">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs flex-shrink-0" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>/c/</span>
+                    <input
+                      type="text"
+                      className={inputClass}
+                      style={inputStyle}
+                      placeholder="mi-tienda"
+                      value={form?.slug}
+                      onChange={e => handleFormChange('slug', (e?.target?.value || '').replace(/\s+/g, '-').toLowerCase())}
+                    />
+                  </div>
+                </SettingsField>
                 <SettingsField label="Rubro principal" hint="Define el sector de tu negocio. Las categorías de productos se filtran por este rubro.">
                   <select
                     value={form?.rubroId ?? ''}
@@ -774,137 +454,15 @@ export default function BusinessConfiguration() {
                     {defaultCountryLabels.countryName}
                   </div>
                 </SettingsField>
-
-                {/* Bank account section */}
-                <div className="pt-4 mt-2 border-t" style={{ borderColor: 'var(--color-border)' }}>
-                  <div className="flex items-center gap-2 mb-4">
-                    <div
-                      className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-                      style={{ backgroundColor: 'rgba(139,92,246,0.1)' }}
-                    >
-                      <Icon name="Landmark" size={14} color="var(--color-primary)" />
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-text-primary)' }}>Cobros por transferencia</h3>
-                      <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Usa estos datos para responder pedidos más rápido desde tu panel.</p>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col gap-5">
-                    {/* Banco */}
-                    <SettingsField label="Banco" hint="Nombre del banco donde recibes transferencias">
-                      <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2">
-                          <Icon name="Building2" size={16} color="var(--color-text-tertiary)" />
-                        </span>
-                        <input
-                          type="text"
-                          className={inputClass}
-                          style={{ ...inputStyle, paddingLeft: '2.25rem' }}
-                          placeholder={defaultCountryLabels.bankPlaceholder}
-                          value={form?.bankName}
-                          onChange={e => handleFormChange('bankName', e?.target?.value)}
-                        />
-                      </div>
-                    </SettingsField>
-
-                    {/* Tipo de cuenta (opciones según país) */}
-                    <SettingsField label="Tipo de cuenta">
-                      <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2">
-                          <Icon name="CreditCard" size={16} color="var(--color-text-tertiary)" />
-                        </span>
-                        <select
-                          className={inputClass}
-                          style={{ ...inputStyle, paddingLeft: '2.25rem', cursor: 'pointer' }}
-                          value={form?.bankAccountType}
-                          onChange={e => handleFormChange('bankAccountType', e?.target?.value)}
-                        >
-                          <option value="">Seleccionar tipo...</option>
-                          {defaultCountryLabels.bankAccountTypes.map(({ value, label }) => (
-                            <option key={value} value={value}>{label}</option>
-                          ))}
-                        </select>
-                      </div>
-                    </SettingsField>
-
-                    {/* Número de cuenta */}
-                    <SettingsField label="Número de cuenta">
-                      <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2">
-                          <Icon name="Hash" size={16} color="var(--color-text-tertiary)" />
-                        </span>
-                        <input
-                          type="text"
-                          className={inputClass}
-                          style={{ ...inputStyle, paddingLeft: '2.25rem' }}
-                          placeholder="Ej: 00123456789"
-                          value={form?.bankAccountNumber}
-                          onChange={e => handleFormChange('bankAccountNumber', e?.target?.value)}
-                        />
-                      </div>
-                    </SettingsField>
-
-                    {/* Nombre titular + RUT */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <SettingsField label="Nombre titular">
-                        <div className="relative">
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2">
-                            <Icon name="User" size={16} color="var(--color-text-tertiary)" />
-                          </span>
-                          <input
-                            type="text"
-                            className={inputClass}
-                            style={{ ...inputStyle, paddingLeft: '2.25rem' }}
-                            placeholder="Nombre completo"
-                            value={form?.bankAccountHolder}
-                            onChange={e => handleFormChange('bankAccountHolder', e?.target?.value)}
-                          />
-                        </div>
-                      </SettingsField>
-                      <SettingsField label={defaultCountryLabels.idNumberLabel} hint={defaultCountryLabels.idNumberPlaceholder}>
-                        <div className="relative">
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2">
-                            <Icon name="IdCard" size={16} color="var(--color-text-tertiary)" />
-                          </span>
-                          <input
-                            type="text"
-                            className={inputClass}
-                            style={{ ...inputStyle, paddingLeft: '2.25rem' }}
-                            placeholder={defaultCountryLabels.idNumberPlaceholder}
-                            value={form?.bankRut}
-                            onChange={e => handleFormChange('bankRut', e?.target?.value)}
-                          />
-                        </div>
-                      </SettingsField>
-                    </div>
-
-                    {/* Email bancario */}
-                    <SettingsField label="Email" hint="Correo asociado a la cuenta bancaria (para transferencias)">
-                      <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2">
-                          <Icon name="Mail" size={16} color="var(--color-text-tertiary)" />
-                        </span>
-                        <input
-                          type="email"
-                          className={inputClass}
-                          style={{ ...inputStyle, paddingLeft: '2.25rem' }}
-                          placeholder="transferencias@ejemplo.com"
-                          value={form?.bankEmail}
-                          onChange={e => handleFormChange('bankEmail', e?.target?.value)}
-                        />
-                      </div>
-                    </SettingsField>
-                  </div>
-                </div>
               </div>
 
-              {/* Save button */}
               <div className="mt-8 flex items-center justify-end gap-3 pt-5 border-t" style={{ borderColor: 'var(--color-border)' }}>
                 <button
                   onClick={() => {
                     if (business) {
                       setForm({
+                        name: business?.name || '',
+                        slug: business?.slug || '',
                         description: business?.description || '',
                         whatsapp: business?.whatsapp || '',
                         email: business?.email || '',
@@ -914,13 +472,20 @@ export default function BusinessConfiguration() {
                         country: business?.country || defaultCountryLabels.countryName,
                         currency: business?.currency || defaultCountryLabels.currency,
                         rubroId: business?.rubroId || '',
-                        bankName: business?.bankName || '',
-                        bankAccountType: business?.bankAccountType || '',
-                        bankAccountNumber: business?.bankAccountNumber || '',
-                        bankAccountHolder: business?.bankAccountHolder || '',
-                        bankRut: business?.bankRut || '',
-                        bankEmail: business?.bankEmail || '',
                       });
+                      setOrderMessageTemplate(business?.orderMessageTemplate || '');
+                      if (business?.designSettings) {
+                        const ds = business.designSettings;
+                        setDesign(prev => ({
+                          ...prev,
+                          ...ds,
+                          catalogViewMode: ds?.catalogViewMode === 'compact' ? 'compact' : 'featured',
+                          useCategories: ds?.useCategories === true,
+                          categories: Array.isArray(ds?.categories) ? ds.categories : prev.categories,
+                          storeHeader: { ...prev.storeHeader, ...(ds.storeHeader || {}) },
+                          cardSettings: { ...prev.cardSettings, ...(ds.cardSettings || {}) },
+                        }));
+                      }
                     }
                   }}
                   disabled={isSaving}
@@ -961,61 +526,32 @@ export default function BusinessConfiguration() {
                 </button>
               </div>
             </div>
-            )}
+
+            <div className="rounded-2xl border p-6 lg:p-8 mb-8" style={{ backgroundColor: '#ffffff', borderColor: 'var(--color-border)', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
+              <div className="flex items-center gap-3 mb-5">
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(139,92,246,0.1)' }}>
+                  <Icon name="ShoppingBag" size={18} color="var(--color-primary)" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-text-primary)' }}>Pedidos y catálogo</h2>
+                  <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Categorías, vista, layout y opciones de tarjeta</p>
+                </div>
+              </div>
+              <CatalogAndOrdersConfig design={design} onChange={setDesign} />
+            </div>
+
             {business?.id && (
               <WhatsAppMessageTemplate
                 value={orderMessageTemplate}
                 onChange={setOrderMessageTemplate}
-                isSaving={isSavingTemplate}
-                onSave={handleSaveTemplate}
+                isSaving={isSaving}
+                onSave={handleSaveSettings}
               />
             )}
-          </div>
-        )}
-
-        {/* Tab: Diseño */}
-        {activeTab === 'design' && (
-          <div className="w-full max-w-6xl mx-auto px-4 sm:px-4 lg:px-4 min-h-[calc(100vh-108px)] pb-20 lg:pb-8">
-            {/* Mobile: 1 columna. Desktop (lg+): 2 columnas equilibradas, preview sticky */}
-            <div className="flex flex-col lg:grid lg:grid-cols-[1fr_minmax(340px,380px)] lg:gap-8 xl:gap-10">
-              {/* Columna izquierda: formulario de edición */}
-              <div className="min-w-0 py-6 lg:py-8 overflow-y-auto">
-                <DesignCustomization
-                  design={design}
-                  onChange={setDesign}
-                  businessId={business?.id}
-                  isSaving={isSaving}
-                  onSave={handleSaveDesign}
-                  showToast={showToast}
-                />
-              </div>
-              {/* Columna derecha: preview móvil — visible en mobile debajo y en desktop al lado; sticky solo en desktop */}
-              <div
-                className="flex flex-col items-center justify-start py-6 lg:py-8 lg:sticky lg:top-24 lg:self-start w-full max-w-[380px] lg:max-w-none mx-auto lg:mx-0 rounded-xl border lg:rounded-2xl"
-                style={{ borderColor: 'var(--color-border)', backgroundColor: '#f7f7f9' }}
-              >
-                <MobilePreviewPanel
-                  storeName={storeName || business?.name || 'Mi Tienda'}
-                  storeSlug={storeSlug || business?.slug || ''}
-                  logoUrl={logoUrl}
-                  coverImageUrl={coverImageUrl || business?.coverImageUrl}
-                  products={products}
-                  currency={business?.currency || defaultCountryLabels.currency}
-                  design={design}
-                />
-              </div>
-            </div>
-          </div>
-        )}
+          </>
+          )}
+        </div>
       </div>
-      {/* Hidden file input for logo */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={handleLogoFileChange}
-      />
       {toast && (
         <Toast message={toast?.message} type={toast?.type} onClose={() => setToast(null)} />
       )}
