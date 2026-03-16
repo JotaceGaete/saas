@@ -57,7 +57,8 @@ export default function ProductManagement() {
 
   const tableProducts = useMemo(() => products?.map(p => ({
     id: p?.id, name: p?.name, description: p?.description || '', price: p?.price,
-    category: 'General', active: p?.isActive, image: p?.imageUrl || '', imageAlt: p?.name,
+    category: (p?.category && String(p.category).trim()) || 'General',
+    active: p?.isActive, image: p?.imageUrl || '', imageAlt: p?.name,
   })), [products]);
 
   const filteredProducts = useMemo(() => {
