@@ -51,7 +51,10 @@ export default function OrderConfirmation() {
       }, orderItems);
 
       if (orderError) {
-        setSubmitError(orderError?.message || 'No se pudo guardar el pedido. Intenta de nuevo.');
+        const isPlanLimit = orderError?.code === 'PLAN_LIMIT_EXCEEDED' || (orderError?.message && orderError.message.includes('PLAN_LIMIT_EXCEEDED'));
+        setSubmitError(isPlanLimit
+          ? 'Tu plan Free permite 30 pedidos por mes. Actualiza a Pro para recibir pedidos ilimitados.'
+          : (orderError?.message || 'No se pudo guardar el pedido. Intenta de nuevo.'));
         setLoading(false);
         return;
       }

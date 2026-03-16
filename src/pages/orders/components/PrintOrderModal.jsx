@@ -6,6 +6,7 @@ import { formatCLP } from 'utils/formatCLP';
 
 export default function PrintOrderModal({ order, businessName, onClose }) {
   const printRef = useRef(null);
+  const currency = order?.currency || 'CLP';
 
   const formattedDate = order?.createdAt
     ? format(new Date(order.createdAt), "d 'de' MMMM yyyy, HH:mm", { locale: es })

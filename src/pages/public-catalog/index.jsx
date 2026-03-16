@@ -769,7 +769,10 @@ function OrderPanel({ business, formatPrice, onClose, theme }) {
       }, orderItems);
 
       if (orderError) {
-        setSendError('No se pudo registrar el pedido. Intenta de nuevo.');
+        const isPlanLimit = orderError?.code === 'PLAN_LIMIT_EXCEEDED' || (orderError?.message && orderError.message.includes('PLAN_LIMIT_EXCEEDED'));
+        setSendError(isPlanLimit
+          ? 'Tu plan Free permite 30 pedidos por mes. Actualiza a Pro para recibir pedidos ilimitados.'
+          : (orderError?.message || 'No se pudo registrar el pedido. Intenta de nuevo.'));
         setSending(false);
         return;
       }

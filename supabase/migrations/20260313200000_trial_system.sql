@@ -206,7 +206,9 @@ END;
 $$;
 
 -- 9. wa_admin_business_overview: incluir trial_expires_at.
-CREATE OR REPLACE VIEW public.wa_admin_business_overview AS
+DROP VIEW IF EXISTS public.wa_admin_business_overview;
+
+CREATE VIEW public.wa_admin_business_overview AS
 SELECT
   b.id,
   b.name,
@@ -241,7 +243,10 @@ GROUP BY b.id, b.name, b.slug, b.email, b.whatsapp, b.is_active,
 
 -- 10. wa_expire_trials: mover negocios con trial expirado a starter.
 --     Llamar vía cron (pg_cron o Supabase scheduled function) cada hora o cada día.
-CREATE OR REPLACE FUNCTION public.wa_expire_trials()
+--     En algunos entornos esta función ya existe con otro tipo de retorno; la eliminamos primero.
+DROP FUNCTION IF EXISTS public.wa_expire_trials();
+
+CREATE FUNCTION public.wa_expire_trials()
 RETURNS INT
 LANGUAGE plpgsql SECURITY DEFINER AS $$
 DECLARE

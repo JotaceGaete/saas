@@ -124,6 +124,7 @@ const mapBusinessFromDb = (row) => {
 
 const mapProductFromDb = (row) => {
   const imagesArray = Array.isArray(row?.images) ? row.images : (row?.image_url ? [row.image_url] : []);
+  const status = row?.status ?? (row?.is_active ? 'active' : 'inactive');
   return {
     id: row?.id,
     businessId: row?.business_id,
@@ -132,7 +133,8 @@ const mapProductFromDb = (row) => {
     price: parseFloat(row?.price),
     imageUrl: row?.image_url || imagesArray?.[0] || null,
     images: imagesArray,
-    isActive: row?.is_active,
+    isActive: row?.is_active ?? (status === 'active'),
+    status,
     sortOrder: row?.sort_order,
     category: row?.category || null,
     hasOptions: row?.has_options || false,
@@ -405,6 +407,9 @@ export const createProduct = async (businessId, productData) => {
   }
   const imagesArr = Array.isArray(productData?.images) ? productData.images : [];
   const imageUrl = productData?.imageUrl ?? imagesArr?.[0] ?? null;
+  const status = ['active', 'inactive', 'archived'].includes(productData?.status)
+    ? productData.status
+    : (productData?.isActive !== false ? 'active' : 'inactive');
   const { data, error } = await supabase?.from('wa_products')?.insert({
     business_id: businessId,
     name: productData?.name,
@@ -412,7 +417,8 @@ export const createProduct = async (businessId, productData) => {
     price: productData?.price,
     image_url: imageUrl,
     images: imagesArr?.length > 0 ? imagesArr : (imageUrl ? [imageUrl] : []),
-    is_active: productData?.isActive !== undefined ? productData?.isActive : true,
+    status,
+    is_active: status === 'active',
     sort_order: productData?.sortOrder || 0,
     category: productData?.category || null,
     has_options: productData?.hasOptions || false,
@@ -446,7 +452,12 @@ export const updateProduct = async (productId, productData) => {
   if (productData?.description !== undefined) dbUpdates.description = productData?.description;
   if (productData?.price !== undefined)       dbUpdates.price = productData?.price;
   if (productData?.imageUrl !== undefined)    dbUpdates.image_url = productData?.imageUrl;
-  if (productData?.isActive !== undefined)    dbUpdates.is_active = productData?.isActive;
+  if (productData?.status !== undefined && ['active', 'inactive', 'archived'].includes(productData.status)) {
+    dbUpdates.status = productData.status;
+    dbUpdates.is_active = productData.status === 'active';
+  } else if (productData?.isActive !== undefined) {
+    dbUpdates.is_active = productData?.isActive;
+  }
   if (productData?.sortOrder !== undefined)   dbUpdates.sort_order = productData?.sortOrder;
   if (productData?.hasOptions !== undefined)  dbUpdates.has_options = productData?.hasOptions;
   if (productData?.optionsDescription !== undefined) dbUpdates.options_description = productData?.optionsDescription;
@@ -572,7 +583,15 @@ export const createOrder = async (businessId, orderData, items) => {
       payment_status: 'pendiente',
       notes: orderData?.notes?.trim() || null,
     });
-  if (orderError) return { data: null, error: orderError };
+  if (orderError) {
+    const isPlanLimit = (orderError?.message || '').includes('PLAN_LIMIT_EXCEEDED');
+    return {
+      data: null,
+      error: isPlanLimit
+        ? { message: 'Tu plan Free permite 30 pedidos por mes. Actualiza a Pro para recibir pedidos ilimitados.', code: 'PLAN_LIMIT_EXCEEDED' }
+        : orderError,
+    };
+  }
 
   if (items?.length > 0) {
     const itemRows = items?.map(item => ({
