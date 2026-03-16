@@ -253,12 +253,29 @@ Deno.serve(async (req) => {
   const rawPlan = (biz as { plan_slug?: string }).plan_slug ?? 'starter';
   const currentPlanSlug = rawPlan === 'control' ? 'starter' : rawPlan;
   const planExpiresAt = (biz as { plan_expires_at?: string | null }).plan_expires_at ?? null;
+  const trialExpiresAt = (biz as { trial_expires_at?: string | null }).trial_expires_at ?? null;
   const countryCode = resolveBusinessCountryCode(
     biz as { country_code?: string | null; country?: string | null; currency?: string | null },
   );
 
   const catalog = getPlanCatalog(countryCode, providerHint);
-  const preview = computePlanChange(currentPlanSlug, planExpiresAt, targetPlanSlug, catalog);
+  let preview = computePlanChange(currentPlanSlug, planExpiresAt, targetPlanSlug, catalog);
+
+  // PRO en trial comprando PRO: activar el plan pagado cuando termine el trial (scheduled_plan_slug / scheduled_change_at).
+  const now = Date.now();
+  if (
+    currentPlanSlug === 'pro' &&
+    targetPlanSlug === 'pro' &&
+    !planExpiresAt &&
+    trialExpiresAt &&
+    new Date(trialExpiresAt).getTime() > now
+  ) {
+    preview = {
+      ...preview,
+      effectiveAt: trialExpiresAt,
+      scheduledChange: { targetPlanSlug: 'pro', effectiveAt: trialExpiresAt },
+    };
+  }
 
   console.log('[plan-change-preview]', {
     currentPlanSlug,

@@ -373,9 +373,10 @@ export default function DesignCustomization({
             {design?.headerImageUrl ? (
               <>
                 <Image
+                  key={design?.headerImageUrl}
                   src={design?.headerImageUrl}
                   alt="Imagen de portada del catálogo"
-                  className="w-full h-full"
+                  className="w-full h-full object-cover"
                   style={{
                     objectFit: (design?.coverFit || 'cover') === 'contain' ? 'contain' : 'cover',
                     objectPosition: (design?.coverFit || 'cover') === 'cover' ? (design?.coverPosition || 'center') : 'center',
@@ -406,7 +407,7 @@ export default function DesignCustomization({
               </div>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => coverInputRef?.current?.click()}
               disabled={uploadingCover}
@@ -418,12 +419,12 @@ export default function DesignCustomization({
             </button>
             {design?.headerImageUrl && (
               <button
-                onClick={() => onChange?.({ ...design, headerImageUrl: '' })}
+                onClick={(e) => { e.stopPropagation(); onChange?.({ ...design, headerImageUrl: '' }); }}
                 className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium transition-all hover:opacity-80"
                 style={{ border: '1px solid #fecaca', color: '#ef4444', backgroundColor: '#fff5f5', fontFamily: 'var(--font-caption)' }}
               >
                 <Icon name="Trash2" size={12} color="#ef4444" />
-                Quitar
+                Eliminar portada
               </button>
             )}
           </div>
@@ -541,12 +542,13 @@ export default function DesignCustomization({
           >
             {design?.logoUrl ? (
               <>
-                <Image src={design?.logoUrl} alt="Logo de la tienda" className="w-full h-full object-cover" />
+                <Image key={design?.logoUrl} src={design?.logoUrl} alt="Logo de la tienda" className="w-full h-full object-cover" />
                 <div
-                  className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="absolute inset-0 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity gap-0.5"
                   style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}
                 >
                   <Icon name="Camera" size={18} color="#fff" />
+                  <span className="text-[10px] text-white font-medium" style={{ fontFamily: 'var(--font-caption)' }}>Cambiar</span>
                 </div>
               </>
             ) : (
@@ -571,7 +573,7 @@ export default function DesignCustomization({
             <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
               Si no hay logo, se muestra el ícono predeterminado.
             </p>
-            <div className="flex gap-2 mt-1">
+            <div className="flex flex-wrap gap-2 mt-1">
               <button
                 onClick={() => logoInputRef?.current?.click()}
                 disabled={uploadingLogo}
@@ -588,7 +590,7 @@ export default function DesignCustomization({
                   style={{ border: '1px solid #fecaca', color: '#ef4444', backgroundColor: '#fff5f5', fontFamily: 'var(--font-caption)' }}
                 >
                   <Icon name="Trash2" size={12} color="#ef4444" />
-                  Quitar
+                  Eliminar logo
                 </button>
               )}
             </div>

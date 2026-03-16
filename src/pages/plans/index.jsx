@@ -461,7 +461,7 @@ export default function PlansPage() {
             </div>
           )}
 
-          {/* Banner de trial activo */}
+          {/* Banner de trial activo (PRO en prueba gratuita) */}
           {business?.trialExpiresAt && !business?.planExpiresAt && (currentPlan === 'pro' || currentPlan === 'business') && (() => {
             const trialExp = new Date(business.trialExpiresAt);
             const now = new Date();
@@ -475,13 +475,16 @@ export default function PlansPage() {
                 <span className="text-xl leading-none mt-0.5">✨</span>
                 <div>
                   <p className="text-sm font-semibold" style={{ color: '#92400E', fontFamily: 'var(--font-heading)' }}>
-                    Estás probando el plan Pro gratis
+                    Estás usando una prueba gratuita del plan PRO.
                   </p>
                   <p className="text-xs mt-0.5" style={{ color: '#B45309', fontFamily: 'var(--font-caption)' }}>
+                    Si compras ahora, la suscripción comenzará cuando termine tu período gratuito.
+                  </p>
+                  <p className="text-xs mt-1" style={{ color: '#B45309', fontFamily: 'var(--font-caption)' }}>
                     {daysLeft === 1
                       ? 'Queda 1 día de prueba.'
                       : `Quedan ${daysLeft} días de prueba.`}
-                    {' '}Elige un plan antes de que expire para no perder el acceso a tus productos y pedidos ilimitados.
+                    {' '}Puedes contratar Pro o Full; si eliges Pro, el plan pagado se activará al finalizar la prueba.
                   </p>
                 </div>
               </div>

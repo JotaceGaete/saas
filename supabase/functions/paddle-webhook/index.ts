@@ -75,12 +75,12 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: true, ignored: true, reason: 'already_processed' }, 200);
   }
 
-  // Resolver payment: por custom_data.payment_id o por provider_payment_id
-  let paymentRow: { id: string; business_id: string; plan_slug: string; status: string } | null = null;
+  // Resolver payment: por custom_data.payment_id o por provider_payment_id (incluye metadata para trial PRO→PRO)
+  let paymentRow: { id: string; business_id: string; plan_slug: string; status: string; metadata?: { isScheduledTrialConversion?: boolean; effectiveAt?: string } | null } | null = null;
   if (paymentId) {
     const { data: byId } = await db
       .from('wa_payments')
-      .select('id, business_id, plan_slug, status')
+      .select('id, business_id, plan_slug, status, metadata')
       .eq('id', paymentId)
       .eq('provider', 'paddle')
       .maybeSingle();
@@ -89,7 +89,7 @@ Deno.serve(async (req) => {
   if (!paymentRow) {
     const { data: byTxn } = await db
       .from('wa_payments')
-      .select('id, business_id, plan_slug, status')
+      .select('id, business_id, plan_slug, status, metadata')
       .eq('provider', 'paddle')
       .eq('provider_payment_id', transactionId)
       .maybeSingle();
@@ -129,9 +129,23 @@ Deno.serve(async (req) => {
   }
 
   const now = new Date();
-  const planExpiresAt = new Date(now);
-  planExpiresAt.setDate(planExpiresAt.getDate() + PLAN_DURATION_DAYS);
-  const planExpiresAtIso = planExpiresAt.toISOString();
+  const paymentMeta = (paymentRow.metadata as { isScheduledTrialConversion?: boolean; effectiveAt?: string } | null) ?? null;
+  const isScheduledTrialConversion = !!paymentMeta?.isScheduledTrialConversion && !!paymentMeta?.effectiveAt;
+  const effectiveAtIso = paymentMeta?.effectiveAt ?? null;
+
+  let planActivatedAtIso: string;
+  let planExpiresAtIso: string;
+  if (isScheduledTrialConversion && effectiveAtIso) {
+    planActivatedAtIso = effectiveAtIso;
+    const endOfPeriod = new Date(effectiveAtIso);
+    endOfPeriod.setDate(endOfPeriod.getDate() + PLAN_DURATION_DAYS);
+    planExpiresAtIso = endOfPeriod.toISOString();
+  } else {
+    planActivatedAtIso = now.toISOString();
+    const planExpiresAt = new Date(now);
+    planExpiresAt.setDate(planExpiresAt.getDate() + PLAN_DURATION_DAYS);
+    planExpiresAtIso = planExpiresAt.toISOString();
+  }
 
   await db.from('wa_payment_events').insert({
     payment_id: paymentRow.id,
@@ -146,7 +160,7 @@ Deno.serve(async (req) => {
   const { error: paymentUpdateError } = await db.from('wa_payments').update({
     status: 'approved',
     provider_payment_id: transactionId,
-    plan_activated_at: now.toISOString(),
+    plan_activated_at: planActivatedAtIso,
     plan_expires_at: planExpiresAtIso,
     updated_at: now.toISOString(),
   }).eq('id', paymentRow.id);
@@ -156,23 +170,39 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: false, error: 'Database update failed' }, 500);
   }
 
-  const { error: bizUpdateError } = await db.from('wa_businesses').update({
-    plan_slug: paymentRow.plan_slug,
-    plan_expires_at: planExpiresAtIso,
-  }).eq('id', paymentRow.business_id);
-
-  if (bizUpdateError) {
-    console.error('[paddle-webhook] error actualizando wa_businesses:', bizUpdateError.message);
-    return jsonResponse({ ok: false, error: 'Business update failed' }, 500);
+  if (isScheduledTrialConversion && effectiveAtIso) {
+    const { error: bizUpdateError } = await db.from('wa_businesses').update({
+      scheduled_plan_slug: paymentRow.plan_slug,
+      scheduled_change_at: effectiveAtIso,
+    }).eq('id', paymentRow.business_id);
+    if (bizUpdateError) {
+      console.error('[paddle-webhook] error actualizando wa_businesses (scheduled):', bizUpdateError.message);
+      return jsonResponse({ ok: false, error: 'Business update failed' }, 500);
+    }
+    console.log('[paddle-webhook] payment_approved_scheduled_at_trial_end', {
+      transaction_id: transactionId,
+      payment_id: paymentRow.id,
+      business_id: paymentRow.business_id,
+      plan_slug: paymentRow.plan_slug,
+      scheduled_change_at: effectiveAtIso,
+    });
+  } else {
+    const { error: bizUpdateError } = await db.from('wa_businesses').update({
+      plan_slug: paymentRow.plan_slug,
+      plan_expires_at: planExpiresAtIso,
+    }).eq('id', paymentRow.business_id);
+    if (bizUpdateError) {
+      console.error('[paddle-webhook] error actualizando wa_businesses:', bizUpdateError.message);
+      return jsonResponse({ ok: false, error: 'Business update failed' }, 500);
+    }
+    console.log('[paddle-webhook] payment_approved_and_plan_updated', {
+      transaction_id: transactionId,
+      payment_id: paymentRow.id,
+      business_id: paymentRow.business_id,
+      plan_slug: paymentRow.plan_slug,
+      plan_expires_at: planExpiresAtIso,
+    });
   }
-
-  console.log('[paddle-webhook] payment_approved_and_plan_updated', {
-    transaction_id: transactionId,
-    payment_id: paymentRow.id,
-    business_id: paymentRow.business_id,
-    plan_slug: paymentRow.plan_slug,
-    plan_expires_at: planExpiresAtIso,
-  });
 
   return jsonResponse({ ok: true }, 200);
 });

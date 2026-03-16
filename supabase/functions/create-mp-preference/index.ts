@@ -275,7 +275,24 @@ Deno.serve(async (req) => {
   const rawPlan = (business as { plan_slug?: string }).plan_slug ?? 'starter';
   const currentPlanSlug = rawPlan === 'control' ? 'starter' : rawPlan;
   const planExpiresAt   = (business as { plan_expires_at?: string | null }).plan_expires_at ?? null;
-  const planChange      = computePlanChange(currentPlanSlug, planExpiresAt, planSlug, catalog);
+  const trialExpiresAt  = (business as { trial_expires_at?: string | null }).trial_expires_at ?? null;
+  let planChange        = computePlanChange(currentPlanSlug, planExpiresAt, planSlug, catalog);
+
+  // PRO en trial comprando PRO: programar activación al fin del trial (scheduled_plan_slug / scheduled_change_at).
+  const now = Date.now();
+  if (
+    currentPlanSlug === 'pro' &&
+    planSlug === 'pro' &&
+    !planExpiresAt &&
+    trialExpiresAt &&
+    new Date(trialExpiresAt).getTime() > now
+  ) {
+    planChange = {
+      ...planChange,
+      effectiveAt: trialExpiresAt,
+      scheduledChange: { targetPlanSlug: planSlug, effectiveAt: trialExpiresAt },
+    };
+  }
 
   if (planChange.changeType === 'downgrade') {
     const effectiveAt = planExpiresAt ?? new Date().toISOString();
@@ -304,7 +321,13 @@ Deno.serve(async (req) => {
   }
 
   const finalAmount = planChange.finalAmount;
-  const metadata = {
+  const isScheduledTrialConversion =
+    currentPlanSlug === 'pro' &&
+    planSlug === 'pro' &&
+    !planExpiresAt &&
+    trialExpiresAt &&
+    new Date(trialExpiresAt).getTime() > now;
+  const metadata: Record<string, unknown> = {
     currentPlanSlug,
     currentPlanPrice: planChange.currentPlanPrice,
     targetPlanSlug:   planSlug,
@@ -318,6 +341,10 @@ Deno.serve(async (req) => {
     effectiveAt:      planChange.effectiveAt ?? null,
     scheduledChange:  planChange.scheduledChange ?? null,
   };
+  if (isScheduledTrialConversion && trialExpiresAt) {
+    metadata.isScheduledTrialConversion = true;
+    metadata.effectiveAt = trialExpiresAt;
+  }
   console.log('[create-mp-preference] planChange', metadata);
 
   // ── Upgrade con finalAmount === 0: aplicar cambio interno, no crear preferencia MP ──
