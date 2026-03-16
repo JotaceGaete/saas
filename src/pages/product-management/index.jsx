@@ -24,8 +24,6 @@ export default function ProductManagement() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
-  const [priceMin, setPriceMin] = useState("");
-  const [priceMax, setPriceMax] = useState("");
   const [sortField, setSortField] = useState("name");
   const [sortDir, setSortDir] = useState("asc");
   const [selectedIds, setSelectedIds] = useState([]);
@@ -65,8 +63,6 @@ export default function ProductManagement() {
     let result = [...tableProducts];
     if (searchQuery?.trim()) { const q = searchQuery?.toLowerCase(); result = result?.filter(p => p?.name?.toLowerCase()?.includes(q) || p?.description?.toLowerCase()?.includes(q)); }
     if (statusFilter !== "all") result = result?.filter(p => statusFilter === "active" ? p?.active : !p?.active);
-    if (priceMin !== "") result = result?.filter(p => p?.price >= parseFloat(priceMin));
-    if (priceMax !== "") result = result?.filter(p => p?.price <= parseFloat(priceMax));
     result?.sort((a, b) => {
       let aVal = a?.name?.toLowerCase(), bVal = b?.name?.toLowerCase();
       if (sortField === "price") { aVal = a?.price; bVal = b?.price; }
@@ -76,7 +72,7 @@ export default function ProductManagement() {
       return 0;
     });
     return result;
-  }, [tableProducts, searchQuery, statusFilter, priceMin, priceMax, sortField, sortDir]);
+  }, [tableProducts, searchQuery, statusFilter, sortField, sortDir]);
 
   const stats = useMemo(() => ({
     total: products?.length,
@@ -201,7 +197,7 @@ export default function ProductManagement() {
                 </button>
               </div>
               <div className="mb-5">
-                <ProductFilters searchQuery={searchQuery} onSearchChange={setSearchQuery} statusFilter={statusFilter} onStatusChange={setStatusFilter} categoryFilter={categoryFilter} onCategoryChange={setCategoryFilter} priceMin={priceMin} onPriceMinChange={setPriceMin} priceMax={priceMax} onPriceMaxChange={setPriceMax} />
+                <ProductFilters searchQuery={searchQuery} onSearchChange={setSearchQuery} statusFilter={statusFilter} onStatusChange={setStatusFilter} categoryFilter={categoryFilter} onCategoryChange={setCategoryFilter} />
               </div>
               {selectedIds?.length > 0 && (<div className="mb-4"><BulkActionBar selectedCount={selectedIds?.length} onDelete={handleBulkDelete} onDeselect={() => setSelectedIds([])} /></div>)}
               <ProductTable products={filteredProducts} selectedIds={selectedIds} onSelectAll={handleSelectAll} onSelectOne={handleSelectOne} onToggleStatus={handleToggleStatus} onEdit={handleEdit} onDuplicate={handleDuplicate} onDeleteRequest={handleDeleteRequest} sortField={sortField} sortDir={sortDir} onSort={handleSort} />

@@ -26,19 +26,13 @@ export default function ProductFilters({
   onStatusChange,
   categoryFilter,
   onCategoryChange,
-  priceMin,
-  priceMax,
-  onPriceMinChange,
-  onPriceMaxChange,
   resultsCount,
   onClearFilters,
 }) {
   const hasActiveFilters =
     searchQuery ||
     statusFilter !== "all" ||
-    categoryFilter !== "all" ||
-    priceMin ||
-    priceMax;
+    categoryFilter !== "all";
 
   return (
     <div
@@ -97,36 +91,6 @@ export default function ProductFilters({
                 <option key={opt?.value} value={opt?.value}>{opt?.label}</option>
               ))}
             </select>
-          </div>
-
-          {/* Price range */}
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-muted-foreground" style={{ fontFamily: "var(--font-caption)" }}>
-              Precio mín.
-            </label>
-            <input
-              type="number"
-              placeholder="0"
-              value={priceMin}
-              onChange={(e) => onPriceMinChange(e?.target?.value)}
-              className="w-24 px-3 py-2 text-sm rounded-md border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-              style={{ fontFamily: "var(--font-data)" }}
-              min="0"
-            />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-muted-foreground" style={{ fontFamily: "var(--font-caption)" }}>
-              Precio máx.
-            </label>
-            <input
-              type="number"
-              placeholder="9999"
-              value={priceMax}
-              onChange={(e) => onPriceMaxChange(e?.target?.value)}
-              className="w-24 px-3 py-2 text-sm rounded-md border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-              style={{ fontFamily: "var(--font-data)" }}
-              min="0"
-            />
           </div>
 
           {/* Results + clear */}
