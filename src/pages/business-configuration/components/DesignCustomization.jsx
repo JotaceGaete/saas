@@ -59,10 +59,11 @@ const THEMES = [
 ];
 
 const FONTS = [
-  { id: 'Inter', label: 'Inter', sample: 'El texto de tu tienda se verá así' },
-  { id: 'Urbanist', label: 'Urbanist', sample: 'El texto de tu tienda se verá así' },
-  { id: 'Poppins', label: 'Poppins', sample: 'El texto de tu tienda se verá así' },
+  { id: 'Inter', label: 'Inter' },
+  { id: 'Urbanist', label: 'Urbanist' },
+  { id: 'Poppins', label: 'Poppins' },
 ];
+const FONT_PREVIEW_LINES = { sample: 'Aa Bb Cc 123', body: 'Texto del catálogo' };
 
 const CATALOG_LAYOUTS = [
   { id: 'list', label: 'Lista', description: 'Productos en fila horizontal', icon: 'LayoutList' },
@@ -192,6 +193,7 @@ export default function DesignCustomization({
   const [uploadingCover, setUploadingCover] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
+  // Cargar la fuente seleccionada para el catálogo (preview móvil, etc.)
   useEffect(() => {
     const font = design?.font || 'Inter';
     if (font === 'Inter') return;
@@ -200,9 +202,22 @@ export default function DesignCustomization({
     const link = document.createElement('link');
     link.id = linkId;
     link.rel = 'stylesheet';
-    link.href = `https://fonts.googleapis.com/css2?family=${font}:wght@400;500;600;700&display=swap`;
+    link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(font.replace(/\s+/g, '+'))}:wght@400;500;600;700&display=swap`;
     document.head?.appendChild(link);
   }, [design?.font]);
+
+  // Precargar Inter, Urbanist y Poppins para que las tarjetas de tipografía muestren la fuente real
+  useEffect(() => {
+    FONTS.forEach(({ id }) => {
+      const linkId = `gfont-preview-${id}`;
+      if (document.getElementById(linkId)) return;
+      const link = document.createElement('link');
+      link.id = linkId;
+      link.rel = 'stylesheet';
+      link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(id.replace(/\s+/g, '+'))}:wght@400;500;600;700&display=swap`;
+      document.head?.appendChild(link);
+    });
+  }, []);
 
   const handleLogoUpload = async (e) => {
     const file = e?.target?.files?.[0];
@@ -734,7 +749,7 @@ export default function DesignCustomization({
               </div>
             </div>
 
-            {/* Font Selector */}
+            {/* Font Selector — cada tarjeta renderiza con la fuente real para distinguir tipografías */}
             <div>
               <p className="text-xs font-bold mb-3" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Tipografía</p>
               <div className="flex flex-col gap-2">
@@ -748,12 +763,15 @@ export default function DesignCustomization({
                       backgroundColor: selectedFont === font?.id ? `${primaryColor}08` : '#fafafa',
                     }}
                   >
-                    <div className="flex flex-col gap-0.5">
+                    <div className="flex flex-col gap-1 min-w-0 flex-1">
                       <span className="text-xs font-semibold" style={{ color: selectedFont === font?.id ? primaryColor : 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>{font?.label}</span>
-                      <span className="text-sm" style={{ fontFamily: `'${font?.id}', sans-serif`, color: 'var(--color-text-primary)' }}>{font?.sample}</span>
+                      <div className="flex flex-col gap-0.5" style={{ fontFamily: `'${font?.id}', sans-serif`, color: 'var(--color-text-primary)' }}>
+                        <span className="text-sm font-semibold leading-tight">{FONT_PREVIEW_LINES.sample}</span>
+                        <span className="text-xs leading-snug">{FONT_PREVIEW_LINES.body}</span>
+                      </div>
                     </div>
                     {selectedFont === font?.id && (
-                      <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: primaryColor }}>
+                      <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ml-2" style={{ backgroundColor: primaryColor }}>
                         <Icon name="Check" size={11} color="#fff" />
                       </div>
                     )}

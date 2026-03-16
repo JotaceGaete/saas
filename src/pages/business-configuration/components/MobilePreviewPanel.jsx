@@ -193,7 +193,7 @@ export default function MobilePreviewPanel({ storeName, storeSlug, logoUrl, cove
   const productItemProps = { t, primaryColor, fontFamily, cardSettings, styleProps };
 
   return (
-    <div className="flex flex-col items-center">
+    <div className="flex flex-col items-center w-full">
       <p
         className="text-xs font-semibold uppercase tracking-widest mb-5"
         style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)', letterSpacing: '0.1em' }}
@@ -201,17 +201,25 @@ export default function MobilePreviewPanel({ storeName, storeSlug, logoUrl, cove
         Vista previa móvil
       </p>
 
-      {/* Phone frame */}
+      {/* Contenedor: fondo neutro + sombra para el dispositivo */}
       <div
-        className="relative rounded-[2.5rem] overflow-hidden"
+        className="flex flex-col items-center justify-center rounded-3xl p-8 w-full max-w-[300px]"
         style={{
-          width: '260px',
-          height: '520px',
-          border: '8px solid #1a1a2e',
-          boxShadow: '0 20px 60px rgba(0,0,0,0.25), inset 0 0 0 1px rgba(255,255,255,0.1)',
-          backgroundColor: t?.screenBg,
+          backgroundColor: '#e8e8ed',
+          boxShadow: 'inset 0 1px 2px rgba(255,255,255,0.6), 0 8px 32px rgba(0,0,0,0.12)',
         }}
       >
+        {/* Phone frame */}
+        <div
+          className="relative rounded-[2.5rem] overflow-hidden flex-shrink-0"
+          style={{
+            width: '260px',
+            height: '520px',
+            border: '8px solid #1a1a2e',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.15), 0 20px 50px rgba(0,0,0,0.2), inset 0 0 0 1px rgba(255,255,255,0.08)',
+            backgroundColor: t?.screenBg,
+          }}
+        >
         {/* Notch */}
         <div
           className="absolute top-0 left-1/2 -translate-x-1/2 z-10"
@@ -350,6 +358,7 @@ export default function MobilePreviewPanel({ storeName, storeSlug, logoUrl, cove
             </div>
           )}
         </div>
+      </div>
       </div>
 
       {/* Style indicator */}
