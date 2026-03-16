@@ -1,7 +1,7 @@
 /**
  * Planes del producto: nombres, límites numéricos y helpers.
  * starter = gratis (10 productos, 30 pedidos/mes; sin estadísticas ni IA).
- * pro     = pago o trial 7 días (100 productos, pedidos ilimitados, estadísticas, IA).
+ * pro     = pago o trial (100 productos, pedidos ilimitados, estadísticas, IA).
  * business = Full (productos y pedidos ilimitados, estadísticas completas, IA ilimitada).
  */
 
