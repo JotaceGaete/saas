@@ -187,7 +187,18 @@ export default function ProductManagement() {
             </div>
           ) : (
             <>
-              <div className="mb-5"><ProductStatsBar stats={stats} /></div>
+              <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+                <ProductStatsBar stats={stats} />
+                <button
+                  type="button"
+                  onClick={() => navigate('/product-editor')}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-all duration-150 hover:opacity-90 active:scale-[0.98]"
+                  style={{ backgroundColor: 'var(--color-primary)', fontFamily: 'var(--font-caption)', boxShadow: '0 4px 14px rgba(124,58,237,0.35)' }}
+                >
+                  <Icon name="Plus" size={18} color="#FFFFFF" />
+                  Agregar producto
+                </button>
+              </div>
               <div className="mb-5">
                 <ProductFilters searchQuery={searchQuery} onSearchChange={setSearchQuery} statusFilter={statusFilter} onStatusChange={setStatusFilter} categoryFilter={categoryFilter} onCategoryChange={setCategoryFilter} priceMin={priceMin} onPriceMinChange={setPriceMin} priceMax={priceMax} onPriceMaxChange={setPriceMax} />
               </div>

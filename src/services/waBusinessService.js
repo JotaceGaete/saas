@@ -348,6 +348,7 @@ async function uploadToR2(file, { type, businessId, productId }) {
     return { url: null, error: { message: 'Usuario no autenticado o sesión inválida' } };
   }
   const accessToken = String(session.access_token).trim();
+  const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
   const fileName = file?.name || 'upload';
   const contentType = file?.type || 'image/jpeg';
   const res = await fetch(`${supabaseUrl}/functions/v1/upload-image-r2`, {
@@ -355,6 +356,7 @@ async function uploadToR2(file, { type, businessId, productId }) {
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${accessToken}`,
+      ...(anonKey ? { apikey: anonKey } : {}),
     },
     body: JSON.stringify({ type, businessId, productId: productId || undefined, fileName, contentType }),
   });

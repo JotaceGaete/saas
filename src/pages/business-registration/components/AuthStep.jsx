@@ -7,9 +7,9 @@ import PasswordStrengthIndicator from './PasswordStrengthIndicator';
 import { getCountryLabels } from 'config/country';
 
 const BENEFITS = [
+  'Comparte tu catálogo en Instagram, TikTok o Facebook',
+  'Recibe pedidos organizados automáticamente',
   'Sin comisiones',
-  'Usa tu WhatsApp',
-  'Listo en menos de 2 minutos',
 ];
 
 const FEATURE_CARDS = [
@@ -85,16 +85,21 @@ export default function AuthStep({ onRegister, onLogin, isLoading, authError, on
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: 0.08 }}
           >
+            {mode === 'register' && (
+              <span className="inline-block mb-3 px-3 py-1 rounded-full text-xs font-bold tracking-wide uppercase bg-white/20 text-white border border-white/30" style={{ fontFamily: 'var(--font-caption)' }}>
+                Sin comisiones
+              </span>
+            )}
             <h2 className="text-2xl sm:text-3xl md:text-4xl xl:text-[2.75rem] font-bold text-white mb-3 leading-[1.15]" style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.04em' }}>
-              {mode === 'register' ? 'Crea tu catálogo de productos por WhatsApp en minutos' : 'Bienvenido de vuelta'}
+              {mode === 'register' ? 'Convierte tu WhatsApp en una tienda de ventas' : 'Bienvenido de vuelta'}
             </h2>
             <p className="text-white/85 text-base sm:text-lg leading-relaxed mb-6" style={{ fontFamily: 'var(--font-body)' }}>
-              {mode === 'register' ? 'Muestra tus productos en línea y recibe pedidos directo por WhatsApp.' : 'Accede a tu panel para gestionar tu catálogo y pedidos.'}
+              {mode === 'register' ? 'Tus clientes ven tus productos, arman su pedido y te lo envían directo a tu WhatsApp.' : 'Accede a tu panel para gestionar tu catálogo y pedidos.'}
             </p>
 
             {mode === 'register' && (
               <>
-                <ul className="space-y-2 mb-8">
+                <ul className="space-y-2 mb-6">
                   {BENEFITS.map((text, i) => (
                     <motion.li
                       key={text}
@@ -104,14 +109,13 @@ export default function AuthStep({ onRegister, onLogin, isLoading, authError, on
                       className="flex items-center gap-2.5 text-white/95 text-sm"
                       style={{ fontFamily: 'var(--font-body)' }}
                     >
-                      <span className="text-[#86efac] font-bold text-base leading-none">✔</span>
+                      <span className="text-[#86efac] font-bold text-base leading-none shrink-0">✔</span>
                       {text}
                     </motion.li>
                   ))}
                 </ul>
-                <p className="text-white/70 text-xs flex items-center gap-2 mt-2" style={{ fontFamily: 'var(--font-caption)' }}>
-                  <span className="text-lg leading-none" aria-hidden="true">{countryLabels.flag}</span>
-                  {countryLabels.heroSubtitle}
+                <p className="text-white/70 text-sm mb-8" style={{ fontFamily: 'var(--font-caption)' }}>
+                  Hecho para emprendedores que venden por WhatsApp en Chile
                 </p>
               </>
             )}

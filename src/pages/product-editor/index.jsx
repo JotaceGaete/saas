@@ -169,16 +169,21 @@ export default function ProductEditor() {
       setImages(prev => prev?.map(img => img?.id === imageId ? { ...img, status: 'error', error: e?.message || 'No se pudo procesar la imagen' } : img));
       return;
     }
-    const { url, error: uploadErr } = await uploadProductImage(fileToUpload, business.id, productId || undefined);
-    setImages(prev => prev?.map(img => {
-      if (img?.id !== imageId) return img;
-      if (uploadErr) {
-        const errMsg = typeof uploadErr?.message === 'string' ? uploadErr.message : (uploadErr?.error_description || JSON.stringify(uploadErr) || 'Error al subir');
-        return { ...img, status: 'error', error: errMsg };
-      }
-      if (img?.url?.startsWith?.('blob:')) URL.revokeObjectURL(img.url);
-      return { ...img, url, status: 'uploaded', file: undefined, error: undefined };
-    }));
+    try {
+      const { url, error: uploadErr } = await uploadProductImage(fileToUpload, business.id, productId || undefined);
+      setImages(prev => prev?.map(img => {
+        if (img?.id !== imageId) return img;
+        if (uploadErr) {
+          const errMsg = typeof uploadErr?.message === 'string' ? uploadErr.message : (uploadErr?.error_description || JSON.stringify(uploadErr) || 'Error al subir');
+          return { ...img, status: 'error', error: errMsg };
+        }
+        if (img?.url?.startsWith?.('blob:')) URL.revokeObjectURL(img.url);
+        return { ...img, url, status: 'uploaded', file: undefined, error: undefined };
+      }));
+    } catch (e) {
+      const errMsg = e?.message || (e?.error?.message) || 'Error de conexión al subir. Revisa la consola.';
+      setImages(prev => prev?.map(img => img?.id === imageId ? { ...img, status: 'error', error: errMsg } : img));
+    }
   }, [business?.id, productId]);
 
   const hasPendingOrUploadingImages = (images || []).some(img =>
