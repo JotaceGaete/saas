@@ -19,9 +19,10 @@ export function isRestaurantBusiness(business) {
     business?.rubroSlug,
     business?.rubroName,
   ];
+  const restaurantSlugs = ['restaurant', 'restaurante', 'gastronomia', 'comida'];
   return candidates.some((raw) => {
     const v = normalize(raw);
-    return v === 'restaurant' || v === 'restaurante';
+    return restaurantSlugs.includes(v);
   });
 }
 
