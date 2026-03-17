@@ -474,12 +474,6 @@ export default function PlansPage() {
               >
                 <span className="text-xl leading-none mt-0.5">✨</span>
                 <div>
-                  <div
-                    className="mb-2 px-2 py-1 rounded-md text-xs font-bold"
-                    style={{ border: '2px solid #dc2626', backgroundColor: '#fee2e2', color: '#991b1b', fontFamily: 'var(--font-caption)' }}
-                  >
-                    TEST CAMBIO
-                  </div>
                   <p className="text-sm font-semibold" style={{ color: '#92400E', fontFamily: 'var(--font-heading)' }}>
                     Estás usando una prueba gratuita del plan PRO.
                   </p>

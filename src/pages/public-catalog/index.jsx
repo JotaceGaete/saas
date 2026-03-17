@@ -682,6 +682,7 @@ function CatalogInner({ slug }) {
       {cartOpen && (
         <OrderPanel
           business={business}
+          slug={slug}
           formatPrice={formatPrice}
           onClose={() => setCartOpen(false)}
           theme={theme}
@@ -834,7 +835,7 @@ function FloatingCartButton({ onOpen, formatPrice, theme }) {
 }
 
 // ─── Order Panel ──────────────────────────────────────────────────────────────
-function OrderPanel({ business, formatPrice, onClose, theme }) {
+function OrderPanel({ business, slug, formatPrice, onClose, theme }) {
   const primaryColor = theme?.primaryColor || '#25D366';
   const primaryColorDark = theme?.primaryColorDark || '#128C7E';
   const primaryRgba = theme?.primaryRgba || (() => 'rgba(37,211,102,0.35)');
@@ -925,6 +926,8 @@ function OrderPanel({ business, formatPrice, onClose, theme }) {
         message += `\n\nPedido:\n${lines?.join('\n')}`;
         if (notes?.trim()) message += `\n\nComentario:\n${notes?.trim()}`;
         if (hasViralBranding(business)) message += `\n\n${getOrderMessageBrandingSuffix(business)}`;
+        const catalogUrl = slug ? getPublicCatalogUrl(slug) : '';
+        if (catalogUrl) message += `\n\n${catalogUrl}`;
         const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
         window.open(url, '_blank');
       }
