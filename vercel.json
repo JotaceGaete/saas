@@ -3,6 +3,10 @@
   "outputDirectory": "build",
   "rewrites": [
     {
+      "source": "/catalogo/:slug",
+      "destination": "/api/catalog-html?slug=:slug"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
