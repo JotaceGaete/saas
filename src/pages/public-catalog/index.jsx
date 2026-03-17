@@ -11,13 +11,19 @@ import BrandingFooter from '../../components/BrandingFooter';
 import { appendBranding, hasViralBranding, getOrderMessageBrandingSuffix } from '../../utils/branding';
 import { isRestaurantBusiness } from '../../utils/businessType';
 
-/** Build absolute URL for OG image; prefers logo → cover → generated fallback with store name */
+/** Build absolute URL for OG image (preview al compartir en WhatsApp, etc.). Prioridad: logo tienda → portada → fallback con nombre. */
 function getCatalogOgImageUrl(business, baseUrl) {
-  const origin = baseUrl || (typeof window !== 'undefined' ? window.location?.origin : '') || '';
-  const logo = business?.logoUrl?.trim();
-  const cover = business?.coverImageUrl?.trim();
-  if (logo) return logo.startsWith('http') ? logo : `${origin}${logo.startsWith('/') ? '' : '/'}${logo}`;
-  if (cover) return cover.startsWith('http') ? cover : `${origin}${cover.startsWith('/') ? '' : '/'}${cover}`;
+  const origin = (baseUrl || (typeof window !== 'undefined' ? window.location?.origin : '') || '').replace(/\/$/, '');
+  const ds = business?.designSettings || {};
+  const logo = (business?.logoUrl || ds?.logoUrl)?.trim();
+  const cover = (business?.coverImageUrl || ds?.headerImageUrl || ds?.coverImageUrl)?.trim();
+  const toAbsolute = (url) => {
+    if (!url) return '';
+    if (url.startsWith('http://') || url.startsWith('https://')) return url;
+    return `${origin}${url.startsWith('/') ? '' : '/'}${url}`;
+  };
+  if (logo) return toAbsolute(logo);
+  if (cover) return toAbsolute(cover);
   const name = (business?.name || 'Catálogo').replace(/[^a-zA-Z0-9\s]/g, '').trim() || 'Catalogo';
   return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=7C3AED&color=fff&size=1200&format=png`;
 }
@@ -271,9 +277,8 @@ function CatalogInner({ slug }) {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Dynamic Open Graph / social preview for this store.
-          Note: Crawlers (WhatsApp, Facebook, etc.) often do not run JS, so they may see the default index.html meta.
-          For correct preview on first share, use SSR or an edge/server function that injects OG tags for /catalogo/:slug. */}
+      {/* Open Graph: imagen = logo de la tienda (o portada o fallback). WhatsApp usa og:image para la vista previa del enlace.
+          Si el crawler no ejecuta JS, solo verá el index.html; para que el logo aparezca siempre al compartir, hace falta SSR o inyección de meta en el servidor para /catalogo/:slug. */}
       {!loading && !notFound && business && (
         <Helmet>
           <title>{catalogTitle}</title>
