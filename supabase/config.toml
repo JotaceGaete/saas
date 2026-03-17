@@ -40,3 +40,7 @@ verify_jwt = false
 # Para reactivar la protección JWT, cambiar verify_jwt a true o eliminar esta sección.
 [functions.send-email]
 verify_jwt = false
+
+# send-daily-summary: llamado por cron (pg_cron); sin JWT de usuario.
+[functions.send-daily-summary]
+verify_jwt = false
