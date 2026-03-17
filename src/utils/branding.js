@@ -10,25 +10,16 @@ function normalizePlanSlug(businessOrPlanSlug) {
 }
 
 /**
- * Branding dinámico por plan:
- * - starter/free: branding comercial completo
- * - pro: branding discreto
+ * Branding dinámico por plan (solo texto, sin enlaces).
+ * - starter/free: texto comercial
+ * - pro: texto discreto
  * - business/full: sin branding
  */
 export function getBrandingMessage(businessOrPlanSlug) {
   const plan = normalizePlanSlug(businessOrPlanSlug);
   if (plan === 'business') return '';
-  if (plan === 'pro') {
-    return [
-      'Powered by Ventalink',
-      VENTALINK_URL,
-    ].join('\n');
-  }
-  return [
-    '🚀 Catálogo creado con Ventalink',
-    'Crea el tuyo gratis',
-    VENTALINK_URL,
-  ].join('\n');
+  if (plan === 'pro') return 'Powered by Ventalink';
+  return '🚀 Catálogo creado con Ventalink\nCrea el tuyo gratis';
 }
 
 export function appendBranding(message, businessOrPlanSlug) {
@@ -37,9 +28,19 @@ export function appendBranding(message, businessOrPlanSlug) {
   return `${message}\n\n${branding}`;
 }
 
+/**
+ * Mensaje para compartir catálogo por WhatsApp.
+ * Un solo link: la URL del catálogo (al final). Sin enlaces a ventalink/dashboard/app.
+ * Orden: nombre tienda, frase breve, link catálogo, opcional branding (solo texto).
+ */
 export function getCatalogShareMessage({ businessName, catalogUrl, plan }) {
-  const base = `Ver catálogo de ${businessName || 'mi tienda'}: ${catalogUrl || ''}`.trim();
-  return appendBranding(base, plan);
+  const name = businessName || 'Mi tienda';
+  const phrase = 'Mira mi catálogo y haz tu pedido por WhatsApp.';
+  const parts = [name, phrase, catalogUrl || ''].filter(Boolean);
+  let msg = parts.join('\n\n');
+  const branding = getBrandingMessage(plan);
+  if (branding) msg += `\n\n${branding}`;
+  return msg.trim();
 }
 
 export function hasViralBranding(businessOrPlanSlug) {

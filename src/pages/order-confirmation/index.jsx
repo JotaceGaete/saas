@@ -4,7 +4,8 @@ import { useCart } from '../../contexts/CartContext';
 import { createOrder, getBusinessBySlug } from '../../services/waBusinessService';
 import Icon from '../../components/AppIcon';
 import { formatCLP } from '../../utils/formatCLP';
-import { appendBranding } from '../../utils/branding';
+import { getPublicCatalogUrl } from '../../config/appUrl';
+import { getBrandingMessage } from '../../utils/branding';
 import { isRestaurantBusiness } from '../../utils/businessType';
 
 export default function OrderConfirmation() {
@@ -105,7 +106,11 @@ export default function OrderConfirmation() {
         ...lines,
         notes?.trim() ? `\nComentario:\n${notes?.trim()}` : '',
       ]?.filter(Boolean)?.join('\n')?.trim();
-      const message = appendBranding(baseMessage, biz);
+      const catalogUrl = slug ? getPublicCatalogUrl(slug) : '';
+      let message = baseMessage;
+      if (catalogUrl) message += `\n\n${catalogUrl}`;
+      const branding = getBrandingMessage(biz);
+      if (branding) message += `\n\n${branding}`;
 
       const whatsappNumber = biz?.whatsapp?.replace(/[^0-9]/g, '');
       const waUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`;

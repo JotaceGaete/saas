@@ -23,17 +23,7 @@ export default function BrandingFooter({ business, className = '' }) {
     >
       {lines.map((line) => (
         <p key={line} className="mb-0.5">
-          {line.startsWith('http') ? (
-            <a
-              href={line}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline hover:text-gray-600 transition-colors"
-              style={{ color: 'inherit' }}
-            >
-              {line}
-            </a>
-          ) : line}
+          {line}
         </p>
       ))}
     </footer>

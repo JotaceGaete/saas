@@ -8,7 +8,7 @@ import { formatCLP } from '../../utils/formatCLP';
 import { useIsDesktop } from '../../hooks/useMediaQuery';
 import { getAppBaseUrl, getPublicCatalogUrl } from '../../config/appUrl';
 import BrandingFooter from '../../components/BrandingFooter';
-import { appendBranding, hasViralBranding, getOrderMessageBrandingSuffix } from '../../utils/branding';
+import { hasViralBranding, getOrderMessageBrandingSuffix } from '../../utils/branding';
 import { isRestaurantBusiness } from '../../utils/businessType';
 
 /** Build absolute URL for OG image (preview al compartir en WhatsApp, etc.). Prioridad: logo tienda → portada → fallback con nombre. */
@@ -196,8 +196,12 @@ function CatalogInner({ slug }) {
 
   const buildSingleWhatsAppMessage = (product) => {
     const storeName = business?.name || 'la tienda';
-    const message = `Hola! Me interesa el producto:\n\n*${product?.name}*\nPrecio: ${formatPrice(product?.price)}\n\nTienda: ${storeName}`;
-    return appendBranding(message, business);
+    let message = `Hola! Me interesa el producto:\n\n*${product?.name}*\nPrecio: ${formatPrice(product?.price)}\n\nTienda: ${storeName}`;
+    const catalogUrl = slug ? getPublicCatalogUrl(slug) : '';
+    if (catalogUrl) message += `\n\n${catalogUrl}`;
+    const branding = getOrderMessageBrandingSuffix(business);
+    if (branding) message += `\n\n${branding}`;
+    return message;
   };
 
   const buildSingleWhatsAppUrl = (product) => {
@@ -925,9 +929,9 @@ function OrderPanel({ business, slug, formatPrice, onClose, theme }) {
         }
         message += `\n\nPedido:\n${lines?.join('\n')}`;
         if (notes?.trim()) message += `\n\nComentario:\n${notes?.trim()}`;
-        if (hasViralBranding(business)) message += `\n\n${getOrderMessageBrandingSuffix(business)}`;
         const catalogUrl = slug ? getPublicCatalogUrl(slug) : '';
         if (catalogUrl) message += `\n\n${catalogUrl}`;
+        if (hasViralBranding(business)) message += `\n\n${getOrderMessageBrandingSuffix(business)}`;
         const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
         window.open(url, '_blank');
       }
