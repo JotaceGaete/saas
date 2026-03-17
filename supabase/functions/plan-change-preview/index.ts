@@ -254,6 +254,7 @@ Deno.serve(async (req) => {
   const currentPlanSlug = rawPlan === 'control' ? 'starter' : rawPlan;
   const planExpiresAt = (biz as { plan_expires_at?: string | null }).plan_expires_at ?? null;
   const trialExpiresAt = (biz as { trial_expires_at?: string | null }).trial_expires_at ?? null;
+  const scheduledPlanSlug = (biz as { scheduled_plan_slug?: string | null }).scheduled_plan_slug ?? null;
   const countryCode = resolveBusinessCountryCode(
     biz as { country_code?: string | null; country?: string | null; currency?: string | null },
   );
@@ -263,12 +264,15 @@ Deno.serve(async (req) => {
 
   // PRO en trial comprando PRO: activar el plan pagado cuando termine el trial (scheduled_plan_slug / scheduled_change_at).
   const now = Date.now();
-  if (
+  const isActiveProTrial =
     currentPlanSlug === 'pro' &&
-    targetPlanSlug === 'pro' &&
-    !planExpiresAt &&
     trialExpiresAt &&
-    new Date(trialExpiresAt).getTime() > now
+    new Date(trialExpiresAt).getTime() > now &&
+    scheduledPlanSlug === 'starter';
+  if (
+    isActiveProTrial &&
+    targetPlanSlug === 'pro' &&
+    trialExpiresAt
   ) {
     preview = {
       ...preview,

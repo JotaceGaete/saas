@@ -34,7 +34,7 @@ function resolveCountryCode({ hostnameCountryCode, businessCountryCode, userCoun
 export default function PlansPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { user, business, businessLoading, refreshBusiness } = useAuth();
+  const { user, business, businessLoading, refreshBusiness, loading: authLoading, isAuthenticated } = useAuth();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [paymentMessage, setPaymentMessage] = useState(null);
   const [paymentReturnStatus, setPaymentReturnStatus] = useState(null); // 'success' | 'failure' | 'pending' al volver del checkout
@@ -52,6 +52,35 @@ export default function PlansPage() {
   // Chile: CLP; Argentina: ARS; otros: USD (Paddle).
   const currency = countryCode === 'CL' ? 'CLP' : countryCode === 'AR' ? 'ARS' : 'USD';
   const getPlanPrice = (slug) => getPlanPriceByCountry(slug, countryCode, paymentProvider);
+  const scheduledToStarter = (business?.scheduledPlanSlug || null) === 'starter';
+  const planExpiryMs = business?.planExpiresAt ? new Date(business.planExpiresAt).getTime() : null;
+  const trialExpiryMs = business?.trialExpiresAt ? new Date(business.trialExpiresAt).getTime() : null;
+  const hasFuturePlanExpiry = Number.isFinite(planExpiryMs) && planExpiryMs > Date.now();
+  const hasFutureTrialExpiry = Number.isFinite(trialExpiryMs) && trialExpiryMs > Date.now();
+  const isProTrialActive = (() => {
+    if ((business?.planSlug || 'starter') !== 'pro') return false;
+    // Modelo real observado:
+    // 1) trial_expires_at vigente + scheduled starter, o
+    // 2) plan_expires_at vigente + scheduled starter (cuando trial_expires_at viene nulo).
+    if (!scheduledToStarter) return false;
+    return hasFutureTrialExpiry || hasFuturePlanExpiry;
+  })();
+  const trialEndDateIso = business?.trialExpiresAt || business?.scheduledChangeAt || business?.planExpiresAt || null;
+  const getValidAccessToken = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    let token = session?.access_token?.trim() || '';
+    if (token) return token;
+    try {
+      const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
+      if (refreshError) {
+        console.warn(`${PAYMENT_DEBUG_PREFIX} refreshSession error`, refreshError?.message);
+      }
+      token = refreshed?.session?.access_token?.trim() || '';
+    } catch (err) {
+      console.warn(`${PAYMENT_DEBUG_PREFIX} refreshSession exception`, err?.message || err);
+    }
+    return token || null;
+  };
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -117,15 +146,15 @@ export default function PlansPage() {
   }, [paymentReturnStatus, user, businessLoading]);
 
   const fetchPlanPreview = async (targetPlanSlug, provider) => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.access_token) return null;
+    const token = await getValidAccessToken();
+    if (!token) return null;
     const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
     const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
     const body = { targetPlanSlug };
     if (provider) body.provider = provider;
     const res = await fetch(`${supabaseUrl}/functions/v1/plan-change-preview`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}`, apikey: anonKey },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, apikey: anonKey },
       body: JSON.stringify(body),
     });
     if (!res.ok) return null;
@@ -140,9 +169,19 @@ export default function PlansPage() {
     setPreview(null);
     setPreviewPlanSlug(null);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) {
+      if (authLoading) {
+        setPaymentMessage({ type: 'info', text: 'Cargando sesión. Intenta nuevamente en unos segundos.' });
+        return;
+      }
+      if (!isAuthenticated || !user) {
         setPaymentMessage({ type: 'error', text: 'Debes iniciar sesión para contratar un plan.' });
+        navigate('/login');
+        return;
+      }
+      const token = await getValidAccessToken();
+      if (!token) {
+        setPaymentMessage({ type: 'error', text: 'Debes iniciar sesión para contratar un plan.' });
+        navigate('/login');
         return;
       }
       const previewData = await fetchPlanPreview(planSlug, 'paddle');
@@ -177,12 +216,21 @@ export default function PlansPage() {
     setPreview(null);
     setPreviewPlanSlug(null);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) {
-        setPaymentMessage({ type: 'error', text: 'Debes iniciar sesión para contratar un plan.' });
+      if (authLoading) {
+        setPaymentMessage({ type: 'info', text: 'Cargando sesión. Intenta nuevamente en unos segundos.' });
         return;
       }
-      const token = session.access_token;
+      if (!isAuthenticated || !user) {
+        setPaymentMessage({ type: 'error', text: 'Debes iniciar sesión para contratar un plan.' });
+        navigate('/login');
+        return;
+      }
+      const token = await getValidAccessToken();
+      if (!token) {
+        setPaymentMessage({ type: 'error', text: 'Debes iniciar sesión para contratar un plan.' });
+        navigate('/login');
+        return;
+      }
       const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
       if (!!anonKey && token === anonKey) {
         setPaymentMessage({ type: 'error', text: 'Error de autenticación: token inválido.' });
@@ -214,9 +262,19 @@ export default function PlansPage() {
     setLoadingPlanSlug(previewPlanSlug);
     setPaymentMessage(null);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) {
+      if (authLoading) {
+        setPaymentMessage({ type: 'info', text: 'Cargando sesión. Intenta nuevamente en unos segundos.' });
+        return;
+      }
+      if (!isAuthenticated || !user) {
         setPaymentMessage({ type: 'error', text: 'Debes iniciar sesión.' });
+        navigate('/login');
+        return;
+      }
+      const token = await getValidAccessToken();
+      if (!token) {
+        setPaymentMessage({ type: 'error', text: 'Debes iniciar sesión.' });
+        navigate('/login');
         return;
       }
       const returnBaseUrl = (typeof window !== 'undefined' && window.location?.origin)
@@ -227,7 +285,7 @@ export default function PlansPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${session.access_token}`,
+          Authorization: `Bearer ${token}`,
           apikey: import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '',
         },
         body: JSON.stringify({
@@ -278,13 +336,29 @@ export default function PlansPage() {
     setLoadingPlanSlug(previewPlanSlug);
     setPaymentMessage(null);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) {
-        setPaymentMessage({ type: 'error', text: 'Debes iniciar sesión.' });
+      if (authLoading) {
+        setPaymentMessage({ type: 'info', text: 'Cargando sesión. Intenta nuevamente en unos segundos.' });
         return;
       }
-      const token = session.access_token;
+      if (!isAuthenticated || !user) {
+        setPaymentMessage({ type: 'error', text: 'Debes iniciar sesión.' });
+        navigate('/login');
+        return;
+      }
+      const token = await getValidAccessToken();
+      if (!token) {
+        setPaymentMessage({ type: 'error', text: 'Debes iniciar sesión.' });
+        navigate('/login');
+        return;
+      }
       const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
+      console.info(PAYMENT_DEBUG_PREFIX, {
+        event: 'create_mp_preference_request',
+        hasAuthorizationHeader: !!token,
+        authorizationLooksLikeJwt: token.includes('.'),
+        tokenLength: token?.length ?? 0,
+        hasApiKeyHeader: !!anonKey,
+      });
       // Conservar el host actual para no redirigir a otro país tras el pago
       const returnBaseUrl = (typeof window !== 'undefined' && window.location?.origin)
         ? window.location.origin.replace(/\/$/, '')
@@ -376,9 +450,9 @@ export default function PlansPage() {
                     return `${products} · ${orders}`;
                   })()}
                 </p>
-                {business?.trialExpiresAt && !business?.planExpiresAt && (currentPlan === 'pro' || currentPlan === 'business') && new Date(business.trialExpiresAt) > new Date() && (
+                {isProTrialActive && trialEndDateIso && (
                   <p className="text-xs mt-1 font-medium" style={{ color: '#D97706', fontFamily: 'var(--font-caption)' }}>
-                    ✨ Prueba gratuita · vence el {new Date(business.trialExpiresAt).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })}
+                    ✨ Prueba gratuita · vence el {new Date(trialEndDateIso).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })}
                   </p>
                 )}
                 {business?.planExpiresAt && (currentPlan === 'pro' || currentPlan === 'business') && new Date(business.planExpiresAt) > new Date() && (
@@ -443,7 +517,7 @@ export default function PlansPage() {
                 <button
                   type="button"
                   onClick={paymentProvider === 'paddle' ? confirmPayWithPaddle : confirmPayWithMercadoPago}
-                  disabled={!!loadingPlanSlug}
+                  disabled={!!loadingPlanSlug || authLoading || !isAuthenticated}
                   className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
                   style={{ backgroundColor: paymentProvider === 'paddle' ? '#383838' : '#009EE3' }}
                 >
@@ -462,8 +536,8 @@ export default function PlansPage() {
           )}
 
           {/* Banner de trial activo (PRO en prueba gratuita) */}
-          {business?.trialExpiresAt && !business?.planExpiresAt && (currentPlan === 'pro' || currentPlan === 'business') && (() => {
-            const trialExp = new Date(business.trialExpiresAt);
+          {isProTrialActive && trialEndDateIso && (() => {
+            const trialExp = new Date(trialEndDateIso);
             const now = new Date();
             if (trialExp <= now) return null;
             const daysLeft = Math.ceil((trialExp - now) / (1000 * 60 * 60 * 24));
@@ -494,7 +568,11 @@ export default function PlansPage() {
           <div id="planes-grid" className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-5">
             {PLAN_SLUGS.map((slug) => {
               const limits = getPlanLimits(slug);
-              const isCurrent = currentPlan === slug;
+              const isProTrialCard = slug === 'pro' && isProTrialActive;
+              const isCurrent = currentPlan === slug && !isProTrialCard;
+              const actionLabel = isProTrialCard
+                ? 'Mantener Pro al terminar la prueba'
+                : getPlanActionButtonLabel(currentPlan, slug);
               return (
                 <div
                   key={slug}
@@ -565,7 +643,7 @@ export default function PlansPage() {
                       paymentProvider === 'mercado_pago' ? (
                         <button
                           type="button"
-                          disabled={!!loadingPlanSlug}
+                          disabled={!!loadingPlanSlug || authLoading || !isAuthenticated}
                           onClick={() => handlePayWithMercadoPago(slug)}
                           className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
                           style={{ backgroundColor: '#009EE3' }}
@@ -575,14 +653,14 @@ export default function PlansPage() {
                           ) : (
                             <>
                               <Icon name="Wallet" size={16} color="#fff" />
-                              {getPlanActionButtonLabel(currentPlan, slug)}
+                              {actionLabel}
                             </>
                           )}
                         </button>
                       ) : paymentProvider === 'paddle' ? (
                         <button
                           type="button"
-                          disabled={!!loadingPlanSlug}
+                          disabled={!!loadingPlanSlug || authLoading || !isAuthenticated}
                           onClick={() => handlePayWithPaddle(slug)}
                           className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
                           style={{ backgroundColor: '#383838' }}
@@ -592,7 +670,7 @@ export default function PlansPage() {
                           ) : (
                             <>
                               <Icon name="Wallet" size={16} color="#fff" />
-                              {getPlanActionButtonLabel(currentPlan, slug)}
+                              {actionLabel}
                             </>
                           )}
                         </button>
