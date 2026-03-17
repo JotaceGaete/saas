@@ -24,6 +24,7 @@ import {
   getEffectivePlanSlug,
 } from "../../services/waBusinessService";
 import { supabase } from "../../lib/supabase";
+import { getAppBaseUrl } from "../../config/appUrl";
 import { getPublicCatalogUrl } from "../../config/appUrl";
 import OrdersByDayCard from "./components/OrdersByDayCard";
 import TopProductsCard from "./components/TopProductsCard";
@@ -53,6 +54,7 @@ export default function Dashboard() {
   const [weeklyOrdersCount, setWeeklyOrdersCount] = useState(0);
   const [planUsage, setPlanUsage] = useState(null);
   const [planUsageLoading, setPlanUsageLoading] = useState(true);
+  const [sendingTestEmail, setSendingTestEmail] = useState(false);
 
   // Realtime state
   const [realtimeStatus, setRealtimeStatus] = useState('disconnected');
@@ -256,6 +258,35 @@ export default function Dashboard() {
 
   const handleMarkAllRead = useCallback(() => {
     setNotifications(prev => prev?.map(n => ({ ...n, read: true })));
+  }, []);
+
+  const handleSendTestEmail = useCallback(async () => {
+    setSendingTestEmail(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token ?? '';
+      const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
+      const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
+      const res = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          apikey: anonKey,
+        },
+        body: JSON.stringify({
+          to: 'jotacegaete@gmail.com',
+          subject: 'Prueba Ventalink',
+          html: '<h1>Hola</h1><p>Esto es una prueba</p>',
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      console.log('[Dashboard] send-email response:', { status: res.status, ok: res.ok, data });
+    } catch (err) {
+      console.error('[Dashboard] send-email error:', err);
+    } finally {
+      setSendingTestEmail(false);
+    }
   }, []);
 
   const activeProducts = products?.filter(p => p?.isActive)?.length ?? 0;
@@ -609,6 +640,22 @@ export default function Dashboard() {
               </section>
               <section aria-label="Acceso rápido">
                 <QuickAccessWidget catalogUrl={catalogUrl} businessName={business?.name || ''} businessPlanSlug={business?.planSlug} />
+              </section>
+              <section aria-label="Prueba email">
+                <button
+                  type="button"
+                  onClick={handleSendTestEmail}
+                  disabled={sendingTestEmail}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-medium transition-opacity hover:opacity-90 disabled:opacity-60"
+                  style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}
+                >
+                  {sendingTestEmail ? (
+                    <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Icon name="Mail" size={16} color="currentColor" />
+                  )}
+                  Enviar email de prueba
+                </button>
               </section>
               {business?.id && (
                 <section aria-label="Vista previa del catálogo">

@@ -11,7 +11,7 @@ type PlanCatalog = Record<string, { displayName: string; price: number; duration
 
 const PLAN_CATALOG_CL: PlanCatalog = {
   starter:  { displayName: 'Starter',  price: 0,     durationDays: 30 },
-  pro:      { displayName: 'Plan Pro', price: 5000, durationDays: 30 },
+  pro:      { displayName: 'Plan Pro', price: 5990, durationDays: 30 },
   business: { displayName: 'Plan Business', price: 10000, durationDays: 30 },
 };
 
