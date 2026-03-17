@@ -35,3 +35,8 @@ verify_jwt = false
 # Mejora de descripción de producto con IA (JWT validado dentro).
 [functions.improve-product-description]
 verify_jwt = false
+
+# send-email: TEMPORAL para pruebas sin JWT en desarrollo.
+# Para reactivar la protección JWT, cambiar verify_jwt a true o eliminar esta sección.
+[functions.send-email]
+verify_jwt = false

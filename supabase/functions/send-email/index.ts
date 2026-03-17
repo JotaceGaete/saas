@@ -1,5 +1,8 @@
 // send-email — envía correos vía Resend API.
 // Requiere RESEND_API_KEY en secrets. No exponer la key al frontend.
+//
+// JWT: temporalmente desactivado para pruebas (supabase/config.toml → [functions.send-email] verify_jwt = false).
+// Para reactivar la protección: en config.toml cambiar verify_jwt a true y ejecutar: supabase functions deploy send-email
 
 const RESEND_API_URL = 'https://api.resend.com/emails';
 const FROM_EMAIL = 'Ventalink <hola@mail.ventalink.app>';
