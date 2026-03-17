@@ -16,6 +16,7 @@ export default function ImageUploadSection({ images, onImagesChange, businessId,
   const handleFiles = (files) => {
     const fileArray = Array.from(files)?.filter(f => f?.type?.startsWith('image/'));
     if (fileArray?.length === 0) return;
+    console.log('[ImageUploadSection] Archivos seleccionados', { count: fileArray.length, names: fileArray.map(f => f?.name) });
     const currentLength = (images || [])?.length;
     const toAdd = fileArray?.slice(0, Math.max(0, 5 - currentLength)) ?? [];
     const newItems = toAdd.map((file, index) => {
@@ -34,11 +35,14 @@ export default function ImageUploadSection({ images, onImagesChange, businessId,
       if ((prev || [])?.length >= 5) return prev;
       return [...(prev || []), ...newItems];
     });
-    newItems.forEach((item) => {
-      if (businessId && typeof onUploadRequested === 'function') {
+    if (typeof onUploadRequested !== 'function') {
+      console.warn('[ImageUploadSection] onUploadRequested no es función, imágenes quedarán en Pendiente');
+    } else {
+      newItems.forEach((item) => {
+        console.log('[ImageUploadSection] Disparando onUploadRequested', item.id, 'businessId=', businessId);
         onUploadRequested(item.id, item.file);
-      }
-    });
+      });
+    }
   };
 
   const handleDrop = (e) => { e?.preventDefault(); setIsDragging(false); handleFiles(e?.dataTransfer?.files); };

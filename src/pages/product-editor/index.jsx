@@ -160,17 +160,33 @@ export default function ProductEditor() {
   }, [toast]);
 
   const handleUploadRequested = React.useCallback(async (imageId, file) => {
-    if (!business?.id || !file) return;
+    console.log('[ProductEditor] handleUploadRequested', { imageId, hasFile: !!file, businessId: business?.id ?? null, productId: productId ?? null });
+    if (!file) {
+      console.warn('[ProductEditor] handleUploadRequested: sin archivo, ignorando');
+      return;
+    }
+    if (!business?.id) {
+      console.warn('[ProductEditor] handleUploadRequested: sin business.id, marcando error');
+      setImages(prev => prev?.map(img => img?.id === imageId ? { ...img, status: 'error', error: 'Negocio no cargado. Espera un momento o recarga la página.' } : img));
+      return;
+    }
+
     setImages(prev => prev?.map(img => img?.id === imageId ? { ...img, status: 'uploading' } : img));
+    console.log('[ProductEditor] Estado actualizado a "uploading" para', imageId);
+
     let fileToUpload = file;
     try {
       fileToUpload = await convertUnsupportedImageToJpeg(file);
     } catch (e) {
+      console.error('[ProductEditor] Error al convertir imagen', e);
       setImages(prev => prev?.map(img => img?.id === imageId ? { ...img, status: 'error', error: e?.message || 'No se pudo procesar la imagen' } : img));
       return;
     }
+
     try {
+      console.log('[ProductEditor] Llamando uploadProductImage...');
       const { url, error: uploadErr } = await uploadProductImage(fileToUpload, business.id, productId || undefined);
+      console.log('[ProductEditor] uploadProductImage terminó', { hasUrl: !!url, hasError: !!uploadErr, errorMsg: uploadErr?.message });
       setImages(prev => prev?.map(img => {
         if (img?.id !== imageId) return img;
         if (uploadErr) {
@@ -181,6 +197,7 @@ export default function ProductEditor() {
         return { ...img, url, status: 'uploaded', file: undefined, error: undefined };
       }));
     } catch (e) {
+      console.error('[ProductEditor] Excepción en upload', e);
       const errMsg = e?.message || (e?.error?.message) || 'Error de conexión al subir. Revisa la consola.';
       setImages(prev => prev?.map(img => img?.id === imageId ? { ...img, status: 'error', error: errMsg } : img));
     }

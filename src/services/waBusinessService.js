@@ -360,55 +360,84 @@ export async function updateBusiness(businessId, updates) {
 // Solo se envía el JWT del usuario (session.access_token), nunca la anon key como Bearer.
 async function uploadToR2(file, { type, businessId, productId }) {
   const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
-  if (!supabaseUrl) return { url: null, error: { message: 'Missing Supabase URL' } };
+  if (!supabaseUrl) {
+    console.error('[uploadToR2] Missing Supabase URL');
+    return { url: null, error: { message: 'Falta configuración (Supabase URL)' } };
+  }
 
-  console.warn('[uploadToR2] start', {
-    type,
-    businessId: businessId ?? null,
-    productId: productId ?? null,
-    fileName: file?.name ?? null,
-    contentType: file?.type ?? null,
-    fileSize: file?.size ?? null,
-  });
+  console.log('[uploadToR2] 1. Inicio', { type, businessId: businessId ?? null, productId: productId ?? null, fileName: file?.name, contentType: file?.type, fileSize: file?.size });
+
   const { data: { session } } = await supabase.auth.getSession();
   const { data: userData, error: userError } = await supabase.auth.getUser();
-  // Logs temporales para depurar 401 en upload-image-r2 (no imprimir el token completo)
-  console.log('[uploadToR2] session exists:', !!session);
-  console.log('[uploadToR2] session.access_token exists:', !!session?.access_token);
-  console.log('[uploadToR2] access_token length:', session?.access_token ? session.access_token.length : 0);
-  console.log('[uploadToR2] userData.user exists:', !!userData?.user);
-  console.log('[uploadToR2] user id:', userData?.user?.id ?? null);
-  console.log('[uploadToR2] userError:', userError ? {
-    message: userError.message,
-    status: userError.status ?? null,
-    name: userError.name ?? null,
-  } : null);
+  console.log('[uploadToR2] 2. Sesión', { hasSession: !!session, hasToken: !!session?.access_token, hasUser: !!userData?.user, userError: userError?.message ?? null });
   if (!session?.access_token || !userData?.user) {
+    console.error('[uploadToR2] Abort: no autenticado');
     return { url: null, error: { message: 'Usuario no autenticado o sesión inválida' } };
   }
+
   const accessToken = String(session.access_token).trim();
   const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
   const fileName = file?.name || 'upload';
   const contentType = file?.type || 'image/jpeg';
-  const res = await fetch(`${supabaseUrl}/functions/v1/upload-image-r2`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${accessToken}`,
-      ...(anonKey ? { apikey: anonKey } : {}),
-    },
-    body: JSON.stringify({ type, businessId, productId: productId || undefined, fileName, contentType }),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) return { url: null, error: typeof data?.error === 'string' ? { message: data.error } : (data?.error || { message: res.statusText }) };
+  const endpoint = `${supabaseUrl}/functions/v1/upload-image-r2`;
+  console.log('[uploadToR2] 3. Pidiendo URL firmada', { endpoint });
+
+  let res;
+  try {
+    res = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+        ...(anonKey ? { apikey: anonKey } : {}),
+      },
+      body: JSON.stringify({ type, businessId, productId: productId || undefined, fileName, contentType }),
+    });
+  } catch (networkErr) {
+    console.error('[uploadToR2] Error de red al pedir URL firmada', networkErr);
+    return { url: null, error: { message: 'Error de conexión. Revisa la red o intenta más tarde.' } };
+  }
+
+  const rawText = await res.text().catch(() => '');
+  let data = {};
+  try {
+    if (rawText) data = JSON.parse(rawText);
+  } catch {
+    console.error('[uploadToR2] Respuesta no es JSON', { status: res.status, preview: rawText?.slice(0, 200) });
+  }
+
+  if (!res.ok) {
+    const errMsg = typeof data?.error === 'string' ? data.error : (data?.message || data?.error?.message || res.statusText);
+    console.error('[uploadToR2] 4. Error al obtener URL firmada', { status: res.status, error: errMsg, body: data });
+    return { url: null, error: { message: errMsg || 'Error del servidor al generar enlace de subida' } };
+  }
+
   const { uploadUrl, publicUrl } = data;
-  if (!uploadUrl || !publicUrl) return { url: null, error: { message: 'Respuesta inválida del servidor' } };
-  const putRes = await fetch(uploadUrl, {
-    method: 'PUT',
-    headers: { 'Content-Type': contentType },
-    body: file,
-  });
-  if (!putRes.ok) return { url: null, error: { message: 'Error al subir el archivo a almacenamiento' } };
+  if (!uploadUrl || !publicUrl) {
+    console.error('[uploadToR2] Respuesta sin uploadUrl/publicUrl', data);
+    return { url: null, error: { message: 'Respuesta inválida del servidor (falta URL de subida)' } };
+  }
+  console.log('[uploadToR2] 5. URL firmada obtenida', { publicUrl: publicUrl?.slice(0, 60) + '...' });
+
+  let putRes;
+  try {
+    putRes = await fetch(uploadUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': contentType },
+      body: file,
+    });
+  } catch (putErr) {
+    console.error('[uploadToR2] Error de red al hacer PUT', putErr);
+    return { url: null, error: { message: 'Error de conexión al subir el archivo' } };
+  }
+
+  if (!putRes.ok) {
+    const putStatus = putRes.status;
+    const putText = await putRes.text().catch(() => '');
+    console.error('[uploadToR2] 6. PUT falló', { status: putStatus, body: putText?.slice(0, 150) });
+    return { url: null, error: { message: `Error al subir el archivo (${putStatus}). Intenta de nuevo.` } };
+  }
+  console.log('[uploadToR2] 7. Subida completada correctamente', { publicUrl: publicUrl?.slice(0, 60) + '...' });
   return { url: publicUrl, error: null };
 }
 

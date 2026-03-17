@@ -221,15 +221,24 @@ export default function DesignCustomization({
 
   const handleLogoUpload = async (e) => {
     const file = e?.target?.files?.[0];
-    if (!file || !businessId) return;
+    if (!file || !businessId) {
+      if (!businessId) console.warn('[DesignCustomization] handleLogoUpload: sin businessId');
+      return;
+    }
+    console.log('[DesignCustomization] Subiendo logo', file.name);
     setUploadingLogo(true);
     try {
       const { url, error } = await uploadBusinessLogo(file, businessId);
-      if (error) { showToast?.('Error al subir logo', 'error'); return; }
+      if (error) {
+        console.error('[DesignCustomization] Error subir logo', error);
+        showToast?.(error?.message || 'Error al subir logo', 'error');
+        return;
+      }
       onChange?.({ ...design, logoUrl: url });
       showToast?.('Logo actualizado', 'success');
-    } catch {
-      showToast?.('Error inesperado al subir logo', 'error');
+    } catch (err) {
+      console.error('[DesignCustomization] Excepción subir logo', err);
+      showToast?.(err?.message || 'Error inesperado al subir logo', 'error');
     } finally {
       setUploadingLogo(false);
       if (logoInputRef?.current) logoInputRef.current.value = '';
@@ -238,15 +247,24 @@ export default function DesignCustomization({
 
   const handleCoverUpload = async (e) => {
     const file = e?.target?.files?.[0];
-    if (!file || !businessId) return;
+    if (!file || !businessId) {
+      if (!businessId) console.warn('[DesignCustomization] handleCoverUpload: sin businessId');
+      return;
+    }
+    console.log('[DesignCustomization] Subiendo portada', file.name);
     setUploadingCover(true);
     try {
       const { url, error } = await uploadBusinessCover(file, businessId);
-      if (error) { showToast?.('Error al subir imagen de portada', 'error'); return; }
+      if (error) {
+        console.error('[DesignCustomization] Error subir portada', error);
+        showToast?.(error?.message || 'Error al subir imagen de portada', 'error');
+        return;
+      }
       onChange?.({ ...design, headerImageUrl: url });
       showToast?.('Portada actualizada', 'success');
-    } catch {
-      showToast?.('Error inesperado al subir imagen', 'error');
+    } catch (err) {
+      console.error('[DesignCustomization] Excepción subir portada', err);
+      showToast?.(err?.message || 'Error inesperado al subir imagen', 'error');
     } finally {
       setUploadingCover(false);
       if (coverInputRef?.current) coverInputRef.current.value = '';
