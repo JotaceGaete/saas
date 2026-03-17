@@ -133,6 +133,24 @@ export const AuthProvider = ({ children }) => {
       })
       if (error) return { data: null, error }
 
+      // Email de bienvenida (fire-and-forget, no bloquea el registro)
+      const userEmail = data?.user?.email
+      if (userEmail) {
+        const userName = data?.user?.user_metadata?.name || data?.user?.user_metadata?.full_name || businessData?.name || ''
+        const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '')
+        const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? ''
+        const token = data?.session?.access_token ?? anonKey
+        fetch(`${supabaseUrl}/functions/v1/send-email`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, apikey: anonKey },
+          body: JSON.stringify({
+            to: userEmail,
+            type: 'welcome',
+            data: { name: userName, dashboardUrl: 'https://cl.ventalink.app/dashboard' },
+          }),
+        }).catch((err) => console.error('[Auth] welcome email failed:', err))
+      }
+
       const userId = data?.user?.id
       const hasSession = !!data?.session
 
