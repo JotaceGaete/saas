@@ -52,20 +52,23 @@ export default function PlansPage() {
     return hasFutureTrialExpiry || hasFuturePlanExpiry;
   })();
   const trialEndDateIso = business?.trialExpiresAt || business?.scheduledChangeAt || business?.planExpiresAt || null;
+  /** Obtiene access_token válido para Edge Functions que validan JWT internamente. */
   const getValidAccessToken = async () => {
     const { data: { session } } = await supabase.auth.getSession();
-    let token = session?.access_token?.trim() || '';
-    if (token) return token;
+    let token = (session?.access_token && typeof session.access_token === 'string')
+      ? session.access_token.trim()
+      : '';
+    if (token && token.includes('.')) return token;
     try {
       const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
-      if (refreshError) {
-        console.warn(`${PAYMENT_DEBUG_PREFIX} refreshSession error`, refreshError?.message);
-      }
-      token = refreshed?.session?.access_token?.trim() || '';
+      if (refreshError) console.warn(`${PAYMENT_DEBUG_PREFIX} refreshSession error`, refreshError?.message);
+      token = (refreshed?.session?.access_token && typeof refreshed.session.access_token === 'string')
+        ? refreshed.session.access_token.trim()
+        : '';
     } catch (err) {
       console.warn(`${PAYMENT_DEBUG_PREFIX} refreshSession exception`, err?.message || err);
     }
-    return token || null;
+    return token && token.includes('.') ? token : null;
   };
 
   useEffect(() => {
@@ -255,26 +258,33 @@ export default function PlansPage() {
         return;
       }
       if (!isAuthenticated || !user) {
-        setPaymentMessage({ type: 'error', text: 'Debes iniciar sesión.' });
+        setPaymentMessage({ type: 'error', text: 'Debes iniciar sesión para continuar.' });
         navigate('/login');
         return;
       }
-      const token = await getValidAccessToken();
-      if (!token) {
-        setPaymentMessage({ type: 'error', text: 'Debes iniciar sesión.' });
-        navigate('/login');
+      const { data: { session } } = await supabase.auth.getSession();
+      let accessToken = session?.access_token?.trim() || null;
+      if (!accessToken || !accessToken.includes('.')) {
+        const { data: refreshed } = await supabase.auth.refreshSession();
+        accessToken = (refreshed?.session?.access_token && typeof refreshed.session.access_token === 'string')
+          ? refreshed.session.access_token.trim()
+          : null;
+      }
+      if (!accessToken || !accessToken.includes('.')) {
+        setPaymentMessage({ type: 'error', text: 'Sesión expirada o inválida. Cierra sesión, vuelve a iniciar sesión e intenta de nuevo.' });
         return;
       }
       const returnBaseUrl = (typeof window !== 'undefined' && window.location?.origin)
         ? window.location.origin.replace(/\/$/, '')
         : (getAppBaseUrl() || '');
       const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
+      const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
       const res = await fetch(`${supabaseUrl}/functions/v1/create-lemonsqueezy-checkout`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-          apikey: import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '',
+          'Authorization': `Bearer ${accessToken}`,
+          'apikey': anonKey,
         },
         body: JSON.stringify({
           planSlug: previewPlanSlug,
