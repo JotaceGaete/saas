@@ -2,11 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import PublicPageLayout from 'components/PublicPageLayout';
 import { formatCurrency } from 'utils/formatCLP';
-import { PLAN_SLUGS, getPlanLabel, getPlanLimits, getPlanPriceByCountry } from 'constants/plans';
-import { getPaymentProvider } from 'config/paymentProvider';
+import { PLAN_SLUGS, getPlanLabel, getPlanLimits } from 'constants/plans';
+import { getBillingRegion, getPaymentProvider, getCurrency, getPlanDisplayPrice } from 'lib/billing';
 
 const COUNTRY_CL = 'CL';
-const COUNTRY_AR = 'AR';
 
 /** Planes alineados con constants/plans (starter, pro, business/Full). */
 const PLAN_IDS = PLAN_SLUGS.map((slug) => ({
@@ -55,14 +54,15 @@ export default function PublicPricingPage() {
     return () => { cancelled = true; };
   }, []);
 
-  const isChile = country === COUNTRY_CL;
-  const paymentProvider = country ? getPaymentProvider(country) : null;
-  const currency = paymentProvider === 'mercado_pago' ? 'CLP' : 'USD';
-  const paymentMethod = isChile ? 'Mercado Pago' : 'LemonSqueezy';
+  const countryForBilling = country === 'INTL' ? 'AR' : (country || 'CL');
+  const region = getBillingRegion(countryForBilling);
+  const paymentProvider = getPaymentProvider(countryForBilling);
+  const currency = getCurrency(countryForBilling);
+  const isChile = region === 'CL';
 
   const getPrice = (planSlug) => {
     if (!country) return 0;
-    return getPlanPriceByCountry(planSlug, country, paymentProvider);
+    return getPlanDisplayPrice(planSlug, region);
   };
 
   const formatPrice = (planSlug) => {

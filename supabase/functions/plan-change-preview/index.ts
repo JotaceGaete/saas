@@ -9,11 +9,11 @@ const VALID_PLAN_SLUGS = ['starter', 'pro', 'business'];
 const PLAN_ORDER: Record<string, number> = { starter: 0, control: 0, pro: 1, business: 2 };
 type PlanCatalog = Record<string, { displayName: string; price: number; durationDays: number }>;
 
-// Chile: Mercado Pago (CLP).
+// Chile: Mercado Pago (CLP). Valores alineados con src/lib/billing/constants.js
 const PLAN_CATALOG_CL: PlanCatalog = {
   starter:  { displayName: 'Starter',  price: 0,     durationDays: 30 },
   pro:      { displayName: 'Plan Pro', price: 5990, durationDays: 30 },
-  business: { displayName: 'Plan Business', price: 10000, durationDays: 30 },
+  business: { displayName: 'Plan Full', price: 9990, durationDays: 30 },
 };
 
 const PLAN_CATALOG_AR: PlanCatalog = {

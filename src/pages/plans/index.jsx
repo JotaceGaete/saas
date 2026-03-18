@@ -8,30 +8,12 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useConfirmedEmailGuard } from '../../hooks/useConfirmedEmailGuard';
 import { supabase } from '../../lib/supabase';
 import { getAppBaseUrl } from '../../config/appUrl';
-import { getCountryCode, getCurrency } from '../../config/country';
-import { getPaymentProvider, PAYMENT_COUNTRY_CODES } from '../../config/paymentProvider';
+import { getCountryCode } from '../../config/country';
 import { formatCurrency } from '../../utils/formatCLP';
-import { PLAN_SLUGS, getPlanLimits, getPlanLabel, getPlanPriceByCountry, getPlanActionButtonLabel } from '../../constants/plans';
+import { PLAN_SLUGS, getPlanLimits, getPlanLabel, getPlanActionButtonLabel } from '../../constants/plans';
+import { resolveBillingContext, getPlanDisplayPrice } from '../../lib/billing';
 
 const PAYMENT_DEBUG_PREFIX = '[plans-payment-debug]';
-const SUPPORTED_PAYMENT_COUNTRIES = new Set(PAYMENT_COUNTRY_CODES);
-
-function normalizeCountryCode(value) {
-  if (!value || typeof value !== 'string') return null;
-  const code = value.toUpperCase().trim();
-  if (SUPPORTED_PAYMENT_COUNTRIES.has(code)) return code;
-  return null;
-}
-
-function resolveCountryCode({ hostnameCountryCode, businessCountryCode, userCountryCode }) {
-  // Prioridad para moneda: si el hostname es CL o AR, usarlo (pantalla vista en Chile/Argentina).
-  if (hostnameCountryCode === 'AR') return 'AR';
-  if (hostnameCountryCode === 'CL') return 'CL';
-  if (businessCountryCode) return businessCountryCode;
-  if (userCountryCode) return userCountryCode;
-  if (hostnameCountryCode) return hostnameCountryCode;
-  return 'CL';
-}
 
 export default function PlansPage() {
   const navigate = useNavigate();
@@ -47,14 +29,15 @@ export default function PlansPage() {
   const isDesktop = useIsDesktop();
   const sidebarWidth = sidebarCollapsed ? 'var(--sidebar-collapsed-width)' : 'var(--sidebar-width)';
   const currentPlan = business?.planSlug || 'starter';
-  const hostnameCountryCode = normalizeCountryCode(getCountryCode());
-  const businessCountryCode = normalizeCountryCode(business?.countryCode);
-  const userCountryCode = normalizeCountryCode(user?.user_metadata?.country_code ?? user?.user_metadata?.country);
-  const countryCode = resolveCountryCode({ hostnameCountryCode, businessCountryCode, userCountryCode });
-  const paymentProvider = getPaymentProvider(countryCode);
-  // Mercado Pago: CLP. LemonSqueezy: USD. Priorizar provider para evitar incoherencia (ARS vs USD).
-  const currency = paymentProvider === 'mercado_pago' ? 'CLP' : 'USD';
-  const getPlanPrice = (slug) => getPlanPriceByCountry(slug, countryCode, paymentProvider);
+  const hostnameCountryCode = getCountryCode();
+  const businessCountryCode = business?.countryCode ?? null;
+  const userCountryCode = user?.user_metadata?.country_code ?? user?.user_metadata?.country ?? null;
+  const { countryCode, region, provider: paymentProvider, currency } = resolveBillingContext({
+    hostnameCountryCode,
+    businessCountryCode,
+    userCountryCode,
+  });
+  const getPlanPrice = (slug) => getPlanDisplayPrice(slug, region);
   const scheduledToStarter = (business?.scheduledPlanSlug || null) === 'starter';
   const planExpiryMs = business?.planExpiresAt ? new Date(business.planExpiresAt).getTime() : null;
   const trialExpiryMs = business?.trialExpiresAt ? new Date(business.trialExpiresAt).getTime() : null;
@@ -87,21 +70,12 @@ export default function PlansPage() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const planPrices = PLAN_SLUGS.reduce((acc, slug) => ({ ...acc, [slug]: getPlanPriceByCountry(slug, countryCode, paymentProvider) }), {});
+    const planPrices = PLAN_SLUGS.reduce((acc, slug) => ({ ...acc, [slug]: getPlanPrice(slug) }), {});
     console.log('[plans-debug] hostname:', window.location?.hostname);
-    console.log('[plans-debug] country detected:', countryCode);
-    console.log('[plans-debug] currency detected:', currency);
+    console.log('[plans-debug] billing region:', region, 'currency:', currency, 'provider:', paymentProvider);
     console.log('[plans-debug] plan prices:', planPrices);
-    console.info(PAYMENT_DEBUG_PREFIX, {
-      event: 'provider_resolution',
-      hostname: window.location?.hostname ?? null,
-      hostnameCountryCode,
-      businessCountryCode,
-      userCountryCode,
-      resolvedCountryCode: countryCode,
-      resolvedProvider: paymentProvider,
-    });
-  }, [hostnameCountryCode, businessCountryCode, userCountryCode, countryCode, paymentProvider, currency]);
+    console.info(PAYMENT_DEBUG_PREFIX, { event: 'provider_resolution', countryCode, region, provider: paymentProvider });
+  }, [countryCode, region, paymentProvider, currency]);
 
   useEffect(() => {
     const payment = searchParams.get('payment');
@@ -148,13 +122,12 @@ export default function PlansPage() {
     return () => { cancelled = true; };
   }, [paymentReturnStatus, user, businessLoading]);
 
-  const fetchPlanPreview = async (targetPlanSlug, provider) => {
+  const fetchPlanPreview = async (targetPlanSlug) => {
     const token = await getValidAccessToken();
     if (!token) return null;
     const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
     const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
-    const body = { targetPlanSlug };
-    if (provider) body.provider = provider;
+    const body = { targetPlanSlug, provider: paymentProvider };
     const res = await fetch(`${supabaseUrl}/functions/v1/plan-change-preview`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, apikey: anonKey },
@@ -191,7 +164,7 @@ export default function PlansPage() {
         navigate('/login');
         return;
       }
-      const previewData = await fetchPlanPreview(planSlug, 'lemonsqueezy');
+      const previewData = await fetchPlanPreview(planSlug);
       if (!previewData) {
         setPaymentMessage({ type: 'error', text: 'No se pudo obtener el resumen del cambio de plan.' });
         return;
@@ -522,13 +495,15 @@ export default function PlansPage() {
                 {preview.creditAmount > 0 && (
                   <li>Crédito aplicado: <strong>{formatCurrency(preview.creditAmount, currency)}</strong></li>
                 )}
-                <li>Precio del plan: <strong>{formatCurrency(preview.targetPlanPrice, currency)}</strong></li>
+                <li>Precio del plan: <strong>{formatCurrency(paymentProvider === 'lemonsqueezy' ? getPlanDisplayPrice(preview.targetPlanSlug, region) : (preview.targetPlanPrice ?? 0), currency)}</strong></li>
                 {preview.effectiveAt && (
-                  <li>Vigente desde: <strong>{new Date(preview.effectiveAt).toLocaleDateString(currency === 'ARS' ? 'es-AR' : currency === 'USD' ? 'en-US' : 'es-CL', { dateStyle: 'medium' })}</strong></li>
+                  <li>Vigente desde: <strong>{new Date(preview.effectiveAt).toLocaleDateString(currency === 'USD' ? 'en-US' : 'es-CL', { dateStyle: 'medium' })}</strong></li>
                 )}
                 <li className="pt-2 border-t" style={{ borderColor: 'var(--color-border)' }}>
                   Total a pagar: <strong className="text-base" style={{ color: 'var(--color-foreground)' }}>
-                    {preview.finalAmount === 0 ? 'Sin cargo (crédito aplicado)' : formatCurrency(preview.finalAmount, currency)}
+                    {preview.changeType === 'downgrade' || preview.finalAmount === 0
+                      ? 'Sin cargo (crédito aplicado)'
+                      : formatCurrency(paymentProvider === 'lemonsqueezy' ? getPlanDisplayPrice(preview.targetPlanSlug, region) : (preview.finalAmount ?? 0), currency)}
                   </strong>
                 </li>
               </ul>

@@ -52,9 +52,9 @@ function mapVariantToPlan(variantId: string | number | undefined): string | null
   if (variantId == null) return null;
   const v = String(variantId).trim();
   const proId = Deno.env.get('LEMONSQUEEZY_VARIANT_PRO_ID') ?? '';
-  const businessId = Deno.env.get('LEMONSQUEEZY_VARIANT_BUSINESS_ID') ?? '';
+  const fullId = Deno.env.get('LEMONSQUEEZY_VARIANT_FULL_ID') ?? Deno.env.get('LEMONSQUEEZY_VARIANT_BUSINESS_ID') ?? '';
   if (v === proId) return 'pro';
-  if (v === businessId) return 'business';
+  if (v === fullId) return 'business';
   return null;
 }
 

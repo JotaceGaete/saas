@@ -60,14 +60,14 @@ Deno.serve(async (req) => {
   const apiKey = Deno.env.get('LEMONSQUEEZY_API_KEY') ?? '';
   const storeId = Deno.env.get('LEMONSQUEEZY_STORE_ID') ?? '';
   const variantProId = Deno.env.get('LEMONSQUEEZY_VARIANT_PRO_ID') ?? '';
-  const variantBusinessId = Deno.env.get('LEMONSQUEEZY_VARIANT_BUSINESS_ID') ?? '';
+  const variantFullId = Deno.env.get('LEMONSQUEEZY_VARIANT_FULL_ID') ?? Deno.env.get('LEMONSQUEEZY_VARIANT_BUSINESS_ID') ?? '';
 
   if (!serviceRoleKey) {
     console.error('[create-lemonsqueezy-checkout] SUPABASE_SERVICE_ROLE_KEY not set');
     return jsonResponse({ error: 'Server configuration error' }, 500);
   }
-  if (!apiKey || !storeId || !variantProId || !variantBusinessId) {
-    console.error('[create-lemonsqueezy-checkout] LEMONSQUEEZY_API_KEY, STORE_ID o VARIANT IDs no configurados');
+  if (!apiKey || !storeId || !variantProId || !variantFullId) {
+    console.error('[create-lemonsqueezy-checkout] LEMONSQUEEZY_API_KEY, STORE_ID o VARIANT_PRO_ID/VARIANT_FULL_ID no configurados');
     return jsonResponse({ error: 'Server configuration error' }, 500);
   }
 
@@ -93,7 +93,7 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: 'El plan Starter es gratuito' }, 400);
   }
 
-  const variantIdMap: Record<string, string> = { pro: variantProId, business: variantBusinessId };
+  const variantIdMap: Record<string, string> = { pro: variantProId, business: variantFullId };
   const variantId = variantIdMap[planSlug];
   if (!variantId) {
     return jsonResponse({ error: 'Variant no configurado para este plan' }, 500);
