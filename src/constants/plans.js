@@ -110,16 +110,16 @@ export function getPlanPrice(planSlug) {
 }
 
 /**
- * Precio del plan según país (CLP o ARS) o proveedor (USD para LemonSqueezy/Paddle).
+ * Precio del plan según país (CLP o ARS) o proveedor (USD para LemonSqueezy).
  * @param {string} planSlug
  * @param {'AR'|'CL'|string} [countryCode]
- * @param {'mercado_pago'|'paddle'|'lemonsqueezy'|null} [paymentProvider]
+ * @param {'mercado_pago'|'lemonsqueezy'|null} [paymentProvider]
  * @returns {number}
  */
 export function getPlanPriceByCountry(planSlug, countryCode, paymentProvider) {
   if (countryCode === 'CL') return PLAN_PRICES_CLP[planSlug] ?? 0;
   // Argentina y resto del mundo usan LemonSqueezy → USD (no ARS).
-  if (paymentProvider === 'lemonsqueezy' || paymentProvider === 'paddle') return PLAN_PRICES_USD[planSlug] ?? 0;
+  if (paymentProvider === 'lemonsqueezy') return PLAN_PRICES_USD[planSlug] ?? 0;
   if (countryCode === 'AR') return PLAN_PRICES_ARS[planSlug] ?? 0;
   return PLAN_PRICES_CLP[planSlug] ?? 0;
 }

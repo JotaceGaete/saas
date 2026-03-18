@@ -1,20 +1,12 @@
 // create-lemonsqueezy-checkout — crea checkout en LemonSqueezy y devuelve URL.
 // Solo para países fuera de Chile (Chile usa Mercado Pago).
-// Seguridad: business resuelto por SERVICE_ROLE + auth.uid(). No acepta businessId del frontend.
-// Persiste wa_payments (pending, provider=lemonsqueezy) antes de llamar a LemonSqueezy API.
+// NO usa price, amount ni custom_price: Lemon es la fuente de verdad via variant_id.
+// Mapeo: pro -> LEMONSQUEEZY_VARIANT_PRO_ID (6 USD), business/full -> LEMONSQUEEZY_VARIANT_BUSINESS_ID (10 USD).
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const VALID_PLAN_SLUGS = ['starter', 'pro', 'business'];
 const PLAN_ORDER: Record<string, number> = { starter: 0, control: 0, pro: 1, business: 2 };
-type PlanCatalog = Record<string, { displayName: string; price: number; durationDays: number }>;
-
-/** Catálogo USD para LemonSqueezy. Pro=6 USD, Full=10 USD (valores reales en Lemon). */
-const PLAN_CATALOG_USD: PlanCatalog = {
-  starter:  { displayName: 'Starter',  price: 0,  durationDays: 30 },
-  pro:      { displayName: 'Plan Pro', price: 6,  durationDays: 30 },
-  business: { displayName: 'Plan Full', price: 10, durationDays: 30 },
-};
 
 function normalizeCountryCode(value: string | undefined): string {
   const code = (value ?? '').toUpperCase().trim();
@@ -43,72 +35,7 @@ function resolveBusinessCountryCode(
   return normalizeCountryCode(fallbackCountry);
 }
 
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
-type ChangeType = 'upgrade' | 'renewal' | 'downgrade';
-
-function computePlanChange(
-  currentPlanSlug: string,
-  planExpiresAt: string | null,
-  targetPlanSlug: string,
-  catalog: PlanCatalog = PLAN_CATALOG_USD,
-): {
-  changeType: ChangeType;
-  finalAmount: number;
-  daysRemaining: number;
-  creditAmount: number;
-  currentPlanPrice: number;
-  targetPlanPrice: number;
-  effectiveAt?: string;
-  scheduledChange?: { targetPlanSlug: string; effectiveAt: string };
-} {
-  const now = Date.now();
-  const currentOrder = PLAN_ORDER[currentPlanSlug] ?? 0;
-  const targetOrder = PLAN_ORDER[targetPlanSlug] ?? 0;
-  const currentPlanPrice = catalog[currentPlanSlug]?.price ?? 0;
-  const targetPlanPrice = catalog[targetPlanSlug]?.price ?? 0;
-  let changeType: ChangeType = 'renewal';
-  if (targetOrder > currentOrder) changeType = 'upgrade';
-  else if (targetOrder < currentOrder) changeType = 'downgrade';
-  let remainingMs = 0;
-  if (planExpiresAt) {
-    const exp = new Date(planExpiresAt).getTime();
-    remainingMs = Math.max(0, exp - now);
-  }
-  const msPerPeriod = (catalog[currentPlanSlug]?.durationDays ?? 30) * MS_PER_DAY;
-  const remainingDaysFraction = msPerPeriod > 0
-    ? Math.min((remainingMs / msPerPeriod) * (catalog[currentPlanSlug]?.durationDays ?? 30), 30)
-    : 0;
-  const daysRemaining = Math.floor(remainingDaysFraction);
-  let creditAmount = 0;
-  if (changeType === 'upgrade' && currentPlanPrice > 0) {
-    const rawCredit = (currentPlanPrice / 30) * remainingDaysFraction;
-    creditAmount = Math.min(Math.floor(rawCredit), currentPlanPrice);
-  }
-  let finalAmount = targetPlanPrice;
-  if (changeType === 'upgrade') finalAmount = Math.max(0, Math.floor(targetPlanPrice - creditAmount));
-  else if (changeType === 'downgrade') finalAmount = 0;
-  let effectiveAt: string | undefined;
-  let scheduledChange: { targetPlanSlug: string; effectiveAt: string } | undefined;
-  if (changeType === 'downgrade' && planExpiresAt) {
-    effectiveAt = new Date(planExpiresAt).toISOString();
-    scheduledChange = { targetPlanSlug, effectiveAt };
-  } else if (changeType === 'renewal' || changeType === 'upgrade') {
-    effectiveAt = planExpiresAt && new Date(planExpiresAt).getTime() > now ? planExpiresAt : new Date(now).toISOString();
-  }
-  return { changeType, finalAmount, daysRemaining, creditAmount, currentPlanPrice, targetPlanPrice, effectiveAt, scheduledChange };
-}
-
-/**
- * Mapea variant_id de LemonSqueezy a plan_slug interno.
- */
-function mapVariantToPlan(variantId: string | number): string | null {
-  const v = String(variantId).trim();
-  const proId = Deno.env.get('LEMONSQUEEZY_VARIANT_PRO_ID') ?? '';
-  const businessId = Deno.env.get('LEMONSQUEEZY_VARIANT_BUSINESS_ID') ?? '';
-  if (v === proId) return 'pro';
-  if (v === businessId) return 'business';
-  return null;
-}
+const LEMON_DISPLAY_PRICE_USD: Record<string, number> = { pro: 6, business: 10 };
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -194,28 +121,22 @@ Deno.serve(async (req) => {
     business as { country_code?: string | null; country?: string | null; currency?: string | null },
     fallbackCountry || undefined,
   );
-  // Si el frontend envía country no-CL (usuario en ar/go.ventalink.app), permitir LemonSqueezy.
   const countryCode = fallbackCountry && fallbackCountry !== 'CL' ? fallbackCountry : resolvedFromBiz;
   if (countryCode === 'CL') {
     return jsonResponse({ error: 'Para Chile usa Mercado Pago. Accede desde cl.ventalink.app.', country_code: countryCode }, 400);
   }
 
-  const catalog = PLAN_CATALOG_USD;
   const rawPlan = (business as { plan_slug?: string }).plan_slug ?? 'starter';
   const currentPlanSlug = rawPlan === 'control' ? 'starter' : rawPlan;
   const planExpiresAt = (business as { plan_expires_at?: string | null }).plan_expires_at ?? null;
   const trialExpiresAt = (business as { trial_expires_at?: string | null }).trial_expires_at ?? null;
   const scheduledPlanSlug = (business as { scheduled_plan_slug?: string | null }).scheduled_plan_slug ?? null;
-  let planChange = computePlanChange(currentPlanSlug, planExpiresAt, planSlug, catalog);
 
-  const now = Date.now();
-  const isActiveProTrial =
-    currentPlanSlug === 'pro' && trialExpiresAt && new Date(trialExpiresAt).getTime() > now && scheduledPlanSlug === 'starter';
-  if (isActiveProTrial && planSlug === 'pro' && trialExpiresAt) {
-    planChange = { ...planChange, effectiveAt: trialExpiresAt, scheduledChange: { targetPlanSlug: planSlug, effectiveAt: trialExpiresAt } };
-  }
+  const currentOrder = PLAN_ORDER[currentPlanSlug] ?? 0;
+  const targetOrder = PLAN_ORDER[planSlug] ?? 0;
+  const changeType = targetOrder > currentOrder ? 'upgrade' : targetOrder < currentOrder ? 'downgrade' : 'renewal';
 
-  if (planChange.changeType === 'downgrade') {
+  if (changeType === 'downgrade') {
     const effectiveAt = planExpiresAt ?? new Date().toISOString();
     await adminClient.from('wa_businesses').update({ scheduled_plan_slug: planSlug, scheduled_change_at: effectiveAt }).eq('id', business.id);
     return jsonResponse({
@@ -226,47 +147,22 @@ Deno.serve(async (req) => {
     }, 400);
   }
 
-  const finalAmount = planChange.finalAmount;
-  const isScheduledTrialConversion = isActiveProTrial && planSlug === 'pro' && trialExpiresAt && new Date(trialExpiresAt).getTime() > now;
+  const now = Date.now();
+  const isActiveProTrial =
+    currentPlanSlug === 'pro' && trialExpiresAt && new Date(trialExpiresAt).getTime() > now && scheduledPlanSlug === 'starter';
+
   const metadata: Record<string, unknown> = {
     currentPlanSlug,
     targetPlanSlug: planSlug,
-    finalAmount,
-    changeType: planChange.changeType,
-    effectiveAt: planChange.effectiveAt ?? null,
-    scheduledChange: planChange.scheduledChange ?? null,
+    changeType,
     provider: 'lemonsqueezy',
   };
-  if (isScheduledTrialConversion && trialExpiresAt) {
+  if (isActiveProTrial && planSlug === 'pro' && trialExpiresAt) {
     metadata.isScheduledTrialConversion = true;
     metadata.effectiveAt = trialExpiresAt;
   }
 
-  if (finalAmount === 0) {
-    const effectiveAtMs = planChange.effectiveAt ? new Date(planChange.effectiveAt).getTime() : Date.now();
-    const newExpiresAt = new Date(effectiveAtMs + 30 * MS_PER_DAY).toISOString();
-    const { error: bizUpdateErr } = await adminClient.from('wa_businesses').update({ plan_slug: planSlug, plan_expires_at: newExpiresAt }).eq('id', business.id);
-    if (bizUpdateErr) return jsonResponse({ error: 'No se pudo aplicar el cambio de plan' }, 500);
-    const { data: internalPayment, error: paymentInsertError } = await adminClient
-      .from('wa_payments')
-      .insert({
-        business_id: business.id,
-        user_id: user.id,
-        plan_slug: planSlug,
-        amount: 0,
-        currency: 'USD',
-        status: 'approved',
-        provider: 'internal_proration',
-        external_reference: 'internal_proration',
-        metadata: { ...metadata, provider: 'internal_proration' },
-        plan_activated_at: new Date().toISOString(),
-        plan_expires_at: newExpiresAt,
-      })
-      .select('id')
-      .single();
-    if (paymentInsertError || !internalPayment?.id) return jsonResponse({ error: 'No se pudo registrar el pago interno' }, 500);
-    return jsonResponse({ applied: true, planSlug, plan_expires_at: newExpiresAt, payment_id: internalPayment.id }, 200);
-  }
+  const displayPriceUsd = LEMON_DISPLAY_PRICE_USD[planSlug] ?? 0;
 
   const { data: paymentRow, error: paymentInsertError } = await adminClient
     .from('wa_payments')
@@ -274,7 +170,7 @@ Deno.serve(async (req) => {
       business_id: business.id,
       user_id: user.id,
       plan_slug: planSlug,
-      amount: finalAmount,
+      amount: displayPriceUsd,
       currency: 'USD',
       status: 'pending',
       provider: 'lemonsqueezy',
@@ -316,12 +212,6 @@ Deno.serve(async (req) => {
     },
   };
 
-  // Solo enviar custom_price cuando hay prorrateo (crédito por upgrade). Si no, Lemon usa el precio del variant_id (6/10 USD).
-  const needsCustomPrice = finalAmount > 0 && finalAmount < planChange.targetPlanPrice;
-  if (needsCustomPrice) {
-    (checkoutPayload.data.attributes as Record<string, unknown>).custom_price = Math.round(finalAmount * 100);
-  }
-
   const lsRes = await fetch('https://api.lemonsqueezy.com/v1/checkouts', {
     method: 'POST',
     headers: {
@@ -358,7 +248,7 @@ Deno.serve(async (req) => {
     raw_mp_response: parsed?.data as Record<string, unknown>,
   }).eq('id', paymentId);
 
-  console.log('[create-lemonsqueezy-checkout] checkout_created', { planSlug, businessId: business.id, paymentId });
+  console.log('[create-lemonsqueezy-checkout] checkout_created', { planSlug, variantId, businessId: business.id, paymentId });
 
   return jsonResponse({ redirect_url: checkoutUrl, payment_id: paymentId }, 200);
 });

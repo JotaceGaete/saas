@@ -1,14 +1,15 @@
-// plan-change-preview — preview de cambio de plan (prorrateo con tiempo exacto, upgrade, downgrade, renewal).
-// Requiere JWT. Business resuelto por auth.uid(). No calcula precios en frontend.
+// plan-change-preview — preview de cambio de plan.
+// Requiere JWT. Business resuelto por auth.uid().
+// Chile: Mercado Pago → catálogo CLP (prorrateo).
+// Resto (Lemon): precios estáticos 6/10 USD, sin cálculos. Lemon es la fuente de verdad via variant_id.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-// Planes válidos actuales (legacy 'control' mapeado a starter; no se acepta como destino).
 const VALID_PLAN_SLUGS = ['starter', 'pro', 'business'];
 const PLAN_ORDER: Record<string, number> = { starter: 0, control: 0, pro: 1, business: 2 };
 type PlanCatalog = Record<string, { displayName: string; price: number; durationDays: number }>;
 
-// Legacy 'control' no tiene precio para prorrateo (mapear a starter = 0).
+// Chile: Mercado Pago (CLP).
 const PLAN_CATALOG_CL: PlanCatalog = {
   starter:  { displayName: 'Starter',  price: 0,     durationDays: 30 },
   pro:      { displayName: 'Plan Pro', price: 5990, durationDays: 30 },
@@ -21,26 +22,19 @@ const PLAN_CATALOG_AR: PlanCatalog = {
   business: { displayName: 'Plan Business', price: 30000, durationDays: 30 },
 };
 
-/** Catálogo USD para LemonSqueezy. Pro=6 USD, Full=10 USD (valores reales en Lemon). */
-const PLAN_CATALOG_USD: PlanCatalog = {
-  starter:  { displayName: 'Starter',  price: 0,  durationDays: 30 },
-  pro:      { displayName: 'Plan Pro', price: 6,  durationDays: 30 },
-  business: { displayName: 'Plan Full', price: 10, durationDays: 30 },
-};
+/** Precios estáticos Lemon (USD). Pro=6, Full=10. Fuente de verdad: variant_id en Lemon. */
+const LEMON_PRICES_USD: Record<string, number> = { starter: 0, pro: 6, business: 10 };
 
-function getPlanCatalog(country: string | undefined, provider?: string): PlanCatalog {
-  if (provider === 'lemonsqueezy' || provider === 'paddle') return PLAN_CATALOG_USD;
-  // Fuera de Chile: pago es LemonSqueezy (USD). Si provider no llega, evitar usar CLP (5990).
-  if (country && country !== 'CL') return PLAN_CATALOG_USD;
+function getPlanCatalog(country: string | undefined, provider?: string): PlanCatalog | null {
+  if (provider === 'lemonsqueezy') return null;
+  if (country && country !== 'CL') return null;
   return country === 'AR' ? PLAN_CATALOG_AR : PLAN_CATALOG_CL;
 }
 
 function normalizeCountryCode(value: string | undefined): string {
   const code = (value ?? '').toUpperCase().trim();
   if (!code) return 'CL';
-  if (['AR', 'BO', 'BR', 'CL', 'CO', 'CR', 'EC', 'GT', 'MX', 'PA', 'PE', 'PY', 'UY'].includes(code)) {
-    return code;
-  }
+  if (['AR', 'BO', 'BR', 'CL', 'CO', 'CR', 'EC', 'GT', 'MX', 'PA', 'PE', 'PY', 'UY'].includes(code)) return code;
   return 'CL';
 }
 
@@ -48,44 +42,29 @@ function resolveBusinessCountryCode(
   business: { country_code?: string | null; country?: string | null; currency?: string | null },
 ): string {
   if (business.country_code) return normalizeCountryCode(business.country_code ?? undefined);
-
   const countryRaw = (business.country ?? '').toUpperCase().trim();
   const countryAliases: Record<string, string> = {
-    ARGENTINA: 'AR',
-    CHILE: 'CL',
-    BOLIVIA: 'BO',
-    BRASIL: 'BR',
-    BRAZIL: 'BR',
-    COLOMBIA: 'CO',
-    'COSTA RICA': 'CR',
-    ECUADOR: 'EC',
-    GUATEMALA: 'GT',
-    MEXICO: 'MX',
-    PANAMA: 'PA',
-    PERU: 'PE',
-    PARAGUAY: 'PY',
-    URUGUAY: 'UY',
+    ARGENTINA: 'AR', CHILE: 'CL', BOLIVIA: 'BO', BRASIL: 'BR', BRAZIL: 'BR',
+    COLOMBIA: 'CO', 'COSTA RICA': 'CR', ECUADOR: 'EC', GUATEMALA: 'GT',
+    MEXICO: 'MX', PANAMA: 'PA', PERU: 'PE', PARAGUAY: 'PY', URUGUAY: 'UY',
   };
   if (countryRaw && countryAliases[countryRaw]) return countryAliases[countryRaw];
   if (countryRaw) return normalizeCountryCode(countryRaw);
-
   const currency = (business.currency ?? '').toUpperCase().trim();
   if (currency === 'ARS') return 'AR';
   if (currency === 'CLP') return 'CL';
-
   return 'CL';
 }
 
 const PRORATION_FORMULA_VERSION = '2024-03-exact-time';
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
-
 type ChangeType = 'upgrade' | 'renewal' | 'downgrade';
 
 function computePlanChange(
   currentPlanSlug: string,
   planExpiresAt: string | null,
   targetPlanSlug: string,
-  catalog: PlanCatalog = PLAN_CATALOG_CL,
+  catalog: PlanCatalog,
 ): {
   currentPlanSlug: string;
   currentPlanPrice: number;
@@ -106,13 +85,11 @@ function computePlanChange(
   const targetOrder = PLAN_ORDER[targetPlanSlug] ?? 0;
   const currentPlanPrice = catalog[currentPlanSlug]?.price ?? 0;
   const targetPlanPrice = catalog[targetPlanSlug]?.price ?? 0;
-  const durationDays = catalog[targetPlanSlug]?.durationDays ?? 30;
 
   let changeType: ChangeType = 'renewal';
   if (targetOrder > currentOrder) changeType = 'upgrade';
   else if (targetOrder < currentOrder) changeType = 'downgrade';
 
-  // Tiempo exacto restante (ms)
   let remainingMs = 0;
   if (planExpiresAt) {
     const exp = new Date(planExpiresAt).getTime();
@@ -173,6 +150,83 @@ function computePlanChange(
     effectiveAt,
     scheduledChange,
     prorationFormulaVersion: PRORATION_FORMULA_VERSION,
+  };
+}
+
+function buildLemonPreview(
+  currentPlanSlug: string,
+  targetPlanSlug: string,
+  planExpiresAt: string | null,
+  trialExpiresAt: string | null,
+  scheduledPlanSlug: string | null,
+): {
+  currentPlanSlug: string;
+  currentPlanPrice: number;
+  targetPlanSlug: string;
+  targetPlanPrice: number;
+  daysRemaining: number;
+  remainingDaysFraction: number;
+  creditAmount: number;
+  finalAmount: number;
+  changeType: ChangeType;
+  message?: string;
+  effectiveAt?: string;
+  scheduledChange?: { targetPlanSlug: string; effectiveAt: string };
+  prorationFormulaVersion: string;
+} {
+  const targetPrice = LEMON_PRICES_USD[targetPlanSlug] ?? 0;
+  const currentPrice = LEMON_PRICES_USD[currentPlanSlug] ?? 0;
+  const currentOrder = PLAN_ORDER[currentPlanSlug] ?? 0;
+  const targetOrder = PLAN_ORDER[targetPlanSlug] ?? 0;
+  let changeType: ChangeType = 'renewal';
+  if (targetOrder > currentOrder) changeType = 'upgrade';
+  else if (targetOrder < currentOrder) changeType = 'downgrade';
+
+  let daysRemaining = 0;
+  let effectiveAt: string | undefined;
+  let scheduledChange: { targetPlanSlug: string; effectiveAt: string } | undefined;
+
+  if (planExpiresAt) {
+    const exp = new Date(planExpiresAt).getTime();
+    const now = Date.now();
+    const remainingMs = Math.max(0, exp - now);
+    daysRemaining = Math.floor(remainingMs / MS_PER_DAY);
+    if (changeType === 'downgrade') {
+      effectiveAt = planExpiresAt;
+      scheduledChange = { targetPlanSlug, effectiveAt };
+    } else {
+      effectiveAt = exp > now ? planExpiresAt : new Date(now).toISOString();
+    }
+  } else {
+    effectiveAt = new Date().toISOString();
+  }
+
+  const now = Date.now();
+  const isActiveProTrial =
+    currentPlanSlug === 'pro' && trialExpiresAt && new Date(trialExpiresAt).getTime() > now && scheduledPlanSlug === 'starter';
+  if (isActiveProTrial && targetPlanSlug === 'pro' && trialExpiresAt) {
+    effectiveAt = trialExpiresAt;
+    scheduledChange = { targetPlanSlug: 'pro', effectiveAt: trialExpiresAt };
+  }
+
+  const message = changeType === 'downgrade'
+    ? 'El cambio a un plan inferior se aplicará al vencer tu plan actual. No se realiza ningún cargo.'
+    : undefined;
+
+  return {
+    currentPlanSlug,
+    currentPlanPrice,
+    targetPlanSlug,
+    targetPlanPrice,
+    daysRemaining,
+    remainingDaysFraction: daysRemaining / 30,
+    creditAmount: 0,
+    finalAmount: changeType === 'downgrade' ? 0 : targetPrice,
+    changeType,
+    message,
+    effectiveAt,
+    scheduledChange,
+    prorationFormulaVersion: 'lemon-static',
   };
 }
 
@@ -252,7 +306,6 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: 'Forbidden' }, 403);
   }
 
-  // Legacy: plan 'control' se trata como 'starter' para no aplicar crédito heredado en upgrades.
   const rawPlan = (biz as { plan_slug?: string }).plan_slug ?? 'starter';
   const currentPlanSlug = rawPlan === 'control' ? 'starter' : rawPlan;
   const planExpiresAt = (biz as { plan_expires_at?: string | null }).plan_expires_at ?? null;
@@ -262,36 +315,38 @@ Deno.serve(async (req) => {
     biz as { country_code?: string | null; country?: string | null; currency?: string | null },
   );
 
-  const catalog = getPlanCatalog(countryCode, providerHint);
-  let preview = computePlanChange(currentPlanSlug, planExpiresAt, targetPlanSlug, catalog);
+  // Lemon (fuera de Chile): precios estáticos 6/10 USD. Sin prorrateo.
+  const useLemon = providerHint === 'lemonsqueezy' || (countryCode && countryCode !== 'CL');
+  let preview: Record<string, unknown>;
 
-  // PRO en trial comprando PRO: activar el plan pagado cuando termine el trial (scheduled_plan_slug / scheduled_change_at).
-  const now = Date.now();
-  const isActiveProTrial =
-    currentPlanSlug === 'pro' &&
-    trialExpiresAt &&
-    new Date(trialExpiresAt).getTime() > now &&
-    scheduledPlanSlug === 'starter';
-  if (
-    isActiveProTrial &&
-    targetPlanSlug === 'pro' &&
-    trialExpiresAt
-  ) {
-    preview = {
-      ...preview,
-      effectiveAt: trialExpiresAt,
-      scheduledChange: { targetPlanSlug: 'pro', effectiveAt: trialExpiresAt },
-    };
+  if (useLemon) {
+    preview = buildLemonPreview(currentPlanSlug, targetPlanSlug, planExpiresAt, trialExpiresAt, scheduledPlanSlug);
+  } else {
+    const catalog = getPlanCatalog(countryCode, providerHint);
+    if (!catalog) {
+      preview = buildLemonPreview(currentPlanSlug, targetPlanSlug, planExpiresAt, trialExpiresAt, scheduledPlanSlug);
+    } else {
+      preview = computePlanChange(currentPlanSlug, planExpiresAt, targetPlanSlug, catalog);
+
+      const now = Date.now();
+      const isActiveProTrial =
+        currentPlanSlug === 'pro' && trialExpiresAt && new Date(trialExpiresAt).getTime() > now && scheduledPlanSlug === 'starter';
+      if (isActiveProTrial && targetPlanSlug === 'pro' && trialExpiresAt) {
+        preview = {
+          ...preview,
+          effectiveAt: trialExpiresAt,
+          scheduledChange: { targetPlanSlug: 'pro', effectiveAt: trialExpiresAt },
+        };
+      }
+    }
   }
 
   console.log('[plan-change-preview]', {
     currentPlanSlug,
     targetPlanSlug,
     changeType: preview.changeType,
-    daysRemaining: preview.daysRemaining,
-    creditAmount: preview.creditAmount,
+    useLemon,
     finalAmount: preview.finalAmount,
-    effectiveAt: preview.effectiveAt ?? null,
   });
 
   return jsonResponse(preview, 200);

@@ -52,7 +52,3 @@ export function usesLemonSqueezy(countryCode) {
   return getPaymentProvider(countryCode) === 'lemonsqueezy';
 }
 
-/** @deprecated Usar usesLemonSqueezy. Paddle ya no se usa. */
-export function usesPaddle(countryCode) {
-  return usesLemonSqueezy(countryCode);
-}

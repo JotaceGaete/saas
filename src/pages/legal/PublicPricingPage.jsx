@@ -56,10 +56,9 @@ export default function PublicPricingPage() {
   }, []);
 
   const isChile = country === COUNTRY_CL;
-  const isArgentina = country === COUNTRY_AR;
-  const currency = isChile ? 'CLP' : isArgentina ? 'ARS' : 'USD';
   const paymentProvider = country ? getPaymentProvider(country) : null;
-  const paymentMethod = isChile ? 'Mercado Pago' : isArgentina ? 'Mercado Pago' : 'Paddle';
+  const currency = paymentProvider === 'mercado_pago' ? 'CLP' : 'USD';
+  const paymentMethod = isChile ? 'Mercado Pago' : 'LemonSqueezy';
 
   const getPrice = (planSlug) => {
     if (!country) return 0;
@@ -74,7 +73,7 @@ export default function PublicPricingPage() {
 
   const ctaLabel = (planSlug) => {
     if (planSlug === 'starter') return 'Empezar gratis';
-    return isChile || isArgentina ? 'Pagar con Mercado Pago' : 'Pay with Paddle';
+    return isChile ? 'Pagar con Mercado Pago' : 'Pagar con tarjeta';
   };
 
   return (
@@ -89,7 +88,7 @@ export default function PublicPricingPage() {
         role="note"
       >
         <p className="text-sm m-0" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>
-          Chile: CLP con Mercado Pago. Argentina: ARS. Resto: USD con Paddle.
+          Chile: CLP con Mercado Pago. Resto del mundo: USD con LemonSqueezy.
         </p>
       </div>
 
@@ -139,7 +138,7 @@ export default function PublicPricingPage() {
                   <Link
                     to="/business-registration"
                     className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90"
-                    style={{ backgroundColor: plan.primary ? 'var(--color-primary)' : (isChile || isArgentina ? '#009EE3' : '#383838') }}
+                    style={{ backgroundColor: plan.primary ? 'var(--color-primary)' : (isChile ? '#009EE3' : '#F4C542') }}
                   >
                     {ctaLabel(plan.id)}
                   </Link>

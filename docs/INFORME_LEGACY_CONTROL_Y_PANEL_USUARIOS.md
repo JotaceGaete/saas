@@ -10,7 +10,7 @@ La fórmula está en las **Edge Functions** que calculan el cambio de plan:
 
 - **Archivos:**  
   `supabase/functions/plan-change-preview/index.ts`  
-  `supabase/functions/create-paddle-checkout/index.ts`  
+  `supabase/functions/create-lemonsqueezy-checkout/index.ts`  
   `supabase/functions/create-mp-preference/index.ts`
 
 - **Lógica relevante (ej. en `plan-change-preview`):**
@@ -43,8 +43,8 @@ En las **tres** Edge Functions anteriores el catálogo de planes **sigue incluye
 
 | Archivo                    | Catálogo (ej. CL)     | Precio "control" |
 |---------------------------|------------------------|-------------------|
-| plan-change-preview       | PLAN_CATALOG_CL / AR / USD | 500 CLP / 500 ARS / 5 USD |
-| create-paddle-checkout    | PLAN_CATALOG_USD       | 5 USD             |
+| plan-change-preview       | PLAN_CATALOG_CL / AR (Mercado Pago) o precios estáticos Lemon (USD) | 5990/10000 CLP, 15000/30000 ARS, 6/10 USD |
+| create-lemonsqueezy-checkout | Sin catálogo (solo variant_id) | Lemon es fuente de verdad |
 | create-mp-preference      | PLAN_CATALOG_CL / AR   | 500 CLP / 500 ARS |
 
 Y en todas se usa el **orden de planes**:
@@ -130,7 +130,7 @@ La opción más limpia es (a) y no tener "control" en los catálogos usados para
 
 Resumen de cambios recomendados:
 
-1. **Edge Functions (plan-change-preview, create-paddle-checkout, create-mp-preference):**  
+1. **Edge Functions (plan-change-preview, create-lemonsqueezy-checkout, create-mp-preference):**  
    Normalizar `currentPlanSlug`: si es `'control'` usar `'starter'` antes de calcular prorrateo.
 2. **Mismo lugar:** No dar precio a "control" en los catálogos (o quitarlo) y no aceptar "control" como plan destino.
 3. **BD:** Confirmar migración que pone `plan_slug = 'starter'` donde había `'control'` y limpiar `scheduled_plan_slug = 'control'` si existe.

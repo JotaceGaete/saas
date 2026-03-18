@@ -25,14 +25,7 @@ verify_jwt = false
 
 # dLocal Go: integración eliminada. create-dlocal-checkout y dlocal-webhook son stubs 410 (no en uso).
 
-# Paddle: checkout (JWT validado dentro) y webhook público.
-[functions.create-paddle-checkout]
-verify_jwt = false
-
-[functions.paddle-webhook]
-verify_jwt = false
-
-# LemonSqueezy: checkout (JWT validado dentro) y webhook público.
+# LemonSqueezy (pagos fuera de Chile): checkout (JWT validado dentro) y webhook público.
 [functions.create-lemonsqueezy-checkout]
 verify_jwt = false
 

@@ -80,7 +80,7 @@ Usa este listado para copiar en la landing, páginas legales o material de marke
 - **Plan Starter (gratis)** — Hasta 10 productos, hasta 30 pedidos/mes; ideal para empezar.
 - **Plan Pro** — Hasta 50 productos, pedidos ilimitados; incluye IA para mejorar descripciones; prueba gratis de 7 días.
 - **Plan Business** — Productos y pedidos ilimitados; IA incluida.
-- **Pago por país** — Precios en CLP (Chile), ARS (Argentina) o USD (Paddle).
+- **Pago por país** — Chile: Mercado Pago (CLP). Resto: LemonSqueezy (USD).
 - **Branding** — En plan gratis se muestra “Creado con Ventalink” en el mensaje de pedido; en planes de pago no.
 
 ### Experiencia de usuario
