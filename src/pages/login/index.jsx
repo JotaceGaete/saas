@@ -8,6 +8,7 @@ export default function Login() {
   const navigate = useNavigate();
   const { signIn, signInWithGoogle, isAuthenticated, loading } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [authError, setAuthError] = useState(null);
 
   // Redirect if already authenticated
@@ -44,12 +45,18 @@ export default function Login() {
   const handleGoogleLogin = async () => {
     setAuthError(null);
     setGoogleLoading(true);
-    const { error } = await signInWithGoogle();
-    if (error) {
-      setAuthError(error?.message || 'Error al iniciar sesión con Google.');
+    try {
+      const { error } = await signInWithGoogle();
+      if (error) {
+        setAuthError(error?.message || 'Error al iniciar sesión con Google.');
+        return;
+      }
+      // Si no hay error, redirige a Google; al volver el callback redirige a dashboard
+    } catch (e) {
+      setAuthError(e?.message || 'Error inesperado al conectar con Google.');
+    } finally {
       setGoogleLoading(false);
     }
-    // Si no hay error, redirige a Google; al volver el callback redirige a dashboard
   };
 
   // Show nothing while checking auth state
