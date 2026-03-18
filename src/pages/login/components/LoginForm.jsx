@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import Icon from 'components/AppIcon';
 import GoogleIcon from 'components/GoogleIcon';
 
-export default function LoginForm({ onSubmit, onGoogleLogin, isLoading, googleLoading, authError }) {
+export default function LoginForm({ onSubmit, onGoogleLogin, onForgotPassword, isLoading, googleLoading, authError, forgotPasswordSuccess, forgotPasswordLoading, onClearForgotSuccess, redirectMessage }) {
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [errors, setErrors] = useState({});
   const [showPassword, setShowPassword] = useState(false);
@@ -52,6 +52,31 @@ export default function LoginForm({ onSubmit, onGoogleLogin, isLoading, googleLo
 
       <h1 className="text-2xl font-bold mb-1" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Iniciar sesión</h1>
       <p className="text-sm mb-6" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Accede a tu panel para gestionar tu catálogo y pedidos.</p>
+
+      {/* Message from redirect (e.g. reset-password without session) */}
+      {redirectMessage && (
+        <div className="mb-4 flex items-start gap-2 p-3 rounded-lg border" style={{ backgroundColor: 'rgba(124,58,237,0.06)', borderColor: 'rgba(124,58,237,0.2)' }}>
+          <Icon name="Info" size={15} style={{ color: 'var(--color-primary)' }} className="mt-0.5 flex-shrink-0" />
+          <span className="text-sm" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>{redirectMessage}</span>
+        </div>
+      )}
+
+      {/* Forgot password success */}
+      {forgotPasswordSuccess && (
+        <div className="mb-4 flex items-start gap-2 p-3 rounded-lg border" style={{ backgroundColor: 'rgba(34,197,94,0.08)', borderColor: 'rgba(34,197,94,0.3)' }}>
+          <Icon name="CheckCircle" size={15} color="var(--color-success, #22c55e)" className="mt-0.5 flex-shrink-0" />
+          <div className="flex-1">
+            <span className="text-sm" style={{ color: 'var(--color-success, #22c55e)', fontFamily: 'var(--font-caption)' }}>
+              Te enviamos un enlace para restablecer tu contraseña. Revisa tu correo.
+            </span>
+            {onClearForgotSuccess && (
+              <button type="button" onClick={onClearForgotSuccess} className="block mt-1 text-xs hover:underline" style={{ color: 'var(--color-primary)' }}>
+                Cerrar
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Auth error banner */}
       {authError && (
@@ -171,10 +196,26 @@ export default function LoginForm({ onSubmit, onGoogleLogin, isLoading, googleLo
           <div className="flex justify-end mt-1.5">
             <button
               type="button"
-              className="text-xs font-medium hover:underline transition-colors"
+              onClick={() => {
+                const email = formData?.email?.trim();
+                if (!email) {
+                  if (typeof window !== 'undefined') console.log('[LoginForm] forgot password: no email');
+                  setErrors(prev => ({ ...prev, email: 'Ingresa tu correo para recibir el enlace de recuperación' }));
+                  return;
+                }
+                onForgotPassword?.(email);
+              }}
+              disabled={forgotPasswordLoading || isLoading}
+              className="text-xs font-medium hover:underline transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
               style={{ color: 'var(--color-primary)', fontFamily: 'var(--font-caption)' }}
             >
-              Olvidé mi contraseña
+              {forgotPasswordLoading ? (
+                <>
+                  <span className="inline-block animate-spin mr-1">⟳</span> Enviando...
+                </>
+              ) : (
+                'Olvidé mi contraseña'
+              )}
             </button>
           </div>
         </div>

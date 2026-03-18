@@ -1,15 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import LoginLeftPanel from './components/LoginLeftPanel';
 import LoginForm from './components/LoginForm';
 
 export default function Login() {
   const navigate = useNavigate();
-  const { signIn, signInWithGoogle, isAuthenticated, loading } = useAuth();
+  const location = useLocation();
+  const { signIn, signInWithGoogle, resetPasswordForEmail, isAuthenticated, loading } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [authError, setAuthError] = useState(null);
+  const [forgotPasswordSuccess, setForgotPasswordSuccess] = useState(false);
+  const [forgotPasswordLoading, setForgotPasswordLoading] = useState(false);
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -39,6 +42,35 @@ export default function Login() {
       setAuthError('Error inesperado. Por favor intenta de nuevo.');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async (email) => {
+    if (!email?.trim()) {
+      setAuthError('Ingresa tu correo electrónico para recibir el enlace de recuperación.');
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      setAuthError('Ingresa un correo electrónico válido.');
+      return;
+    }
+    setForgotPasswordLoading(true);
+    setAuthError(null);
+    try {
+      const { error } = await resetPasswordForEmail(email.trim());
+      if (typeof window !== 'undefined') {
+        console.log('[Login] resetPasswordForEmail result:', error ? { error: error.message } : 'ok');
+      }
+      if (error) {
+        setAuthError(error?.message || 'Error al enviar el correo de recuperación. Intenta de nuevo.');
+        return;
+      }
+      setAuthError(null);
+      setForgotPasswordSuccess(true);
+    } catch (e) {
+      setAuthError('Error inesperado. Por favor intenta de nuevo.');
+    } finally {
+      setForgotPasswordLoading(false);
     }
   };
 
@@ -78,9 +110,14 @@ export default function Login() {
         <LoginForm
           onSubmit={handleLogin}
           onGoogleLogin={handleGoogleLogin}
+          onForgotPassword={handleForgotPassword}
           isLoading={isLoading}
           googleLoading={googleLoading}
           authError={authError}
+          forgotPasswordSuccess={forgotPasswordSuccess}
+          forgotPasswordLoading={forgotPasswordLoading}
+          onClearForgotSuccess={() => setForgotPasswordSuccess(false)}
+          redirectMessage={location?.state?.message}
         />
       </div>
     </div>

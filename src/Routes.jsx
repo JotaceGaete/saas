@@ -18,6 +18,7 @@ import OrderConfirmation from './pages/order-confirmation';
 import Orders from './pages/orders';
 import Login from './pages/login';
 import AuthCallback from './pages/auth-callback';
+import ResetPassword from './pages/reset-password';
 import AdminDashboard from './pages/admin';
 import AdminPaymentsPage from './pages/admin/AdminPaymentsPage';
 import AdminUsersPage from './pages/admin/AdminUsersPage';
@@ -50,6 +51,7 @@ const Routes = () => {
             <Route path="/ayuda" element={<HelpPage />} />
             <Route path="/login" element={<Login />} />
             <Route path="/auth/callback" element={<AuthCallback />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/planes" element={<PlansPage />} />
             <Route path="/plans" element={<PublicPricingPage />} />
             <Route path="/terms" element={<TermsPage />} />

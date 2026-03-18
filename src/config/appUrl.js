@@ -31,6 +31,21 @@ export function getAuthRedirectUrl() {
 }
 
 /**
+ * URL de redirección para reset de contraseña (olvidé mi contraseña).
+ * Misma lógica que getAuthRedirectUrl pero apunta a /reset-password.
+ */
+export function getResetPasswordRedirectUrl() {
+  if (typeof window === 'undefined' || !window?.location?.origin) {
+    return 'https://go.ventalink.app/reset-password';
+  }
+  const origin = (window.location.origin || '').toLowerCase();
+  if (origin.includes('cl.ventalink.app')) return 'https://cl.ventalink.app/reset-password';
+  if (origin.includes('ar.ventalink.app')) return 'https://ar.ventalink.app/reset-password';
+  if (origin.includes('localhost')) return `${origin}/reset-password`;
+  return 'https://go.ventalink.app/reset-password';
+}
+
+/**
  * URL pública compartible del catálogo de un negocio.
  * Usa getAppBaseUrl() (env → window.location.origin) y ruta /catalogo/:slug.
  * @param {string} slug - Slug del negocio

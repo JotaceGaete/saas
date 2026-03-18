@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { createBusinessForUser, getMyBusiness, updateBusiness } from '../services/waBusinessService';
-import { getAuthRedirectUrl } from '../config/appUrl';
+import { getAuthRedirectUrl, getResetPasswordRedirectUrl } from '../config/appUrl';
 
 const AuthContext = createContext({})
 
@@ -225,6 +225,22 @@ export const AuthProvider = ({ children }) => {
     }
   }
 
+  const resetPasswordForEmail = async (email) => {
+    try {
+      const redirectTo = getResetPasswordRedirectUrl();
+      if (typeof window !== 'undefined' && window.__AUTH_DEBUG__) {
+        console.log('[Auth] resetPasswordForEmail:', { email, redirectTo });
+      }
+      const { data, error } = await supabase?.auth?.resetPasswordForEmail(email, { redirectTo });
+      if (typeof window !== 'undefined' && window.__AUTH_DEBUG__) {
+        console.log('[Auth] resetPasswordForEmail result:', { error: error?.message, data });
+      }
+      return { data, error };
+    } catch (err) {
+      return { error: { message: err?.message || 'Error al enviar el correo de recuperación' } };
+    }
+  };
+
   const signInWithGoogle = async () => {
     try {
       const redirectTo = getAuthRedirectUrl();
@@ -288,6 +304,7 @@ export const AuthProvider = ({ children }) => {
     signIn,
     signUp,
     signInWithGoogle,
+    resetPasswordForEmail,
     signOut,
     refreshBusiness,
     isAuthenticated: !!user,
