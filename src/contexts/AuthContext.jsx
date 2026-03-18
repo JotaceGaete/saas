@@ -134,32 +134,47 @@ export const AuthProvider = ({ children }) => {
       })
       if (error) return { data: null, error }
 
-      // Email de bienvenida:
-      // - Primario: trigger wa_on_auth_user_send_welcome (AFTER INSERT ON auth.users) — cubre email Y OAuth.
-      // - Fallback: fetch client-side por si vault no está configurado o el trigger falla.
-      const userEmail = data?.user?.email
-      if (userEmail) {
-        const userName = data?.user?.user_metadata?.name || data?.user?.user_metadata?.full_name || businessData?.name || ''
+      // Email de bienvenida (fallback client-side; trigger en BD también puede enviarlo).
+      const user = data?.user
+      const userEmail = user?.email
+      if (!user || !userEmail || typeof userEmail !== 'string' || !userEmail.trim()) {
+        if (typeof window !== 'undefined') {
+          console.log('[Auth] send-email skip: no user or user.email', { hasUser: !!user, email: user?.email })
+        }
+      } else {
         const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '')
         const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? ''
-        const token = data?.session?.access_token ?? anonKey
-        const payload = { to: userEmail, type: 'welcome', data: { name: userName, dashboardUrl: 'https://go.ventalink.app/dashboard' } }
-        if (typeof window !== 'undefined' && window.__AUTH_DEBUG__) {
-          console.log('[Auth] welcome email fallback:', { email: userEmail, payload })
+        const sessionToken = data?.session?.access_token ?? anonKey
+        const userName = user?.user_metadata?.name || user?.user_metadata?.full_name || businessData?.name || ''
+        const payload = {
+          to: userEmail.trim(),
+          type: 'welcome',
+          subject: 'Bienvenido a Ventalink',
+          data: { name: userName || 'Usuario', dashboardUrl: 'https://go.ventalink.app/dashboard' },
+        }
+        if (typeof window !== 'undefined') {
+          console.log('[Auth] send-email payload (before fetch):', JSON.stringify(payload, null, 2))
+        }
+        const headers = {
+          'Content-Type': 'application/json',
+          apikey: anonKey,
+          Authorization: `Bearer ${sessionToken}`,
         }
         fetch(`${supabaseUrl}/functions/v1/send-email`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, apikey: anonKey },
+          headers,
           body: JSON.stringify(payload),
         })
           .then(async (res) => {
-            const body = await res.json().catch(() => ({}))
-            if (typeof window !== 'undefined' && window.__AUTH_DEBUG__) {
-              console.log('[Auth] welcome email response:', { status: res.status, ok: res.ok, body })
+            const responseJson = await res.json().catch(() => ({}))
+            if (typeof window !== 'undefined') {
+              console.log('[Auth] send-email response:', { status: res.status, statusText: res.statusText, body: responseJson })
             }
-            if (!res.ok) console.error('[Auth] welcome email failed:', res.status, body)
+            if (!res.ok) {
+              console.error('[Auth] send-email failed:', res.status, responseJson)
+            }
           })
-          .catch((err) => console.error('[Auth] welcome email fetch error:', err?.message ?? err))
+          .catch((err) => console.error('[Auth] send-email fetch error:', err?.message ?? err))
       }
 
       const userId = data?.user?.id
