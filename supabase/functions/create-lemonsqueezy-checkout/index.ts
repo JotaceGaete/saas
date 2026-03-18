@@ -9,10 +9,11 @@ const VALID_PLAN_SLUGS = ['starter', 'pro', 'business'];
 const PLAN_ORDER: Record<string, number> = { starter: 0, control: 0, pro: 1, business: 2 };
 type PlanCatalog = Record<string, { displayName: string; price: number; durationDays: number }>;
 
+/** Catálogo USD para LemonSqueezy. Pro=6 USD, Full=10 USD (valores reales en Lemon). */
 const PLAN_CATALOG_USD: PlanCatalog = {
-  starter:  { displayName: 'Starter',  price: 0,   durationDays: 30 },
-  pro:      { displayName: 'Plan Pro', price: 15,  durationDays: 30 },
-  business: { displayName: 'Plan Full', price: 30, durationDays: 30 },
+  starter:  { displayName: 'Starter',  price: 0,  durationDays: 30 },
+  pro:      { displayName: 'Plan Pro', price: 6,  durationDays: 30 },
+  business: { displayName: 'Plan Full', price: 10, durationDays: 30 },
 };
 
 function normalizeCountryCode(value: string | undefined): string {
@@ -315,7 +316,9 @@ Deno.serve(async (req) => {
     },
   };
 
-  if (finalAmount > 0) {
+  // Solo enviar custom_price cuando hay prorrateo (crédito por upgrade). Si no, Lemon usa el precio del variant_id (6/10 USD).
+  const needsCustomPrice = finalAmount > 0 && finalAmount < planChange.targetPlanPrice;
+  if (needsCustomPrice) {
     (checkoutPayload.data.attributes as Record<string, unknown>).custom_price = Math.round(finalAmount * 100);
   }
 

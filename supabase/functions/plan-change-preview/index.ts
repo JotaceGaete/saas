@@ -21,14 +21,17 @@ const PLAN_CATALOG_AR: PlanCatalog = {
   business: { displayName: 'Plan Business', price: 30000, durationDays: 30 },
 };
 
+/** Catálogo USD para LemonSqueezy. Pro=6 USD, Full=10 USD (valores reales en Lemon). */
 const PLAN_CATALOG_USD: PlanCatalog = {
-  starter:  { displayName: 'Starter',  price: 0,   durationDays: 30 },
-  pro:      { displayName: 'Plan Pro', price: 15,  durationDays: 30 },
-  business: { displayName: 'Plan Business', price: 30, durationDays: 30 },
+  starter:  { displayName: 'Starter',  price: 0,  durationDays: 30 },
+  pro:      { displayName: 'Plan Pro', price: 6,  durationDays: 30 },
+  business: { displayName: 'Plan Full', price: 10, durationDays: 30 },
 };
 
 function getPlanCatalog(country: string | undefined, provider?: string): PlanCatalog {
   if (provider === 'lemonsqueezy' || provider === 'paddle') return PLAN_CATALOG_USD;
+  // Fuera de Chile: pago es LemonSqueezy (USD). Si provider no llega, evitar usar CLP (5990).
+  if (country && country !== 'CL') return PLAN_CATALOG_USD;
   return country === 'AR' ? PLAN_CATALOG_AR : PLAN_CATALOG_CL;
 }
 

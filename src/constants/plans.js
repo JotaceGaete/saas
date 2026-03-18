@@ -43,11 +43,11 @@ export const PLAN_PRICES_ARS = Object.freeze({
   business: 30000,
 });
 
-/** Precios en USD (Paddle, fuera de Chile). */
+/** Precios en USD (LemonSqueezy, fuera de Chile). Pro=6 USD, Full=10 USD en Lemon. */
 export const PLAN_PRICES_USD = Object.freeze({
   starter:  0,
-  pro:      15,
-  business: 30,
+  pro:      6,
+  business: 10,
 });
 
 /**
