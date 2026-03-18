@@ -8,7 +8,7 @@ export const MERCADOPAGO_COUNTRY = 'CL';
 
 /** Códigos de país soportados en la app (planes, precios, etc.). */
 export const PAYMENT_COUNTRY_CODES = Object.freeze([
-  'CL', 'AR', 'BO', 'BR', 'CO', 'CR', 'EC', 'GT', 'MX', 'PA', 'PE', 'PY', 'UY',
+  'CL', 'AR', 'BO', 'BR', 'CO', 'CR', 'EC', 'ES', 'GT', 'MX', 'PA', 'PE', 'PY', 'US', 'UY',
 ]);
 
 /**

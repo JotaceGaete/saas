@@ -7,6 +7,8 @@ import NotFound from "pages/NotFound";
 import RequireAdmin from "components/RequireAdmin";
 import RequireAuth from "components/RequireAuth";
 import SessionExpiredHandler from "components/SessionExpiredHandler";
+import { getStoredCountryCode } from "./config/countryConfig";
+import CountrySelectPage from "./pages/country-select";
 import BusinessRegistration from './pages/business-registration';
 import LandingPage from './pages/landing-page';
 import BusinessConfiguration from './pages/business-configuration';
@@ -35,6 +37,13 @@ import PublicPricingPage from './pages/legal/PublicPricingPage';
 import TermsPage from './pages/legal/TermsPage';
 import PrivacyPage from './pages/legal/PrivacyPage';
 import RefundsPage from './pages/legal/RefundsPage';
+
+function HomeOrRedirect() {
+  const isGo = typeof window !== 'undefined' && /(^|\.)go\.ventalink\.app$/.test((window.location?.hostname || '').toLowerCase());
+  const hasCountry = !!getStoredCountryCode();
+  if (isGo && !hasCountry) return <CountrySelectPage />;
+  return <Navigate to="/dashboard" replace />;
+}
 
 const Routes = () => {
   return (

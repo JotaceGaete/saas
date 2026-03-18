@@ -4,7 +4,7 @@ import { Helmet } from 'react-helmet';
 import { getBusinessBySlug, getPublicProducts, getCategoriesByRubroId, recordCatalogVisit, createOrder } from '../../services/waBusinessService';
 import Icon from '../../components/AppIcon';
 import { CartProvider, useCart } from '../../contexts/CartContext';
-import { formatCLP } from '../../utils/formatCLP';
+import { formatCurrency } from '../../utils/formatCLP';
 import { useIsDesktop } from '../../hooks/useMediaQuery';
 import { useAuth } from '../../contexts/AuthContext';
 import { getAppBaseUrl, getPublicCatalogUrl } from '../../config/appUrl';
@@ -136,7 +136,8 @@ function CatalogInner({ slug }) {
     setLoading(false);
   };
 
-  const formatPrice = (price) => formatCLP(price);
+  const businessCurrency = business?.currency || 'CLP';
+  const formatPrice = (price) => formatCurrency(price, businessCurrency);
 
   // Derivar useCategories y categoryNames desde business y rubroCategories
   const design = business?.designSettings || {};

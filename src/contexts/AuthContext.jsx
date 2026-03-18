@@ -152,6 +152,8 @@ export const AuthProvider = ({ children }) => {
             full_name: businessData?.name || email,
             name: businessData?.name || email,
             whatsapp: businessData?.whatsapp || '',
+            country: businessData?.country ?? null,
+            country_code: businessData?.countryCode ?? null,
           },
         },
       })

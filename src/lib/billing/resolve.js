@@ -9,7 +9,7 @@ import { BILLING_REGION_CL, BILLING_REGION_INT } from './constants';
 /**
  * Normaliza código de país para resolución (solo códigos soportados).
  */
-const SUPPORTED = new Set(['CL', 'AR', 'BO', 'BR', 'CO', 'CR', 'EC', 'GT', 'MX', 'PA', 'PE', 'PY', 'UY']);
+const SUPPORTED = new Set(['CL', 'AR', 'BO', 'BR', 'CO', 'CR', 'EC', 'ES', 'GT', 'MX', 'PA', 'PE', 'PY', 'US', 'UY']);
 
 function normalize(code) {
   if (!code || typeof code !== 'string') return null;

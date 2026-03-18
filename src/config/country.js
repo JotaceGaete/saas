@@ -1,22 +1,26 @@
 /**
- * Configuración por país (Argentina / Chile) según el dominio.
- * ar.ventalink.app → Argentina (ciudades, provincias, ARS, +54).
- * cl.ventalink.app (u otro) → Chile (comunas, regiones, CLP, +56).
+ * Configuración por país según el dominio o la selección del usuario (go.ventalink.app).
+ * cl.ventalink.app → Chile. ar.ventalink.app → Argentina.
+ * go.ventalink.app → país desde selección (localStorage), fallback CL.
  */
+
+import { getStoredCountryCode, getCountryConfig } from './countryConfig';
 
 const COUNTRY_AR = 'AR';
 const COUNTRY_CL = 'CL';
 
 /**
- * Detecta el país según el hostname.
- * ar.ventalink.app → AR. go.ventalink.app → AR (internacional, LemonSqueezy USD). cl.ventalink.app u otro → CL.
- * @returns {'AR'|'CL'}
+ * Detecta el país según el hostname o la selección guardada.
+ * cl.ventalink.app → CL. ar.ventalink.app → AR.
+ * go.ventalink.app → getStoredCountryCode() ?? CL (sistema dinámico).
+ * @returns {string} Código ISO (CL, AR, MX, PE, CO, ES, US, etc.)
  */
 export function getCountryCode() {
   if (typeof window === 'undefined') return COUNTRY_CL;
   const host = (window.location?.hostname || '').toLowerCase();
+  if (/(^|\.)cl\.ventalink\.app$/.test(host)) return COUNTRY_CL;
   if (/(^|\.)ar\.ventalink\.app$/.test(host)) return COUNTRY_AR;
-  if (/(^|\.)go\.ventalink\.app$/.test(host)) return COUNTRY_AR; // internacional → LemonSqueezy (USD)
+  if (/(^|\.)go\.ventalink\.app$/.test(host)) return getStoredCountryCode() ?? COUNTRY_CL;
   return COUNTRY_CL;
 }
 
@@ -81,21 +85,47 @@ export const COUNTRY_LABELS = Object.freeze({
 });
 
 /**
- * @param {'AR'|'CL'} [countryCode] - Si no se pasa, se usa getCountryCode().
- * @returns {typeof COUNTRY_LABELS.AR}
+ * @param {string} [countryCode] - Si no se pasa, se usa getCountryCode().
+ * @returns {typeof COUNTRY_LABELS.AR & { countryName: string, flag: string, currency: string }}
  */
 export function getCountryLabels(countryCode) {
-  const code = countryCode ?? getCountryCode();
-  return COUNTRY_LABELS[code] ?? COUNTRY_LABELS[COUNTRY_CL];
+  const code = (countryCode ?? getCountryCode() || '').toUpperCase().trim();
+  if (COUNTRY_LABELS[code]) return COUNTRY_LABELS[code];
+  const config = getCountryConfig(code);
+  return {
+    countryName: config?.name ?? code,
+    flag: config?.flag ?? '🌐',
+    currency: config?.currency ?? 'USD',
+    currencyName: config?.currency ?? 'USD',
+    cityLabel: 'Ciudad',
+    cityPlaceholder: 'Ej: Ciudad',
+    regionLabel: 'Región',
+    regionPlaceholder: 'Ej: Región',
+    addressPlaceholder: 'Ej: Dirección',
+    bankPlaceholder: 'Ej: Banco...',
+    idNumberLabel: 'ID',
+    idNumberPlaceholder: 'Ej: Número',
+    bankAccountTypes: [
+      { value: 'cuenta_corriente', label: 'Cuenta Corriente' },
+      { value: 'cuenta_ahorro', label: 'Cuenta de Ahorro' },
+    ],
+    whatsappHint: `Formato: ${config?.phonePrefix ?? ''} y ${config?.phoneLocalLength ?? 9} dígitos`,
+    whatsappErrorPrefix: 'Número móvil',
+    testimonialCities: [],
+    heroSubtitle: `Hecho para negocios que venden por WhatsApp`,
+    benefitsTitle: 'Multi-país',
+    benefitsDescription: 'Precios y WhatsApp según tu país.',
+  };
 }
 
 /**
  * Moneda del país actual (o del código pasado).
- * @param {'AR'|'CL'} [countryCode]
- * @returns {'ARS'|'CLP'}
+ * @param {string} [countryCode]
+ * @returns {string} Código de moneda (CLP, ARS, USD, MXN, etc.)
  */
 export function getCurrency(countryCode) {
-  return getCountryLabels(countryCode).currency;
+  const labels = getCountryLabels(countryCode);
+  return labels?.currency ?? getCountryConfig(countryCode || getCountryCode())?.currency ?? 'CLP';
 }
 
 export { COUNTRY_AR, COUNTRY_CL };

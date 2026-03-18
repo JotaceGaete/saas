@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useCountry } from '../../contexts/CountryContext';
+import { getCountryConfig } from '../../config/countryConfig';
 import AuthStep from './components/AuthStep';
 import ConfirmEmailStep from './components/ConfirmEmailStep';
 import StoreCreationStep from './components/StoreCreationStep';
@@ -14,6 +16,8 @@ import StoreCreationStep from './components/StoreCreationStep';
 export default function BusinessRegistration() {
   const navigate = useNavigate();
   const { user, business, loading, businessLoading, signUp, signIn, signInWithGoogle, resendConfirmationEmail } = useAuth();
+  const { countryCode } = useCountry();
+  const countryConfig = getCountryConfig(countryCode);
 
   const [authError, setAuthError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -48,6 +52,9 @@ export default function BusinessRegistration() {
         const { data, error } = await signUp(email, password, {
           name: businessName || 'Mi Negocio',
           whatsapp: whatsapp || '',
+          currency: countryConfig?.currency || 'CLP',
+          country: countryConfig?.name || null,
+          countryCode: countryCode || null,
         });
         if (error) {
           setAuthError(error.message);

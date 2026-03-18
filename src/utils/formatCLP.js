@@ -72,13 +72,71 @@ export function formatUSD(amount) {
 }
 
 /**
- * Formatea un monto según la moneda (CLP, ARS o USD).
+ * Formatea un monto en MXN (pesos mexicanos).
  * @param {number|string} amount
- * @param {'CLP'|'ARS'|'USD'} currency
+ * @returns {string}
+ */
+export function formatMXN(amount) {
+  const n = typeof amount === 'number' ? amount : Number(amount);
+  if (Number.isNaN(n) || n < 0) return '$ 0';
+  const integer = Math.round(n);
+  const str = String(integer);
+  const withDots = str.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return `$ ${withDots}`;
+}
+
+/**
+ * Formatea un monto en COP (pesos colombianos).
+ * @param {number|string} amount
+ * @returns {string}
+ */
+export function formatCOP(amount) {
+  const n = typeof amount === 'number' ? amount : Number(amount);
+  if (Number.isNaN(n) || n < 0) return '$ 0';
+  const integer = Math.round(n);
+  const str = String(integer);
+  const withDots = str.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return `$ ${withDots}`;
+}
+
+/**
+ * Formatea un monto en PEN (soles peruanos).
+ * @param {number|string} amount
+ * @returns {string}
+ */
+export function formatPEN(amount) {
+  const n = typeof amount === 'number' ? amount : Number(amount);
+  if (Number.isNaN(n) || n < 0) return 'S/ 0';
+  const integer = Math.round(n);
+  const str = String(integer);
+  const withDots = str.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return `S/ ${withDots}`;
+}
+
+/**
+ * Formatea un monto en EUR.
+ * @param {number|string} amount
+ * @returns {string}
+ */
+export function formatEUR(amount) {
+  const n = typeof amount === 'number' ? amount : Number(amount);
+  if (Number.isNaN(n) || n < 0) return '€ 0,00';
+  return `€ ${Number(n).toFixed(2).replace('.', ',')}`;
+}
+
+/**
+ * Formatea un monto según la moneda (CLP, ARS, USD, MXN, COP, PEN, EUR).
+ * @param {number|string} amount
+ * @param {string} [currency] - Código ISO (CLP, ARS, USD, MXN, COP, PEN, EUR)
  * @returns {string}
  */
 export function formatCurrency(amount, currency) {
-  if (currency === 'ARS') return formatARS(amount);
-  if (currency === 'USD') return formatUSD(amount);
+  const c = (currency || 'CLP').toUpperCase();
+  if (c === 'ARS') return formatARS(amount);
+  if (c === 'USD') return formatUSD(amount);
+  if (c === 'MXN') return formatMXN(amount);
+  if (c === 'COP') return formatCOP(amount);
+  if (c === 'PEN') return formatPEN(amount);
+  if (c === 'EUR') return formatEUR(amount);
   return formatCLP(amount);
 }

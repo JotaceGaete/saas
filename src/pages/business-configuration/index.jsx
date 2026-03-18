@@ -8,8 +8,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { updateBusiness, getMyBusiness, getRubros } from '../../services/waBusinessService';
 import StoreCreationStep from '../business-registration/components/StoreCreationStep';
 import WhatsAppMessageTemplate from './components/WhatsAppMessageTemplate';
-import ChileWhatsAppField from 'components/ChileWhatsAppField';
-import ArgentinaWhatsAppField from 'components/ArgentinaWhatsAppField';
+import DynamicWhatsAppField from 'components/DynamicWhatsAppField';
 import { getCountryCode, getCountryLabels } from '../../config/country';
 import CatalogAndOrdersConfig from './components/CatalogAndOrdersConfig';
 import InstallAppBlock from './components/InstallAppBlock';
@@ -397,22 +396,13 @@ export default function BusinessConfiguration() {
                   </p>
                 </SettingsField>
 
-                {/* WhatsApp según país (Argentina +54 10 dígitos / Chile +56 9 dígitos) */}
-                {getCountryCode() === 'AR' ? (
-                  <ArgentinaWhatsAppField
-                    label="Número de WhatsApp"
-                    hint={defaultCountryLabels.whatsappHint}
-                    value={form?.whatsapp}
-                    onChange={(v) => handleFormChange('whatsapp', v)}
-                  />
-                ) : (
-                  <ChileWhatsAppField
-                    label="Número de WhatsApp"
-                    hint={defaultCountryLabels.whatsappHint}
-                    value={form?.whatsapp}
-                    onChange={(v) => handleFormChange('whatsapp', v)}
-                  />
-                )}
+                {/* WhatsApp: prefijo dinámico según país (countryConfig) */}
+                <DynamicWhatsAppField
+                  label="Número de WhatsApp"
+                  hint={defaultCountryLabels.whatsappHint}
+                  value={form?.whatsapp}
+                  onChange={(v) => handleFormChange('whatsapp', v)}
+                />
 
                 {/* Email */}
                 <SettingsField label="Correo electrónico" hint="Correo de contacto del negocio (opcional)">

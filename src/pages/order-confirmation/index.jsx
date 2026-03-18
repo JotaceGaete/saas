@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useCart } from '../../contexts/CartContext';
 import { createOrder, getBusinessBySlug } from '../../services/waBusinessService';
 import Icon from '../../components/AppIcon';
-import { formatCLP } from '../../utils/formatCLP';
+import { formatCurrency } from '../../utils/formatCLP';
 import { getPublicCatalogUrl } from '../../config/appUrl';
 import { getBrandingMessage } from '../../utils/branding';
 import { isRestaurantBusiness } from '../../utils/businessType';
@@ -169,7 +169,7 @@ export default function OrderConfirmation() {
                 )}
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold truncate" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>{item?.name}</p>
-                  <p className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-data)' }}>{formatCLP(item?.price)}</p>
+                  <p className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-data)' }}>{formatCurrency(item?.price, business?.currency)}</p>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <button onClick={() => updateQuantity(item?.id, item?.quantity - 1)} className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors" style={{ backgroundColor: 'var(--color-muted)', color: 'var(--color-foreground)' }}>
@@ -188,7 +188,7 @@ export default function OrderConfirmation() {
           </div>
           <div className="px-4 py-3 border-t flex items-center justify-between" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface-subtle)' }}>
             <span className="text-sm font-semibold" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}>Total</span>
-            <span className="text-lg font-bold" style={{ fontFamily: 'var(--font-data)', color: 'var(--color-primary)' }}>{formatCLP(total)}</span>
+            <span className="text-lg font-bold" style={{ fontFamily: 'var(--font-data)', color: 'var(--color-primary)' }}>{formatCurrency(total, business?.currency)}</span>
           </div>
         </div>
 

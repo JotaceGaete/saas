@@ -1,35 +1,18 @@
 import React from 'react';
-import { getCountryCode } from 'config/country';
-import ChileWhatsAppField from 'components/ChileWhatsAppField';
-import ArgentinaWhatsAppField from 'components/ArgentinaWhatsAppField';
+import DynamicWhatsAppField from 'components/DynamicWhatsAppField';
 
-const defaultHints = {
-  AR: 'Formato Argentina: 10 dígitos (código área + número). Este número recibirá los pedidos por WhatsApp.',
-  CL: 'Formato Chile: 9 dígitos comenzando con 9. Este número recibirá los pedidos por WhatsApp.',
-};
-
+/**
+ * Campo WhatsApp para registro: prefijo y formato según país (countryConfig / CountryContext).
+ * Sin lógica hardcodeada CL/AR.
+ */
 export default function WhatsAppField({ value, onChange, error, hint }) {
-  const country = getCountryCode();
-  const resolvedHint = hint ?? defaultHints[country];
-
-  if (country === 'AR') {
-    return (
-      <ArgentinaWhatsAppField
-        value={value}
-        onChange={onChange}
-        error={error}
-        label="Número de WhatsApp *"
-        hint={resolvedHint}
-      />
-    );
-  }
   return (
-    <ChileWhatsAppField
+    <DynamicWhatsAppField
       value={value}
       onChange={onChange}
       error={error}
       label="Número de WhatsApp *"
-      hint={resolvedHint}
+      hint={hint}
     />
   );
 }

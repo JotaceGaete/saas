@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import PublicPageLayout from 'components/PublicPageLayout';
 import { formatCurrency } from 'utils/formatCLP';
 import { PLAN_SLUGS, getPlanLabel, getPlanLimits } from 'constants/plans';
+import { getStoredCountryCode } from 'config/countryConfig';
 import { getBillingRegion, getPaymentProvider, getCurrency, getPlanDisplayPrice } from 'lib/billing';
 
 const COUNTRY_CL = 'CL';
@@ -22,8 +23,12 @@ const PLAN_IDS = PLAN_SLUGS.map((slug) => ({
 async function detectCountryForPricing() {
   if (typeof window === 'undefined') return 'INTL';
   const host = (window.location?.hostname || '').toLowerCase();
-  if (/(^|\.)ar\.ventalink\.app$/.test(host)) return 'AR';
   if (/(^|\.)cl\.ventalink\.app$/.test(host)) return 'CL';
+  if (/(^|\.)ar\.ventalink\.app$/.test(host)) return 'AR';
+  if (/(^|\.)go\.ventalink\.app$/.test(host)) {
+    const stored = getStoredCountryCode();
+    if (stored) return stored;
+  }
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000);
@@ -58,7 +63,7 @@ export default function PublicPricingPage() {
   const region = getBillingRegion(countryForBilling);
   const paymentProvider = getPaymentProvider(countryForBilling);
   const currency = getCurrency(countryForBilling);
-  const isChile = region === 'CL';
+  const isChile = countryForBilling === 'CL';
 
   const getPrice = (planSlug) => {
     if (!country) return 0;
