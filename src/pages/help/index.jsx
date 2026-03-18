@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import BusinessSidebar from 'components/ui/BusinessSidebar';
+import PanelHeader from 'components/ui/PanelHeader';
 import { useIsDesktop } from 'hooks/useMediaQuery';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
@@ -25,14 +26,9 @@ export default function HelpPage() {
         className="panel-main min-h-screen w-full max-w-full min-w-0 overflow-x-hidden transition-all"
         style={{ marginLeft: isDesktop ? sidebarWidth : 0 }}
       >
-        <header
-          className="sticky top-0 z-30 border-b flex items-center justify-between px-4 py-4"
-          style={{ backgroundColor: '#ffffff', borderColor: 'var(--color-border)' }}
-        >
-          <h1 className="text-lg font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>
-            Ayuda
-          </h1>
-        </header>
+        <PanelHeader
+          title={<h1 className="text-lg font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>Ayuda</h1>}
+        />
         <div className="max-w-2xl mx-auto px-4 py-8 pb-24">
           <div
             className="rounded-2xl border p-6"

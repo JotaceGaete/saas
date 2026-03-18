@@ -32,6 +32,13 @@ verify_jwt = false
 [functions.paddle-webhook]
 verify_jwt = false
 
+# LemonSqueezy: checkout (JWT validado dentro) y webhook público.
+[functions.create-lemonsqueezy-checkout]
+verify_jwt = false
+
+[functions.lemonsqueezy-webhook]
+verify_jwt = false
+
 # Mejora de descripción de producto con IA (JWT validado dentro).
 [functions.improve-product-description]
 verify_jwt = false

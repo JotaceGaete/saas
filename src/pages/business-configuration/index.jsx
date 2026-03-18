@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import BusinessSidebar from 'components/ui/BusinessSidebar';
+import PanelHeader from 'components/ui/PanelHeader';
 import { useIsDesktop } from 'hooks/useMediaQuery';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
@@ -305,19 +306,9 @@ export default function BusinessConfiguration() {
         className="panel-main min-h-screen w-full max-w-full min-w-0 overflow-x-hidden transition-all"
         style={{ marginLeft: isDesktop ? sidebarWidth : 0, transition: 'margin-left var(--transition-base)' }}
       >
-        <header
-          className="sticky top-0 z-30 border-b flex items-center justify-between px-4 sm:px-4 lg:px-4"
-          style={{
-            backgroundColor: '#ffffff',
-            borderColor: 'var(--color-border)',
-            height: '60px',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
-          }}
-        >
-          <h1 className="text-base font-bold text-foreground" style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}>
-            Configuración
-          </h1>
-        </header>
+        <PanelHeader
+          title={<h1 className="text-base font-bold text-foreground" style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}>Configuración</h1>}
+        />
 
         <div className="px-4 sm:px-5 lg:px-5 py-6 lg:py-8 max-w-2xl pb-20 lg:pb-8">
           {isLoading ? (

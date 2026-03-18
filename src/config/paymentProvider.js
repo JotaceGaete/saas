@@ -1,9 +1,9 @@
 /**
  * Proveedor de pago por país.
- * Solo Chile tiene pago activo (Mercado Pago). Resto de países: próximamente.
+ * Chile: Mercado Pago (CLP). Resto (incl. Argentina): LemonSqueezy (USD).
  */
 
-/** País donde el pago está disponible (Mercado Pago). */
+/** País donde el pago usa Mercado Pago. */
 export const MERCADOPAGO_COUNTRY = 'CL';
 
 /** Códigos de país soportados en la app (planes, precios, etc.). */
@@ -13,15 +13,25 @@ export const PAYMENT_COUNTRY_CODES = Object.freeze([
 
 /**
  * Proveedor de pago para el país.
+ * CL → Mercado Pago. Cualquier otro país → LemonSqueezy (USD).
  * @param {string} countryCode - Código ISO 3166-1 alpha-2 (AR, CL, MX, etc.)
- * @returns {'mercado_pago'|'paddle'|null} - 'mercado_pago' en Chile; 'paddle' fuera de Chile; null si no soportado
+ * @returns {'mercado_pago'|'lemonsqueezy'|null}
  */
 export function getPaymentProvider(countryCode) {
   if (!countryCode || typeof countryCode !== 'string') return null;
   const code = countryCode.toUpperCase().trim();
   if (code === MERCADOPAGO_COUNTRY) return 'mercado_pago';
-  if (PAYMENT_COUNTRY_CODES.includes(code)) return 'paddle';
-  return null;
+  if (PAYMENT_COUNTRY_CODES.includes(code)) return 'lemonsqueezy';
+  return 'lemonsqueezy'; // cualquier otro país → LemonSqueezy
+}
+
+/**
+ * Alias para consistencia (mismo comportamiento que getPaymentProvider).
+ * @param {string} countryCode
+ * @returns {'mercado_pago'|'lemonsqueezy'|null}
+ */
+export function getPaymentProviderByCountry(countryCode) {
+  return getPaymentProvider(countryCode);
 }
 
 /**
@@ -34,10 +44,15 @@ export function usesMercadoPago(countryCode) {
 }
 
 /**
- * Indica si en el país está disponible el pago con Paddle (fuera de Chile).
+ * Indica si en el país está disponible el pago con LemonSqueezy (fuera de Chile).
  * @param {string} countryCode
  * @returns {boolean}
  */
+export function usesLemonSqueezy(countryCode) {
+  return getPaymentProvider(countryCode) === 'lemonsqueezy';
+}
+
+/** @deprecated Usar usesLemonSqueezy. Paddle ya no se usa. */
 export function usesPaddle(countryCode) {
-  return getPaymentProvider(countryCode) === 'paddle';
+  return usesLemonSqueezy(countryCode);
 }

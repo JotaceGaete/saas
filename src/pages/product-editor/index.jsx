@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import Icon from 'components/AppIcon';
 import BusinessSidebar from 'components/ui/BusinessSidebar';
+import PanelHeader from 'components/ui/PanelHeader';
 import { useIsDesktop } from 'hooks/useMediaQuery';
 import ImageUploadSection from './components/ImageUploadSection';
 import ProductFormFields from './components/ProductFormFields';
@@ -332,30 +333,26 @@ export default function ProductEditor() {
         className="panel-main flex flex-col min-h-screen w-full max-w-full min-w-0 overflow-x-hidden"
         style={{ marginLeft: isDesktop ? sidebarWidth : 0, transition: 'margin-left var(--transition-base)' }}
       >
-        {/* Header */}
-        <header
-          className="sticky top-0 z-10 flex items-center gap-3 px-4 md:px-6 border-b"
-          style={{
-            backgroundColor: 'var(--color-card)',
-            borderColor: 'var(--color-border)',
-            boxShadow: 'var(--shadow-xs)',
-            height: '60px',
-          }}
-        >
-          <button
-            onClick={handleCancel}
-            className="flex items-center justify-center w-9 h-9 rounded-lg hover:bg-muted transition-colors"
-            aria-label="Volver"
-          >
-            <Icon name="ArrowLeft" size={17} color="var(--color-foreground)" />
-          </button>
-          <div className="flex-1 min-w-0">
+        {/* Header — respeta safe-area */}
+        <PanelHeader
+          leftAction={(
+            <button
+              onClick={handleCancel}
+              className="flex items-center justify-center w-9 h-9 rounded-lg hover:bg-muted transition-colors"
+              aria-label="Volver"
+            >
+              <Icon name="ArrowLeft" size={17} color="var(--color-foreground)" />
+            </button>
+          )}
+          title={(
             <h1
               className="text-base font-bold truncate"
               style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}
             >
               {isEditing ? 'Editar producto' : 'Nuevo producto'}
             </h1>
+          )}
+          subtitle={(
             <nav aria-label="Breadcrumb" className="hidden sm:flex items-center gap-1 mt-0.5">
               <button onClick={() => navigate('/dashboard')} className="text-xs hover:underline" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Dashboard</button>
               <Icon name="ChevronRight" size={11} color="var(--color-muted-foreground)" />
@@ -363,9 +360,9 @@ export default function ProductEditor() {
               <Icon name="ChevronRight" size={11} color="var(--color-muted-foreground)" />
               <span className="text-xs" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>{isEditing ? 'Editar' : 'Nuevo'}</span>
             </nav>
-          </div>
-          {/* Quick status chips */}
-          <div className="hidden md:flex items-center gap-2">
+          )}
+        >
+          <div className="hidden md:flex items-center gap-2 flex-shrink-0">
             <span
               className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium"
               style={{
@@ -391,7 +388,7 @@ export default function ProductEditor() {
               </span>
             )}
           </div>
-        </header>
+        </PanelHeader>
 
         {/* Main content */}
         <div className="flex-1 px-4 md:px-6 lg:pl-4 lg:pr-8 py-6 pb-20 lg:pb-0 page-enter">

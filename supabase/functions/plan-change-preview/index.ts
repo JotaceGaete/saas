@@ -28,7 +28,7 @@ const PLAN_CATALOG_USD: PlanCatalog = {
 };
 
 function getPlanCatalog(country: string | undefined, provider?: string): PlanCatalog {
-  if (provider === 'paddle') return PLAN_CATALOG_USD;
+  if (provider === 'lemonsqueezy' || provider === 'paddle') return PLAN_CATALOG_USD;
   return country === 'AR' ? PLAN_CATALOG_AR : PLAN_CATALOG_CL;
 }
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import BusinessSidebar from "components/ui/BusinessSidebar";
+import PanelHeader from "components/ui/PanelHeader";
 import { useIsDesktop } from "hooks/useMediaQuery";
 import Icon from "components/AppIcon";
 import MetricCard from "./components/MetricCard";
@@ -432,10 +433,9 @@ export default function Dashboard() {
     <div className="panel-root min-h-screen" style={{ backgroundColor: 'var(--color-background)' }}>
       <BusinessSidebar isCollapsed={sidebarCollapsed} onCollapsedChange={setSidebarCollapsed} />
       <main className="panel-main min-h-screen w-full max-w-full min-w-0 overflow-x-hidden transition-all duration-200" style={{ marginLeft: isDesktop ? sidebarWidth : 0, transition: 'margin-left var(--transition-base)' }}>
-        {/* Header */}
-        <div className="sticky top-0 z-50 border-b px-4 md:px-6 lg:pl-4 lg:pr-6 py-0 flex items-center justify-between gap-3" style={{ backgroundColor: '#FFFFFF', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-xs)', height: '60px' }}>
-          <div className="w-11 lg:w-0 flex-shrink-0" aria-hidden="true" />
-          <div className="flex-1 min-w-0">
+        {/* Header — respeta safe-area, hamburguesa alineado verticalmente */}
+        <PanelHeader
+          title={(
             <div className="flex items-center gap-2">
               <h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Dashboard</h1>
               {realtimeStatus === 'connected' && (
@@ -451,8 +451,11 @@ export default function Dashboard() {
                 </span>
               )}
             </div>
+          )}
+          subtitle={(
             <p className="text-xs hidden sm:block" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Bienvenido de vuelta, <strong>{business?.name || user?.email}</strong></p>
-          </div>
+          )}
+        >
           <div className="flex items-center gap-1.5 flex-shrink-0">
             <NotificationBell notifications={notifications} onMarkAllRead={handleMarkAllRead} />
             <button onClick={() => navigate('/business-configuration')} className="w-9 h-9 flex items-center justify-center rounded-lg transition-all duration-150 hover:bg-muted" style={{ color: 'var(--color-muted-foreground)' }} aria-label="Configuración">
@@ -462,7 +465,7 @@ export default function Dashboard() {
               {business?.name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0)?.toUpperCase() || 'U'}
             </div>
           </div>
-        </div>
+        </PanelHeader>
 
         <div className="px-4 md:px-6 lg:pl-4 lg:pr-6 py-5 lg:py-6 page-enter pb-20 lg:pb-8 w-full max-w-full min-w-0" style={{ maxWidth: '1100px' }}>
 

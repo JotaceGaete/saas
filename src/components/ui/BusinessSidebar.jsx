@@ -345,12 +345,12 @@ export default function BusinessSidebar({ isCollapsed = false, onCollapsedChange
 
   return (
     <>
-      {/* Mobile hamburger — respeta safe area en iPhone (notch, Dynamic Island) */}
+      {/* Mobile hamburger — centrado verticalmente en el header (60px), respeta safe area */}
       <button
         onClick={() => setMobileOpen(true)}
         className="lg:hidden fixed z-navigation w-10 h-10 flex items-center justify-center rounded-xl bg-white border text-foreground hover:bg-muted transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         style={{
-          top: 'calc(var(--safe-area-top) + 12px)',
+          top: 'calc(var(--safe-area-top) + 10px)',
           left: 'calc(var(--safe-area-left) + 16px)',
           borderColor: 'var(--color-border)',
           boxShadow: 'var(--shadow-sm)',

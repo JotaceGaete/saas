@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import BusinessSidebar from 'components/ui/BusinessSidebar';
+import PanelHeader from 'components/ui/PanelHeader';
 import { useIsDesktop } from 'hooks/useMediaQuery';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
@@ -51,8 +52,8 @@ export default function PlansPage() {
   const userCountryCode = normalizeCountryCode(user?.user_metadata?.country_code ?? user?.user_metadata?.country);
   const countryCode = resolveCountryCode({ hostnameCountryCode, businessCountryCode, userCountryCode });
   const paymentProvider = getPaymentProvider(countryCode);
-  // Chile: CLP; Argentina: ARS; otros: USD (Paddle).
-  const currency = countryCode === 'CL' ? 'CLP' : countryCode === 'AR' ? 'ARS' : 'USD';
+  // Mercado Pago: CLP. LemonSqueezy: USD. Priorizar provider para evitar incoherencia (ARS vs USD).
+  const currency = paymentProvider === 'mercado_pago' ? 'CLP' : 'USD';
   const getPlanPrice = (slug) => getPlanPriceByCountry(slug, countryCode, paymentProvider);
   const scheduledToStarter = (business?.scheduledPlanSlug || null) === 'starter';
   const planExpiryMs = business?.planExpiresAt ? new Date(business.planExpiresAt).getTime() : null;
@@ -163,12 +164,12 @@ export default function PlansPage() {
     return res.json().catch(() => null);
   };
 
-  const handlePayWithPaddle = async (planSlug) => {
+  const handlePayWithLemonSqueezy = async (planSlug) => {
     if (guard.isBlocked) {
       guard.runIfConfirmed(() => {});
       return;
     }
-    console.info(PAYMENT_DEBUG_PREFIX, { event: 'click_plan_button', handler: 'handlePayWithPaddle', planSlug, resolvedCountryCode: countryCode });
+    console.info(PAYMENT_DEBUG_PREFIX, { event: 'click_plan_button', handler: 'handlePayWithLemonSqueezy', planSlug, resolvedCountryCode: countryCode });
     if (getPlanPrice(planSlug) <= 0) return;
     setLoadingPlanSlug(planSlug);
     setPaymentMessage(null);
@@ -190,7 +191,7 @@ export default function PlansPage() {
         navigate('/login');
         return;
       }
-      const previewData = await fetchPlanPreview(planSlug, 'paddle');
+      const previewData = await fetchPlanPreview(planSlug, 'lemonsqueezy');
       if (!previewData) {
         setPaymentMessage({ type: 'error', text: 'No se pudo obtener el resumen del cambio de plan.' });
         return;
@@ -267,7 +268,7 @@ export default function PlansPage() {
     }
   };
 
-  const confirmPayWithPaddle = async () => {
+  const confirmPayWithLemonSqueezy = async () => {
     if (guard.isBlocked) {
       guard.runIfConfirmed(() => {});
       return;
@@ -295,7 +296,7 @@ export default function PlansPage() {
         ? window.location.origin.replace(/\/$/, '')
         : (getAppBaseUrl() || '');
       const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
-      const res = await fetch(`${supabaseUrl}/functions/v1/create-paddle-checkout`, {
+      const res = await fetch(`${supabaseUrl}/functions/v1/create-lemonsqueezy-checkout`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -304,8 +305,8 @@ export default function PlansPage() {
         },
         body: JSON.stringify({
           planSlug: previewPlanSlug,
-          success_url: `${returnBaseUrl}/planes?payment=success`,
-          failure_url: `${returnBaseUrl}/planes?payment=failure`,
+          success_url: `${returnBaseUrl}/billing/success`,
+          cancel_url: `${returnBaseUrl}/billing/cancel`,
           country: countryCode,
         }),
       });
@@ -443,11 +444,11 @@ export default function PlansPage() {
         className="panel-main min-h-screen w-full max-w-full min-w-0 overflow-x-hidden transition-all duration-200"
         style={{ marginLeft: isDesktop ? sidebarWidth : 0, minHeight: '100vh', transition: 'margin-left var(--transition-base)' }}
       >
+        <PanelHeader
+          title={<h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Plan y facturación</h1>}
+          subtitle={<p className="text-xs hidden sm:block mt-0.5" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Gestiona tu plan, límites y renovación</p>}
+        />
         <div className="w-full min-w-0 max-w-5xl px-4 md:px-6 lg:px-8 py-6 md:py-8 pb-20 lg:pb-8">
-          <div className="mb-6">
-            <h1 className="text-xl font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Plan y facturación</h1>
-            <p className="text-sm mt-0.5" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Gestiona tu plan, límites y renovación</p>
-          </div>
 
           {/* Tu plan */}
           {business?.id && (
@@ -534,10 +535,10 @@ export default function PlansPage() {
               <div className="flex gap-3">
                 <button
                   type="button"
-                  onClick={paymentProvider === 'paddle' ? confirmPayWithPaddle : confirmPayWithMercadoPago}
+                  onClick={paymentProvider === 'lemonsqueezy' ? confirmPayWithLemonSqueezy : confirmPayWithMercadoPago}
                   disabled={!!loadingPlanSlug || authLoading || !isAuthenticated}
                   className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
-                  style={{ backgroundColor: paymentProvider === 'paddle' ? '#383838' : '#009EE3' }}
+                  style={{ backgroundColor: paymentProvider === 'lemonsqueezy' ? '#F4C542' : '#009EE3' }}
                 >
                   {loadingPlanSlug ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : preview.finalAmount === 0 ? <><Icon name="CheckCircle" size={16} color="#fff" /> Confirmar cambio (sin cargo)</> : <><Icon name="Wallet" size={16} color="#fff" /> Confirmar y pagar</>}
                 </button>
@@ -675,13 +676,13 @@ export default function PlansPage() {
                             </>
                           )}
                         </button>
-                      ) : paymentProvider === 'paddle' ? (
+                      ) : paymentProvider === 'lemonsqueezy' ? (
                         <button
                           type="button"
                           disabled={!!loadingPlanSlug || authLoading || !isAuthenticated}
-                          onClick={() => handlePayWithPaddle(slug)}
+                          onClick={() => handlePayWithLemonSqueezy(slug)}
                           className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
-                          style={{ backgroundColor: '#383838' }}
+                          style={{ backgroundColor: '#F4C542', color: '#1a1a1a' }}
                         >
                           {loadingPlanSlug === slug ? (
                             <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -712,8 +713,8 @@ export default function PlansPage() {
             <p className="text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
               {paymentProvider === 'mercado_pago'
                 ? 'En Chile los planes de pago se procesan con Mercado Pago. Tras el pago, tu plan se activa automáticamente.'
-                : paymentProvider === 'paddle'
-                  ? 'Fuera de Chile los pagos se procesan con Paddle (tarjeta, PayPal, etc.). Tras el pago, tu plan se activa automáticamente.'
+                : paymentProvider === 'lemonsqueezy'
+                  ? 'Fuera de Chile los pagos se procesan con LemonSqueezy (tarjeta, PayPal, etc.) en USD. Tras el pago, tu plan se activa automáticamente.'
                   : 'Pago con tarjeta disponible próximamente en tu país.'}
             </p>
           </div>

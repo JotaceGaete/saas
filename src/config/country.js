@@ -9,13 +9,14 @@ const COUNTRY_CL = 'CL';
 
 /**
  * Detecta el país según el hostname.
+ * ar.ventalink.app → AR. go.ventalink.app → AR (internacional, LemonSqueezy USD). cl.ventalink.app u otro → CL.
  * @returns {'AR'|'CL'}
  */
 export function getCountryCode() {
   if (typeof window === 'undefined') return COUNTRY_CL;
   const host = (window.location?.hostname || '').toLowerCase();
-  // Soporta ar.ventalink.app y variantes como www.ar.ventalink.app
   if (/(^|\.)ar\.ventalink\.app$/.test(host)) return COUNTRY_AR;
+  if (/(^|\.)go\.ventalink\.app$/.test(host)) return COUNTRY_AR; // internacional → LemonSqueezy (USD)
   return COUNTRY_CL;
 }
 

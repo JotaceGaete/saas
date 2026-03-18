@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import BusinessSidebar from 'components/ui/BusinessSidebar';
+import PanelHeader from 'components/ui/PanelHeader';
 import { useIsDesktop } from 'hooks/useMediaQuery';
 import Icon from 'components/AppIcon';
 import DesignCustomization from '../business-configuration/components/DesignCustomization';
@@ -153,17 +154,10 @@ export default function DesignPage() {
         className="panel-main min-h-screen w-full max-w-full min-w-0 overflow-x-hidden transition-all"
         style={{ marginLeft: isDesktop ? sidebarWidth : 0 }}
       >
-        <header
-          className="sticky top-0 z-30 border-b flex items-center justify-between px-4 py-4"
-          style={{ backgroundColor: '#ffffff', borderColor: 'var(--color-border)' }}
-        >
-          <h1 className="text-lg font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>
-            Diseño
-          </h1>
-          <p className="text-xs hidden sm:block" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-            Todo lo visual vive aquí.
-          </p>
-        </header>
+        <PanelHeader
+          title={<h1 className="text-lg font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>Diseño</h1>}
+          subtitle={<p className="text-xs hidden sm:block" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Todo lo visual vive aquí.</p>}
+        />
 
         <div className="w-full max-w-6xl mx-auto px-4 py-6 lg:py-8 min-h-[calc(100vh-108px)] pb-24 lg:pb-8">
           <div className="flex flex-col lg:grid lg:grid-cols-[1fr_minmax(340px,380px)] lg:gap-8 xl:gap-10 lg:items-start">
