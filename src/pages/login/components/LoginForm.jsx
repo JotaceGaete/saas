@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import Icon from 'components/AppIcon';
+import GoogleIcon from 'components/GoogleIcon';
 
-export default function LoginForm({ onSubmit, isLoading, authError }) {
+export default function LoginForm({ onSubmit, onGoogleLogin, isLoading, googleLoading, authError }) {
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [errors, setErrors] = useState({});
   const [showPassword, setShowPassword] = useState(false);
@@ -58,6 +59,44 @@ export default function LoginForm({ onSubmit, isLoading, authError }) {
           <Icon name="AlertCircle" size={15} color="var(--color-error)" className="mt-0.5 flex-shrink-0" />
           <span className="text-sm" style={{ color: 'var(--color-error)', fontFamily: 'var(--font-caption)' }}>{authError}</span>
         </div>
+      )}
+
+      {onGoogleLogin && (
+        <>
+          <button
+            type="button"
+            onClick={onGoogleLogin}
+            disabled={googleLoading || isLoading}
+            className="w-full h-12 rounded-lg font-medium text-sm flex items-center justify-center gap-3 border transition-all mb-4"
+            style={{
+              borderColor: 'var(--color-border)',
+              backgroundColor: 'var(--color-surface)',
+              color: 'var(--color-foreground)',
+              fontFamily: 'var(--font-caption)',
+              cursor: googleLoading || isLoading ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {googleLoading ? (
+              <>
+                <svg className="animate-spin" width={18} height={18} viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="12" r="10" stroke="rgba(124,58,237,0.2)" strokeWidth="3" />
+                  <path d="M12 2a10 10 0 0 1 10 10" stroke="var(--color-primary)" strokeWidth="3" strokeLinecap="round" />
+                </svg>
+                Redirigiendo a Google...
+              </>
+            ) : (
+              <>
+                <GoogleIcon />
+                Continuar con Google
+              </>
+            )}
+          </button>
+          <div className="relative flex items-center mb-4">
+            <div className="flex-1 border-t" style={{ borderColor: 'var(--color-border)' }} />
+            <span className="px-3 text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>o</span>
+            <div className="flex-1 border-t" style={{ borderColor: 'var(--color-border)' }} />
+          </div>
+        </>
       )}
 
       <form onSubmit={handleSubmit} className="space-y-4" noValidate>

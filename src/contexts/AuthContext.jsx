@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { createBusinessForUser, getMyBusiness, updateBusiness } from '../services/waBusinessService';
+import { getAuthRedirectUrl } from '../config/appUrl';
 
 const AuthContext = createContext({})
 
@@ -192,6 +193,24 @@ export const AuthProvider = ({ children }) => {
     }
   }
 
+  const signInWithGoogle = async () => {
+    try {
+      const redirectTo = getAuthRedirectUrl();
+      const { data, error } = await supabase?.auth?.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo },
+      })
+      if (error) return { error }
+      if (data?.url) {
+        window.location.href = data.url
+        return { data: { url: data.url }, error: null }
+      }
+      return { data, error: error || { message: 'No se pudo iniciar sesión con Google' } }
+    } catch (error) {
+      return { error: { message: error?.message || 'Error al conectar con Google' } }
+    }
+  }
+
   const signOut = async () => {
     try {
       const { error } = await supabase?.auth?.signOut()
@@ -236,6 +255,7 @@ export const AuthProvider = ({ children }) => {
     businessLoading,
     signIn,
     signUp,
+    signInWithGoogle,
     signOut,
     refreshBusiness,
     isAuthenticated: !!user,

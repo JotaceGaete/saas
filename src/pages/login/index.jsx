@@ -6,7 +6,7 @@ import LoginForm from './components/LoginForm';
 
 export default function Login() {
   const navigate = useNavigate();
-  const { signIn, isAuthenticated, loading } = useAuth();
+  const { signIn, signInWithGoogle, isAuthenticated, loading } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [authError, setAuthError] = useState(null);
 
@@ -41,6 +41,17 @@ export default function Login() {
     }
   };
 
+  const handleGoogleLogin = async () => {
+    setAuthError(null);
+    setGoogleLoading(true);
+    const { error } = await signInWithGoogle();
+    if (error) {
+      setAuthError(error?.message || 'Error al iniciar sesión con Google.');
+      setGoogleLoading(false);
+    }
+    // Si no hay error, redirige a Google; al volver el callback redirige a dashboard
+  };
+
   // Show nothing while checking auth state
   if (loading) {
     return (
@@ -59,7 +70,9 @@ export default function Login() {
       <div className="flex-1 flex flex-col items-center justify-center p-6 md:p-10">
         <LoginForm
           onSubmit={handleLogin}
+          onGoogleLogin={handleGoogleLogin}
           isLoading={isLoading}
+          googleLoading={googleLoading}
           authError={authError}
         />
       </div>

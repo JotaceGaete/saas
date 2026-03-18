@@ -12,7 +12,7 @@ import StoreCreationStep from './components/StoreCreationStep';
  */
 export default function BusinessRegistration() {
   const navigate = useNavigate();
-  const { user, business, loading, businessLoading, signUp, signIn } = useAuth();
+  const { user, business, loading, businessLoading, signUp, signIn, signInWithGoogle } = useAuth();
 
   const [authError, setAuthError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -81,10 +81,18 @@ export default function BusinessRegistration() {
       }
     };
 
+    const handleGoogleLogin = async () => {
+      setAuthError(null);
+      const { error } = await signInWithGoogle();
+      if (error) setAuthError(error?.message || 'Error al iniciar sesión con Google.');
+      // Si no hay error, redirige a Google; al volver el callback redirige a dashboard/registro
+    };
+
     return (
       <AuthStep
         onRegister={handleRegister}
         onLogin={handleLogin}
+        onGoogleLogin={handleGoogleLogin}
         isLoading={isSubmitting}
         authError={authError}
         onClearError={() => setAuthError(null)}

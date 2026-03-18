@@ -15,6 +15,22 @@ export function getAppBaseUrl() {
 }
 
 /**
+ * URL de callback para OAuth (Google, etc.).
+ * Chile → cl.ventalink.app, Argentina → ar.ventalink.app, localhost → mismo puerto, resto → go.ventalink.app
+ * @returns {string} URL absoluta para redirectTo en signInWithOAuth
+ */
+export function getAuthRedirectUrl() {
+  if (typeof window === 'undefined' || !window?.location?.origin) {
+    return 'https://go.ventalink.app/auth/callback';
+  }
+  const origin = (window.location.origin || '').toLowerCase();
+  if (origin.includes('cl.ventalink.app')) return 'https://cl.ventalink.app/auth/callback';
+  if (origin.includes('ar.ventalink.app')) return 'https://ar.ventalink.app/auth/callback';
+  if (origin.includes('localhost')) return `${origin}/auth/callback`;
+  return 'https://go.ventalink.app/auth/callback';
+}
+
+/**
  * URL pública compartible del catálogo de un negocio.
  * Usa getAppBaseUrl() (env → window.location.origin) y ruta /catalogo/:slug.
  * @param {string} slug - Slug del negocio

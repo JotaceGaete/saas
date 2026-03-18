@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import Icon from 'components/AppIcon';
+import GoogleIcon from 'components/GoogleIcon';
 import WhatsAppField from './WhatsAppField';
 import PasswordStrengthIndicator from './PasswordStrengthIndicator';
 import { getCountryLabels } from 'config/country';
@@ -19,9 +20,10 @@ const FEATURE_CARDS = [
   { icon: 'BarChart2', title: 'Estadísticas', description: 'Revisa visitas y pedidos.' },
 ];
 
-export default function AuthStep({ onRegister, onLogin, isLoading, authError, onClearError }) {
+export default function AuthStep({ onRegister, onLogin, onGoogleLogin, isLoading, authError, onClearError }) {
   const countryLabels = getCountryLabels();
   const [mode, setMode] = useState('register');
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [formData, setFormData] = useState({ businessName: '', email: '', password: '', confirmPassword: '', whatsapp: '' });
   const [errors, setErrors] = useState({});
 
@@ -200,6 +202,49 @@ export default function AuthStep({ onRegister, onLogin, isLoading, authError, on
                 <Icon name="X" size={14} color="var(--color-error)" />
               </button>
             </div>
+          )}
+
+          {onGoogleLogin && (
+            <>
+              <button
+                type="button"
+                onClick={async () => {
+                  setGoogleLoading(true);
+                  onClearError?.();
+                  await onGoogleLogin();
+                  setGoogleLoading(false);
+                }}
+                disabled={googleLoading || isLoading}
+                className="w-full h-12 rounded-xl font-medium text-sm flex items-center justify-center gap-3 border transition-all mb-5"
+                style={{
+                  borderColor: 'var(--color-border)',
+                  backgroundColor: 'var(--color-surface)',
+                  color: 'var(--color-foreground)',
+                  fontFamily: 'var(--font-caption)',
+                  cursor: googleLoading || isLoading ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {googleLoading ? (
+                  <>
+                    <svg className="animate-spin" width={20} height={20} viewBox="0 0 24 24" fill="none">
+                      <circle cx="12" cy="12" r="10" stroke="rgba(124,58,237,0.2)" strokeWidth="3" />
+                      <path d="M12 2a10 10 0 0 1 10 10" stroke="var(--color-primary)" strokeWidth="3" strokeLinecap="round" />
+                    </svg>
+                    Redirigiendo a Google...
+                  </>
+                ) : (
+                  <>
+                    <GoogleIcon size={20} />
+                    Continuar con Google
+                  </>
+                )}
+              </button>
+              <div className="relative flex items-center mb-5">
+                <div className="flex-1 border-t" style={{ borderColor: 'var(--color-border)' }} />
+                <span className="px-3 text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>o</span>
+                <div className="flex-1 border-t" style={{ borderColor: 'var(--color-border)' }} />
+              </div>
+            </>
           )}
 
           <form onSubmit={handleSubmit} noValidate className="rounded-2xl p-8 border space-y-6" style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -2px rgba(0,0,0,0.05)' }}>
