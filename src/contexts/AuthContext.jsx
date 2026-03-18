@@ -149,12 +149,11 @@ export const AuthProvider = ({ children }) => {
         const payload = {
           to: userEmail.trim(),
           type: 'welcome',
+          name: userName || 'Usuario',
           subject: 'Bienvenido a Ventalink',
           data: { name: userName || 'Usuario', dashboardUrl: 'https://go.ventalink.app/dashboard' },
         }
-        if (typeof window !== 'undefined') {
-          console.log('[Auth] send-email payload (before fetch):', JSON.stringify(payload, null, 2))
-        }
+        console.log('[Auth] send-email payload (final, before fetch):', payload)
         const headers = {
           'Content-Type': 'application/json',
           apikey: anonKey,
