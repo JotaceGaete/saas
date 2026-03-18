@@ -123,15 +123,25 @@ export const AuthProvider = ({ children }) => {
 
   const signUp = async (email, password, businessData) => {
     try {
+      const emailRedirectTo = getAuthRedirectUrl(); // confirmación redirige a auth/callback
+      if (typeof window !== 'undefined' && window.__AUTH_DEBUG__) {
+        console.log('[Auth] signUp emailRedirectTo:', emailRedirectTo);
+      }
       const { data, error } = await supabase?.auth?.signUp({
         email,
         password,
-        options: { data: {
-          full_name: businessData?.name || email,
-          name: businessData?.name || email,
-          whatsapp: businessData?.whatsapp || '',
-        }}
+        options: {
+          emailRedirectTo,
+          data: {
+            full_name: businessData?.name || email,
+            name: businessData?.name || email,
+            whatsapp: businessData?.whatsapp || '',
+          },
+        },
       })
+      if (typeof window !== 'undefined' && window.__AUTH_DEBUG__) {
+        console.log('[Auth] signUp result:', { hasUser: !!data?.user, hasSession: !!data?.session, error: error?.message });
+      }
       if (error) return { data: null, error }
 
       // Email de bienvenida (fallback client-side; trigger en BD también puede enviarlo).
@@ -225,6 +235,26 @@ export const AuthProvider = ({ children }) => {
     }
   }
 
+  const resendConfirmationEmail = async (email) => {
+    try {
+      const emailRedirectTo = getAuthRedirectUrl();
+      if (typeof window !== 'undefined' && window.__AUTH_DEBUG__) {
+        console.log('[Auth] resendConfirmationEmail:', { email, emailRedirectTo });
+      }
+      const { error } = await supabase?.auth?.resend({
+        type: 'signup',
+        email,
+        options: { emailRedirectTo },
+      });
+      if (typeof window !== 'undefined' && window.__AUTH_DEBUG__) {
+        console.log('[Auth] resendConfirmationEmail result:', error ? { error: error.message } : 'ok');
+      }
+      return { error };
+    } catch (err) {
+      return { error: { message: err?.message || 'Error al reenviar el correo' } };
+    }
+  };
+
   const resetPasswordForEmail = async (email) => {
     try {
       const redirectTo = getResetPasswordRedirectUrl();
@@ -305,9 +335,11 @@ export const AuthProvider = ({ children }) => {
     signUp,
     signInWithGoogle,
     resetPasswordForEmail,
+    resendConfirmationEmail,
     signOut,
     refreshBusiness,
     isAuthenticated: !!user,
+    isEmailConfirmed: !!(user?.email_confirmed_at),
     isAdmin,
     impersonateBusiness,
     stopImpersonation

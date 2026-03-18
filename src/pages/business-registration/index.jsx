@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import AuthStep from './components/AuthStep';
+import ConfirmEmailStep from './components/ConfirmEmailStep';
 import StoreCreationStep from './components/StoreCreationStep';
 
 /**
@@ -12,10 +13,11 @@ import StoreCreationStep from './components/StoreCreationStep';
  */
 export default function BusinessRegistration() {
   const navigate = useNavigate();
-  const { user, business, loading, businessLoading, signUp, signIn, signInWithGoogle } = useAuth();
+  const { user, business, loading, businessLoading, signUp, signIn, signInWithGoogle, resendConfirmationEmail } = useAuth();
 
   const [authError, setAuthError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [pendingConfirmation, setPendingConfirmation] = useState(null); // { email } cuando signUp OK pero sin sesión
 
   // Si ya tiene negocio → dashboard
   useEffect(() => {
@@ -41,16 +43,23 @@ export default function BusinessRegistration() {
     const handleRegister = async ({ email, password, businessName, whatsapp }) => {
       setIsSubmitting(true);
       setAuthError(null);
+      setPendingConfirmation(null);
       try {
-        const { error } = await signUp(email, password, {
+        const { data, error } = await signUp(email, password, {
           name: businessName || 'Mi Negocio',
           whatsapp: whatsapp || '',
         });
         if (error) {
           setAuthError(error.message);
+          return;
         }
-        // Si no hay error, onAuthStateChange actualizará `user` → el componente
-        // re-renderizará al PASO 2 automáticamente.
+        if (data?.user && !data?.session) {
+          if (typeof window !== 'undefined') {
+            console.log('[BusinessRegistration] signUp: email confirmation required', { email: data.user?.email });
+          }
+          setPendingConfirmation({ email: data.user?.email || email });
+        }
+        // Si hay sesión, onAuthStateChange actualizará `user` y pasaremos al PASO 2.
       } catch {
         setAuthError('Error inesperado. Por favor intenta de nuevo.');
       } finally {
@@ -87,6 +96,22 @@ export default function BusinessRegistration() {
       if (error) setAuthError(error?.message || 'Error al iniciar sesión con Google.');
       // Si no hay error, redirige a Google; al volver el callback redirige a dashboard/registro
     };
+
+    if (pendingConfirmation?.email) {
+      return (
+        <ConfirmEmailStep
+          email={pendingConfirmation.email}
+          onResend={async () => {
+            setAuthError(null);
+            const { error } = await resendConfirmationEmail(pendingConfirmation.email);
+            if (error) setAuthError(error.message);
+            return { error };
+          }}
+          authError={authError}
+          onClearError={() => setAuthError(null)}
+        />
+      );
+    }
 
     return (
       <AuthStep

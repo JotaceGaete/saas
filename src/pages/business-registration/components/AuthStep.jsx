@@ -41,8 +41,10 @@ export default function AuthStep({ onRegister, onLogin, onGoogleLogin, isLoading
 
   const validate = () => {
     const e = {};
-    if (!formData.email.trim()) e.email = 'El correo es obligatorio';
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) e.email = 'Correo inválido';
+    const emailVal = (formData.email || '').trim();
+    if (!emailVal) e.email = 'El correo es obligatorio';
+    else if (emailVal.length > 254) e.email = 'El correo es demasiado largo';
+    else if (!/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(emailVal)) e.email = 'Ingresa un correo válido (ej: tu@negocio.com)';
     if (!formData.password) e.password = 'La contraseña es obligatoria';
     else if (formData.password.length < 6) e.password = 'Mínimo 6 caracteres';
     if (mode === 'register') {

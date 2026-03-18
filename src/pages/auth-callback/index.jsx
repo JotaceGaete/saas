@@ -23,6 +23,10 @@ export default function AuthCallback() {
 
       const { data: { session }, error: sessionError } = await supabase?.auth?.getSession();
 
+      if (typeof window !== 'undefined') {
+        console.log('[AuthCallback] session check:', { hasSession: !!session, hasUser: !!session?.user, error: sessionError?.message });
+      }
+
       if (!mounted) return;
 
       if (sessionError) {
