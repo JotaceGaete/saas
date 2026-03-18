@@ -30,12 +30,14 @@ export function resolveBillingContext({ hostnameCountryCode, businessCountryCode
   const biz = normalize(businessCountryCode);
   const usr = normalize(userCountryCode);
 
-  // Prioridad: hostname (CL/AR) para coherencia vista; luego business; luego user; fallback CL.
+  // Prioridad: hostname (CL/AR) para coherencia; luego business; luego user.
+  // En go.ventalink.app sin país (host null) no usar CL por defecto → AR (INT/USD/LemonSqueezy).
   let countryCode = 'CL';
   if (host === 'CL' || host === 'AR') countryCode = host;
   else if (biz) countryCode = biz;
   else if (usr) countryCode = usr;
   else if (host) countryCode = host;
+  else countryCode = 'AR'; // go sin país: neutro (LemonSqueezy USD), no Chile
 
   const region = countryCode === 'CL' ? BILLING_REGION_CL : BILLING_REGION_INT;
   const provider = getPaymentProvider(countryCode);

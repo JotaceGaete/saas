@@ -1,7 +1,7 @@
 /**
  * Configuración por país según el dominio o la selección del usuario (go.ventalink.app).
  * cl.ventalink.app → Chile. ar.ventalink.app → Argentina.
- * go.ventalink.app → país desde selección (localStorage), fallback CL.
+ * go.ventalink.app → país desde selección (localStorage); sin selección → null (nunca Chile por defecto).
  */
 
 import { getStoredCountryCode, getCountryConfig } from './countryConfig';
@@ -12,16 +12,24 @@ const COUNTRY_CL = 'CL';
 /**
  * Detecta el país según el hostname o la selección guardada.
  * cl.ventalink.app → CL. ar.ventalink.app → AR.
- * go.ventalink.app → getStoredCountryCode() ?? CL (sistema dinámico).
- * @returns {string} Código ISO (CL, AR, MX, PE, CO, ES, US, etc.)
+ * go.ventalink.app → getStoredCountryCode() o null si no hay selección (neutral, sin asumir Chile).
+ * Otros hosts → CL (fallback solo fuera de go).
+ * @returns {string|null} Código ISO o null en go.ventalink.app cuando el usuario no ha elegido país.
  */
 export function getCountryCode() {
   if (typeof window === 'undefined') return COUNTRY_CL;
   const host = (window.location?.hostname || '').toLowerCase();
   if (/(^|\.)cl\.ventalink\.app$/.test(host)) return COUNTRY_CL;
   if (/(^|\.)ar\.ventalink\.app$/.test(host)) return COUNTRY_AR;
-  if (/(^|\.)go\.ventalink\.app$/.test(host)) return getStoredCountryCode() ?? COUNTRY_CL;
+  if (/(^|\.)go\.ventalink\.app$/.test(host)) return getStoredCountryCode();
   return COUNTRY_CL;
+}
+
+/**
+ * Indica si estamos en go.ventalink.app sin país seleccionado (UI neutral).
+ */
+export function isGoWithoutCountry() {
+  return getCountryCode() === null;
 }
 
 /**
@@ -88,33 +96,45 @@ export const COUNTRY_LABELS = Object.freeze({
  * @param {string} [countryCode] - Si no se pasa, se usa getCountryCode().
  * @returns {typeof COUNTRY_LABELS.AR & { countryName: string, flag: string, currency: string }}
  */
+/** Labels neutros cuando no hay país (go.ventalink.app sin selección). Sin referencias a Chile/Argentina. */
+const NEUTRAL_LABELS = Object.freeze({
+  countryName: 'Tu país',
+  flag: '🌐',
+  currency: 'USD',
+  currencyName: 'USD',
+  cityLabel: 'Ciudad',
+  cityPlaceholder: 'Ej: Ciudad',
+  regionLabel: 'Región',
+  regionPlaceholder: 'Ej: Región',
+  addressPlaceholder: 'Ej: Dirección',
+  bankPlaceholder: 'Ej: Banco...',
+  idNumberLabel: 'ID',
+  idNumberPlaceholder: 'Ej: Número',
+  bankAccountTypes: [
+    { value: 'cuenta_corriente', label: 'Cuenta Corriente' },
+    { value: 'cuenta_ahorro', label: 'Cuenta de Ahorro' },
+  ],
+  whatsappHint: 'Selecciona tu país y escribe tu número con código de área si aplica.',
+  whatsappErrorPrefix: 'Número móvil',
+  testimonialCities: [],
+  heroSubtitle: 'Hecho para negocios que venden por WhatsApp',
+  benefitsTitle: 'Multi-país',
+  benefitsDescription: 'Precios y WhatsApp según tu país.',
+});
+
 export function getCountryLabels(countryCode) {
-  const code = ((countryCode ?? getCountryCode()) || '').toUpperCase().trim();
+  const resolved = countryCode ?? getCountryCode();
+  if (resolved === null || resolved === '') return NEUTRAL_LABELS;
+  const code = String(resolved).toUpperCase().trim();
   if (COUNTRY_LABELS[code]) return COUNTRY_LABELS[code];
   const config = getCountryConfig(code);
   return {
+    ...NEUTRAL_LABELS,
     countryName: config?.name ?? code,
     flag: config?.flag ?? '🌐',
     currency: config?.currency ?? 'USD',
     currencyName: config?.currency ?? 'USD',
-    cityLabel: 'Ciudad',
-    cityPlaceholder: 'Ej: Ciudad',
-    regionLabel: 'Región',
-    regionPlaceholder: 'Ej: Región',
-    addressPlaceholder: 'Ej: Dirección',
-    bankPlaceholder: 'Ej: Banco...',
-    idNumberLabel: 'ID',
-    idNumberPlaceholder: 'Ej: Número',
-    bankAccountTypes: [
-      { value: 'cuenta_corriente', label: 'Cuenta Corriente' },
-      { value: 'cuenta_ahorro', label: 'Cuenta de Ahorro' },
-    ],
     whatsappHint: `Formato: ${config?.phonePrefix ?? ''} y ${config?.phoneLocalLength ?? 9} dígitos`,
-    whatsappErrorPrefix: 'Número móvil',
-    testimonialCities: [],
-    heroSubtitle: `Hecho para negocios que venden por WhatsApp`,
-    benefitsTitle: 'Multi-país',
-    benefitsDescription: 'Precios y WhatsApp según tu país.',
   };
 }
 
@@ -124,8 +144,10 @@ export function getCountryLabels(countryCode) {
  * @returns {string} Código de moneda (CLP, ARS, USD, MXN, etc.)
  */
 export function getCurrency(countryCode) {
-  const labels = getCountryLabels(countryCode);
-  return labels?.currency ?? getCountryConfig(countryCode || getCountryCode())?.currency ?? 'CLP';
+  const resolved = countryCode ?? getCountryCode();
+  if (resolved === null || resolved === '') return NEUTRAL_LABELS.currency;
+  const labels = getCountryLabels(resolved);
+  return labels?.currency ?? getCountryConfig(resolved)?.currency ?? 'USD';
 }
 
 export { COUNTRY_AR, COUNTRY_CL };

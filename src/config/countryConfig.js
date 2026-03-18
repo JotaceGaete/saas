@@ -113,12 +113,25 @@ export function setStoredCountryCode(code) {
   }
 }
 
+/** Config neutra cuando no hay país seleccionado (go.ventalink.app). Sin prefijo ni reglas de Chile. */
+export const NEUTRAL_COUNTRY_CONFIG = Object.freeze({
+  code: null,
+  name: null,
+  flag: '🌐',
+  currency: 'USD',
+  symbol: 'US$',
+  phonePrefix: '',
+  phoneLocalLength: 0,
+  phoneLocalPrefix: null,
+});
+
 /**
- * Devuelve la config de un país.
- * @param {string} [code] - Código ISO. Si no se pasa, se usa el país actual (dominio o guardado).
- * @returns {typeof COUNTRY_CONFIG.CL}
+ * Devuelve la config de un país. En go.ventalink.app sin selección (code null/empty) devuelve config neutra.
+ * @param {string|null} [code] - Código ISO. null o '' en go = neutro (sin Chile por defecto).
+ * @returns {typeof COUNTRY_CONFIG.CL | typeof NEUTRAL_COUNTRY_CONFIG}
  */
 export function getCountryConfig(code) {
-  const c = (code || '').toUpperCase().trim();
-  return COUNTRY_CONFIG[c] ?? COUNTRY_CONFIG.CL;
+  if (code === null || code === undefined || String(code).trim() === '') return NEUTRAL_COUNTRY_CONFIG;
+  const c = String(code).toUpperCase().trim();
+  return COUNTRY_CONFIG[c] ?? NEUTRAL_COUNTRY_CONFIG;
 }
