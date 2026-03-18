@@ -146,12 +146,20 @@ export const AuthProvider = ({ children }) => {
         const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? ''
         const sessionToken = data?.session?.access_token ?? anonKey
         const userName = user?.user_metadata?.name || user?.user_metadata?.full_name || businessData?.name || ''
+        const nameDisplay = (userName || '').trim() || 'Usuario'
         const payload = {
           to: userEmail.trim(),
           type: 'welcome',
-          name: userName || 'Usuario',
+          name: nameDisplay,
           subject: 'Bienvenido a Ventalink',
-          data: { name: userName || 'Usuario', dashboardUrl: 'https://go.ventalink.app/dashboard' },
+          html: `<div style="font-family: Arial, sans-serif; line-height:1.5; color:#111;">
+  <h2>Bienvenido a Ventalink</h2>
+  <p>Hola ${nameDisplay},</p>
+  <p>Tu cuenta ha sido creada correctamente.</p>
+  <p>Ya puedes comenzar a configurar tu catálogo y publicar tus productos.</p>
+</div>`,
+          text: `Hola ${nameDisplay}, tu cuenta ha sido creada correctamente en Ventalink.`,
+          data: { name: nameDisplay, dashboardUrl: 'https://go.ventalink.app/dashboard' },
         }
         console.log('[Auth] send-email payload (final, before fetch):', payload)
         const headers = {
