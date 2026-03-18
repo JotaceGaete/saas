@@ -89,7 +89,7 @@ export const COUNTRY_LABELS = Object.freeze({
  * @returns {typeof COUNTRY_LABELS.AR & { countryName: string, flag: string, currency: string }}
  */
 export function getCountryLabels(countryCode) {
-  const code = (countryCode ?? getCountryCode() || '').toUpperCase().trim();
+  const code = ((countryCode ?? getCountryCode()) || '').toUpperCase().trim();
   if (COUNTRY_LABELS[code]) return COUNTRY_LABELS[code];
   const config = getCountryConfig(code);
   return {
