@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
 import { getBusinessBySlug, getPublicProducts, getCategoriesByRubroId, recordCatalogVisit, createOrder } from '../../services/waBusinessService';
 import Icon from '../../components/AppIcon';
 import { CartProvider, useCart } from '../../contexts/CartContext';
 import { formatCLP } from '../../utils/formatCLP';
 import { useIsDesktop } from '../../hooks/useMediaQuery';
+import { useAuth } from '../../contexts/AuthContext';
 import { getAppBaseUrl, getPublicCatalogUrl } from '../../config/appUrl';
 import BrandingFooter from '../../components/BrandingFooter';
 import { hasViralBranding, getOrderMessageBrandingSuffix } from '../../utils/branding';
@@ -79,6 +80,8 @@ export default function PublicCatalog() {
 }
 
 function CatalogInner({ slug }) {
+  const navigate = useNavigate();
+  const { user, business: authBusiness } = useAuth();
   const [business, setBusiness] = useState(null);
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -96,6 +99,10 @@ function CatalogInner({ slug }) {
 
   const { itemCount } = useCart();
   const isDesktop = useIsDesktop();
+  const isOwner = !!(user && business && authBusiness && business.id === authBusiness.id);
+  if (typeof window !== 'undefined' && window.__AUTH_DEBUG__ && business) {
+    console.log('[PublicCatalog] viewMode:', isOwner ? 'owner' : 'public', { hasUser: !!user, catalogBizId: business?.id, authBizId: authBusiness?.id });
+  }
 
   useEffect(() => {
     if (!slug) return;
@@ -303,18 +310,30 @@ function CatalogInner({ slug }) {
         </Helmet>
       )}
 
-      {/* Cabecera móvil: Volver + nombre/logo — solo en móvil, navegación clara sin hamburguesa */}
+      {/* Cabecera móvil: Volver al dashboard SOLO para el dueño; en vista pública compartida no se muestra */}
       {!loading && !notFound && business && (
-        <header className="fixed top-0 left-0 right-0 z-50 bg-white border-b border-gray-200 shadow-sm md:hidden" role="banner">
+        <header
+          className="fixed left-0 right-0 z-50 bg-white border-b border-gray-200 shadow-sm md:hidden"
+          role="banner"
+          style={{
+            top: 0,
+            paddingTop: 'var(--safe-area-top)',
+            minHeight: 'calc(56px + var(--safe-area-top))',
+          }}
+        >
           <div className="flex items-center h-14 px-4 gap-3">
-            <button
-              type="button"
-              onClick={() => window.history.back()}
-              className="flex-shrink-0 flex items-center justify-center w-10 h-10 -ml-1 rounded-lg text-gray-600 hover:bg-gray-100 active:bg-gray-200 transition-colors"
-              aria-label="Volver"
-            >
-              <Icon name="ArrowLeft" size={22} color="currentColor" />
-            </button>
+            {isOwner ? (
+              <button
+                type="button"
+                onClick={() => navigate('/dashboard')}
+                className="flex-shrink-0 flex items-center justify-center w-10 h-10 -ml-1 rounded-lg text-gray-600 hover:bg-gray-100 active:bg-gray-200 transition-colors"
+                aria-label="Volver al dashboard"
+              >
+                <Icon name="ArrowLeft" size={22} color="currentColor" />
+              </button>
+            ) : (
+              <div className="w-10 h-10 flex-shrink-0" aria-hidden />
+            )}
             <div className="flex-1 min-w-0 flex items-center gap-2.5">
               {business?.logoUrl ? (
                 <img src={business.logoUrl} alt="" className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
@@ -332,7 +351,7 @@ function CatalogInner({ slug }) {
       )}
 
       {/* ── Header: banner + tarjeta de identidad ── */}
-      <div className="bg-white shadow-sm pt-14 md:pt-0">
+      <div className="bg-white shadow-sm pt-[calc(3.5rem+var(--safe-area-top))] md:pt-0">
         {/* 1. Banner — solo fondo visual, sin texto encima */}
         <div
           className="h-[80px] sm:h-[110px] md:h-[130px] w-full relative overflow-hidden"
@@ -542,8 +561,8 @@ function CatalogInner({ slug }) {
         </div>
       </div>
 
-      {/* ── Filtros (sticky) — menos espacio vertical. Categorías solo si useCategories ── */}
-      <div className="bg-white border-b border-gray-100 sticky top-0 z-30 shadow-sm">
+      {/* ── Filtros (sticky) — en móvil pegan bajo el header; en desktop top-0 ── */}
+      <div className="bg-white border-b border-gray-100 sticky z-30 shadow-sm top-[calc(56px+var(--safe-area-top))] md:top-0">
         <div className="max-w-5xl mx-auto px-4 py-2 space-y-2">
           {/* Category filter bar: solo categorías con al menos un producto; "Todos" solo si hay más de una categoría */}
           <div className="flex items-center gap-2">
@@ -622,8 +641,11 @@ function CatalogInner({ slug }) {
         </div>
       </div>
 
-      {/* ── Products: listado plano o bloques por categoría ── */}
-      <div className="max-w-7xl mx-auto px-4 py-3 pb-32 sm:pb-36">
+      {/* ── Products: espacio extra abajo para botón flotante y safe area ── */}
+      <div
+        className="max-w-7xl mx-auto px-4 py-3"
+        style={{ paddingBottom: 'calc(8rem + var(--safe-area-bottom))' }}
+      >
         {/* Product count */}
         <p className="text-xs text-gray-400 font-medium mb-3">
           {sortedProducts?.length} {sortedProducts?.length === 1 ? 'producto' : 'productos'}
@@ -786,7 +808,10 @@ function FloatingCartButton({ onOpen, formatPrice, theme }) {
 
   if (itemCount === 0) {
     return (
-      <div className="fixed bottom-0 left-0 right-0 z-40 px-4 pb-5 pt-2 pointer-events-none">
+      <div
+        className="fixed left-0 right-0 z-40 px-4 pt-2 pointer-events-none"
+        style={{ bottom: 0, paddingBottom: 'calc(20px + var(--safe-area-bottom))' }}
+      >
         <div className="max-w-2xl mx-auto">
           <button
             onClick={onOpen}
@@ -807,7 +832,10 @@ function FloatingCartButton({ onOpen, formatPrice, theme }) {
   }
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-40 px-4 pb-5 pt-2 pointer-events-none">
+    <div
+      className="fixed left-0 right-0 z-40 px-4 pt-2 pointer-events-none"
+      style={{ bottom: 0, paddingBottom: 'calc(20px + var(--safe-area-bottom))' }}
+    >
       <div className="max-w-2xl mx-auto">
         <button
           onClick={onOpen}

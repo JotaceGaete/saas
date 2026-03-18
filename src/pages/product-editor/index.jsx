@@ -14,6 +14,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { getProduct, createProduct, updateProduct, uploadProductImage, getMyBusiness, getCategoriesByRubroId, getEffectivePlanSlug } from '../../services/waBusinessService';
 import { convertUnsupportedImageToJpeg } from '../../utils/imageUploadUtils';
 import { useToast } from '../../components/ui/Toast';
+import { useConfirmedEmailGuard } from '../../hooks/useConfirmedEmailGuard';
 import { supabase } from '../../lib/supabase';
 
 const EMPTY_FORM = {
@@ -50,6 +51,8 @@ export default function ProductEditor() {
 
   const effectivePlan = getEffectivePlanSlug(business?.planSlug, business?.planExpiresAt, business?.trialExpiresAt);
   const canUseAi = effectivePlan === 'pro' || effectivePlan === 'business';
+  const guard = useConfirmedEmailGuard();
+  const initialActivoRef = React.useRef(null);
 
   useEffect(() => {
     if (!isEditing || !productId) return;
@@ -58,6 +61,7 @@ export default function ProductEditor() {
       try {
         const { data, error } = await getProduct(productId);
         if (error || !data) { navigate('/product-management'); return; }
+        initialActivoRef.current = data?.isActive !== undefined ? data?.isActive : true;
         setFormData({
           nombre: data?.name || '',
           precio: data?.price != null ? Number(data.price) : '',
@@ -218,6 +222,15 @@ export default function ProductEditor() {
   const handleSave = async (andNew = false) => {
     const validationErrors = validate();
     if (Object.keys(validationErrors)?.length > 0) { setErrors(validationErrors); window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
+    const wouldActivate = formData?.activo === true && (isEditing ? initialActivoRef.current !== true : true);
+    if (wouldActivate) {
+      guard.runIfConfirmed(() => doSave(andNew));
+      return;
+    }
+    await doSave(andNew);
+  };
+
+  const doSave = async (andNew = false) => {
     if (hasPendingOrUploadingImages) {
       setErrors(prev => ({ ...prev, general: 'Espera a que terminen de subir todas las imágenes.' }));
       return;

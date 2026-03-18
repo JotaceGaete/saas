@@ -4,6 +4,7 @@ import BusinessSidebar from 'components/ui/BusinessSidebar';
 import { useIsDesktop } from 'hooks/useMediaQuery';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
+import { useConfirmedEmailGuard } from '../../hooks/useConfirmedEmailGuard';
 import { supabase } from '../../lib/supabase';
 import { getAppBaseUrl } from '../../config/appUrl';
 import { getCountryCode, getCurrency } from '../../config/country';
@@ -35,6 +36,7 @@ export default function PlansPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user, business, businessLoading, refreshBusiness, loading: authLoading, isAuthenticated } = useAuth();
+  const guard = useConfirmedEmailGuard();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [paymentMessage, setPaymentMessage] = useState(null);
   const [paymentReturnStatus, setPaymentReturnStatus] = useState(null); // 'success' | 'failure' | 'pending' al volver del checkout
@@ -162,6 +164,10 @@ export default function PlansPage() {
   };
 
   const handlePayWithPaddle = async (planSlug) => {
+    if (guard.isBlocked) {
+      guard.runIfConfirmed(() => {});
+      return;
+    }
     console.info(PAYMENT_DEBUG_PREFIX, { event: 'click_plan_button', handler: 'handlePayWithPaddle', planSlug, resolvedCountryCode: countryCode });
     if (getPlanPrice(planSlug) <= 0) return;
     setLoadingPlanSlug(planSlug);
@@ -203,6 +209,10 @@ export default function PlansPage() {
   };
 
   const handlePayWithMercadoPago = async (planSlug) => {
+    if (guard.isBlocked) {
+      guard.runIfConfirmed(() => {});
+      return;
+    }
     console.info(PAYMENT_DEBUG_PREFIX, {
       event: 'click_plan_button',
       handler: 'handlePayWithMercadoPago',
@@ -258,6 +268,10 @@ export default function PlansPage() {
   };
 
   const confirmPayWithPaddle = async () => {
+    if (guard.isBlocked) {
+      guard.runIfConfirmed(() => {});
+      return;
+    }
     if (!previewPlanSlug) return;
     setLoadingPlanSlug(previewPlanSlug);
     setPaymentMessage(null);
@@ -326,6 +340,10 @@ export default function PlansPage() {
   };
 
   const confirmPayWithMercadoPago = async () => {
+    if (guard.isBlocked) {
+      guard.runIfConfirmed(() => {});
+      return;
+    }
     console.info(PAYMENT_DEBUG_PREFIX, {
       event: 'confirm_payment',
       handler: 'confirmPayWithMercadoPago',

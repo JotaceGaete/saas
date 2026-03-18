@@ -6,7 +6,7 @@ import EmailConfirmBanner from './components/EmailConfirmBanner';
 
 function App() {
   return (
-    <div className="app-shell min-w-0" style={{ width: '100%', maxWidth: '100vw', overflowX: 'hidden', minHeight: '100vh' }}>
+    <div className="app-shell min-w-0" style={{ width: '100%', maxWidth: '100%', overflowX: 'hidden', minHeight: '100vh' }}>
       <AuthProvider>
         <EmailConfirmBanner />
         <ToastProvider>

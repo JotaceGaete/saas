@@ -11,12 +11,15 @@ export const useAuth = () => {
   return context
 }
 
+const SESSION_EXPIRED_MESSAGE = 'Tu sesión expiró. Vuelve a iniciar sesión.'
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null)
   const [business, setBusiness] = useState(null)
   const [impersonatedBusiness, setImpersonatedBusiness] = useState(null)
   const [loading, setLoading] = useState(true)
   const [businessLoading, setBusinessLoading] = useState(false)
+  const [sessionExpiredMessage, setSessionExpiredMessage] = useState(null)
 
   const businessOperations = {
     async load(userId) {
@@ -55,10 +58,23 @@ export const AuthProvider = ({ children }) => {
     }
   }
 
+  const clearSessionExpiredMessage = () => setSessionExpiredMessage(null)
+
   const authStateHandlers = {
     onChange: (event, session) => {
-      if (typeof window !== 'undefined' && window.__AUTH_DEBUG__) {
-        console.log('[Auth] onAuthStateChange', event, session ? { user: session.user?.id, hasRefreshToken: !!session.refresh_token } : null)
+      if (typeof window !== 'undefined') {
+        console.log('[Auth] state change:', event ?? 'init', session ? { user: session.user?.id } : 'no session')
+      }
+      if (event === 'SIGNED_OUT') {
+        if (typeof window !== 'undefined') {
+          console.log('[Auth] session expired')
+        }
+        setUser(null)
+        setImpersonatedBusiness(null)
+        businessOperations?.clear()
+        setSessionExpiredMessage(SESSION_EXPIRED_MESSAGE)
+        setLoading(false)
+        return
       }
       setUser(session?.user ?? null)
       setLoading(false)
@@ -331,6 +347,8 @@ export const AuthProvider = ({ children }) => {
     isImpersonating: !!impersonatedBusiness,
     loading,
     businessLoading,
+    sessionExpiredMessage,
+    clearSessionExpiredMessage,
     signIn,
     signUp,
     signInWithGoogle,

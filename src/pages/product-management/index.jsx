@@ -10,6 +10,7 @@ import ProductStatsBar from "./components/ProductStatsBar";
 import Icon from '../../components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../components/ui/Toast';
+import { useConfirmedEmailGuard } from '../../hooks/useConfirmedEmailGuard';
 import { getProducts, updateProduct, deleteProduct, deleteProducts, createProduct } from '../../services/waBusinessService';
 
 
@@ -17,6 +18,7 @@ export default function ProductManagement() {
   const navigate = useNavigate();
   const toast = useToast();
   const { business, user, businessLoading, refreshBusiness } = useAuth();
+  const guard = useConfirmedEmailGuard();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -90,13 +92,25 @@ export default function ProductManagement() {
   const handleToggleStatus = useCallback(async (id) => {
     const product = products?.find(p => p?.id === id);
     if (!product) return;
-    const { error: err } = await updateProduct(id, { isActive: !product?.isActive });
+    const activating = !product?.isActive;
+    if (activating) {
+      guard.runIfConfirmed(async () => {
+        const { error: err } = await updateProduct(id, { isActive: true });
+        if (err) {
+          toast?.error(err?.message || 'No se pudo actualizar.');
+          return;
+        }
+        setProducts(prev => prev?.map(p => p?.id === id ? { ...p, isActive: true } : p));
+      });
+      return;
+    }
+    const { error: err } = await updateProduct(id, { isActive: false });
     if (err) {
       toast?.error(err?.message || 'No se pudo actualizar.');
       return;
     }
-    setProducts(prev => prev?.map(p => p?.id === id ? { ...p, isActive: !p?.isActive } : p));
-  }, [products, toast]);
+    setProducts(prev => prev?.map(p => p?.id === id ? { ...p, isActive: false } : p));
+  }, [products, toast, guard]);
 
   const handleEdit = useCallback((id) => { navigate(`/product-editor?id=${id}`); }, [navigate]);
 

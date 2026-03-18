@@ -3,6 +3,7 @@ import BusinessSidebar from 'components/ui/BusinessSidebar';
 import { useIsDesktop } from 'hooks/useMediaQuery';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
+import { useConfirmedEmailGuard } from '../../hooks/useConfirmedEmailGuard';
 import { getOrders, updateOrder } from '../../services/waBusinessService';
 import { useToast } from '../../components/ui/Toast';
 import { supabase } from '../../lib/supabase';
@@ -382,6 +383,7 @@ function OrderCard({ order, onUpdate, businessName, onOpenDetail, business, form
 export default function OrdersPage() {
   const { business, businessLoading } = useAuth();
   const toast = useToast();
+  const guard = useConfirmedEmailGuard();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -432,17 +434,19 @@ export default function OrdersPage() {
   }, [business?.id, loadOrders]);
 
   const handleUpdate = useCallback(async (orderId, updates) => {
-    const { error } = await updateOrder(orderId, updates);
-    if (error) {
-      toast?.error('No se pudo actualizar el pedido');
-    } else {
-      toast?.success('Pedido actualizado');
-      setOrders(prev => prev?.map(o =>
-        o?.id === orderId ? { ...o, ...updates } : o
-      ));
-      if (detailOrder?.id === orderId) setDetailOrder(prev => prev ? { ...prev, ...updates } : null);
-    }
-  }, [toast, detailOrder?.id]);
+    guard.runIfConfirmed(async () => {
+      const { error } = await updateOrder(orderId, updates);
+      if (error) {
+        toast?.error('No se pudo actualizar el pedido');
+      } else {
+        toast?.success('Pedido actualizado');
+        setOrders(prev => prev?.map(o =>
+          o?.id === orderId ? { ...o, ...updates } : o
+        ));
+        if (detailOrder?.id === orderId) setDetailOrder(prev => prev ? { ...prev, ...updates } : null);
+      }
+    });
+  }, [toast, detailOrder?.id, guard]);
 
   const filteredOrders = orders?.filter(o => {
     const status = o?.status || 'pedido';

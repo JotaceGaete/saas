@@ -345,11 +345,16 @@ export default function BusinessSidebar({ isCollapsed = false, onCollapsedChange
 
   return (
     <>
-      {/* Mobile hamburger */}
+      {/* Mobile hamburger — respeta safe area en iPhone (notch, Dynamic Island) */}
       <button
         onClick={() => setMobileOpen(true)}
-        className="lg:hidden fixed top-3.5 left-4 z-navigation w-10 h-10 flex items-center justify-center rounded-xl bg-white border text-foreground hover:bg-muted transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        style={{ borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-sm)' }}
+        className="lg:hidden fixed z-navigation w-10 h-10 flex items-center justify-center rounded-xl bg-white border text-foreground hover:bg-muted transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        style={{
+          top: 'calc(var(--safe-area-top) + 12px)',
+          left: 'calc(var(--safe-area-left) + 16px)',
+          borderColor: 'var(--color-border)',
+          boxShadow: 'var(--shadow-sm)',
+        }}
         aria-label="Abrir menú de navegación"
         aria-expanded={mobileOpen}
       >
@@ -366,14 +371,23 @@ export default function BusinessSidebar({ isCollapsed = false, onCollapsedChange
         />
       )}
 
-      {/* Mobile drawer */}
+      {/* Mobile drawer — respeta safe area superior */}
       {mobileOpen && (
         <aside
           className="lg:hidden fixed top-0 left-0 h-full z-modal border-r"
-          style={{ width: 'var(--sidebar-width)', backgroundColor: '#FFFFFF', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-xl)' }}
+          style={{
+            width: 'var(--sidebar-width)',
+            backgroundColor: '#FFFFFF',
+            borderColor: 'var(--color-border)',
+            boxShadow: 'var(--shadow-xl)',
+            paddingTop: 'var(--safe-area-top)',
+          }}
           aria-label="Menú de navegación"
         >
-          <div className="absolute top-4 right-4">
+          <div
+            className="absolute right-4"
+            style={{ top: 'calc(var(--safe-area-top) + 16px)' }}
+          >
             <button
               onClick={() => setMobileOpen(false)}
               className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-muted transition-colors"

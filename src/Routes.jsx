@@ -5,6 +5,8 @@ import ErrorBoundary from "components/ErrorBoundary";
 import AnimatedLayout from "components/AnimatedLayout";
 import NotFound from "pages/NotFound";
 import RequireAdmin from "components/RequireAdmin";
+import RequireAuth from "components/RequireAuth";
+import SessionExpiredHandler from "components/SessionExpiredHandler";
 import BusinessRegistration from './pages/business-registration';
 import LandingPage from './pages/landing-page';
 import BusinessConfiguration from './pages/business-configuration';
@@ -35,6 +37,7 @@ import RefundsPage from './pages/legal/RefundsPage';
 const Routes = () => {
   return (
     <BrowserRouter>
+      <SessionExpiredHandler />
       <ErrorBoundary>
         <ScrollToTop />
         <RouterRoutes>
@@ -42,17 +45,17 @@ const Routes = () => {
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/business-registration" element={<BusinessRegistration />} />
             <Route path="/landing-page" element={<LandingPage />} />
-            <Route path="/business-configuration" element={<BusinessConfiguration />} />
-            <Route path="/product-management" element={<ProductManagement />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/product-editor" element={<ProductEditor />} />
-            <Route path="/orders" element={<Orders />} />
-            <Route path="/design" element={<DesignPage />} />
-            <Route path="/ayuda" element={<HelpPage />} />
+            <Route path="/business-configuration" element={<RequireAuth><BusinessConfiguration /></RequireAuth>} />
+            <Route path="/product-management" element={<RequireAuth><ProductManagement /></RequireAuth>} />
+            <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
+            <Route path="/product-editor" element={<RequireAuth><ProductEditor /></RequireAuth>} />
+            <Route path="/orders" element={<RequireAuth><Orders /></RequireAuth>} />
+            <Route path="/design" element={<RequireAuth><DesignPage /></RequireAuth>} />
+            <Route path="/ayuda" element={<RequireAuth><HelpPage /></RequireAuth>} />
             <Route path="/login" element={<Login />} />
             <Route path="/auth/callback" element={<AuthCallback />} />
             <Route path="/reset-password" element={<ResetPassword />} />
-            <Route path="/planes" element={<PlansPage />} />
+            <Route path="/planes" element={<RequireAuth><PlansPage /></RequireAuth>} />
             <Route path="/plans" element={<PublicPricingPage />} />
             <Route path="/terms" element={<TermsPage />} />
             <Route path="/privacy" element={<PrivacyPage />} />

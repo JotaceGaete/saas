@@ -114,6 +114,12 @@
   /* Sidebar */
   --sidebar-width: 240px;
   --sidebar-collapsed-width: 64px;
+
+  /* iOS safe areas (iPhone notch, Dynamic Island, etc.) */
+  --safe-area-top: env(safe-area-inset-top, 0px);
+  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-left: env(safe-area-inset-left, 0px);
+  --safe-area-right: env(safe-area-inset-right, 0px);
 }
 
 /* Base styles */
@@ -158,8 +164,9 @@ body {
 }
 
 /* Contenedor principal: nunca permite scroll horizontal */
+/* Evitar 100vw: puede causar overflow horizontal en algunos navegadores (scrollbar) */
 .app-shell {
-  max-width: 100vw;
+  max-width: 100%;
 }
 
 /* Panel autenticado: en móvil el contenido debe ocupar todo el ancho, sin margen lateral */
