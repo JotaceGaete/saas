@@ -134,22 +134,32 @@ export const AuthProvider = ({ children }) => {
       })
       if (error) return { data: null, error }
 
-      // Email de bienvenida (fire-and-forget, no bloquea el registro)
+      // Email de bienvenida:
+      // - Primario: trigger wa_on_auth_user_send_welcome (AFTER INSERT ON auth.users) — cubre email Y OAuth.
+      // - Fallback: fetch client-side por si vault no está configurado o el trigger falla.
       const userEmail = data?.user?.email
       if (userEmail) {
         const userName = data?.user?.user_metadata?.name || data?.user?.user_metadata?.full_name || businessData?.name || ''
         const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '')
         const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? ''
         const token = data?.session?.access_token ?? anonKey
+        const payload = { to: userEmail, type: 'welcome', data: { name: userName, dashboardUrl: 'https://go.ventalink.app/dashboard' } }
+        if (typeof window !== 'undefined' && window.__AUTH_DEBUG__) {
+          console.log('[Auth] welcome email fallback:', { email: userEmail, payload })
+        }
         fetch(`${supabaseUrl}/functions/v1/send-email`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, apikey: anonKey },
-          body: JSON.stringify({
-            to: userEmail,
-            type: 'welcome',
-            data: { name: userName, dashboardUrl: 'https://cl.ventalink.app/dashboard' },
-          }),
-        }).catch((err) => console.error('[Auth] welcome email failed:', err))
+          body: JSON.stringify(payload),
+        })
+          .then(async (res) => {
+            const body = await res.json().catch(() => ({}))
+            if (typeof window !== 'undefined' && window.__AUTH_DEBUG__) {
+              console.log('[Auth] welcome email response:', { status: res.status, ok: res.ok, body })
+            }
+            if (!res.ok) console.error('[Auth] welcome email failed:', res.status, body)
+          })
+          .catch((err) => console.error('[Auth] welcome email fetch error:', err?.message ?? err))
       }
 
       const userId = data?.user?.id

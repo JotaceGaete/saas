@@ -193,6 +193,9 @@ Deno.serve(async (req) => {
   const emailType = typeof body?.type === 'string' ? body.type.trim() : '';
   const data = body?.data && typeof body.data === 'object' ? (body.data as TemplateData) : {};
 
+  // Log detallado para diagnóstico
+  console.log('[send-email] Request received:', { to, type: emailType, hasData: Object.keys(data).length > 0 });
+
   let subject: string;
   let html: string;
 
@@ -237,6 +240,8 @@ Deno.serve(async (req) => {
     html,
   };
 
+  console.log('[send-email] Payload to Resend:', { from: resendBody.from, to: resendBody.to, subject: resendBody.subject, htmlLength: resendBody.html?.length ?? 0 });
+
   try {
     const res = await fetch(RESEND_API_URL, {
       method: 'POST',
@@ -254,6 +259,8 @@ Deno.serve(async (req) => {
     } catch {
       /* ignore */
     }
+
+    console.log('[send-email] Resend API response:', { status: res.status, ok: res.ok, body: resData });
 
     if (!res.ok) {
       console.error('[send-email] Resend API error:', res.status, resText?.slice(0, 300));
