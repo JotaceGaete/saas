@@ -153,13 +153,19 @@ async function triggerOgImageGeneration(businessId) {
         })
           .then((res) => {
             const status = res.status;
-            // Intentamos leer JSON; si no viene JSON igual dejamos rastro por consola.
-            res.json()
-              .then((json) => {
-                console.log('[waBusinessService] OG generation result', { status, json });
+            console.log('[waBusinessService] OG generation HTTP', { status });
+
+            return res.text()
+              .then((text) => {
+                try {
+                  const json = text ? JSON.parse(text) : null;
+                  console.log('[waBusinessService] OG generation result', { status, json });
+                } catch {
+                  console.log('[waBusinessService] OG generation result (non-JSON)', { status, text: text?.slice(0, 500) });
+                }
               })
               .catch(() => {
-                console.log('[waBusinessService] OG generation result (non-JSON)', { status });
+                console.log('[waBusinessService] OG generation result (no body)', { status });
               });
           })
           .catch((err) => {
