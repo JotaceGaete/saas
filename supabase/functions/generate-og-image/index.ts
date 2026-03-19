@@ -2,8 +2,8 @@
 // Flujo: validar usuario -> cargar negocio -> render PNG -> subir a R2 -> guardar wa_businesses.og_image_url
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { Resvg } from "npm:@resvg/resvg-js@2.6.2";
-import { S3Client, PutObjectCommand } from "npm:@aws-sdk/client-s3@3.700.0";
+// Importaciones pesadas (Resvg + AWS SDK) se cargan dinámicamente dentro del handler.
+// Así evitamos que un fallo en el runtime/wasm impida responder a `OPTIONS` por CORS.
 
 const WIDTH = 1200;
 const HEIGHT = 630;
@@ -249,7 +249,19 @@ Deno.serve(async (req) => {
     const logoDataUri = await loadLogoDataUri(logoUrl);
 
     const svg = buildOgSvg(storeName, logoDataUri);
-    const pngBytes = new Resvg(svg, {
+    let ResvgCtor: typeof import("npm:@resvg/resvg-js@2.6.2").Resvg | null = null;
+    try {
+      const mod = await import("npm:@resvg/resvg-js@2.6.2");
+      ResvgCtor = mod.Resvg ?? null;
+    } catch (err) {
+      console.error("[generate-og-image] Resvg import failed", err);
+      return jsonResponse({ error: "Resvg import failed", message: err instanceof Error ? err.message : String(err) }, 500, corsHeaders);
+    }
+    if (!ResvgCtor) {
+      return jsonResponse({ error: "Resvg not available" }, 500, corsHeaders);
+    }
+
+    const pngBytes = new ResvgCtor(svg, {
       fitTo: { mode: "width", value: WIDTH },
     }).render().asPng();
 
@@ -270,13 +282,27 @@ Deno.serve(async (req) => {
     }
 
     const key = `businesses/${businessId}/og/og-${Date.now()}.png`;
-    const s3 = new S3Client({
+    let S3ClientCtor: typeof import("npm:@aws-sdk/client-s3@3.700.0").S3Client | null = null;
+    let PutObjectCommandCtor: typeof import("npm:@aws-sdk/client-s3@3.700.0").PutObjectCommand | null = null;
+    try {
+      const mod = await import("npm:@aws-sdk/client-s3@3.700.0");
+      S3ClientCtor = mod.S3Client ?? null;
+      PutObjectCommandCtor = mod.PutObjectCommand ?? null;
+    } catch (err) {
+      console.error("[generate-og-image] AWS S3 import failed", err);
+      return jsonResponse({ error: "S3 import failed", message: err instanceof Error ? err.message : String(err) }, 500, corsHeaders);
+    }
+    if (!S3ClientCtor || !PutObjectCommandCtor) {
+      return jsonResponse({ error: "S3 not available" }, 500, corsHeaders);
+    }
+
+    const s3 = new S3ClientCtor({
       region: "auto",
       endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
       credentials: { accessKeyId, secretAccessKey },
     });
 
-    await s3.send(new PutObjectCommand({
+    await s3.send(new PutObjectCommandCtor({
       Bucket: bucket,
       Key: key,
       Body: pngBytes,

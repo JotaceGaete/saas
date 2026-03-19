@@ -126,7 +126,13 @@ async function triggerOgImageGeneration(businessId) {
 
   try {
     // Fire-and-forget: no await, so UI won't be blocked.
-    supabase?.auth?.getSession()
+    const sessionPromise = supabase?.auth?.getSession?.();
+    if (!sessionPromise || typeof sessionPromise.then !== 'function') {
+      console.warn('[waBusinessService] triggerOgImageGeneration: getSession() not available/invalid');
+      return;
+    }
+
+    sessionPromise
       .then(({ data: sessionData }) => {
         const token = sessionData?.session?.access_token;
         if (!token) {

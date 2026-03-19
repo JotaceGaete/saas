@@ -44,3 +44,8 @@ verify_jwt = false
 # send-daily-summary: llamado por cron (pg_cron); sin JWT de usuario.
 [functions.send-daily-summary]
 verify_jwt = false
+
+# generate-og-image: CORS preflight (`OPTIONS`) no incluye el JWT real en el navegador,
+# así que desactivar verify_jwt permite que el handler responda el `OPTIONS` correctamente.
+[functions.generate-og-image]
+verify_jwt = false
