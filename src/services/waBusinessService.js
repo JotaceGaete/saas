@@ -124,7 +124,7 @@ async function triggerOgImageGeneration(businessId) {
     if (!supabaseUrl || !anonKey) return;
 
     const endpoint = `${supabaseUrl}/functions/v1/generate-og-image`;
-    fetch(endpoint, {
+    const res = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -132,9 +132,11 @@ async function triggerOgImageGeneration(businessId) {
         apikey: anonKey,
       },
       body: JSON.stringify({ businessId }),
-    }).catch((err) => {
-      console.warn('[waBusinessService] triggerOgImageGeneration failed:', err?.message || err);
     });
+    const bodyText = await res.text().catch(() => '');
+    if (!res.ok) {
+      console.warn('[waBusinessService] generate-og-image HTTP', res.status, bodyText?.slice(0, 500));
+    }
   } catch (err) {
     console.warn('[waBusinessService] triggerOgImageGeneration error:', err?.message || err);
   }
@@ -158,6 +160,7 @@ const mapBusinessFromDb = (row) => {
   currency: row?.currency,
   logoUrl: row?.logo_url || designSettings?.logoUrl || null,
   coverImageUrl: row?.cover_image_url || designSettings?.headerImageUrl || designSettings?.coverImageUrl || null,
+  ogImageUrl: row?.og_image_url || null,
   slug: row?.slug,
   isActive: row?.is_active,
   rubroId: row?.rubro_id || null,
