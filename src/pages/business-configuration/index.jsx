@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import BusinessSidebar from 'components/ui/BusinessSidebar';
 import PanelHeader from 'components/ui/PanelHeader';
-import { useIsDesktop } from 'hooks/useMediaQuery';
+import DashboardAppShell from 'components/ui/DashboardAppShell';
+import DashboardLayoutContent from 'components/ui/DashboardLayoutContent';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
 import { updateBusiness, getMyBusiness, getRubros } from '../../services/waBusinessService';
@@ -52,7 +52,6 @@ function SettingsField({ label, children, hint }) {
 export default function BusinessConfiguration() {
   const navigate = useNavigate();
   const { user, loading, business: ctxBusiness, businessLoading, refreshBusiness } = useAuth();
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [toast, setToast] = useState(null);
   const [orderMessageTemplate, setOrderMessageTemplate] = useState('');
@@ -257,8 +256,6 @@ export default function BusinessConfiguration() {
   };
 
   const isLoading = businessLoading || businessFetchLoading;
-  const isDesktop = useIsDesktop();
-  const sidebarWidth = sidebarCollapsed ? 'var(--sidebar-collapsed-width)' : 'var(--sidebar-width)';
 
   const inputClass = [
     'w-full px-3 py-2.5 rounded-lg border text-sm outline-none transition-all',
@@ -305,18 +302,16 @@ export default function BusinessConfiguration() {
   }
 
   return (
-    <div className="panel-root min-h-screen" style={{ backgroundColor: '#f7f7f9' }}>
-      <BusinessSidebar isCollapsed={sidebarCollapsed} onCollapsedChange={setSidebarCollapsed} />
+    <DashboardAppShell backgroundColor="#f7f7f9">
       <div
         role="main"
-        className="panel-main min-h-screen w-full max-w-full min-w-0 overflow-x-hidden transition-all"
-        style={{ marginLeft: isDesktop ? sidebarWidth : 0, transition: 'margin-left var(--transition-base)' }}
+        className="min-h-screen w-full max-w-full min-w-0 overflow-x-hidden"
       >
         <PanelHeader
           title={<h1 className="text-base font-bold text-foreground" style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}>Configuración</h1>}
         />
 
-        <div className="px-4 sm:px-5 lg:px-5 py-6 lg:py-8 max-w-2xl pb-20 lg:pb-8">
+        <DashboardLayoutContent>
           {isLoading ? (
             <div className="flex items-center justify-center py-20">
               <svg className="animate-spin" width="28" height="28" viewBox="0 0 24 24" fill="none">
@@ -330,7 +325,7 @@ export default function BusinessConfiguration() {
           ) : (
           <>
             <div
-              className="rounded-2xl border p-6 lg:p-8 mb-8"
+              className="rounded-2xl border p-5 lg:p-6 mb-8"
               style={{ backgroundColor: '#ffffff', borderColor: 'var(--color-border)', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}
             >
               <div className="flex items-center gap-3 mb-6">
@@ -563,7 +558,7 @@ export default function BusinessConfiguration() {
             </div>
 
             {/* Información para el catálogo (horario, dirección, envíos, retiro) */}
-            <div className="rounded-2xl border p-6 lg:p-8 mb-8" style={{ backgroundColor: '#ffffff', borderColor: 'var(--color-border)', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
+            <div className="rounded-2xl border p-5 lg:p-6 mb-8" style={{ backgroundColor: '#ffffff', borderColor: 'var(--color-border)', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
               <div className="flex items-center gap-3 mb-5">
                 <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(139,92,246,0.1)' }}>
                   <Icon name="Info" size={18} color="var(--color-primary)" />
@@ -642,7 +637,7 @@ export default function BusinessConfiguration() {
               </p>
             </div>
 
-            <div className="rounded-2xl border p-6 lg:p-8 mb-8" style={{ backgroundColor: '#ffffff', borderColor: 'var(--color-border)', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
+            <div className="rounded-2xl border p-5 lg:p-6 mb-8" style={{ backgroundColor: '#ffffff', borderColor: 'var(--color-border)', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
               <div className="flex items-center gap-3 mb-5">
                 <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(139,92,246,0.1)' }}>
                   <Icon name="ShoppingBag" size={18} color="var(--color-primary)" />
@@ -657,7 +652,7 @@ export default function BusinessConfiguration() {
 
             {/* Mensajes y pagos: plantilla WhatsApp + datos para transferencia */}
             {business?.id && (
-              <div className="rounded-2xl border p-6 lg:p-8 mb-8" style={{ backgroundColor: '#ffffff', borderColor: 'var(--color-border)', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
+              <div className="rounded-2xl border p-5 lg:p-6 mb-8" style={{ backgroundColor: '#ffffff', borderColor: 'var(--color-border)', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
                 <div className="flex items-center gap-3 mb-5">
                   <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(139,92,246,0.1)' }}>
                     <Icon name="MessageCircle" size={18} color="var(--color-primary)" />
@@ -720,11 +715,11 @@ export default function BusinessConfiguration() {
             <InstallAppBlock />
           </>
           )}
-        </div>
+        </DashboardLayoutContent>
       </div>
       {toast && (
         <Toast message={toast?.message} type={toast?.type} onClose={() => setToast(null)} />
       )}
-    </div>
+    </DashboardAppShell>
   );
 }

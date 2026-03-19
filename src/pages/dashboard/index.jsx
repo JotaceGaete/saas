@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import BusinessSidebar from "components/ui/BusinessSidebar";
 import PanelHeader from "components/ui/PanelHeader";
-import { useIsDesktop } from "hooks/useMediaQuery";
+import DashboardAppShell from "components/ui/DashboardAppShell";
+import DashboardLayoutContent from "components/ui/DashboardLayoutContent";
 import Icon from "components/AppIcon";
 import MetricCard from "./components/MetricCard";
 import ActivityFeed from "./components/ActivityFeed";
@@ -40,7 +40,6 @@ import { getCountryLabels } from "../../config/country";
 export default function Dashboard() {
   const navigate = useNavigate();
   const { user, business, businessLoading, refreshBusiness } = useAuth();
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const dashboardRefreshAttempted = useRef(false);
   const [copyToast, setCopyToast] = useState(false);
   const [products, setProducts] = useState([]);
@@ -415,9 +414,6 @@ export default function Dashboard() {
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
-  const isDesktop = useIsDesktop();
-  const sidebarWidth = sidebarCollapsed ? 'var(--sidebar-collapsed-width)' : 'var(--sidebar-width)';
-
   if (businessLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--color-background)' }}>
@@ -430,9 +426,7 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="panel-root min-h-screen" style={{ backgroundColor: 'var(--color-background)' }}>
-      <BusinessSidebar isCollapsed={sidebarCollapsed} onCollapsedChange={setSidebarCollapsed} />
-      <main className="panel-main min-h-screen w-full max-w-full min-w-0 overflow-x-hidden transition-all duration-200" style={{ marginLeft: isDesktop ? sidebarWidth : 0, transition: 'margin-left var(--transition-base)' }}>
+    <DashboardAppShell backgroundColor="var(--color-background)">
         {/* Header — respeta safe-area, hamburguesa alineado verticalmente */}
         <PanelHeader
           title={(
@@ -467,11 +461,11 @@ export default function Dashboard() {
           </div>
         </PanelHeader>
 
-        <div className="px-4 md:px-6 lg:pl-4 lg:pr-6 py-5 lg:py-6 page-enter pb-20 lg:pb-8 w-full max-w-full min-w-0" style={{ maxWidth: '1100px' }}>
+        <DashboardLayoutContent className="page-enter">
 
           {/* Banner: negocio sin configurar */}
           {!business && !businessLoading && (
-            <div className="mb-5 flex items-start gap-3 p-4 rounded-xl border slide-up" style={{ backgroundColor: 'rgba(124,58,237,0.05)', borderColor: 'rgba(124,58,237,0.2)' }}>
+            <div className="flex items-start gap-3 p-4 rounded-xl border slide-up" style={{ backgroundColor: 'rgba(124,58,237,0.05)', borderColor: 'rgba(124,58,237,0.2)' }}>
               <Icon name="AlertCircle" size={18} color="var(--color-primary)" />
               <div>
                 <p className="text-sm font-semibold" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>Configura tu negocio</p>
@@ -488,7 +482,7 @@ export default function Dashboard() {
 
           {/* Banner: plan expirado */}
           {(showExpiredBanner || isPlanExpired) && !dismissedExpiredBanner && (
-            <div className="mb-5 flex items-start gap-3 p-4 rounded-xl border" style={{ backgroundColor: 'rgba(239,68,68,0.06)', borderColor: 'rgba(239,68,68,0.25)' }}>
+            <div className="flex items-start gap-3 p-4 rounded-xl border" style={{ backgroundColor: 'rgba(239,68,68,0.06)', borderColor: 'rgba(239,68,68,0.25)' }}>
               <Icon name="AlertCircle" size={18} color="#dc2626" />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>Tu plan ha expirado</p>
@@ -503,7 +497,7 @@ export default function Dashboard() {
 
           {/* Banner: plan por vencer */}
           {isPaidPlan && planExpiresAt && !isPlanExpired && !planExpiringSoon && (
-            <div className="mb-5 flex items-center gap-3 p-3 rounded-xl border" style={{ backgroundColor: 'var(--color-muted)', borderColor: 'var(--color-border)' }}>
+            <div className="flex items-center gap-3 p-3 rounded-xl border" style={{ backgroundColor: 'var(--color-muted)', borderColor: 'var(--color-border)' }}>
               <Icon name="Calendar" size={16} color="var(--color-muted-foreground)" />
               <span className="text-sm" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-text-secondary)' }}>
                 Tu plan vence el: <strong>{new Date(planExpiresAt).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })}</strong>
@@ -522,7 +516,7 @@ export default function Dashboard() {
 
           {/* ── Bloque de alertas ── */}
           {alerts.length > 0 && (
-            <section className="mb-6">
+            <section>
               <div className="flex flex-col gap-2">
                 {alerts.map(alert => (
                   <div
@@ -548,7 +542,7 @@ export default function Dashboard() {
           )}
 
           {/* ── Métricas principales (Starter solo ve Total productos) ── */}
-          <section aria-label="Métricas del negocio" className="mb-6">
+          <section aria-label="Métricas del negocio">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 md:gap-4 lg:gap-5">
               {metricsToShow?.map((metric, idx) => (
                 <div key={metric.title} className="stagger-item min-w-0" style={metricsToShow.length === 1 ? { maxWidth: '320px' } : undefined}>
@@ -570,7 +564,7 @@ export default function Dashboard() {
 
           {/* ── Analíticas (solo Pro y Business) ── */}
           {!isStarterPlan && (
-            <section aria-label="Analíticas" className="mb-6">
+            <section aria-label="Analíticas">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 lg:gap-5">
                 <div className="stagger-item min-w-0"><OrdersByDayCard data={ordersByDay} loading={analyticsLoading} /></div>
                 <div className="stagger-item min-w-0"><TopProductsCard data={topProducts} loading={analyticsLoading} /></div>
@@ -585,7 +579,7 @@ export default function Dashboard() {
               <ActivityFeed orders={orders} loading={dataLoading} newOrderIds={newOrderIds} />
               {/* Productos recientes (solo en desktop debajo del feed; en móvil después de widgets) */}
               <section aria-label="Productos recientes" className="mt-5 lg:mt-6">
-                <div className="rounded-xl border p-4" style={{ backgroundColor: '#ffffff', borderColor: 'var(--color-border)' }}>
+                <div className="rounded-xl border p-5" style={{ backgroundColor: '#ffffff', borderColor: 'var(--color-border)' }}>
                   <div className="flex items-center justify-between mb-3">
                     <h3 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>Productos recientes</h3>
                     <button
@@ -644,22 +638,6 @@ export default function Dashboard() {
               <section aria-label="Acceso rápido">
                 <QuickAccessWidget catalogUrl={catalogUrl} businessName={business?.name || ''} businessPlanSlug={business?.planSlug} />
               </section>
-              <section aria-label="Prueba email">
-                <button
-                  type="button"
-                  onClick={handleSendTestEmail}
-                  disabled={sendingTestEmail}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-medium transition-opacity hover:opacity-90 disabled:opacity-60"
-                  style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}
-                >
-                  {sendingTestEmail ? (
-                    <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                  ) : (
-                    <Icon name="Mail" size={16} color="currentColor" />
-                  )}
-                  Enviar email de prueba
-                </button>
-              </section>
               {business?.id && (
                 <section aria-label="Vista previa del catálogo">
                   <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--color-border)', backgroundColor: '#f7f7f9' }}>
@@ -680,8 +658,8 @@ export default function Dashboard() {
               )}
             </div>
           </div>
-        </div>
-      </main>
+        </DashboardLayoutContent>
+      
 
       {copyToast && (
         <div className="fixed bottom-6 right-6 z-toast flex items-center gap-2.5 px-4 py-3 rounded-xl shadow-lg toast-enter" style={{ backgroundColor: 'var(--color-foreground)', color: '#FFFFFF', fontFamily: 'var(--font-caption)', fontSize: '0.875rem' }} role="status" aria-live="polite">
@@ -697,6 +675,6 @@ export default function Dashboard() {
           </div>
         ))}
       </div>
-    </div>
+    </DashboardAppShell>
   );
 }

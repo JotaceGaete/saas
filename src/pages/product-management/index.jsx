@@ -1,8 +1,8 @@
 import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import BusinessSidebar from "components/ui/BusinessSidebar";
 import PanelHeader from "components/ui/PanelHeader";
-import { useIsDesktop } from "hooks/useMediaQuery";
+import DashboardAppShell from "components/ui/DashboardAppShell";
+import DashboardLayoutContent from "components/ui/DashboardLayoutContent";
 import ProductFilters from "./components/ProductFilters";
 import ProductTable from "./components/ProductTable";
 import BulkActionBar from "./components/BulkActionBar";
@@ -20,7 +20,6 @@ export default function ProductManagement() {
   const toast = useToast();
   const { business, user, businessLoading, refreshBusiness } = useAuth();
   const guard = useConfirmedEmailGuard();
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -161,12 +160,8 @@ export default function ProductManagement() {
   }, [deleteDialog, selectedIds, toast]);
 
   const handleCancelDelete = useCallback(() => { setDeleteDialog({ open: false, isBulk: false, targetId: null }); }, []);
-  const isDesktop = useIsDesktop();
-  const sidebarWidth = sidebarCollapsed ? "var(--sidebar-collapsed-width)" : "var(--sidebar-width)";
   return (
-    <div className="panel-root min-h-screen" style={{ backgroundColor: 'var(--color-background)' }}>
-      <BusinessSidebar isCollapsed={sidebarCollapsed} onCollapsedChange={setSidebarCollapsed} />
-      <main className="panel-main min-h-screen w-full max-w-full min-w-0 overflow-x-hidden transition-all duration-200" style={{ marginLeft: isDesktop ? sidebarWidth : 0, transition: 'margin-left var(--transition-base)' }}>
+    <DashboardAppShell backgroundColor="var(--color-background)">
         <PanelHeader
           title={<h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Gestión de Productos</h1>}
           subtitle={<p className="text-xs hidden sm:block" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>{loading ? 'Cargando...' : `${stats?.total} productos · ${stats?.active} activos · ${stats?.inactive} inactivos`}</p>}
@@ -180,9 +175,9 @@ export default function ProductManagement() {
           </div>
         </PanelHeader>
 
-        <div className="px-4 md:px-6 lg:pl-4 lg:pr-8 py-6 max-w-screen-xl mx-auto page-enter pb-20 lg:pb-8 w-full max-w-full min-w-0">
+        <DashboardLayoutContent className="page-enter">
           {error && (
-            <div className="mb-4 flex items-center gap-2 p-3 rounded-lg border scale-in" style={{ backgroundColor: 'rgba(239,68,68,0.05)', borderColor: 'rgba(239,68,68,0.2)' }}>
+            <div className="flex items-center gap-2 p-3 rounded-lg border scale-in" style={{ backgroundColor: 'rgba(239,68,68,0.05)', borderColor: 'rgba(239,68,68,0.2)' }}>
               <Icon name="AlertCircle" size={16} color="var(--color-error)" />
               <span className="text-sm" style={{ color: 'var(--color-error)', fontFamily: 'var(--font-caption)' }}>{error}</span>
               <button onClick={loadProducts} className="ml-auto text-xs font-semibold underline transition-opacity hover:opacity-70" style={{ color: 'var(--color-error)' }}>Reintentar</button>
@@ -197,7 +192,7 @@ export default function ProductManagement() {
             </div>
           ) : (
             <>
-              <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <ProductStatsBar stats={stats} />
                 <button
                   type="button"
@@ -209,15 +204,15 @@ export default function ProductManagement() {
                   Agregar producto
                 </button>
               </div>
-              <div className="mb-5">
+              <div>
                 <ProductFilters searchQuery={searchQuery} onSearchChange={setSearchQuery} statusFilter={statusFilter} onStatusChange={setStatusFilter} categoryFilter={categoryFilter} onCategoryChange={setCategoryFilter} />
               </div>
-              {selectedIds?.length > 0 && (<div className="mb-4"><BulkActionBar selectedCount={selectedIds?.length} onDelete={handleBulkDelete} onDeselect={() => setSelectedIds([])} /></div>)}
+              {selectedIds?.length > 0 && (<div><BulkActionBar selectedCount={selectedIds?.length} onDelete={handleBulkDelete} onDeselect={() => setSelectedIds([])} /></div>)}
               <ProductTable products={filteredProducts} selectedIds={selectedIds} onSelectAll={handleSelectAll} onSelectOne={handleSelectOne} onToggleStatus={handleToggleStatus} onEdit={handleEdit} onDuplicate={handleDuplicate} onDeleteRequest={handleDeleteRequest} sortField={sortField} sortDir={sortDir} onSort={handleSort} />
             </>
           )}
-        </div>
-      </main>
+        </DashboardLayoutContent>
+      
       {deleteDialog?.open && (
         <DeleteConfirmDialog
           isOpen={deleteDialog?.open}
@@ -229,6 +224,6 @@ export default function ProductManagement() {
           onCancel={handleCancelDelete}
         />
       )}
-    </div>
+    </DashboardAppShell>
   );
 }

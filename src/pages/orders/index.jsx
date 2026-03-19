@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import BusinessSidebar from 'components/ui/BusinessSidebar';
-import { useIsDesktop } from 'hooks/useMediaQuery';
+import DashboardAppShell from 'components/ui/DashboardAppShell';
+import DashboardLayoutContent from 'components/ui/DashboardLayoutContent';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
 import { useConfirmedEmailGuard } from '../../hooks/useConfirmedEmailGuard';
@@ -384,15 +384,12 @@ export default function OrdersPage() {
   const { business, businessLoading } = useAuth();
   const toast = useToast();
   const guard = useConfirmedEmailGuard();
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [detailOrder, setDetailOrder] = useState(null);
 
-  const isDesktop = useIsDesktop();
-  const sidebarWidth = sidebarCollapsed ? 'var(--sidebar-collapsed-width)' : 'var(--sidebar-width)';
 
   const loadOrders = useCallback(async () => {
     if (!business?.id) { setLoading(false); return; }
@@ -471,15 +468,10 @@ export default function OrdersPage() {
   }
 
   return (
-    <div className="panel-root min-h-screen" style={{ backgroundColor: 'var(--color-background)' }}>
-      <BusinessSidebar isCollapsed={sidebarCollapsed} onCollapsedChange={setSidebarCollapsed} />
-      <main
-        className="panel-main min-h-screen w-full max-w-full min-w-0 overflow-x-hidden transition-all duration-200"
-        style={{ marginLeft: isDesktop ? sidebarWidth : 0, minHeight: '100vh', transition: 'margin-left var(--transition-base)' }}
-      >
-        <div className="w-full max-w-6xl mx-auto px-4 md:px-6 lg:pl-4 lg:pr-6 py-6 md:py-8 pb-20 lg:pb-8">
+    <DashboardAppShell backgroundColor="var(--color-background)">
+        <DashboardLayoutContent>
           {/* Page header */}
-          <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="flex items-center gap-3 mb-1">
               <div
                 className="w-9 h-9 rounded-xl flex items-center justify-center"
@@ -667,8 +659,8 @@ export default function OrdersPage() {
               orderShortId={orderShortId}
             />
           )}
-        </div>
-      </main>
-    </div>
+        </DashboardLayoutContent>
+      
+    </DashboardAppShell>
   );
 }

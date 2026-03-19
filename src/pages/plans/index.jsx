@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import BusinessSidebar from 'components/ui/BusinessSidebar';
 import PanelHeader from 'components/ui/PanelHeader';
-import { useIsDesktop } from 'hooks/useMediaQuery';
+import DashboardAppShell from 'components/ui/DashboardAppShell';
+import DashboardLayoutContent from 'components/ui/DashboardLayoutContent';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
 import { useConfirmedEmailGuard } from '../../hooks/useConfirmedEmailGuard';
@@ -20,14 +20,11 @@ export default function PlansPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { user, business, businessLoading, refreshBusiness, loading: authLoading, isAuthenticated } = useAuth();
   const guard = useConfirmedEmailGuard();
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [paymentMessage, setPaymentMessage] = useState(null);
   const [paymentReturnStatus, setPaymentReturnStatus] = useState(null); // 'success' | 'failure' | 'pending' al volver del checkout
   const [loadingPlanSlug, setLoadingPlanSlug] = useState(null);
   const [preview, setPreview] = useState(null);
   const [previewPlanSlug, setPreviewPlanSlug] = useState(null);
-  const isDesktop = useIsDesktop();
-  const sidebarWidth = sidebarCollapsed ? 'var(--sidebar-collapsed-width)' : 'var(--sidebar-width)';
   const currentPlan = business?.planSlug || 'starter';
   const hostnameCountryCode = getCountryCode();
   const businessCountryCode = business?.countryCode ?? null;
@@ -421,22 +418,17 @@ export default function PlansPage() {
   }
 
   return (
-    <div className="panel-root min-h-screen" style={{ backgroundColor: 'var(--color-background)' }}>
-      <BusinessSidebar isCollapsed={sidebarCollapsed} onCollapsedChange={setSidebarCollapsed} />
-      <main
-        className="panel-main min-h-screen w-full max-w-full min-w-0 overflow-x-hidden transition-all duration-200"
-        style={{ marginLeft: isDesktop ? sidebarWidth : 0, minHeight: '100vh', transition: 'margin-left var(--transition-base)' }}
-      >
+    <DashboardAppShell backgroundColor="var(--color-background)">
         <PanelHeader
           title={<h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Plan y facturación</h1>}
           subtitle={<p className="text-xs hidden sm:block mt-0.5" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Gestiona tu plan, límites y renovación</p>}
         />
-        <div className="w-full min-w-0 max-w-5xl px-4 md:px-6 lg:px-8 py-6 md:py-8 pb-20 lg:pb-8">
+        <DashboardLayoutContent>
 
           {/* Tu plan */}
           {business?.id && (
             <div
-              className="mb-6 rounded-xl border p-5 flex flex-wrap items-center justify-between gap-4"
+              className="rounded-xl border p-5 flex flex-wrap items-center justify-between gap-4"
               style={{ backgroundColor: 'rgba(124,58,237,0.06)', borderColor: 'var(--color-primary)' }}
             >
               <div>
@@ -483,7 +475,7 @@ export default function PlansPage() {
 
           {paymentMessage && (
             <div
-              className="mb-6 rounded-xl border px-4 py-3 flex items-center gap-3"
+              className="rounded-xl border px-4 py-3 flex items-center gap-3"
               style={{
                 backgroundColor: paymentMessage.type === 'success' ? 'rgba(16,185,129,0.1)' : paymentMessage.type === 'error' ? 'rgba(239,68,68,0.1)' : 'var(--color-muted)',
                 borderColor: paymentMessage.type === 'success' ? '#10b981' : paymentMessage.type === 'error' ? '#ef4444' : 'var(--color-border)',
@@ -496,7 +488,7 @@ export default function PlansPage() {
           )}
 
           {preview && previewPlanSlug && (
-            <div className="mb-6 rounded-xl border p-5" style={{ backgroundColor: 'var(--color-muted)', borderColor: 'var(--color-primary)' }}>
+            <div className="rounded-xl border p-5" style={{ backgroundColor: 'var(--color-muted)', borderColor: 'var(--color-primary)' }}>
               <h3 className="text-sm font-semibold mb-3" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>Resumen antes de pagar</h3>
               <ul className="space-y-1.5 text-sm mb-4" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
                 <li>Plan actual: <strong>{getPlanLabel(preview.currentPlanSlug)}</strong></li>
@@ -547,7 +539,7 @@ export default function PlansPage() {
             const daysLeft = Math.ceil((trialExp - now) / (1000 * 60 * 60 * 24));
             return (
               <div
-                className="mb-6 rounded-xl border px-5 py-4 flex items-start gap-3"
+                className="rounded-xl border px-5 py-4 flex items-start gap-3"
                 style={{ backgroundColor: 'rgba(245,158,11,0.08)', borderColor: '#F59E0B' }}
               >
                 <span className="text-xl leading-none mt-0.5">✨</span>
@@ -694,7 +686,7 @@ export default function PlansPage() {
             })}
           </div>
 
-          <div className="mt-8 rounded-xl border p-4" style={{ backgroundColor: 'var(--color-muted)', borderColor: 'var(--color-border)' }}>
+          <div className="mt-8 rounded-xl border p-5" style={{ backgroundColor: 'var(--color-muted)', borderColor: 'var(--color-border)' }}>
             <p className="text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
               {paymentProvider === 'mercado_pago'
                 ? 'En Chile los planes de pago se procesan con Mercado Pago. Tras el pago, tu plan se activa automáticamente.'
@@ -703,8 +695,8 @@ export default function PlansPage() {
                   : 'Pago con tarjeta disponible próximamente en tu país.'}
             </p>
           </div>
-        </div>
-      </main>
-    </div>
+        </DashboardLayoutContent>
+      
+    </DashboardAppShell>
   );
 }

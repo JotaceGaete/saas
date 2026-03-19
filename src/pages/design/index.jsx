@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import BusinessSidebar from 'components/ui/BusinessSidebar';
 import PanelHeader from 'components/ui/PanelHeader';
-import { useIsDesktop } from 'hooks/useMediaQuery';
+import DashboardAppShell from 'components/ui/DashboardAppShell';
+import DashboardLayoutContent from 'components/ui/DashboardLayoutContent';
 import Icon from 'components/AppIcon';
 import DesignCustomization from '../business-configuration/components/DesignCustomization';
 import MobilePreviewPanel from '../business-configuration/components/MobilePreviewPanel';
@@ -50,15 +50,12 @@ function Toast({ message, type, onClose }) {
 export default function DesignPage() {
   const navigate = useNavigate();
   const { user, business: ctxBusiness, businessLoading, refreshBusiness } = useAuth();
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [business, setBusiness] = useState(null);
   const [products, setProducts] = useState([]);
   const [design, setDesign] = useState(defaultDesign);
   const [isSaving, setIsSaving] = useState(false);
   const [toast, setToast] = useState(null);
   const defaultCountryLabels = getCountryLabels();
-  const isDesktop = useIsDesktop();
-  const sidebarWidth = sidebarCollapsed ? 'var(--sidebar-collapsed-width)' : 'var(--sidebar-width)';
 
   const loading = businessLoading && !ctxBusiness;
 
@@ -148,18 +145,13 @@ export default function DesignPage() {
   }
 
   return (
-    <div className="panel-root min-h-screen" style={{ backgroundColor: '#f7f7f9' }}>
-      <BusinessSidebar isCollapsed={sidebarCollapsed} onCollapsedChange={setSidebarCollapsed} />
-      <main
-        className="panel-main min-h-screen w-full max-w-full min-w-0 overflow-x-hidden transition-all"
-        style={{ marginLeft: isDesktop ? sidebarWidth : 0 }}
-      >
+    <DashboardAppShell backgroundColor="#f7f7f9">
         <PanelHeader
           title={<h1 className="text-lg font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>Diseño</h1>}
           subtitle={<p className="text-xs hidden sm:block" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Todo lo visual vive aquí.</p>}
         />
 
-        <div className="w-full max-w-6xl mx-auto px-4 py-6 lg:py-8 min-h-[calc(100vh-108px)] pb-24 lg:pb-8">
+        <DashboardLayoutContent className="min-h-[calc(100vh-108px)]" innerClassName="space-y-6">
           <div className="flex flex-col lg:grid lg:grid-cols-[1fr_minmax(340px,380px)] lg:gap-8 xl:gap-10 lg:items-start">
             {/* Columna izquierda: opciones de diseño (scroll con la página en desktop) */}
             <div className="min-w-0 w-full py-6 lg:py-8">
@@ -192,9 +184,9 @@ export default function DesignPage() {
               />
             </div>
           </div>
-        </div>
-      </main>
+        </DashboardLayoutContent>
+      
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
-    </div>
+    </DashboardAppShell>
   );
 }
