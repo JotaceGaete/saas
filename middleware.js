@@ -8,6 +8,13 @@
 
 const CATALOG_PATH = /^\/(catalogo|catalog)\/([^/]+)\/?$/;
 const OG_FALLBACK_IMAGE = 'https://media.gong.cl/test/preview.jpg';
+const BOT_UA =
+  /(whatsapp|whatsappbot|facebookexternalhit|facebot|meta-externalagent|meta-externalfetcher|twitterbot|telegrambot|slackbot|discordbot|linkedinbot|googlebot|bingbot)/i;
+
+function isBot(userAgent) {
+  const ua = String(userAgent || '').trim();
+  return BOT_UA.test(ua);
+}
 
 function getSupabaseConfig() {
   const url = (typeof process !== 'undefined' && (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL)) || '';
@@ -98,6 +105,21 @@ export default async function middleware(request) {
   if (!match) return;
 
   const slug = match[2];
+  const ua = request.headers.get('user-agent') || '';
+  const bot = isBot(ua);
+
+  // DEBUG temporal para validar previsualizaciones OG.
+  console.log('[catalog-og-middleware] request', {
+    path: url.pathname,
+    slug,
+    userAgent: ua,
+    isBot: bot,
+  });
+
+  if (!bot) {
+    console.log('[catalog-og-middleware] skip non-bot request', { slug });
+    return;
+  }
 
   const { url: supabaseUrl, key: supabaseKey } = getSupabaseConfig();
   const origin = url.origin;
@@ -133,6 +155,11 @@ export default async function middleware(request) {
   } catch (_) {
     // Fallback silencioso: siempre responder HTML OG.
   }
+
+  console.log('[catalog-og-middleware] bot branch response', {
+    slug,
+    imageUrl: ogImage,
+  });
 
   const html = buildOgHtml({
     title: `Catálogo de ${storeName}`,
