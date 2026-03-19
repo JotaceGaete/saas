@@ -112,6 +112,34 @@ const generateSlug = async (name) => {
   return slug;
 };
 
+async function triggerOgImageGeneration(businessId) {
+  if (!businessId) return;
+  try {
+    const { data: { session } } = await supabase?.auth?.getSession();
+    const token = session?.access_token;
+    if (!token) return;
+
+    const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
+    const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
+    if (!supabaseUrl || !anonKey) return;
+
+    const endpoint = `${supabaseUrl}/functions/v1/generate-og-image`;
+    fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        apikey: anonKey,
+      },
+      body: JSON.stringify({ businessId }),
+    }).catch((err) => {
+      console.warn('[waBusinessService] triggerOgImageGeneration failed:', err?.message || err);
+    });
+  } catch (err) {
+    console.warn('[waBusinessService] triggerOgImageGeneration error:', err?.message || err);
+  }
+}
+
 const mapBusinessFromDb = (row) => {
   const designSettings = row?.design_settings || null;
   const rubroRow = Array.isArray(row?.wa_rubros) ? row.wa_rubros?.[0] : row?.wa_rubros;
@@ -277,6 +305,7 @@ export const createBusiness = async (businessData) => {
       scheduled_change_at: trialEnd,
     })?.select()?.single();
   if (error) return { data: null, error };
+  triggerOgImageGeneration(data?.id);
   return { data: mapBusinessFromDb(data), error: null };
 };
 
@@ -307,6 +336,7 @@ export const createBusinessForUser = async (userId, businessData) => {
       scheduled_change_at: trialEnd,
     })?.select()?.single();
   if (error) return { data: null, error };
+  triggerOgImageGeneration(data?.id);
   return { data: mapBusinessFromDb(data), error: null };
 };
 
@@ -352,6 +382,7 @@ export async function updateBusiness(businessId, updates) {
     return { data: null, error };
   }
   console.log('[waBusinessService] updateBusiness success: updated id =', data?.id);
+  triggerOgImageGeneration(data?.id);
   return { data: mapBusinessFromDb(data), error: null };
 }
 

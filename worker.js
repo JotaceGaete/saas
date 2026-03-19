@@ -31,6 +31,7 @@ function toAbsoluteUrl(url, origin) {
 function getOgImageUrl(row, origin) {
   const ds = parseDesignSettingsSafe(row?.design_settings);
   const candidates = [
+    row?.og_image_url,
     row?.cover_image_url,
     ds?.coverImageUrl,
     ds?.headerImageUrl,
@@ -123,7 +124,7 @@ export default {
     try {
       if (supabaseUrl && supabaseKey) {
         const res = await fetch(
-          `${supabaseUrl}/rest/v1/wa_businesses?slug=eq.${encodeURIComponent(slug)}&is_active=eq.true&select=name,description,slug,logo_url,cover_image_url,design_settings`,
+          `${supabaseUrl}/rest/v1/wa_businesses?slug=eq.${encodeURIComponent(slug)}&is_active=eq.true&select=name,description,slug,og_image_url,logo_url,cover_image_url,design_settings`,
           {
             headers: {
               Accept: 'application/json',
