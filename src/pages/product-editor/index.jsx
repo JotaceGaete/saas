@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import Icon from 'components/AppIcon';
-import BusinessSidebar from 'components/ui/BusinessSidebar';
+import DashboardAppShell from 'components/ui/DashboardAppShell';
+import DashboardLayoutContent from 'components/ui/DashboardLayoutContent';
 import PanelHeader from 'components/ui/PanelHeader';
-import { useIsDesktop } from 'hooks/useMediaQuery';
 import ImageUploadSection from './components/ImageUploadSection';
 import ProductFormFields from './components/ProductFormFields';
 import VariantManager from './components/VariantManager';
@@ -37,7 +37,6 @@ export default function ProductEditor() {
   const isEditing = !!productId;
   const { business, user, businessLoading, refreshBusiness } = useAuth();
   const refreshAttempted = React.useRef(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [formData, setFormData] = useState({ ...EMPTY_FORM });
   const [images, setImages] = useState([]);
   const [variants, setVariants] = useState([]);
@@ -311,9 +310,6 @@ export default function ProductEditor() {
   };
 
   const handleCancel = () => navigate('/product-management');
-  const isDesktop = useIsDesktop();
-  const sidebarWidth = sidebarCollapsed ? 64 : 240;
-
   if (pageLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--color-background)' }}>
@@ -326,13 +322,7 @@ export default function ProductEditor() {
   }
 
   return (
-    <div className="panel-root min-h-screen" style={{ backgroundColor: 'var(--color-background)' }}>
-      <BusinessSidebar isCollapsed={sidebarCollapsed} onCollapsedChange={setSidebarCollapsed} />
-      <div
-        role="main"
-        className="panel-main flex flex-col min-h-screen w-full max-w-full min-w-0 overflow-x-hidden"
-        style={{ marginLeft: isDesktop ? sidebarWidth : 0, transition: 'margin-left var(--transition-base)' }}
-      >
+    <DashboardAppShell backgroundColor="var(--color-background)">
         {/* Header — respeta safe-area */}
         <PanelHeader
           leftAction={(
@@ -391,8 +381,7 @@ export default function ProductEditor() {
         </PanelHeader>
 
         {/* Main content */}
-        <div className="flex-1 px-4 md:px-6 lg:pl-4 lg:pr-8 py-6 pb-20 lg:pb-0 page-enter">
-          <div className="max-w-6xl mx-auto">
+        <DashboardLayoutContent className="page-enter lg:pb-0">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
 
               {/* ── LEFT COLUMN: Form ── */}
@@ -557,8 +546,7 @@ export default function ProductEditor() {
               </div>
 
             </div>
-          </div>
-        </div>
+        </DashboardLayoutContent>
 
         <SaveBar
           isEditing={isEditing}
@@ -569,7 +557,6 @@ export default function ProductEditor() {
           onSaveAndNew={() => handleSave(true)}
           onCancel={handleCancel}
         />
-      </div>
-    </div>
+    </DashboardAppShell>
   );
 }
