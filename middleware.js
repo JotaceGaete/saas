@@ -6,9 +6,6 @@
  * Requires in Vercel: SUPABASE_URL (or VITE_SUPABASE_URL), SUPABASE_ANON_KEY (or VITE_SUPABASE_ANON_KEY).
  */
 
-const BOT_UA =
-  /whatsapp|facebookexternalhit|facebot|twitterbot|telegram|slurp|linkedinbot|embed|googlebot|bingbot|duckduckbot|pinterest|slackbot|discordbot/i;
-
 const CATALOG_PATH = /^\/(catalogo|catalog)\/([^/]+)\/?$/;
 const OG_FALLBACK_IMAGE = 'https://media.gong.cl/test/preview.jpg';
 
@@ -83,9 +80,15 @@ function buildOgHtml(payload) {
   <meta name="twitter:description" content="${escaped(description)}" />
   <meta name="twitter:image" content="${escaped(ogImage)}" />
   <link rel="canonical" href="${escaped(canonicalUrl)}" />
-  <meta http-equiv="refresh" content="0;url=${escaped(canonicalUrl)}" />
 </head>
-<body><p>Redirigiendo al catálogo...</p></body>
+<body>
+  <script>
+    window.location.href = "${escaped(canonicalUrl)}";
+  </script>
+  <noscript>
+    <p>Redirigiendo al catálogo...</p>
+  </noscript>
+</body>
 </html>`;
 }
 
@@ -95,55 +98,56 @@ export default async function middleware(request) {
   if (!match) return;
 
   const slug = match[2];
-  const ua = request.headers.get('user-agent') || '';
-  if (!BOT_UA.test(ua)) return;
 
   const { url: supabaseUrl, key: supabaseKey } = getSupabaseConfig();
-  if (!supabaseUrl || !supabaseKey) {
-    return;
-  }
+  const origin = url.origin;
+  const canonicalUrl = `${origin}/catalogo/${slug}`;
 
+  let storeName = 'Catálogo';
+  let catalogDescription = 'Revisa productos y haz tu pedido por WhatsApp.';
+  let ogImage = OG_FALLBACK_IMAGE;
   try {
-    const res = await fetch(
-      `${supabaseUrl}/rest/v1/wa_businesses?slug=eq.${encodeURIComponent(slug)}&is_active=eq.true&select=name,slug,logo_url,cover_image_url,design_settings`,
-      {
-        headers: {
-          Accept: 'application/json',
-          apikey: supabaseKey,
-          Authorization: `Bearer ${supabaseKey}`,
-        },
+    if (supabaseUrl && supabaseKey) {
+      const res = await fetch(
+        `${supabaseUrl}/rest/v1/wa_businesses?slug=eq.${encodeURIComponent(slug)}&is_active=eq.true&select=name,description,slug,logo_url,cover_image_url,design_settings`,
+        {
+          headers: {
+            Accept: 'application/json',
+            apikey: supabaseKey,
+            Authorization: `Bearer ${supabaseKey}`,
+          },
+        }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        const row = Array.isArray(data) ? data[0] : data;
+        if (row) {
+          storeName = row?.name || storeName;
+          if (typeof row?.description === 'string' && row.description.trim()) {
+            catalogDescription = row.description.trim();
+          }
+          ogImage = getOgImageUrl(row, origin);
+        }
       }
-    );
-    if (!res.ok) return;
-
-    const data = await res.json();
-    const row = Array.isArray(data) ? data[0] : data;
-    if (!row || !row.name) return;
-
-    const origin = url.origin;
-    const storeName = row.name || 'Catálogo';
-    const catalogTitle = `Catálogo de ${storeName}`;
-    const catalogDescription = 'Revisa productos y haz tu pedido por WhatsApp.';
-    const canonicalUrl = `${origin}/catalogo/${slug}`;
-    const ogImage = getOgImageUrl(row, origin);
-
-    const html = buildOgHtml({
-      title: catalogTitle,
-      description: catalogDescription,
-      ogImage,
-      canonicalUrl,
-    });
-
-    return new Response(html, {
-      status: 200,
-      headers: {
-        'Content-Type': 'text/html; charset=utf-8',
-        'Cache-Control': 'public, max-age=300, s-maxage=300',
-      },
-    });
+    }
   } catch (_) {
-    return;
+    // Fallback silencioso: siempre responder HTML OG.
   }
+
+  const html = buildOgHtml({
+    title: `Catálogo de ${storeName}`,
+    description: catalogDescription,
+    ogImage,
+    canonicalUrl,
+  });
+
+  return new Response(html, {
+    status: 200,
+    headers: {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'no-store',
+    },
+  });
 }
 
 export const config = {
