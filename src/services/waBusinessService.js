@@ -124,6 +124,12 @@ async function triggerOgImageGeneration(businessId) {
     return;
   }
 
+  const safeToken = (t) => {
+    if (!t || typeof t !== 'string') return null;
+    if (!t.includes('.')) return '(non-jwt)';
+    return `${t.slice(0, 10)}...${t.slice(-8)}`;
+  };
+
   try {
     // Fire-and-forget: no await, so UI won't be blocked.
     const sessionPromise = supabase?.auth?.getSession?.();
@@ -132,21 +138,34 @@ async function triggerOgImageGeneration(businessId) {
       return;
     }
 
-    sessionPromise
-      .then(({ data: sessionData }) => {
-        const token = sessionData?.session?.access_token;
-        if (!token) {
-          console.warn('[waBusinessService] No auth token for OG generation');
+    sessionPromise.then(({ data: sessionData }) => {
+      const session = sessionData?.session ?? null;
+      const token = session?.access_token ?? null;
+      console.log('[waBusinessService] OG session snapshot', {
+        hasSession: !!session,
+        hasRefreshToken: !!session?.refresh_token,
+        tokenPreview: safeToken(token),
+        tokenLength: token?.length ?? 0,
+      });
+
+      const tokenLooksValid = typeof token === 'string' && token.includes('.');
+      const proceedWithToken = (resolvedToken) => {
+        if (!resolvedToken) {
+          console.warn('[waBusinessService] OG generation: no token after refresh attempt');
           return;
         }
 
-        console.log('[waBusinessService] calling generate-og-image', { endpoint: `${supabaseUrl}/functions/v1/generate-og-image`, businessId });
+        console.log('[waBusinessService] calling generate-og-image', {
+          endpoint: `${supabaseUrl}/functions/v1/generate-og-image`,
+          businessId,
+          tokenPreview: safeToken(resolvedToken),
+        });
 
         return fetch(`${supabaseUrl}/functions/v1/generate-og-image`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
+            Authorization: `Bearer ${resolvedToken}`,
             apikey: anonKey,
           },
           body: JSON.stringify({ businessId }),
@@ -171,6 +190,33 @@ async function triggerOgImageGeneration(businessId) {
           .catch((err) => {
             console.error('[waBusinessService] OG generation fetch failed', { message: err?.message || err });
           });
+      };
+
+      if (tokenLooksValid) return proceedWithToken(token);
+
+      // Token ausente/invalid -> intentar refresh
+      if (typeof supabase?.auth?.refreshSession !== 'function') {
+        console.warn('[waBusinessService] OG generation: refreshSession not available');
+        return proceedWithToken(token);
+      }
+
+      console.warn('[waBusinessService] OG generation: token invalid/absent, attempting refreshSession');
+      return supabase.auth.refreshSession()
+        .then(({ data: refreshData }) => {
+          const refreshedSession = refreshData?.session ?? null;
+          const refreshedToken = refreshedSession?.access_token ?? null;
+          console.log('[waBusinessService] OG refresh snapshot', {
+            hasRefreshedSession: !!refreshedSession,
+            hasRefreshToken: !!refreshedSession?.refresh_token,
+            tokenPreview: safeToken(refreshedToken),
+            tokenLength: refreshedToken?.length ?? 0,
+          });
+          return proceedWithToken(refreshedToken);
+        })
+        .catch((err) => {
+          console.error('[waBusinessService] OG refreshSession failed', { message: err?.message || err });
+          return proceedWithToken(token);
+        });
       })
       .catch((err) => {
         console.error('[waBusinessService] triggerOgImageGeneration failed to get session', { message: err?.message || err });
@@ -457,12 +503,27 @@ async function uploadToR2(file, { type, businessId, productId }) {
   const { data: { session } } = await supabase.auth.getSession();
   const { data: userData, error: userError } = await supabase.auth.getUser();
   console.log('[uploadToR2] 2. Sesión', { hasSession: !!session, hasToken: !!session?.access_token, hasUser: !!userData?.user, userError: userError?.message ?? null });
-  if (!session?.access_token || !userData?.user) {
-    console.error('[uploadToR2] Abort: no autenticado');
-    return { url: null, error: { message: 'Usuario no autenticado o sesión inválida' } };
+  let accessToken = session?.access_token ?? null;
+  if (!accessToken || !accessToken.includes('.') || !userData?.user) {
+    console.warn('[uploadToR2] Abort: token inválido o no user, intentando refreshSession');
+    const { data: refreshData } = await supabase.auth.refreshSession().catch(() => ({}));
+    const refreshedSession = refreshData?.session ?? null;
+    accessToken = refreshedSession?.access_token ?? null;
+    const { data: refreshedUserData, error: refreshedUserErr } = await supabase.auth.getUser().catch(() => ({}));
+    console.log('[uploadToR2] refresh snapshot', {
+      hasRefreshedSession: !!refreshedSession,
+      tokenPreview: accessToken ? `${accessToken.slice(0, 10)}...${accessToken.slice(-8)}` : null,
+      hasRefreshedUser: !!refreshedUserData?.user,
+      userError: refreshedUserErr?.message ?? null,
+    });
+    if (!accessToken || !accessToken.includes('.') || !refreshedUserData?.user) {
+      console.error('[uploadToR2] Abort: no autenticado (post-refresh)');
+      return { url: null, error: { message: 'Usuario no autenticado o sesión inválida' } };
+    }
+    userData.user = refreshedUserData.user;
   }
 
-  const accessToken = String(session.access_token).trim();
+  accessToken = String(accessToken).trim();
   const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
   const fileName = file?.name || 'upload';
   const contentType = file?.type || 'image/jpeg';

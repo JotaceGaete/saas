@@ -63,7 +63,20 @@ export const AuthProvider = ({ children }) => {
   const authStateHandlers = {
     onChange: (event, session) => {
       if (typeof window !== 'undefined') {
-        console.log('[Auth] state change:', event ?? 'init', session ? { user: session.user?.id } : 'no session')
+        const safeTokenPreview = (t) => {
+          if (!t || typeof t !== 'string') return null
+          if (!t.includes('.')) return '(non-jwt)'
+          return `${t.slice(0, 10)}...${t.slice(-8)}`
+        }
+
+        console.log('[Auth] state change:', event ?? 'init', session
+          ? {
+              user: session.user?.id,
+              hasAccessToken: !!session?.access_token,
+              tokenPreview: safeTokenPreview(session?.access_token),
+              hasRefreshToken: !!session?.refresh_token,
+            }
+          : 'no session')
       }
       if (event === 'SIGNED_OUT') {
         if (typeof window !== 'undefined') {

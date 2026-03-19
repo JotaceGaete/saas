@@ -249,19 +249,20 @@ Deno.serve(async (req) => {
     const logoDataUri = await loadLogoDataUri(logoUrl);
 
     const svg = buildOgSvg(storeName, logoDataUri);
-    let ResvgCtor: typeof import("npm:@resvg/resvg-js@2.6.2").Resvg | null = null;
+    let ResvgCtor: unknown | null = null;
     try {
       const mod = await import("npm:@resvg/resvg-js@2.6.2");
-      ResvgCtor = mod.Resvg ?? null;
+      // Resvg puede exportarse como named o default según empaquetado.
+      ResvgCtor = (mod as any).Resvg ?? (mod as any).default ?? null;
     } catch (err) {
       console.error("[generate-og-image] Resvg import failed", err);
       return jsonResponse({ error: "Resvg import failed", message: err instanceof Error ? err.message : String(err) }, 500, corsHeaders);
     }
-    if (!ResvgCtor) {
+    if (!ResvgCtor || typeof (ResvgCtor as any) !== "function") {
       return jsonResponse({ error: "Resvg not available" }, 500, corsHeaders);
     }
 
-    const pngBytes = new ResvgCtor(svg, {
+    const pngBytes = new (ResvgCtor as any)(svg, {
       fitTo: { mode: "width", value: WIDTH },
     }).render().asPng();
 
@@ -282,27 +283,27 @@ Deno.serve(async (req) => {
     }
 
     const key = `businesses/${businessId}/og/og-${Date.now()}.png`;
-    let S3ClientCtor: typeof import("npm:@aws-sdk/client-s3@3.700.0").S3Client | null = null;
-    let PutObjectCommandCtor: typeof import("npm:@aws-sdk/client-s3@3.700.0").PutObjectCommand | null = null;
+    let S3ClientCtor: unknown | null = null;
+    let PutObjectCommandCtor: unknown | null = null;
     try {
       const mod = await import("npm:@aws-sdk/client-s3@3.700.0");
-      S3ClientCtor = mod.S3Client ?? null;
-      PutObjectCommandCtor = mod.PutObjectCommand ?? null;
+      S3ClientCtor = (mod as any).S3Client ?? (mod as any).default ?? null;
+      PutObjectCommandCtor = (mod as any).PutObjectCommand ?? null;
     } catch (err) {
       console.error("[generate-og-image] AWS S3 import failed", err);
       return jsonResponse({ error: "S3 import failed", message: err instanceof Error ? err.message : String(err) }, 500, corsHeaders);
     }
-    if (!S3ClientCtor || !PutObjectCommandCtor) {
+    if (!S3ClientCtor || typeof (S3ClientCtor as any) !== "function" || !PutObjectCommandCtor) {
       return jsonResponse({ error: "S3 not available" }, 500, corsHeaders);
     }
 
-    const s3 = new S3ClientCtor({
+    const s3 = new (S3ClientCtor as any)({
       region: "auto",
       endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
       credentials: { accessKeyId, secretAccessKey },
     });
 
-    await s3.send(new PutObjectCommandCtor({
+    await s3.send(new (PutObjectCommandCtor as any)({
       Bucket: bucket,
       Key: key,
       Body: pngBytes,
