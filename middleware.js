@@ -10,6 +10,7 @@ const BOT_UA =
   /whatsapp|facebookexternalhit|facebot|twitterbot|telegram|slurp|linkedinbot|embed|googlebot|bingbot|duckduckbot|pinterest|slackbot|discordbot/i;
 
 const CATALOG_PATH = /^\/(catalogo|catalog)\/([^/]+)\/?$/;
+const OG_FALLBACK_IMAGE = 'https://media.gong.cl/test/preview.jpg';
 
 function getSupabaseConfig() {
   const url = (typeof process !== 'undefined' && (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL)) || '';
@@ -17,14 +18,42 @@ function getSupabaseConfig() {
   return { url: url.replace(/\/$/, ''), key };
 }
 
+function parseDesignSettingsSafe(value) {
+  if (!value) return {};
+  if (typeof value === 'object' && !Array.isArray(value)) return value;
+  if (typeof value !== 'string') return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function toAbsoluteUrl(url, origin) {
+  if (!url || typeof url !== 'string') return '';
+  const trimmed = url.trim();
+  if (!trimmed) return '';
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return trimmed;
+  return `${origin}${trimmed.startsWith('/') ? '' : '/'}${trimmed}`;
+}
+
 function getOgImageUrl(row, origin) {
-  const ds = row?.design_settings || {};
-  const logo = row?.logo_url || ds?.logoUrl || null;
-  const cover = row?.cover_image_url || ds?.headerImageUrl || ds?.coverImageUrl || null;
-  if (logo && logo.trim()) return logo.startsWith('http') ? logo : `${origin}${logo.startsWith('/') ? '' : '/'}${logo}`;
-  if (cover && cover.trim()) return cover.startsWith('http') ? cover : `${origin}${cover.startsWith('/') ? '' : '/'}${cover}`;
-  const name = (row?.name || 'Catálogo').replace(/[^a-zA-Z0-9\s]/g, '').trim() || 'Catalogo';
-  return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=7C3AED&color=fff&size=1200&format=png`;
+  const ds = parseDesignSettingsSafe(row?.design_settings);
+  const candidates = [
+    row?.cover_image_url,
+    ds?.coverImageUrl,
+    ds?.headerImageUrl,
+    row?.logo_url,
+    ds?.logoUrl,
+  ];
+
+  for (const candidate of candidates) {
+    const absolute = toAbsoluteUrl(candidate, origin);
+    if (absolute) return absolute;
+  }
+
+  return OG_FALLBACK_IMAGE;
 }
 
 function buildOgHtml(payload) {

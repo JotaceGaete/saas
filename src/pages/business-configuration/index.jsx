@@ -223,6 +223,13 @@ export default function BusinessConfiguration() {
       country: form?.country || defaultCountryLabels.countryName,
       currency: form?.currency || defaultCountryLabels.currency,
       rubroId: form?.rubroId || null,
+      logoUrl: (design?.logoUrl ?? business?.logoUrl ?? '').trim() || null,
+      coverImageUrl: (
+        design?.coverImageUrl ??
+        design?.headerImageUrl ??
+        business?.coverImageUrl ??
+        ''
+      ).trim() || null,
       designSettings: design,
       orderMessageTemplate,
       bankName: bankForm?.bankName,
