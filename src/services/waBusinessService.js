@@ -113,32 +113,58 @@ const generateSlug = async (name) => {
 };
 
 async function triggerOgImageGeneration(businessId) {
+  console.log('[waBusinessService] triggerOgImageGeneration called', { businessId });
+
   if (!businessId) return;
+  const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
+  const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
+
+  if (!supabaseUrl || !anonKey) {
+    console.warn('[waBusinessService] triggerOgImageGeneration missing config', { supabaseUrlPresent: !!supabaseUrl, anonKeyPresent: !!anonKey });
+    return;
+  }
+
   try {
-    const { data: { session } } = await supabase?.auth?.getSession();
-    const token = session?.access_token;
-    if (!token) return;
+    // Fire-and-forget: no await, so UI won't be blocked.
+    supabase?.auth?.getSession()
+      .then(({ data: sessionData }) => {
+        const token = sessionData?.session?.access_token;
+        if (!token) {
+          console.warn('[waBusinessService] No auth token for OG generation');
+          return;
+        }
 
-    const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
-    const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
-    if (!supabaseUrl || !anonKey) return;
+        console.log('[waBusinessService] calling generate-og-image', { endpoint: `${supabaseUrl}/functions/v1/generate-og-image`, businessId });
 
-    const endpoint = `${supabaseUrl}/functions/v1/generate-og-image`;
-    const res = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-        apikey: anonKey,
-      },
-      body: JSON.stringify({ businessId }),
-    });
-    const bodyText = await res.text().catch(() => '');
-    if (!res.ok) {
-      console.warn('[waBusinessService] generate-og-image HTTP', res.status, bodyText?.slice(0, 500));
-    }
+        return fetch(`${supabaseUrl}/functions/v1/generate-og-image`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+            apikey: anonKey,
+          },
+          body: JSON.stringify({ businessId }),
+        })
+          .then((res) => {
+            const status = res.status;
+            // Intentamos leer JSON; si no viene JSON igual dejamos rastro por consola.
+            res.json()
+              .then((json) => {
+                console.log('[waBusinessService] OG generation result', { status, json });
+              })
+              .catch(() => {
+                console.log('[waBusinessService] OG generation result (non-JSON)', { status });
+              });
+          })
+          .catch((err) => {
+            console.error('[waBusinessService] OG generation fetch failed', { message: err?.message || err });
+          });
+      })
+      .catch((err) => {
+        console.error('[waBusinessService] triggerOgImageGeneration failed to get session', { message: err?.message || err });
+      });
   } catch (err) {
-    console.warn('[waBusinessService] triggerOgImageGeneration error:', err?.message || err);
+    console.error('[waBusinessService] triggerOgImageGeneration error', { message: err?.message || err });
   }
 }
 
@@ -308,7 +334,12 @@ export const createBusiness = async (businessData) => {
       scheduled_change_at: trialEnd,
     })?.select()?.single();
   if (error) return { data: null, error };
-  triggerOgImageGeneration(data?.id);
+  if (data?.id) {
+    console.log('[waBusinessService] createBusiness: triggerOgImageGeneration', { businessId: data?.id });
+    triggerOgImageGeneration(data?.id);
+  } else {
+    console.warn('[waBusinessService] createBusiness: no business id returned, skipping OG generation');
+  }
   return { data: mapBusinessFromDb(data), error: null };
 };
 
@@ -339,7 +370,12 @@ export const createBusinessForUser = async (userId, businessData) => {
       scheduled_change_at: trialEnd,
     })?.select()?.single();
   if (error) return { data: null, error };
-  triggerOgImageGeneration(data?.id);
+  if (data?.id) {
+    console.log('[waBusinessService] createBusinessForUser: triggerOgImageGeneration', { businessId: data?.id });
+    triggerOgImageGeneration(data?.id);
+  } else {
+    console.warn('[waBusinessService] createBusinessForUser: no business id returned, skipping OG generation');
+  }
   return { data: mapBusinessFromDb(data), error: null };
 };
 
@@ -385,7 +421,12 @@ export async function updateBusiness(businessId, updates) {
     return { data: null, error };
   }
   console.log('[waBusinessService] updateBusiness success: updated id =', data?.id);
-  triggerOgImageGeneration(data?.id);
+  if (data?.id) {
+    console.log('[waBusinessService] updateBusiness: triggerOgImageGeneration', { businessId: data?.id });
+    triggerOgImageGeneration(data?.id);
+  } else {
+    console.warn('[waBusinessService] updateBusiness: no business id returned, skipping OG generation');
+  }
   return { data: mapBusinessFromDb(data), error: null };
 }
 
