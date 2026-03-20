@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
 import { getBusinessBySlug, getPublicProducts, getCategoriesByRubroId, recordCatalogVisit, recordCatalogWhatsAppClick, createOrder } from '../../services/waBusinessService';
@@ -154,14 +154,8 @@ function CatalogInner({ slug }) {
     return [...withProducts, ...(hasOtros ? ['Otros'] : [])];
   }, [useCategories, categoryNames, products]);
 
-  const showTodosButton = visibleCategories.length > 1;
-
-  // Si solo hay una categoría visible, seleccionarla para que el único botón quede activo
-  useEffect(() => {
-    if (visibleCategories.length === 1 && selectedCategory === 'all') {
-      setSelectedCategory(visibleCategories[0]);
-    }
-  }, [visibleCategories.length, visibleCategories[0], selectedCategory]);
+  /** "Todos" siempre visible si hay chips de categoría (incluye el caso de una sola categoría, p. ej. solo Otros). */
+  const showTodosButton = visibleCategories.length > 0;
 
   // Filtered products (por búsqueda, categoría seleccionada y precio)
   const filteredProducts = useMemo(() => {
@@ -201,6 +195,22 @@ function CatalogInner({ slug }) {
     setSelectedCategory('all');
     setPriceRange([0, maxPrice]);
   };
+
+  const categoryScrollRef = useRef(null);
+  const hasCategoryBar = useCategories && visibleCategories.length > 0;
+
+  useEffect(() => {
+    const el = categoryScrollRef.current;
+    if (!el) return;
+    const onWheel = (e) => {
+      if (el.scrollWidth <= el.clientWidth + 1) return;
+      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+      e.preventDefault();
+      el.scrollLeft += e.deltaY;
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [hasCategoryBar, visibleCategories.length]);
 
   const buildSingleWhatsAppMessage = (product) => {
     const storeName = business?.name || 'la tienda';
@@ -569,59 +579,82 @@ function CatalogInner({ slug }) {
       {/* ── Filtros (sticky) — en móvil pegan bajo el header; en desktop top-0 ── */}
       <div className="bg-white border-b border-gray-100 sticky z-30 shadow-sm top-[calc(56px+var(--safe-area-top))] md:top-0">
         <div className="max-w-5xl mx-auto px-4 py-2 space-y-2">
-          {/* Category filter bar: solo categorías con al menos un producto; "Todos" solo si hay más de una categoría */}
-          <div className="flex items-center gap-2">
-            {useCategories && visibleCategories.length > 0 && (
-              <div className="flex items-center gap-2 overflow-x-auto overflow-y-hidden flex-1 scrollbar-hide pb-0.5 min-w-0 snap-x snap-mandatory [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" style={{ WebkitOverflowScrolling: 'touch' }}>
-                {showTodosButton && (
-                  <button
-                    onClick={() => setSelectedCategory('all')}
-                    className={`flex-shrink-0 snap-start px-4 py-1.5 rounded-full text-xs font-bold border transition-all ${
-                      selectedCategory === 'all' ? 'text-white border-transparent shadow-sm' : 'border-gray-200 text-gray-600 bg-white hover:bg-gray-50'
-                    }`}
-                    style={selectedCategory === 'all' ? { background: `linear-gradient(135deg, ${primaryColor}, ${primaryColorDark})` } : {}}
-                  >
-                    Todos
-                  </button>
-                )}
-                {visibleCategories.map((cat) => (
-                  <button
-                    key={cat}
-                    onClick={() => setSelectedCategory(cat)}
-                    className={`flex-shrink-0 snap-start px-4 py-1.5 rounded-full text-xs font-bold border transition-all ${
-                      selectedCategory === cat
-                        ? 'text-white border-transparent shadow-sm'
-                        : 'border-gray-200 text-gray-600 bg-white hover:bg-gray-50'
-                    }`}
-                    style={selectedCategory === cat ? { background: `linear-gradient(135deg, ${primaryColor}, ${primaryColorDark})` } : {}}
-                  >
-                    {cat}
-                  </button>
-                ))}
+          {/* Categorías: scroll horizontal usable; Precio en fila aparte en móvil para no tapar chips */}
+          <div
+            className={
+              hasCategoryBar
+                ? 'flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:gap-2'
+                : 'flex items-center gap-2'
+            }
+          >
+            {hasCategoryBar && (
+              <div className="relative min-w-0 w-full sm:flex-1 sm:basis-0 sm:min-w-0">
+                <div
+                  ref={categoryScrollRef}
+                  className="flex flex-nowrap items-center gap-2 overflow-x-auto overflow-y-hidden overscroll-x-contain touch-pan-x pb-0.5 pl-2 pr-2 sm:pl-3 sm:pr-3 min-w-0 w-full scrollbar-hide snap-x snap-mandatory [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                  style={{
+                    WebkitOverflowScrolling: 'touch',
+                    maskImage: 'linear-gradient(to right, transparent 0px, black 12px, black calc(100% - 12px), transparent 100%)',
+                    WebkitMaskImage: 'linear-gradient(to right, transparent 0px, black 12px, black calc(100% - 12px), transparent 100%)',
+                  }}
+                >
+                  {showTodosButton && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCategory('all')}
+                      className={`flex-shrink-0 snap-start px-4 py-1.5 rounded-full text-xs font-bold border transition-all ${
+                        selectedCategory === 'all' ? 'text-white border-transparent shadow-sm' : 'border-gray-200 text-gray-600 bg-white hover:bg-gray-50'
+                      }`}
+                      style={selectedCategory === 'all' ? { background: `linear-gradient(135deg, ${primaryColor}, ${primaryColorDark})` } : {}}
+                    >
+                      Todos
+                    </button>
+                  )}
+                  {visibleCategories.map((cat) => (
+                    <button
+                      type="button"
+                      key={cat}
+                      onClick={() => setSelectedCategory(cat)}
+                      className={`flex-shrink-0 snap-start px-4 py-1.5 rounded-full text-xs font-bold border transition-all ${
+                        selectedCategory === cat
+                          ? 'text-white border-transparent shadow-sm'
+                          : 'border-gray-200 text-gray-600 bg-white hover:bg-gray-50'
+                      }`}
+                      style={selectedCategory === cat ? { background: `linear-gradient(135deg, ${primaryColor}, ${primaryColorDark})` } : {}}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
 
-            {/* Filters toggle */}
-            <button
-              onClick={() => setFiltersOpen(prev => !prev)}
-              className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${
-                filtersOpen || (priceRange?.[0] > 0 || priceRange?.[1] < maxPrice)
-                  ? 'border-gray-200 text-gray-600 bg-white hover:bg-gray-50' :'border-gray-200 text-gray-600 bg-white hover:bg-gray-50'
-              }`}
-              style={filtersOpen || (priceRange?.[0] > 0 || priceRange?.[1] < maxPrice) ? { borderColor: primaryColor, color: primaryColorDark, backgroundColor: theme.primaryRgba(0.08) } : {}}
+            <div
+              className={`flex flex-shrink-0 items-center gap-2 ${hasCategoryBar ? 'self-end sm:self-auto' : ''}`}
             >
-              <Icon name="SlidersHorizontal" size={13} color={filtersOpen || (priceRange?.[0] > 0 || priceRange?.[1] < maxPrice) ? primaryColorDark : '#6B7280'} />
-              Precio
-            </button>
-
-            {hasActiveFilters && (
               <button
-                onClick={clearFilters}
-                className="flex-shrink-0 text-xs text-gray-400 hover:text-red-500 transition-colors"
+                type="button"
+                onClick={() => setFiltersOpen(prev => !prev)}
+                className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${
+                  filtersOpen || (priceRange?.[0] > 0 || priceRange?.[1] < maxPrice)
+                    ? 'border-gray-200 text-gray-600 bg-white hover:bg-gray-50' :'border-gray-200 text-gray-600 bg-white hover:bg-gray-50'
+                }`}
+                style={filtersOpen || (priceRange?.[0] > 0 || priceRange?.[1] < maxPrice) ? { borderColor: primaryColor, color: primaryColorDark, backgroundColor: theme.primaryRgba(0.08) } : {}}
               >
-                <Icon name="X" size={14} color="currentColor" />
+                <Icon name="SlidersHorizontal" size={13} color={filtersOpen || (priceRange?.[0] > 0 || priceRange?.[1] < maxPrice) ? primaryColorDark : '#6B7280'} />
+                Precio
               </button>
-            )}
+
+              {hasActiveFilters && (
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="flex-shrink-0 text-xs text-gray-400 hover:text-red-500 transition-colors"
+                >
+                  <Icon name="X" size={14} color="currentColor" />
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Expanded price range filter */}
