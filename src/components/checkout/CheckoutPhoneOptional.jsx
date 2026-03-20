@@ -30,7 +30,7 @@ export default function CheckoutPhoneOptional({ digits, onDigitsChange, variant 
       className={variant === 'catalog' ? 'text-xs text-gray-500 mt-1.5' : 'text-xs mt-1.5'}
       style={variant === 'order' ? { color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' } : { fontFamily: 'var(--font-caption)' }}
     >
-      Lo usaremos solo si necesitamos contactarte
+      Lo usaremos solo si necesitamos contactarte. Incluye el código de país (válido en cualquier país).
     </p>
   );
 
@@ -96,7 +96,7 @@ export default function CheckoutPhoneOptional({ digits, onDigitsChange, variant 
           autoComplete="tel"
           value={display}
           onChange={handleChange}
-          placeholder="56 912 345 678"
+          placeholder="p. ej. 1 234 567 8900"
           className="flex-1 min-w-0 px-3 py-2.5 text-sm border-0 outline-none focus:ring-0 bg-transparent"
           style={{ color: 'var(--color-foreground)' }}
         />

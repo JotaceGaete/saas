@@ -11,8 +11,8 @@ export function extractPhoneDigitsOnly(raw) {
 }
 
 /**
- * Formato suave con espacios mientras escribe (agrupa de a 3 desde la derecha del número completo).
- * No valida país; no bloquea al usuario.
+ * Formato suave con espacios mientras escribe (agrupa de a 3 desde la derecha).
+ * Aplicable a cualquier país (E.164); no infiere país ni bloquea al usuario.
  */
 export function formatPhoneDigitsForDisplay(digits) {
   const d = String(digits ?? '').replace(/\D/g, '');
@@ -22,7 +22,7 @@ export function formatPhoneDigitsForDisplay(digits) {
 
 /**
  * Teléfono opcional en checkout: null si vacío o si hay menos de 6 dígitos (sin mostrar error).
- * Devuelve "+5691234..." compacto para `customer_phone` y mensajes.
+ * Devuelve "+<dígitos>" compacto (internacional) para `customer_phone` y mensajes.
  */
 export function normalizeOptionalCustomerPhone(raw) {
   const d = String(raw ?? '')
