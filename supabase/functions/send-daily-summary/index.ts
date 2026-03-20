@@ -56,23 +56,42 @@ Deno.serve(async (req) => {
   const dayStartIso = dayStart.toISOString();
   const dayEndIso = dayEnd.toISOString();
   const dateStr = dayStart.toISOString().slice(0, 10);
+  const qStart = `"${dayStartIso.replace(/"/g, '\\"')}"`;
+  const qEnd = `"${dayEndIso.replace(/"/g, '\\"')}"`;
 
   const admin = createClient(supabaseUrl, serviceKey);
 
   const { data: ordersWithBusiness, error: ordersErr } = await admin
     .from('wa_orders')
-    .select('id, business_id, total_amount, paid_at')
+    .select('id, business_id, total_amount, paid_at, updated_at')
     .eq('payment_status', 'pagado')
-    .not('paid_at', 'is', null)
-    .gte('paid_at', dayStartIso)
-    .lt('paid_at', dayEndIso);
+    .or(
+      `and(paid_at.is.null,updated_at.gte.${qStart},updated_at.lt.${qEnd}),and(paid_at.gte.${qStart},paid_at.lt.${qEnd})`,
+    );
 
   if (ordersErr) {
     console.error('[send-daily-summary] orders query error:', ordersErr.message);
     return jsonResponse({ error: 'Failed to fetch orders', detail: ordersErr.message }, 500);
   }
 
-  const businessIds = [...new Set((ordersWithBusiness ?? []).map((o) => o.business_id).filter(Boolean))] as string[];
+  const revenueInstant = (o: { paid_at?: string | null; updated_at?: string | null }) => {
+    if (o.paid_at) {
+      const t = new Date(o.paid_at);
+      if (!Number.isNaN(t.getTime())) return t;
+    }
+    if (o.updated_at) {
+      const t = new Date(o.updated_at);
+      if (!Number.isNaN(t.getTime())) return t;
+    }
+    return null;
+  };
+
+  const ordersInDay = (ordersWithBusiness ?? []).filter((o) => {
+    const t = revenueInstant(o);
+    return t !== null && t >= dayStart && t < dayEnd;
+  });
+
+  const businessIds = [...new Set(ordersInDay.map((o) => o.business_id).filter(Boolean))] as string[];
   if (businessIds.length === 0) {
     console.log('[send-daily-summary] no activity for', dateStr);
     return jsonResponse({ sent: 0, message: 'No businesses with paid orders that day' }, 200);
@@ -115,7 +134,7 @@ Deno.serve(async (req) => {
       continue;
     }
 
-    const bizOrders = (ordersWithBusiness ?? []).filter((o) => o.business_id === biz.id);
+    const bizOrders = ordersInDay.filter((o) => o.business_id === biz.id);
     const orderCount = bizOrders.length;
     const totalSold = bizOrders.reduce((s, o) => s + (Number(o.total_amount) || 0), 0);
 

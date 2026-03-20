@@ -40,6 +40,35 @@ function toIsoDate(date = new Date()) {
   return date.toISOString().slice(0, 10);
 }
 
+/** PostgREST `.or()` con timestamps ISO (comillas por los puntos). */
+function quoteIsoForOr(iso: string) {
+  return `"${iso.replace(/"/g, '\\"')}"`;
+}
+
+/** Ingreso: `paid_at` o respaldo `updated_at` si `paid_at` es null (legacy / sin trigger). */
+function effectiveRevenueTime(row: { paid_at?: string | null; updated_at?: string | null }) {
+  if (row.paid_at) {
+    const t = new Date(row.paid_at);
+    if (!Number.isNaN(t.getTime())) return t;
+  }
+  if (row.updated_at) {
+    const t = new Date(row.updated_at);
+    if (!Number.isNaN(t.getTime())) return t;
+  }
+  return null;
+}
+
+function filterPaidInRange(
+  rows: Array<{ paid_at?: string | null; updated_at?: string | null; total_amount?: number | string }> | null,
+  lo: Date,
+  hi: Date,
+) {
+  return (rows || []).filter((r) => {
+    const t = effectiveRevenueTime(r);
+    return t !== null && t >= lo && t <= hi;
+  });
+}
+
 function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -93,7 +122,10 @@ async function collectMetrics(adminClient: ReturnType<typeof createClient>, busi
       .eq("wa_orders.business_id", businessId),
   ]);
 
-  /** Ingresos: filas ya filtradas por `payment_status = pagado` y `paid_at` en rango (fuente de verdad). */
+  const paidToday = filterPaidInRange(ordersPaidTodayRes.data, startToday, endToday);
+  const paid7d = filterPaidInRange(ordersPaid7dRes.data, start7d, now);
+  const paidMonth = filterPaidInRange(ordersPaidMonthRes.data, startMonth, now);
+
   const sumRevenueRows = (rows: Array<{ total_amount?: number | string }>) =>
     (rows || []).reduce((sum, row) => sum + (Number(row?.total_amount) || 0), 0);
 
@@ -127,13 +159,13 @@ async function collectMetrics(adminClient: ReturnType<typeof createClient>, busi
       ordersToday: ordersPlacedTodayRes.count ?? 0,
       orders7d: ordersPlaced7dRes.count ?? 0,
       ordersMonth: ordersPlacedMonthRes.count ?? 0,
-      paidOrdersToday: ordersPaidTodayRes.data?.length ?? 0,
-      paidOrders7d: ordersPaid7dRes.data?.length ?? 0,
-      paidOrdersMonth: ordersPaidMonthRes.data?.length ?? 0,
+      paidOrdersToday: paidToday.length,
+      paidOrders7d: paid7d.length,
+      paidOrdersMonth: paidMonth.length,
     },
     revenue: {
-      today: sumRevenueRows(ordersPaidTodayRes.data ?? []),
-      month: sumRevenueRows(ordersPaidMonthRes.data ?? []),
+      today: sumRevenueRows(paidToday),
+      month: sumRevenueRows(paidMonth),
     },
     products: {
       active: productsActiveRes.count ?? 0,

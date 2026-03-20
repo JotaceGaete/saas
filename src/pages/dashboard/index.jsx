@@ -147,6 +147,8 @@ export default function Dashboard() {
       ]);
       setOrdersByDay(dayRes?.data || []);
       setTopProducts(topRes?.data || []);
+      if (revRes?.error) console.error('[Dashboard] getMonthlyRevenue:', revRes.error?.message || revRes.error);
+      if (funnelRes?.error) console.error('[Dashboard] getConversionFunnelStats:', funnelRes.error?.message || funnelRes.error);
       setMonthlyRevenue(revRes?.data || null);
       setVisitStats(visitRes?.data ?? null);
       setConversionFunnel(funnelRes?.data ?? null);
@@ -231,6 +233,17 @@ export default function Dashboard() {
     if (!business?.id) return;
 
     const channelName = `wa_orders_business_${business?.id}`;
+    const onOrderUpdated = async () => {
+      const [{ data: ordersData }, pendingRes] = await Promise.all([
+        getOrders(business?.id),
+        getPendingOrdersCount(business?.id),
+      ]);
+      if (ordersData) setOrders(ordersData);
+      setPendingOrdersCount(pendingRes?.data ?? 0);
+      loadAnalytics();
+      loadPlanUsage();
+    };
+
     const channel = supabase?.channel(channelName)?.on(
         'postgres_changes',
         {
@@ -274,6 +287,17 @@ export default function Dashboard() {
             { id: toastId, customerName: mappedOrder?.customerName, createdAt: mappedOrder?.createdAt, read: false },
             ...prev,
           ]);
+        }
+      )?.on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'wa_orders',
+          filter: `business_id=eq.${business?.id}`,
+        },
+        () => {
+          void onOrderUpdated();
         }
       )?.subscribe((status) => {
         if (status === 'SUBSCRIBED') setRealtimeStatus('connected');

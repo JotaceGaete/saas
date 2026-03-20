@@ -293,6 +293,27 @@ const mapProductFromDb = (row) => {
 const ORDER_STATUS_VALID = ['pedido', 'en_preparacion', 'enviado', 'entregado', 'cancelado'];
 const PAYMENT_STATUS_VALID = ['pendiente', 'pagado', 'anulado'];
 
+/** ISO entre comillas para filtros `.or()` de PostgREST (evita romper el parser con `.` en timestamps). */
+function quoteIsoForOrFilter(iso) {
+  return `"${String(iso).replace(/"/g, '\\"')}"`;
+}
+
+/**
+ * Instante de reconocimiento de ingreso: `paid_at` si existe; si no, `updated_at` (respaldo legacy / trigger no aplicado).
+ * Tras migración + trigger, los pagados deberían tener siempre `paid_at`.
+ */
+function orderRevenueTimestamp(row) {
+  if (row?.paid_at) {
+    const t = new Date(row.paid_at);
+    if (!Number.isNaN(t.getTime())) return t;
+  }
+  if (row?.updated_at) {
+    const t = new Date(row.updated_at);
+    if (!Number.isNaN(t.getTime())) return t;
+  }
+  return null;
+}
+
 const mapOrderFromDb = (row) => ({
   id: row?.id,
   businessId: row?.business_id,
@@ -931,8 +952,8 @@ export const getTopProducts = async (businessId, limit = 5) => {
 
 /**
  * Ingresos agregados del mes y del día actual.
- * - Solo pedidos `payment_status = 'pagado'` con `paid_at` definido (fuente de verdad en BD; trigger `wa_orders_set_paid_at`).
- * - Comparaciones de rangos día/mes en hora local del navegador (igual que antes).
+ * - Pedidos `payment_status = 'pagado'`; fecha de ingreso = `paid_at` o, si falta, `updated_at` (hasta backfill/trigger en BD).
+ * - Comparaciones de rangos día/mes en hora local del navegador.
  */
 export const getMonthlyRevenue = async (businessId) => {
   const now = new Date();
@@ -945,13 +966,13 @@ export const getMonthlyRevenue = async (businessId) => {
   const endOfPrevMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
   const fetchSince = new Date(now.getFullYear() - 1, now.getMonth(), 1, 0, 0, 0, 0);
   const fetchSinceIso = fetchSince.toISOString();
+  const q = quoteIsoForOrFilter(fetchSinceIso);
   const { data, error } = await supabase
     ?.from('wa_orders')
-    ?.select('total_amount, paid_at')
+    ?.select('total_amount, paid_at, updated_at')
     ?.eq('business_id', businessId)
     ?.eq('payment_status', 'pagado')
-    ?.not('paid_at', 'is', null)
-    ?.gte('paid_at', fetchSinceIso);
+    ?.or(`and(paid_at.is.null,updated_at.gte.${q}),paid_at.gte.${q}`);
   if (error) return { data: null, error };
 
   let total = 0;
@@ -961,8 +982,8 @@ export const getMonthlyRevenue = async (businessId) => {
   const rows = data || [];
   rows.forEach((row) => {
     const amount = parseFloat(row?.total_amount) || 0;
-    const at = row?.paid_at ? new Date(row.paid_at) : null;
-    if (!at || Number.isNaN(at.getTime())) return;
+    const at = orderRevenueTimestamp(row);
+    if (!at) return;
 
     if (at >= startOfMonth && at <= now) total += amount;
     if (at >= startOfToday && at <= endOfToday) todayTotal += amount;
@@ -971,8 +992,8 @@ export const getMonthlyRevenue = async (businessId) => {
   });
 
   const currentMonthOrders = rows.filter((row) => {
-    const at = row?.paid_at ? new Date(row.paid_at) : null;
-    return !!at && !Number.isNaN(at.getTime()) && at >= startOfMonth && at <= now;
+    const at = orderRevenueTimestamp(row);
+    return !!at && at >= startOfMonth && at <= now;
   });
   const count = currentMonthOrders.length;
   const avgTicket = count > 0 ? Math.round(total / count) : 0;
@@ -1108,6 +1129,12 @@ export const getConversionFunnelStats = async (businessId, range = '7d') => {
   const endIso = end.toISOString();
   const prevStartIso = prevStart.toISOString();
   const prevEndIso = prevEnd.toISOString();
+  const sq = quoteIsoForOrFilter(startIso);
+  const endQ = quoteIsoForOrFilter(endIso);
+  const psq = quoteIsoForOrFilter(prevStartIso);
+  const peq = quoteIsoForOrFilter(prevEndIso);
+  const paidOrInRange = (s, e) =>
+    `and(paid_at.is.null,updated_at.gte.${s},updated_at.lte.${e}),and(paid_at.gte.${s},paid_at.lte.${e})`;
 
   const [visitsRes, clicksRes, ordersRes, paidRes, prevVisitsRes, prevClicksRes, prevOrdersRes, prevPaidRes] = await Promise.all([
     supabase
@@ -1130,12 +1157,10 @@ export const getConversionFunnelStats = async (businessId, range = '7d') => {
       ?.lte('created_at', endIso),
     supabase
       ?.from('wa_orders')
-      ?.select('id, total_amount')
+      ?.select('id, total_amount, paid_at, updated_at')
       ?.eq('business_id', businessId)
       ?.eq('payment_status', 'pagado')
-      ?.not('paid_at', 'is', null)
-      ?.gte('paid_at', startIso)
-      ?.lte('paid_at', endIso),
+      ?.or(paidOrInRange(sq, endQ)),
     supabase
       ?.from('wa_catalog_visits')
       ?.select('id', { count: 'exact', head: true })
@@ -1156,12 +1181,10 @@ export const getConversionFunnelStats = async (businessId, range = '7d') => {
       ?.lte('created_at', prevEndIso),
     supabase
       ?.from('wa_orders')
-      ?.select('id, total_amount')
+      ?.select('id, total_amount, paid_at, updated_at')
       ?.eq('business_id', businessId)
       ?.eq('payment_status', 'pagado')
-      ?.not('paid_at', 'is', null)
-      ?.gte('paid_at', prevStartIso)
-      ?.lte('paid_at', prevEndIso),
+      ?.or(paidOrInRange(psq, peq)),
   ]);
 
   if (visitsRes?.error) return { data: null, error: visitsRes.error };
@@ -1180,8 +1203,23 @@ export const getConversionFunnelStats = async (businessId, range = '7d') => {
     ? (prevClicksRes?.error?.code === '42P01' ? 0 : 0)
     : (prevClicksRes?.count ?? 0);
 
-  const currentBase = buildFunnelBase(visits, clicksWhatsapp, ordersRes?.data || [], paidRes?.data || []);
-  const previousBase = buildFunnelBase(prevVisits, prevClicksWhatsapp, prevOrdersRes?.data || [], prevPaidRes?.data || []);
+  const paidInPeriod = (rows, rangeStart, rangeEnd) =>
+    (rows || []).filter((row) => {
+      const t = orderRevenueTimestamp(row);
+      return t && t >= rangeStart && t <= rangeEnd;
+    });
+  const currentBase = buildFunnelBase(
+    visits,
+    clicksWhatsapp,
+    ordersRes?.data || [],
+    paidInPeriod(paidRes?.data, start, end),
+  );
+  const previousBase = buildFunnelBase(
+    prevVisits,
+    prevClicksWhatsapp,
+    prevOrdersRes?.data || [],
+    paidInPeriod(prevPaidRes?.data, prevStart, prevEnd),
+  );
 
   return {
     data: {
@@ -1247,15 +1285,22 @@ export const getDashboardAiInsights = async (businessId) => {
 export const getBusinessOrderStats = async (businessId) => {
   if (!businessId) return { data: null, error: null };
   const now = new Date();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+  const startOfMonthDate = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+  const startOfMonthIso = startOfMonthDate.toISOString();
   const sevenDaysAgo = new Date(now);
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
   const thirtyDaysAgo = new Date(now);
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  const qm = quoteIsoForOrFilter(startOfMonthIso);
 
   const [allRes, paidMonthRes, byStatusRes] = await Promise.all([
     supabase?.from('wa_orders')?.select('id, created_at, order_status, payment_status, total_amount')?.eq('business_id', businessId),
-    supabase?.from('wa_orders')?.select('total_amount')?.eq('business_id', businessId)?.eq('payment_status', 'pagado')?.not('paid_at', 'is', null)?.gte('paid_at', startOfMonth),
+    supabase
+      ?.from('wa_orders')
+      ?.select('total_amount, paid_at, updated_at')
+      ?.eq('business_id', businessId)
+      ?.eq('payment_status', 'pagado')
+      ?.or(`and(paid_at.is.null,updated_at.gte.${qm}),paid_at.gte.${qm}`),
     supabase?.from('wa_orders')?.select('order_status')?.eq('business_id', businessId),
   ]);
 
@@ -1264,7 +1309,11 @@ export const getBusinessOrderStats = async (businessId) => {
   const totalOrders = orders.length;
   const last7 = orders.filter(o => new Date(o?.created_at) >= sevenDaysAgo).length;
   const last30 = orders.filter(o => new Date(o?.created_at) >= thirtyDaysAgo).length;
-  const monthlyRevenue = (paidMonthRes?.data || []).reduce((s, r) => s + (parseFloat(r?.total_amount) || 0), 0);
+  const monthlyRevenue = (paidMonthRes?.data || []).reduce((s, r) => {
+    const t = orderRevenueTimestamp(r);
+    if (!t || t < startOfMonthDate || t > now) return s;
+    return s + (parseFloat(r?.total_amount) || 0);
+  }, 0);
   const byStatus = {};
   (byStatusRes?.data || []).forEach(r => {
     const st = r?.order_status || 'pedido';
