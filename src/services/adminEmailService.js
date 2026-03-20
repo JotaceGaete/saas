@@ -33,6 +33,20 @@ async function getSessionToken() {
   return session?.access_token ?? null;
 }
 
+/** Extrae mensaje legible del JSON de la Edge Function / Resend */
+function parseEdgeFunctionError(body) {
+  if (!body || typeof body !== 'object') return 'Error desconocido';
+  if (typeof body.error === 'string' && body.error.trim()) return body.error.trim();
+  if (body.error && typeof body.error === 'object' && body.error.message) return String(body.error.message);
+  const d = body.details;
+  if (d && typeof d === 'object') {
+    if (typeof d.message === 'string') return d.message;
+    if (Array.isArray(d.errors) && d.errors[0]?.message) return String(d.errors[0].message);
+  }
+  if (typeof d === 'string' && d.trim()) return d.trim();
+  return 'Error al enviar el correo';
+}
+
 /**
  * Preview HTML renderizado en servidor (solo admin; valida JWT en Edge Function).
  */
@@ -57,7 +71,7 @@ export async function fetchAdminEmailPreview(templateKey, dataOverrides = {}) {
       }),
     });
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) return { data: null, error: body?.error || { message: res.statusText } };
+    if (!res.ok) return { data: null, error: { message: parseEdgeFunctionError(body), raw: body } };
     return {
       data: {
         subject: body?.subject ?? '',
@@ -98,7 +112,7 @@ export async function sendAdminEmailTest(templateKey, toEmail, dataOverrides = {
       }),
     });
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) return { data: null, error: body?.error || { message: res.statusText } };
+    if (!res.ok) return { data: null, error: { message: parseEdgeFunctionError(body), raw: body, status: res.status } };
     return { data: body, error: null };
   } catch (err) {
     return { data: null, error: { message: err?.message || 'Network error' } };

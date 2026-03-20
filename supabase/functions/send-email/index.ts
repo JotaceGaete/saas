@@ -308,7 +308,8 @@ async function logAdminTest(
 async function verifyAdmin(
   supabaseUrl: string,
   anonKey: string,
-  authHeader: string
+  authHeader: string,
+  serviceKey?: string
 ): Promise<{ ok: true; userId: string } | { ok: false; status: number; message: string }> {
   const h = (authHeader || '').trim();
   if (!h.toLowerCase().startsWith('bearer ')) {
@@ -325,10 +326,30 @@ async function verifyAdmin(
   if (rpcErr) {
     console.warn('[send-email] wa_is_admin rpc error:', rpcErr.message);
   }
-  if (isAdmin === true) {
+  const rpcSaysAdmin = isAdmin === true || isAdmin === 't' || String(isAdmin).toLowerCase() === 'true';
+  if (!rpcErr && rpcSaysAdmin) {
     return { ok: true, userId: user.id };
   }
-  return { ok: false, status: 403, message: 'Forbidden' };
+
+  // Fallback: RPC no expuesto / sin GRANT / PostgREST — validar rol con service role
+  const sk = (serviceKey ?? '').trim();
+  if (sk) {
+    try {
+      const adminClient = createClient(supabaseUrl, sk);
+      const { data: row, error: adminErr } = await adminClient.auth.admin.getUserById(user.id);
+      if (!adminErr && row?.user) {
+        const role = row.user.app_metadata?.role ?? row.user.user_metadata?.role;
+        if (role === 'admin') {
+          return { ok: true, userId: user.id };
+        }
+      }
+    } catch (e) {
+      console.warn('[send-email] admin getUserById fallback failed:', e);
+    }
+  }
+
+  const hint = rpcErr?.message ? ` (RPC: ${rpcErr.message})` : '';
+  return { ok: false, status: 403, message: `Forbidden${hint}` };
 }
 
 Deno.serve(async (req) => {
@@ -357,7 +378,7 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: 'Server configuration error' }, 500);
     }
     const authHeader = req.headers.get('authorization') ?? '';
-    const admin = await verifyAdmin(supabaseUrl, anonKey, authHeader);
+    const admin = await verifyAdmin(supabaseUrl, anonKey, authHeader, serviceKey);
     if (!admin.ok) {
       return jsonResponse({ error: admin.message }, admin.status);
     }
@@ -419,7 +440,8 @@ Deno.serve(async (req) => {
       }
 
       if (!res.ok) {
-        const message = (resData?.message as string) || (resData?.name as string) || 'Failed to send email';
+        const message = (resData?.message as string) || (resData?.name as string) || resText?.slice(0, 200) || 'Failed to send email';
+        console.error('[send-email] admin_send_test Resend error:', { status: res.status, message, resData });
         if (supabase) {
           await logAdminTest(supabase, {
             adminUserId: admin.userId,
@@ -434,6 +456,7 @@ Deno.serve(async (req) => {
       }
 
       const providerId = (resData?.id as string) || null;
+      console.log('[send-email] admin_send_test sent', { to, providerId, subject: subject?.slice(0, 60) });
       if (supabase) {
         await logAdminTest(supabase, {
           adminUserId: admin.userId,
@@ -443,7 +466,7 @@ Deno.serve(async (req) => {
           status: 'sent',
         });
       }
-      return jsonResponse({ success: true, id: providerId, type: emailType }, 200);
+      return jsonResponse({ success: true, id: providerId, type: emailType, message: 'Queued by provider; check inbox and spam.' }, 200);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unknown error';
       if (supabase) {

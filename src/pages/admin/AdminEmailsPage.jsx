@@ -93,9 +93,20 @@ export default function AdminEmailsPage() {
     const res = await sendAdminEmailTest(templateKey, testEmail);
     setSendLoading(false);
     if (res.error) {
-      setSendMessage({ type: 'error', text: res.error?.message || 'Error al enviar' });
+      const extra = res.error?.raw?.details;
+      const detailStr = extra && typeof extra === 'object'
+        ? (extra.message || (Array.isArray(extra.errors) ? extra.errors.map((e) => e?.message).filter(Boolean).join(' · ') : ''))
+        : '';
+      const full = [res.error?.message || 'Error al enviar', detailStr].filter(Boolean).join(' — ');
+      setSendMessage({ type: 'error', text: full });
     } else {
-      setSendMessage({ type: 'ok', text: 'Correo de prueba enviado.' });
+      const id = res.data?.id;
+      setSendMessage({
+        type: 'ok',
+        text: id
+          ? `Resend aceptó el envío (id: ${id}). Puede tardar 1–2 min. Revisa spam y la carpeta Promociones.`
+          : 'Envío registrado. Si no ves el correo, revisa spam y la configuración de Resend (dominio remitente).',
+      });
       loadLogs();
     }
   };
@@ -202,6 +213,15 @@ export default function AdminEmailsPage() {
             <h2 className="text-sm font-bold mb-3" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>
               Enviar prueba
             </h2>
+            <div className="mb-4 p-3 rounded-lg text-xs space-y-1.5" style={{ backgroundColor: 'rgba(124,58,237,0.06)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)', border: '1px solid rgba(124,58,237,0.15)' }}>
+              <p className="font-semibold">Si no llega el correo</p>
+              <ul className="list-disc pl-4 space-y-1" style={{ color: 'var(--color-muted-foreground)' }}>
+                <li>En <strong>Resend</strong>: el dominio del remitente (<code className="text-[11px]">mail.ventalink.app</code>) debe estar verificado y el API key configurado como secret <code className="text-[11px]">RESEND_API_KEY</code>.</li>
+                <li>En cuentas nuevas de Resend a veces solo se puede enviar a <strong>tu email verificado</strong>; prueba con esa misma dirección.</li>
+                <li>Revisa <strong>spam / promociones</strong> y que el buzón no esté lleno.</li>
+                <li>En la tabla de abajo, si el estado es <strong>Fallido</strong>, el motivo suele venir de Resend (dominio, permisos, etc.).</li>
+              </ul>
+            </div>
             <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-end">
               <div className="flex-1 min-w-0">
                 <label className="block text-xs font-semibold mb-1" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}>
@@ -277,6 +297,7 @@ export default function AdminEmailsPage() {
                       <th className="px-4 py-2.5">Destinatario</th>
                       <th className="px-4 py-2.5 hidden md:table-cell">Asunto</th>
                       <th className="px-4 py-2.5">Estado</th>
+                      <th className="px-4 py-2.5 hidden lg:table-cell max-w-[200px]">Detalle</th>
                     </tr>
                   </thead>
                   <tbody style={{ color: 'var(--color-foreground)' }}>
@@ -298,6 +319,9 @@ export default function AdminEmailsPage() {
                           >
                             {row.status === 'sent' ? 'Enviado' : 'Fallido'}
                           </span>
+                        </td>
+                        <td className="px-4 py-2.5 text-xs hidden lg:table-cell max-w-[220px] break-words" style={{ color: 'var(--color-muted-foreground)' }} title={row.error_message || ''}>
+                          {row.status === 'failed' && row.error_message ? row.error_message : '—'}
                         </td>
                       </tr>
                     ))}
