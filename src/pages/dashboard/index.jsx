@@ -30,6 +30,7 @@ import { getPublicCatalogUrl } from "../../config/appUrl";
 import OrdersByDayCard from "./components/OrdersByDayCard";
 import TopProductsCard from "./components/TopProductsCard";
 import MonthlyRevenueCard from "./components/MonthlyRevenueCard";
+import DailyRevenueCard from "./components/DailyRevenueCard";
 import PlanUsageCard from "./components/PlanUsageCard";
 import TrialConversionBanner from "./components/TrialConversionBanner";
 import MobilePreviewPanel from "../business-configuration/components/MobilePreviewPanel";
@@ -565,10 +566,17 @@ export default function Dashboard() {
           {/* ── Analíticas (solo Pro y Business) ── */}
           {!isStarterPlan && (
             <section aria-label="Analíticas">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 lg:gap-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 lg:gap-5">
                 <div className="stagger-item min-w-0"><OrdersByDayCard data={ordersByDay} loading={analyticsLoading} /></div>
                 <div className="stagger-item min-w-0"><TopProductsCard data={topProducts} loading={analyticsLoading} /></div>
                 <div className="stagger-item min-w-0"><MonthlyRevenueCard data={monthlyRevenue} loading={analyticsLoading} /></div>
+                <div className="stagger-item min-w-0">
+                  <DailyRevenueCard
+                    data={monthlyRevenue}
+                    loading={analyticsLoading}
+                    currency={business?.currency || getCountryLabels().currency}
+                  />
+                </div>
               </div>
             </section>
           )}

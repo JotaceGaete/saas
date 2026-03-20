@@ -925,21 +925,48 @@ export const getTopProducts = async (businessId, limit = 5) => {
   return { data: sorted, error: null };
 };
 
-/** Ingresos del mes: solo pedidos con payment_status = 'pagado' y created_at en el mes actual */
+/**
+ * Ingresos agregados del mes y del día actual.
+ * - Filtra pedidos pagados (`payment_status = 'pagado'`).
+ * - Usa límites del día en la zona horaria local del cliente (usuario activo en dashboard).
+ */
 export const getMonthlyRevenue = async (businessId) => {
   const now = new Date();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)?.toISOString();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0)?.toISOString();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+  const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
   const { data, error } = await supabase
     ?.from('wa_orders')
-    ?.select('total_amount')
+    ?.select('total_amount, created_at')
     ?.eq('business_id', businessId)
     ?.eq('payment_status', 'pagado')
     ?.gte('created_at', startOfMonth);
   if (error) return { data: null, error };
-  const total = (data || [])?.reduce((sum, row) => sum + (parseFloat(row?.total_amount) || 0), 0);
-  const count = (data || [])?.length;
+
+  let total = 0;
+  let todayTotal = 0;
+  const rows = data || [];
+  rows.forEach((row) => {
+    const amount = parseFloat(row?.total_amount) || 0;
+    total += amount;
+    const createdAt = row?.created_at ? new Date(row.created_at) : null;
+    if (createdAt && createdAt >= startOfToday && createdAt <= endOfToday) {
+      todayTotal += amount;
+    }
+  });
+
+  const count = rows.length;
   const avgTicket = count > 0 ? Math.round(total / count) : 0;
-  return { data: { total, count, avgTicket }, error: null };
+  return {
+    data: {
+      total,
+      count,
+      avgTicket,
+      todayTotal,
+      timezoneLabel: Intl.DateTimeFormat().resolvedOptions().timeZone || 'local',
+    },
+    error: null,
+  };
 };
 
 export const getPendingOrdersCount = async (businessId) => {
