@@ -96,6 +96,8 @@ function CatalogInner({ slug }) {
   const [priceRange, setPriceRange] = useState([0, 0]);
   const [maxPrice, setMaxPrice] = useState(0);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  /** Desktop: si el carril de categorías puede seguir scrolleando a izquierda/derecha (para flechas). */
+  const [categoryScrollMore, setCategoryScrollMore] = useState({ left: false, right: false });
 
   const { itemCount } = useCart();
   const isDesktop = useIsDesktop();
@@ -312,6 +314,48 @@ function CatalogInner({ slug }) {
       el.style.cursor = '';
     };
   }, [hasCategoryBar, visibleCategories.length]);
+
+  const updateCategoryScrollEdges = useCallback(() => {
+    const el = categoryScrollRef.current;
+    if (!el) return;
+    const { scrollLeft, scrollWidth, clientWidth } = el;
+    const maxScroll = Math.max(0, scrollWidth - clientWidth);
+    const eps = 4;
+    setCategoryScrollMore({
+      left: scrollLeft > eps,
+      right: maxScroll > eps && scrollLeft < maxScroll - eps,
+    });
+  }, []);
+
+  const scrollCategoryStrip = useCallback(
+    (direction) => {
+      const el = categoryScrollRef.current;
+      if (!el) return;
+      const step = Math.max(220, Math.round(el.clientWidth * 0.72));
+      el.scrollBy({ left: direction * step, behavior: 'smooth' });
+      [180, 400, 650].forEach((ms) => window.setTimeout(updateCategoryScrollEdges, ms));
+    },
+    [updateCategoryScrollEdges]
+  );
+
+  useEffect(() => {
+    const el = categoryScrollRef.current;
+    if (!el || !hasCategoryBar) return;
+    updateCategoryScrollEdges();
+    const onScroll = () => updateCategoryScrollEdges();
+    el.addEventListener('scroll', onScroll, { passive: true });
+    let ro;
+    if (typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(() => updateCategoryScrollEdges());
+      ro.observe(el);
+    }
+    window.addEventListener('resize', onScroll);
+    return () => {
+      el.removeEventListener('scroll', onScroll);
+      ro?.disconnect();
+      window.removeEventListener('resize', onScroll);
+    };
+  }, [hasCategoryBar, visibleCategories.length, updateCategoryScrollEdges]);
 
   const buildSingleWhatsAppMessage = (product) => {
     const storeName = business?.name || 'la tienda';
@@ -690,9 +734,50 @@ function CatalogInner({ slug }) {
           >
             {hasCategoryBar && (
               <div className="relative min-w-0 w-full sm:flex-1 sm:basis-0 sm:min-w-0">
+                {/* Flechas solo md+ : scrollBy suave ~72% del ancho; visibles solo si hay contenido oculto a cada lado */}
+                <div
+                  className={`hidden md:block absolute left-0 top-0 bottom-0 z-20 w-11 transition-opacity duration-150 ${
+                    categoryScrollMore.left ? 'opacity-100' : 'opacity-0 pointer-events-none'
+                  }`}
+                  aria-hidden={!categoryScrollMore.left}
+                >
+                  <div
+                    className="absolute inset-0 bg-gradient-to-r from-white from-50% via-white/75 to-transparent pointer-events-none"
+                    aria-hidden
+                  />
+                  <button
+                    type="button"
+                    onClick={() => scrollCategoryStrip(-1)}
+                    aria-label="Categorías anteriores"
+                    className="absolute left-0.5 top-1/2 -translate-y-1/2 z-[1] flex h-9 w-9 items-center justify-center rounded-full border border-gray-200/90 bg-white/95 shadow-sm backdrop-blur-[2px] hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1"
+                    style={{ '--tw-ring-color': primaryColor }}
+                  >
+                    <Icon name="ChevronLeft" size={18} color={primaryColorDark} />
+                  </button>
+                </div>
+                <div
+                  className={`hidden md:block absolute right-0 top-0 bottom-0 z-20 w-11 transition-opacity duration-150 ${
+                    categoryScrollMore.right ? 'opacity-100' : 'opacity-0 pointer-events-none'
+                  }`}
+                  aria-hidden={!categoryScrollMore.right}
+                >
+                  <div
+                    className="absolute inset-0 bg-gradient-to-l from-white from-50% via-white/75 to-transparent pointer-events-none"
+                    aria-hidden
+                  />
+                  <button
+                    type="button"
+                    onClick={() => scrollCategoryStrip(1)}
+                    aria-label="Más categorías"
+                    className="absolute right-0.5 top-1/2 -translate-y-1/2 z-[1] flex h-9 w-9 items-center justify-center rounded-full border border-gray-200/90 bg-white/95 shadow-sm backdrop-blur-[2px] hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1"
+                    style={{ '--tw-ring-color': primaryColor }}
+                  >
+                    <Icon name="ChevronRight" size={18} color={primaryColorDark} />
+                  </button>
+                </div>
                 <div
                   ref={categoryScrollRef}
-                  className="flex flex-nowrap items-center gap-2 overflow-x-auto overflow-y-hidden overscroll-x-contain touch-pan-x pb-0.5 pl-2 pr-2 sm:pl-3 sm:pr-3 min-w-0 w-full max-w-full cursor-grab select-none scrollbar-hide snap-x snap-proximity [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                  className="flex flex-nowrap items-center gap-2 overflow-x-auto overflow-y-hidden overscroll-x-contain touch-pan-x pb-0.5 pl-2 pr-2 sm:pl-3 sm:pr-3 md:pl-11 md:pr-11 min-w-0 w-full max-w-full cursor-grab select-none scrollbar-hide snap-x snap-proximity [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                   style={{
                     WebkitOverflowScrolling: 'touch',
                     maskImage: 'linear-gradient(to right, transparent 0px, black 12px, black calc(100% - 12px), transparent 100%)',
