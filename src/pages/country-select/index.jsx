@@ -1,23 +1,53 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCountry } from '../../contexts/CountryContext';
-import { COUNTRY_CODES, getCountryConfig } from '../../config/countryConfig';
+import { COUNTRY_CODES, getCountryConfig, getStoredCountryCode } from '../../config/countryConfig';
 import Icon from '../../components/AppIcon';
+import { fetchSuggestCountryFromIp } from '../../utils/suggestCountryFromIp';
 
 /**
  * Pantalla inicial en go.ventalink.app: selector de país.
- * Al elegir y continuar se guarda la selección y redirige a la app.
+ * Si no hay país en localStorage, sugiere uno por IP (sin guardar hasta que el usuario continúe).
  */
 export default function CountrySelectPage() {
   const navigate = useNavigate();
   const { setCountry, isSelectable } = useCountry();
   const [selected, setSelected] = React.useState(null);
+  const [geoLoading, setGeoLoading] = React.useState(false);
+  /** Resultado de IP: { code, approximate } — approximate = región fuera de la lista, sugerimos US/USD */
+  const [geoHint, setGeoHint] = React.useState(null);
+
+  React.useEffect(() => {
+    if (!isSelectable) return;
+    if (getStoredCountryCode()) return;
+
+    let cancelled = false;
+    setGeoLoading(true);
+    fetchSuggestCountryFromIp()
+      .then((result) => {
+        if (cancelled) return;
+        setGeoLoading(false);
+        if (result?.code && COUNTRY_CODES.includes(result.code)) {
+          setSelected(result.code);
+          setGeoHint(result);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setGeoLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isSelectable]);
 
   const handleContinue = () => {
     if (!selected || !COUNTRY_CODES.includes(selected)) return;
     setCountry(selected);
     navigate('/dashboard', { replace: true });
   };
+
+  const geoCountryName = geoHint?.code ? getCountryConfig(geoHint.code).name : '';
 
   if (!isSelectable) {
     navigate('/dashboard', { replace: true });
@@ -33,7 +63,7 @@ export default function CountrySelectPage() {
       }}
     >
       <div className="w-full max-w-md">
-        <div className="text-center mb-8">
+        <div className="text-center mb-6">
           <h1 className="text-2xl font-bold mb-2" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-heading)' }}>
             Elige tu país
           </h1>
@@ -42,7 +72,49 @@ export default function CountrySelectPage() {
           </p>
         </div>
 
-        <div className="grid gap-2 mb-8">
+        {geoLoading && (
+          <p className="text-sm text-center mb-4" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+            Detectando región…
+          </p>
+        )}
+
+        {!geoLoading && geoHint && !geoHint.approximate && (
+          <div
+            className="mb-4 p-4 rounded-xl border text-left"
+            style={{
+              backgroundColor: 'rgba(124, 58, 237, 0.06)',
+              borderColor: 'var(--color-border)',
+            }}
+            role="status"
+          >
+            <p className="text-sm font-medium m-0 mb-1" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>
+              Detectamos tu país: {geoCountryName}
+            </p>
+            <p className="text-xs m-0" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+              ¿No es correcto? Elige otro país en la lista.
+            </p>
+          </div>
+        )}
+
+        {!geoLoading && geoHint?.approximate && (
+          <div
+            className="mb-4 p-4 rounded-xl border text-left"
+            style={{
+              backgroundColor: 'rgba(124, 58, 237, 0.06)',
+              borderColor: 'var(--color-border)',
+            }}
+            role="status"
+          >
+            <p className="text-sm font-medium m-0 mb-1" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>
+              Tu región sugiere configuración internacional ({geoCountryName} · USD)
+            </p>
+            <p className="text-xs m-0" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+              Puedes cambiar el país abajo si prefieres otra moneda u opciones de pago.
+            </p>
+          </div>
+        )}
+
+        <div className="grid gap-2 mb-6">
           {COUNTRY_CODES.map((code) => {
             const config = getCountryConfig(code);
             const isActive = selected === code;
