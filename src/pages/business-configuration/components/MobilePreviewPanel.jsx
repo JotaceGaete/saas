@@ -203,18 +203,17 @@ export default function MobilePreviewPanel({ storeName, storeSlug, logoUrl, cove
 
       {/* Contenedor: fondo neutro + sombra para el dispositivo */}
       <div
-        className="flex flex-col items-center justify-center rounded-3xl p-8 w-full max-w-[300px]"
+        className="flex flex-col items-center justify-center rounded-3xl p-4 sm:p-8 w-full max-w-[300px]"
         style={{
           backgroundColor: '#e8e8ed',
           boxShadow: 'inset 0 1px 2px rgba(255,255,255,0.6), 0 8px 32px rgba(0,0,0,0.12)',
         }}
       >
-        {/* Phone frame */}
+        {/* Phone frame: ancho fluido en columnas estrechas (p. ej. diseño + sidebar) */}
         <div
-          className="relative rounded-[2.5rem] overflow-hidden flex-shrink-0"
+          className="relative rounded-[2.5rem] overflow-hidden flex-shrink-0 w-full max-w-[260px] mx-auto"
           style={{
-            width: '260px',
-            height: '520px',
+            aspectRatio: '260 / 520',
             border: '8px solid #1a1a2e',
             boxShadow: '0 4px 12px rgba(0,0,0,0.15), 0 20px 50px rgba(0,0,0,0.2), inset 0 0 0 1px rgba(255,255,255,0.08)',
             backgroundColor: t?.screenBg,

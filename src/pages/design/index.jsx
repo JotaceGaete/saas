@@ -152,7 +152,8 @@ export default function DesignPage() {
         />
 
         <DashboardLayoutContent className="min-h-[calc(100vh-108px)]" innerClassName="space-y-6">
-          <div className="flex flex-col lg:grid lg:grid-cols-[1fr_minmax(340px,380px)] lg:gap-8 xl:gap-10 lg:items-start">
+          {/* minmax(0,1fr): la columna de formulario puede encoger (evita empujar la vista previa fuera del viewport con overflow-x-hidden en main). */}
+          <div className="flex flex-col w-full min-w-0 gap-8 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,380px)] lg:gap-6 xl:gap-8 2xl:gap-10 lg:items-start">
             {/* Columna izquierda: opciones de diseño (scroll con la página en desktop) */}
             <div className="min-w-0 w-full py-6 lg:py-8">
               <DesignCustomization
@@ -165,9 +166,9 @@ export default function DesignPage() {
                 designOnly
               />
             </div>
-            {/* Columna derecha: vista previa sticky en desktop; normal en móvil */}
+            {/* Columna derecha: sticky en lg+ para que el teléfono acompañe al ajustar opciones */}
             <div
-              className="flex flex-col items-center justify-start w-full max-w-[380px] mx-auto lg:mx-0 py-6 lg:py-8 lg:sticky lg:top-[calc(60px+var(--safe-area-top))] lg:self-start rounded-xl border lg:rounded-2xl lg:z-[1]"
+              className="flex flex-col items-center justify-start w-full min-w-0 max-w-[380px] mx-auto py-6 lg:mx-0 lg:max-w-none lg:w-full lg:py-8 lg:sticky lg:top-[calc(60px+var(--safe-area-top))] lg:self-start rounded-xl border lg:rounded-2xl lg:z-[1]"
               style={{ borderColor: 'var(--color-border)', backgroundColor: '#f7f7f9' }}
             >
               <p className="text-xs font-semibold mb-3 flex-shrink-0" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
