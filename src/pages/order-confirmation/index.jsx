@@ -7,12 +7,14 @@ import { formatCurrency } from '../../utils/formatCLP';
 import { getPublicCatalogUrl } from '../../config/appUrl';
 import { getBrandingMessage } from '../../utils/branding';
 import { isRestaurantBusiness } from '../../utils/businessType';
+import { normalizeOptionalCustomerPhone } from '../../utils/customerPhone';
 
 export default function OrderConfirmation() {
   const { slug } = useParams();
   const navigate = useNavigate();
   const { items, total, updateQuantity, removeItem, clearCart } = useCart();
   const [customerName, setCustomerName] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
   const [serviceType, setServiceType] = useState('mesa');
   const [tableReference, setTableReference] = useState('');
   const [deliveryAddress, setDeliveryAddress] = useState('');
@@ -65,8 +67,11 @@ export default function OrderConfirmation() {
         subtotal: item?.price * item?.quantity,
       }));
 
+      const phoneForOrder = normalizeOptionalCustomerPhone(customerPhone);
+
       const { data: order, error: orderError } = await createOrder(biz.id, {
         customerName: customerName?.trim(),
+        customerPhone: phoneForOrder,
         serviceType: isRestaurantBusiness(biz) ? serviceType : null,
         tableReference: isRestaurantBusiness(biz) && serviceType === 'mesa'
           ? tableReference?.trim()
@@ -98,6 +103,7 @@ export default function OrderConfirmation() {
         `Hola, quiero hacer un pedido.`,
         ``,
         `Nombre: ${customerName?.trim()}`,
+        phoneForOrder ? `Tel. / WhatsApp: ${phoneForOrder}` : null,
         isRestaurantBusiness(biz) ? `Tipo: ${serviceTypeLabel}` : null,
         isRestaurantBusiness(biz) && serviceType === 'mesa' ? `Mesa: ${tableReference?.trim()}` : null,
         isRestaurantBusiness(biz) && serviceType === 'delivery' ? `Dirección: ${deliveryAddress?.trim()}` : null,
@@ -209,6 +215,22 @@ export default function OrderConfirmation() {
                 style={{ borderColor: errors?.customerName ? 'var(--color-error)' : 'var(--color-border)', fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)', backgroundColor: '#FFFFFF' }}
               />
               {errors?.customerName && <p className="text-xs mt-1" style={{ color: 'var(--color-error)', fontFamily: 'var(--font-caption)' }}>{errors?.customerName}</p>}
+            </div>
+            <div>
+              <label className="block text-xs font-semibold mb-1.5" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}>
+                WhatsApp o teléfono <span style={{ color: 'var(--color-muted-foreground)', fontWeight: 400 }}>(opcional)</span>
+              </label>
+              <input
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel"
+                value={customerPhone}
+                onChange={(e) => setCustomerPhone(e?.target?.value ?? '')}
+                placeholder="Ej: +56 9 1234 5678"
+                maxLength={32}
+                className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none transition-all"
+                style={{ borderColor: 'var(--color-border)', fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)', backgroundColor: '#FFFFFF' }}
+              />
             </div>
             {isRestaurant && (
               <>

@@ -11,6 +11,7 @@ import { getAppBaseUrl, getPublicCatalogUrl } from '../../config/appUrl';
 import BrandingFooter from '../../components/BrandingFooter';
 import { hasViralBranding, getOrderMessageBrandingSuffix } from '../../utils/branding';
 import { isRestaurantBusiness } from '../../utils/businessType';
+import { normalizeOptionalCustomerPhone } from '../../utils/customerPhone';
 
 /** Build absolute URL for OG image (preview al compartir en WhatsApp, etc.). Prioridad: logo tienda → portada → fallback con nombre. */
 function getCatalogOgImageUrl(business, baseUrl) {
@@ -1120,6 +1121,7 @@ function OrderPanel({ business, slug, formatPrice, onClose, theme }) {
   const primaryRgba = theme?.primaryRgba || (() => 'rgba(37,211,102,0.35)');
   const { items, updateQuantity, removeItem, total, clearCart } = useCart();
   const [customerName, setCustomerName] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
   const [serviceType, setServiceType] = useState('mesa');
   const [tableReference, setTableReference] = useState('');
   const [deliveryAddress, setDeliveryAddress] = useState('');
@@ -1163,8 +1165,11 @@ function OrderPanel({ business, slug, formatPrice, onClose, theme }) {
         selectedOptions: item?.selectedOptions ?? [],
       }));
 
+      const phoneForOrder = normalizeOptionalCustomerPhone(customerPhone);
+
       const { error: orderError } = await createOrder(business?.id, {
         customerName: customerName?.trim(),
+        customerPhone: phoneForOrder,
         serviceType: isRestaurant ? serviceType : null,
         tableReference: isRestaurant && serviceType === 'mesa'
           ? tableReference?.trim()
@@ -1192,6 +1197,7 @@ function OrderPanel({ business, slug, formatPrice, onClose, theme }) {
           `- ${item?.quantity} ${item?.name}`
         );
         let message = `Hola, quiero hacer un pedido.\n\nNombre: ${customerName?.trim()}`;
+        if (phoneForOrder) message += `\nTel. / WhatsApp: ${phoneForOrder}`;
         if (isRestaurant) {
           const serviceTypeLabel = serviceType === 'delivery'
             ? 'Delivery'
@@ -1332,6 +1338,23 @@ function OrderPanel({ business, slug, formatPrice, onClose, theme }) {
             {fieldErrors?.customerName && (
               <p className="text-xs text-red-600 mt-1.5">{fieldErrors.customerName}</p>
             )}
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+              WhatsApp o teléfono <span className="text-gray-400 font-normal">(opcional)</span>
+            </label>
+            <input
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel"
+              value={customerPhone}
+              onChange={(e) => setCustomerPhone(e?.target?.value ?? '')}
+              placeholder="Ej: +56 9 1234 5678"
+              maxLength={32}
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:border-transparent transition-all"
+              style={{ ['--tw-ring-color']: primaryColor }}
+            />
           </div>
 
           {isRestaurant && (

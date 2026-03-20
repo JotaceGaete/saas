@@ -124,7 +124,7 @@ export default function TransferPaymentSection({ order, business, formatCLP }) {
           ) : (
             <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs text-muted-foreground" style={{ fontFamily: 'var(--font-caption)' }}>
               <Icon name="MessageCircle" size={13} />
-              Sin teléfono del cliente
+              Teléfono del cliente no registrado
             </span>
           )}
         </div>

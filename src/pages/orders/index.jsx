@@ -237,9 +237,7 @@ function OrderCard({ order, onUpdate, businessName, onOpenDetail, business, form
                 <Icon name="MessageCircle" size={11} />
                 {order?.customerPhone}
               </a>
-            ) : (
-              <span className="text-xs mt-0.5" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Sin teléfono</span>
-            )}
+            ) : null}
           </div>
         </div>
         <div className="flex flex-col items-end gap-2 flex-shrink-0">
