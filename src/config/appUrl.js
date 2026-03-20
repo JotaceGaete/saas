@@ -30,15 +30,16 @@ export function getAuthRedirectUrl() {
 
 /**
  * URL de redirección para reset de contraseña (olvidé mi contraseña).
- * Misma lógica que getAuthRedirectUrl pero apunta a /reset-password.
+ * Debe coincidir con una entrada en Supabase → Authentication → URL Configuration → Redirect URLs.
+ * Ruta dedicada: evita que / redirija al dashboard y pierda el hash con los tokens.
  */
 export function getResetPasswordRedirectUrl() {
   if (typeof window === 'undefined' || !window?.location?.origin) {
-    return 'https://go.ventalink.app/reset-password';
+    return 'https://go.ventalink.app/auth/reset-password';
   }
   const origin = String(window.location.origin || '').replace(/\/$/, '');
-  if (!origin) return 'https://go.ventalink.app/reset-password';
-  return `${origin}/reset-password`;
+  if (!origin) return 'https://go.ventalink.app/auth/reset-password';
+  return `${origin}/auth/reset-password`;
 }
 
 /**

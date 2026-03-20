@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Navigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCountry } from '../../contexts/CountryContext';
 import { getCountryConfig } from '../../config/countryConfig';
@@ -15,7 +15,7 @@ import StoreCreationStep from './components/StoreCreationStep';
  */
 export default function BusinessRegistration() {
   const navigate = useNavigate();
-  const { user, business, loading, businessLoading, signUp, signIn, signInWithGoogle, resendConfirmationEmail } = useAuth();
+  const { user, business, loading, businessLoading, signUp, signIn, signInWithGoogle, resendConfirmationEmail, isEmailConfirmed } = useAuth();
   const { countryCode } = useCountry();
   const countryConfig = getCountryConfig(countryCode);
 
@@ -40,6 +40,10 @@ export default function BusinessRegistration() {
         </svg>
       </div>
     );
+  }
+
+  if (user && !isEmailConfirmed) {
+    return <Navigate to="/verify-email" replace />;
   }
 
   // ── PASO 1: No autenticado → pantalla de login/registro ─────────────────────

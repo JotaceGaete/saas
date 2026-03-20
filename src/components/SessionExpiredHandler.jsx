@@ -18,6 +18,7 @@ export default function SessionExpiredHandler() {
       path === '/login' ||
       path === '/auth/callback' ||
       path === '/reset-password' ||
+      path === '/auth/reset-password' ||
       path.startsWith('/catalog/') ||
       path.startsWith('/catalogo/') ||
       path === '/terms' ||

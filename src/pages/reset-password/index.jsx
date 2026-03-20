@@ -1,56 +1,103 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import Icon from 'components/AppIcon';
 
 /**
- * Página de restablecimiento de contraseña.
- * El usuario llega aquí desde el enlace del correo enviado por resetPasswordForEmail.
- * Supabase procesa el token del hash (detectSessionInUrl) y emite PASSWORD_RECOVERY.
- * Mostramos formulario para nueva contraseña y llamamos updateUser.
+ * Captura URL en el primer render (antes de que el cliente pueda limpiar el hash).
+ */
+function getAuthFragmentError() {
+  if (typeof window === 'undefined') return null;
+  const tryParams = (raw) => {
+    if (!raw) return null;
+    const p = new URLSearchParams(raw.replace(/^[#?]/, ''));
+    const err = p.get('error_description') || p.get('error');
+    return err ? decodeURIComponent(err.replace(/\+/g, ' ')) : null;
+  };
+  return tryParams(window.location.hash) || tryParams(window.location.search);
+}
+
+function hasRecoveryTypeInUrl() {
+  if (typeof window === 'undefined') return false;
+  const h = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+  const q = new URLSearchParams(window.location.search.replace(/^\?/, ''));
+  return h.get('type') === 'recovery' || q.get('type') === 'recovery';
+}
+
+/**
+ * Restablecimiento de contraseña (enlace del correo Supabase).
+ * redirectTo debe ser: ${origin}/auth/reset-password (añadir en Redirect URLs del proyecto).
  */
 export default function ResetPassword() {
   const navigate = useNavigate();
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [errors, setErrors] = useState({});
-  const [loading, setLoading] = useState(true);
+  const [phase, setPhase] = useState('checking'); // checking | form | invalid | success
   const [submitting, setSubmitting] = useState(false);
-  const [success, setSuccess] = useState(false);
   const [error, setError] = useState(null);
-  const [hasRecoverySession, setHasRecoverySession] = useState(false);
+  const [checkMessage, setCheckMessage] = useState(null);
+  const sawPasswordRecovery = useRef(false);
+  const hadRecoveryUrlHint = useRef(hasRecoveryTypeInUrl());
 
   useEffect(() => {
     let mounted = true;
+    const fragmentError = getAuthFragmentError();
+    if (fragmentError) {
+      setCheckMessage(fragmentError);
+      setPhase('invalid');
+      return () => { mounted = false; };
+    }
 
-    const checkSession = async () => {
-      const { data: { session } } = await supabase?.auth?.getSession();
-      if (typeof window !== 'undefined') {
-        console.log('[ResetPassword] getSession:', session ? { hasSession: true, user: session?.user?.email } : 'no session');
-      }
-      if (!mounted) return;
-      setHasRecoverySession(!!session);
-      setLoading(false);
-      if (!session) {
-        if (typeof window !== 'undefined') {
-          console.log('[ResetPassword] no session, redirect to login');
-        }
-        navigate('/login', { replace: true, state: { message: 'Usa el enlace que te enviamos por correo para restablecer tu contraseña.' } });
-      }
+    const applySession = (session) => {
+      if (!mounted || !session) return;
+      setPhase('form');
+      setCheckMessage(null);
     };
 
-    // Escuchar PASSWORD_RECOVERY por si el evento llega después del mount
-    const { data: { subscription } } = supabase?.auth?.onAuthStateChange((event) => {
-      if (typeof window !== 'undefined') {
-        console.log('[ResetPassword] onAuthStateChange:', event);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!mounted) return;
+      if (event === 'PASSWORD_RECOVERY') {
+        sawPasswordRecovery.current = true;
+        applySession(session);
+        return;
       }
-      if (event === 'PASSWORD_RECOVERY' && mounted) {
-        setHasRecoverySession(true);
-        setLoading(false);
+      if (session && (event === 'INITIAL_SESSION' || event === 'SIGNED_IN')) {
+        if (sawPasswordRecovery.current || hadRecoveryUrlHint.current) {
+          applySession(session);
+        }
       }
     });
 
-    checkSession();
+    let attempts = 0;
+    const maxAttempts = 20;
+    const intervalMs = 200;
+
+    const poll = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!mounted) return;
+      if (session) {
+        applySession(session);
+        return;
+      }
+      attempts += 1;
+      if (attempts >= maxAttempts) {
+        if (hadRecoveryUrlHint.current && !session) {
+          setPhase('invalid');
+          setCheckMessage('El enlace de recuperación expiró o ya fue usado. Solicita uno nuevo desde el inicio de sesión.');
+        } else {
+          navigate('/login', {
+            replace: true,
+            state: { message: 'Usa el enlace que te enviamos por correo para restablecer tu contraseña.' },
+          });
+        }
+        return;
+      }
+      setTimeout(poll, intervalMs);
+    };
+
+    poll();
+
     return () => {
       mounted = false;
       subscription?.unsubscribe();
@@ -75,22 +122,14 @@ export default function ResetPassword() {
     }
     setErrors({});
     setSubmitting(true);
-    if (typeof window !== 'undefined') {
-      console.log('[ResetPassword] updateUser password...');
-    }
     try {
       const { error: updateError } = await supabase.auth.updateUser({ password });
-      if (typeof window !== 'undefined') {
-        console.log('[ResetPassword] updateUser result:', updateError ? { error: updateError.message } : 'ok');
-      }
       if (updateError) {
-        setError(updateError?.message || 'Error al actualizar la contraseña.');
+        const msg = updateError.message || 'Error al actualizar la contraseña.';
+        setError(msg);
         return;
       }
-      setSuccess(true);
-      setTimeout(() => {
-        navigate('/login', { replace: true });
-      }, 2000);
+      setPhase('success');
     } catch (err) {
       setError(err?.message || 'Error inesperado.');
     } finally {
@@ -98,30 +137,68 @@ export default function ResetPassword() {
     }
   };
 
-  if (loading) {
+  if (phase === 'checking') {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--color-background)' }}>
-        <svg className="animate-spin" width={36} height={36} viewBox="0 0 24 24" fill="none">
-          <circle cx="12" cy="12" r="10" stroke="rgba(124,58,237,0.2)" strokeWidth="3" />
-          <path d="M12 2a10 10 0 0 1 10 10" stroke="#7C3AED" strokeWidth="3" strokeLinecap="round" />
-        </svg>
+      <div className="min-h-screen flex flex-col items-center justify-center p-6" style={{ backgroundColor: 'var(--color-background)' }}>
+        <div className="flex flex-col items-center gap-3">
+          <svg className="animate-spin" width={36} height={36} viewBox="0 0 24 24" fill="none" aria-hidden>
+            <circle cx="12" cy="12" r="10" stroke="rgba(124,58,237,0.2)" strokeWidth="3" />
+            <path d="M12 2a10 10 0 0 1 10 10" stroke="#7C3AED" strokeWidth="3" strokeLinecap="round" />
+          </svg>
+          <p className="text-sm text-center max-w-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+            Validando enlace de recuperación...
+          </p>
+        </div>
       </div>
     );
   }
 
-  if (!hasRecoverySession) {
-    return null; // redirecting
+  if (phase === 'invalid') {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-6" style={{ backgroundColor: 'var(--color-background)' }}>
+        <div className="w-full max-w-md text-center">
+          <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4" style={{ backgroundColor: 'rgba(239,68,68,0.12)' }}>
+            <Icon name="AlertCircle" size={28} style={{ color: 'var(--color-error)' }} />
+          </div>
+          <h1 className="text-xl font-bold mb-2" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>
+            No pudimos validar el enlace
+          </h1>
+          <p className="text-sm mb-6" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+            {checkMessage || 'El enlace es inválido o ha expirado. Solicita un nuevo correo de recuperación.'}
+          </p>
+          <Link
+            to="/login"
+            className="inline-flex items-center justify-center w-full h-12 rounded-lg font-semibold text-sm"
+            style={{ backgroundColor: 'var(--color-primary)', color: '#fff' }}
+          >
+            Ir al inicio de sesión
+          </Link>
+        </div>
+      </div>
+    );
   }
 
-  if (success) {
+  if (phase === 'success') {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6" style={{ backgroundColor: 'var(--color-background)' }}>
         <div className="max-w-md w-full text-center">
           <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4" style={{ backgroundColor: 'rgba(34,197,94,0.15)' }}>
             <Icon name="CheckCircle" size={28} style={{ color: 'var(--color-success, #22c55e)' }} />
           </div>
-          <h1 className="text-xl font-bold mb-2" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>Contraseña actualizada</h1>
-          <p className="text-sm mb-4" style={{ color: 'var(--color-muted-foreground)' }}>Redirigiendo al inicio de sesión...</p>
+          <h1 className="text-xl font-bold mb-2" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>
+            Contraseña actualizada
+          </h1>
+          <p className="text-sm mb-6" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+            Tu contraseña ha sido actualizada correctamente.
+          </p>
+          <button
+            type="button"
+            onClick={() => navigate('/login', { replace: true })}
+            className="w-full h-12 rounded-lg font-semibold text-sm"
+            style={{ backgroundColor: 'var(--color-primary)', color: '#fff' }}
+          >
+            Ir al login
+          </button>
         </div>
       </div>
     );
@@ -130,9 +207,11 @@ export default function ResetPassword() {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-6" style={{ backgroundColor: 'var(--color-background)' }}>
       <div className="w-full max-w-md">
-        <h1 className="text-2xl font-bold mb-2" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>Nueva contraseña</h1>
+        <h1 className="text-2xl font-bold mb-2" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>
+          Nueva contraseña
+        </h1>
         <p className="text-sm mb-6" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-          Ingresa tu nueva contraseña.
+          Elige una contraseña segura para tu cuenta.
         </p>
 
         {error && (
@@ -150,7 +229,7 @@ export default function ResetPassword() {
             <input
               type="password"
               value={password}
-              onChange={e => { setPassword(e.target.value); setErrors(prev => ({ ...prev, password: null })); }}
+              onChange={(e) => { setPassword(e.target.value); setErrors((prev) => ({ ...prev, password: null })); }}
               placeholder="••••••••"
               autoComplete="new-password"
               minLength={6}
@@ -173,7 +252,7 @@ export default function ResetPassword() {
             <input
               type="password"
               value={confirmPassword}
-              onChange={e => { setConfirmPassword(e.target.value); setErrors(prev => ({ ...prev, confirmPassword: null })); }}
+              onChange={(e) => { setConfirmPassword(e.target.value); setErrors((prev) => ({ ...prev, confirmPassword: null })); }}
               placeholder="••••••••"
               autoComplete="new-password"
               minLength={6}
@@ -199,7 +278,7 @@ export default function ResetPassword() {
               cursor: submitting ? 'not-allowed' : 'pointer',
             }}
           >
-            {submitting ? 'Actualizando...' : 'Restablecer contraseña'}
+            {submitting ? 'Guardando...' : 'Guardar nueva contraseña'}
           </button>
         </form>
 

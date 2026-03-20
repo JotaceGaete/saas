@@ -8,7 +8,7 @@ import { useAuth } from '../contexts/AuthContext';
  * Si no hay sesión, redirige a /login.
  */
 export default function RequireAdmin({ children }) {
-  const { user, loading, isAdmin } = useAuth();
+  const { user, loading, isAdmin, isEmailConfirmed } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -24,6 +24,10 @@ export default function RequireAdmin({ children }) {
 
   if (!user) {
     return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  if (!isEmailConfirmed) {
+    return <Navigate to="/verify-email" state={{ from: location }} replace />;
   }
 
   if (!isAdmin) {

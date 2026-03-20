@@ -83,7 +83,7 @@ export const COUNTRY_LABELS = Object.freeze({
       { value: 'cuenta_ahorro', label: 'Cuenta de Ahorro' },
       { value: 'cuenta_rut', label: 'Cuenta RUT' },
     ],
-    whatsappHint: 'Formato Chile: 9 dígitos comenzando con 9. Ej: 93443682',
+    whatsappHint: 'Formato Chile: 9 dígitos comenzando con 9. Ej: 912345678',
     whatsappErrorPrefix: 'Número móvil Chile',
     testimonialCities: ['Santiago', 'Valparaíso', 'Concepción'],
     heroSubtitle: 'Hecho para negocios que venden por WhatsApp en Chile',

@@ -7,19 +7,23 @@ import LoginForm from './components/LoginForm';
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { signIn, signInWithGoogle, resetPasswordForEmail, isAuthenticated, loading } = useAuth();
+  const { signIn, signInWithGoogle, resetPasswordForEmail, isAuthenticated, isEmailConfirmed, loading } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [authError, setAuthError] = useState(null);
   const [forgotPasswordSuccess, setForgotPasswordSuccess] = useState(false);
   const [forgotPasswordLoading, setForgotPasswordLoading] = useState(false);
 
-  // Redirect if already authenticated
+  // Redirect if already authenticated (sin correo confirmado → verificación)
   useEffect(() => {
     if (!loading && isAuthenticated) {
-      navigate('/dashboard', { replace: true });
+      if (!isEmailConfirmed) {
+        navigate('/verify-email', { replace: true });
+      } else {
+        navigate('/dashboard', { replace: true });
+      }
     }
-  }, [isAuthenticated, loading, navigate]);
+  }, [isAuthenticated, isEmailConfirmed, loading, navigate]);
 
   const handleLogin = async (formData) => {
     setIsLoading(true);

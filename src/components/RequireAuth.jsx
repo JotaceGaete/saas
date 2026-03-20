@@ -7,7 +7,7 @@ import { useAuth } from '../contexts/AuthContext';
  * Si no hay sesión válida, redirige a /login.
  */
 export default function RequireAuth({ children }) {
-  const { user, loading } = useAuth();
+  const { user, loading, isEmailConfirmed } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -23,6 +23,10 @@ export default function RequireAuth({ children }) {
 
   if (!user) {
     return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  if (!isEmailConfirmed) {
+    return <Navigate to="/verify-email" state={{ from: location }} replace />;
   }
 
   return children;

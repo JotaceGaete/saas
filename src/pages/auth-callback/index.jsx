@@ -40,7 +40,12 @@ export default function AuthCallback() {
         return;
       }
 
-      // Usuario autenticado: verificar si tiene negocio
+      if (!session.user.email_confirmed_at) {
+        navigate('/verify-email', { replace: true });
+        return;
+      }
+
+      // Usuario autenticado y correo confirmado: verificar si tiene negocio
       try {
         const { data: business } = await getMyBusiness();
         if (business) {

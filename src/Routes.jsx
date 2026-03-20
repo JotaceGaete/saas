@@ -23,6 +23,7 @@ import Orders from './pages/orders';
 import Login from './pages/login';
 import AuthCallback from './pages/auth-callback';
 import ResetPassword from './pages/reset-password';
+import VerifyEmailPage from './pages/verify-email';
 import AdminDashboard from './pages/admin';
 import AdminPaymentsPage from './pages/admin/AdminPaymentsPage';
 import AdminUsersPage from './pages/admin/AdminUsersPage';
@@ -65,7 +66,10 @@ const Routes = () => {
             <Route path="/design" element={<RequireAuth><DesignPage /></RequireAuth>} />
             <Route path="/ayuda" element={<RequireAuth><HelpPage /></RequireAuth>} />
             <Route path="/login" element={<Login />} />
+            <Route path="/verify-email" element={<VerifyEmailPage />} />
             <Route path="/auth/callback" element={<AuthCallback />} />
+            {/* Misma pantalla: enlaces antiguos /reset-password siguen funcionando (conserva hash al cargar esta ruta) */}
+            <Route path="/auth/reset-password" element={<ResetPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/planes" element={<RequireAuth><PlansPage /></RequireAuth>} />
             <Route path="/billing/success" element={<BillingSuccessPage />} />

@@ -343,6 +343,23 @@ export const AuthProvider = ({ children }) => {
     if (user) await businessOperations?.load(user?.id)
   }
 
+  /** Refresca el usuario desde Supabase (útil tras confirmar email en otro tab o enlace). */
+  const refreshUser = async () => {
+    try {
+      const { data: { user: u }, error } = await supabase?.auth?.getUser() ?? {}
+      if (error) return { error, user: null }
+      setUser(u ?? null)
+      if (u?.id) {
+        await businessOperations?.load(u.id)
+      } else {
+        businessOperations?.clear()
+      }
+      return { error: null, user: u ?? null }
+    } catch (e) {
+      return { error: { message: e?.message || 'Error al actualizar sesión' }, user: null }
+    }
+  }
+
   const isAdmin = !!(
     user?.app_metadata?.role === 'admin' ||
     user?.user_metadata?.role === 'admin'
@@ -373,6 +390,7 @@ export const AuthProvider = ({ children }) => {
     resendConfirmationEmail,
     signOut,
     refreshBusiness,
+    refreshUser,
     isAuthenticated: !!user,
     isEmailConfirmed: !!(user?.email_confirmed_at),
     isAdmin,

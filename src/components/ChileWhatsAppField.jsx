@@ -39,7 +39,7 @@ export default function ChileWhatsAppField({ value, onChange, error: externalErr
     displayValue.length > 0 && displayValue[0] !== '9'
       ? 'El número debe comenzar con 9 (móvil Chile).'
       : displayValue.length > 0 && displayValue.length !== CHILE_MOBILE_LENGTH
-        ? 'Ingresa 9 dígitos (ej: 93443682).'
+        ? 'Ingresa 9 dígitos (ej: 912345678).'
         : externalError || null;
 
   return (
