@@ -61,9 +61,12 @@ async function collectMetrics(adminClient: ReturnType<typeof createClient>, busi
     clicksTodayRes,
     clicks7dRes,
     clicks30dRes,
-    ordersTodayRes,
-    orders7dRes,
-    ordersMonthRes,
+    ordersPlacedTodayRes,
+    ordersPlaced7dRes,
+    ordersPlacedMonthRes,
+    ordersPaidTodayRes,
+    ordersPaid7dRes,
+    ordersPaidMonthRes,
     productsActiveRes,
     pendingOrdersRes,
     recentOrdersRes,
@@ -75,9 +78,12 @@ async function collectMetrics(adminClient: ReturnType<typeof createClient>, busi
     adminClient.from("wa_catalog_whatsapp_clicks").select("id", { count: "exact", head: true }).eq("business_id", businessId).gte("created_at", startToday.toISOString()).lte("created_at", endToday.toISOString()),
     adminClient.from("wa_catalog_whatsapp_clicks").select("id", { count: "exact", head: true }).eq("business_id", businessId).gte("created_at", start7d.toISOString()).lte("created_at", now.toISOString()),
     adminClient.from("wa_catalog_whatsapp_clicks").select("id", { count: "exact", head: true }).eq("business_id", businessId).gte("created_at", start30d.toISOString()).lte("created_at", now.toISOString()),
-    adminClient.from("wa_orders").select("id, payment_status, total_amount").eq("business_id", businessId).gte("created_at", startToday.toISOString()).lte("created_at", endToday.toISOString()),
-    adminClient.from("wa_orders").select("id, payment_status, total_amount").eq("business_id", businessId).gte("created_at", start7d.toISOString()).lte("created_at", now.toISOString()),
-    adminClient.from("wa_orders").select("id, payment_status, total_amount").eq("business_id", businessId).gte("created_at", startMonth.toISOString()).lte("created_at", now.toISOString()),
+    adminClient.from("wa_orders").select("id", { count: "exact", head: true }).eq("business_id", businessId).gte("created_at", startToday.toISOString()).lte("created_at", endToday.toISOString()),
+    adminClient.from("wa_orders").select("id", { count: "exact", head: true }).eq("business_id", businessId).gte("created_at", start7d.toISOString()).lte("created_at", now.toISOString()),
+    adminClient.from("wa_orders").select("id", { count: "exact", head: true }).eq("business_id", businessId).gte("created_at", startMonth.toISOString()).lte("created_at", now.toISOString()),
+    adminClient.from("wa_orders").select("id, total_amount").eq("business_id", businessId).eq("payment_status", "pagado").not("paid_at", "is", null).gte("paid_at", startToday.toISOString()).lte("paid_at", endToday.toISOString()),
+    adminClient.from("wa_orders").select("id, total_amount").eq("business_id", businessId).eq("payment_status", "pagado").not("paid_at", "is", null).gte("paid_at", start7d.toISOString()).lte("paid_at", now.toISOString()),
+    adminClient.from("wa_orders").select("id, total_amount").eq("business_id", businessId).eq("payment_status", "pagado").not("paid_at", "is", null).gte("paid_at", startMonth.toISOString()).lte("paid_at", now.toISOString()),
     adminClient.from("wa_products").select("id", { count: "exact", head: true }).eq("business_id", businessId).eq("is_active", true),
     adminClient.from("wa_orders").select("id", { count: "exact", head: true }).eq("business_id", businessId).eq("order_status", "pedido"),
     adminClient.from("wa_orders").select("id", { count: "exact", head: true }).eq("business_id", businessId).gte("created_at", start30d.toISOString()).lte("created_at", now.toISOString()),
@@ -87,10 +93,9 @@ async function collectMetrics(adminClient: ReturnType<typeof createClient>, busi
       .eq("wa_orders.business_id", businessId),
   ]);
 
-  const sumPaid = (rows: Array<{ payment_status?: string; total_amount?: number | string }>) =>
-    (rows || []).reduce((sum, row) => sum + (row?.payment_status === "pagado" ? (Number(row?.total_amount) || 0) : 0), 0);
-  const countPaid = (rows: Array<{ payment_status?: string }>) =>
-    (rows || []).filter((r) => r?.payment_status === "pagado").length;
+  /** Ingresos: filas ya filtradas por `payment_status = pagado` y `paid_at` en rango (fuente de verdad). */
+  const sumRevenueRows = (rows: Array<{ total_amount?: number | string }>) =>
+    (rows || []).reduce((sum, row) => sum + (Number(row?.total_amount) || 0), 0);
 
   const topMap = new Map<string, { name: string; qty: number; revenue: number }>();
   (topProductsRes.data || []).forEach((item: any) => {
@@ -119,16 +124,16 @@ async function collectMetrics(adminClient: ReturnType<typeof createClient>, busi
     orders: {
       ordersPending: pendingOrdersRes.count ?? 0,
       ordersRecent30d: recentOrdersRes.count ?? 0,
-      ordersToday: ordersTodayRes.data?.length ?? 0,
-      orders7d: orders7dRes.data?.length ?? 0,
-      ordersMonth: ordersMonthRes.data?.length ?? 0,
-      paidOrdersToday: countPaid(ordersTodayRes.data ?? []),
-      paidOrders7d: countPaid(orders7dRes.data ?? []),
-      paidOrdersMonth: countPaid(ordersMonthRes.data ?? []),
+      ordersToday: ordersPlacedTodayRes.count ?? 0,
+      orders7d: ordersPlaced7dRes.count ?? 0,
+      ordersMonth: ordersPlacedMonthRes.count ?? 0,
+      paidOrdersToday: ordersPaidTodayRes.data?.length ?? 0,
+      paidOrders7d: ordersPaid7dRes.data?.length ?? 0,
+      paidOrdersMonth: ordersPaidMonthRes.data?.length ?? 0,
     },
     revenue: {
-      today: sumPaid(ordersTodayRes.data ?? []),
-      month: sumPaid(ordersMonthRes.data ?? []),
+      today: sumRevenueRows(ordersPaidTodayRes.data ?? []),
+      month: sumRevenueRows(ordersPaidMonthRes.data ?? []),
     },
     products: {
       active: productsActiveRes.count ?? 0,

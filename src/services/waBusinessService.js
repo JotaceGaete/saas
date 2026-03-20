@@ -307,6 +307,8 @@ const mapOrderFromDb = (row) => ({
   currency: row?.currency ?? 'CLP',
   status: ORDER_STATUS_VALID.includes(row?.order_status) ? row?.order_status : 'pedido',
   paymentStatus: PAYMENT_STATUS_VALID.includes(row?.payment_status) ? row?.payment_status : 'pendiente',
+  /** Cobro efectivo (BD, trigger). Es la única fecha válida para métricas de ingreso; el cliente no la escribe. */
+  paidAt: row?.paid_at ?? null,
   notes: row?.notes,
   internalNotes: row?.internal_notes,
   items: (row?.wa_order_items || [])?.map(item => ({
@@ -753,6 +755,8 @@ export const updateOrder = async (orderId, updates) => {
   }
   if (updates?.notes !== undefined)         dbUpdates.notes = updates?.notes;
   if (updates?.internalNotes !== undefined) dbUpdates.internal_notes = updates?.internalNotes;
+  // paid_at lo asigna solo el trigger en BD al pasar a pagado; nunca desde el cliente.
+  delete dbUpdates.paid_at;
   const { data, error } = await supabase?.from('wa_orders')?.update(dbUpdates)?.eq('id', orderId)?.select()?.single();
   if (error) return { data: null, error };
   return { data: mapOrderFromDb(data), error: null };
@@ -927,24 +931,27 @@ export const getTopProducts = async (businessId, limit = 5) => {
 
 /**
  * Ingresos agregados del mes y del día actual.
- * - Filtra pedidos pagados (`payment_status = 'pagado'`).
- * - Usa límites del día en la zona horaria local del cliente (usuario activo en dashboard).
+ * - Solo pedidos `payment_status = 'pagado'` con `paid_at` definido (fuente de verdad en BD; trigger `wa_orders_set_paid_at`).
+ * - Comparaciones de rangos día/mes en hora local del navegador (igual que antes).
  */
 export const getMonthlyRevenue = async (businessId) => {
   const now = new Date();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0)?.toISOString();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
   const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
   const startOfYesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0, 0);
   const endOfYesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59, 999);
   const startOfPrevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0, 0);
   const endOfPrevMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+  const fetchSince = new Date(now.getFullYear() - 1, now.getMonth(), 1, 0, 0, 0, 0);
+  const fetchSinceIso = fetchSince.toISOString();
   const { data, error } = await supabase
     ?.from('wa_orders')
-    ?.select('total_amount, created_at')
+    ?.select('total_amount, paid_at')
     ?.eq('business_id', businessId)
     ?.eq('payment_status', 'pagado')
-    ?.gte('created_at', startOfPrevMonth.toISOString());
+    ?.not('paid_at', 'is', null)
+    ?.gte('paid_at', fetchSinceIso);
   if (error) return { data: null, error };
 
   let total = 0;
@@ -954,18 +961,18 @@ export const getMonthlyRevenue = async (businessId) => {
   const rows = data || [];
   rows.forEach((row) => {
     const amount = parseFloat(row?.total_amount) || 0;
-    const createdAt = row?.created_at ? new Date(row.created_at) : null;
-    if (!createdAt) return;
+    const at = row?.paid_at ? new Date(row.paid_at) : null;
+    if (!at || Number.isNaN(at.getTime())) return;
 
-    if (createdAt >= new Date(startOfMonth) && createdAt <= now) total += amount;
-    if (createdAt >= startOfToday && createdAt <= endOfToday) todayTotal += amount;
-    if (createdAt >= startOfYesterday && createdAt <= endOfYesterday) yesterdayTotal += amount;
-    if (createdAt >= startOfPrevMonth && createdAt <= endOfPrevMonth) previousMonthTotal += amount;
+    if (at >= startOfMonth && at <= now) total += amount;
+    if (at >= startOfToday && at <= endOfToday) todayTotal += amount;
+    if (at >= startOfYesterday && at <= endOfYesterday) yesterdayTotal += amount;
+    if (at >= startOfPrevMonth && at <= endOfPrevMonth) previousMonthTotal += amount;
   });
 
   const currentMonthOrders = rows.filter((row) => {
-    const createdAt = row?.created_at ? new Date(row.created_at) : null;
-    return !!createdAt && createdAt >= new Date(startOfMonth) && createdAt <= now;
+    const at = row?.paid_at ? new Date(row.paid_at) : null;
+    return !!at && !Number.isNaN(at.getTime()) && at >= startOfMonth && at <= now;
   });
   const count = currentMonthOrders.length;
   const avgTicket = count > 0 ? Math.round(total / count) : 0;
@@ -1028,15 +1035,19 @@ function resolveFunnelPeriod(range = '7d') {
   return { start, end, prevStart, prevEnd, deltaLabel: 'vs semana pasada' };
 }
 
-function buildFunnelBase(visits, clicksWhatsapp, ordersRows) {
+/**
+ * `ordersRows`: pedidos creados en el periodo (`created_at`).
+ * `paidRows`: cobros en el periodo (`paid_at`, solo `pagado`) — ingresos y ticket promedio.
+ */
+function buildFunnelBase(visits, clicksWhatsapp, ordersRows, paidRows) {
   const ordersCount = ordersRows.length;
-  const paidOrders = ordersRows.filter((o) => o?.payment_status === 'pagado');
-  const paidCount = paidOrders.length;
-  const paidRevenue = paidOrders.reduce((sum, o) => sum + (parseFloat(o?.total_amount) || 0), 0);
+  const paidCount = paidRows.length;
+  const paidRevenue = paidRows.reduce((sum, o) => sum + (parseFloat(o?.total_amount) || 0), 0);
   const avgPaidTicket = paidCount > 0 ? Math.round(paidRevenue / paidCount) : 0;
   const rateClickFromVisit = visits > 0 ? (clicksWhatsapp / visits) * 100 : 0;
   const rateOrderFromClick = clicksWhatsapp > 0 ? (ordersCount / clicksWhatsapp) * 100 : 0;
   const rateOrderFromVisit = visits > 0 ? (ordersCount / visits) * 100 : 0;
+  // Cobros en periodo / pedidos creados en periodo (denominadores distintos; ambos útiles para el embudo).
   const ratePaidFromOrder = ordersCount > 0 ? (paidCount / ordersCount) * 100 : 0;
   const ratePaidFromVisit = visits > 0 ? (paidCount / visits) * 100 : 0;
   return {
@@ -1098,7 +1109,7 @@ export const getConversionFunnelStats = async (businessId, range = '7d') => {
   const prevStartIso = prevStart.toISOString();
   const prevEndIso = prevEnd.toISOString();
 
-  const [visitsRes, clicksRes, ordersRes, prevVisitsRes, prevClicksRes, prevOrdersRes] = await Promise.all([
+  const [visitsRes, clicksRes, ordersRes, paidRes, prevVisitsRes, prevClicksRes, prevOrdersRes, prevPaidRes] = await Promise.all([
     supabase
       ?.from('wa_catalog_visits')
       ?.select('id', { count: 'exact', head: true })
@@ -1118,6 +1129,14 @@ export const getConversionFunnelStats = async (businessId, range = '7d') => {
       ?.gte('created_at', startIso)
       ?.lte('created_at', endIso),
     supabase
+      ?.from('wa_orders')
+      ?.select('id, total_amount')
+      ?.eq('business_id', businessId)
+      ?.eq('payment_status', 'pagado')
+      ?.not('paid_at', 'is', null)
+      ?.gte('paid_at', startIso)
+      ?.lte('paid_at', endIso),
+    supabase
       ?.from('wa_catalog_visits')
       ?.select('id', { count: 'exact', head: true })
       ?.eq('business_id', businessId)
@@ -1135,12 +1154,22 @@ export const getConversionFunnelStats = async (businessId, range = '7d') => {
       ?.eq('business_id', businessId)
       ?.gte('created_at', prevStartIso)
       ?.lte('created_at', prevEndIso),
+    supabase
+      ?.from('wa_orders')
+      ?.select('id, total_amount')
+      ?.eq('business_id', businessId)
+      ?.eq('payment_status', 'pagado')
+      ?.not('paid_at', 'is', null)
+      ?.gte('paid_at', prevStartIso)
+      ?.lte('paid_at', prevEndIso),
   ]);
 
   if (visitsRes?.error) return { data: null, error: visitsRes.error };
   if (ordersRes?.error) return { data: null, error: ordersRes.error };
+  if (paidRes?.error) return { data: null, error: paidRes.error };
   if (prevVisitsRes?.error) return { data: null, error: prevVisitsRes.error };
   if (prevOrdersRes?.error) return { data: null, error: prevOrdersRes.error };
+  if (prevPaidRes?.error) return { data: null, error: prevPaidRes.error };
 
   const visits = visitsRes?.count ?? 0;
   const clicksWhatsapp = clicksRes?.error
@@ -1151,8 +1180,8 @@ export const getConversionFunnelStats = async (businessId, range = '7d') => {
     ? (prevClicksRes?.error?.code === '42P01' ? 0 : 0)
     : (prevClicksRes?.count ?? 0);
 
-  const currentBase = buildFunnelBase(visits, clicksWhatsapp, ordersRes?.data || []);
-  const previousBase = buildFunnelBase(prevVisits, prevClicksWhatsapp, prevOrdersRes?.data || []);
+  const currentBase = buildFunnelBase(visits, clicksWhatsapp, ordersRes?.data || [], paidRes?.data || []);
+  const previousBase = buildFunnelBase(prevVisits, prevClicksWhatsapp, prevOrdersRes?.data || [], prevPaidRes?.data || []);
 
   return {
     data: {
@@ -1214,7 +1243,7 @@ export const getDashboardAiInsights = async (businessId) => {
   }
 };
 
-/** Estadísticas de pedidos del negocio: totales, últimos 7/30 días, ingresos mes, por estado */
+/** Estadísticas de pedidos del negocio: totales, últimos 7/30 días, ingresos del mes (por `paid_at`), por estado */
 export const getBusinessOrderStats = async (businessId) => {
   if (!businessId) return { data: null, error: null };
   const now = new Date();
@@ -1226,7 +1255,7 @@ export const getBusinessOrderStats = async (businessId) => {
 
   const [allRes, paidMonthRes, byStatusRes] = await Promise.all([
     supabase?.from('wa_orders')?.select('id, created_at, order_status, payment_status, total_amount')?.eq('business_id', businessId),
-    supabase?.from('wa_orders')?.select('total_amount')?.eq('business_id', businessId)?.eq('payment_status', 'pagado')?.gte('created_at', startOfMonth),
+    supabase?.from('wa_orders')?.select('total_amount')?.eq('business_id', businessId)?.eq('payment_status', 'pagado')?.not('paid_at', 'is', null)?.gte('paid_at', startOfMonth),
     supabase?.from('wa_orders')?.select('order_status')?.eq('business_id', businessId),
   ]);
 

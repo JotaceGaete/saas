@@ -1,6 +1,6 @@
-// send-daily-summary — envía resumen diario a comercios con actividad.
+// send-daily-summary — envía resumen diario a comercios con cobros ese día.
 // Ejecutar 1 vez al día vía cron (pg_cron + pg_net).
-// No envía si el negocio no tuvo pedidos ese día.
+// Criterio: pedidos pagados con `paid_at` en el día (ingresos reconocidos; ver trigger wa_orders_set_paid_at).
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -61,9 +61,11 @@ Deno.serve(async (req) => {
 
   const { data: ordersWithBusiness, error: ordersErr } = await admin
     .from('wa_orders')
-    .select('id, business_id, total_amount, created_at')
-    .gte('created_at', dayStartIso)
-    .lt('created_at', dayEndIso);
+    .select('id, business_id, total_amount, paid_at')
+    .eq('payment_status', 'pagado')
+    .not('paid_at', 'is', null)
+    .gte('paid_at', dayStartIso)
+    .lt('paid_at', dayEndIso);
 
   if (ordersErr) {
     console.error('[send-daily-summary] orders query error:', ordersErr.message);
@@ -73,7 +75,7 @@ Deno.serve(async (req) => {
   const businessIds = [...new Set((ordersWithBusiness ?? []).map((o) => o.business_id).filter(Boolean))] as string[];
   if (businessIds.length === 0) {
     console.log('[send-daily-summary] no activity for', dateStr);
-    return jsonResponse({ sent: 0, message: 'No businesses with orders that day' }, 200);
+    return jsonResponse({ sent: 0, message: 'No businesses with paid orders that day' }, 200);
   }
 
   const { data: businesses, error: bizErr } = await admin

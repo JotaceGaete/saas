@@ -1490,6 +1490,7 @@ export type Database = {
           internal_notes: string | null
           notes: string | null
           order_status: string | null
+          paid_at: string | null
           payment_status: string | null
           subtotal: number | null
           total_amount: number
@@ -1506,6 +1507,7 @@ export type Database = {
           internal_notes?: string | null
           notes?: string | null
           order_status?: string | null
+          paid_at?: string | null
           payment_status?: string | null
           subtotal?: number | null
           total_amount: number
@@ -1522,6 +1524,7 @@ export type Database = {
           internal_notes?: string | null
           notes?: string | null
           order_status?: string | null
+          paid_at?: string | null
           payment_status?: string | null
           subtotal?: number | null
           total_amount?: number
