@@ -1,13 +1,14 @@
 // send-email — envía correos vía Resend API.
 // Soporta: (to, type, data) con templates centralizados, o (to, subject, html) para compatibilidad.
-// Requiere RESEND_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY.
-//
-// JWT: temporalmente desactivado (config.toml). Para reactivar: verify_jwt = true y redeploy.
+// Acciones admin (JWT + wa_is_admin): action=preview | admin_send_test
+// Requiere RESEND_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const RESEND_API_URL = 'https://api.resend.com/emails';
 const FROM_EMAIL = 'Ventalink <hola@mail.ventalink.app>';
+
+const ADMIN_PREVIEW_TYPES = new Set(['welcome', 'email_confirm', 'password_recovery']);
 
 const corsHeaders: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -44,10 +45,25 @@ function formatCurrency(value: number, currency = 'CLP'): string {
 
 type TemplateData = Record<string, unknown>;
 
+function resolveDashboardUrl(data: TemplateData): string {
+  const incoming = (data.dashboardUrl as string) || (data.dashboard_url as string) || '';
+  const base = (Deno.env.get('APP_BASE_URL') ?? '').replace(/\/$/, '');
+  return incoming.trim() || (base ? `${base}/dashboard` : '');
+}
+
+/** Combina data del body con name en raíz (compat signup / send-email legacy). */
+function buildTemplateDataFromBody(body: Record<string, unknown>): TemplateData {
+  const raw = body?.data && typeof body.data === 'object' ? ({ ...(body.data as TemplateData) } as TemplateData) : {};
+  if (typeof body?.name === 'string' && body.name.trim()) {
+    raw.name = body.name.trim();
+  }
+  return raw;
+}
+
 function renderTemplate(type: string, data: TemplateData): { subject: string; html: string } {
   const d = data as Record<string, unknown>;
   const n = (d.businessName as string) || (d.name as string) || 'Tu negocio';
-  const dashboardUrl = (d.dashboardUrl as string) || '';
+  const dashboardUrl = resolveDashboardUrl(d);
   const dateStr = (d.date as string) || new Date().toISOString().slice(0, 10);
   const fmt = (x: unknown) => formatCurrency(Number(x) || 0, (d.currency as string) || 'CLP');
 
@@ -109,8 +125,108 @@ function renderTemplate(type: string, data: TemplateData): { subject: string; ht
       return { subject, html };
     }
     case 'welcome': {
-      const subject = `Bienvenido a Ventalink`;
-      const html = `<p>Hola ${escapeHtml(n)},</p><p>Bienvenido a Ventalink. Tu catálogo está listo para recibir pedidos por WhatsApp.</p>${dashboardUrl ? `<p><a href="${escapeHtml(dashboardUrl)}">Ir al panel</a></p>` : ''}<p>— Equipo Ventalink</p>`;
+      const person = String(d.user_name || d.name || 'Usuario');
+      const biz = String(d.businessName || d.business_name || d.name || 'Tu negocio');
+      const subject = `Bienvenido a VentAlink 🚀 Empieza a vender en minutos`;
+      const html = `<!doctype html>
+<html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/></head>
+<body style="margin:0;padding:0;background:#f5f3ff;font-family:Arial,Helvetica,sans-serif;">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">Tu catálogo online listo para vender por WhatsApp</div>
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f5f3ff;padding:24px 12px;">
+    <tr><td align="center">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;background:#ffffff;border-radius:14px;overflow:hidden;">
+        <tr><td style="background:#6d28d9;padding:24px 24px 20px;color:#ffffff;">
+          <p style="margin:0;font-size:13px;opacity:.9;">VentAlink</p>
+          <h1 style="margin:8px 0 0;font-size:26px;line-height:1.2;">Bienvenido a VentAlink</h1>
+        </td></tr>
+        <tr><td style="padding:24px;color:#1f2937;">
+          <p style="margin:0 0 12px;font-size:16px;">Hola ${escapeHtml(person)},</p>
+          <p style="margin:0 0 12px;font-size:15px;line-height:1.6;">Ya estás listo para empezar a vender de forma simple y organizada con <strong>${escapeHtml(biz)}</strong>.</p>
+          <p style="margin:0 0 16px;font-size:15px;line-height:1.6;">Con VentAlink puedes crear tu catálogo online y recibir pedidos directamente por WhatsApp, sin complicaciones.</p>
+          <ul style="margin:0 0 18px 18px;padding:0;font-size:14px;line-height:1.7;color:#374151;">
+            <li>Organiza tus pedidos automáticamente</li>
+            <li>Comparte un solo link en todas tus redes</li>
+            <li>Recibe pedidos claros, sin mensajes confusos</li>
+            <li>Mejora la presentación de tus productos</li>
+          </ul>
+          ${dashboardUrl ? `<table role="presentation" cellspacing="0" cellpadding="0" style="margin:0 0 18px;"><tr><td style="border-radius:10px;background:#7c3aed;">
+            <a href="${escapeHtml(dashboardUrl)}" style="display:inline-block;padding:12px 18px;color:#ffffff;text-decoration:none;font-size:15px;font-weight:700;">Crear mi catálogo</a>
+          </td></tr></table>` : ''}
+          <p style="margin:0 0 8px;font-size:14px;font-weight:700;color:#111827;">Empieza en menos de 2 minutos:</p>
+          <p style="margin:0 0 4px;font-size:14px;color:#374151;">1. Agrega tu primer producto</p>
+          <p style="margin:0 0 4px;font-size:14px;color:#374151;">2. Comparte tu enlace</p>
+          <p style="margin:0 0 14px;font-size:14px;color:#374151;">3. Recibe tu primer pedido</p>
+          <p style="margin:0 0 14px;font-size:14px;color:#6d28d9;font-weight:700;">Muchos negocios comienzan a recibir pedidos el mismo día.</p>
+          <p style="margin:0 0 6px;font-size:14px;color:#374151;">Estamos aquí para ayudarte a crecer.</p>
+          <p style="margin:0;font-size:14px;color:#111827;font-weight:700;">Equipo VentAlink</p>
+        </td></tr>
+        <tr><td style="padding:14px 24px 20px;border-top:1px solid #ede9fe;">
+          <p style="margin:0;font-size:12px;color:#6b7280;">Si tienes dudas, puedes responder este correo.</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+      return { subject, html };
+    }
+    case 'email_confirm': {
+      const confirmUrl = String(d.confirmUrl || d.confirm_url || '');
+      const person = String(d.user_name || d.name || 'Usuario');
+      const subject = `Confirma tu correo — VentAlink`;
+      const html = `<!doctype html>
+<html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/></head>
+<body style="margin:0;padding:0;background:#f5f3ff;font-family:Arial,Helvetica,sans-serif;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f5f3ff;padding:24px 12px;">
+    <tr><td align="center">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;background:#ffffff;border-radius:14px;overflow:hidden;">
+        <tr><td style="background:#6d28d9;padding:22px 24px;color:#ffffff;">
+          <h1 style="margin:0;font-size:22px;line-height:1.25;">Confirma tu correo</h1>
+        </td></tr>
+        <tr><td style="padding:24px;color:#1f2937;">
+          <p style="margin:0 0 12px;font-size:16px;">Hola ${escapeHtml(person)},</p>
+          <p style="margin:0 0 18px;font-size:15px;line-height:1.6;">Para activar tu cuenta en VentAlink, confirma tu dirección de correo con el botón de abajo.</p>
+          ${confirmUrl ? `<table role="presentation" cellspacing="0" cellpadding="0" style="margin:0 0 18px;"><tr><td style="border-radius:10px;background:#7c3aed;">
+            <a href="${escapeHtml(confirmUrl)}" style="display:inline-block;padding:12px 18px;color:#ffffff;text-decoration:none;font-size:15px;font-weight:700;">Confirmar mi correo</a>
+          </td></tr></table>` : ''}
+          <p style="margin:0;font-size:13px;color:#6b7280;">Si no creaste una cuenta en VentAlink, ignora este mensaje.</p>
+        </td></tr>
+        <tr><td style="padding:14px 24px 20px;border-top:1px solid #ede9fe;">
+          <p style="margin:0;font-size:12px;color:#6b7280;">Si tienes dudas, puedes responder este correo.</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+      return { subject, html };
+    }
+    case 'password_recovery': {
+      const resetUrl = String(d.resetUrl || d.reset_url || '');
+      const person = String(d.user_name || d.name || 'Usuario');
+      const subject = `Recupera tu contraseña — VentAlink`;
+      const html = `<!doctype html>
+<html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/></head>
+<body style="margin:0;padding:0;background:#f5f3ff;font-family:Arial,Helvetica,sans-serif;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f5f3ff;padding:24px 12px;">
+    <tr><td align="center">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;background:#ffffff;border-radius:14px;overflow:hidden;">
+        <tr><td style="background:#6d28d9;padding:22px 24px;color:#ffffff;">
+          <h1 style="margin:0;font-size:22px;line-height:1.25;">Recuperar contraseña</h1>
+        </td></tr>
+        <tr><td style="padding:24px;color:#1f2937;">
+          <p style="margin:0 0 12px;font-size:16px;">Hola ${escapeHtml(person)},</p>
+          <p style="margin:0 0 18px;font-size:15px;line-height:1.6;">Recibimos una solicitud para restablecer tu contraseña en VentAlink.</p>
+          ${resetUrl ? `<table role="presentation" cellspacing="0" cellpadding="0" style="margin:0 0 18px;"><tr><td style="border-radius:10px;background:#7c3aed;">
+            <a href="${escapeHtml(resetUrl)}" style="display:inline-block;padding:12px 18px;color:#ffffff;text-decoration:none;font-size:15px;font-weight:700;">Elegir nueva contraseña</a>
+          </td></tr></table>` : ''}
+          <p style="margin:0;font-size:13px;color:#6b7280;">Si no solicitaste este cambio, puedes ignorar este correo.</p>
+        </td></tr>
+        <tr><td style="padding:14px 24px 20px;border-top:1px solid #ede9fe;">
+          <p style="margin:0;font-size:12px;color:#6b7280;">Si tienes dudas, puedes responder este correo.</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
       return { subject, html };
     }
     case 'trial_expiring': {
@@ -164,6 +280,57 @@ async function logEmail(
   }
 }
 
+async function logAdminTest(
+  supabase: ReturnType<typeof createClient>,
+  opts: {
+    adminUserId: string;
+    templateKey: string;
+    toEmail: string;
+    subject: string;
+    status: 'sent' | 'failed';
+    errorMessage?: string;
+  }
+) {
+  try {
+    await supabase.from('wa_admin_email_test_logs').insert({
+      admin_user_id: opts.adminUserId,
+      template_key: opts.templateKey,
+      to_email: opts.toEmail,
+      subject: opts.subject,
+      status: opts.status,
+      error_message: opts.errorMessage || null,
+    });
+  } catch (e) {
+    console.error('[send-email] logAdminTest failed:', e);
+  }
+}
+
+async function verifyAdmin(
+  supabaseUrl: string,
+  anonKey: string,
+  authHeader: string
+): Promise<{ ok: true; userId: string } | { ok: false; status: number; message: string }> {
+  const h = (authHeader || '').trim();
+  if (!h.toLowerCase().startsWith('bearer ')) {
+    return { ok: false, status: 401, message: 'Unauthorized' };
+  }
+  const userClient = createClient(supabaseUrl, anonKey, {
+    global: { headers: { Authorization: h } },
+  });
+  const { data: { user }, error: uErr } = await userClient.auth.getUser();
+  if (uErr || !user?.id) {
+    return { ok: false, status: 401, message: 'Unauthorized' };
+  }
+  const { data: isAdmin, error: rpcErr } = await userClient.rpc('wa_is_admin');
+  if (rpcErr) {
+    console.warn('[send-email] wa_is_admin rpc error:', rpcErr.message);
+  }
+  if (isAdmin === true) {
+    return { ok: true, userId: user.id };
+  }
+  return { ok: false, status: 403, message: 'Forbidden' };
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -172,28 +339,133 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: 'Method not allowed' }, 405);
   }
 
-  let body: {
-    to?: unknown;
-    subject?: unknown;
-    html?: unknown;
-    type?: unknown;
-    data?: unknown;
-    userId?: unknown;
-    businessId?: unknown;
-  };
+  const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+  const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+
+  let body: Record<string, unknown>;
   try {
-    body = (await req.json().catch(() => ({}))) as typeof body;
+    body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
   } catch {
     return jsonResponse({ error: 'Invalid JSON body' }, 400);
+  }
+
+  const action = typeof body?.action === 'string' ? body.action.trim() : '';
+
+  if (action === 'preview' || action === 'admin_send_test') {
+    if (!supabaseUrl || !anonKey) {
+      return jsonResponse({ error: 'Server configuration error' }, 500);
+    }
+    const authHeader = req.headers.get('authorization') ?? '';
+    const admin = await verifyAdmin(supabaseUrl, anonKey, authHeader);
+    if (!admin.ok) {
+      return jsonResponse({ error: admin.message }, admin.status);
+    }
+
+    const emailType = typeof body?.type === 'string' ? body.type.trim() : '';
+    if (!emailType || !ADMIN_PREVIEW_TYPES.has(emailType)) {
+      return jsonResponse({ error: 'Invalid or unsupported template type for admin' }, 400);
+    }
+
+    const templateData = buildTemplateDataFromBody(body);
+    const merged: TemplateData = { ...templateData, dashboardUrl: resolveDashboardUrl(templateData) };
+
+    let subject: string;
+    let html: string;
+    try {
+      const rendered = renderTemplate(emailType, merged);
+      subject = rendered.subject;
+      html = rendered.html;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Template error';
+      return jsonResponse({ error: msg }, 400);
+    }
+
+    if (action === 'preview') {
+      return jsonResponse({ preview: true, type: emailType, subject, html }, 200);
+    }
+
+    const to = typeof body?.to === 'string' ? body.to.trim() : '';
+    if (!to) return jsonResponse({ error: 'to is required' }, 400);
+
+    const apiKey = Deno.env.get('RESEND_API_KEY');
+    if (!apiKey || !apiKey.trim()) {
+      return jsonResponse({ error: 'Email service not configured' }, 500);
+    }
+
+    const supabase = supabaseUrl && serviceKey ? createClient(supabaseUrl, serviceKey) : null;
+
+    try {
+      const res = await fetch(RESEND_API_URL, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: FROM_EMAIL,
+          to: [to],
+          subject,
+          html,
+        }),
+      });
+
+      const resText = await res.text();
+      let resData: Record<string, unknown> = {};
+      try {
+        resData = resText ? (JSON.parse(resText) as Record<string, unknown>) : {};
+      } catch {
+        /* ignore */
+      }
+
+      if (!res.ok) {
+        const message = (resData?.message as string) || (resData?.name as string) || 'Failed to send email';
+        if (supabase) {
+          await logAdminTest(supabase, {
+            adminUserId: admin.userId,
+            templateKey: emailType,
+            toEmail: to,
+            subject,
+            status: 'failed',
+            errorMessage: message,
+          });
+        }
+        return jsonResponse({ error: message, details: resData }, res.status >= 400 && res.status < 500 ? res.status : 500);
+      }
+
+      const providerId = (resData?.id as string) || null;
+      if (supabase) {
+        await logAdminTest(supabase, {
+          adminUserId: admin.userId,
+          templateKey: emailType,
+          toEmail: to,
+          subject,
+          status: 'sent',
+        });
+      }
+      return jsonResponse({ success: true, id: providerId, type: emailType }, 200);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      if (supabase) {
+        await logAdminTest(supabase, {
+          adminUserId: admin.userId,
+          templateKey: emailType,
+          toEmail: to,
+          subject,
+          status: 'failed',
+          errorMessage: msg,
+        });
+      }
+      return jsonResponse({ error: 'Failed to send email', details: msg }, 500);
+    }
   }
 
   const to = typeof body?.to === 'string' ? body.to.trim() : '';
   if (!to) return jsonResponse({ error: 'to is required' }, 400);
 
   const emailType = typeof body?.type === 'string' ? body.type.trim() : '';
-  const data = body?.data && typeof body.data === 'object' ? (body.data as TemplateData) : {};
+  const data = buildTemplateDataFromBody(body);
 
-  // Log detallado para diagnóstico
   console.log('[send-email] Request received:', { to, type: emailType, hasData: Object.keys(data).length > 0 });
 
   let subject: string;
@@ -201,10 +473,8 @@ Deno.serve(async (req) => {
 
   if (emailType) {
     try {
-      const incoming = (data.dashboardUrl as string) || '';
-      const base = (Deno.env.get('APP_BASE_URL') ?? '').replace(/\/$/, '');
-      const dashboardUrl = incoming || (base ? `${base}/dashboard` : '');
-      const rendered = renderTemplate(emailType, { ...data, dashboardUrl });
+      const merged: TemplateData = { ...data, dashboardUrl: resolveDashboardUrl(data) };
+      const rendered = renderTemplate(emailType, merged);
       subject = rendered.subject;
       html = rendered.html;
     } catch (e) {
@@ -225,8 +495,6 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: 'Email service not configured' }, 500);
   }
 
-  const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
-  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
   const supabase = supabaseUrl && serviceKey ? createClient(supabaseUrl, serviceKey) : null;
 
   const userId = typeof body.userId === 'string' ? body.userId : undefined;

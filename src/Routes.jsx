@@ -30,6 +30,7 @@ import AdminBusinessDetailPage from './pages/admin/AdminBusinessDetailPage';
 import AdminUserDetailPage from './pages/admin/AdminUserDetailPage';
 import AdminUserNewPage from './pages/admin/AdminUserNewPage';
 import AdminAuditLogPage from './pages/admin/AdminAuditLogPage';
+import AdminEmailsPage from './pages/admin/AdminEmailsPage';
 import PlansPage from './pages/plans';
 import BillingSuccessPage from './pages/billing/BillingSuccessPage';
 import BillingCancelPage from './pages/billing/BillingCancelPage';
@@ -84,6 +85,7 @@ const Routes = () => {
             <Route path="/admin/users/:userId" element={<RequireAdmin><AdminUserDetailPage /></RequireAdmin>} />
             <Route path="/admin/businesses/:businessId" element={<RequireAdmin><AdminBusinessDetailPage /></RequireAdmin>} />
             <Route path="/admin/audit-log" element={<RequireAdmin><AdminAuditLogPage /></RequireAdmin>} />
+            <Route path="/admin/emails" element={<RequireAdmin><AdminEmailsPage /></RequireAdmin>} />
             <Route path="*" element={<NotFound />} />
           </Route>
         </RouterRoutes>

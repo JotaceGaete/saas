@@ -113,6 +113,10 @@ export default function AdminDashboard() {
                 <Icon name="ClipboardList" size={13} color="var(--color-primary)" />
                 Auditoría
               </button>
+              <button onClick={() => navigate('/admin/emails')} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-opacity hover:opacity-90" style={{ color: 'var(--color-primary)', border: '1px solid var(--color-primary)', fontFamily: 'var(--font-caption)' }}>
+                <Icon name="Mail" size={13} color="var(--color-primary)" />
+                Emails
+              </button>
             </div>
             </div>
 
