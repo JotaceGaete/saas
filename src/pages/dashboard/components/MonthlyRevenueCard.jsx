@@ -11,6 +11,10 @@ export default function MonthlyRevenueCard({ data, loading }) {
   const total = data?.total ?? 0;
   const count = data?.count ?? 0;
   const avgTicket = data?.avgTicket ?? (count > 0 ? Math.round(total / count) : 0);
+  const monthDeltaAmount = Number(data?.deltas?.monthVsPreviousMonth?.amount ?? 0);
+  const monthDelta = Number(data?.deltas?.monthVsPreviousMonth?.percent ?? 0);
+  const monthDeltaUp = monthDelta >= 0;
+  const monthDeltaLabel = data?.deltas?.monthVsPreviousMonth?.label || 'vs mes anterior';
   const monthName = MONTH_NAMES?.[new Date()?.getMonth()];
 
   return (
@@ -38,6 +42,17 @@ export default function MonthlyRevenueCard({ data, loading }) {
         <div className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold" style={{ backgroundColor: 'rgba(16,185,129,0.1)', color: '#059669', fontFamily: 'var(--font-caption)' }}>
           <Icon name="Calendar" size={11} color="#059669" />
           Mes actual
+        </div>
+        <div
+          className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium"
+          style={{
+            backgroundColor: monthDeltaUp ? 'rgba(16,185,129,0.10)' : 'rgba(239,68,68,0.10)',
+            color: monthDeltaUp ? '#059669' : '#DC2626',
+            fontFamily: 'var(--font-caption)',
+          }}
+        >
+          <Icon name={monthDeltaUp ? "TrendingUp" : "TrendingDown"} size={11} color={monthDeltaUp ? '#059669' : '#DC2626'} />
+          {monthDeltaUp ? '+' : '-'}{formatCLP(Math.abs(monthDeltaAmount))} ({monthDeltaUp ? '+' : ''}{monthDelta.toFixed(1)}%) {monthDeltaLabel}
         </div>
         {count > 0 && (
           <div className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: 'rgba(124,58,237,0.08)', color: 'var(--color-primary)', fontFamily: 'var(--font-caption)' }}>

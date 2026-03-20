@@ -8,6 +8,10 @@ export default function DailyRevenueCard({ data, loading, currency = 'CLP' }) {
 
   const total = Number(data?.todayTotal ?? 0);
   const amount = Number.isFinite(total) ? total : 0;
+  const dayDeltaAmount = Number(data?.deltas?.todayVsYesterday?.amount ?? 0);
+  const dayDelta = Number(data?.deltas?.todayVsYesterday?.percent ?? 0);
+  const dayDeltaUp = dayDelta >= 0;
+  const dayDeltaLabel = data?.deltas?.todayVsYesterday?.label || 'vs ayer';
 
   return (
     <div
@@ -34,6 +38,17 @@ export default function DailyRevenueCard({ data, loading, currency = 'CLP' }) {
         <div className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold" style={{ backgroundColor: 'rgba(14,165,233,0.10)', color: '#0284C7', fontFamily: 'var(--font-caption)' }}>
           <Icon name="Clock3" size={11} color="#0284C7" />
           Actualizado en tiempo real
+        </div>
+        <div
+          className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium"
+          style={{
+            backgroundColor: dayDeltaUp ? 'rgba(16,185,129,0.10)' : 'rgba(239,68,68,0.10)',
+            color: dayDeltaUp ? '#059669' : '#DC2626',
+            fontFamily: 'var(--font-caption)',
+          }}
+        >
+          <Icon name={dayDeltaUp ? "TrendingUp" : "TrendingDown"} size={11} color={dayDeltaUp ? '#059669' : '#DC2626'} />
+          {dayDeltaUp ? '+' : '-'}{formatCurrency(Math.abs(dayDeltaAmount), currency)} ({dayDeltaUp ? '+' : ''}{dayDelta.toFixed(1)}%) {dayDeltaLabel}
         </div>
       </div>
     </div>

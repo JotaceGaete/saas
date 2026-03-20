@@ -18,10 +18,12 @@ import {
   getOrdersByDay,
   getTopProducts,
   getMonthlyRevenue,
+  getConversionFunnelStats,
   getBusinessVisitStats,
   getPendingOrdersCount,
   getWeeklyOrdersCount,
   getPlanUsage,
+  getDashboardAiInsights,
   getEffectivePlanSlug,
 } from "../../services/waBusinessService";
 import { supabase } from "../../lib/supabase";
@@ -31,9 +33,10 @@ import OrdersByDayCard from "./components/OrdersByDayCard";
 import TopProductsCard from "./components/TopProductsCard";
 import MonthlyRevenueCard from "./components/MonthlyRevenueCard";
 import DailyRevenueCard from "./components/DailyRevenueCard";
+import ConversionFunnelCard from "./components/ConversionFunnelCard";
 import PlanUsageCard from "./components/PlanUsageCard";
 import TrialConversionBanner from "./components/TrialConversionBanner";
-import MobilePreviewPanel from "../business-configuration/components/MobilePreviewPanel";
+import AiInsightsCard from "./components/AiInsightsCard";
 import { getCatalogShareMessage } from "../../utils/branding";
 import { getCountryLabels } from "../../config/country";
 
@@ -49,8 +52,12 @@ export default function Dashboard() {
   const [ordersByDay, setOrdersByDay] = useState([]);
   const [topProducts, setTopProducts] = useState([]);
   const [monthlyRevenue, setMonthlyRevenue] = useState(null);
+  const [conversionFunnel, setConversionFunnel] = useState(null);
+  const [funnelRange, setFunnelRange] = useState('7d');
   const [visitStats, setVisitStats] = useState(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(true);
+  const [aiInsights, setAiInsights] = useState(null);
+  const [aiInsightLoading, setAiInsightLoading] = useState(false);
   const [pendingOrdersCount, setPendingOrdersCount] = useState(0);
   const [weeklyOrdersCount, setWeeklyOrdersCount] = useState(0);
   const [planUsage, setPlanUsage] = useState(null);
@@ -131,20 +138,46 @@ export default function Dashboard() {
     if (!business?.id) return;
     setAnalyticsLoading(true);
     try {
-      const [dayRes, topRes, revRes, visitRes] = await Promise.all([
+      const [dayRes, topRes, revRes, visitRes, funnelRes] = await Promise.all([
         getOrdersByDay(business?.id, 7),
         getTopProducts(business?.id, 5),
         getMonthlyRevenue(business?.id),
         getBusinessVisitStats(business?.id),
+        getConversionFunnelStats(business?.id, funnelRange),
       ]);
       setOrdersByDay(dayRes?.data || []);
       setTopProducts(topRes?.data || []);
       setMonthlyRevenue(revRes?.data || null);
       setVisitStats(visitRes?.data ?? null);
+      setConversionFunnel(funnelRes?.data ?? null);
     } catch (err) {
       console.error('Analytics load error:', err);
     } finally {
       setAnalyticsLoading(false);
+    }
+  }, [business?.id, funnelRange]);
+
+  const loadDailyAiInsight = useCallback(async () => {
+    if (!business?.id) return;
+    setAiInsightLoading(true);
+    try {
+      let finalInsight = null;
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        const insightRes = await getDashboardAiInsights(business?.id);
+        if (insightRes?.data) {
+          finalInsight = insightRes.data;
+          break;
+        }
+        if (!insightRes?.pending) {
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 900));
+      }
+      setAiInsights(finalInsight);
+    } catch (err) {
+      console.error('[Dashboard] insight load error:', err);
+    } finally {
+      setAiInsightLoading(false);
     }
   }, [business?.id]);
 
@@ -170,6 +203,11 @@ export default function Dashboard() {
     if (!business?.id) { setAnalyticsLoading(false); return; }
     loadAnalytics();
   }, [business?.id, loadAnalytics]);
+
+  useEffect(() => {
+    if (!business?.id) return;
+    loadDailyAiInsight();
+  }, [business?.id, loadDailyAiInsight]);
 
   useEffect(() => {
     if (!business?.id) { setPlanUsageLoading(false); return; }
@@ -542,6 +580,12 @@ export default function Dashboard() {
             </section>
           )}
 
+          {!isStarterPlan && (
+            <section aria-label="Insight IA">
+              <AiInsightsCard data={aiInsights} loading={aiInsightLoading} />
+            </section>
+          )}
+
           {/* ── Métricas principales (Starter solo ve Total productos) ── */}
           <section aria-label="Métricas del negocio">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 md:gap-4 lg:gap-5">
@@ -566,17 +610,26 @@ export default function Dashboard() {
           {/* ── Analíticas (solo Pro y Business) ── */}
           {!isStarterPlan && (
             <section aria-label="Analíticas">
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 lg:gap-5">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 lg:gap-5">
                 <div className="stagger-item min-w-0"><OrdersByDayCard data={ordersByDay} loading={analyticsLoading} /></div>
                 <div className="stagger-item min-w-0"><TopProductsCard data={topProducts} loading={analyticsLoading} /></div>
-                <div className="stagger-item min-w-0"><MonthlyRevenueCard data={monthlyRevenue} loading={analyticsLoading} /></div>
-                <div className="stagger-item min-w-0">
+                <div className="stagger-item min-w-0 grid grid-cols-1 gap-4">
+                  <MonthlyRevenueCard data={monthlyRevenue} loading={analyticsLoading} />
                   <DailyRevenueCard
                     data={monthlyRevenue}
                     loading={analyticsLoading}
                     currency={business?.currency || getCountryLabels().currency}
                   />
                 </div>
+              </div>
+              <div className="mt-4">
+                <ConversionFunnelCard
+                  data={conversionFunnel}
+                  loading={analyticsLoading}
+                  range={funnelRange}
+                  onRangeChange={setFunnelRange}
+                  currency={business?.currency || getCountryLabels().currency}
+                />
               </div>
             </section>
           )}
@@ -646,24 +699,6 @@ export default function Dashboard() {
               <section aria-label="Acceso rápido">
                 <QuickAccessWidget catalogUrl={catalogUrl} businessName={business?.name || ''} businessPlanSlug={business?.planSlug} />
               </section>
-              {business?.id && (
-                <section aria-label="Vista previa del catálogo">
-                  <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--color-border)', backgroundColor: '#f7f7f9' }}>
-                    <p className="text-xs font-semibold px-3 py-2" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Vista previa móvil</p>
-                    <div className="flex justify-center p-3">
-                      <MobilePreviewPanel
-                        storeName={business?.name || 'Mi Tienda'}
-                        storeSlug={business?.slug || ''}
-                        logoUrl={business?.logoUrl || business?.designSettings?.logoUrl}
-                        coverImageUrl={business?.coverImageUrl || business?.designSettings?.headerImageUrl}
-                        products={products || []}
-                        currency={business?.currency || getCountryLabels().currency}
-                        design={business?.designSettings || {}}
-                      />
-                    </div>
-                  </div>
-                </section>
-              )}
             </div>
           </div>
         </DashboardLayoutContent>

@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { createBusinessForUser, getMyBusiness, updateBusiness } from '../services/waBusinessService';
-import { getAuthRedirectUrl, getResetPasswordRedirectUrl } from '../config/appUrl';
+import { getAppBaseUrl, getAuthRedirectUrl, getResetPasswordRedirectUrl } from '../config/appUrl';
 
 const AuthContext = createContext({})
 
@@ -188,19 +188,87 @@ export const AuthProvider = ({ children }) => {
         const sessionToken = data?.session?.access_token ?? anonKey
         const userName = user?.user_metadata?.name || user?.user_metadata?.full_name || businessData?.name || ''
         const nameDisplay = (userName || '').trim() || 'Usuario'
+        const appBaseUrl = getAppBaseUrl() || 'https://go.ventalink.app'
+        const dashboardUrl = `${appBaseUrl.replace(/\/$/, '')}/dashboard`
         const payload = {
           to: userEmail.trim(),
           type: 'welcome',
           name: nameDisplay,
-          subject: 'Bienvenido a Ventalink',
-          html: `<div style="font-family: Arial, sans-serif; line-height:1.5; color:#111;">
-  <h2>Bienvenido a Ventalink</h2>
-  <p>Hola ${nameDisplay},</p>
-  <p>Tu cuenta ha sido creada correctamente.</p>
-  <p>Ya puedes comenzar a configurar tu catálogo y publicar tus productos.</p>
-</div>`,
-          text: `Hola ${nameDisplay}, tu cuenta ha sido creada correctamente en Ventalink.`,
-          data: { name: nameDisplay, dashboardUrl: 'https://go.ventalink.app/dashboard' },
+          subject: 'Bienvenido a VentAlink 🚀 Empieza a vender en minutos',
+          html: `<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bienvenido a VentAlink</title>
+  </head>
+  <body style="margin:0;padding:0;background:#f5f3ff;font-family:Arial,sans-serif;">
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">
+      Tu catálogo online listo para vender por WhatsApp
+    </div>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f5f3ff;padding:24px 12px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;background:#ffffff;border-radius:14px;overflow:hidden;">
+            <tr>
+              <td style="background:#6d28d9;padding:24px 24px 20px;color:#ffffff;">
+                <p style="margin:0;font-size:13px;opacity:.9;">VentAlink</p>
+                <h1 style="margin:8px 0 0;font-size:26px;line-height:1.2;">Bienvenido a VentAlink</h1>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:24px;color:#1f2937;">
+                <p style="margin:0 0 12px;font-size:16px;">Hola ${nameDisplay},</p>
+                <p style="margin:0 0 12px;font-size:15px;line-height:1.6;">
+                  Ya estás listo para empezar a vender de forma simple y organizada.
+                </p>
+                <p style="margin:0 0 16px;font-size:15px;line-height:1.6;">
+                  Con VentAlink puedes crear tu catálogo online y recibir pedidos directamente por WhatsApp, sin complicaciones.
+                </p>
+                <ul style="margin:0 0 18px 18px;padding:0;font-size:14px;line-height:1.7;color:#374151;">
+                  <li>Organiza tus pedidos automáticamente</li>
+                  <li>Comparte un solo link en todas tus redes</li>
+                  <li>Recibe pedidos claros, sin mensajes confusos</li>
+                  <li>Mejora la presentación de tus productos</li>
+                </ul>
+                <table role="presentation" cellspacing="0" cellpadding="0" style="margin:0 0 18px;">
+                  <tr>
+                    <td style="border-radius:10px;background:#7c3aed;">
+                      <a href="${dashboardUrl}" style="display:inline-block;padding:12px 18px;color:#ffffff;text-decoration:none;font-size:15px;font-weight:700;">
+                        Crear mi catálogo
+                      </a>
+                    </td>
+                  </tr>
+                </table>
+                <p style="margin:0 0 8px;font-size:14px;font-weight:700;color:#111827;">Empieza en menos de 2 minutos:</p>
+                <p style="margin:0 0 4px;font-size:14px;color:#374151;">1. Agrega tu primer producto</p>
+                <p style="margin:0 0 4px;font-size:14px;color:#374151;">2. Comparte tu enlace</p>
+                <p style="margin:0 0 14px;font-size:14px;color:#374151;">3. Recibe tu primer pedido</p>
+                <p style="margin:0 0 14px;font-size:14px;color:#6d28d9;font-weight:700;">
+                  Muchos negocios comienzan a recibir pedidos el mismo día.
+                </p>
+                <p style="margin:0 0 6px;font-size:14px;color:#374151;">Estamos aquí para ayudarte a crecer.</p>
+                <p style="margin:0;font-size:14px;color:#111827;font-weight:700;">Equipo VentAlink</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:14px 24px 20px;border-top:1px solid #ede9fe;">
+                <p style="margin:0;font-size:12px;color:#6b7280;">Si tienes dudas, puedes responder este correo.</p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`,
+          text: `Bienvenido a VentAlink, ${nameDisplay}. Empieza a vender en minutos: crea tu catálogo en ${dashboardUrl}.`,
+          data: {
+            user_name: nameDisplay,
+            dashboard_url: dashboardUrl,
+            name: nameDisplay,
+            dashboardUrl,
+          },
         }
         console.log('[Auth] send-email payload (final, before fetch):', payload)
         const headers = {

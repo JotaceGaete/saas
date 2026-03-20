@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
-import { getBusinessBySlug, getPublicProducts, getCategoriesByRubroId, recordCatalogVisit, createOrder } from '../../services/waBusinessService';
+import { getBusinessBySlug, getPublicProducts, getCategoriesByRubroId, recordCatalogVisit, recordCatalogWhatsAppClick, createOrder } from '../../services/waBusinessService';
 import Icon from '../../components/AppIcon';
 import { CartProvider, useCart } from '../../contexts/CartContext';
 import { formatCurrency } from '../../utils/formatCLP';
@@ -442,6 +442,10 @@ function CatalogInner({ slug }) {
                     href={storeWhatsAppUrl}
                     target="_blank"
                     rel="noopener noreferrer"
+                    onClick={() => {
+                      const path = typeof window !== 'undefined' ? window.location?.pathname || `/catalogo/${slug}` : `/catalogo/${slug}`;
+                      recordCatalogWhatsAppClick(slug, path, 'store_header').catch(() => {});
+                    }}
                     className="inline-flex items-center justify-center gap-2 w-full md:w-auto px-4 py-2.5 rounded-xl text-sm font-bold text-white transition-all duration-150 hover:opacity-90 active:scale-[0.98]"
                     style={{
                       background: `linear-gradient(135deg, ${primaryColor}, ${primaryColorDark})`,
@@ -721,6 +725,7 @@ function CatalogInner({ slug }) {
         <ProductModal
           product={selectedProduct}
           business={business}
+          slug={slug}
           formatPrice={formatPrice}
           whatsAppUrl={buildSingleWhatsAppUrl(selectedProduct)}
           whatsAppMessage={buildSingleWhatsAppMessage(selectedProduct)}
@@ -962,6 +967,8 @@ function OrderPanel({ business, slug, formatPrice, onClose, theme }) {
         if (catalogUrl) message += `\n\n${catalogUrl}`;
         if (hasViralBranding(business)) message += `\n\n${getOrderMessageBrandingSuffix(business)}`;
         const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+        const path = typeof window !== 'undefined' ? window.location?.pathname || `/catalogo/${slug}` : `/catalogo/${slug}`;
+        recordCatalogWhatsAppClick(slug, path, 'cart_checkout').catch(() => {});
         window.open(url, '_blank');
       }
 
@@ -1385,7 +1392,7 @@ function ThumbnailButton({ url, productName, index, isSelected, primaryColor, on
 }
 
 // ─── Product Modal ────────────────────────────────────────────────────────────
-function ProductModal({ product, business, formatPrice, whatsAppUrl, whatsAppMessage, onClose, theme, cardSettings, useCategories = false }) {
+function ProductModal({ product, business, slug, formatPrice, whatsAppUrl, whatsAppMessage, onClose, theme, cardSettings, useCategories = false }) {
   const primaryColor = theme?.primaryColor || '#25D366';
   const primaryColorDark = theme?.primaryColorDark || '#128C7E';
   const primaryRgba = theme?.primaryRgba || (() => 'rgba(37,211,102,0.35)');
@@ -1587,6 +1594,10 @@ function ProductModal({ product, business, formatPrice, whatsAppUrl, whatsAppMes
             href={whatsAppUrl}
             target="_blank"
             rel="noopener noreferrer"
+            onClick={() => {
+              const path = typeof window !== 'undefined' ? window.location?.pathname || `/catalogo/${slug}` : `/catalogo/${slug}`;
+              recordCatalogWhatsAppClick(slug, path, 'product_modal').catch(() => {});
+            }}
             className="flex items-center justify-center gap-2 w-full py-3 rounded-2xl text-sm font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50 transition-all"
           >
             <Icon name="MessageCircle" size={16} color="#6B7280" />

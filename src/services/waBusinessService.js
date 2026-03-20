@@ -935,39 +935,130 @@ export const getMonthlyRevenue = async (businessId) => {
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0)?.toISOString();
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
   const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+  const startOfYesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0, 0);
+  const endOfYesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59, 999);
+  const startOfPrevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0, 0);
+  const endOfPrevMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
   const { data, error } = await supabase
     ?.from('wa_orders')
     ?.select('total_amount, created_at')
     ?.eq('business_id', businessId)
     ?.eq('payment_status', 'pagado')
-    ?.gte('created_at', startOfMonth);
+    ?.gte('created_at', startOfPrevMonth.toISOString());
   if (error) return { data: null, error };
 
   let total = 0;
   let todayTotal = 0;
+  let yesterdayTotal = 0;
+  let previousMonthTotal = 0;
   const rows = data || [];
   rows.forEach((row) => {
     const amount = parseFloat(row?.total_amount) || 0;
-    total += amount;
     const createdAt = row?.created_at ? new Date(row.created_at) : null;
-    if (createdAt && createdAt >= startOfToday && createdAt <= endOfToday) {
-      todayTotal += amount;
-    }
+    if (!createdAt) return;
+
+    if (createdAt >= new Date(startOfMonth) && createdAt <= now) total += amount;
+    if (createdAt >= startOfToday && createdAt <= endOfToday) todayTotal += amount;
+    if (createdAt >= startOfYesterday && createdAt <= endOfYesterday) yesterdayTotal += amount;
+    if (createdAt >= startOfPrevMonth && createdAt <= endOfPrevMonth) previousMonthTotal += amount;
   });
 
-  const count = rows.length;
+  const currentMonthOrders = rows.filter((row) => {
+    const createdAt = row?.created_at ? new Date(row.created_at) : null;
+    return !!createdAt && createdAt >= new Date(startOfMonth) && createdAt <= now;
+  });
+  const count = currentMonthOrders.length;
   const avgTicket = count > 0 ? Math.round(total / count) : 0;
+
+  const monthDeltaAmount = total - previousMonthTotal;
+  const monthDeltaPct = previousMonthTotal > 0 ? (monthDeltaAmount / previousMonthTotal) * 100 : (total > 0 ? 100 : 0);
+  const dayDeltaAmount = todayTotal - yesterdayTotal;
+  const dayDeltaPct = yesterdayTotal > 0 ? (dayDeltaAmount / yesterdayTotal) * 100 : (todayTotal > 0 ? 100 : 0);
+
   return {
     data: {
       total,
       count,
       avgTicket,
       todayTotal,
+      yesterdayTotal,
+      previousMonthTotal,
+      deltas: {
+        todayVsYesterday: {
+          amount: dayDeltaAmount,
+          percent: dayDeltaPct,
+          label: 'vs ayer',
+        },
+        monthVsPreviousMonth: {
+          amount: monthDeltaAmount,
+          percent: monthDeltaPct,
+          label: 'vs mes anterior',
+        },
+      },
       timezoneLabel: Intl.DateTimeFormat().resolvedOptions().timeZone || 'local',
     },
     error: null,
   };
 };
+
+function resolveFunnelPeriod(range = '7d') {
+  const now = new Date();
+  if (range === 'today') {
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    const prevStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0, 0);
+    const prevEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59, 999);
+    return { start, end, prevStart, prevEnd, deltaLabel: 'vs ayer' };
+  }
+  if (range === '30d') {
+    const start = new Date(now);
+    start.setDate(start.getDate() - 30);
+    const end = now;
+    const prevStart = new Date(start);
+    prevStart.setDate(prevStart.getDate() - 30);
+    const prevEnd = new Date(start.getTime() - 1);
+    return { start, end, prevStart, prevEnd, deltaLabel: 'vs mes anterior' };
+  }
+  const start = new Date(now);
+  start.setDate(start.getDate() - 7);
+  const end = now;
+  const prevStart = new Date(start);
+  prevStart.setDate(prevStart.getDate() - 7);
+  const prevEnd = new Date(start.getTime() - 1);
+  return { start, end, prevStart, prevEnd, deltaLabel: 'vs semana pasada' };
+}
+
+function buildFunnelBase(visits, clicksWhatsapp, ordersRows) {
+  const ordersCount = ordersRows.length;
+  const paidOrders = ordersRows.filter((o) => o?.payment_status === 'pagado');
+  const paidCount = paidOrders.length;
+  const paidRevenue = paidOrders.reduce((sum, o) => sum + (parseFloat(o?.total_amount) || 0), 0);
+  const avgPaidTicket = paidCount > 0 ? Math.round(paidRevenue / paidCount) : 0;
+  const rateClickFromVisit = visits > 0 ? (clicksWhatsapp / visits) * 100 : 0;
+  const rateOrderFromClick = clicksWhatsapp > 0 ? (ordersCount / clicksWhatsapp) * 100 : 0;
+  const rateOrderFromVisit = visits > 0 ? (ordersCount / visits) * 100 : 0;
+  const ratePaidFromOrder = ordersCount > 0 ? (paidCount / ordersCount) * 100 : 0;
+  const ratePaidFromVisit = visits > 0 ? (paidCount / visits) * 100 : 0;
+  return {
+    visits,
+    clicksWhatsapp,
+    orders: ordersCount,
+    paid: paidCount,
+    paidRevenue,
+    avgPaidTicket,
+    rateClickFromVisit,
+    rateOrderFromClick,
+    rateOrderFromVisit,
+    ratePaidFromOrder,
+    ratePaidFromVisit,
+  };
+}
+
+function deltaWithPercent(current, previous) {
+  const amount = (Number(current) || 0) - (Number(previous) || 0);
+  const percent = (Number(previous) || 0) > 0 ? (amount / Number(previous)) * 100 : ((Number(current) || 0) > 0 ? 100 : 0);
+  return { amount, percent };
+}
 
 export const getPendingOrdersCount = async (businessId) => {
   if (!businessId) return { data: 0, error: null };
@@ -991,6 +1082,136 @@ export const getWeeklyOrdersCount = async (businessId) => {
     ?.gte('created_at', since.toISOString());
   if (error) return { data: 0, error };
   return { data: count ?? 0, error: null };
+};
+
+/**
+ * Embudo de conversión del catálogo (visitas -> pedidos -> pagados) por rango.
+ * Rango soportado: 'today' | '7d' | '30d'
+ */
+export const getConversionFunnelStats = async (businessId, range = '7d') => {
+  if (!businessId) return { data: null, error: null };
+
+  const { start, end, prevStart, prevEnd, deltaLabel } = resolveFunnelPeriod(range);
+
+  const startIso = start.toISOString();
+  const endIso = end.toISOString();
+  const prevStartIso = prevStart.toISOString();
+  const prevEndIso = prevEnd.toISOString();
+
+  const [visitsRes, clicksRes, ordersRes, prevVisitsRes, prevClicksRes, prevOrdersRes] = await Promise.all([
+    supabase
+      ?.from('wa_catalog_visits')
+      ?.select('id', { count: 'exact', head: true })
+      ?.eq('business_id', businessId)
+      ?.gte('created_at', startIso)
+      ?.lte('created_at', endIso),
+    supabase
+      ?.from('wa_catalog_whatsapp_clicks')
+      ?.select('id', { count: 'exact', head: true })
+      ?.eq('business_id', businessId)
+      ?.gte('created_at', startIso)
+      ?.lte('created_at', endIso),
+    supabase
+      ?.from('wa_orders')
+      ?.select('id, payment_status, total_amount')
+      ?.eq('business_id', businessId)
+      ?.gte('created_at', startIso)
+      ?.lte('created_at', endIso),
+    supabase
+      ?.from('wa_catalog_visits')
+      ?.select('id', { count: 'exact', head: true })
+      ?.eq('business_id', businessId)
+      ?.gte('created_at', prevStartIso)
+      ?.lte('created_at', prevEndIso),
+    supabase
+      ?.from('wa_catalog_whatsapp_clicks')
+      ?.select('id', { count: 'exact', head: true })
+      ?.eq('business_id', businessId)
+      ?.gte('created_at', prevStartIso)
+      ?.lte('created_at', prevEndIso),
+    supabase
+      ?.from('wa_orders')
+      ?.select('id, payment_status, total_amount')
+      ?.eq('business_id', businessId)
+      ?.gte('created_at', prevStartIso)
+      ?.lte('created_at', prevEndIso),
+  ]);
+
+  if (visitsRes?.error) return { data: null, error: visitsRes.error };
+  if (ordersRes?.error) return { data: null, error: ordersRes.error };
+  if (prevVisitsRes?.error) return { data: null, error: prevVisitsRes.error };
+  if (prevOrdersRes?.error) return { data: null, error: prevOrdersRes.error };
+
+  const visits = visitsRes?.count ?? 0;
+  const clicksWhatsapp = clicksRes?.error
+    ? (clicksRes?.error?.code === '42P01' ? 0 : 0)
+    : (clicksRes?.count ?? 0);
+  const prevVisits = prevVisitsRes?.count ?? 0;
+  const prevClicksWhatsapp = prevClicksRes?.error
+    ? (prevClicksRes?.error?.code === '42P01' ? 0 : 0)
+    : (prevClicksRes?.count ?? 0);
+
+  const currentBase = buildFunnelBase(visits, clicksWhatsapp, ordersRes?.data || []);
+  const previousBase = buildFunnelBase(prevVisits, prevClicksWhatsapp, prevOrdersRes?.data || []);
+
+  return {
+    data: {
+      range,
+      ...currentBase,
+      previousPeriod: previousBase,
+      deltas: {
+        label: deltaLabel,
+        visits: deltaWithPercent(currentBase.visits, previousBase.visits),
+        clicksWhatsapp: deltaWithPercent(currentBase.clicksWhatsapp, previousBase.clicksWhatsapp),
+        orders: deltaWithPercent(currentBase.orders, previousBase.orders),
+        paid: deltaWithPercent(currentBase.paid, previousBase.paid),
+        paidRevenue: deltaWithPercent(currentBase.paidRevenue, previousBase.paidRevenue),
+      },
+    },
+    error: null,
+  };
+};
+
+/**
+ * Genera insight breve de IA para dashboard usando métricas agregadas.
+ * Requiere usuario autenticado (Bearer token) para evitar uso público.
+ */
+export const getDashboardAiInsights = async (businessId) => {
+  const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
+  const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
+  if (!supabaseUrl || !anonKey) {
+    return { data: null, error: { message: 'Missing Supabase config' } };
+  }
+  if (!businessId) return { data: null, error: { message: 'businessId required' } };
+
+  const { data: sessionData } = await supabase?.auth?.getSession();
+  const token = sessionData?.session?.access_token ?? null;
+  if (!token) return { data: null, error: { message: 'No auth token' } };
+
+  try {
+    const res = await fetch(`${supabaseUrl}/functions/v1/dashboard-ai-insights`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        apikey: anonKey,
+      },
+      body: JSON.stringify({ businessId }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (res.status === 202) {
+      return {
+        data: null,
+        error: null,
+        pending: true,
+        message: body?.message || 'Insight en generación',
+      };
+    }
+    if (!res.ok) return { data: null, error: body?.error || { message: res.statusText }, pending: false };
+    return { data: body?.insight || null, error: null, pending: false };
+  } catch (err) {
+    return { data: null, error: { message: err?.message || 'Network error' }, pending: false };
+  }
 };
 
 /** Estadísticas de pedidos del negocio: totales, últimos 7/30 días, ingresos mes, por estado */
@@ -1085,6 +1306,7 @@ export async function recordCatalogVisit(slug, path) {
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      keepalive: true,
       body: JSON.stringify(body),
     });
     const data = await res.json().catch(() => ({}));
@@ -1102,6 +1324,43 @@ export async function recordCatalogVisit(slug, path) {
     return { recorded: !!data?.recorded, throttled: data?.reason === 'throttled', error: res.ok ? null : (data?.error || { message: res.statusText }) };
   } catch (err) {
     console.error('[record-catalog-visit] fetch failed', err?.message, err);
+    return { recorded: false, error: { message: err?.message || 'Network error' } };
+  }
+}
+
+/**
+ * Registra click en acción de WhatsApp dentro del catálogo público.
+ * @param {string} slug
+ * @param {string} [path]
+ * @param {string} [source] - store_header | product_modal | cart_checkout | floating_button
+ */
+export async function recordCatalogWhatsAppClick(slug, path, source = 'unknown') {
+  if (!slug?.trim()) return { recorded: false, error: null };
+
+  const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
+  if (!supabaseUrl) {
+    console.warn('[record-catalog-whatsapp-click] Missing VITE_SUPABASE_URL');
+    return { recorded: false, error: { message: 'Missing Supabase URL' } };
+  }
+
+  const visitorId = getOrCreateVisitorId();
+  const body = { slug: slug.trim(), path: path || null, source, visitor_id: visitorId };
+  const url = `${supabaseUrl}/functions/v1/record-catalog-whatsapp-click`;
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      console.warn('[record-catalog-whatsapp-click] non-OK response', res.status, data);
+      return { recorded: false, error: data?.error || { message: res.statusText } };
+    }
+    return { recorded: !!data?.recorded, error: null };
+  } catch (err) {
+    console.error('[record-catalog-whatsapp-click] fetch failed', err?.message, err);
     return { recorded: false, error: { message: err?.message || 'Network error' } };
   }
 }
