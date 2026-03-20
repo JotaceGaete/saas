@@ -12,6 +12,7 @@ function isAllowedOrigin(origin: string | null): boolean {
   const allowed = [
     'https://cl.ventalink.app',
     'https://ar.ventalink.app',
+    'https://go.ventalink.app',
     'http://localhost:4028',
   ];
 

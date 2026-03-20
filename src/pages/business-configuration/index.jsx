@@ -5,7 +5,8 @@ import DashboardAppShell from 'components/ui/DashboardAppShell';
 import DashboardLayoutContent from 'components/ui/DashboardLayoutContent';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
-import { updateBusiness, getMyBusiness, getRubros } from '../../services/waBusinessService';
+import { updateBusiness, getMyBusiness, getRubros, getEffectivePlanSlug } from '../../services/waBusinessService';
+import { supabase } from '../../lib/supabase';
 import StoreCreationStep from '../business-registration/components/StoreCreationStep';
 import WhatsAppMessageTemplate from './components/WhatsAppMessageTemplate';
 import DynamicWhatsAppField from 'components/DynamicWhatsAppField';
@@ -82,6 +83,10 @@ export default function BusinessConfiguration() {
     rubroId: '',
   });
   const [rubros, setRubros] = useState([]);
+  const [isImprovingBusinessDescription, setIsImprovingBusinessDescription] = useState(false);
+
+  const effectivePlan = getEffectivePlanSlug(business?.planSlug, business?.planExpiresAt, business?.trialExpiresAt);
+  const canUseAiDescription = effectivePlan === 'pro' || effectivePlan === 'business';
 
   // Design settings state (valores por defecto; se rellenan desde business.designSettings al cargar)
   const [design, setDesign] = useState({
@@ -201,6 +206,59 @@ export default function BusinessConfiguration() {
 
   const handleFormChange = (field, value) => {
     setForm(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleImproveBusinessDescription = async () => {
+    const rawDesc = (form?.description ?? '').trim();
+    const storeName = (form?.name ?? '').trim();
+    if (!rawDesc && !storeName) {
+      showToast('Escribe una descripción o el nombre del negocio para poder mejorar el texto.', 'error');
+      return;
+    }
+    setIsImprovingBusinessDescription(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        showToast('Inicia sesión para usar esta función.', 'error');
+        return;
+      }
+      const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
+      const endpoint = `${supabaseUrl}/functions/v1/improve-product-description`;
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+          apikey: import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '',
+        },
+        body: JSON.stringify({
+          text: rawDesc.slice(0, 280),
+          productName: storeName,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(data?.error ?? 'No se pudo mejorar la descripción. Intenta de nuevo.', 'error');
+        return;
+      }
+      let improved = typeof data?.description === 'string' ? data.description.trim() : '';
+      if (!improved) {
+        showToast('No se obtuvo texto. Intenta de nuevo.', 'error');
+        return;
+      }
+      improved = improved
+        .replace(/\s*\([^)]*(?:\bIA\b|inteligencia\s+artificial)[^)]*\)/gi, ' ')
+        .replace(/\s{2,}/g, ' ')
+        .trim()
+        .slice(0, 280);
+      handleFormChange('description', improved);
+      showToast('Descripción actualizada. Revisa y guarda si te convence.', 'success');
+    } catch (e) {
+      console.error('[BusinessConfiguration] Mejorar descripción:', e);
+      showToast('Error de conexión. Intenta de nuevo.', 'error');
+    } finally {
+      setIsImprovingBusinessDescription(false);
+    }
   };
 
   const handleSaveSettings = async () => {
@@ -384,6 +442,35 @@ export default function BusinessConfiguration() {
                   label="Descripción del negocio"
                   hint="Aparece destacada en la página principal de tu catálogo. Máximo 280 caracteres."
                 >
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
+                    <span className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+                      {(form?.description ?? '').length}/280
+                    </span>
+                    {canUseAiDescription && (
+                      <button
+                        type="button"
+                        onClick={handleImproveBusinessDescription}
+                        disabled={isImprovingBusinessDescription}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-opacity hover:opacity-90 disabled:opacity-50"
+                        style={{
+                          backgroundColor: 'rgba(124,58,237,0.1)',
+                          color: 'var(--color-primary)',
+                          fontFamily: 'var(--font-caption)',
+                        }}
+                        aria-label="Mejorar descripción orientada a ventas"
+                      >
+                        {isImprovingBusinessDescription ? (
+                          <span
+                            className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin flex-shrink-0"
+                            aria-hidden
+                          />
+                        ) : (
+                          <span aria-hidden>✨</span>
+                        )}
+                        Mejorar con IA
+                      </button>
+                    )}
+                  </div>
                   <textarea
                     rows={3}
                     maxLength={280}
@@ -393,9 +480,6 @@ export default function BusinessConfiguration() {
                     value={form?.description}
                     onChange={e => handleFormChange('description', e?.target?.value)}
                   />
-                  <p className="text-xs mt-1.5" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-                    {(form?.description ?? '').length}/280
-                  </p>
                 </SettingsField>
 
                 {/* WhatsApp: prefijo dinámico según país (countryConfig) */}

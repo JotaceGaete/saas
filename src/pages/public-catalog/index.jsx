@@ -245,6 +245,9 @@ function CatalogInner({ slug }) {
     const onPointerDown = (e) => {
       if (e.pointerType === 'touch') return;
       if (e.button !== 0) return;
+      // No capturar ni arrastrar si el clic es sobre un chip de categoría (evita romper onClick en desktop).
+      const t = e.target;
+      if (t && typeof t.closest === 'function' && t.closest('button')) return;
       ptrDown = true;
       dragMoved = false;
       startX = e.clientX;
