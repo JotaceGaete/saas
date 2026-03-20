@@ -318,9 +318,11 @@ function CatalogInner({ slug }) {
   const updateCategoryScrollEdges = useCallback(() => {
     const el = categoryScrollRef.current;
     if (!el) return;
-    const { scrollLeft, scrollWidth, clientWidth } = el;
-    const maxScroll = Math.max(0, scrollWidth - clientWidth);
-    const eps = 4;
+    const scrollLeft = el.scrollLeft;
+    const scrollWidth = el.scrollWidth;
+    const clientWidth = el.clientWidth;
+    const maxScroll = Math.max(0, Math.ceil(scrollWidth - clientWidth));
+    const eps = 2;
     setCategoryScrollMore({
       left: scrollLeft > eps,
       right: maxScroll > eps && scrollLeft < maxScroll - eps,
@@ -341,19 +343,37 @@ function CatalogInner({ slug }) {
   useEffect(() => {
     const el = categoryScrollRef.current;
     if (!el || !hasCategoryBar) return;
-    updateCategoryScrollEdges();
     const onScroll = () => updateCategoryScrollEdges();
+    const scheduleMeasure = () => {
+      updateCategoryScrollEdges();
+      requestAnimationFrame(() => {
+        updateCategoryScrollEdges();
+        requestAnimationFrame(updateCategoryScrollEdges);
+      });
+    };
+    scheduleMeasure();
+    const t1 = window.setTimeout(scheduleMeasure, 100);
+    const t2 = window.setTimeout(scheduleMeasure, 400);
     el.addEventListener('scroll', onScroll, { passive: true });
     let ro;
+    let roParent;
     if (typeof ResizeObserver !== 'undefined') {
-      ro = new ResizeObserver(() => updateCategoryScrollEdges());
+      ro = new ResizeObserver(scheduleMeasure);
       ro.observe(el);
+      const parent = el.parentElement;
+      if (parent) {
+        roParent = new ResizeObserver(scheduleMeasure);
+        roParent.observe(parent);
+      }
     }
-    window.addEventListener('resize', onScroll);
+    window.addEventListener('resize', scheduleMeasure);
     return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
       el.removeEventListener('scroll', onScroll);
       ro?.disconnect();
-      window.removeEventListener('resize', onScroll);
+      roParent?.disconnect();
+      window.removeEventListener('resize', scheduleMeasure);
     };
   }, [hasCategoryBar, visibleCategories.length, updateCategoryScrollEdges]);
 
@@ -733,51 +753,53 @@ function CatalogInner({ slug }) {
             }
           >
             {hasCategoryBar && (
-              <div className="relative min-w-0 w-full sm:flex-1 sm:basis-0 sm:min-w-0">
-                {/* Flechas solo md+ : scrollBy suave ~72% del ancho; visibles solo si hay contenido oculto a cada lado */}
+              <div className="relative min-w-0 w-full sm:flex-1 sm:basis-0 sm:min-w-0 overflow-hidden">
+                {/* Flechas solo lg+ (escritorio): el carril sigue con scroll táctil en móvil/tablet */}
                 <div
-                  className={`hidden md:block absolute left-0 top-0 bottom-0 z-20 w-11 transition-opacity duration-150 ${
-                    categoryScrollMore.left ? 'opacity-100' : 'opacity-0 pointer-events-none'
+                  className={`hidden lg:block absolute left-0 top-0 bottom-0 z-[25] w-12 transition-opacity duration-150 pointer-events-none ${
+                    categoryScrollMore.left ? 'opacity-100' : 'opacity-0'
                   }`}
                   aria-hidden={!categoryScrollMore.left}
                 >
                   <div
-                    className="absolute inset-0 bg-gradient-to-r from-white from-50% via-white/75 to-transparent pointer-events-none"
+                    className="absolute inset-0 bg-gradient-to-r from-white from-45% via-white/80 to-transparent pointer-events-none"
                     aria-hidden
                   />
                   <button
                     type="button"
                     onClick={() => scrollCategoryStrip(-1)}
                     aria-label="Categorías anteriores"
-                    className="absolute left-0.5 top-1/2 -translate-y-1/2 z-[1] flex h-9 w-9 items-center justify-center rounded-full border border-gray-200/90 bg-white/95 shadow-sm backdrop-blur-[2px] hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1"
+                    disabled={!categoryScrollMore.left}
+                    className="pointer-events-auto absolute left-0 top-1/2 -translate-y-1/2 flex h-10 w-10 items-center justify-center rounded-full border border-gray-200/90 bg-white shadow-sm backdrop-blur-sm hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 disabled:pointer-events-none disabled:opacity-0"
                     style={{ '--tw-ring-color': primaryColor }}
                   >
-                    <Icon name="ChevronLeft" size={18} color={primaryColorDark} />
+                    <Icon name="ChevronLeft" size={20} color={primaryColorDark} />
                   </button>
                 </div>
                 <div
-                  className={`hidden md:block absolute right-0 top-0 bottom-0 z-20 w-11 transition-opacity duration-150 ${
-                    categoryScrollMore.right ? 'opacity-100' : 'opacity-0 pointer-events-none'
+                  className={`hidden lg:block absolute right-0 top-0 bottom-0 z-[25] w-12 transition-opacity duration-150 pointer-events-none ${
+                    categoryScrollMore.right ? 'opacity-100' : 'opacity-0'
                   }`}
                   aria-hidden={!categoryScrollMore.right}
                 >
                   <div
-                    className="absolute inset-0 bg-gradient-to-l from-white from-50% via-white/75 to-transparent pointer-events-none"
+                    className="absolute inset-0 bg-gradient-to-l from-white from-45% via-white/80 to-transparent pointer-events-none"
                     aria-hidden
                   />
                   <button
                     type="button"
                     onClick={() => scrollCategoryStrip(1)}
                     aria-label="Más categorías"
-                    className="absolute right-0.5 top-1/2 -translate-y-1/2 z-[1] flex h-9 w-9 items-center justify-center rounded-full border border-gray-200/90 bg-white/95 shadow-sm backdrop-blur-[2px] hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1"
+                    disabled={!categoryScrollMore.right}
+                    className="pointer-events-auto absolute right-0 top-1/2 -translate-y-1/2 flex h-10 w-10 items-center justify-center rounded-full border border-gray-200/90 bg-white shadow-sm backdrop-blur-sm hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 disabled:pointer-events-none disabled:opacity-0"
                     style={{ '--tw-ring-color': primaryColor }}
                   >
-                    <Icon name="ChevronRight" size={18} color={primaryColorDark} />
+                    <Icon name="ChevronRight" size={20} color={primaryColorDark} />
                   </button>
                 </div>
                 <div
                   ref={categoryScrollRef}
-                  className="flex flex-nowrap items-center gap-2 overflow-x-auto overflow-y-hidden overscroll-x-contain touch-pan-x pb-0.5 pl-2 pr-2 sm:pl-3 sm:pr-3 md:pl-11 md:pr-11 min-w-0 w-full max-w-full cursor-grab select-none scrollbar-hide snap-x snap-proximity [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                  className="flex flex-nowrap items-center gap-2 overflow-x-auto overflow-y-hidden overscroll-x-contain touch-pan-x pb-0.5 pl-2 pr-2 sm:pl-3 sm:pr-3 lg:pl-12 lg:pr-12 min-w-0 w-full max-w-full cursor-grab select-none scrollbar-hide snap-x snap-proximity [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                   style={{
                     WebkitOverflowScrolling: 'touch',
                     maskImage: 'linear-gradient(to right, transparent 0px, black 12px, black calc(100% - 12px), transparent 100%)',
