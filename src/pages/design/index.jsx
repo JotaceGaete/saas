@@ -167,7 +167,7 @@ export default function DesignPage() {
             </div>
             {/* Columna derecha: vista previa sticky en desktop; normal en móvil */}
             <div
-              className="flex flex-col items-center justify-start w-full max-w-[380px] mx-auto lg:mx-0 py-6 lg:py-8 lg:sticky lg:top-[5.5rem] lg:self-start lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto rounded-xl border lg:rounded-2xl"
+              className="flex flex-col items-center justify-start w-full max-w-[380px] mx-auto lg:mx-0 py-6 lg:py-8 lg:sticky lg:top-[calc(60px+var(--safe-area-top))] lg:self-start rounded-xl border lg:rounded-2xl lg:z-[1]"
               style={{ borderColor: 'var(--color-border)', backgroundColor: '#f7f7f9' }}
             >
               <p className="text-xs font-semibold mb-3 flex-shrink-0" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>

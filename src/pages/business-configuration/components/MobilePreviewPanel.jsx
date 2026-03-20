@@ -231,24 +231,24 @@ export default function MobilePreviewPanel({ storeName, storeSlug, logoUrl, cove
 
           {/* Cover image banner */}
           {headerImageUrl ? (
-            <div
-              className="relative w-full overflow-hidden"
-              style={{
-                height: '72px',
-                backgroundColor: coverFit === 'contain' ? (primaryColor || '#7C3AED') : undefined,
-              }}
-            >
-              <Image
-                src={headerImageUrl}
-                alt="Portada del catálogo en vista previa"
-                className="w-full h-full"
+            <div className="relative w-full">
+              <div
+                className="relative w-full h-[72px] overflow-hidden"
                 style={{
-                  objectFit: coverFit,
-                  objectPosition: coverFit === 'cover' ? coverPosition : 'center',
+                  backgroundColor: coverFit === 'contain' ? (primaryColor || '#7C3AED') : undefined,
                 }}
-              />
-              <div className="absolute inset-0" style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.45) 100%)' }} />
-              {/* Logo overlaid on cover */}
+              >
+                <Image
+                  src={headerImageUrl}
+                  alt="Portada del catálogo en vista previa"
+                  className="w-full h-full"
+                  style={{
+                    objectFit: coverFit,
+                    objectPosition: coverFit === 'cover' ? coverPosition : 'center',
+                  }}
+                />
+                <div className="absolute inset-0" style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.45) 100%)' }} />
+              </div>
               <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 z-10">
                 <div
                   className="w-12 h-12 rounded-full overflow-hidden border-2 flex items-center justify-center"
