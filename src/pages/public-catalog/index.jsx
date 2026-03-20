@@ -202,14 +202,112 @@ function CatalogInner({ slug }) {
   useEffect(() => {
     const el = categoryScrollRef.current;
     if (!el) return;
+
+    const canScrollX = () => el.scrollWidth > el.clientWidth + 1;
+
+    /** Rueda vertical → scroll horizontal; Shift+rueda; respeta deltaMode (líneas/píxeles). Trackpad horizontal: nativo. */
     const onWheel = (e) => {
-      if (el.scrollWidth <= el.clientWidth + 1) return;
-      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+      if (!canScrollX()) return;
+      const { deltaX, deltaY, deltaMode, shiftKey } = e;
+
+      const LINE = 1;
+      const PAGE = 2;
+
+      if (shiftKey && deltaY !== 0) {
+        e.preventDefault();
+        let dy = deltaY;
+        if (deltaMode === LINE) dy *= 32;
+        else if (deltaMode === PAGE) dy *= el.clientWidth;
+        el.scrollLeft += dy;
+        return;
+      }
+
+      if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 0.5) {
+        return;
+      }
+
+      if (deltaY === 0) return;
+
       e.preventDefault();
-      el.scrollLeft += e.deltaY;
+      let dy = deltaY;
+      if (deltaMode === LINE) dy *= 32;
+      else if (deltaMode === PAGE) dy *= el.clientWidth;
+      el.scrollLeft += dy;
     };
+
+    let ptrDown = false;
+    let startX = 0;
+    let startScroll = 0;
+    let dragMoved = false;
+    let activePointerId = null;
+    let suppressClickUntil = 0;
+
+    const onPointerDown = (e) => {
+      if (e.pointerType === 'touch') return;
+      if (e.button !== 0) return;
+      ptrDown = true;
+      dragMoved = false;
+      startX = e.clientX;
+      startScroll = el.scrollLeft;
+      activePointerId = e.pointerId;
+      el.style.cursor = 'grabbing';
+      try {
+        el.setPointerCapture(e.pointerId);
+      } catch (_) {
+        /* ignore */
+      }
+    };
+
+    const onPointerMove = (e) => {
+      if (!ptrDown || e.pointerId !== activePointerId) return;
+      const dx = e.clientX - startX;
+      if (Math.abs(dx) > 3) dragMoved = true;
+      if (dragMoved) el.scrollLeft = startScroll - dx;
+    };
+
+    const endPointer = (e) => {
+      if (!ptrDown) return;
+      if (e?.pointerId != null && e.pointerId !== activePointerId) return;
+      const didDrag = dragMoved;
+      ptrDown = false;
+      activePointerId = null;
+      el.style.cursor = '';
+      try {
+        if (e?.pointerId != null) el.releasePointerCapture(e.pointerId);
+      } catch (_) {
+        /* ignore */
+      }
+      if (didDrag) {
+        suppressClickUntil = Date.now() + 400;
+      }
+      dragMoved = false;
+    };
+
+    const onClickCapture = (e) => {
+      if (Date.now() < suppressClickUntil) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+
     el.addEventListener('wheel', onWheel, { passive: false });
-    return () => el.removeEventListener('wheel', onWheel);
+    el.addEventListener('pointerdown', onPointerDown);
+    el.addEventListener('pointermove', onPointerMove);
+    el.addEventListener('pointerup', endPointer);
+    el.addEventListener('pointercancel', endPointer);
+    el.addEventListener('lostpointercapture', endPointer);
+    el.addEventListener('click', onClickCapture, true);
+
+    return () => {
+      el.removeEventListener('wheel', onWheel);
+      el.removeEventListener('pointerdown', onPointerDown);
+      el.removeEventListener('pointermove', onPointerMove);
+      el.removeEventListener('pointerup', endPointer);
+      el.removeEventListener('pointercancel', endPointer);
+      el.removeEventListener('lostpointercapture', endPointer);
+      el.removeEventListener('click', onClickCapture, true);
+      el.style.cursor = '';
+    };
   }, [hasCategoryBar, visibleCategories.length]);
 
   const buildSingleWhatsAppMessage = (product) => {
@@ -591,7 +689,7 @@ function CatalogInner({ slug }) {
               <div className="relative min-w-0 w-full sm:flex-1 sm:basis-0 sm:min-w-0">
                 <div
                   ref={categoryScrollRef}
-                  className="flex flex-nowrap items-center gap-2 overflow-x-auto overflow-y-hidden overscroll-x-contain touch-pan-x pb-0.5 pl-2 pr-2 sm:pl-3 sm:pr-3 min-w-0 w-full scrollbar-hide snap-x snap-mandatory [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                  className="flex flex-nowrap items-center gap-2 overflow-x-auto overflow-y-hidden overscroll-x-contain touch-pan-x pb-0.5 pl-2 pr-2 sm:pl-3 sm:pr-3 min-w-0 w-full max-w-full cursor-grab select-none scrollbar-hide snap-x snap-proximity [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                   style={{
                     WebkitOverflowScrolling: 'touch',
                     maskImage: 'linear-gradient(to right, transparent 0px, black 12px, black calc(100% - 12px), transparent 100%)',
