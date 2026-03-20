@@ -314,6 +314,15 @@ function orderRevenueTimestamp(row) {
   return null;
 }
 
+/** yyyy-mm-dd en calendario local (misma noción de "hoy" que la UI en el navegador). */
+function localCalendarDateKey(d) {
+  if (!(d instanceof Date) || Number.isNaN(d.getTime())) return null;
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 const mapOrderFromDb = (row) => ({
   id: row?.id,
   businessId: row?.business_id,
@@ -953,17 +962,11 @@ export const getTopProducts = async (businessId, limit = 5) => {
 /**
  * Ingresos agregados del mes y del día actual.
  * - Pedidos `payment_status = 'pagado'`; fecha de ingreso = `paid_at` o, si falta, `updated_at` (hasta backfill/trigger en BD).
- * - Comparaciones de rangos día/mes en hora local del navegador.
+ * - "Hoy" / "ayer": día calendario local (`localCalendarDateKey`), no solo [inicio, fin] instantáneo (evita desajustes con ISO/UTC).
+ * - Mes actual / anterior: año y mes en calendario local de `at` vs `now`.
  */
 export const getMonthlyRevenue = async (businessId) => {
   const now = new Date();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-  const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
-  const startOfYesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0, 0);
-  const endOfYesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59, 999);
-  const startOfPrevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0, 0);
-  const endOfPrevMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
   const fetchSince = new Date(now.getFullYear() - 1, now.getMonth(), 1, 0, 0, 0, 0);
   const fetchSinceIso = fetchSince.toISOString();
   const q = quoteIsoForOrFilter(fetchSinceIso);
@@ -975,25 +978,61 @@ export const getMonthlyRevenue = async (businessId) => {
     ?.or(`and(paid_at.is.null,updated_at.gte.${q}),paid_at.gte.${q}`);
   if (error) return { data: null, error };
 
+  const todayKey = localCalendarDateKey(now);
+  const yRef = new Date(now);
+  yRef.setDate(yRef.getDate() - 1);
+  const yesterdayKey = localCalendarDateKey(yRef);
+  const prevMonthYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+  const prevMonthIndex = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
+
   let total = 0;
   let todayTotal = 0;
   let yesterdayTotal = 0;
   let previousMonthTotal = 0;
   const rows = data || [];
+
+  if (import.meta.env?.DEV) {
+    const dbgStartLocal = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    const dbgEndLocal = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    console.debug('[getMonthlyRevenue] día local (debug)', {
+      todayKey,
+      yesterdayKey,
+      startLocalISO: dbgStartLocal.toISOString(),
+      endLocalISO: dbgEndLocal.toISOString(),
+      rows: rows.length,
+      muestra: rows.slice(0, 8).map((r) => {
+        const at = orderRevenueTimestamp(r);
+        return {
+          paid_at: r.paid_at,
+          updated_at: r.updated_at,
+          atISO: at?.toISOString?.() ?? null,
+          localKey: at ? localCalendarDateKey(at) : null,
+          cuentaComoHoy: at ? localCalendarDateKey(at) === todayKey : false,
+        };
+      }),
+    });
+  }
+
   rows.forEach((row) => {
     const amount = parseFloat(row?.total_amount) || 0;
     const at = orderRevenueTimestamp(row);
     if (!at) return;
 
-    if (at >= startOfMonth && at <= now) total += amount;
-    if (at >= startOfToday && at <= endOfToday) todayTotal += amount;
-    if (at >= startOfYesterday && at <= endOfYesterday) yesterdayTotal += amount;
-    if (at >= startOfPrevMonth && at <= endOfPrevMonth) previousMonthTotal += amount;
+    const inCurrentMonth = at.getFullYear() === now.getFullYear() && at.getMonth() === now.getMonth();
+    if (inCurrentMonth && at <= now) total += amount;
+
+    if (localCalendarDateKey(at) === todayKey) todayTotal += amount;
+
+    if (localCalendarDateKey(at) === yesterdayKey) yesterdayTotal += amount;
+
+    if (at.getFullYear() === prevMonthYear && at.getMonth() === prevMonthIndex) previousMonthTotal += amount;
   });
 
   const currentMonthOrders = rows.filter((row) => {
     const at = orderRevenueTimestamp(row);
-    return !!at && at >= startOfMonth && at <= now;
+    if (!at) return false;
+    const inCurrentMonth = at.getFullYear() === now.getFullYear() && at.getMonth() === now.getMonth();
+    return inCurrentMonth && at <= now;
   });
   const count = currentMonthOrders.length;
   const avgTicket = count > 0 ? Math.round(total / count) : 0;
