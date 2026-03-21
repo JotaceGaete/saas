@@ -72,6 +72,84 @@ function hexToRgba(hex, alpha = 0.4) {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
+/** Horarios, dirección, envíos y retiro — mismo contenido en escritorio y en el acordeón móvil. */
+function CatalogInfoGrid({ design, primaryColor, fullAddress, mapsSearchUrl, showAddressInCatalog }) {
+  return (
+    <>
+      {(design?.businessHours ?? '').trim() !== '' && (
+        <div className="flex items-start gap-2">
+          <Icon name="Clock" size={16} className="flex-shrink-0 mt-0.5" color="#6B7280" />
+          <div>
+            <span className="font-semibold text-gray-500 block mb-0.5">Horario</span>
+            <span className="text-gray-800 whitespace-pre-line">{design.businessHours.trim()}</span>
+          </div>
+        </div>
+      )}
+      {showAddressInCatalog && (
+        <div className="flex items-start gap-2">
+          <Icon name="MapPin" size={16} className="flex-shrink-0 mt-0.5" color="#6B7280" />
+          <div>
+            <span className="font-semibold text-gray-500 block mb-0.5">Dirección</span>
+            {mapsSearchUrl ? (
+              <a
+                href={mapsSearchUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-gray-800 hover:underline focus:outline-none focus:underline"
+                style={{ color: primaryColor }}
+              >
+                {fullAddress}
+              </a>
+            ) : (
+              <span className="text-gray-800">{fullAddress}</span>
+            )}
+            {mapsSearchUrl && (
+              <span className="block mt-1">
+                <a
+                  href={mapsSearchUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs font-medium hover:underline"
+                  style={{ color: primaryColor }}
+                >
+                  Ver en mapa
+                </a>
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+      {(design?.shippingMethods ?? '').trim() !== '' && (
+        <div className="flex items-start gap-2">
+          <Icon name="Truck" size={16} className="flex-shrink-0 mt-0.5" color="#6B7280" />
+          <div>
+            <span className="font-semibold text-gray-500 block mb-0.5">Envíos</span>
+            <span className="text-gray-800">{design.shippingMethods.trim()}</span>
+          </div>
+        </div>
+      )}
+      {(design?.shippingCost ?? '').trim() !== '' && (
+        <div className="flex items-start gap-2">
+          <Icon name="Package" size={16} className="flex-shrink-0 mt-0.5" color="#6B7280" />
+          <div>
+            <span className="font-semibold text-gray-500 block mb-0.5">Costo de envío</span>
+            <span className="text-gray-800">{design.shippingCost.trim()}</span>
+          </div>
+        </div>
+      )}
+      {design?.retiroEnTienda === true && (
+        <div className="flex items-start gap-2 sm:col-span-2">
+          <Icon name="Store" size={16} className="flex-shrink-0 mt-0.5" color="#6B7280" />
+          <div>
+            <span className="font-semibold text-gray-500 block mb-0.5">Retiro en tienda</span>
+            <span className="text-gray-800">Disponible</span>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 export default function PublicCatalog() {
   const { slug } = useParams();
   return (
@@ -98,6 +176,8 @@ function CatalogInner({ slug }) {
   const [priceRange, setPriceRange] = useState([0, 0]);
   const [maxPrice, setMaxPrice] = useState(0);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  /** Móvil (pantallas menores a md / 768px): datos del negocio en acordeón, cerrado por defecto. */
+  const [mobileStoreInfoOpen, setMobileStoreInfoOpen] = useState(false);
   /** Desktop: si el carril de categorías puede seguir scrolleando a izquierda/derecha (para flechas). */
   const [categoryScrollMore, setCategoryScrollMore] = useState({ left: false, right: false });
 
@@ -111,6 +191,10 @@ function CatalogInner({ slug }) {
   useEffect(() => {
     if (!slug) return;
     loadCatalog();
+  }, [slug]);
+
+  useEffect(() => {
+    setMobileStoreInfoOpen(false);
   }, [slug]);
 
   const loadCatalog = async () => {
@@ -445,6 +529,11 @@ function CatalogInner({ slug }) {
     (design?.shippingMethods ?? '').trim() !== '' ||
     (design?.shippingCost ?? '').trim() !== '' ||
     design?.retiroEnTienda === true;
+  const hasBusinessDescription =
+    storeHeader?.showDescription !== false && !!business?.description?.trim();
+  /** En móvil, si hay algo que mostrar bajo “Ver datos del negocio”. */
+  const hasMobileStoreInfoAccordion =
+    hasBusinessDescription || hasCatalogInfo || !!business?.city;
   const catalogViewMode = design?.catalogViewMode === 'compact' ? 'compact' : 'featured';
   const useCompactCard = catalogViewMode === 'compact' && !isDesktop;
   // Grid con min-width para que las tarjetas no queden demasiado angostas ni demasiado anchas
@@ -597,14 +686,14 @@ function CatalogInner({ slug }) {
                     </span>
                   </div>
                   {business?.city && (
-                    <div className="flex items-center gap-1 mb-1">
+                    <div className="hidden md:flex items-center gap-1 mb-1">
                       <Icon name="MapPin" size={12} color="#9CA3AF" />
                       <span className="text-xs text-gray-500">{business?.city}</span>
                     </div>
                   )}
                   {storeHeader?.showDescription !== false && business?.description && (
                     <p
-                      className="text-base font-medium leading-relaxed line-clamp-3 mt-1"
+                      className="hidden md:block text-base font-medium leading-relaxed line-clamp-3 mt-1"
                       style={{
                         color: storeHeader?.descriptionColor || undefined,
                         ...(!storeHeader?.descriptionColor && { color: '#374151' }),
@@ -640,84 +729,91 @@ function CatalogInner({ slug }) {
                 </div>
               )}
             </div>
+
+            {/* Móvil: datos del negocio bajo demanda (acordeón cerrado por defecto) */}
+            {hasMobileStoreInfoAccordion && (
+              <div className="md:hidden border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setMobileStoreInfoOpen((o) => !o)}
+                  className="w-full flex items-center justify-between gap-3 px-4 py-3.5 text-left text-sm font-semibold text-gray-800 active:bg-gray-50/90 transition-colors duration-200"
+                  style={{ fontFamily: 'DM Sans, sans-serif' }}
+                  aria-expanded={mobileStoreInfoOpen}
+                  aria-controls="catalog-mobile-store-info"
+                  id="catalog-mobile-store-info-trigger"
+                >
+                  <span>{mobileStoreInfoOpen ? 'Ocultar datos del negocio' : 'Ver datos del negocio'}</span>
+                  <Icon
+                    name="ChevronDown"
+                    size={20}
+                    color="#6B7280"
+                    className={`flex-shrink-0 transition-transform duration-300 ease-out ${mobileStoreInfoOpen ? 'rotate-180' : ''}`}
+                    aria-hidden
+                  />
+                </button>
+                <div
+                  id="catalog-mobile-store-info"
+                  role="region"
+                  aria-labelledby="catalog-mobile-store-info-trigger"
+                  className={`grid transition-[grid-template-rows] duration-300 ease-in-out motion-reduce:transition-none ${mobileStoreInfoOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}
+                >
+                  <div className="min-h-0 overflow-hidden">
+                    <div className="px-4 pb-4 pt-0 border-t border-gray-50">
+                      <div className="grid grid-cols-1 gap-x-6 gap-y-4 text-sm pt-4">
+                        {hasBusinessDescription && (
+                          <div className="flex items-start gap-2">
+                            <Icon name="AlignLeft" size={16} className="flex-shrink-0 mt-0.5" color="#6B7280" />
+                            <div className="min-w-0">
+                              <span className="font-semibold text-gray-500 block mb-0.5">Descripción</span>
+                              <p
+                                className="text-gray-800 leading-relaxed text-[15px] font-medium"
+                                style={{
+                                  color: storeHeader?.descriptionColor || undefined,
+                                  ...(!storeHeader?.descriptionColor && { color: '#374151' }),
+                                }}
+                              >
+                                {business?.description}
+                              </p>
+                            </div>
+                          </div>
+                        )}
+                        {business?.city && !showAddressInCatalog && (
+                          <div className="flex items-start gap-2">
+                            <Icon name="MapPin" size={16} className="flex-shrink-0 mt-0.5" color="#6B7280" />
+                            <div>
+                              <span className="font-semibold text-gray-500 block mb-0.5">Ubicación</span>
+                              <span className="text-gray-800">{business.city}</span>
+                            </div>
+                          </div>
+                        )}
+                        <CatalogInfoGrid
+                          design={design}
+                          primaryColor={primaryColor}
+                          fullAddress={fullAddress}
+                          mapsSearchUrl={mapsSearchUrl}
+                          showAddressInCatalog={showAddressInCatalog}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* 2b. Información adicional (horario, dirección, envíos, retiro) */}
+        {/* 2b. Información adicional (escritorio; en móvil va en el acordeón de la tarjeta) */}
         {hasCatalogInfo && (
-          <div className="max-w-5xl mx-auto px-4 mt-3">
+          <div className="max-w-5xl mx-auto px-4 mt-3 hidden md:block">
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
               <div className="p-4 sm:p-5 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 text-sm">
-                {(design?.businessHours ?? '').trim() !== '' && (
-                  <div className="flex items-start gap-2">
-                    <Icon name="Clock" size={16} className="flex-shrink-0 mt-0.5" color="#6B7280" />
-                    <div>
-                      <span className="font-semibold text-gray-500 block mb-0.5">Horario</span>
-                      <span className="text-gray-800 whitespace-pre-line">{design.businessHours.trim()}</span>
-                    </div>
-                  </div>
-                )}
-                {showAddressInCatalog && (
-                  <div className="flex items-start gap-2">
-                    <Icon name="MapPin" size={16} className="flex-shrink-0 mt-0.5" color="#6B7280" />
-                    <div>
-                      <span className="font-semibold text-gray-500 block mb-0.5">Dirección</span>
-                      {mapsSearchUrl ? (
-                        <a
-                          href={mapsSearchUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-gray-800 hover:underline focus:outline-none focus:underline"
-                          style={{ color: primaryColor }}
-                        >
-                          {fullAddress}
-                        </a>
-                      ) : (
-                        <span className="text-gray-800">{fullAddress}</span>
-                      )}
-                      {mapsSearchUrl && (
-                        <span className="block mt-1">
-                          <a
-                            href={mapsSearchUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs font-medium hover:underline"
-                            style={{ color: primaryColor }}
-                          >
-                            Ver en mapa
-                          </a>
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                )}
-                {(design?.shippingMethods ?? '').trim() !== '' && (
-                  <div className="flex items-start gap-2">
-                    <Icon name="Truck" size={16} className="flex-shrink-0 mt-0.5" color="#6B7280" />
-                    <div>
-                      <span className="font-semibold text-gray-500 block mb-0.5">Envíos</span>
-                      <span className="text-gray-800">{design.shippingMethods.trim()}</span>
-                    </div>
-                  </div>
-                )}
-                {(design?.shippingCost ?? '').trim() !== '' && (
-                  <div className="flex items-start gap-2">
-                    <Icon name="Package" size={16} className="flex-shrink-0 mt-0.5" color="#6B7280" />
-                    <div>
-                      <span className="font-semibold text-gray-500 block mb-0.5">Costo de envío</span>
-                      <span className="text-gray-800">{design.shippingCost.trim()}</span>
-                    </div>
-                  </div>
-                )}
-                {design?.retiroEnTienda === true && (
-                  <div className="flex items-start gap-2 sm:col-span-2">
-                    <Icon name="Store" size={16} className="flex-shrink-0 mt-0.5" color="#6B7280" />
-                    <div>
-                      <span className="font-semibold text-gray-500 block mb-0.5">Retiro en tienda</span>
-                      <span className="text-gray-800">Disponible</span>
-                    </div>
-                  </div>
-                )}
+                <CatalogInfoGrid
+                  design={design}
+                  primaryColor={primaryColor}
+                  fullAddress={fullAddress}
+                  mapsSearchUrl={mapsSearchUrl}
+                  showAddressInCatalog={showAddressInCatalog}
+                />
               </div>
             </div>
           </div>

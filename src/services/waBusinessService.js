@@ -340,8 +340,10 @@ const mapOrderFromDb = (row) => ({
   paymentStatus: PAYMENT_STATUS_VALID.includes(row?.payment_status) ? row?.payment_status : 'pendiente',
   /** Oculto del tablero; visible en Historial. */
   isArchived: row?.is_archived === true,
-  /** Momento en que pasó a entregado (ventana antes de archivar automáticamente). */
+  /** Momento en que pasó a entregado. Si es null en filas antiguas, la UI puede mostrar hora vía `createdAt` pero no duración “Entregado en …”. */
   deliveredAt: row?.delivered_at ?? null,
+  /** Momento en que pasó a enviado. */
+  sentAt: row?.sent_at ?? null,
   /** Cobro efectivo (BD, trigger). Es la única fecha válida para métricas de ingreso; el cliente no la escribe. */
   paidAt: row?.paid_at ?? null,
   notes: row?.notes,
@@ -801,11 +803,21 @@ export const updateOrder = async (orderId, updates) => {
     const s = updates?.status;
     if (ORDER_STATUS_VALID.includes(s)) {
       dbUpdates.order_status = s;
+      const { data: prevRow } = await supabase?.from('wa_orders')?.select('order_status')?.eq('id', orderId)?.maybeSingle();
+      const prevStatus = prevRow?.order_status;
       if (s === 'entregado') {
-        const { data: row } = await supabase?.from('wa_orders')?.select('order_status')?.eq('id', orderId)?.maybeSingle();
-        if (row?.order_status !== 'entregado') {
+        if (prevStatus !== 'entregado') {
           dbUpdates.delivered_at = new Date().toISOString();
         }
+      } else if (prevStatus === 'entregado') {
+        dbUpdates.delivered_at = null;
+      }
+      if (s === 'enviado') {
+        if (prevStatus !== 'enviado') {
+          dbUpdates.sent_at = new Date().toISOString();
+        }
+      } else if (prevStatus === 'enviado' && s !== 'entregado' && (s === 'pedido' || s === 'en_preparacion')) {
+        dbUpdates.sent_at = null;
       }
     }
   }

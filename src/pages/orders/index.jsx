@@ -18,6 +18,7 @@ import {
   ACTIVE_DELIVERED_VISIBILITY_MINUTES,
   isOrderVisibleOnActiveBoard,
 } from '../../constants/ordersBoard';
+import { filterDeliveredOrdersMissingDeliveredAt } from '../../utils/orderDates';
 
 const ORDER_STATUSES = [
   { key: 'pedido', label: 'Pedido', color: '#6366F1', bg: '#EEF2FF', icon: 'ShoppingBag' },
@@ -127,6 +128,40 @@ export default function OrdersPage() {
 
   useEffect(() => { loadOrders(); }, [loadOrders]);
 
+  /** Dev: `?debugDeliveredAt=1` lista entregados sin `delivered_at`; `window.__inspectDeliveredAtGaps__()` en cualquier momento. */
+  const devDeliveredDebugOnce = useRef(false);
+  useEffect(() => {
+    if (!import.meta.env.DEV) return undefined;
+    window.__inspectDeliveredAtGaps__ = () => {
+      const missing = filterDeliveredOrdersMissingDeliveredAt(orders);
+      if (missing.length) {
+        console.table(missing.map((o) => ({ id: o.id, createdAt: o.createdAt })));
+      } else {
+        console.info('[inspectDeliveredAtGaps] ningún entregado sin deliveredAt en la lista actual');
+      }
+      return missing;
+    };
+    return () => {
+      delete window.__inspectDeliveredAtGaps__;
+    };
+  }, [orders]);
+
+  useEffect(() => {
+    if (!import.meta.env.DEV || devDeliveredDebugOnce.current) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('debugDeliveredAt') !== '1') return;
+    if (!orders?.length) return;
+    devDeliveredDebugOnce.current = true;
+    const missing = filterDeliveredOrdersMissingDeliveredAt(orders);
+    const entregados = orders.filter((o) => o?.status === 'entregado');
+    console.info(
+      `[debugDeliveredAt] entregados en lista: ${entregados.length}; sin deliveredAt: ${missing.length}`,
+    );
+    if (missing.length) {
+      console.table(missing.map((o) => ({ id: o.id, createdAt: o.createdAt })));
+    }
+  }, [orders]);
+
   useEffect(() => {
     if (!business?.id) return;
     const onVisible = () => { if (document.visibilityState === 'visible') loadOrders(); };
@@ -169,6 +204,19 @@ export default function OrdersPage() {
           if (updates.status === 'entregado' && !merged.deliveredAt) {
             merged.deliveredAt = new Date().toISOString();
           }
+          if (updates.status && updates.status !== 'entregado' && x.status === 'entregado') {
+            merged.deliveredAt = null;
+          }
+          if (updates.status === 'enviado' && !merged.sentAt) {
+            merged.sentAt = new Date().toISOString();
+          }
+          if (
+            updates.status &&
+            (updates.status === 'pedido' || updates.status === 'en_preparacion') &&
+            x.status === 'enviado'
+          ) {
+            merged.sentAt = null;
+          }
           return merged;
         });
       });
@@ -184,6 +232,19 @@ export default function OrdersPage() {
           const merged = { ...prev, ...updates };
           if (updates.status === 'entregado' && !merged.deliveredAt) {
             merged.deliveredAt = new Date().toISOString();
+          }
+          if (updates.status && updates.status !== 'entregado' && prev.status === 'entregado') {
+            merged.deliveredAt = null;
+          }
+          if (updates.status === 'enviado' && !merged.sentAt) {
+            merged.sentAt = new Date().toISOString();
+          }
+          if (
+            updates.status &&
+            (updates.status === 'pedido' || updates.status === 'en_preparacion') &&
+            prev.status === 'enviado'
+          ) {
+            merged.sentAt = null;
           }
           return merged;
         });

@@ -2,6 +2,11 @@ import React, { useState } from 'react';
 import Icon from 'components/AppIcon';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import {
+  formatDeliveryDurationLabel,
+  formatDeliverySegmentDurationLabel,
+  formatPreparationDurationLabel,
+} from 'utils/orderDates';
 
 export default function OrderDetailDrawer({
   order,
@@ -19,9 +24,23 @@ export default function OrderDetailDrawer({
   const [savingStatus, setSavingStatus] = useState(false);
   const [savingPayment, setSavingPayment] = useState(false);
 
-  const formattedDate = order?.createdAt
+  const formattedOrderDate = order?.createdAt
     ? format(new Date(order.createdAt), "d 'de' MMMM yyyy, HH:mm", { locale: es })
     : '—';
+  const sentIso = order?.sentAt || null;
+  const formattedSentDate = sentIso
+    ? format(new Date(sentIso), "d 'de' MMMM yyyy, HH:mm", { locale: es })
+    : null;
+  const formattedDeliveredDate =
+    order?.status === 'entregado' && order?.deliveredAt
+      ? format(new Date(order.deliveredAt), "d 'de' MMMM yyyy, HH:mm", { locale: es })
+      : null;
+
+  const preparationLabel = formatPreparationDurationLabel(order);
+  const deliverySegmentLabel = formatDeliverySegmentDurationLabel(order);
+  const totalDurationLabel = formatDeliveryDurationLabel(order);
+  const hasAnyDurationRow =
+    preparationLabel || deliverySegmentLabel || totalDurationLabel;
 
   const whatsappHref = order?.customerPhone
     ? `https://wa.me/${order.customerPhone.replace(/\D/g, '')}`
@@ -71,9 +90,49 @@ export default function OrderDetailDrawer({
         </div>
 
         <div className="p-4 space-y-5">
-          <div>
-            <p className="text-xs font-semibold mb-1" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Fecha</p>
-            <p className="text-sm" style={{ fontFamily: 'var(--font-caption)' }}>{formattedDate}</p>
+          <div className="rounded-xl border p-3 space-y-3" style={{ borderColor: 'var(--color-border)', backgroundColor: 'rgba(124,58,237,0.04)' }}>
+            <div>
+              <p className="text-xs font-semibold mb-1" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Pedido</p>
+              <p className="text-sm tabular-nums font-medium" style={{ fontFamily: 'var(--font-caption)' }}>{formattedOrderDate}</p>
+            </div>
+            {formattedSentDate && (
+              <div>
+                <p className="text-xs font-semibold mb-1" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Enviado</p>
+                <p className="text-sm tabular-nums font-medium" style={{ fontFamily: 'var(--font-caption)' }}>{formattedSentDate}</p>
+              </div>
+            )}
+            {order?.status === 'entregado' && (
+              <div>
+                <p className="text-xs font-semibold mb-1" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Entregado</p>
+                {formattedDeliveredDate ? (
+                  <p className="text-sm tabular-nums font-medium" style={{ fontFamily: 'var(--font-caption)' }}>{formattedDeliveredDate}</p>
+                ) : (
+                  <p className="text-sm font-medium" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Sin hora registrada</p>
+                )}
+              </div>
+            )}
+            {hasAnyDurationRow && (
+              <div className="pt-2 border-t space-y-2" style={{ borderColor: 'var(--color-border)' }}>
+                {preparationLabel && (
+                  <div className="flex justify-between items-baseline gap-3">
+                    <p className="text-xs font-semibold shrink-0" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Preparación</p>
+                    <p className="text-base font-bold tabular-nums text-right" style={{ color: '#059669', fontFamily: 'var(--font-heading)' }}>{preparationLabel}</p>
+                  </div>
+                )}
+                {deliverySegmentLabel && (
+                  <div className="flex justify-between items-baseline gap-3">
+                    <p className="text-xs font-semibold shrink-0" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Entrega</p>
+                    <p className="text-base font-bold tabular-nums text-right" style={{ color: '#059669', fontFamily: 'var(--font-heading)' }}>{deliverySegmentLabel}</p>
+                  </div>
+                )}
+                {totalDurationLabel && (
+                  <div className="flex justify-between items-baseline gap-3">
+                    <p className="text-xs font-semibold shrink-0" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Total</p>
+                    <p className="text-base font-bold tabular-nums text-right" style={{ color: '#059669', fontFamily: 'var(--font-heading)' }}>{totalDurationLabel}</p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <div>

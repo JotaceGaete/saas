@@ -1,16 +1,17 @@
 import React from 'react';
 import Icon from 'components/AppIcon';
-import { format } from 'date-fns';
-import { es } from 'date-fns/locale';
+import { getOrderCardTimeCaption } from 'utils/orderDates';
 
-const SUB_BADGE = {
+const STATUS_BADGE = {
+  pedido: { label: 'Pedido', color: '#6366F1', bg: 'rgba(99,102,241,0.14)', icon: 'ShoppingBag' },
   en_preparacion: { label: 'En preparación', color: '#B45309', bg: 'rgba(245, 158, 11, 0.22)', icon: 'ChefHat' },
   enviado: { label: 'Enviado', color: '#0369A1', bg: 'rgba(14, 165, 233, 0.18)', icon: 'Truck' },
+  entregado: { label: 'Entregado', color: '#059669', bg: 'rgba(16, 185, 129, 0.18)', icon: 'PackageCheck' },
 };
 
-function SubStatusBadge({ status }) {
+function OrderStatusBadge({ status }) {
   const s = status || 'pedido';
-  const cfg = SUB_BADGE[s];
+  const cfg = STATUS_BADGE[s];
   if (!cfg) return null;
   return (
     <span
@@ -37,7 +38,7 @@ function orderShortIdLocal(id) {
 function nextQuickStatus(order) {
   const s = order?.status || 'pedido';
   if (s === 'pedido') return { status: 'en_preparacion', label: 'Pasar a preparación' };
-  if (s === 'en_preparacion') return { status: 'enviado', label: 'Enviar' };
+  if (s === 'en_preparacion') return { status: 'enviado', label: 'Marcar como Enviado' };
   if (s === 'enviado') return { status: 'entregado', label: 'Marcar entregado' };
   return null;
 }
@@ -56,7 +57,6 @@ export default function KanbanOrderCardView({
   onOpenDetail,
   onUpdate,
   orderShortId: shortIdFn,
-  showSubStatusBadge,
   showDragHandle,
   dragListeners,
   dragAttributes,
@@ -65,9 +65,7 @@ export default function KanbanOrderCardView({
 }) {
   const qty = productUnits(order);
   const shortId = shortIdFn ? shortIdFn(order?.id) : orderShortIdLocal(order?.id);
-  const timeStr = order?.createdAt
-    ? format(new Date(order.createdAt), 'HH:mm', { locale: es })
-    : '';
+  const timeCaption = getOrderCardTimeCaption(order);
   const next = nextQuickStatus(order);
   const pay = showQuickPay(order);
 
@@ -91,18 +89,33 @@ export default function KanbanOrderCardView({
         ) : null}
         <button
           type="button"
-          className="flex-1 min-w-0 text-left"
+          className="flex-1 min-w-0 text-left rounded-lg -m-0.5 p-1.5 outline-offset-1 hover:bg-muted/50 active:bg-muted/70 transition-colors"
           onClick={() => onOpenDetail(order)}
         >
           <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 mb-1">
             <p className="text-[10px] font-mono shrink-0" style={{ color: 'var(--color-muted-foreground)' }}>
               #{shortId}
-              {timeStr ? <span className="ml-1 font-sans">{timeStr}</span> : null}
             </p>
-            {showSubStatusBadge ? <SubStatusBadge status={order?.status} /> : null}
+            <OrderStatusBadge status={order?.status} />
           </div>
+          {timeCaption.primary ? (
+            <p
+              className="text-[11px] font-semibold tabular-nums leading-tight"
+              style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
+            >
+              {timeCaption.primary}
+            </p>
+          ) : null}
+          {order?.status === 'entregado' && timeCaption.durationLabel ? (
+            <p
+              className="text-[11px] font-bold tabular-nums mt-0.5"
+              style={{ color: '#059669', fontFamily: 'var(--font-caption)' }}
+            >
+              Entregado en {timeCaption.durationLabel}
+            </p>
+          ) : null}
           <p
-            className="text-sm font-semibold leading-snug break-words line-clamp-2"
+            className="text-sm font-semibold leading-snug break-words line-clamp-2 mt-1.5"
             style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}
           >
             {order?.customerName || 'Sin nombre'}
@@ -124,13 +137,11 @@ export default function KanbanOrderCardView({
         <div
           className="flex flex-wrap gap-1.5 px-2.5 pb-2.5 pt-0 sm:px-2 sm:pb-2"
           style={{ borderTop: '1px solid var(--color-border)' }}
-          onClick={(e) => e.stopPropagation()}
-          onKeyDown={(e) => e.stopPropagation()}
         >
           {next ? (
             <button
               type="button"
-              className="inline-flex items-center justify-center gap-1 rounded-lg px-2.5 py-1.5 min-h-[36px] sm:min-h-0 text-left text-[10px] sm:text-[11px] font-semibold leading-tight flex-1 sm:flex-initial min-w-0 transition-opacity hover:opacity-90 active:scale-[0.98]"
+              className="inline-flex items-center justify-center gap-1 rounded-lg px-2.5 py-1.5 min-h-[40px] sm:min-h-[36px] text-left text-[10px] sm:text-[11px] font-semibold leading-tight flex-1 sm:flex-initial min-w-0 transition-opacity hover:opacity-90 active:scale-[0.98]"
               style={{
                 fontFamily: 'var(--font-caption)',
                 backgroundColor: 'rgba(124,58,237,0.12)',
@@ -150,7 +161,7 @@ export default function KanbanOrderCardView({
           {pay ? (
             <button
               type="button"
-              className="inline-flex items-center justify-center gap-1 rounded-lg px-2.5 py-1.5 min-h-[36px] sm:min-h-0 text-[11px] font-semibold flex-1 sm:flex-initial transition-opacity hover:opacity-90 active:scale-[0.98]"
+              className="inline-flex items-center justify-center gap-1 rounded-lg px-2.5 py-1.5 min-h-[40px] sm:min-h-[36px] text-[11px] font-semibold flex-1 sm:flex-initial transition-opacity hover:opacity-90 active:scale-[0.98]"
               style={{
                 fontFamily: 'var(--font-caption)',
                 backgroundColor: 'rgba(16,185,129,0.12)',
@@ -172,3 +183,6 @@ export default function KanbanOrderCardView({
     </div>
   );
 }
+
+/** Para DragOverlay: mismo mapa de icono/etiqueta que la tarjeta. */
+export const KANBAN_STATUS_BADGE_MAP = STATUS_BADGE;

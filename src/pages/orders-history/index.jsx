@@ -11,11 +11,13 @@ import { format, startOfDay, endOfDay, subDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { formatCLP } from '../../utils/formatCLP';
 import { ORDERS_HISTORY_FETCH_LIMIT } from '../../constants/ordersHistory';
+import { getHistoryPrimaryDateIso } from '../../utils/orderDates';
 import OrderDetailDrawer from '../orders/components/OrderDetailDrawer';
 
 const STATUS_FILTERS = [
   { key: 'all', label: 'Todos' },
   { key: 'entregado', label: 'Entregados' },
+  { key: 'enviado', label: 'Enviados' },
   { key: 'cancelado', label: 'Cancelados' },
 ];
 
@@ -129,17 +131,18 @@ export default function OrdersHistoryPage() {
       return;
     }
     setLoading(true);
-    const [delivered, cancelled] = await Promise.all([
+    const [delivered, sent, cancelled] = await Promise.all([
       getOrders(business.id, { status: 'entregado', limit: ORDERS_HISTORY_FETCH_LIMIT }),
+      getOrders(business.id, { status: 'enviado', limit: ORDERS_HISTORY_FETCH_LIMIT }),
       getOrders(business.id, { status: 'cancelado', limit: ORDERS_HISTORY_FETCH_LIMIT }),
     ]);
-    const err = delivered.error || cancelled.error;
+    const err = delivered.error || sent.error || cancelled.error;
     if (err) {
       toast?.error('Error al cargar el historial');
       setRawOrders([]);
     } else {
       const map = new Map();
-      [...(delivered.data || []), ...(cancelled.data || [])].forEach((o) => {
+      [...(delivered.data || []), ...(sent.data || []), ...(cancelled.data || [])].forEach((o) => {
         if (o?.id) map.set(o.id, o);
       });
       setRawOrders(Array.from(map.values()));
@@ -156,7 +159,8 @@ export default function OrdersHistoryPage() {
     const range = datePreset !== 'all' ? getDateRange(datePreset) : null;
     if (range) {
       list = list.filter((o) => {
-        const t = o?.createdAt ? new Date(o.createdAt) : null;
+        const iso = getHistoryPrimaryDateIso(o);
+        const t = iso ? new Date(iso) : null;
         if (!t || Number.isNaN(t.getTime())) return false;
         return t >= range.start && t <= range.end;
       });
@@ -180,8 +184,8 @@ export default function OrdersHistoryPage() {
       );
     }
     return [...list].sort((a, b) => {
-      const ta = new Date(a?.createdAt || 0).getTime();
-      const tb = new Date(b?.createdAt || 0).getTime();
+      const ta = new Date(getHistoryPrimaryDateIso(a) || a?.createdAt || 0).getTime();
+      const tb = new Date(getHistoryPrimaryDateIso(b) || b?.createdAt || 0).getTime();
       return tb - ta;
     });
   }, [rawOrders, datePreset, statusFilter, debouncedSearch]);
@@ -398,7 +402,7 @@ export default function OrdersHistoryPage() {
               className="text-xs mt-1 max-w-sm mx-auto"
               style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}
             >
-              Prueba otro rango de fechas, estado o búsqueda. Solo se listan pedidos entregados o cancelados.
+              Prueba otro rango de fechas, estado o búsqueda. Incluye entregados, enviados y cancelados recientes.
             </p>
           </div>
         ) : (
@@ -440,6 +444,7 @@ export default function OrdersHistoryPage() {
                 <tbody>
                   {filteredOrders.map((order) => {
                     const qty = productUnits(order);
+                    const primaryIso = getHistoryPrimaryDateIso(order);
                     return (
                       <tr key={order.id} className="border-b" style={{ borderColor: 'var(--color-border)' }}>
                         <td className="px-3 py-2.5 font-mono text-xs whitespace-nowrap" style={{ color: 'var(--color-foreground)' }}>
@@ -457,8 +462,8 @@ export default function OrdersHistoryPage() {
                           )}
                         </td>
                         <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: 'var(--color-foreground)' }}>
-                          {order.createdAt
-                            ? format(new Date(order.createdAt), "d MMM yyyy, HH:mm", { locale: es })
+                          {primaryIso
+                            ? format(new Date(primaryIso), "d MMM yyyy, HH:mm", { locale: es })
                             : '—'}
                         </td>
                         <td className="px-3 py-2.5 text-right font-semibold whitespace-nowrap">
@@ -491,6 +496,7 @@ export default function OrdersHistoryPage() {
             <div className="lg:hidden p-3 space-y-3" style={{ backgroundColor: 'var(--color-background)' }}>
               {filteredOrders.map((order) => {
                 const qty = productUnits(order);
+                const primaryIso = getHistoryPrimaryDateIso(order);
                 return (
                   <div
                     key={order.id}
@@ -512,8 +518,8 @@ export default function OrdersHistoryPage() {
                       </p>
                     ) : null}
                     <p className="text-xs mt-2" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-                      {order.createdAt
-                        ? format(new Date(order.createdAt), "d MMM yyyy, HH:mm", { locale: es })
+                      {primaryIso
+                        ? format(new Date(primaryIso), "d MMM yyyy, HH:mm", { locale: es })
                         : '—'}
                     </p>
                     <div className="flex flex-wrap items-center justify-between gap-2 mt-2">

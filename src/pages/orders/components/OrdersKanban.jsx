@@ -13,7 +13,8 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import Icon from 'components/AppIcon';
 import { useIsDesktop } from '../../../hooks/useMediaQuery';
-import KanbanOrderCardView from './KanbanOrderCardView';
+import KanbanOrderCardView, { KANBAN_STATUS_BADGE_MAP } from './KanbanOrderCardView';
+import { getDeliveredSortTimeMs, getPreparacionSortTimeMs } from 'utils/orderDates';
 
 const KANBAN_COLUMNS = [
   {
@@ -44,11 +45,6 @@ const KANBAN_COLUMNS = [
   },
 ];
 
-const SUB_BADGE = {
-  en_preparacion: { label: 'En preparación', color: '#B45309', bg: 'rgba(245, 158, 11, 0.22)', icon: 'ChefHat' },
-  enviado: { label: 'Enviado', color: '#0369A1', bg: 'rgba(14, 165, 233, 0.18)', icon: 'Truck' },
-};
-
 /** Columna visual del tablero (no confundir con order.status en backend). */
 export function orderToKanbanColumn(status) {
   const s = status || 'pedido';
@@ -77,12 +73,12 @@ function sortByCreatedAsc(list) {
   });
 }
 
-function sortByCreatedDesc(list) {
-  return [...list].sort((a, b) => {
-    const ta = new Date(a?.createdAt || 0).getTime();
-    const tb = new Date(b?.createdAt || 0).getTime();
-    return tb - ta;
-  });
+function sortPreparacionAsc(list) {
+  return [...list].sort((a, b) => getPreparacionSortTimeMs(a) - getPreparacionSortTimeMs(b));
+}
+
+function sortDeliveredDesc(list) {
+  return [...list].sort((a, b) => getDeliveredSortTimeMs(b) - getDeliveredSortTimeMs(a));
 }
 
 function KanbanColumn({
@@ -151,9 +147,9 @@ function KanbanColumn({
   );
 }
 
-function SubStatusBadgeOverlay({ status }) {
+function StatusBadgeOverlay({ status }) {
   const s = status || 'pedido';
-  const cfg = SUB_BADGE[s];
+  const cfg = KANBAN_STATUS_BADGE_MAP[s];
   if (!cfg) return null;
   return (
     <span
@@ -166,7 +162,7 @@ function SubStatusBadgeOverlay({ status }) {
   );
 }
 
-function DraggableOrderCard({ order, formatCLP, onOpenDetail, onUpdate, orderShortId: shortIdFn, showSubStatusBadge }) {
+function DraggableOrderCard({ order, formatCLP, onOpenDetail, onUpdate, orderShortId: shortIdFn }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: String(order.id) });
   const style = {
     transform: transform ? CSS.Translate.toString(transform) : undefined,
@@ -181,7 +177,6 @@ function DraggableOrderCard({ order, formatCLP, onOpenDetail, onUpdate, orderSho
       onOpenDetail={onOpenDetail}
       onUpdate={onUpdate}
       orderShortId={shortIdFn}
-      showSubStatusBadge={showSubStatusBadge}
       showDragHandle
       dragListeners={listeners}
       dragAttributes={attributes}
@@ -226,8 +221,8 @@ export default function OrdersKanban({
     }
     return {
       pendientes: sortByCreatedAsc(p),
-      preparacion: sortByCreatedAsc(r),
-      entregado: sortByCreatedDesc(e),
+      preparacion: sortPreparacionAsc(r),
+      entregado: sortDeliveredDesc(e),
     };
   }, [orders]);
 
@@ -263,7 +258,7 @@ export default function OrdersKanban({
 
   const handleDragCancel = () => setActiveId(null);
 
-  const renderCard = (order, columnId) => (
+  const renderCard = (order) => (
     <DraggableOrderCard
       key={order.id}
       order={order}
@@ -271,7 +266,6 @@ export default function OrdersKanban({
       onOpenDetail={onOpenDetail}
       onUpdate={onUpdate}
       orderShortId={shortIdFn}
-      showSubStatusBadge={columnId === 'preparacion'}
     />
   );
 
@@ -327,7 +321,6 @@ export default function OrdersKanban({
                   onOpenDetail={onOpenDetail}
                   onUpdate={onUpdate}
                   orderShortId={shortIdFn}
-                  showSubStatusBadge={mobileTab === 'preparacion'}
                   showDragHandle={false}
                 />
               ))}
@@ -352,7 +345,7 @@ export default function OrdersKanban({
             col.id === 'pendientes' ? pendientes : col.id === 'preparacion' ? preparacion : entregado;
           return (
             <KanbanColumn key={col.id} {...col} count={list.length}>
-              {list.map((o) => renderCard(o, col.id))}
+              {list.map((o) => renderCard(o))}
             </KanbanColumn>
           );
         })}
@@ -365,9 +358,7 @@ export default function OrdersKanban({
             style={{ borderColor: 'var(--color-border)' }}
           >
             <div className="flex flex-wrap items-center gap-1.5 mb-1">
-              {orderToKanbanColumn(activeOrder?.status) === 'preparacion' ? (
-                <SubStatusBadgeOverlay status={activeOrder?.status} />
-              ) : null}
+              <StatusBadgeOverlay status={activeOrder?.status} />
             </div>
             <p className="text-sm font-semibold truncate" style={{ fontFamily: 'var(--font-heading)' }}>
               {activeOrder?.customerName || 'Pedido'}

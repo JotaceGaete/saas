@@ -3,6 +3,7 @@ import Icon from 'components/AppIcon';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { formatCLP } from 'utils/formatCLP';
+import { formatDeliveryDurationLabel } from 'utils/orderDates';
 
 export default function PrintOrderModal({ order, businessName, onClose }) {
   const printRef = useRef(null);
@@ -11,6 +12,15 @@ export default function PrintOrderModal({ order, businessName, onClose }) {
   const formattedDate = order?.createdAt
     ? format(new Date(order.createdAt), "d 'de' MMMM yyyy, HH:mm", { locale: es })
     : '—';
+  const sentIso = order?.sentAt || null;
+  const formattedSent = sentIso
+    ? format(new Date(sentIso), "d 'de' MMMM yyyy, HH:mm", { locale: es })
+    : null;
+  const formattedDelivered =
+    order?.status === 'entregado' && order?.deliveredAt
+      ? format(new Date(order.deliveredAt), "d 'de' MMMM yyyy, HH:mm", { locale: es })
+      : null;
+  const deliveryDurationLabel = formatDeliveryDurationLabel(order);
 
   const orderNumber = order?.id?.slice(-8)?.toUpperCase() || '—';
 
@@ -123,7 +133,18 @@ export default function PrintOrderModal({ order, businessName, onClose }) {
                   <div className="order-number" style={{ fontSize: '22px', fontWeight: 'bold', marginBottom: '4px' }}>
                     #{orderNumber}
                   </div>
-                  <div style={{ fontSize: '11px', color: '#555' }}>{formattedDate}</div>
+                  <div style={{ fontSize: '11px', color: '#555' }}>Pedido: {formattedDate}</div>
+                  {formattedSent && (
+                    <div style={{ fontSize: '11px', color: '#555', marginTop: '4px' }}>Enviado: {formattedSent}</div>
+                  )}
+                  {order?.status === 'entregado' && (
+                    <div style={{ fontSize: '11px', color: '#555', marginTop: '4px' }}>
+                      Entregado: {formattedDelivered ?? 'Sin hora registrada'}
+                    </div>
+                  )}
+                  {deliveryDurationLabel && (
+                    <div style={{ fontSize: '11px', color: '#166534', marginTop: '4px', fontWeight: 600 }}>Tiempo de entrega: {deliveryDurationLabel}</div>
+                  )}
                 </div>
 
                 {/* Customer info */}
