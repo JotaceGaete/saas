@@ -12,6 +12,8 @@ import BrandingFooter from '../../components/BrandingFooter';
 import { hasViralBranding, getOrderMessageBrandingSuffix } from '../../utils/branding';
 import { isRestaurantBusiness } from '../../utils/businessType';
 import { normalizeOptionalCustomerPhone } from '../../utils/customerPhone';
+import { cfImageUrl } from '../../utils/cloudflareImage';
+import { useResponsiveCfImageProfile } from '../../hooks/useResponsiveCfImageProfile';
 import CheckoutPhoneOptional from '../../components/checkout/CheckoutPhoneOptional';
 
 /** Build absolute URL for OG image (preview al compartir en WhatsApp, etc.). Prioridad: logo tienda → portada → fallback con nombre. */
@@ -183,6 +185,7 @@ function CatalogInner({ slug }) {
 
   const { itemCount } = useCart();
   const isDesktop = useIsDesktop();
+  const cfCoverProfile = useResponsiveCfImageProfile();
   const isOwner = !!(user && business && authBusiness && business.id === authBusiness.id);
   if (typeof window !== 'undefined' && window.__AUTH_DEBUG__ && business) {
     console.log('[PublicCatalog] viewMode:', isOwner ? 'owner' : 'public', { hasUser: !!user, catalogBizId: business?.id, authBizId: authBusiness?.id });
@@ -606,7 +609,7 @@ function CatalogInner({ slug }) {
             )}
             <div className="flex-1 min-w-0 flex items-center gap-2.5">
               {business?.logoUrl ? (
-                <img src={business.logoUrl} alt="" className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
+                <img src={cfImageUrl(business.logoUrl, 'thumbnail')} alt="" className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
               ) : (
                 <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: `linear-gradient(135deg, ${primaryColor}, ${primaryColorDark})` }}>
                   <Icon name="Store" size={16} color="#FFFFFF" />
@@ -633,7 +636,7 @@ function CatalogInner({ slug }) {
         >
           {business?.coverImageUrl && (
             <img
-              src={business?.coverImageUrl}
+              src={cfImageUrl(business.coverImageUrl, cfCoverProfile)}
               alt=""
               role="presentation"
               className="w-full h-full"
@@ -654,7 +657,7 @@ function CatalogInner({ slug }) {
                 <div className="flex-shrink-0">
                   {business?.logoUrl ? (
                     <img
-                      src={business?.logoUrl}
+                      src={cfImageUrl(business.logoUrl, 'thumbnail')}
                       alt={business?.name}
                       className="w-14 h-14 sm:w-16 sm:h-16 rounded-full object-cover border-2 border-gray-100"
                     />
@@ -1375,7 +1378,7 @@ function OrderPanel({ business, slug, formatPrice, onClose, theme }) {
                   {/* Image */}
                   <div className="w-12 h-12 rounded-xl overflow-hidden bg-gray-100 flex-shrink-0">
                     {item?.imageUrl ? (
-                      <img src={item?.imageUrl} alt={item?.name} className="w-full h-full object-cover" />
+                      <img src={cfImageUrl(item.imageUrl, 'thumbnail')} alt={item?.name} className="w-full h-full object-cover" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
                         <Icon name="ImageOff" size={18} color="#D1D5DB" />
@@ -1623,7 +1626,7 @@ function ProductCard({ product, formatPrice, onOpen, theme, cardSettings, useCat
         <div className={`w-full flex-1 min-h-0 overflow-hidden bg-gray-50 relative ${compact ? 'rounded-t-xl min-h-[72px]' : 'rounded-t-2xl'}`}>
           {imgs[0] ? (
             <img
-              src={imgs[0]}
+              src={cfImageUrl(imgs[0], 'thumbnail')}
               alt={product?.name}
               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
             />
@@ -1734,7 +1737,7 @@ function ThumbnailButton({ url, productName, index, isSelected, primaryColor, on
         <Icon name="ImageOff" size={20} color="#D1D5DB" />
       ) : (
         <img
-          src={url}
+          src={cfImageUrl(url, 'thumbnail')}
           alt={`${productName ?? 'Producto'} ${index + 1}`}
           className="w-full h-full object-cover"
           loading="lazy"
@@ -1757,6 +1760,7 @@ function ProductModal({ product, business, slug, formatPrice, whatsAppUrl, whats
   const cartItem = items?.find(i => i?.id === product?.id);
   const qty = cartItem?.quantity || 0;
   const [copiedProductMessage, setCopiedProductMessage] = useState(false);
+  const cfMainProfile = useResponsiveCfImageProfile();
 
   const productImages = getProductImages(product);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -1767,12 +1771,13 @@ function ProductModal({ product, business, slug, formatPrice, whatsAppUrl, whats
 
   useEffect(() => { setSelectedIndex(0); }, [product?.id]);
   const mainUrl = productImages[selectedIndex];
+  const mainUrlOptimized = mainUrl ? cfImageUrl(mainUrl, cfMainProfile) : null;
 
   // Reset error/loaded al cambiar de imagen o de producto
   useEffect(() => {
     setImageLoadError(false);
     setImageLoaded(false);
-  }, [mainUrl, product?.id]);
+  }, [mainUrl, product?.id, cfMainProfile]);
 
   const goPrev = (e) => { e?.stopPropagation(); setSelectedIndex(i => (i <= 0 ? productImages.length - 1 : i - 1)); };
   const goNext = (e) => { e?.stopPropagation(); setSelectedIndex(i => (i >= productImages.length - 1 ? 0 : i + 1)); };
@@ -1827,7 +1832,7 @@ function ProductModal({ product, business, slug, formatPrice, whatsAppUrl, whats
                   </div>
                 )}
                 <img
-                  src={mainUrl}
+                  src={mainUrlOptimized}
                   alt={product?.name ?? 'Producto'}
                   className="w-full h-full object-contain"
                   style={{ opacity: imageLoaded ? 1 : 0, transition: 'opacity 0.2s ease-out' }}

@@ -9,6 +9,7 @@ import { getBrandingMessage } from '../../utils/branding';
 import { isRestaurantBusiness } from '../../utils/businessType';
 import { normalizeOptionalCustomerPhone } from '../../utils/customerPhone';
 import CheckoutPhoneOptional from '../../components/checkout/CheckoutPhoneOptional';
+import { cfImageUrl } from '../../utils/cloudflareImage';
 
 export default function OrderConfirmation() {
   const { slug } = useParams();
@@ -168,7 +169,7 @@ export default function OrderConfirmation() {
             {items?.map(item => (
               <div key={item?.id} className="px-4 py-3 flex items-center gap-3">
                 {item?.imageUrl ? (
-                  <img src={item?.imageUrl} alt={item?.name} className="w-12 h-12 rounded-xl object-cover flex-shrink-0" />
+                  <img src={cfImageUrl(item.imageUrl, 'thumbnail')} alt={item?.name} className="w-12 h-12 rounded-xl object-cover flex-shrink-0" />
                 ) : (
                   <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'var(--color-muted)' }}>
                     <Icon name="Package" size={20} color="var(--color-muted-foreground)" />
