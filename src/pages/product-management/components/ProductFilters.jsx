@@ -48,7 +48,7 @@ export default function ProductFilters({
             </div>
             <input
               type="text"
-              placeholder="Buscar productos por nombre..."
+              placeholder="Buscar por nombre, descripción o código..."
               value={searchQuery}
               onChange={(e) => onSearchChange(e?.target?.value)}
               className="w-full pl-9 pr-4 py-2.5 text-sm rounded-md border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all"

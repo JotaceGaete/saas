@@ -74,13 +74,14 @@ export default function ProductTable({
       {/* Desktop Table: outer wrapper constrains width so overflow-x-auto scrolls inside, avoiding page overflow on mobile/tablet */}
       <div className="hidden md:block w-full max-w-full min-w-0 rounded-xl border overflow-hidden" style={{ backgroundColor: '#FFFFFF', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-sm)' }}>
         <div className="overflow-x-auto min-w-0 overflow-x-touch">
-          <table className="w-full min-w-[700px]">
+          <table className="w-full min-w-[780px]">
             <thead>
               <tr className="border-b" style={{ backgroundColor: 'var(--color-muted)', borderColor: 'var(--color-border)' }}>
                 <th className="w-10 px-4 py-3">
                   <input type="checkbox" checked={allSelected} ref={(el) => { if (el) el.indeterminate = someSelected; }} onChange={(e) => onSelectAll(e?.target?.checked)} className="w-4 h-4 rounded border-input accent-primary cursor-pointer" aria-label="Seleccionar todos" />
                 </th>
                 <th className="px-4 py-3 text-left w-16"><span className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Imagen</span></th>
+                <th className="px-3 py-3 text-left w-[88px]"><span className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Código</span></th>
                 <th className="px-4 py-3 text-left"><ThBtn field="name">Nombre</ThBtn></th>
                 <th className="px-4 py-3 text-left"><ThBtn field="category">Categoría</ThBtn></th>
                 <th className="px-4 py-3 text-right"><ThBtn field="price">Precio</ThBtn></th>
@@ -98,6 +99,11 @@ export default function ProductTable({
                     <div className="w-11 h-11 rounded-xl overflow-hidden border flex-shrink-0" style={{ borderColor: 'var(--color-border)' }}>
                       <Image src={product?.image} alt={product?.imageAlt} className="w-full h-full object-cover" width={44} height={44} />
                     </div>
+                  </td>
+                  <td className="px-3 py-3">
+                    <span className="text-xs font-semibold tracking-wide whitespace-nowrap" style={{ fontFamily: 'var(--font-data)', color: 'var(--color-muted-foreground)' }} title="Código WhatsApp">
+                      {product?.publicCode || '—'}
+                    </span>
                   </td>
                   <td className="px-4 py-3">
                     <p className="text-sm font-semibold line-clamp-1" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-body)' }}>{product?.name}</p>
@@ -169,6 +175,11 @@ export default function ProductTable({
                     <p className="text-sm font-semibold text-foreground line-clamp-1" style={{ fontFamily: "var(--font-body)" }}>
                       {product?.name}
                     </p>
+                    {product?.publicCode ? (
+                      <p className="text-[11px] font-semibold tracking-wider mt-0.5" style={{ fontFamily: "var(--font-data)", color: "var(--color-muted-foreground)" }}>
+                        {product.publicCode}
+                      </p>
+                    ) : null}
                     <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5" style={{ fontFamily: "var(--font-caption)" }}>
                       {product?.description}
                     </p>

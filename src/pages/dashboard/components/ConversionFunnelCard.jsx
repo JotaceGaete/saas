@@ -49,7 +49,7 @@ export default function ConversionFunnelCard({
             Embudo de conversión
           </p>
           <p className="text-xs mt-1" style={{ color: "var(--color-text-tertiary)", fontFamily: "var(--font-caption)" }}>
-            Visitas -> Click WhatsApp -> Pedidos -> Pagados
+            Visitas → Click WhatsApp → Pedidos → Pagados
           </p>
         </div>
         <div className="flex items-center gap-1">
@@ -95,16 +95,16 @@ export default function ConversionFunnelCard({
 
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs px-2 py-1 rounded-full" style={{ backgroundColor: "rgba(245,158,11,0.10)", color: "#B45309", fontFamily: "var(--font-caption)" }}>
-          Visita -> Click: {formatPct(rateClickFromVisit)}
+          Visita → Click: {formatPct(rateClickFromVisit)}
         </span>
         <span className="text-xs px-2 py-1 rounded-full" style={{ backgroundColor: "rgba(236,72,153,0.10)", color: "#BE185D", fontFamily: "var(--font-caption)" }}>
-          Click -> Pedido: {formatPct(rateOrderFromClick)}
+          Click → Pedido: {formatPct(rateOrderFromClick)}
         </span>
         <span className="text-xs px-2 py-1 rounded-full" style={{ backgroundColor: "rgba(14,165,233,0.10)", color: "#0284C7", fontFamily: "var(--font-caption)" }}>
-          Visita -> Pedido: {formatPct(rateOrderFromVisit)}
+          Visita → Pedido: {formatPct(rateOrderFromVisit)}
         </span>
         <span className="text-xs px-2 py-1 rounded-full" style={{ backgroundColor: "rgba(16,185,129,0.10)", color: "#059669", fontFamily: "var(--font-caption)" }}>
-          Pedido -> Pagado: {formatPct(ratePaidFromOrder)}
+          Pedido → Pagado: {formatPct(ratePaidFromOrder)}
         </span>
         <span className="text-xs px-2 py-1 rounded-full" style={{ backgroundColor: "rgba(124,58,237,0.10)", color: "var(--color-primary)", fontFamily: "var(--font-caption)" }}>
           Total: {formatPct(ratePaidFromVisit)}

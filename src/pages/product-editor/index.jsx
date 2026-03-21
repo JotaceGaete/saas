@@ -47,6 +47,7 @@ export default function ProductEditor() {
   const [pageLoading, setPageLoading] = useState(isEditing);
   const [rubroCategories, setRubroCategories] = useState([]);
   const [isImprovingDescription, setIsImprovingDescription] = useState(false);
+  const [publicCode, setPublicCode] = useState('');
   const toast = useToast();
 
   const effectivePlan = getEffectivePlanSlug(business?.planSlug, business?.planExpiresAt, business?.trialExpiresAt);
@@ -77,6 +78,7 @@ export default function ProductEditor() {
           ? data.images.map((url, i) => ({ id: `loaded-${i}-${url}`, url, alt: data?.name, name: `product-image-${i}`, status: 'uploaded' }))
           : (data?.imageUrl ? [{ id: 1, url: data.imageUrl, alt: data?.name, name: 'product-image', status: 'uploaded' }] : []);
         if (loadedImages.length) setImages(loadedImages);
+        setPublicCode(data?.publicCode || '');
       } catch (e) { navigate('/product-management'); }
       finally { setPageLoading(false); }
     };
@@ -299,6 +301,7 @@ export default function ProductEditor() {
         setFormData({ ...EMPTY_FORM });
         setImages([]);
         setVariants([]);
+        setPublicCode('');
         setErrors({});
         setSaveSuccess(false);
         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -456,6 +459,7 @@ export default function ProductEditor() {
                     categories={rubroCategories}
                     onImproveWithAi={canUseAi ? handleImproveWithAi : undefined}
                     isImprovingDescription={isImprovingDescription}
+                    publicCode={isEditing ? publicCode : ''}
                   />
                 </div>
 

@@ -8,12 +8,28 @@ const MAX_DESC = 300;
 
 /** useCategories: si el negocio tiene categorías activadas. categories: array de { id, name } del negocio. */
 /** onImproveWithAi: (text, productName) => Promise<void> — opcional; optimiza título y descripción y el padre actualiza el formulario. */
-export default function ProductFormFields({ formData, errors, onChange, useCategories = false, categories = [], onImproveWithAi, isImprovingDescription = false }) {
+export default function ProductFormFields({ formData, errors, onChange, useCategories = false, categories = [], onImproveWithAi, isImprovingDescription = false, publicCode = '' }) {
   const handleChange = (field, value) => onChange(field, value);
   const categoryOptions = Array.isArray(categories) ? categories.filter((c) => c?.name?.trim()) : [];
 
   return (
     <div className="space-y-5">
+      {publicCode ? (
+        <div
+          className="p-3 rounded-lg border"
+          style={{ backgroundColor: 'rgba(124,58,237,0.06)', borderColor: 'var(--color-border)' }}
+        >
+          <p className="text-xs font-medium mb-1" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-muted-foreground)' }}>
+            Código WhatsApp
+          </p>
+          <p className="text-base font-semibold tracking-widest" style={{ fontFamily: 'var(--font-data)', color: 'var(--color-foreground)', letterSpacing: '0.12em' }}>
+            {publicCode}
+          </p>
+          <p className="text-xs mt-1.5" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-muted-foreground)' }}>
+            Se añade al mensaje del catálogo. Generado automáticamente; no se puede cambiar.
+          </p>
+        </div>
+      ) : null}
       {/* Nombre */}
       <div>
         <div className="flex items-end justify-between mb-1">

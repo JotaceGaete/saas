@@ -381,7 +381,10 @@ function CatalogInner({ slug }) {
 
   const buildSingleWhatsAppMessage = (product) => {
     const storeName = business?.name || 'la tienda';
-    let message = `Hola! Me interesa el producto:\n\n*${product?.name}*\nPrecio: ${formatPrice(product?.price)}\n\nTienda: ${storeName}`;
+    const code = product?.publicCode;
+    let message = code
+      ? `Hola, quiero este producto: ${code} - ${product?.name}\n\nPrecio: ${formatPrice(product?.price)}\n\nTienda: ${storeName}`
+      : `Hola! Me interesa el producto:\n\n*${product?.name}*\nPrecio: ${formatPrice(product?.price)}\n\nTienda: ${storeName}`;
     const catalogUrl = slug ? getPublicCatalogUrl(slug) : '';
     if (catalogUrl) message += `\n\n${catalogUrl}`;
     const branding = getOrderMessageBrandingSuffix(business);
@@ -1194,9 +1197,10 @@ function OrderPanel({ business, slug, formatPrice, onClose, theme }) {
       // 2. Pedido guardado correctamente → abrir WhatsApp
       const phone = business?.whatsapp?.replace(/\D/g, '');
       if (phone) {
-        const lines = items?.map(item =>
-          `- ${item?.quantity} ${item?.name}`
-        );
+        const lines = items?.map((item) => {
+          const label = item?.publicCode ? `${item.publicCode} - ${item?.name}` : item?.name;
+          return `- ${item?.quantity} ${label}`;
+        });
         let message = `Hola, quiero hacer un pedido.\n\nNombre: ${customerName?.trim()}`;
         if (phoneForOrder) message += `\nTeléfono: ${phoneForOrder}`;
         if (isRestaurant) {

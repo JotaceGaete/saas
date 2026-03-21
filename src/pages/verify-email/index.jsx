@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
@@ -22,12 +22,6 @@ export default function VerifyEmailPage() {
   const [newEmail, setNewEmail] = useState('');
   const [changeLoading, setChangeLoading] = useState(false);
   const [changeMsg, setChangeMsg] = useState(null);
-
-  useEffect(() => {
-    if (!loading && user && isEmailConfirmed) {
-      navigate('/dashboard', { replace: true });
-    }
-  }, [loading, user, isEmailConfirmed, navigate]);
 
   const handleResend = useCallback(async () => {
     const email = user?.email?.trim();
@@ -117,7 +111,7 @@ export default function VerifyEmailPage() {
   }
 
   if (isEmailConfirmed) {
-    return null;
+    return <Navigate to="/dashboard" replace />;
   }
 
   return (

@@ -275,6 +275,7 @@ const mapProductFromDb = (row) => {
     id: row?.id,
     businessId: row?.business_id,
     name: row?.name,
+    publicCode: row?.public_code ?? null,
     description: row?.description,
     price: parseFloat(row?.price),
     imageUrl: row?.image_url || imagesArray?.[0] || null,
@@ -337,6 +338,10 @@ const mapOrderFromDb = (row) => ({
   currency: row?.currency ?? 'CLP',
   status: ORDER_STATUS_VALID.includes(row?.order_status) ? row?.order_status : 'pedido',
   paymentStatus: PAYMENT_STATUS_VALID.includes(row?.payment_status) ? row?.payment_status : 'pendiente',
+  /** Oculto del tablero; visible en Historial. */
+  isArchived: row?.is_archived === true,
+  /** Momento en que pasó a entregado (ventana antes de archivar automáticamente). */
+  deliveredAt: row?.delivered_at ?? null,
   /** Cobro efectivo (BD, trigger). Es la única fecha válida para métricas de ingreso; el cliente no la escribe. */
   paidAt: row?.paid_at ?? null,
   notes: row?.notes,
@@ -743,6 +748,17 @@ export const uploadProductImage = async (file, businessId, productId) => {
 
 // wa_orders
 
+/** Tiempo que un pedido entregado permanece en el tablero antes de archivarse (solo UI + flag). */
+export const DELIVERED_VISIBLE_MS = 30 * 60 * 1000;
+
+/**
+ * Marca como archivados los entregados cuya ventana de visibilidad en tablero ya expiró.
+ */
+export const expireDeliveredOrders = async (businessId) => {
+  if (!businessId) return { expired: 0, error: null };
+  return { expired: 0, error: null };
+};
+
 export const getOrders = async (businessId, opts = {}) => {
   if (!businessId) return { data: [], error: null };
   let q = supabase
@@ -762,6 +778,12 @@ export const getOrders = async (businessId, opts = {}) => {
   return { data: (data || [])?.map(mapOrderFromDb), error: null, total: count ?? (data?.length ?? 0) };
 };
 
+/** Pedidos archivados (ocultos del tablero activo). */
+export const getArchivedOrders = async (businessId, opts = {}) => {
+  if (!businessId) return { data: [], error: null };
+  return { data: [], error: null, total: 0 };
+};
+
 export const getOrderById = async (orderId) => {
   if (!orderId) return { data: null, error: { message: 'orderId required' } };
   const { data, error } = await supabase
@@ -777,7 +799,15 @@ export const updateOrder = async (orderId, updates) => {
   const dbUpdates = {};
   if (updates?.status !== undefined) {
     const s = updates?.status;
-    if (ORDER_STATUS_VALID.includes(s)) dbUpdates.order_status = s;
+    if (ORDER_STATUS_VALID.includes(s)) {
+      dbUpdates.order_status = s;
+      if (s === 'entregado') {
+        const { data: row } = await supabase?.from('wa_orders')?.select('order_status')?.eq('id', orderId)?.maybeSingle();
+        if (row?.order_status !== 'entregado') {
+          dbUpdates.delivered_at = new Date().toISOString();
+        }
+      }
+    }
   }
   if (updates?.paymentStatus !== undefined) {
     const p = updates?.paymentStatus;

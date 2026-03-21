@@ -25,6 +25,7 @@ import {
   getPlanUsage,
   getDashboardAiInsights,
   getEffectivePlanSlug,
+  expireDeliveredOrders,
 } from "../../services/waBusinessService";
 import { supabase } from "../../lib/supabase";
 import { getAppBaseUrl } from "../../config/appUrl";
@@ -112,6 +113,7 @@ export default function Dashboard() {
     if (!business?.id) return;
     setDataLoading(true);
     try {
+      await expireDeliveredOrders(business?.id);
       const [productsResponse, ordersResponse, pendingRes, weeklyRes] = await Promise.all([
         getProducts(business?.id),
         getOrders(business?.id),
@@ -234,6 +236,7 @@ export default function Dashboard() {
 
     const channelName = `wa_orders_business_${business?.id}`;
     const onOrderUpdated = async () => {
+      await expireDeliveredOrders(business?.id);
       const [{ data: ordersData }, pendingRes] = await Promise.all([
         getOrders(business?.id),
         getPendingOrdersCount(business?.id),
@@ -264,6 +267,7 @@ export default function Dashboard() {
             createdAt: newOrder?.created_at || newOrder?.createdAt || new Date()?.toISOString(),
           };
 
+          await expireDeliveredOrders(business?.id);
           const { data: ordersData } = await getOrders(business?.id);
           if (ordersData) setOrders(ordersData);
           loadAnalytics();

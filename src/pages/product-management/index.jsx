@@ -59,11 +59,20 @@ export default function ProductManagement() {
     id: p?.id, name: p?.name, description: p?.description || '', price: p?.price,
     category: (p?.category && String(p.category).trim()) || 'General',
     active: p?.isActive, image: p?.imageUrl || '', imageAlt: p?.name,
+    publicCode: p?.publicCode || '',
   })), [products]);
 
   const filteredProducts = useMemo(() => {
     let result = [...tableProducts];
-    if (searchQuery?.trim()) { const q = searchQuery?.toLowerCase(); result = result?.filter(p => p?.name?.toLowerCase()?.includes(q) || p?.description?.toLowerCase()?.includes(q)); }
+    if (searchQuery?.trim()) {
+      const q = searchQuery?.toLowerCase();
+      const qCode = searchQuery?.trim().toUpperCase();
+      result = result?.filter(p =>
+        p?.name?.toLowerCase()?.includes(q)
+        || p?.description?.toLowerCase()?.includes(q)
+        || (p?.publicCode && String(p.publicCode).toUpperCase().includes(qCode)),
+      );
+    }
     if (statusFilter !== "all") result = result?.filter(p => statusFilter === "active" ? p?.active : !p?.active);
     result?.sort((a, b) => {
       let aVal = a?.name?.toLowerCase(), bVal = b?.name?.toLowerCase();

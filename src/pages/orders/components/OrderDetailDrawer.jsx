@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import Icon from 'components/AppIcon';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import TransferPaymentSection from './TransferPaymentSection';
 
 export default function OrderDetailDrawer({
   order,
@@ -157,7 +156,12 @@ export default function OrderDetailDrawer({
             <p className="text-xs mt-2" style={{ color: 'var(--color-muted-foreground)' }}>Actual: {PaymentStatusBadge && <PaymentStatusBadge paymentStatus={currentPaymentStatus} />}</p>
           </div>
 
-          <TransferPaymentSection order={order} business={business} formatCLP={formatCLP} />
+          <div
+            className="rounded-xl border p-3 text-xs"
+            style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-muted)', fontFamily: 'var(--font-caption)', color: 'var(--color-muted-foreground)' }}
+          >
+            Los datos para cobros por transferencia están en la banda <strong className="text-foreground">Cobros por transferencia</strong> en la parte superior de la página Pedidos (una sola vez para todos los pedidos).
+          </div>
 
           <div>
             <p className="text-xs font-semibold mb-2" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Productos</p>
