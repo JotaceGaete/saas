@@ -1,9 +1,22 @@
 /**
- * URLs optimizadas vía Cloudflare Image Resizing (ventalink.app/cdn-cgi/image).
+ * URLs optimizadas vía Cloudflare Image Resizing (/cdn-cgi/image).
  * Solo transforma orígenes en media.gong.cl; el resto se devuelve igual (blobs, data:, relativas, otros hosts).
+ *
+ * El origen del proxy debe ser el mismo host que la app (cl/ar/go.ventalink.app), no el apex fijo:
+ * pedir imágenes a otro host rompe con workers, reglas de zona o cookies en algunos despliegues.
  */
 
-export const CF_IMAGE_ORIGIN = 'https://ventalink.app';
+import { getAppBaseUrl } from '../config/appUrl';
+
+function getCfImageOrigin() {
+  // En el navegador: siempre el host actual (mismo build en cl/ar/go sin depender de VITE_APP_URL).
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return String(window.location.origin).replace(/\/$/, '');
+  }
+  const base = getAppBaseUrl();
+  if (base) return base.replace(/\/$/, '');
+  return 'https://ventalink.app';
+}
 
 /** @type {Record<'mobile'|'desktop'|'thumbnail', string>} */
 export const CF_IMAGE_PROFILES = {
@@ -40,5 +53,5 @@ export function isCfTransformableUrl(url) {
 export function cfImageUrl(originalUrl, profile = 'thumbnail') {
   if (!isCfTransformableUrl(originalUrl)) return originalUrl;
   const opts = CF_IMAGE_PROFILES[profile] || CF_IMAGE_PROFILES.thumbnail;
-  return `${CF_IMAGE_ORIGIN}/cdn-cgi/image/${opts}/${originalUrl}`;
+  return `${getCfImageOrigin()}/cdn-cgi/image/${opts}/${originalUrl}`;
 }
