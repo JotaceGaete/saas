@@ -1,5 +1,5 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useCountry } from '../../contexts/CountryContext';
 import { COUNTRY_CODES, getCountryConfig, getStoredCountryCode } from '../../config/countryConfig';
 import Icon from '../../components/AppIcon';
@@ -63,6 +63,15 @@ export default function CountrySelectPage() {
       }}
     >
       <div className="w-full max-w-md">
+        <p className="text-center mb-4">
+          <Link
+            to="/"
+            className="text-sm font-medium hover:underline"
+            style={{ color: 'var(--color-primary)' }}
+          >
+            ← Volver al inicio
+          </Link>
+        </p>
         <div className="text-center mb-6">
           <h1 className="text-2xl font-bold mb-2" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-heading)' }}>
             Elige tu país

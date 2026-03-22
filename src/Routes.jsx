@@ -7,8 +7,8 @@ import NotFound from "pages/NotFound";
 import RequireAdmin from "components/RequireAdmin";
 import RequireAuth from "components/RequireAuth";
 import SessionExpiredHandler from "components/SessionExpiredHandler";
-import { getStoredCountryCode } from "./config/countryConfig";
 import CountrySelectPage from "./pages/country-select";
+import GoInternationalLanding from "./pages/go-international-landing";
 import BusinessRegistration from './pages/business-registration';
 import LandingPage from './pages/landing-page';
 import BusinessConfiguration from './pages/business-configuration';
@@ -41,10 +41,16 @@ import TermsPage from './pages/legal/TermsPage';
 import PrivacyPage from './pages/legal/PrivacyPage';
 import RefundsPage from './pages/legal/RefundsPage';
 
-function HomeOrRedirect() {
-  const isGo = typeof window !== 'undefined' && /(^|\.)go\.ventalink\.app$/.test((window.location?.hostname || '').toLowerCase());
-  const hasCountry = !!getStoredCountryCode();
-  if (isGo && !hasCountry) return <CountrySelectPage />;
+/**
+ * Raíz: en go.ventalink.app es la landing internacional SEO; en cl/ar redirige al panel.
+ */
+function GoRootEntry() {
+  const isGo =
+    typeof window !== "undefined" &&
+    /(^|\.)go\.ventalink\.app$/.test((window.location?.hostname || "").toLowerCase());
+  if (isGo) {
+    return <GoInternationalLanding />;
+  }
   return <Navigate to="/dashboard" replace />;
 }
 
@@ -56,7 +62,8 @@ const Routes = () => {
         <ScrollToTop />
         <RouterRoutes>
           <Route element={<AnimatedLayout />}>
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/" element={<GoRootEntry />} />
+            <Route path="/elegir-pais" element={<CountrySelectPage />} />
             <Route path="/business-registration" element={<BusinessRegistration />} />
             <Route path="/landing-page" element={<LandingPage />} />
             <Route path="/business-configuration" element={<RequireAuth><BusinessConfiguration /></RequireAuth>} />

@@ -15,7 +15,9 @@ export default function SessionExpiredHandler() {
     if (!sessionExpiredMessage) return;
     const path = location?.pathname || '';
     const isPublicRoute =
+      path === '/' ||
       path === '/login' ||
+      path === '/elegir-pais' ||
       path === '/auth/callback' ||
       path === '/reset-password' ||
       path === '/auth/reset-password' ||

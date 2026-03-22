@@ -15,11 +15,20 @@ import { normalizeOptionalCustomerPhone } from '../../utils/customerPhone';
 import { cfImageUrl } from '../../utils/cloudflareImage';
 import { useResponsiveCfImageProfile } from '../../hooks/useResponsiveCfImageProfile';
 import CheckoutPhoneOptional from '../../components/checkout/CheckoutPhoneOptional';
+import {
+  buildCatalogSeoLongText,
+  buildLocalBusinessJsonLd,
+  detectCatalogRegion,
+  getCatalogMetaDescription,
+  getCatalogPageTitle,
+  stringifyJsonLd,
+} from '../../utils/catalogSeo';
 
 /** Build absolute URL for OG image (preview al compartir en WhatsApp, etc.). Prioridad: logo tienda → portada → fallback con nombre. */
 function getCatalogOgImageUrl(business, baseUrl) {
   const origin = (baseUrl || (typeof window !== 'undefined' ? window.location?.origin : '') || '').replace(/\/$/, '');
   const ds = business?.designSettings || {};
+  const og = (business?.ogImageUrl)?.trim();
   const logo = (business?.logoUrl || ds?.logoUrl)?.trim();
   const cover = (business?.coverImageUrl || ds?.headerImageUrl || ds?.coverImageUrl)?.trim();
   const toAbsolute = (url) => {
@@ -27,6 +36,7 @@ function getCatalogOgImageUrl(business, baseUrl) {
     if (url.startsWith('http://') || url.startsWith('https://')) return url;
     return `${origin}${url.startsWith('/') ? '' : '/'}${url}`;
   };
+  if (og) return toAbsolute(og);
   if (logo) return toAbsolute(logo);
   if (cover) return toAbsolute(cover);
   const name = (business?.name || 'Catálogo').replace(/[^a-zA-Z0-9\s]/g, '').trim() || 'Catalogo';
@@ -553,11 +563,38 @@ function CatalogInner({ slug }) {
       : {};
 
   const storeName = business?.name || 'Catálogo';
-  const catalogTitle = `Catálogo de ${storeName}`;
-  const catalogDescription = 'Revisa productos y haz tu pedido por WhatsApp.';
   const baseUrl = getAppBaseUrl();
+  const host =
+    typeof window !== 'undefined' && window?.location?.host ? window.location.host : '';
+  const seoInput = {
+    storeName: business?.name,
+    city: business?.city,
+    region: business?.region,
+    country: business?.country,
+    currency: business?.currency,
+    host,
+  };
+  const catalogTitle = getCatalogPageTitle(seoInput);
+  const catalogDescription = getCatalogMetaDescription(seoInput);
+  const catalogSeoBody = business ? buildCatalogSeoLongText(seoInput) : '';
+  const ogRegion = detectCatalogRegion(seoInput);
   const canonicalUrl = getPublicCatalogUrl(slug) || (typeof window !== 'undefined' ? `${window.location?.origin || ''}${window.location?.pathname || `/catalogo/${slug}`}` : '');
   const ogImage = getCatalogOgImageUrl(business, baseUrl);
+  const jsonLd =
+    business && canonicalUrl
+      ? buildLocalBusinessJsonLd({
+          name: business?.name || 'Catálogo',
+          imageUrl: ogImage,
+          city: business?.city,
+          region: business?.region,
+          country: business?.country,
+          countryCode: business?.countryCode,
+          telephone: business?.whatsapp,
+          url: canonicalUrl,
+          currency: business?.currency,
+          host,
+        })
+      : null;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -567,6 +604,7 @@ function CatalogInner({ slug }) {
         <Helmet>
           <title>{catalogTitle}</title>
           <meta name="description" content={catalogDescription} />
+          <meta name="robots" content="index, follow" />
           <meta property="og:type" content="website" />
           <meta property="og:url" content={canonicalUrl} />
           <meta property="og:title" content={catalogTitle} />
@@ -574,12 +612,18 @@ function CatalogInner({ slug }) {
           <meta property="og:image" content={ogImage} />
           <meta property="og:image:width" content="1200" />
           <meta property="og:image:height" content="630" />
-          <meta property="og:locale" content="es_ES" />
+          <meta property="og:locale" content={ogRegion.ogLocale} />
           <meta name="twitter:card" content="summary_large_image" />
           <meta name="twitter:title" content={catalogTitle} />
           <meta name="twitter:description" content={catalogDescription} />
           <meta name="twitter:image" content={ogImage} />
           <link rel="canonical" href={canonicalUrl} />
+          {jsonLd && (
+            <script
+              type="application/ld+json"
+              dangerouslySetInnerHTML={{ __html: stringifyJsonLd(jsonLd) }}
+            />
+          )}
         </Helmet>
       )}
 
@@ -1046,6 +1090,22 @@ function CatalogInner({ slug }) {
               />
             ))}
           </div>
+        )}
+
+        {!loading && !notFound && business && catalogSeoBody && (
+          <section
+            className="mt-8 rounded-2xl border border-gray-100 bg-white p-5 sm:p-6 text-gray-600 text-sm leading-relaxed shadow-sm"
+            aria-labelledby="catalog-seo-heading"
+          >
+            <h2 id="catalog-seo-heading" className="text-base font-semibold text-gray-800 mb-3">
+              Sobre este catálogo online
+            </h2>
+            {catalogSeoBody.split('\n\n').map((para, i) => (
+              <p key={i} className="mb-4 last:mb-0">
+                {para}
+              </p>
+            ))}
+          </section>
         )}
 
         <BrandingFooter business={business} />

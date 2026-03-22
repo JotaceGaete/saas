@@ -1,7 +1,9 @@
+import { detectCatalogRegion, getCatalogMetaDescription, getCatalogPageTitle } from './src/utils/catalogSeo.js';
+
 const CATALOG_PATH = /^\/(catalogo|catalog)\/([^/]+)\/?$/;
 const OG_FALLBACK_IMAGE = 'https://media.gong.cl/test/preview.jpg';
 const BOT_UA =
-  /(whatsapp|whatsappbot|facebookexternalhit|facebot|meta-externalagent|meta-externalfetcher|twitterbot|telegrambot|slackbot|discordbot|linkedinbot|googlebot|bingbot)/i;
+  /(whatsapp|whatsappbot|facebookexternalhit|facebot|meta-externalagent|meta-externalfetcher|twitterbot|telegrambot|slackbot|discordbot|linkedinbot)/i;
 
 function isBot(userAgent) {
   const ua = String(userAgent || '').trim();
@@ -48,7 +50,7 @@ function getOgImageUrl(row, origin) {
 }
 
 function buildOgHtml(payload) {
-  const { title, description, ogImage, canonicalUrl } = payload;
+  const { title, description, ogImage, canonicalUrl, ogLocale } = payload;
   const escaped = (s) =>
     String(s || '')
       .replace(/&/g, '&amp;')
@@ -70,12 +72,13 @@ function buildOgHtml(payload) {
   <meta property="og:image" content="${escaped(ogImage)}" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
-  <meta property="og:locale" content="es_ES" />
+  <meta property="og:locale" content="${escaped(ogLocale || 'es_CL')}" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="${escaped(title)}" />
   <meta name="twitter:description" content="${escaped(description)}" />
   <meta name="twitter:image" content="${escaped(ogImage)}" />
   <link rel="canonical" href="${escaped(canonicalUrl)}" />
+  <meta name="robots" content="index, follow" />
 </head>
 <body>
   <script>
@@ -98,17 +101,7 @@ export default {
     const ua = request.headers.get('user-agent') || '';
     const bot = isBot(ua);
 
-    // DEBUG temporal
-    console.log('[catalog-og-worker] request', {
-      path: url.pathname,
-      slug,
-      userAgent: ua,
-      isBot: bot,
-    });
-
-    // Requests no-bot: dejar pasar a la app normal
     if (!bot) {
-      console.log('[catalog-og-worker] skip non-bot request', { slug });
       return fetch(request);
     }
 
@@ -117,14 +110,21 @@ export default {
     const origin = url.origin;
     const canonicalUrl = `${origin}/catalogo/${slug}`;
 
-    let storeName = 'Catálogo';
-    let catalogDescription = 'Revisa productos y haz tu pedido por WhatsApp.';
+    const seoInput = {
+      storeName: 'Catálogo',
+      city: undefined,
+      region: undefined,
+      country: undefined,
+      currency: undefined,
+      host: url.host,
+    };
+    let catalogDescription = getCatalogMetaDescription(seoInput);
     let ogImage = OG_FALLBACK_IMAGE;
 
     try {
       if (supabaseUrl && supabaseKey) {
         const res = await fetch(
-          `${supabaseUrl}/rest/v1/wa_businesses?slug=eq.${encodeURIComponent(slug)}&is_active=eq.true&select=name,description,slug,og_image_url,logo_url,cover_image_url,design_settings`,
+          `${supabaseUrl}/rest/v1/wa_businesses?slug=eq.${encodeURIComponent(slug)}&is_active=eq.true&select=name,description,slug,og_image_url,logo_url,cover_image_url,design_settings,city,region,country,currency`,
           {
             headers: {
               Accept: 'application/json',
@@ -137,10 +137,12 @@ export default {
           const data = await res.json();
           const row = Array.isArray(data) ? data[0] : data;
           if (row) {
-            storeName = row?.name || storeName;
-            if (typeof row?.description === 'string' && row.description.trim()) {
-              catalogDescription = row.description.trim();
-            }
+            seoInput.storeName = row?.name || seoInput.storeName;
+            seoInput.city = row?.city;
+            seoInput.region = row?.region;
+            seoInput.country = row?.country;
+            seoInput.currency = row?.currency;
+            catalogDescription = getCatalogMetaDescription(seoInput);
             ogImage = getOgImageUrl(row, origin);
           }
         }
@@ -149,16 +151,15 @@ export default {
       // Fallback silencioso: siempre responder HTML OG.
     }
 
-    console.log('[catalog-og-worker] bot branch response', {
-      slug,
-      imageUrl: ogImage,
-    });
+    const pageTitle = getCatalogPageTitle(seoInput);
+    const ri = detectCatalogRegion(seoInput);
 
     const html = buildOgHtml({
-      title: `Catálogo de ${storeName}`,
+      title: pageTitle,
       description: catalogDescription,
       ogImage,
       canonicalUrl,
+      ogLocale: ri.ogLocale,
     });
 
     return new Response(html, {
@@ -170,4 +171,3 @@ export default {
     });
   },
 };
-

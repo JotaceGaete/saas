@@ -3,6 +3,15 @@
   "outputDirectory": "build",
   "rewrites": [
     {
+      "source": "/sitemap.xml",
+      "destination": "/api/sitemap"
+    },
+    {
+      "source": "/",
+      "has": [{ "type": "host", "value": "go.ventalink.app" }],
+      "destination": "/api/go-html"
+    },
+    {
       "source": "/catalogo/:slug",
       "destination": "/api/catalog-html?slug=:slug"
     },
