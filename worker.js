@@ -1,6 +1,6 @@
 import { detectCatalogRegion, getCatalogMetaDescription, getCatalogPageTitle } from './src/utils/catalogSeo.js';
+import { getCatalogSlugFromPath } from './src/utils/seoPassThrough.js';
 
-const CATALOG_PATH = /^\/(catalogo|catalog)\/([^/]+)\/?$/;
 const OG_FALLBACK_IMAGE = 'https://media.gong.cl/test/preview.jpg';
 const BOT_UA =
   /(whatsapp|whatsappbot|facebookexternalhit|facebot|meta-externalagent|meta-externalfetcher|twitterbot|telegrambot|slackbot|discordbot|linkedinbot)/i;
@@ -94,10 +94,13 @@ function buildOgHtml(payload) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    const match = url.pathname.match(CATALOG_PATH);
-    if (!match) return fetch(request);
 
-    const slug = match[2];
+    // Nunca interceptar /cdn-cgi/*, imágenes ni assets: solo HTML del catálogo público.
+    const slug = getCatalogSlugFromPath(url.pathname);
+    if (slug === null) {
+      return fetch(request);
+    }
+
     const ua = request.headers.get('user-agent') || '';
     const bot = isBot(ua);
 

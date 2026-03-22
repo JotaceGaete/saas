@@ -6,12 +6,14 @@
  * Google/Bing no están en la lista: reciben el HTML completo vía rewrite (catalog-html + SPA)
  * para indexación con meta y contenido coherentes.
  *
+ * /cdn-cgi/*, imágenes y assets NO pasan por esta lógica (ver seoPassThrough.js).
+ *
  * Requires in Vercel: SUPABASE_URL (or VITE_SUPABASE_URL), SUPABASE_ANON_KEY (or VITE_SUPABASE_ANON_KEY).
  */
 
 import { detectCatalogRegion, getCatalogMetaDescription, getCatalogPageTitle } from './src/utils/catalogSeo.js';
+import { getCatalogSlugFromPath } from './src/utils/seoPassThrough.js';
 
-const CATALOG_PATH = /^\/(catalogo|catalog)\/([^/]+)\/?$/;
 const OG_FALLBACK_IMAGE = 'https://media.gong.cl/test/preview.jpg';
 const BOT_UA =
   /(whatsapp|whatsappbot|facebookexternalhit|facebot|meta-externalagent|meta-externalfetcher|twitterbot|telegrambot|slackbot|discordbot|linkedinbot)/i;
@@ -108,10 +110,12 @@ function buildOgHtml(payload) {
 
 export default async function middleware(request) {
   const url = new URL(request.url);
-  const match = url.pathname.match(CATALOG_PATH);
-  if (!match) return;
 
-  const slug = match[2];
+  const slug = getCatalogSlugFromPath(url.pathname);
+  if (slug === null) {
+    return;
+  }
+
   const ua = request.headers.get('user-agent') || '';
   const bot = isBot(ua);
 
