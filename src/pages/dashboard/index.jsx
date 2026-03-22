@@ -30,7 +30,7 @@ import {
 import { supabase } from "../../lib/supabase";
 import { getAppBaseUrl } from "../../config/appUrl";
 import { getPublicCatalogUrl } from "../../config/appUrl";
-import { cfImageUrl } from "../../utils/cloudflareImage";
+import { buildCfImageErrorHandler, cfImageUrl } from "../../utils/cloudflareImage";
 import OrdersByDayCard from "./components/OrdersByDayCard";
 import TopProductsCard from "./components/TopProductsCard";
 import MonthlyRevenueCard from "./components/MonthlyRevenueCard";
@@ -696,7 +696,12 @@ export default function Dashboard() {
                           >
                             <div className="w-10 h-10 rounded-lg bg-muted overflow-hidden flex-shrink-0">
                               {p?.imageUrl ? (
-                                <img src={cfImageUrl(p.imageUrl, 'thumbnail')} alt="" className="w-full h-full object-cover" />
+                                <img
+                                  src={cfImageUrl(p.imageUrl, 'thumbnail')}
+                                  alt=""
+                                  className="w-full h-full object-cover"
+                                  onError={buildCfImageErrorHandler(p.imageUrl)}
+                                />
                               ) : (
                                 <div className="w-full h-full flex items-center justify-center">
                                   <Icon name="Package" size={18} color="var(--color-muted-foreground)" />

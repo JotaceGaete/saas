@@ -70,10 +70,9 @@ export function buildCatalogSeoLongText(p) {
   const money = ri.currencyLabel;
 
   return [
-    `En este catálogo online de ${name}, ubicado en ${loc}, puedes encontrar los productos disponibles y armar tu pedido de forma sencilla. Se trata de un catálogo digital pensado para que no necesites una página web complicada: aquí ves precios en ${money}, información clara y un flujo directo para comprar por WhatsApp, ideal si buscas una tienda online simple que funcione en el móvil.`,
-    `Este catálogo digital reúne lo esencial de la oferta del negocio en un solo lugar. Explora categorías o el listado completo, revisa detalles de cada producto y, cuando quieras, envía tu pedido por el mismo canal que ya usas a diario. Comprar por WhatsApp reduce fricción: escribes, confirmas y listo, sin formularios eternos ni cuentas obligatorias.`,
-    `Si valoras un catálogo online rápido de cargar y fácil de compartir, esta página cumple ese rol: sirve como vitrina abierta las 24 horas y refuerza la presencia local en ${loc}. Las búsquedas habituales —como “catálogo online”, “catálogo digital” o “tienda online simple” con entrega o retiro— apuntan justamente a experiencias como esta, donde el foco está en claridad y respuesta inmediata por mensaje.`,
-    `Elige productos, revisa tu selección y contacta al comercio en segundos. Ya sea para pedidos del día a día o encargos puntuales, el objetivo es el mismo: que encuentres lo que buscas y cierres tu compra por WhatsApp con pocas pulsaciones, con la confianza de un negocio real en ${loc}.`,
+    `En este catálogo online de ${name}, ubicado en ${loc}, puedes ver los productos disponibles y armar tu pedido con claridad. Es un catálogo digital pensado para no depender de una página web compleja: precios en ${money}, información ordenada y un flujo directo para comprar por WhatsApp, ideal si buscas una tienda online simple que funcione bien en el móvil.`,
+    `Aquí se concentra la oferta del negocio en un solo lugar. Explora categorías o el listado, revisa cada producto y envía el pedido por el canal que ya usas. Comprar por WhatsApp reduce fricción: escribes, confirmas y listo, sin formularios largos ni cuentas obligatorias.`,
+    `Si buscas un catálogo online veloz y fácil de compartir, esta página actúa como vitrina las 24 horas y refuerza la presencia en ${loc}. Términos como catálogo digital, catálogo online, comprar por WhatsApp o tienda online simple describen justamente este tipo de experiencia: claridad, respuesta por mensaje y confianza en un comercio real. Elige productos, revisa tu selección y contacta al comercio en segundos, para pedidos del día a día o encargos puntuales.`,
   ].join('\n\n');
 }
 

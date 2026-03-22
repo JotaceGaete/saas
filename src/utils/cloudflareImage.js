@@ -2,21 +2,11 @@
  * URLs optimizadas vía Cloudflare Image Resizing (/cdn-cgi/image).
  * Solo transforma orígenes en media.gong.cl; el resto se devuelve igual (blobs, data:, relativas, otros hosts).
  *
- * El origen del proxy debe ser el mismo host que la app (cl/ar/go.ventalink.app), no el apex fijo:
- * pedir imágenes a otro host rompe con workers, reglas de zona o cookies en algunos despliegues.
+ * El proxy DEBE apuntar a un hostname donde Image Resizing esté habilitado en el dashboard de Cloudflare.
+ * No usar window.location.origin: subdominios de preview (p. ej. c1.ventalink.app) suelen devolver 403 en /cdn-cgi/image.
+ *
+ * Opcional: VITE_CF_IMAGE_ORIGIN=https://ventalink.app (o el host que tengáis configurado).
  */
-
-import { getAppBaseUrl } from '../config/appUrl';
-
-function getCfImageOrigin() {
-  // En el navegador: siempre el host actual (mismo build en cl/ar/go sin depender de VITE_APP_URL).
-  if (typeof window !== 'undefined' && window.location?.origin) {
-    return String(window.location.origin).replace(/\/$/, '');
-  }
-  const base = getAppBaseUrl();
-  if (base) return base.replace(/\/$/, '');
-  return 'https://ventalink.app';
-}
 
 /** @type {Record<'mobile'|'desktop'|'thumbnail', string>} */
 export const CF_IMAGE_PROFILES = {
@@ -26,6 +16,14 @@ export const CF_IMAGE_PROFILES = {
 };
 
 const MEDIA_HOST = 'media.gong.cl';
+
+const DEFAULT_CF_IMAGE_ORIGIN = 'https://ventalink.app';
+
+function getCfImageOrigin() {
+  const env = import.meta.env?.VITE_CF_IMAGE_ORIGIN?.trim();
+  if (env) return env.replace(/\/$/, '');
+  return DEFAULT_CF_IMAGE_ORIGIN;
+}
 
 /**
  * @param {string} [url]
@@ -54,4 +52,21 @@ export function cfImageUrl(originalUrl, profile = 'thumbnail') {
   if (!isCfTransformableUrl(originalUrl)) return originalUrl;
   const opts = CF_IMAGE_PROFILES[profile] || CF_IMAGE_PROFILES.thumbnail;
   return `${getCfImageOrigin()}/cdn-cgi/image/${opts}/${originalUrl}`;
+}
+
+/**
+ * Si /cdn-cgi/image falla (403, etc.), cargar la URL original en media.gong.cl.
+ * @param {string} originalUrl
+ * @returns {(e: React.SyntheticEvent<HTMLImageElement>) => void}
+ */
+export function buildCfImageErrorHandler(originalUrl) {
+  return function handleCfImageError(e) {
+    const el = e?.currentTarget;
+    if (!el || !originalUrl || typeof originalUrl !== 'string') return;
+    if (el.getAttribute('data-cf-fallback') === '1') return;
+    if (!isCfTransformableUrl(originalUrl)) return;
+    el.setAttribute('data-cf-fallback', '1');
+    el.onerror = null;
+    el.src = originalUrl;
+  };
 }

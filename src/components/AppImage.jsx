@@ -1,5 +1,5 @@
 import React from 'react';
-import { cfImageUrl } from '../utils/cloudflareImage';
+import { cfImageUrl, isCfTransformableUrl } from '../utils/cloudflareImage';
 import { useResponsiveCfImageProfile } from '../hooks/useResponsiveCfImageProfile';
 
 /**
@@ -23,7 +23,14 @@ function Image({
       alt={alt}
       className={className}
       onError={(e) => {
-        e.target.src = "/assets/images/no_image.png"
+        const el = e.currentTarget;
+        if (src && isCfTransformableUrl(src) && el.getAttribute('data-cf-fallback') !== '1') {
+          el.setAttribute('data-cf-fallback', '1');
+          el.src = src;
+          return;
+        }
+        el.onerror = null;
+        el.src = '/assets/images/no_image.png';
       }}
       {...props}
     />

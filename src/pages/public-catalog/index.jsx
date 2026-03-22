@@ -12,7 +12,7 @@ import BrandingFooter from '../../components/BrandingFooter';
 import { hasViralBranding, getOrderMessageBrandingSuffix } from '../../utils/branding';
 import { isRestaurantBusiness } from '../../utils/businessType';
 import { normalizeOptionalCustomerPhone } from '../../utils/customerPhone';
-import { cfImageUrl } from '../../utils/cloudflareImage';
+import { buildCfImageErrorHandler, cfImageUrl, isCfTransformableUrl } from '../../utils/cloudflareImage';
 import { useResponsiveCfImageProfile } from '../../hooks/useResponsiveCfImageProfile';
 import CheckoutPhoneOptional from '../../components/checkout/CheckoutPhoneOptional';
 import {
@@ -653,7 +653,12 @@ function CatalogInner({ slug }) {
             )}
             <div className="flex-1 min-w-0 flex items-center gap-2.5">
               {business?.logoUrl ? (
-                <img src={cfImageUrl(business.logoUrl, 'thumbnail')} alt="" className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
+                <img
+                  src={cfImageUrl(business.logoUrl, 'thumbnail')}
+                  alt=""
+                  className="w-8 h-8 rounded-full object-cover flex-shrink-0"
+                  onError={buildCfImageErrorHandler(business.logoUrl)}
+                />
               ) : (
                 <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: `linear-gradient(135deg, ${primaryColor}, ${primaryColorDark})` }}>
                   <Icon name="Store" size={16} color="#FFFFFF" />
@@ -688,6 +693,7 @@ function CatalogInner({ slug }) {
                 objectFit: coverFit,
                 objectPosition: coverFit === 'cover' ? coverPosition : 'center',
               }}
+              onError={buildCfImageErrorHandler(business.coverImageUrl)}
             />
           )}
         </div>
@@ -704,6 +710,7 @@ function CatalogInner({ slug }) {
                       src={cfImageUrl(business.logoUrl, 'thumbnail')}
                       alt={business?.name}
                       className="w-14 h-14 sm:w-16 sm:h-16 rounded-full object-cover border-2 border-gray-100"
+                      onError={buildCfImageErrorHandler(business.logoUrl)}
                     />
                   ) : (
                     <div
@@ -1093,19 +1100,37 @@ function CatalogInner({ slug }) {
         )}
 
         {!loading && !notFound && business && catalogSeoBody && (
-          <section
-            className="mt-8 rounded-2xl border border-gray-100 bg-white p-5 sm:p-6 text-gray-600 text-sm leading-relaxed shadow-sm"
-            aria-labelledby="catalog-seo-heading"
-          >
-            <h2 id="catalog-seo-heading" className="text-base font-semibold text-gray-800 mb-3">
-              Sobre este catálogo online
-            </h2>
-            {catalogSeoBody.split('\n\n').map((para, i) => (
-              <p key={i} className="mb-4 last:mb-0">
-                {para}
-              </p>
-            ))}
-          </section>
+          <div className="mt-10 md:mt-14 w-full flex justify-center px-0 sm:px-1">
+            <section
+              className="w-full max-w-[min(100%,1200px)] rounded-2xl border border-gray-200/90 bg-gradient-to-b from-gray-50 to-white px-6 py-8 sm:px-10 sm:py-10 text-left shadow-[0_4px_32px_-8px_rgba(15,23,42,0.1)] ring-1 ring-gray-100/80"
+              aria-labelledby="catalog-seo-heading"
+            >
+              <header className="mb-6 sm:mb-8">
+                <h2
+                  id="catalog-seo-heading"
+                  className="text-xl font-semibold tracking-tight text-gray-900 sm:text-2xl"
+                  style={{ fontFamily: 'DM Sans, sans-serif' }}
+                >
+                  Sobre este catálogo online
+                </h2>
+                <div
+                  className="mt-3 h-1 w-14 rounded-full opacity-90"
+                  style={{ backgroundColor: primaryColor }}
+                  aria-hidden
+                />
+              </header>
+              <div
+                className="space-y-5 text-[15px] leading-[1.75] text-gray-600 sm:text-base sm:leading-[1.8]"
+                style={{ fontFamily: 'DM Sans, sans-serif' }}
+              >
+                {catalogSeoBody.split('\n\n').map((para, i) => (
+                  <p key={i} className="m-0 max-w-none text-pretty">
+                    {para}
+                  </p>
+                ))}
+              </div>
+            </section>
+          </div>
         )}
 
         <BrandingFooter business={business} />
@@ -1438,7 +1463,12 @@ function OrderPanel({ business, slug, formatPrice, onClose, theme }) {
                   {/* Image */}
                   <div className="w-12 h-12 rounded-xl overflow-hidden bg-gray-100 flex-shrink-0">
                     {item?.imageUrl ? (
-                      <img src={cfImageUrl(item.imageUrl, 'thumbnail')} alt={item?.name} className="w-full h-full object-cover" />
+                      <img
+                        src={cfImageUrl(item.imageUrl, 'thumbnail')}
+                        alt={item?.name}
+                        className="w-full h-full object-cover"
+                        onError={buildCfImageErrorHandler(item.imageUrl)}
+                      />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
                         <Icon name="ImageOff" size={18} color="#D1D5DB" />
@@ -1689,6 +1719,7 @@ function ProductCard({ product, formatPrice, onOpen, theme, cardSettings, useCat
               src={cfImageUrl(imgs[0], 'thumbnail')}
               alt={product?.name}
               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+              onError={buildCfImageErrorHandler(imgs[0])}
             />
           ) : (
             <div className={`w-full h-full flex items-center justify-center bg-gray-100 ${compact ? 'min-h-[72px]' : 'min-h-[120px]'}`}>
@@ -1782,6 +1813,7 @@ function ProductCard({ product, formatPrice, onOpen, theme, cardSettings, useCat
 // Miniatura del modal con fallback si la imagen falla al cargar
 function ThumbnailButton({ url, productName, index, isSelected, primaryColor, onSelect }) {
   const [error, setError] = useState(false);
+  const [useDirect, setUseDirect] = useState(false);
   if (!url) return null;
   return (
     <button
@@ -1797,12 +1829,15 @@ function ThumbnailButton({ url, productName, index, isSelected, primaryColor, on
         <Icon name="ImageOff" size={20} color="#D1D5DB" />
       ) : (
         <img
-          src={cfImageUrl(url, 'thumbnail')}
+          src={useDirect ? url : cfImageUrl(url, 'thumbnail')}
           alt={`${productName ?? 'Producto'} ${index + 1}`}
           className="w-full h-full object-cover"
           loading="lazy"
           decoding="async"
-          onError={() => setError(true)}
+          onError={() => {
+            if (!useDirect && isCfTransformableUrl(url)) setUseDirect(true);
+            else setError(true);
+          }}
         />
       )}
     </button>
@@ -1832,11 +1867,13 @@ function ProductModal({ product, business, slug, formatPrice, whatsAppUrl, whats
   useEffect(() => { setSelectedIndex(0); }, [product?.id]);
   const mainUrl = productImages[selectedIndex];
   const mainUrlOptimized = mainUrl ? cfImageUrl(mainUrl, cfMainProfile) : null;
+  const [useMainDirect, setUseMainDirect] = useState(false);
 
   // Reset error/loaded al cambiar de imagen o de producto
   useEffect(() => {
     setImageLoadError(false);
     setImageLoaded(false);
+    setUseMainDirect(false);
   }, [mainUrl, product?.id, cfMainProfile]);
 
   const goPrev = (e) => { e?.stopPropagation(); setSelectedIndex(i => (i <= 0 ? productImages.length - 1 : i - 1)); };
@@ -1892,14 +1929,21 @@ function ProductModal({ product, business, slug, formatPrice, whatsAppUrl, whats
                   </div>
                 )}
                 <img
-                  src={mainUrlOptimized}
+                  src={useMainDirect && mainUrl ? mainUrl : mainUrlOptimized}
                   alt={product?.name ?? 'Producto'}
                   className="w-full h-full object-contain"
                   style={{ opacity: imageLoaded ? 1 : 0, transition: 'opacity 0.2s ease-out' }}
                   draggable={false}
                   decoding="async"
                   onLoad={() => setImageLoaded(true)}
-                  onError={() => setImageLoadError(true)}
+                  onError={() => {
+                    if (!useMainDirect && mainUrl && isCfTransformableUrl(mainUrl)) {
+                      setUseMainDirect(true);
+                      setImageLoaded(false);
+                    } else {
+                      setImageLoadError(true);
+                    }
+                  }}
                 />
               </>
             ) : (
