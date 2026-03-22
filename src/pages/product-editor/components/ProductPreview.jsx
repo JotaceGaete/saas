@@ -3,7 +3,7 @@ import Icon from 'components/AppIcon';
 import Image from 'components/AppImage';
 import { formatCLP } from 'utils/formatCLP';
 
-export default function ProductPreview({ nombre, precio, descripcion, activo, featured, images }) {
+export default function ProductPreview({ nombre, precio, descripcion, activo, featured, onSale, images }) {
   const imageList = images?.length ? images : [];
   const [activeIdx, setActiveIdx] = useState(0);
   const safeIdx = Math.min(activeIdx, Math.max(0, imageList.length - 1));
@@ -106,14 +106,19 @@ export default function ProductPreview({ nombre, precio, descripcion, activo, fe
               </>
             )}
 
-            {/* Featured badge */}
-            {featured && (
+            {/* Un badge como en el catálogo: Oferta > Más vendido */}
+            {(onSale || featured) && (
               <div
                 className="absolute top-2 left-2 flex items-center gap-1 px-2 py-0.5 rounded-full"
-                style={{ backgroundColor: '#D97706', boxShadow: '0 2px 8px rgba(217,119,6,0.4)' }}
+                style={{
+                  backgroundColor: onSale ? '#dc2626' : '#b45309',
+                  boxShadow: onSale ? '0 2px 8px rgba(220,38,38,0.35)' : '0 2px 8px rgba(180,83,9,0.35)',
+                }}
               >
-                <Icon name="Star" size={9} color="#fff" />
-                <span style={{ fontSize: '0.6rem', color: '#fff', fontFamily: 'var(--font-caption)', fontWeight: 600 }}>Destacado</span>
+                <Icon name={onSale ? 'Tag' : 'Star'} size={9} color="#fff" />
+                <span style={{ fontSize: '0.6rem', color: '#fff', fontFamily: 'var(--font-caption)', fontWeight: 600 }}>
+                  {onSale ? 'Oferta' : 'Más vendido'}
+                </span>
               </div>
             )}
 

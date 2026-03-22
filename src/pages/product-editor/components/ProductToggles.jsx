@@ -49,7 +49,7 @@ function ToggleRow({ icon, iconColor, iconBg, title, description, checked, onCha
   );
 }
 
-export default function ProductToggles({ activo, featured, onActiveChange, onFeaturedChange }) {
+export default function ProductToggles({ activo, featured, onSale, onActiveChange, onFeaturedChange, onOnSaleChange }) {
   return (
     <div className="space-y-3">
       <ToggleRow
@@ -63,13 +63,23 @@ export default function ProductToggles({ activo, featured, onActiveChange, onFea
         onChange={onActiveChange}
       />
       <ToggleRow
+        icon="Tag"
+        iconColor="#dc2626"
+        iconBg="rgba(220,38,38,0.1)"
+        accentColor="#dc2626"
+        title="Marcar como oferta"
+        description={onSale ? 'En el catálogo se muestra el badge «Oferta» (prioridad sobre destacado)' : 'Activa para resaltar precio u ofertas en la tarjeta del producto'}
+        checked={!!onSale}
+        onChange={onOnSaleChange}
+      />
+      <ToggleRow
         icon="Star"
         iconColor="#D97706"
         iconBg="rgba(217,119,6,0.1)"
         accentColor="#D97706"
-        title="Producto destacado"
-        description={featured ? 'Aparece en la sección de destacados del catálogo' : 'No aparece en la sección de destacados'}
-        checked={featured}
+        title="Marcar como destacado"
+        description={featured ? 'Badge «Más vendido» en la tarjeta si no hay oferta activa' : 'Ayuda a destacar productos populares en el catálogo'}
+        checked={!!featured}
         onChange={onFeaturedChange}
       />
     </div>

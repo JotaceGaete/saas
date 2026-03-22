@@ -74,6 +74,16 @@ module.exports = {
         data: ['JetBrains Mono', 'monospace'],
         sans: ['DM Sans', 'system-ui', 'sans-serif'],
         mono: ['JetBrains Mono', 'monospace'],
+        /** Catálogo público: ver `src/utils/catalogTypography.js` */
+        catalog: [
+          'Inter',
+          'Manrope',
+          'system-ui',
+          '-apple-system',
+          'BlinkMacSystemFont',
+          'Segoe UI',
+          'sans-serif',
+        ],
       },
 
       fontSize: {

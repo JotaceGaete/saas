@@ -13,6 +13,9 @@ import DynamicWhatsAppField from 'components/DynamicWhatsAppField';
 import { getCountryCode, getCountryLabels } from '../../config/country';
 import CatalogAndOrdersConfig from './components/CatalogAndOrdersConfig';
 import InstallAppBlock from './components/InstallAppBlock';
+import { truncateAtWordBoundary } from '../../utils/textTruncate';
+
+const BUSINESS_DESCRIPTION_MAX = 280;
 
 function Toast({ message, type, onClose }) {
   return (
@@ -232,8 +235,9 @@ export default function BusinessConfiguration() {
           apikey: import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '',
         },
         body: JSON.stringify({
-          text: rawDesc.slice(0, 280),
+          text: truncateAtWordBoundary(rawDesc, BUSINESS_DESCRIPTION_MAX),
           productName: storeName,
+          maxDescriptionLength: BUSINESS_DESCRIPTION_MAX,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -246,11 +250,13 @@ export default function BusinessConfiguration() {
         showToast('No se obtuvo texto. Intenta de nuevo.', 'error');
         return;
       }
-      improved = improved
-        .replace(/\s*\([^)]*(?:\bIA\b|inteligencia\s+artificial)[^)]*\)/gi, ' ')
-        .replace(/\s{2,}/g, ' ')
-        .trim()
-        .slice(0, 280);
+      improved = truncateAtWordBoundary(
+        improved
+          .replace(/\s*\([^)]*(?:\bIA\b|inteligencia\s+artificial)[^)]*\)/gi, ' ')
+          .replace(/\s{2,}/g, ' ')
+          .trim(),
+        BUSINESS_DESCRIPTION_MAX,
+      );
       handleFormChange('description', improved);
       showToast('Descripción actualizada. Revisa y guarda si te convence.', 'success');
     } catch (e) {
@@ -440,11 +446,11 @@ export default function BusinessConfiguration() {
                 {/* Description */}
                 <SettingsField
                   label="Descripción del negocio"
-                  hint="Aparece destacada en la página principal de tu catálogo. Máximo 280 caracteres."
+                  hint="Aparece en la cabecera del catálogo. Máximo 280 caracteres (la IA respeta este límite)."
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
                     <span className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-                      {(form?.description ?? '').length}/280
+                      {(form?.description ?? '').length}/{BUSINESS_DESCRIPTION_MAX}
                     </span>
                     {canUseAiDescription && (
                       <button
@@ -473,7 +479,7 @@ export default function BusinessConfiguration() {
                   </div>
                   <textarea
                     rows={3}
-                    maxLength={280}
+                    maxLength={BUSINESS_DESCRIPTION_MAX}
                     className={inputClass}
                     style={inputStyle}
                     placeholder="Ej: Tienda de ropa y accesorios para toda la familia..."

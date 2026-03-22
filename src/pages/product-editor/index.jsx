@@ -26,6 +26,7 @@ const EMPTY_FORM = {
   stock: '',
   activo: true,
   featured: false,
+  onSale: false,
   hasOptions: false,
   optionsDescription: '',
 };
@@ -130,7 +131,11 @@ export default function ProductEditor() {
           Authorization: `Bearer ${session.access_token}`,
           apikey: import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '',
         },
-        body: JSON.stringify({ text: inputText, productName: productName || '' }),
+        body: JSON.stringify({
+          text: inputText,
+          productName: productName || '',
+          maxDescriptionLength: 300,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -287,6 +292,7 @@ export default function ProductEditor() {
         images: imagesUrls?.length ? imagesUrls : (finalImageUrl ? [finalImageUrl] : []),
         isActive: formData?.activo,
         featured: formData?.featured,
+        onSale: formData?.onSale,
         hasOptions: formData?.hasOptions,
         optionsDescription: formData?.hasOptions ? (formData?.optionsDescription || null) : null,
         category: formData?.categoria?.trim() || null,
@@ -367,6 +373,19 @@ export default function ProductEditor() {
               <Icon name={formData?.activo ? 'Eye' : 'EyeOff'} size={11} color={formData?.activo ? '#059669' : 'var(--color-muted-foreground)'} />
               {formData?.activo ? 'Visible' : 'Oculto'}
             </span>
+            {formData?.onSale && (
+              <span
+                className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium"
+                style={{
+                  backgroundColor: 'rgba(220,38,38,0.1)',
+                  color: '#dc2626',
+                  fontFamily: 'var(--font-caption)',
+                }}
+              >
+                <Icon name="Tag" size={11} color="#dc2626" />
+                Oferta
+              </span>
+            )}
             {formData?.featured && (
               <span
                 className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium"
@@ -477,8 +496,10 @@ export default function ProductEditor() {
                   <ProductToggles
                     activo={formData?.activo}
                     featured={formData?.featured}
+                    onSale={formData?.onSale}
                     onActiveChange={(val) => handleFieldChange('activo', val)}
                     onFeaturedChange={(val) => handleFieldChange('featured', val)}
+                    onOnSaleChange={(val) => handleFieldChange('onSale', val)}
                   />
                 </div>
 
@@ -544,6 +565,7 @@ export default function ProductEditor() {
                     descripcion={formData?.descripcion}
                     activo={formData?.activo}
                     featured={formData?.featured}
+                    onSale={formData?.onSale}
                     images={images}
                   />
                 </div>

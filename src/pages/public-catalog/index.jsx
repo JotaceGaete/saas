@@ -23,6 +23,7 @@ import {
   getCatalogPageTitle,
   stringifyJsonLd,
 } from '../../utils/catalogSeo';
+import { getProductCardTrustBadge } from '../../utils/productCardBadge';
 
 /** Build absolute URL for OG image (preview al compartir en WhatsApp, etc.). Prioridad: logo tienda → portada → fallback con nombre. */
 function getCatalogOgImageUrl(business, baseUrl) {
@@ -93,7 +94,7 @@ function CatalogInfoGrid({ design, primaryColor, fullAddress, mapsSearchUrl, sho
           <Icon name="Clock" size={16} className="flex-shrink-0 mt-0.5" color="#6B7280" />
           <div>
             <span className="font-semibold text-gray-500 block mb-0.5">Horario</span>
-            <span className="text-gray-800 whitespace-pre-line">{design.businessHours.trim()}</span>
+            <span className="text-gray-800 font-normal whitespace-pre-line leading-relaxed">{design.businessHours.trim()}</span>
           </div>
         </div>
       )}
@@ -107,13 +108,13 @@ function CatalogInfoGrid({ design, primaryColor, fullAddress, mapsSearchUrl, sho
                 href={mapsSearchUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-gray-800 hover:underline focus:outline-none focus:underline"
+                className="text-gray-800 font-normal leading-relaxed hover:underline focus:outline-none focus:underline"
                 style={{ color: primaryColor }}
               >
                 {fullAddress}
               </a>
             ) : (
-              <span className="text-gray-800">{fullAddress}</span>
+              <span className="text-gray-800 font-normal leading-relaxed">{fullAddress}</span>
             )}
             {mapsSearchUrl && (
               <span className="block mt-1">
@@ -136,7 +137,7 @@ function CatalogInfoGrid({ design, primaryColor, fullAddress, mapsSearchUrl, sho
           <Icon name="Truck" size={16} className="flex-shrink-0 mt-0.5" color="#6B7280" />
           <div>
             <span className="font-semibold text-gray-500 block mb-0.5">Envíos</span>
-            <span className="text-gray-800">{design.shippingMethods.trim()}</span>
+            <span className="text-gray-800 font-normal leading-relaxed">{design.shippingMethods.trim()}</span>
           </div>
         </div>
       )}
@@ -145,7 +146,7 @@ function CatalogInfoGrid({ design, primaryColor, fullAddress, mapsSearchUrl, sho
           <Icon name="Package" size={16} className="flex-shrink-0 mt-0.5" color="#6B7280" />
           <div>
             <span className="font-semibold text-gray-500 block mb-0.5">Costo de envío</span>
-            <span className="text-gray-800">{design.shippingCost.trim()}</span>
+            <span className="text-gray-800 font-normal leading-relaxed">{design.shippingCost.trim()}</span>
           </div>
         </div>
       )}
@@ -154,7 +155,7 @@ function CatalogInfoGrid({ design, primaryColor, fullAddress, mapsSearchUrl, sho
           <Icon name="Store" size={16} className="flex-shrink-0 mt-0.5" color="#6B7280" />
           <div>
             <span className="font-semibold text-gray-500 block mb-0.5">Retiro en tienda</span>
-            <span className="text-gray-800">Disponible</span>
+            <span className="text-gray-800 font-normal">Disponible</span>
           </div>
         </div>
       )}
@@ -500,7 +501,7 @@ function CatalogInner({ slug }) {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 font-catalog antialiased">
         <div className="flex flex-col items-center gap-3">
           <div className="w-10 h-10 border-[3px] border-t-transparent rounded-full animate-spin" style={{ borderColor: '#25D366', borderTopColor: 'transparent' }} />
           <p className="text-sm text-gray-500 font-medium">Cargando catálogo...</p>
@@ -511,7 +512,7 @@ function CatalogInner({ slug }) {
 
   if (notFound) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4 font-catalog antialiased">
         <div className="text-center">
           <div className="w-20 h-20 rounded-3xl bg-gray-100 flex items-center justify-center mx-auto mb-5">
             <Icon name="Store" size={36} color="#9CA3AF" />
@@ -552,10 +553,10 @@ function CatalogInner({ slug }) {
   // Grid con min-width para que las tarjetas no queden demasiado angostas ni demasiado anchas
   const gridClass =
     isDesktop
-      ? 'grid gap-3 md:gap-4'
+      ? 'grid items-stretch gap-3 md:gap-4'
       : catalogViewMode === 'compact'
-        ? 'grid grid-cols-2 gap-2 sm:gap-3'
-        : 'grid grid-cols-1 gap-3 sm:gap-4';
+        ? 'grid grid-cols-2 items-stretch gap-2 sm:gap-3'
+        : 'grid grid-cols-1 items-stretch gap-3 sm:gap-4';
   const gridStyle = isDesktop
     ? { gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }
     : catalogViewMode === 'compact'
@@ -598,7 +599,7 @@ function CatalogInner({ slug }) {
       : null;
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 font-catalog antialiased">
       {/* Open Graph: imagen = logo de la tienda (o portada o fallback). WhatsApp usa og:image para la vista previa del enlace.
           Si el crawler no ejecuta JS, solo verá el index.html; para que el logo aparezca siempre al compartir, hace falta SSR o inyección de meta en el servidor para /catalogo/:slug. */}
       {!loading && !notFound && business && (
@@ -665,7 +666,7 @@ function CatalogInner({ slug }) {
                   <Icon name="Store" size={16} color="#FFFFFF" />
                 </div>
               )}
-              <span className="font-bold text-gray-900 truncate text-base" style={{ fontFamily: 'DM Sans, sans-serif' }}>
+              <span className="font-bold text-gray-900 truncate text-base tracking-tight">
                 {business?.name}
               </span>
             </div>
@@ -725,10 +726,7 @@ function CatalogInner({ slug }) {
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2 mb-1">
                     {storeHeader?.showStoreName !== false && (
-                      <h1
-                        className="text-2xl font-bold text-gray-900 leading-tight tracking-tight"
-                        style={{ fontFamily: 'DM Sans, sans-serif' }}
-                      >
+                      <h1 className="text-2xl font-bold text-gray-900 leading-tight tracking-tight">
                         {business?.name}
                       </h1>
                     )}
@@ -748,7 +746,7 @@ function CatalogInner({ slug }) {
                   )}
                   {storeHeader?.showDescription !== false && business?.description && (
                     <p
-                      className="hidden md:block text-base font-medium leading-relaxed line-clamp-3 mt-1"
+                      className="hidden md:block text-[15px] sm:text-base font-normal leading-relaxed line-clamp-5 mt-1 text-pretty"
                       style={{
                         color: storeHeader?.descriptionColor || undefined,
                         ...(!storeHeader?.descriptionColor && { color: '#374151' }),
@@ -792,7 +790,6 @@ function CatalogInner({ slug }) {
                   type="button"
                   onClick={() => setMobileStoreInfoOpen((o) => !o)}
                   className="w-full flex items-center justify-between gap-3 px-4 py-3.5 text-left text-sm font-semibold text-gray-800 active:bg-gray-50/90 transition-colors duration-200"
-                  style={{ fontFamily: 'DM Sans, sans-serif' }}
                   aria-expanded={mobileStoreInfoOpen}
                   aria-controls="catalog-mobile-store-info"
                   id="catalog-mobile-store-info-trigger"
@@ -821,7 +818,7 @@ function CatalogInner({ slug }) {
                             <div className="min-w-0">
                               <span className="font-semibold text-gray-500 block mb-0.5">Descripción</span>
                               <p
-                                className="text-gray-800 leading-relaxed text-[15px] font-medium"
+                                className="text-gray-800 leading-relaxed text-[15px] font-normal text-pretty"
                                 style={{
                                   color: storeHeader?.descriptionColor || undefined,
                                   ...(!storeHeader?.descriptionColor && { color: '#374151' }),
@@ -1110,7 +1107,6 @@ function CatalogInner({ slug }) {
                 <h2
                   id="catalog-seo-heading"
                   className="text-2xl font-semibold tracking-tight text-gray-900 sm:text-3xl"
-                  style={{ fontFamily: 'DM Sans, sans-serif' }}
                 >
                   Sobre este catálogo
                 </h2>
@@ -1120,10 +1116,7 @@ function CatalogInner({ slug }) {
                   aria-hidden
                 />
               </header>
-              <div
-                className="space-y-7 text-[15px] text-gray-600 sm:text-base"
-                style={{ fontFamily: 'DM Sans, sans-serif' }}
-              >
+              <div className="space-y-7 text-[15px] text-gray-600 sm:text-base">
                 <p className="m-0 max-w-none text-pretty leading-[1.85] sm:leading-[1.9]">
                   {catalogAboutBlock.intro}
                 </p>
@@ -1447,7 +1440,7 @@ function OrderPanel({ business, slug, formatPrice, onClose, theme }) {
         {/* Header */}
         <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-gray-100 flex-shrink-0">
           <div>
-            <h2 className="text-lg font-bold text-gray-900" style={{ fontFamily: 'DM Sans, sans-serif' }}>Tu pedido</h2>
+            <h2 className="text-lg font-bold text-gray-900 tracking-tight">Tu pedido</h2>
             <p className="text-xs text-gray-400 mt-0.5">{items?.length} {items?.length === 1 ? 'producto' : 'productos'}</p>
           </div>
           <button
@@ -1692,7 +1685,6 @@ function ProductCard({ product, formatPrice, onOpen, theme, cardSettings, useCat
   const primaryColor = theme?.primaryColor || '#25D366';
   const primaryColorDark = theme?.primaryColorDark || '#128C7E';
   const showPrice = cardSettings?.showPrice !== false;
-  const showDescription = cardSettings?.showDescription !== false;
   const { addItem, updateQuantity, items } = useCart();
   const cartItem = items?.find(i => i?.id === product?.id);
   const qty = cartItem?.quantity || 0;
@@ -1719,32 +1711,49 @@ function ProductCard({ product, formatPrice, onOpen, theme, cardSettings, useCat
 
   const imgs = getProductImages(product);
   const extraImages = imgs.length > 1 ? imgs.length - 1 : 0;
+  const trustBadge = getProductCardTrustBadge(product);
+  const imgAspect = compact ? 'aspect-square' : 'aspect-[4/5]';
+  const roundTop = compact ? 'rounded-t-xl' : 'rounded-t-2xl';
+  const qtyTopClass =
+    qty > 0 && trustBadge ? (compact ? 'top-7' : 'top-[1.85rem]') : 'top-1';
 
   return (
     <div
-      className={`group text-left overflow-hidden bg-white flex flex-col h-full transition-all duration-200 ease-out md:hover:translate-y-[-4px] md:hover:shadow-lg ${
+      className={`group flex h-full min-h-0 flex-col bg-white text-left transition-all duration-200 ease-out md:hover:translate-y-[-4px] md:hover:shadow-lg ${
         compact ? 'rounded-xl' : 'rounded-2xl'
       }`}
       style={{ boxShadow: '0 2px 10px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.04)' }}
     >
-      {/* Una sola imagen; badge +N si hay más */}
-      <button onClick={() => onOpen(product)} className={`block w-full text-left min-h-0 flex flex-col ${compact ? 'flex-[5]' : 'flex-[7]'}`}>
-        <div className={`w-full flex-1 min-h-0 overflow-hidden bg-gray-50 relative ${compact ? 'rounded-t-xl min-h-[72px]' : 'rounded-t-2xl'}`}>
+      {/* Imagen: aspect-ratio + overflow aquí (no en la card entera) para no recortar el botón */}
+      <button
+        type="button"
+        onClick={() => onOpen(product)}
+        className={`relative block w-full shrink-0 overflow-hidden bg-gray-50 text-left ${roundTop}`}
+      >
+        <div className={`relative w-full ${imgAspect} min-h-0`}>
           {imgs[0] ? (
             <img
               src={cfImageUrl(imgs[0], 'thumbnail')}
               alt={product?.name}
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+              className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
               onError={buildCfImageErrorHandler(imgs[0])}
             />
           ) : (
-            <div className={`w-full h-full flex items-center justify-center bg-gray-100 ${compact ? 'min-h-[72px]' : 'min-h-[120px]'}`}>
+            <div className={`flex h-full w-full items-center justify-center bg-gray-100 ${compact ? 'min-h-[72px]' : ''}`}>
               <Icon name="ImageOff" size={compact ? 20 : 32} color="#D1D5DB" />
             </div>
           )}
+          {trustBadge && (
+            <span
+              className={`absolute left-1 z-[1] max-w-[calc(100%-3rem)] truncate rounded-md px-1.5 py-0.5 text-[9px] font-bold shadow-sm sm:max-w-[11rem] sm:text-[10px] ${compact ? 'top-1' : 'top-1.5'}`}
+              style={trustBadge.style}
+            >
+              {trustBadge.label}
+            </span>
+          )}
           {extraImages > 0 && (
             <div
-              className="absolute top-1 right-1 flex items-center gap-0.5 px-1 py-0.5 rounded text-[9px] font-semibold text-white shadow"
+              className="absolute right-1 top-1 flex items-center gap-0.5 rounded px-1 py-0.5 text-[9px] font-semibold text-white shadow"
               style={{ backgroundColor: 'rgba(0,0,0,0.55)' }}
             >
               <Icon name="Images" size={8} color="#fff" />
@@ -1753,7 +1762,7 @@ function ProductCard({ product, formatPrice, onOpen, theme, cardSettings, useCat
           )}
           {qty > 0 && (
             <div
-              className={`absolute top-1 left-1 rounded-full flex items-center justify-center text-white shadow ${compact ? 'w-5 h-5 text-[10px] font-black' : 'w-6 h-6 text-[11px] font-black'}`}
+              className={`absolute left-1 flex items-center justify-center rounded-full text-white shadow ${qtyTopClass} ${compact ? 'h-5 w-5 text-[10px] font-black' : 'h-6 w-6 text-[11px] font-black'}`}
               style={{ background: `linear-gradient(135deg, ${primaryColor}, ${primaryColorDark})` }}
             >
               {qty}
@@ -1761,7 +1770,7 @@ function ProductCard({ product, formatPrice, onOpen, theme, cardSettings, useCat
           )}
           {product?.hasOptions && (
             <div
-              className="absolute bottom-1 left-1 flex items-center gap-0.5 px-1 py-0.5 rounded text-[9px] font-semibold"
+              className="absolute bottom-1 left-1 flex items-center gap-0.5 rounded px-1 py-0.5 text-[9px] font-semibold"
               style={{ backgroundColor: 'rgba(234,179,8,0.9)', color: '#713f12' }}
             >
               <Icon name="ListChecks" size={8} color="#713f12" />
@@ -1771,56 +1780,74 @@ function ProductCard({ product, formatPrice, onOpen, theme, cardSettings, useCat
         </div>
       </button>
 
-      <div className={`flex flex-col min-h-0 ${compact ? 'p-1.5 flex-[3]' : 'p-2 flex-[3]'}`}>
-        {useCategories && product?.category && (
-          <span className="inline-block text-[10px] font-semibold rounded px-1 py-0.5 mb-0.5 self-start" style={{ color: primaryColorDark, backgroundColor: theme?.primaryRgba?.(0.12) || 'rgba(37,211,102,0.12)' }}>
-            {product?.category}
-          </span>
-        )}
-        <h3 className={`text-gray-800 line-clamp-2 leading-snug flex-1 min-h-0 ${compact ? 'text-[11px] font-semibold mb-0.5' : 'text-xs font-semibold mb-1'}`}>
-          {product?.name}
-        </h3>
-        {showDescription && product?.description && (
-          <p className={`text-gray-500 leading-snug ${compact ? 'text-[10px] line-clamp-1 mb-0.5' : 'text-xs line-clamp-2 mb-1'}`}>{product?.description}</p>
-        )}
-        {showPrice && (
-          <p className={`font-extrabold text-gray-900 leading-none ${compact ? 'text-sm mb-1' : 'text-lg mb-2'}`}>
-            {formatPrice(product?.price)}
-          </p>
-        )}
-        {!showPrice && <div className={compact ? 'mb-1' : 'mb-2'} />}
-
-        {qty === 0 ? (
-          <button
-            onClick={handleAdd}
-            className={`w-full rounded-xl flex items-center justify-center gap-0.5 text-white transition-all duration-150 active:scale-95 ${bump ? 'scale-105' : ''} ${
-              compact ? 'py-1.5 text-[11px] font-bold rounded-lg' : 'py-2 sm:py-1.5 text-xs font-bold'
-            }`}
-            style={{ background: `linear-gradient(135deg, ${primaryColor}, ${primaryColorDark})` }}
-          >
-            <Icon name="Plus" size={compact ? 10 : 12} color="#FFFFFF" />
-            Agregar
-          </button>
-        ) : (
+      {/* Bloque inferior: min-h-0 permite encoger en grid; título en caja de altura FIJA (2 líneas máx. reales) */}
+      <div
+        className={`flex min-h-0 flex-1 flex-col justify-between bg-white ${compact ? 'gap-1 rounded-b-xl px-1.5 pb-1.5 pt-1.5' : 'gap-1.5 rounded-b-2xl px-2.5 pb-2.5 pt-2'}`}
+      >
+        <div className="flex min-h-0 w-full flex-col gap-1">
+          {useCategories && product?.category && (
+            <span
+              className="line-clamp-1 max-w-full self-start overflow-hidden rounded px-1 py-0.5 text-[10px] font-semibold text-ellipsis"
+              style={{ color: primaryColorDark, backgroundColor: theme?.primaryRgba?.(0.12) || 'rgba(37,211,102,0.12)' }}
+            >
+              {product?.category}
+            </span>
+          )}
+          {/* Altura fija = reserva exacta para 2 líneas; evita que flex min-height crezca con texto largo */}
           <div
-            className={`flex items-center justify-between rounded-xl overflow-hidden transition-all duration-150 ${bump ? 'scale-105' : ''} ${compact ? 'rounded-lg' : ''}`}
-            style={{ background: `linear-gradient(135deg, ${primaryColor}, ${primaryColorDark})` }}
+            className={`w-full shrink-0 overflow-hidden ${compact ? 'h-[2.2rem]' : 'h-[2.45rem] sm:h-[2.7rem]'}`}
           >
-            <button
-              onClick={handleDecrease}
-              className={`flex items-center justify-center text-white hover:bg-white/20 transition-colors active:scale-90 ${compact ? 'w-6 h-6' : 'w-8 h-8 sm:w-9 sm:h-9'}`}
+            <h3
+              className={`line-clamp-2 h-full w-full min-w-0 overflow-hidden text-ellipsis break-words text-gray-900 [overflow-wrap:anywhere] ${
+                compact ? 'text-[11px] font-semibold leading-[1.25]' : 'text-[11px] font-bold leading-[1.25] sm:text-xs sm:leading-[1.3]'
+              }`}
             >
-              <Icon name="Minus" size={compact ? 10 : 14} color="#FFFFFF" />
-            </button>
-            <span className={`text-white font-black ${compact ? 'text-xs' : 'text-sm'}`}>{qty}</span>
-            <button
-              onClick={handleIncrease}
-              className={`flex items-center justify-center text-white hover:bg-white/20 transition-colors active:scale-90 ${compact ? 'w-6 h-6' : 'w-8 h-8 sm:w-9 sm:h-9'}`}
-            >
-              <Icon name="Plus" size={compact ? 10 : 14} color="#FFFFFF" />
-            </button>
+              {(product?.name || '').trim() || 'Producto'}
+            </h3>
           </div>
-        )}
+          {showPrice && (
+            <p className={`shrink-0 font-extrabold leading-none tracking-tight text-gray-900 ${compact ? 'text-sm' : 'text-lg'}`}>
+              {formatPrice(product?.price)}
+            </p>
+          )}
+        </div>
+
+        <div className="w-full shrink-0 pt-1">
+          {qty === 0 ? (
+            <button
+              type="button"
+              onClick={handleAdd}
+              className={`flex w-full items-center justify-center gap-0.5 rounded-xl text-white transition-all duration-150 active:scale-95 ${bump ? 'scale-105' : ''} ${
+                compact ? 'rounded-lg py-1.5 text-[11px] font-bold' : 'py-2 text-xs font-bold sm:py-2.5'
+              }`}
+              style={{ background: `linear-gradient(135deg, ${primaryColor}, ${primaryColorDark})` }}
+            >
+              <Icon name="Plus" size={compact ? 10 : 12} color="#FFFFFF" />
+              Agregar
+            </button>
+          ) : (
+            <div
+              className={`flex items-center justify-between overflow-hidden rounded-xl transition-all duration-150 ${bump ? 'scale-105' : ''} ${compact ? 'rounded-lg' : ''}`}
+              style={{ background: `linear-gradient(135deg, ${primaryColor}, ${primaryColorDark})` }}
+            >
+              <button
+                type="button"
+                onClick={handleDecrease}
+                className={`flex items-center justify-center text-white transition-colors hover:bg-white/20 active:scale-90 ${compact ? 'h-8 w-8' : 'h-9 w-9 sm:h-10 sm:w-10'}`}
+              >
+                <Icon name="Minus" size={compact ? 10 : 14} color="#FFFFFF" />
+              </button>
+              <span className={`font-black text-white ${compact ? 'text-xs' : 'text-sm'}`}>{qty}</span>
+              <button
+                type="button"
+                onClick={handleIncrease}
+                className={`flex items-center justify-center text-white transition-colors hover:bg-white/20 active:scale-90 ${compact ? 'h-8 w-8' : 'h-9 w-9 sm:h-10 sm:w-10'}`}
+              >
+                <Icon name="Plus" size={compact ? 10 : 14} color="#FFFFFF" />
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -2020,8 +2047,8 @@ function ProductModal({ product, business, slug, formatPrice, whatsAppUrl, whats
           )}
         </div>
 
-        <div className="p-5">
-          <div className="flex items-center gap-1.5 mb-3">
+        <div className="px-5 pb-6 pt-5 sm:px-6">
+          <div className="mb-4 flex items-center gap-1.5">
             <div className="w-5 h-5 rounded-md flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${primaryColor}, ${primaryColorDark})` }}>
               <Icon name="Store" size={11} color="#FFFFFF" />
             </div>
@@ -2031,17 +2058,19 @@ function ProductModal({ product, business, slug, formatPrice, whatsAppUrl, whats
             )}
           </div>
 
-          <h2 className="text-xl font-bold text-gray-900 mb-2 leading-tight" style={{ fontFamily: 'DM Sans, sans-serif' }}>
+          <h2 className="mb-3 text-2xl font-bold leading-tight tracking-tight text-gray-900">
             {product?.name}
           </h2>
 
           {showDescription && product?.description && (
-            <p className="text-sm text-gray-500 leading-relaxed mb-4">{product?.description}</p>
+            <p className="mb-5 text-[15px] font-normal leading-[1.65] text-gray-600 sm:text-base">
+              {product?.description}
+            </p>
           )}
 
           {product?.hasOptions && product?.optionsDescription && (
             <div
-              className="flex items-start gap-2.5 p-3 rounded-xl mb-4"
+              className="mb-5 flex items-start gap-2.5 rounded-xl p-3"
               style={{ backgroundColor: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.3)' }}
             >
               <Icon name="ListChecks" size={15} color="#92400e" className="flex-shrink-0 mt-0.5" />
@@ -2053,16 +2082,16 @@ function ProductModal({ product, business, slug, formatPrice, whatsAppUrl, whats
           )}
 
           {showPrice && (
-            <div className="flex items-baseline gap-2 mb-5">
-              <span className="text-3xl font-bold text-gray-900">{formatPrice(product?.price)}</span>
+            <div className="mb-6 flex items-baseline gap-2">
+              <span className="text-3xl font-extrabold tracking-tight text-gray-900 tabular-nums">{formatPrice(product?.price)}</span>
             </div>
           )}
-          {!showPrice && <div className="mb-5" />}
+          {!showPrice && <div className="mb-6" />}
 
           {/* Add to cart button */}
           <button
             onClick={() => { addItem(product); onClose(); }}
-            className="flex items-center justify-center gap-3 w-full py-4 rounded-2xl text-base font-bold text-white transition-all duration-150 hover:opacity-90 active:scale-[0.98] mb-3"
+            className="mb-3 flex w-full items-center justify-center gap-3 rounded-2xl py-4 text-base font-bold text-white transition-all duration-150 hover:opacity-90 active:scale-[0.98]"
             style={{ background: `linear-gradient(135deg, ${primaryColor} 0%, ${primaryColorDark} 100%)`, boxShadow: `0 8px 24px ${primaryRgba(0.35)}` }}
           >
             <Icon name="ShoppingCart" size={20} color="#FFFFFF" />

@@ -5,6 +5,18 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const MAX_INPUT_LENGTH = 300;
+/** Por defecto: descripción del negocio en configuración / cabecera catálogo. */
+const DEFAULT_MAX_DESCRIPTION_LENGTH = 280;
+
+/** Recorta sin partir palabras de forma brusca. */
+function truncateDescriptionAtWordBoundary(text: string, maxLen: number): string {
+  const s = text.trim();
+  if (s.length <= maxLen) return s;
+  const cut = s.slice(0, maxLen);
+  const lastSpace = cut.lastIndexOf(' ');
+  if (lastSpace > maxLen * 0.65) return cut.slice(0, lastSpace).trimEnd();
+  return cut.trimEnd();
+}
 
 function isAllowedOrigin(origin: string | null): boolean {
   if (!origin) return false;
@@ -48,7 +60,8 @@ function logAndReturn(response: Response, label: string) {
   return response;
 }
 
-const SYSTEM_PROMPT = `Eres un optimizador de publicaciones para ventas online. Recibes un texto básico del usuario y devuelves datos estructurados para publicar el producto.
+function buildSystemPrompt(maxDescChars: number): string {
+  return `Eres un optimizador de publicaciones para ventas online. Recibes un texto básico del usuario y devuelves datos estructurados para publicar el producto.
 
 Reglas obligatorias:
 - Corrige faltas de ortografía.
@@ -56,18 +69,20 @@ Reglas obligatorias:
 - NO inventes características que no estén en el texto original.
 - NO agregues precios si no aparecen en el texto.
 - Usa español claro y natural.
-- Descripción: máximo 80 palabras. Título: corto y atractivo.
+- Descripción ("description"): OBLIGATORIO máximo ${maxDescChars} caracteres (incluye espacios). Cuenta antes de responder. Tono comercial simple y moderno; prioriza una frase completa y cierra con punto si cabe.
+- Título: corto y atractivo (máximo ~80 caracteres).
 - Mantén siempre la información original; solo mejora la forma.
 
 Campos del JSON de salida:
 - "title": título optimizado del producto, corto y atractivo.
-- "description": descripción mejorada, máximo 80 palabras, tono comercial simple.
+- "description": descripción mejorada, máximo ${maxDescChars} caracteres (estricto), tono comercial simple.
 - "benefits": array de 2 a 4 frases cortas que destacan beneficios reales del producto (sin inventar).
 - "call_to_action": frase corta de llamada a la acción (ej: "¡Pedí el tuyo hoy!", "Disponible para entrega inmediata.").
 - "hashtags": array de 5 a 8 hashtags sin el símbolo #, solo texto limpio, relevantes al producto, útiles para Instagram, en el mismo idioma del usuario, sin repetir palabras innecesarias, sin inventar marcas.
 
 Responde ÚNICAMENTE con un JSON válido, sin texto antes ni después, sin bloques de código, con esta estructura exacta:
 {"title":"","description":"","benefits":[],"call_to_action":"","hashtags":[]}`;
+}
 
 Deno.serve(async (req) => {
   const origin = req.headers.get('origin') ?? '';
@@ -109,22 +124,26 @@ Deno.serve(async (req) => {
       return logAndReturn(jsonResponse({ error: 'No autorizado' }, 401, corsHeaders), 'auth_invalid');
     }
 
-    let body: { text?: string; productName?: string };
+    let body: { text?: string; productName?: string; maxDescriptionLength?: number };
     try {
-      body = (await req.json().catch(() => ({}))) as { text?: string; productName?: string };
+      body = (await req.json().catch(() => ({}))) as { text?: string; productName?: string; maxDescriptionLength?: number };
     } catch {
       return logAndReturn(jsonResponse({ error: 'Cuerpo inválido' }, 400, corsHeaders), 'invalid_body');
     }
-    console.log('[improve-product-description] body recibido: text.length=', (body?.text ?? '').length, '| productName=', body?.productName ?? '');
+    const rawMaxDesc = typeof body?.maxDescriptionLength === 'number' && Number.isFinite(body.maxDescriptionLength)
+      ? body.maxDescriptionLength
+      : DEFAULT_MAX_DESCRIPTION_LENGTH;
+    const maxDescLen = Math.min(600, Math.max(80, Math.round(rawMaxDesc)));
+    console.log('[improve-product-description] body recibido: text.length=', (body?.text ?? '').length, '| productName=', body?.productName ?? '', '| maxDescLen=', maxDescLen);
 
     const rawText = typeof body?.text === 'string' ? body.text.trim() : '';
     const text = rawText.length > MAX_INPUT_LENGTH ? rawText.slice(0, MAX_INPUT_LENGTH) : rawText;
     const productName = typeof body?.productName === 'string' ? body.productName.trim() : '';
 
     const userMessage = text
-      ? `Optimiza esta publicación para vender${productName ? ` (nombre de producto: ${productName})` : ''}. Devuelve solo el JSON con "title" y "description".\n\nTexto del usuario:\n${text}`
+      ? `Optimiza esta publicación para vender${productName ? ` (nombre de producto: ${productName})` : ''}. El campo "description" debe tener como máximo ${maxDescLen} caracteres (incluye espacios); no lo superes. Devuelve el JSON completo.\n\nTexto del usuario:\n${text}`
       : productName
-        ? `Genera un título y una descripción de producto para vender: "${productName}". Devuelve solo el JSON con "title" y "description".`
+        ? `Genera un título y una descripción de producto para vender: "${productName}". El campo "description" debe tener como máximo ${maxDescLen} caracteres (incluye espacios); no lo superes. Devuelve el JSON completo.`
         : '';
 
     if (!userMessage) {
@@ -202,7 +221,10 @@ Deno.serve(async (req) => {
     }
 
     const title = typeof result?.title === 'string' ? result.title.trim() : '';
-    const description = typeof result?.description === 'string' ? result.description.trim() : '';
+    let description = typeof result?.description === 'string' ? result.description.trim() : '';
+    if (description.length > maxDescLen) {
+      description = truncateDescriptionAtWordBoundary(description, maxDescLen);
+    }
 
     const benefits = Array.isArray(result?.benefits)
       ? (result.benefits as unknown[]).filter((b): b is string => typeof b === 'string' && b.trim().length > 0).map((b) => b.trim())
