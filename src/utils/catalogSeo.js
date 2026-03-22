@@ -60,23 +60,6 @@ export function getCatalogMetaDescription(p) {
 }
 
 /**
- * Párrafos largos para bloque SEO (≥200 palabras) con palabras clave naturales.
- * @param {{ storeName?: string, city?: string, region?: string, country?: string, currency?: string, host?: string }} p
- */
-export function buildCatalogSeoLongText(p) {
-  const name = (p.storeName || 'este negocio').trim() || 'este negocio';
-  const ri = detectCatalogRegion(p);
-  const loc = getLocationLabel(p.city, p.region, ri);
-  const money = ri.currencyLabel;
-
-  return [
-    `En este catálogo online de ${name}, ubicado en ${loc}, puedes ver los productos disponibles y armar tu pedido con claridad. Es un catálogo digital pensado para no depender de una página web compleja: precios en ${money}, información ordenada y un flujo directo para comprar por WhatsApp, ideal si buscas una tienda online simple que funcione bien en el móvil.`,
-    `Aquí se concentra la oferta del negocio en un solo lugar. Explora categorías o el listado, revisa cada producto y envía el pedido por el canal que ya usas. Comprar por WhatsApp reduce fricción: escribes, confirmas y listo, sin formularios largos ni cuentas obligatorias.`,
-    `Si buscas un catálogo online veloz y fácil de compartir, esta página actúa como vitrina las 24 horas y refuerza la presencia en ${loc}. Términos como catálogo digital, catálogo online, comprar por WhatsApp o tienda online simple describen justamente este tipo de experiencia: claridad, respuesta por mensaje y confianza en un comercio real. Elige productos, revisa tu selección y contacta al comercio en segundos, para pedidos del día a día o encargos puntuales.`,
-  ].join('\n\n');
-}
-
-/**
  * @param {{
  *   name: string,
  *   imageUrl?: string,

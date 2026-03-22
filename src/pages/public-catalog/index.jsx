@@ -15,8 +15,8 @@ import { normalizeOptionalCustomerPhone } from '../../utils/customerPhone';
 import { buildCfImageErrorHandler, cfImageUrl, isCfTransformableUrl } from '../../utils/cloudflareImage';
 import { useResponsiveCfImageProfile } from '../../hooks/useResponsiveCfImageProfile';
 import CheckoutPhoneOptional from '../../components/checkout/CheckoutPhoneOptional';
+import { buildCatalogAboutBlock, inferCatalogAboutKind } from '../../utils/catalogAboutBlock';
 import {
-  buildCatalogSeoLongText,
   buildLocalBusinessJsonLd,
   detectCatalogRegion,
   getCatalogMetaDescription,
@@ -576,7 +576,8 @@ function CatalogInner({ slug }) {
   };
   const catalogTitle = getCatalogPageTitle(seoInput);
   const catalogDescription = getCatalogMetaDescription(seoInput);
-  const catalogSeoBody = business ? buildCatalogSeoLongText(seoInput) : '';
+  const catalogAboutKind = business ? inferCatalogAboutKind(business, products) : 'general';
+  const catalogAboutBlock = business ? buildCatalogAboutBlock(seoInput, catalogAboutKind) : null;
   const ogRegion = detectCatalogRegion(seoInput);
   const canonicalUrl = getPublicCatalogUrl(slug) || (typeof window !== 'undefined' ? `${window.location?.origin || ''}${window.location?.pathname || `/catalogo/${slug}`}` : '');
   const ogImage = getCatalogOgImageUrl(business, baseUrl);
@@ -1099,35 +1100,50 @@ function CatalogInner({ slug }) {
           </div>
         )}
 
-        {!loading && !notFound && business && catalogSeoBody && (
+        {!loading && !notFound && business && catalogAboutBlock && (
           <div className="mt-10 md:mt-14 w-full flex justify-center px-0 sm:px-1">
             <section
               className="w-full max-w-[min(100%,1200px)] rounded-2xl border border-gray-200/90 bg-gradient-to-b from-gray-50 to-white px-6 py-8 sm:px-10 sm:py-10 text-left shadow-[0_4px_32px_-8px_rgba(15,23,42,0.1)] ring-1 ring-gray-100/80"
               aria-labelledby="catalog-seo-heading"
             >
-              <header className="mb-6 sm:mb-8">
+              <header className="mb-7 sm:mb-8">
                 <h2
                   id="catalog-seo-heading"
-                  className="text-xl font-semibold tracking-tight text-gray-900 sm:text-2xl"
+                  className="text-2xl font-semibold tracking-tight text-gray-900 sm:text-3xl"
                   style={{ fontFamily: 'DM Sans, sans-serif' }}
                 >
-                  Sobre este catálogo online
+                  Sobre este catálogo
                 </h2>
                 <div
-                  className="mt-3 h-1 w-14 rounded-full opacity-90"
+                  className="mt-4 h-1 w-16 rounded-full opacity-90"
                   style={{ backgroundColor: primaryColor }}
                   aria-hidden
                 />
               </header>
               <div
-                className="space-y-5 text-[15px] leading-[1.75] text-gray-600 sm:text-base sm:leading-[1.8]"
+                className="space-y-7 text-[15px] text-gray-600 sm:text-base"
                 style={{ fontFamily: 'DM Sans, sans-serif' }}
               >
-                {catalogSeoBody.split('\n\n').map((para, i) => (
-                  <p key={i} className="m-0 max-w-none text-pretty">
-                    {para}
-                  </p>
-                ))}
+                <p className="m-0 max-w-none text-pretty leading-[1.85] sm:leading-[1.9]">
+                  {catalogAboutBlock.intro}
+                </p>
+                <ul className="m-0 list-none space-y-4 p-0" role="list">
+                  {catalogAboutBlock.bullets.map((line, i) => (
+                    <li key={i} className="flex gap-3.5 leading-[1.85] sm:leading-[1.9]">
+                      <span
+                        className="mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full"
+                        style={{ backgroundColor: `${primaryColor}18`, color: primaryColor }}
+                        aria-hidden
+                      >
+                        <Icon name="Check" size={14} strokeWidth={2.5} />
+                      </span>
+                      <span className="min-w-0 flex-1">{line}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="m-0 max-w-none border-t border-gray-100 pt-6 text-pretty leading-[1.85] text-gray-700 sm:leading-[1.9]">
+                  {catalogAboutBlock.closing}
+                </p>
               </div>
             </section>
           </div>
