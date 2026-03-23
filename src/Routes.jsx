@@ -36,6 +36,7 @@ import AdminEmailsPage from './pages/admin/AdminEmailsPage';
 import PlansPage from './pages/plans';
 import BillingSuccessPage from './pages/billing/BillingSuccessPage';
 import BillingCancelPage from './pages/billing/BillingCancelPage';
+import PaypalSuccessPage from './pages/billing/PaypalSuccessPage';
 import PublicPricingPage from './pages/legal/PublicPricingPage';
 import TermsPage from './pages/legal/TermsPage';
 import PrivacyPage from './pages/legal/PrivacyPage';
@@ -82,6 +83,7 @@ const Routes = () => {
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/planes" element={<RequireAuth><PlansPage /></RequireAuth>} />
             <Route path="/billing/success" element={<BillingSuccessPage />} />
+            <Route path="/billing/paypal/success" element={<PaypalSuccessPage />} />
             <Route path="/billing/cancel" element={<BillingCancelPage />} />
             <Route path="/plans" element={<PublicPricingPage />} />
             <Route path="/terms" element={<TermsPage />} />
