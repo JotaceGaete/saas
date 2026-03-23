@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Icon from 'components/AppIcon';
 
 /**
- * Página cuando el usuario cancela el pago en LemonSqueezy.
+ * Página cuando el usuario cancela un flujo de pago.
  * URL: https://go.ventalink.app/billing/cancel
  */
 export default function BillingCancelPage() {

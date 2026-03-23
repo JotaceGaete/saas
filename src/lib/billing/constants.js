@@ -1,6 +1,6 @@
 /**
  * Constantes de billing. Una sola fuente de verdad para precios por región.
- * Regla: Chile (CL) → Mercado Pago, CLP. Resto (INT) → LemonSqueezy, USD.
+ * Regla: Chile (CL) → Mercado Pago, CLP. Resto (INT) → activación manual (sin pasarela), precios en USD solo referencia.
  */
 
 /** Regiones de facturación */
@@ -13,7 +13,7 @@ export const PLAN_SLUGS_BILLING = Object.freeze(['starter', 'pro', 'business']);
 /**
  * Precios por región (solo planes de pago).
  * Chile: CLP/mes. Internacional: USD/mes.
- * Lemon cobra según variant_id; estos valores son solo para mostrar en UI.
+ * Precios INT en USD son referencia para la UI; el cobro no está automatizado.
  */
 export const PLAN_PRICES_BY_REGION = Object.freeze({
   [BILLING_REGION_CL]: {
@@ -37,5 +37,5 @@ export const CURRENCY_BY_REGION = Object.freeze({
 /** Proveedor de pago por región */
 export const PROVIDER_BY_REGION = Object.freeze({
   [BILLING_REGION_CL]: 'mercado_pago',
-  [BILLING_REGION_INT]: 'lemonsqueezy',
+  [BILLING_REGION_INT]: 'manual',
 });

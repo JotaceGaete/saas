@@ -43,7 +43,7 @@ export const PLAN_PRICES_ARS = Object.freeze({
   business: 30000,
 });
 
-/** Precios en USD (LemonSqueezy, fuera de Chile). Pro=6 USD, Full=10 USD en Lemon. */
+/** Precios en USD (referencia internacional, fuera de Chile). Pro=6 USD, Full=10 USD. */
 export const PLAN_PRICES_USD = Object.freeze({
   starter:  0,
   pro:      6,
@@ -110,16 +110,15 @@ export function getPlanPrice(planSlug) {
 }
 
 /**
- * Precio del plan según país (CLP o ARS) o proveedor (USD para LemonSqueezy).
+ * Precio del plan según país (CLP o ARS) o proveedor (USD fuera de Chile con activación manual).
  * @param {string} planSlug
  * @param {'AR'|'CL'|string} [countryCode]
- * @param {'mercado_pago'|'lemonsqueezy'|null} [paymentProvider]
+ * @param {'mercado_pago'|'manual'|null} [paymentProvider]
  * @returns {number}
  */
 export function getPlanPriceByCountry(planSlug, countryCode, paymentProvider) {
   if (countryCode === 'CL') return PLAN_PRICES_CLP[planSlug] ?? 0;
-  // Argentina y resto del mundo usan LemonSqueezy → USD (no ARS).
-  if (paymentProvider === 'lemonsqueezy') return PLAN_PRICES_USD[planSlug] ?? 0;
+  if (paymentProvider === 'manual') return PLAN_PRICES_USD[planSlug] ?? 0;
   if (countryCode === 'AR') return PLAN_PRICES_ARS[planSlug] ?? 0;
   return PLAN_PRICES_CLP[planSlug] ?? 0;
 }

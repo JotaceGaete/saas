@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Icon from 'components/AppIcon';
 
 /**
- * Página de éxito tras completar el pago en LemonSqueezy.
+ * Página de éxito tras un flujo de pago (p. ej. retorno desde pasarela).
  * URL: https://go.ventalink.app/billing/success
  */
 export default function BillingSuccessPage() {

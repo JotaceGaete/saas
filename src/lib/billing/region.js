@@ -1,6 +1,6 @@
 /**
  * Resolución de región y proveedor de pago.
- * Regla única: country_code === 'CL' → región CL, Mercado Pago; resto → INT, LemonSqueezy.
+ * Regla única: country_code === 'CL' → región CL, Mercado Pago; resto → INT, activación manual.
  */
 
 import {
@@ -32,11 +32,11 @@ export function isChile(countryCode) {
 /**
  * Proveedor de pago para la región.
  * @param {string} [countryCode]
- * @returns {'mercado_pago'|'lemonsqueezy'}
+ * @returns {'mercado_pago'|'manual'}
  */
 export function getPaymentProvider(countryCode) {
   const region = getBillingRegion(countryCode);
-  return PROVIDER_BY_REGION[region] ?? 'lemonsqueezy';
+  return PROVIDER_BY_REGION[region] ?? 'manual';
 }
 
 /**

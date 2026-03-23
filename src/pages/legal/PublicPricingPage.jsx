@@ -4,7 +4,7 @@ import PublicPageLayout from 'components/PublicPageLayout';
 import { formatCurrency } from 'utils/formatCLP';
 import { PLAN_SLUGS, getPlanLabel, getPlanLimits } from 'constants/plans';
 import { getStoredCountryCode } from 'config/countryConfig';
-import { getBillingRegion, getPaymentProvider, getCurrency, getPlanDisplayPrice } from 'lib/billing';
+import { getBillingRegion, getCurrency, getPlanDisplayPrice } from 'lib/billing';
 
 const COUNTRY_CL = 'CL';
 
@@ -61,7 +61,6 @@ export default function PublicPricingPage() {
 
   const countryForBilling = country === 'INTL' ? 'AR' : (country || 'CL');
   const region = getBillingRegion(countryForBilling);
-  const paymentProvider = getPaymentProvider(countryForBilling);
   const currency = getCurrency(countryForBilling);
   const isChile = countryForBilling === 'CL';
 
@@ -78,7 +77,7 @@ export default function PublicPricingPage() {
 
   const ctaLabel = (planSlug) => {
     if (planSlug === 'starter') return 'Empezar gratis';
-    return isChile ? 'Pagar con Mercado Pago' : 'Pagar con tarjeta';
+    return isChile ? 'Pagar con Mercado Pago' : 'Solicitar activación';
   };
 
   return (
@@ -93,7 +92,7 @@ export default function PublicPricingPage() {
         role="note"
       >
         <p className="text-sm m-0" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>
-          Chile: CLP con Mercado Pago. Resto del mundo: USD con LemonSqueezy.
+          Chile: CLP con Mercado Pago. Resto del mundo: precios de referencia en USD; activación coordinada por contacto.
         </p>
       </div>
 
@@ -143,7 +142,7 @@ export default function PublicPricingPage() {
                   <Link
                     to="/business-registration"
                     className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90"
-                    style={{ backgroundColor: plan.primary ? 'var(--color-primary)' : (isChile ? '#009EE3' : '#F4C542') }}
+                    style={{ backgroundColor: plan.primary ? 'var(--color-primary)' : (isChile ? '#009EE3' : '#25D366') }}
                   >
                     {ctaLabel(plan.id)}
                   </Link>

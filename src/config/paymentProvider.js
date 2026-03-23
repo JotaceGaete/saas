@@ -1,6 +1,6 @@
 /**
  * Proveedor de pago por país.
- * Chile: Mercado Pago (CLP). Resto (incl. Argentina): LemonSqueezy (USD).
+ * Chile: Mercado Pago (CLP). Resto: activación manual (sin pasarela activa; precios USD en UI).
  */
 
 /** País donde el pago usa Mercado Pago. */
@@ -13,22 +13,22 @@ export const PAYMENT_COUNTRY_CODES = Object.freeze([
 
 /**
  * Proveedor de pago para el país.
- * CL → Mercado Pago. Cualquier otro país → LemonSqueezy (USD).
+ * CL → Mercado Pago. Cualquier otro país → manual (contacto / activación).
  * @param {string} countryCode - Código ISO 3166-1 alpha-2 (AR, CL, MX, etc.)
- * @returns {'mercado_pago'|'lemonsqueezy'|null}
+ * @returns {'mercado_pago'|'manual'|null}
  */
 export function getPaymentProvider(countryCode) {
   if (!countryCode || typeof countryCode !== 'string') return null;
   const code = countryCode.toUpperCase().trim();
   if (code === MERCADOPAGO_COUNTRY) return 'mercado_pago';
-  if (PAYMENT_COUNTRY_CODES.includes(code)) return 'lemonsqueezy';
-  return 'lemonsqueezy'; // cualquier otro país → LemonSqueezy
+  if (PAYMENT_COUNTRY_CODES.includes(code)) return 'manual';
+  return 'manual';
 }
 
 /**
  * Alias para consistencia (mismo comportamiento que getPaymentProvider).
  * @param {string} countryCode
- * @returns {'mercado_pago'|'lemonsqueezy'|null}
+ * @returns {'mercado_pago'|'manual'|null}
  */
 export function getPaymentProviderByCountry(countryCode) {
   return getPaymentProvider(countryCode);
@@ -44,11 +44,10 @@ export function usesMercadoPago(countryCode) {
 }
 
 /**
- * Indica si en el país está disponible el pago con LemonSqueezy (fuera de Chile).
+ * Fuera de Chile: no hay checkout automático; se solicita activación por contacto.
  * @param {string} countryCode
  * @returns {boolean}
  */
-export function usesLemonSqueezy(countryCode) {
-  return getPaymentProvider(countryCode) === 'lemonsqueezy';
+export function usesManualPlanActivation(countryCode) {
+  return getPaymentProvider(countryCode) === 'manual';
 }
-

@@ -1,11 +1,11 @@
 /**
  * Capa central de billing. Una sola fuente de verdad para:
  * - región (CL | INT)
- * - proveedor (mercado_pago | lemonsqueezy)
+ * - proveedor (mercado_pago | manual)
  * - moneda (CLP | USD)
  * - precios display por plan y región
  *
- * Regla: Chile → Mercado Pago, CLP. Resto → LemonSqueezy, USD.
+ * Regla: Chile → Mercado Pago, CLP. Resto → activación manual (USD referencia en UI).
  * No Paddle. No dLocal.
  */
 

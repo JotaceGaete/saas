@@ -3,6 +3,18 @@
   "outputDirectory": "build",
   "rewrites": [
     {
+      "source": "/api/v1/billing/paypal/subscriptions",
+      "destination": "/api/paypal-subscriptions"
+    },
+    {
+      "source": "/api/v1/billing/paypal/subscriptions/cancel",
+      "destination": "/api/paypal-subscriptions-cancel"
+    },
+    {
+      "source": "/webhooks/paypal",
+      "destination": "/api/paypal-webhook"
+    },
+    {
       "source": "/sitemap.xml",
       "destination": "/api/sitemap"
     },

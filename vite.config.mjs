@@ -3,7 +3,8 @@ import react from "@vitejs/plugin-react";
 import tsconfigPaths from "vite-tsconfig-paths";
 import { VitePWA } from "vite-plugin-pwa";
 
-const PWA_CACHE_VERSION = "v2026-03-10-1";
+/** Bump al cambiar estrategia de caché PWA (invalida caches runtime con este prefijo). */
+const PWA_CACHE_VERSION = "v2026-03-22-1";
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -19,6 +20,10 @@ export default defineConfig({
     VitePWA({
       registerType: "autoUpdate",
       injectRegister: "inline",
+      /** Sin SW en `vite` / dev: siempre ves el bundle en caliente; evita “código viejo” en local. */
+      devOptions: {
+        enabled: false,
+      },
       includeAssets: ["favicon.ico", "favicon-16x16.png", "favicon-32x32.png", "apple-touch-icon.png", "icon-192.png", "icon-512.png", "offline.html"],
       manifest: false,
       workbox: {

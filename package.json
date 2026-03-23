@@ -8,7 +8,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@radix-ui/react-slot": "^1.2.3",
     "@reduxjs/toolkit": "^2.6.1",
-    "@supabase/supabase-js": "^2.87.1",
+    "@supabase/supabase-js": "^2.99.3",
     "@tailwindcss/forms": "^0.5.7",
     "@testing-library/jest-dom": "^5.15.1",
     "@testing-library/react": "^11.2.7",
@@ -18,7 +18,7 @@
     "clsx": "^2.1.1",
     "d3": "^7.9.0",
     "date-fns": "^4.1.0",
-    "dotenv": "^16.0.1",
+    "dotenv": "^16.6.1",
     "framer-motion": "^10.16.4",
     "lucide-react": "^0.484.0",
     "qrcode.react": "^4.2.0",
@@ -40,7 +40,11 @@
     "build": "vite build --sourcemap",
     "serve": "vite preview",
     "migrate:images-r2": "node scripts/migrate-images-to-r2.mjs",
-    "pwa:icons": "node scripts/generate-pwa-icons.mjs"
+    "pwa:icons": "node scripts/generate-pwa-icons.mjs",
+    "paypal:auth": "node ./scripts/paypal-auth-diagnostic.js",
+    "paypal:bootstrap": "node ./scripts/paypal-catalog-bootstrap.js",
+    "paypal:mapping": "node ./scripts/paypal-plan-mapping-diagnostic.js",
+    "paypal:setup": "node ./scripts/paypal-auth-diagnostic.js && node ./scripts/paypal-catalog-bootstrap.js && node ./scripts/paypal-catalog-bootstrap.js && node ./scripts/paypal-plan-mapping-diagnostic.js"
   },
   "eslintConfig": {
     "extends": [

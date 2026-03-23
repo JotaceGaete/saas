@@ -12,6 +12,7 @@ import { getCountryCode } from '../../config/country';
 import { formatCurrency } from '../../utils/formatCLP';
 import { PLAN_SLUGS, getPlanLimits, getPlanLabel, getPlanActionButtonLabel } from '../../constants/plans';
 import { resolveBillingContext, getPlanDisplayPrice } from '../../lib/billing';
+import { getPlansActivationWhatsappUrl } from '../../config/plansActivation';
 
 const PAYMENT_DEBUG_PREFIX = '[plans-payment-debug]';
 
@@ -137,12 +138,13 @@ export default function PlansPage() {
     return res.json().catch(() => null);
   };
 
-  const handlePayWithLemonSqueezy = async (planSlug) => {
+  /** Planes internacionales: abre resumen (preview) y luego activación por WhatsApp. */
+  const handleOpenIntlPlanPreview = async (planSlug) => {
     if (guard.isBlocked) {
       guard.runIfConfirmed(() => {});
       return;
     }
-    console.info(PAYMENT_DEBUG_PREFIX, { event: 'click_plan_button', handler: 'handlePayWithLemonSqueezy', planSlug, resolvedCountryCode: countryCode });
+    console.info(PAYMENT_DEBUG_PREFIX, { event: 'click_plan_button', handler: 'handleOpenIntlPlanPreview', planSlug, resolvedCountryCode: countryCode });
     if (getPlanPrice(planSlug) <= 0) return;
     setLoadingPlanSlug(planSlug);
     setPaymentMessage(null);
@@ -241,83 +243,22 @@ export default function PlansPage() {
     }
   };
 
-  const confirmPayWithLemonSqueezy = async () => {
+  const confirmActivationViaWhatsApp = () => {
     if (guard.isBlocked) {
       guard.runIfConfirmed(() => {});
       return;
     }
     if (!previewPlanSlug) return;
-    setLoadingPlanSlug(previewPlanSlug);
-    setPaymentMessage(null);
-    try {
-      if (authLoading) {
-        setPaymentMessage({ type: 'info', text: 'Cargando sesión. Intenta nuevamente en unos segundos.' });
-        return;
-      }
-      if (!isAuthenticated || !user) {
-        setPaymentMessage({ type: 'error', text: 'Debes iniciar sesión para continuar.' });
-        navigate('/login');
-        return;
-      }
-      const { data: { session } } = await supabase.auth.getSession();
-      let accessToken = session?.access_token?.trim() || null;
-      if (!accessToken || !accessToken.includes('.')) {
-        const { data: refreshed } = await supabase.auth.refreshSession();
-        accessToken = (refreshed?.session?.access_token && typeof refreshed.session.access_token === 'string')
-          ? refreshed.session.access_token.trim()
-          : null;
-      }
-      if (!accessToken || !accessToken.includes('.')) {
-        setPaymentMessage({ type: 'error', text: 'Sesión expirada o inválida. Cierra sesión, vuelve a iniciar sesión e intenta de nuevo.' });
-        return;
-      }
-      const returnBaseUrl = (typeof window !== 'undefined' && window.location?.origin)
-        ? window.location.origin.replace(/\/$/, '')
-        : (getAppBaseUrl() || '');
-      const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
-      const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
-      const res = await fetch(`${supabaseUrl}/functions/v1/create-lemonsqueezy-checkout`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`,
-          'apikey': anonKey,
-        },
-        body: JSON.stringify({
-          planSlug: previewPlanSlug,
-          success_url: `${returnBaseUrl}/billing/success`,
-          cancel_url: `${returnBaseUrl}/billing/cancel`,
-          country: countryCode,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        if (data?.changeType === 'downgrade') {
-          setPaymentMessage({ type: 'info', text: data?.message || 'El cambio se aplicará al vencer tu plan actual.' });
-          setPreview(null);
-          setPreviewPlanSlug(null);
-          return;
-        }
-        throw new Error(data?.error ?? res.statusText ?? 'Error al crear checkout');
-      }
-      if (data?.error) throw new Error(data.error);
-      if (data?.applied) {
-        setPaymentMessage({ type: 'success', text: 'Plan actualizado correctamente. No se requirió pago (crédito por tiempo restante).' });
-        setPreview(null);
-        setPreviewPlanSlug(null);
-        refreshBusiness?.();
-        return;
-      }
-      if (data?.redirect_url) {
-        window.location.href = data.redirect_url;
-        return;
-      }
-      throw new Error('No se recibió enlace de pago');
-    } catch (err) {
-      setPaymentMessage({ type: 'error', text: err?.message || 'Error al iniciar el pago.' });
-    } finally {
-      setLoadingPlanSlug(null);
+    const url = getPlansActivationWhatsappUrl(user?.email);
+    if (typeof window !== 'undefined') {
+      window.open(url, '_blank', 'noopener,noreferrer');
     }
+    setPaymentMessage({
+      type: 'info',
+      text: 'Se abrió WhatsApp para que coordinemos la activación de tu plan. Si no se abrió, revisa el bloqueador de ventanas emergentes.',
+    });
+    setPreview(null);
+    setPreviewPlanSlug(null);
   };
 
   const confirmPayWithMercadoPago = async () => {
@@ -497,7 +438,7 @@ export default function PlansPage() {
                 {preview.creditAmount > 0 && (
                   <li>Crédito aplicado: <strong>{formatCurrency(preview.creditAmount, currency)}</strong></li>
                 )}
-                <li>Precio del plan: <strong>{formatCurrency(paymentProvider === 'lemonsqueezy' ? getPlanDisplayPrice(preview.targetPlanSlug, region) : (preview.targetPlanPrice ?? 0), currency)}</strong></li>
+                <li>Precio del plan: <strong>{formatCurrency(paymentProvider === 'manual' ? getPlanDisplayPrice(preview.targetPlanSlug, region) : (preview.targetPlanPrice ?? 0), currency)}</strong></li>
                 {preview.effectiveAt && (
                   <li>Vigente desde: <strong>{new Date(preview.effectiveAt).toLocaleDateString(currency === 'USD' ? 'en-US' : 'es-CL', { dateStyle: 'medium' })}</strong></li>
                 )}
@@ -505,19 +446,30 @@ export default function PlansPage() {
                   Total a pagar: <strong className="text-base" style={{ color: 'var(--color-foreground)' }}>
                     {preview.changeType === 'downgrade' || preview.finalAmount === 0
                       ? 'Sin cargo (crédito aplicado)'
-                      : formatCurrency(paymentProvider === 'lemonsqueezy' ? getPlanDisplayPrice(preview.targetPlanSlug, region) : (preview.finalAmount ?? 0), currency)}
+                      : formatCurrency(paymentProvider === 'manual' ? getPlanDisplayPrice(preview.targetPlanSlug, region) : (preview.finalAmount ?? 0), currency)}
                   </strong>
                 </li>
               </ul>
               <div className="flex gap-3">
                 <button
                   type="button"
-                  onClick={paymentProvider === 'lemonsqueezy' ? confirmPayWithLemonSqueezy : confirmPayWithMercadoPago}
+                  onClick={paymentProvider === 'manual' ? confirmActivationViaWhatsApp : confirmPayWithMercadoPago}
                   disabled={!!loadingPlanSlug || authLoading || !isAuthenticated}
                   className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
-                  style={{ backgroundColor: paymentProvider === 'lemonsqueezy' ? '#F4C542' : '#009EE3' }}
+                  style={{ backgroundColor: paymentProvider === 'manual' ? '#25D366' : '#009EE3' }}
                 >
-                  {loadingPlanSlug ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : preview.finalAmount === 0 ? <><Icon name="CheckCircle" size={16} color="#fff" /> Confirmar cambio (sin cargo)</> : <><Icon name="Wallet" size={16} color="#fff" /> Confirmar y pagar</>}
+                  {loadingPlanSlug ? (
+                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : paymentProvider === 'manual' ? (
+                    <>
+                      <Icon name="MessageCircle" size={16} color="#fff" />
+                      {preview.finalAmount === 0 ? 'Solicitar activación (sin cargo)' : 'Solicitar activación'}
+                    </>
+                  ) : preview.finalAmount === 0 ? (
+                    <><Icon name="CheckCircle" size={16} color="#fff" /> Confirmar cambio (sin cargo)</>
+                  ) : (
+                    <><Icon name="Wallet" size={16} color="#fff" /> Confirmar y pagar</>
+                  )}
                 </button>
                 <button
                   type="button"
@@ -653,26 +605,26 @@ export default function PlansPage() {
                             </>
                           )}
                         </button>
-                      ) : paymentProvider === 'lemonsqueezy' ? (
+                      ) : paymentProvider === 'manual' ? (
                         <button
                           type="button"
                           disabled={!!loadingPlanSlug || authLoading || !isAuthenticated}
-                          onClick={() => handlePayWithLemonSqueezy(slug)}
+                          onClick={() => handleOpenIntlPlanPreview(slug)}
                           className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
-                          style={{ backgroundColor: '#F4C542', color: '#1a1a1a' }}
+                          style={{ backgroundColor: '#25D366' }}
                         >
                           {loadingPlanSlug === slug ? (
                             <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                           ) : (
                             <>
-                              <Icon name="Wallet" size={16} color="#fff" />
-                              {actionLabel}
+                              <Icon name="MessageCircle" size={16} color="#fff" />
+                              Solicitar activación
                             </>
                           )}
                         </button>
                       ) : (
                         <span className="text-sm font-medium" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-                          Pago con tarjeta próximamente en tu país
+                          Activación no disponible en tu región
                         </span>
                       )
                     ) : (
@@ -690,9 +642,9 @@ export default function PlansPage() {
             <p className="text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
               {paymentProvider === 'mercado_pago'
                 ? 'En Chile los planes de pago se procesan con Mercado Pago. Tras el pago, tu plan se activa automáticamente.'
-                : paymentProvider === 'lemonsqueezy'
-                  ? 'Fuera de Chile los pagos se procesan con LemonSqueezy (tarjeta, PayPal, etc.) en USD. Tras el pago, tu plan se activa automáticamente.'
-                  : 'Pago con tarjeta disponible próximamente en tu país.'}
+                : paymentProvider === 'manual'
+                  ? 'Fuera de Chile la activación de planes Pro o Full es por contacto directo (WhatsApp). Los precios en USD son de referencia hasta activar un nuevo proveedor de pago.'
+                  : 'Consulta disponibilidad de pago en tu país.'}
             </p>
           </div>
         </DashboardLayoutContent>

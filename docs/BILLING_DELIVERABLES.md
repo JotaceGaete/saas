@@ -1,18 +1,20 @@
 # Entregables: Reestructuración de pagos Ventalink
 
+> **2026-03:** Lemon Squeezy retirado. Fuera de Chile: proveedor `manual` + WhatsApp (`VITE_PLANS_SUPPORT_WHATSAPP`). Las filas históricas de Lemon abajo quedan como referencia de auditoría.
+
 ## 1. Archivos auditados y rol
 
 | Archivo | Rol |
 |---------|-----|
 | `src/config/country.js` | getCountryCode() por hostname. Usado por billing como input. |
-| `src/config/paymentProvider.js` | Regla CL→mercado_pago, resto→lemonsqueezy. Mantenido para compatibilidad; lógica duplicada en `src/lib/billing`. |
+| `src/config/paymentProvider.js` | Regla CL→mercado_pago, resto→`manual`. Lógica alineada con `src/lib/billing`. |
 | `src/constants/plans.js` | PLAN_SLUGS, labels, límites, orden. Precios legacy (getPlanPriceByCountry) — la UI de planes usa `lib/billing` para precios. |
 | `src/lib/billing/*` | **Fuente oficial**: región, proveedor, moneda, precios display. |
 | `src/pages/plans/index.jsx` | Tarjetas y resumen; usa solo `resolveBillingContext` y `getPlanDisplayPrice`. Envía `provider` al preview. |
 | `src/pages/legal/PublicPricingPage.jsx` | Precios públicos; usa `lib/billing`. |
-| `supabase/functions/plan-change-preview/index.ts` | Preview: Lemon → 6/10 USD estático; CL → prorrateo CLP (5990/9990). |
-| `supabase/functions/create-lemonsqueezy-checkout/index.ts` | Checkout Lemon solo variant_id; rechaza CL. |
-| `supabase/functions/lemonsqueezy-webhook/index.ts` | Webhook Lemon; variant_id → plan_slug; actualiza wa_businesses/wa_payments. |
+| `supabase/functions/plan-change-preview/index.ts` | Preview: INT → 6/10 USD estático; CL → prorrateo CLP (5990/9990). |
+| ~~`create-lemonsqueezy-checkout`~~ | **Eliminado** (marzo 2026). |
+| ~~`lemonsqueezy-webhook`~~ | **Eliminado** (marzo 2026). |
 | `supabase/functions/create-mp-preference/index.ts` | Preferencia Mercado Pago (Chile). |
 | `supabase/functions/mp-webhook/index.ts` | Webhook Mercado Pago. |
 

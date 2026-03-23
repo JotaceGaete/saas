@@ -9,8 +9,8 @@ const MOCK_DEFAULTS = {
   dashboardUrl: 'https://cl.ventalink.app/dashboard',
   confirm_url: 'https://cl.ventalink.app/auth/callback?token=mock-confirm-token',
   confirmUrl: 'https://cl.ventalink.app/auth/callback?token=mock-confirm-token',
-  reset_url: 'https://cl.ventalink.app/reset-password?token=mock-recovery-token',
-  resetUrl: 'https://cl.ventalink.app/reset-password?token=mock-recovery-token',
+  reset_url: 'https://cl.ventalink.app/auth/reset-password?token=mock-recovery-token',
+  resetUrl: 'https://cl.ventalink.app/auth/reset-password?token=mock-recovery-token',
 };
 
 /**

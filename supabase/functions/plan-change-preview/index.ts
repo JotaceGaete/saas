@@ -1,7 +1,7 @@
 // plan-change-preview — preview de cambio de plan.
 // Requiere JWT. Business resuelto por auth.uid().
 // Chile: Mercado Pago → catálogo CLP (prorrateo).
-// Resto (Lemon): precios estáticos 6/10 USD, sin cálculos. Lemon es la fuente de verdad via variant_id.
+// Resto (INT): precios estáticos 6/10 USD de referencia (sin pasarela activa).
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -22,11 +22,11 @@ const PLAN_CATALOG_AR: PlanCatalog = {
   business: { displayName: 'Plan Business', price: 30000, durationDays: 30 },
 };
 
-/** Precios estáticos Lemon (USD). Pro=6, Full=10. Fuente de verdad: variant_id en Lemon. */
-const LEMON_PRICES_USD: Record<string, number> = { starter: 0, pro: 6, business: 10 };
+/** Precios USD de referencia (INT). Pro=6, Full=10. */
+const INTL_USD_PRICES: Record<string, number> = { starter: 0, pro: 6, business: 10 };
 
 function getPlanCatalog(country: string | undefined, provider?: string): PlanCatalog | null {
-  if (provider === 'lemonsqueezy') return null;
+  if (provider === 'manual' || provider === 'lemonsqueezy') return null;
   if (country && country !== 'CL') return null;
   return country === 'AR' ? PLAN_CATALOG_AR : PLAN_CATALOG_CL;
 }
@@ -153,7 +153,7 @@ function computePlanChange(
   };
 }
 
-function buildLemonPreview(
+function buildIntlUsdPreview(
   currentPlanSlug: string,
   targetPlanSlug: string,
   planExpiresAt: string | null,
@@ -174,8 +174,8 @@ function buildLemonPreview(
   scheduledChange?: { targetPlanSlug: string; effectiveAt: string };
   prorationFormulaVersion: string;
 } {
-  const targetPrice = LEMON_PRICES_USD[targetPlanSlug] ?? 0;
-  const currentPrice = LEMON_PRICES_USD[currentPlanSlug] ?? 0;
+  const targetPrice = INTL_USD_PRICES[targetPlanSlug] ?? 0;
+  const currentPrice = INTL_USD_PRICES[currentPlanSlug] ?? 0;
   const currentOrder = PLAN_ORDER[currentPlanSlug] ?? 0;
   const targetOrder = PLAN_ORDER[targetPlanSlug] ?? 0;
   let changeType: ChangeType = 'renewal';
@@ -215,9 +215,9 @@ function buildLemonPreview(
 
   return {
     currentPlanSlug,
-    currentPlanPrice,
+    currentPlanPrice: currentPrice,
     targetPlanSlug,
-    targetPlanPrice,
+    targetPlanPrice: targetPrice,
     daysRemaining,
     remainingDaysFraction: daysRemaining / 30,
     creditAmount: 0,
@@ -226,7 +226,7 @@ function buildLemonPreview(
     message,
     effectiveAt,
     scheduledChange,
-    prorationFormulaVersion: 'lemon-static',
+    prorationFormulaVersion: 'intl-static-usd',
   };
 }
 
@@ -315,16 +315,19 @@ Deno.serve(async (req) => {
     biz as { country_code?: string | null; country?: string | null; currency?: string | null },
   );
 
-  // Lemon (fuera de Chile): precios estáticos 6/10 USD. Sin prorrateo.
-  const useLemon = providerHint === 'lemonsqueezy' || (countryCode && countryCode !== 'CL');
+  // Fuera de Chile: precios estáticos 6/10 USD de referencia. Sin prorrateo.
+  const useIntlUsd =
+    providerHint === 'manual' ||
+    providerHint === 'lemonsqueezy' ||
+    (countryCode && countryCode !== 'CL');
   let preview: Record<string, unknown>;
 
-  if (useLemon) {
-    preview = buildLemonPreview(currentPlanSlug, targetPlanSlug, planExpiresAt, trialExpiresAt, scheduledPlanSlug);
+  if (useIntlUsd) {
+    preview = buildIntlUsdPreview(currentPlanSlug, targetPlanSlug, planExpiresAt, trialExpiresAt, scheduledPlanSlug);
   } else {
     const catalog = getPlanCatalog(countryCode, providerHint);
     if (!catalog) {
-      preview = buildLemonPreview(currentPlanSlug, targetPlanSlug, planExpiresAt, trialExpiresAt, scheduledPlanSlug);
+      preview = buildIntlUsdPreview(currentPlanSlug, targetPlanSlug, planExpiresAt, trialExpiresAt, scheduledPlanSlug);
     } else {
       preview = computePlanChange(currentPlanSlug, planExpiresAt, targetPlanSlug, catalog);
 
@@ -345,7 +348,7 @@ Deno.serve(async (req) => {
     currentPlanSlug,
     targetPlanSlug,
     changeType: preview.changeType,
-    useLemon,
+    useIntlUsd,
     finalAmount: preview.finalAmount,
   });
 
