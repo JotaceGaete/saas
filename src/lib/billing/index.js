@@ -24,3 +24,4 @@ export { resolveBillingContext } from './resolve';
 export { getAvailableBillingProviders } from './providers';
 export { getPaymentOptions } from './providers';
 export { normalizeBillingProvider } from './providers';
+export { isDlocalFeatureEnabled } from './providers';

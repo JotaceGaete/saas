@@ -31,6 +31,14 @@
       "destination": "/api/billing-webhook-dlocal"
     },
     {
+      "source": "/api/v1/billing/dlocal/test-payment",
+      "destination": "/api/dlocal-test-payment"
+    },
+    {
+      "source": "/api/v1/health-json",
+      "destination": "/api/health-json"
+    },
+    {
       "source": "/webhooks/paypal",
       "destination": "/api/paypal-webhook"
     },

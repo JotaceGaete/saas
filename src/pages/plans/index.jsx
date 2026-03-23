@@ -155,7 +155,10 @@ export default function PlansPage() {
         const data = await res.json().catch(() => ({}));
         if (!res.ok || !data?.ok) {
           if (!cancelled && data?.error) {
-            setPaymentMessage({ type: 'error', text: data.error });
+            const friendly = data?.code === 'AUTH_REQUIRED'
+              ? 'Tu sesión venció. Inicia sesión nuevamente.'
+              : 'No se pudo cargar el estado de facturación en este momento.';
+            setPaymentMessage({ type: 'error', text: friendly });
           }
           return;
         }
@@ -531,10 +534,7 @@ export default function PlansPage() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.ok) {
         if (data?.code === 'PROVIDER_NOT_READY') {
-          const reason = data?.details?.availability?.reason || data?.details?.reason || null;
-          throw new Error(reason
-            ? `Este método de pago no está disponible ahora (${reason}).`
-            : 'Este método de pago no está disponible en este entorno todavía.');
+          throw new Error('Este método de pago no está disponible por el momento.');
         }
         throw new Error(data?.error || `No se pudo crear la suscripción ${normalizedProvider} (HTTP ${res.status}).`);
       }
@@ -992,8 +992,7 @@ export default function PlansPage() {
             )}
             {checkoutAvailability && (!checkoutAvailability.enabled || !checkoutAvailability.supportsCheckout) && (
               <p className="text-xs mt-2" style={{ color: '#b45309', fontFamily: 'var(--font-caption)' }}>
-                El proveedor recomendado ({checkoutAvailability.provider}) no está disponible en este entorno.
-                {checkoutAvailability.reason ? ` Motivo: ${checkoutAvailability.reason}.` : ''}
+                Este método de pago estará disponible próximamente.
               </p>
             )}
           </div>

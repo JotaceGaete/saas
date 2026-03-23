@@ -15,11 +15,27 @@ export function normalizeBillingProvider(provider) {
   return null;
 }
 
+function isTruthy(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
+}
+
+export function isDlocalFeatureEnabled() {
+  return isTruthy(import.meta.env?.VITE_BILLING_DLOCAL_ENABLED);
+}
+
 export function getPaymentOptions({ countryCode }) {
   const normalized = normalize(countryCode);
   const country = normalized && SUPPORTED_COUNTRIES.has(normalized) ? normalized : 'CL';
+  const dlocalEnabled = isDlocalFeatureEnabled();
 
   if (country === 'CL') {
+    if (!dlocalEnabled) {
+      return Object.freeze({
+        primary: 'mercadopago',
+        secondary: ['paypal'],
+      });
+    }
     return Object.freeze({
       primary: 'dlocal',
       secondary: ['mercadopago', 'paypal'],
@@ -28,7 +44,13 @@ export function getPaymentOptions({ countryCode }) {
   if (country === 'AR') {
     return Object.freeze({
       primary: 'mercadopago',
-      secondary: ['dlocal'],
+      secondary: dlocalEnabled ? ['dlocal'] : [],
+    });
+  }
+  if (!dlocalEnabled) {
+    return Object.freeze({
+      primary: 'paypal',
+      secondary: [],
     });
   }
   return Object.freeze({

@@ -1,5 +1,14 @@
 import { getPaymentOptions, normalizeBillingProvider } from './providerSelectionService.js';
 
+function isTruthy(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
+}
+
+export function isDlocalFeatureEnabled() {
+  return isTruthy(process.env.BILLING_DLOCAL_ENABLED);
+}
+
 function detectDlocalMode() {
   const mockUrl = String(process.env.DLOCAL_MOCK_CHECKOUT_URL || '').trim();
   const mode = String(process.env.DLOCAL_MODE || '').trim().toLowerCase();
@@ -10,6 +19,17 @@ function detectDlocalMode() {
 }
 
 function getDlocalAvailability() {
+  if (!isDlocalFeatureEnabled()) {
+    return {
+      provider: 'dlocal',
+      enabled: false,
+      supportsCheckout: false,
+      supportsSubscriptions: false,
+      reason: 'feature_disabled',
+      mode: detectDlocalMode(),
+    };
+  }
+
   const mockUrl = String(process.env.DLOCAL_MOCK_CHECKOUT_URL || '').trim();
   const baseUrl = String(process.env.DLOCAL_BASE_URL || '').trim();
   const apiKey = String(process.env.DLOCAL_API_KEY || '').trim();
