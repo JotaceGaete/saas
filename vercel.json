@@ -15,6 +15,22 @@
       "destination": "/api/paypal-subscriptions-confirm"
     },
     {
+      "source": "/api/v1/billing/subscriptions/create",
+      "destination": "/api/billing-subscriptions-create"
+    },
+    {
+      "source": "/api/v1/billing/subscriptions/confirm",
+      "destination": "/api/billing-subscriptions-confirm"
+    },
+    {
+      "source": "/api/v1/billing/subscription-state",
+      "destination": "/api/billing-subscription-state"
+    },
+    {
+      "source": "/api/v1/billing/webhooks/dlocal",
+      "destination": "/api/billing-webhook-dlocal"
+    },
+    {
       "source": "/webhooks/paypal",
       "destination": "/api/paypal-webhook"
     },

@@ -21,3 +21,6 @@ export {
 export { getBillingRegion, isChile, getPaymentProvider, getCurrency } from './region';
 export { getPlanDisplayPrice, getPlanDisplayPriceByCountry } from './prices';
 export { resolveBillingContext } from './resolve';
+export { getAvailableBillingProviders } from './providers';
+export { getPaymentOptions } from './providers';
+export { normalizeBillingProvider } from './providers';

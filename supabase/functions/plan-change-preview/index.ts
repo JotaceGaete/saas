@@ -1,7 +1,7 @@
 // plan-change-preview — preview de cambio de plan.
 // Requiere JWT. Business resuelto por auth.uid().
 // Chile: Mercado Pago → catálogo CLP (prorrateo).
-// Resto (INT): precios estáticos 6/10 USD de referencia (sin pasarela activa).
+// Resto (INT): catálogo USD (PayPal/dLocal/manual según provider).
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -316,9 +316,10 @@ Deno.serve(async (req) => {
   );
 
   // Fuera de Chile: precios estáticos 6/10 USD de referencia. Sin prorrateo.
+  const normalizedProvider = String(providerHint || '').trim().toLowerCase();
+  const useIntlUsdProviders = new Set(['paypal', 'dlocal_go', 'dlocal', 'manual', 'lemonsqueezy']);
   const useIntlUsd =
-    providerHint === 'manual' ||
-    providerHint === 'lemonsqueezy' ||
+    useIntlUsdProviders.has(normalizedProvider) ||
     (countryCode && countryCode !== 'CL');
   let preview: Record<string, unknown>;
 
