@@ -160,3 +160,54 @@ export async function cancelPaypalSubscriptionController(request) {
   }
 }
 
+export async function confirmPaypalSubscriptionController(request) {
+  try {
+    assertPaypalAllowedForRequest(request);
+    const authUser = await requireAuthenticatedUser(request);
+    const body = await readJsonBody(request);
+    const subscriptionId = String(body?.subscriptionId || '').trim();
+    const businessId = String(body?.businessId || '').trim();
+
+    console.info('[PAYPAL_SUBSCRIPTION_CONFIRM_REQUEST]', {
+      subscription_id: subscriptionId || null,
+      business_id: businessId || null,
+      user_id: authUser.id,
+    });
+
+    if (!subscriptionId) {
+      throw new HttpError(400, 'subscriptionId is required');
+    }
+
+    if (businessId) {
+      await assertBusinessOwnership({ businessId, userId: authUser.id });
+    }
+
+    const localBefore = await getLocalSubscriptionRecord(subscriptionId);
+    if (!localBefore && !businessId) {
+      throw new HttpError(400, 'businessId is required when local subscription record is missing');
+    }
+    ensureRecordOwnership({ record: localBefore, authUserId: authUser.id });
+
+    const remote = await getSubscription(subscriptionId);
+    const local = await getLocalSubscriptionRecord(subscriptionId);
+    ensureRecordOwnership({ record: local, authUserId: authUser.id });
+
+    const paypalStatus = String(remote?.status || '').toUpperCase();
+    return json({
+      ok: true,
+      subscriptionId,
+      paypalStatus: remote?.status || null,
+      isActive: paypalStatus === 'ACTIVE',
+      local,
+      remote,
+    });
+  } catch (err) {
+    console.error('[PAYPAL_SUBSCRIPTION_CONFIRM_ERROR]', {
+      business_id: null,
+      subscription_id: null,
+      message: err?.message || 'unknown_error',
+    });
+    return handleControllerError(err, 'confirm_subscription_failed');
+  }
+}
+

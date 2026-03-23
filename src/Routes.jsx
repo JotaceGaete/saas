@@ -85,6 +85,7 @@ const Routes = () => {
             <Route path="/billing/success" element={<BillingSuccessPage />} />
             <Route path="/billing/paypal/success" element={<PaypalSuccessPage />} />
             <Route path="/billing/cancel" element={<BillingCancelPage />} />
+            <Route path="/billing/paypal/cancel" element={<BillingCancelPage />} />
             <Route path="/plans" element={<PublicPricingPage />} />
             <Route path="/terms" element={<TermsPage />} />
             <Route path="/privacy" element={<PrivacyPage />} />

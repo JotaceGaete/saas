@@ -11,6 +11,10 @@
       "destination": "/api/paypal-subscriptions-cancel"
     },
     {
+      "source": "/api/v1/billing/paypal/confirm",
+      "destination": "/api/paypal-subscriptions-confirm"
+    },
+    {
       "source": "/webhooks/paypal",
       "destination": "/api/paypal-webhook"
     },

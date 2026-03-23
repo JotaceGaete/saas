@@ -10,6 +10,7 @@ export default function PaypalSuccessPage() {
   const [syncState, setSyncState] = useState({
     loading: true,
     ok: false,
+    paypalStatus: null,
     message: 'Confirmando suscripcion con el backend...',
   });
 
@@ -40,6 +41,7 @@ export default function PaypalSuccessPage() {
           setSyncState({
             loading: false,
             ok: false,
+            paypalStatus: null,
             message: 'No se recibio subscription_id en el retorno de PayPal.',
           });
         }
@@ -52,12 +54,16 @@ export default function PaypalSuccessPage() {
           throw new Error('Tu sesion no es valida. Inicia sesion nuevamente.');
         }
 
-        const query = new URLSearchParams({ subscriptionId });
-        if (business?.id) query.set('businessId', business.id);
-
-        const res = await fetch(`/api/v1/billing/paypal/subscriptions?${query.toString()}`, {
-          method: 'GET',
-          headers: { Authorization: `Bearer ${token}` },
+        const res = await fetch('/api/v1/billing/paypal/confirm', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            subscriptionId,
+            businessId: business?.id || undefined,
+          }),
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || !data?.ok) {
@@ -65,17 +71,38 @@ export default function PaypalSuccessPage() {
         }
 
         if (!cancelled) {
-          setSyncState({
-            loading: false,
-            ok: true,
-            message: 'Suscripcion confirmada y sincronizada correctamente.',
-          });
+          const paypalStatus = data?.paypalStatus || 'UNKNOWN';
+          const isActive = data?.isActive === true;
+
+          if (isActive) {
+            setSyncState({
+              loading: false,
+              ok: true,
+              paypalStatus,
+              message: 'Suscripcion activada correctamente.',
+            });
+          } else if (paypalStatus === 'APPROVAL_PENDING') {
+            setSyncState({
+              loading: false,
+              ok: false,
+              paypalStatus,
+              message: 'Tu suscripcion fue aprobada en PayPal y se esta confirmando. Esto puede tardar unos segundos.',
+            });
+          } else {
+            setSyncState({
+              loading: false,
+              ok: false,
+              paypalStatus,
+              message: `La suscripcion volvio desde PayPal, pero su estado actual es: ${paypalStatus}.`,
+            });
+          }
         }
       } catch (err) {
         if (!cancelled) {
           setSyncState({
             loading: false,
             ok: false,
+            paypalStatus: null,
             message: err?.message || 'Ocurrio un error confirmando la suscripcion.',
           });
         }
@@ -106,7 +133,7 @@ export default function PaypalSuccessPage() {
           className="text-xl font-bold mb-3"
           style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}
         >
-          Suscripcion creada
+          Confirmacion de suscripcion
         </h1>
         <p className="text-sm mb-4" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
           El retorno de PayPal fue recibido correctamente.
@@ -120,8 +147,8 @@ export default function PaypalSuccessPage() {
         <p className="text-sm mb-2" style={{ color: 'var(--color-text-secondary)' }}>
           <strong>ID:</strong> {subscriptionId || 'No recibido'}
         </p>
-        <p className="text-sm mb-6 break-all" style={{ color: 'var(--color-text-secondary)' }}>
-          <strong>Token:</strong> {baToken || 'No recibido'}
+        <p className="text-sm mb-6" style={{ color: 'var(--color-text-secondary)' }}>
+          <strong>Estado PayPal:</strong> {syncState.paypalStatus || 'Pendiente de confirmacion'}
         </p>
         <button
           type="button"
