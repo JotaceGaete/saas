@@ -23,6 +23,10 @@ export async function getBillingSubscriptionStateController(request) {
     const state = await getBillingSubscriptionState({ businessId });
     return json(state, 200);
   } catch (err) {
+    const message = String(err?.message || '');
+    if (message.includes('[auth] Missing Bearer token') || message.includes('[auth] Invalid or expired user token')) {
+      return json({ ok: false, error: message || '[auth] Unauthorized' }, 401);
+    }
     if (isHttpError(err)) {
       return json({ ok: false, error: err.message }, err.statusCode);
     }

@@ -49,6 +49,10 @@ async function getBusinessById(businessId) {
 }
 
 function handleError(err, fallbackMessage) {
+  const message = String(err?.message || '');
+  if (message.includes('[auth] Missing Bearer token') || message.includes('[auth] Invalid or expired user token')) {
+    return json({ ok: false, error: message || '[auth] Unauthorized' }, 401);
+  }
   if (isHttpError(err)) return json({ ok: false, error: err.message }, err.statusCode);
   return json({ ok: false, error: err?.message || fallbackMessage }, 503);
 }

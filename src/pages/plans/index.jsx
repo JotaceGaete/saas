@@ -43,8 +43,9 @@ export default function PlansPage() {
     userCountryCode,
   });
   const paymentOptions = getPaymentOptions({ countryCode: businessCountryCode || countryCode });
-  const paymentProvider = paymentOptions?.primary || resolvedProvider;
+  const paymentProvider = normalizeBillingProvider(paymentOptions?.primary || resolvedProvider) || 'dlocal';
   const secondaryProviders = Array.isArray(paymentOptions?.secondary) ? paymentOptions.secondary : [];
+  const isUsdProvider = paymentProvider === 'dlocal' || paymentProvider === 'paypal';
   const getPlanPrice = (slug) => getPlanDisplayPrice(slug, region);
   const scheduledToStarter = (business?.scheduledPlanSlug || null) === 'starter';
   const planExpiryMs = business?.planExpiresAt ? new Date(business.planExpiresAt).getTime() : null;
@@ -533,9 +534,33 @@ export default function PlansPage() {
     }
   };
 
+  const handleConfirmPrimaryPayment = () => {
+    if (paymentProvider === 'dlocal') return confirmPayWithProvider('dlocal');
+    if (paymentProvider === 'paypal') return confirmPayWithProvider('paypal');
+    if (paymentProvider === 'mercadopago') return confirmPayWithMercadoPago();
+    if (paymentProvider === 'manual') return confirmActivationViaWhatsApp();
+    setPaymentMessage({
+      type: 'error',
+      text: `Proveedor no soportado para checkout: ${String(paymentProvider || 'unknown')}`,
+    });
+    return undefined;
+  };
+
   const cancelPreview = () => {
     setPreview(null);
     setPreviewPlanSlug(null);
+  };
+
+  const getSafePreviewTotal = () => {
+    if (!preview || !previewPlanSlug) return 0;
+    const providerCatalogAmount = getPlanDisplayPrice(preview.targetPlanSlug, region);
+    const reported = Number(preview.finalAmount);
+    if (!Number.isFinite(reported)) return providerCatalogAmount;
+    // Guardrail: evita mostrar montos CLP como USD (ej. 5990 -> USD).
+    if (currency === 'USD' && isUsdProvider && reported > 100 && providerCatalogAmount > 0 && providerCatalogAmount <= 20) {
+      return providerCatalogAmount;
+    }
+    return reported;
   };
 
   if (businessLoading) {
@@ -647,22 +672,14 @@ export default function PlansPage() {
                   Total a pagar: <strong className="text-base" style={{ color: 'var(--color-foreground)' }}>
                     {preview.changeType === 'downgrade' || preview.finalAmount === 0
                       ? 'Sin cargo (crédito aplicado)'
-                      : formatCurrency((preview.finalAmount ?? getPlanDisplayPrice(preview.targetPlanSlug, region)), currency)}
+                      : formatCurrency(getSafePreviewTotal(), currency)}
                   </strong>
                 </li>
               </ul>
               <div className="flex gap-3">
                 <button
                   type="button"
-                  onClick={
-                    paymentProvider === 'dlocal'
-                      ? () => confirmPayWithProvider('dlocal')
-                      : paymentProvider === 'paypal'
-                        ? () => confirmPayWithProvider('paypal')
-                      : paymentProvider === 'mercadopago'
-                        ? confirmPayWithMercadoPago
-                        : confirmActivationViaWhatsApp
-                  }
+                  onClick={handleConfirmPrimaryPayment}
                   disabled={!!loadingPlanSlug || authLoading || !isAuthenticated}
                   className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
                   style={{ backgroundColor: paymentProvider === 'dlocal' ? '#111827' : paymentProvider === 'paypal' ? '#0070ba' : paymentProvider === 'mercadopago' ? '#009EE3' : '#25D366' }}
