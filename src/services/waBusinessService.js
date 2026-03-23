@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { getPlanLimits } from '../constants/plans';
+import { getTrialEndDateFrom } from '../constants/trial';
 
 // Helpers
 
@@ -409,7 +410,7 @@ export const createBusiness = async (businessData) => {
   const { data: { user } } = await supabase?.auth?.getUser();
   if (!user) return { data: null, error: { message: 'Usuario no autenticado' } };
   let slug = await generateSlug(businessData?.name);
-  const trialEnd = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+  const trialEnd = getTrialEndDateFrom().toISOString();
   const { data, error } = await supabase?.from('wa_businesses')?.insert({
       user_id: user?.id,
       name: businessData?.name,
@@ -445,7 +446,7 @@ export const createBusiness = async (businessData) => {
 export const createBusinessForUser = async (userId, businessData) => {
   if (!userId) return { data: null, error: { message: 'Usuario no autenticado' } };
   let slug = await generateSlug(businessData?.name);
-  const trialEnd = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+  const trialEnd = getTrialEndDateFrom().toISOString();
   const { data, error } = await supabase?.from('wa_businesses')?.insert({
       user_id: userId,
       name: businessData?.name,

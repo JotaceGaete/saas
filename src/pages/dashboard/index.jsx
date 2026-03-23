@@ -41,11 +41,16 @@ import TrialConversionBanner from "./components/TrialConversionBanner";
 import AiInsightsCard from "./components/AiInsightsCard";
 import { getCatalogShareMessage } from "../../utils/branding";
 import { getCountryLabels } from "../../config/country";
+import { getBusinessLocale } from "../../lib/locale/businessLocale";
+import { getTrialDaysLeft } from "../../constants/trial";
 
 
 export default function Dashboard() {
   const navigate = useNavigate();
   const { user, business, businessLoading, refreshBusiness } = useAuth();
+  const locale = getBusinessLocale(business, {
+    preferredCountryCode: user?.user_metadata?.country_code ?? null,
+  });
   const dashboardRefreshAttempted = useRef(false);
   const [copyToast, setCopyToast] = useState(false);
   const [products, setProducts] = useState([]);
@@ -94,7 +99,7 @@ export default function Dashboard() {
     new Date(trialExpiresAt) > new Date() &&
     !planExpiresAt;
   const trialDaysLeft = isProTrial && trialExpiresAt
-    ? Math.ceil((new Date(trialExpiresAt) - new Date()) / (1000 * 60 * 60 * 24))
+    ? getTrialDaysLeft(trialExpiresAt)
     : 0;
 
   // Días hasta vencimiento del plan (pago)
@@ -647,7 +652,7 @@ export default function Dashboard() {
                   <DailyRevenueCard
                     data={monthlyRevenue}
                     loading={analyticsLoading}
-                    currency={business?.currency || getCountryLabels().currency}
+                    currency={business?.currency || locale.currencyCode}
                   />
                 </div>
               </div>
@@ -657,7 +662,7 @@ export default function Dashboard() {
                   loading={analyticsLoading}
                   range={funnelRange}
                   onRangeChange={setFunnelRange}
-                  currency={business?.currency || getCountryLabels().currency}
+                  currency={business?.currency || locale.currencyCode}
                 />
               </div>
             </section>
@@ -711,7 +716,7 @@ export default function Dashboard() {
                             <div className="min-w-0 flex-1">
                               <p className="text-sm font-medium truncate" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}>{p?.name || 'Sin nombre'}</p>
                               <p className="text-xs truncate" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-                                {p?.isActive ? 'Activo' : 'Inactivo'} · {p?.price != null ? `${business?.currency || getCountryLabels().currency} ${Number(p.price).toLocaleString()}` : ''}
+                                {p?.isActive ? 'Activo' : 'Inactivo'} · {p?.price != null ? `${business?.currency || locale.currencyCode} ${Number(p.price).toLocaleString()}` : ''}
                               </p>
                             </div>
                             <Icon name="ChevronRight" size={14} color="var(--color-muted-foreground)" />

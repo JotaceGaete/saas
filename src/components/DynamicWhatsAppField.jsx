@@ -11,10 +11,10 @@ const NEUTRAL_HINT = 'Selecciona tu país y escribe tu número con código de á
  * En cl/ar o go con país: prefijo fijo del país, ayuda y validación locales.
  * Valor que recibe/entrega: E.164 (ej. +56912345678).
  */
-export default function DynamicWhatsAppField({ value, onChange, error: externalError, label = 'Número de WhatsApp', hint, id }) {
+export default function DynamicWhatsAppField({ value, onChange, error: externalError, label = 'Número de WhatsApp', hint, id, countryCode = null }) {
   const [touched, setTouched] = useState(false);
   const { setCountry: persistCountry } = useCountry();
-  const globalCountry = getCountryCode();
+  const globalCountry = countryCode || getCountryCode();
 
   // En go sin país: el usuario elige país solo para este campo (no se persiste en localStorage).
   const [selectedCountryForField, setSelectedCountryForField] = useState(null);

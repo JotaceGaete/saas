@@ -4,20 +4,24 @@ import Icon from 'components/AppIcon';
 import { useAuth } from '../../../contexts/AuthContext';
 import { createBusiness } from '../../../services/waBusinessService';
 import WhatsAppField from './WhatsAppField';
-import { getCountryCode, getCountryLabels } from '../../../config/country';
-
-const defaultLabels = getCountryLabels();
-const defaultCountryCode = getCountryCode();
+import { getCountryLabels } from '../../../config/country';
+import { useCountry } from '../../../contexts/CountryContext';
+import { getBusinessLocale } from '../../../lib/locale/businessLocale';
 
 export default function StoreCreationStep({ user, businessLoading }) {
   const navigate = useNavigate();
   const { refreshBusiness } = useAuth();
+  const { countryCode } = useCountry();
+  const locale = getBusinessLocale(null, {
+    preferredCountryCode: countryCode ?? user?.user_metadata?.country_code ?? null,
+  });
+  const labels = getCountryLabels(locale.countryCode);
 
   const [formData, setFormData] = useState({
     businessName: user?.user_metadata?.name || '',
     whatsapp:     user?.user_metadata?.whatsapp || '',
     description:  '',
-    currency:     defaultLabels.currency,
+    currency:     locale.currencyCode,
   });
   const [errors, setErrors]     = useState({});
   const [saving, setSaving]     = useState(false);
@@ -47,9 +51,9 @@ export default function StoreCreationStep({ user, businessLoading }) {
         name:        formData.businessName.trim(),
         whatsapp:    formData.whatsapp.trim(),
         description: formData.description.trim() || null,
-        currency:    formData.currency,
-        country:     defaultLabels.countryName,
-        countryCode: defaultCountryCode,
+        currency:    locale.currencyCode,
+        country:     labels.countryName,
+        countryCode: locale.countryCode,
       });
       if (error) {
         setSaveError(error.message || 'No se pudo crear el negocio. Intenta de nuevo.');
@@ -182,26 +186,19 @@ export default function StoreCreationStep({ user, businessLoading }) {
 
           <div>
             <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>
-              Moneda
+              Moneda (según país)
             </label>
-            <select
-              value={formData.currency}
-              onChange={e => update('currency', e.target.value)}
-              className="w-full h-12 px-4 rounded-lg border text-sm outline-none transition-all"
+            <div
+              className="w-full h-12 px-4 rounded-lg border text-sm flex items-center"
               style={{
                 borderColor: 'var(--color-border)',
-                backgroundColor: 'var(--color-surface)',
+                backgroundColor: 'var(--color-muted)',
                 color: 'var(--color-foreground)',
                 fontFamily: 'var(--font-body)',
               }}
             >
-              <option value="CLP">CLP — Peso chileno</option>
-              <option value="ARS">ARS — Peso argentino</option>
-              <option value="USD">USD — Dólar americano</option>
-              <option value="MXN">MXN — Peso mexicano</option>
-              <option value="COP">COP — Peso colombiano</option>
-              <option value="PEN">PEN — Sol peruano</option>
-            </select>
+              {locale.currencyCode}
+            </div>
           </div>
 
           <button

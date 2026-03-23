@@ -1,9 +1,9 @@
 /**
  * Resuelve el contexto de billing para la UI: región, proveedor, moneda.
- * Prioridad: 1) hostname (si es CL o AR para coherencia), 2) business.country_code, 3) user metadata, 4) fallback CL.
+ * Prioridad: 1) business.country_code, 2) user metadata, 3) hostname (solo sugerencia inicial), 4) fallback.
  */
 
-import { getBillingRegion, getPaymentProvider, getCurrency } from './region';
+import { getPaymentProvider, getCurrency } from './region';
 import { BILLING_REGION_CL, BILLING_REGION_INT } from './constants';
 
 /**
@@ -30,12 +30,13 @@ export function resolveBillingContext({ hostnameCountryCode, businessCountryCode
   const biz = normalize(businessCountryCode);
   const usr = normalize(userCountryCode);
 
-  // Prioridad: hostname (CL/AR) para coherencia; luego business; luego user.
-  // En go.ventalink.app sin país (host null) no usar CL por defecto → AR (INT/USD).
+  // Regla de negocio:
+  // - Si existe country_code del negocio, es la fuente de verdad.
+  // - Hostname solo sugiere país inicial cuando no hay negocio todavía.
   let countryCode = 'CL';
-  if (host === 'CL' || host === 'AR') countryCode = host;
-  else if (biz) countryCode = biz;
+  if (biz) countryCode = biz;
   else if (usr) countryCode = usr;
+  else if (host === 'CL' || host === 'AR') countryCode = host;
   else if (host) countryCode = host;
   else countryCode = 'AR'; // go sin país: neutro (INT/USD), no Chile
 

@@ -9,6 +9,7 @@ import MobilePreviewPanel from '../business-configuration/components/MobilePrevi
 import { useAuth } from '../../contexts/AuthContext';
 import { getMyBusiness, updateBusiness, getProducts } from '../../services/waBusinessService';
 import { getCountryLabels } from '../../config/country';
+import { getBusinessLocale } from '../../lib/locale/businessLocale';
 
 const defaultDesign = {
   theme: 'minimal',
@@ -55,7 +56,9 @@ export default function DesignPage() {
   const [design, setDesign] = useState(defaultDesign);
   const [isSaving, setIsSaving] = useState(false);
   const [toast, setToast] = useState(null);
-  const defaultCountryLabels = getCountryLabels();
+  const locale = getBusinessLocale(business, {
+    preferredCountryCode: user?.user_metadata?.country_code ?? null,
+  });
 
   const loading = businessLoading && !ctxBusiness;
 
@@ -180,7 +183,7 @@ export default function DesignPage() {
                 logoUrl={design?.logoUrl || business?.logoUrl}
                 coverImageUrl={design?.headerImageUrl || business?.coverImageUrl}
                 products={products}
-                currency={business?.currency || defaultCountryLabels.currency}
+                currency={business?.currency || locale.currencyCode}
                 design={design}
               />
             </div>

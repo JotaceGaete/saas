@@ -1,6 +1,6 @@
 /**
  * Resolución de región y proveedor de pago.
- * Regla única: country_code === 'CL' → región CL, Mercado Pago; resto → INT, activación manual.
+ * Regla única: country_code === 'CL' → región CL, Mercado Pago; resto → INT, PayPal.
  */
 
 import {
@@ -32,11 +32,11 @@ export function isChile(countryCode) {
 /**
  * Proveedor de pago para la región.
  * @param {string} [countryCode]
- * @returns {'mercado_pago'|'manual'}
+ * @returns {'mercado_pago'|'paypal'}
  */
 export function getPaymentProvider(countryCode) {
   const region = getBillingRegion(countryCode);
-  return PROVIDER_BY_REGION[region] ?? 'manual';
+  return PROVIDER_BY_REGION[region] ?? 'paypal';
 }
 
 /**

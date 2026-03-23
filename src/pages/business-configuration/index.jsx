@@ -10,10 +10,11 @@ import { supabase } from '../../lib/supabase';
 import StoreCreationStep from '../business-registration/components/StoreCreationStep';
 import WhatsAppMessageTemplate from './components/WhatsAppMessageTemplate';
 import DynamicWhatsAppField from 'components/DynamicWhatsAppField';
-import { getCountryCode, getCountryLabels } from '../../config/country';
+import { getCountryLabels } from '../../config/country';
 import CatalogAndOrdersConfig from './components/CatalogAndOrdersConfig';
 import InstallAppBlock from './components/InstallAppBlock';
 import { truncateAtWordBoundary } from '../../utils/textTruncate';
+import { getBusinessLocale } from '../../lib/locale/businessLocale';
 
 const BUSINESS_DESCRIPTION_MAX = 280;
 
@@ -62,7 +63,10 @@ export default function BusinessConfiguration() {
   const [business, setBusiness] = useState(null);
   const [businessFetchLoading, setBusinessFetchLoading] = useState(false);
 
-  const defaultCountryLabels = getCountryLabels();
+  const businessLocale = getBusinessLocale(business, {
+    preferredCountryCode: user?.user_metadata?.country_code ?? null,
+  });
+  const countryLabels = getCountryLabels(businessLocale.countryCode);
   const [bankForm, setBankForm] = useState({
     bankName: '',
     bankAccountType: '',
@@ -81,8 +85,8 @@ export default function BusinessConfiguration() {
     address: '',
     city: '',
     region: '',
-    country: defaultCountryLabels.countryName,
-    currency: defaultCountryLabels.currency,
+    country: countryLabels.countryName,
+    currency: countryLabels.currency,
     rubroId: '',
   });
   const [rubros, setRubros] = useState([]);
@@ -164,8 +168,8 @@ export default function BusinessConfiguration() {
         address: business?.address || '',
         city: business?.city || '',
         region: business?.region || '',
-        country: business?.country || defaultCountryLabels.countryName,
-        currency: business?.currency || defaultCountryLabels.currency,
+        country: countryLabels.countryName,
+        currency: business?.currency || countryLabels.currency,
         rubroId: business?.rubroId || '',
       });
       if (business?.designSettings) {
@@ -195,7 +199,7 @@ export default function BusinessConfiguration() {
         bankEmail: business?.bankEmail || '',
       });
     }
-  }, [business?.id]);
+  }, [business?.id, countryLabels.countryName, countryLabels.currency]);
 
   useEffect(() => {
     getRubros().then(({ data }) => setRubros(data || []));
@@ -283,8 +287,9 @@ export default function BusinessConfiguration() {
       address: form?.address,
       city: form?.city,
       region: form?.region,
-      country: form?.country || defaultCountryLabels.countryName,
-      currency: form?.currency || defaultCountryLabels.currency,
+      country: countryLabels.countryName,
+      countryCode: businessLocale.countryCode,
+      currency: countryLabels.currency,
       rubroId: form?.rubroId || null,
       logoUrl: (design?.logoUrl ?? business?.logoUrl ?? '').trim() || null,
       coverImageUrl: (
@@ -491,7 +496,8 @@ export default function BusinessConfiguration() {
                 {/* WhatsApp: prefijo dinámico según país (countryConfig) */}
                 <DynamicWhatsAppField
                   label="Número de WhatsApp"
-                  hint={defaultCountryLabels.whatsappHint}
+                  hint={countryLabels.whatsappHint}
+                  countryCode={businessLocale.countryCode}
                   value={form?.whatsapp}
                   onChange={(v) => handleFormChange('whatsapp', v)}
                 />
@@ -523,7 +529,7 @@ export default function BusinessConfiguration() {
                       type="text"
                       className={inputClass}
                       style={{ ...inputStyle, paddingLeft: '2.25rem' }}
-                      placeholder={defaultCountryLabels.addressPlaceholder}
+                      placeholder={countryLabels.addressPlaceholder}
                       value={form?.address}
                       onChange={e => handleFormChange('address', e?.target?.value)}
                     />
@@ -531,34 +537,34 @@ export default function BusinessConfiguration() {
                 </SettingsField>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <SettingsField label={defaultCountryLabels.cityLabel} hint={defaultCountryLabels.cityPlaceholder}>
+                  <SettingsField label={countryLabels.cityLabel} hint={countryLabels.cityPlaceholder}>
                     <input
                       type="text"
                       className={inputClass}
                       style={inputStyle}
-                      placeholder={defaultCountryLabels.cityPlaceholder}
+                      placeholder={countryLabels.cityPlaceholder}
                       value={form?.city}
                       onChange={e => handleFormChange('city', e?.target?.value)}
                     />
                   </SettingsField>
-                  <SettingsField label={defaultCountryLabels.regionLabel} hint={defaultCountryLabels.regionPlaceholder}>
+                  <SettingsField label={countryLabels.regionLabel} hint={countryLabels.regionPlaceholder}>
                     <input
                       type="text"
                       className={inputClass}
                       style={inputStyle}
-                      placeholder={defaultCountryLabels.regionPlaceholder}
+                      placeholder={countryLabels.regionPlaceholder}
                       value={form?.region}
                       onChange={e => handleFormChange('region', e?.target?.value)}
                     />
                   </SettingsField>
                 </div>
 
-                <SettingsField label="País" hint={`Fijo para ${defaultCountryLabels.countryName}`}>
+                <SettingsField label="País" hint={`Fijo para ${countryLabels.countryName}`}>
                   <div
                     className={inputClass}
                     style={{ ...inputStyle, cursor: 'default', backgroundColor: 'var(--color-muted)' }}
                   >
-                    {defaultCountryLabels.countryName}
+                    {countryLabels.countryName}
                   </div>
                 </SettingsField>
               </div>
@@ -576,8 +582,8 @@ export default function BusinessConfiguration() {
                         address: business?.address || '',
                         city: business?.city || '',
                         region: business?.region || '',
-                        country: business?.country || defaultCountryLabels.countryName,
-                        currency: business?.currency || defaultCountryLabels.currency,
+                        country: countryLabels.countryName,
+                        currency: business?.currency || countryLabels.currency,
                         rubroId: business?.rubroId || '',
                       });
                       setOrderMessageTemplate(business?.orderMessageTemplate || '');
@@ -770,12 +776,12 @@ export default function BusinessConfiguration() {
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <SettingsField label="Banco" hint="Nombre del banco donde recibes transferencias">
-                      <input type="text" className={inputClass} style={inputStyle} placeholder={defaultCountryLabels.bankPlaceholder} value={bankForm?.bankName} onChange={e => setBankForm(prev => ({ ...prev, bankName: e.target.value }))} />
+                      <input type="text" className={inputClass} style={inputStyle} placeholder={countryLabels.bankPlaceholder} value={bankForm?.bankName} onChange={e => setBankForm(prev => ({ ...prev, bankName: e.target.value }))} />
                     </SettingsField>
                     <SettingsField label="Tipo de cuenta">
                       <select className={inputClass} style={{ ...inputStyle, cursor: 'pointer' }} value={bankForm?.bankAccountType} onChange={e => setBankForm(prev => ({ ...prev, bankAccountType: e.target.value }))}>
                         <option value="">Seleccionar...</option>
-                        {(defaultCountryLabels.bankAccountTypes || []).map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
+                        {(countryLabels.bankAccountTypes || []).map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
                       </select>
                     </SettingsField>
                     <div className="sm:col-span-2">
@@ -786,8 +792,8 @@ export default function BusinessConfiguration() {
                     <SettingsField label="Titular">
                       <input type="text" className={inputClass} style={inputStyle} placeholder="Nombre completo" value={bankForm?.bankAccountHolder} onChange={e => setBankForm(prev => ({ ...prev, bankAccountHolder: e.target.value }))} />
                     </SettingsField>
-                    <SettingsField label={defaultCountryLabels.idNumberLabel} hint={defaultCountryLabels.idNumberPlaceholder}>
-                      <input type="text" className={inputClass} style={inputStyle} placeholder={defaultCountryLabels.idNumberPlaceholder} value={bankForm?.bankRut} onChange={e => setBankForm(prev => ({ ...prev, bankRut: e.target.value }))} />
+                    <SettingsField label={countryLabels.idNumberLabel} hint={countryLabels.idNumberPlaceholder}>
+                      <input type="text" className={inputClass} style={inputStyle} placeholder={countryLabels.idNumberPlaceholder} value={bankForm?.bankRut} onChange={e => setBankForm(prev => ({ ...prev, bankRut: e.target.value }))} />
                     </SettingsField>
                     <div className="sm:col-span-2">
                       <SettingsField label="Email (transferencias)">

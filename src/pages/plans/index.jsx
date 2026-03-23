@@ -11,6 +11,7 @@ import { getAppBaseUrl } from '../../config/appUrl';
 import { getCountryCode } from '../../config/country';
 import { formatCurrency } from '../../utils/formatCLP';
 import { PLAN_SLUGS, getPlanLimits, getPlanLabel, getPlanActionButtonLabel } from '../../constants/plans';
+import { TRIAL_DURATION_DAYS, getTrialDaysLeft } from '../../constants/trial';
 import { resolveBillingContext, getPlanDisplayPrice } from '../../lib/billing';
 import { getPlansActivationWhatsappUrl } from '../../config/plansActivation';
 
@@ -243,6 +244,59 @@ export default function PlansPage() {
     }
   };
 
+  const handlePayWithPaypal = async (planSlug) => {
+    if (guard.isBlocked) {
+      guard.runIfConfirmed(() => {});
+      return;
+    }
+    console.info(PAYMENT_DEBUG_PREFIX, {
+      event: 'click_plan_button',
+      handler: 'handlePayWithPaypal',
+      planSlug,
+      resolvedCountryCode: countryCode,
+      resolvedProvider: paymentProvider,
+    });
+    if (getPlanPrice(planSlug) <= 0) return;
+    setLoadingPlanSlug(planSlug);
+    setPaymentMessage(null);
+    setPreview(null);
+    setPreviewPlanSlug(null);
+    try {
+      if (authLoading) {
+        setPaymentMessage({ type: 'info', text: 'Cargando sesión. Intenta nuevamente en unos segundos.' });
+        return;
+      }
+      if (!isAuthenticated || !user || !business?.id) {
+        setPaymentMessage({ type: 'error', text: 'Debes iniciar sesión y tener un negocio activo para suscribirte.' });
+        navigate('/login');
+        return;
+      }
+      const token = await getValidAccessToken();
+      if (!token) {
+        setPaymentMessage({ type: 'error', text: 'Debes iniciar sesión para suscribirte.' });
+        navigate('/login');
+        return;
+      }
+
+      const previewData = await fetchPlanPreview(planSlug);
+      if (!previewData) {
+        setPaymentMessage({ type: 'error', text: 'No se pudo obtener el resumen del cambio de plan.' });
+        return;
+      }
+      if (previewData.changeType === 'downgrade') {
+        setPaymentMessage({ type: 'info', text: previewData.message || 'El cambio se aplicará al vencer tu plan actual. No se realiza ningún cargo.' });
+        return;
+      }
+
+      setPreview(previewData);
+      setPreviewPlanSlug(planSlug);
+    } catch (err) {
+      setPaymentMessage({ type: 'error', text: err?.message || 'Error al iniciar PayPal.' });
+    } finally {
+      setLoadingPlanSlug(null);
+    }
+  };
+
   const confirmActivationViaWhatsApp = () => {
     if (guard.isBlocked) {
       guard.runIfConfirmed(() => {});
@@ -345,6 +399,61 @@ export default function PlansPage() {
     }
   };
 
+  const confirmPayWithPaypal = async () => {
+    if (guard.isBlocked) {
+      guard.runIfConfirmed(() => {});
+      return;
+    }
+    if (!previewPlanSlug) return;
+    setLoadingPlanSlug(previewPlanSlug);
+    setPaymentMessage(null);
+    try {
+      if (authLoading) {
+        setPaymentMessage({ type: 'info', text: 'Cargando sesión. Intenta nuevamente en unos segundos.' });
+        return;
+      }
+      if (!isAuthenticated || !user || !business?.id) {
+        setPaymentMessage({ type: 'error', text: 'Debes iniciar sesión y tener un negocio activo para suscribirte.' });
+        navigate('/login');
+        return;
+      }
+      const token = await getValidAccessToken();
+      if (!token) {
+        setPaymentMessage({ type: 'error', text: 'Debes iniciar sesión para suscribirte.' });
+        navigate('/login');
+        return;
+      }
+
+      const res = await fetch('/api/v1/billing/paypal/subscriptions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          businessId: business.id,
+          planSlug: previewPlanSlug,
+          email: user?.email || undefined,
+          returnUrl: `${window.location.origin}/billing/paypal/success`,
+          cancelUrl: `${window.location.origin}/billing/paypal/cancel`,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || `No se pudo crear la suscripción PayPal (HTTP ${res.status}).`);
+      }
+      if (!data?.approveUrl) {
+        throw new Error('PayPal no devolvió URL de aprobación.');
+      }
+
+      window.location.href = data.approveUrl;
+    } catch (err) {
+      setPaymentMessage({ type: 'error', text: err?.message || 'Error al iniciar PayPal.' });
+    } finally {
+      setLoadingPlanSlug(null);
+    }
+  };
+
   const cancelPreview = () => {
     setPreview(null);
     setPreviewPlanSlug(null);
@@ -438,7 +547,7 @@ export default function PlansPage() {
                 {preview.creditAmount > 0 && (
                   <li>Crédito aplicado: <strong>{formatCurrency(preview.creditAmount, currency)}</strong></li>
                 )}
-                <li>Precio del plan: <strong>{formatCurrency(paymentProvider === 'manual' ? getPlanDisplayPrice(preview.targetPlanSlug, region) : (preview.targetPlanPrice ?? 0), currency)}</strong></li>
+                <li>Precio del plan: <strong>{formatCurrency(getPlanDisplayPrice(preview.targetPlanSlug, region), currency)}</strong></li>
                 {preview.effectiveAt && (
                   <li>Vigente desde: <strong>{new Date(preview.effectiveAt).toLocaleDateString(currency === 'USD' ? 'en-US' : 'es-CL', { dateStyle: 'medium' })}</strong></li>
                 )}
@@ -446,20 +555,31 @@ export default function PlansPage() {
                   Total a pagar: <strong className="text-base" style={{ color: 'var(--color-foreground)' }}>
                     {preview.changeType === 'downgrade' || preview.finalAmount === 0
                       ? 'Sin cargo (crédito aplicado)'
-                      : formatCurrency(paymentProvider === 'manual' ? getPlanDisplayPrice(preview.targetPlanSlug, region) : (preview.finalAmount ?? 0), currency)}
+                      : formatCurrency((preview.finalAmount ?? getPlanDisplayPrice(preview.targetPlanSlug, region)), currency)}
                   </strong>
                 </li>
               </ul>
               <div className="flex gap-3">
                 <button
                   type="button"
-                  onClick={paymentProvider === 'manual' ? confirmActivationViaWhatsApp : confirmPayWithMercadoPago}
+                  onClick={
+                    paymentProvider === 'paypal'
+                      ? confirmPayWithPaypal
+                      : paymentProvider === 'mercado_pago'
+                        ? confirmPayWithMercadoPago
+                        : confirmActivationViaWhatsApp
+                  }
                   disabled={!!loadingPlanSlug || authLoading || !isAuthenticated}
                   className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
-                  style={{ backgroundColor: paymentProvider === 'manual' ? '#25D366' : '#009EE3' }}
+                  style={{ backgroundColor: paymentProvider === 'paypal' ? '#0070ba' : paymentProvider === 'mercado_pago' ? '#009EE3' : '#25D366' }}
                 >
                   {loadingPlanSlug ? (
                     <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : paymentProvider === 'paypal' ? (
+                    <>
+                      <Icon name="CreditCard" size={16} color="#fff" />
+                      {preview.finalAmount === 0 ? 'Confirmar cambio (sin cargo)' : 'Continuar con PayPal'}
+                    </>
                   ) : paymentProvider === 'manual' ? (
                     <>
                       <Icon name="MessageCircle" size={16} color="#fff" />
@@ -488,7 +608,7 @@ export default function PlansPage() {
             const trialExp = new Date(trialEndDateIso);
             const now = new Date();
             if (trialExp <= now) return null;
-            const daysLeft = Math.ceil((trialExp - now) / (1000 * 60 * 60 * 24));
+            const daysLeft = getTrialDaysLeft(trialEndDateIso, now);
             return (
               <div
                 className="rounded-xl border px-5 py-4 flex items-start gap-3"
@@ -497,7 +617,7 @@ export default function PlansPage() {
                 <span className="text-xl leading-none mt-0.5">✨</span>
                 <div>
                   <p className="text-sm font-semibold" style={{ color: '#92400E', fontFamily: 'var(--font-heading)' }}>
-                    Estás usando una prueba gratuita del plan PRO.
+                    Estás usando una prueba gratuita de {TRIAL_DURATION_DAYS} días del plan PRO.
                   </p>
                   <p className="text-xs mt-0.5" style={{ color: '#B45309', fontFamily: 'var(--font-caption)' }}>
                     Si compras ahora, la suscripción comenzará cuando termine tu período gratuito.
@@ -605,6 +725,23 @@ export default function PlansPage() {
                             </>
                           )}
                         </button>
+                      ) : paymentProvider === 'paypal' ? (
+                        <button
+                          type="button"
+                          disabled={!!loadingPlanSlug || authLoading || !isAuthenticated}
+                          onClick={() => handlePayWithPaypal(slug)}
+                          className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+                          style={{ backgroundColor: '#0070ba' }}
+                        >
+                          {loadingPlanSlug === slug ? (
+                            <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <>
+                              <Icon name="CreditCard" size={16} color="#fff" />
+                              Suscribirme
+                            </>
+                          )}
+                        </button>
                       ) : paymentProvider === 'manual' ? (
                         <button
                           type="button"
@@ -642,6 +779,8 @@ export default function PlansPage() {
             <p className="text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
               {paymentProvider === 'mercado_pago'
                 ? 'En Chile los planes de pago se procesan con Mercado Pago. Tras el pago, tu plan se activa automáticamente.'
+                : paymentProvider === 'paypal'
+                  ? 'Fuera de Chile los planes se procesan con PayPal en USD. Tras aprobar el pago, tu suscripción se confirma en el backend.'
                 : paymentProvider === 'manual'
                   ? 'Fuera de Chile la activación de planes Pro o Full es por contacto directo (WhatsApp). Los precios en USD son de referencia hasta activar un nuevo proveedor de pago.'
                   : 'Consulta disponibilidad de pago en tu país.'}

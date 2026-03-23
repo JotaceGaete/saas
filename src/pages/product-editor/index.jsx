@@ -17,6 +17,7 @@ import { convertUnsupportedImageToJpeg } from '../../utils/imageUploadUtils';
 import { useToast } from '../../components/ui/Toast';
 import { useConfirmedEmailGuard } from '../../hooks/useConfirmedEmailGuard';
 import { supabase } from '../../lib/supabase';
+import { getBusinessLocale } from '../../lib/locale/businessLocale';
 
 const EMPTY_FORM = {
   nombre: '',
@@ -54,6 +55,9 @@ export default function ProductEditor() {
   const effectivePlan = getEffectivePlanSlug(business?.planSlug, business?.planExpiresAt, business?.trialExpiresAt);
   const canUseAi = effectivePlan === 'pro' || effectivePlan === 'business';
   const guard = useConfirmedEmailGuard();
+  const locale = getBusinessLocale(business, {
+    preferredCountryCode: user?.user_metadata?.country_code ?? null,
+  });
   const initialActivoRef = React.useRef(null);
 
   useEffect(() => {
@@ -474,6 +478,7 @@ export default function ProductEditor() {
                     formData={formData}
                     errors={errors}
                     onChange={handleFieldChange}
+                    currencyCode={locale.currencyCode}
                     useCategories={business?.designSettings?.useCategories === true && !!business?.rubroId}
                     categories={rubroCategories}
                     onImproveWithAi={canUseAi ? handleImproveWithAi : undefined}
@@ -562,6 +567,7 @@ export default function ProductEditor() {
                   <ProductPreview
                     nombre={formData?.nombre}
                     precio={formData?.precio}
+                    currencyCode={locale.currencyCode}
                     descripcion={formData?.descripcion}
                     activo={formData?.activo}
                     featured={formData?.featured}

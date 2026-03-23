@@ -1,15 +1,17 @@
 import React, { useState } from 'react';
 import Icon from 'components/AppIcon';
 import Image from 'components/AppImage';
-import { formatCLP } from 'utils/formatCLP';
+import { formatCurrency } from 'utils/formatCLP';
 
-export default function ProductPreview({ nombre, precio, descripcion, activo, featured, onSale, images }) {
+export default function ProductPreview({ nombre, precio, descripcion, activo, featured, onSale, images, currencyCode = 'CLP' }) {
   const imageList = images?.length ? images : [];
   const [activeIdx, setActiveIdx] = useState(0);
   const safeIdx = Math.min(activeIdx, Math.max(0, imageList.length - 1));
   const mainImage = imageList[safeIdx];
   const priceNum = Number(precio);
-  const formattedPrice = Number.isFinite(priceNum) && priceNum > 0 ? formatCLP(priceNum) : null;
+  const formattedPrice = Number.isFinite(priceNum) && priceNum > 0
+    ? formatCurrency(priceNum, currencyCode)
+    : null;
 
   const goPrev = () => setActiveIdx(i => (i <= 0 ? imageList.length - 1 : i - 1));
   const goNext = () => setActiveIdx(i => (i >= imageList.length - 1 ? 0 : i + 1));

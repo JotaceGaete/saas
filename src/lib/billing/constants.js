@@ -1,6 +1,6 @@
 /**
  * Constantes de billing. Una sola fuente de verdad para precios por región.
- * Regla: Chile (CL) → Mercado Pago, CLP. Resto (INT) → activación manual (sin pasarela), precios en USD solo referencia.
+ * Regla: Chile (CL) → Mercado Pago, CLP. Resto (INT) → PayPal, USD.
  */
 
 /** Regiones de facturación */
@@ -13,7 +13,7 @@ export const PLAN_SLUGS_BILLING = Object.freeze(['starter', 'pro', 'business']);
 /**
  * Precios por región (solo planes de pago).
  * Chile: CLP/mes. Internacional: USD/mes.
- * Precios INT en USD son referencia para la UI; el cobro no está automatizado.
+ * Precios INT en USD para cobro con PayPal.
  */
 export const PLAN_PRICES_BY_REGION = Object.freeze({
   [BILLING_REGION_CL]: {
@@ -37,5 +37,5 @@ export const CURRENCY_BY_REGION = Object.freeze({
 /** Proveedor de pago por región */
 export const PROVIDER_BY_REGION = Object.freeze({
   [BILLING_REGION_CL]: 'mercado_pago',
-  [BILLING_REGION_INT]: 'manual',
+  [BILLING_REGION_INT]: 'paypal',
 });

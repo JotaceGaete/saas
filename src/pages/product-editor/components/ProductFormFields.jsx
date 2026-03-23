@@ -1,14 +1,27 @@
 import React from 'react';
 import Icon from 'components/AppIcon';
 import Input from 'components/ui/Input';
-import { formatCLPInput, parseCLPInput } from 'utils/formatCLP';
 
 const MAX_NAME = 80;
 const MAX_DESC = 300;
 
 /** useCategories: si el negocio tiene categorías activadas. categories: array de { id, name } del negocio. */
 /** onImproveWithAi: (text, productName) => Promise<void> — opcional; optimiza título y descripción y el padre actualiza el formulario. */
-export default function ProductFormFields({ formData, errors, onChange, useCategories = false, categories = [], onImproveWithAi, isImprovingDescription = false, publicCode = '' }) {
+function formatPriceInput(value) {
+  if (value === '' || value === null || value === undefined) return '';
+  const n = typeof value === 'number' ? value : Number(String(value).replace(/\D/g, ''));
+  if (Number.isNaN(n)) return '';
+  return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+}
+
+function parsePriceInput(str) {
+  if (str === '' || str === null || str === undefined) return '';
+  const digits = String(str).replace(/\D/g, '');
+  if (digits === '') return '';
+  return parseInt(digits, 10);
+}
+
+export default function ProductFormFields({ formData, errors, onChange, currencyCode = 'CLP', useCategories = false, categories = [], onImproveWithAi, isImprovingDescription = false, publicCode = '' }) {
   const handleChange = (field, value) => onChange(field, value);
   const categoryOptions = Array.isArray(categories) ? categories.filter((c) => c?.name?.trim()) : [];
 
@@ -49,18 +62,18 @@ export default function ProductFormFields({ formData, errors, onChange, useCateg
           required
         />
       </div>
-      {/* Precio (CLP, solo enteros, formato con punto como separador de miles) */}
+      {/* Precio (entero, formato con separador de miles) */}
       <div>
         <label className="block text-sm font-medium mb-1" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}>
-          Precio (CLP) <span style={{ color: 'var(--color-error)' }}>*</span>
+          Precio ({currencyCode}) <span style={{ color: 'var(--color-error)' }}>*</span>
         </label>
         <Input
           type="text"
           inputMode="numeric"
           placeholder="Ej: 150.000"
-          value={formatCLPInput(formData?.precio)}
+          value={formatPriceInput(formData?.precio)}
           onChange={(e) => {
-            const raw = parseCLPInput(e?.target?.value);
+            const raw = parsePriceInput(e?.target?.value);
             handleChange('precio', raw === '' ? '' : raw);
           }}
           error={errors?.precio}

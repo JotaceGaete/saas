@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import Icon from 'components/AppIcon';
+import { TRIAL_DURATION_DAYS } from '../../../constants/trial';
 
 const PREMIUM_FEATURES = [
   'Estadísticas del negocio',
@@ -74,7 +75,7 @@ export default function TrialConversionBanner({ trialDaysLeft, trialExpiresAt })
               </p>
             ) : (
               <p className="text-sm mb-3" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
-                Durante tu prueba tienes acceso a estadísticas, productos más vendidos, ingresos del mes e IA para mejorar descripciones.
+                Durante tu prueba gratuita de {TRIAL_DURATION_DAYS} días tienes acceso a estadísticas, productos más vendidos, ingresos del mes e IA para mejorar descripciones.
                 Si no actualizas, tu cuenta volverá automáticamente al plan Starter.
               </p>
             )}
