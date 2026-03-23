@@ -1,6 +1,5 @@
-import { cancelPaypalSubscriptionController } from './src/controllers/paypalSubscriptionController.js';
+import { cancelPaypalSubscriptionController } from '../backend/src/controllers/paypalSubscriptionController.js';
 
 export async function POST(request) {
   return cancelPaypalSubscriptionController(request);
 }
-

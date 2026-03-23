@@ -1,10 +1,10 @@
-import { getEnv } from '../src/config/env.js';
+import { getEnv } from '../backend/src/config/env.js';
 import {
   createSubscription,
   getSubscription,
   cancelSubscription,
   getLocalSubscriptionRecord,
-} from '../src/services/paypal/subscriptionService.js';
+} from '../backend/src/services/paypal/subscriptionService.js';
 
 function parseArgs(argv) {
   const map = new Map();

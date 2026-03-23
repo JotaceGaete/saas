@@ -1,4 +1,4 @@
-import { handlePaypalEvent } from '../src/services/subscriptions/paypalEventHandlers.js';
+import { handlePaypalEvent } from '../backend/src/services/subscriptions/paypalEventHandlers.js';
 
 async function run() {
   try {
