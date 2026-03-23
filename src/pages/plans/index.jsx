@@ -46,6 +46,11 @@ export default function PlansPage() {
   const paymentProvider = normalizeBillingProvider(paymentOptions?.primary || resolvedProvider) || 'dlocal';
   const secondaryProviders = Array.isArray(paymentOptions?.secondary) ? paymentOptions.secondary : [];
   const isUsdProvider = paymentProvider === 'dlocal' || paymentProvider === 'paypal';
+  const checkoutProvider = normalizeBillingProvider(subscriptionState?.billingProvider?.provider || paymentProvider) || paymentProvider;
+  const checkoutAvailability = subscriptionState?.billingProvider || null;
+  const alternativeAvailabilityMap = Array.isArray(subscriptionState?.billingProvider?.alternatives)
+    ? Object.fromEntries(subscriptionState.billingProvider.alternatives.map((item) => [item.provider, item]))
+    : {};
   const getPlanPrice = (slug) => getPlanDisplayPrice(slug, region);
   const scheduledToStarter = (business?.scheduledPlanSlug || null) === 'starter';
   const planExpiryMs = business?.planExpiresAt ? new Date(business.planExpiresAt).getTime() : null;
@@ -148,7 +153,12 @@ export default function PlansPage() {
           headers: { Authorization: `Bearer ${token}` },
         });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data?.ok) return;
+        if (!res.ok || !data?.ok) {
+          if (!cancelled && data?.error) {
+            setPaymentMessage({ type: 'error', text: data.error });
+          }
+          return;
+        }
         if (!cancelled) setSubscriptionState(data);
       } catch {
         // Fallback silencioso: mantiene estado actual de trial.
@@ -162,7 +172,7 @@ export default function PlansPage() {
     if (!token) return null;
     const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
     const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
-    const body = { targetPlanSlug, provider: paymentProvider };
+    const body = { targetPlanSlug, provider: checkoutProvider };
     const res = await fetch(`${supabaseUrl}/functions/v1/plan-change-preview`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, apikey: anonKey },
@@ -520,6 +530,12 @@ export default function PlansPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.ok) {
+        if (data?.code === 'PROVIDER_NOT_READY') {
+          const reason = data?.details?.availability?.reason || data?.details?.reason || null;
+          throw new Error(reason
+            ? `Este método de pago no está disponible ahora (${reason}).`
+            : 'Este método de pago no está disponible en este entorno todavía.');
+        }
         throw new Error(data?.error || `No se pudo crear la suscripción ${normalizedProvider} (HTTP ${res.status}).`);
       }
       if (!data?.checkoutUrl) {
@@ -535,13 +551,13 @@ export default function PlansPage() {
   };
 
   const handleConfirmPrimaryPayment = () => {
-    if (paymentProvider === 'dlocal') return confirmPayWithProvider('dlocal');
-    if (paymentProvider === 'paypal') return confirmPayWithProvider('paypal');
-    if (paymentProvider === 'mercadopago') return confirmPayWithMercadoPago();
-    if (paymentProvider === 'manual') return confirmActivationViaWhatsApp();
+    if (checkoutProvider === 'dlocal') return confirmPayWithProvider('dlocal');
+    if (checkoutProvider === 'paypal') return confirmPayWithProvider('paypal');
+    if (checkoutProvider === 'mercadopago') return confirmPayWithMercadoPago();
+    if (checkoutProvider === 'manual') return confirmActivationViaWhatsApp();
     setPaymentMessage({
       type: 'error',
-      text: `Proveedor no soportado para checkout: ${String(paymentProvider || 'unknown')}`,
+      text: `Proveedor no soportado para checkout: ${String(checkoutProvider || 'unknown')}`,
     });
     return undefined;
   };
@@ -561,6 +577,17 @@ export default function PlansPage() {
       return providerCatalogAmount;
     }
     return reported;
+  };
+
+  const isProviderReadyForCheckout = (provider) => {
+    const normalized = normalizeBillingProvider(provider);
+    if (!normalized) return false;
+    if (normalized === checkoutProvider && checkoutAvailability) {
+      return checkoutAvailability.enabled === true && checkoutAvailability.supportsCheckout === true;
+    }
+    const alt = alternativeAvailabilityMap[normalized];
+    if (alt) return alt.enabled === true && alt.supportsCheckout === true;
+    return true;
   };
 
   if (businessLoading) {
@@ -680,23 +707,23 @@ export default function PlansPage() {
                 <button
                   type="button"
                   onClick={handleConfirmPrimaryPayment}
-                  disabled={!!loadingPlanSlug || authLoading || !isAuthenticated}
+                  disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !isProviderReadyForCheckout(checkoutProvider)}
                   className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
-                  style={{ backgroundColor: paymentProvider === 'dlocal' ? '#111827' : paymentProvider === 'paypal' ? '#0070ba' : paymentProvider === 'mercadopago' ? '#009EE3' : '#25D366' }}
+                  style={{ backgroundColor: checkoutProvider === 'dlocal' ? '#111827' : checkoutProvider === 'paypal' ? '#0070ba' : checkoutProvider === 'mercadopago' ? '#009EE3' : '#25D366' }}
                 >
                   {loadingPlanSlug ? (
                     <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  ) : paymentProvider === 'dlocal' ? (
+                  ) : checkoutProvider === 'dlocal' ? (
                     <>
                       <Icon name="CreditCard" size={16} color="#fff" />
                       {preview.finalAmount === 0 ? 'Confirmar cambio (sin cargo)' : 'Continuar con dLocal'}
                     </>
-                  ) : paymentProvider === 'paypal' ? (
+                  ) : checkoutProvider === 'paypal' ? (
                     <>
                       <Icon name="CreditCard" size={16} color="#fff" />
                       {preview.finalAmount === 0 ? 'Confirmar cambio (sin cargo)' : 'Continuar con PayPal'}
                     </>
-                  ) : paymentProvider === 'manual' ? (
+                  ) : checkoutProvider === 'manual' ? (
                     <>
                       <Icon name="MessageCircle" size={16} color="#fff" />
                       {preview.finalAmount === 0 ? 'Solicitar activación (sin cargo)' : 'Solicitar activación'}
@@ -719,7 +746,7 @@ export default function PlansPage() {
                   <button
                     type="button"
                     onClick={() => confirmPayWithProvider('paypal')}
-                    disabled={!!loadingPlanSlug || authLoading || !isAuthenticated}
+                    disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !isProviderReadyForCheckout('paypal')}
                     className="px-4 py-2.5 rounded-lg text-sm font-medium transition-opacity hover:opacity-90 disabled:opacity-60"
                     style={{ color: '#0070ba', border: '1px solid #0070ba' }}
                   >
@@ -730,7 +757,7 @@ export default function PlansPage() {
                   <button
                     type="button"
                     onClick={confirmPayWithMercadoPago}
-                    disabled={!!loadingPlanSlug || authLoading || !isAuthenticated}
+                    disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !isProviderReadyForCheckout('mercadopago')}
                     className="px-4 py-2.5 rounded-lg text-sm font-medium transition-opacity hover:opacity-90 disabled:opacity-60"
                     style={{ color: '#009EE3', border: '1px solid #009EE3' }}
                   >
@@ -741,7 +768,7 @@ export default function PlansPage() {
                   <button
                     type="button"
                     onClick={() => confirmPayWithProvider('dlocal')}
-                    disabled={!!loadingPlanSlug || authLoading || !isAuthenticated}
+                    disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !isProviderReadyForCheckout('dlocal')}
                     className="px-4 py-2.5 rounded-lg text-sm font-medium transition-opacity hover:opacity-90 disabled:opacity-60"
                     style={{ color: '#111827', border: '1px solid #111827' }}
                   >
@@ -961,6 +988,12 @@ export default function PlansPage() {
                   if (provider === 'dlocal') return 'dLocal';
                   return provider;
                 }).join(' · ')}.
+              </p>
+            )}
+            {checkoutAvailability && (!checkoutAvailability.enabled || !checkoutAvailability.supportsCheckout) && (
+              <p className="text-xs mt-2" style={{ color: '#b45309', fontFamily: 'var(--font-caption)' }}>
+                El proveedor recomendado ({checkoutAvailability.provider}) no está disponible en este entorno.
+                {checkoutAvailability.reason ? ` Motivo: ${checkoutAvailability.reason}.` : ''}
               </p>
             )}
           </div>

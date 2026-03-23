@@ -51,9 +51,17 @@ async function getBusinessById(businessId) {
 function handleError(err, fallbackMessage) {
   const message = String(err?.message || '');
   if (message.includes('[auth] Missing Bearer token') || message.includes('[auth] Invalid or expired user token')) {
-    return json({ ok: false, error: message || '[auth] Unauthorized' }, 401);
+    return json({ ok: false, code: 'AUTH_REQUIRED', error: message || '[auth] Unauthorized' }, 401);
   }
-  if (isHttpError(err)) return json({ ok: false, error: err.message }, err.statusCode);
+  if (isHttpError(err)) {
+    return json({
+      ok: false,
+      code: err?.code || null,
+      provider: err?.provider || null,
+      error: err.message,
+      details: err?.details || null,
+    }, err.statusCode);
+  }
   return json({ ok: false, error: err?.message || fallbackMessage }, 503);
 }
 
@@ -81,8 +89,24 @@ export async function createBillingSubscriptionController(request) {
       returnUrl,
       cancelUrl,
     });
+    console.info('[BILLING_CREATE_RESULT]', {
+      route: '/api/v1/billing/subscriptions/create',
+      businessId,
+      planSlug,
+      requestedProvider: provider || null,
+      selectedProvider: result?.provider || null,
+      countryCode: business?.country_code || null,
+      status: 'ok',
+    });
     return json(result, 200);
   } catch (err) {
+    console.error('[BILLING_CREATE_ERROR]', {
+      route: '/api/v1/billing/subscriptions/create',
+      message: err?.message || 'unknown_error',
+      code: err?.code || null,
+      provider: err?.provider || null,
+      details: err?.details || null,
+    });
     return handleError(err, 'create_billing_subscription_failed');
   }
 }

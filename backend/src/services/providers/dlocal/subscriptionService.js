@@ -1,4 +1,5 @@
 import { HttpError } from '../../../lib/http/HttpError.js';
+import { getBillingProviderAvailability } from '../../billing/providerAvailabilityService.js';
 
 const COUNTRY_TO_CURRENCY = Object.freeze({
   AR: 'ARS',
@@ -79,6 +80,15 @@ export async function createDlocalSubscriptionIntent({
   cancelUrl,
   subscriberEmail,
 }) {
+  const availability = getBillingProviderAvailability({ provider: 'dlocal' });
+  if (!availability.enabled || !availability.supportsCheckout) {
+    throw new HttpError(422, '[dlocal] Provider not ready for checkout', {
+      code: 'PROVIDER_NOT_READY',
+      provider: 'dlocal',
+      details: availability,
+    });
+  }
+
   const currencyCode = resolveDlocalCurrency(countryCode);
   const amount = resolveDlocalAmount({ planSlug, currencyCode });
 
@@ -108,8 +118,16 @@ export async function createDlocalSubscriptionIntent({
   const apiKey = getDlocalApiKey();
   const secret = getDlocalSecretKey();
   if (!baseUrl || !apiKey || !secret) {
-    throw new HttpError(503, '[dlocal] Missing DLOCAL_BASE_URL/DLOCAL_API_KEY/DLOCAL_SECRET_KEY');
+    throw new HttpError(422, '[dlocal] Missing provider configuration', {
+      code: 'PROVIDER_NOT_READY',
+      provider: 'dlocal',
+      details: { reason: 'missing_provider_env' },
+    });
   }
 
-  throw new HttpError(503, '[dlocal] Live API integration pending endpoint contract. Configure DLOCAL_MOCK_CHECKOUT_URL for sandbox flow.');
+  throw new HttpError(501, '[dlocal] Live API integration pending endpoint contract', {
+    code: 'PROVIDER_NOT_IMPLEMENTED',
+    provider: 'dlocal',
+    details: { reason: 'endpoint_contract_not_implemented' },
+  });
 }

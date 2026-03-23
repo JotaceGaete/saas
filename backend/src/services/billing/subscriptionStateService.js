@@ -5,6 +5,11 @@ import {
   BILLING_STATUSES,
   isTerminalBillingStatus,
 } from './billingStatusMapper.js';
+import { getPaymentOptions } from './providerSelectionService.js';
+import {
+  getBillingProviderAvailability,
+  getProviderAvailabilityByBusinessCountry,
+} from './providerAvailabilityService.js';
 
 function getSupabaseUrl() {
   return String(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').trim();
@@ -27,7 +32,7 @@ async function getBusinessById(businessId) {
   const client = getAdminClient();
   const { data, error } = await client
     .from('wa_businesses')
-    .select('id, plan_slug, trial_expires_at, plan_expires_at')
+    .select('id, plan_slug, trial_expires_at, plan_expires_at, country_code, currency')
     .eq('id', businessId)
     .maybeSingle();
   if (error) {
@@ -71,6 +76,12 @@ export async function getBillingSubscriptionState({ businessId }) {
     && !isTerminalBillingStatus(subscriptionStatus)
     && !!subscription?.provider_subscription_id;
 
+  const paymentOptions = getPaymentOptions({ countryCode: business?.country_code || null });
+  const recommendation = getProviderAvailabilityByBusinessCountry({ businessCountryCode: business?.country_code || null });
+  const selectedProvider = subscription?.provider || recommendation.selectedProvider;
+  const selectedAvailability = getBillingProviderAvailability({ provider: selectedProvider });
+  const alternatives = recommendation.alternatives;
+
   let billingStatus = subscriptionStatus || BILLING_STATUSES.PENDING_PAYMENT;
   if (!subscription) {
     billingStatus = trialActive
@@ -100,5 +111,15 @@ export async function getBillingSubscriptionState({ businessId }) {
     subscription_starts_at: subscriptionStartsAt,
     current_period_ends_at: subscription?.current_period_ends_at || null,
     charge_after_trial: billingStatus === BILLING_STATUSES.TRIAL_WITH_SUBSCRIPTION,
+    billingProvider: {
+      provider: selectedProvider,
+      enabled: selectedAvailability.enabled,
+      supportsCheckout: selectedAvailability.supportsCheckout,
+      supportsSubscriptions: selectedAvailability.supportsSubscriptions,
+      reason: selectedAvailability.reason,
+      mode: selectedAvailability.mode,
+      alternatives,
+      recommendedProvider: recommendation.selectedProvider,
+    },
   };
 }

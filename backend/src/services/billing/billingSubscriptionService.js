@@ -6,7 +6,8 @@ import {
 import { createDlocalSubscriptionIntent } from '../providers/dlocal/subscriptionService.js';
 import { createSubscription as createPaypalSubscription, getSubscription as getPaypalSubscription } from '../paypal/subscriptionService.js';
 import { mapProviderStatus } from './billingStatusMapper.js';
-import { normalizeBillingProvider, resolvePrimaryBillingProvider } from './providerSelectionService.js';
+import { normalizeBillingProvider, getPaymentOptions } from './providerSelectionService.js';
+import { getBillingProviderAvailability } from './providerAvailabilityService.js';
 
 function normalizePlanSlug(planSlug) {
   const slug = String(planSlug || '').trim().toLowerCase();
@@ -29,12 +30,50 @@ export async function createBillingSubscription({
   cancelUrl,
 }) {
   const normalizedPlan = normalizePlanSlug(planSlug);
+  const businessCountryCode = business?.country_code || business?.countryCode || null;
+  const paymentOptions = getPaymentOptions({ countryCode: businessCountryCode });
   const explicitProvider = normalizeBillingProvider(providerHint);
-  const provider = explicitProvider || resolvePrimaryBillingProvider({
-      businessCountryCode: business?.country_code || business?.countryCode || null,
-    });
   if (providerHint && !explicitProvider) {
-    throw new HttpError(400, `Unsupported billing provider: ${providerHint}`);
+    throw new HttpError(400, `Unsupported billing provider: ${providerHint}`, {
+      code: 'INVALID_PROVIDER',
+      details: { providerHint },
+    });
+  }
+
+  let provider = explicitProvider || paymentOptions.primary;
+  let availability = getBillingProviderAvailability({ provider });
+  const alternatives = paymentOptions.secondary.map((p) => getBillingProviderAvailability({ provider: p }));
+
+  console.info('[BILLING_PROVIDER_SELECTION]', {
+    route: '/api/v1/billing/subscriptions/create',
+    businessId: business?.id || null,
+    planSlug: normalizedPlan,
+    businessCountryCode,
+    requestedProvider: explicitProvider || null,
+    selectedProvider: provider,
+    availability,
+    alternatives,
+  });
+
+  if ((!availability.enabled || !availability.supportsCheckout) && !explicitProvider) {
+    const fallback = alternatives.find((item) => item.enabled && item.supportsCheckout);
+    if (fallback) {
+      provider = fallback.provider;
+      availability = fallback;
+    }
+  }
+
+  if (!availability.enabled || !availability.supportsCheckout) {
+    throw new HttpError(422, `[billing] Provider ${provider} is not ready`, {
+      code: 'PROVIDER_NOT_READY',
+      provider,
+      details: {
+        selectedProvider: provider,
+        availability,
+        alternatives,
+        businessCountryCode,
+      },
+    });
   }
 
   if (provider === 'mercadopago') {
