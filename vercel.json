@@ -32,11 +32,7 @@
     },
     {
       "source": "/api/v1/billing/dlocal/test-payment",
-      "destination": "/api/dlocal-test-payment"
-    },
-    {
-      "source": "/api/v1/health-json",
-      "destination": "/api/health-json"
+      "destination": "/api/billing-subscriptions-create"
     },
     {
       "source": "/webhooks/paypal",
