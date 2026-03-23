@@ -25,6 +25,11 @@ export async function assertBusinessOwnership({ businessId, userId }) {
     throw new HttpError(400, '[ownership] businessId and userId are required');
   }
 
+  console.info('[SUPABASE_ENV]', {
+    url: process.env.SUPABASE_URL,
+    has_service_role: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+  });
+
   console.info('[OWNERSHIP_CHECK_START]', {
     authenticated_user_id: uid,
     business_id: bid,
@@ -37,6 +42,10 @@ export async function assertBusinessOwnership({ businessId, userId }) {
     .select('id, owner_id')
     .eq('id', bid)
     .maybeSingle();
+
+  console.info('[OWNERSHIP_RAW_DATA]', {
+    data,
+  });
 
   if (error) {
     console.error('[OWNERSHIP_CHECK_ERROR]', {
