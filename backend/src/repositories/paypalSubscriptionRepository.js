@@ -4,7 +4,10 @@ import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const STORAGE_PATH = resolve(__dirname, '../../.data/paypal-subscriptions.json');
+const LOCAL_STORAGE_PATH = resolve(__dirname, '../../.data/paypal-subscriptions.json');
+const STORAGE_PATH = process.env.VERCEL
+  ? '/tmp/paypal-subscriptions.json'
+  : LOCAL_STORAGE_PATH;
 
 function getInitialState() {
   return {
