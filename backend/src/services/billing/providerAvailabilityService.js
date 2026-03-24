@@ -60,10 +60,10 @@ function getDlocalAvailability() {
 
   return {
     provider: 'dlocal',
-    enabled: false,
-    supportsCheckout: false,
-    supportsSubscriptions: false,
-    reason: 'endpoint_contract_not_implemented',
+    enabled: true,
+    supportsCheckout: true,
+    supportsSubscriptions: true,
+    reason: null,
     mode,
   };
 }

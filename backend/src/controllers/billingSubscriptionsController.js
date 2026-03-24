@@ -3,6 +3,8 @@ import { HttpError, isHttpError } from '../lib/http/HttpError.js';
 import { requireAuthenticatedUser } from '../services/auth/requestAuthService.js';
 import { assertBusinessOwnership } from '../services/billing/ownershipService.js';
 import { confirmBillingSubscription, createBillingSubscription } from '../services/billing/billingSubscriptionService.js';
+import { createDlocalPlanCheckout } from '../services/providers/dlocal/checkoutService.js';
+import { assertMarketAccess } from '../services/market/marketValidationService.js';
 
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -77,6 +79,7 @@ export async function createBillingSubscriptionController(request) {
 
     await assertBusinessOwnership({ businessId, userId: authUser.id });
     const business = await getBusinessById(businessId);
+    assertMarketAccess({ requestUrl: request.url, businessCountryCode: business?.country_code || null });
 
     const returnUrl = String(body?.returnUrl || `${new URL(request.url).origin}/billing/payments/success`).trim();
     const cancelUrl = String(body?.cancelUrl || `${new URL(request.url).origin}/billing/payments/cancel`).trim();
@@ -118,9 +121,48 @@ export async function confirmBillingSubscriptionController(request) {
     const businessId = String(body?.businessId || '').trim();
     if (!businessId) throw new HttpError(400, 'businessId is required');
     await assertBusinessOwnership({ businessId, userId: authUser.id });
+    const business = await getBusinessById(businessId);
+    assertMarketAccess({ requestUrl: request.url, businessCountryCode: business?.country_code || null });
     const result = await confirmBillingSubscription({ businessId });
     return json(result, 200);
   } catch (err) {
     return handleError(err, 'confirm_billing_subscription_failed');
+  }
+}
+
+export async function dlocalCheckoutController(request) {
+  try {
+    const authUser = await requireAuthenticatedUser(request);
+    const body = await readJsonBody(request);
+    const businessId = String(body?.businessId || '').trim();
+    const planSlug = String(body?.planSlug || '').trim().toLowerCase();
+    if (!businessId) throw new HttpError(400, 'businessId is required');
+    if (!planSlug) throw new HttpError(400, 'planSlug is required');
+
+    await assertBusinessOwnership({ businessId, userId: authUser.id });
+    const business = await getBusinessById(businessId);
+    assertMarketAccess({ requestUrl: request.url, businessCountryCode: business?.country_code || null });
+
+    const origin = new URL(request.url).origin;
+    const returnUrl = String(body?.returnUrl || `${origin}/planes?payment=success`).trim();
+    const cancelUrl = String(body?.cancelUrl || `${origin}/planes?payment=failure`).trim();
+
+    const result = await createDlocalPlanCheckout({
+      business,
+      authUser,
+      planSlug,
+      returnUrl,
+      cancelUrl,
+    });
+    return json(result, 200);
+  } catch (err) {
+    console.error('[DLOCAL_CHECKOUT_ERROR]', {
+      route: '/api/v1/billing/dlocal/checkout',
+      message: err?.message || 'unknown_error',
+      code: err?.code || null,
+      provider: err?.provider || null,
+      details: err?.details || null,
+    });
+    return handleError(err, 'dlocal_checkout_failed');
   }
 }

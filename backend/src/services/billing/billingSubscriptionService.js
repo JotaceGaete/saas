@@ -3,7 +3,7 @@ import {
   getBillingSubscriptionByBusinessId,
   upsertBillingSubscriptionByBusiness,
 } from '../../repositories/billingSubscriptionRepository.js';
-import { createDlocalSubscriptionIntent } from '../providers/dlocal/subscriptionService.js';
+import { createDlocalPlanCheckout } from '../providers/dlocal/checkoutService.js';
 import { createSubscription as createPaypalSubscription, getSubscription as getPaypalSubscription } from '../paypal/subscriptionService.js';
 import { mapProviderStatus } from './billingStatusMapper.js';
 import { normalizeBillingProvider, getPaymentOptions } from './providerSelectionService.js';
@@ -86,34 +86,19 @@ export async function createBillingSubscription({
   }
 
   if (provider === 'dlocal') {
-    const dlocal = await createDlocalSubscriptionIntent({
-      businessId: business.id,
-      userId: authUser.id,
+    const dlocal = await createDlocalPlanCheckout({
+      business,
+      authUser,
       planSlug: normalizedPlan,
-      countryCode: business?.country_code || business?.countryCode || null,
       returnUrl,
       cancelUrl,
-      subscriberEmail: authUser?.email || null,
-    });
-    const status = mapProviderStatus('dlocal', dlocal.providerStatus);
-    await upsertBillingSubscriptionByBusiness({
-      business_id: business.id,
-      provider: 'dlocal',
-      provider_subscription_id: dlocal.providerSubscriptionId,
-      plan_slug: normalizedPlan,
-      currency_code: dlocal.currencyCode,
-      amount: dlocal.amount,
-      interval_unit: 'month',
-      status,
-      provider_status: dlocal.providerStatus,
-      metadata_json: dlocal.metadata || {},
     });
     return {
       ok: true,
       provider: 'dlocal',
-      providerSubscriptionId: dlocal.providerSubscriptionId,
-      providerStatus: dlocal.providerStatus,
-      checkoutUrl: dlocal.checkoutUrl,
+      providerSubscriptionId: dlocal.paymentId,
+      providerStatus: dlocal.status,
+      checkoutUrl: dlocal.redirectUrl,
       currencyCode: dlocal.currencyCode,
       amount: dlocal.amount,
     };

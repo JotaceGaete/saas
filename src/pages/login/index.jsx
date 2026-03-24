@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { getMyBusiness } from '../../services/waBusinessService';
+import { resolveMarketRouting } from '../../lib/market/routing';
 import LoginLeftPanel from './components/LoginLeftPanel';
 import LoginForm from './components/LoginForm';
 
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { signIn, signInWithGoogle, resetPasswordForEmail, isAuthenticated, isEmailConfirmed, loading } = useAuth();
+  const { signIn, signInWithGoogle, resetPasswordForEmail, isAuthenticated, isEmailConfirmed, loading, business, businessLoading } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [authError, setAuthError] = useState(null);
@@ -20,10 +22,22 @@ export default function Login() {
       if (!isEmailConfirmed) {
         navigate('/verify-email', { replace: true });
       } else {
+        if (typeof window !== 'undefined' && business && !businessLoading) {
+          const decision = resolveMarketRouting({
+            businessCountryCode: business?.countryCode,
+            hostname: window.location.hostname,
+            path: '/dashboard',
+          });
+          if (decision.redirect && decision.redirectUrl) {
+            setAuthError(decision.message);
+            window.location.replace(`${decision.redirectUrl}?market_redirect=1&market=${decision.marketCode}`);
+            return;
+          }
+        }
         navigate('/dashboard', { replace: true });
       }
     }
-  }, [isAuthenticated, isEmailConfirmed, loading, navigate]);
+  }, [isAuthenticated, isEmailConfirmed, loading, navigate, business, businessLoading]);
 
   const handleLogin = async (formData) => {
     setIsLoading(true);
@@ -39,6 +53,17 @@ export default function Login() {
         } else {
           setAuthError(error?.message || 'Error al iniciar sesión. Intenta de nuevo.');
         }
+        return;
+      }
+      const { data: myBusiness } = await getMyBusiness();
+      const decision = resolveMarketRouting({
+        businessCountryCode: myBusiness?.countryCode || null,
+        hostname: typeof window !== 'undefined' ? window.location.hostname : '',
+        path: '/dashboard',
+      });
+      if (decision.redirect && decision.redirectUrl) {
+        setAuthError(decision.message);
+        window.location.replace(`${decision.redirectUrl}?market_redirect=1&market=${decision.marketCode}`);
         return;
       }
       navigate('/dashboard');
@@ -121,7 +146,9 @@ export default function Login() {
           forgotPasswordSuccess={forgotPasswordSuccess}
           forgotPasswordLoading={forgotPasswordLoading}
           onClearForgotSuccess={() => setForgotPasswordSuccess(false)}
-          redirectMessage={location?.state?.message}
+          redirectMessage={new URLSearchParams(location?.search || '').get('market_redirect') === '1'
+            ? 'Te redirigimos al acceso correcto según el mercado de tu cuenta.'
+            : location?.state?.message}
         />
       </div>
     </div>

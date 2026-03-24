@@ -17,8 +17,8 @@ export function normalizeBillingProvider(provider) {
 
 /**
  * Reglas por pais (fuente: business.country_code):
- * CL -> dlocal (sec: mercadopago, paypal)
- * AR -> mercadopago (sec: dlocal)
+ * CL -> mercadopago (sec: dlocal, paypal)
+ * AR -> dlocal (sec: mercadopago)
  * OTROS -> dlocal (sec: paypal)
  */
 export function getPaymentOptions({ countryCode }) {
@@ -26,10 +26,10 @@ export function getPaymentOptions({ countryCode }) {
   const normalized = country && SUPPORTED_COUNTRIES.has(country) ? country : 'CL';
 
   if (normalized === 'CL') {
-    return Object.freeze({ primary: 'dlocal', secondary: ['mercadopago', 'paypal'] });
+    return Object.freeze({ primary: 'mercadopago', secondary: ['dlocal', 'paypal'] });
   }
   if (normalized === 'AR') {
-    return Object.freeze({ primary: 'mercadopago', secondary: ['dlocal'] });
+    return Object.freeze({ primary: 'dlocal', secondary: ['mercadopago'] });
   }
   return Object.freeze({ primary: 'dlocal', secondary: ['paypal'] });
 }

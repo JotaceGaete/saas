@@ -30,21 +30,15 @@ export function getPaymentOptions({ countryCode }) {
   const dlocalEnabled = isDlocalFeatureEnabled();
 
   if (country === 'CL') {
-    if (!dlocalEnabled) {
-      return Object.freeze({
-        primary: 'mercadopago',
-        secondary: ['paypal'],
-      });
-    }
     return Object.freeze({
-      primary: 'dlocal',
-      secondary: ['mercadopago', 'paypal'],
+      primary: 'mercadopago',
+      secondary: dlocalEnabled ? ['dlocal', 'paypal'] : ['paypal'],
     });
   }
   if (country === 'AR') {
     return Object.freeze({
-      primary: 'mercadopago',
-      secondary: dlocalEnabled ? ['dlocal'] : [],
+      primary: dlocalEnabled ? 'dlocal' : 'paypal',
+      secondary: dlocalEnabled ? ['mercadopago'] : ['mercadopago'],
     });
   }
   if (!dlocalEnabled) {

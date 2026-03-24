@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase';
 import { getPlanLimits } from '../constants/plans';
 import { getTrialEndDateFrom } from '../constants/trial';
+import { getDefaultDomainByMarket, getMarketCodeByCountry } from '../lib/market/routing';
 
 // Helpers
 
@@ -242,6 +243,8 @@ const mapBusinessFromDb = (row) => {
   region: row?.region,
   country: row?.country,
   countryCode: normalizeCountryCode(row?.country_code ?? row?.country, row?.currency),
+  marketCode: getMarketCodeByCountry(normalizeCountryCode(row?.country_code ?? row?.country, row?.currency)),
+  defaultDomain: getDefaultDomainByMarket(getMarketCodeByCountry(normalizeCountryCode(row?.country_code ?? row?.country, row?.currency))),
   currency: row?.currency,
   logoUrl: row?.logo_url || designSettings?.logoUrl || null,
   coverImageUrl: row?.cover_image_url || designSettings?.headerImageUrl || designSettings?.coverImageUrl || null,

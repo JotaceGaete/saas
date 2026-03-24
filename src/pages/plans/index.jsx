@@ -22,6 +22,32 @@ import { getPlansActivationWhatsappUrl } from '../../config/plansActivation';
 
 const PAYMENT_DEBUG_PREFIX = '[plans-payment-debug]';
 
+function getProviderDisplayLabel(provider, countryCode) {
+  const normalizedProvider = normalizeBillingProvider(provider) || provider;
+  const country = String(countryCode || '').trim().toUpperCase();
+  if (normalizedProvider === 'mercadopago') return 'Pagar con Mercado Pago';
+  if (normalizedProvider === 'dlocal') {
+    if (country === 'CL' || country === 'AR') return 'Pagar con tarjeta o medios locales';
+    return 'Pagar con tarjeta';
+  }
+  if (normalizedProvider === 'paypal') return 'Pagar con PayPal';
+  if (normalizedProvider === 'manual') return 'Solicitar activación';
+  return 'Continuar';
+}
+
+function getProviderShortLabel(provider, countryCode) {
+  const normalizedProvider = normalizeBillingProvider(provider) || provider;
+  const country = String(countryCode || '').trim().toUpperCase();
+  if (normalizedProvider === 'mercadopago') return 'Mercado Pago';
+  if (normalizedProvider === 'dlocal') {
+    return country === 'CL' || country === 'AR'
+      ? 'Tarjeta o medios locales'
+      : 'Tarjeta';
+  }
+  if (normalizedProvider === 'paypal') return 'PayPal';
+  return String(provider || '');
+}
+
 export default function PlansPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -375,7 +401,7 @@ export default function PlansPage() {
       setPreview(previewData);
       setPreviewPlanSlug(planSlug);
     } catch (err) {
-      setPaymentMessage({ type: 'error', text: err?.message || 'Error al iniciar dLocal.' });
+      setPaymentMessage({ type: 'error', text: err?.message || 'Error al iniciar el pago con tarjeta.' });
     } finally {
       setLoadingPlanSlug(null);
     }
@@ -513,7 +539,11 @@ export default function PlansPage() {
         throw new Error(`Proveedor no soportado: ${provider}`);
       }
 
-      const res = await fetch('/api/v1/billing/subscriptions/create', {
+      const endpoint = normalizedProvider === 'dlocal'
+        ? '/api/v1/billing/dlocal/checkout'
+        : '/api/v1/billing/subscriptions/create';
+
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -538,11 +568,12 @@ export default function PlansPage() {
         }
         throw new Error(data?.error || `No se pudo crear la suscripción ${normalizedProvider} (HTTP ${res.status}).`);
       }
-      if (!data?.checkoutUrl) {
+      const checkoutUrl = data?.checkoutUrl || data?.redirectUrl || null;
+      if (!checkoutUrl) {
         throw new Error(`${normalizedProvider} no devolvió URL de checkout.`);
       }
 
-      window.location.href = data.checkoutUrl;
+      window.location.href = checkoutUrl;
     } catch (err) {
       setPaymentMessage({ type: 'error', text: err?.message || `Error al iniciar ${provider}.` });
     } finally {
@@ -716,7 +747,7 @@ export default function PlansPage() {
                   ) : checkoutProvider === 'dlocal' ? (
                     <>
                       <Icon name="CreditCard" size={16} color="#fff" />
-                      {preview.finalAmount === 0 ? 'Confirmar cambio (sin cargo)' : 'Continuar con dLocal'}
+                      {preview.finalAmount === 0 ? 'Confirmar cambio (sin cargo)' : getProviderDisplayLabel('dlocal', businessCountryCode || countryCode)}
                     </>
                   ) : checkoutProvider === 'paypal' ? (
                     <>
@@ -761,7 +792,7 @@ export default function PlansPage() {
                     className="px-4 py-2.5 rounded-lg text-sm font-medium transition-opacity hover:opacity-90 disabled:opacity-60"
                     style={{ color: '#009EE3', border: '1px solid #009EE3' }}
                   >
-                    MercadoPago
+                    {getProviderShortLabel('mercadopago', businessCountryCode || countryCode)}
                   </button>
                 )}
                 {secondaryProviders.includes('dlocal') && (
@@ -772,7 +803,7 @@ export default function PlansPage() {
                     className="px-4 py-2.5 rounded-lg text-sm font-medium transition-opacity hover:opacity-90 disabled:opacity-60"
                     style={{ color: '#111827', border: '1px solid #111827' }}
                   >
-                    dLocal
+                    {getProviderShortLabel('dlocal', businessCountryCode || countryCode)}
                   </button>
                 )}
               </div>
@@ -914,7 +945,7 @@ export default function PlansPage() {
                           ) : (
                             <>
                               <Icon name="CreditCard" size={16} color="#fff" />
-                              Continuar con dLocal
+                              {getProviderDisplayLabel('dlocal', businessCountryCode || countryCode)}
                             </>
                           )}
                         </button>
@@ -971,23 +1002,28 @@ export default function PlansPage() {
           <div className="mt-8 rounded-xl border p-5" style={{ backgroundColor: 'var(--color-muted)', borderColor: 'var(--color-border)' }}>
             <p className="text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
               {paymentProvider === 'mercadopago'
-                ? 'Para este negocio, MercadoPago es el método principal. El flujo actual se mantiene sin cambios.'
+                ? 'Para este negocio, Mercado Pago es el método principal.'
                 : paymentProvider === 'dlocal'
-                  ? 'Para este negocio, dLocal es el proveedor principal (tarjeta o transferencia).'
+                  ? 'Para este negocio, puedes pagar con tarjeta y medios locales disponibles.'
                 : paymentProvider === 'paypal'
-                  ? 'Fuera de Chile los planes se procesan con PayPal en USD. Tras aprobar el pago, tu suscripción se confirma en el backend.'
+                  ? 'Para este negocio, PayPal está disponible como alternativa.'
                 : paymentProvider === 'manual'
-                  ? 'Fuera de Chile la activación de planes Pro o Full es por contacto directo (WhatsApp). Los precios en USD son de referencia hasta activar un nuevo proveedor de pago.'
+                  ? 'La activación por contacto directo está disponible para este mercado.'
                   : 'Consulta disponibilidad de pago en tu país.'}
             </p>
             {secondaryProviders.length > 0 && (
               <p className="text-xs mt-2" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
                 Otras opciones: {secondaryProviders.map((provider) => {
-                  if (provider === 'mercadopago') return 'MercadoPago';
+                  if (provider === 'mercadopago') return 'Mercado Pago';
                   if (provider === 'paypal') return 'PayPal';
-                  if (provider === 'dlocal') return 'dLocal';
+                  if (provider === 'dlocal') return getProviderShortLabel('dlocal', businessCountryCode || countryCode);
                   return provider;
                 }).join(' · ')}.
+              </p>
+            )}
+            {(String(businessCountryCode || countryCode || '').toUpperCase() === 'AR') && (
+              <p className="text-xs mt-2" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+                Mercado Pago pronto disponible.
               </p>
             )}
             {checkoutAvailability && (!checkoutAvailability.enabled || !checkoutAvailability.supportsCheckout) && (

@@ -35,6 +35,10 @@
       "destination": "/api/billing-subscriptions-create"
     },
     {
+      "source": "/api/v1/billing/dlocal/checkout",
+      "destination": "/api/billing-subscriptions-create"
+    },
+    {
       "source": "/webhooks/paypal",
       "destination": "/api/paypal-webhook"
     },

@@ -1,8 +1,14 @@
-import { createBillingSubscriptionController } from '../backend/src/controllers/billingSubscriptionsController.js';
+import {
+  createBillingSubscriptionController,
+  dlocalCheckoutController,
+} from '../backend/src/controllers/billingSubscriptionsController.js';
 import { testDlocalPaymentController } from '../backend/src/controllers/dlocalTestPaymentController.js';
 
 export async function POST(request) {
   const path = new URL(request.url).pathname;
+  if (path.endsWith('/api/v1/billing/dlocal/checkout')) {
+    return dlocalCheckoutController(request);
+  }
   if (path.endsWith('/api/v1/billing/dlocal/test-payment')) {
     return testDlocalPaymentController(request);
   }

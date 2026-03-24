@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { createBusinessForUser, getMyBusiness, updateBusiness } from '../services/waBusinessService';
 import { getAppBaseUrl, getAuthRedirectUrl, getResetPasswordRedirectUrl } from '../config/appUrl';
+import { resolveMarketRouting } from '../lib/market/routing';
 
 const AuthContext = createContext({})
 
@@ -364,6 +365,20 @@ export const AuthProvider = ({ children }) => {
     user?.app_metadata?.role === 'admin' ||
     user?.user_metadata?.role === 'admin'
   )
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (!user?.id || !business?.id || businessLoading) return
+    const decision = resolveMarketRouting({
+      businessCountryCode: business?.countryCode,
+      hostname: window.location.hostname,
+      path: '/dashboard',
+    })
+    if (!decision.redirect || !decision.redirectUrl) return
+    const targetHost = new URL(decision.redirectUrl).hostname
+    if (targetHost === window.location.hostname) return
+    window.location.replace(`${decision.redirectUrl}?market_redirect=1&market=${decision.marketCode}`)
+  }, [user?.id, business?.id, business?.countryCode, businessLoading])
 
   const impersonateBusiness = async (businessObj) => {
     if (!isAdmin || !businessObj) return
