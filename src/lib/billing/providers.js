@@ -49,9 +49,7 @@ export function getPaymentOptions({ countryCode }) {
   if (country === 'CL') {
     return Object.freeze({
       primary: PAYMENT_PROVIDERS.MERCADO_PAGO,
-      secondary: dlocalEnabled
-        ? [PAYMENT_PROVIDERS.DLOCAL, PAYMENT_PROVIDERS.PAYPAL]
-        : [PAYMENT_PROVIDERS.PAYPAL],
+      secondary: [],
     });
   }
   if (country === 'AR') {

@@ -78,18 +78,27 @@ export default function PlansPage() {
     () => normalizeBillingProvider(paymentOptions?.primary || defaultProvider) || PAYMENT_PROVIDERS.DLOCAL,
     [paymentOptions?.primary, defaultProvider],
   );
+  const isChileBilling = countryState.billingCountry === 'CL';
+  const effectivePaymentProvider = isChileBilling ? PAYMENT_PROVIDERS.MERCADO_PAGO : paymentProvider;
   const secondaryProviders = useMemo(
-    () => (Array.isArray(paymentOptions?.secondary) ? paymentOptions.secondary : []),
-    [paymentOptions],
+    () => {
+      const candidates = Array.isArray(paymentOptions?.secondary) ? paymentOptions.secondary : [];
+      if (isChileBilling) return [];
+      return candidates;
+    },
+    [paymentOptions, isChileBilling],
   );
   const isAutomaticCheckoutBlocked = resolvedBillingSetup?.checkoutPolicy?.allowed === false;
   const automaticCheckoutBlockedMessage = resolvedBillingSetup?.checkoutPolicy?.message || 'Este método de pago no está disponible para tu mercado en este momento.';
   const marketStatus = resolvedBillingSetup?.marketStatus || 'active';
   const showMarketDebugBadge = import.meta.env?.MODE !== 'production';
-  const isUsdProvider = paymentProvider === PAYMENT_PROVIDERS.DLOCAL || paymentProvider === PAYMENT_PROVIDERS.PAYPAL;
+  const isUsdProvider = effectivePaymentProvider === PAYMENT_PROVIDERS.DLOCAL || effectivePaymentProvider === PAYMENT_PROVIDERS.PAYPAL;
   const checkoutProvider = useMemo(
-    () => normalizeBillingProvider(subscriptionState?.billingProvider?.provider || paymentProvider) || paymentProvider,
-    [subscriptionState?.billingProvider?.provider, paymentProvider],
+    () => {
+      if (isChileBilling) return PAYMENT_PROVIDERS.MERCADO_PAGO;
+      return normalizeBillingProvider(subscriptionState?.billingProvider?.provider || effectivePaymentProvider) || effectivePaymentProvider;
+    },
+    [subscriptionState?.billingProvider?.provider, effectivePaymentProvider, isChileBilling],
   );
   const checkoutAvailability = subscriptionState?.billingProvider || null;
   const alternativeAvailabilityMap = useMemo(
@@ -597,6 +606,10 @@ export default function PlansPage() {
       if (!normalizedProvider) {
         throw new Error(`Proveedor no soportado: ${provider}`);
       }
+      if (isChileBilling && normalizedProvider !== PAYMENT_PROVIDERS.MERCADO_PAGO) {
+        console.warn('[billing-ui] forced provider to mercado_pago for CL market');
+        return confirmPayWithMercadoPago();
+      }
 
       const endpoint = normalizedProvider === PAYMENT_PROVIDERS.DLOCAL
         ? '/api/v1/billing/dlocal/checkout'
@@ -976,7 +989,7 @@ export default function PlansPage() {
                         Tu plan actual
                       </span>
                     ) : getDisplayPlanPrice(slug) > 0 ? (
-                      paymentProvider === PAYMENT_PROVIDERS.MERCADO_PAGO ? (
+                      effectivePaymentProvider === PAYMENT_PROVIDERS.MERCADO_PAGO ? (
                         <button
                           type="button"
                           disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !isPurchasable || isAutomaticCheckoutBlocked}
@@ -993,7 +1006,7 @@ export default function PlansPage() {
                             </>
                           )}
                         </button>
-                      ) : paymentProvider === PAYMENT_PROVIDERS.DLOCAL ? (
+                      ) : effectivePaymentProvider === PAYMENT_PROVIDERS.DLOCAL ? (
                         <button
                           type="button"
                           disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !isPurchasable || isAutomaticCheckoutBlocked}
@@ -1010,7 +1023,7 @@ export default function PlansPage() {
                             </>
                           )}
                         </button>
-                      ) : paymentProvider === PAYMENT_PROVIDERS.PAYPAL ? (
+                      ) : effectivePaymentProvider === PAYMENT_PROVIDERS.PAYPAL ? (
                         <button
                           type="button"
                           disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !isPurchasable || isAutomaticCheckoutBlocked}
@@ -1027,7 +1040,7 @@ export default function PlansPage() {
                             </>
                           )}
                         </button>
-                      ) : paymentProvider === PAYMENT_PROVIDERS.MANUAL ? (
+                      ) : effectivePaymentProvider === PAYMENT_PROVIDERS.MANUAL ? (
                         <button
                           type="button"
                           disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !isPurchasable}
@@ -1067,9 +1080,9 @@ export default function PlansPage() {
               </p>
             )}
             <p className="text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
-              {getPaymentSummaryCopy({ provider: paymentProvider, marketCode })}
+              {getPaymentSummaryCopy({ provider: effectivePaymentProvider, marketCode })}
             </p>
-            {secondaryProviders.length > 0 && (
+            {!isChileBilling && secondaryProviders.length > 0 && (
               <p className="text-xs mt-2" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
                 Otras opciones: {secondaryProviders.map((provider) => {
                   if (provider === PAYMENT_PROVIDERS.MERCADO_PAGO) return 'Mercado Pago';
