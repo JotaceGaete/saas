@@ -36,8 +36,8 @@ export const BILLING_MARKETS = Object.freeze({
     comingSoon: false,
     plans: {
       ...BASE_PLANS,
-      pro: { ...BASE_PLANS.pro, amount: 15000 },
-      business: { ...BASE_PLANS.business, amount: 30000 },
+      pro: { ...BASE_PLANS.pro, amount: 8990 },
+      business: { ...BASE_PLANS.business, amount: 13990 },
     },
   },
   [MARKET_CODES.INTL]: {

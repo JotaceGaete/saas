@@ -18,8 +18,8 @@ const PLAN_CATALOG_CL: PlanCatalog = {
 
 const PLAN_CATALOG_AR: PlanCatalog = {
   starter:  { displayName: 'Starter',  price: 0,     durationDays: 30 },
-  pro:      { displayName: 'Plan Pro', price: 15000, durationDays: 30 },
-  business: { displayName: 'Plan Business', price: 30000, durationDays: 30 },
+  pro:      { displayName: 'Plan Pro', price: 8990, durationDays: 30 },
+  business: { displayName: 'Plan Business', price: 13990, durationDays: 30 },
 };
 
 /** Precios USD de referencia (INT). Pro=6, Full=10. */
@@ -27,7 +27,7 @@ const INTL_USD_PRICES: Record<string, number> = { starter: 0, pro: 6, business: 
 
 function getPlanCatalog(country: string | undefined, provider?: string): PlanCatalog | null {
   if (provider === 'manual' || provider === 'lemonsqueezy') return null;
-  if (country && country !== 'CL') return null;
+  if (country && country !== 'CL' && country !== 'AR') return null;
   return country === 'AR' ? PLAN_CATALOG_AR : PLAN_CATALOG_CL;
 }
 
@@ -315,12 +315,12 @@ Deno.serve(async (req) => {
     biz as { country_code?: string | null; country?: string | null; currency?: string | null },
   );
 
-  // Fuera de Chile: precios estáticos 6/10 USD de referencia. Sin prorrateo.
+  // Fuera de CL/AR: precios estáticos 6/10 USD de referencia. Sin prorrateo.
   const normalizedProvider = String(providerHint || '').trim().toLowerCase();
   const useIntlUsdProviders = new Set(['paypal', 'dlocal_go', 'dlocal', 'manual', 'lemonsqueezy']);
   const useIntlUsd =
     useIntlUsdProviders.has(normalizedProvider) ||
-    (countryCode && countryCode !== 'CL');
+    (countryCode && countryCode !== 'CL' && countryCode !== 'AR');
   let preview: Record<string, unknown>;
 
   if (useIntlUsd) {

@@ -39,8 +39,8 @@ export const PLAN_PRICES_CLP = Object.freeze({
 /** Precios en ARS (Argentina). */
 export const PLAN_PRICES_ARS = Object.freeze({
   starter:  0,
-  pro:      15000,
-  business: 30000,
+  pro:      8990,
+  business: 13990,
 });
 
 /** Precios en USD (referencia internacional, fuera de Chile). Pro=6 USD, Full=10 USD. */
