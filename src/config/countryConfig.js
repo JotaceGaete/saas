@@ -233,6 +233,32 @@ export function clearManualMarketChoice() {
 }
 
 /**
+ * Captura elección manual cross-domain desde URL (ej. ?manual_market=go),
+ * la persiste en localStorage del host actual y limpia el parámetro.
+ * Se ejecuta al bootstrap para que los guards de redirect la vean desde el primer render.
+ */
+export function bootstrapManualMarketChoiceFromUrl() {
+  if (typeof window === 'undefined') return null;
+  try {
+    const url = new URL(window.location.href);
+    const raw = url.searchParams.get('manual_market');
+    if (!raw) return getManualMarketChoice();
+    const key = String(raw).trim().toLowerCase();
+    if (key === 'cl') setManualMarketChoice('CL');
+    else if (key === 'ar') setManualMarketChoice('AR');
+    else if (key === 'go' || key === 'global') setManualMarketChoice('GLOBAL');
+    else return getManualMarketChoice();
+
+    url.searchParams.delete('manual_market');
+    const next = `${url.pathname}${url.search}${url.hash}`;
+    window.history.replaceState({}, '', next);
+    return getManualMarketChoice();
+  } catch {
+    return getManualMarketChoice();
+  }
+}
+
+/**
  * Quita solo ventalink_country (p. ej. antes de GLOBAL).
  */
 export function clearStoredCountryCode() {

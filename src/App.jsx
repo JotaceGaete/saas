@@ -5,6 +5,10 @@ import { AuthProvider } from './contexts/AuthContext';
 import { CountryProvider } from './contexts/CountryContext';
 import EmailConfirmBanner from './components/EmailConfirmBanner';
 import MarketMismatchBanner from './components/MarketMismatchBanner';
+import { bootstrapManualMarketChoiceFromUrl } from './config/countryConfig';
+
+// Persistir elección manual (cl/ar/go) antes de que corran efectos de auth/routing.
+bootstrapManualMarketChoiceFromUrl();
 
 function App() {
   return (

@@ -27,7 +27,8 @@ export function getMarketBusinessRegistrationUrl(marketCode) {
   const m = String(marketCode || '').trim().toUpperCase();
   const code = m === 'CL' || m === 'AR' ? m : 'GLOBAL';
   const domain = getDefaultDomainByMarket(code).replace(/\/$/, '');
-  return `${domain}/business-registration`;
+  const manualParam = code === 'GLOBAL' ? 'go' : code.toLowerCase();
+  return `${domain}/business-registration?manual_market=${manualParam}`;
 }
 
 /**
