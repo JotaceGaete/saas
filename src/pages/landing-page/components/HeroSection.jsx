@@ -4,7 +4,7 @@ import Icon from "components/AppIcon";
 import Button from "components/ui/Button";
 import { getCountryLabels } from "config/country";
 
-export default function HeroSection() {
+export default function HeroSection({ onOpenRegister }) {
   const navigate = useNavigate();
   const [mounted, setMounted] = useState(false);
   const labels = getCountryLabels();
@@ -83,10 +83,10 @@ export default function HeroSection() {
                 size="xl"
                 iconName="ArrowRight"
                 iconPosition="right"
-                onClick={() => navigate("/business-registration")}
+                onClick={() => (onOpenRegister ? onOpenRegister() : navigate("/business-registration"))}
                 className="shadow-violet hover:shadow-violet-lg">
                 
-                Crear mi catálogo gratis
+                Comenzar gratis
               </Button>
               <Button
                 variant="outline"

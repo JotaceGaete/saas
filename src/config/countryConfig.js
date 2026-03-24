@@ -172,6 +172,66 @@ export const COUNTRY_CODES = Object.freeze([
 
 const STORAGE_KEY = 'ventalink_country';
 
+/** Mercado elegido explícitamente en landing (CL / AR / GLOBAL). Tiene prioridad sobre geo y país sugerido. */
+const MANUAL_MARKET_KEY = 'ventalink_manual_market';
+
+export const MANUAL_MARKET = Object.freeze({
+  CL: 'CL',
+  AR: 'AR',
+  GLOBAL: 'GLOBAL',
+});
+
+/**
+ * @returns {'CL'|'AR'|'GLOBAL'|null}
+ */
+export function getManualMarketChoice() {
+  if (typeof window === 'undefined') return null;
+  try {
+    const v = localStorage.getItem(MANUAL_MARKET_KEY);
+    if (v === 'CL' || v === 'AR' || v === 'GLOBAL') return v;
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+/**
+ * Persiste la elección de mercado (landing). GLOBAL limpia país guardado en go para no arrastrar CL.
+ * @param {'CL'|'AR'|'GLOBAL'} market
+ */
+export function setManualMarketChoice(market) {
+  if (typeof window === 'undefined') return;
+  try {
+    const m = String(market || '').trim().toUpperCase();
+    if (m !== 'CL' && m !== 'AR' && m !== 'GLOBAL') return;
+    if (m === 'GLOBAL') clearStoredCountryCode();
+    localStorage.setItem(MANUAL_MARKET_KEY, m);
+  } catch (e) {
+    console.warn('[countryConfig] setManualMarketChoice failed', e);
+  }
+}
+
+export function clearManualMarketChoice() {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.removeItem(MANUAL_MARKET_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Quita solo ventalink_country (p. ej. antes de GLOBAL).
+ */
+export function clearStoredCountryCode() {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 /**
  * Lee el país guardado (solo relevante en go.ventalink.app).
  * @returns {string|null} Código ISO o null si no hay guardado.

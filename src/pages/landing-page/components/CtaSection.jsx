@@ -8,7 +8,7 @@ const STATS = [
   { value: "4.9/5", label: "Valoración promedio", icon: "Star" },
 ];
 
-export default function CtaSection() {
+export default function CtaSection({ onOpenRegister }) {
   const navigate = useNavigate();
 
   return (
@@ -75,12 +75,12 @@ export default function CtaSection() {
 
             <div className="flex flex-col sm:flex-row gap-3 justify-center">
               <button
-                onClick={() => navigate("/business-registration")}
+                onClick={() => (onOpenRegister ? onOpenRegister() : navigate("/business-registration"))}
                 className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl text-sm font-semibold transition-all duration-150 hover:opacity-95 active:scale-[0.98] shadow-lg"
                 style={{ backgroundColor: '#fff', color: 'var(--color-primary)', fontFamily: 'var(--font-caption)' }}
               >
                 <Icon name="ArrowRight" size={15} color="var(--color-primary)" />
-                Crear mi catálogo gratis
+                Comenzar gratis
               </button>
               <button
                 onClick={() => navigate("/dashboard")}

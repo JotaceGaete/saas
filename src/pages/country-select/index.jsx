@@ -1,13 +1,14 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useCountry } from '../../contexts/CountryContext';
-import { COUNTRY_CODES, getCountryConfig, getStoredCountryCode } from '../../config/countryConfig';
+import { COUNTRY_CODES, getCountryConfig, getManualMarketChoice, getStoredCountryCode } from '../../config/countryConfig';
 import Icon from '../../components/AppIcon';
 import { fetchSuggestCountryFromIp } from '../../utils/suggestCountryFromIp';
 
 /**
  * Pantalla inicial en go.ventalink.app: selector de país.
- * Si no hay país en localStorage, sugiere uno por IP (sin guardar hasta que el usuario continúe).
+ * Si no hay país en localStorage, puede mostrar sugerencia por IP (no rellena la selección: el usuario elige).
+ * Si el usuario eligió mercado GLOBAL en landing (ventalink_manual_market), no aplica geo automática.
  */
 export default function CountrySelectPage() {
   const navigate = useNavigate();
@@ -20,6 +21,10 @@ export default function CountrySelectPage() {
   React.useEffect(() => {
     if (!isSelectable) return;
     if (getStoredCountryCode()) return;
+    if (getManualMarketChoice() === 'GLOBAL') {
+      setGeoLoading(false);
+      return;
+    }
 
     let cancelled = false;
     setGeoLoading(true);
@@ -28,7 +33,6 @@ export default function CountrySelectPage() {
         if (cancelled) return;
         setGeoLoading(false);
         if (result?.code && COUNTRY_CODES.includes(result.code)) {
-          setSelected(result.code);
           setGeoHint(result);
         }
       })

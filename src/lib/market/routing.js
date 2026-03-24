@@ -17,6 +17,33 @@ export function getDefaultDomainByMarket(marketCode) {
   return 'https://go.ventalink.app';
 }
 
+/**
+ * URL absoluta de registro en el dominio del mercado (producción).
+ * @param {'CL'|'AR'|'GLOBAL'} marketCode
+ */
+export function getMarketBusinessRegistrationUrl(marketCode) {
+  const m = String(marketCode || '').trim().toUpperCase();
+  const code = m === 'CL' || m === 'AR' ? m : 'GLOBAL';
+  const domain = getDefaultDomainByMarket(code).replace(/\/$/, '');
+  return `${domain}/business-registration`;
+}
+
+/**
+ * Navegación completa al flujo de registro en el dominio correcto (evita SPA en host equivocado).
+ * En localhost mantiene el mismo origen.
+ */
+export function navigateToMarketRegistration(marketCode) {
+  if (typeof window === 'undefined') return;
+  const host = (window.location?.hostname || '').toLowerCase();
+  const isLocal = host === 'localhost' || host === '127.0.0.1' || host.endsWith('.local');
+  if (isLocal) {
+    const origin = window.location.origin.replace(/\/$/, '');
+    window.location.href = `${origin}/business-registration`;
+    return;
+  }
+  window.location.href = getMarketBusinessRegistrationUrl(marketCode);
+}
+
 export function detectCurrentMarketByHostname(hostname) {
   const host = String(hostname || '').trim().toLowerCase();
   if (!host) return 'GLOBAL';

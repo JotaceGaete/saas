@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import Icon from "components/AppIcon";
 import Button from "components/ui/Button";
 
-export default function LandingNavbar() {
+export default function LandingNavbar({ onOpenRegister }) {
   const navigate = useNavigate();
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -87,10 +87,10 @@ export default function LandingNavbar() {
             <Button
               variant="default"
               size="sm"
-              onClick={() => navigate("/business-registration")}
+              onClick={() => (onOpenRegister ? onOpenRegister() : navigate("/business-registration"))}
               className="shadow-violet"
             >
-              Crear cuenta gratis
+              Comenzar gratis
             </Button>
           </div>
 
@@ -164,9 +164,13 @@ export default function LandingNavbar() {
               variant="default"
               size="lg"
               fullWidth
-              onClick={() => { setMobileMenuOpen(false); navigate("/business-registration"); }}
+              onClick={() => {
+                setMobileMenuOpen(false);
+                if (onOpenRegister) onOpenRegister();
+                else navigate("/business-registration");
+              }}
             >
-              Crear cuenta gratis
+              Comenzar gratis
             </Button>
           </div>
         </div>
