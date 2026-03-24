@@ -3,7 +3,6 @@ import Image from "components/AppImage";
 import Icon from "components/AppIcon";
 import { SkeletonTableRow } from "../../../components/ui/Skeleton";
 import EmptyState from "../../../components/ui/EmptyState";
-import { formatCLP } from "../../../utils/formatCLP";
 
 const SORT_FIELDS = {
   name: "nombre",
@@ -25,6 +24,7 @@ export default function ProductTable({
   sortDir,
   onSort,
   loading,
+  formatPrice,
 }) {
   const allSelected = products?.length > 0 && products?.every((p) => selectedIds?.includes(p?.id));
   const someSelected = products?.some((p) => selectedIds?.includes(p?.id)) && !allSelected;
@@ -113,7 +113,7 @@ export default function ProductTable({
                     <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: 'var(--color-muted)', color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>{product?.category}</span>
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <span className="text-sm font-bold whitespace-nowrap" style={{ color: 'var(--color-primary)', fontFamily: 'var(--font-data)' }}>{formatCLP(product?.price)}</span>
+                    <span className="text-sm font-bold whitespace-nowrap" style={{ color: 'var(--color-primary)', fontFamily: 'var(--font-data)' }}>{formatPrice(product?.price)}</span>
                   </td>
                   <td className="px-4 py-3 text-center">
                     <button
@@ -197,7 +197,7 @@ export default function ProductTable({
                 <div className="flex items-center justify-between mt-2">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-bold text-foreground" style={{ fontFamily: "var(--font-data)" }}>
-                      {formatCLP(product?.price)}
+                      {formatPrice(product?.price)}
                     </span>
                     <span
                       className="inline-flex items-center px-2 py-0.5 rounded-full text-xs"

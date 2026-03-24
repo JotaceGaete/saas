@@ -341,7 +341,7 @@ const mapOrderFromDb = (row) => ({
   deliveryAddress: row?.delivery_address ?? null,
   totalAmount: parseFloat(row?.total_amount),
   subtotal: row?.subtotal != null ? parseFloat(row?.subtotal) : null,
-  currency: row?.currency ?? 'CLP',
+  currency: row?.currency ?? 'USD',
   status: ORDER_STATUS_VALID.includes(row?.order_status) ? row?.order_status : 'pedido',
   paymentStatus: PAYMENT_STATUS_VALID.includes(row?.payment_status) ? row?.payment_status : 'pendiente',
   /** Oculto del tablero; visible en Historial. */

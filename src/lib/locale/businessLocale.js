@@ -7,6 +7,17 @@ const COUNTRY_NAME_TO_CODE = Object.freeze({
   COLOMBIA: 'CO',
   PERU: 'PE',
   MEXICO: 'MX',
+  BOLIVIA: 'BO',
+  'COSTA RICA': 'CR',
+  ECUADOR: 'EC',
+  GUATEMALA: 'GT',
+  PANAMA: 'PA',
+  PARAGUAY: 'PY',
+  URUGUAY: 'UY',
+  SPAIN: 'ES',
+  ESPAÑA: 'ES',
+  'UNITED STATES': 'US',
+  'ESTADOS UNIDOS': 'US',
 });
 
 function normalizeText(value) {
@@ -49,6 +60,8 @@ export function getBusinessLocale(business, options = {}) {
     countryCode,
     countryName: config?.name || countryCode,
     currencyCode: config?.currency || 'USD',
+    /** BCP 47 para Intl (precios y números). */
+    locale: config?.locale || 'en-US',
     phonePrefix: config?.phonePrefix || '',
     config,
   };

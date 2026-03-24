@@ -3,14 +3,14 @@ import Icon from 'components/AppIcon';
 import Image from 'components/AppImage';
 import { formatCurrency } from 'utils/formatCLP';
 
-export default function ProductPreview({ nombre, precio, descripcion, activo, featured, onSale, images, currencyCode = 'CLP' }) {
+export default function ProductPreview({ nombre, precio, descripcion, activo, featured, onSale, images, currencyCode = 'USD', locale = 'en-US' }) {
   const imageList = images?.length ? images : [];
   const [activeIdx, setActiveIdx] = useState(0);
   const safeIdx = Math.min(activeIdx, Math.max(0, imageList.length - 1));
   const mainImage = imageList[safeIdx];
   const priceNum = Number(precio);
   const formattedPrice = Number.isFinite(priceNum) && priceNum > 0
-    ? formatCurrency(priceNum, currencyCode)
+    ? formatCurrency(priceNum, currencyCode, locale)
     : null;
 
   const goPrev = () => setActiveIdx(i => (i <= 0 ? imageList.length - 1 : i - 1));

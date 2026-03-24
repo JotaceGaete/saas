@@ -1,41 +1,75 @@
 /**
- * Formato de precios para Chile (CLP).
- * - Símbolo $, espacio, punto como separador de miles, sin decimales.
- * Ejemplo: formatCLP(150000) => "$ 150.000"
+ * Formato de precios y montos por moneda/locale (Intl).
+ * Nombre histórico "formatCLP": muchos imports siguen usando este archivo.
  */
 
+/** Si no se pasa locale, se infiere solo por código ISO de moneda (último recurso). */
+const FALLBACK_LOCALE_BY_CURRENCY = Object.freeze({
+  CLP: 'es-CL',
+  ARS: 'es-AR',
+  USD: 'en-US',
+  MXN: 'es-MX',
+  COP: 'es-CO',
+  PEN: 'es-PE',
+  EUR: 'es-ES',
+  BOB: 'es-BO',
+  CRC: 'es-CR',
+  GTQ: 'es-GT',
+  PYG: 'es-PY',
+  UYU: 'es-UY',
+});
+
 /**
- * Formatea un monto como precio CLP para mostrar en la UI.
- * @param {number|string} amount - Monto (entero; se redondea si tiene decimales)
- * @returns {string} Ej: "$ 150.000"
+ * @param {number|string} amount
+ * @param {string} [currency] - ISO 4217
+ * @param {string} [locale] - BCP 47 (preferir el del negocio vía getBusinessLocale / getCountryMoneyFormat)
+ * @returns {string}
  */
-export function formatCLP(amount) {
-  const n = typeof amount === 'number' ? amount : Number(amount);
-  if (Number.isNaN(n) || n < 0) return '$ 0';
-  const integer = Math.round(n);
-  const str = String(integer);
-  const withDots = str.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-  return `$ ${withDots}`;
+export function formatCurrency(amount, currency, locale) {
+  const cur = (currency || 'USD').toUpperCase();
+  const loc = locale || FALLBACK_LOCALE_BY_CURRENCY[cur] || 'en-US';
+  const n = Number(amount);
+  const value = Number.isFinite(n) && n >= 0 ? n : 0;
+  try {
+    return new Intl.NumberFormat(loc, { style: 'currency', currency: cur }).format(value);
+  } catch {
+    try {
+      return new Intl.NumberFormat('en-US', { style: 'currency', currency: cur }).format(value);
+    } catch {
+      return String(value);
+    }
+  }
 }
 
 /**
- * Formatea un valor numérico para mostrar en el input de precio (separador de miles).
- * @param {number|string} value - Valor entero o string numérico
- * @returns {string} Ej: "150.000" o "" si vacío/inválido
+ * Enteros con separadores de miles según locale (inputs de precio en editor).
+ * @param {number|string} value
+ * @param {string} [locale]
  */
-export function formatCLPInput(value) {
+export function formatIntegerInputGrouped(value, locale = 'es-CL') {
   if (value === '' || value === null || value === undefined) return '';
   const n = typeof value === 'number' ? value : Number(String(value).replace(/\D/g, ''));
   if (Number.isNaN(n)) return '';
-  const integer = Math.round(n);
-  const str = String(integer);
-  return str.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return new Intl.NumberFormat(locale, { maximumFractionDigits: 0, useGrouping: true }).format(Math.round(n));
+}
+
+/**
+ * @deprecated Preferir formatCurrency(..., 'CLP', 'es-CL') o formatCurrency con datos del negocio.
+ */
+export function formatCLP(amount) {
+  return formatCurrency(amount, 'CLP', 'es-CL');
+}
+
+/**
+ * Formatea un valor numérico para mostrar en el input de precio (separador de miles según locale).
+ * @deprecated Usar formatIntegerInputGrouped con el locale del negocio.
+ */
+export function formatCLPInput(value) {
+  return formatIntegerInputGrouped(value, 'es-CL');
 }
 
 /**
  * Parsea el texto del input de precio a número entero (sin formato).
- * @param {string} str - Texto con o sin puntos, ej: "150.000" o "150000"
- * @returns {number|''} Entero para guardar en BD o '' si vacío
  */
 export function parseCLPInput(str) {
   if (str === '' || str === null || str === undefined) return '';
@@ -44,99 +78,26 @@ export function parseCLPInput(str) {
   return parseInt(digits, 10);
 }
 
-// --- ARS (Argentina) y helper por moneda ---
-
-/**
- * Formatea un monto como precio ARS para mostrar en la UI.
- * @param {number|string} amount
- * @returns {string} Ej: "$ 15.000"
- */
 export function formatARS(amount) {
-  const n = typeof amount === 'number' ? amount : Number(amount);
-  if (Number.isNaN(n) || n < 0) return '$ 0';
-  const integer = Math.round(n);
-  const str = String(integer);
-  const withDots = str.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-  return `$ ${withDots}`;
+  return formatCurrency(amount, 'ARS', 'es-AR');
 }
 
-/**
- * Formatea un monto como precio USD para mostrar en la UI.
- * @param {number|string} amount
- * @returns {string} Ej: "US$ 15.00"
- */
 export function formatUSD(amount) {
-  const n = typeof amount === 'number' ? amount : Number(amount);
-  if (Number.isNaN(n) || n < 0) return 'US$ 0.00';
-  return `US$ ${Number(n).toFixed(2)}`;
+  return formatCurrency(amount, 'USD', 'en-US');
 }
 
-/**
- * Formatea un monto en MXN (pesos mexicanos).
- * @param {number|string} amount
- * @returns {string}
- */
 export function formatMXN(amount) {
-  const n = typeof amount === 'number' ? amount : Number(amount);
-  if (Number.isNaN(n) || n < 0) return '$ 0';
-  const integer = Math.round(n);
-  const str = String(integer);
-  const withDots = str.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-  return `$ ${withDots}`;
+  return formatCurrency(amount, 'MXN', 'es-MX');
 }
 
-/**
- * Formatea un monto en COP (pesos colombianos).
- * @param {number|string} amount
- * @returns {string}
- */
 export function formatCOP(amount) {
-  const n = typeof amount === 'number' ? amount : Number(amount);
-  if (Number.isNaN(n) || n < 0) return '$ 0';
-  const integer = Math.round(n);
-  const str = String(integer);
-  const withDots = str.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-  return `$ ${withDots}`;
+  return formatCurrency(amount, 'COP', 'es-CO');
 }
 
-/**
- * Formatea un monto en PEN (soles peruanos).
- * @param {number|string} amount
- * @returns {string}
- */
 export function formatPEN(amount) {
-  const n = typeof amount === 'number' ? amount : Number(amount);
-  if (Number.isNaN(n) || n < 0) return 'S/ 0';
-  const integer = Math.round(n);
-  const str = String(integer);
-  const withDots = str.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-  return `S/ ${withDots}`;
+  return formatCurrency(amount, 'PEN', 'es-PE');
 }
 
-/**
- * Formatea un monto en EUR.
- * @param {number|string} amount
- * @returns {string}
- */
 export function formatEUR(amount) {
-  const n = typeof amount === 'number' ? amount : Number(amount);
-  if (Number.isNaN(n) || n < 0) return '€ 0,00';
-  return `€ ${Number(n).toFixed(2).replace('.', ',')}`;
-}
-
-/**
- * Formatea un monto según la moneda (CLP, ARS, USD, MXN, COP, PEN, EUR).
- * @param {number|string} amount
- * @param {string} [currency] - Código ISO (CLP, ARS, USD, MXN, COP, PEN, EUR)
- * @returns {string}
- */
-export function formatCurrency(amount, currency) {
-  const c = (currency || 'CLP').toUpperCase();
-  if (c === 'ARS') return formatARS(amount);
-  if (c === 'USD') return formatUSD(amount);
-  if (c === 'MXN') return formatMXN(amount);
-  if (c === 'COP') return formatCOP(amount);
-  if (c === 'PEN') return formatPEN(amount);
-  if (c === 'EUR') return formatEUR(amount);
-  return formatCLP(amount);
+  return formatCurrency(amount, 'EUR', 'es-ES');
 }

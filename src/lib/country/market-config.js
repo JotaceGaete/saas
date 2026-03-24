@@ -40,6 +40,8 @@ export function getMarketConfigByCountry(countryCode) {
     marketStatus: base.marketStatus,
     enabled: base.enabled !== false,
     currency: base.currency || countryCfg?.currency || 'USD',
+    /** Alineado con countryConfig (formato de precios en catálogo/panel). */
+    locale: countryCfg?.locale || 'en-US',
     billingProvider,
     paymentOptions,
   };

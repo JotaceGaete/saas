@@ -4,6 +4,7 @@ import { useCart } from '../../contexts/CartContext';
 import { createOrder, getBusinessBySlug } from '../../services/waBusinessService';
 import Icon from '../../components/AppIcon';
 import { formatCurrency } from '../../utils/formatCLP';
+import { getBusinessLocale } from '../../lib/locale/businessLocale';
 import { getPublicCatalogUrl } from '../../config/appUrl';
 import { getBrandingMessage } from '../../utils/branding';
 import { isRestaurantBusiness } from '../../utils/businessType';
@@ -45,32 +46,13 @@ export default function OrderConfirmation() {
   const requiresDeliveryAddress = isRestaurant && serviceType === 'delivery';
   const loading = checkoutState === 'loading';
 
-  const businessLocale = useMemo(() => {
-    const byCode = String(business?.countryCode || business?.country_code || '').trim().toUpperCase();
-    if (byCode === 'AR') return 'es-AR';
-    if (byCode === 'CL') return 'es-CL';
-    if (byCode === 'CR') return 'es-CR';
-    if (byCode === 'US') return 'en-US';
-    const byCountry = String(business?.country || '').trim().toUpperCase();
-    if (byCountry === 'ARGENTINA') return 'es-AR';
-    if (byCountry === 'CHILE') return 'es-CL';
-    if (byCountry === 'COSTA RICA') return 'es-CR';
-    return 'en-US';
-  }, [business?.countryCode, business?.country_code, business?.country]);
+  const checkoutMoney = useMemo(() => getBusinessLocale(business), [business]);
 
   const formatPrice = (amount) => {
-    const currency = String(business?.currency || 'USD').trim().toUpperCase();
+    const currency = String(business?.currency || checkoutMoney.currencyCode || 'USD').trim().toUpperCase();
     const numeric = Number(amount);
-    if (!Number.isFinite(numeric)) return formatCurrency(0, currency);
-    try {
-      return new Intl.NumberFormat(businessLocale, {
-        style: 'currency',
-        currency,
-        maximumFractionDigits: currency === 'USD' || currency === 'EUR' ? 2 : 0,
-      }).format(numeric);
-    } catch {
-      return formatCurrency(numeric, currency);
-    }
+    if (!Number.isFinite(numeric)) return formatCurrency(0, currency, checkoutMoney.locale);
+    return formatCurrency(numeric, currency, checkoutMoney.locale);
   };
 
   const validate = () => {

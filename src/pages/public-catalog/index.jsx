@@ -5,6 +5,7 @@ import { getBusinessBySlug, getPublicProducts, getCategoriesByRubroId, recordCat
 import Icon from '../../components/AppIcon';
 import { CartProvider, useCart } from '../../contexts/CartContext';
 import { formatCurrency } from '../../utils/formatCLP';
+import { getBusinessLocale } from '../../lib/locale/businessLocale';
 import { useIsDesktop } from '../../hooks/useMediaQuery';
 import { useAuth } from '../../contexts/AuthContext';
 import { getAppBaseUrl, getPublicCatalogUrl } from '../../config/appUrl';
@@ -238,8 +239,12 @@ function CatalogInner({ slug }) {
     setLoading(false);
   };
 
-  const businessCurrency = business?.currency || 'USD';
-  const formatPrice = (price) => formatCurrency(price, businessCurrency);
+  const catalogMoney = useMemo(() => getBusinessLocale(business), [business]);
+  const businessCurrency = String(business?.currency || catalogMoney.currencyCode || 'USD').trim().toUpperCase();
+  const formatPrice = useCallback(
+    (price) => formatCurrency(price, businessCurrency, catalogMoney.locale),
+    [businessCurrency, catalogMoney.locale],
+  );
 
   // Derivar useCategories y categoryNames desde business y rubroCategories
   const design = business?.designSettings || {};

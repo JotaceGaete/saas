@@ -2,9 +2,9 @@ import React, { useState } from 'react';
 import Image from 'components/AppImage';
 import Icon from 'components/AppIcon';
 import { deleteProduct } from '../../../services/waBusinessService';
-import { formatCLP } from 'utils/formatCLP';
+import { formatCurrency } from 'utils/formatCLP';
 
-function ProductRow({ product, onEdit, onDelete }) {
+function ProductRow({ product, onEdit, onDelete, currency, locale }) {
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
@@ -50,7 +50,7 @@ function ProductRow({ product, onEdit, onDelete }) {
           className="text-sm font-medium"
           style={{ color: 'var(--color-primary)', fontFamily: 'var(--font-data)' }}
         >
-          {formatCLP(product?.price)}
+          {formatCurrency(product?.price, currency, locale)}
         </p>
       </div>
 
@@ -106,7 +106,8 @@ function ProductRow({ product, onEdit, onDelete }) {
   );
 }
 
-export default function ProductListPanel({ products, loading, onAddProduct, onEditProduct, onReload, currency }) {
+export default function ProductListPanel({ products, loading, onAddProduct, onEditProduct, onReload, currency = 'USD', locale = 'en-US' }) {
+  const cur = String(currency || 'USD').trim().toUpperCase();
   const handleDelete = async (id) => {
     if (!window.confirm('¿Eliminar este producto?')) return;
     await deleteProduct(id);
@@ -151,6 +152,8 @@ export default function ProductListPanel({ products, loading, onAddProduct, onEd
             product={product}
             onEdit={onEditProduct}
             onDelete={handleDelete}
+            currency={cur}
+            locale={locale}
           />
         ))
       )}

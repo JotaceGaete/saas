@@ -1,27 +1,19 @@
 import React from 'react';
 import Icon from 'components/AppIcon';
 import Input from 'components/ui/Input';
+import { formatIntegerInputGrouped, parseCLPInput } from '../../../utils/formatCLP';
 
 const MAX_NAME = 80;
 const MAX_DESC = 300;
 
 /** useCategories: si el negocio tiene categorías activadas. categories: array de { id, name } del negocio. */
 /** onImproveWithAi: (text, productName) => Promise<void> — opcional; optimiza título y descripción y el padre actualiza el formulario. */
-function formatPriceInput(value) {
-  if (value === '' || value === null || value === undefined) return '';
-  const n = typeof value === 'number' ? value : Number(String(value).replace(/\D/g, ''));
-  if (Number.isNaN(n)) return '';
-  return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+
+function formatPriceInput(value, locale) {
+  return formatIntegerInputGrouped(value, locale);
 }
 
-function parsePriceInput(str) {
-  if (str === '' || str === null || str === undefined) return '';
-  const digits = String(str).replace(/\D/g, '');
-  if (digits === '') return '';
-  return parseInt(digits, 10);
-}
-
-export default function ProductFormFields({ formData, errors, onChange, currencyCode = 'CLP', useCategories = false, categories = [], onImproveWithAi, isImprovingDescription = false, publicCode = '' }) {
+export default function ProductFormFields({ formData, errors, onChange, currencyCode = 'USD', locale = 'en-US', useCategories = false, categories = [], onImproveWithAi, isImprovingDescription = false, publicCode = '' }) {
   const handleChange = (field, value) => onChange(field, value);
   const categoryOptions = Array.isArray(categories) ? categories.filter((c) => c?.name?.trim()) : [];
 
@@ -70,10 +62,10 @@ export default function ProductFormFields({ formData, errors, onChange, currency
         <Input
           type="text"
           inputMode="numeric"
-          placeholder="Ej: 150.000"
-          value={formatPriceInput(formData?.precio)}
+          placeholder="Ej: precio en entero"
+          value={formatPriceInput(formData?.precio, locale)}
           onChange={(e) => {
-            const raw = parsePriceInput(e?.target?.value);
+            const raw = parseCLPInput(e?.target?.value);
             handleChange('precio', raw === '' ? '' : raw);
           }}
           error={errors?.precio}

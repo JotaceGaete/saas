@@ -479,6 +479,7 @@ export default function ProductEditor() {
                     errors={errors}
                     onChange={handleFieldChange}
                     currencyCode={locale.currencyCode}
+                    locale={locale.locale}
                     useCategories={business?.designSettings?.useCategories === true && !!business?.rubroId}
                     categories={rubroCategories}
                     onImproveWithAi={canUseAi ? handleImproveWithAi : undefined}
@@ -568,6 +569,7 @@ export default function ProductEditor() {
                     nombre={formData?.nombre}
                     precio={formData?.precio}
                     currencyCode={locale.currencyCode}
+                    locale={locale.locale}
                     descripcion={formData?.descripcion}
                     activo={formData?.activo}
                     featured={formData?.featured}

@@ -1,7 +1,7 @@
 import React from 'react';
 import Image from 'components/AppImage';
 import Icon from 'components/AppIcon';
-import { formatCLP } from 'utils/formatCLP';
+import { formatCurrency } from 'utils/formatCLP';
 
 const THEME_STYLES = {
   minimal: {
@@ -48,7 +48,7 @@ const CATALOG_STYLE_PROPS = {
   destacado: { shadow: '0 4px 16px rgba(0,0,0,0.16)', radius: '14px', gap: '10px', imgHeight: '60px' },
 };
 
-function ProductListItem({ product, t, primaryColor, fontFamily, cardSettings, styleProps }) {
+function ProductListItem({ product, t, primaryColor, fontFamily, cardSettings, styleProps, currency, locale }) {
   return (
     <div
       className="flex items-center gap-2.5 p-2.5 border"
@@ -78,7 +78,7 @@ function ProductListItem({ product, t, primaryColor, fontFamily, cardSettings, s
         )}
         {cardSettings?.showPrice && (
           <p className="text-xs font-bold mt-0.5" style={{ color: t?.priceColor || primaryColor, fontFamily }}>
-            {formatCLP(product?.price)}
+            {formatCurrency(product?.price, currency, locale)}
           </p>
         )}
       </div>
@@ -92,7 +92,7 @@ function ProductListItem({ product, t, primaryColor, fontFamily, cardSettings, s
   );
 }
 
-function ProductGridItem({ product, t, primaryColor, fontFamily, cardSettings, styleProps }) {
+function ProductGridItem({ product, t, primaryColor, fontFamily, cardSettings, styleProps, currency, locale }) {
   return (
     <div
       className="overflow-hidden border"
@@ -111,7 +111,7 @@ function ProductGridItem({ product, t, primaryColor, fontFamily, cardSettings, s
         <p className="text-xs font-semibold truncate" style={{ color: t?.headerText, fontFamily }}>{product?.name}</p>
         {cardSettings?.showPrice && (
           <p className="text-xs font-bold" style={{ color: t?.priceColor || primaryColor, fontFamily }}>
-            {formatCLP(product?.price)}
+            {formatCurrency(product?.price, currency, locale)}
           </p>
         )}
         <div
@@ -125,7 +125,7 @@ function ProductGridItem({ product, t, primaryColor, fontFamily, cardSettings, s
   );
 }
 
-function ProductCardItem({ product, t, primaryColor, fontFamily, cardSettings, styleProps }) {
+function ProductCardItem({ product, t, primaryColor, fontFamily, cardSettings, styleProps, currency, locale }) {
   return (
     <div
       className="overflow-hidden border"
@@ -150,7 +150,7 @@ function ProductCardItem({ product, t, primaryColor, fontFamily, cardSettings, s
         <div className="flex items-center justify-between mt-1.5 gap-1">
           {cardSettings?.showPrice && (
             <p className="text-xs font-bold" style={{ color: t?.priceColor || primaryColor, fontFamily }}>
-              {formatCLP(product?.price)}
+              {formatCurrency(product?.price, currency, locale)}
             </p>
           )}
           <div
@@ -165,7 +165,7 @@ function ProductCardItem({ product, t, primaryColor, fontFamily, cardSettings, s
   );
 }
 
-export default function MobilePreviewPanel({ storeName, storeSlug, logoUrl, coverImageUrl, products, currency, design }) {
+export default function MobilePreviewPanel({ storeName, storeSlug, logoUrl, coverImageUrl, products, currency, locale = 'en-US', design }) {
   const visibleProducts = products?.slice(0, 4) || [];
 
   const theme = design?.theme || 'minimal';
@@ -190,7 +190,9 @@ export default function MobilePreviewPanel({ storeName, storeSlug, logoUrl, cove
     ? { background: `linear-gradient(135deg, ${primaryColor} 0%, #4F46E5 100%)` }
     : { backgroundColor: t?.headerBg };
 
-  const productItemProps = { t, primaryColor, fontFamily, cardSettings, styleProps };
+  const cur = String(currency || 'USD').trim().toUpperCase();
+  const loc = locale || 'en-US';
+  const productItemProps = { t, primaryColor, fontFamily, cardSettings, styleProps, currency: cur, locale: loc };
 
   return (
     <div className="flex flex-col items-center w-full">

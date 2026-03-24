@@ -13,6 +13,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../components/ui/Toast';
 import { useConfirmedEmailGuard } from '../../hooks/useConfirmedEmailGuard';
 import { getProducts, updateProduct, deleteProduct, deleteProducts, createProduct } from '../../services/waBusinessService';
+import { getBusinessLocale } from '../../lib/locale/businessLocale';
+import { formatCurrency } from '../../utils/formatCLP';
 
 
 export default function ProductManagement() {
@@ -90,6 +92,16 @@ export default function ProductManagement() {
     active: products?.filter(p => p?.isActive)?.length,
     inactive: products?.filter(p => !p?.isActive)?.length,
   }), [products]);
+
+  const bizLocale = useMemo(() => getBusinessLocale(business), [business]);
+  const formatProductPrice = useCallback(
+    (n) => formatCurrency(
+      n,
+      String(business?.currency || bizLocale.currencyCode || 'USD').trim().toUpperCase(),
+      bizLocale.locale,
+    ),
+    [business?.currency, bizLocale],
+  );
 
   const handleSort = useCallback((field) => {
     setSortField(prev => { if (prev === field) { setSortDir(d => d === "asc" ? "desc" : "asc"); return field; } setSortDir("asc"); return field; });
@@ -217,7 +229,7 @@ export default function ProductManagement() {
                 <ProductFilters searchQuery={searchQuery} onSearchChange={setSearchQuery} statusFilter={statusFilter} onStatusChange={setStatusFilter} categoryFilter={categoryFilter} onCategoryChange={setCategoryFilter} />
               </div>
               {selectedIds?.length > 0 && (<div><BulkActionBar selectedCount={selectedIds?.length} onDelete={handleBulkDelete} onDeselect={() => setSelectedIds([])} /></div>)}
-              <ProductTable products={filteredProducts} selectedIds={selectedIds} onSelectAll={handleSelectAll} onSelectOne={handleSelectOne} onToggleStatus={handleToggleStatus} onEdit={handleEdit} onDuplicate={handleDuplicate} onDeleteRequest={handleDeleteRequest} sortField={sortField} sortDir={sortDir} onSort={handleSort} />
+              <ProductTable products={filteredProducts} selectedIds={selectedIds} onSelectAll={handleSelectAll} onSelectOne={handleSelectOne} onToggleStatus={handleToggleStatus} onEdit={handleEdit} onDuplicate={handleDuplicate} onDeleteRequest={handleDeleteRequest} sortField={sortField} sortDir={sortDir} onSort={handleSort} formatPrice={formatProductPrice} />
             </>
           )}
         </DashboardLayoutContent>

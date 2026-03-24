@@ -1,6 +1,6 @@
 /**
  * Configuración global de países para go.ventalink.app.
- * Usado para: prefijo WhatsApp, moneda, símbolo, formato de precios y método de pago.
+ * Usado para: prefijo WhatsApp, moneda, locale BCP 47 (Intl), símbolo y formato de precios.
  * CL/AR también usan esta config; en cl/ar.ventalink.app el país viene del dominio.
  */
 
@@ -11,6 +11,8 @@ export const COUNTRY_CONFIG = Object.freeze({
     flag: '🇨🇱',
     currency: 'CLP',
     symbol: '$',
+    /** Locale para Intl.NumberFormat (moneda y números). */
+    locale: 'es-CL',
     phonePrefix: '+56',
     /** Longitud del número local (sin prefijo). Chile móvil: 9 dígitos (9xxxxxxxx). */
     phoneLocalLength: 9,
@@ -23,6 +25,7 @@ export const COUNTRY_CONFIG = Object.freeze({
     flag: '🇦🇷',
     currency: 'ARS',
     symbol: '$',
+    locale: 'es-AR',
     phonePrefix: '+54',
     phoneLocalLength: 10,
     phoneLocalPrefix: null,
@@ -33,6 +36,7 @@ export const COUNTRY_CONFIG = Object.freeze({
     flag: '🇧🇴',
     currency: 'BOB',
     symbol: 'Bs',
+    locale: 'es-BO',
     phonePrefix: '+591',
     phoneLocalLength: 8,
     phoneLocalPrefix: null,
@@ -43,6 +47,7 @@ export const COUNTRY_CONFIG = Object.freeze({
     flag: '🇨🇷',
     currency: 'CRC',
     symbol: '₡',
+    locale: 'es-CR',
     phonePrefix: '+506',
     phoneLocalLength: 8,
     phoneLocalPrefix: null,
@@ -53,6 +58,7 @@ export const COUNTRY_CONFIG = Object.freeze({
     flag: '🇪🇨',
     currency: 'USD',
     symbol: 'US$',
+    locale: 'es-EC',
     phonePrefix: '+593',
     phoneLocalLength: 9,
     phoneLocalPrefix: '9',
@@ -63,6 +69,7 @@ export const COUNTRY_CONFIG = Object.freeze({
     flag: '🇬🇹',
     currency: 'GTQ',
     symbol: 'Q',
+    locale: 'es-GT',
     phonePrefix: '+502',
     phoneLocalLength: 8,
     phoneLocalPrefix: null,
@@ -73,6 +80,7 @@ export const COUNTRY_CONFIG = Object.freeze({
     flag: '🇲🇽',
     currency: 'MXN',
     symbol: '$',
+    locale: 'es-MX',
     phonePrefix: '+52',
     phoneLocalLength: 10,
     phoneLocalPrefix: null,
@@ -83,6 +91,7 @@ export const COUNTRY_CONFIG = Object.freeze({
     flag: '🇵🇪',
     currency: 'PEN',
     symbol: 'S/',
+    locale: 'es-PE',
     phonePrefix: '+51',
     phoneLocalLength: 9,
     phoneLocalPrefix: '9',
@@ -103,6 +112,7 @@ export const COUNTRY_CONFIG = Object.freeze({
     flag: '🇵🇾',
     currency: 'PYG',
     symbol: '₲',
+    locale: 'es-PY',
     phonePrefix: '+595',
     phoneLocalLength: 9,
     phoneLocalPrefix: '9',
@@ -113,6 +123,7 @@ export const COUNTRY_CONFIG = Object.freeze({
     flag: '🇺🇾',
     currency: 'UYU',
     symbol: '$U',
+    locale: 'es-UY',
     phonePrefix: '+598',
     phoneLocalLength: 8,
     phoneLocalPrefix: null,
@@ -123,6 +134,7 @@ export const COUNTRY_CONFIG = Object.freeze({
     flag: '🇨🇴',
     currency: 'COP',
     symbol: '$',
+    locale: 'es-CO',
     phonePrefix: '+57',
     phoneLocalLength: 10,
     phoneLocalPrefix: '3',
@@ -133,6 +145,7 @@ export const COUNTRY_CONFIG = Object.freeze({
     flag: '🇪🇸',
     currency: 'EUR',
     symbol: '€',
+    locale: 'es-ES',
     phonePrefix: '+34',
     phoneLocalLength: 9,
     phoneLocalPrefix: null,
@@ -143,6 +156,7 @@ export const COUNTRY_CONFIG = Object.freeze({
     flag: '🇺🇸',
     currency: 'USD',
     symbol: 'US$',
+    locale: 'en-US',
     phonePrefix: '+1',
     phoneLocalLength: 10,
     phoneLocalPrefix: null,
@@ -194,6 +208,7 @@ export const NEUTRAL_COUNTRY_CONFIG = Object.freeze({
   flag: '🌐',
   currency: 'USD',
   symbol: 'US$',
+  locale: 'en-US',
   phonePrefix: '',
   phoneLocalLength: 0,
   phoneLocalPrefix: null,
@@ -208,4 +223,20 @@ export function getCountryConfig(code) {
   if (code === null || code === undefined || String(code).trim() === '') return NEUTRAL_COUNTRY_CONFIG;
   const c = String(code).toUpperCase().trim();
   return COUNTRY_CONFIG[c] ?? NEUTRAL_COUNTRY_CONFIG;
+}
+
+/**
+ * Fuente única país → moneda + locale para formato de precios (catálogo, panel, checkout público).
+ * No depende del hostname; el caller debe pasar el país persistido del negocio cuando exista.
+ * @param {string|null|undefined} countryCode
+ * @returns {{ countryCode: string|null, currency: string, locale: string, symbol: string }}
+ */
+export function getCountryMoneyFormat(countryCode) {
+  const cfg = getCountryConfig(countryCode);
+  return {
+    countryCode: cfg?.code ?? null,
+    currency: cfg?.currency || 'USD',
+    locale: cfg?.locale || 'en-US',
+    symbol: cfg?.symbol || '$',
+  };
 }

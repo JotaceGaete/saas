@@ -184,6 +184,7 @@ export default function DesignPage() {
                 coverImageUrl={design?.headerImageUrl || business?.coverImageUrl}
                 products={products}
                 currency={business?.currency || locale.currencyCode}
+                locale={locale.locale}
                 design={design}
               />
             </div>
