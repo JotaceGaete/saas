@@ -66,6 +66,7 @@ const Routes = () => {
             <Route path="/" element={<GoRootEntry />} />
             <Route path="/elegir-pais" element={<CountrySelectPage />} />
             <Route path="/business-registration" element={<BusinessRegistration />} />
+            <Route path="/register" element={<BusinessRegistration />} />
             <Route path="/landing-page" element={<LandingPage />} />
             <Route path="/business-configuration" element={<RequireAuth><BusinessConfiguration /></RequireAuth>} />
             <Route path="/product-management" element={<RequireAuth><ProductManagement /></RequireAuth>} />

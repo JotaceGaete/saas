@@ -12,12 +12,8 @@ import {
   stringifyJsonLd,
 } from '../../utils/goInternationalSeo';
 
-function isGoHost() {
-  if (typeof window === 'undefined') return false;
-  return /(^|\.)go\.ventalink\.app$/.test((window.location?.hostname || '').toLowerCase());
-}
-
 export default function GoInternationalLanding() {
+  const navigate = useNavigate();
   const origin =
     typeof window !== 'undefined' && window.location?.origin
       ? window.location.origin.replace(/\/$/, '')
@@ -57,11 +53,7 @@ export default function GoInternationalLanding() {
         role="banner"
       >
         <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between gap-4">
-          <Link
-            to="/"
-            className="flex items-center gap-2.5 font-bold text-gray-900 text-sm tracking-tight"
-            aria-label="VentALink inicio"
-          >
+          <Link to="/" className="flex items-center gap-2.5 font-bold text-gray-900 text-sm tracking-tight" aria-label="VentALink inicio">
             <div
               className="w-8 h-8 rounded-lg flex items-center justify-center"
               style={{
@@ -77,8 +69,8 @@ export default function GoInternationalLanding() {
             <Button variant="ghost" size="sm" onClick={() => navigate('/login')}>
               Iniciar sesión
             </Button>
-            <Button size="sm" className="hidden sm:inline-flex" onClick={() => navigate('/business-registration')}>
-              Crear cuenta
+            <Button size="sm" className="hidden sm:inline-flex" onClick={() => navigate('/register')}>
+              Crear cuenta gratis
             </Button>
           </nav>
         </div>
@@ -102,116 +94,55 @@ export default function GoInternationalLanding() {
             <p
               className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold mb-6 border border-teal-200 bg-teal-50 text-teal-900"
             >
-              <Icon name="Globe" size={14} className="text-teal-700" aria-hidden />
-              Uso internacional · Pagos en USD
+              <Icon name="CheckCircle" size={14} className="text-teal-700" aria-hidden />
+              Catálogo online + pedidos por WhatsApp
             </p>
             <h1
               id="intl-hero-heading"
               className="text-3xl sm:text-4xl md:text-5xl font-extrabold text-gray-900 leading-tight mb-6"
               style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.03em' }}
             >
-              Tu catálogo digital, clientes en cualquier lugar
+              Vende por WhatsApp con tu propio catálogo online
             </h1>
             <p className="text-lg text-gray-600 leading-relaxed mb-10 max-w-2xl mx-auto">
-              Publica productos, comparte un enlace y recibe pedidos por WhatsApp sin depender de una
-              tienda en línea compleja. Pensado para equipos y emprendedores que operan de forma
-              internacional o con clientes en varios países.
+              Crea tu catálogo, comparte el link y recibe pedidos ordenados sin complicaciones
             </p>
             <div className="flex flex-col sm:flex-row gap-3 justify-center">
               <Button
                 size="lg"
                 className="w-full sm:w-auto"
-                onClick={() => navigate('/business-registration')}
+                onClick={() => navigate('/register')}
               >
-                Comenzar gratis
+                Crear cuenta gratis
               </Button>
-              {isGoHost() && (
-                <Button
-                  variant="outline"
-                  size="lg"
-                  className="w-full sm:w-auto border-teal-200 text-teal-900 hover:bg-teal-50"
-                  asChild
-                >
-                  <Link to="/elegir-pais">Configurar país y moneda</Link>
-                </Button>
-              )}
+              <Button variant="outline" size="lg" className="w-full sm:w-auto border-teal-200 text-teal-900 hover:bg-teal-50" onClick={() => navigate('/login')}>
+                Iniciar sesión
+              </Button>
             </div>
-          </div>
-        </section>
-
-        <section className="py-16 md:py-20 bg-gray-50 border-y border-gray-100" aria-labelledby="usd-heading">
-          <div className="max-w-5xl mx-auto px-4 grid md:grid-cols-2 gap-12 items-start">
-            <div>
-              <h2 id="usd-heading" className="text-2xl font-bold text-gray-900 mb-4">
-                Precios y facturación en dólares (USD)
-              </h2>
-              <p className="text-gray-600 leading-relaxed mb-4">
-                En el entorno internacional, los planes y pagos recurrentes se gestionan en{' '}
-                <strong>USD</strong>, con un proveedor de pagos adaptado a clientes fuera de un solo
-                país. Así evitas sorpresas al vender a distintas regiones y mantienes una referencia
-                clara para tu presupuesto.
-              </p>
-              <p className="text-gray-600 leading-relaxed">
-                Si más adelante necesitas una moneda o método de pago distinto, puedes ajustar el
-                contexto desde la configuración una vez que definas el país de operación.
-              </p>
-            </div>
-            <ul className="space-y-4 text-gray-700">
-              <li className="flex gap-3">
-                <span className="mt-0.5 text-teal-600 flex-shrink-0" aria-hidden>
-                  <Icon name="CheckCircle" size={20} />
-                </span>
-                <span>
-                  <strong className="text-gray-900">Alcance global:</strong> comparte el mismo
-                  catálogo con contactos en distintos husos horarios; el pedido sigue llegando por
-                  WhatsApp.
-                </span>
-              </li>
-              <li className="flex gap-3">
-                <span className="mt-0.5 text-teal-600 flex-shrink-0" aria-hidden>
-                  <Icon name="CheckCircle" size={20} />
-                </span>
-                <span>
-                  <strong className="text-gray-900">Mensaje unificado:</strong> el flujo es
-                  coherente para quien compra desde el extranjero o en la misma ciudad: un enlace,
-                  una lista de productos, un canal de contacto directo.
-                </span>
-              </li>
-              <li className="flex gap-3">
-                <span className="mt-0.5 text-teal-600 flex-shrink-0" aria-hidden>
-                  <Icon name="CheckCircle" size={20} />
-                </span>
-                <span>
-                  <strong className="text-gray-900">Sin enfoque en un solo país:</strong> esta
-                  página describe el producto de forma neutral; no está limitada a un mercado
-                  concreto.
-                </span>
-              </li>
-            </ul>
           </div>
         </section>
 
         <section className="py-16 md:py-20" aria-labelledby="steps-heading">
-          <div className="max-w-5xl mx-auto px-4">
+          <div className="max-w-4xl mx-auto px-4">
             <h2 id="steps-heading" className="text-2xl font-bold text-gray-900 text-center mb-12">
-              Tres pasos para operar de forma internacional
+              ¿Cómo funciona?
             </h2>
             <ol className="grid md:grid-cols-3 gap-8 list-none p-0 m-0">
               {[
                 {
                   step: '1',
-                  title: 'Registra tu negocio',
-                  body: 'Crea tu cuenta y define los datos básicos. Si vendes en varios mercados, puedes indicar país y preferencias cuando lo necesites.',
+                  title: 'Crear catálogo',
+                  body: 'Sube tus productos con fotos, precios y descripciones en minutos.',
                 },
                 {
                   step: '2',
-                  title: 'Carga el catálogo',
-                  body: 'Sube imágenes, precios y textos. Los visitantes ven una sola página ordenada, lista para compartir en redes o por mensaje.',
+                  title: 'Compartir link',
+                  body: 'Envía tu catálogo por WhatsApp, Instagram o donde prefieras.',
                 },
                 {
                   step: '3',
-                  title: 'Recibe pedidos por WhatsApp',
-                  body: 'El cliente elige productos y envía el pedido al número que configures. Tú respondes con el mismo canal que ya utilizas.',
+                  title: 'Recibir pedidos',
+                  body: 'Recibe pedidos ordenados y responde rápido desde WhatsApp.',
                 },
               ].map((item) => (
                 <li
@@ -236,21 +167,17 @@ export default function GoInternationalLanding() {
           className="py-16 md:py-20 bg-teal-900 text-white"
           aria-labelledby="cta-heading"
         >
-          <div className="max-w-3xl mx-auto px-4 text-center">
-            <h2 id="cta-heading" className="text-2xl md:text-3xl font-bold mb-4">
-              ¿Listo para vender con un catálogo online simple?
+          <div className="max-w-2xl mx-auto px-4 text-center">
+            <h2 id="cta-heading" className="text-2xl md:text-3xl font-bold mb-8">
+              Empieza gratis en menos de 1 minuto
             </h2>
-            <p className="text-teal-100 mb-8 leading-relaxed">
-              Crea tu cuenta, prueba el flujo y comparte tu enlace con clientes en cualquier país.
-              Sin complicaciones técnicas: enfoque en productos, pedidos y conversación por WhatsApp.
-            </p>
             <div className="flex flex-col sm:flex-row gap-3 justify-center">
               <Button
                 size="lg"
                 className="bg-white text-teal-900 hover:bg-teal-50 w-full sm:w-auto"
-                onClick={() => navigate('/business-registration')}
+                onClick={() => navigate('/register')}
               >
-                Crear cuenta
+                Crear cuenta gratis
               </Button>
               <Button
                 size="lg"
@@ -258,7 +185,7 @@ export default function GoInternationalLanding() {
                 className="border-teal-300 text-white hover:bg-teal-800 w-full sm:w-auto"
                 onClick={() => navigate('/login')}
               >
-                Ya tengo cuenta
+                Iniciar sesión
               </Button>
             </div>
           </div>
@@ -267,7 +194,7 @@ export default function GoInternationalLanding() {
 
       <footer className="border-t border-gray-100 py-10 bg-white" role="contentinfo">
         <div className="max-w-5xl mx-auto px-4 flex flex-col sm:flex-row justify-between gap-6 text-sm text-gray-500">
-          <p>© {new Date().getFullYear()} VentALink · Uso internacional</p>
+          <p>© {new Date().getFullYear()} VentALink</p>
           <div className="flex flex-wrap gap-4">
             <Link to="/terms" className="hover:text-gray-800">
               Términos

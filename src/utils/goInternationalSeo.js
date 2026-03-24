@@ -3,10 +3,10 @@
  */
 
 export const GO_INTERNATIONAL_TITLE =
-  'Crear catálogo digital y vender por WhatsApp | Internacional';
+  'Vende por WhatsApp con tu catálogo online | VentALink';
 
 export const GO_INTERNATIONAL_DESCRIPTION =
-  'Crea tu catálogo online y recibe pedidos por WhatsApp desde cualquier país. Plataforma simple para emprendedores.';
+  'Crea tu catálogo, comparte tu link y recibe pedidos ordenados por WhatsApp sin complicaciones.';
 
 /**
  * @param {string} origin - Origen sin barra final (ej. https://go.ventalink.app)
@@ -25,7 +25,7 @@ export function getGoInternationalOgImage(origin) {
 }
 
 /**
- * JSON-LD WebSite para la landing internacional.
+ * JSON-LD WebSite para la landing principal.
  * @param {{ url: string }} p
  */
 export function buildGoInternationalJsonLd(p) {
