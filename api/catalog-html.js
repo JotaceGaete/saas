@@ -111,6 +111,7 @@ export async function GET(request) {
     region: row.region,
     country: row.country,
     currency: row.currency,
+    countryCode: row.country_code,
     host,
   };
 

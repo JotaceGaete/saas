@@ -81,7 +81,7 @@ export function getPaymentProvider({ marketCode }) {
 export function formatMoneyByMarket({ amount, marketCode, currency, locale }) {
   const market = getMarketConfig(marketCode);
   const resolvedCurrency = String(currency || market.currency || 'USD').toUpperCase();
-  const resolvedLocale = locale || market.locale || 'es-CL';
+  const resolvedLocale = locale || market.locale || 'en-US';
   const numeric = Number(amount);
   if (!Number.isFinite(numeric)) return '-';
   return new Intl.NumberFormat(resolvedLocale, {

@@ -18,7 +18,7 @@ export function resolveMarket({
   businessCountryCode,
   userCountryCode,
   hostnameCountryCode,
-  fallbackMarketCode = MARKET_CODES.CL,
+  fallbackMarketCode = MARKET_CODES.INTL,
 }) {
   const business = normalizeCountryCode(businessCountryCode);
   const user = normalizeCountryCode(userCountryCode);

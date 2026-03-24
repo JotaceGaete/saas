@@ -32,10 +32,6 @@ function normalizeCountryCode(value, currencyHint, options = {}) {
   const normalizedAlias = raw.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ');
   if (aliases[normalizedAlias]) return aliases[normalizedAlias];
 
-  const currency = (currencyHint || '').toString().trim().toUpperCase();
-  if (currency === 'ARS') return 'AR';
-  if (currency === 'CLP') return 'CL';
-  if (currency === 'BOB') return 'BO';
   return options.allowNull ? null : 'US';
 }
 

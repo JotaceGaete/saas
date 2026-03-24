@@ -43,11 +43,18 @@ export function CountryProvider({ children }) {
     if (stored && stored !== countryCode) setCountryCodeState(stored);
   }, []);
 
-  // Fuente de verdad: país persistido del negocio (no hostname) cuando hay sesión con negocio.
+  // Fuente de verdad: country_code del negocio (routing) primero; evita país inferido solo por moneda.
   useEffect(() => {
     if (!business?.id) return;
-    const cc = business.routingCountryCode ?? business.countryCode;
-    const n = String(cc || '').trim().toUpperCase();
+    const routing = business.routingCountryCode;
+    const r = String(routing || '').trim().toUpperCase();
+    if (r && COUNTRY_CODES.includes(r)) {
+      setCountryCodeState(r);
+      if (isCountrySelectable()) setStoredCountryCode(r);
+      return;
+    }
+    const fallback = business.countryCode;
+    const n = String(fallback || '').trim().toUpperCase();
     if (n && COUNTRY_CODES.includes(n)) {
       setCountryCodeState(n);
       if (isCountrySelectable()) setStoredCountryCode(n);

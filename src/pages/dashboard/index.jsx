@@ -52,6 +52,8 @@ export default function Dashboard() {
   const locale = getBusinessLocale(business, {
     preferredCountryCode: user?.user_metadata?.country_code ?? null,
   });
+  const displayCurrency = String(business?.currency || locale.currencyCode || 'USD').toUpperCase();
+  const displayLocale = locale.locale || 'en-US';
   const dashboardRefreshAttempted = useRef(false);
   const [copyToast, setCopyToast] = useState(false);
   const [products, setProducts] = useState([]);
@@ -665,11 +667,17 @@ export default function Dashboard() {
                 <div className="stagger-item min-w-0"><OrdersByDayCard data={ordersByDay} loading={analyticsLoading} /></div>
                 <div className="stagger-item min-w-0"><TopProductsCard data={topProducts} loading={analyticsLoading} /></div>
                 <div className="stagger-item min-w-0 grid grid-cols-1 gap-4">
-                  <MonthlyRevenueCard data={monthlyRevenue} loading={analyticsLoading} />
+                  <MonthlyRevenueCard
+                    data={monthlyRevenue}
+                    loading={analyticsLoading}
+                    currency={displayCurrency}
+                    numberLocale={displayLocale}
+                  />
                   <DailyRevenueCard
                     data={monthlyRevenue}
                     loading={analyticsLoading}
-                    currency={business?.currency || locale.currencyCode}
+                    currency={displayCurrency}
+                    numberLocale={displayLocale}
                   />
                 </div>
               </div>
@@ -679,7 +687,8 @@ export default function Dashboard() {
                   loading={analyticsLoading}
                   range={funnelRange}
                   onRangeChange={setFunnelRange}
-                  currency={business?.currency || locale.currencyCode}
+                  currency={displayCurrency}
+                  numberLocale={displayLocale}
                 />
               </div>
             </section>
@@ -688,7 +697,13 @@ export default function Dashboard() {
           {/* ── Feed + Widgets ── */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 lg:gap-5">
             <section aria-label="Actividad reciente" className="lg:col-span-2 min-w-0">
-              <ActivityFeed orders={orders} loading={dataLoading} newOrderIds={newOrderIds} />
+              <ActivityFeed
+                orders={orders}
+                loading={dataLoading}
+                newOrderIds={newOrderIds}
+                defaultCurrency={displayCurrency}
+                numberLocale={displayLocale}
+              />
               {/* Productos recientes (solo en desktop debajo del feed; en móvil después de widgets) */}
               <section aria-label="Productos recientes" className="mt-5 lg:mt-6">
                 <div className="rounded-xl border p-5" style={{ backgroundColor: '#ffffff', borderColor: 'var(--color-border)' }}>

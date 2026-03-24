@@ -3,27 +3,65 @@
  * Usado en cliente (Helmet) y en funciones serverless (meta, JSON-LD).
  */
 
+import { getCountryConfig } from '../config/countryConfig';
+
 /**
- * @typedef {{ key: 'cl'|'ar', countryLabel: string, currencyLabel: string, ogLocale: string }} CatalogRegion
+ * @typedef {{ key: 'cl'|'ar'|'intl', countryLabel: string, currencyLabel: string, ogLocale: string }} CatalogRegion
  */
 
 /**
  * @param {{ host?: string, currency?: string, country?: string }} input
  * @returns {CatalogRegion}
  */
-export function detectCatalogRegion({ host, currency, country }) {
-  const h = (host || '').toLowerCase();
+export function detectCatalogRegion({ host, currency, country, countryCode } = {}) {
+  const hRaw = (host || '').toLowerCase();
+  const h = hRaw.split(':')[0];
   const cur = (currency || '').toUpperCase();
   const co = (country || '').toLowerCase();
+  const code = String(countryCode || '').trim().toUpperCase();
+  const onArHost = /(^|\.)ar\.ventalink\.app$/.test(h);
+  const onClHost = /(^|\.)cl\.ventalink\.app$/.test(h);
+  const onGoHost = /(^|\.)go\.ventalink\.app$/.test(h);
+
   if (
+    code === 'AR' ||
     cur === 'ARS' ||
-    h.includes('ar.') ||
+    onArHost ||
     h.endsWith('.com.ar') ||
     co.includes('argentina')
   ) {
     return { key: 'ar', countryLabel: 'Argentina', currencyLabel: 'ARS', ogLocale: 'es_AR' };
   }
-  return { key: 'cl', countryLabel: 'Chile', currencyLabel: 'CLP', ogLocale: 'es_CL' };
+  if (
+    code === 'CL' ||
+    cur === 'CLP' ||
+    onClHost ||
+    co.includes('chile')
+  ) {
+    return { key: 'cl', countryLabel: 'Chile', currencyLabel: 'CLP', ogLocale: 'es_CL' };
+  }
+  if (code && code !== 'CL' && code !== 'AR') {
+    const cfg = getCountryConfig(code);
+    const label = cfg?.name || code;
+    const ccy = cur || (cfg?.currency && String(cfg.currency)) || 'USD';
+    const loc = (cfg?.locale || 'es').replace('-', '_');
+    return { key: 'intl', countryLabel: label, currencyLabel: ccy, ogLocale: loc };
+  }
+  if (onGoHost) {
+    const ccy = cur || 'USD';
+    return {
+      key: 'intl',
+      countryLabel: (country && String(country).trim()) || 'Internacional',
+      currencyLabel: ccy,
+      ogLocale: 'es',
+    };
+  }
+  return {
+    key: 'intl',
+    countryLabel: (country && String(country).trim()) || 'Internacional',
+    currencyLabel: cur || 'USD',
+    ogLocale: 'es',
+  };
 }
 
 /**
@@ -79,11 +117,18 @@ export function buildLocalBusinessJsonLd(p) {
     host: p.host,
     currency: p.currency,
     country: p.country,
+    countryCode: p.countryCode,
   });
   const locality = getLocationLabel(p.city, p.region, ri);
   const cc =
     (p.countryCode || '').trim().toUpperCase() ||
-    (ri.key === 'ar' ? 'AR' : 'CL');
+    (ri.key === 'ar' ? 'AR' : ri.key === 'cl' ? 'CL' : '');
+
+  const postal = {
+    '@type': 'PostalAddress',
+    addressLocality: locality,
+    ...(cc ? { addressCountry: cc } : {}),
+  };
 
   const schema = {
     '@context': 'https://schema.org',
@@ -92,11 +137,7 @@ export function buildLocalBusinessJsonLd(p) {
     url: p.url,
     image: p.imageUrl || undefined,
     telephone: p.telephone || undefined,
-    address: {
-      '@type': 'PostalAddress',
-      addressLocality: locality,
-      addressCountry: cc,
-    },
+    address: postal,
   };
 
   if (!schema.image) delete schema.image;

@@ -578,6 +578,7 @@ function CatalogInner({ slug }) {
     region: business?.region,
     country: business?.country,
     currency: business?.currency,
+    countryCode: business?.routingCountryCode ?? business?.countryCode,
     host,
   };
   const catalogTitle = getCatalogPageTitle(seoInput);

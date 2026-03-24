@@ -33,12 +33,12 @@ export function resolveBillingContext({ hostnameCountryCode, businessCountryCode
   // Regla de negocio:
   // - Si existe country_code del negocio, es la fuente de verdad.
   // - Hostname solo sugiere país inicial cuando no hay negocio todavía.
-  let countryCode = 'CL';
+  let countryCode = null;
   if (biz) countryCode = biz;
   else if (usr) countryCode = usr;
   else if (host === 'CL' || host === 'AR') countryCode = host;
   else if (host) countryCode = host;
-  else countryCode = 'AR'; // go sin país: neutro (INT/USD), no Chile
+  else countryCode = 'US';
 
   const region = countryCode === 'CL' ? BILLING_REGION_CL : BILLING_REGION_INT;
   const provider = getPaymentProvider(countryCode);

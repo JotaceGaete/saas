@@ -127,7 +127,7 @@ export default {
     try {
       if (supabaseUrl && supabaseKey) {
         const res = await fetch(
-          `${supabaseUrl}/rest/v1/wa_businesses?slug=eq.${encodeURIComponent(slug)}&is_active=eq.true&select=name,description,slug,og_image_url,logo_url,cover_image_url,design_settings,city,region,country,currency`,
+          `${supabaseUrl}/rest/v1/wa_businesses?slug=eq.${encodeURIComponent(slug)}&is_active=eq.true&select=name,description,slug,og_image_url,logo_url,cover_image_url,design_settings,city,region,country,country_code,currency`,
           {
             headers: {
               Accept: 'application/json',
@@ -145,6 +145,7 @@ export default {
             seoInput.region = row?.region;
             seoInput.country = row?.country;
             seoInput.currency = row?.currency;
+            seoInput.countryCode = row?.country_code;
             catalogDescription = getCatalogMetaDescription(seoInput);
             ogImage = getOgImageUrl(row, origin);
           }

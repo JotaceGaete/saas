@@ -59,7 +59,12 @@ export default function PublicPricingPage() {
     return () => { cancelled = true; };
   }, []);
 
-  const countryForBilling = country === 'INTL' ? 'AR' : (country || 'CL');
+  const countryForBilling =
+    country == null || country === 'INTL'
+      ? 'US'
+      : country === 'CL' || country === 'AR'
+        ? country
+        : 'US';
   const region = getBillingRegion(countryForBilling);
   const currency = getCurrency(countryForBilling);
   const isChile = countryForBilling === 'CL';

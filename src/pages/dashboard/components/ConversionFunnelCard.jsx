@@ -19,7 +19,8 @@ export default function ConversionFunnelCard({
   loading,
   range = "7d",
   onRangeChange,
-  currency = "CLP",
+  currency = "USD",
+  numberLocale = "en-US",
 }) {
   if (loading) return <SkeletonCard />;
 
@@ -114,7 +115,7 @@ export default function ConversionFunnelCard({
       <div className="flex items-center gap-2 pt-1 border-t" style={{ borderColor: "var(--color-border)" }}>
         <Icon name="Receipt" size={13} color="var(--color-muted-foreground)" />
         <p className="text-xs" style={{ color: "var(--color-text-secondary)", fontFamily: "var(--font-caption)" }}>
-          Ticket promedio pagado: <strong>{formatCurrency(avgTicket, currency)}</strong>
+          Ticket promedio pagado: <strong>{formatCurrency(avgTicket, currency, numberLocale)}</strong>
         </p>
         <span
           className="text-xs px-2 py-1 rounded-full ml-auto"
@@ -124,7 +125,7 @@ export default function ConversionFunnelCard({
             fontFamily: 'var(--font-caption)',
           }}
         >
-          Ingresos {deltaPaidRevenueUp ? '+' : '-'}{formatCurrency(Math.abs(deltaPaidRevenueAmount), currency)} ({deltaPaidRevenueUp ? '+' : ''}{deltaPaidRevenue.toFixed(1)}%) {deltaLabel}
+          Ingresos {deltaPaidRevenueUp ? '+' : '-'}{formatCurrency(Math.abs(deltaPaidRevenueAmount), currency, numberLocale)} ({deltaPaidRevenueUp ? '+' : ''}{deltaPaidRevenue.toFixed(1)}%) {deltaLabel}
         </span>
       </div>
     </div>

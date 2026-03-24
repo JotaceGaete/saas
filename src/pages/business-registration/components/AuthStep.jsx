@@ -119,7 +119,7 @@ export default function AuthStep({ onRegister, onLogin, onGoogleLogin, isLoading
                   ))}
                 </ul>
                 <p className="text-white/70 text-sm mb-8" style={{ fontFamily: 'var(--font-caption)' }}>
-                  Hecho para emprendedores que venden por WhatsApp en Chile
+                  {countryLabels.heroSubtitle}
                 </p>
               </>
             )}

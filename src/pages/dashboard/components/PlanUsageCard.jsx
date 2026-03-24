@@ -3,8 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import Icon from 'components/AppIcon';
 import { SkeletonCard } from '../../../components/ui/Skeleton';
 import { getPlanLabel, getPlanColors, getUsageStatus, getUpgradePlan } from '../../../constants/plans';
-import { formatCLP } from '../../../utils/formatCLP';
-
 function UsageBar({ label, used, max, warn, exceeded }) {
   const pct = max != null ? Math.min((used / max) * 100, 100) : 0;
   const barColor = exceeded

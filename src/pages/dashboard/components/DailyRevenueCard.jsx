@@ -3,7 +3,7 @@ import Icon from "components/AppIcon";
 import { SkeletonCard } from "../../../components/ui/Skeleton";
 import { formatCurrency } from "../../../utils/formatCLP";
 
-export default function DailyRevenueCard({ data, loading, currency = 'CLP' }) {
+export default function DailyRevenueCard({ data, loading, currency = 'USD', numberLocale = 'en-US' }) {
   if (loading) return <SkeletonCard />;
 
   const total = Number(data?.todayTotal ?? 0);
@@ -27,7 +27,7 @@ export default function DailyRevenueCard({ data, loading, currency = 'CLP' }) {
 
       <div>
         <p className="text-3xl font-extrabold leading-none" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.03em' }}>
-          {formatCurrency(amount, currency)}
+          {formatCurrency(amount, currency, numberLocale)}
         </p>
         <p className="text-xs mt-1.5" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
           Hoy
@@ -48,7 +48,7 @@ export default function DailyRevenueCard({ data, loading, currency = 'CLP' }) {
           }}
         >
           <Icon name={dayDeltaUp ? "TrendingUp" : "TrendingDown"} size={11} color={dayDeltaUp ? '#059669' : '#DC2626'} />
-          {dayDeltaUp ? '+' : '-'}{formatCurrency(Math.abs(dayDeltaAmount), currency)} ({dayDeltaUp ? '+' : ''}{dayDelta.toFixed(1)}%) {dayDeltaLabel}
+          {dayDeltaUp ? '+' : '-'}{formatCurrency(Math.abs(dayDeltaAmount), currency, numberLocale)} ({dayDeltaUp ? '+' : ''}{dayDelta.toFixed(1)}%) {dayDeltaLabel}
         </div>
       </div>
     </div>
