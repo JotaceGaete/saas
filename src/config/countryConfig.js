@@ -182,13 +182,18 @@ export const MANUAL_MARKET = Object.freeze({
 });
 
 /**
+ * Normaliza valores guardados: cl|ar|go (minúsculas) o CL|AR|GLOBAL legacy.
  * @returns {'CL'|'AR'|'GLOBAL'|null}
  */
 export function getManualMarketChoice() {
   if (typeof window === 'undefined') return null;
   try {
-    const v = localStorage.getItem(MANUAL_MARKET_KEY);
-    if (v === 'CL' || v === 'AR' || v === 'GLOBAL') return v;
+    const raw = localStorage.getItem(MANUAL_MARKET_KEY);
+    const s = String(raw || '').trim().toLowerCase();
+    if (!s) return null;
+    if (s === 'cl') return 'CL';
+    if (s === 'ar') return 'AR';
+    if (s === 'go' || s === 'global') return 'GLOBAL';
   } catch {
     /* ignore */
   }
@@ -196,16 +201,23 @@ export function getManualMarketChoice() {
 }
 
 /**
- * Persiste la elección de mercado (landing). GLOBAL limpia país guardado en go para no arrastrar CL.
- * @param {'CL'|'AR'|'GLOBAL'} market
+ * Persiste la elección de mercado (landing).
+ * Valores en localStorage: "cl" | "ar" | "go" (Repositorio / consistencia con specs).
+ * GLOBAL limpia país guardado en go para no arrastrar CL.
+ * @param {'CL'|'AR'|'GLOBAL'|'cl'|'ar'|'go'|'go'} market
  */
 export function setManualMarketChoice(market) {
   if (typeof window === 'undefined') return;
   try {
-    const m = String(market || '').trim().toUpperCase();
-    if (m !== 'CL' && m !== 'AR' && m !== 'GLOBAL') return;
-    if (m === 'GLOBAL') clearStoredCountryCode();
-    localStorage.setItem(MANUAL_MARKET_KEY, m);
+    const u = String(market || '').trim().toUpperCase();
+    let store = null;
+    if (u === 'CL') store = 'cl';
+    else if (u === 'AR') store = 'ar';
+    else if (u === 'GLOBAL' || u === 'GO') {
+      clearStoredCountryCode();
+      store = 'go';
+    }
+    if (store) localStorage.setItem(MANUAL_MARKET_KEY, store);
   } catch (e) {
     console.warn('[countryConfig] setManualMarketChoice failed', e);
   }

@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { createBusinessForUser, getMyBusiness, updateBusiness } from '../services/waBusinessService';
 import { getAppBaseUrl, getAuthRedirectUrl, getResetPasswordRedirectUrl } from '../config/appUrl';
-import { resolveMarketRouting } from '../lib/market/routing';
+import { resolveMarketRouting, shouldSkipAutoMarketRedirect } from '../lib/market/routing';
 
 const AuthContext = createContext({})
 
@@ -375,6 +375,7 @@ export const AuthProvider = ({ children }) => {
       path: '/dashboard',
     })
     if (!decision.redirect || !decision.redirectUrl) return
+    if (shouldSkipAutoMarketRedirect(decision)) return
     const targetHost = new URL(decision.redirectUrl).hostname
     if (targetHost === window.location.hostname) return
     window.location.replace(`${decision.redirectUrl}?market_redirect=1&market=${decision.marketCode}`)

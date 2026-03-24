@@ -1,3 +1,5 @@
+import { getManualMarketChoice } from '../../config/countryConfig';
+
 function normalizeCountryCode(value) {
   const code = String(value || '').trim().toUpperCase();
   return code || null;
@@ -51,6 +53,25 @@ export function detectCurrentMarketByHostname(hostname) {
   if (/(^|\.)ar\.ventalink\.app$/.test(host)) return 'AR';
   if (/(^|\.)go\.ventalink\.app$/.test(host)) return 'GLOBAL';
   return 'GLOBAL';
+}
+
+/**
+ * Bloquea redirecciones automáticas de mercado post-login cuando el usuario eligió mercado en landing.
+ * GLOBAL/go: no forzar paso a cl/ar aunque el negocio sugiera otro dominio.
+ */
+export function shouldSkipAutoMarketRedirect(decision) {
+  if (typeof window === 'undefined' || !decision?.redirect || !decision?.redirectUrl) return false;
+  const manual = getManualMarketChoice();
+  if (!manual) return false;
+
+  const targetMarket = decision.marketCode;
+
+  if (manual === 'GLOBAL') {
+    return targetMarket === 'CL' || targetMarket === 'AR';
+  }
+  if (manual === 'CL' && targetMarket === 'AR') return true;
+  if (manual === 'AR' && targetMarket === 'CL') return true;
+  return false;
 }
 
 /**

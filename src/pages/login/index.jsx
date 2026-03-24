@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { resolveMarketRouting } from '../../lib/market/routing';
+import { resolveMarketRouting, shouldSkipAutoMarketRedirect } from '../../lib/market/routing';
 import LoginLeftPanel from './components/LoginLeftPanel';
 import LoginForm from './components/LoginForm';
 
@@ -35,9 +35,11 @@ export default function Login() {
           path: '/dashboard',
         });
         if (decision.redirect && decision.redirectUrl) {
-          setAuthError(decision.message);
-          window.location.replace(`${decision.redirectUrl}?market_redirect=1&market=${decision.marketCode}`);
-          return;
+          if (!shouldSkipAutoMarketRedirect(decision)) {
+            setAuthError(decision.message);
+            window.location.replace(`${decision.redirectUrl}?market_redirect=1&market=${decision.marketCode}`);
+            return;
+          }
         }
       }
       navigate('/dashboard', { replace: true });
