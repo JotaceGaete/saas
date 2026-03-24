@@ -43,6 +43,7 @@ import { getCatalogShareMessage } from "../../utils/branding";
 import { getCountryLabels } from "../../config/country";
 import { getBusinessLocale } from "../../lib/locale/businessLocale";
 import { getTrialDaysLeft } from "../../constants/trial";
+import { getCurrentSubscription } from "../../lib/billing/subscriptionService";
 
 
 export default function Dashboard() {
@@ -69,6 +70,7 @@ export default function Dashboard() {
   const [weeklyOrdersCount, setWeeklyOrdersCount] = useState(0);
   const [planUsage, setPlanUsage] = useState(null);
   const [planUsageLoading, setPlanUsageLoading] = useState(true);
+  const [currentSubscription, setCurrentSubscription] = useState(null);
   const [sendingTestEmail, setSendingTestEmail] = useState(false);
 
   // Realtime state
@@ -84,11 +86,13 @@ export default function Dashboard() {
 
   const planExpiresAt = business?.planExpiresAt ?? null;
   const trialExpiresAt = business?.trialExpiresAt ?? null;
-  const effectivePlan = getEffectivePlanSlug(business?.planSlug, business?.planExpiresAt, business?.trialExpiresAt);
+  const planSlugFromSubscription = currentSubscription?.planSlug || null;
+  const effectivePlan = getEffectivePlanSlug(planSlugFromSubscription || business?.planSlug, business?.planExpiresAt, business?.trialExpiresAt);
   // Para la UI del dashboard consideramos Starter cuando el slug actual es 'starter'.
   // Solo Pro / Business (incluyendo trials vigentes) ven estadísticas avanzadas.
-  const isStarterPlan = (business?.planSlug || 'starter') === 'starter';
-  const isPaidPlan = business?.planSlug === 'pro' || business?.planSlug === 'business';
+  const activePlanSlug = planSlugFromSubscription || business?.planSlug || 'starter';
+  const isStarterPlan = activePlanSlug === 'starter';
+  const isPaidPlan = activePlanSlug === 'pro' || activePlanSlug === 'business';
   const isPlanExpired = isPaidPlan && planExpiresAt && new Date(planExpiresAt) <= new Date();
   const showExpiredBanner = typeof sessionStorage !== 'undefined' && sessionStorage.getItem('showPlanExpiredBanner') === '1';
 
@@ -223,6 +227,19 @@ export default function Dashboard() {
     if (!business?.id) { setPlanUsageLoading(false); return; }
     loadPlanUsage();
   }, [business?.id, loadPlanUsage]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!business?.id) {
+        if (!cancelled) setCurrentSubscription(null);
+        return;
+      }
+      const data = await getCurrentSubscription(business.id);
+      if (!cancelled) setCurrentSubscription(data);
+    })();
+    return () => { cancelled = true; };
+  }, [business?.id]);
 
   useEffect(() => {
     if (!business?.id) return;
@@ -733,10 +750,10 @@ export default function Dashboard() {
                 <PlanUsageCard data={planUsage} loading={planUsageLoading} />
               </section>
               <section aria-label="Enlace del catálogo">
-                <CatalogLinkWidget catalogUrl={catalogUrl} businessName={business?.name || ''} businessPlanSlug={business?.planSlug} />
+                <CatalogLinkWidget catalogUrl={catalogUrl} businessName={business?.name || ''} businessPlanSlug={activePlanSlug} />
               </section>
               <section aria-label="Acceso rápido">
-                <QuickAccessWidget catalogUrl={catalogUrl} businessName={business?.name || ''} businessPlanSlug={business?.planSlug} />
+                <QuickAccessWidget catalogUrl={catalogUrl} businessName={business?.name || ''} businessPlanSlug={activePlanSlug} />
               </section>
             </div>
           </div>

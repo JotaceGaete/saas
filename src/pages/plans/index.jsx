@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import PanelHeader from 'components/ui/PanelHeader';
 import DashboardAppShell from 'components/ui/DashboardAppShell';
@@ -13,40 +13,24 @@ import { formatCurrency } from '../../utils/formatCLP';
 import { PLAN_SLUGS, getPlanLimits, getPlanLabel, getPlanActionButtonLabel } from '../../constants/plans';
 import { TRIAL_DURATION_DAYS, getTrialDaysLeft } from '../../constants/trial';
 import {
-  resolveBillingContext,
-  getPlanDisplayPrice,
   getPaymentOptions,
   normalizeBillingProvider,
+  PAYMENT_PROVIDERS,
+  getBillingStatusSafe,
+  resolveMarket,
+  getPlanPrice,
+  getPlanConfig,
+  getProviderDisplayLabel,
+  getProviderShortLabel,
+  getPaymentSummaryCopy,
+  getMarketNoticeCopy,
+  getPlanUnavailableCopy,
 } from '../../lib/billing';
 import { getPlansActivationWhatsappUrl } from '../../config/plansActivation';
+import { getCurrentSubscription } from '../../lib/billing/subscriptionService';
 
 const PAYMENT_DEBUG_PREFIX = '[plans-payment-debug]';
 
-function getProviderDisplayLabel(provider, countryCode) {
-  const normalizedProvider = normalizeBillingProvider(provider) || provider;
-  const country = String(countryCode || '').trim().toUpperCase();
-  if (normalizedProvider === 'mercadopago') return 'Pagar con Mercado Pago';
-  if (normalizedProvider === 'dlocal') {
-    if (country === 'CL' || country === 'AR') return 'Pagar con tarjeta o medios locales';
-    return 'Pagar con tarjeta';
-  }
-  if (normalizedProvider === 'paypal') return 'Pagar con PayPal';
-  if (normalizedProvider === 'manual') return 'Solicitar activación';
-  return 'Continuar';
-}
-
-function getProviderShortLabel(provider, countryCode) {
-  const normalizedProvider = normalizeBillingProvider(provider) || provider;
-  const country = String(countryCode || '').trim().toUpperCase();
-  if (normalizedProvider === 'mercadopago') return 'Mercado Pago';
-  if (normalizedProvider === 'dlocal') {
-    return country === 'CL' || country === 'AR'
-      ? 'Tarjeta o medios locales'
-      : 'Tarjeta';
-  }
-  if (normalizedProvider === 'paypal') return 'PayPal';
-  return String(provider || '');
-}
 
 export default function PlansPage() {
   const navigate = useNavigate();
@@ -59,38 +43,54 @@ export default function PlansPage() {
   const [preview, setPreview] = useState(null);
   const [previewPlanSlug, setPreviewPlanSlug] = useState(null);
   const [subscriptionState, setSubscriptionState] = useState(null);
-  const currentPlan = business?.planSlug || 'starter';
+  const [currentSubscription, setCurrentSubscription] = useState(null);
+  const currentPlan = currentSubscription?.planSlug || business?.planSlug || 'starter';
   const hostnameCountryCode = getCountryCode();
   const businessCountryCode = business?.countryCode ?? null;
   const userCountryCode = user?.user_metadata?.country_code ?? user?.user_metadata?.country ?? null;
-  const { countryCode, region, provider: resolvedProvider, currency } = resolveBillingContext({
+  const market = useMemo(() => resolveMarket({
     hostnameCountryCode,
     businessCountryCode,
     userCountryCode,
-  });
-  const paymentOptions = getPaymentOptions({ countryCode: businessCountryCode || countryCode });
-  const paymentProvider = normalizeBillingProvider(paymentOptions?.primary || resolvedProvider) || 'dlocal';
-  const secondaryProviders = Array.isArray(paymentOptions?.secondary) ? paymentOptions.secondary : [];
-  const isUsdProvider = paymentProvider === 'dlocal' || paymentProvider === 'paypal';
-  const checkoutProvider = normalizeBillingProvider(subscriptionState?.billingProvider?.provider || paymentProvider) || paymentProvider;
+  }), [hostnameCountryCode, businessCountryCode, userCountryCode]);
+  const { countryCode, marketCode, currency, defaultProvider } = market;
+  const paymentOptions = useMemo(
+    () => getPaymentOptions({ countryCode: businessCountryCode || countryCode }),
+    [businessCountryCode, countryCode],
+  );
+  const paymentProvider = useMemo(
+    () => normalizeBillingProvider(paymentOptions?.primary || defaultProvider) || PAYMENT_PROVIDERS.DLOCAL,
+    [paymentOptions?.primary, defaultProvider],
+  );
+  const secondaryProviders = useMemo(
+    () => (Array.isArray(paymentOptions?.secondary) ? paymentOptions.secondary : []),
+    [paymentOptions],
+  );
+  const isUsdProvider = paymentProvider === PAYMENT_PROVIDERS.DLOCAL || paymentProvider === PAYMENT_PROVIDERS.PAYPAL;
+  const checkoutProvider = useMemo(
+    () => normalizeBillingProvider(subscriptionState?.billingProvider?.provider || paymentProvider) || paymentProvider,
+    [subscriptionState?.billingProvider?.provider, paymentProvider],
+  );
   const checkoutAvailability = subscriptionState?.billingProvider || null;
-  const alternativeAvailabilityMap = Array.isArray(subscriptionState?.billingProvider?.alternatives)
-    ? Object.fromEntries(subscriptionState.billingProvider.alternatives.map((item) => [item.provider, item]))
-    : {};
-  const getPlanPrice = (slug) => getPlanDisplayPrice(slug, region);
+  const alternativeAvailabilityMap = useMemo(
+    () => (
+      Array.isArray(subscriptionState?.billingProvider?.alternatives)
+        ? Object.fromEntries(subscriptionState.billingProvider.alternatives.map((item) => [item.provider, item]))
+        : {}
+    ),
+    [subscriptionState?.billingProvider?.alternatives, subscriptionState?.billingProvider],
+  );
+  const getDisplayPlanPrice = (slug) => getPlanPrice({ marketCode, planSlug: slug }) ?? 0;
   const scheduledToStarter = (business?.scheduledPlanSlug || null) === 'starter';
   const planExpiryMs = business?.planExpiresAt ? new Date(business.planExpiresAt).getTime() : null;
   const trialExpiryMs = business?.trialExpiresAt ? new Date(business.trialExpiresAt).getTime() : null;
   const hasFuturePlanExpiry = Number.isFinite(planExpiryMs) && planExpiryMs > Date.now();
   const hasFutureTrialExpiry = Number.isFinite(trialExpiryMs) && trialExpiryMs > Date.now();
-  const isProTrialActive = (() => {
+  const isProTrialActive = useMemo(() => {
     if ((business?.planSlug || 'starter') !== 'pro') return false;
-    // Modelo real observado:
-    // 1) trial_expires_at vigente + scheduled starter, o
-    // 2) plan_expires_at vigente + scheduled starter (cuando trial_expires_at viene nulo).
     if (!scheduledToStarter) return false;
     return hasFutureTrialExpiry || hasFuturePlanExpiry;
-  })();
+  }, [business?.planSlug, scheduledToStarter, hasFutureTrialExpiry, hasFuturePlanExpiry]);
   const trialEndDateIso = business?.trialExpiresAt || business?.scheduledChangeAt || business?.planExpiresAt || null;
   const isTrialWithSubscription = subscriptionState?.billing_status === 'trial_with_subscription';
   /** Obtiene access_token válido para Edge Functions que validan JWT internamente. */
@@ -114,12 +114,12 @@ export default function PlansPage() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const planPrices = PLAN_SLUGS.reduce((acc, slug) => ({ ...acc, [slug]: getPlanPrice(slug) }), {});
+    const planPrices = PLAN_SLUGS.reduce((acc, slug) => ({ ...acc, [slug]: getDisplayPlanPrice(slug) }), {});
     console.log('[plans-debug] hostname:', window.location?.hostname);
-    console.log('[plans-debug] billing region:', region, 'currency:', currency, 'provider:', paymentProvider);
+    console.log('[plans-debug] billing market:', marketCode, 'currency:', currency, 'provider:', paymentProvider);
     console.log('[plans-debug] plan prices:', planPrices);
-    console.info(PAYMENT_DEBUG_PREFIX, { event: 'provider_resolution', countryCode, region, provider: paymentProvider });
-  }, [countryCode, region, paymentProvider, currency]);
+    console.info(PAYMENT_DEBUG_PREFIX, { event: 'provider_resolution', countryCode, marketCode, provider: paymentProvider });
+  }, [countryCode, marketCode, paymentProvider, currency]);
 
   useEffect(() => {
     const payment = searchParams.get('payment');
@@ -169,32 +169,36 @@ export default function PlansPage() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      if (!business?.id || authLoading || !isAuthenticated || !user) return;
-      try {
-        const token = await getValidAccessToken();
-        if (!token) return;
-        const query = new URLSearchParams({ businessId: business.id });
-        const res = await fetch(`/api/v1/billing/subscription-state?${query.toString()}`, {
-          method: 'GET',
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data?.ok) {
-          if (!cancelled && data?.error) {
-            const friendly = data?.code === 'AUTH_REQUIRED'
-              ? 'Tu sesión venció. Inicia sesión nuevamente.'
-              : 'No se pudo cargar el estado de facturación en este momento.';
-            setPaymentMessage({ type: 'error', text: friendly });
-          }
-          return;
-        }
-        if (!cancelled) setSubscriptionState(data);
-      } catch {
-        // Fallback silencioso: mantiene estado actual de trial.
+      const result = await getBillingStatusSafe({
+        business,
+        authLoading,
+        isAuthenticated,
+        user,
+        paymentProvider,
+        checkoutProvider: paymentProvider,
+        getAccessToken: getValidAccessToken,
+      });
+      if (cancelled) return;
+      setSubscriptionState(result.state);
+      if (result.isStale === true) {
+        console.warn('[billing-status] using fallback state');
       }
     })();
     return () => { cancelled = true; };
-  }, [business?.id, authLoading, isAuthenticated, user]);
+  }, [business, authLoading, isAuthenticated, user, paymentProvider]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!business?.id) {
+        if (!cancelled) setCurrentSubscription(null);
+        return;
+      }
+      const data = await getCurrentSubscription(business.id);
+      if (!cancelled) setCurrentSubscription(data);
+    })();
+    return () => { cancelled = true; };
+  }, [business?.id]);
 
   const fetchPlanPreview = async (targetPlanSlug) => {
     const token = await getValidAccessToken();
@@ -218,7 +222,7 @@ export default function PlansPage() {
       return;
     }
     console.info(PAYMENT_DEBUG_PREFIX, { event: 'click_plan_button', handler: 'handleOpenIntlPlanPreview', planSlug, resolvedCountryCode: countryCode });
-    if (getPlanPrice(planSlug) <= 0) return;
+    if (getDisplayPlanPrice(planSlug) <= 0) return;
     setLoadingPlanSlug(planSlug);
     setPaymentMessage(null);
     setPreview(null);
@@ -269,7 +273,7 @@ export default function PlansPage() {
       resolvedCountryCode: countryCode,
       resolvedProvider: paymentProvider,
     });
-    if (getPlanPrice(planSlug) <= 0) return;
+    if (getDisplayPlanPrice(planSlug) <= 0) return;
     setLoadingPlanSlug(planSlug);
     setPaymentMessage(null);
     setPreview(null);
@@ -328,7 +332,7 @@ export default function PlansPage() {
       resolvedCountryCode: countryCode,
       resolvedProvider: paymentProvider,
     });
-    if (getPlanPrice(planSlug) <= 0) return;
+    if (getDisplayPlanPrice(planSlug) <= 0) return;
     setLoadingPlanSlug(planSlug);
     setPaymentMessage(null);
     setPreview(null);
@@ -374,7 +378,7 @@ export default function PlansPage() {
       guard.runIfConfirmed(() => {});
       return;
     }
-    if (getPlanPrice(planSlug) <= 0) return;
+    if (getDisplayPlanPrice(planSlug) <= 0) return;
     setLoadingPlanSlug(planSlug);
     setPaymentMessage(null);
     setPreview(null);
@@ -539,7 +543,7 @@ export default function PlansPage() {
         throw new Error(`Proveedor no soportado: ${provider}`);
       }
 
-      const endpoint = normalizedProvider === 'dlocal'
+      const endpoint = normalizedProvider === PAYMENT_PROVIDERS.DLOCAL
         ? '/api/v1/billing/dlocal/checkout'
         : '/api/v1/billing/subscriptions/create';
 
@@ -553,10 +557,10 @@ export default function PlansPage() {
           provider: normalizedProvider,
           businessId: business.id,
           planSlug: previewPlanSlug,
-          returnUrl: normalizedProvider === 'paypal'
+          returnUrl: normalizedProvider === PAYMENT_PROVIDERS.PAYPAL
             ? `${window.location.origin}/billing/paypal/success`
             : `${window.location.origin}/planes?payment=success`,
-          cancelUrl: normalizedProvider === 'paypal'
+          cancelUrl: normalizedProvider === PAYMENT_PROVIDERS.PAYPAL
             ? `${window.location.origin}/billing/paypal/cancel`
             : `${window.location.origin}/planes?payment=failure`,
         }),
@@ -582,10 +586,10 @@ export default function PlansPage() {
   };
 
   const handleConfirmPrimaryPayment = () => {
-    if (checkoutProvider === 'dlocal') return confirmPayWithProvider('dlocal');
-    if (checkoutProvider === 'paypal') return confirmPayWithProvider('paypal');
-    if (checkoutProvider === 'mercadopago') return confirmPayWithMercadoPago();
-    if (checkoutProvider === 'manual') return confirmActivationViaWhatsApp();
+    if (checkoutProvider === PAYMENT_PROVIDERS.DLOCAL) return confirmPayWithProvider(PAYMENT_PROVIDERS.DLOCAL);
+    if (checkoutProvider === PAYMENT_PROVIDERS.PAYPAL) return confirmPayWithProvider(PAYMENT_PROVIDERS.PAYPAL);
+    if (checkoutProvider === PAYMENT_PROVIDERS.MERCADO_PAGO) return confirmPayWithMercadoPago();
+    if (checkoutProvider === PAYMENT_PROVIDERS.MANUAL) return confirmActivationViaWhatsApp();
     setPaymentMessage({
       type: 'error',
       text: `Proveedor no soportado para checkout: ${String(checkoutProvider || 'unknown')}`,
@@ -600,7 +604,7 @@ export default function PlansPage() {
 
   const getSafePreviewTotal = () => {
     if (!preview || !previewPlanSlug) return 0;
-    const providerCatalogAmount = getPlanDisplayPrice(preview.targetPlanSlug, region);
+    const providerCatalogAmount = getDisplayPlanPrice(preview.targetPlanSlug);
     const reported = Number(preview.finalAmount);
     if (!Number.isFinite(reported)) return providerCatalogAmount;
     // Guardrail: evita mostrar montos CLP como USD (ej. 5990 -> USD).
@@ -722,7 +726,7 @@ export default function PlansPage() {
                 {preview.creditAmount > 0 && (
                   <li>Crédito aplicado: <strong>{formatCurrency(preview.creditAmount, currency)}</strong></li>
                 )}
-                <li>Precio del plan: <strong>{formatCurrency(getPlanDisplayPrice(preview.targetPlanSlug, region), currency)}</strong></li>
+                <li>Precio del plan: <strong>{formatCurrency(getDisplayPlanPrice(preview.targetPlanSlug), currency)}</strong></li>
                 {preview.effectiveAt && (
                   <li>Vigente desde: <strong>{new Date(preview.effectiveAt).toLocaleDateString(currency === 'USD' ? 'en-US' : 'es-CL', { dateStyle: 'medium' })}</strong></li>
                 )}
@@ -740,21 +744,21 @@ export default function PlansPage() {
                   onClick={handleConfirmPrimaryPayment}
                   disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !isProviderReadyForCheckout(checkoutProvider)}
                   className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
-                  style={{ backgroundColor: checkoutProvider === 'dlocal' ? '#111827' : checkoutProvider === 'paypal' ? '#0070ba' : checkoutProvider === 'mercadopago' ? '#009EE3' : '#25D366' }}
+                  style={{ backgroundColor: checkoutProvider === PAYMENT_PROVIDERS.DLOCAL ? '#111827' : checkoutProvider === PAYMENT_PROVIDERS.PAYPAL ? '#0070ba' : checkoutProvider === PAYMENT_PROVIDERS.MERCADO_PAGO ? '#009EE3' : '#25D366' }}
                 >
                   {loadingPlanSlug ? (
                     <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  ) : checkoutProvider === 'dlocal' ? (
+                  ) : checkoutProvider === PAYMENT_PROVIDERS.DLOCAL ? (
                     <>
                       <Icon name="CreditCard" size={16} color="#fff" />
-                      {preview.finalAmount === 0 ? 'Confirmar cambio (sin cargo)' : getProviderDisplayLabel('dlocal', businessCountryCode || countryCode)}
+                      {preview.finalAmount === 0 ? 'Confirmar cambio (sin cargo)' : getProviderDisplayLabel({ provider: PAYMENT_PROVIDERS.DLOCAL, marketCode })}
                     </>
-                  ) : checkoutProvider === 'paypal' ? (
+                  ) : checkoutProvider === PAYMENT_PROVIDERS.PAYPAL ? (
                     <>
                       <Icon name="CreditCard" size={16} color="#fff" />
                       {preview.finalAmount === 0 ? 'Confirmar cambio (sin cargo)' : 'Continuar con PayPal'}
                     </>
-                  ) : checkoutProvider === 'manual' ? (
+                  ) : checkoutProvider === PAYMENT_PROVIDERS.MANUAL ? (
                     <>
                       <Icon name="MessageCircle" size={16} color="#fff" />
                       {preview.finalAmount === 0 ? 'Solicitar activación (sin cargo)' : 'Solicitar activación'}
@@ -773,37 +777,37 @@ export default function PlansPage() {
                 >
                   Cancelar
                 </button>
-                {secondaryProviders.includes('paypal') && (
+                {secondaryProviders.includes(PAYMENT_PROVIDERS.PAYPAL) && (
                   <button
                     type="button"
-                    onClick={() => confirmPayWithProvider('paypal')}
-                    disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !isProviderReadyForCheckout('paypal')}
+                    onClick={() => confirmPayWithProvider(PAYMENT_PROVIDERS.PAYPAL)}
+                    disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !isProviderReadyForCheckout(PAYMENT_PROVIDERS.PAYPAL)}
                     className="px-4 py-2.5 rounded-lg text-sm font-medium transition-opacity hover:opacity-90 disabled:opacity-60"
                     style={{ color: '#0070ba', border: '1px solid #0070ba' }}
                   >
                     PayPal
                   </button>
                 )}
-                {secondaryProviders.includes('mercadopago') && (
+                {secondaryProviders.includes(PAYMENT_PROVIDERS.MERCADO_PAGO) && (
                   <button
                     type="button"
                     onClick={confirmPayWithMercadoPago}
-                    disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !isProviderReadyForCheckout('mercadopago')}
+                    disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !isProviderReadyForCheckout(PAYMENT_PROVIDERS.MERCADO_PAGO)}
                     className="px-4 py-2.5 rounded-lg text-sm font-medium transition-opacity hover:opacity-90 disabled:opacity-60"
                     style={{ color: '#009EE3', border: '1px solid #009EE3' }}
                   >
-                    {getProviderShortLabel('mercadopago', businessCountryCode || countryCode)}
+                    {getProviderShortLabel({ provider: PAYMENT_PROVIDERS.MERCADO_PAGO, marketCode })}
                   </button>
                 )}
-                {secondaryProviders.includes('dlocal') && (
+                {secondaryProviders.includes(PAYMENT_PROVIDERS.DLOCAL) && (
                   <button
                     type="button"
-                    onClick={() => confirmPayWithProvider('dlocal')}
-                    disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !isProviderReadyForCheckout('dlocal')}
+                    onClick={() => confirmPayWithProvider(PAYMENT_PROVIDERS.DLOCAL)}
+                    disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !isProviderReadyForCheckout(PAYMENT_PROVIDERS.DLOCAL)}
                     className="px-4 py-2.5 rounded-lg text-sm font-medium transition-opacity hover:opacity-90 disabled:opacity-60"
                     style={{ color: '#111827', border: '1px solid #111827' }}
                   >
-                    {getProviderShortLabel('dlocal', businessCountryCode || countryCode)}
+                    {getProviderShortLabel({ provider: PAYMENT_PROVIDERS.DLOCAL, marketCode })}
                   </button>
                 )}
               </div>
@@ -848,6 +852,8 @@ export default function PlansPage() {
               const actionLabel = isProTrialCard
                 ? 'Mantener Pro al terminar la prueba'
                 : getPlanActionButtonLabel(currentPlan, slug);
+              const marketPlan = getPlanConfig({ marketCode, planSlug: slug });
+              const isPurchasable = marketPlan?.enabled !== false && marketPlan?.purchasable !== false;
               return (
                 <div
                   key={slug}
@@ -870,10 +876,10 @@ export default function PlansPage() {
                   </div>
                   <div className="mb-4">
                     <p className="text-2xl font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>
-                      {getPlanPrice(slug) === 0 ? 'Gratis' : formatCurrency(getPlanPrice(slug), currency)}
+                      {getDisplayPlanPrice(slug) === 0 ? 'Gratis' : formatCurrency(getDisplayPlanPrice(slug), currency)}
                     </p>
                     <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-                      {getPlanPrice(slug) === 0 ? '' : `por mes · ${currency}`}
+                      {getDisplayPlanPrice(slug) === 0 ? '' : `por mes · ${currency}`}
                     </p>
                   </div>
                   <ul className="space-y-2 mb-6 flex-1">
@@ -914,11 +920,11 @@ export default function PlansPage() {
                       <span className="text-sm font-medium" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
                         Tu plan actual
                       </span>
-                    ) : getPlanPrice(slug) > 0 ? (
-                      paymentProvider === 'mercadopago' ? (
+                    ) : getDisplayPlanPrice(slug) > 0 ? (
+                      paymentProvider === PAYMENT_PROVIDERS.MERCADO_PAGO ? (
                         <button
                           type="button"
-                          disabled={!!loadingPlanSlug || authLoading || !isAuthenticated}
+                          disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !isPurchasable}
                           onClick={() => handlePayWithMercadoPago(slug)}
                           className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
                           style={{ backgroundColor: '#009EE3' }}
@@ -932,10 +938,10 @@ export default function PlansPage() {
                             </>
                           )}
                         </button>
-                      ) : paymentProvider === 'dlocal' ? (
+                      ) : paymentProvider === PAYMENT_PROVIDERS.DLOCAL ? (
                         <button
                           type="button"
-                          disabled={!!loadingPlanSlug || authLoading || !isAuthenticated}
+                          disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !isPurchasable}
                           onClick={() => handlePayWithDlocal(slug)}
                           className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
                           style={{ backgroundColor: '#111827' }}
@@ -945,14 +951,14 @@ export default function PlansPage() {
                           ) : (
                             <>
                               <Icon name="CreditCard" size={16} color="#fff" />
-                              {getProviderDisplayLabel('dlocal', businessCountryCode || countryCode)}
+                              {getProviderDisplayLabel({ provider: PAYMENT_PROVIDERS.DLOCAL, marketCode })}
                             </>
                           )}
                         </button>
-                      ) : paymentProvider === 'paypal' ? (
+                      ) : paymentProvider === PAYMENT_PROVIDERS.PAYPAL ? (
                         <button
                           type="button"
-                          disabled={!!loadingPlanSlug || authLoading || !isAuthenticated}
+                          disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !isPurchasable}
                           onClick={() => handlePayWithPaypal(slug)}
                           className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
                           style={{ backgroundColor: '#0070ba' }}
@@ -966,10 +972,10 @@ export default function PlansPage() {
                             </>
                           )}
                         </button>
-                      ) : paymentProvider === 'manual' ? (
+                      ) : paymentProvider === PAYMENT_PROVIDERS.MANUAL ? (
                         <button
                           type="button"
-                          disabled={!!loadingPlanSlug || authLoading || !isAuthenticated}
+                          disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !isPurchasable}
                           onClick={() => handleOpenIntlPlanPreview(slug)}
                           className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
                           style={{ backgroundColor: '#25D366' }}
@@ -985,7 +991,7 @@ export default function PlansPage() {
                         </button>
                       ) : (
                         <span className="text-sm font-medium" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-                          Activación no disponible en tu región
+                          {getPlanUnavailableCopy()}
                         </span>
                       )
                     ) : (
@@ -1001,29 +1007,21 @@ export default function PlansPage() {
 
           <div className="mt-8 rounded-xl border p-5" style={{ backgroundColor: 'var(--color-muted)', borderColor: 'var(--color-border)' }}>
             <p className="text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
-              {paymentProvider === 'mercadopago'
-                ? 'Para este negocio, Mercado Pago es el método principal.'
-                : paymentProvider === 'dlocal'
-                  ? 'Para este negocio, puedes pagar con tarjeta y medios locales disponibles.'
-                : paymentProvider === 'paypal'
-                  ? 'Para este negocio, PayPal está disponible como alternativa.'
-                : paymentProvider === 'manual'
-                  ? 'La activación por contacto directo está disponible para este mercado.'
-                  : 'Consulta disponibilidad de pago en tu país.'}
+              {getPaymentSummaryCopy({ provider: paymentProvider, marketCode })}
             </p>
             {secondaryProviders.length > 0 && (
               <p className="text-xs mt-2" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
                 Otras opciones: {secondaryProviders.map((provider) => {
-                  if (provider === 'mercadopago') return 'Mercado Pago';
-                  if (provider === 'paypal') return 'PayPal';
-                  if (provider === 'dlocal') return getProviderShortLabel('dlocal', businessCountryCode || countryCode);
+                  if (provider === PAYMENT_PROVIDERS.MERCADO_PAGO) return 'Mercado Pago';
+                  if (provider === PAYMENT_PROVIDERS.PAYPAL) return 'PayPal';
+                  if (provider === PAYMENT_PROVIDERS.DLOCAL) return getProviderShortLabel({ provider: PAYMENT_PROVIDERS.DLOCAL, marketCode });
                   return provider;
                 }).join(' · ')}.
               </p>
             )}
-            {(String(businessCountryCode || countryCode || '').toUpperCase() === 'AR') && (
+            {getMarketNoticeCopy({ marketCode }) && (
               <p className="text-xs mt-2" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-                Mercado Pago pronto disponible.
+                {getMarketNoticeCopy({ marketCode })}
               </p>
             )}
             {checkoutAvailability && (!checkoutAvailability.enabled || !checkoutAvailability.supportsCheckout) && (

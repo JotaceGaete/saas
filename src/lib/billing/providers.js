@@ -2,6 +2,14 @@ const SUPPORTED_COUNTRIES = new Set([
   'CL', 'AR', 'BO', 'BR', 'CO', 'CR', 'EC', 'GT', 'MX', 'PA', 'PE', 'PY', 'UY',
 ]);
 
+export const PAYMENT_PROVIDERS = Object.freeze({
+  MERCADO_PAGO: 'mercado_pago',
+  PAYPAL: 'paypal',
+  STRIPE: 'stripe',
+  DLOCAL: 'dlocal',
+  MANUAL: 'manual',
+});
+
 function normalize(value) {
   const v = String(value || '').trim().toUpperCase();
   return v || null;
@@ -10,8 +18,13 @@ function normalize(value) {
 export function normalizeBillingProvider(provider) {
   const raw = String(provider || '').trim().toLowerCase();
   if (!raw) return null;
-  if (raw === 'mercado_pago') return 'mercadopago';
-  if (raw === 'dlocal' || raw === 'mercadopago' || raw === 'paypal') return raw;
+  if (raw === 'mercadopago' || raw === PAYMENT_PROVIDERS.MERCADO_PAGO) {
+    return PAYMENT_PROVIDERS.MERCADO_PAGO;
+  }
+  if (raw === PAYMENT_PROVIDERS.DLOCAL) return PAYMENT_PROVIDERS.DLOCAL;
+  if (raw === PAYMENT_PROVIDERS.PAYPAL) return PAYMENT_PROVIDERS.PAYPAL;
+  if (raw === PAYMENT_PROVIDERS.STRIPE) return PAYMENT_PROVIDERS.STRIPE;
+  if (raw === PAYMENT_PROVIDERS.MANUAL) return PAYMENT_PROVIDERS.MANUAL;
   return null;
 }
 
@@ -31,25 +44,27 @@ export function getPaymentOptions({ countryCode }) {
 
   if (country === 'CL') {
     return Object.freeze({
-      primary: 'mercadopago',
-      secondary: dlocalEnabled ? ['dlocal', 'paypal'] : ['paypal'],
+      primary: PAYMENT_PROVIDERS.MERCADO_PAGO,
+      secondary: dlocalEnabled
+        ? [PAYMENT_PROVIDERS.DLOCAL, PAYMENT_PROVIDERS.PAYPAL]
+        : [PAYMENT_PROVIDERS.PAYPAL],
     });
   }
   if (country === 'AR') {
     return Object.freeze({
-      primary: dlocalEnabled ? 'dlocal' : 'paypal',
-      secondary: dlocalEnabled ? ['mercadopago'] : ['mercadopago'],
+      primary: dlocalEnabled ? PAYMENT_PROVIDERS.DLOCAL : PAYMENT_PROVIDERS.PAYPAL,
+      secondary: [PAYMENT_PROVIDERS.MERCADO_PAGO],
     });
   }
   if (!dlocalEnabled) {
     return Object.freeze({
-      primary: 'paypal',
+      primary: PAYMENT_PROVIDERS.PAYPAL,
       secondary: [],
     });
   }
   return Object.freeze({
-    primary: 'dlocal',
-    secondary: ['paypal'],
+    primary: PAYMENT_PROVIDERS.DLOCAL,
+    secondary: [PAYMENT_PROVIDERS.PAYPAL],
   });
 }
 

@@ -27,6 +27,14 @@
       "destination": "/api/billing-subscription-state"
     },
     {
+      "source": "/api/v1/billing/current-subscription",
+      "destination": "/api/billing-subscription-state"
+    },
+    {
+      "source": "/api/v1/billing/current-subscription/",
+      "destination": "/api/billing-subscription-state"
+    },
+    {
       "source": "/api/v1/billing/webhooks/dlocal",
       "destination": "/api/billing-webhook-dlocal"
     },
