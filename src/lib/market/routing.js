@@ -26,11 +26,18 @@ export function detectCurrentMarketByHostname(hostname) {
   return 'GLOBAL';
 }
 
+/**
+ * Solo CL y AR tienen dominio dedicado. Resto de países (BO, CR, etc.) → GLOBAL (go. u host actual).
+ * `businessCountryCode` debe ser el código persistido en wa_businesses.country_code (sin inferir por moneda).
+ */
 export function resolveMarketRouting({ businessCountryCode, hostname, path = '/dashboard' }) {
   const targetMarketCode = getMarketCodeByCountry(businessCountryCode);
   const currentMarketCode = detectCurrentMarketByHostname(hostname);
   const defaultDomain = getDefaultDomainByMarket(targetMarketCode);
-  const shouldRedirect = targetMarketCode !== 'GLOBAL' && currentMarketCode !== 'GLOBAL' && currentMarketCode !== targetMarketCode;
+  const shouldRedirect =
+    targetMarketCode !== 'GLOBAL' &&
+    currentMarketCode !== 'GLOBAL' &&
+    currentMarketCode !== targetMarketCode;
   const shouldRedirectFromGo = currentMarketCode === 'GLOBAL' && targetMarketCode !== 'GLOBAL';
   const redirect = shouldRedirect || shouldRedirectFromGo;
   return {

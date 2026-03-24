@@ -46,8 +46,8 @@ export default function PlansPage() {
   const [subscriptionState, setSubscriptionState] = useState(null);
   const [currentSubscription, setCurrentSubscription] = useState(null);
   const currentPlan = currentSubscription?.planSlug || business?.planSlug || 'starter';
-  const hostnameCountryCode = getCountryCode();
-  const businessCountryCode = business?.countryCode ?? null;
+  const hostnameCountryCode = getCountryCode(business);
+  const businessCountryCode = business?.routingCountryCode ?? business?.countryCode ?? null;
   const userCountryCode = user?.user_metadata?.country_code ?? user?.user_metadata?.country ?? null;
   const countryState = useMemo(
     () =>

@@ -29,7 +29,7 @@ function normalizeText(value) {
 }
 
 function resolveCountryCodeFromBusiness(business) {
-  const fromCode = normalizeText(business?.countryCode ?? business?.country_code);
+  const fromCode = normalizeText(business?.routingCountryCode ?? business?.countryCode ?? business?.country_code);
   if (fromCode && COUNTRY_CONFIG[fromCode]) return fromCode;
 
   const fromCountryName = COUNTRY_NAME_TO_CODE[normalizeText(business?.country)];
@@ -45,7 +45,7 @@ function resolveCountryCodeFromBusiness(business) {
 export function getBusinessLocale(business, options = {}) {
   const fromBusiness = resolveCountryCodeFromBusiness(business);
   const preferredCountryCode = normalizeText(options?.preferredCountryCode);
-  const hostnameCountryCode = normalizeText(getCountryCode());
+  const hostnameCountryCode = normalizeText(getCountryCode(business));
   const fallbackCountryCode = normalizeText(options?.fallbackCountryCode || 'US');
 
   const countryCode =

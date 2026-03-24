@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { getStoredCountryCode, setStoredCountryCode, COUNTRY_CODES, getCountryConfig } from '../config/countryConfig';
+import { useAuth } from './AuthContext';
 
 const CountryContext = createContext(null);
 
@@ -18,22 +19,40 @@ export function isCountrySelectable() {
   return /(^|\.)go\.ventalink\.app$/.test(host);
 }
 
+function hostnameDefaultCountry() {
+  if (typeof window === 'undefined') return null;
+  const host = (window.location?.hostname || '').toLowerCase();
+  if (/(^|\.)cl\.ventalink\.app$/.test(host)) return 'CL';
+  if (/(^|\.)ar\.ventalink\.app$/.test(host)) return 'AR';
+  return getStoredCountryCode();
+}
+
 export function CountryProvider({ children }) {
+  const { business } = useAuth();
+
   const [countryCode, setCountryCodeState] = useState(() => {
-    if (typeof window === 'undefined') return 'CL';
-    if (!isCountrySelectable()) {
-      const host = (window.location?.hostname || '').toLowerCase();
-      if (/(^|\.)cl\.ventalink\.app$/.test(host)) return 'CL';
-      if (/(^|\.)ar\.ventalink\.app$/.test(host)) return 'AR';
-      return getStoredCountryCode() ?? 'CL';
+    if (typeof window === 'undefined') return null;
+    if (isCountrySelectable()) {
+      return getStoredCountryCode() ?? null;
     }
-    return getStoredCountryCode() ?? null;
+    return hostnameDefaultCountry();
   });
 
   useEffect(() => {
     const stored = getStoredCountryCode();
     if (stored && stored !== countryCode) setCountryCodeState(stored);
   }, []);
+
+  // Fuente de verdad: país persistido del negocio (no hostname) cuando hay sesión con negocio.
+  useEffect(() => {
+    if (!business?.id) return;
+    const cc = business.routingCountryCode ?? business.countryCode;
+    const n = String(cc || '').trim().toUpperCase();
+    if (n && COUNTRY_CODES.includes(n)) {
+      setCountryCodeState(n);
+      if (isCountrySelectable()) setStoredCountryCode(n);
+    }
+  }, [business?.id, business?.routingCountryCode, business?.countryCode]);
 
   const setCountry = useCallback((code) => {
     if (code === null || code === undefined) {

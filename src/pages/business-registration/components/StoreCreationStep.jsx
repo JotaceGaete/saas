@@ -5,6 +5,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { createBusiness } from '../../../services/waBusinessService';
 import WhatsAppField from './WhatsAppField';
 import { getCountryLabels } from '../../../config/country';
+import { getCountryConfig } from '../../../config/countryConfig';
 import { useCountry } from '../../../contexts/CountryContext';
 import { getBusinessLocale } from '../../../lib/locale/businessLocale';
 import { resolveCountryState, resolveBillingSetup, logCountryStateDebug } from '../../../lib/country/state-model';
@@ -78,13 +79,21 @@ export default function StoreCreationStep({ user, businessLoading }) {
     setSaving(true);
     setSaveError(null);
     try {
+      const resolvedCode = selectedOnboardingCountry || countryState.billingCountry;
+      if (!resolvedCode) {
+        setSaveError('Selecciona el país de tu número de WhatsApp.');
+        setSaving(false);
+        return;
+      }
+      const labelsForCreate = getCountryLabels(resolvedCode);
+      const currencyForCreate = getCountryConfig(resolvedCode)?.currency || locale.currencyCode;
       const { data, error } = await createBusiness({
         name:        formData.businessName.trim(),
         whatsapp:    formData.whatsapp.trim(),
         description: formData.description.trim() || null,
-        currency:    locale.currencyCode,
-        country:     labels.countryName,
-        countryCode: countryState.billingCountry,
+        currency:    currencyForCreate,
+        country:     labelsForCreate.countryName,
+        countryCode: resolvedCode,
       });
       if (error) {
         setSaveError(error.message || 'No se pudo crear el negocio. Intenta de nuevo.');

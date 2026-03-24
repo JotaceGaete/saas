@@ -4,25 +4,32 @@
  * go.ventalink.app → país desde selección (localStorage); sin selección → null (nunca Chile por defecto).
  */
 
-import { getStoredCountryCode, getCountryConfig } from './countryConfig';
+import { getStoredCountryCode, getCountryConfig, COUNTRY_CODES } from './countryConfig';
 
 const COUNTRY_AR = 'AR';
 const COUNTRY_CL = 'CL';
 
 /**
  * Detecta el país según el hostname o la selección guardada.
+ * Si se pasa el objeto `business` (negocio cargado), usa primero su país persistido (routingCountryCode / countryCode).
  * cl.ventalink.app → CL. ar.ventalink.app → AR.
  * go.ventalink.app → getStoredCountryCode() o null si no hay selección (neutral, sin asumir Chile).
- * Otros hosts → CL (fallback solo fuera de go).
+ * Otros hosts → mismo criterio que go (localStorage) o null; nunca forzar Chile por defecto.
+ * @param {object|null} [business] - Opcional: negocio con routingCountryCode / countryCode.
  * @returns {string|null} Código ISO o null en go.ventalink.app cuando el usuario no ha elegido país.
  */
-export function getCountryCode() {
-  if (typeof window === 'undefined') return COUNTRY_CL;
+export function getCountryCode(business) {
+  if (business && typeof business === 'object') {
+    const fromBiz = business.routingCountryCode ?? business.countryCode;
+    const n = String(fromBiz || '').trim().toUpperCase();
+    if (n && COUNTRY_CODES.includes(n)) return n;
+  }
+  if (typeof window === 'undefined') return null;
   const host = (window.location?.hostname || '').toLowerCase();
   if (/(^|\.)cl\.ventalink\.app$/.test(host)) return COUNTRY_CL;
   if (/(^|\.)ar\.ventalink\.app$/.test(host)) return COUNTRY_AR;
   if (/(^|\.)go\.ventalink\.app$/.test(host)) return getStoredCountryCode();
-  return COUNTRY_CL;
+  return getStoredCountryCode();
 }
 
 /**

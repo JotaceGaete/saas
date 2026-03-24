@@ -34,12 +34,12 @@ export function resolveCountryState({
     hostnameSuggestion ||
     fallback;
 
-  // Para UX preferimos onboarding explícito/hostname sugerido sin imponer verdad final.
+  // UX: el país persistido del negocio (cuando exista) debe prevalecer sobre hostname/sugerencias.
   const uxCountry =
+    businessCountry ||
     onboardingCountry ||
     hostnameSuggestion ||
     userMetadataCountry ||
-    businessCountry ||
     fallback;
 
   const marketConfig = getMarketConfigByCountry(billingCountry);

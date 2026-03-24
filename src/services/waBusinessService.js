@@ -2,7 +2,7 @@ import { supabase } from '../lib/supabase';
 import { getPlanLimits } from '../constants/plans';
 import { getTrialEndDateFrom } from '../constants/trial';
 import { getDefaultDomainByMarket, getMarketCodeByCountry } from '../lib/market/routing';
-import { getCountryConfig } from '../config/countryConfig';
+import { getCountryConfig, COUNTRY_CODES } from '../config/countryConfig';
 
 // Helpers
 
@@ -35,7 +35,16 @@ function normalizeCountryCode(value, currencyHint, options = {}) {
   const currency = (currencyHint || '').toString().trim().toUpperCase();
   if (currency === 'ARS') return 'AR';
   if (currency === 'CLP') return 'CL';
+  if (currency === 'BOB') return 'BO';
   return options.allowNull ? null : 'US';
+}
+
+/** Solo columna country_code explícita; para routing multi-dominio sin inferir por moneda. */
+function routingCountryCodeFromRow(row) {
+  const raw = row?.country_code;
+  if (raw == null || String(raw).trim() === '') return null;
+  const c = String(raw).trim().toUpperCase();
+  return COUNTRY_CODES.includes(c) ? c : null;
 }
 
 /**
@@ -243,6 +252,8 @@ const mapBusinessFromDb = (row) => {
   region: row?.region,
   country: row?.country,
   countryCode: normalizeCountryCode(row?.country_code ?? row?.country, row?.currency),
+  /** Código ISO persistido en BD; usar para redirección de dominio (no inferir CL desde CLP). */
+  routingCountryCode: routingCountryCodeFromRow(row),
   marketCode: getMarketCodeByCountry(normalizeCountryCode(row?.country_code ?? row?.country, row?.currency)),
   defaultDomain: getDefaultDomainByMarket(getMarketCodeByCountry(normalizeCountryCode(row?.country_code ?? row?.country, row?.currency))),
   currency: row?.currency,

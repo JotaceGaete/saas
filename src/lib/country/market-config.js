@@ -13,6 +13,7 @@ const DEFAULT_COUNTRY = 'US';
 const COUNTRY_MARKET_CONFIG = Object.freeze({
   CL: { marketStatus: MARKET_STATUS.ACTIVE, enabled: true },
   AR: { marketStatus: MARKET_STATUS.ACTIVE, enabled: true },
+  BO: { marketStatus: MARKET_STATUS.BETA, enabled: true },
   PE: { marketStatus: MARKET_STATUS.BETA, enabled: true },
   // Ejemplos listos para habilitación controlada por país:
   // XX: { marketStatus: MARKET_STATUS.COMING_SOON, enabled: false },

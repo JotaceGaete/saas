@@ -30,7 +30,7 @@ export default function Login() {
     if (business) {
       if (typeof window !== 'undefined') {
         const decision = resolveMarketRouting({
-          businessCountryCode: business?.countryCode,
+          businessCountryCode: business?.routingCountryCode ?? null,
           hostname: window.location.hostname,
           path: '/dashboard',
         });

@@ -370,7 +370,7 @@ export const AuthProvider = ({ children }) => {
     if (typeof window === 'undefined') return
     if (!user?.id || !business?.id || businessLoading) return
     const decision = resolveMarketRouting({
-      businessCountryCode: business?.countryCode,
+      businessCountryCode: business?.routingCountryCode ?? null,
       hostname: window.location.hostname,
       path: '/dashboard',
     })
@@ -378,7 +378,7 @@ export const AuthProvider = ({ children }) => {
     const targetHost = new URL(decision.redirectUrl).hostname
     if (targetHost === window.location.hostname) return
     window.location.replace(`${decision.redirectUrl}?market_redirect=1&market=${decision.marketCode}`)
-  }, [user?.id, business?.id, business?.countryCode, businessLoading])
+  }, [user?.id, business?.id, business?.routingCountryCode, businessLoading])
 
   const impersonateBusiness = async (businessObj) => {
     if (!isAdmin || !businessObj) return
