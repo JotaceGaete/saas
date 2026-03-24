@@ -26,9 +26,16 @@ function sanitizePayloadForLogs(payload) {
   };
 }
 
+function maskSecret(value) {
+  const raw = String(value || '');
+  if (!raw) return 'missing';
+  if (raw.length <= 4) return '*'.repeat(raw.length);
+  return `${raw.slice(0, 4)}...${raw.slice(-4)}`;
+}
+
 function buildAuthHeader(apiKey, secretKey) {
-  const token = Buffer.from(`${apiKey}:${secretKey}`, 'utf8').toString('base64');
-  return `Bearer ${token}`;
+  // dLocal Go requiere: Authorization: Bearer <API_KEY>:<SECRET_KEY>
+  return `Bearer ${apiKey}:${secretKey}`;
 }
 
 function buildMinimalPayload({
@@ -127,6 +134,17 @@ export async function runDlocalTestPayment({
   const endpointsToTry = endpointPath
     ? [String(endpointPath).trim()]
     : DEFAULT_ENDPOINT_CANDIDATES;
+
+  console.info('[DLOCAL_TEST_AUTH_DEBUG]', {
+    baseUrl,
+    endpointCandidates: endpointsToTry,
+    apiKeyLength: apiKey.length,
+    secretKeyLength: secretKey.length,
+    apiKeyMasked: maskSecret(apiKey),
+    secretKeyMasked: maskSecret(secretKey),
+    authorizationMasked: `Bearer ${maskSecret(apiKey)}:${maskSecret(secretKey)}`,
+    authFormat: 'Bearer <API_KEY>:<SECRET_KEY>',
+  });
 
   const attempts = [];
   for (const candidate of endpointsToTry) {
