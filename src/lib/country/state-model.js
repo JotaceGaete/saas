@@ -5,7 +5,7 @@ import {
   getAutomaticCheckoutPolicyByStatus,
 } from './market-config';
 
-const DEFAULT_FALLBACK_COUNTRY = 'CL';
+const DEFAULT_FALLBACK_COUNTRY = 'US';
 
 function normalizeCountryCode(value) {
   const code = String(value || '').trim().toUpperCase();

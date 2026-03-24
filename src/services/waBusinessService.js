@@ -2,6 +2,7 @@ import { supabase } from '../lib/supabase';
 import { getPlanLimits } from '../constants/plans';
 import { getTrialEndDateFrom } from '../constants/trial';
 import { getDefaultDomainByMarket, getMarketCodeByCountry } from '../lib/market/routing';
+import { getCountryConfig } from '../config/countryConfig';
 
 // Helpers
 
@@ -34,7 +35,7 @@ function normalizeCountryCode(value, currencyHint, options = {}) {
   const currency = (currencyHint || '').toString().trim().toUpperCase();
   if (currency === 'ARS') return 'AR';
   if (currency === 'CLP') return 'CL';
-  return options.allowNull ? null : 'CL';
+  return options.allowNull ? null : 'US';
 }
 
 /**
@@ -418,6 +419,11 @@ export const createBusiness = async (businessData) => {
     businessData?.currency,
     { allowNull: true },
   );
+  const resolvedCurrency = String(
+    businessData?.currency
+    || getCountryConfig(resolvedCountryCode || 'US')?.currency
+    || 'USD',
+  ).trim().toUpperCase();
   const { data, error } = await supabase?.from('wa_businesses')?.insert({
       user_id: user?.id,
       name: businessData?.name,
@@ -429,7 +435,7 @@ export const createBusiness = async (businessData) => {
       region: businessData?.region || null,
       country: businessData?.country || null,
       country_code: resolvedCountryCode,
-      currency: businessData?.currency || 'CLP',
+      currency: resolvedCurrency,
       logo_url: businessData?.logoUrl || null,
       slug,
       is_active: true,
@@ -459,6 +465,11 @@ export const createBusinessForUser = async (userId, businessData) => {
     businessData?.currency,
     { allowNull: true },
   );
+  const resolvedCurrency = String(
+    businessData?.currency
+    || getCountryConfig(resolvedCountryCode || 'US')?.currency
+    || 'USD',
+  ).trim().toUpperCase();
   const { data, error } = await supabase?.from('wa_businesses')?.insert({
       user_id: userId,
       name: businessData?.name,
@@ -470,7 +481,7 @@ export const createBusinessForUser = async (userId, businessData) => {
       region: businessData?.region || null,
       country: businessData?.country || null,
       country_code: resolvedCountryCode,
-      currency: businessData?.currency || 'CLP',
+      currency: resolvedCurrency,
       logo_url: businessData?.logoUrl || null,
       slug,
       is_active: true,
@@ -907,7 +918,7 @@ export const createOrder = async (businessId, orderData, items) => {
       delivery_address: orderData?.deliveryAddress?.trim() || null,
       total_amount: totalAmount,
       subtotal: orderData?.subtotal != null ? Number(orderData.subtotal) : totalAmount,
-      currency: orderData?.currency || 'CLP',
+      currency: orderData?.currency || 'USD',
       order_status: 'pedido',
       payment_status: 'pendiente',
       notes: orderData?.notes?.trim() || null,

@@ -35,20 +35,20 @@ export function getBusinessLocale(business, options = {}) {
   const fromBusiness = resolveCountryCodeFromBusiness(business);
   const preferredCountryCode = normalizeText(options?.preferredCountryCode);
   const hostnameCountryCode = normalizeText(getCountryCode());
-  const fallbackCountryCode = normalizeText(options?.fallbackCountryCode || 'CL');
+  const fallbackCountryCode = normalizeText(options?.fallbackCountryCode || 'US');
 
   const countryCode =
     fromBusiness ||
     (preferredCountryCode && COUNTRY_CONFIG[preferredCountryCode] ? preferredCountryCode : null) ||
     (hostnameCountryCode && COUNTRY_CONFIG[hostnameCountryCode] ? hostnameCountryCode : null) ||
-    (COUNTRY_CONFIG[fallbackCountryCode] ? fallbackCountryCode : 'CL');
+    (COUNTRY_CONFIG[fallbackCountryCode] ? fallbackCountryCode : 'US');
 
   const config = getCountryConfig(countryCode);
 
   return {
     countryCode,
     countryName: config?.name || countryCode,
-    currencyCode: config?.currency || 'CLP',
+    currencyCode: config?.currency || 'USD',
     phonePrefix: config?.phonePrefix || '',
     config,
   };

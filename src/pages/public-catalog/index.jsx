@@ -238,7 +238,7 @@ function CatalogInner({ slug }) {
     setLoading(false);
   };
 
-  const businessCurrency = business?.currency || 'CLP';
+  const businessCurrency = business?.currency || 'USD';
   const formatPrice = (price) => formatCurrency(price, businessCurrency);
 
   // Derivar useCategories y categoryNames desde business y rubroCategories

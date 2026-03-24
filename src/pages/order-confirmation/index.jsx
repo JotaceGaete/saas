@@ -49,14 +49,17 @@ export default function OrderConfirmation() {
     const byCode = String(business?.countryCode || business?.country_code || '').trim().toUpperCase();
     if (byCode === 'AR') return 'es-AR';
     if (byCode === 'CL') return 'es-CL';
+    if (byCode === 'CR') return 'es-CR';
+    if (byCode === 'US') return 'en-US';
     const byCountry = String(business?.country || '').trim().toUpperCase();
     if (byCountry === 'ARGENTINA') return 'es-AR';
     if (byCountry === 'CHILE') return 'es-CL';
-    return 'es-CL';
+    if (byCountry === 'COSTA RICA') return 'es-CR';
+    return 'en-US';
   }, [business?.countryCode, business?.country_code, business?.country]);
 
   const formatPrice = (amount) => {
-    const currency = String(business?.currency || 'CLP').trim().toUpperCase();
+    const currency = String(business?.currency || 'USD').trim().toUpperCase();
     const numeric = Number(amount);
     if (!Number.isFinite(numeric)) return formatCurrency(0, currency);
     try {

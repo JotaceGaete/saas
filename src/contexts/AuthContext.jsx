@@ -243,7 +243,7 @@ export const AuthProvider = ({ children }) => {
               name: businessData?.name || 'Mi Negocio',
               whatsapp: businessData?.whatsapp || '',
               description: businessData?.description || '',
-              currency: businessData?.currency || 'CLP',
+              currency: businessData?.currency || 'USD',
               country: businessData?.country || null,
               countryCode: businessData?.countryCode || null,
             })

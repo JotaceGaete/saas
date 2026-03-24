@@ -56,7 +56,7 @@ export const BILLING_MARKETS = Object.freeze({
 
 export function getMarketConfig(marketCode) {
   const code = String(marketCode || '').trim().toUpperCase();
-  return BILLING_MARKETS[code] || BILLING_MARKETS[MARKET_CODES.CL];
+  return BILLING_MARKETS[code] || BILLING_MARKETS[MARKET_CODES.INTL];
 }
 
 export function getPlanConfig({ marketCode, planSlug }) {

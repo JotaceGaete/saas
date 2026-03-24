@@ -8,7 +8,7 @@ export const MARKET_STATUS = Object.freeze({
   UNSUPPORTED: 'unsupported',
 });
 
-const DEFAULT_COUNTRY = 'CL';
+const DEFAULT_COUNTRY = 'US';
 
 const COUNTRY_MARKET_CONFIG = Object.freeze({
   CL: { marketStatus: MARKET_STATUS.ACTIVE, enabled: true },
