@@ -4,12 +4,14 @@ import { ToastProvider } from './components/ui/Toast';
 import { AuthProvider } from './contexts/AuthContext';
 import { CountryProvider } from './contexts/CountryContext';
 import EmailConfirmBanner from './components/EmailConfirmBanner';
+import MarketMismatchBanner from './components/MarketMismatchBanner';
 
 function App() {
   return (
     <div className="app-shell min-w-0" style={{ width: '100%', maxWidth: '100%', overflowX: 'hidden', minHeight: '100vh' }}>
       <AuthProvider>
         <CountryProvider>
+          <MarketMismatchBanner />
           <EmailConfirmBanner />
           <ToastProvider>
             <Routes />
