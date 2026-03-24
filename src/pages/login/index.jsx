@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { getMyBusiness } from '../../services/waBusinessService';
 import { resolveMarketRouting } from '../../lib/market/routing';
 import LoginLeftPanel from './components/LoginLeftPanel';
 import LoginForm from './components/LoginForm';
@@ -16,27 +15,36 @@ export default function Login() {
   const [forgotPasswordSuccess, setForgotPasswordSuccess] = useState(false);
   const [forgotPasswordLoading, setForgotPasswordLoading] = useState(false);
 
-  // Redirect if already authenticated (sin correo confirmado → verificación)
+  // Redirección centralizada tras resolver sesión y negocio.
   useEffect(() => {
-    if (!loading && isAuthenticated) {
-      if (!isEmailConfirmed) {
-        navigate('/verify-email', { replace: true });
-      } else {
-        if (typeof window !== 'undefined' && business && !businessLoading) {
-          const decision = resolveMarketRouting({
-            businessCountryCode: business?.countryCode,
-            hostname: window.location.hostname,
-            path: '/dashboard',
-          });
-          if (decision.redirect && decision.redirectUrl) {
-            setAuthError(decision.message);
-            window.location.replace(`${decision.redirectUrl}?market_redirect=1&market=${decision.marketCode}`);
-            return;
-          }
-        }
-        navigate('/dashboard', { replace: true });
-      }
+    if (loading || !isAuthenticated) return;
+
+    if (!isEmailConfirmed) {
+      navigate('/verify-email', { replace: true });
+      return;
     }
+
+    // Evita navegar a dashboard sin resolver primero si existe negocio.
+    if (businessLoading) return;
+
+    if (business) {
+      if (typeof window !== 'undefined') {
+        const decision = resolveMarketRouting({
+          businessCountryCode: business?.countryCode,
+          hostname: window.location.hostname,
+          path: '/dashboard',
+        });
+        if (decision.redirect && decision.redirectUrl) {
+          setAuthError(decision.message);
+          window.location.replace(`${decision.redirectUrl}?market_redirect=1&market=${decision.marketCode}`);
+          return;
+        }
+      }
+      navigate('/dashboard', { replace: true });
+      return;
+    }
+
+    navigate('/business-registration', { replace: true });
   }, [isAuthenticated, isEmailConfirmed, loading, navigate, business, businessLoading]);
 
   const handleLogin = async (formData) => {
@@ -55,18 +63,8 @@ export default function Login() {
         }
         return;
       }
-      const { data: myBusiness } = await getMyBusiness();
-      const decision = resolveMarketRouting({
-        businessCountryCode: myBusiness?.countryCode || null,
-        hostname: typeof window !== 'undefined' ? window.location.hostname : '',
-        path: '/dashboard',
-      });
-      if (decision.redirect && decision.redirectUrl) {
-        setAuthError(decision.message);
-        window.location.replace(`${decision.redirectUrl}?market_redirect=1&market=${decision.marketCode}`);
-        return;
-      }
-      navigate('/dashboard');
+      // No navegamos aquí para evitar decisiones con estado parcial.
+      // El useEffect superior redirige cuando sesión+negocio están resueltos.
     } catch (e) {
       setAuthError('Error inesperado. Por favor intenta de nuevo.');
     } finally {

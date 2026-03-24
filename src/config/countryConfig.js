@@ -27,6 +27,46 @@ export const COUNTRY_CONFIG = Object.freeze({
     phoneLocalLength: 10,
     phoneLocalPrefix: null,
   },
+  BO: {
+    code: 'BO',
+    name: 'Bolivia',
+    flag: '🇧🇴',
+    currency: 'BOB',
+    symbol: 'Bs',
+    phonePrefix: '+591',
+    phoneLocalLength: 8,
+    phoneLocalPrefix: null,
+  },
+  CR: {
+    code: 'CR',
+    name: 'Costa Rica',
+    flag: '🇨🇷',
+    currency: 'CRC',
+    symbol: '₡',
+    phonePrefix: '+506',
+    phoneLocalLength: 8,
+    phoneLocalPrefix: null,
+  },
+  EC: {
+    code: 'EC',
+    name: 'Ecuador',
+    flag: '🇪🇨',
+    currency: 'USD',
+    symbol: 'US$',
+    phonePrefix: '+593',
+    phoneLocalLength: 9,
+    phoneLocalPrefix: '9',
+  },
+  GT: {
+    code: 'GT',
+    name: 'Guatemala',
+    flag: '🇬🇹',
+    currency: 'GTQ',
+    symbol: 'Q',
+    phonePrefix: '+502',
+    phoneLocalLength: 8,
+    phoneLocalPrefix: null,
+  },
   MX: {
     code: 'MX',
     name: 'México',
@@ -46,6 +86,36 @@ export const COUNTRY_CONFIG = Object.freeze({
     phonePrefix: '+51',
     phoneLocalLength: 9,
     phoneLocalPrefix: '9',
+  },
+  PA: {
+    code: 'PA',
+    name: 'Panamá',
+    flag: '🇵🇦',
+    currency: 'USD',
+    symbol: 'US$',
+    phonePrefix: '+507',
+    phoneLocalLength: 8,
+    phoneLocalPrefix: null,
+  },
+  PY: {
+    code: 'PY',
+    name: 'Paraguay',
+    flag: '🇵🇾',
+    currency: 'PYG',
+    symbol: '₲',
+    phonePrefix: '+595',
+    phoneLocalLength: 9,
+    phoneLocalPrefix: '9',
+  },
+  UY: {
+    code: 'UY',
+    name: 'Uruguay',
+    flag: '🇺🇾',
+    currency: 'UYU',
+    symbol: '$U',
+    phonePrefix: '+598',
+    phoneLocalLength: 8,
+    phoneLocalPrefix: null,
   },
   CO: {
     code: 'CO',
@@ -80,7 +150,11 @@ export const COUNTRY_CONFIG = Object.freeze({
 });
 
 /** Códigos de país soportados (orden para selector). */
-export const COUNTRY_CODES = Object.freeze(['CL', 'AR', 'MX', 'PE', 'CO', 'ES', 'US']);
+export const COUNTRY_CODES = Object.freeze([
+  'CL', 'AR',
+  'BO', 'CO', 'CR', 'EC', 'GT', 'PA', 'PE', 'PY', 'UY',
+  'MX', 'ES', 'US',
+]);
 
 const STORAGE_KEY = 'ventalink_country';
 

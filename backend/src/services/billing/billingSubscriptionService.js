@@ -76,10 +76,10 @@ export async function createBillingSubscription({
     });
   }
 
-  if (provider === 'mercadopago') {
+  if (provider === 'mercado_pago') {
     return {
       ok: true,
-      provider: 'mercadopago',
+      provider: 'mercado_pago',
       mode: 'client_side_checkout',
       message: 'MercadoPago se procesa con el flujo existente del frontend.',
     };

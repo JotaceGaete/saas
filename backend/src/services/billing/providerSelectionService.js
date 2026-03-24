@@ -10,15 +10,18 @@ function normalizeCountryCode(countryCode) {
 export function normalizeBillingProvider(provider) {
   const raw = String(provider || '').trim().toLowerCase();
   if (!raw) return null;
-  if (raw === 'mercado_pago') return 'mercadopago';
-  if (raw === 'dlocal' || raw === 'mercadopago' || raw === 'paypal') return raw;
+  if (raw === 'mercadopago') {
+    console.warn('[billing-provider] normalized mercadopago -> mercado_pago');
+    return 'mercado_pago';
+  }
+  if (raw === 'mercado_pago' || raw === 'dlocal' || raw === 'paypal') return raw;
   return null;
 }
 
 /**
  * Reglas por pais (fuente: business.country_code):
- * CL -> mercadopago (sec: dlocal, paypal)
- * AR -> dlocal (sec: mercadopago)
+ * CL -> mercado_pago (sec: dlocal, paypal)
+ * AR -> dlocal (sec: mercado_pago)
  * OTROS -> dlocal (sec: paypal)
  */
 export function getPaymentOptions({ countryCode }) {
@@ -26,10 +29,10 @@ export function getPaymentOptions({ countryCode }) {
   const normalized = country && SUPPORTED_COUNTRIES.has(country) ? country : 'CL';
 
   if (normalized === 'CL') {
-    return Object.freeze({ primary: 'mercadopago', secondary: ['dlocal', 'paypal'] });
+    return Object.freeze({ primary: 'mercado_pago', secondary: ['dlocal', 'paypal'] });
   }
   if (normalized === 'AR') {
-    return Object.freeze({ primary: 'dlocal', secondary: ['mercadopago'] });
+    return Object.freeze({ primary: 'dlocal', secondary: ['mercado_pago'] });
   }
   return Object.freeze({ primary: 'dlocal', secondary: ['paypal'] });
 }

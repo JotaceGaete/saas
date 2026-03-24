@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useCart } from '../../contexts/CartContext';
 import { createOrder, getBusinessBySlug } from '../../services/waBusinessService';
@@ -21,10 +21,14 @@ export default function OrderConfirmation() {
   const [tableReference, setTableReference] = useState('');
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [notes, setNotes] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [checkoutState, setCheckoutState] = useState('idle'); // idle | loading | success | error
   const [errors, setErrors] = useState({});
   const [submitError, setSubmitError] = useState(null);
+  const [submitInfo, setSubmitInfo] = useState(null);
+  const [pendingWhatsappMessage, setPendingWhatsappMessage] = useState('');
+  const [copiedMessage, setCopiedMessage] = useState(false);
   const [business, setBusiness] = useState(null);
+  const submitLockRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -39,6 +43,32 @@ export default function OrderConfirmation() {
   const isRestaurant = isRestaurantBusiness(business);
   const requiresTable = isRestaurant && serviceType === 'mesa';
   const requiresDeliveryAddress = isRestaurant && serviceType === 'delivery';
+  const loading = checkoutState === 'loading';
+
+  const businessLocale = useMemo(() => {
+    const byCode = String(business?.countryCode || business?.country_code || '').trim().toUpperCase();
+    if (byCode === 'AR') return 'es-AR';
+    if (byCode === 'CL') return 'es-CL';
+    const byCountry = String(business?.country || '').trim().toUpperCase();
+    if (byCountry === 'ARGENTINA') return 'es-AR';
+    if (byCountry === 'CHILE') return 'es-CL';
+    return 'es-CL';
+  }, [business?.countryCode, business?.country_code, business?.country]);
+
+  const formatPrice = (amount) => {
+    const currency = String(business?.currency || 'CLP').trim().toUpperCase();
+    const numeric = Number(amount);
+    if (!Number.isFinite(numeric)) return formatCurrency(0, currency);
+    try {
+      return new Intl.NumberFormat(businessLocale, {
+        style: 'currency',
+        currency,
+        maximumFractionDigits: currency === 'USD' || currency === 'EUR' ? 2 : 0,
+      }).format(numeric);
+    } catch {
+      return formatCurrency(numeric, currency);
+    }
+  };
 
   const validate = () => {
     const errs = {};
@@ -48,16 +78,62 @@ export default function OrderConfirmation() {
     return errs;
   };
 
+  const buildWhatsappMessage = ({ biz, phoneForOrder }) => {
+    const lines = items?.map(i => `- ${i?.quantity} ${i?.name}`);
+    const serviceTypeLabel = serviceType === 'delivery'
+      ? 'Delivery'
+      : serviceType === 'pickup'
+        ? 'Retiro en mostrador'
+        : 'Mesa';
+    const baseMessage = [
+      'Hola, quiero hacer un pedido.',
+      '',
+      `Nombre: ${customerName?.trim()}`,
+      phoneForOrder ? `Telefono: ${phoneForOrder}` : null,
+      isRestaurantBusiness(biz) ? `Tipo: ${serviceTypeLabel}` : null,
+      isRestaurantBusiness(biz) && serviceType === 'mesa' ? `Mesa: ${tableReference?.trim()}` : null,
+      isRestaurantBusiness(biz) && serviceType === 'delivery' ? `Direccion: ${deliveryAddress?.trim()}` : null,
+      '',
+      'Pedido:',
+      ...lines,
+      notes?.trim() ? `\nComentario:\n${notes?.trim()}` : '',
+    ]?.filter(Boolean)?.join('\n')?.trim();
+    const catalogUrl = slug ? getPublicCatalogUrl(slug) : '';
+    let message = baseMessage;
+    if (catalogUrl) message += `\n\n${catalogUrl}`;
+    const branding = getBrandingMessage(biz);
+    if (branding) message += `\n\n${branding}`;
+    return message;
+  };
+
+  const handleCopyMessage = async () => {
+    if (!pendingWhatsappMessage) return;
+    try {
+      await navigator.clipboard.writeText(pendingWhatsappMessage);
+      setCopiedMessage(true);
+      setTimeout(() => setCopiedMessage(false), 1800);
+    } catch {
+      setSubmitError('No pudimos copiar el mensaje automaticamente. Copialo manualmente.');
+    }
+  };
+
   const handleConfirm = async () => {
+    if (submitLockRef.current) return;
     const errs = validate();
     if (Object.keys(errs)?.length > 0) { setErrors(errs); return; }
-    setLoading(true);
+    submitLockRef.current = true;
+    setCheckoutState('loading');
     setSubmitError(null);
+    setSubmitInfo(null);
+    setPendingWhatsappMessage('');
+    setCopiedMessage(false);
+    console.info('[checkout] creating order...');
     try {
       const { data: biz, error: bizError } = await getBusinessBySlug(slug);
       if (bizError || !biz) {
+        console.error('[checkout] error loading business', bizError?.message || 'business_not_found');
+        setCheckoutState('error');
         setSubmitError('No se pudo cargar la tienda. Intenta de nuevo.');
-        setLoading(false);
         return;
       }
 
@@ -86,51 +162,40 @@ export default function OrderConfirmation() {
       }, orderItems);
 
       if (orderError) {
+        console.error('[checkout] error creating order', orderError?.message || orderError);
         const isPlanLimit = orderError?.code === 'PLAN_LIMIT_EXCEEDED' || (orderError?.message && orderError.message.includes('PLAN_LIMIT_EXCEEDED'));
+        setCheckoutState('error');
         setSubmitError(isPlanLimit
           ? 'Tu plan Free permite 30 pedidos por mes. Actualiza a Pro para recibir pedidos ilimitados.'
-          : (orderError?.message || 'No se pudo guardar el pedido. Intenta de nuevo.'));
-        setLoading(false);
+          : 'No pudimos guardar tu pedido. Intenta nuevamente.');
         return;
       }
+      console.info('[checkout] order created id=', order?.id || '(unknown)');
 
-      // Solo después de guardar bien: abrir WhatsApp y salir
-      const lines = items?.map(i => `- ${i?.quantity} ${i?.name}`);
-      const serviceTypeLabel = serviceType === 'delivery'
-        ? 'Delivery'
-        : serviceType === 'pickup'
-          ? 'Retiro en mostrador'
-          : 'Mesa';
-      const baseMessage = [
-        `Hola, quiero hacer un pedido.`,
-        ``,
-        `Nombre: ${customerName?.trim()}`,
-        phoneForOrder ? `Teléfono: ${phoneForOrder}` : null,
-        isRestaurantBusiness(biz) ? `Tipo: ${serviceTypeLabel}` : null,
-        isRestaurantBusiness(biz) && serviceType === 'mesa' ? `Mesa: ${tableReference?.trim()}` : null,
-        isRestaurantBusiness(biz) && serviceType === 'delivery' ? `Dirección: ${deliveryAddress?.trim()}` : null,
-        ``,
-        `Pedido:`,
-        ...lines,
-        notes?.trim() ? `\nComentario:\n${notes?.trim()}` : '',
-      ]?.filter(Boolean)?.join('\n')?.trim();
-      const catalogUrl = slug ? getPublicCatalogUrl(slug) : '';
-      let message = baseMessage;
-      if (catalogUrl) message += `\n\n${catalogUrl}`;
-      const branding = getBrandingMessage(biz);
-      if (branding) message += `\n\n${branding}`;
+      const message = buildWhatsappMessage({ biz, phoneForOrder });
 
       const whatsappNumber = biz?.whatsapp?.replace(/[^0-9]/g, '');
       const waUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`;
+      console.info('[checkout] opening whatsapp...');
+      const popup = window.open(waUrl, '_blank', 'noopener,noreferrer');
 
+      if (!popup) {
+        setCheckoutState('error');
+        setSubmitInfo('Pedido guardado, pero no pudimos abrir WhatsApp.');
+        setPendingWhatsappMessage(message);
+        return;
+      }
+
+      setCheckoutState('success');
+      setSubmitInfo('Pedido confirmado. Te abrimos WhatsApp para enviarlo.');
       clearCart();
-      window.open(waUrl, '_blank');
       navigate(`/catalog/${slug}`);
     } catch (e) {
-      console.error(e);
-      setSubmitError(e?.message || 'Ocurrió un error. Intenta de nuevo.');
+      console.error('[checkout] unexpected error', e?.message || e);
+      setCheckoutState('error');
+      setSubmitError('No pudimos guardar tu pedido. Intenta nuevamente.');
     } finally {
-      setLoading(false);
+      submitLockRef.current = false;
     }
   };
 
@@ -182,7 +247,7 @@ export default function OrderConfirmation() {
                 )}
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold truncate" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>{item?.name}</p>
-                  <p className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-data)' }}>{formatCurrency(item?.price, business?.currency)}</p>
+                  <p className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-data)' }}>{formatPrice(item?.price)}</p>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <button onClick={() => updateQuantity(item?.id, item?.quantity - 1)} className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors" style={{ backgroundColor: 'var(--color-muted)', color: 'var(--color-foreground)' }}>
@@ -201,7 +266,7 @@ export default function OrderConfirmation() {
           </div>
           <div className="px-4 py-3 border-t flex items-center justify-between" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface-subtle)' }}>
             <span className="text-sm font-semibold" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}>Total</span>
-            <span className="text-lg font-bold" style={{ fontFamily: 'var(--font-data)', color: 'var(--color-primary)' }}>{formatCurrency(total, business?.currency)}</span>
+            <span className="text-lg font-bold" style={{ fontFamily: 'var(--font-data)', color: 'var(--color-primary)' }}>{formatPrice(total)}</span>
           </div>
         </div>
 
@@ -300,11 +365,30 @@ export default function OrderConfirmation() {
       {/* Fixed Bottom CTA */}
       <div className="fixed bottom-0 left-0 right-0 z-50 p-4" style={{ backgroundColor: 'var(--color-background)', borderTop: '1px solid var(--color-border)' }}>
         <div className="max-w-lg mx-auto">
-          {submitError && (
+          {(submitError || submitInfo) && (
             <div className="mb-3 flex items-center gap-2 px-3 py-2.5 rounded-xl border bg-red-50" style={{ borderColor: 'var(--color-error)' }}>
-              <Icon name="AlertCircle" size={18} style={{ color: 'var(--color-error)', flexShrink: 0 }} />
-              <p className="text-sm font-medium" style={{ color: 'var(--color-error)', fontFamily: 'var(--font-caption)' }}>{submitError}</p>
+              <Icon
+                name={submitError ? 'AlertCircle' : 'Info'}
+                size={18}
+                style={{ color: submitError ? 'var(--color-error)' : 'var(--color-primary)', flexShrink: 0 }}
+              />
+              <p
+                className="text-sm font-medium"
+                style={{ color: submitError ? 'var(--color-error)' : 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
+              >
+                {submitError || submitInfo}
+              </p>
             </div>
+          )}
+          {!!pendingWhatsappMessage && (
+            <button
+              type="button"
+              onClick={handleCopyMessage}
+              className="w-full mb-3 py-2.5 rounded-xl text-sm font-semibold border"
+              style={{ borderColor: 'var(--color-border)', color: 'var(--color-foreground)', backgroundColor: '#fff', fontFamily: 'var(--font-caption)' }}
+            >
+              {copiedMessage ? 'Mensaje copiado' : 'Copiar mensaje'}
+            </button>
           )}
           <button
             onClick={handleConfirm}

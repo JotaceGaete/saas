@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -7,13 +7,24 @@ import WhatsAppField from './WhatsAppField';
 import { getCountryLabels } from '../../../config/country';
 import { useCountry } from '../../../contexts/CountryContext';
 import { getBusinessLocale } from '../../../lib/locale/businessLocale';
+import { resolveCountryState, resolveBillingSetup, logCountryStateDebug } from '../../../lib/country/state-model';
 
 export default function StoreCreationStep({ user, businessLoading }) {
   const navigate = useNavigate();
   const { refreshBusiness } = useAuth();
   const { countryCode } = useCountry();
+  const [selectedOnboardingCountry, setSelectedOnboardingCountry] = useState(
+    countryCode ?? user?.user_metadata?.country_code ?? user?.user_metadata?.country ?? null,
+  );
+  const countryState = resolveCountryState({
+    businessCountryCode: null,
+    onboardingCountryCode: selectedOnboardingCountry,
+    userCountryCode: user?.user_metadata?.country_code ?? user?.user_metadata?.country ?? null,
+    hostnameSuggestionCountryCode: countryCode ?? null,
+  });
+  const billingSetup = resolveBillingSetup(countryState);
   const locale = getBusinessLocale(null, {
-    preferredCountryCode: countryCode ?? user?.user_metadata?.country_code ?? null,
+    preferredCountryCode: countryState.billingCountry,
   });
   const labels = getCountryLabels(locale.countryCode);
 
@@ -26,6 +37,26 @@ export default function StoreCreationStep({ user, businessLoading }) {
   const [errors, setErrors]     = useState({});
   const [saving, setSaving]     = useState(false);
   const [saveError, setSaveError] = useState(null);
+
+  useEffect(() => {
+    setFormData((prev) => ({ ...prev, currency: locale.currencyCode }));
+  }, [locale.currencyCode]);
+
+  useEffect(() => {
+    logCountryStateDebug({
+      uxCountry: countryState.uxCountry,
+      businessCountry: countryState.businessCountry,
+      billingCountry: countryState.billingCountry,
+      provider: billingSetup.billingProvider,
+      currency: billingSetup.currency,
+    });
+  }, [
+    countryState.uxCountry,
+    countryState.businessCountry,
+    countryState.billingCountry,
+    billingSetup.billingProvider,
+    billingSetup.currency,
+  ]);
 
   const update = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -53,7 +84,7 @@ export default function StoreCreationStep({ user, businessLoading }) {
         description: formData.description.trim() || null,
         currency:    locale.currencyCode,
         country:     labels.countryName,
-        countryCode: locale.countryCode,
+        countryCode: countryState.billingCountry,
       });
       if (error) {
         setSaveError(error.message || 'No se pudo crear el negocio. Intenta de nuevo.');
@@ -161,6 +192,8 @@ export default function StoreCreationStep({ user, businessLoading }) {
             value={formData.whatsapp}
             onChange={val => update('whatsapp', val)}
             error={errors.whatsapp}
+            countryCode={countryState.uxCountry}
+            onCountryChange={setSelectedOnboardingCountry}
           />
 
           <div>

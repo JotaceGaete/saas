@@ -5,7 +5,7 @@ import {
   BILLING_STATUSES,
   isTerminalBillingStatus,
 } from './billingStatusMapper.js';
-import { getPaymentOptions } from './providerSelectionService.js';
+import { getPaymentOptions, normalizeBillingProvider } from './providerSelectionService.js';
 import {
   getBillingProviderAvailability,
   getProviderAvailabilityByBusinessCountry,
@@ -66,10 +66,13 @@ export async function getBillingSubscriptionState({ businessId }) {
     getBusinessById(id),
     getBillingSubscriptionByBusinessId(id),
   ]);
+  console.info('[subscription-state] source=billing_subscriptions', {
+    hasSubscription: !!subscription,
+  });
 
   const trialEndsAt = business?.trial_expires_at || null;
   const trialActive = isFutureDate(trialEndsAt);
-  const provider = subscription?.provider || null;
+  const provider = normalizeBillingProvider(subscription?.provider) || null;
   const providerStatus = subscription?.provider_status || null;
   const subscriptionStatus = subscription?.status || null;
   const hasSubscription = !!subscription
@@ -78,7 +81,7 @@ export async function getBillingSubscriptionState({ businessId }) {
 
   const paymentOptions = getPaymentOptions({ countryCode: business?.country_code || null });
   const recommendation = getProviderAvailabilityByBusinessCountry({ businessCountryCode: business?.country_code || null });
-  const selectedProvider = subscription?.provider || recommendation.selectedProvider;
+  const selectedProvider = normalizeBillingProvider(subscription?.provider) || recommendation.selectedProvider;
   const selectedAvailability = getBillingProviderAvailability({ provider: selectedProvider });
   const alternatives = recommendation.alternatives;
 

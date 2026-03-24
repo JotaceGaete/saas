@@ -18,7 +18,11 @@ function normalize(value) {
 export function normalizeBillingProvider(provider) {
   const raw = String(provider || '').trim().toLowerCase();
   if (!raw) return null;
-  if (raw === 'mercadopago' || raw === PAYMENT_PROVIDERS.MERCADO_PAGO) {
+  if (raw === 'mercadopago') {
+    console.warn('[billing-provider] normalized mercadopago -> mercado_pago');
+    return PAYMENT_PROVIDERS.MERCADO_PAGO;
+  }
+  if (raw === PAYMENT_PROVIDERS.MERCADO_PAGO) {
     return PAYMENT_PROVIDERS.MERCADO_PAGO;
   }
   if (raw === PAYMENT_PROVIDERS.DLOCAL) return PAYMENT_PROVIDERS.DLOCAL;

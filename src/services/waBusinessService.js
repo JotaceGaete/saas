@@ -7,7 +7,7 @@ import { getDefaultDomainByMarket, getMarketCodeByCountry } from '../lib/market/
 
 const SUPPORTED_COUNTRY_CODES = new Set(['AR', 'BO', 'BR', 'CL', 'CO', 'CR', 'EC', 'GT', 'MX', 'PA', 'PE', 'PY', 'UY']);
 
-function normalizeCountryCode(value, currencyHint) {
+function normalizeCountryCode(value, currencyHint, options = {}) {
   const raw = (value || '').toString().trim().toUpperCase();
   if (SUPPORTED_COUNTRY_CODES.has(raw)) return raw;
 
@@ -34,8 +34,7 @@ function normalizeCountryCode(value, currencyHint) {
   const currency = (currencyHint || '').toString().trim().toUpperCase();
   if (currency === 'ARS') return 'AR';
   if (currency === 'CLP') return 'CL';
-
-  return 'CL';
+  return options.allowNull ? null : 'CL';
 }
 
 /**
@@ -414,6 +413,11 @@ export const createBusiness = async (businessData) => {
   if (!user) return { data: null, error: { message: 'Usuario no autenticado' } };
   let slug = await generateSlug(businessData?.name);
   const trialEnd = getTrialEndDateFrom().toISOString();
+  const resolvedCountryCode = normalizeCountryCode(
+    businessData?.countryCode ?? businessData?.country,
+    businessData?.currency,
+    { allowNull: true },
+  );
   const { data, error } = await supabase?.from('wa_businesses')?.insert({
       user_id: user?.id,
       name: businessData?.name,
@@ -424,7 +428,7 @@ export const createBusiness = async (businessData) => {
       city: businessData?.city || null,
       region: businessData?.region || null,
       country: businessData?.country || null,
-      country_code: normalizeCountryCode(businessData?.countryCode ?? businessData?.country, businessData?.currency),
+      country_code: resolvedCountryCode,
       currency: businessData?.currency || 'CLP',
       logo_url: businessData?.logoUrl || null,
       slug,
@@ -450,6 +454,11 @@ export const createBusinessForUser = async (userId, businessData) => {
   if (!userId) return { data: null, error: { message: 'Usuario no autenticado' } };
   let slug = await generateSlug(businessData?.name);
   const trialEnd = getTrialEndDateFrom().toISOString();
+  const resolvedCountryCode = normalizeCountryCode(
+    businessData?.countryCode ?? businessData?.country,
+    businessData?.currency,
+    { allowNull: true },
+  );
   const { data, error } = await supabase?.from('wa_businesses')?.insert({
       user_id: userId,
       name: businessData?.name,
@@ -460,7 +469,7 @@ export const createBusinessForUser = async (userId, businessData) => {
       city: businessData?.city || null,
       region: businessData?.region || null,
       country: businessData?.country || null,
-      country_code: normalizeCountryCode(businessData?.countryCode ?? businessData?.country, businessData?.currency),
+      country_code: resolvedCountryCode,
       currency: businessData?.currency || 'CLP',
       logo_url: businessData?.logoUrl || null,
       slug,

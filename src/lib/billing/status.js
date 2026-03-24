@@ -58,6 +58,8 @@ export async function getBillingStatusSafe({
   checkoutProvider,
   getAccessToken,
 }) {
+  // Endpoint oficial UI para estado de suscripción/billing: /api/v1/billing/subscription-state
+  // (current-subscription queda solo para compat temporal).
   // Fallback se usa solo cuando no es posible leer el estado remoto
   // (token ausente/expirado, error HTTP o red). Puede quedar desincronizado
   // respecto a eventos backend (webhooks/cambios de plan), por eso se marca stale.

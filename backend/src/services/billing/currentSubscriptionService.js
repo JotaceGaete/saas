@@ -34,7 +34,6 @@ function toIso(value) {
 function mapSubscriptionRow(row) {
   const planSlug = normalizePlanSlug(
     row?.plans?.slug
-    || row?.plan_slug
     || row?.plan
     || null,
   );
@@ -56,7 +55,7 @@ function mapSubscriptionRow(row) {
   };
 }
 
-async function getSubscriptionFromTables(admin, businessId) {
+async function querySubscriptionsWithJoin(admin, businessId) {
   const { data, error } = await admin
     .from('subscriptions')
     .select(`
@@ -64,7 +63,6 @@ async function getSubscriptionFromTables(admin, businessId) {
       business_id,
       plan_id,
       status,
-      plan_slug,
       current_period_end,
       current_period_ends_at,
       trial_end,
@@ -77,8 +75,7 @@ async function getSubscriptionFromTables(admin, businessId) {
         name,
         plan_prices (
           amount,
-          currency,
-          currency_code
+          currency
         )
       )
     `)
@@ -86,14 +83,108 @@ async function getSubscriptionFromTables(admin, businessId) {
     .order('updated_at', { ascending: false })
     .limit(1)
     .maybeSingle();
-  if (error) {
+  if (error) return { data: null, error };
+  return { data: data || null, error: null };
+}
+
+async function querySubscriptionsNoJoin(admin, businessId) {
+  const { data, error } = await admin
+    .from('subscriptions')
+    .select(`
+      id,
+      business_id,
+      plan_id,
+      status,
+      current_period_end,
+      current_period_ends_at,
+      trial_end,
+      trial_ends_at,
+      updated_at,
+      created_at
+    `)
+    .eq('business_id', businessId)
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) return { data: null, error };
+  return { data: data || null, error: null };
+}
+
+async function queryWaSubscriptions(admin, businessId) {
+  const { data, error } = await admin
+    .from('wa_subscriptions')
+    .select(`
+      id,
+      business_id,
+      status,
+      plan_slug,
+      currency,
+      amount,
+      current_period_end,
+      trial_ends_at,
+      updated_at,
+      created_at
+    `)
+    .eq('business_id', businessId)
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) return { data: null, error };
+  return { data: data || null, error: null };
+}
+
+async function getSubscriptionFromTables(admin, businessId) {
+  // 1) Nuevo esquema esperado: subscriptions + join plans/plan_prices
+  const joined = await querySubscriptionsWithJoin(admin, businessId);
+  if (joined.data) {
+    console.info('[subscription-state] source=subscriptions');
+    return mapSubscriptionRow(joined.data);
+  }
+  if (joined.error) {
+    console.warn('[billing-current-subscription] subscriptions+join query failed', {
+      businessId,
+      message: joined.error.message,
+    });
+  }
+
+  // 2) Fallback del nuevo esquema: subscriptions sin join
+  const plain = await querySubscriptionsNoJoin(admin, businessId);
+  if (plain.data) {
+    console.info('[subscription-state] source=subscriptions');
+    return mapSubscriptionRow(plain.data);
+  }
+  if (plain.error) {
     console.warn('[billing-current-subscription] subscriptions query failed', {
       businessId,
-      message: error.message,
+      message: plain.error.message,
     });
-    return null;
   }
-  return data ? mapSubscriptionRow(data) : null;
+
+  // 3) Compatibilidad con esquema legacy: wa_subscriptions
+  const legacy = await queryWaSubscriptions(admin, businessId);
+  if (legacy.data) {
+    console.warn('[subscription-state] fallback=wa_subscriptions');
+    return {
+      source: 'wa_subscriptions',
+      id: legacy.data.id || null,
+      businessId: legacy.data.business_id || null,
+      status: String(legacy.data.status || '').trim().toLowerCase() || null,
+      planSlug: normalizePlanSlug(legacy.data.plan_slug) || null,
+      planName: null,
+      planId: null,
+      currentPeriodEnd: toIso(legacy.data.current_period_end || null),
+      trialEnd: toIso(legacy.data.trial_ends_at || null),
+      amount: Number.isFinite(Number(legacy.data.amount)) ? Number(legacy.data.amount) : null,
+      currency: String(legacy.data.currency || '').trim().toUpperCase() || null,
+    };
+  }
+  if (legacy.error) {
+    console.warn('[billing-current-subscription] wa_subscriptions query failed', {
+      businessId,
+      message: legacy.error.message,
+    });
+  }
+  return null;
 }
 
 async function getFallbackFromBusiness(admin, businessId) {
@@ -130,5 +221,6 @@ export async function getCurrentSubscriptionState({ businessId }) {
   const sub = await getSubscriptionFromTables(admin, id);
   if (sub) return { ok: true, subscription: sub };
   const fallback = await getFallbackFromBusiness(admin, id);
+  console.warn('[subscription-state] fallback=wa_businesses');
   return { ok: true, subscription: fallback };
 }

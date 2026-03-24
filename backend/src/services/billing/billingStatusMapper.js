@@ -38,12 +38,16 @@ export function mapDlocalStatus(providerStatus) {
 }
 
 export function mapProviderStatus(provider, providerStatus) {
-  const normalizedProvider = String(provider || '').trim().toLowerCase();
+  const rawProvider = String(provider || '').trim().toLowerCase();
+  const normalizedProvider = rawProvider === 'mercadopago' ? 'mercado_pago' : rawProvider;
+  if (rawProvider === 'mercadopago') {
+    console.warn('[billing-provider] normalized mercadopago -> mercado_pago');
+  }
   if (normalizedProvider === 'paypal') return mapPaypalStatus(providerStatus);
   if (normalizedProvider === 'dlocal') {
     return mapDlocalStatus(providerStatus);
   }
-  if (normalizedProvider === 'mercadopago') {
+  if (normalizedProvider === 'mercado_pago') {
     // El estado detallado de MP sigue en su flujo actual; usamos base neutral.
     return BILLING_STATUSES.PENDING_PAYMENT;
   }

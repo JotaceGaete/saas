@@ -1323,12 +1323,17 @@ function OrderPanel({ business, slug, formatPrice, onClose, theme }) {
   const [tableReference, setTableReference] = useState('');
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [notes, setNotes] = useState('');
-  const [sending, setSending] = useState(false);
+  const [checkoutState, setCheckoutState] = useState('idle'); // idle | loading | success | error
   const [sendError, setSendError] = useState(null);
+  const [submitInfo, setSubmitInfo] = useState(null);
+  const [pendingWhatsappMessage, setPendingWhatsappMessage] = useState('');
+  const [copiedMessage, setCopiedMessage] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
+  const submitLockRef = useRef(false);
   const isRestaurant = isRestaurantBusiness(business);
   const requiresTable = isRestaurant && serviceType === 'mesa';
   const requiresDeliveryAddress = isRestaurant && serviceType === 'delivery';
+  const sending = checkoutState === 'loading';
 
   useEffect(() => {
     document.body.style.overflow = 'hidden';
@@ -1339,8 +1344,31 @@ function OrderPanel({ business, slug, formatPrice, onClose, theme }) {
     if (e?.target === e?.currentTarget) onClose();
   };
 
+  const handleCopyMessage = async () => {
+    if (!pendingWhatsappMessage) return;
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(pendingWhatsappMessage);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = pendingWhatsappMessage;
+        textarea.setAttribute('readonly', '');
+        textarea.style.position = 'absolute';
+        textarea.style.left = '-9999px';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+      setCopiedMessage(true);
+      window.setTimeout(() => setCopiedMessage(false), 2000);
+    } catch {
+      setCopiedMessage(false);
+    }
+  };
+
   const sendWhatsApp = async () => {
-    if (sending) return;
+    if (submitLockRef.current) return;
     const nextErrors = {};
     if (!customerName?.trim()) nextErrors.customerName = 'Por favor ingresa tu nombre.';
     if (requiresTable && !tableReference?.trim()) nextErrors.tableReference = 'Por favor ingresa tu mesa.';
@@ -1348,10 +1376,15 @@ function OrderPanel({ business, slug, formatPrice, onClose, theme }) {
     setFieldErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
 
+    submitLockRef.current = true;
     setSendError(null);
-    setSending(true);
+    setSubmitInfo(null);
+    setPendingWhatsappMessage('');
+    setCopiedMessage(false);
+    setCheckoutState('loading');
 
     try {
+      console.info('[catalog-order] creating order...');
       // 1. Guardar pedido en Supabase antes de abrir WhatsApp
       const orderItems = items?.map(item => ({
         productId: item?.id,
@@ -1364,7 +1397,7 @@ function OrderPanel({ business, slug, formatPrice, onClose, theme }) {
 
       const phoneForOrder = normalizeOptionalCustomerPhone(customerPhoneDigits);
 
-      const { error: orderError } = await createOrder(business?.id, {
+      const { data: order, error: orderError } = await createOrder(business?.id, {
         customerName: customerName?.trim(),
         customerPhone: phoneForOrder,
         serviceType: isRestaurant ? serviceType : null,
@@ -1379,13 +1412,15 @@ function OrderPanel({ business, slug, formatPrice, onClose, theme }) {
       }, orderItems);
 
       if (orderError) {
+        console.error('[catalog-order] error creating order', orderError?.message || orderError);
         const isPlanLimit = orderError?.code === 'PLAN_LIMIT_EXCEEDED' || (orderError?.message && orderError.message.includes('PLAN_LIMIT_EXCEEDED'));
         setSendError(isPlanLimit
           ? 'Tu plan Free permite 30 pedidos por mes. Actualiza a Pro para recibir pedidos ilimitados.'
-          : (orderError?.message || 'No se pudo registrar el pedido. Intenta de nuevo.'));
-        setSending(false);
+          : 'No pudimos guardar tu pedido. Intenta nuevamente.');
+        setCheckoutState('error');
         return;
       }
+      console.info('[catalog-order] order created id=', order?.id || '(unknown)');
 
       // 2. Pedido guardado correctamente → abrir WhatsApp
       const phone = business?.whatsapp?.replace(/\D/g, '');
@@ -1414,16 +1449,27 @@ function OrderPanel({ business, slug, formatPrice, onClose, theme }) {
         const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
         const path = typeof window !== 'undefined' ? window.location?.pathname || `/catalogo/${slug}` : `/catalogo/${slug}`;
         recordCatalogWhatsAppClick(slug, path, 'cart_checkout').catch(() => {});
-        window.open(url, '_blank');
+        console.info('[catalog-order] opening whatsapp...');
+        const popup = window.open(url, '_blank', 'noopener,noreferrer');
+        if (!popup) {
+          setCheckoutState('error');
+          setSubmitInfo('Pedido guardado, pero no pudimos abrir WhatsApp.');
+          setPendingWhatsappMessage(message);
+          return;
+        }
       }
 
       // 3. Limpiar carrito y cerrar
+      setCheckoutState('success');
+      setSubmitInfo('Pedido confirmado. Te abrimos WhatsApp para enviarlo.');
       clearCart();
       onClose();
     } catch (e) {
-      setSendError('Ocurrió un error inesperado. Intenta de nuevo.');
+      console.error('[catalog-order] error creating order', e?.message || e);
+      setCheckoutState('error');
+      setSendError('No pudimos guardar tu pedido. Intenta nuevamente.');
     } finally {
-      setSending(false);
+      submitLockRef.current = false;
     }
   };
 
@@ -1638,10 +1684,23 @@ function OrderPanel({ business, slug, formatPrice, onClose, theme }) {
 
         {/* Footer CTA */}
         <div className="px-5 pb-6 pt-3 flex-shrink-0 border-t border-gray-100 space-y-2">
-          {sendError && (
-            <div className="px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-600 text-center">
-              {sendError}
+          {(sendError || submitInfo) && (
+            <div
+              className={`px-4 py-3 rounded-xl border text-sm text-center ${
+                sendError ? 'bg-red-50 border-red-200 text-red-600' : 'bg-blue-50 border-blue-200 text-blue-700'
+              }`}
+            >
+              {sendError || submitInfo}
             </div>
+          )}
+          {!!pendingWhatsappMessage && (
+            <button
+              type="button"
+              onClick={handleCopyMessage}
+              className="w-full py-2.5 rounded-xl text-sm font-semibold border border-gray-200 text-gray-700 bg-white hover:bg-gray-50 transition-colors"
+            >
+              {copiedMessage ? 'Mensaje copiado' : 'Copiar mensaje'}
+            </button>
           )}
           <button
             onClick={sendWhatsApp}

@@ -76,6 +76,8 @@ export async function getBillingSubscriptionStateController(request) {
 }
 
 export async function getCurrentSubscriptionController(request) {
+  // Compat legacy: UI nueva debe consumir getBillingSubscriptionStateController
+  // vía /api/v1/billing/subscription-state.
   try {
     const authUser = await requireAuthenticatedUser(request);
     const url = new URL(request.url);

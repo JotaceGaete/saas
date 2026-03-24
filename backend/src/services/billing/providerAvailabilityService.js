@@ -70,7 +70,7 @@ function getDlocalAvailability() {
 
 function getMercadopagoAvailability() {
   return {
-    provider: 'mercadopago',
+    provider: 'mercado_pago',
     enabled: true,
     supportsCheckout: true,
     supportsSubscriptions: true,
@@ -96,7 +96,7 @@ function getPaypalAvailability() {
 export function getBillingProviderAvailability({ provider }) {
   const normalized = normalizeBillingProvider(provider);
   if (normalized === 'dlocal') return getDlocalAvailability();
-  if (normalized === 'mercadopago') return getMercadopagoAvailability();
+  if (normalized === 'mercado_pago') return getMercadopagoAvailability();
   if (normalized === 'paypal') return getPaypalAvailability();
   return {
     provider: normalized || String(provider || 'unknown'),

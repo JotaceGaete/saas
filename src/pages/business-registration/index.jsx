@@ -3,6 +3,7 @@ import { useNavigate, Navigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCountry } from '../../contexts/CountryContext';
 import { getBusinessLocale } from '../../lib/locale/businessLocale';
+import { resolveCountryState, resolveBillingSetup, logCountryStateDebug } from '../../lib/country/state-model';
 import AuthStep from './components/AuthStep';
 import ConfirmEmailStep from './components/ConfirmEmailStep';
 import StoreCreationStep from './components/StoreCreationStep';
@@ -17,11 +18,34 @@ export default function BusinessRegistration() {
   const navigate = useNavigate();
   const { user, business, loading, businessLoading, signUp, signIn, signInWithGoogle, resendConfirmationEmail, isEmailConfirmed } = useAuth();
   const { countryCode } = useCountry();
-  const locale = getBusinessLocale(null, { preferredCountryCode: countryCode });
+  const countryState = resolveCountryState({
+    businessCountryCode: null,
+    onboardingCountryCode: null,
+    userCountryCode: user?.user_metadata?.country_code ?? user?.user_metadata?.country ?? null,
+    hostnameSuggestionCountryCode: countryCode,
+  });
+  const billingSetup = resolveBillingSetup(countryState);
+  const locale = getBusinessLocale(null, { preferredCountryCode: countryState.billingCountry });
 
   const [authError, setAuthError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pendingConfirmation, setPendingConfirmation] = useState(null); // { email } cuando signUp OK pero sin sesión
+
+  useEffect(() => {
+    logCountryStateDebug({
+      uxCountry: countryState.uxCountry,
+      businessCountry: countryState.businessCountry,
+      billingCountry: countryState.billingCountry,
+      provider: billingSetup.billingProvider,
+      currency: billingSetup.currency,
+    });
+  }, [
+    countryState.uxCountry,
+    countryState.businessCountry,
+    countryState.billingCountry,
+    billingSetup.billingProvider,
+    billingSetup.currency,
+  ]);
 
   // Si ya tiene negocio → dashboard
   useEffect(() => {
@@ -57,8 +81,9 @@ export default function BusinessRegistration() {
           name: businessName || 'Mi Negocio',
           whatsapp: whatsapp || '',
           currency: locale.currencyCode,
-          country: locale.countryName,
-          countryCode: locale.countryCode,
+          // Registro inicial: no persistimos país definitivo aquí.
+          country: null,
+          countryCode: null,
         });
         if (error) {
           setAuthError(error.message);
