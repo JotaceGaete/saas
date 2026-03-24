@@ -44,7 +44,7 @@ function buildMinimalPayload({
   country = 'PE',
   orderId,
   email,
-  paymentMethodFlow = 'DIRECT',
+  paymentMethodFlow = 'REDIRECT',
 }) {
   const order = String(orderId || `ventalink-test-${Date.now()}`).trim();
   return {
