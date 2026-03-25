@@ -1490,9 +1490,14 @@ export async function recordCatalogVisit(slug, path) {
   if (shouldThrottleVisit(slug)) return { recorded: false, throttled: true, error: null };
 
   const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
+  const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
   if (!supabaseUrl) {
     console.warn('[record-catalog-visit] Missing VITE_SUPABASE_URL');
     return { recorded: false, error: { message: 'Missing Supabase URL' } };
+  }
+  if (!anonKey) {
+    console.warn('[record-catalog-visit] Missing VITE_SUPABASE_ANON_KEY');
+    return { recorded: false, error: { message: 'Missing Supabase API key' } };
   }
 
   const visitorId = getOrCreateVisitorId();
@@ -1502,7 +1507,7 @@ export async function recordCatalogVisit(slug, path) {
   try {
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', apikey: anonKey },
       keepalive: true,
       body: JSON.stringify(body),
     });
@@ -1535,9 +1540,14 @@ export async function recordCatalogWhatsAppClick(slug, path, source = 'unknown')
   if (!slug?.trim()) return { recorded: false, error: null };
 
   const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
+  const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
   if (!supabaseUrl) {
     console.warn('[record-catalog-whatsapp-click] Missing VITE_SUPABASE_URL');
     return { recorded: false, error: { message: 'Missing Supabase URL' } };
+  }
+  if (!anonKey) {
+    console.warn('[record-catalog-whatsapp-click] Missing VITE_SUPABASE_ANON_KEY');
+    return { recorded: false, error: { message: 'Missing Supabase API key' } };
   }
 
   const visitorId = getOrCreateVisitorId();
@@ -1547,7 +1557,7 @@ export async function recordCatalogWhatsAppClick(slug, path, source = 'unknown')
   try {
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', apikey: anonKey },
       body: JSON.stringify(body),
     });
     const data = await res.json().catch(() => ({}));
