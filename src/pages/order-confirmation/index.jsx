@@ -11,6 +11,7 @@ import { isRestaurantBusiness } from '../../utils/businessType';
 import { normalizeOptionalCustomerPhone } from '../../utils/customerPhone';
 import CheckoutPhoneOptional from '../../components/checkout/CheckoutPhoneOptional';
 import { buildCfImageErrorHandler, cfImageUrl } from '../../utils/cloudflareImage';
+import { getCountryLabels } from '../../config/country';
 
 export default function OrderConfirmation() {
   const { slug } = useParams();
@@ -47,6 +48,7 @@ export default function OrderConfirmation() {
   const loading = checkoutState === 'loading';
 
   const checkoutMoney = useMemo(() => getBusinessLocale(business), [business]);
+  const countryLabels = useMemo(() => getCountryLabels(checkoutMoney.countryCode), [checkoutMoney.countryCode]);
 
   const formatPrice = (amount) => {
     const currency = String(business?.currency || checkoutMoney.currencyCode || 'USD').trim().toUpperCase();
@@ -323,7 +325,7 @@ export default function OrderConfirmation() {
                       type="text"
                       value={deliveryAddress}
                       onChange={e => { setDeliveryAddress(e?.target?.value); setErrors(prev => ({ ...prev, deliveryAddress: '' })); }}
-                      placeholder="Ej: Av. Providencia 1234, Depto 52"
+                      placeholder={countryLabels.addressPlaceholder}
                       maxLength={160}
                       className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none transition-all"
                       style={{ borderColor: errors?.deliveryAddress ? 'var(--color-error)' : 'var(--color-border)', fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)', backgroundColor: '#FFFFFF' }}

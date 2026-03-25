@@ -16,6 +16,7 @@ import { normalizeOptionalCustomerPhone } from '../../utils/customerPhone';
 import { buildCfImageErrorHandler, cfImageUrl, isCfTransformableUrl } from '../../utils/cloudflareImage';
 import { useResponsiveCfImageProfile } from '../../hooks/useResponsiveCfImageProfile';
 import CheckoutPhoneOptional from '../../components/checkout/CheckoutPhoneOptional';
+import { getCountryLabels } from '../../config/country';
 import { buildCatalogAboutBlock, inferCatalogAboutKind } from '../../utils/catalogAboutBlock';
 import {
   buildLocalBusinessJsonLd,
@@ -240,6 +241,7 @@ function CatalogInner({ slug }) {
   };
 
   const catalogMoney = useMemo(() => getBusinessLocale(business), [business]);
+  const countryLabels = useMemo(() => getCountryLabels(catalogMoney.countryCode), [catalogMoney.countryCode]);
   const businessCurrency = String(business?.currency || catalogMoney.currencyCode || 'USD').trim().toUpperCase();
   const formatPrice = useCallback(
     (price) => formatCurrency(price, businessCurrency, catalogMoney.locale),
@@ -1661,7 +1663,7 @@ function OrderPanel({ business, slug, formatPrice, onClose, theme }) {
                         setFieldErrors((prev) => ({ ...prev, deliveryAddress: undefined }));
                       }
                     }}
-                    placeholder="Ej: Av. Providencia 1234, Depto 52"
+                    placeholder={countryLabels.addressPlaceholder}
                     maxLength={160}
                     className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:border-transparent transition-all"
                     style={{ ['--tw-ring-color']: primaryColor }}
