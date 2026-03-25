@@ -14,20 +14,20 @@ describe('billing market pricing by country (countryPricing)', () => {
     expect(getPlanCurrency({ countryCode: 'AR' })).toBe('ARS');
   });
 
-  it('returns PYG amounts for Paraguay (aligned currency + price)', () => {
-    expect(getPlanPrice({ countryCode: 'PY', planSlug: 'pro' })).toBe(45000);
-    expect(getPlanPrice({ countryCode: 'PY', planSlug: 'business' })).toBe(76000);
-    expect(getPlanCurrency({ countryCode: 'PY' })).toBe('PYG');
+  it('returns USD reference amounts for Mexico (not MXN in plan UI)', () => {
+    expect(getPlanPrice({ countryCode: 'MX', planSlug: 'pro' })).toBe(6);
+    expect(getPlanPrice({ countryCode: 'MX', planSlug: 'business' })).toBe(10);
+    expect(getPlanCurrency({ countryCode: 'MX' })).toBe('USD');
   });
 
-  it('returns MXN amounts for Mexico', () => {
-    expect(getPlanPrice({ countryCode: 'MX', planSlug: 'pro' })).toBe(120);
-    expect(getPlanCurrency({ countryCode: 'MX' })).toBe('MXN');
+  it('returns USD reference for Paraguay (dLocal liquida en PYG al pagar)', () => {
+    expect(getPlanPrice({ countryCode: 'PY', planSlug: 'pro' })).toBe(6);
+    expect(getPlanCurrency({ countryCode: 'PY' })).toBe('USD');
   });
 
   it('getPlanConfig respects countryCode over legacy market', () => {
-    const proPy = getPlanConfig({ marketCode: MARKET_CODES.INTL, planSlug: 'pro', countryCode: 'PY' });
-    expect(proPy.amount).toBe(45000);
+    const proMx = getPlanConfig({ marketCode: MARKET_CODES.INTL, planSlug: 'pro', countryCode: 'MX' });
+    expect(proMx.amount).toBe(6);
   });
 
   it('legacy marketCode still works when countryCode omitted', () => {

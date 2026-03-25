@@ -24,6 +24,7 @@ import {
   getPaymentSummaryCopy,
   getMarketNoticeCopy,
   getPlanUnavailableCopy,
+  getDlocalLocalChargeDisclaimer,
 } from '../../lib/billing';
 import { getPlansActivationWhatsappUrl } from '../../config/plansActivation';
 import { getCurrentSubscription } from '../../lib/billing/subscriptionService';
@@ -116,6 +117,10 @@ export default function PlansPage() {
   );
   const getDisplayPlanPrice = (slug) =>
     getPlanPrice({ countryCode: businessCountryCode || countryCode, planSlug: slug }) ?? 0;
+  const dlocalLocalChargeDisclaimer = useMemo(
+    () => getDlocalLocalChargeDisclaimer(billingCountryForUi),
+    [billingCountryForUi],
+  );
   const scheduledToStarter = (business?.scheduledPlanSlug || null) === 'starter';
   const planExpiryMs = business?.planExpiresAt ? new Date(business.planExpiresAt).getTime() : null;
   const trialExpiryMs = business?.trialExpiresAt ? new Date(business.trialExpiresAt).getTime() : null;
@@ -1093,6 +1098,11 @@ export default function PlansPage() {
             <p className="text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
               {getPaymentSummaryCopy({ provider: effectivePaymentProvider, marketCode })}
             </p>
+            {dlocalLocalChargeDisclaimer && effectivePaymentProvider === PAYMENT_PROVIDERS.DLOCAL && (
+              <p className="text-xs mt-2" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+                {dlocalLocalChargeDisclaimer}
+              </p>
+            )}
             {!isChileBilling && secondaryProviders.length > 0 && (
               <p className="text-xs mt-2" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
                 Otras opciones: {secondaryProviders.map((provider) => {

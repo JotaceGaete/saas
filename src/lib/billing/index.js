@@ -38,6 +38,8 @@ export {
   getPlanPriceForCountry,
   getBillingCurrencyForCountry,
   getLegacyBillingMarketCode,
+  getDlocalLocalChargeDisclaimer,
+  usesLocalPlanCurrencyDisplay,
   PRICING_MARKET_STATUS,
 } from '../../config/countryPricing';
 export {

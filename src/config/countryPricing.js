@@ -1,9 +1,11 @@
 /**
- * Fuente única: país del negocio (ISO) → marketStatus, moneda de facturación/display, precios de planes.
- * Todo pricing de producto debe leer desde aquí usando business.country_code, no hostname ni UI.
+ * País del negocio (ISO) → precios y moneda mostrados en UI de suscripción (/planes).
  *
- * Precios alineados con backend dLocal donde aplica (subscriptionService PLAN_PRICES_BY_CURRENCY).
- * CL usa Mercado Pago (CLP); AR mantiene montos UI históricos hasta unificar con cobro real.
+ * Regla de negocio: solo Chile y Argentina muestran planes en moneda local (CLP / ARS).
+ * Resto (México, LATAM, etc.): precios en USD de referencia; si el cobro es con dLocal,
+ * la pasarela liquida en moneda local — ver `getDlocalLocalChargeDisclaimer`.
+ *
+ * El catálogo del negocio sigue usando `wa_businesses.currency` (MXN en México, etc.).
  */
 
 import { COUNTRY_CODES, getCountryConfig } from './countryConfig';
@@ -17,90 +19,49 @@ export const PRICING_MARKET_STATUS = Object.freeze({
 
 /** @typedef {'mercado_pago'|'paypal'|'dlocal'} BillingProviderKey */
 
+/** Precios mostrados en USD para países que no usan moneda local en la UI de planes. */
+const USD_DISPLAY_PRICES = Object.freeze({
+  starter: 0,
+  pro: 6,
+  business: 10,
+});
+
 /**
- * Overrides por país: marketStatus, precios (en la moneda `currency`), proveedor por defecto.
- * `currency` y `locale` se toman de COUNTRY_CONFIG si no se pasan.
+ * Overrides: marketStatus, proveedor, y precios solo donde aplica moneda local (CL, AR).
+ * El resto hereda precios USD de referencia.
  */
 const COUNTRY_PRICING_OVERRIDES = Object.freeze({
   CL: {
     marketStatus: PRICING_MARKET_STATUS.ACTIVE,
-    /** @type {BillingProviderKey} */
-    defaultProvider: 'mercado_pago',
-    prices: { starter: 0, pro: 5990, business: 9990 },
+    defaultProvider: /** @type {BillingProviderKey} */ ('mercado_pago'),
+    localPrices: { starter: 0, pro: 5990, business: 9990 },
   },
   AR: {
     marketStatus: PRICING_MARKET_STATUS.ACTIVE,
     defaultProvider: 'dlocal',
-    prices: { starter: 0, pro: 8990, business: 13990 },
+    localPrices: { starter: 0, pro: 8990, business: 13990 },
   },
-  BO: {
-    marketStatus: PRICING_MARKET_STATUS.BETA,
-    defaultProvider: 'dlocal',
-    prices: { starter: 0, pro: 42, business: 70 },
-  },
-  CO: {
-    marketStatus: PRICING_MARKET_STATUS.ACTIVE,
-    defaultProvider: 'dlocal',
-    prices: { starter: 0, pro: 25000, business: 42000 },
-  },
-  CR: {
-    marketStatus: PRICING_MARKET_STATUS.ACTIVE,
-    defaultProvider: 'dlocal',
-    prices: { starter: 0, pro: 3200, business: 5400 },
-  },
-  EC: {
-    marketStatus: PRICING_MARKET_STATUS.ACTIVE,
-    defaultProvider: 'dlocal',
-    prices: { starter: 0, pro: 6, business: 10 },
-  },
-  GT: {
-    marketStatus: PRICING_MARKET_STATUS.ACTIVE,
-    defaultProvider: 'dlocal',
-    prices: { starter: 0, pro: 45, business: 75 },
-  },
-  PA: {
-    marketStatus: PRICING_MARKET_STATUS.ACTIVE,
-    defaultProvider: 'dlocal',
-    prices: { starter: 0, pro: 6, business: 10 },
-  },
-  PE: {
-    marketStatus: PRICING_MARKET_STATUS.BETA,
-    defaultProvider: 'dlocal',
-    prices: { starter: 0, pro: 25, business: 42 },
-  },
-  PY: {
-    marketStatus: PRICING_MARKET_STATUS.ACTIVE,
-    defaultProvider: 'dlocal',
-    prices: { starter: 0, pro: 45000, business: 76000 },
-  },
-  UY: {
-    marketStatus: PRICING_MARKET_STATUS.ACTIVE,
-    defaultProvider: 'dlocal',
-    prices: { starter: 0, pro: 240, business: 400 },
-  },
-  MX: {
-    marketStatus: PRICING_MARKET_STATUS.ACTIVE,
-    defaultProvider: 'dlocal',
-    prices: { starter: 0, pro: 120, business: 200 },
-  },
-  ES: {
-    marketStatus: PRICING_MARKET_STATUS.ACTIVE,
-    defaultProvider: 'dlocal',
-    prices: { starter: 0, pro: 6, business: 10 },
-  },
-  US: {
-    marketStatus: PRICING_MARKET_STATUS.ACTIVE,
-    defaultProvider: 'dlocal',
-    prices: { starter: 0, pro: 6, business: 10 },
-  },
+  BO: { marketStatus: PRICING_MARKET_STATUS.BETA, defaultProvider: 'dlocal' },
+  PE: { marketStatus: PRICING_MARKET_STATUS.BETA, defaultProvider: 'dlocal' },
 });
 
 const FALLBACK_COUNTRY = 'US';
+
+const DEFAULT_OVERRIDE = Object.freeze({
+  marketStatus: PRICING_MARKET_STATUS.ACTIVE,
+  defaultProvider: /** @type {BillingProviderKey} */ ('dlocal'),
+});
 
 function normalizeCountryCode(value) {
   const code = String(value || '').trim().toUpperCase();
   if (!code) return null;
   return COUNTRY_CODES.includes(code) ? code : null;
+}
+
+/** Solo CL y AR: precios de planes en moneda local en pantalla. */
+export function usesLocalPlanCurrencyDisplay(countryCode) {
+  const c = normalizeCountryCode(countryCode) || FALLBACK_COUNTRY;
+  return c === 'CL' || c === 'AR';
 }
 
 /**
@@ -120,25 +81,59 @@ export function getLegacyBillingMarketCode(countryCode) {
  *   countryCode: string,
  *   marketStatus: string,
  *   currency: string,
+ *   settlementCurrency: string,
  *   locale: string,
  *   defaultProvider: BillingProviderKey,
  *   prices: { starter: number, pro: number, business: number },
  *   legacyMarketCode: string,
+ *   showDlocalLocalChargeNotice: boolean,
  * }}
  */
 export function getCountryPricingRow(countryCode) {
   const normalized = normalizeCountryCode(countryCode) || FALLBACK_COUNTRY;
   const cfg = getCountryConfig(normalized);
-  const overrides = COUNTRY_PRICING_OVERRIDES[normalized] || COUNTRY_PRICING_OVERRIDES[FALLBACK_COUNTRY];
+  const partial = COUNTRY_PRICING_OVERRIDES[normalized] || {};
+  const overrides = { ...DEFAULT_OVERRIDE, ...partial };
+
+  const localDisplay = usesLocalPlanCurrencyDisplay(normalized);
+  const settlementCurrency = String(cfg?.currency || 'USD').toUpperCase();
+
+  const prices = localDisplay && overrides.localPrices
+    ? { ...overrides.localPrices }
+    : { ...USD_DISPLAY_PRICES };
+
+  const currency = localDisplay ? settlementCurrency : 'USD';
+  const locale = localDisplay ? (cfg?.locale || 'en-US') : 'en-US';
+
+  const showDlocalLocalChargeNotice =
+    overrides.defaultProvider === 'dlocal' &&
+    !localDisplay &&
+    settlementCurrency !== 'USD';
+
   return {
     countryCode: normalized,
     marketStatus: overrides.marketStatus || PRICING_MARKET_STATUS.ACTIVE,
-    currency: String(cfg?.currency || 'USD').toUpperCase(),
-    locale: cfg?.locale || 'en-US',
+    currency,
+    settlementCurrency,
+    locale,
     defaultProvider: overrides.defaultProvider || 'dlocal',
-    prices: { ...overrides.prices },
+    prices,
     legacyMarketCode: getLegacyBillingMarketCode(normalized),
+    showDlocalLocalChargeNotice,
   };
+}
+
+/**
+ * Texto para /planes cuando el pago con dLocal se liquida en moneda local (ej. MXN) aunque el precio mostrado sea USD.
+ * @param {string|null|undefined} countryCode
+ * @returns {string|null}
+ */
+export function getDlocalLocalChargeDisclaimer(countryCode) {
+  const row = getCountryPricingRow(countryCode);
+  if (!row.showDlocalLocalChargeNotice) return null;
+  const cfg = getCountryConfig(row.countryCode);
+  const label = cfg?.currencyName ? `${row.settlementCurrency} (${cfg.currencyName})` : row.settlementCurrency;
+  return `Los precios en USD son referencia. Al pagar con tarjeta u otros medios locales, el cobro se liquidará en ${label}, según el tipo de cambio y condiciones vigentes al momento de pagar.`;
 }
 
 /**
@@ -154,6 +149,7 @@ export function getPlanPriceForCountry(countryCode, planSlug) {
 }
 
 /**
+ * Moneda usada para mostrar precios de planes (USD salvo CL/AR).
  * @param {string|null|undefined} countryCode
  * @returns {string}
  */
