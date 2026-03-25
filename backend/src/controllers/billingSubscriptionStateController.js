@@ -84,8 +84,8 @@ export async function getBillingSubscriptionStateController(request) {
       const hint =
         /Missing SUPABASE_URL|SUPABASE_SERVICE_ROLE_KEY/i.test(err.message)
           ? 'Configura SUPABASE_URL (o VITE_SUPABASE_URL) y SUPABASE_SERVICE_ROLE_KEY en el entorno del API.'
-          : /\[billing-subscriptions\] read failed/i.test(err.message)
-            ? 'Revisa permisos de service role y existencia de la tabla billing_subscriptions.'
+          : /\[wa-subscriptions\] read failed/i.test(err.message)
+            ? 'Revisa permisos de service role y existencia de la tabla wa_subscriptions.'
             : null;
       console.warn('[billing-subscription-state] http_error', {
         route: SUB_STATE_ROUTE,
@@ -158,8 +158,8 @@ export async function getCurrentSubscriptionController(request) {
       const hint =
         /Missing SUPABASE_URL|SUPABASE_SERVICE_ROLE_KEY/i.test(err.message)
           ? 'Configura SUPABASE_URL (o VITE_SUPABASE_URL) y SUPABASE_SERVICE_ROLE_KEY en el entorno del API.'
-          : /\[billing-subscriptions\] read failed/i.test(err.message)
-            ? 'Revisa permisos de service role y existencia de la tabla billing_subscriptions.'
+          : /\[wa-subscriptions\] read failed/i.test(err.message)
+            ? 'Revisa permisos de service role y existencia de la tabla wa_subscriptions.'
             : null;
       console.warn('[billing-subscription-state] http_error', {
         route: CURRENT_SUB_ROUTE,

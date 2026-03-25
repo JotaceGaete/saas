@@ -118,7 +118,7 @@ export async function getBillingSubscriptionState({ businessId }) {
     getBusinessById(id),
     getBillingSubscriptionByBusinessId(id),
   ]);
-  console.info('[subscription-state] source=billing_subscriptions', {
+  console.info('[subscription-state] source=wa_subscriptions', {
     hasSubscription: !!subscription,
   });
 

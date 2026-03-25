@@ -13,7 +13,7 @@ function getAdminClient() {
   const url = getSupabaseUrl();
   const key = getServiceRoleKey();
   if (!url || !key) {
-    throw new HttpError(503, '[billing-subscriptions] Missing SUPABASE_URL/VITE_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
+    throw new HttpError(503, '[wa-subscriptions] Missing SUPABASE_URL/VITE_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
   }
   return createClient(url, key);
 }
@@ -33,13 +33,13 @@ export async function upsertBillingSubscriptionByBusiness(payload) {
     updated_at: new Date().toISOString(),
   });
   const { data, error } = await client
-    .from('billing_subscriptions')
+    .from('wa_subscriptions')
     .upsert(record, { onConflict: 'business_id' })
     .select('*')
     .single();
 
   if (error) {
-    throw new HttpError(503, `[billing-subscriptions] upsert failed: ${error.message}`);
+    throw new HttpError(503, `[wa-subscriptions] upsert failed: ${error.message}`);
   }
   return data;
 }
@@ -49,12 +49,12 @@ export async function getBillingSubscriptionByBusinessId(businessId) {
   if (!id) return null;
   const client = getAdminClient();
   const { data, error } = await client
-    .from('billing_subscriptions')
+    .from('wa_subscriptions')
     .select('*')
     .eq('business_id', id)
     .maybeSingle();
   if (error) {
-    throw new HttpError(503, `[billing-subscriptions] read failed: ${error.message}`);
+    throw new HttpError(503, `[wa-subscriptions] read failed: ${error.message}`);
   }
   return data || null;
 }
