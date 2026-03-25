@@ -74,7 +74,7 @@ export default function PlansPage() {
     [businessCountryCode],
   );
   const { countryCode, marketCode } = market;
-  const billingCountryForUi = countryState.businessCountry || businessCountryCode || countryCode;
+  const billingCountryForUi = countryState.businessCountry || businessCountryCode || null;
   const isChileBilling = countryState.billingCountry === 'CL';
   const currency = useMemo(() => {
     if (billingReady && subscriptionState?.currency) return subscriptionState.currency;
@@ -91,33 +91,35 @@ export default function PlansPage() {
     subscriptionState?.providerResolution?.selectedProvider,
     subscriptionState?.billingProvider?.provider,
   ]);
+  const hasServerSelectedProvider = !!subscriptionState?.providerResolution?.selectedProvider;
+  const hasPersistedBusinessCountry = !!businessCountryCode;
   const secondaryCheckoutProviders = useMemo(() => {
-    if (!billingReady || !checkoutProvider || !Array.isArray(subscriptionState?.billingProvider?.alternatives)) {
+    if (!billingReady || !hasServerSelectedProvider || !checkoutProvider || !Array.isArray(subscriptionState?.billingProvider?.alternatives)) {
       return [];
     }
     return subscriptionState.billingProvider.alternatives
-      .filter(
-        (a) => a?.enabled === true
-          && a?.supportsCheckout === true
-          && normalizeBillingProvider(a.provider)
-          && normalizeBillingProvider(a.provider) !== checkoutProvider,
-      )
-      .map((a) => normalizeBillingProvider(a.provider));
-  }, [billingReady, checkoutProvider, subscriptionState?.billingProvider?.alternatives]);
+      .map((alt) => normalizeBillingProvider(alt?.provider))
+      .filter((provider) => provider && provider !== checkoutProvider);
+  }, [billingReady, hasServerSelectedProvider, checkoutProvider, subscriptionState?.billingProvider?.alternatives]);
   const isAutomaticCheckoutBlocked = useMemo(() => {
+    if (!hasPersistedBusinessCountry) return true;
     if (!billingReady) return true;
     if (!checkoutProvider) return true;
+    if (!hasServerSelectedProvider) return true;
     if (subscriptionState?.checkoutPolicy?.allowed === false) return true;
     return false;
-  }, [billingReady, checkoutProvider, subscriptionState?.checkoutPolicy?.allowed]);
+  }, [hasPersistedBusinessCountry, billingReady, checkoutProvider, hasServerSelectedProvider, subscriptionState?.checkoutPolicy?.allowed]);
   const automaticCheckoutBlockedMessage = useMemo(() => {
+    if (!hasPersistedBusinessCountry) {
+      return 'Tu negocio no tiene un país de facturación persistido. No se puede habilitar el checkout automático.';
+    }
     if (!billingReady) {
       return billingRemoteError?.hint
         || 'No se puede iniciar el pago hasta recuperar el estado de facturación del servidor. Recarga la página o inténtalo más tarde.';
     }
     return subscriptionState?.checkoutPolicy?.message
       || 'Este método de pago no está disponible para tu mercado en este momento.';
-  }, [billingReady, billingRemoteError, subscriptionState?.checkoutPolicy?.message]);
+  }, [hasPersistedBusinessCountry, billingReady, billingRemoteError, subscriptionState?.checkoutPolicy?.message]);
   const marketStatus = useMemo(() => {
     if (billingReady && subscriptionState?.marketStatus != null) return subscriptionState.marketStatus;
     return resolvedBillingSetup?.marketStatus || 'active';
@@ -138,7 +140,7 @@ export default function PlansPage() {
     [subscriptionState?.billingProvider?.alternatives, subscriptionState?.billingProvider],
   );
   const getDisplayPlanPrice = (slug) =>
-    getPlanPrice({ countryCode: businessCountryCode || countryCode, planSlug: slug }) ?? 0;
+    getPlanPrice({ countryCode: businessCountryCode, planSlug: slug }) ?? 0;
   const dlocalLocalChargeDisclaimer = useMemo(
     () => getDlocalLocalChargeDisclaimer(billingCountryForUi),
     [billingCountryForUi],
@@ -1066,7 +1068,7 @@ export default function PlansPage() {
                         Tu plan actual
                       </span>
                     ) : getDisplayPlanPrice(slug) > 0 ? (
-                      !billingReady || !checkoutProvider ? (
+                      !billingReady || !checkoutProvider || !hasServerSelectedProvider ? (
                         <button
                           type="button"
                           disabled

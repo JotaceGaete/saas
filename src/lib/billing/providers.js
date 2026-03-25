@@ -38,6 +38,11 @@ export function isDlocalFeatureEnabled() {
 }
 
 /**
+ * LEGACY UI-only helper.
+ * No usar para decidir provider real en checkout o planes.
+ * La decisión final viene desde subscription-state (backend).
+ */
+/**
  * Opciones de pago por país ISO del negocio (o sugerencia pre-login).
  * Sin país: no asumir Chile; usar flujo internacional (dLocal/PayPal según flag).
  */
