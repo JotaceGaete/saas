@@ -81,8 +81,9 @@ export async function createBillingSubscriptionController(request) {
     const business = await getBusinessById(businessId);
     assertMarketAccess({ requestUrl: request.url, businessCountryCode: business?.country_code || null });
 
-    const returnUrl = String(body?.returnUrl || `${new URL(request.url).origin}/billing/payments/success`).trim();
-    const cancelUrl = String(body?.cancelUrl || `${new URL(request.url).origin}/billing/payments/cancel`).trim();
+    const apiPublicOrigin = new URL(request.url).origin;
+    const returnUrl = String(body?.returnUrl || `${apiPublicOrigin}/billing/payments/success`).trim();
+    const cancelUrl = String(body?.cancelUrl || `${apiPublicOrigin}/billing/payments/cancel`).trim();
 
     const result = await createBillingSubscription({
       business,
@@ -91,6 +92,7 @@ export async function createBillingSubscriptionController(request) {
       provider,
       returnUrl,
       cancelUrl,
+      apiPublicOrigin,
     });
     console.info('[BILLING_CREATE_RESULT]', {
       route: '/api/v1/billing/subscriptions/create',
@@ -147,12 +149,14 @@ export async function dlocalCheckoutController(request) {
     const returnUrl = String(body?.returnUrl || `${origin}/planes?payment=success`).trim();
     const cancelUrl = String(body?.cancelUrl || `${origin}/planes?payment=failure`).trim();
 
+    const apiPublicOrigin = new URL(request.url).origin;
     const result = await createDlocalPlanCheckout({
       business,
       authUser,
       planSlug,
       returnUrl,
       cancelUrl,
+      apiPublicOrigin,
     });
     return json(result, 200);
   } catch (err) {

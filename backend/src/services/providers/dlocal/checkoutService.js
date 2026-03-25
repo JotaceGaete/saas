@@ -126,6 +126,8 @@ export async function createDlocalPlanCheckout({
   planSlug,
   returnUrl,
   cancelUrl,
+  /** Origen público del API (ej. https://go.ventalink.app) para callback_url y notification_url */
+  apiPublicOrigin,
 }) {
   const baseUrl = getBaseUrl();
   const apiKey = getApiKey();
@@ -149,7 +151,19 @@ export async function createDlocalPlanCheckout({
   const orderId = buildOrderId({ businessId: business.id, planSlug: normalizedPlan });
   const endpointPath = '/v1/payments';
 
+  const origin = String(apiPublicOrigin || '').trim().replace(/\/$/, '');
+  if (!origin) {
+    throw new HttpError(422, '[dlocal-checkout] apiPublicOrigin is required', {
+      code: 'MISSING_PUBLIC_ORIGIN',
+      provider: 'dlocal',
+    });
+  }
+
   const safeReturnUrl = String(returnUrl || '').trim();
+  const callbackPath = '/api/v1/billing/dlocal/callback';
+  const callbackQuery = safeReturnUrl ? `?rd=${encodeURIComponent(safeReturnUrl)}` : '';
+  const callbackUrl = `${origin}${callbackPath}${callbackQuery}`;
+  const notificationUrl = `${origin}/api/v1/billing/webhooks/dlocal`;
 
   const payload = {
     amount: Number(amount),
@@ -161,9 +175,8 @@ export async function createDlocalPlanCheckout({
       name: String(authUser?.user_metadata?.full_name || authUser?.email || 'Ventalink User').trim(),
       email: String(authUser?.email || 'qa@ventalink.app').trim().toLowerCase(),
     },
-    // dLocal Create Payment: redirect back to merchant after hosted checkout (REDIRECT flow).
-    // https://docs.dlocal.com/reference/create-payment — not read from metadata.
-    callback_url: safeReturnUrl || undefined,
+    callback_url: callbackUrl,
+    notification_url: notificationUrl,
     metadata: {
       business_id: business.id,
       user_id: authUser.id,
@@ -172,6 +185,9 @@ export async function createDlocalPlanCheckout({
   };
 
   console.log('[DLOCAL PAYLOAD]', JSON.stringify(payload, null, 2));
+
+  console.info('[dlocal-checkout] callback_url=', callbackUrl);
+  console.info('[dlocal-checkout] notification_url=', notificationUrl);
 
   console.info('[DLOCAL_CHECKOUT_REQUEST]', {
     baseUrl,
@@ -186,7 +202,7 @@ export async function createDlocalPlanCheckout({
     countryCode,
     currencyCode,
     amount,
-    callback_url: safeReturnUrl || null,
+    plansReturnUrl: safeReturnUrl || null,
     cancelUrl: String(cancelUrl || '').trim() || null,
   });
 

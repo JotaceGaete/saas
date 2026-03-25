@@ -215,6 +215,9 @@ export default function PlansPage() {
     } else if (payment === 'pending') {
       setPaymentMessage({ type: 'info', text: 'Pago pendiente. Cuando se acredite, tu plan se actualizará.' });
       setSearchParams({}, { replace: true });
+    } else if (payment === 'error') {
+      setPaymentMessage({ type: 'error', text: 'No se pudo verificar el retorno del pago. Revisa tu plan o intenta de nuevo.' });
+      setSearchParams({}, { replace: true });
     }
   }, [searchParams, setSearchParams, refreshBusiness]);
 

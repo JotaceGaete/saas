@@ -28,6 +28,7 @@ export async function createBillingSubscription({
   provider: providerHint,
   returnUrl,
   cancelUrl,
+  apiPublicOrigin,
 }) {
   const normalizedPlan = normalizePlanSlug(planSlug);
   const businessCountryCode = business?.country_code || business?.countryCode || null;
@@ -92,6 +93,7 @@ export async function createBillingSubscription({
       planSlug: normalizedPlan,
       returnUrl,
       cancelUrl,
+      apiPublicOrigin,
     });
     return {
       ok: true,
