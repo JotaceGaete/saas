@@ -53,7 +53,9 @@ function normalizePlanSlug(planSlug) {
 }
 
 function buildOrderId({ businessId, planSlug }) {
-  return `dlocal:${businessId}:${planSlug}:${Date.now()}`;
+  return ['dlocal', businessId, planSlug, Date.now()]
+    .join('-')
+    .replace(/[^A-Za-z0-9-_]/g, '-');
 }
 
 async function insertPendingPayment({
