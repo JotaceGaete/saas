@@ -149,6 +149,8 @@ export async function createDlocalPlanCheckout({
   const orderId = buildOrderId({ businessId: business.id, planSlug: normalizedPlan });
   const endpointPath = '/v1/payments';
 
+  const safeReturnUrl = String(returnUrl || '').trim();
+
   const payload = {
     amount: Number(amount),
     currency: currencyCode,
@@ -159,12 +161,13 @@ export async function createDlocalPlanCheckout({
       name: String(authUser?.user_metadata?.full_name || authUser?.email || 'Ventalink User').trim(),
       email: String(authUser?.email || 'qa@ventalink.app').trim().toLowerCase(),
     },
+    // dLocal Create Payment: redirect back to merchant after hosted checkout (REDIRECT flow).
+    // https://docs.dlocal.com/reference/create-payment — not read from metadata.
+    callback_url: safeReturnUrl || undefined,
     metadata: {
       business_id: business.id,
       user_id: authUser.id,
       plan_slug: normalizedPlan,
-      return_url: returnUrl || null,
-      cancel_url: cancelUrl || null,
     },
   };
 
@@ -183,6 +186,8 @@ export async function createDlocalPlanCheckout({
     countryCode,
     currencyCode,
     amount,
+    callback_url: safeReturnUrl || null,
+    cancelUrl: String(cancelUrl || '').trim() || null,
   });
 
   let upstream;
