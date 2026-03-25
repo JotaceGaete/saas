@@ -9,7 +9,59 @@ import { getPaymentOptions, normalizeBillingProvider } from './providerSelection
 import {
   getBillingProviderAvailability,
   getProviderAvailabilityByBusinessCountry,
+  isDlocalFeatureEnabled,
 } from './providerAvailabilityService.js';
+import {
+  getAutomaticCheckoutPolicyByMarketStatus,
+  getMarketStatusForBillingCountry,
+  getPlanDisplayCurrencyForBilling,
+} from './billingMarketMetaService.js';
+
+const SUB_STATE_LOG = '[billing-subscription-state]';
+
+function summarizeAvailability(provider) {
+  const a = getBillingProviderAvailability({ provider });
+  return {
+    provider: a.provider,
+    enabled: a.enabled,
+    supportsCheckout: a.supportsCheckout,
+    supportsSubscriptions: a.supportsSubscriptions,
+    reason: a.reason,
+    mode: a.mode,
+  };
+}
+
+/**
+ * Snapshot para logs: candidatos, disponibilidad y si hubo fallback respecto al primary por país.
+ */
+function buildProviderSelectionSnapshot(paymentOptions, recommendation) {
+  const unique = [...new Set([paymentOptions.primary, ...paymentOptions.secondary])];
+  const availabilityByProvider = {};
+  for (const p of unique) {
+    availabilityByProvider[p] = summarizeAvailability(p);
+  }
+  const primarySkipped = recommendation.selectedProvider !== paymentOptions.primary;
+  let fallbackReason = null;
+  if (primarySkipped) {
+    const primarySnap = availabilityByProvider[paymentOptions.primary];
+    fallbackReason = primarySnap?.reason || 'primary_unavailable';
+  }
+  return {
+    paymentOptions: { primary: paymentOptions.primary, secondary: [...paymentOptions.secondary] },
+    availabilityByProvider,
+    selectedProvider: recommendation.selectedProvider,
+    selectionMatchesPrimary: !primarySkipped,
+    fallbackReason,
+    selectedAvailability: summarizeAvailability(recommendation.selectedProvider),
+    alternativesSummaries: (recommendation.alternatives || []).map((a) => ({
+      provider: a.provider,
+      enabled: a.enabled,
+      reason: a.reason,
+      mode: a.mode,
+    })),
+    dlocalBackendFlag: isDlocalFeatureEnabled(),
+  };
+}
 
 function getSupabaseUrl() {
   return String(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').trim();
@@ -79,11 +131,17 @@ export async function getBillingSubscriptionState({ businessId }) {
     && !isTerminalBillingStatus(subscriptionStatus)
     && !!subscription?.provider_subscription_id;
 
-  const paymentOptions = getPaymentOptions({ countryCode: business?.country_code || null });
-  const recommendation = getProviderAvailabilityByBusinessCountry({ businessCountryCode: business?.country_code || null });
-  const selectedProvider = normalizeBillingProvider(subscription?.provider) || recommendation.selectedProvider;
+  const billingCountry = business?.country_code || null;
+  const paymentOptions = getPaymentOptions({ countryCode: billingCountry });
+  const recommendation = getProviderAvailabilityByBusinessCountry({ businessCountryCode: billingCountry });
+  const subscriptionNorm = normalizeBillingProvider(subscription?.provider);
+  const selectedProvider = subscriptionNorm || recommendation.selectedProvider;
   const selectedAvailability = getBillingProviderAvailability({ provider: selectedProvider });
   const alternatives = recommendation.alternatives;
+
+  const marketStatus = getMarketStatusForBillingCountry(billingCountry);
+  const checkoutPolicy = getAutomaticCheckoutPolicyByMarketStatus(marketStatus);
+  const planDisplayCurrency = getPlanDisplayCurrencyForBilling(billingCountry, business?.currency);
 
   let billingStatus = subscriptionStatus || BILLING_STATUSES.PENDING_PAYMENT;
   if (!subscription) {
@@ -103,8 +161,34 @@ export async function getBillingSubscriptionState({ businessId }) {
     ? trialEndsAt
     : (startsAt || subscription?.current_period_starts_at || null);
 
+  const selectionSnapshot = buildProviderSelectionSnapshot(paymentOptions, recommendation);
+  console.info(`${SUB_STATE_LOG} structured`, {
+    route: 'getBillingSubscriptionState',
+    businessId: id,
+    billingCountryCode: business?.country_code ?? null,
+    subscriptionProviderRaw: subscription?.provider ?? null,
+    subscriptionProviderNormalized: provider,
+    hasSubscriptionRow: !!subscription,
+    ...selectionSnapshot,
+  });
+
+  const providerResolution = {
+    primaryCandidate: paymentOptions.primary,
+    availabilitySelectedProvider: recommendation.selectedProvider,
+    selectedProvider,
+    fallbackUsed: !selectionSnapshot.selectionMatchesPrimary,
+    fallbackReason: selectionSnapshot.fallbackReason,
+    availabilityByProvider: selectionSnapshot.availabilityByProvider,
+    subscriptionProviderOverride: subscriptionNorm || null,
+  };
+
   return {
     ok: true,
+    billingCountry,
+    currency: planDisplayCurrency,
+    marketStatus,
+    checkoutPolicy,
+    providerResolution,
     provider,
     plan_slug: normalizePlanSlug(subscription?.plan_slug || business?.plan_slug),
     billing_status: billingStatus,

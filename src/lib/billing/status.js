@@ -14,7 +14,65 @@ function hasMinimumLocalBillingData(business) {
   );
 }
 
-export function buildBillingFallbackState({ business, paymentProvider, checkoutProvider }) {
+const PROVIDER_REASON_LABELS = Object.freeze({
+  feature_disabled: 'desactivado en el servidor (revisa BILLING_DLOCAL_ENABLED).',
+  missing_provider_env: 'falta configuración de credenciales o URL del proveedor en el servidor.',
+  provider_not_supported: 'proveedor no soportado.',
+});
+
+/**
+ * Texto legible para UI cuando hay reason en billingProvider o en alternativas (p. ej. dLocal caído).
+ * @param {string} [provider]
+ * @param {string|null|undefined} reason
+ * @returns {string|null}
+ */
+export function describeBillingProviderReason(provider, reason) {
+  if (!reason) return null;
+  const label = PROVIDER_REASON_LABELS[reason];
+  if (label) return label;
+  return `${provider || 'proveedor'}: ${reason}`;
+}
+
+/** @param {object | null | undefined} billingProvider billingProvider del JSON subscription-state */
+export function getBillingUiDiagnostics(billingProvider) {
+  if (!billingProvider) return null;
+  const parts = [];
+  if (billingProvider.reason) {
+    const line = describeBillingProviderReason(billingProvider.provider, billingProvider.reason);
+    if (line) parts.push(line);
+  }
+  const dlocalAlt = Array.isArray(billingProvider.alternatives)
+    ? billingProvider.alternatives.find((a) => a?.provider === 'dlocal' && a?.reason)
+    : null;
+  if (dlocalAlt) {
+    const line = describeBillingProviderReason('dlocal', dlocalAlt.reason);
+    if (line) parts.push(`Medios locales (dLocal) no disponibles: ${line}`);
+  }
+  return parts.length ? parts.join(' ') : null;
+}
+
+/**
+ * Mensaje UI: fallback de proveedor (backend) + diagnósticos de billingProvider.
+ * @param {object | null | undefined} state - respuesta subscription-state
+ */
+export function getBillingResolutionUiMessage(state) {
+  if (!state) return null;
+  const pr = state.providerResolution;
+  const parts = [];
+  if (pr?.fallbackUsed && pr.fallbackReason) {
+    parts.push(
+      `Método previsto por país (${pr.primaryCandidate}) no disponible (${pr.fallbackReason}). Activo: ${pr.selectedProvider}.`,
+    );
+  } else if (pr?.subscriptionProviderOverride) {
+    parts.push(`Suscripción asociada al proveedor: ${pr.subscriptionProviderOverride}.`);
+  }
+  const extra = getBillingUiDiagnostics(state.billingProvider);
+  if (extra) parts.push(extra);
+  return parts.length ? parts.join(' ') : null;
+}
+
+/** Estado local cuando no hay subscription-state remoto: sin proveedor ni checkout (no inventar dLocal/PayPal). */
+export function buildBillingFallbackState({ business }) {
   const planExpiresAt = business?.planExpiresAt || null;
   const trialExpiresAt = business?.trialExpiresAt || null;
   const scheduledPlanSlug = business?.scheduledPlanSlug || null;
@@ -24,10 +82,16 @@ export function buildBillingFallbackState({ business, paymentProvider, checkoutP
   const billingStatus = trialActive
     ? (hasScheduledPaidPlan ? 'trial_with_subscription' : 'trial_without_subscription')
     : 'active';
+  const billingCountry = business?.routingCountryCode ?? business?.countryCode ?? null;
 
   return {
     ok: true,
-    provider: checkoutProvider || paymentProvider,
+    billingCountry,
+    currency: null,
+    marketStatus: null,
+    checkoutPolicy: { allowed: false, message: null },
+    providerResolution: null,
+    provider: null,
     plan_slug: business?.planSlug || 'starter',
     billing_status: billingStatus,
     has_subscription: hasScheduledPaidPlan,
@@ -37,14 +101,14 @@ export function buildBillingFallbackState({ business, paymentProvider, checkoutP
     current_period_ends_at: planExpiresAt,
     charge_after_trial: trialActive && hasScheduledPaidPlan,
     billingProvider: {
-      provider: paymentProvider,
-      enabled: true,
-      supportsCheckout: true,
-      supportsSubscriptions: true,
-      reason: null,
-      mode: 'fallback',
+      provider: null,
+      enabled: false,
+      supportsCheckout: false,
+      supportsSubscriptions: false,
+      reason: 'remote_unavailable',
+      mode: 'unknown',
       alternatives: [],
-      recommendedProvider: paymentProvider,
+      recommendedProvider: null,
     },
   };
 }
@@ -54,8 +118,6 @@ export async function getBillingStatusSafe({
   authLoading,
   isAuthenticated,
   user,
-  paymentProvider,
-  checkoutProvider,
   getAccessToken,
 }) {
   // Endpoint oficial UI para estado de suscripción/billing: /api/v1/billing/subscription-state
@@ -63,11 +125,7 @@ export async function getBillingStatusSafe({
   // Fallback se usa solo cuando no es posible leer el estado remoto
   // (token ausente/expirado, error HTTP o red). Puede quedar desincronizado
   // respecto a eventos backend (webhooks/cambios de plan), por eso se marca stale.
-  const fallbackState = buildBillingFallbackState({
-    business,
-    paymentProvider,
-    checkoutProvider,
-  });
+  const fallbackState = buildBillingFallbackState({ business });
   const hasLocalData = hasMinimumLocalBillingData(business);
 
   if (!business?.id || authLoading || !isAuthenticated || !user) {
@@ -77,6 +135,8 @@ export async function getBillingStatusSafe({
       source: 'fallback',
       isStale: true,
       shouldShowNeutralNotice: !hasLocalData,
+      remoteError: null,
+      billingReady: false,
     };
   }
 
@@ -88,6 +148,8 @@ export async function getBillingStatusSafe({
       source: 'fallback',
       isStale: true,
       shouldShowNeutralNotice: !hasLocalData,
+      remoteError: null,
+      billingReady: false,
     };
   }
 
@@ -103,23 +165,36 @@ export async function getBillingStatusSafe({
         httpStatus: res.status,
         code: data?.code || null,
         error: data?.error || null,
+        hint: data?.hint || null,
         hasBearer: !!token,
       });
       return {
         state: fallbackState,
         source: 'fallback',
+        isStale: true,
         shouldShowNeutralNotice: !hasLocalData,
+        billingReady: false,
+        remoteError: {
+          httpStatus: res.status,
+          code: data?.code ?? null,
+          error: data?.error ?? null,
+          hint: data?.hint ?? null,
+          details: data?.details ?? null,
+        },
       };
     }
     console.info('[billing-status] loaded from api', {
       provider: data?.billingProvider?.provider || data?.provider || null,
       billing_status: data?.billing_status || null,
+      selectedProvider: data?.providerResolution?.selectedProvider ?? null,
     });
     return {
       state: data,
       source: 'remote',
       isStale: false,
       shouldShowNeutralNotice: false,
+      remoteError: null,
+      billingReady: true,
     };
   } catch (err) {
     console.warn('[billing-status] request failed; using fallback', {
@@ -130,6 +205,14 @@ export async function getBillingStatusSafe({
       source: 'fallback',
       isStale: true,
       shouldShowNeutralNotice: !hasLocalData,
+      billingReady: false,
+      remoteError: {
+        httpStatus: null,
+        code: 'NETWORK_OR_PARSE',
+        error: err?.message || 'network_error',
+        hint: 'No se pudo contactar al servidor de facturación. Revisa tu conexión.',
+        details: null,
+      },
     };
   }
 }

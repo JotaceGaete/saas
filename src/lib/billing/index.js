@@ -21,7 +21,14 @@ export { getPaymentOptions } from './providers';
 export { normalizeBillingProvider } from './providers';
 export { isDlocalFeatureEnabled } from './providers';
 export { PAYMENT_PROVIDERS } from './providers';
-export { buildBillingFallbackState, getBillingStatusSafe, syncBillingStateIfStale } from './status';
+export {
+  buildBillingFallbackState,
+  getBillingStatusSafe,
+  syncBillingStateIfStale,
+  getBillingUiDiagnostics,
+  getBillingResolutionUiMessage,
+  describeBillingProviderReason,
+} from './status';
 export {
   MARKET_CODES,
   BILLING_MARKETS,

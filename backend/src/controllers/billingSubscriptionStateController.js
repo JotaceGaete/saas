@@ -22,6 +22,14 @@ function getServiceRoleKey() {
   return String(process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
 }
 
+const SUB_STATE_ROUTE = 'GET /api/v1/billing/subscription-state';
+const CURRENT_SUB_ROUTE = 'GET /api/v1/billing/current-subscription';
+
+function truncateStack(stack, maxLines = 8) {
+  if (!stack || typeof stack !== 'string') return null;
+  return stack.split('\n').slice(0, maxLines).join('\n');
+}
+
 async function getBusinessCountryCodeById(businessId) {
   const url = getSupabaseUrl();
   const key = getServiceRoleKey();
@@ -44,16 +52,26 @@ async function getBusinessCountryCodeById(businessId) {
 }
 
 export async function getBillingSubscriptionStateController(request) {
+  let businessId = null;
+  let businessCountryCode = null;
   try {
     const authUser = await requireAuthenticatedUser(request);
     const url = new URL(request.url);
-    const businessId = String(url.searchParams.get('businessId') || '').trim();
+    const route = url.pathname || SUB_STATE_ROUTE;
+    businessId = String(url.searchParams.get('businessId') || '').trim();
     if (!businessId) {
       return json({ ok: false, error: 'businessId query param is required' }, 400);
     }
 
     await assertBusinessOwnership({ businessId, userId: authUser.id });
-    const businessCountryCode = await getBusinessCountryCodeById(businessId);
+    businessCountryCode = await getBusinessCountryCodeById(businessId);
+    console.info('[billing-subscription-state] request', {
+      route,
+      businessId,
+      businessCountryCode,
+      hasSupabaseUrl: !!getSupabaseUrl(),
+      hasServiceRoleKey: !!getServiceRoleKey(),
+    });
     assertMarketAccess({ requestUrl: request.url, businessCountryCode });
     const state = await getBillingSubscriptionState({ businessId });
     return json(state, 200);
@@ -63,30 +81,71 @@ export async function getBillingSubscriptionStateController(request) {
       return json({ ok: false, code: 'AUTH_REQUIRED', error: message || '[auth] Unauthorized' }, 401);
     }
     if (isHttpError(err)) {
+      const hint =
+        /Missing SUPABASE_URL|SUPABASE_SERVICE_ROLE_KEY/i.test(err.message)
+          ? 'Configura SUPABASE_URL (o VITE_SUPABASE_URL) y SUPABASE_SERVICE_ROLE_KEY en el entorno del API.'
+          : /\[billing-subscriptions\] read failed/i.test(err.message)
+            ? 'Revisa permisos de service role y existencia de la tabla billing_subscriptions.'
+            : null;
+      console.warn('[billing-subscription-state] http_error', {
+        route: SUB_STATE_ROUTE,
+        businessId,
+        businessCountryCode,
+        statusCode: err.statusCode,
+        code: err?.code || null,
+        error: err.message,
+        details: err?.details || null,
+        hint,
+      });
       return json({
         ok: false,
         code: err?.code || null,
         provider: err?.provider || null,
         error: err.message,
         details: err?.details || null,
+        ...(hint ? { hint } : {}),
       }, err.statusCode);
     }
-    return json({ ok: false, error: err?.message || 'subscription_state_failed' }, 503);
+    console.error('[billing-subscription-state] unhandled_error', {
+      route: SUB_STATE_ROUTE,
+      businessId,
+      businessCountryCode,
+      errName: err?.name,
+      errMessage: err?.message,
+      stack: truncateStack(err?.stack),
+    });
+    return json({
+      ok: false,
+      code: 'INTERNAL_OR_UNKNOWN',
+      error: err?.message || 'subscription_state_failed',
+      details: {
+        name: err?.name || 'Error',
+        message: String(err?.message || ''),
+      },
+    }, 503);
   }
 }
 
 export async function getCurrentSubscriptionController(request) {
-  // Compat legacy: UI nueva debe consumir getBillingSubscriptionStateController
-  // vía /api/v1/billing/subscription-state.
+  let businessId = null;
+  let businessCountryCode = null;
   try {
     const authUser = await requireAuthenticatedUser(request);
     const url = new URL(request.url);
-    const businessId = String(url.searchParams.get('businessId') || '').trim();
+    const route = url.pathname || CURRENT_SUB_ROUTE;
+    businessId = String(url.searchParams.get('businessId') || '').trim();
     if (!businessId) {
       return json({ ok: false, error: 'businessId query param is required' }, 400);
     }
     await assertBusinessOwnership({ businessId, userId: authUser.id });
-    const businessCountryCode = await getBusinessCountryCodeById(businessId);
+    businessCountryCode = await getBusinessCountryCodeById(businessId);
+    console.info('[billing-subscription-state] request', {
+      route,
+      businessId,
+      businessCountryCode,
+      hasSupabaseUrl: !!getSupabaseUrl(),
+      hasServiceRoleKey: !!getServiceRoleKey(),
+    });
     assertMarketAccess({ requestUrl: request.url, businessCountryCode });
     const result = await getCurrentSubscriptionState({ businessId });
     return json(result, 200);
@@ -96,14 +155,47 @@ export async function getCurrentSubscriptionController(request) {
       return json({ ok: false, code: 'AUTH_REQUIRED', error: message || '[auth] Unauthorized' }, 401);
     }
     if (isHttpError(err)) {
+      const hint =
+        /Missing SUPABASE_URL|SUPABASE_SERVICE_ROLE_KEY/i.test(err.message)
+          ? 'Configura SUPABASE_URL (o VITE_SUPABASE_URL) y SUPABASE_SERVICE_ROLE_KEY en el entorno del API.'
+          : /\[billing-subscriptions\] read failed/i.test(err.message)
+            ? 'Revisa permisos de service role y existencia de la tabla billing_subscriptions.'
+            : null;
+      console.warn('[billing-subscription-state] http_error', {
+        route: CURRENT_SUB_ROUTE,
+        businessId,
+        businessCountryCode,
+        statusCode: err.statusCode,
+        code: err?.code || null,
+        error: err.message,
+        details: err?.details || null,
+        hint,
+      });
       return json({
         ok: false,
         code: err?.code || null,
         provider: err?.provider || null,
         error: err.message,
         details: err?.details || null,
+        ...(hint ? { hint } : {}),
       }, err.statusCode);
     }
-    return json({ ok: false, error: err?.message || 'current_subscription_failed' }, 503);
+    console.error('[billing-subscription-state] unhandled_error', {
+      route: CURRENT_SUB_ROUTE,
+      businessId,
+      businessCountryCode,
+      errName: err?.name,
+      errMessage: err?.message,
+      stack: truncateStack(err?.stack),
+    });
+    return json({
+      ok: false,
+      code: 'INTERNAL_OR_UNKNOWN',
+      error: err?.message || 'current_subscription_failed',
+      details: {
+        name: err?.name || 'Error',
+        message: String(err?.message || ''),
+      },
+    }, 503);
   }
 }
