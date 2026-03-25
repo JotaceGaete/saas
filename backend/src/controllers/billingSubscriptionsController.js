@@ -158,7 +158,15 @@ export async function dlocalCheckoutController(request) {
       cancelUrl,
       apiPublicOrigin,
     });
-    return json(result, 200);
+    const redirectUrl = result?.redirectUrl ?? null;
+    return json(
+      {
+        ...result,
+        checkoutUrl: redirectUrl,
+        redirect_url: redirectUrl,
+      },
+      200,
+    );
   } catch (err) {
     console.error('[DLOCAL_CHECKOUT_ERROR]', {
       route: '/api/v1/billing/dlocal/checkout',

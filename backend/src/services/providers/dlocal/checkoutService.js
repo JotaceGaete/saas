@@ -151,18 +151,25 @@ export async function createDlocalPlanCheckout({
   const orderId = buildOrderId({ businessId: business.id, planSlug: normalizedPlan });
   const endpointPath = '/v1/payments';
 
-  const origin = String(apiPublicOrigin || '').trim().replace(/\/$/, '');
+  const envOrigin = String(
+    process.env.VENTALINK_PUBLIC_ORIGIN
+    || process.env.VITE_APP_URL
+    || process.env.PUBLIC_APP_URL
+    || '',
+  ).trim().replace(/\/$/, '');
+  const requestOrigin = String(apiPublicOrigin || '').trim().replace(/\/$/, '');
+  /** Siempre URLs canónicas de app (ej. go.ventalink.app), nunca /planes como callback de dLocal */
+  const origin = envOrigin || requestOrigin;
   if (!origin) {
-    throw new HttpError(422, '[dlocal-checkout] apiPublicOrigin is required', {
+    throw new HttpError(422, '[dlocal-checkout] Set VENTALINK_PUBLIC_ORIGIN or pass apiPublicOrigin', {
       code: 'MISSING_PUBLIC_ORIGIN',
       provider: 'dlocal',
     });
   }
 
   const safeReturnUrl = String(returnUrl || '').trim();
-  const callbackPath = '/api/v1/billing/dlocal/callback';
-  const callbackQuery = safeReturnUrl ? `?rd=${encodeURIComponent(safeReturnUrl)}` : '';
-  const callbackUrl = `${origin}${callbackPath}${callbackQuery}`;
+  /** Browser return: solo API; el callback hace 302 a /planes?payment=… */
+  const callbackUrl = `${origin}/api/v1/billing/dlocal/callback`;
   const notificationUrl = `${origin}/api/v1/billing/webhooks/dlocal`;
 
   const payload = {
@@ -184,8 +191,6 @@ export async function createDlocalPlanCheckout({
     },
   };
 
-  console.log('[DLOCAL PAYLOAD]', JSON.stringify(payload, null, 2));
-
   console.info('[dlocal-checkout] callback_url=', callbackUrl);
   console.info('[dlocal-checkout] notification_url=', notificationUrl);
 
@@ -203,6 +208,8 @@ export async function createDlocalPlanCheckout({
     currencyCode,
     amount,
     plansReturnUrl: safeReturnUrl || null,
+    callback_url_sent: callbackUrl,
+    notification_url_sent: notificationUrl,
     cancelUrl: String(cancelUrl || '').trim() || null,
   });
 

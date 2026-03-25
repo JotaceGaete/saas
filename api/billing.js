@@ -3,7 +3,6 @@ import {
   createBillingSubscriptionController,
   dlocalCheckoutController,
 } from '../backend/src/controllers/billingSubscriptionsController.js';
-import { dlocalCallbackController } from '../backend/src/controllers/dlocalCallbackController.js';
 import { dlocalBillingWebhookController } from '../backend/src/controllers/dlocalBillingWebhookController.js';
 import { testDlocalPaymentController } from '../backend/src/controllers/dlocalTestPaymentController.js';
 import {
@@ -30,9 +29,6 @@ export async function POST(request) {
   const path = new URL(request.url).pathname;
   if (path.endsWith('/api/v1/billing/webhooks/dlocal')) {
     return dlocalBillingWebhookController(request);
-  }
-  if (path.endsWith('/api/v1/billing/dlocal/callback')) {
-    return dlocalCallbackController(request);
   }
   if (path.endsWith('/api/v1/billing/dlocal/checkout')) {
     return dlocalCheckoutController(request);

@@ -209,7 +209,7 @@ export default function PlansPage() {
       setPaymentMessage({ type: 'info', text: 'Verificando tu pago…' });
       setSearchParams({}, { replace: true });
       refreshBusiness?.();
-    } else if (payment === 'failure') {
+    } else if (payment === 'failure' || payment === 'failed') {
       setPaymentMessage({ type: 'error', text: 'El pago no pudo completarse. Intenta de nuevo.' });
       setSearchParams({}, { replace: true });
     } else if (payment === 'pending') {
@@ -681,7 +681,7 @@ export default function PlansPage() {
         }
         throw new Error(data?.error || `No se pudo crear la suscripción ${normalizedProvider} (HTTP ${res.status}).`);
       }
-      const checkoutUrl = data?.checkoutUrl || data?.redirectUrl || null;
+      const checkoutUrl = data?.redirect_url || data?.checkoutUrl || data?.redirectUrl || null;
       if (!checkoutUrl) {
         throw new Error(`${normalizedProvider} no devolvió URL de checkout.`);
       }
