@@ -1,10 +1,10 @@
-import { isHttpError } from '../backend/src/lib/http/HttpError.js';
+import { isHttpError } from '../lib/http/HttpError.js';
 import {
   markWebhookEventFailed,
   markWebhookEventProcessed,
   reserveWebhookEventProcessing,
-} from '../backend/src/repositories/billingWebhookEventRepository.js';
-import { processDlocalWebhook } from '../backend/src/services/billing/dlocalWebhookService.js';
+} from '../repositories/billingWebhookEventRepository.js';
+import { processDlocalWebhook } from '../services/billing/dlocalWebhookService.js';
 
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -13,7 +13,8 @@ function json(body, status = 200) {
   });
 }
 
-export async function POST(request) {
+/** POST /api/v1/billing/webhooks/dlocal — usado por api/billing.js consolidado. */
+export async function dlocalBillingWebhookController(request) {
   let eventId = null;
   let eventType = null;
   try {

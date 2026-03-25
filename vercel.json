@@ -4,51 +4,51 @@
   "rewrites": [
     {
       "source": "/api/v1/billing/paypal/subscriptions",
-      "destination": "/api/paypal-subscriptions"
+      "destination": "/api/paypal"
     },
     {
       "source": "/api/v1/billing/paypal/subscriptions/cancel",
-      "destination": "/api/paypal-subscriptions-cancel"
+      "destination": "/api/paypal"
     },
     {
       "source": "/api/v1/billing/paypal/confirm",
-      "destination": "/api/paypal-subscriptions-confirm"
+      "destination": "/api/paypal"
     },
     {
       "source": "/api/v1/billing/subscriptions/create",
-      "destination": "/api/billing-subscriptions-create"
+      "destination": "/api/billing"
     },
     {
       "source": "/api/v1/billing/subscriptions/confirm",
-      "destination": "/api/billing-subscriptions-confirm"
+      "destination": "/api/billing"
     },
     {
       "source": "/api/v1/billing/subscription-state",
-      "destination": "/api/billing-subscription-state"
+      "destination": "/api/billing"
     },
     {
       "source": "/api/v1/billing/current-subscription",
-      "destination": "/api/billing-subscription-state"
+      "destination": "/api/billing"
     },
     {
       "source": "/api/v1/billing/current-subscription/",
-      "destination": "/api/billing-subscription-state"
+      "destination": "/api/billing"
     },
     {
       "source": "/api/v1/billing/webhooks/dlocal",
-      "destination": "/api/billing-webhook-dlocal"
+      "destination": "/api/billing"
     },
     {
       "source": "/api/v1/billing/dlocal/test-payment",
-      "destination": "/api/billing-subscriptions-create"
+      "destination": "/api/billing"
     },
     {
       "source": "/api/v1/billing/dlocal/checkout",
-      "destination": "/api/billing-subscriptions-create"
+      "destination": "/api/billing"
     },
     {
       "source": "/api/v1/billing/dlocal/callback",
-      "destination": "/api/billing-dlocal-callback"
+      "destination": "/api/billing"
     },
     {
       "source": "/webhooks/paypal",
@@ -56,16 +56,16 @@
     },
     {
       "source": "/sitemap.xml",
-      "destination": "/api/sitemap"
+      "destination": "/api/seo?mode=sitemap"
     },
     {
       "source": "/",
       "has": [{ "type": "host", "value": "go.ventalink.app" }],
-      "destination": "/api/go-html"
+      "destination": "/api/seo?mode=go"
     },
     {
       "source": "/catalogo/:slug",
-      "destination": "/api/catalog-html?slug=:slug"
+      "destination": "/api/seo?slug=:slug"
     },
     {
       "source": "/(.*)",
