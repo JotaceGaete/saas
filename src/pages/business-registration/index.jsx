@@ -8,6 +8,21 @@ import AuthStep from './components/AuthStep';
 import ConfirmEmailStep from './components/ConfirmEmailStep';
 import StoreCreationStep from './components/StoreCreationStep';
 
+function normalizeAuthErrorMessage(raw) {
+  const msg = String(raw || '').trim();
+  const m = msg.toLowerCase();
+  if (m.includes('rate limit') || m.includes('too many requests')) {
+    return 'Has intentado crear cuentas demasiadas veces en poco tiempo. Espera 1 minuto y vuelve a intentarlo.';
+  }
+  if (m.includes('email') && m.includes('already') && (m.includes('registered') || m.includes('exists'))) {
+    return 'Este correo ya está registrado. Inicia sesión o usa otro correo.';
+  }
+  if (m.includes('password') && (m.includes('short') || m.includes('at least'))) {
+    return 'La contraseña es demasiado corta. Usa al menos 6 caracteres.';
+  }
+  return msg || 'Ocurrió un error. Por favor intenta de nuevo.';
+}
+
 /**
  * Flujo de onboarding:
  *   1. Visitante no autenticado → AuthStep (login / registro con email)
@@ -30,6 +45,18 @@ export default function BusinessRegistration() {
   const [authError, setAuthError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pendingConfirmation, setPendingConfirmation] = useState(null); // { email } cuando signUp OK pero sin sesión
+  const [signupCooldownUntil, setSignupCooldownUntil] = useState(0);
+
+  const cooldownRemainingMs = Math.max(0, (signupCooldownUntil || 0) - Date.now());
+  const signupCooldownActive = cooldownRemainingMs > 0;
+
+  useEffect(() => {
+    if (!signupCooldownActive) return;
+    const t = setInterval(() => {
+      setSignupCooldownUntil((v) => v);
+    }, 500);
+    return () => clearInterval(t);
+  }, [signupCooldownActive]);
 
   useEffect(() => {
     logCountryStateDebug({
@@ -73,6 +100,10 @@ export default function BusinessRegistration() {
   // ── PASO 1: No autenticado → pantalla de login/registro ─────────────────────
   if (!user) {
     const handleRegister = async ({ email, password, businessName, whatsapp }) => {
+      if (signupCooldownActive) {
+        setAuthError('Espera un minuto antes de intentarlo de nuevo.');
+        return;
+      }
       setIsSubmitting(true);
       setAuthError(null);
       setPendingConfirmation(null);
@@ -86,7 +117,11 @@ export default function BusinessRegistration() {
           countryCode: null,
         });
         if (error) {
-          setAuthError(error.message);
+          setAuthError(normalizeAuthErrorMessage(error.message));
+          const msgLower = String(error.message || '').toLowerCase();
+          if (msgLower.includes('rate limit') || msgLower.includes('too many requests')) {
+            setSignupCooldownUntil(Date.now() + 60_000);
+          }
           return;
         }
         if (data?.user && !data?.session) {
@@ -154,7 +189,8 @@ export default function BusinessRegistration() {
         onRegister={handleRegister}
         onLogin={handleLogin}
         onGoogleLogin={handleGoogleLogin}
-        isLoading={isSubmitting}
+        isLoading={isSubmitting || signupCooldownActive}
+        cooldownMs={cooldownRemainingMs}
         authError={authError}
         onClearError={() => setAuthError(null)}
       />

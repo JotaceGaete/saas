@@ -20,12 +20,13 @@ const FEATURE_CARDS = [
   { icon: 'BarChart2', title: 'Estadísticas', description: 'Revisa visitas y pedidos.' },
 ];
 
-export default function AuthStep({ onRegister, onLogin, onGoogleLogin, isLoading, authError, onClearError }) {
+export default function AuthStep({ onRegister, onLogin, onGoogleLogin, isLoading, cooldownMs = 0, authError, onClearError }) {
   const countryLabels = getCountryLabels();
   const [mode, setMode] = useState('register');
   const [googleLoading, setGoogleLoading] = useState(false);
   const [formData, setFormData] = useState({ businessName: '', email: '', password: '', confirmPassword: '', whatsapp: '' });
   const [errors, setErrors] = useState({});
+  const cooldownSeconds = Math.ceil(Math.max(0, cooldownMs) / 1000);
 
   const update = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -354,6 +355,11 @@ export default function AuthStep({ onRegister, onLogin, onGoogleLogin, isLoading
                   </>
                 ) : mode === 'register' ? 'Crear mi catálogo' : 'Iniciar sesión'}
               </button>
+              {mode === 'register' && cooldownSeconds > 0 && (
+                <p className="text-center text-xs mt-3" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                  Espera {cooldownSeconds}s para volver a intentar.
+                </p>
+              )}
               {mode === 'register' && (
                 <p className="text-center text-xs mt-3" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
                   No se requiere tarjeta de crédito.
