@@ -315,6 +315,12 @@ export default function BusinessConfiguration() {
       bankRut: bankForm?.bankRut,
       bankEmail: bankForm?.bankEmail,
     };
+    console.info('[BusinessConfiguration] handleSaveSettings: payload país/moneda', {
+      countryCode: payload.countryCode,
+      currency: payload.currency,
+      country: payload.country,
+      whatsappLen: payload.whatsapp != null ? String(payload.whatsapp).length : undefined,
+    });
     try {
       const { data: updated, error } = await updateBusiness(bizId, payload);
       if (error) {

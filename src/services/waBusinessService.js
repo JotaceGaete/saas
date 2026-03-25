@@ -550,7 +550,27 @@ export async function updateBusiness(businessId, updates) {
 
   const inferredFromWhatsapp =
     updates?.whatsapp !== undefined ? inferCountryCodeFromE164(updates.whatsapp) : null;
-  if (inferredFromWhatsapp) {
+  const hasExplicitCountryCode =
+    updates?.countryCode !== undefined && String(updates.countryCode ?? '').trim() !== '';
+
+  console.info('[waBusinessService] updateBusiness: updates (país/moneda)', {
+    countryCode: updates?.countryCode,
+    currency: updates?.currency,
+    country: updates?.country,
+    inferredFromWhatsapp,
+    hasExplicitCountryCode,
+    whatsappLen: updates?.whatsapp != null ? String(updates.whatsapp).length : undefined,
+  });
+
+  if (hasExplicitCountryCode) {
+    dbUpdates.country_code = normalizeCountryCode(updates.countryCode, updates?.currency);
+    const cur =
+      updates?.currency !== undefined ? String(updates.currency).trim().toUpperCase() : '';
+    dbUpdates.currency = cur
+      ? cur
+      : String(getCountryConfig(dbUpdates.country_code)?.currency || 'USD').trim().toUpperCase();
+    if (updates?.country !== undefined) dbUpdates.country = updates.country;
+  } else if (inferredFromWhatsapp) {
     const cfg = getCountryConfig(inferredFromWhatsapp);
     dbUpdates.country_code = inferredFromWhatsapp;
     dbUpdates.currency = String(cfg?.currency || 'USD').trim().toUpperCase();
@@ -579,13 +599,18 @@ export async function updateBusiness(businessId, updates) {
   if (updates?.planSlug !== undefined)         dbUpdates.plan_slug = updates?.planSlug;
   if (updates?.planExpiresAt !== undefined)    dbUpdates.plan_expires_at = updates?.planExpiresAt ?? null;
   if (updates?.trialExpiresAt !== undefined)   dbUpdates.trial_expires_at = updates?.trialExpiresAt ?? null;
-  console.log('[waBusinessService] updateBusiness: payload =', dbUpdates);
+  console.info('[waBusinessService] updateBusiness: dbUpdates (payload a PostgREST)', dbUpdates);
   const { data, error } = await supabase?.from('wa_businesses')?.update(dbUpdates)?.eq('id', businessId)?.eq('user_id', user?.id)?.select()?.single();
   if (error) {
     console.error('[waBusinessService] updateBusiness error:', error);
     return { data: null, error };
   }
-  console.log('[waBusinessService] updateBusiness success: updated id =', data?.id);
+  console.info('[waBusinessService] updateBusiness: fila guardada (raw)', {
+    id: data?.id,
+    country_code: data?.country_code,
+    currency: data?.currency,
+    country: data?.country,
+  });
   if (data?.id) {
     console.log('[waBusinessService] updateBusiness: triggerOgImageGeneration', { businessId: data?.id });
     triggerOgImageGeneration(data?.id);
