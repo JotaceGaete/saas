@@ -495,9 +495,8 @@ export default function BusinessConfiguration() {
                   label="Número de WhatsApp"
                   hint={countryLabels.whatsappHint}
                   countryCode={uiCountryCode}
-                  editableCountry
+                  editableCountry={false}
                   persistCountrySelection={false}
-                  onCountryChange={setWhatsappCountryOverride}
                   value={form?.whatsapp}
                   onChange={(v) => handleFormChange('whatsapp', v)}
                 />
