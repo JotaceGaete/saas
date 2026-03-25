@@ -22,8 +22,6 @@ function isAllowedOrigin(origin: string | null): boolean {
   if (!origin) return false;
 
   const allowed = [
-    'https://cl.ventalink.app',
-    'https://ar.ventalink.app',
     'https://go.ventalink.app',
     'http://localhost:4028',
   ];
@@ -39,7 +37,7 @@ function isAllowedOrigin(origin: string | null): boolean {
 }
 
 function buildCorsHeaders(origin: string | null): Record<string, string> {
-  const allowOrigin = isAllowedOrigin(origin) ? origin : 'https://ar.ventalink.app';
+  const allowOrigin = isAllowedOrigin(origin) ? origin : 'https://go.ventalink.app';
   return {
     'Access-Control-Allow-Origin': allowOrigin,
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',

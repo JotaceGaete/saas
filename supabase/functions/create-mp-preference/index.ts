@@ -177,8 +177,8 @@ Deno.serve(async (req) => {
   const anonKey          = Deno.env.get('SUPABASE_ANON_KEY')         ?? '';
   const serviceRoleKey   = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
   const mpAccessToken    = Deno.env.get('MP_ACCESS_TOKEN')           ?? '';
-  // Fallback solo si el front no envía success_url; con ar/cl el front envía las URLs según dominio.
-  const appBaseUrl = (Deno.env.get('APP_BASE_URL') ?? 'https://cl.ventalink.app').replace(/\/$/, '');
+  // Fallback solo si el front no envía success_url (app en go.ventalink.app).
+  const appBaseUrl = (Deno.env.get('APP_BASE_URL') ?? 'https://go.ventalink.app').replace(/\/$/, '');
   const notificationUrl  = Deno.env.get('MP_WEBHOOK_URL')            ?? '';
 
   if (!serviceRoleKey) {

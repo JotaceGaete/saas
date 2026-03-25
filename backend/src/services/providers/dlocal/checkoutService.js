@@ -120,14 +120,26 @@ async function insertPendingPayment({
   return data?.id || null;
 }
 
+/** App pública única (sin cl/ar por país). dLocal callback/notification siempre apuntan aquí. */
+const GO_VENTALINK_APP_ORIGIN = 'https://go.ventalink.app';
+
+/**
+ * Solo VENTALINK_PUBLIC_ORIGIN o DLOCAL_APP_PUBLIC_ORIGIN (staging/preview).
+ * No usar VITE_APP_URL ni el Host del request (evita cl.ventalink.app / ar.ventalink.app).
+ */
+function resolveDlocalAppBaseUrl() {
+  const explicit = String(
+    process.env.VENTALINK_PUBLIC_ORIGIN || process.env.DLOCAL_APP_PUBLIC_ORIGIN || '',
+  ).trim().replace(/\/$/, '');
+  return explicit || GO_VENTALINK_APP_ORIGIN;
+}
+
 export async function createDlocalPlanCheckout({
   business,
   authUser,
   planSlug,
   returnUrl,
   cancelUrl,
-  /** Origen público del API (ej. https://go.ventalink.app) para callback_url y notification_url */
-  apiPublicOrigin,
 }) {
   const baseUrl = getBaseUrl();
   const apiKey = getApiKey();
@@ -151,26 +163,10 @@ export async function createDlocalPlanCheckout({
   const orderId = buildOrderId({ businessId: business.id, planSlug: normalizedPlan });
   const endpointPath = '/v1/payments';
 
-  const envOrigin = String(
-    process.env.VENTALINK_PUBLIC_ORIGIN
-    || process.env.VITE_APP_URL
-    || process.env.PUBLIC_APP_URL
-    || '',
-  ).trim().replace(/\/$/, '');
-  const requestOrigin = String(apiPublicOrigin || '').trim().replace(/\/$/, '');
-  /** Siempre URLs canónicas de app (ej. go.ventalink.app), nunca /planes como callback de dLocal */
-  const origin = envOrigin || requestOrigin;
-  if (!origin) {
-    throw new HttpError(422, '[dlocal-checkout] Set VENTALINK_PUBLIC_ORIGIN or pass apiPublicOrigin', {
-      code: 'MISSING_PUBLIC_ORIGIN',
-      provider: 'dlocal',
-    });
-  }
-
+  const appBaseUrl = resolveDlocalAppBaseUrl();
   const safeReturnUrl = String(returnUrl || '').trim();
-  /** Browser return: solo API; el callback hace 302 a /planes?payment=… */
-  const callbackUrl = `${origin}/api/v1/billing/dlocal/callback`;
-  const notificationUrl = `${origin}/api/v1/billing/webhooks/dlocal`;
+  const callbackUrl = `${appBaseUrl}/api/v1/billing/dlocal/callback`;
+  const notificationUrl = `${appBaseUrl}/api/v1/billing/webhooks/dlocal`;
 
   const payload = {
     amount: Number(amount),
@@ -191,6 +187,7 @@ export async function createDlocalPlanCheckout({
     },
   };
 
+  console.info('[dlocal-checkout] appBaseUrl=', appBaseUrl);
   console.info('[dlocal-checkout] callback_url=', callbackUrl);
   console.info('[dlocal-checkout] notification_url=', notificationUrl);
 

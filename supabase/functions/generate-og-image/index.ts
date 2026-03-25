@@ -11,8 +11,6 @@ const HEIGHT = 630;
 const ALLOWED_ORIGINS = [
   "https://ventalink.app",
   "https://www.ventalink.app",
-  "https://cl.ventalink.app",
-  "https://ar.ventalink.app",
   "https://go.ventalink.app",
   "https://app.gong.cl",
   "http://localhost:4028",

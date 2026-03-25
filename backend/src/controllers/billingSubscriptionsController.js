@@ -92,7 +92,6 @@ export async function createBillingSubscriptionController(request) {
       provider,
       returnUrl,
       cancelUrl,
-      apiPublicOrigin,
     });
     console.info('[BILLING_CREATE_RESULT]', {
       route: '/api/v1/billing/subscriptions/create',
@@ -149,14 +148,12 @@ export async function dlocalCheckoutController(request) {
     const returnUrl = String(body?.returnUrl || `${origin}/planes?payment=success`).trim();
     const cancelUrl = String(body?.cancelUrl || `${origin}/planes?payment=failure`).trim();
 
-    const apiPublicOrigin = new URL(request.url).origin;
     const result = await createDlocalPlanCheckout({
       business,
       authUser,
       planSlug,
       returnUrl,
       cancelUrl,
-      apiPublicOrigin,
     });
     const redirectUrl = result?.redirectUrl ?? null;
     return json(

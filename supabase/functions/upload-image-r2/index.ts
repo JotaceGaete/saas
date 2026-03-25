@@ -9,8 +9,7 @@ import { getSignedUrl } from 'npm:@aws-sdk/s3-request-presigner@3.700.0';
 const ALLOWED_ORIGINS = [
   'https://ventalink.app',
   'https://www.ventalink.app',
-  'https://cl.ventalink.app',
-  'https://ar.ventalink.app',
+  'https://go.ventalink.app',
   'https://app.gong.cl', // migración
   'http://localhost:4028',
   'http://localhost:3000',

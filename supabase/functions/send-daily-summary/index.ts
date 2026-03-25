@@ -26,7 +26,7 @@ Deno.serve(async (req) => {
   const supabaseUrl = (Deno.env.get('SUPABASE_URL') ?? '').replace(/\/$/, '');
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
   const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
-  const appBaseUrl = (Deno.env.get('APP_BASE_URL') ?? 'https://cl.ventalink.app').replace(/\/$/, '');
+  const appBaseUrl = (Deno.env.get('APP_BASE_URL') ?? 'https://go.ventalink.app').replace(/\/$/, '');
   const dashboardUrl = `${appBaseUrl}/dashboard`;
 
   if (!supabaseUrl || !serviceKey) {

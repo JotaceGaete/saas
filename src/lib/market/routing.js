@@ -12,10 +12,8 @@ export function getMarketCodeByCountry(countryCode) {
   return 'GLOBAL';
 }
 
-export function getDefaultDomainByMarket(marketCode) {
-  const market = String(marketCode || '').trim().toUpperCase();
-  if (market === 'CL') return 'https://cl.ventalink.app';
-  if (market === 'AR') return 'https://ar.ventalink.app';
+/** Toda la app vive en go.ventalink.app (sin subdominios por país). */
+export function getDefaultDomainByMarket(_marketCode) {
   return 'https://go.ventalink.app';
 }
 
