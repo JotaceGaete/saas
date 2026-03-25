@@ -5,6 +5,9 @@
 
 import { getStoredCountryCode, getCountryConfig, COUNTRY_CODES } from './countryConfig';
 
+/** Claves ISO para entradas de COUNTRY_LABELS (evita literales duplicados; compat con re-exports). */
+export const COUNTRY_AR = 'AR';
+export const COUNTRY_CL = 'CL';
 
 /**
  * Detecta el país según el hostname o la selección guardada.
@@ -441,5 +444,3 @@ export function getCurrency(countryCode) {
   const labels = getCountryLabels(resolved);
   return labels?.currency ?? getCountryConfig(resolved)?.currency ?? 'USD';
 }
-
-export { COUNTRY_AR, COUNTRY_CL };

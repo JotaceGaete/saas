@@ -3,6 +3,7 @@ import { getPlanLimits } from '../constants/plans';
 import { getTrialEndDateFrom } from '../constants/trial';
 import { getMarketCodeByCountry } from '../lib/market/routing';
 import { getCountryConfig, COUNTRY_CODES } from '../config/countryConfig';
+import { inferCountryCodeFromE164 } from '../lib/phone/inferCountryFromE164';
 
 // Helpers
 
@@ -33,6 +34,36 @@ function normalizeCountryCode(value, currencyHint, options = {}) {
   if (aliases[normalizedAlias]) return aliases[normalizedAlias];
 
   return options.allowNull ? null : 'US';
+}
+
+/**
+ * País y moneda alineados con WhatsApp en E.164 cuando el prefijo coincide con COUNTRY_CONFIG.
+ * Si no hay match, se usa país/moneda del formulario (comportamiento anterior).
+ */
+function resolveCountryCurrencyCountryNameForPayload(businessData) {
+  const inferred = inferCountryCodeFromE164(businessData?.whatsapp);
+  if (inferred) {
+    const cfg = getCountryConfig(inferred);
+    return {
+      countryCode: inferred,
+      currency: String(cfg?.currency || 'USD').trim().toUpperCase(),
+      country: cfg?.name != null ? cfg.name : (businessData?.country ?? null),
+    };
+  }
+  const countryCode = normalizeCountryCode(
+    businessData?.countryCode ?? businessData?.country,
+    businessData?.currency,
+    { allowNull: true },
+  );
+  return {
+    countryCode,
+    currency: String(
+      businessData?.currency
+      || getCountryConfig(countryCode || 'US')?.currency
+      || 'USD',
+    ).trim().toUpperCase(),
+    country: businessData?.country ?? null,
+  };
 }
 
 /** Solo columna country_code explícita; para routing multi-dominio sin inferir por moneda. */
@@ -422,16 +453,11 @@ export const createBusiness = async (businessData) => {
   if (!user) return { data: null, error: { message: 'Usuario no autenticado' } };
   let slug = await generateSlug(businessData?.name);
   const trialEnd = getTrialEndDateFrom().toISOString();
-  const resolvedCountryCode = normalizeCountryCode(
-    businessData?.countryCode ?? businessData?.country,
-    businessData?.currency,
-    { allowNull: true },
-  );
-  const resolvedCurrency = String(
-    businessData?.currency
-    || getCountryConfig(resolvedCountryCode || 'US')?.currency
-    || 'USD',
-  ).trim().toUpperCase();
+  const {
+    countryCode: resolvedCountryCode,
+    currency: resolvedCurrency,
+    country: resolvedCountryName,
+  } = resolveCountryCurrencyCountryNameForPayload(businessData);
   const { data, error } = await supabase?.from('wa_businesses')?.insert({
       user_id: user?.id,
       name: businessData?.name,
@@ -441,7 +467,7 @@ export const createBusiness = async (businessData) => {
       address: businessData?.address || null,
       city: businessData?.city || null,
       region: businessData?.region || null,
-      country: businessData?.country || null,
+      country: resolvedCountryName,
       country_code: resolvedCountryCode,
       currency: resolvedCurrency,
       logo_url: businessData?.logoUrl || null,
@@ -468,16 +494,11 @@ export const createBusinessForUser = async (userId, businessData) => {
   if (!userId) return { data: null, error: { message: 'Usuario no autenticado' } };
   let slug = await generateSlug(businessData?.name);
   const trialEnd = getTrialEndDateFrom().toISOString();
-  const resolvedCountryCode = normalizeCountryCode(
-    businessData?.countryCode ?? businessData?.country,
-    businessData?.currency,
-    { allowNull: true },
-  );
-  const resolvedCurrency = String(
-    businessData?.currency
-    || getCountryConfig(resolvedCountryCode || 'US')?.currency
-    || 'USD',
-  ).trim().toUpperCase();
+  const {
+    countryCode: resolvedCountryCode,
+    currency: resolvedCurrency,
+    country: resolvedCountryName,
+  } = resolveCountryCurrencyCountryNameForPayload(businessData);
   const { data, error } = await supabase?.from('wa_businesses')?.insert({
       user_id: userId,
       name: businessData?.name,
@@ -487,7 +508,7 @@ export const createBusinessForUser = async (userId, businessData) => {
       address: businessData?.address || null,
       city: businessData?.city || null,
       region: businessData?.region || null,
-      country: businessData?.country || null,
+      country: resolvedCountryName,
       country_code: resolvedCountryCode,
       currency: resolvedCurrency,
       logo_url: businessData?.logoUrl || null,
@@ -526,10 +547,23 @@ export async function updateBusiness(businessId, updates) {
   if (updates?.address !== undefined)     dbUpdates.address = updates?.address;
   if (updates?.city !== undefined)        dbUpdates.city = updates?.city;
   if (updates?.region !== undefined)      dbUpdates.region = updates?.region;
-  if (updates?.country !== undefined)     dbUpdates.country = updates?.country;
-  if (updates?.countryCode !== undefined) dbUpdates.country_code = normalizeCountryCode(updates?.countryCode, updates?.currency);
-  else if (updates?.country !== undefined) dbUpdates.country_code = normalizeCountryCode(updates?.country, updates?.currency);
-  if (updates?.currency !== undefined)    dbUpdates.currency = updates?.currency;
+
+  const inferredFromWhatsapp =
+    updates?.whatsapp !== undefined ? inferCountryCodeFromE164(updates.whatsapp) : null;
+  if (inferredFromWhatsapp) {
+    const cfg = getCountryConfig(inferredFromWhatsapp);
+    dbUpdates.country_code = inferredFromWhatsapp;
+    dbUpdates.currency = String(cfg?.currency || 'USD').trim().toUpperCase();
+    if (cfg?.name != null) dbUpdates.country = cfg.name;
+  } else {
+    if (updates?.country !== undefined) dbUpdates.country = updates?.country;
+    if (updates?.countryCode !== undefined) {
+      dbUpdates.country_code = normalizeCountryCode(updates?.countryCode, updates?.currency);
+    } else if (updates?.country !== undefined) {
+      dbUpdates.country_code = normalizeCountryCode(updates?.country, updates?.currency);
+    }
+    if (updates?.currency !== undefined) dbUpdates.currency = updates?.currency;
+  }
   if (updates?.logoUrl !== undefined)     dbUpdates.logo_url = updates?.logoUrl;
   if (updates?.coverImageUrl !== undefined) dbUpdates.cover_image_url = updates?.coverImageUrl;
   if (updates?.slug !== undefined)        dbUpdates.slug = updates?.slug;
