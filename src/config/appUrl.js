@@ -1,7 +1,7 @@
 /**
  * URL base pública de la app (frontend).
  * Prioridad: VITE_APP_URL (build) → window.location.origin (runtime).
- * En producción: https://cl.ventalink.app o https://ar.ventalink.app según deploy.
+ * En producción: https://go.ventalink.app
  */
 const BASE_URL = import.meta.env?.VITE_APP_URL?.trim() || '';
 
@@ -16,7 +16,6 @@ export function getAppBaseUrl() {
 
 /**
  * URL de callback para OAuth (Google, etc.).
- * Chile → cl.ventalink.app, Argentina → ar.ventalink.app, localhost → mismo puerto, resto → go.ventalink.app
  * @returns {string} URL absoluta para redirectTo en signInWithOAuth
  */
 export function getAuthRedirectUrl() {

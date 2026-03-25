@@ -5,12 +5,12 @@ const MOCK_DEFAULTS = {
   name: 'Juan',
   business_name: 'La Tienda de Lola',
   businessName: 'La Tienda de Lola',
-  dashboard_url: 'https://cl.ventalink.app/dashboard',
-  dashboardUrl: 'https://cl.ventalink.app/dashboard',
-  confirm_url: 'https://cl.ventalink.app/auth/callback?token=mock-confirm-token',
-  confirmUrl: 'https://cl.ventalink.app/auth/callback?token=mock-confirm-token',
-  reset_url: 'https://cl.ventalink.app/auth/reset-password?token=mock-recovery-token',
-  resetUrl: 'https://cl.ventalink.app/auth/reset-password?token=mock-recovery-token',
+  dashboard_url: 'https://go.ventalink.app/dashboard',
+  dashboardUrl: 'https://go.ventalink.app/dashboard',
+  confirm_url: 'https://go.ventalink.app/auth/callback?token=mock-confirm-token',
+  confirmUrl: 'https://go.ventalink.app/auth/callback?token=mock-confirm-token',
+  reset_url: 'https://go.ventalink.app/auth/reset-password?token=mock-recovery-token',
+  resetUrl: 'https://go.ventalink.app/auth/reset-password?token=mock-recovery-token',
 };
 
 /**

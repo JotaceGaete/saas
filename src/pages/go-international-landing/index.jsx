@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
 import Icon from 'components/AppIcon';
@@ -11,11 +11,9 @@ import {
   getGoInternationalOgImage,
   stringifyJsonLd,
 } from '../../utils/goInternationalSeo';
-import MarketEntryModal from '../landing-page/components/MarketEntryModal';
 
 export default function GoInternationalLanding() {
   const navigate = useNavigate();
-  const [marketModalOpen, setMarketModalOpen] = useState(false);
   const origin =
     typeof window !== 'undefined' && window.location?.origin
       ? window.location.origin.replace(/\/$/, '')
@@ -29,7 +27,6 @@ export default function GoInternationalLanding() {
       className="min-h-screen w-full max-w-full min-w-0 overflow-x-hidden bg-white"
       style={{ fontFamily: 'var(--font-body)' }}
     >
-      <MarketEntryModal open={marketModalOpen} onClose={() => setMarketModalOpen(false)} />
       <Helmet htmlAttributes={{ lang: 'es' }}>
         <title>{GO_INTERNATIONAL_TITLE}</title>
         <meta name="description" content={GO_INTERNATIONAL_DESCRIPTION} />
@@ -72,7 +69,7 @@ export default function GoInternationalLanding() {
             <Button variant="ghost" size="sm" onClick={() => navigate('/login')}>
               Iniciar sesión
             </Button>
-            <Button size="sm" className="hidden sm:inline-flex" onClick={() => setMarketModalOpen(true)}>
+            <Button size="sm" className="hidden sm:inline-flex" onClick={() => navigate('/business-registration')}>
               Comenzar gratis
             </Button>
           </nav>
@@ -114,7 +111,7 @@ export default function GoInternationalLanding() {
               <Button
                 size="lg"
                 className="w-full sm:w-auto"
-                onClick={() => setMarketModalOpen(true)}
+                onClick={() => navigate('/business-registration')}
               >
                 Comenzar gratis
               </Button>
@@ -178,7 +175,7 @@ export default function GoInternationalLanding() {
               <Button
                 size="lg"
                 className="bg-white text-teal-900 hover:bg-teal-50 w-full sm:w-auto"
-                onClick={() => setMarketModalOpen(true)}
+                onClick={() => navigate('/business-registration')}
               >
                 Comenzar gratis
               </Button>

@@ -1,7 +1,7 @@
 import { supabase } from '../lib/supabase';
 import { getPlanLimits } from '../constants/plans';
 import { getTrialEndDateFrom } from '../constants/trial';
-import { getDefaultDomainByMarket, getMarketCodeByCountry } from '../lib/market/routing';
+import { getMarketCodeByCountry } from '../lib/market/routing';
 import { getCountryConfig, COUNTRY_CODES } from '../config/countryConfig';
 
 // Helpers
@@ -251,7 +251,8 @@ const mapBusinessFromDb = (row) => {
   /** Código ISO persistido en BD; usar para redirección de dominio (no inferir CL desde CLP). */
   routingCountryCode: routingCountryCodeFromRow(row),
   marketCode: getMarketCodeByCountry(normalizeCountryCode(row?.country_code ?? row?.country, row?.currency)),
-  defaultDomain: getDefaultDomainByMarket(getMarketCodeByCountry(normalizeCountryCode(row?.country_code ?? row?.country, row?.currency))),
+  // Legacy: dominios por mercado (cl/ar/go). Todo vive en go.ventalink.app.
+  defaultDomain: 'https://go.ventalink.app',
   currency: row?.currency,
   logoUrl: row?.logo_url || designSettings?.logoUrl || null,
   coverImageUrl: row?.cover_image_url || designSettings?.headerImageUrl || designSettings?.coverImageUrl || null,

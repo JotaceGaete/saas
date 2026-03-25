@@ -1,7 +1,7 @@
 /**
  * Configuración global de países para go.ventalink.app.
  * Usado para: prefijo WhatsApp, moneda, locale BCP 47 (Intl), símbolo y formato de precios.
- * CL/AR también usan esta config; en cl/ar.ventalink.app el país viene del dominio.
+ * CL/AR también están soportados, pero no se usan subdominios por mercado: todo vive en go.ventalink.app.
  */
 
 export const COUNTRY_CONFIG = Object.freeze({

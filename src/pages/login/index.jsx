@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { resolveMarketRouting, shouldSkipAutoMarketRedirect } from '../../lib/market/routing';
 import LoginLeftPanel from './components/LoginLeftPanel';
 import LoginForm from './components/LoginForm';
 
@@ -28,20 +27,6 @@ export default function Login() {
     if (businessLoading) return;
 
     if (business) {
-      if (typeof window !== 'undefined') {
-        const decision = resolveMarketRouting({
-          businessCountryCode: business?.routingCountryCode ?? null,
-          hostname: window.location.hostname,
-          path: '/dashboard',
-        });
-        if (decision.redirect && decision.redirectUrl) {
-          if (!shouldSkipAutoMarketRedirect(decision)) {
-            setAuthError(decision.message);
-            window.location.replace(`${decision.redirectUrl}?market_redirect=1&market=${decision.marketCode}`);
-            return;
-          }
-        }
-      }
       navigate('/dashboard', { replace: true });
       return;
     }
@@ -146,9 +131,7 @@ export default function Login() {
           forgotPasswordSuccess={forgotPasswordSuccess}
           forgotPasswordLoading={forgotPasswordLoading}
           onClearForgotSuccess={() => setForgotPasswordSuccess(false)}
-          redirectMessage={new URLSearchParams(location?.search || '').get('market_redirect') === '1'
-            ? 'Te redirigimos al acceso correcto según el mercado de tu cuenta.'
-            : location?.state?.message}
+          redirectMessage={location?.state?.message}
         />
       </div>
     </div>

@@ -17,14 +17,12 @@ const PLAN_IDS = PLAN_SLUGS.map((slug) => ({
 }));
 
 /**
- * Detect country for public pricing: hostname first (cl/ar.ventalink.app), then IP geo.
- * @returns {Promise<'CL'|'AR'|'INTL'>}
+ * Detect country for public pricing: go.ventalink.app usa país guardado; fallback por IP.
+ * @returns {Promise<'CL'|'AR'|'INTL'|string>}
  */
 async function detectCountryForPricing() {
   if (typeof window === 'undefined') return 'INTL';
   const host = (window.location?.hostname || '').toLowerCase();
-  if (/(^|\.)cl\.ventalink\.app$/.test(host)) return 'CL';
-  if (/(^|\.)ar\.ventalink\.app$/.test(host)) return 'AR';
   if (/(^|\.)go\.ventalink\.app$/.test(host)) {
     const stored = getStoredCountryCode();
     if (stored) return stored;

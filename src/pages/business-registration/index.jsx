@@ -14,11 +14,36 @@ function normalizeAuthErrorMessage(raw) {
   if (m.includes('rate limit') || m.includes('too many requests')) {
     return 'Has intentado crear cuentas demasiadas veces en poco tiempo. Espera 1 minuto y vuelve a intentarlo.';
   }
-  if (m.includes('email') && m.includes('already') && (m.includes('registered') || m.includes('exists'))) {
+  if (
+    (m.includes('email') && m.includes('already') && (m.includes('registered') || m.includes('exists'))) ||
+    m.includes('user already registered') ||
+    m.includes('already registered')
+  ) {
     return 'Este correo ya está registrado. Inicia sesión o usa otro correo.';
+  }
+  if (m.includes('invalid') && m.includes('email')) {
+    return 'El correo no es válido. Revisa el formato e inténtalo de nuevo.';
+  }
+  if (m.includes('email') && (m.includes('not confirmed') || m.includes('confirm'))) {
+    return 'Confirma tu correo antes de continuar.';
+  }
+  if (m.includes('invalid login credentials') || (m.includes('invalid') && m.includes('credentials'))) {
+    return 'Correo o contraseña incorrectos.';
+  }
+  if (m.includes('signup') && (m.includes('disabled') || m.includes('not allowed'))) {
+    return 'El registro está deshabilitado temporalmente. Intenta más tarde.';
+  }
+  if (m.includes('email') && (m.includes('not allowed') || m.includes('not authorized') || m.includes('blocked'))) {
+    return 'No se permite registrar este correo. Prueba con otro correo.';
+  }
+  if (m.includes('password') && (m.includes('weak') || m.includes('strength'))) {
+    return 'La contraseña es muy débil. Usa una más segura (mínimo 6 caracteres).';
   }
   if (m.includes('password') && (m.includes('short') || m.includes('at least'))) {
     return 'La contraseña es demasiado corta. Usa al menos 6 caracteres.';
+  }
+  if (m.includes('network') || m.includes('fetch') || m.includes('failed to fetch')) {
+    return 'No pudimos conectar con el servidor. Revisa tu conexión e inténtalo de nuevo.';
   }
   return msg || 'Ocurrió un error. Por favor intenta de nuevo.';
 }
@@ -144,14 +169,7 @@ export default function BusinessRegistration() {
       try {
         const { error } = await signIn(email, password);
         if (error) {
-          const msg = error.message?.toLowerCase() || '';
-          if (msg.includes('invalid') || msg.includes('wrong') || msg.includes('incorrect')) {
-            setAuthError('Correo o contraseña incorrectos.');
-          } else if (msg.includes('confirm')) {
-            setAuthError('Confirma tu correo antes de continuar.');
-          } else {
-            setAuthError(error.message);
-          }
+          setAuthError(normalizeAuthErrorMessage(error.message));
         }
         // Si no hay error, onAuthStateChange actualiza `user` automáticamente.
       } catch {
@@ -175,7 +193,7 @@ export default function BusinessRegistration() {
           onResend={async () => {
             setAuthError(null);
             const { error } = await resendConfirmationEmail(pendingConfirmation.email);
-            if (error) setAuthError(error.message);
+            if (error) setAuthError(normalizeAuthErrorMessage(error.message));
             return { error };
           }}
           authError={authError}

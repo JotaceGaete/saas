@@ -153,7 +153,7 @@ export default function AdminEmailsPage() {
             </h2>
             <p className="text-xs mb-4" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
               Datos de ejemplo: Juan · La Tienda de Lola ·{' '}
-              <span className="whitespace-nowrap">https://cl.ventalink.app/dashboard</span>
+              <span className="whitespace-nowrap">https://go.ventalink.app/dashboard</span>
             </p>
             <div className="flex flex-col sm:flex-row sm:items-end gap-3 mb-4">
               <div className="flex-1 min-w-0">
