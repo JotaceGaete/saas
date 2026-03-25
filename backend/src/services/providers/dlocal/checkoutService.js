@@ -141,6 +141,8 @@ export async function createDlocalPlanCheckout({
     },
   };
 
+  console.log('[DLOCAL PAYLOAD]', JSON.stringify(payload, null, 2));
+
   console.info('[DLOCAL_CHECKOUT_REQUEST]', {
     baseUrl,
     endpointPath,
@@ -175,6 +177,7 @@ export async function createDlocalPlanCheckout({
   }
 
   const rawText = await upstream.text().catch(() => '');
+  console.log('[DLOCAL RESPONSE]', upstream.status, rawText);
   let parsed;
   try {
     parsed = rawText ? JSON.parse(rawText) : null;
