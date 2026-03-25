@@ -4,23 +4,31 @@ function normalizeProvider(provider) {
   return normalizeBillingProvider(provider) || String(provider || '').trim().toLowerCase();
 }
 
-export function getProviderDisplayLabel({ provider, marketCode }) {
+/**
+ * @param {{ provider: string, marketCode?: string, billingCountryCode?: string }} opts
+ * `billingCountryCode` preferido (país del negocio); `marketCode` solo compatibilidad.
+ */
+export function getProviderDisplayLabel({ provider, marketCode, billingCountryCode }) {
   const p = normalizeProvider(provider);
   if (p === PAYMENT_PROVIDERS.MERCADO_PAGO) return 'Pagar con Mercado Pago';
   if (p === PAYMENT_PROVIDERS.PAYPAL) return 'Pagar con PayPal';
   if (p === PAYMENT_PROVIDERS.DLOCAL) {
-    if (marketCode === 'CL' || marketCode === 'AR') return 'Pagar con tarjeta o medios locales';
+    const iso = billingCountryCode || (marketCode === 'AR' ? 'AR' : null);
+    if (iso === 'AR') return 'Pagar con tarjeta o medios locales';
     return 'Pagar con tarjeta';
   }
   if (p === PAYMENT_PROVIDERS.MANUAL) return 'Solicitar activación';
   return 'Continuar';
 }
 
-export function getProviderShortLabel({ provider, marketCode }) {
+export function getProviderShortLabel({ provider, marketCode, billingCountryCode }) {
   const p = normalizeProvider(provider);
   if (p === PAYMENT_PROVIDERS.MERCADO_PAGO) return 'Mercado Pago';
   if (p === PAYMENT_PROVIDERS.PAYPAL) return 'PayPal';
-  if (p === PAYMENT_PROVIDERS.DLOCAL) return marketCode === 'CL' || marketCode === 'AR' ? 'Tarjeta o medios locales' : 'Tarjeta';
+  if (p === PAYMENT_PROVIDERS.DLOCAL) {
+    const iso = billingCountryCode || (marketCode === 'AR' ? 'AR' : null);
+    return iso === 'AR' ? 'Tarjeta o medios locales' : 'Tarjeta';
+  }
   return String(provider || '');
 }
 
@@ -33,8 +41,9 @@ export function getPaymentSummaryCopy({ provider }) {
   return 'Consulta disponibilidad de pago en tu país.';
 }
 
-export function getMarketNoticeCopy({ marketCode }) {
-  if (marketCode === 'AR') return 'Mercado Pago pronto disponible.';
+export function getMarketNoticeCopy({ marketCode, billingCountryCode }) {
+  const iso = billingCountryCode || (marketCode === 'AR' ? 'AR' : null);
+  if (iso === 'AR') return 'Mercado Pago pronto disponible.';
   return null;
 }
 

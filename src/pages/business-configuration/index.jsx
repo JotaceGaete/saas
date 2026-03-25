@@ -63,17 +63,9 @@ export default function BusinessConfiguration() {
   const [business, setBusiness] = useState(null);
   const [businessFetchLoading, setBusinessFetchLoading] = useState(false);
 
-  const businessLocale = getBusinessLocale(business, {
-    preferredCountryCode: user?.user_metadata?.country_code ?? null,
-  });
-  /** País elegido en el selector del WhatsApp (null = usar país guardado del negocio). */
-  const [whatsappCountryOverride, setWhatsappCountryOverride] = useState(null);
-
-  useEffect(() => {
-    setWhatsappCountryOverride(null);
-  }, [business?.id, business?.routingCountryCode, business?.countryCode]);
-
-  const uiCountryCode = whatsappCountryOverride ?? businessLocale.countryCode;
+  /** País/moneda del negocio: solo lectura (se define en onboarding). */
+  const businessLocale = getBusinessLocale(business);
+  const uiCountryCode = businessLocale.countryCode;
   const countryLabels = getCountryLabels(uiCountryCode);
   const [bankForm, setBankForm] = useState({
     bankName: '',
@@ -295,9 +287,6 @@ export default function BusinessConfiguration() {
       address: form?.address,
       city: form?.city,
       region: form?.region,
-      country: countryLabels.countryName,
-      countryCode: uiCountryCode,
-      currency: countryLabels.currency,
       rubroId: form?.rubroId || null,
       logoUrl: (design?.logoUrl ?? business?.logoUrl ?? '').trim() || null,
       coverImageUrl: (
@@ -315,12 +304,6 @@ export default function BusinessConfiguration() {
       bankRut: bankForm?.bankRut,
       bankEmail: bankForm?.bankEmail,
     };
-    console.info('[BusinessConfiguration] handleSaveSettings: payload país/moneda', {
-      countryCode: payload.countryCode,
-      currency: payload.currency,
-      country: payload.country,
-      whatsappLen: payload.whatsapp != null ? String(payload.whatsapp).length : undefined,
-    });
     try {
       const { data: updated, error } = await updateBusiness(bizId, payload);
       if (error) {
@@ -577,12 +560,8 @@ export default function BusinessConfiguration() {
                 </div>
 
                 <SettingsField
-                  label="País"
-                  hint={
-                    whatsappCountryOverride
-                      ? 'Guarda los cambios para aplicar país y moneda en facturación y catálogo.'
-                      : `País del negocio: ${countryLabels.countryName}. Puedes cambiarlo con el selector sobre el número de WhatsApp.`
-                  }
+                  label="País del negocio"
+                  hint="Se definió al crear tu tienda. Para cambiarlo, contacta a soporte. Precios y facturación usan este país."
                 >
                   <div
                     className={inputClass}
@@ -597,7 +576,6 @@ export default function BusinessConfiguration() {
                 <button
                   onClick={() => {
                     if (business) {
-                      setWhatsappCountryOverride(null);
                       const revertedLabels = getCountryLabels(businessLocale.countryCode);
                       setForm({
                         name: business?.name || '',

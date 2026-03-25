@@ -1,4 +1,5 @@
-import { COUNTRY_CODES, getCountryConfig } from '../../config/countryConfig';
+import { COUNTRY_CODES } from '../../config/countryConfig';
+import { getCountryPricingRow } from '../../config/countryPricing';
 import { getPaymentOptions, normalizeBillingProvider } from '../billing/providers';
 
 export const MARKET_STATUS = Object.freeze({
@@ -10,16 +11,6 @@ export const MARKET_STATUS = Object.freeze({
 
 const DEFAULT_COUNTRY = 'US';
 
-const COUNTRY_MARKET_CONFIG = Object.freeze({
-  CL: { marketStatus: MARKET_STATUS.ACTIVE, enabled: true },
-  AR: { marketStatus: MARKET_STATUS.ACTIVE, enabled: true },
-  BO: { marketStatus: MARKET_STATUS.BETA, enabled: true },
-  PE: { marketStatus: MARKET_STATUS.BETA, enabled: true },
-  // Ejemplos listos para habilitación controlada por país:
-  // XX: { marketStatus: MARKET_STATUS.COMING_SOON, enabled: false },
-  // YY: { marketStatus: MARKET_STATUS.UNSUPPORTED, enabled: false },
-});
-
 function normalizeCountryCode(value) {
   const code = String(value || '').trim().toUpperCase();
   if (!code) return null;
@@ -28,21 +19,16 @@ function normalizeCountryCode(value) {
 
 export function getMarketConfigByCountry(countryCode) {
   const normalizedCountry = normalizeCountryCode(countryCode) || DEFAULT_COUNTRY;
-  const base = COUNTRY_MARKET_CONFIG[normalizedCountry] || {
-    marketStatus: MARKET_STATUS.ACTIVE,
-    enabled: true,
-  };
-  const countryCfg = getCountryConfig(normalizedCountry);
+  const pricingRow = getCountryPricingRow(normalizedCountry);
   const paymentOptions = getPaymentOptions({ countryCode: normalizedCountry });
-  const billingProvider = normalizeBillingProvider(base.billingProvider || paymentOptions?.primary) || 'manual';
+  const billingProvider = normalizeBillingProvider(pricingRow.defaultProvider || paymentOptions?.primary) || 'manual';
 
   return {
     countryCode: normalizedCountry,
-    marketStatus: base.marketStatus,
-    enabled: base.enabled !== false,
-    currency: base.currency || countryCfg?.currency || 'USD',
-    /** Alineado con countryConfig (formato de precios en catálogo/panel). */
-    locale: countryCfg?.locale || 'en-US',
+    marketStatus: pricingRow.marketStatus,
+    enabled: pricingRow.marketStatus !== 'coming_soon' && pricingRow.marketStatus !== 'unsupported',
+    currency: pricingRow.currency,
+    locale: pricingRow.locale,
     billingProvider,
     paymentOptions,
   };

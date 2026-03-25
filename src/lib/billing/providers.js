@@ -1,7 +1,3 @@
-const SUPPORTED_COUNTRIES = new Set([
-  'CL', 'AR', 'BO', 'BR', 'CO', 'CR', 'EC', 'GT', 'MX', 'PA', 'PE', 'PY', 'UY',
-]);
-
 export const PAYMENT_PROVIDERS = Object.freeze({
   MERCADO_PAGO: 'mercado_pago',
   PAYPAL: 'paypal',
@@ -41,18 +37,28 @@ export function isDlocalFeatureEnabled() {
   return isTruthy(import.meta.env?.VITE_BILLING_DLOCAL_ENABLED);
 }
 
+/**
+ * Opciones de pago por país ISO del negocio (o sugerencia pre-login).
+ * Sin país: no asumir Chile; usar flujo internacional (dLocal/PayPal según flag).
+ */
 export function getPaymentOptions({ countryCode }) {
   const normalized = normalize(countryCode);
-  const country = normalized && SUPPORTED_COUNTRIES.has(normalized) ? normalized : 'CL';
   const dlocalEnabled = isDlocalFeatureEnabled();
 
-  if (country === 'CL') {
+  if (!normalized) {
+    return Object.freeze({
+      primary: dlocalEnabled ? PAYMENT_PROVIDERS.DLOCAL : PAYMENT_PROVIDERS.PAYPAL,
+      secondary: [],
+    });
+  }
+
+  if (normalized === 'CL') {
     return Object.freeze({
       primary: PAYMENT_PROVIDERS.MERCADO_PAGO,
       secondary: [],
     });
   }
-  if (country === 'AR') {
+  if (normalized === 'AR') {
     return Object.freeze({
       primary: dlocalEnabled ? PAYMENT_PROVIDERS.DLOCAL : PAYMENT_PROVIDERS.PAYPAL,
       secondary: [PAYMENT_PROVIDERS.MERCADO_PAGO],

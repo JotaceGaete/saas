@@ -9,6 +9,7 @@ import {
   CURRENCY_BY_REGION,
   PROVIDER_BY_REGION,
 } from './constants';
+import { getBillingCurrencyForCountry } from '../../config/countryPricing';
 
 /**
  * Convierte country_code a región de billing.
@@ -40,11 +41,10 @@ export function getPaymentProvider(countryCode) {
 }
 
 /**
- * Moneda para la región.
+ * Moneda de facturación/display según país ISO (alineada con countryPricing).
  * @param {string} [countryCode]
- * @returns {'CLP'|'USD'}
+ * @returns {string}
  */
 export function getCurrency(countryCode) {
-  const region = getBillingRegion(countryCode);
-  return CURRENCY_BY_REGION[region] ?? 'USD';
+  return getBillingCurrencyForCountry(countryCode);
 }

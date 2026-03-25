@@ -1,3 +1,5 @@
+import { getPlanPriceForCountry } from '../config/countryPricing';
+
 /**
  * Planes del producto: nombres, límites numéricos y helpers.
  * starter = gratis (10 productos, 30 pedidos/mes; sin estadísticas ni IA).
@@ -110,17 +112,14 @@ export function getPlanPrice(planSlug) {
 }
 
 /**
- * Precio del plan según país (CLP o ARS) o proveedor (USD fuera de Chile con activación manual).
+ * Precio del plan según país ISO del negocio (delega en countryPricing).
  * @param {string} planSlug
- * @param {'AR'|'CL'|string} [countryCode]
- * @param {'mercado_pago'|'manual'|null} [paymentProvider]
+ * @param {string} [countryCode]
+ * @param {'mercado_pago'|'manual'|null} [_paymentProvider] ignorado; compatibilidad API
  * @returns {number}
  */
-export function getPlanPriceByCountry(planSlug, countryCode, paymentProvider) {
-  if (countryCode === 'CL') return PLAN_PRICES_CLP[planSlug] ?? 0;
-  if (paymentProvider === 'manual') return PLAN_PRICES_USD[planSlug] ?? 0;
-  if (countryCode === 'AR') return PLAN_PRICES_ARS[planSlug] ?? 0;
-  return PLAN_PRICES_USD[planSlug] ?? 0;
+export function getPlanPriceByCountry(planSlug, countryCode, _paymentProvider) {
+  return getPlanPriceForCountry(countryCode, planSlug);
 }
 
 /**

@@ -1,15 +1,14 @@
 /**
- * Precios de planes para mostrar en UI. Una sola fuente de verdad.
- * Lee de constants (PLAN_PRICES_BY_REGION).
+ * Precios de planes para UI: delegan en countryPricing (país ISO).
+ * `getPlanDisplayPrice(region)` conserva compatibilidad: CL vs resto → país proxy.
  */
 
 import { PLAN_PRICES_BY_REGION, BILLING_REGION_CL, BILLING_REGION_INT } from './constants';
-import { getBillingRegion } from './region';
+import { getPlanPriceForCountry } from '../../config/countryPricing';
 
 /**
- * Precio a mostrar para un plan en una región.
- * @param {string} planSlug - starter | pro | business
- * @param {'CL'|'INT'} [region] - Si no se pasa, no se puede resolver (requiere región explícita en llamadas desde UI).
+ * @param {string} planSlug
+ * @param {'CL'|'INT'} [region]
  * @returns {number}
  */
 export function getPlanDisplayPrice(planSlug, region) {
@@ -19,12 +18,10 @@ export function getPlanDisplayPrice(planSlug, region) {
 }
 
 /**
- * Precio a mostrar para un plan según country code (resuelve región internamente).
  * @param {string} planSlug
- * @param {string} [countryCode]
+ * @param {string} [countryCode] - ISO del negocio o visitante
  * @returns {number}
  */
 export function getPlanDisplayPriceByCountry(planSlug, countryCode) {
-  const region = getBillingRegion(countryCode);
-  return getPlanDisplayPrice(planSlug, region);
+  return getPlanPriceForCountry(countryCode, planSlug);
 }

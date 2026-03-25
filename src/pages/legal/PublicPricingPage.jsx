@@ -4,7 +4,7 @@ import PublicPageLayout from 'components/PublicPageLayout';
 import { formatCurrency } from 'utils/formatCLP';
 import { PLAN_SLUGS, getPlanLabel, getPlanLimits } from 'constants/plans';
 import { getStoredCountryCode } from 'config/countryConfig';
-import { getBillingRegion, getCurrency, getPlanDisplayPrice } from 'lib/billing';
+import { getCurrency, getPlanDisplayPriceByCountry } from 'lib/billing';
 
 const COUNTRY_CL = 'CL';
 
@@ -58,18 +58,13 @@ export default function PublicPricingPage() {
   }, []);
 
   const countryForBilling =
-    country == null || country === 'INTL'
-      ? 'US'
-      : country === 'CL' || country === 'AR'
-        ? country
-        : 'US';
-  const region = getBillingRegion(countryForBilling);
+    country == null || country === 'INTL' ? 'US' : country;
   const currency = getCurrency(countryForBilling);
   const isChile = countryForBilling === 'CL';
 
   const getPrice = (planSlug) => {
     if (!country) return 0;
-    return getPlanDisplayPrice(planSlug, region);
+    return getPlanDisplayPriceByCountry(planSlug, countryForBilling);
   };
 
   const formatPrice = (planSlug) => {

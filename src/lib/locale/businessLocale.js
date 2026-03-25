@@ -39,17 +39,28 @@ function resolveCountryCodeFromBusiness(business) {
 }
 
 /**
- * Fuente de verdad de locale del negocio.
- * Prioriza country_code del negocio; solo usa hostname como sugerencia inicial si no hay negocio.
+ * Locale del negocio: si hay negocio cargado, solo `country_code` persistido (onboarding).
+ * Sin negocio: sugerencia de hostname/localStorage vía getCountryCode(null).
  */
 export function getBusinessLocale(business, options = {}) {
   const fromBusiness = resolveCountryCodeFromBusiness(business);
+  if (fromBusiness) {
+    const config = getCountryConfig(fromBusiness);
+    return {
+      countryCode: fromBusiness,
+      countryName: config?.name || fromBusiness,
+      currencyCode: config?.currency || 'USD',
+      locale: config?.locale || 'en-US',
+      phonePrefix: config?.phonePrefix || '',
+      config,
+    };
+  }
+
   const preferredCountryCode = normalizeText(options?.preferredCountryCode);
   const hostnameCountryCode = normalizeText(getCountryCode(business));
   const fallbackCountryCode = normalizeText(options?.fallbackCountryCode || 'US');
 
   const countryCode =
-    fromBusiness ||
     (preferredCountryCode && COUNTRY_CONFIG[preferredCountryCode] ? preferredCountryCode : null) ||
     (hostnameCountryCode && COUNTRY_CONFIG[hostnameCountryCode] ? hostnameCountryCode : null) ||
     (COUNTRY_CONFIG[fallbackCountryCode] ? fallbackCountryCode : 'US');
@@ -60,7 +71,6 @@ export function getBusinessLocale(business, options = {}) {
     countryCode,
     countryName: config?.name || countryCode,
     currencyCode: config?.currency || 'USD',
-    /** BCP 47 para Intl (precios y números). */
     locale: config?.locale || 'en-US',
     phonePrefix: config?.phonePrefix || '',
     config,

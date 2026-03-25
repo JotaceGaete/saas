@@ -8,7 +8,6 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useConfirmedEmailGuard } from '../../hooks/useConfirmedEmailGuard';
 import { supabase } from '../../lib/supabase';
 import { getAppBaseUrl } from '../../config/appUrl';
-import { getCountryCode } from '../../config/country';
 import { formatCurrency } from '../../utils/formatCLP';
 import { PLAN_SLUGS, getPlanLimits, getPlanLabel, getPlanActionButtonLabel } from '../../constants/plans';
 import { TRIAL_DURATION_DAYS, getTrialDaysLeft } from '../../constants/trial';
@@ -46,33 +45,39 @@ export default function PlansPage() {
   const [subscriptionState, setSubscriptionState] = useState(null);
   const [currentSubscription, setCurrentSubscription] = useState(null);
   const currentPlan = currentSubscription?.planSlug || business?.planSlug || 'starter';
-  const hostnameCountryCode = getCountryCode(business);
   const businessCountryCode = business?.routingCountryCode ?? business?.countryCode ?? null;
-  const userCountryCode = user?.user_metadata?.country_code ?? user?.user_metadata?.country ?? null;
+  /** Facturación y precios solo desde el país persistido del negocio (onboarding). */
   const countryState = useMemo(
     () =>
       resolveCountryState({
         businessCountryCode,
         onboardingCountryCode: null,
-        userCountryCode,
-        hostnameSuggestionCountryCode: hostnameCountryCode,
+        userCountryCode: null,
+        hostnameSuggestionCountryCode: null,
       }),
-    [businessCountryCode, userCountryCode, hostnameCountryCode],
+    [businessCountryCode],
   );
   const resolvedBillingSetup = useMemo(
     () => resolveBillingSetup(countryState),
     [countryState],
   );
-  const market = useMemo(() => resolveMarket({
-    hostnameCountryCode,
-    businessCountryCode: countryState.billingCountry,
-    userCountryCode,
-  }), [hostnameCountryCode, countryState.billingCountry, userCountryCode]);
+  const market = useMemo(
+    () =>
+      resolveMarket({
+        businessCountryCode,
+        userCountryCode: null,
+        hostnameCountryCode: null,
+      }),
+    [businessCountryCode],
+  );
   const { countryCode, marketCode, defaultProvider } = market;
+  const billingCountryForUi = countryState.businessCountry || businessCountryCode || countryCode;
   const currency = resolvedBillingSetup.currency;
   const paymentOptions = useMemo(
-    () => resolvedBillingSetup.paymentOptions || getPaymentOptions({ countryCode: countryState.billingCountry || countryCode }),
-    [resolvedBillingSetup.paymentOptions, countryState.billingCountry, countryCode],
+    () =>
+      resolvedBillingSetup.paymentOptions ||
+      getPaymentOptions({ countryCode: countryState.billingCountry || businessCountryCode || countryCode }),
+    [resolvedBillingSetup.paymentOptions, countryState.billingCountry, businessCountryCode, countryCode],
   );
   const paymentProvider = useMemo(
     () => normalizeBillingProvider(paymentOptions?.primary || defaultProvider) || PAYMENT_PROVIDERS.DLOCAL,
@@ -109,7 +114,8 @@ export default function PlansPage() {
     ),
     [subscriptionState?.billingProvider?.alternatives, subscriptionState?.billingProvider],
   );
-  const getDisplayPlanPrice = (slug) => getPlanPrice({ marketCode, planSlug: slug }) ?? 0;
+  const getDisplayPlanPrice = (slug) =>
+    getPlanPrice({ countryCode: businessCountryCode || countryCode, planSlug: slug }) ?? 0;
   const scheduledToStarter = (business?.scheduledPlanSlug || null) === 'starter';
   const planExpiryMs = business?.planExpiresAt ? new Date(business.planExpiresAt).getTime() : null;
   const trialExpiryMs = business?.trialExpiresAt ? new Date(business.trialExpiresAt).getTime() : null;
@@ -163,6 +169,7 @@ export default function PlansPage() {
     countryState.uxCountry,
     countryState.businessCountry,
     countryState.billingCountry,
+    businessCountryCode,
   ]);
 
   useEffect(() => {
@@ -819,7 +826,7 @@ export default function PlansPage() {
                   ) : checkoutProvider === PAYMENT_PROVIDERS.DLOCAL ? (
                     <>
                       <Icon name="CreditCard" size={16} color="#fff" />
-                      {preview.finalAmount === 0 ? 'Confirmar cambio (sin cargo)' : getProviderDisplayLabel({ provider: PAYMENT_PROVIDERS.DLOCAL, marketCode })}
+                      {preview.finalAmount === 0 ? 'Confirmar cambio (sin cargo)' : getProviderDisplayLabel({ provider: PAYMENT_PROVIDERS.DLOCAL, billingCountryCode: billingCountryForUi })}
                     </>
                   ) : checkoutProvider === PAYMENT_PROVIDERS.PAYPAL ? (
                     <>
@@ -864,7 +871,7 @@ export default function PlansPage() {
                     className="px-4 py-2.5 rounded-lg text-sm font-medium transition-opacity hover:opacity-90 disabled:opacity-60"
                     style={{ color: '#009EE3', border: '1px solid #009EE3' }}
                   >
-                    {getProviderShortLabel({ provider: PAYMENT_PROVIDERS.MERCADO_PAGO, marketCode })}
+                    {getProviderShortLabel({ provider: PAYMENT_PROVIDERS.MERCADO_PAGO, billingCountryCode: billingCountryForUi })}
                   </button>
                 )}
                 {secondaryProviders.includes(PAYMENT_PROVIDERS.DLOCAL) && (
@@ -875,7 +882,7 @@ export default function PlansPage() {
                     className="px-4 py-2.5 rounded-lg text-sm font-medium transition-opacity hover:opacity-90 disabled:opacity-60"
                     style={{ color: '#111827', border: '1px solid #111827' }}
                   >
-                    {getProviderShortLabel({ provider: PAYMENT_PROVIDERS.DLOCAL, marketCode })}
+                    {getProviderShortLabel({ provider: PAYMENT_PROVIDERS.DLOCAL, billingCountryCode: billingCountryForUi })}
                   </button>
                 )}
               </div>
@@ -920,7 +927,11 @@ export default function PlansPage() {
               const actionLabel = isProTrialCard
                 ? 'Mantener Pro al terminar la prueba'
                 : getPlanActionButtonLabel(currentPlan, slug);
-              const marketPlan = getPlanConfig({ marketCode, planSlug: slug });
+              const marketPlan = getPlanConfig({
+                marketCode,
+                planSlug: slug,
+                countryCode: billingCountryForUi,
+              });
               const isPurchasable = marketPlan?.enabled !== false && marketPlan?.purchasable !== false;
               return (
                 <div
@@ -1019,7 +1030,7 @@ export default function PlansPage() {
                           ) : (
                             <>
                               <Icon name="CreditCard" size={16} color="#fff" />
-                              {getProviderDisplayLabel({ provider: PAYMENT_PROVIDERS.DLOCAL, marketCode })}
+                              {getProviderDisplayLabel({ provider: PAYMENT_PROVIDERS.DLOCAL, billingCountryCode: billingCountryForUi })}
                             </>
                           )}
                         </button>
@@ -1087,14 +1098,16 @@ export default function PlansPage() {
                 Otras opciones: {secondaryProviders.map((provider) => {
                   if (provider === PAYMENT_PROVIDERS.MERCADO_PAGO) return 'Mercado Pago';
                   if (provider === PAYMENT_PROVIDERS.PAYPAL) return 'PayPal';
-                  if (provider === PAYMENT_PROVIDERS.DLOCAL) return getProviderShortLabel({ provider: PAYMENT_PROVIDERS.DLOCAL, marketCode });
+                  if (provider === PAYMENT_PROVIDERS.DLOCAL) {
+                    return getProviderShortLabel({ provider: PAYMENT_PROVIDERS.DLOCAL, billingCountryCode: billingCountryForUi });
+                  }
                   return provider;
                 }).join(' · ')}.
               </p>
             )}
-            {getMarketNoticeCopy({ marketCode }) && (
+            {getMarketNoticeCopy({ billingCountryCode: billingCountryForUi }) && (
               <p className="text-xs mt-2" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-                {getMarketNoticeCopy({ marketCode })}
+                {getMarketNoticeCopy({ billingCountryCode: billingCountryForUi })}
               </p>
             )}
             {checkoutAvailability && (!checkoutAvailability.enabled || !checkoutAvailability.supportsCheckout) && (

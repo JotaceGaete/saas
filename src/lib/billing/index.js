@@ -1,12 +1,7 @@
 /**
- * Capa central de billing. Una sola fuente de verdad para:
- * - región (CL | INT)
- * - proveedor (mercado_pago | manual)
- * - moneda (CLP | USD)
- * - precios display por plan y región
- *
- * Regla: Chile → Mercado Pago, CLP. Resto → activación manual (USD referencia en UI).
- * No Paddle. No dLocal.
+ * Capa central de billing.
+ * Precios y moneda por país ISO: `config/countryPricing.js` vía `getPlanPrice({ countryCode, planSlug })`.
+ * Región legacy CL|INT solo compatibilidad; el negocio usa siempre `business.country_code`.
  */
 
 export {
@@ -38,6 +33,13 @@ export {
   formatMoneyByMarket,
 } from './markets';
 export { resolveMarket } from './market-resolver';
+export {
+  getCountryPricingRow,
+  getPlanPriceForCountry,
+  getBillingCurrencyForCountry,
+  getLegacyBillingMarketCode,
+  PRICING_MARKET_STATUS,
+} from '../../config/countryPricing';
 export {
   getProviderDisplayLabel,
   getProviderShortLabel,
