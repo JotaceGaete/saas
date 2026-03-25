@@ -66,7 +66,15 @@ export default function BusinessConfiguration() {
   const businessLocale = getBusinessLocale(business, {
     preferredCountryCode: user?.user_metadata?.country_code ?? null,
   });
-  const countryLabels = getCountryLabels(businessLocale.countryCode);
+  /** País elegido en el selector del WhatsApp (null = usar país guardado del negocio). */
+  const [whatsappCountryOverride, setWhatsappCountryOverride] = useState(null);
+
+  useEffect(() => {
+    setWhatsappCountryOverride(null);
+  }, [business?.id, business?.routingCountryCode, business?.countryCode]);
+
+  const uiCountryCode = whatsappCountryOverride ?? businessLocale.countryCode;
+  const countryLabels = getCountryLabels(uiCountryCode);
   const [bankForm, setBankForm] = useState({
     bankName: '',
     bankAccountType: '',
@@ -199,7 +207,7 @@ export default function BusinessConfiguration() {
         bankEmail: business?.bankEmail || '',
       });
     }
-  }, [business?.id, countryLabels.countryName, countryLabels.currency]);
+  }, [business?.id, business?.updatedAt]);
 
   useEffect(() => {
     getRubros().then(({ data }) => setRubros(data || []));
@@ -288,7 +296,7 @@ export default function BusinessConfiguration() {
       city: form?.city,
       region: form?.region,
       country: countryLabels.countryName,
-      countryCode: businessLocale.countryCode,
+      countryCode: uiCountryCode,
       currency: countryLabels.currency,
       rubroId: form?.rubroId || null,
       logoUrl: (design?.logoUrl ?? business?.logoUrl ?? '').trim() || null,
@@ -497,7 +505,10 @@ export default function BusinessConfiguration() {
                 <DynamicWhatsAppField
                   label="Número de WhatsApp"
                   hint={countryLabels.whatsappHint}
-                  countryCode={businessLocale.countryCode}
+                  countryCode={uiCountryCode}
+                  editableCountry
+                  persistCountrySelection={false}
+                  onCountryChange={setWhatsappCountryOverride}
                   value={form?.whatsapp}
                   onChange={(v) => handleFormChange('whatsapp', v)}
                 />
@@ -559,7 +570,14 @@ export default function BusinessConfiguration() {
                   </SettingsField>
                 </div>
 
-                <SettingsField label="País" hint={`Fijo para ${countryLabels.countryName}`}>
+                <SettingsField
+                  label="País"
+                  hint={
+                    whatsappCountryOverride
+                      ? 'Guarda los cambios para aplicar país y moneda en facturación y catálogo.'
+                      : `País del negocio: ${countryLabels.countryName}. Puedes cambiarlo con el selector sobre el número de WhatsApp.`
+                  }
+                >
                   <div
                     className={inputClass}
                     style={{ ...inputStyle, cursor: 'default', backgroundColor: 'var(--color-muted)' }}
@@ -573,6 +591,8 @@ export default function BusinessConfiguration() {
                 <button
                   onClick={() => {
                     if (business) {
+                      setWhatsappCountryOverride(null);
+                      const revertedLabels = getCountryLabels(businessLocale.countryCode);
                       setForm({
                         name: business?.name || '',
                         slug: business?.slug || '',
@@ -582,8 +602,8 @@ export default function BusinessConfiguration() {
                         address: business?.address || '',
                         city: business?.city || '',
                         region: business?.region || '',
-                        country: countryLabels.countryName,
-                        currency: business?.currency || countryLabels.currency,
+                        country: revertedLabels.countryName,
+                        currency: business?.currency || revertedLabels.currency,
                         rubroId: business?.rubroId || '',
                       });
                       setOrderMessageTemplate(business?.orderMessageTemplate || '');
