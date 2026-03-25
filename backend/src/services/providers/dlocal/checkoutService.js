@@ -58,6 +58,31 @@ function buildOrderId({ businessId, planSlug }) {
     .replace(/[^A-Za-z0-9-_]/g, '-');
 }
 
+function normalizeEmailForSubscription(value) {
+  const s = String(value || '').trim().toLowerCase();
+  if (!s || !s.includes('@')) return null;
+  return s;
+}
+
+/**
+ * Email requerido por wa_subscriptions (NOT NULL).
+ * Orden: payer del payload hacia dLocal → usuario autenticado → columnas típicas de negocio.
+ */
+function resolveSubscriptionEmailForWa({ payerEmailFromPayload, authUser, business }) {
+  const candidates = [
+    payerEmailFromPayload,
+    authUser?.email,
+    business?.email,
+    business?.contact_email,
+    business?.business_email,
+  ];
+  for (const c of candidates) {
+    const normalized = normalizeEmailForSubscription(c);
+    if (normalized) return normalized;
+  }
+  return null;
+}
+
 async function insertPendingPayment({
   businessId,
   userId,
@@ -214,8 +239,21 @@ export async function createDlocalPlanCheckout({
   }
 
   const mappedStatus = mapProviderStatus('dlocal', providerStatus);
+  const subscriptionEmail = resolveSubscriptionEmailForWa({
+    payerEmailFromPayload: payload?.payer?.email,
+    authUser,
+    business,
+  });
+  if (!subscriptionEmail) {
+    throw new HttpError(422, '[dlocal-checkout] Missing email for wa_subscriptions (payer, authenticated user, or business)', {
+      code: 'MISSING_SUBSCRIPTION_EMAIL',
+      provider: 'dlocal',
+    });
+  }
+
   await upsertBillingSubscriptionByBusiness({
     business_id: business.id,
+    email: subscriptionEmail,
     provider: 'dlocal',
     provider_subscription_id: paymentId,
     plan_slug: normalizedPlan,
