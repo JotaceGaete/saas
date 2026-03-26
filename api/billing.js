@@ -3,6 +3,7 @@ import {
   createBillingSubscriptionController,
   dlocalCheckoutController,
 } from '../backend/src/controllers/billingSubscriptionsController.js';
+import { dlocalBillingCallbackController } from '../backend/src/controllers/dlocalBillingCallbackController.js';
 import { dlocalBillingWebhookController } from '../backend/src/controllers/dlocalBillingWebhookController.js';
 import { testDlocalPaymentController } from '../backend/src/controllers/dlocalTestPaymentController.js';
 import {
@@ -16,6 +17,9 @@ import {
 export async function GET(request) {
   const path = new URL(request.url).pathname;
   const normalizedPath = path.endsWith('/') && path.length > 1 ? path.slice(0, -1) : path;
+  if (normalizedPath.endsWith('/api/v1/billing/dlocal/callback')) {
+    return dlocalBillingCallbackController(request);
+  }
   if (
     normalizedPath.endsWith('/api/v1/billing/current-subscription')
     || normalizedPath.endsWith('/api/billing-current-subscription')

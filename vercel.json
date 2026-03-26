@@ -47,6 +47,10 @@
       "destination": "/api/billing"
     },
     {
+      "source": "/api/v1/billing/dlocal/callback",
+      "destination": "/api/billing"
+    },
+    {
       "source": "/webhooks/paypal",
       "destination": "/api/paypal-webhook"
     },
