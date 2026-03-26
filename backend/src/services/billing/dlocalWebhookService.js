@@ -22,18 +22,18 @@ function normalizeStatus(rawStatus) {
   return String(rawStatus || '').trim().toUpperCase() || null;
 }
 
-function extractBusinessId(payload) {
-  return String(
-    payload?.business_id
-    || payload?.businessId
-    || payload?.metadata?.business_id
-    || payload?.metadata?.businessId
-    || '',
-  ).trim() || null;
-}
-
 function extractPlanSlug(payload) {
-  const raw = String(payload?.plan_slug || payload?.planSlug || payload?.metadata?.plan_slug || '').trim().toLowerCase();
+  const raw = String(
+    payload?.plan_slug
+    || payload?.planSlug
+    || payload?.metadata?.plan_slug
+    || payload?.metadata?.planSlug
+    || payload?.data?.plan_slug
+    || payload?.data?.planSlug
+    || payload?.data?.metadata?.plan_slug
+    || payload?.data?.metadata?.planSlug
+    || '',
+  ).trim().toLowerCase();
   if (raw === 'full') return 'business';
   if (raw === 'business') return 'business';
   if (raw === 'pro') return 'pro';
@@ -61,10 +61,127 @@ function extractOrderId(payload) {
   return String(
     payload?.order_id
     || payload?.orderId
+    || payload?.external_reference
+    || payload?.externalReference
     || payload?.metadata?.order_id
+    || payload?.metadata?.external_reference
+    || payload?.data?.order_id
+    || payload?.data?.orderId
+    || payload?.data?.external_reference
+    || payload?.data?.externalReference
+    || payload?.data?.metadata?.order_id
+    || payload?.data?.metadata?.external_reference
     || payload?.reference
     || '',
   ).trim() || null;
+}
+
+function extractBusinessIdFromPayload(payload) {
+  return String(
+    payload?.business_id
+    || payload?.businessId
+    || payload?.metadata?.business_id
+    || payload?.metadata?.businessId
+    || payload?.data?.business_id
+    || payload?.data?.businessId
+    || payload?.data?.metadata?.business_id
+    || payload?.data?.metadata?.businessId
+    || '',
+  ).trim() || null;
+}
+
+function extractUserId(payload) {
+  return String(
+    payload?.user_id
+    || payload?.userId
+    || payload?.metadata?.user_id
+    || payload?.metadata?.userId
+    || payload?.data?.user_id
+    || payload?.data?.userId
+    || payload?.data?.metadata?.user_id
+    || payload?.data?.metadata?.userId
+    || '',
+  ).trim() || null;
+}
+
+function extractProviderStatus(payload) {
+  return normalizeStatus(
+    payload?.subscription_status
+    || payload?.status
+    || payload?.event?.status
+    || payload?.payment_status
+    || payload?.data?.subscription_status
+    || payload?.data?.status
+    || payload?.data?.payment_status
+    || null,
+  );
+}
+
+async function resolveBusinessIdByOrderId(orderId) {
+  if (!orderId) return null;
+  const admin = getAdminClient();
+
+  const { data: payment, error: paymentErr } = await admin
+    .from('wa_payments')
+    .select('business_id')
+    .eq('external_reference', orderId)
+    .not('business_id', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!paymentErr && payment?.business_id) {
+    return String(payment.business_id).trim() || null;
+  }
+
+  const { data: subscription, error: subscriptionErr } = await admin
+    .from('billing_subscriptions')
+    .select('business_id')
+    .eq('metadata_json->>order_id', orderId)
+    .not('business_id', 'is', null)
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!subscriptionErr && subscription?.business_id) {
+    return String(subscription.business_id).trim() || null;
+  }
+
+  return null;
+}
+
+export async function resolveDlocalWebhookContext(payload = {}) {
+  const orderId = extractOrderId(payload);
+  const businessIdFromPayload = extractBusinessIdFromPayload(payload);
+  const businessId = businessIdFromPayload || await resolveBusinessIdByOrderId(orderId);
+  const paymentId = String(
+    payload?.payment_id
+    || payload?.paymentId
+    || payload?.id
+    || payload?.data?.payment_id
+    || payload?.data?.paymentId
+    || payload?.data?.id
+    || '',
+  ).trim() || null;
+  const eventType = String(
+    payload?.event_type
+    || payload?.eventType
+    || payload?.type
+    || payload?.event?.type
+    || payload?.data?.event_type
+    || payload?.data?.type
+    || 'unknown',
+  ).trim() || 'unknown';
+
+  return {
+    businessId: businessId || null,
+    planSlug: extractPlanSlug(payload),
+    userId: extractUserId(payload),
+    orderId,
+    providerStatus: extractProviderStatus(payload),
+    paymentId,
+    eventType,
+  };
 }
 
 function isActiveStatus(status) {
@@ -162,16 +279,36 @@ export async function processDlocalWebhook({ headers, payload }) {
     throw new HttpError(400, '[dlocal-webhook] Invalid signature');
   }
 
-  const businessId = extractBusinessId(payload);
+  console.info('[DLOCAL_WEBHOOK_INPUT]', {
+    event_id: String(payload?.event_id || payload?.id || '').trim() || null,
+    event_type: String(payload?.event_type || payload?.eventType || payload?.type || payload?.event?.type || payload?.data?.event_type || payload?.data?.type || 'unknown').trim() || 'unknown',
+    has_business_id: !!extractBusinessIdFromPayload(payload),
+    has_order_id: !!extractOrderId(payload),
+  });
+
+  const context = await resolveDlocalWebhookContext(payload);
+  console.info('[DLOCAL_WEBHOOK_CONTEXT]', context);
+
+  const businessId = context.businessId;
   if (!businessId) {
-    throw new HttpError(400, '[dlocal-webhook] Missing business_id in payload');
+    const message = '[dlocal-webhook] Missing business context (business_id/order_id/external_reference)';
+    const isLikelyManual = !context.orderId && !context.paymentId && context.eventType === 'unknown';
+    console.warn('[DLOCAL_WEBHOOK_RESOLVE_FAILED]', {
+      reason: message,
+      event_type: context.eventType,
+      order_id: context.orderId,
+      payment_id: context.paymentId,
+      is_manual_test: isLikelyManual,
+    });
+    if (isLikelyManual) {
+      return { ok: true, ignored: true, reason: 'missing business context' };
+    }
+    throw new HttpError(400, message);
   }
+
   const existing = await getBillingSubscriptionByBusinessId(businessId);
   const providerStatus = normalizeStatus(
-    payload?.subscription_status
-    || payload?.status
-    || payload?.event?.status
-    || payload?.payment_status
+    context.providerStatus
     || existing?.provider_status
     || 'PENDING',
   );
@@ -189,7 +326,7 @@ export async function processDlocalWebhook({ headers, payload }) {
     business_id: businessId,
     provider: 'dlocal',
     provider_subscription_id: subscriptionId,
-    plan_slug: extractPlanSlug(payload) || existing?.plan_slug || 'starter',
+    plan_slug: context.planSlug || existing?.plan_slug || 'starter',
     currency_code: String(payload?.currency || existing?.currency_code || 'USD').trim().toUpperCase(),
     amount: payload?.amount ?? existing?.amount ?? null,
     interval_unit: String(payload?.interval_unit || existing?.interval_unit || 'month').trim().toLowerCase(),
@@ -205,11 +342,14 @@ export async function processDlocalWebhook({ headers, payload }) {
       ...(existing?.metadata_json || {}),
       last_webhook_payload: payload,
       last_webhook_received_at: new Date().toISOString(),
-      order_id: extractOrderId(payload) || existing?.metadata_json?.order_id || null,
+      order_id: context.orderId || existing?.metadata_json?.order_id || null,
+      user_id: context.userId || existing?.metadata_json?.user_id || null,
+      payment_id: context.paymentId || existing?.metadata_json?.payment_id || null,
+      event_type: context.eventType || existing?.metadata_json?.event_type || null,
     },
   });
 
-  const orderId = extractOrderId(payload) || updated?.metadata_json?.order_id || null;
+  const orderId = context.orderId || updated?.metadata_json?.order_id || null;
   await syncPaymentRecord({
     businessId,
     orderId,
@@ -220,7 +360,7 @@ export async function processDlocalWebhook({ headers, payload }) {
   if (isActiveStatus(status)) {
     await syncBusinessPlanAfterApprovedPayment({
       businessId,
-      planSlug: updated?.plan_slug || extractPlanSlug(payload),
+      planSlug: updated?.plan_slug || context.planSlug,
     });
   }
 
