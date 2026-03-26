@@ -52,6 +52,11 @@ function normalizePlanSlug(planSlug) {
   throw new HttpError(400, 'planSlug must be pro or business');
 }
 
+function normalizeCountryCode(value) {
+  const code = String(value || '').trim().toUpperCase();
+  return code || null;
+}
+
 function buildOrderId({ businessId, planSlug }) {
   return ['dlocal', businessId, planSlug, Date.now()]
     .join('-')
@@ -157,7 +162,9 @@ export async function createDlocalPlanCheckout({
   }
 
   const normalizedPlan = normalizePlanSlug(planSlug);
-  const countryCode = String(business?.country_code || business?.countryCode || 'PE').trim().toUpperCase();
+  const countryFromBusiness = normalizeCountryCode(business?.country_code);
+  const countryFromLegacyField = normalizeCountryCode(business?.countryCode);
+  const countryCode = countryFromBusiness || countryFromLegacyField || 'US';
   const currencyCode = resolveDlocalCurrency(countryCode);
   const amount = resolveDlocalAmount({ planSlug: normalizedPlan, currencyCode });
   const orderId = buildOrderId({ businessId: business.id, planSlug: normalizedPlan });
@@ -208,6 +215,13 @@ export async function createDlocalPlanCheckout({
     callback_url_sent: callbackUrl,
     notification_url_sent: notificationUrl,
     cancelUrl: String(cancelUrl || '').trim() || null,
+  });
+  console.info('[DLOCAL_CHECKOUT_COUNTRY_RESOLUTION]', {
+    businessId: business?.id || null,
+    countryFromBusiness,
+    countryFromLegacyField,
+    resolvedCountryCode: countryCode,
+    resolvedCurrencyCode: currencyCode,
   });
 
   let upstream;

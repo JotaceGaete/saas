@@ -675,18 +675,24 @@ export default function PlansPage() {
         }),
       });
       const data = await res.json().catch(() => ({}));
+      console.info('[DLOCAL_CLIENT_CHECKOUT_RESPONSE]', {
+        ok: data?.ok === true,
+        status: data?.status || null,
+        paymentId: data?.paymentId || data?.id || null,
+        redirectUrl: data?.redirectUrl || data?.redirect_url || data?.checkoutUrl || null,
+        hasCheckoutToken: !!(data?.checkout_token || data?.checkoutToken || data?.merchantCheckoutToken),
+      });
       if (!res.ok || !data?.ok) {
         if (data?.code === 'PROVIDER_NOT_READY') {
           throw new Error('Este método de pago no está disponible por el momento.');
         }
         throw new Error(data?.error || `No se pudo crear la suscripción ${normalizedProvider} (HTTP ${res.status}).`);
       }
-      const checkoutUrl = data?.redirect_url || data?.checkoutUrl || data?.redirectUrl || null;
-      if (!checkoutUrl) {
+      const redirectUrl = data?.redirectUrl || data?.redirect_url || data?.checkoutUrl || null;
+      if (!redirectUrl) {
         throw new Error(`${normalizedProvider} no devolvió URL de checkout.`);
       }
-
-      window.location.href = checkoutUrl;
+      window.location.assign(redirectUrl);
     } catch (err) {
       setPaymentMessage({ type: 'error', text: err?.message || `Error al iniciar ${provider}.` });
     } finally {

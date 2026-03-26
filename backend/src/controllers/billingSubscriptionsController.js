@@ -156,14 +156,22 @@ export async function dlocalCheckoutController(request) {
       cancelUrl,
     });
     const redirectUrl = result?.redirectUrl ?? null;
-    return json(
-      {
-        ...result,
-        checkoutUrl: redirectUrl,
-        redirect_url: redirectUrl,
-      },
-      200,
-    );
+    const responseToClient = {
+      ok: true,
+      paymentId: result?.paymentId ?? null,
+      status: result?.status ?? null,
+      redirectUrl,
+      // Backward-compat temporal para clientes viejos
+      redirect_url: redirectUrl,
+      checkoutUrl: redirectUrl,
+    };
+    console.info('[DLOCAL_CHECKOUT_RESPONSE_TO_CLIENT]', {
+      paymentId: responseToClient.paymentId,
+      status: responseToClient.status,
+      redirectUrl: responseToClient.redirectUrl,
+      hasCheckoutToken: !!(result?.merchantCheckoutToken),
+    });
+    return json(responseToClient, 200);
   } catch (err) {
     console.error('[DLOCAL_CHECKOUT_ERROR]', {
       route: '/api/v1/billing/dlocal/checkout',
