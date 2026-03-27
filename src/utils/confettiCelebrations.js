@@ -34,3 +34,13 @@ export function celebrarPrimerEnvio() {
     });
   }, 250);
 }
+
+/** Confeti al completar el anillo de progreso de onboarding (verde + marca). */
+export function dispararCelebracion() {
+  confetti({
+    particleCount: 150,
+    spread: 80,
+    origin: { y: 0.6 },
+    colors: ['#22c55e', '#ffffff', '#7c3aed'],
+  });
+}

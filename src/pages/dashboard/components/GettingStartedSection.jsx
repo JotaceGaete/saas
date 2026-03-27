@@ -1,9 +1,10 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import Icon from "components/AppIcon";
 import ProgressCircle from "components/common/ProgressCircle";
 import { QRCodeSVG } from "qrcode.react";
 import { getCatalogShareMessage } from "../../../utils/branding";
+import { hasCompletedCatalogShare } from "../../../utils/catalogShareCelebration";
 
 const STEPS = [
   {
@@ -87,17 +88,33 @@ export default function GettingStartedSection({
   const [dismissed, setDismissed] = useState(false);
   const [copyToast, setCopyToast] = useState(false);
   const [qrModalOpen, setQrModalOpen] = useState(false);
+  const [shareTick, setShareTick] = useState(0);
   const qrPrintRef = useRef(null);
+
+  useEffect(() => {
+    const bump = () => setShareTick((t) => t + 1);
+    window.addEventListener("ventalink-catalog-shared", bump);
+    window.addEventListener("storage", bump);
+    return () => {
+      window.removeEventListener("ventalink-catalog-shared", bump);
+      window.removeEventListener("storage", bump);
+    };
+  }, []);
 
   const hasWhatsapp = !!(business?.whatsapp);
   const hasLogo = !!(business?.logoUrl?.trim());
   const hasBanner = !!(business?.coverImageUrl?.trim());
   const hasProducts = productCount > 0;
 
+  const hasSharedCatalog = useMemo(
+    () => hasCompletedCatalogShare(business?.id),
+    [business?.id, shareTick],
+  );
+
   const stepCompleted = [
     hasWhatsapp && hasLogo && hasBanner,
     hasProducts,
-    false,
+    hasSharedCatalog,
   ];
   const completedCount = stepCompleted?.filter(Boolean)?.length;
   const allCompleted = completedCount === 3;

@@ -1,5 +1,5 @@
-import React, { useEffect, useId, useState, memo } from 'react';
-import Icon from 'components/AppIcon';
+import React, { useEffect, useId, useState, memo, useRef, useCallback } from 'react';
+import { dispararCelebracion } from 'utils/confettiCelebrations';
 
 const RADIUS = 45;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
@@ -7,9 +7,14 @@ const CX = 64;
 const CY = 64;
 const STROKE = 8;
 
+const FILTER_PURPLE =
+  'drop-shadow(0 0 12px rgba(147, 51, 234, 0.42)) drop-shadow(0 0 4px rgba(99, 102, 241, 0.35))';
+const FILTER_GREEN =
+  'drop-shadow(0 0 12px rgba(34, 197, 94, 0.45)) drop-shadow(0 0 4px rgba(22, 163, 74, 0.35))';
+
 /**
  * Anillo de progreso SVG con degradado purple → indigo, animación al montar y glow suave.
- * Memoizado para no reiniciar animaciones por re-renders del padre cuando las props no cambian.
+ * Al pasar de &lt;100% a 100%: transición a verde, confeti y ✓ central.
  */
 function ProgressCircle({
   percentage = 0,
@@ -24,14 +29,45 @@ function ProgressCircle({
   const isComplete = rounded >= 100;
 
   const [mounted, setMounted] = useState(false);
+  const [ringSuccess, setRingSuccess] = useState(false);
+  const prevPctRef = useRef(null);
+  const celebratedRef = useRef(false);
+
+  const alLlegarAlCien = useCallback(() => {
+    if (celebratedRef.current) return;
+    celebratedRef.current = true;
+    setRingSuccess(true);
+    window.setTimeout(() => {
+      dispararCelebracion();
+    }, 500);
+  }, []);
+
   useEffect(() => {
     const t = requestAnimationFrame(() => setMounted(true));
     return () => cancelAnimationFrame(t);
   }, []);
 
+  useEffect(() => {
+    if (prevPctRef.current === null) {
+      prevPctRef.current = pct;
+      if (pct >= 100) {
+        setRingSuccess(true);
+      }
+      return;
+    }
+    const prev = prevPctRef.current;
+    if (prev < 100 && pct >= 100) {
+      alLlegarAlCien();
+    }
+    prevPctRef.current = pct;
+  }, [pct, alLlegarAlCien]);
+
   const offset = mounted ? CIRCUMFERENCE - (pct / 100) * CIRCUMFERENCE : CIRCUMFERENCE;
 
   const isPulseActive = pct > 0 && pct < 100;
+
+  const strokeTransition = 'stroke-dashoffset 1s ease-in-out';
+  const filterTransition = 'filter 500ms ease-in-out';
 
   return (
     <div
@@ -53,8 +89,8 @@ function ProgressCircle({
         viewBox="0 0 128 128"
         xmlns="http://www.w3.org/2000/svg"
         style={{
-          filter:
-            'drop-shadow(0 0 12px rgba(147, 51, 234, 0.42)) drop-shadow(0 0 4px rgba(99, 102, 241, 0.35))',
+          filter: ringSuccess ? FILTER_GREEN : FILTER_PURPLE,
+          transition: filterTransition,
         }}
       >
         <defs>
@@ -70,7 +106,7 @@ function ProgressCircle({
           stroke="currentColor"
           strokeWidth={STROKE}
           fill="transparent"
-          className="text-gray-100 dark:text-gray-800/80"
+          className="text-gray-100 transition-colors duration-500 dark:text-gray-800/80"
         />
         <circle
           cx={CX}
@@ -81,24 +117,44 @@ function ProgressCircle({
           fill="transparent"
           strokeLinecap="round"
           strokeDasharray={CIRCUMFERENCE}
+          className={`transition-opacity duration-500 ease-in-out ${
+            ringSuccess ? 'opacity-0' : 'opacity-100'
+          }`}
           style={{
             strokeDashoffset: offset,
-            transition: 'stroke-dashoffset 1s ease-in-out',
+            transition: strokeTransition,
+          }}
+        />
+        <circle
+          cx={CX}
+          cy={CY}
+          r={RADIUS}
+          stroke="#22c55e"
+          strokeWidth={STROKE}
+          fill="transparent"
+          strokeLinecap="round"
+          strokeDasharray={CIRCUMFERENCE}
+          className={`transition-opacity duration-500 ease-in-out ${
+            ringSuccess ? 'opacity-100' : 'opacity-0'
+          }`}
+          style={{
+            strokeDashoffset: offset,
+            transition: strokeTransition,
           }}
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none pt-0.5 px-1">
         {isComplete ? (
           <>
-            <div
-              className="w-11 h-11 rounded-full flex items-center justify-center shadow-md"
-              style={{ backgroundColor: '#10b981' }}
+            <span
+              className="text-4xl font-bold leading-none text-green-500 transition-colors duration-500"
+              style={{ fontFamily: 'var(--font-stat, ui-sans-serif, system-ui)' }}
               aria-hidden
             >
-              <Icon name="Check" size={26} color="#FFFFFF" />
-            </div>
+              ✓
+            </span>
             <span
-              className="text-[10px] font-medium mt-1.5 tracking-wide"
+              className="text-[10px] font-medium mt-1.5 tracking-wide transition-colors duration-500"
               style={{
                 fontFamily: 'var(--font-caption, ui-sans-serif, system-ui)',
                 color: 'var(--color-muted-foreground)',
