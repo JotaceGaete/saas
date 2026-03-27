@@ -57,6 +57,23 @@ function normalizeCountryCode(value) {
   return code || null;
 }
 
+function assertDlocalCountryCurrencyCoherence({ businessId, countryCode, currencyCode }) {
+  const expectedCurrency = resolveDlocalCurrency(countryCode);
+  if (!countryCode || !currencyCode || currencyCode !== expectedCurrency) {
+    console.error('[DLOCAL_CHECKOUT_COUNTRY_CURRENCY_MISMATCH]', {
+      businessId,
+      countryCode,
+      currencyCode,
+      expectedCurrency,
+    });
+    throw new HttpError(422, '[dlocal-checkout] Invalid country/currency coherence', {
+      code: 'INVALID_COUNTRY_CURRENCY',
+      provider: 'dlocal',
+      details: { businessId, countryCode, currencyCode, expectedCurrency },
+    });
+  }
+}
+
 function buildOrderId({ businessId, planSlug }) {
   return ['dlocal', businessId, planSlug, Date.now()]
     .join('-')
@@ -166,6 +183,11 @@ export async function createDlocalPlanCheckout({
   const countryFromLegacyField = normalizeCountryCode(business?.countryCode);
   const countryCode = countryFromBusiness || countryFromLegacyField || 'US';
   const currencyCode = resolveDlocalCurrency(countryCode);
+  assertDlocalCountryCurrencyCoherence({
+    businessId: business?.id || null,
+    countryCode,
+    currencyCode,
+  });
   const amount = resolveDlocalAmount({ planSlug: normalizedPlan, currencyCode });
   const orderId = buildOrderId({ businessId: business.id, planSlug: normalizedPlan });
   const endpointPath = '/v1/payments';

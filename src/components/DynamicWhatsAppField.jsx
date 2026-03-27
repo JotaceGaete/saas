@@ -33,6 +33,7 @@ export default function DynamicWhatsAppField({
   editableCountry = false,
   persistCountrySelection = true,
   onCountryChange,
+  onResolvedCountryCode,
 }) {
   const [touched, setTouched] = useState(false);
   const { setCountry: persistCountry, countryCode: contextCountryCode } = useCountry();
@@ -69,10 +70,11 @@ export default function DynamicWhatsAppField({
     const next = COUNTRY_CODES.includes(code) ? code : null;
     setSelectedCountryForField(next);
     onCountryChange?.(next);
+    onResolvedCountryCode?.(next);
     // Limpia número para evitar prefijos pegados y validaciones inconsistentes al cambiar país.
     onChange('');
     if (persistCountrySelection && next) persistCountry(next);
-  }, [onChange, persistCountry, persistCountrySelection, onCountryChange]);
+  }, [onChange, persistCountry, persistCountrySelection, onCountryChange, onResolvedCountryCode]);
 
   const handleChange = useCallback(
     (e) => {

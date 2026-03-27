@@ -15,7 +15,7 @@ const DIAL_TO_COUNTRY = (() => {
   return pairs;
 })();
 
-const MIN_E164_DIGITS = 9;
+const MIN_E164_DIGITS = 3;
 
 /**
  * Infiere código ISO desde un valor en formato E.164 o solo dígitos (p. ej. +525512345678).

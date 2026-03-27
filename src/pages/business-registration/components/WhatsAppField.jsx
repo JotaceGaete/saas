@@ -5,7 +5,15 @@ import DynamicWhatsAppField from 'components/DynamicWhatsAppField';
  * Campo WhatsApp para registro: prefijo y formato según país (countryConfig / CountryContext).
  * Sin lógica hardcodeada CL/AR.
  */
-export default function WhatsAppField({ value, onChange, error, hint, countryCode, onCountryChange }) {
+export default function WhatsAppField({
+  value,
+  onChange,
+  error,
+  hint,
+  countryCode,
+  onCountryChange,
+  onResolvedCountryCode,
+}) {
   return (
     <DynamicWhatsAppField
       value={value}
@@ -17,6 +25,7 @@ export default function WhatsAppField({ value, onChange, error, hint, countryCod
       editableCountry
       persistCountrySelection={false}
       onCountryChange={onCountryChange}
+      onResolvedCountryCode={onResolvedCountryCode}
     />
   );
 }

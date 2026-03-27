@@ -3,7 +3,7 @@ import { getPlanLimits } from '../constants/plans';
 import { getTrialEndDateFrom } from '../constants/trial';
 import { getMarketCodeByCountry } from '../lib/market/routing';
 import { getCountryConfig, COUNTRY_CODES } from '../config/countryConfig';
-import { inferCountryCodeFromE164 } from '../lib/phone/inferCountryFromE164';
+import { resolveCountryCode } from '../lib/country/resolveCountryCode';
 
 // Helpers
 
@@ -34,36 +34,6 @@ function normalizeCountryCode(value, currencyHint, options = {}) {
   if (aliases[normalizedAlias]) return aliases[normalizedAlias];
 
   return options.allowNull ? null : 'US';
-}
-
-/**
- * País y moneda alineados con WhatsApp en E.164 cuando el prefijo coincide con COUNTRY_CONFIG.
- * Si no hay match, se usa país/moneda del formulario (comportamiento anterior).
- */
-function resolveCountryCurrencyCountryNameForPayload(businessData) {
-  const inferred = inferCountryCodeFromE164(businessData?.whatsapp);
-  if (inferred) {
-    const cfg = getCountryConfig(inferred);
-    return {
-      countryCode: inferred,
-      currency: String(cfg?.currency || 'USD').trim().toUpperCase(),
-      country: cfg?.name != null ? cfg.name : (businessData?.country ?? null),
-    };
-  }
-  const countryCode = normalizeCountryCode(
-    businessData?.countryCode ?? businessData?.country,
-    businessData?.currency,
-    { allowNull: true },
-  );
-  return {
-    countryCode,
-    currency: String(
-      businessData?.currency
-      || getCountryConfig(countryCode || 'US')?.currency
-      || 'USD',
-    ).trim().toUpperCase(),
-    country: businessData?.country ?? null,
-  };
 }
 
 /** Solo columna country_code explícita; para routing multi-dominio sin inferir por moneda. */
@@ -453,11 +423,30 @@ export const createBusiness = async (businessData) => {
   if (!user) return { data: null, error: { message: 'Usuario no autenticado' } };
   let slug = await generateSlug(businessData?.name);
   const trialEnd = getTrialEndDateFrom().toISOString();
-  const {
-    countryCode: resolvedCountryCode,
+  const countryResolution = resolveCountryCode({
+    business: null,
+    user,
+    phoneInput: businessData?.whatsapp,
+    explicitCountryCode: businessData?.countryCode,
+  });
+  const resolvedCountryCode = countryResolution.finalCountry;
+  const resolvedCurrency = countryResolution.currency;
+  const resolvedCountryName = getCountryConfig(resolvedCountryCode)?.name ?? businessData?.country ?? null;
+  console.info('[COUNTRY_RESOLUTION]', {
+    businessId: null,
+    countryFromBusiness: countryResolution.countryFromBusiness,
+    countryFromUser: countryResolution.countryFromUser,
+    countryFromPhone: countryResolution.countryFromPhone,
+    finalCountry: resolvedCountryCode,
     currency: resolvedCurrency,
-    country: resolvedCountryName,
-  } = resolveCountryCurrencyCountryNameForPayload(businessData);
+  });
+  console.info('[COUNTRY_BEFORE_INSERT]', {
+    explicitCountryCode: businessData?.countryCode || null,
+    whatsapp: businessData?.whatsapp || null,
+    finalCountry: resolvedCountryCode,
+    currency: resolvedCurrency,
+    countryName: resolvedCountryName,
+  });
   const { data, error } = await supabase?.from('wa_businesses')?.insert({
       user_id: user?.id,
       name: businessData?.name,
@@ -494,11 +483,30 @@ export const createBusinessForUser = async (userId, businessData) => {
   if (!userId) return { data: null, error: { message: 'Usuario no autenticado' } };
   let slug = await generateSlug(businessData?.name);
   const trialEnd = getTrialEndDateFrom().toISOString();
-  const {
-    countryCode: resolvedCountryCode,
+  const countryResolution = resolveCountryCode({
+    business: null,
+    user: null,
+    phoneInput: businessData?.whatsapp,
+    explicitCountryCode: businessData?.countryCode,
+  });
+  const resolvedCountryCode = countryResolution.finalCountry;
+  const resolvedCurrency = countryResolution.currency;
+  const resolvedCountryName = getCountryConfig(resolvedCountryCode)?.name ?? businessData?.country ?? null;
+  console.info('[COUNTRY_RESOLUTION]', {
+    businessId: null,
+    countryFromBusiness: countryResolution.countryFromBusiness,
+    countryFromUser: countryResolution.countryFromUser,
+    countryFromPhone: countryResolution.countryFromPhone,
+    finalCountry: resolvedCountryCode,
     currency: resolvedCurrency,
-    country: resolvedCountryName,
-  } = resolveCountryCurrencyCountryNameForPayload(businessData);
+  });
+  console.info('[COUNTRY_BEFORE_INSERT]', {
+    explicitCountryCode: businessData?.countryCode || null,
+    whatsapp: businessData?.whatsapp || null,
+    finalCountry: resolvedCountryCode,
+    currency: resolvedCurrency,
+    countryName: resolvedCountryName,
+  });
   const { data, error } = await supabase?.from('wa_businesses')?.insert({
       user_id: userId,
       name: businessData?.name,

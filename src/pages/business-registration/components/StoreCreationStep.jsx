@@ -9,6 +9,7 @@ import { getCountryConfig } from '../../../config/countryConfig';
 import { useCountry } from '../../../contexts/CountryContext';
 import { getBusinessLocale } from '../../../lib/locale/businessLocale';
 import { resolveCountryState, resolveBillingSetup, logCountryStateDebug } from '../../../lib/country/state-model';
+import { resolveCountryCode } from '../../../lib/country/resolveCountryCode';
 
 export default function StoreCreationStep({ user, businessLoading }) {
   const navigate = useNavigate();
@@ -79,14 +80,28 @@ export default function StoreCreationStep({ user, businessLoading }) {
     setSaving(true);
     setSaveError(null);
     try {
-      const resolvedCode = selectedOnboardingCountry || countryState.billingCountry;
+      const countryResolution = resolveCountryCode({
+        business: null,
+        user,
+        phoneInput: formData.whatsapp,
+        explicitCountryCode: selectedOnboardingCountry,
+      });
+      const resolvedCode = countryResolution.finalCountry;
       if (!resolvedCode) {
         setSaveError('Selecciona el país de tu número de WhatsApp.');
         setSaving(false);
         return;
       }
+      console.info('[COUNTRY_RESOLUTION]', {
+        businessId: null,
+        countryFromBusiness: countryResolution.countryFromBusiness,
+        countryFromUser: countryResolution.countryFromUser,
+        countryFromPhone: countryResolution.countryFromPhone,
+        finalCountry: countryResolution.finalCountry,
+        currency: countryResolution.currency,
+      });
       const labelsForCreate = getCountryLabels(resolvedCode);
-      const currencyForCreate = getCountryConfig(resolvedCode)?.currency || locale.currencyCode;
+      const currencyForCreate = countryResolution.currency || getCountryConfig(resolvedCode)?.currency || locale.currencyCode;
       const { data, error } = await createBusiness({
         name:        formData.businessName.trim(),
         whatsapp:    formData.whatsapp.trim(),
@@ -203,6 +218,7 @@ export default function StoreCreationStep({ user, businessLoading }) {
             error={errors.whatsapp}
             countryCode={countryState.uxCountry}
             onCountryChange={setSelectedOnboardingCountry}
+            onResolvedCountryCode={setSelectedOnboardingCountry}
           />
 
           <div>
