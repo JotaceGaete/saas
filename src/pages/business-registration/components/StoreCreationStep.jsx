@@ -35,6 +35,7 @@ export default function StoreCreationStep({ user, businessLoading }) {
     whatsapp:     user?.user_metadata?.whatsapp || '',
     description:  '',
     currency:     locale.currencyCode,
+    countryCode:  selectedOnboardingCountry ?? null,
   });
   const [errors, setErrors]     = useState({});
   const [saving, setSaving]     = useState(false);
@@ -43,6 +44,17 @@ export default function StoreCreationStep({ user, businessLoading }) {
   useEffect(() => {
     setFormData((prev) => ({ ...prev, currency: locale.currencyCode }));
   }, [locale.currencyCode]);
+
+  const effectiveCountryCode =
+    selectedOnboardingCountry ||
+    formData.countryCode ||
+    countryState.uxCountry ||
+    null;
+
+  const handleCountryChange = (next) => {
+    setSelectedOnboardingCountry(next);
+    setFormData((prev) => ({ ...prev, countryCode: next || null }));
+  };
 
   useEffect(() => {
     logCountryStateDebug({
@@ -80,13 +92,21 @@ export default function StoreCreationStep({ user, businessLoading }) {
     setSaving(true);
     setSaveError(null);
     try {
+      console.info('[COUNTRY_SUBMIT_PAYLOAD]', {
+        selectedOnboardingCountry,
+        formDataCountryCode: formData.countryCode || null,
+        countryStateUxCountry: countryState?.uxCountry || null,
+        whatsapp: formData.whatsapp || null,
+        effectiveCountryCode,
+      });
+
       const countryResolution = resolveCountryCode({
         business: null,
         user,
         phoneInput: formData.whatsapp,
-        explicitCountryCode: selectedOnboardingCountry,
+        explicitCountryCode: effectiveCountryCode,
       });
-      const resolvedCode = countryResolution.finalCountry;
+      const resolvedCode = effectiveCountryCode || countryResolution.finalCountry;
       if (!resolvedCode) {
         setSaveError('Selecciona el país de tu número de WhatsApp.');
         setSaving(false);
@@ -108,7 +128,7 @@ export default function StoreCreationStep({ user, businessLoading }) {
         description: formData.description.trim() || null,
         currency:    currencyForCreate,
         country:     labelsForCreate.countryName,
-        countryCode: resolvedCode,
+        countryCode: effectiveCountryCode || resolvedCode,
       });
       if (error) {
         setSaveError(error.message || 'No se pudo crear el negocio. Intenta de nuevo.');
@@ -216,9 +236,9 @@ export default function StoreCreationStep({ user, businessLoading }) {
             value={formData.whatsapp}
             onChange={val => update('whatsapp', val)}
             error={errors.whatsapp}
-            countryCode={countryState.uxCountry}
-            onCountryChange={setSelectedOnboardingCountry}
-            onResolvedCountryCode={setSelectedOnboardingCountry}
+            countryCode={effectiveCountryCode}
+            onCountryChange={handleCountryChange}
+            onResolvedCountryCode={handleCountryChange}
           />
 
           <div>

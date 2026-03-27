@@ -445,7 +445,6 @@ export const createBusiness = async (businessData) => {
     whatsapp: businessData?.whatsapp || null,
     finalCountry: resolvedCountryCode,
     currency: resolvedCurrency,
-    countryName: resolvedCountryName,
   });
   const { data, error } = await supabase?.from('wa_businesses')?.insert({
       user_id: user?.id,
@@ -505,7 +504,6 @@ export const createBusinessForUser = async (userId, businessData) => {
     whatsapp: businessData?.whatsapp || null,
     finalCountry: resolvedCountryCode,
     currency: resolvedCurrency,
-    countryName: resolvedCountryName,
   });
   const { data, error } = await supabase?.from('wa_businesses')?.insert({
       user_id: userId,
