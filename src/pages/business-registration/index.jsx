@@ -133,13 +133,14 @@ export default function BusinessRegistration() {
       setAuthError(null);
       setPendingConfirmation(null);
       try {
+        const signupCountryCode = countryState?.billingCountry ?? locale?.countryCode ?? null;
         const { data, error } = await signUp(email, password, {
           name: businessName || 'Mi Negocio',
           whatsapp: whatsapp || '',
           currency: locale.currencyCode,
-          // Registro inicial: no persistimos país definitivo aquí.
-          country: null,
-          countryCode: null,
+          // Importante: enviar country_code en metadata para que el trigger NO caiga a CL por default.
+          country: signupCountryCode,
+          countryCode: signupCountryCode,
         });
         if (error) {
           setAuthError(normalizeAuthErrorMessage(error.message));

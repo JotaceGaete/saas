@@ -156,18 +156,22 @@ export const AuthProvider = ({ children }) => {
       if (typeof window !== 'undefined' && window.__AUTH_DEBUG__) {
         console.log('[Auth] signUp emailRedirectTo:', emailRedirectTo);
       }
+      const metadata = {
+        full_name: businessData?.name || email,
+        name: businessData?.name || email,
+        whatsapp: businessData?.whatsapp || '',
+        country: businessData?.country ?? null,
+        country_code: businessData?.countryCode ?? businessData?.country ?? null,
+      };
+      if (typeof window !== 'undefined' && window.__AUTH_DEBUG__) {
+        console.log('[Auth] signUp metadata (options.data):', metadata);
+      }
       const { data, error } = await supabase?.auth?.signUp({
         email,
         password,
         options: {
           emailRedirectTo,
-          data: {
-            full_name: businessData?.name || email,
-            name: businessData?.name || email,
-            whatsapp: businessData?.whatsapp || '',
-            country: businessData?.country ?? null,
-            country_code: businessData?.countryCode ?? null,
-          },
+          data: metadata,
         },
       })
       if (typeof window !== 'undefined' && window.__AUTH_DEBUG__) {
