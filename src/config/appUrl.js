@@ -4,6 +4,12 @@
  * En producción: https://go.ventalink.app
  */
 const BASE_URL = import.meta.env?.VITE_APP_URL?.trim() || '';
+const GO_APP_ORIGIN = 'https://go.ventalink.app';
+
+function isLocalhostHostname(hostname) {
+  const host = String(hostname || '').trim().toLowerCase();
+  return host === 'localhost' || host === '127.0.0.1' || host.endsWith('.localhost');
+}
 
 /**
  * @returns {string} URL base pública (sin trailing slash), o '' si no hay origen.
@@ -20,11 +26,16 @@ export function getAppBaseUrl() {
  */
 export function getAuthRedirectUrl() {
   if (typeof window === 'undefined' || !window?.location?.origin) {
-    return 'https://go.ventalink.app/auth/callback';
+    return `${GO_APP_ORIGIN}/auth/callback`;
   }
-  const origin = String(window.location.origin || '').replace(/\/$/, '');
-  if (!origin) return 'https://go.ventalink.app/auth/callback';
-  return `${origin}/auth/callback`;
+  const hostname = String(window.location.hostname || '').trim().toLowerCase();
+  // En local dev permitimos callback local para no romper pruebas OAuth locales.
+  if (isLocalhostHostname(hostname)) {
+    const origin = String(window.location.origin || '').replace(/\/$/, '');
+    if (origin) return `${origin}/auth/callback`;
+  }
+  // Producción/cualquier host no local: siempre volver al host canónico de la app.
+  return `${GO_APP_ORIGIN}/auth/callback`;
 }
 
 /**

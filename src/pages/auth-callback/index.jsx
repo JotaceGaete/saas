@@ -4,6 +4,13 @@ import { supabase } from '../../lib/supabase';
 import { getMyBusiness } from '../../services/waBusinessService';
 import Icon from 'components/AppIcon';
 
+const GO_APP_ORIGIN = 'https://go.ventalink.app';
+
+function isLocalhostHost(hostname) {
+  const host = String(hostname || '').trim().toLowerCase();
+  return host === 'localhost' || host === '127.0.0.1' || host.endsWith('.localhost');
+}
+
 /**
  * Página de callback OAuth (Google, etc.).
  * Supabase redirige aquí tras el login; con detectSessionInUrl: true,
@@ -18,6 +25,20 @@ export default function AuthCallback() {
     let mounted = true;
 
     const resolveAndRedirect = async () => {
+      if (typeof window !== 'undefined') {
+        const host = String(window.location.hostname || '').trim().toLowerCase();
+        // Si el callback llega a un host no canónico (ej. ventalink.app), reenviar al host app.
+        if (!isLocalhostHost(host) && host !== 'go.ventalink.app') {
+          const nextUrl = `${GO_APP_ORIGIN}/auth/callback${window.location.search || ''}${window.location.hash || ''}`;
+          console.warn('[AuthCallback] wrong_host_redirect', {
+            currentOrigin: window.location.origin,
+            nextUrl,
+          });
+          window.location.replace(nextUrl);
+          return;
+        }
+      }
+
       // Breve espera para que Supabase procese la URL (hash/query)
       await new Promise((r) => setTimeout(r, 300));
 

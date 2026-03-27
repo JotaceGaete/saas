@@ -15,8 +15,13 @@ Cosas a revisar tras el cambio de nombre/dominios (Vercel ya tiene los dominios)
 ## 1. Supabase
 
 - [ ] **Authentication → URL Configuration**
-  - **Site URL**: `https://cl.ventalink.app` (o el dominio principal que uses en emails).
-  - **Redirect URLs**: incluir `https://*.ventalink.app`, `https://*.ventalink.app/**` y tu `http://localhost:...` si desarrollas en local.
+  - **Site URL (app principal)**: `https://go.ventalink.app`
+  - **Redirect URLs (mínimo recomendado)**:
+    - `https://go.ventalink.app/auth/callback`
+    - `https://go.ventalink.app/auth/reset-password`
+    - `http://localhost:5173/auth/callback` (o tu puerto local)
+    - `http://localhost:5173/auth/reset-password` (o tu puerto local)
+  - Evitar depender de `https://ventalink.app/auth/callback` para OAuth de la app; el callback canónico debe ser `go.ventalink.app`.
 - [ ] **Edge Functions → Secrets** (opcional): si quieres un fallback por entorno, puedes definir `APP_BASE_URL` (ej. `https://cl.ventalink.app` para un deploy y `https://ar.ventalink.app` para otro). No es obligatorio porque el front envía las URLs.
 - [ ] **Plantillas de email** (Authentication → Email Templates): usan la variable `{{ .SiteURL }}`. Comprueba que los enlaces (confirmación, reset password) se vean bien; con Site URL correcto debería bastar.
 
