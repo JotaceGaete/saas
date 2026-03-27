@@ -113,6 +113,7 @@ async function insertPendingPayment({
   currency,
   orderId,
   payload,
+  paymentId,
 }) {
   const admin = getAdminClient();
   const paymentPayload = {
@@ -123,7 +124,9 @@ async function insertPendingPayment({
     currency,
     status: 'pending',
     external_reference: orderId,
-    raw_mp_response: { provider: 'dlocal', payload },
+    provider: 'dlocal_go',
+    provider_payment_id: paymentId,
+    raw_mp_response: { provider: 'dlocal_go', payload },
   };
   const { data, error } = await admin
     .from('wa_payments')
@@ -347,6 +350,7 @@ export async function createDlocalPlanCheckout({
     currency: currencyCode,
     orderId,
     payload,
+    paymentId,
   });
 
   return {

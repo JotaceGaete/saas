@@ -249,26 +249,33 @@ async function syncBusinessPlanAfterApprovedPayment({ businessId, planSlug }) {
   }
 }
 
-async function syncPaymentRecord({ businessId, orderId, providerStatus, payload, status }) {
-  if (!orderId) return;
+async function syncPaymentRecord({ businessId, orderId, paymentId, providerStatus, payload, status }) {
+  if (!orderId && !paymentId) return;
   const admin = getAdminClient();
   const mapped = status === 'active' ? 'approved' : providerStatus === 'REJECTED' ? 'rejected' : 'pending';
   const updatePayload = {
     status: mapped,
-    mp_payment_id: String(payload?.id || '').trim() || null,
-    mp_status: providerStatus,
-    raw_mp_response: { provider: 'dlocal', payload },
+    provider: 'dlocal_go',
+    provider_payment_id: String(paymentId || payload?.id || payload?.payment_id || '').trim() || null,
+    provider_status: providerStatus,
+    raw_mp_response: { provider: 'dlocal_go', payload },
     plan_activated_at: status === 'active' ? new Date().toISOString() : null,
   };
-  const { error } = await admin
+  let query = admin
     .from('wa_payments')
     .update(updatePayload)
-    .eq('business_id', businessId)
-    .eq('external_reference', orderId);
+    .eq('business_id', businessId);
+  if (paymentId) {
+    query = query.eq('provider_payment_id', paymentId);
+  } else {
+    query = query.eq('external_reference', orderId);
+  }
+  const { error } = await query;
   if (error) {
     console.error('[DLOCAL_WEBHOOK_PAYMENT_UPDATE_ERROR]', {
       businessId,
       orderId,
+      paymentId,
       message: error.message,
     });
   }
@@ -353,6 +360,7 @@ export async function processDlocalWebhook({ headers, payload }) {
   await syncPaymentRecord({
     businessId,
     orderId,
+    paymentId: context.paymentId || null,
     providerStatus,
     payload,
     status,

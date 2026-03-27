@@ -34,7 +34,7 @@ export default async function handler(req, res) {
         status: status,
         updated_at: new Date().toISOString() 
       })
-      .eq('payment_id', paymentId)
+      .eq('provider_payment_id', paymentId)
       .select('business_id')
       .single();
 
