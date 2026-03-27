@@ -234,6 +234,7 @@ async function syncPaymentRecord({ businessId: _businessId, orderId, paymentId, 
   if (!orderId && !paymentId) return;
   const admin = getAdminClient();
 
+  // Normalizamos el estado para la DB
   const mapped =
     status === 'active' || providerStatus === 'PAID'
       ? 'approved'
@@ -252,16 +253,25 @@ async function syncPaymentRecord({ businessId: _businessId, orderId, paymentId, 
     updated_at: new Date().toISOString(),
   };
 
-  let query = admin.from('wa_payments').update(updatePayload);
+  console.log(`[DLOCAL_DEBUG] Intentando actualizar Pago: ${paymentId} u Orden: ${orderId}`);
 
+  // INTENTO 1: Buscar por el ID de dLocal (DP-XXXX)
   if (paymentId) {
-    query = query.eq('provider_payment_id', paymentId);
-  } else {
-    query = query.eq('external_reference', orderId);
+    const { error: err1 } = await admin
+      .from('wa_payments')
+      .update(updatePayload)
+      .eq('provider_payment_id', paymentId);
+    if (err1) console.error('[DLOCAL_ERROR]', err1.message);
   }
 
-  const { error } = await query;
-  if (error) console.error('[DLOCAL_ERROR]', error.message);
+  // INTENTO 2: Respaldo por referencia externa (order_id)
+  if (orderId) {
+    const { error: err2 } = await admin
+      .from('wa_payments')
+      .update(updatePayload)
+      .eq('external_reference', orderId);
+    if (err2) console.error('[DLOCAL_ERROR]', err2.message);
+  }
 }
 
 export async function processDlocalWebhook({ headers, payload }) {
