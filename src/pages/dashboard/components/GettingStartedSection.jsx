@@ -102,7 +102,8 @@ export default function GettingStartedSection({
   const completedCount = stepCompleted?.filter(Boolean)?.length;
   const allCompleted = completedCount === 3;
 
-  const showProgressSteps = productCount === 0;
+  /** Lista detallada de pasos (solo sin productos aún); el anillo de progreso se muestra siempre en móvil. */
+  const showOnboardingStepper = productCount === 0;
 
   const handleCopyLink = () => {
     if (!catalogUrl) return;
@@ -194,9 +195,8 @@ export default function GettingStartedSection({
           </button>
         </div>
       )}
-      {/* Progress Steps Card — mobile: stepper vertical + línea gruesa con degradado; md+: horizontal */}
-      {showProgressSteps && (
-        <div className="dashboard-premium-card rounded-2xl border-0 p-5 md:p-6 mb-4">
+      {/* Progress Steps Card — anillo/barra siempre; stepper detallado solo en onboarding */}
+      <div className="dashboard-premium-card rounded-2xl border-0 p-5 md:p-6 mb-4">
           <div className="mb-5">
             <h2
               className="text-base font-bold tracking-tight"
@@ -272,6 +272,8 @@ export default function GettingStartedSection({
             </div>
           </div>
 
+          {showOnboardingStepper && (
+          <>
           {/* Mobile: stepper vertical */}
           <div className="md:hidden relative pl-0">
             <div
@@ -404,8 +406,9 @@ export default function GettingStartedSection({
               );
             })}
           </div>
+          </>
+          )}
         </div>
-      )}
       {/* Action Cards Grid */}
       <div className="dashboard-premium-card rounded-2xl border-0 p-5 md:p-6">
         <div className="flex items-center justify-between mb-4">
