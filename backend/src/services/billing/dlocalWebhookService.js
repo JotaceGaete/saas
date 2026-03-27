@@ -312,9 +312,22 @@ export async function processDlocalWebhook({ headers, payload }) {
     || '',
   ).trim() || null;
 
+  // Email de respaldo: payload → negocio en wa_businesses → fallback fijo (evita NULL en billing_subscriptions)
+  const { data: bizData } = await getAdminClient()
+    .from('wa_businesses')
+    .select('email')
+    .eq('id', businessId)
+    .maybeSingle();
+
+  const userEmail =
+    payload?.payer?.email
+    || payload?.email
+    || bizData?.email
+    || 'soporte@ventalink.app';
+
   const updated = await upsertBillingSubscriptionByBusiness({
     business_id: businessId,
-	email: existing?.email || payload?.payer?.email || 'facturacion@ventalink.app',
+    email: userEmail,
     provider: 'dlocal',
     provider_subscription_id: subscriptionId,
     plan_slug: context.planSlug || existing?.plan_slug || 'starter',
@@ -332,11 +345,7 @@ export async function processDlocalWebhook({ headers, payload }) {
     metadata_json: {
       ...(existing?.metadata_json || {}),
       last_webhook_payload: payload,
-      last_webhook_received_at: new Date().toISOString(),
-      order_id: context.orderId || existing?.metadata_json?.order_id || null,
-      user_id: context.userId || existing?.metadata_json?.user_id || null,
-      payment_id: context.paymentId || existing?.metadata_json?.payment_id || null,
-      event_type: context.eventType || existing?.metadata_json?.event_type || null,
+      order_id: context.orderId,
     },
   });
 
