@@ -158,7 +158,7 @@ function buildIntlUsdPreview(
   targetPlanSlug: string,
   planExpiresAt: string | null,
   trialExpiresAt: string | null,
-  scheduledPlanSlug: string | null,
+  _scheduledPlanSlug: string | null,
 ): {
   currentPlanSlug: string;
   currentPlanPrice: number;
@@ -202,11 +202,11 @@ function buildIntlUsdPreview(
   }
 
   const now = Date.now();
+  /** Pro en prueba: no exige scheduled_plan_slug = starter; el cobro es al pagar (preview alineado con webhook +30 días desde fin de período vigente). */
   const isActiveProTrial =
-    currentPlanSlug === 'pro' && trialExpiresAt && new Date(trialExpiresAt).getTime() > now && scheduledPlanSlug === 'starter';
-  if (isActiveProTrial && targetPlanSlug === 'pro' && trialExpiresAt) {
-    effectiveAt = trialExpiresAt;
-    scheduledChange = { targetPlanSlug: 'pro', effectiveAt: trialExpiresAt };
+    currentPlanSlug === 'pro' && !!trialExpiresAt && new Date(trialExpiresAt).getTime() > now;
+  if (isActiveProTrial && targetPlanSlug === 'pro') {
+    effectiveAt = new Date().toISOString();
   }
 
   const message = changeType === 'downgrade'
@@ -334,12 +334,11 @@ Deno.serve(async (req) => {
 
       const now = Date.now();
       const isActiveProTrial =
-        currentPlanSlug === 'pro' && trialExpiresAt && new Date(trialExpiresAt).getTime() > now && scheduledPlanSlug === 'starter';
-      if (isActiveProTrial && targetPlanSlug === 'pro' && trialExpiresAt) {
+        currentPlanSlug === 'pro' && !!trialExpiresAt && new Date(trialExpiresAt).getTime() > now;
+      if (isActiveProTrial && targetPlanSlug === 'pro') {
         preview = {
           ...preview,
-          effectiveAt: trialExpiresAt,
-          scheduledChange: { targetPlanSlug: 'pro', effectiveAt: trialExpiresAt },
+          effectiveAt: new Date().toISOString(),
         };
       }
     }

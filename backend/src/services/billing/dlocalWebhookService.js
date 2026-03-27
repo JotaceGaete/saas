@@ -188,25 +188,34 @@ function isActiveStatus(status) {
   return String(status || '').trim().toLowerCase() === 'active';
 }
 
-/** Misma fecha para plan_expires_at (wa_businesses) y current_period_ends_at (billing_subscriptions): +30 días desde fin de trial vigente o desde hoy. */
+/**
+ * Misma fecha para plan_expires_at (wa_businesses) y current_period_ends_at (billing_subscriptions).
+ * +30 días desde el vencimiento vigente más lejano (plan_expires_at o trial_expires_at si > now);
+ * si no hay fecha futura o están vencidas, desde now (mes completo desde el pago).
+ */
 async function computeActivationPeriodEndIso(businessId) {
   const admin = getAdminClient();
   const { data: business, error } = await admin
     .from('wa_businesses')
-    .select('trial_expires_at')
+    .select('plan_expires_at, trial_expires_at')
     .eq('id', businessId)
     .maybeSingle();
+  const now = new Date();
   if (error || !business) {
-    const d = new Date();
+    const d = new Date(now);
     d.setDate(d.getDate() + 30);
     return d.toISOString();
   }
-  const trialEndsAt = business?.trial_expires_at ? new Date(business.trial_expires_at) : null;
-  const now = new Date();
-  const hasActiveTrial = !!trialEndsAt && Number.isFinite(trialEndsAt.getTime()) && trialEndsAt > now;
-  const base = hasActiveTrial ? new Date(trialEndsAt) : new Date(now);
-  base.setDate(base.getDate() + 30);
-  return base.toISOString();
+  const candidates = [business?.plan_expires_at, business?.trial_expires_at]
+    .map((v) => (v ? new Date(v) : null))
+    .filter((d) => d && Number.isFinite(d.getTime()));
+  const futureEnds = candidates.filter((d) => d > now);
+  const base = futureEnds.length > 0
+    ? new Date(Math.max(...futureEnds.map((d) => d.getTime())))
+    : new Date(now);
+  const periodEnd = new Date(base);
+  periodEnd.setDate(periodEnd.getDate() + 30);
+  return periodEnd.toISOString();
 }
 
 async function syncBusinessPlanAfterApprovedPayment({ businessId, planSlug, periodEndIso: periodEndIsoArg }) {
@@ -308,6 +317,16 @@ export async function processDlocalWebhook({ headers, payload }) {
   }
 
   const existing = await getBillingSubscriptionByBusinessId(businessId);
+  let trialEndsHistorical = existing?.trial_ends_at ?? null;
+  if (!trialEndsHistorical) {
+    const { data: bizRow } = await getAdminClient()
+      .from('wa_businesses')
+      .select('trial_expires_at')
+      .eq('id', businessId)
+      .maybeSingle();
+    const raw = bizRow?.trial_expires_at ?? null;
+    if (raw) trialEndsHistorical = typeof raw === 'string' ? raw : new Date(raw).toISOString();
+  }
   const providerStatus = normalizeStatus(
     context.providerStatus
     || existing?.provider_status
@@ -349,7 +368,8 @@ export async function processDlocalWebhook({ headers, payload }) {
     interval_unit: String(payload?.interval_unit || existing?.interval_unit || 'month').trim().toLowerCase(),
     status,
     provider_status: providerStatus,
-    trial_ends_at: payload?.trial_ends_at || existing?.trial_ends_at || null,
+    /** Conservar fin de trial original como referencia histórica al pasar a activo. */
+    trial_ends_at: trialEndsHistorical ?? payload?.trial_ends_at ?? null,
     starts_at: payload?.starts_at || existing?.starts_at || null,
     current_period_starts_at: payload?.current_period_starts_at || existing?.current_period_starts_at || null,
     current_period_ends_at: active

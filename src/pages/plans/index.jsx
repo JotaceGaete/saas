@@ -145,18 +145,22 @@ export default function PlansPage() {
     () => getDlocalLocalChargeDisclaimer(billingCountryForUi),
     [billingCountryForUi],
   );
-  const scheduledToStarter = (business?.scheduledPlanSlug || null) === 'starter';
   const planExpiryMs = business?.planExpiresAt ? new Date(business.planExpiresAt).getTime() : null;
   const trialExpiryMs = business?.trialExpiresAt ? new Date(business.trialExpiresAt).getTime() : null;
   const hasFuturePlanExpiry = Number.isFinite(planExpiryMs) && planExpiryMs > Date.now();
   const hasFutureTrialExpiry = Number.isFinite(trialExpiryMs) && trialExpiryMs > Date.now();
+  const isProPlan = (business?.planSlug || 'starter') === 'pro';
+  /** Trial Pro: prueba vigente o estado de facturación en trial (no requiere scheduled_plan_slug = starter). */
   const isProTrialActive = useMemo(() => {
-    if ((business?.planSlug || 'starter') !== 'pro') return false;
-    if (!scheduledToStarter) return false;
-    return hasFutureTrialExpiry || hasFuturePlanExpiry;
-  }, [business?.planSlug, scheduledToStarter, hasFutureTrialExpiry, hasFuturePlanExpiry]);
+    if (!isProPlan) return false;
+    if (hasFutureTrialExpiry) return true;
+    const bs = subscriptionState?.billing_status;
+    return bs === 'trial_with_subscription' || bs === 'trial_without_subscription';
+  }, [isProPlan, hasFutureTrialExpiry, subscriptionState?.billing_status]);
   const trialEndDateIso = business?.trialExpiresAt || business?.scheduledChangeAt || business?.planExpiresAt || null;
   const isTrialWithSubscription = subscriptionState?.billing_status === 'trial_with_subscription';
+  /** "Suscripción programada" solo si hay downgrade/cambio futuro confirmado en BD, no solo por estar en trial. */
+  const showStarterScheduledSubscriptionLabel = isTrialWithSubscription && Boolean(business?.scheduledPlanSlug);
   /** Obtiene access_token válido para Edge Functions que validan JWT internamente. */
   const getValidAccessToken = async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -903,7 +907,11 @@ export default function PlansPage() {
                   ) : checkoutProvider === PAYMENT_PROVIDERS.DLOCAL ? (
                     <>
                       <Icon name="CreditCard" size={16} color="#fff" />
-                      {preview.finalAmount === 0 ? 'Confirmar cambio (sin cargo)' : getProviderDisplayLabel({ provider: PAYMENT_PROVIDERS.DLOCAL, billingCountryCode: billingCountryForUi })}
+                      {preview.finalAmount === 0
+                        ? 'Confirmar cambio (sin cargo)'
+                        : (previewPlanSlug === 'pro' && isProTrialActive
+                          ? 'Activar suscripción Pro'
+                          : getProviderDisplayLabel({ provider: PAYMENT_PROVIDERS.DLOCAL, billingCountryCode: billingCountryForUi }))}
                     </>
                   ) : checkoutProvider === PAYMENT_PROVIDERS.PAYPAL ? (
                     <>
@@ -983,13 +991,13 @@ export default function PlansPage() {
                     Estás usando una prueba gratuita de {TRIAL_DURATION_DAYS} días del plan PRO.
                   </p>
                   <p className="text-xs mt-0.5" style={{ color: '#B45309', fontFamily: 'var(--font-caption)' }}>
-                    Si compras ahora, la suscripción comenzará cuando termine tu período gratuito.
+                    Al pagar con tarjeta, el mes pagado se suma desde el fin de tu prueba (o de tu período vigente), no desde hoy.
                   </p>
                   <p className="text-xs mt-1" style={{ color: '#B45309', fontFamily: 'var(--font-caption)' }}>
                     {daysLeft === 1
                       ? 'Queda 1 día de prueba.'
                       : `Quedan ${daysLeft} días de prueba.`}
-                    {' '}Puedes contratar Pro o Full; si eliges Pro, el plan pagado se activará al finalizar la prueba.
+                    {' '}Puedes activar Pro o Full; el período de 30 días pagado se acumula a lo que ya tienes.
                   </p>
                 </div>
               </div>
@@ -1002,7 +1010,7 @@ export default function PlansPage() {
               const isProTrialCard = slug === 'pro' && isProTrialActive;
               const isCurrent = currentPlan === slug && !isProTrialCard;
               const actionLabel = isProTrialCard
-                ? 'Mantener Pro al terminar la prueba'
+                ? 'Activar suscripción Pro'
                 : getPlanActionButtonLabel(currentPlan, slug);
               const marketPlan = getPlanConfig({
                 marketCode,
@@ -1122,7 +1130,9 @@ export default function PlansPage() {
                           ) : (
                             <>
                               <Icon name="CreditCard" size={16} color="#fff" />
-                              {getProviderDisplayLabel({ provider: PAYMENT_PROVIDERS.DLOCAL, billingCountryCode: billingCountryForUi })}
+                              {isProTrialCard
+                                ? 'Activar suscripción Pro'
+                                : getProviderDisplayLabel({ provider: PAYMENT_PROVIDERS.DLOCAL, billingCountryCode: billingCountryForUi })}
                             </>
                           )}
                         </button>
@@ -1139,7 +1149,7 @@ export default function PlansPage() {
                           ) : (
                             <>
                               <Icon name="CreditCard" size={16} color="#fff" />
-                              Suscribirme
+                              {isProTrialCard ? 'Activar suscripción Pro' : 'Suscribirme'}
                             </>
                           )}
                         </button>
@@ -1167,7 +1177,7 @@ export default function PlansPage() {
                       )
                     ) : (
                       <span className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-                        {isTrialWithSubscription ? 'Suscripción programada' : 'Plan gratuito'}
+                        {showStarterScheduledSubscriptionLabel ? 'Suscripción programada' : 'Plan gratuito'}
                       </span>
                     )}
                   </div>
