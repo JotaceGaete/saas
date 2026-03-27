@@ -1,3 +1,8 @@
+/**
+ * billing_subscriptions — fuente de suscripción normalizada.
+ * El alta de trial Pro (14 días) en signup la define la función SQL
+ * public.wa_handle_new_user_business (trigger en auth.users); no duplicar esa lógica aquí.
+ */
 import { createClient } from '@supabase/supabase-js';
 import { HttpError } from '../lib/http/HttpError.js';
 

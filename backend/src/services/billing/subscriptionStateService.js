@@ -118,7 +118,7 @@ export async function getBillingSubscriptionState({ businessId }) {
     getBusinessById(id),
     getBillingSubscriptionByBusinessId(id),
   ]);
-  console.info('[subscription-state] source=wa_subscriptions', {
+  console.info('[subscription-state] source=billing_subscriptions', {
     hasSubscription: !!subscription,
   });
 
@@ -127,9 +127,10 @@ export async function getBillingSubscriptionState({ businessId }) {
   const provider = normalizeBillingProvider(subscription?.provider) || null;
   const providerStatus = subscription?.provider_status || null;
   const subscriptionStatus = subscription?.status || null;
+  const isSignupTrialRow = subscriptionStatus === BILLING_STATUSES.TRIAL_SIGNUP;
   const hasSubscription = !!subscription
     && !isTerminalBillingStatus(subscriptionStatus)
-    && !!subscription?.provider_subscription_id;
+    && (!!subscription?.provider_subscription_id || isSignupTrialRow);
 
   const billingCountry = business?.country_code || null;
   const paymentOptions = getPaymentOptions({ countryCode: billingCountry });

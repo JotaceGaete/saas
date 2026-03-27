@@ -1,6 +1,8 @@
 export const BILLING_STATUSES = Object.freeze({
   TRIAL_WITHOUT_SUBSCRIPTION: 'trial_without_subscription',
   TRIAL_WITH_SUBSCRIPTION: 'trial_with_subscription',
+  /** Fila en billing_subscriptions creada por signup (DB). */
+  TRIAL_SIGNUP: 'trial',
   PENDING_PAYMENT: 'pending_payment',
   SCHEDULED: 'scheduled',
   ACTIVE: 'active',

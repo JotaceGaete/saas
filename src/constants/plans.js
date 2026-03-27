@@ -7,8 +7,8 @@ import { getPlanPriceForCountry } from '../config/countryPricing';
  * business = Full (productos y pedidos ilimitados, estadísticas completas, IA ilimitada).
  */
 
-/** Duración del período de prueba PRO para nuevos usuarios. */
-export const TRIAL_DURATION_DAYS = 7;
+/** Duración del período de prueba PRO para nuevos usuarios (debe coincidir con wa_handle_new_user_business). */
+export const TRIAL_DURATION_DAYS = 14;
 
 export const PLAN_SLUGS = Object.freeze(['starter', 'pro', 'business']);
 
