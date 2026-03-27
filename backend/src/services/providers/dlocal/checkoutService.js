@@ -87,7 +87,7 @@ function normalizeEmailForSubscription(value) {
 }
 
 /**
- * Email requerido por wa_subscriptions (NOT NULL).
+ * Email para metadata (contact_email) en billing_subscriptions.
  * Orden: payer del payload hacia dLocal → usuario autenticado → columnas típicas de negocio.
  */
 function resolveSubscriptionEmailForWa({ payerEmailFromPayload, authUser, business }) {
@@ -317,7 +317,7 @@ export async function createDlocalPlanCheckout({
     business,
   });
   if (!subscriptionEmail) {
-    throw new HttpError(422, '[dlocal-checkout] Missing email for wa_subscriptions (payer, authenticated user, or business)', {
+    throw new HttpError(422, '[dlocal-checkout] Missing email for billing snapshot (payer, authenticated user, or business)', {
       code: 'MISSING_SUBSCRIPTION_EMAIL',
       provider: 'dlocal',
     });

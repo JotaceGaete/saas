@@ -188,40 +188,41 @@ function isActiveStatus(status) {
   return String(status || '').trim().toLowerCase() === 'active';
 }
 
-async function syncBusinessPlanAfterApprovedPayment({ businessId, planSlug }) {
+/** Misma fecha para plan_expires_at (wa_businesses) y current_period_ends_at (billing_subscriptions): +30 días desde fin de trial vigente o desde hoy. */
+async function computeActivationPeriodEndIso(businessId) {
   const admin = getAdminClient();
   const { data: business, error } = await admin
     .from('wa_businesses')
-    .select('id, plan_slug, trial_expires_at')
+    .select('trial_expires_at')
     .eq('id', businessId)
     .maybeSingle();
-
   if (error || !business) {
-    console.error('[DLOCAL_WEBHOOK_BUSINESS_READ_ERROR]', { businessId });
-    return;
+    const d = new Date();
+    d.setDate(d.getDate() + 30);
+    return d.toISOString();
   }
-
   const trialEndsAt = business?.trial_expires_at ? new Date(business.trial_expires_at) : null;
   const now = new Date();
   const hasActiveTrial = !!trialEndsAt && Number.isFinite(trialEndsAt.getTime()) && trialEndsAt > now;
+  const base = hasActiveTrial ? new Date(trialEndsAt) : new Date(now);
+  base.setDate(base.getDate() + 30);
+  return base.toISOString();
+}
 
-  // Calculamos la nueva fecha: Si tenía prueba, le sumamos 30 días a esa fecha de abril (dará mayo).
-  // Si no tenía prueba, le damos 30 días desde hoy.
-  let newExpiryDate = new Date();
-  if (hasActiveTrial) {
-    newExpiryDate = new Date(trialEndsAt);
-  }
-  newExpiryDate.setDate(newExpiryDate.getDate() + 30);
+async function syncBusinessPlanAfterApprovedPayment({ businessId, planSlug, periodEndIso: periodEndIsoArg }) {
+  const admin = getAdminClient();
+  const periodEndIso = periodEndIsoArg || (await computeActivationPeriodEndIso(businessId));
+  const nowIso = new Date().toISOString();
 
-  // Activamos el plan de inmediato y matamos el periodo de prueba visual
   const { error: activateErr } = await admin
     .from('wa_businesses')
     .update({
       plan_slug: planSlug,
-      plan_expires_at: newExpiryDate.toISOString(),
-      trial_expires_at: null, // ¡Chao alerta naranja de prueba gratuita!
+      plan_expires_at: periodEndIso,
+      trial_expires_at: null,
       scheduled_plan_slug: null,
       scheduled_change_at: null,
+      updated_at: nowIso,
     })
     .eq('id', businessId);
 
@@ -313,6 +314,8 @@ export async function processDlocalWebhook({ headers, payload }) {
     || 'PENDING',
   );
   const status = mapProviderStatus('dlocal', providerStatus);
+  const active = isActiveStatus(status);
+  const periodEndIso = active ? await computeActivationPeriodEndIso(businessId) : null;
 
   const subscriptionId = String(
     payload?.subscription_id
@@ -349,7 +352,9 @@ export async function processDlocalWebhook({ headers, payload }) {
     trial_ends_at: payload?.trial_ends_at || existing?.trial_ends_at || null,
     starts_at: payload?.starts_at || existing?.starts_at || null,
     current_period_starts_at: payload?.current_period_starts_at || existing?.current_period_starts_at || null,
-    current_period_ends_at: payload?.current_period_ends_at || existing?.current_period_ends_at || null,
+    current_period_ends_at: active
+      ? periodEndIso
+      : (payload?.current_period_ends_at || existing?.current_period_ends_at || null),
     cancel_at_period_end: payload?.cancel_at_period_end === true || existing?.cancel_at_period_end === true,
     cancelled_at: payload?.cancelled_at || (status === 'cancelled' ? new Date().toISOString() : existing?.cancelled_at || null),
     metadata_json: {
@@ -368,10 +373,11 @@ export async function processDlocalWebhook({ headers, payload }) {
     payload,
     status,
   });
-  if (isActiveStatus(status)) {
+  if (active) {
     await syncBusinessPlanAfterApprovedPayment({
       businessId,
       planSlug: updated?.plan_slug || context.planSlug,
+      periodEndIso,
     });
   }
 
