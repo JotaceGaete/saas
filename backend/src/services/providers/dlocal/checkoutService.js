@@ -193,11 +193,11 @@ export async function createDlocalPlanCheckout({
   const endpointPath = '/v1/payments';
 
   const appBaseUrl = resolveDlocalAppBaseUrl();
-  const safeReturnUrl = String(returnUrl || '').trim();
-  const callbackUrl = `${appBaseUrl}/api/v1/billing/dlocal/callback`;
+  const safeReturnUrl = String(returnUrl || `${appBaseUrl}/planes?payment=success`).trim();
+  const safeCancelUrl = String(cancelUrl || `${appBaseUrl}/planes?payment=failure`).trim();
   const notificationUrl = `${appBaseUrl}/api/v1/billing/webhooks/dlocal`;
 
-  // === AQUÍ ESTÁ LA MAGIA OPTIMIZADA ===
+  // === PAYLOAD DIRECTO AL FRONTEND ===
   const payload = {
     amount: Number(amount),
     currency: currencyCode,
@@ -208,10 +208,11 @@ export async function createDlocalPlanCheckout({
       name: String(authUser?.user_metadata?.full_name || authUser?.email || 'Ventalink User').trim(),
       email: String(authUser?.email || 'qa@ventalink.app').trim().toLowerCase(),
     },
-    // Parámetros clave para sacar al usuario de la pantalla verde de dLocal
-    back_url: callbackUrl,
-    success_url: callbackUrl,
-    // Webhook silencioso
+    // Mandamos al usuario directo a React, sin pasar por el backend
+    back_url: safeReturnUrl,
+    success_url: safeReturnUrl,
+    cancel_url: safeCancelUrl,
+    // El backend solo se usa para notificaciones silenciosas (Webhook)
     notification_url: notificationUrl,
     metadata: {
       business_id: business.id,
@@ -221,7 +222,8 @@ export async function createDlocalPlanCheckout({
   };
 
   console.info('[dlocal-checkout] appBaseUrl=', appBaseUrl);
-  console.info('[dlocal-checkout] back_url=', callbackUrl); // Log actualizado
+  console.info('[dlocal-checkout] success_url=', safeReturnUrl);
+  console.info('[dlocal-checkout] cancel_url=', safeCancelUrl);
   console.info('[dlocal-checkout] notification_url=', notificationUrl);
 
   console.info('[DLOCAL_CHECKOUT_REQUEST]', {
@@ -237,10 +239,12 @@ export async function createDlocalPlanCheckout({
     countryCode,
     currencyCode,
     amount,
-    plansReturnUrl: safeReturnUrl || null,
-    back_url_sent: callbackUrl, // Log actualizado
+    returnUrl: safeReturnUrl || null,
+    cancelUrl: safeCancelUrl || null,
+    back_url_sent: safeReturnUrl,
+    success_url_sent: safeReturnUrl,
+    cancel_url_sent: safeCancelUrl,
     notification_url_sent: notificationUrl,
-    cancelUrl: String(cancelUrl || '').trim() || null,
   });
   console.info('[DLOCAL_CHECKOUT_COUNTRY_RESOLUTION]', {
     businessId: business?.id || null,
