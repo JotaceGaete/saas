@@ -331,6 +331,7 @@ export async function processDlocalWebhook({ headers, payload }) {
 
   const updated = await upsertBillingSubscriptionByBusiness({
     business_id: businessId,
+	email: existing?.email || payload?.payer?.email || 'facturacion@ventalink.app',
     provider: 'dlocal',
     provider_subscription_id: subscriptionId,
     plan_slug: context.planSlug || existing?.plan_slug || 'starter',
