@@ -15,9 +15,7 @@ export default function StoreCreationStep({ user, businessLoading }) {
   const navigate = useNavigate();
   const { refreshBusiness } = useAuth();
   const { countryCode } = useCountry();
-  const [selectedOnboardingCountry, setSelectedOnboardingCountry] = useState(
-    countryCode ?? user?.user_metadata?.country_code ?? user?.user_metadata?.country ?? null,
-  );
+  const [selectedOnboardingCountry, setSelectedOnboardingCountry] = useState(null);
   const countryState = resolveCountryState({
     businessCountryCode: null,
     onboardingCountryCode: selectedOnboardingCountry,
@@ -32,14 +30,23 @@ export default function StoreCreationStep({ user, businessLoading }) {
 
   const [formData, setFormData] = useState({
     businessName: user?.user_metadata?.name || '',
-    whatsapp:     user?.user_metadata?.whatsapp || '',
+    whatsapp:     '',
     description:  '',
     currency:     locale.currencyCode,
-    countryCode:  selectedOnboardingCountry ?? null,
+    countryCode:  null,
   });
   const [errors, setErrors]     = useState({});
   const [saving, setSaving]     = useState(false);
   const [saveError, setSaveError] = useState(null);
+
+  useEffect(() => {
+    setSelectedOnboardingCountry(null);
+    setFormData((prev) => ({
+      ...prev,
+      whatsapp: '',
+      countryCode: null,
+    }));
+  }, []);
 
   useEffect(() => {
     setFormData((prev) => ({ ...prev, currency: locale.currencyCode }));
