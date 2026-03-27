@@ -19,6 +19,7 @@ import {
   isOrderVisibleOnActiveBoard,
 } from '../../constants/ordersBoard';
 import { filterDeliveredOrdersMissingDeliveredAt } from '../../utils/orderDates';
+import { celebrarPrimerEnvio } from '../../utils/confettiCelebrations';
 
 const ORDER_STATUSES = [
   { key: 'pedido', label: 'Pedido', color: '#6366F1', bg: '#EEF2FF', icon: 'ShoppingBag' },
@@ -222,6 +223,11 @@ export default function OrdersPage() {
       });
       if (!listSnapshot) return;
 
+      const shouldCelebratePrimerEnvio =
+        updates.status === 'enviado' &&
+        listSnapshot.status !== 'enviado' &&
+        !(orders || []).some((x) => String(x?.id) !== oid && x?.status === 'enviado');
+
       const detailSnap =
         detailOrderRef.current?.id != null && String(detailOrderRef.current.id) === oid
           ? { ...detailOrderRef.current }
@@ -258,15 +264,20 @@ export default function OrdersPage() {
         return;
       }
 
-      toast?.success(
-        updates?.status !== undefined
-          ? 'Estado actualizado'
-          : updates?.paymentStatus !== undefined
-            ? 'Pago actualizado'
-            : 'Pedido actualizado',
-      );
+      if (shouldCelebratePrimerEnvio) {
+        celebrarPrimerEnvio();
+        toast?.success('¡Felicidades por tu primer envío! 🚀 El camino al éxito acaba de empezar.');
+      } else {
+        toast?.success(
+          updates?.status !== undefined
+            ? 'Estado actualizado'
+            : updates?.paymentStatus !== undefined
+              ? 'Pago actualizado'
+              : 'Pedido actualizado',
+        );
+      }
     });
-  }, [guard, toast]);
+  }, [guard, toast, orders]);
 
   const visibleBoardOrders = useMemo(
     () => (orders || []).filter((o) => isOrderVisibleOnActiveBoard(o)),

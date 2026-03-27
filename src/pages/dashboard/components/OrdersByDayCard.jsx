@@ -2,6 +2,7 @@ import React from "react";
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import Icon from "components/AppIcon";
 import { SkeletonCard } from "../../../components/ui/Skeleton";
+import ChartEmptyWave from "./ChartEmptyWave";
 
 const DAY_LABELS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 
@@ -28,13 +29,17 @@ export default function OrdersByDayCard({ data, loading }) {
 
   return (
     <div
-      className="rounded-xl border p-5 flex flex-col gap-3 transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md"
-      style={{ backgroundColor: '#FFFFFF', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-sm)' }}
+      className="dashboard-premium-card relative overflow-hidden rounded-2xl border-0 p-5 flex flex-col gap-3"
     >
-      <div className="flex items-start justify-between gap-2">
+      <div className="flex items-start justify-between gap-2 relative z-[1]">
         <div>
           <p className="text-sm font-medium" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Pedidos por día</p>
-          <p className="text-3xl font-extrabold leading-none mt-1" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.03em' }}>{total}</p>
+          <p
+            className="text-3xl sm:text-4xl font-black tabular-nums tracking-tight leading-none mt-1"
+            style={{ fontFamily: 'var(--font-stat)', color: 'var(--color-foreground)', letterSpacing: '-0.04em' }}
+          >
+            {total}
+          </p>
           <p className="text-xs mt-1" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Últimos 7 días</p>
         </div>
         <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(124,58,237,0.08)' }}>
@@ -43,9 +48,12 @@ export default function OrdersByDayCard({ data, loading }) {
       </div>
 
       {total === 0 ? (
-        <div className="flex flex-col items-center justify-center gap-2 py-3" style={{ height: 72 }}>
-          <Icon name="BarChart2" size={22} color="var(--color-muted-foreground)" />
-          <p className="text-xs text-center" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Sin pedidos en los últimos 7 días</p>
+        <div className="relative flex flex-col items-center justify-center gap-2 py-3 min-h-[5.5rem] z-[1]">
+          <ChartEmptyWave />
+          <Icon name="BarChart2" size={22} color="var(--color-muted-foreground)" className="relative z-[1] opacity-60" />
+          <p className="text-xs text-center relative z-[1] px-2" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+            Sin pedidos en los últimos 7 días
+          </p>
         </div>
       ) : (
         <div style={{ height: 72 }}>

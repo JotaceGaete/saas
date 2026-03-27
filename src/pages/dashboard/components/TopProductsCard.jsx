@@ -1,6 +1,7 @@
 import React from "react";
 import Icon from "components/AppIcon";
 import { SkeletonCard } from "../../../components/ui/Skeleton";
+import ChartEmptyWave from "./ChartEmptyWave";
 
 const formatCLP = (n) => `$${Math.round(n)?.toLocaleString('es-CL')}`;
 
@@ -9,21 +10,23 @@ export default function TopProductsCard({ data, loading }) {
 
   const items = data || [];
 
+  const isEmpty = items?.length === 0;
+
   return (
     <div
-      className="rounded-xl border p-5 flex flex-col gap-3 transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md"
-      style={{ backgroundColor: '#FFFFFF', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-sm)' }}
+      className="dashboard-premium-card relative overflow-hidden rounded-2xl border-0 p-5 flex flex-col gap-3"
     >
-      <div className="flex items-start justify-between gap-2">
+      {isEmpty && <ChartEmptyWave />}
+      <div className="flex items-start justify-between gap-2 relative z-[1]">
         <p className="text-sm font-medium" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Productos más vendidos</p>
         <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(124,58,237,0.08)' }}>
           <Icon name="TrendingUp" size={17} color="var(--color-primary)" />
         </div>
       </div>
-      {items?.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-4 gap-2">
-          <Icon name="ShoppingBag" size={28} color="var(--color-muted-foreground)" />
-          <p className="text-xs text-center" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Sin ventas registradas aún</p>
+      {isEmpty ? (
+        <div className="relative z-[1] flex flex-col items-center justify-center py-6 gap-2 min-h-[6rem]">
+          <Icon name="ShoppingBag" size={28} color="var(--color-muted-foreground)" className="opacity-60" />
+          <p className="text-xs text-center px-2" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Sin ventas registradas aún</p>
         </div>
       ) : (
         <ol className="flex flex-col gap-2">

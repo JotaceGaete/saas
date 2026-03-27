@@ -189,6 +189,17 @@ module.exports = {
         'violet-gradient-soft': 'linear-gradient(135deg, rgba(124,58,237,0.08) 0%, rgba(109,40,217,0.04) 100%)',
         'hero-gradient': 'radial-gradient(ellipse 80% 60% at 50% -10%, rgba(124,58,237,0.1) 0%, transparent 70%)',
       },
+
+      keyframes: {
+        'pulse-ring': {
+          '0%, 100%': { opacity: '1', transform: 'rotate(-90deg) scale(1)' },
+          '50%': { opacity: '0.8', transform: 'rotate(-90deg) scale(1.05)' },
+        },
+      },
+
+      animation: {
+        'pulse-ring': 'pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+      },
     },
   },
   plugins: [

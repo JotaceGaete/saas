@@ -3,7 +3,12 @@ import Icon from "components/AppIcon";
 import Button from "components/ui/Button";
 import { getCatalogShareMessage } from "../../../utils/branding";
 
-export default function CatalogLinkWidget({ catalogUrl, businessName, businessPlanSlug }) {
+export default function CatalogLinkWidget({
+  catalogUrl,
+  businessName,
+  businessPlanSlug,
+  onCatalogShare,
+}) {
   const [copied, setCopied] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const qrRef = useRef(null);
@@ -58,6 +63,7 @@ export default function CatalogLinkWidget({ catalogUrl, businessName, businessPl
     } else {
       navigator.clipboard?.writeText(catalogUrl || '')?.catch(() => {});
     }
+    onCatalogShare?.();
   };
 
   const handlePrintQR = () => {
@@ -99,7 +105,7 @@ export default function CatalogLinkWidget({ catalogUrl, businessName, businessPl
   };
 
   return (
-    <div className="rounded-xl border p-5" style={{ backgroundColor: '#FFFFFF', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-sm)' }}>
+    <div className="dashboard-premium-card rounded-2xl border-0 p-5">
       <div className="flex items-center gap-2 mb-4">
         <Icon name="QrCode" size={16} color="var(--color-primary)" />
         <h2 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>Enlace del catálogo</h2>
@@ -137,6 +143,7 @@ export default function CatalogLinkWidget({ catalogUrl, businessName, businessPl
           href={whatsappShareUrl}
           target="_blank"
           rel="noopener noreferrer"
+          onClick={() => onCatalogShare?.()}
           className="flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-sm font-medium text-white transition-all duration-200 hover:opacity-90"
           style={{ backgroundColor: '#25D366', fontFamily: 'var(--font-caption)' }}
           aria-label="Compartir catálogo por WhatsApp"

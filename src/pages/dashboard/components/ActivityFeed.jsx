@@ -34,7 +34,7 @@ export default function ActivityFeed({
   const recentOrders = orders?.slice(0, 10) ?? [];
 
   return (
-    <div className="rounded-xl border p-5" style={{ backgroundColor: 'var(--color-card)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-sm)' }}>
+    <div className="dashboard-premium-card rounded-2xl border-0 p-5">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(124,58,237,0.08)' }}>

@@ -47,15 +47,10 @@ export default function MetricCard({ title, value, subtitle, iconName, trend, tr
     <Tag
       onClick={onClick}
       className={[
-        "rounded-xl border p-5 flex flex-col gap-3 transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md w-full text-left",
-        onClick ? "cursor-pointer active:scale-[0.98]" : "cursor-default",
-        variant === 'warning' ? "border-amber-200" : "",
+        'dashboard-premium-card rounded-2xl border-0 p-5 flex flex-col gap-3 w-full text-left',
+        variant === 'warning' ? 'dashboard-premium-card--warning ring-2 ring-amber-300/50' : '',
+        onClick ? 'cursor-pointer' : 'cursor-default',
       ].join(' ')}
-      style={{
-        backgroundColor: variant === 'warning' ? 'rgba(255,251,235,1)' : '#FFFFFF',
-        borderColor: variant === 'warning' ? 'rgba(245,158,11,0.3)' : 'var(--color-border)',
-        boxShadow: variant === 'warning' ? '0 1px 3px rgba(245,158,11,0.15)' : 'var(--shadow-sm)',
-      }}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
@@ -81,8 +76,8 @@ export default function MetricCard({ title, value, subtitle, iconName, trend, tr
 
       <div>
         <p
-          className="text-3xl font-extrabold leading-none"
-          style={{ fontFamily: 'var(--font-heading)', color: variant === 'warning' ? '#92400E' : 'var(--color-foreground)', letterSpacing: '-0.03em' }}
+          className="text-3xl sm:text-4xl font-black tabular-nums tracking-tight leading-none"
+          style={{ fontFamily: 'var(--font-stat)', color: variant === 'warning' ? '#92400E' : 'var(--color-foreground)', letterSpacing: '-0.04em' }}
         >
           {value}
         </p>

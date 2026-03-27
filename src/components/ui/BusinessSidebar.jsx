@@ -349,12 +349,10 @@ export default function BusinessSidebar({ isCollapsed = false, onCollapsedChange
       {/* Mobile hamburger — centrado verticalmente en el header (60px), respeta safe area */}
       <button
         onClick={() => setMobileOpen(true)}
-        className="lg:hidden fixed z-navigation w-10 h-10 flex items-center justify-center rounded-xl bg-white border text-foreground hover:bg-muted transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="lg:hidden fixed z-navigation w-11 h-11 flex items-center justify-center rounded-2xl bg-white/95 backdrop-blur-md border-0 text-foreground hover:bg-muted transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring shadow-[0_4px_20px_rgba(0,0,0,0.08)] ring-1 ring-slate-200/70"
         style={{
           top: 'calc(var(--safe-area-top) + 10px)',
           left: 'calc(var(--safe-area-left) + 16px)',
-          borderColor: 'var(--color-border)',
-          boxShadow: 'var(--shadow-sm)',
         }}
         aria-label="Abrir menú de navegación"
         aria-expanded={mobileOpen}

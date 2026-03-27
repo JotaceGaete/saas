@@ -75,12 +75,7 @@ export default function PlanUsageCard({ data, loading }) {
 
   return (
     <div
-      className="rounded-xl border p-5 flex flex-col gap-4 transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md"
-      style={{
-        backgroundColor: '#FFFFFF',
-        borderColor: hasAnyWarn ? 'rgba(245,158,11,0.35)' : 'var(--color-border)',
-        boxShadow: 'var(--shadow-sm)',
-      }}
+      className={`dashboard-premium-card rounded-2xl border-0 p-5 flex flex-col gap-4 ${hasAnyWarn ? 'dashboard-premium-card--warning ring-2 ring-amber-300/60' : ''}`}
     >
       {/* Header */}
       <div className="flex items-start justify-between gap-2">

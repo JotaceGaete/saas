@@ -9,7 +9,7 @@ Mira nuestros productos y haz tu pedido directo por WhatsApp:
 
 {catalog_url}`;
 
-export default function QuickAccessWidget({ catalogUrl, businessName, businessPlanSlug }) {
+export default function QuickAccessWidget({ catalogUrl, businessName, businessPlanSlug, onCatalogShare }) {
   const navigate = useNavigate();
   const [showStatusModal, setShowStatusModal] = useState(false);
 
@@ -21,12 +21,14 @@ export default function QuickAccessWidget({ catalogUrl, businessName, businessPl
     if (!statusMessage) return;
     navigator.clipboard?.writeText(statusMessage)?.catch(() => {});
     setShowStatusModal(false);
+    onCatalogShare?.();
   };
 
   const handleOpenWhatsAppStatus = () => {
     if (!statusMessage) return;
     window.open(`https://wa.me/?text=${encodeURIComponent(statusMessage)}`, '_blank', 'noopener,noreferrer');
     setShowStatusModal(false);
+    onCatalogShare?.();
   };
 
   const QUICK_LINKS = [
@@ -53,7 +55,7 @@ export default function QuickAccessWidget({ catalogUrl, businessName, businessPl
 
   return (
     <>
-      <div className="rounded-xl border p-5" style={{ backgroundColor: '#FFFFFF', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-sm)' }}>
+      <div className="dashboard-premium-card rounded-2xl border-0 p-5">
         <h2 className="text-sm font-bold mb-3" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>Acceso rápido</h2>
         <div className="space-y-1">
           {QUICK_LINKS?.map((link) => (

@@ -1,10 +1,9 @@
 import React from "react";
-import Icon from "components/AppIcon";
 
 const PRIORITY_STYLES = {
-  alta: { bg: 'rgba(239,68,68,0.08)', color: '#DC2626', label: 'Alta' },
-  media: { bg: 'rgba(245,158,11,0.10)', color: '#D97706', label: 'Media' },
-  baja: { bg: 'rgba(16,185,129,0.10)', color: '#059669', label: 'Baja' },
+  alta: { label: 'Prioridad Alta', badge: 'text-red-600 bg-red-50 border-red-100' },
+  media: { label: 'Prioridad Media', badge: 'text-amber-700 bg-amber-50 border-amber-100' },
+  baja: { label: 'Prioridad Baja', badge: 'text-green-600 bg-green-50 border-green-100' },
 };
 
 export default function AiInsightsCard({ data, loading }) {
@@ -18,42 +17,43 @@ export default function AiInsightsCard({ data, loading }) {
     : 'Actualizado hoy';
 
   return (
-    <div className="rounded-xl border p-5" style={{ backgroundColor: '#FFFFFF', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-sm)' }}>
-      <div className="flex items-center justify-between gap-2 mb-3">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(124,58,237,0.10)' }}>
-            <Icon name="Sparkles" size={15} color="var(--color-primary)" />
-          </div>
-          <h3 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>
+    <div className="dashboard-premium-card dashboard-premium-card--glass relative overflow-hidden rounded-2xl border border-white/25 p-6">
+      <div className="absolute -right-10 -top-10 h-32 w-32 rounded-full bg-purple-500/10 blur-3xl" aria-hidden />
+      <div className="relative z-10">
+        <div className="flex items-center gap-2 mb-3 flex-wrap">
+          <span className="p-2 bg-purple-100 rounded-lg text-purple-600 text-base leading-none" aria-hidden>✨</span>
+          <h3 className="font-bold text-gray-800" style={{ fontFamily: 'var(--font-heading)' }}>
             Insight IA
           </h3>
+          <span
+            className={`ml-auto text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full border ${priority.badge}`}
+            style={{ fontFamily: 'var(--font-caption)' }}
+          >
+            {priority.label}
+          </span>
         </div>
-        <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ backgroundColor: priority.bg, color: priority.color, fontFamily: 'var(--font-caption)' }}>
-          Prioridad {priority.label}
-        </span>
-      </div>
 
-      {loading ? (
-        <p className="text-sm" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-          Cargando insight del día...
-        </p>
-      ) : (
-        <div className="space-y-2">
-          <p className="text-sm" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>
-            <strong>Hallazgo:</strong> {hallazgo}
+        {loading ? (
+          <p className="text-sm text-gray-600" style={{ fontFamily: 'var(--font-caption)' }}>
+            Cargando insight del día...
           </p>
-          <p className="text-sm" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>
-            <strong>Alerta:</strong> {data?.alerta || 'Sin alertas críticas.'}
-          </p>
-          <p className="text-sm" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>
-            <strong>Acción:</strong> {accion}
-          </p>
-          <p className="text-xs pt-1" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-            {updatedLabel}
-          </p>
-        </div>
-      )}
+        ) : (
+          <div className="space-y-2">
+            <p className="text-sm text-gray-600 leading-relaxed" style={{ fontFamily: 'var(--font-caption)' }}>
+              <strong className="text-gray-900">Hallazgo:</strong> {hallazgo}
+            </p>
+            <p className="text-sm text-gray-600 leading-relaxed" style={{ fontFamily: 'var(--font-caption)' }}>
+              <strong className="text-gray-900">Alerta:</strong> {data?.alerta || 'Sin alertas críticas.'}
+            </p>
+            <p className="text-sm text-gray-600 leading-relaxed" style={{ fontFamily: 'var(--font-caption)' }}>
+              <strong className="text-gray-900">Acción:</strong> {accion}
+            </p>
+            <p className="text-xs pt-1 text-gray-500" style={{ fontFamily: 'var(--font-caption)' }}>
+              {updatedLabel}
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
-

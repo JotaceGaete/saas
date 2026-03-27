@@ -44,10 +44,15 @@ import { getCountryLabels } from "../../config/country";
 import { getBusinessLocale } from "../../lib/locale/businessLocale";
 import { getTrialDaysLeft } from "../../constants/trial";
 import { getCurrentSubscription } from "../../lib/billing/subscriptionService";
+import { useToast } from "../../components/ui/Toast";
+import { tryCelebrateFirstCatalogShare } from "../../utils/catalogShareCelebration";
 
+const FIRST_SHARE_TOAST =
+  '¡Tu tienda ya está en el mundo! 🌍 Link copiado y listo para enviar.';
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const toast = useToast();
   const { user, business, businessLoading, refreshBusiness } = useAuth();
   const locale = getBusinessLocale(business, {
     preferredCountryCode: user?.user_metadata?.country_code ?? null,
@@ -488,11 +493,19 @@ export default function Dashboard() {
 
   const metricsToShow = isStarterPlan ? METRICS.filter((m) => m.title === 'Total productos') : METRICS;
 
+  const notifyFirstCatalogShare = useCallback(() => {
+    if (!business?.id) return;
+    if (tryCelebrateFirstCatalogShare(business.id, totalVisits)) {
+      toast.success(FIRST_SHARE_TOAST);
+    }
+  }, [business?.id, totalVisits, toast]);
+
   const handleCopy = () => {
     if (!catalogUrl) return;
     navigator.clipboard?.writeText(catalogUrl)?.catch(() => {});
     setCopyToast(true);
     setTimeout(() => setCopyToast(false), 2500);
+    notifyFirstCatalogShare();
   };
 
   const handleShare = () => {
@@ -504,6 +517,7 @@ export default function Dashboard() {
     });
     const url = `https://wa.me/?text=${encodeURIComponent(shareMessage)}`;
     window.open(url, '_blank', 'noopener,noreferrer');
+    notifyFirstCatalogShare();
   };
 
   if (businessLoading) {
@@ -604,6 +618,7 @@ export default function Dashboard() {
             business={business}
             catalogUrl={catalogUrl}
             onCopy={handleCopy}
+            onCatalogShare={notifyFirstCatalogShare}
           />
 
           {/* ── Bloque de alertas ── */}
@@ -641,7 +656,7 @@ export default function Dashboard() {
 
           {/* ── Métricas principales (Starter solo ve Total productos) ── */}
           <section aria-label="Métricas del negocio">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 md:gap-4 lg:gap-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5">
               {metricsToShow?.map((metric, idx) => (
                 <div key={metric.title} className="stagger-item min-w-0" style={metricsToShow.length === 1 ? { maxWidth: '320px' } : undefined}>
                   <MetricCard
@@ -706,7 +721,7 @@ export default function Dashboard() {
               />
               {/* Productos recientes (solo en desktop debajo del feed; en móvil después de widgets) */}
               <section aria-label="Productos recientes" className="mt-5 lg:mt-6">
-                <div className="rounded-xl border p-5" style={{ backgroundColor: '#ffffff', borderColor: 'var(--color-border)' }}>
+                <div className="dashboard-premium-card rounded-2xl border-0 p-5">
                   <div className="flex items-center justify-between mb-3">
                     <h3 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>Productos recientes</h3>
                     <button
@@ -765,10 +780,20 @@ export default function Dashboard() {
                 <PlanUsageCard data={planUsage} loading={planUsageLoading} />
               </section>
               <section aria-label="Enlace del catálogo">
-                <CatalogLinkWidget catalogUrl={catalogUrl} businessName={business?.name || ''} businessPlanSlug={activePlanSlug} />
+                <CatalogLinkWidget
+                  catalogUrl={catalogUrl}
+                  businessName={business?.name || ''}
+                  businessPlanSlug={activePlanSlug}
+                  onCatalogShare={notifyFirstCatalogShare}
+                />
               </section>
               <section aria-label="Acceso rápido">
-                <QuickAccessWidget catalogUrl={catalogUrl} businessName={business?.name || ''} businessPlanSlug={activePlanSlug} />
+                <QuickAccessWidget
+                  catalogUrl={catalogUrl}
+                  businessName={business?.name || ''}
+                  businessPlanSlug={activePlanSlug}
+                  onCatalogShare={notifyFirstCatalogShare}
+                />
               </section>
             </div>
           </div>
