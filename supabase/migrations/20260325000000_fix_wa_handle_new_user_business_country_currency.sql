@@ -21,6 +21,7 @@ DECLARE
   v_base_slug    TEXT;
   v_counter      INTEGER := 0;
   v_country_code TEXT;
+  v_phone_digits TEXT;
   v_trial_end    TIMESTAMPTZ;
 BEGIN
   v_name := COALESCE(
@@ -30,14 +31,28 @@ BEGIN
     'Mi Negocio'
   );
 
+  -- Detección Inteligente de País por Prefijo de WhatsApp
   v_whatsapp := COALESCE(NEW.raw_user_meta_data->>'whatsapp', '');
 
-  -- Preserve metadata country_code only (no phone inference, no CL fallback).
+  -- 1. Intentar obtenerlo de los metadatos primero
   v_country_code := upper(COALESCE(NULLIF(NEW.raw_user_meta_data->>'country_code', ''), ''));
+
+  -- 2. Si no viene en metadatos, inferir por el prefijo del número de teléfono
   IF v_country_code = '' THEN
-    v_country_code := NULL;
+    v_phone_digits := regexp_replace(v_whatsapp, '\D', '', 'g');
+    v_country_code := CASE
+      WHEN v_phone_digits LIKE '57%' THEN 'CO'  -- Colombia
+      WHEN v_phone_digits LIKE '54%' THEN 'AR'  -- Argentina
+      WHEN v_phone_digits LIKE '56%' THEN 'CL'  -- Chile
+      WHEN v_phone_digits LIKE '598%' THEN 'UY' -- Uruguay
+      WHEN v_phone_digits LIKE '595%' THEN 'PY' -- Paraguay
+      WHEN v_phone_digits LIKE '51%' THEN 'PE'  -- Perú
+      WHEN v_phone_digits LIKE '52%' THEN 'MX'  -- México
+      ELSE NULL
+    END;
   END IF;
 
+  -- Validar contra la lista permitida
   IF v_country_code IS NOT NULL AND v_country_code NOT IN ('AR','BO','BR','CL','CO','CR','EC','GT','MX','PA','PE','PY','UY') THEN
     v_country_code := NULL;
   END IF;

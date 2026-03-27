@@ -188,12 +188,6 @@ function isActiveStatus(status) {
   return String(status || '').trim().toLowerCase() === 'active';
 }
 
-function addDaysIso(days) {
-  const dt = new Date();
-  dt.setDate(dt.getDate() + days);
-  return dt.toISOString();
-}
-
 async function syncBusinessPlanAfterApprovedPayment({ businessId, planSlug }) {
   const admin = getAdminClient();
   const { data: business, error } = await admin
@@ -201,11 +195,9 @@ async function syncBusinessPlanAfterApprovedPayment({ businessId, planSlug }) {
     .select('id, plan_slug, trial_expires_at')
     .eq('id', businessId)
     .maybeSingle();
+
   if (error || !business) {
-    console.error('[DLOCAL_WEBHOOK_BUSINESS_READ_ERROR]', {
-      businessId,
-      message: error?.message || 'business_not_found',
-    });
+    console.error('[DLOCAL_WEBHOOK_BUSINESS_READ_ERROR]', { businessId });
     return;
   }
 
@@ -213,39 +205,28 @@ async function syncBusinessPlanAfterApprovedPayment({ businessId, planSlug }) {
   const now = new Date();
   const hasActiveTrial = !!trialEndsAt && Number.isFinite(trialEndsAt.getTime()) && trialEndsAt > now;
 
+  // Calculamos la nueva fecha: Si tenía prueba, le sumamos 30 días a esa fecha de abril (dará mayo).
+  // Si no tenía prueba, le damos 30 días desde hoy.
+  let newExpiryDate = new Date();
   if (hasActiveTrial) {
-    const { error: updateErr } = await admin
-      .from('wa_businesses')
-      .update({
-        scheduled_plan_slug: planSlug,
-        scheduled_change_at: trialEndsAt.toISOString(),
-      })
-      .eq('id', businessId);
-    if (updateErr) {
-      console.error('[DLOCAL_WEBHOOK_SCHEDULE_PLAN_ERROR]', {
-        businessId,
-        planSlug,
-        message: updateErr.message,
-      });
-    }
-    return;
+    newExpiryDate = new Date(trialEndsAt);
   }
+  newExpiryDate.setDate(newExpiryDate.getDate() + 30);
 
+  // Activamos el plan de inmediato y matamos el periodo de prueba visual
   const { error: activateErr } = await admin
     .from('wa_businesses')
     .update({
       plan_slug: planSlug,
-      plan_expires_at: addDaysIso(30),
+      plan_expires_at: newExpiryDate.toISOString(),
+      trial_expires_at: null, // ¡Chao alerta naranja de prueba gratuita!
       scheduled_plan_slug: null,
       scheduled_change_at: null,
     })
     .eq('id', businessId);
+
   if (activateErr) {
-    console.error('[DLOCAL_WEBHOOK_ACTIVATE_PLAN_ERROR]', {
-      businessId,
-      planSlug,
-      message: activateErr.message,
-    });
+    console.error('[DLOCAL_WEBHOOK_ACTIVATE_PLAN_ERROR]', { businessId, planSlug, message: activateErr.message });
   }
 }
 
@@ -260,6 +241,7 @@ async function syncPaymentRecord({ businessId, orderId, paymentId, providerStatu
     provider_status: providerStatus,
     raw_mp_response: { provider: 'dlocal_go', payload },
     plan_activated_at: status === 'active' ? new Date().toISOString() : null,
+    updated_at: new Date().toISOString(),
   };
   let query = admin
     .from('wa_payments')
