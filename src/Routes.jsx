@@ -41,6 +41,7 @@ import PublicPricingPage from './pages/legal/PublicPricingPage';
 import TermsPage from './pages/legal/TermsPage';
 import PrivacyPage from './pages/legal/PrivacyPage';
 import RefundsPage from './pages/legal/RefundsPage';
+import DLocalReturnPage from './pages/billing-dlocal-return';
 
 /**
  * Raíz: en go.ventalink.app es la landing internacional SEO; en cl/ar redirige al panel.
@@ -63,7 +64,8 @@ const Routes = () => {
         <ScrollToTop />
         <RouterRoutes>
           <Route element={<AnimatedLayout />}>
-            <Route path="/" element={<GoRootEntry />} />
+            <Route path="/billing/dlocal/return" element={<DLocalReturnPage />} />
+			<Route path="/" element={<GoRootEntry />} />
             <Route path="/elegir-pais" element={<CountrySelectPage />} />
             <Route path="/business-registration" element={<BusinessRegistration />} />
             <Route path="/register" element={<BusinessRegistration />} />
