@@ -197,6 +197,7 @@ export async function createDlocalPlanCheckout({
   const callbackUrl = `${appBaseUrl}/api/v1/billing/dlocal/callback`;
   const notificationUrl = `${appBaseUrl}/api/v1/billing/webhooks/dlocal`;
 
+  // === AQUÍ ESTÁ LA MAGIA OPTIMIZADA ===
   const payload = {
     amount: Number(amount),
     currency: currencyCode,
@@ -207,7 +208,10 @@ export async function createDlocalPlanCheckout({
       name: String(authUser?.user_metadata?.full_name || authUser?.email || 'Ventalink User').trim(),
       email: String(authUser?.email || 'qa@ventalink.app').trim().toLowerCase(),
     },
-    callback_url: callbackUrl,
+    // Parámetros clave para sacar al usuario de la pantalla verde de dLocal
+    back_url: callbackUrl,
+    success_url: callbackUrl,
+    // Webhook silencioso
     notification_url: notificationUrl,
     metadata: {
       business_id: business.id,
@@ -217,7 +221,7 @@ export async function createDlocalPlanCheckout({
   };
 
   console.info('[dlocal-checkout] appBaseUrl=', appBaseUrl);
-  console.info('[dlocal-checkout] callback_url=', callbackUrl);
+  console.info('[dlocal-checkout] back_url=', callbackUrl); // Log actualizado
   console.info('[dlocal-checkout] notification_url=', notificationUrl);
 
   console.info('[DLOCAL_CHECKOUT_REQUEST]', {
@@ -234,7 +238,7 @@ export async function createDlocalPlanCheckout({
     currencyCode,
     amount,
     plansReturnUrl: safeReturnUrl || null,
-    callback_url_sent: callbackUrl,
+    back_url_sent: callbackUrl, // Log actualizado
     notification_url_sent: notificationUrl,
     cancelUrl: String(cancelUrl || '').trim() || null,
   });
