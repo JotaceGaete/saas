@@ -34,7 +34,8 @@ export function resolveCountryState({
   hostnameSuggestionCountryCode,
   fallbackCountryCode = DEFAULT_FALLBACK_COUNTRY,
 } = {}) {
-  const businessCountry = normalizeCountryCode(extractCountryCode(businessCountryCode));
+  const rawBusinessCountryInput = extractCountryCode(businessCountryCode);
+  const businessCountry = normalizeCountryCode(rawBusinessCountryInput);
   const onboardingCountry = normalizeCountryCode(extractCountryCode(onboardingCountryCode));
   const userMetadataCountry = normalizeCountryCode(userCountryCode);
   const hostnameSuggestion = normalizeCountryCode(hostnameSuggestionCountryCode);
@@ -55,6 +56,35 @@ export function resolveCountryState({
     hostnameSuggestion ||
     userMetadataCountry ||
     fallback;
+
+  if (typeof window !== 'undefined' && window.__COUNTRY_STATE_DEBUG__ === true) {
+    const fallbackReason = businessCountry
+      ? 'businessCountry'
+      : onboardingCountry
+          ? 'onboardingCountry'
+          : userMetadataCountry
+              ? 'userMetadataCountry'
+              : hostnameSuggestion
+                  ? 'hostnameSuggestion'
+                  : 'fallbackCountry';
+    console.info('[COUNTRY_STATE_DEBUG]', {
+      business: typeof businessCountryCode === 'object' && businessCountryCode
+        ? {
+            country_code: businessCountryCode?.country_code ?? null,
+            countryCode: businessCountryCode?.countryCode ?? null,
+            country: businessCountryCode?.country ?? null,
+          }
+        : null,
+      businessCountryInput: rawBusinessCountryInput ?? null,
+      businessCountryCalculated: businessCountry ?? null,
+      onboardingCountry: onboardingCountry ?? null,
+      userMetadataCountry: userMetadataCountry ?? null,
+      hostnameSuggestion: hostnameSuggestion ?? null,
+      billingCountry: billingCountry ?? null,
+      uxCountry: uxCountry ?? null,
+      fallbackReason,
+    });
+  }
 
   const marketConfig = getMarketConfigByCountry(billingCountry);
   const marketStatus = marketConfig.marketStatus;

@@ -53,6 +53,7 @@ export default function DynamicWhatsAppField({
   const prefix = config?.phonePrefix ?? '';
   const localLength = config?.phoneLocalLength ?? 0;
   const firstDigit = config?.phoneLocalPrefix ?? null;
+  const waDebugEnabled = typeof window !== 'undefined' && window.__WA_COUNTRY_DEBUG__ === true;
 
   const rawFromValue = (v) => {
     if (!v) return '';
@@ -68,19 +69,40 @@ export default function DynamicWhatsAppField({
   const handleCountryChange = useCallback((e) => {
     const code = (e?.target?.value || '').trim() || null;
     const next = COUNTRY_CODES.includes(code) ? code : null;
+    const nextCfg = getCountryConfig(next);
+    if (waDebugEnabled) {
+      console.info('[WA_FIELD_COUNTRY_CHANGE]', {
+        visualSelected: selectedCountryForField ?? null,
+        next,
+        dialCode: nextCfg?.phonePrefix ?? null,
+        emittedCountryCode: next,
+        previousValue: value ?? null,
+      });
+    }
     setSelectedCountryForField(next);
     onCountryChange?.(next);
     onResolvedCountryCode?.(next);
     // Limpia número para evitar prefijos pegados y validaciones inconsistentes al cambiar país.
     onChange('');
     if (persistCountrySelection && next) persistCountry(next);
-  }, [onChange, persistCountry, persistCountrySelection, onCountryChange, onResolvedCountryCode]);
+  }, [onChange, persistCountry, persistCountrySelection, onCountryChange, onResolvedCountryCode, selectedCountryForField, value, waDebugEnabled]);
 
   const handleChange = useCallback(
     (e) => {
       const raw = (e?.target?.value ?? '').replace(/\D/g, '');
       if (!hasCountry) {
-        onChange(raw ? `+${raw}` : '');
+        const nextValue = raw ? `+${raw}` : '';
+        if (waDebugEnabled) {
+          console.info('[WA_FIELD_PHONE_CHANGE]', {
+            hasCountry: false,
+            visualSelected: selectedCountryForField ?? null,
+            effectiveCountry: effectiveCountry ?? null,
+            dialCode: null,
+            rawInputDigits: raw || null,
+            nextE164: nextValue || null,
+          });
+        }
+        onChange(nextValue);
         return;
       }
       let digits = raw.slice(0, localLength);
@@ -88,9 +110,21 @@ export default function DynamicWhatsAppField({
         digits = firstDigit + digits.slice(0, localLength - 1);
       }
       const full = digits.length > 0 ? prefix.replace(/\D/g, '') + digits : '';
-      onChange(full.length > 0 ? `+${full}` : '');
+      const nextValue = full.length > 0 ? `+${full}` : '';
+      if (waDebugEnabled) {
+        console.info('[WA_FIELD_PHONE_CHANGE]', {
+          hasCountry: true,
+          visualSelected: selectedCountryForField ?? null,
+          effectiveCountry: effectiveCountry ?? null,
+          dialCode: prefix || null,
+          rawInputDigits: raw || null,
+          localDigits: digits || null,
+          nextE164: nextValue || null,
+        });
+      }
+      onChange(nextValue);
     },
-    [onChange, prefix, localLength, firstDigit, hasCountry]
+    [onChange, prefix, localLength, firstDigit, hasCountry, waDebugEnabled, selectedCountryForField, effectiveCountry]
   );
 
   const isValid = !hasCountry

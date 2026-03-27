@@ -122,13 +122,17 @@ export default function StoreCreationStep({ user, businessLoading }) {
       });
       const labelsForCreate = getCountryLabels(resolvedCode);
       const currencyForCreate = countryResolution.currency || getCountryConfig(resolvedCode)?.currency || locale.currencyCode;
-      const { data, error } = await createBusiness({
+      const payload = {
         name:        formData.businessName.trim(),
         whatsapp:    formData.whatsapp.trim(),
         description: formData.description.trim() || null,
         currency:    currencyForCreate,
         country:     labelsForCreate.countryName,
         countryCode: effectiveCountryCode || resolvedCode,
+      };
+      console.info('[COUNTRY_CREATE_BUSINESS_PAYLOAD]', payload);
+      const { data, error } = await createBusiness({
+        ...payload,
       });
       if (error) {
         setSaveError(error.message || 'No se pudo crear el negocio. Intenta de nuevo.');
