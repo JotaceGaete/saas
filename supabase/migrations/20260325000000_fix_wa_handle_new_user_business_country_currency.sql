@@ -4,9 +4,10 @@
 -- - currency set with `CASE WHEN v_country_code = 'AR' THEN 'ARS' ELSE 'CLP' END`
 --
 -- New rules:
--- - If metadata has a supported country_code, preserve it.
--- - If missing/unsupported, leave country_code NULL (neutral) and currency 'USD' (table default).
---   The real onboarding (createBusiness) will persist final country_code/currency.
+-- - Prefer raw_user_meta_data.country_code when present and in the allowed list.
+-- - If missing or invalid, infer country from WhatsApp E.164 digits (prefixes: CO, AR, CL, UY, PY, PE, MX).
+-- - If still unknown, leave country_code NULL (neutral) and currency USD (table default / CASE ELSE).
+-- - Onboarding (createBusiness) can still persist the definitive country_code/currency.
 
 CREATE OR REPLACE FUNCTION public.wa_handle_new_user_business()
 RETURNS TRIGGER
