@@ -393,7 +393,20 @@ export const getMyBusiness = async () => {
     return { data: null, error };
   }
   console.log('[waBusinessService] getMyBusiness result:', data ? `found id=${data?.id}` : 'not found');
-  return { data: data ? mapBusinessFromDb(data) : null, error: null };
+  const mapped = data ? mapBusinessFromDb(data) : null;
+  if (typeof window !== 'undefined') {
+    console.info('[BUSINESS_RUNTIME_COUNTRY]', {
+      id: data?.id ?? null,
+      country_code: data?.country_code ?? null,
+      countryCode: data?.countryCode ?? null,
+      country: data?.country ?? null,
+      currency: data?.currency ?? null,
+      mappedCountryCode: mapped?.countryCode ?? null,
+      mappedCountry: mapped?.country ?? null,
+      mappedCurrency: mapped?.currency ?? null,
+    });
+  }
+  return { data: mapped, error: null };
 };
 
 export const getBusinessByIdForAdmin = async (businessId) => {

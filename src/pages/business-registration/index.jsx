@@ -59,7 +59,7 @@ export default function BusinessRegistration() {
   const { user, business, loading, businessLoading, signUp, signIn, signInWithGoogle, resendConfirmationEmail, isEmailConfirmed } = useAuth();
   const { countryCode } = useCountry();
   const countryState = resolveCountryState({
-    businessCountryCode: null,
+    businessCountryCode: business?.countryCode ?? business?.country_code ?? business?.country ?? null,
     onboardingCountryCode: null,
     userCountryCode: user?.user_metadata?.country_code ?? user?.user_metadata?.country ?? null,
     hostnameSuggestionCountryCode: countryCode,

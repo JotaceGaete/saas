@@ -13,6 +13,20 @@ function normalizeCountryCode(value) {
   return COUNTRY_CODES.includes(code) ? code : null;
 }
 
+function extractCountryCode(valueOrBusiness) {
+  if (!valueOrBusiness) return null;
+  if (typeof valueOrBusiness === 'string') return valueOrBusiness;
+  if (typeof valueOrBusiness === 'object') {
+    return (
+      valueOrBusiness?.country_code ??
+      valueOrBusiness?.countryCode ??
+      valueOrBusiness?.country ??
+      null
+    );
+  }
+  return null;
+}
+
 export function resolveCountryState({
   businessCountryCode,
   onboardingCountryCode,
@@ -20,8 +34,8 @@ export function resolveCountryState({
   hostnameSuggestionCountryCode,
   fallbackCountryCode = DEFAULT_FALLBACK_COUNTRY,
 } = {}) {
-  const businessCountry = normalizeCountryCode(businessCountryCode);
-  const onboardingCountry = normalizeCountryCode(onboardingCountryCode);
+  const businessCountry = normalizeCountryCode(extractCountryCode(businessCountryCode));
+  const onboardingCountry = normalizeCountryCode(extractCountryCode(onboardingCountryCode));
   const userMetadataCountry = normalizeCountryCode(userCountryCode);
   const hostnameSuggestion = normalizeCountryCode(hostnameSuggestionCountryCode);
   const fallback = normalizeCountryCode(fallbackCountryCode) || DEFAULT_FALLBACK_COUNTRY;
