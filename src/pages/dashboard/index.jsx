@@ -28,7 +28,6 @@ import {
   expireDeliveredOrders,
 } from "../../services/waBusinessService";
 import { supabase } from "../../lib/supabase";
-import { getAppBaseUrl } from "../../config/appUrl";
 import { getPublicCatalogUrl } from "../../config/appUrl";
 import { buildCfImageErrorHandler, cfImageUrl } from "../../utils/cloudflareImage";
 import OrdersByDayCard from "./components/OrdersByDayCard";

@@ -2,6 +2,7 @@ import React from 'react';
 import Image from 'components/AppImage';
 import Icon from 'components/AppIcon';
 import { getCountryLabels, getCountryCode } from 'config/country';
+import { getPublicCatalogUrl } from 'config/appUrl';
 
 export default function CatalogPreview({ config }) {
   const labels = getCountryLabels(getCountryCode());
@@ -24,7 +25,7 @@ export default function CatalogPreview({ config }) {
           className="flex-1 mx-2 px-3 py-1 rounded text-xs text-muted-foreground truncate"
           style={{ backgroundColor: 'var(--color-card)', fontFamily: 'var(--font-data)' }}
         >
-          catalogoapp.com/{config?.slug || 'mi-negocio'}
+          {getPublicCatalogUrl(config?.slug || 'mi-negocio')}
         </div>
       </div>
       {/* Catalog header preview */}

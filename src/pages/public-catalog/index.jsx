@@ -8,7 +8,7 @@ import { formatCurrency } from '../../utils/formatCLP';
 import { getBusinessLocale } from '../../lib/locale/businessLocale';
 import { useIsDesktop } from '../../hooks/useMediaQuery';
 import { useAuth } from '../../contexts/AuthContext';
-import { getAppBaseUrl, getPublicCatalogUrl, getWhatsAppOrderCatalogUrl } from '../../config/appUrl';
+import { getPublicCatalogBaseUrl, getPublicCatalogUrl, getWhatsAppOrderCatalogUrl } from '../../config/appUrl';
 import BrandingFooter from '../../components/BrandingFooter';
 import { hasViralBranding, getOrderMessageBrandingSuffix } from '../../utils/branding';
 import { isRestaurantBusiness } from '../../utils/businessType';
@@ -550,7 +550,7 @@ function CatalogInner({ slug }) {
       : {};
 
   const storeName = business?.name || 'Catálogo';
-  const baseUrl = getAppBaseUrl();
+  const baseUrl = getPublicCatalogBaseUrl();
   const host =
     typeof window !== 'undefined' && window?.location?.host ? window.location.host : '';
   const seoInput = {
@@ -567,7 +567,7 @@ function CatalogInner({ slug }) {
   const catalogAboutKind = business ? inferCatalogAboutKind(business, products) : 'general';
   const catalogAboutBlock = business ? buildCatalogAboutBlock(seoInput, catalogAboutKind) : null;
   const ogRegion = detectCatalogRegion(seoInput);
-  const canonicalUrl = getPublicCatalogUrl(slug) || (typeof window !== 'undefined' ? `${window.location?.origin || ''}${window.location?.pathname || `/catalogo/${slug}`}` : '');
+  const canonicalUrl = getPublicCatalogUrl(slug);
   const ogImage = getCatalogOgImageUrl(business, baseUrl);
   const jsonLd =
     business && canonicalUrl

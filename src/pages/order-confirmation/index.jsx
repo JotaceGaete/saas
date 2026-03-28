@@ -176,7 +176,7 @@ export default function OrderConfirmation() {
       setCheckoutState('success');
       setSubmitInfo('Pedido confirmado. Te abrimos WhatsApp para enviarlo.');
       clearCart();
-      navigate(`/catalog/${slug}`);
+      navigate(`/catalogo/${slug}`);
     } catch (e) {
       console.error('[checkout] unexpected error', e?.message || e);
       setCheckoutState('error');
@@ -194,7 +194,7 @@ export default function OrderConfirmation() {
             <Icon name="ShoppingCart" size={32} color="var(--color-muted-foreground)" />
           </div>
           <h1 className="text-xl font-bold mb-2" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>Tu carrito está vacío</h1>
-          <button onClick={() => navigate(`/catalog/${slug}`)} className="mt-4 px-5 py-2.5 rounded-xl text-sm font-semibold text-white" style={{ backgroundColor: 'var(--color-primary)', fontFamily: 'var(--font-caption)' }}>Ver catálogo</button>
+          <button onClick={() => navigate(`/catalogo/${slug}`)} className="mt-4 px-5 py-2.5 rounded-xl text-sm font-semibold text-white" style={{ backgroundColor: 'var(--color-primary)', fontFamily: 'var(--font-caption)' }}>Ver catálogo</button>
         </div>
       </div>
     );
@@ -205,7 +205,7 @@ export default function OrderConfirmation() {
       {/* Header */}
       <header className="sticky top-0 z-40 border-b" style={{ backgroundColor: '#FFFFFF', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-xs)' }}>
         <div className="max-w-lg mx-auto px-4 py-3 flex items-center gap-3">
-          <button onClick={() => navigate(`/catalog/${slug}`)} className="w-9 h-9 rounded-xl flex items-center justify-center transition-colors hover:bg-gray-100" style={{ color: 'var(--color-foreground)' }}>
+          <button onClick={() => navigate(`/catalogo/${slug}`)} className="w-9 h-9 rounded-xl flex items-center justify-center transition-colors hover:bg-gray-100" style={{ color: 'var(--color-foreground)' }}>
             <Icon name="ArrowLeft" size={18} color="var(--color-foreground)" />
           </button>
           <h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>Confirmar pedido</h1>

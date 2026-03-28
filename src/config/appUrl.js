@@ -1,7 +1,7 @@
 /**
- * URL base pública de la app (frontend).
+ * URL base pública de la app (panel, rutas internas).
  * Prioridad: VITE_APP_URL (build) → window.location.origin (runtime).
- * En producción: https://go.ventalink.app
+ * No usar para enlaces del catálogo público compartibles: usar getPublicCatalogBaseUrl / buildPublicCatalogUrl.
  */
 const BASE_URL = import.meta.env?.VITE_APP_URL?.trim() || '';
 const GO_APP_ORIGIN = 'https://go.ventalink.app';
@@ -21,71 +21,36 @@ export function getAppBaseUrl() {
 }
 
 /**
- * URL de callback para OAuth (Google, etc.).
- * @returns {string} URL absoluta para redirectTo en signInWithOAuth
+ * Host canónico para catálogo público (compartir, WhatsApp, QR, SEO cliente).
+ * Siempre https://go.ventalink.app — nunca localhost, cl/ar ni VITE_APP_URL.
+ * @returns {string}
  */
-export function getAuthRedirectUrl() {
-  if (typeof window === 'undefined' || !window?.location?.origin) {
-    return `${GO_APP_ORIGIN}/auth/callback`;
-  }
-  const hostname = String(window.location.hostname || '').trim().toLowerCase();
-  // En local dev permitimos callback local para no romper pruebas OAuth locales.
-  if (isLocalhostHostname(hostname)) {
-    const origin = String(window.location.origin || '').replace(/\/$/, '');
-    if (origin) return `${origin}/auth/callback`;
-  }
-  // Producción/cualquier host no local: siempre volver al host canónico de la app.
-  return `${GO_APP_ORIGIN}/auth/callback`;
+export function getPublicCatalogBaseUrl() {
+  return GO_APP_ORIGIN;
+}
+
+const PUBLIC_CATALOG_ROUTES = new Set(['catalogo', 'catalog']);
+
+/**
+ * URL absoluta del catálogo público en el host canónico.
+ * @param {string} slug
+ * @param {'catalogo'|'catalog'} [route='catalogo'] - Ruta canónica compartible: `catalogo`. `catalog` solo como alias.
+ * @returns {string}
+ */
+export function buildPublicCatalogUrl(slug, route = 'catalogo') {
+  const s = String(slug || '').trim();
+  if (!s) return '';
+  const seg = PUBLIC_CATALOG_ROUTES.has(route) ? route : 'catalogo';
+  return `${getPublicCatalogBaseUrl()}/${seg}/${s}`;
 }
 
 /**
- * URL de redirección para reset de contraseña (olvidé mi contraseña).
- * Debe coincidir con una entrada en Supabase → Authentication → URL Configuration → Redirect URLs.
- * Ruta dedicada: evita que / redirija al dashboard y pierda el hash con los tokens.
- */
-export function getResetPasswordRedirectUrl() {
-  if (typeof window === 'undefined' || !window?.location?.origin) {
-    return 'https://go.ventalink.app/auth/reset-password';
-  }
-  const origin = String(window.location.origin || '').replace(/\/$/, '');
-  if (!origin) return 'https://go.ventalink.app/auth/reset-password';
-  return `${origin}/auth/reset-password`;
-}
-
-/**
- * URL pública compartible del catálogo de un negocio.
- * Usa getAppBaseUrl() (env → window.location.origin) y ruta /catalogo/:slug.
- * @param {string} slug - Slug del negocio
- * @returns {string} URL absoluta o '' si no hay base
+ * Enlace compartible estándar: /catalogo/:slug en go.ventalink.app
+ * @param {string} slug
+ * @returns {string}
  */
 export function getPublicCatalogUrl(slug) {
-  if (!slug) return '';
-  const base = getAppBaseUrl();
-  const origin = base || (typeof window !== 'undefined' && window?.location?.origin) || '';
-  const clean = origin.replace(/\/$/, '');
-  return clean ? `${clean}/catalogo/${slug}` : '';
-}
-
-/**
- * `/catalogo/` por defecto; `/catalog/` si la vista actual usa esa ruta (en inglés).
- */
-export function getPublicCatalogPathSegment() {
-  if (typeof window === 'undefined') return 'catalogo';
-  const path = window.location?.pathname || '';
-  return path.startsWith('/catalog/') ? 'catalog' : 'catalogo';
-}
-
-/**
- * URL absoluta del catálogo alineada con la ruta actual (catalogo vs catalog).
- */
-export function getPublicCatalogUrlWithLocalePath(slug) {
-  if (!slug) return '';
-  const base = getAppBaseUrl();
-  const origin = base || (typeof window !== 'undefined' && window?.location?.origin) || '';
-  const clean = String(origin).replace(/\/$/, '');
-  if (!clean) return '';
-  const seg = getPublicCatalogPathSegment();
-  return `${clean}/${seg}/${slug}`;
+  return buildPublicCatalogUrl(slug, 'catalogo');
 }
 
 /**
@@ -99,10 +64,38 @@ export function appendOgPreviewCacheBust(url) {
 }
 
 /**
- * Link del catálogo para mensajes de pedido por WhatsApp (URL única por envío).
+ * Link del catálogo para mensajes de pedido por WhatsApp (URL única por envío, host canónico).
  */
 export function getWhatsAppOrderCatalogUrl(slug) {
-  return appendOgPreviewCacheBust(getPublicCatalogUrlWithLocalePath(slug));
+  return appendOgPreviewCacheBust(getPublicCatalogUrl(slug));
+}
+
+/**
+ * URL de callback para OAuth (Google, etc.).
+ * @returns {string} URL absoluta para redirectTo en signInWithOAuth
+ */
+export function getAuthRedirectUrl() {
+  if (typeof window === 'undefined' || !window?.location?.origin) {
+    return `${GO_APP_ORIGIN}/auth/callback`;
+  }
+  const hostname = String(window.location.hostname || '').trim().toLowerCase();
+  if (isLocalhostHostname(hostname)) {
+    const origin = String(window.location.origin || '').replace(/\/$/, '');
+    if (origin) return `${origin}/auth/callback`;
+  }
+  return `${GO_APP_ORIGIN}/auth/callback`;
+}
+
+/**
+ * URL de redirección para reset de contraseña (olvidé mi contraseña).
+ */
+export function getResetPasswordRedirectUrl() {
+  if (typeof window === 'undefined' || !window?.location?.origin) {
+    return `${GO_APP_ORIGIN}/auth/reset-password`;
+  }
+  const origin = String(window.location.origin || '').replace(/\/$/, '');
+  if (!origin) return `${GO_APP_ORIGIN}/auth/reset-password`;
+  return `${origin}/auth/reset-password`;
 }
 
 export default getAppBaseUrl;
