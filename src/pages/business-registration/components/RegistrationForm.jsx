@@ -2,12 +2,11 @@ import React, { useState } from 'react';
 import Icon from 'components/AppIcon';
 import Button from 'components/ui/Button';
 import Input from 'components/ui/Input';
-import WhatsAppField from './WhatsAppField';
 import PasswordStrengthIndicator from './PasswordStrengthIndicator';
 import FeatureExplainCards from 'components/FeatureExplainCards';
 
 export default function RegistrationForm({ mode = 'register', onModeChange, onRegister, onLogin, isLoading, authError }) {
-  const [formData, setFormData] = useState({ businessName: '', email: '', password: '', confirmPassword: '', whatsapp: '' });
+  const [formData, setFormData] = useState({ businessName: '', email: '', password: '', confirmPassword: '' });
   const [errors, setErrors] = useState({});
 
   const updateField = (field, value) => {
@@ -23,7 +22,6 @@ export default function RegistrationForm({ mode = 'register', onModeChange, onRe
     if (!formData?.password) errs.password = 'La contraseña es obligatoria';
     else if (formData?.password?.length < 6) errs.password = 'Mínimo 6 caracteres';
     if (formData?.password !== formData?.confirmPassword) errs.confirmPassword = 'Las contraseñas no coinciden';
-    if (!formData?.whatsapp?.trim()) errs.whatsapp = 'El WhatsApp es obligatorio';
     return errs;
   };
 
@@ -84,7 +82,6 @@ export default function RegistrationForm({ mode = 'register', onModeChange, onRe
           <form onSubmit={handleSubmit} className="space-y-4" noValidate>
             {mode === 'register' && (<Input label="Nombre del negocio" value={formData?.businessName} onChange={e => updateField('businessName', e?.target?.value)} error={errors?.businessName} placeholder="Ej: Tienda Artesanal Lucía" required />)}
             <Input label="Email" type="email" value={formData?.email} onChange={e => updateField('email', e?.target?.value)} error={errors?.email} placeholder="tu@email.com" required />
-            {mode === 'register' && (<WhatsAppField value={formData?.whatsapp} onChange={val => updateField('whatsapp', val)} error={errors?.whatsapp} />)}
             <div>
               <Input label="Contraseña" type="password" value={formData?.password} onChange={e => updateField('password', e?.target?.value)} error={errors?.password} placeholder={mode === 'register' ? 'Mínimo 6 caracteres' : '••••••••'} required />
               {mode === 'register' && formData?.password && (<div className="mt-2"><PasswordStrengthIndicator password={formData?.password} /></div>)}

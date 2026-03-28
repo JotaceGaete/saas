@@ -5,6 +5,58 @@
 
 import { getCountryConfig } from '../config/countryConfig';
 
+/** Texto fijo para Open Graph / vista previa en redes (WhatsApp, etc.). */
+export const CATALOG_OG_DESCRIPTION =
+  'Mira nuestros productos y haz tu pedido por WhatsApp.';
+
+/**
+ * Título corto para og:title / Twitter (marca Ventalink).
+ * @param {string} [storeName]
+ */
+export function getCatalogOgSocialTitle(storeName) {
+  const name = (storeName || 'Catálogo').trim() || 'Catálogo';
+  return `Catálogo de ${name} - Ventalink`;
+}
+
+/**
+ * URL absoluta para og:image: opcional API de imagen OG, si no portada → og → logo → fallback.
+ * No usar /cdn-cgi/image/ aquí: los crawlers (WhatsApp) deben recibir JPEG/PNG originales.
+ *
+ * @param {object | null} business — objeto de negocio (camelCase) con id, coverImageUrl, etc.
+ * @param {string} [baseUrl] — origen para URLs relativas
+ */
+export function getCatalogOgImageUrl(business, baseUrl, options = {}) {
+  const ogApi =
+    (options.ogImageApiBase && String(options.ogImageApiBase).trim()) ||
+    (typeof import.meta !== 'undefined' && import.meta.env?.VITE_OG_IMAGE_API_BASE?.trim()) ||
+    '';
+  if (ogApi && business?.id) {
+    return `${ogApi.replace(/\/$/, '')}/api/og-image?store=${encodeURIComponent(business.id)}`;
+  }
+
+  const origin = (
+    baseUrl ||
+    (typeof window !== 'undefined' ? window.location?.origin : '') ||
+    ''
+  ).replace(/\/$/, '');
+  const ds = business?.designSettings || {};
+  const og = (business?.ogImageUrl)?.trim();
+  const logo = (business?.logoUrl || ds?.logoUrl)?.trim();
+  const cover = (business?.coverImageUrl || ds?.headerImageUrl || ds?.coverImageUrl)?.trim();
+
+  const toAbsolute = (url) => {
+    if (!url) return '';
+    if (url.startsWith('http://') || url.startsWith('https://')) return url;
+    return `${origin}${url.startsWith('/') ? '' : '/'}${url}`;
+  };
+
+  if (cover) return toAbsolute(cover);
+  if (og) return toAbsolute(og);
+  if (logo) return toAbsolute(logo);
+  const name = (business?.name || 'Catálogo').replace(/[^a-zA-Z0-9\s]/g, '').trim() || 'Catalogo';
+  return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=7C3AED&color=fff&size=1200&format=png`;
+}
+
 /**
  * @typedef {{ key: 'cl'|'ar'|'intl', countryLabel: string, currencyLabel: string, ogLocale: string }} CatalogRegion
  */

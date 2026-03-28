@@ -2,7 +2,8 @@ import { COUNTRY_CODES, getCountryConfig } from '../../config/countryConfig';
 import { inferCountryCodeFromE164 } from '../phone/inferCountryFromE164';
 
 const SUPPORTED_COUNTRY_CODES = new Set(COUNTRY_CODES);
-const FALLBACK_COUNTRY = 'CL';
+/** Fallback solo para resolución de UI legada; no usar para persistir en BD (creación neutra). */
+const FALLBACK_COUNTRY = 'US';
 
 function normalizeCountryCode(value) {
   const code = String(value || '').trim().toUpperCase();
@@ -23,9 +24,7 @@ export function resolveCountryCode({ business, user, phoneInput, explicitCountry
     countryFromPhone ||
     null;
 
-  const finalCountry =
-    countryFromSupportedList ||
-    FALLBACK_COUNTRY;
+  const finalCountry = countryFromSupportedList || FALLBACK_COUNTRY;
 
   const currency = String(getCountryConfig(finalCountry)?.currency || 'USD').trim().toUpperCase();
 

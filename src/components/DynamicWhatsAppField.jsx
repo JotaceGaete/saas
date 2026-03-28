@@ -1,15 +1,14 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { getCountryCode } from '../config/country';
 import { getCountryConfig, COUNTRY_CODES, NEUTRAL_COUNTRY_CONFIG } from '../config/countryConfig';
 import { useCountry } from '../contexts/CountryContext';
 
-const NEUTRAL_HINT = 'Selecciona tu país y escribe tu número con código de área si aplica.';
+const GENERIC_WA_HINT = 'Incluye el código de país en el número (formato internacional, E.164).';
 
 function buildPhoneExample(config) {
   const prefix = String(config?.phonePrefix || '').trim();
   const len = Number(config?.phoneLocalLength || 0);
   const first = config?.phoneLocalPrefix ? String(config.phoneLocalPrefix) : '';
-  if (!prefix || len <= 0) return NEUTRAL_HINT;
+  if (!prefix || len <= 0) return GENERIC_WA_HINT;
   const rest = Math.max(len - first.length, 0);
   const digits = `${first}${'0'.repeat(rest)}`.slice(0, len);
   const chunks = digits.match(/.{1,4}/g) || [digits];
@@ -17,10 +16,9 @@ function buildPhoneExample(config) {
 }
 
 /**
- * Campo WhatsApp con prefijo dinámico según país.
- * En go.ventalink.app sin país seleccionado: selector de país + sin prefijo por defecto, textos neutros.
- * En cl/ar o go con país: prefijo fijo del país, ayuda y validación locales.
- * Valor que recibe/entrega: E.164 (ej. +56912345678).
+ * Campo WhatsApp con prefijo dinámico según país solo cuando `countryCode` está definido (no vacío).
+ * Sin país persistido en props: input simple, sin prefijo, sin selector, sin getCountryCode() ni CountryContext.
+ * Valor: E.164 (ej. +56912345678).
  */
 export default function DynamicWhatsAppField({
   value,
@@ -29,26 +27,31 @@ export default function DynamicWhatsAppField({
   label = 'Número de WhatsApp',
   hint,
   id,
-  countryCode = null,
+  countryCode,
   editableCountry = false,
   persistCountrySelection = true,
   onCountryChange,
   onResolvedCountryCode,
+  /** Registro neutro: sin país, sin selector, sin imponer formato de un mercado. */
+  neutral = false,
 }) {
   const [touched, setTouched] = useState(false);
-  const { setCountry: persistCountry, countryCode: contextCountryCode } = useCountry();
-  const globalCountry = countryCode || contextCountryCode || getCountryCode();
+  const { setCountry: persistCountry } = useCountry();
 
-  const [selectedCountryForField, setSelectedCountryForField] = useState(globalCountry || null);
+  const hasExplicitCountry =
+    !neutral && countryCode != null && String(countryCode).trim() !== '';
+
+  const globalCountry = hasExplicitCountry ? String(countryCode).trim().toUpperCase() : null;
+
+  const [selectedCountryForField, setSelectedCountryForField] = useState(globalCountry);
 
   useEffect(() => {
-    setSelectedCountryForField(globalCountry || null);
+    setSelectedCountryForField(globalCountry);
   }, [globalCountry]);
 
-  const isNeutral = globalCountry === null;
-  const effectiveCountry = editableCountry ? selectedCountryForField : (isNeutral ? selectedCountryForField : globalCountry);
+  const effectiveCountry = editableCountry ? selectedCountryForField : globalCountry;
   const config = getCountryConfig(effectiveCountry);
-  const hasCountry = effectiveCountry && config !== NEUTRAL_COUNTRY_CONFIG;
+  const hasCountry = Boolean(effectiveCountry) && config !== NEUTRAL_COUNTRY_CONFIG;
 
   const prefix = config?.phonePrefix ?? '';
   const localLength = config?.phoneLocalLength ?? 0;
@@ -82,7 +85,6 @@ export default function DynamicWhatsAppField({
     setSelectedCountryForField(next);
     onCountryChange?.(next);
     onResolvedCountryCode?.(next);
-    // Limpia número para evitar prefijos pegados y validaciones inconsistentes al cambiar país.
     onChange('');
     if (persistCountrySelection && next) persistCountry(next);
   }, [onChange, persistCountry, persistCountrySelection, onCountryChange, onResolvedCountryCode, selectedCountryForField, value, waDebugEnabled]);
@@ -143,7 +145,13 @@ export default function DynamicWhatsAppField({
     }
   }
 
-  const resolvedHint = hint ?? (hasCountry ? buildPhoneExample(config) : NEUTRAL_HINT);
+  const resolvedHint =
+    hint ??
+    (hasCountry
+      ? `${buildPhoneExample(config)} · Escribe solo el número local; el prefijo ${prefix || ''} es fijo.`
+      : GENERIC_WA_HINT);
+
+  const showCountrySelector = !neutral && editableCountry && hasExplicitCountry;
 
   return (
     <div className="w-full">
@@ -157,7 +165,7 @@ export default function DynamicWhatsAppField({
         </label>
       )}
 
-      {(isNeutral || editableCountry) && (
+      {showCountrySelector && (
         <div className="mb-2 relative">
           <select
             value={selectedCountryForField ?? ''}
@@ -215,11 +223,11 @@ export default function DynamicWhatsAppField({
           type="tel"
           inputMode="numeric"
           autoComplete="tel"
-          placeholder={hasCountry ? Array(localLength).fill('0').join('') : 'Ej: 912345678'}
+          placeholder={hasCountry ? Array(localLength).fill('0').join('') : 'Ej: +56912345678'}
           value={displayValue}
           onChange={handleChange}
           onBlur={() => setTouched(true)}
-          disabled={(isNeutral || editableCountry) && !selectedCountryForField}
+          disabled={showCountrySelector && !selectedCountryForField}
           className="flex-1 min-w-0 px-3 py-2.5 text-sm outline-none disabled:opacity-60 disabled:bg-muted"
           style={{
             fontFamily: 'var(--font-data)',

@@ -22,7 +22,7 @@ export default function PanelHeader({
 }) {
   return (
     <div
-      className={`sticky top-0 z-50 border-b flex flex-col ${className}`}
+      className={`sticky top-0 z-50 flex-shrink-0 border-b flex flex-col ${className}`}
       style={{
         backgroundColor: '#FFFFFF',
         borderColor: 'var(--color-border)',

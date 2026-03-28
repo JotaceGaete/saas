@@ -21,7 +21,8 @@ export function getMarketConfigByCountry(countryCode) {
   const normalizedCountry = normalizeCountryCode(countryCode) || DEFAULT_COUNTRY;
   const pricingRow = getCountryPricingRow(normalizedCountry);
   const paymentOptions = getPaymentOptions({ countryCode: normalizedCountry });
-  const billingProvider = normalizeBillingProvider(pricingRow.defaultProvider || paymentOptions?.primary) || 'manual';
+  const billingProvider =
+    normalizeBillingProvider(pricingRow.defaultProvider) || normalizeBillingProvider(paymentOptions?.primary) || 'manual';
 
   return {
     countryCode: normalizedCountry,

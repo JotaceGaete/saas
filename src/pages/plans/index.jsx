@@ -8,7 +8,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useConfirmedEmailGuard } from '../../hooks/useConfirmedEmailGuard';
 import { supabase } from '../../lib/supabase';
 import { getAppBaseUrl } from '../../config/appUrl';
-import { formatCurrency } from '../../utils/formatCLP';
+import { formatSubscriptionPlanPrice } from '../../utils/formatCLP';
 import { PLAN_SLUGS, getPlanLimits, getPlanLabel, getPlanActionButtonLabel } from '../../constants/plans';
 import { TRIAL_DURATION_DAYS, getTrialDaysLeft } from '../../constants/trial';
 import {
@@ -17,6 +17,9 @@ import {
   getBillingStatusSafe,
   getBillingResolutionUiMessage,
   resolveMarket,
+  resolveBillingProvider,
+  resolveBillingDisplayCurrency,
+  getLocaleForBillingDisplayCurrency,
   getPlanPrice,
   getPlanConfig,
   getProviderDisplayLabel,
@@ -48,7 +51,9 @@ export default function PlansPage() {
   const [billingRemoteError, setBillingRemoteError] = useState(null);
   const [currentSubscription, setCurrentSubscription] = useState(null);
   const currentPlan = currentSubscription?.planSlug || business?.planSlug || 'starter';
-  const businessCountryCode = business?.routingCountryCode ?? business?.countryCode ?? null;
+  /** Fuente de verdad: columna `country_code` en BD (`countryCodeDb`). */
+  const businessCountryCode =
+    business?.countryCodeDb ?? business?.routingCountryCode ?? business?.countryCode ?? null;
   /** Facturación y precios solo desde el país persistido del negocio (onboarding). */
   const countryState = useMemo(
     () =>
@@ -76,10 +81,6 @@ export default function PlansPage() {
   const { countryCode, marketCode } = market;
   const billingCountryForUi = countryState.businessCountry || businessCountryCode || null;
   const isChileBilling = countryState.billingCountry === 'CL';
-  const currency = useMemo(() => {
-    if (billingReady && subscriptionState?.currency) return subscriptionState.currency;
-    return resolvedBillingSetup.currency;
-  }, [billingReady, subscriptionState?.currency, resolvedBillingSetup.currency]);
   const checkoutProvider = useMemo(() => {
     if (!billingReady) return null;
     const raw = subscriptionState?.providerResolution?.selectedProvider
@@ -91,6 +92,24 @@ export default function PlansPage() {
     subscriptionState?.providerResolution?.selectedProvider,
     subscriptionState?.billingProvider?.provider,
   ]);
+  /** Proveedor efectivo para precios en pantalla: servidor si ya cargó; si no, regla por país (CL/AR → MP, resto → dLocal). */
+  const effectiveProviderForPlanDisplay = useMemo(() => {
+    if (checkoutProvider) return checkoutProvider;
+    if (businessCountryCode) return resolveBillingProvider(businessCountryCode);
+    return null;
+  }, [checkoutProvider, businessCountryCode]);
+  /** Moneda mostrada en tarjetas de planes / resumen: por proveedor de facturación, no por moneda del negocio en BD. */
+  const planBillingDisplayCurrency = useMemo(() => {
+    if (!businessCountryCode || !effectiveProviderForPlanDisplay) return 'USD';
+    return resolveBillingDisplayCurrency({
+      countryCode: businessCountryCode,
+      provider: effectiveProviderForPlanDisplay,
+    });
+  }, [businessCountryCode, effectiveProviderForPlanDisplay]);
+  const planBillingDisplayLocale = useMemo(
+    () => getLocaleForBillingDisplayCurrency(planBillingDisplayCurrency),
+    [planBillingDisplayCurrency],
+  );
   const hasServerSelectedProvider = !!subscriptionState?.providerResolution?.selectedProvider;
   const hasPersistedBusinessCountry = !!businessCountryCode;
   const secondaryCheckoutProviders = useMemo(() => {
@@ -125,7 +144,6 @@ export default function PlansPage() {
     return resolvedBillingSetup?.marketStatus || 'active';
   }, [billingReady, subscriptionState?.marketStatus, resolvedBillingSetup?.marketStatus]);
   const showMarketDebugBadge = import.meta.env?.MODE !== 'production';
-  const isUsdProvider = checkoutProvider === PAYMENT_PROVIDERS.DLOCAL || checkoutProvider === PAYMENT_PROVIDERS.PAYPAL;
   const checkoutAvailability = subscriptionState?.billingProvider || null;
   const billingResolutionMessage = useMemo(
     () => (billingReady ? getBillingResolutionUiMessage(subscriptionState) : null),
@@ -184,7 +202,7 @@ export default function PlansPage() {
     if (typeof window === 'undefined') return;
     const planPrices = PLAN_SLUGS.reduce((acc, slug) => ({ ...acc, [slug]: getDisplayPlanPrice(slug) }), {});
     console.log('[plans-debug] hostname:', window.location?.hostname);
-    console.log('[plans-debug] billing market:', marketCode, 'currency:', currency, 'checkoutProvider:', checkoutProvider, 'billingReady:', billingReady);
+    console.log('[plans-debug] billing market:', marketCode, 'planBillingCurrency:', planBillingDisplayCurrency, 'checkoutProvider:', checkoutProvider, 'billingReady:', billingReady);
     console.log('[plans-debug] plan prices:', planPrices);
     console.info(PAYMENT_DEBUG_PREFIX, { event: 'provider_resolution', countryCode, marketCode, checkoutProvider, billingReady });
     logCountryStateDebug({
@@ -192,14 +210,14 @@ export default function PlansPage() {
       businessCountry: countryState.businessCountry,
       billingCountry: countryState.billingCountry,
       provider: checkoutProvider,
-      currency,
+      currency: planBillingDisplayCurrency,
     });
   }, [
     countryCode,
     marketCode,
     checkoutProvider,
     billingReady,
-    currency,
+    planBillingDisplayCurrency,
     countryState.uxCountry,
     countryState.businessCountry,
     countryState.billingCountry,
@@ -727,7 +745,7 @@ export default function PlansPage() {
     const reported = Number(preview.finalAmount);
     if (!Number.isFinite(reported)) return providerCatalogAmount;
     // Guardrail: evita mostrar montos CLP como USD (ej. 5990 -> USD).
-    if (currency === 'USD' && isUsdProvider && reported > 100 && providerCatalogAmount > 0 && providerCatalogAmount <= 20) {
+    if (planBillingDisplayCurrency === 'USD' && reported > 100 && providerCatalogAmount > 0 && providerCatalogAmount <= 20) {
       return providerCatalogAmount;
     }
     return reported;
@@ -880,17 +898,17 @@ export default function PlansPage() {
                 <li>Plan destino: <strong>{getPlanLabel(preview.targetPlanSlug)}</strong></li>
                 <li>Días restantes: <strong>{preview.daysRemaining}</strong></li>
                 {preview.creditAmount > 0 && (
-                  <li>Crédito aplicado: <strong>{formatCurrency(preview.creditAmount, currency)}</strong></li>
+                  <li>Crédito aplicado: <strong>{formatSubscriptionPlanPrice(preview.creditAmount, planBillingDisplayCurrency, planBillingDisplayLocale)}</strong></li>
                 )}
-                <li>Precio del plan: <strong>{formatCurrency(getDisplayPlanPrice(preview.targetPlanSlug), currency)}</strong></li>
+                <li>Precio del plan: <strong>{formatSubscriptionPlanPrice(getDisplayPlanPrice(preview.targetPlanSlug), planBillingDisplayCurrency, planBillingDisplayLocale)}</strong></li>
                 {preview.effectiveAt && (
-                  <li>Vigente desde: <strong>{new Date(preview.effectiveAt).toLocaleDateString(currency === 'USD' ? 'en-US' : 'es-CL', { dateStyle: 'medium' })}</strong></li>
+                  <li>Vigente desde: <strong>{new Date(preview.effectiveAt).toLocaleDateString(planBillingDisplayLocale, { dateStyle: 'medium' })}</strong></li>
                 )}
                 <li className="pt-2 border-t" style={{ borderColor: 'var(--color-border)' }}>
                   Total a pagar: <strong className="text-base" style={{ color: 'var(--color-foreground)' }}>
                     {preview.changeType === 'downgrade' || preview.finalAmount === 0
                       ? 'Sin cargo (crédito aplicado)'
-                      : formatCurrency(getSafePreviewTotal(), currency)}
+                      : formatSubscriptionPlanPrice(getSafePreviewTotal(), planBillingDisplayCurrency, planBillingDisplayLocale)}
                   </strong>
                 </li>
               </ul>
@@ -1040,10 +1058,12 @@ export default function PlansPage() {
                   </div>
                   <div className="mb-4">
                     <p className="text-2xl font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>
-                      {getDisplayPlanPrice(slug) === 0 ? 'Gratis' : formatCurrency(getDisplayPlanPrice(slug), currency)}
+                      {getDisplayPlanPrice(slug) === 0
+                        ? 'Gratis'
+                        : formatSubscriptionPlanPrice(getDisplayPlanPrice(slug), planBillingDisplayCurrency, planBillingDisplayLocale)}
                     </p>
                     <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-                      {getDisplayPlanPrice(slug) === 0 ? '' : `por mes · ${currency}`}
+                      {getDisplayPlanPrice(slug) === 0 ? '' : `por mes · ${planBillingDisplayCurrency}`}
                     </p>
                   </div>
                   <ul className="space-y-2 mb-6 flex-1">
@@ -1189,7 +1209,10 @@ export default function PlansPage() {
           <div className="mt-8 rounded-xl border p-5" style={{ backgroundColor: 'var(--color-muted)', borderColor: 'var(--color-border)' }}>
             {showMarketDebugBadge && (
               <p className="text-xs mb-2" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-                QA market: <strong>{countryState.billingCountry}</strong> · status: <strong>{marketStatus}</strong> · provider: <strong>{checkoutProvider || '—'}</strong> · currency: <strong>{currency}</strong>
+                QA market: <strong>{countryState.billingCountry}</strong> · status: <strong>{marketStatus}</strong> · provider: <strong>{checkoutProvider || '—'}</strong> · plan currency: <strong>{planBillingDisplayCurrency}</strong>
+                {subscriptionState?.currency && subscriptionState.currency !== planBillingDisplayCurrency ? (
+                  <span> · server/business currency: <strong>{subscriptionState.currency}</strong></span>
+                ) : null}
               </p>
             )}
             <p className="text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>

@@ -1,6 +1,6 @@
 import React from "react";
 import Icon from "components/AppIcon";
-import { getCountryLabels } from "config/country";
+import { getCountryLabels, getCountryCode } from "config/country";
 
 const BENEFITS_BASE = [
   { icon: "Smartphone", title: "100% Mobile-First", description: "Diseñado para que tus clientes naveguen y compren fácilmente desde su celular.", featured: true },
@@ -15,7 +15,7 @@ const BENEFITS_BASE = [
 ];
 
 export default function BenefitsSection() {
-  const labels = getCountryLabels();
+  const labels = getCountryLabels(getCountryCode());
   const BENEFITS = BENEFITS_BASE.map((b) => {
     if (b.countrySpecific) {
       return { ...b, title: labels.benefitsTitle, description: labels.benefitsDescription };

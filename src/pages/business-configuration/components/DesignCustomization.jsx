@@ -310,7 +310,7 @@ export default function DesignCustomization({
 
       {/* 1. Primary Color */}
       <SectionCard icon="Droplets" title="Color principal" subtitle="Se aplica a botones, badges y acentos de tu catálogo" accent={primaryColor}>
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-4">
           {COLORS?.map(color => (
             <button
               key={color?.value}
@@ -348,28 +348,28 @@ export default function DesignCustomization({
           </div>
         </div>
         {/* Color preview bar */}
-        <div className="mt-4 flex items-center gap-2 flex-wrap">
+        <div className="mt-5 pt-1 flex items-center gap-3 flex-wrap">
           <div
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white"
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold text-white shadow-sm"
             style={{ backgroundColor: primaryColor, fontFamily: 'var(--font-caption)' }}
           >
             <Icon name="Plus" size={11} color="#fff" />
             Agregar
           </div>
           <div
-            className="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold text-white"
+            className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold text-white"
             style={{ backgroundColor: primaryColor, fontFamily: 'var(--font-caption)', fontSize: '10px' }}
           >
             Activo
           </div>
           <div
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-white"
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-white shadow-sm"
             style={{ background: `linear-gradient(135deg, ${primaryColor} 0%, #6D28D9 100%)`, fontFamily: 'var(--font-caption)' }}
           >
             <Icon name="ShoppingCart" size={11} color="#fff" />
             Ver pedido
           </div>
-          <span className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+          <span className="text-xs pl-0.5 sm:pl-1" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
             Vista previa de elementos
           </span>
         </div>

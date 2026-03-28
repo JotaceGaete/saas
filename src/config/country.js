@@ -388,15 +388,16 @@ export const COUNTRY_LABELS = Object.freeze({
 });
 
 /**
- * @param {string} [countryCode] - Si no se pasa, se usa getCountryCode().
+ * @param {string|null|undefined} countryCode - Código ISO. `null`, `undefined` o `''` → textos neutros (sin hostname ni getCountryCode).
+ * Para copy según contexto (landing), llamar explícitamente `getCountryLabels(getCountryCode())`.
  * @returns {typeof COUNTRY_LABELS.AR & { countryName: string, flag: string, currency: string }}
  */
 /** Labels neutros cuando no hay país (go.ventalink.app sin selección). Sin referencias a Chile/Argentina. */
 const NEUTRAL_LABELS = Object.freeze({
-  countryName: 'Tu país',
+  countryName: 'Sin definir',
   flag: '🌐',
-  currency: 'USD',
-  currencyName: 'USD',
+  currency: '—',
+  currencyName: '—',
   cityLabel: 'Ciudad',
   cityPlaceholder: 'Ej: Ciudad',
   regionLabel: 'Región',
@@ -409,7 +410,7 @@ const NEUTRAL_LABELS = Object.freeze({
     { value: 'cuenta_corriente', label: 'Cuenta Corriente' },
     { value: 'cuenta_ahorro', label: 'Cuenta de Ahorro' },
   ],
-  whatsappHint: 'Selecciona tu país y escribe tu número con código de área si aplica.',
+  whatsappHint: 'Incluye el código de país en el número (formato internacional). Ej: +506 1234 5678',
   whatsappErrorPrefix: 'Número móvil',
   testimonialCities: [],
   heroSubtitle: 'Hecho para negocios que venden por WhatsApp',
@@ -418,9 +419,9 @@ const NEUTRAL_LABELS = Object.freeze({
 });
 
 export function getCountryLabels(countryCode) {
-  const resolved = countryCode ?? getCountryCode();
-  if (resolved === null || resolved === '') return NEUTRAL_LABELS;
-  const code = String(resolved).toUpperCase().trim();
+  if (countryCode === null || countryCode === undefined || countryCode === '') return NEUTRAL_LABELS;
+  const code = String(countryCode).toUpperCase().trim();
+  if (!code) return NEUTRAL_LABELS;
   if (COUNTRY_LABELS[code]) return COUNTRY_LABELS[code];
   const config = getCountryConfig(code);
   return {

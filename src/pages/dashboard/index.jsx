@@ -57,7 +57,7 @@ export default function Dashboard() {
   const locale = getBusinessLocale(business, {
     preferredCountryCode: user?.user_metadata?.country_code ?? null,
   });
-  const displayCurrency = String(business?.currency || locale.currencyCode || 'USD').toUpperCase();
+  const displayCurrency = String(business?.currency || locale.currencyCode || '—').toUpperCase();
   const displayLocale = locale.locale || 'en-US';
   const dashboardRefreshAttempted = useRef(false);
   const [copyToast, setCopyToast] = useState(false);

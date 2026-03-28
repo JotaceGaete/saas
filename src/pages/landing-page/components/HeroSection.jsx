@@ -2,12 +2,12 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Icon from "components/AppIcon";
 import Button from "components/ui/Button";
-import { getCountryLabels } from "config/country";
+import { getCountryLabels, getCountryCode } from "config/country";
 
 export default function HeroSection({ onOpenRegister }) {
   const navigate = useNavigate();
   const [mounted, setMounted] = useState(false);
-  const labels = getCountryLabels();
+  const labels = getCountryLabels(getCountryCode());
 
   useEffect(() => {
     const t = setTimeout(() => setMounted(true), 100);

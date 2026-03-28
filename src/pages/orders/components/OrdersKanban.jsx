@@ -21,26 +21,27 @@ const KANBAN_COLUMNS = [
     id: 'pendientes',
     title: 'Pendientes',
     subtitle: 'Pedido recibido',
-    accent: '#6366F1',
-    bg: '#EEF2FF',
+    accent: '#7c3aed',
+    headerTint: 'rgba(124, 58, 237, 0.1)',
+    bodyTint: 'rgba(124, 58, 237, 0.04)',
     variant: 'accent',
   },
   {
     id: 'preparacion',
     title: 'En proceso',
     subtitle: 'Preparación o enviado',
-    accent: '#94A3B8',
-    bg: '#F1F5F9',
-    variant: 'neutral',
-    titleColor: '#475569',
-    countColor: '#64748B',
+    accent: '#d97706',
+    headerTint: 'rgba(245, 158, 11, 0.14)',
+    bodyTint: 'rgba(245, 158, 11, 0.05)',
+    variant: 'warm',
   },
   {
     id: 'entregado',
     title: 'Entregados',
     subtitle: 'Listo',
-    accent: '#10B981',
-    bg: '#D1FAE5',
+    accent: '#059669',
+    headerTint: 'rgba(16, 185, 129, 0.12)',
+    bodyTint: 'rgba(16, 185, 129, 0.05)',
     variant: 'accent',
   },
 ];
@@ -81,56 +82,47 @@ function sortDeliveredDesc(list) {
   return [...list].sort((a, b) => getDeliveredSortTimeMs(b) - getDeliveredSortTimeMs(a));
 }
 
-function KanbanColumn({
-  id,
-  title,
-  subtitle,
-  accent,
-  bg,
-  children,
+/** Marco visual compartido (desktop droppable / móvil scroll horizontal). */
+function KanbanColumnFrame({
+  column,
   count,
-  variant = 'accent',
-  titleColor,
-  countColor,
+  children,
+  dropRef,
+  isOver,
+  droppable,
 }) {
-  const { setNodeRef, isOver } = useDroppable({ id });
-  const isNeutral = variant === 'neutral';
-  const titleC = isNeutral ? (titleColor || '#475569') : accent;
-  const countC = isNeutral ? (countColor || '#64748B') : accent;
-  const overBg = isNeutral ? (isOver ? 'rgba(241, 245, 249, 0.95)' : 'var(--color-card)') : undefined;
+  const { title, subtitle, accent, headerTint, bodyTint } = column;
   return (
     <div
-      ref={setNodeRef}
-      className="flex flex-col min-h-[min(420px,55vh)] min-w-0 flex-1 rounded-2xl border transition-colors"
+      ref={droppable ? dropRef : undefined}
+      className="flex flex-col min-h-[min(420px,52vh)] min-w-0 flex-1 rounded-2xl transition-all duration-200 shadow-sm"
       style={{
-        borderColor: isOver ? accent : 'var(--color-border)',
-        backgroundColor: isNeutral ? (overBg || 'var(--color-card)') : (isOver ? `${bg}99` : 'var(--color-card)'),
-        boxShadow: isOver ? `0 0 0 2px ${accent}55` : 'var(--shadow-xs)',
+        backgroundColor: 'var(--color-card)',
+        boxShadow: isOver
+          ? `0 8px 30px -8px ${accent}33, 0 0 0 1px ${accent}22`
+          : '0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04)',
       }}
     >
       <div
-        className="px-3 py-2.5 border-b shrink-0"
-        style={{
-          borderColor: 'var(--color-border)',
-          backgroundColor: bg,
-        }}
+        className="px-3.5 py-3 rounded-t-2xl shrink-0"
+        style={{ backgroundColor: headerTint }}
       >
         <div className="flex items-center justify-between gap-2">
           <div className="min-w-0">
-            <p className="text-sm font-bold truncate" style={{ color: titleC, fontFamily: 'var(--font-heading)' }}>
+            <p className="text-sm font-bold truncate tracking-tight" style={{ color: accent, fontFamily: 'var(--font-heading)' }}>
               {title}
             </p>
-            <p className="text-[10px] font-medium truncate" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+            <p className="text-[10px] font-medium truncate mt-0.5" style={{ color: accent, opacity: 0.75, fontFamily: 'var(--font-caption)' }}>
               {subtitle}
             </p>
           </div>
           <span
-            className="text-sm font-bold tabular-nums px-2 py-0.5 rounded-lg shrink-0 border"
+            className="text-sm font-bold tabular-nums px-2.5 py-1 rounded-xl shrink-0"
             style={{
-              backgroundColor: '#fff',
-              color: countC,
-              fontFamily: 'var(--font-heading)',
-              borderColor: isNeutral ? 'var(--color-border)' : 'transparent',
+              backgroundColor: 'rgba(255,255,255,0.85)',
+              color: accent,
+              fontFamily: 'var(--font-stat)',
+              boxShadow: '0 1px 2px rgba(15,23,42,0.06)',
             }}
           >
             {count}
@@ -138,12 +130,21 @@ function KanbanColumn({
         </div>
       </div>
       <div
-        className="flex-1 p-2 space-y-2 overflow-y-auto min-h-[120px] max-h-[min(520px,calc(100vh-280px))]"
-        style={isNeutral ? { backgroundColor: 'rgba(248, 250, 252, 0.6)' } : undefined}
+        className="flex-1 p-2.5 space-y-2.5 overflow-y-auto min-h-[120px] max-h-[min(520px,calc(100vh-280px))] rounded-b-2xl"
+        style={{ backgroundColor: bodyTint }}
       >
         {children}
       </div>
     </div>
+  );
+}
+
+function KanbanColumn({ column, children, count }) {
+  const { setNodeRef, isOver } = useDroppable({ id: column.id });
+  return (
+    <KanbanColumnFrame column={column} count={count} dropRef={setNodeRef} isOver={isOver} droppable>
+      {children}
+    </KanbanColumnFrame>
   );
 }
 
@@ -202,7 +203,6 @@ export default function OrdersKanban({
   orderShortId: shortIdFn,
 }) {
   const isDesktop = useIsDesktop();
-  const [mobileTab, setMobileTab] = useState('pendientes');
   const [activeId, setActiveId] = useState(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -230,12 +230,6 @@ export default function OrdersKanban({
     () => (activeId ? orders.find(o => String(o.id) === String(activeId)) : null),
     [activeId, orders],
   );
-
-  const mobileList = useMemo(() => {
-    if (mobileTab === 'pendientes') return pendientes;
-    if (mobileTab === 'preparacion') return preparacion;
-    return entregado;
-  }, [mobileTab, pendientes, preparacion, entregado]);
 
   const handleDragStart = ({ active }) => {
     setActiveId(active?.id ?? null);
@@ -272,60 +266,53 @@ export default function OrdersKanban({
   if (!isDesktop) {
     return (
       <div className="w-full min-w-0">
+        <p
+          className="text-[11px] font-medium mb-2 px-0.5 md:hidden"
+          style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}
+        >
+          Desliza horizontalmente para ver cada columna
+        </p>
         <div
-          className="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1 scrollbar-thin snap-x snap-mandatory"
-          style={{ WebkitOverflowScrolling: 'touch' }}
-          role="tablist"
-          aria-label="Columna del tablero"
+          className="flex gap-3 overflow-x-auto overflow-y-hidden pb-1 -mx-1 px-1 scroll-smooth snap-x snap-mandatory [-webkit-overflow-scrolling:touch]"
+          style={{ scrollbarGutter: 'stable' }}
+          role="region"
+          aria-label="Tablero de pedidos por columnas"
         >
           {KANBAN_COLUMNS.map((col) => {
-            const count =
-              col.id === 'pendientes' ? pendientes.length : col.id === 'preparacion' ? preparacion.length : entregado.length;
-            const active = mobileTab === col.id;
+            const list =
+              col.id === 'pendientes' ? pendientes : col.id === 'preparacion' ? preparacion : entregado;
+            const count = list.length;
             return (
-              <button
-                key={col.id}
-                type="button"
-                role="tab"
-                aria-selected={active}
-                onClick={() => setMobileTab(col.id)}
-                className="snap-start shrink-0 rounded-xl border px-3 py-2.5 text-left min-w-[calc(33.333%-6px)] sm:min-w-[140px] transition-all"
-                style={{
-                  borderColor: active ? col.accent : 'var(--color-border)',
-                  backgroundColor: active ? `${col.bg}cc` : '#fff',
-                  boxShadow: active ? `0 0 0 2px ${col.accent}40` : 'var(--shadow-xs)',
-                }}
-              >
-                <p className="text-xs font-bold truncate" style={{ color: col.id === 'preparacion' ? (col.titleColor || col.accent) : col.accent, fontFamily: 'var(--font-heading)' }}>
-                  {col.title}
-                </p>
-                <p className="text-[10px] font-semibold tabular-nums mt-0.5" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-                  {count} pedido{count !== 1 ? 's' : ''}
-                </p>
-              </button>
+              <div key={col.id} className="snap-center shrink-0 w-[min(92vw,380px)] first:pl-0.5 last:pr-1">
+                <KanbanColumnFrame column={col} count={count} isOver={false} droppable={false}>
+                  {list.length === 0 ? (
+                    <p
+                      className="text-sm text-center py-12 px-2 rounded-xl"
+                      style={{
+                        color: 'var(--color-muted-foreground)',
+                        fontFamily: 'var(--font-caption)',
+                        backgroundColor: 'rgba(255,255,255,0.5)',
+                      }}
+                    >
+                      Sin pedidos aquí
+                    </p>
+                  ) : (
+                    list.map((order) => (
+                      <KanbanOrderCardView
+                        key={order.id}
+                        order={order}
+                        formatCLP={formatCLP}
+                        onOpenDetail={onOpenDetail}
+                        onUpdate={onUpdate}
+                        orderShortId={shortIdFn}
+                        showDragHandle={false}
+                      />
+                    ))
+                  )}
+                </KanbanColumnFrame>
+              </div>
             );
           })}
-        </div>
-        <div className="rounded-2xl border p-3 min-h-[240px] max-h-[min(65vh,560px)] overflow-y-auto" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-card)' }}>
-          {mobileList.length === 0 ? (
-            <p className="text-sm text-center py-10 px-2" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-              No hay pedidos en esta columna
-            </p>
-          ) : (
-            <div className="space-y-3">
-              {mobileList.map((order) => (
-                <KanbanOrderCardView
-                  key={order.id}
-                  order={order}
-                  formatCLP={formatCLP}
-                  onOpenDetail={onOpenDetail}
-                  onUpdate={onUpdate}
-                  orderShortId={shortIdFn}
-                  showDragHandle={false}
-                />
-              ))}
-            </div>
-          )}
         </div>
       </div>
     );
@@ -344,7 +331,7 @@ export default function OrdersKanban({
           const list =
             col.id === 'pendientes' ? pendientes : col.id === 'preparacion' ? preparacion : entregado;
           return (
-            <KanbanColumn key={col.id} {...col} count={list.length}>
+            <KanbanColumn key={col.id} column={col} count={list.length}>
               {list.map((o) => renderCard(o))}
             </KanbanColumn>
           );
@@ -354,8 +341,8 @@ export default function OrdersKanban({
       <DragOverlay dropAnimation={{ duration: 200, easing: 'cubic-bezier(0.18, 0.67, 0.6, 1)' }}>
         {activeOrder ? (
           <div
-            className="rounded-xl border bg-white shadow-lg p-2 w-[260px]"
-            style={{ borderColor: 'var(--color-border)' }}
+            className="rounded-2xl bg-white p-2 w-[260px] shadow-lg"
+            style={{ boxShadow: '0 12px 40px -12px rgba(15, 23, 42, 0.2)' }}
           >
             <div className="flex flex-wrap items-center gap-1.5 mb-1">
               <StatusBadgeOverlay status={activeOrder?.status} />

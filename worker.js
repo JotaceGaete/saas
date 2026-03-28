@@ -1,7 +1,16 @@
-import { detectCatalogRegion, getCatalogMetaDescription, getCatalogPageTitle } from './src/utils/catalogSeo.js';
+import {
+  CATALOG_OG_DESCRIPTION,
+  detectCatalogRegion,
+  getCatalogMetaDescription,
+  getCatalogOgImageUrl,
+  getCatalogOgSocialTitle,
+  getCatalogPageTitle,
+} from './src/utils/catalogSeo.js';
 import { getCatalogSlugFromPath } from './src/utils/seoPassThrough.js';
 
 const OG_FALLBACK_IMAGE = 'https://media.gong.cl/test/preview.jpg';
+const CF_MEDIA_HOST = 'media.gong.cl';
+
 const BOT_UA =
   /(whatsapp|whatsappbot|facebookexternalhit|facebot|meta-externalagent|meta-externalfetcher|twitterbot|telegrambot|slackbot|discordbot|linkedinbot)/i;
 
@@ -22,35 +31,50 @@ function parseDesignSettingsSafe(value) {
   }
 }
 
-function toAbsoluteUrl(url, origin) {
-  if (!url || typeof url !== 'string') return '';
-  const trimmed = url.trim();
-  if (!trimmed) return '';
-  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return trimmed;
-  return `${origin}${trimmed.startsWith('/') ? '' : '/'}${trimmed}`;
+/** Tras `/cdn-cgi/image/<opciones>/`, la URL original suele empezar por `https://`. */
+function extractOriginalUrlFromCfImagePath(pathname) {
+  if (!pathname || !pathname.startsWith('/cdn-cgi/image/')) return null;
+  const rest = pathname.slice('/cdn-cgi/image/'.length);
+  const httpIdx = rest.indexOf('http');
+  if (httpIdx === -1) return null;
+  return rest.slice(httpIdx);
 }
 
-function getOgImageUrl(row, origin) {
-  const ds = parseDesignSettingsSafe(row?.design_settings);
-  const candidates = [
-    row?.og_image_url,
-    row?.cover_image_url,
-    ds?.coverImageUrl,
-    ds?.headerImageUrl,
-    row?.logo_url,
-    ds?.logoUrl,
-  ];
-
-  for (const candidate of candidates) {
-    const absolute = toAbsoluteUrl(candidate, origin);
-    if (absolute) return absolute;
+function isAllowedOgImageUpstreamUrl(u) {
+  try {
+    const h = new URL(u).hostname;
+    return (
+      h === CF_MEDIA_HOST ||
+      h.endsWith('.r2.dev') ||
+      h.endsWith('.r2.cloudflarestorage.com')
+    );
+  } catch {
+    return false;
   }
+}
 
-  return OG_FALLBACK_IMAGE;
+function rowToBusinessForOg(row) {
+  const ds = parseDesignSettingsSafe(row?.design_settings);
+  return {
+    id: row?.id,
+    name: row?.name,
+    ogImageUrl: row?.og_image_url,
+    logoUrl: row?.logo_url,
+    coverImageUrl: row?.cover_image_url || ds?.coverImageUrl || ds?.headerImageUrl,
+    designSettings: ds,
+  };
 }
 
 function buildOgHtml(payload) {
-  const { title, description, ogImage, canonicalUrl, ogLocale } = payload;
+  const {
+    htmlTitle,
+    ogTitle,
+    metaDescription,
+    ogDescription,
+    ogImage,
+    canonicalUrl,
+    ogLocale,
+  } = payload;
   const escaped = (s) =>
     String(s || '')
       .replace(/&/g, '&amp;')
@@ -63,19 +87,19 @@ function buildOgHtml(payload) {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>${escaped(title)}</title>
-  <meta name="description" content="${escaped(description)}" />
+  <title>${escaped(htmlTitle)}</title>
+  <meta name="description" content="${escaped(metaDescription)}" />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="${escaped(canonicalUrl)}" />
-  <meta property="og:title" content="${escaped(title)}" />
-  <meta property="og:description" content="${escaped(description)}" />
+  <meta property="og:title" content="${escaped(ogTitle)}" />
+  <meta property="og:description" content="${escaped(ogDescription)}" />
   <meta property="og:image" content="${escaped(ogImage)}" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
   <meta property="og:locale" content="${escaped(ogLocale || 'es_CL')}" />
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="${escaped(title)}" />
-  <meta name="twitter:description" content="${escaped(description)}" />
+  <meta name="twitter:title" content="${escaped(ogTitle)}" />
+  <meta name="twitter:description" content="${escaped(ogDescription)}" />
   <meta name="twitter:image" content="${escaped(ogImage)}" />
   <link rel="canonical" href="${escaped(canonicalUrl)}" />
   <meta name="robots" content="index, follow" />
@@ -94,14 +118,26 @@ function buildOgHtml(payload) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    const ua = request.headers.get('user-agent') || '';
 
-    // Nunca interceptar /cdn-cgi/*, imágenes ni assets: solo HTML del catálogo público.
+    // WhatsApp: servir imagen original (JPEG/PNG) sin pasar por Image Resizing (WebP/format=auto).
+    if (/WhatsApp/i.test(ua) && url.pathname.startsWith('/cdn-cgi/image/')) {
+      const original = extractOriginalUrlFromCfImagePath(url.pathname);
+      if (original && isAllowedOgImageUpstreamUrl(original)) {
+        return fetch(original, {
+          redirect: 'follow',
+          headers: {
+            Accept: 'image/jpeg,image/png,image/webp,image/*,*/*;q=0.8',
+          },
+        });
+      }
+    }
+
     const slug = getCatalogSlugFromPath(url.pathname);
     if (slug === null) {
       return fetch(request);
     }
 
-    const ua = request.headers.get('user-agent') || '';
     const bot = isBot(ua);
 
     if (!bot) {
@@ -127,7 +163,7 @@ export default {
     try {
       if (supabaseUrl && supabaseKey) {
         const res = await fetch(
-          `${supabaseUrl}/rest/v1/wa_businesses?slug=eq.${encodeURIComponent(slug)}&is_active=eq.true&select=name,description,slug,og_image_url,logo_url,cover_image_url,design_settings,city,region,country,country_code,currency`,
+          `${supabaseUrl}/rest/v1/wa_businesses?slug=eq.${encodeURIComponent(slug)}&is_active=eq.true&select=id,name,description,slug,og_image_url,logo_url,cover_image_url,design_settings,city,region,country,country_code,currency`,
           {
             headers: {
               Accept: 'application/json',
@@ -147,7 +183,9 @@ export default {
             seoInput.currency = row?.currency;
             seoInput.countryCode = row?.country_code;
             catalogDescription = getCatalogMetaDescription(seoInput);
-            ogImage = getOgImageUrl(row, origin);
+            ogImage = getCatalogOgImageUrl(rowToBusinessForOg(row), origin, {
+              ogImageApiBase: env?.OG_IMAGE_API_ORIGIN || '',
+            });
           }
         }
       }
@@ -156,11 +194,14 @@ export default {
     }
 
     const pageTitle = getCatalogPageTitle(seoInput);
+    const socialTitle = getCatalogOgSocialTitle(seoInput.storeName);
     const ri = detectCatalogRegion(seoInput);
 
     const html = buildOgHtml({
-      title: pageTitle,
-      description: catalogDescription,
+      htmlTitle: pageTitle,
+      ogTitle: socialTitle,
+      metaDescription: catalogDescription,
+      ogDescription: CATALOG_OG_DESCRIPTION,
       ogImage,
       canonicalUrl,
       ogLocale: ri.ogLocale,

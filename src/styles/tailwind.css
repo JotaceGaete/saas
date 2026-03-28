@@ -144,7 +144,7 @@ html {
   padding: 0;
   scroll-behavior: smooth;
   scroll-padding-top: calc(60px + var(--safe-area-top));
-  overflow-x: hidden;
+  overflow-x: visible;
   width: 100%;
   max-width: 100%;
 }
@@ -160,7 +160,7 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
-  overflow-x: hidden;
+  overflow-x: visible;
   width: 100%;
   max-width: 100%;
 }
@@ -168,7 +168,7 @@ body {
 #root,
 .dhiwise-code,
 .app-shell {
-  overflow-x: hidden;
+  overflow-x: visible;
   width: 100%;
   max-width: 100%;
   min-width: 0;
@@ -186,7 +186,7 @@ body {
   width: 100%;
   max-width: 100%;
   min-width: 0;
-  overflow-x: hidden;
+  overflow-x: visible;
 }
 
 @media (max-width: 1023px) {

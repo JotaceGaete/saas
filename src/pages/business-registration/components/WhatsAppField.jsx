@@ -13,6 +13,7 @@ export default function WhatsAppField({
   countryCode,
   onCountryChange,
   onResolvedCountryCode,
+  neutral = false,
 }) {
   return (
     <DynamicWhatsAppField
@@ -22,7 +23,8 @@ export default function WhatsAppField({
       label="Número de WhatsApp *"
       hint={hint}
       countryCode={countryCode}
-      editableCountry
+      neutral={neutral}
+      editableCountry={!neutral}
       persistCountrySelection={false}
       onCountryChange={onCountryChange}
       onResolvedCountryCode={onResolvedCountryCode}

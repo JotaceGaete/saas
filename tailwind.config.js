@@ -195,10 +195,50 @@ module.exports = {
           '0%, 100%': { opacity: '1', transform: 'rotate(-90deg) scale(1)' },
           '50%': { opacity: '0.8', transform: 'rotate(-90deg) scale(1.05)' },
         },
+        'pulse-slow': {
+          '0%, 100%': { opacity: '1' },
+          '50%': { opacity: '0.82' },
+        },
+        'status-card-deflate': {
+          '0%': { transform: 'scale(1)' },
+          '35%': { transform: 'scale(0.94)' },
+          '100%': { transform: 'scale(1)' },
+        },
+        'status-card-shine': {
+          '0%, 100%': {
+            transform: 'scale(1)',
+            filter: 'brightness(1)',
+            boxShadow: '0 4px 6px -1px rgba(15, 23, 42, 0.07), 0 2px 4px -2px rgba(15, 23, 42, 0.05)',
+          },
+          '45%': {
+            transform: 'scale(1.03)',
+            filter: 'brightness(1.06)',
+            boxShadow: '0 16px 48px -12px rgba(124, 58, 237, 0.35), 0 0 0 1px rgba(124, 58, 237, 0.12)',
+          },
+        },
+        /** Vista previa diseño: brillo al cambiar color/banner */
+        'preview-update': {
+          '0%': {
+            filter: 'brightness(1)',
+            boxShadow: 'inset 0 1px 2px rgba(255,255,255,0.6), 0 8px 32px rgba(0,0,0,0.12)',
+          },
+          '35%': {
+            filter: 'brightness(1.08)',
+            boxShadow: 'inset 0 1px 2px rgba(255,255,255,0.75), 0 0 0 3px rgba(124, 58, 237, 0.45), 0 16px 48px rgba(124, 58, 237, 0.22)',
+          },
+          '100%': {
+            filter: 'brightness(1)',
+            boxShadow: 'inset 0 1px 2px rgba(255,255,255,0.6), 0 8px 32px rgba(0,0,0,0.12)',
+          },
+        },
       },
 
       animation: {
         'pulse-ring': 'pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+        'pulse-slow': 'pulse-slow 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+        'status-card-deflate': 'status-card-deflate 0.45s cubic-bezier(0.34, 1.2, 0.64, 1) both',
+        'status-card-shine': 'status-card-shine 0.55s cubic-bezier(0.34, 1.2, 0.64, 1) both',
+        'preview-update': 'preview-update 0.7s cubic-bezier(0.4, 0, 0.2, 1) both',
       },
     },
   },

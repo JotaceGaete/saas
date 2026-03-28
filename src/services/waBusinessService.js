@@ -3,9 +3,18 @@ import { getPlanLimits } from '../constants/plans';
 import { getTrialEndDateFrom } from '../constants/trial';
 import { getMarketCodeByCountry } from '../lib/market/routing';
 import { getCountryConfig, COUNTRY_CODES } from '../config/countryConfig';
-import { resolveCountryCode } from '../lib/country/resolveCountryCode';
 
 // Helpers
+
+/** E.164: solo dígitos tras + (evita espacios y separadores locales). */
+function normalizeWhatsappForStorage(value) {
+  if (value === undefined || value === null) return value;
+  const t = String(value).trim();
+  if (!t) return '';
+  const digits = t.replace(/\D/g, '');
+  if (!digits) return '';
+  return `+${digits}`;
+}
 
 const SUPPORTED_COUNTRY_CODES = new Set(['AR', 'BO', 'BR', 'CL', 'CO', 'CR', 'EC', 'GT', 'MX', 'PA', 'PE', 'PY', 'UY']);
 
@@ -248,10 +257,19 @@ const mapBusinessFromDb = (row) => {
   city: row?.city,
   region: row?.region,
   country: row?.country,
-  countryCode: normalizeCountryCode(row?.country_code ?? row?.country, row?.currency),
+  /** ISO solo si existe columna country_code; no inferir desde moneda (evitaba “Chile” por CLP). */
+  countryCode: routingCountryCodeFromRow(row) || null,
+  /**
+   * Valor crudo de `wa_businesses.country_code` (única fuente para onboarding/guard).
+   * No inferir desde moneda ni desde `country` legacy.
+   */
+  countryCodeDb:
+    row?.country_code != null && String(row.country_code).trim() !== ''
+      ? String(row.country_code).trim().toUpperCase()
+      : null,
   /** Código ISO persistido en BD; usar para redirección de dominio (no inferir CL desde CLP). */
   routingCountryCode: routingCountryCodeFromRow(row),
-  marketCode: getMarketCodeByCountry(normalizeCountryCode(row?.country_code ?? row?.country, row?.currency)),
+  marketCode: getMarketCodeByCountry(routingCountryCodeFromRow(row)),
   // Legacy: dominios por mercado (cl/ar/go). Todo vive en go.ventalink.app.
   defaultDomain: 'https://go.ventalink.app',
   currency: row?.currency,
@@ -397,13 +415,12 @@ export const getMyBusiness = async () => {
   if (typeof window !== 'undefined') {
     console.info('[BUSINESS_RUNTIME_COUNTRY]', {
       id: data?.id ?? null,
-      country_code: data?.country_code ?? null,
-      countryCode: data?.countryCode ?? null,
-      country: data?.country ?? null,
+      country_code_raw: data?.country_code ?? null,
+      countryCodeDb: mapped?.countryCodeDb ?? null,
+      countryCode_inferred: mapped?.countryCode ?? null,
+      country_legacy: data?.country ?? null,
       currency: data?.currency ?? null,
-      mappedCountryCode: mapped?.countryCode ?? null,
-      mappedCountry: mapped?.country ?? null,
-      mappedCurrency: mapped?.currency ?? null,
+      routingCountryCode: mapped?.routingCountryCode ?? null,
     });
   }
   return { data: mapped, error: null };
@@ -436,28 +453,9 @@ export const createBusiness = async (businessData) => {
   if (!user) return { data: null, error: { message: 'Usuario no autenticado' } };
   let slug = await generateSlug(businessData?.name);
   const trialEnd = getTrialEndDateFrom().toISOString();
-  const countryResolution = resolveCountryCode({
-    business: null,
-    user,
-    phoneInput: businessData?.whatsapp,
-    explicitCountryCode: businessData?.countryCode,
-  });
-  const resolvedCountryCode = countryResolution.finalCountry;
-  const resolvedCurrency = countryResolution.currency;
-  const resolvedCountryName = getCountryConfig(resolvedCountryCode)?.name ?? businessData?.country ?? null;
-  console.info('[COUNTRY_RESOLUTION]', {
-    businessId: null,
-    countryFromBusiness: countryResolution.countryFromBusiness,
-    countryFromUser: countryResolution.countryFromUser,
-    countryFromPhone: countryResolution.countryFromPhone,
-    finalCountry: resolvedCountryCode,
-    currency: resolvedCurrency,
-  });
-  console.info('[COUNTRY_BEFORE_INSERT]', {
-    explicitCountryCode: businessData?.countryCode || null,
-    whatsapp: businessData?.whatsapp || null,
-    finalCountry: resolvedCountryCode,
-    currency: resolvedCurrency,
+  console.info('[VTLK_NEUTRAL_CREATE]', {
+    event: 'create_business_skip_country',
+    note: 'País/moneda se definen solo en Configuración (country_code)',
   });
   const { data, error } = await supabase?.from('wa_businesses')?.insert({
       user_id: user?.id,
@@ -468,9 +466,9 @@ export const createBusiness = async (businessData) => {
       address: businessData?.address || null,
       city: businessData?.city || null,
       region: businessData?.region || null,
-      country: resolvedCountryName,
-      country_code: resolvedCountryCode,
-      currency: resolvedCurrency,
+      country: null,
+      country_code: null,
+      currency: null,
       logo_url: businessData?.logoUrl || null,
       slug,
       is_active: true,
@@ -495,29 +493,7 @@ export const createBusinessForUser = async (userId, businessData) => {
   if (!userId) return { data: null, error: { message: 'Usuario no autenticado' } };
   let slug = await generateSlug(businessData?.name);
   const trialEnd = getTrialEndDateFrom().toISOString();
-  const countryResolution = resolveCountryCode({
-    business: null,
-    user: null,
-    phoneInput: businessData?.whatsapp,
-    explicitCountryCode: businessData?.countryCode,
-  });
-  const resolvedCountryCode = countryResolution.finalCountry;
-  const resolvedCurrency = countryResolution.currency;
-  const resolvedCountryName = getCountryConfig(resolvedCountryCode)?.name ?? businessData?.country ?? null;
-  console.info('[COUNTRY_RESOLUTION]', {
-    businessId: null,
-    countryFromBusiness: countryResolution.countryFromBusiness,
-    countryFromUser: countryResolution.countryFromUser,
-    countryFromPhone: countryResolution.countryFromPhone,
-    finalCountry: resolvedCountryCode,
-    currency: resolvedCurrency,
-  });
-  console.info('[COUNTRY_BEFORE_INSERT]', {
-    explicitCountryCode: businessData?.countryCode || null,
-    whatsapp: businessData?.whatsapp || null,
-    finalCountry: resolvedCountryCode,
-    currency: resolvedCurrency,
-  });
+  console.info('[VTLK_NEUTRAL_CREATE]', { event: 'createBusinessForUser_skip_country' });
   const { data, error } = await supabase?.from('wa_businesses')?.insert({
       user_id: userId,
       name: businessData?.name,
@@ -527,9 +503,9 @@ export const createBusinessForUser = async (userId, businessData) => {
       address: businessData?.address || null,
       city: businessData?.city || null,
       region: businessData?.region || null,
-      country: resolvedCountryName,
-      country_code: resolvedCountryCode,
-      currency: resolvedCurrency,
+      country: null,
+      country_code: null,
+      currency: null,
       logo_url: businessData?.logoUrl || null,
       slug,
       is_active: true,
@@ -561,13 +537,33 @@ export async function updateBusiness(businessId, updates) {
   const dbUpdates = {};
   if (updates?.name !== undefined)        dbUpdates.name = updates?.name;
   if (updates?.description !== undefined) dbUpdates.description = updates?.description;
-  if (updates?.whatsapp !== undefined)    dbUpdates.whatsapp = updates?.whatsapp;
+  if (updates?.whatsapp !== undefined)    dbUpdates.whatsapp = normalizeWhatsappForStorage(updates?.whatsapp);
   if (updates?.email !== undefined)       dbUpdates.email = updates?.email;
   if (updates?.address !== undefined)     dbUpdates.address = updates?.address;
   if (updates?.city !== undefined)        dbUpdates.city = updates?.city;
   if (updates?.region !== undefined)      dbUpdates.region = updates?.region;
 
-  // País y moneda solo se fijan en onboarding (createBusiness). No actualizar desde configuración ni WhatsApp.
+  // País/moneda: persistir cuando la UI envía `countryCode` (tras política de billing en pantalla).
+  if (updates?.countryCode !== undefined) {
+    const raw = String(updates.countryCode || '').trim().toUpperCase();
+    if (raw && COUNTRY_CODES.includes(raw)) {
+      const cfg = getCountryConfig(raw);
+      dbUpdates.country_code = raw;
+      dbUpdates.country = cfg?.name || raw;
+      dbUpdates.currency =
+        updates?.currency !== undefined && updates?.currency !== null
+          ? updates.currency
+          : cfg?.currency || 'USD';
+      console.info('[VENTALINK_COUNTRY_PERSIST]', {
+        event: 'update_business_country',
+        businessId,
+        country_code: raw,
+        country: dbUpdates.country,
+        currency: dbUpdates.currency,
+      });
+    }
+  }
+
   if (updates?.logoUrl !== undefined)     dbUpdates.logo_url = updates?.logoUrl;
   if (updates?.coverImageUrl !== undefined) dbUpdates.cover_image_url = updates?.coverImageUrl;
   if (updates?.slug !== undefined)        dbUpdates.slug = updates?.slug;

@@ -75,8 +75,14 @@ export function BankTransferBanner({ business, formatCLP, sampleOrder }) {
 
   return (
     <div
-      className="rounded-xl border p-4 mb-6"
-      style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-muted)' }}
+      className="rounded-2xl p-4 mb-6 shadow-sm"
+      style={{
+        background: 'linear-gradient(135deg, rgba(255,251,235,0.85) 0%, rgba(254, 243, 199, 0.45) 100%)',
+        backdropFilter: 'blur(10px)',
+        WebkitBackdropFilter: 'blur(10px)',
+        boxShadow: '0 1px 3px rgba(15, 23, 42, 0.06), inset 0 1px 0 rgba(255,255,255,0.6)',
+        border: '1px solid rgba(245, 158, 11, 0.2)',
+      }}
     >
       <h3 className="text-sm font-bold mb-0.5" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>
         Cobros por transferencia
@@ -86,16 +92,31 @@ export function BankTransferBanner({ business, formatCLP, sampleOrder }) {
       </p>
 
       {!complete ? (
-        <p className="text-xs flex items-start gap-2" style={{ color: '#B45309', fontFamily: 'var(--font-caption)', backgroundColor: 'rgba(245,158,11,0.1)', padding: '10px 12px', borderRadius: '8px' }}>
-          <Icon name="AlertCircle" size={14} className="flex-shrink-0 mt-0.5" />
-          Completa tus datos bancarios en Configuración para usar esta función.
-        </p>
+        <div
+          className="flex items-start gap-3 rounded-xl px-3.5 py-3"
+          style={{
+            backgroundColor: 'rgba(255, 255, 255, 0.55)',
+            border: '1px solid rgba(251, 191, 36, 0.35)',
+            boxShadow: '0 4px 24px -4px rgba(245, 158, 11, 0.2)',
+          }}
+        >
+          <div
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
+            style={{ backgroundColor: 'rgba(251, 191, 36, 0.35)', color: '#b45309' }}
+            aria-hidden
+          >
+            <Icon name="Lightbulb" size={18} color="currentColor" />
+          </div>
+          <p className="text-xs leading-relaxed flex-1 min-w-0" style={{ color: '#92400e', fontFamily: 'var(--font-caption)', fontWeight: 600 }}>
+            Completa tus datos bancarios en <span className="font-bold">Configuración</span> para usar esta función y enviar datos de pago a tus clientes.
+          </p>
+        </div>
       ) : (
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
             onClick={() => copyToClipboard(bankText)}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all hover:opacity-90 active:scale-[0.98] border"
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium transition-transform duration-150 hover:scale-105 active:scale-[0.98] border shadow-sm"
             style={{ borderColor: 'var(--color-border)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)', backgroundColor: '#fff' }}
           >
             <Icon name="Copy" size={13} />
@@ -105,7 +126,7 @@ export function BankTransferBanner({ business, formatCLP, sampleOrder }) {
             <button
               type="button"
               onClick={() => copyToClipboard(messageText)}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all hover:opacity-90 active:scale-[0.98] border"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium transition-transform duration-150 hover:scale-105 active:scale-[0.98] border shadow-sm"
               style={{ borderColor: 'var(--color-border)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)', backgroundColor: '#fff' }}
             >
               <Icon name="Copy" size={13} />
@@ -117,7 +138,7 @@ export function BankTransferBanner({ business, formatCLP, sampleOrder }) {
               href={whatsappUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium text-white transition-all hover:opacity-90 active:scale-[0.98]"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium text-white transition-transform duration-150 hover:scale-105 active:scale-[0.98] shadow-sm"
               style={{ backgroundColor: '#25D366', fontFamily: 'var(--font-caption)' }}
             >
               <Icon name="MessageCircle" size={13} color="#fff" />

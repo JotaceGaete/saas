@@ -72,14 +72,14 @@ export default function KanbanOrderCardView({
   return (
     <div
       ref={cardRef}
-      className="rounded-xl border bg-white shadow-sm"
-      style={{ ...cardStyle, borderColor: 'var(--color-border)' }}
+      className="rounded-2xl bg-white shadow-sm transition-shadow hover:shadow-md"
+      style={{ ...cardStyle, boxShadow: '0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04)' }}
     >
-      <div className="flex gap-2 p-2.5 sm:p-2 sm:gap-1.5">
+      <div className="flex gap-2 p-2.5 sm:p-3 sm:gap-2">
         {showDragHandle ? (
           <button
             type="button"
-            className="touch-none flex-shrink-0 mt-0.5 p-1 rounded-md hover:bg-muted text-muted-foreground"
+            className="touch-none flex-shrink-0 mt-0.5 p-1 rounded-lg hover:bg-muted/80 text-muted-foreground transition-colors"
             aria-label="Arrastrar pedido"
             {...dragListeners}
             {...dragAttributes}
@@ -89,7 +89,7 @@ export default function KanbanOrderCardView({
         ) : null}
         <button
           type="button"
-          className="flex-1 min-w-0 text-left rounded-lg -m-0.5 p-1.5 outline-offset-1 hover:bg-muted/50 active:bg-muted/70 transition-colors"
+          className="flex-1 min-w-0 text-left rounded-xl -m-0.5 p-1.5 outline-offset-1 hover:bg-white/60 active:bg-white/80 transition-colors"
           onClick={() => onOpenDetail(order)}
         >
           <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 mb-1">
@@ -101,7 +101,7 @@ export default function KanbanOrderCardView({
           {timeCaption.primary ? (
             <p
               className="text-[11px] font-semibold tabular-nums leading-tight"
-              style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
+              style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}
             >
               {timeCaption.primary}
             </p>
@@ -115,15 +115,15 @@ export default function KanbanOrderCardView({
             </p>
           ) : null}
           <p
-            className="text-sm font-semibold leading-snug break-words line-clamp-2 mt-1.5"
+            className="text-base font-bold leading-snug break-words line-clamp-2 mt-2 tracking-tight"
             style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}
           >
             {order?.customerName || 'Sin nombre'}
           </p>
-          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 mt-1.5">
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 mt-2">
             <span
-              className="text-sm sm:text-xs font-bold tabular-nums"
-              style={{ color: 'var(--color-primary)', fontFamily: 'var(--font-caption)' }}
+              className="text-lg font-bold tabular-nums tracking-tight"
+              style={{ color: 'var(--color-primary)', fontFamily: 'var(--font-stat)' }}
             >
               {formatCLP(order?.totalAmount)}
             </span>
@@ -135,13 +135,15 @@ export default function KanbanOrderCardView({
       </div>
       {(next || pay) && (
         <div
-          className="flex flex-wrap gap-1.5 px-2.5 pb-2.5 pt-0 sm:px-2 sm:pb-2"
-          style={{ borderTop: '1px solid var(--color-border)' }}
+          className="flex flex-wrap gap-2 px-2.5 pb-2.5 pt-0 sm:px-3 sm:pb-3"
+          style={{
+            borderTop: '1px solid rgba(15, 23, 42, 0.06)',
+          }}
         >
           {next ? (
             <button
               type="button"
-              className="inline-flex items-center justify-center gap-1 rounded-lg px-2.5 py-1.5 min-h-[40px] sm:min-h-[36px] text-left text-[10px] sm:text-[11px] font-semibold leading-tight flex-1 sm:flex-initial min-w-0 transition-opacity hover:opacity-90 active:scale-[0.98]"
+              className="inline-flex items-center justify-center gap-1 rounded-xl px-3 py-2 min-h-[40px] sm:min-h-[38px] text-left text-[10px] sm:text-[11px] font-semibold leading-tight flex-1 sm:flex-initial min-w-0 transition-transform duration-150 hover:scale-105 active:scale-[0.98]"
               style={{
                 fontFamily: 'var(--font-caption)',
                 backgroundColor: 'rgba(124,58,237,0.12)',
@@ -161,7 +163,7 @@ export default function KanbanOrderCardView({
           {pay ? (
             <button
               type="button"
-              className="inline-flex items-center justify-center gap-1 rounded-lg px-2.5 py-1.5 min-h-[40px] sm:min-h-[36px] text-[11px] font-semibold flex-1 sm:flex-initial transition-opacity hover:opacity-90 active:scale-[0.98]"
+              className="inline-flex items-center justify-center gap-1 rounded-xl px-3 py-2 min-h-[40px] sm:min-h-[38px] text-[11px] font-semibold flex-1 sm:flex-initial transition-transform duration-150 hover:scale-105 active:scale-[0.98]"
               style={{
                 fontFamily: 'var(--font-caption)',
                 backgroundColor: 'rgba(16,185,129,0.12)',

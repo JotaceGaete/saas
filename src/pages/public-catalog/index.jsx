@@ -21,30 +21,14 @@ import { buildCatalogAboutBlock, inferCatalogAboutKind } from '../../utils/catal
 import {
   buildLocalBusinessJsonLd,
   detectCatalogRegion,
+  CATALOG_OG_DESCRIPTION,
   getCatalogMetaDescription,
+  getCatalogOgImageUrl,
+  getCatalogOgSocialTitle,
   getCatalogPageTitle,
   stringifyJsonLd,
 } from '../../utils/catalogSeo';
 import { getProductCardTrustBadge } from '../../utils/productCardBadge';
-
-/** Build absolute URL for OG image (preview al compartir en WhatsApp, etc.). Prioridad: logo tienda → portada → fallback con nombre. */
-function getCatalogOgImageUrl(business, baseUrl) {
-  const origin = (baseUrl || (typeof window !== 'undefined' ? window.location?.origin : '') || '').replace(/\/$/, '');
-  const ds = business?.designSettings || {};
-  const og = (business?.ogImageUrl)?.trim();
-  const logo = (business?.logoUrl || ds?.logoUrl)?.trim();
-  const cover = (business?.coverImageUrl || ds?.headerImageUrl || ds?.coverImageUrl)?.trim();
-  const toAbsolute = (url) => {
-    if (!url) return '';
-    if (url.startsWith('http://') || url.startsWith('https://')) return url;
-    return `${origin}${url.startsWith('/') ? '' : '/'}${url}`;
-  };
-  if (og) return toAbsolute(og);
-  if (logo) return toAbsolute(logo);
-  if (cover) return toAbsolute(cover);
-  const name = (business?.name || 'Catálogo').replace(/[^a-zA-Z0-9\s]/g, '').trim() || 'Catalogo';
-  return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=7C3AED&color=fff&size=1200&format=png`;
-}
 
 // Normalizar imágenes del producto: la primera es siempre imageUrl (misma que la tarjeta);
 // el resto viene de product.images para galería. Así el modal usa la misma URL que la tarjeta.
@@ -585,6 +569,7 @@ function CatalogInner({ slug }) {
   };
   const catalogTitle = getCatalogPageTitle(seoInput);
   const catalogDescription = getCatalogMetaDescription(seoInput);
+  const ogSocialTitle = getCatalogOgSocialTitle(business?.name);
   const catalogAboutKind = business ? inferCatalogAboutKind(business, products) : 'general';
   const catalogAboutBlock = business ? buildCatalogAboutBlock(seoInput, catalogAboutKind) : null;
   const ogRegion = detectCatalogRegion(seoInput);
@@ -608,8 +593,7 @@ function CatalogInner({ slug }) {
 
   return (
     <div className="min-h-screen bg-gray-50 font-catalog antialiased">
-      {/* Open Graph: imagen = logo de la tienda (o portada o fallback). WhatsApp usa og:image para la vista previa del enlace.
-          Si el crawler no ejecuta JS, solo verá el index.html; para que el logo aparezca siempre al compartir, hace falta SSR o inyección de meta en el servidor para /catalogo/:slug. */}
+      {/* Open Graph: título y descripción fijos para redes; og:image = portada real (sin /cdn-cgi/image). El bot HTML en worker.js alinea con esto. */}
       {!loading && !notFound && business && (
         <Helmet>
           <title>{catalogTitle}</title>
@@ -617,15 +601,15 @@ function CatalogInner({ slug }) {
           <meta name="robots" content="index, follow" />
           <meta property="og:type" content="website" />
           <meta property="og:url" content={canonicalUrl} />
-          <meta property="og:title" content={catalogTitle} />
-          <meta property="og:description" content={catalogDescription} />
+          <meta property="og:title" content={ogSocialTitle} />
+          <meta property="og:description" content={CATALOG_OG_DESCRIPTION} />
           <meta property="og:image" content={ogImage} />
           <meta property="og:image:width" content="1200" />
           <meta property="og:image:height" content="630" />
           <meta property="og:locale" content={ogRegion.ogLocale} />
           <meta name="twitter:card" content="summary_large_image" />
-          <meta name="twitter:title" content={catalogTitle} />
-          <meta name="twitter:description" content={catalogDescription} />
+          <meta name="twitter:title" content={ogSocialTitle} />
+          <meta name="twitter:description" content={CATALOG_OG_DESCRIPTION} />
           <meta name="twitter:image" content={ogImage} />
           <link rel="canonical" href={canonicalUrl} />
           {jsonLd && (

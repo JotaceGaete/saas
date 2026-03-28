@@ -18,9 +18,10 @@ function extractCountryCode(valueOrBusiness) {
   if (typeof valueOrBusiness === 'string') return valueOrBusiness;
   if (typeof valueOrBusiness === 'object') {
     return (
+      valueOrBusiness?.countryCodeDb ??
       valueOrBusiness?.country_code ??
+      valueOrBusiness?.routingCountryCode ??
       valueOrBusiness?.countryCode ??
-      valueOrBusiness?.country ??
       null
     );
   }
@@ -41,23 +42,18 @@ export function resolveCountryState({
   const hostnameSuggestion = normalizeCountryCode(hostnameSuggestionCountryCode);
   const fallback = normalizeCountryCode(fallbackCountryCode) || DEFAULT_FALLBACK_COUNTRY;
 
-  // Prioridad pedida para billing.
-  const billingCountry =
-    businessCountry ||
-    onboardingCountry ||
-    userMetadataCountry ||
-    hostnameSuggestion ||
-    fallback;
+  // Billing: solo país persistido en BD (columna country_code). Sin negocio configurado → null (no cobros/planes reales).
+  const billingCountry = businessCountry || null;
 
-  // UX: el país persistido del negocio (cuando exista) debe prevalecer sobre hostname/sugerencias.
+  // UX: sugerencias visuales; sin persistir. Sin país en BD → hostname/metadata; último recurso fallback (no se guarda en BD).
   const uxCountry =
     businessCountry ||
     onboardingCountry ||
-    hostnameSuggestion ||
     userMetadataCountry ||
+    hostnameSuggestion ||
     fallback;
 
-  if (typeof window !== 'undefined' && window.__COUNTRY_STATE_DEBUG__ === true) {
+  if (typeof window !== 'undefined' && (window.__COUNTRY_STATE_DEBUG__ === true || window.__VTLK_COUNTRY_DEBUG__ === true)) {
     const fallbackReason = businessCountry
       ? 'businessCountry'
       : onboardingCountry
@@ -67,7 +63,8 @@ export function resolveCountryState({
               : hostnameSuggestion
                   ? 'hostnameSuggestion'
                   : 'fallbackCountry';
-    console.info('[COUNTRY_STATE_DEBUG]', {
+    console.info(window.__VTLK_COUNTRY_DEBUG__ ? '[VTLK_COUNTRY_RESOLVER]' : '[COUNTRY_STATE_DEBUG]', {
+      neutralNoDbCountry: !businessCountry,
       business: typeof businessCountryCode === 'object' && businessCountryCode
         ? {
             country_code: businessCountryCode?.country_code ?? null,
@@ -103,12 +100,27 @@ export function resolveCountryState({
 }
 
 export function resolveBillingSetup(countryState) {
-  const billingCountry = normalizeCountryCode(countryState?.billingCountry) || DEFAULT_FALLBACK_COUNTRY;
-  const marketConfig = getMarketConfigByCountry(billingCountry);
+  const bc = normalizeCountryCode(countryState?.billingCountry);
+  if (!bc) {
+    return {
+      billingCountry: null,
+      marketStatus: null,
+      enabled: false,
+      billingProvider: null,
+      currency: null,
+      paymentOptions: [],
+      checkoutPolicy: {
+        allowed: false,
+        message: 'Configura el país de tu negocio en Configuración para ver planes y pagos.',
+      },
+      marketConfig: null,
+    };
+  }
+  const marketConfig = getMarketConfigByCountry(bc);
   const checkoutPolicy = getAutomaticCheckoutPolicyByStatus(marketConfig.marketStatus);
 
   return {
-    billingCountry,
+    billingCountry: bc,
     marketStatus: marketConfig.marketStatus,
     enabled: marketConfig.enabled,
     billingProvider: marketConfig.billingProvider,

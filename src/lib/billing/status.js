@@ -1,3 +1,7 @@
+import { getCountryPricingRow } from '../../config/countryPricing';
+import { getAutomaticCheckoutPolicyByStatus } from '../country/market-config';
+import { resolveBillingProvider } from './defaultProviderByCountry';
+
 function isFutureDate(value) {
   if (!value) return false;
   const ms = new Date(value).getTime();
@@ -71,7 +75,11 @@ export function getBillingResolutionUiMessage(state) {
   return parts.length ? parts.join(' ') : null;
 }
 
-/** Estado local cuando no hay subscription-state remoto: sin proveedor ni checkout (no inventar dLocal/PayPal). */
+/**
+ * Estado local cuando no hay subscription-state remoto.
+ * Si existe `business.country_code` (countryCodeDb), resuelve proveedor con `resolveBillingProvider`
+ * (CL/AR → mercado_pago, resto → dlocal) para desbloquear UI de /planes.
+ */
 export function buildBillingFallbackState({ business }) {
   const planExpiresAt = business?.planExpiresAt || null;
   const trialExpiresAt = business?.trialExpiresAt || null;
@@ -82,16 +90,72 @@ export function buildBillingFallbackState({ business }) {
   const billingStatus = trialActive
     ? (hasScheduledPaidPlan ? 'trial_with_subscription' : 'trial_without_subscription')
     : 'active';
-  const billingCountry = business?.routingCountryCode ?? business?.countryCode ?? null;
+
+  const rawCountry =
+    business?.countryCodeDb ??
+    business?.routingCountryCode ??
+    business?.countryCode ??
+    null;
+  const billingCountry =
+    rawCountry != null && String(rawCountry).trim() !== ''
+      ? String(rawCountry).trim().toUpperCase()
+      : null;
+
+  let pricingRow = null;
+  let resolvedProvider = null;
+  let checkoutPolicy = { allowed: false, message: null };
+
+  if (billingCountry) {
+    pricingRow = getCountryPricingRow(billingCountry);
+    resolvedProvider = resolveBillingProvider(billingCountry);
+    checkoutPolicy = getAutomaticCheckoutPolicyByStatus(pricingRow.marketStatus);
+  }
+
+  const currency =
+    pricingRow?.settlementCurrency ||
+    business?.currency ||
+    null;
+
+  const providerResolution =
+    billingCountry && resolvedProvider
+      ? {
+          selectedProvider: resolvedProvider,
+          primaryCandidate: resolvedProvider,
+          fallbackUsed: false,
+        }
+      : null;
+
+  const billingProvider =
+    billingCountry && resolvedProvider
+      ? {
+          provider: resolvedProvider,
+          enabled: true,
+          supportsCheckout: checkoutPolicy.allowed !== false,
+          supportsSubscriptions: checkoutPolicy.allowed !== false,
+          reason: null,
+          mode: 'client_fallback',
+          alternatives: [],
+          recommendedProvider: resolvedProvider,
+        }
+      : {
+          provider: null,
+          enabled: false,
+          supportsCheckout: false,
+          supportsSubscriptions: false,
+          reason: 'remote_unavailable',
+          mode: 'unknown',
+          alternatives: [],
+          recommendedProvider: null,
+        };
 
   return {
     ok: true,
     billingCountry,
-    currency: null,
-    marketStatus: null,
-    checkoutPolicy: { allowed: false, message: null },
-    providerResolution: null,
-    provider: null,
+    currency,
+    marketStatus: pricingRow?.marketStatus ?? null,
+    checkoutPolicy,
+    providerResolution,
+    provider: resolvedProvider,
     plan_slug: business?.planSlug || 'starter',
     billing_status: billingStatus,
     has_subscription: hasScheduledPaidPlan,
@@ -100,16 +164,7 @@ export function buildBillingFallbackState({ business }) {
     subscription_starts_at: scheduledChangeAt,
     current_period_ends_at: planExpiresAt,
     charge_after_trial: trialActive && hasScheduledPaidPlan,
-    billingProvider: {
-      provider: null,
-      enabled: false,
-      supportsCheckout: false,
-      supportsSubscriptions: false,
-      reason: 'remote_unavailable',
-      mode: 'unknown',
-      alternatives: [],
-      recommendedProvider: null,
-    },
+    billingProvider,
   };
 }
 
@@ -126,6 +181,7 @@ export async function getBillingStatusSafe({
   // (token ausente/expirado, error HTTP o red). Puede quedar desincronizado
   // respecto a eventos backend (webhooks/cambios de plan), por eso se marca stale.
   const fallbackState = buildBillingFallbackState({ business });
+  const fallbackBillingReady = !!fallbackState?.providerResolution?.selectedProvider;
   const hasLocalData = hasMinimumLocalBillingData(business);
 
   if (!business?.id || authLoading || !isAuthenticated || !user) {
@@ -173,7 +229,7 @@ export async function getBillingStatusSafe({
         source: 'fallback',
         isStale: true,
         shouldShowNeutralNotice: !hasLocalData,
-        billingReady: false,
+        billingReady: fallbackBillingReady,
         remoteError: {
           httpStatus: res.status,
           code: data?.code ?? null,
@@ -205,7 +261,7 @@ export async function getBillingStatusSafe({
       source: 'fallback',
       isStale: true,
       shouldShowNeutralNotice: !hasLocalData,
-      billingReady: false,
+      billingReady: fallbackBillingReady,
       remoteError: {
         httpStatus: null,
         code: 'NETWORK_OR_PARSE',

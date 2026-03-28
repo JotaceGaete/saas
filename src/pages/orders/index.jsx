@@ -38,6 +38,46 @@ const PAYMENT_STATUSES = [
 const STATUS_MAP = Object.fromEntries(ORDER_STATUSES?.map(s => [s?.key, s]));
 const PAYMENT_STATUS_MAP = Object.fromEntries(PAYMENT_STATUSES?.map(s => [s?.key, s]));
 
+const PRIMARY_HEX = '#7c3aed';
+
+/** Conteo animado al cambiar totales por estado. */
+function QuickCount({ value, className, style }) {
+  const [display, setDisplay] = useState(() => Number(value) || 0);
+  const fromRef = useRef(null);
+
+  useEffect(() => {
+    const target = Number(value) || 0;
+    if (fromRef.current === null) {
+      fromRef.current = target;
+      setDisplay(target);
+      return;
+    }
+    const from = fromRef.current;
+    if (from === target) return;
+    const start = performance.now();
+    const dur = 280;
+    let raf;
+    const step = (now) => {
+      const p = Math.min(1, (now - start) / dur);
+      const eased = 1 - (1 - p) ** 3;
+      setDisplay(Math.round(from + (target - from) * eased));
+      if (p < 1) {
+        raf = requestAnimationFrame(step);
+      } else {
+        fromRef.current = target;
+      }
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [value]);
+
+  return (
+    <span className={`tabular-nums ${className || ''}`} style={style}>
+      {display}
+    </span>
+  );
+}
+
 function orderShortId(id) {
   if (!id) return '—';
   return String(id).slice(0, 8).toUpperCase();
@@ -78,16 +118,16 @@ function CompactOrderCardStatic({ order, formatCLP: fmt, onOpenDetail, shortIdFn
     <button
       type="button"
       onClick={() => onOpenDetail(order)}
-      className="w-full text-left rounded-xl border bg-white p-3 transition-shadow hover:shadow-md"
-      style={{ borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-xs)' }}
+      className="w-full text-left rounded-2xl bg-white p-3 transition-all duration-150 hover:shadow-md hover:scale-[1.01]"
+      style={{ boxShadow: '0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04)' }}
     >
       <p className="text-[10px] font-mono mb-0.5" style={{ color: 'var(--color-muted-foreground)' }}>
         #{shortId}
         {timeStr ? <span className="ml-1.5 font-sans">{timeStr}</span> : null}
       </p>
-      <p className="text-sm font-semibold truncate" style={{ fontFamily: 'var(--font-heading)' }}>{order?.customerName || 'Sin nombre'}</p>
+      <p className="text-sm font-bold truncate tracking-tight" style={{ fontFamily: 'var(--font-heading)' }}>{order?.customerName || 'Sin nombre'}</p>
       <div className="flex flex-wrap gap-2 mt-1">
-        <span className="text-xs font-bold" style={{ color: 'var(--color-primary)' }}>{fmt(order?.totalAmount)}</span>
+        <span className="text-sm font-bold tabular-nums" style={{ color: 'var(--color-primary)', fontFamily: 'var(--font-stat)' }}>{fmt(order?.totalAmount)}</span>
         <span className="text-[11px]" style={{ color: 'var(--color-muted-foreground)' }}>{qty} {qty === 1 ? 'producto' : 'productos'}</span>
       </div>
     </button>
@@ -311,7 +351,65 @@ export default function OrdersPage() {
     [filteredOrders],
   );
 
-  const countByStatus = (key) => visibleBoardOrders?.filter(o => (o?.status || 'pedido') === key)?.length;
+  const statusCounts = useMemo(() => {
+    const list = visibleBoardOrders || [];
+    const c = { all: list.length };
+    ORDER_STATUSES.forEach((s) => {
+      c[s.key] = list.filter((o) => (o?.status || 'pedido') === s.key).length;
+    });
+    return c;
+  }, [visibleBoardOrders]);
+
+  const [cardAnim, setCardAnim] = useState({ deflate: null, shine: null });
+  const prevCountsRef = useRef(null);
+
+  useEffect(() => {
+    const next = statusCounts;
+    const prev = prevCountsRef.current;
+    if (!prev) {
+      prevCountsRef.current = { ...next };
+      return undefined;
+    }
+    let decKey = null;
+    let maxDec = 0;
+    let incKey = null;
+    let maxInc = 0;
+    for (const k of Object.keys(next)) {
+      const d = (prev[k] ?? 0) - (next[k] ?? 0);
+      if (d > maxDec) {
+        maxDec = d;
+        decKey = k;
+      }
+      const i = (next[k] ?? 0) - (prev[k] ?? 0);
+      if (i > maxInc) {
+        maxInc = i;
+        incKey = k;
+      }
+    }
+    prevCountsRef.current = { ...next };
+    if (maxDec > 0 && maxInc > 0 && decKey !== incKey) {
+      setCardAnim({ deflate: decKey, shine: incKey });
+      const t = window.setTimeout(() => setCardAnim({ deflate: null, shine: null }), 620);
+      return () => window.clearTimeout(t);
+    }
+    if (maxInc > 0 && maxDec === 0 && incKey != null) {
+      setCardAnim({ deflate: null, shine: incKey });
+      const t = window.setTimeout(() => setCardAnim({ deflate: null, shine: null }), 620);
+      return () => window.clearTimeout(t);
+    }
+    if (maxDec > 0 && maxInc === 0 && decKey != null) {
+      setCardAnim({ deflate: decKey, shine: null });
+      const t = window.setTimeout(() => setCardAnim({ deflate: null, shine: null }), 620);
+      return () => window.clearTimeout(t);
+    }
+    return undefined;
+  }, [statusCounts]);
+
+  const statusCardAnimClass = (key) => {
+    if (cardAnim.deflate === key) return 'animate-status-card-deflate';
+    if (cardAnim.shine === key) return 'animate-status-card-shine';
+    return '';
+  };
 
   if (businessLoading) {
     return (
@@ -335,7 +433,7 @@ export default function OrdersPage() {
             <div className="min-w-0">
               <h1 className="text-xl font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Pedidos</h1>
               <p className="text-sm leading-snug" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-                <span className="lg:hidden">{visibleBoardOrders?.length ?? 0} en tablero · Acciones rápidas o pestañas (móvil)</span>
+                <span className="lg:hidden">{visibleBoardOrders?.length ?? 0} en tablero · Desliza columnas en móvil</span>
                 <span className="hidden lg:inline">{visibleBoardOrders?.length ?? 0} pedido{(visibleBoardOrders?.length ?? 0) !== 1 ? 's' : ''} en el tablero activo · Arrastra columnas o acciones rápidas · Entregados y cancelados en historial</span>
               </p>
               <p className="text-[11px] mt-1.5 max-w-xl leading-snug hidden sm:block" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
@@ -366,52 +464,100 @@ export default function OrdersPage() {
           </div>
         </div>
 
-        <div className="flex lg:grid gap-2 lg:gap-3 mb-6 overflow-x-auto lg:overflow-visible pb-1 -mx-1 px-1 lg:mx-0 lg:px-0 lg:grid-cols-6 snap-x snap-mandatory lg:snap-none">
+        <div className="flex lg:grid gap-3 lg:gap-3 mb-6 overflow-x-auto lg:overflow-visible pb-2 -mx-1 px-1 lg:mx-0 lg:px-0 lg:grid-cols-6 snap-x snap-mandatory lg:snap-none scroll-smooth [-webkit-overflow-scrolling:touch]">
           <button
             type="button"
             onClick={() => setFilterStatus('all')}
-            className="shrink-0 snap-start w-[min(46vw,168px)] lg:w-auto rounded-xl border p-3 lg:p-3.5 text-left transition-all duration-150 hover:shadow-sm active:scale-[0.98]"
+            className={`group relative shrink-0 snap-start w-[min(46vw,176px)] lg:w-auto overflow-hidden rounded-2xl bg-white p-3.5 lg:p-4 text-left touch-manipulation transition-[transform,box-shadow] duration-300 ease-out hover:-translate-y-1 hover:shadow-xl active:translate-y-0 shadow-md ${statusCardAnimClass('all')} ${
+              filterStatus === 'all' ? 'ring-2 ring-[#7c3aed]/35 shadow-lg' : ''
+            }`}
             style={{
-              borderColor: filterStatus === 'all' ? 'var(--color-primary)' : 'var(--color-border)',
-              backgroundColor: filterStatus === 'all' ? 'rgba(124,58,237,0.08)' : '#fff',
-              boxShadow: filterStatus === 'all' ? '0 0 0 1px var(--color-primary)' : 'var(--shadow-xs)',
+              boxShadow:
+                filterStatus === 'all'
+                  ? '0 12px 40px -12px rgba(124, 58, 237, 0.28), 0 4px 6px -1px rgba(15, 23, 42, 0.06)'
+                  : undefined,
             }}
           >
-            <div className="flex items-center justify-between mb-2">
-              <Icon name="LayoutGrid" size={18} color="var(--color-primary)" />
-              <span className="text-xl font-bold" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-heading)' }}>
-                {visibleBoardOrders?.length ?? 0}
-              </span>
+            <div
+              className="absolute left-0 right-0 top-0 h-1.5 rounded-t-2xl"
+              style={{ background: `linear-gradient(90deg, ${PRIMARY_HEX}, #a78bfa)` }}
+              aria-hidden
+            />
+            <div className="flex items-center justify-between gap-2 pt-1">
+              <div
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-transform duration-300 group-hover:scale-105"
+                style={{
+                  backgroundColor: 'rgba(124, 58, 237, 0.12)',
+                  boxShadow: `0 0 22px -2px ${PRIMARY_HEX}aa, 0 4px 12px -4px rgba(124, 58, 237, 0.35)`,
+                }}
+              >
+                <Icon name="LayoutGrid" size={18} color={PRIMARY_HEX} />
+              </div>
+              <QuickCount
+                value={statusCounts.all}
+                className="text-xl font-bold"
+                style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-heading)' }}
+              />
             </div>
-            <p className="text-xs font-semibold" style={{ color: filterStatus === 'all' ? 'var(--color-primary)' : 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+            <p
+              className="mt-3 text-xs font-bold tracking-tight"
+              style={{
+                color: filterStatus === 'all' ? PRIMARY_HEX : 'var(--color-muted-foreground)',
+                fontFamily: 'var(--font-caption)',
+              }}
+            >
               Todos
             </p>
           </button>
-          {ORDER_STATUSES?.map(s => (
-            <button
-              key={s?.key}
-              type="button"
-              onClick={() => setFilterStatus(prev => prev === s?.key ? 'all' : s?.key)}
-              className="shrink-0 snap-start w-[min(46vw,168px)] lg:w-auto rounded-xl border p-3 lg:p-3.5 text-left transition-all duration-150 hover:shadow-sm active:scale-[0.98]"
-              style={{
-                borderColor: filterStatus === s?.key ? s?.color : 'var(--color-border)',
-                backgroundColor: filterStatus === s?.key ? s?.bg : '#fff',
-                boxShadow: filterStatus === s?.key ? `0 0 0 1px ${s?.color}` : 'var(--shadow-xs)',
-              }}
-            >
-              <div className="flex items-center justify-between mb-2">
-                <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: s?.bg }}>
-                  <Icon name={s?.icon} size={14} color={s?.color} />
+          {ORDER_STATUSES?.map((s) => {
+            const active = filterStatus === s.key;
+            const count = statusCounts[s.key] ?? 0;
+            const pulsePending = s.key === 'enviado' && count > 0;
+            return (
+              <button
+                key={s.key}
+                type="button"
+                onClick={() => setFilterStatus((prev) => (prev === s.key ? 'all' : s.key))}
+                className={`group relative shrink-0 snap-start w-[min(46vw,176px)] lg:w-auto overflow-hidden rounded-2xl bg-white p-3.5 lg:p-4 text-left touch-manipulation transition-[transform,box-shadow] duration-300 ease-out hover:-translate-y-1 hover:shadow-xl active:translate-y-0 shadow-md ${statusCardAnimClass(s.key)} ${pulsePending ? 'animate-pulse-slow' : ''}`}
+                style={
+                  active
+                    ? { boxShadow: `0 14px 44px -14px ${s.color}55, 0 0 0 2px ${s.color}44` }
+                    : undefined
+                }
+              >
+                <div
+                  className="absolute left-0 right-0 top-0 h-1.5 rounded-t-2xl"
+                  style={{ backgroundColor: s.color }}
+                  aria-hidden
+                />
+                <div className="flex items-center justify-between gap-2 pt-1">
+                  <div
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-transform duration-300 group-hover:scale-105"
+                    style={{
+                      backgroundColor: s.bg,
+                      boxShadow: `0 0 22px -2px ${s.color}cc, 0 6px 16px -6px ${s.color}99`,
+                    }}
+                  >
+                    <Icon name={s.icon} size={17} color={s.color} />
+                  </div>
+                  <QuickCount
+                    value={count}
+                    className="text-xl font-bold"
+                    style={{ color: s.color, fontFamily: 'var(--font-heading)' }}
+                  />
                 </div>
-                <span className="text-xl font-bold" style={{ color: s?.color, fontFamily: 'var(--font-heading)' }}>
-                  {countByStatus(s?.key)}
-                </span>
-              </div>
-              <p className="text-xs font-semibold" style={{ color: filterStatus === s?.key ? s?.color : 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-                {s?.label}
-              </p>
-            </button>
-          ))}
+                <p
+                  className="mt-3 text-xs font-bold tracking-tight"
+                  style={{
+                    color: active ? s.color : 'var(--color-muted-foreground)',
+                    fontFamily: 'var(--font-caption)',
+                  }}
+                >
+                  {s.label}
+                </p>
+              </button>
+            );
+          })}
         </div>
 
         <div className="flex flex-col sm:flex-row gap-3 mb-6">
@@ -455,11 +601,11 @@ export default function OrdersPage() {
         {loading ? (
           <div className="flex flex-col lg:flex-row gap-4">
             {[1, 2, 3].map(i => (
-              <div key={i} className="flex-1 rounded-2xl border overflow-hidden min-h-[280px]" style={{ borderColor: 'var(--color-border)' }}>
+              <div key={i} className="flex-1 rounded-2xl overflow-hidden min-h-[280px] shadow-sm" style={{ backgroundColor: 'var(--color-card)' }}>
                 <div className="h-12 bg-muted animate-pulse" />
                 <div className="p-3 space-y-2">
-                  <div className="h-16 bg-muted rounded-xl animate-pulse" />
-                  <div className="h-16 bg-muted rounded-xl animate-pulse" />
+                  <div className="h-16 bg-muted rounded-2xl animate-pulse" />
+                  <div className="h-16 bg-muted rounded-2xl animate-pulse" />
                 </div>
               </div>
             ))}

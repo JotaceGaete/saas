@@ -12,6 +12,7 @@ import GoInternationalLanding from "./pages/go-international-landing";
 import BusinessRegistration from './pages/business-registration';
 import LandingPage from './pages/landing-page';
 import BusinessConfiguration from './pages/business-configuration';
+import CompleteBusinessSetupPage from './pages/complete-business-setup';
 import ProductManagement from './pages/product-management';
 import Dashboard from './pages/dashboard';
 import ProductEditor from './pages/product-editor';
@@ -70,6 +71,7 @@ const Routes = () => {
             <Route path="/business-registration" element={<BusinessRegistration />} />
             <Route path="/register" element={<BusinessRegistration />} />
             <Route path="/landing-page" element={<LandingPage />} />
+            <Route path="/complete-business-setup" element={<RequireAuth><CompleteBusinessSetupPage /></RequireAuth>} />
             <Route path="/business-configuration" element={<RequireAuth><BusinessConfiguration /></RequireAuth>} />
             <Route path="/product-management" element={<RequireAuth><ProductManagement /></RequireAuth>} />
             <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
@@ -85,6 +87,7 @@ const Routes = () => {
             <Route path="/auth/reset-password" element={<ResetPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/planes" element={<RequireAuth><PlansPage /></RequireAuth>} />
+            <Route path="/plan-y-facturacion" element={<RequireAuth><PlansPage /></RequireAuth>} />
             <Route path="/billing/success" element={<BillingSuccessPage />} />
             <Route path="/billing/paypal/success" element={<PaypalSuccessPage />} />
             <Route path="/billing/cancel" element={<BillingCancelPage />} />

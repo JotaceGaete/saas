@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import PanelHeader from 'components/ui/PanelHeader';
 import DashboardAppShell from 'components/ui/DashboardAppShell';
@@ -10,11 +10,17 @@ import { supabase } from '../../lib/supabase';
 import StoreCreationStep from '../business-registration/components/StoreCreationStep';
 import WhatsAppMessageTemplate from './components/WhatsAppMessageTemplate';
 import DynamicWhatsAppField from 'components/DynamicWhatsAppField';
-import { getCountryLabels } from '../../config/country';
+import { getCountryLabels, getCountryCode } from '../../config/country';
 import CatalogAndOrdersConfig from './components/CatalogAndOrdersConfig';
 import InstallAppBlock from './components/InstallAppBlock';
 import { truncateAtWordBoundary } from '../../utils/textTruncate';
-import { getBusinessLocale } from '../../lib/locale/businessLocale';
+import CountryIsoSelect from '../../components/country/CountryIsoSelect';
+import {
+  evaluateBusinessCountryChangePolicy,
+} from '../../lib/country/business-country-policy';
+import { resolveCountryState, resolveBillingSetup } from '../../lib/country/state-model';
+import { suggestCountryCodeHint } from '../../lib/country/suggest-country-hint';
+import { getCountryConfig, COUNTRY_CODES } from '../../config/countryConfig';
 
 const BUSINESS_DESCRIPTION_MAX = 280;
 
@@ -62,11 +68,32 @@ export default function BusinessConfiguration() {
   const [orderMessageTemplate, setOrderMessageTemplate] = useState('');
   const [business, setBusiness] = useState(null);
   const [businessFetchLoading, setBusinessFetchLoading] = useState(false);
+  /** País ISO persistido (sincronizado con BD). */
+  const [selectedCountryCode, setSelectedCountryCode] = useState(null);
+  /** Sin país en BD: `suggest` (bloque sugerido) o `manual` (selector explícito). */
+  const [countryFlowMode, setCountryFlowMode] = useState('suggest');
+  const [manualCountryCode, setManualCountryCode] = useState('');
+  const [isConfirmingCountry, setIsConfirmingCountry] = useState(false);
 
-  /** País/moneda del negocio: solo lectura (se define en onboarding). */
-  const businessLocale = getBusinessLocale(business);
-  const uiCountryCode = businessLocale.countryCode;
+  const suggestedCountryCode = useMemo(() => suggestCountryCodeHint({ user }), [user]);
+
+  /** Solo BD `country_code` — no usar `countryCode` inferido por moneda. */
+  const persistedCountryCode =
+    business?.countryCodeDb != null && String(business.countryCodeDb).trim() !== ''
+      ? String(business.countryCodeDb).trim().toUpperCase()
+      : null;
+  /** Solo con `country_code` en BD (`countryCodeDb`): UI con etiquetas/prefijos; si no, neutro (sin fallback). */
+  const hasPersistedCountry = persistedCountryCode != null;
+  const uiCountryCode = hasPersistedCountry ? (selectedCountryCode ?? persistedCountryCode) : null;
   const countryLabels = getCountryLabels(uiCountryCode);
+  const countryChangePolicy = business ? evaluateBusinessCountryChangePolicy(business) : { allowed: false };
+  const countryStatePreview = resolveCountryState({
+    businessCountryCode: business,
+    onboardingCountryCode: null,
+    userCountryCode: user?.user_metadata?.country_code ?? user?.user_metadata?.country ?? null,
+    hostnameSuggestionCountryCode: null,
+  });
+  const billingPreview = resolveBillingSetup(countryStatePreview);
   const [bankForm, setBankForm] = useState({
     bankName: '',
     bankAccountType: '',
@@ -128,6 +155,59 @@ export default function BusinessConfiguration() {
   });
 
   const toastTimer = useRef(null);
+
+  useEffect(() => {
+    console.log('[VTLK_ROUTE] Renderizando: ' + (typeof window !== 'undefined' ? window.location.pathname : ''));
+  }, []);
+
+  useEffect(() => {
+    if (!business?.id) return;
+    const code =
+      business.countryCodeDb != null && String(business.countryCodeDb).trim() !== ''
+        ? String(business.countryCodeDb).trim().toUpperCase()
+        : null;
+    setSelectedCountryCode(code);
+  }, [business?.id, business?.countryCodeDb]);
+
+  useEffect(() => {
+    if (hasPersistedCountry) return;
+    setCountryFlowMode(suggestedCountryCode ? 'suggest' : 'manual');
+    setManualCountryCode('');
+  }, [hasPersistedCountry, business?.id, suggestedCountryCode]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    console.log('[VTLK_UI_COUNTRY]', {
+      country_code: business?.country_code,
+      countryCodeDb: business?.countryCodeDb,
+      uiCountryCode,
+      hasPersistedCountry,
+      usingFallback: false,
+    });
+  }, [business?.country_code, business?.countryCodeDb, uiCountryCode, hasPersistedCountry]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || (!window.__VENTALINK_COUNTRY_DEBUG__ && !window.__VTLK_COUNTRY_DEBUG__)) return;
+    console.info(window.__VTLK_COUNTRY_DEBUG__ ? '[VTLK_COUNTRY_CONFIG]' : '[VENTALINK_BUSINESS_CONFIG_COUNTRY]', {
+      persistedDb: business?.countryCodeDb ?? null,
+      hostnameUxHint: getCountryCode(),
+      selectedCountryCode,
+      uiCountryCode,
+      neutralNoCountry: !persistedCountryCode,
+      billingCountry: countryStatePreview.billingCountry,
+      billingProvider: billingPreview.billingProvider,
+      billingCurrency: billingPreview.currency,
+      policyAllowed: countryChangePolicy.allowed,
+    });
+  }, [
+    persistedCountryCode,
+    selectedCountryCode,
+    uiCountryCode,
+    countryStatePreview.billingCountry,
+    billingPreview.billingProvider,
+    billingPreview.currency,
+    countryChangePolicy.allowed,
+  ]);
 
   // Sincronizar negocio local desde el contexto cuando este se actualice
   useEffect(() => {
@@ -271,6 +351,58 @@ export default function BusinessConfiguration() {
     }
   };
 
+  const handleConfirmCountry = async (isoCode) => {
+    const raw = String(isoCode || '').trim().toUpperCase();
+    if (!raw || !COUNTRY_CODES.includes(raw)) {
+      showToast('Selecciona un país válido.', 'error');
+      return;
+    }
+    const bizId = business?.id;
+    if (!bizId) {
+      showToast('No se encontró el negocio. Intenta recargar la página.', 'error');
+      return;
+    }
+    if (persistedCountryCode) {
+      showToast('El país del negocio ya está fijado.', 'error');
+      return;
+    }
+
+    setIsConfirmingCountry(true);
+    try {
+      const nextDesign = { ...design };
+      nextDesign.showCatalogCurrencySymbol = false;
+
+      const cfg = getCountryConfig(raw);
+      const payload = {
+        countryCode: raw,
+        designSettings: nextDesign,
+      };
+      if (typeof window !== 'undefined') {
+        console.log('[VTLK_COUNTRY_SAVE]', {
+          countryCode: raw,
+          country: cfg?.name ?? raw,
+          currency: cfg?.currency ?? 'USD',
+          payload,
+        });
+      }
+
+      const { data: updated, error } = await updateBusiness(bizId, payload);
+      if (error) {
+        showToast('Error al guardar el país: ' + (error?.message || JSON.stringify(error)), 'error');
+        return;
+      }
+      await refreshBusiness();
+      if (updated) setBusiness(updated);
+      setSelectedCountryCode(raw);
+      showToast('País del negocio guardado.', 'success');
+    } catch (e) {
+      console.error('[BusinessConfig] handleConfirmCountry', e);
+      showToast('Error inesperado al confirmar el país.', 'error');
+    } finally {
+      setIsConfirmingCountry(false);
+    }
+  };
+
   const handleSaveSettings = async () => {
     const bizId = business?.id;
     if (!bizId) {
@@ -278,6 +410,7 @@ export default function BusinessConfiguration() {
       return;
     }
     setIsSaving(true);
+
     const payload = {
       name: form?.name?.trim() || business?.name,
       slug: (form?.slug?.trim() || business?.slug || '').replace(/\s+/g, '-').toLowerCase(),
@@ -304,6 +437,7 @@ export default function BusinessConfiguration() {
       bankRut: bankForm?.bankRut,
       bankEmail: bankForm?.bankEmail,
     };
+
     try {
       const { data: updated, error } = await updateBusiness(bizId, payload);
       if (error) {
@@ -367,6 +501,9 @@ export default function BusinessConfiguration() {
     return <StoreCreationStep user={user} businessLoading={false} />;
   }
 
+  const suggestedCfg = suggestedCountryCode ? getCountryConfig(suggestedCountryCode) : null;
+  const manualCfg = manualCountryCode ? getCountryConfig(manualCountryCode) : null;
+
   return (
     <DashboardAppShell backgroundColor="#f7f7f9">
       <div
@@ -390,6 +527,113 @@ export default function BusinessConfiguration() {
             <StoreCreationStep user={user} businessLoading={isLoading} />
           ) : (
           <>
+            {!hasPersistedCountry && (
+              <div
+                className="rounded-2xl border p-5 lg:p-6 mb-8"
+                style={{
+                  borderColor: 'rgba(124, 58, 237, 0.35)',
+                  background: 'linear-gradient(145deg, rgba(124, 58, 237, 0.09) 0%, #ffffff 55%)',
+                  boxShadow: '0 2px 12px rgba(124, 58, 237, 0.08)',
+                }}
+              >
+                <h2 className="text-base font-bold mb-2" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-text-primary)' }}>
+                  País del negocio
+                </h2>
+                {countryFlowMode === 'suggest' && suggestedCfg?.name && (
+                  <div className="flex flex-col gap-4">
+                    <p className="text-sm leading-relaxed" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
+                      Detectamos que probablemente estás en <strong>{suggestedCfg.name}</strong>. Esto definirá formatos, moneda y opciones de pago.
+                    </p>
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                      <button
+                        type="button"
+                        disabled={isConfirmingCountry}
+                        onClick={() => handleConfirmCountry(suggestedCountryCode)}
+                        className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold text-white transition-all hover:opacity-90 disabled:opacity-60"
+                        style={{
+                          background: 'linear-gradient(135deg, var(--color-primary) 0%, #7c3aed 100%)',
+                          fontFamily: 'var(--font-caption)',
+                          boxShadow: '0 2px 8px rgba(139,92,246,0.35)',
+                        }}
+                      >
+                        {isConfirmingCountry ? (
+                          <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none">
+                            <circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,0.3)" strokeWidth="3" />
+                            <path d="M12 2a10 10 0 0 1 10 10" stroke="#fff" strokeWidth="3" strokeLinecap="round" />
+                          </svg>
+                        ) : null}
+                        Usar {suggestedCfg.name}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isConfirmingCountry}
+                        onClick={() => {
+                          setCountryFlowMode('manual');
+                          setManualCountryCode('');
+                        }}
+                        className="text-sm font-medium underline-offset-2 hover:underline disabled:opacity-50"
+                        style={{ color: 'var(--color-primary)', fontFamily: 'var(--font-caption)' }}
+                      >
+                        Elegir otro país
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {(countryFlowMode === 'manual' || !suggestedCfg?.name) && (
+                  <div className="flex flex-col gap-4">
+                    <p className="text-sm leading-relaxed" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
+                      {!suggestedCfg?.name
+                        ? 'Elige el país de tu negocio. Esto definirá formatos, moneda y opciones de pago.'
+                        : 'Selecciona el país que corresponda a tu negocio.'}
+                    </p>
+                    <CountryIsoSelect
+                      value={manualCountryCode || ''}
+                      onChange={(code) => setManualCountryCode(code || '')}
+                      disabled={isConfirmingCountry}
+                      className={inputClass}
+                      style={{ ...inputStyle, cursor: isConfirmingCountry ? 'not-allowed' : 'pointer' }}
+                    />
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                      <button
+                        type="button"
+                        disabled={isConfirmingCountry || !manualCountryCode}
+                        onClick={() => handleConfirmCountry(manualCountryCode)}
+                        className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold text-white transition-all hover:opacity-90 disabled:opacity-60"
+                        style={{
+                          background: 'linear-gradient(135deg, var(--color-primary) 0%, #7c3aed 100%)',
+                          fontFamily: 'var(--font-caption)',
+                          boxShadow: '0 2px 8px rgba(139,92,246,0.35)',
+                        }}
+                      >
+                        {isConfirmingCountry ? (
+                          <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none">
+                            <circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,0.3)" strokeWidth="3" />
+                            <path d="M12 2a10 10 0 0 1 10 10" stroke="#fff" strokeWidth="3" strokeLinecap="round" />
+                          </svg>
+                        ) : null}
+                        Confirmar país
+                        {manualCfg?.name ? ` (${manualCfg.name})` : ''}
+                      </button>
+                      {suggestedCfg?.name && (
+                        <button
+                          type="button"
+                          disabled={isConfirmingCountry}
+                          onClick={() => {
+                            setCountryFlowMode('suggest');
+                            setManualCountryCode('');
+                          }}
+                          className="text-sm font-medium underline-offset-2 hover:underline disabled:opacity-50"
+                          style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}
+                        >
+                          Volver a la sugerencia
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div
               className="rounded-2xl border p-5 lg:p-6 mb-8"
               style={{ backgroundColor: '#ffffff', borderColor: 'var(--color-border)', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}
@@ -493,8 +737,8 @@ export default function BusinessConfiguration() {
                 {/* WhatsApp: prefijo dinámico según país (countryConfig) */}
                 <DynamicWhatsAppField
                   label="Número de WhatsApp"
-                  hint={countryLabels.whatsappHint}
-                  countryCode={uiCountryCode}
+                  hint={hasPersistedCountry ? countryLabels.whatsappHint : undefined}
+                  countryCode={hasPersistedCountry ? uiCountryCode : null}
                   editableCountry={false}
                   persistCountrySelection={false}
                   value={form?.whatsapp}
@@ -558,24 +802,44 @@ export default function BusinessConfiguration() {
                   </SettingsField>
                 </div>
 
-                <SettingsField
-                  label="País del negocio"
-                  hint="Se definió al crear tu tienda. Para cambiarlo, contacta a soporte. Precios y facturación usan este país."
-                >
-                  <div
-                    className={inputClass}
-                    style={{ ...inputStyle, cursor: 'default', backgroundColor: 'var(--color-muted)' }}
+                {hasPersistedCountry && (
+                  <SettingsField
+                    label="País del negocio"
+                    hint="El país está fijado. Los cambios de mercado en el futuro serán por un flujo asistido."
                   >
-                    {countryLabels.countryName}
-                  </div>
-                </SettingsField>
+                    <div
+                      className="flex items-center gap-2 px-3 py-2.5 rounded-lg border"
+                      style={{
+                        borderColor: 'var(--color-border)',
+                        backgroundColor: 'var(--color-muted)',
+                        fontFamily: 'var(--font-caption)',
+                        color: 'var(--color-text-primary)',
+                      }}
+                    >
+                      <span className="text-lg" aria-hidden>{getCountryConfig(persistedCountryCode)?.flag || '🌐'}</span>
+                      <span className="text-sm font-medium flex-1">{getCountryConfig(persistedCountryCode)?.name || persistedCountryCode}</span>
+                      <Icon name="Lock" size={16} color="var(--color-text-tertiary)" aria-hidden />
+                    </div>
+                    <p className="text-xs mt-1.5" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+                      Moneda: <strong>{countryLabels.currency}</strong>
+                      {billingPreview?.billingProvider ? (
+                        <> · Proveedor de planes: <strong>{String(billingPreview.billingProvider)}</strong></>
+                      ) : null}
+                    </p>
+                  </SettingsField>
+                )}
               </div>
 
               <div className="mt-8 flex items-center justify-end gap-3 pt-5 border-t" style={{ borderColor: 'var(--color-border)' }}>
                 <button
                   onClick={() => {
                     if (business) {
-                      const revertedLabels = getCountryLabels(businessLocale.countryCode);
+                      const code =
+                        business.countryCodeDb != null && String(business.countryCodeDb).trim() !== ''
+                          ? String(business.countryCodeDb).trim().toUpperCase()
+                          : null;
+                      setSelectedCountryCode(code);
+                      const revertedLabels = getCountryLabels(code);
                       setForm({
                         name: business?.name || '',
                         slug: business?.slug || '',

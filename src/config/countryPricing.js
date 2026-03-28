@@ -1,14 +1,16 @@
 /**
- * País del negocio (ISO) → precios y moneda mostrados en UI de suscripción (/planes).
+ * País del negocio (ISO) → catálogo numérico de precios de planes (montos en `prices`).
  *
- * Regla de negocio: solo Chile y Argentina muestran planes en moneda local (CLP / ARS).
- * Resto (México, LATAM, etc.): precios en USD de referencia; si el cobro es con dLocal,
- * la pasarela liquida en moneda local — ver `getDlocalLocalChargeDisclaimer`.
+ * La moneda **mostrada** en /planes depende del proveedor de facturación (`resolveBillingDisplayCurrency`
+ * en `lib/billing/billingDisplayCurrency.js`), no de `wa_businesses.currency`.
+ * Solo Chile y Argentina usan montos locales en catálogo cuando el proveedor es Mercado Pago (CLP / ARS).
+ * Resto: montos USD de referencia; con dLocal el cargo puede liquidarse en moneda local — ver `getDlocalLocalChargeDisclaimer`.
  *
- * El catálogo del negocio sigue usando `wa_businesses.currency` (MXN en México, etc.).
+ * El catálogo del negocio (productos) sigue usando `wa_businesses.currency` (CRC, MXN, etc.).
  */
 
 import { COUNTRY_CODES, getCountryConfig } from './countryConfig';
+import { getDefaultBillingProviderForCountry } from '../lib/billing/defaultProviderByCountry';
 
 export const PRICING_MARKET_STATUS = Object.freeze({
   ACTIVE: 'active',
@@ -97,6 +99,7 @@ export function getCountryPricingRow(countryCode) {
 
   const localDisplay = usesLocalPlanCurrencyDisplay(normalized);
   const settlementCurrency = String(cfg?.currency || 'USD').toUpperCase();
+  const defaultProvider = getDefaultBillingProviderForCountry(normalized);
 
   const prices = localDisplay && overrides.localPrices
     ? { ...overrides.localPrices }
@@ -106,7 +109,7 @@ export function getCountryPricingRow(countryCode) {
   const locale = localDisplay ? (cfg?.locale || 'en-US') : 'en-US';
 
   const showDlocalLocalChargeNotice =
-    overrides.defaultProvider === 'dlocal' &&
+    defaultProvider === 'dlocal' &&
     !localDisplay &&
     settlementCurrency !== 'USD';
 
@@ -116,7 +119,7 @@ export function getCountryPricingRow(countryCode) {
     currency,
     settlementCurrency,
     locale,
-    defaultProvider: overrides.defaultProvider || 'dlocal',
+    defaultProvider,
     prices,
     legacyMarketCode: getLegacyBillingMarketCode(normalized),
     showDlocalLocalChargeNotice,

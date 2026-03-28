@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import PanelHeader from 'components/ui/PanelHeader';
 import DashboardAppShell from 'components/ui/DashboardAppShell';
@@ -50,6 +50,7 @@ function Toast({ message, type, onClose }) {
 
 export default function DesignPage() {
   const navigate = useNavigate();
+  const previewAnchorRef = useRef(null);
   const { user, business: ctxBusiness, businessLoading, refreshBusiness } = useAuth();
   const [business, setBusiness] = useState(null);
   const [products, setProducts] = useState([]);
@@ -154,11 +155,12 @@ export default function DesignPage() {
           subtitle={<p className="text-xs hidden sm:block" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Todo lo visual vive aquí.</p>}
         />
 
-        <DashboardLayoutContent className="min-h-[calc(100vh-108px)]" innerClassName="space-y-6">
-          {/* minmax(0,1fr): la columna de formulario puede encoger (evita empujar la vista previa fuera del viewport con overflow-x-hidden en main). */}
-          <div className="flex flex-col w-full min-w-0 gap-8 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,380px)] lg:gap-6 xl:gap-8 2xl:gap-10 lg:items-start">
-            {/* Columna izquierda: opciones de diseño (scroll con la página en desktop) */}
-            <div className="min-w-0 w-full py-6 lg:py-8">
+        <DashboardLayoutContent
+          className="flex flex-1 flex-col min-h-0 w-full"
+          innerClassName="flex flex-col flex-1 min-h-0 min-h-[calc(100vh-88px)] space-y-6"
+        >
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start w-full min-w-0 flex-1 min-h-0">
+            <div className="min-w-0 w-full lg:col-span-8 py-6 lg:py-0">
               <DesignCustomization
                 design={design}
                 onChange={setDesign}
@@ -169,10 +171,11 @@ export default function DesignPage() {
                 designOnly
               />
             </div>
-            {/* Columna derecha: sticky en lg+ para que el teléfono acompañe al ajustar opciones */}
             <div
-              className="flex flex-col items-center justify-start w-full min-w-0 max-w-[380px] mx-auto py-6 lg:mx-0 lg:max-w-none lg:w-full lg:py-8 lg:sticky lg:top-[calc(60px+var(--safe-area-top))] lg:self-start rounded-xl border lg:rounded-2xl lg:z-[1]"
-              style={{ borderColor: 'var(--color-border)', backgroundColor: '#f7f7f9' }}
+              ref={previewAnchorRef}
+              id="design-preview"
+              className="flex flex-col items-center justify-start w-full min-w-0 max-w-[380px] mx-auto py-6 lg:mx-0 lg:max-w-none lg:w-full lg:py-0 lg:col-span-4 lg:sticky lg:top-[calc(var(--safe-area-top)+60px+1.5rem)] lg:z-[5] lg:self-start rounded-2xl shadow-md lg:shadow-lg scroll-mt-24"
+              style={{ backgroundColor: '#f7f7f9' }}
             >
               <p className="text-xs font-semibold mb-3 flex-shrink-0" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
                 Vista previa
@@ -186,10 +189,28 @@ export default function DesignPage() {
                 currency={business?.currency || locale.currencyCode}
                 locale={locale.locale}
                 design={design}
+                hideCurrencySymbol={design?.showCatalogCurrencySymbol === false}
               />
             </div>
           </div>
         </DashboardLayoutContent>
+
+        {/* Móvil: acceso rápido a la vista previa (al final del flujo o scroll al ancla) */}
+        <button
+          type="button"
+          className="fixed bottom-6 right-4 z-40 flex items-center gap-2 rounded-full px-4 py-3 shadow-lg md:hidden transition-transform duration-300 hover:scale-105 active:scale-95"
+          style={{
+            background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)',
+            color: '#fff',
+            fontFamily: 'var(--font-caption)',
+            boxShadow: '0 8px 32px rgba(124, 58, 237, 0.35)',
+          }}
+          onClick={() => previewAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+          aria-label="Ir a vista previa"
+        >
+          <Icon name="Smartphone" size={18} color="#fff" />
+          <span className="text-sm font-semibold">Vista previa</span>
+        </button>
       
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
     </DashboardAppShell>

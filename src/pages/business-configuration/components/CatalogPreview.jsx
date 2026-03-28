@@ -1,10 +1,10 @@
 import React from 'react';
 import Image from 'components/AppImage';
 import Icon from 'components/AppIcon';
-import { getCountryLabels } from 'config/country';
+import { getCountryLabels, getCountryCode } from 'config/country';
 
 export default function CatalogPreview({ config }) {
-  const labels = getCountryLabels();
+  const labels = getCountryLabels(getCountryCode());
   return (
     <div
       className="rounded-xl border overflow-hidden"

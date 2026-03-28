@@ -1,6 +1,7 @@
 /**
  * Capa central de billing.
- * Precios y moneda por país ISO: `config/countryPricing.js` vía `getPlanPrice({ countryCode, planSlug })`.
+ * Montos de catálogo por país: `getPlanPrice({ countryCode, planSlug })` → `countryPricing.js`.
+ * Moneda **visible** en UI de planes: `resolveBillingDisplayCurrency({ countryCode, provider })`.
  * Región legacy CL|INT solo compatibilidad; el negocio usa siempre `business.country_code`.
  */
 
@@ -21,6 +22,14 @@ export { getPaymentOptions } from './providers';
 export { normalizeBillingProvider } from './providers';
 export { isDlocalFeatureEnabled } from './providers';
 export { PAYMENT_PROVIDERS } from './providers';
+export {
+  getDefaultBillingProviderForCountry,
+  resolveBillingProvider,
+} from './defaultProviderByCountry';
+export {
+  resolveBillingDisplayCurrency,
+  getLocaleForBillingDisplayCurrency,
+} from './billingDisplayCurrency';
 export {
   buildBillingFallbackState,
   getBillingStatusSafe,

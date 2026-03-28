@@ -1,7 +1,37 @@
-import React from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'components/AppImage';
 import Icon from 'components/AppIcon';
 import { formatCurrency } from 'utils/formatCLP';
+
+function formatPreviewPrice(amount, currency, locale, hideSymbol) {
+  if (hideSymbol) {
+    const n = Number(amount);
+    const value = Number.isFinite(n) && n >= 0 ? n : 0;
+    return new Intl.NumberFormat(locale || 'en-US', { maximumFractionDigits: 0, useGrouping: true }).format(value);
+  }
+  return formatCurrency(amount, currency, locale);
+}
+
+/** Clave estable para detectar cambios visuales (color, banner, etc.) y disparar el flash en vista previa. */
+function buildDesignPreviewFlashKey(design, logoUrl, coverImageUrl) {
+  const d = design || {};
+  return [
+    d.primaryColor,
+    d.theme,
+    d.headerImageUrl ?? '',
+    d.logoUrl ?? '',
+    logoUrl ?? '',
+    coverImageUrl ?? '',
+    d.coverFit,
+    d.coverPosition,
+    d.catalogStyle,
+    d.font,
+    d.catalogLayout,
+    d.catalogViewMode,
+    d.cardSettings?.showPrice,
+    d.cardSettings?.showDescription,
+  ].join('\0');
+}
 
 const THEME_STYLES = {
   minimal: {
@@ -48,7 +78,7 @@ const CATALOG_STYLE_PROPS = {
   destacado: { shadow: '0 4px 16px rgba(0,0,0,0.16)', radius: '14px', gap: '10px', imgHeight: '60px' },
 };
 
-function ProductListItem({ product, t, primaryColor, fontFamily, cardSettings, styleProps, currency, locale }) {
+function ProductListItem({ product, t, primaryColor, fontFamily, cardSettings, styleProps, currency, locale, hideCurrencySymbol }) {
   return (
     <div
       className="flex items-center gap-2.5 p-2.5 border"
@@ -78,7 +108,7 @@ function ProductListItem({ product, t, primaryColor, fontFamily, cardSettings, s
         )}
         {cardSettings?.showPrice && (
           <p className="text-xs font-bold mt-0.5" style={{ color: t?.priceColor || primaryColor, fontFamily }}>
-            {formatCurrency(product?.price, currency, locale)}
+            {formatPreviewPrice(product?.price, currency, locale, hideCurrencySymbol)}
           </p>
         )}
       </div>
@@ -92,7 +122,7 @@ function ProductListItem({ product, t, primaryColor, fontFamily, cardSettings, s
   );
 }
 
-function ProductGridItem({ product, t, primaryColor, fontFamily, cardSettings, styleProps, currency, locale }) {
+function ProductGridItem({ product, t, primaryColor, fontFamily, cardSettings, styleProps, currency, locale, hideCurrencySymbol }) {
   return (
     <div
       className="overflow-hidden border"
@@ -111,7 +141,7 @@ function ProductGridItem({ product, t, primaryColor, fontFamily, cardSettings, s
         <p className="text-xs font-semibold truncate" style={{ color: t?.headerText, fontFamily }}>{product?.name}</p>
         {cardSettings?.showPrice && (
           <p className="text-xs font-bold" style={{ color: t?.priceColor || primaryColor, fontFamily }}>
-            {formatCurrency(product?.price, currency, locale)}
+            {formatPreviewPrice(product?.price, currency, locale, hideCurrencySymbol)}
           </p>
         )}
         <div
@@ -125,7 +155,7 @@ function ProductGridItem({ product, t, primaryColor, fontFamily, cardSettings, s
   );
 }
 
-function ProductCardItem({ product, t, primaryColor, fontFamily, cardSettings, styleProps, currency, locale }) {
+function ProductCardItem({ product, t, primaryColor, fontFamily, cardSettings, styleProps, currency, locale, hideCurrencySymbol }) {
   return (
     <div
       className="overflow-hidden border"
@@ -150,7 +180,7 @@ function ProductCardItem({ product, t, primaryColor, fontFamily, cardSettings, s
         <div className="flex items-center justify-between mt-1.5 gap-1">
           {cardSettings?.showPrice && (
             <p className="text-xs font-bold" style={{ color: t?.priceColor || primaryColor, fontFamily }}>
-              {formatCurrency(product?.price, currency, locale)}
+              {formatPreviewPrice(product?.price, currency, locale, hideCurrencySymbol)}
             </p>
           )}
           <div
@@ -165,8 +195,36 @@ function ProductCardItem({ product, t, primaryColor, fontFamily, cardSettings, s
   );
 }
 
-export default function MobilePreviewPanel({ storeName, storeSlug, logoUrl, coverImageUrl, products, currency, locale = 'en-US', design }) {
+export default function MobilePreviewPanel({
+  storeName,
+  storeSlug,
+  logoUrl,
+  coverImageUrl,
+  products,
+  currency,
+  locale = 'en-US',
+  design,
+  /** Si es true, precios numéricos sin símbolo de moneda (vista previa tras fijar país). */
+  hideCurrencySymbol = false,
+}) {
   const visibleProducts = products?.slice(0, 4) || [];
+
+  const previewFlashKey = useMemo(
+    () => buildDesignPreviewFlashKey(design, logoUrl, coverImageUrl),
+    [design, logoUrl, coverImageUrl],
+  );
+  const prevFlashKeyRef = useRef(null);
+  const [previewChassisKey, setPreviewChassisKey] = useState(0);
+
+  useEffect(() => {
+    if (prevFlashKeyRef.current === null) {
+      prevFlashKeyRef.current = previewFlashKey;
+      return;
+    }
+    if (prevFlashKeyRef.current === previewFlashKey) return;
+    prevFlashKeyRef.current = previewFlashKey;
+    setPreviewChassisKey((k) => k + 1);
+  }, [previewFlashKey]);
 
   const theme = design?.theme || 'minimal';
   const primaryColor = design?.primaryColor || '#7C3AED';
@@ -192,7 +250,7 @@ export default function MobilePreviewPanel({ storeName, storeSlug, logoUrl, cove
 
   const cur = String(currency || 'USD').trim().toUpperCase();
   const loc = locale || 'en-US';
-  const productItemProps = { t, primaryColor, fontFamily, cardSettings, styleProps, currency: cur, locale: loc };
+  const productItemProps = { t, primaryColor, fontFamily, cardSettings, styleProps, currency: cur, locale: loc, hideCurrencySymbol };
 
   return (
     <div className="flex flex-col items-center w-full">
@@ -203,24 +261,52 @@ export default function MobilePreviewPanel({ storeName, storeSlug, logoUrl, cove
         Vista previa móvil
       </p>
 
-      {/* Contenedor: fondo neutro + sombra para el dispositivo */}
+      {/* Contenedor: fondo neutro + sombra; key + animación al cambiar diseño (color/banner) */}
       <div
-        className="flex flex-col items-center justify-center rounded-3xl p-4 sm:p-8 w-full max-w-[300px]"
+        key={previewChassisKey}
+        className={`flex flex-col items-center justify-center rounded-3xl p-4 sm:p-8 w-full max-w-[300px] transition-[filter,box-shadow] duration-300 ease-out ${
+          previewChassisKey > 0 ? 'animate-preview-update' : ''
+        }`}
         style={{
           backgroundColor: '#e8e8ed',
           boxShadow: 'inset 0 1px 2px rgba(255,255,255,0.6), 0 8px 32px rgba(0,0,0,0.12)',
         }}
       >
-        {/* Phone frame: ancho fluido en columnas estrechas (p. ej. diseño + sidebar) */}
-        <div
-          className="relative rounded-[2.5rem] overflow-hidden flex-shrink-0 w-full max-w-[260px] mx-auto"
-          style={{
-            aspectRatio: '260 / 520',
-            border: '8px solid #1a1a2e',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.15), 0 20px 50px rgba(0,0,0,0.2), inset 0 0 0 1px rgba(255,255,255,0.08)',
-            backgroundColor: t?.screenBg,
-          }}
-        >
+        {/* Marco iPhone: sombra profusa tipo objeto real sobre la mesa */}
+        <div className="relative w-full max-w-[260px] mx-auto pt-2">
+          <div
+            className="pointer-events-none absolute z-20 flex max-w-[calc(100%-4px)] items-center gap-1.5 rounded-full border border-white/30 bg-slate-900/80 py-1 pl-1.5 pr-2 shadow-lg backdrop-blur-md top-0 right-0"
+            aria-hidden
+          >
+            <span className="relative inline-flex h-2 w-2 shrink-0">
+              <span
+                className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60"
+                style={{ animationDuration: '2s' }}
+              />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_10px_2px_rgba(52,211,153,0.85)]" />
+            </span>
+            <span
+              className="text-[8px] font-bold uppercase leading-none tracking-wide text-white/95"
+              style={{ fontFamily: 'var(--font-caption)' }}
+            >
+              Vista previa en vivo
+            </span>
+          </div>
+          <div
+            className="relative overflow-hidden rounded-[2.5rem] flex-shrink-0 w-full mx-auto"
+            style={{
+              aspectRatio: '260 / 520',
+              border: '8px solid #1a1a2e',
+              boxShadow: `
+                0 2px 4px rgba(0,0,0,0.07),
+                0 12px 24px -8px rgba(0,0,0,0.18),
+                0 28px 56px -12px rgba(0,0,0,0.22),
+                0 48px 96px -24px rgba(0,0,0,0.16),
+                inset 0 0 0 1px rgba(255,255,255,0.09)
+              `,
+              backgroundColor: t?.screenBg,
+            }}
+          >
         {/* Notch */}
         <div
           className="absolute top-0 left-1/2 -translate-x-1/2 z-10"
@@ -359,6 +445,7 @@ export default function MobilePreviewPanel({ storeName, storeSlug, logoUrl, cove
             </div>
           )}
         </div>
+          </div>
       </div>
       </div>
 

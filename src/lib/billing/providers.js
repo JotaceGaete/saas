@@ -65,8 +65,8 @@ export function getPaymentOptions({ countryCode }) {
   }
   if (normalized === 'AR') {
     return Object.freeze({
-      primary: dlocalEnabled ? PAYMENT_PROVIDERS.DLOCAL : PAYMENT_PROVIDERS.PAYPAL,
-      secondary: [PAYMENT_PROVIDERS.MERCADO_PAGO],
+      primary: PAYMENT_PROVIDERS.MERCADO_PAGO,
+      secondary: dlocalEnabled ? [PAYMENT_PROVIDERS.DLOCAL] : [],
     });
   }
   if (!dlocalEnabled) {

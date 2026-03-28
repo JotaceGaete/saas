@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCountry } from '../../contexts/CountryContext';
-import { getBusinessLocale } from '../../lib/locale/businessLocale';
 import { resolveCountryState, resolveBillingSetup, logCountryStateDebug } from '../../lib/country/state-model';
 import AuthStep from './components/AuthStep';
 import ConfirmEmailStep from './components/ConfirmEmailStep';
@@ -59,13 +58,12 @@ export default function BusinessRegistration() {
   const { user, business, loading, businessLoading, signUp, signIn, signInWithGoogle, resendConfirmationEmail, isEmailConfirmed } = useAuth();
   const { countryCode } = useCountry();
   const countryState = resolveCountryState({
-    businessCountryCode: business?.countryCode ?? business?.country_code ?? business?.country ?? null,
+    businessCountryCode: business,
     onboardingCountryCode: null,
     userCountryCode: user?.user_metadata?.country_code ?? user?.user_metadata?.country ?? null,
     hostnameSuggestionCountryCode: countryCode,
   });
   const billingSetup = resolveBillingSetup(countryState);
-  const locale = getBusinessLocale(null, { preferredCountryCode: countryState.billingCountry });
 
   const [authError, setAuthError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -124,7 +122,7 @@ export default function BusinessRegistration() {
 
   // ── PASO 1: No autenticado → pantalla de login/registro ─────────────────────
   if (!user) {
-    const handleRegister = async ({ email, password, businessName, whatsapp }) => {
+    const handleRegister = async ({ email, password, businessName }) => {
       if (signupCooldownActive) {
         setAuthError('Espera un minuto antes de intentarlo de nuevo.');
         return;
@@ -133,14 +131,8 @@ export default function BusinessRegistration() {
       setAuthError(null);
       setPendingConfirmation(null);
       try {
-        const signupCountryCode = countryState?.billingCountry ?? locale?.countryCode ?? null;
         const { data, error } = await signUp(email, password, {
           name: businessName || 'Mi Negocio',
-          whatsapp: whatsapp || '',
-          currency: locale.currencyCode,
-          // Importante: enviar country_code en metadata para que el trigger NO caiga a CL por default.
-          country: signupCountryCode,
-          countryCode: signupCountryCode,
         });
         if (error) {
           setAuthError(normalizeAuthErrorMessage(error.message));

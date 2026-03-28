@@ -42,6 +42,29 @@ export function formatCurrency(amount, currency, locale) {
 }
 
 /**
+ * Precios de suscripción en /planes: USD con prefijo "US$" explícito; CLP/ARS con Intl local.
+ * Evita confundir con símbolos de moneda local del país (ej. CRC) cuando el cobro es en USD.
+ * @param {number|string} amount
+ * @param {string} currencyCode
+ * @param {string} [locale]
+ */
+export function formatSubscriptionPlanPrice(amount, currencyCode, locale) {
+  const c = String(currencyCode || 'USD').toUpperCase();
+  const n = Number(amount);
+  const value = Number.isFinite(n) && n >= 0 ? n : 0;
+  if (c === 'USD') {
+    const fractionDigits = value % 1 === 0 ? 0 : 2;
+    const num = new Intl.NumberFormat('en-US', {
+      minimumFractionDigits: fractionDigits,
+      maximumFractionDigits: 2,
+    }).format(value);
+    return `US$ ${num}`;
+  }
+  const loc = locale || FALLBACK_LOCALE_BY_CURRENCY[c] || 'en-US';
+  return formatCurrency(value, c, loc);
+}
+
+/**
  * Enteros con separadores de miles según locale (inputs de precio en editor).
  * @param {number|string} value
  * @param {string} [locale]

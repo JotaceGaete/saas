@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { getMyBusiness } from '../../services/waBusinessService';
+import { hasPersistedBusinessCountry } from '../../lib/country/business-country-policy';
 import Icon from 'components/AppIcon';
 
 const GO_APP_ORIGIN = 'https://go.ventalink.app';
@@ -70,7 +71,17 @@ export default function AuthCallback() {
       try {
         const { data: business } = await getMyBusiness();
         if (business) {
-          navigate('/dashboard', { replace: true });
+          console.log('[VTLK_ROUTE] AuthCallback negocio', {
+            path: typeof window !== 'undefined' ? window.location.pathname : '',
+            businessId: business.id,
+            countryCodeDb: business.countryCodeDb ?? null,
+            hasCountryCode: hasPersistedBusinessCountry(business),
+          });
+          if (!hasPersistedBusinessCountry(business)) {
+            navigate('/business-configuration', { replace: true });
+          } else {
+            navigate('/dashboard', { replace: true });
+          }
         } else {
           navigate('/business-registration', { replace: true });
         }

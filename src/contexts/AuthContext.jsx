@@ -159,9 +159,6 @@ export const AuthProvider = ({ children }) => {
       const metadata = {
         full_name: businessData?.name || email,
         name: businessData?.name || email,
-        whatsapp: businessData?.whatsapp || '',
-        country: businessData?.country ?? null,
-        country_code: businessData?.countryCode ?? businessData?.country ?? null,
       };
       if (typeof window !== 'undefined' && window.__AUTH_DEBUG__) {
         console.log('[Auth] signUp metadata (options.data):', metadata);
@@ -246,9 +243,6 @@ export const AuthProvider = ({ children }) => {
               name: businessData?.name || 'Mi Negocio',
               whatsapp: businessData?.whatsapp || '',
               description: businessData?.description || '',
-              currency: businessData?.currency || 'USD',
-              country: businessData?.country || null,
-              countryCode: businessData?.countryCode || null,
             })
             if (bizErr) {
               console.error('Business creation error:', bizErr)
