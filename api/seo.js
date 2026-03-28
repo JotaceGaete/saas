@@ -22,6 +22,18 @@ import {
 
 // --- Catálogo (antes catalog-html.js) ---
 
+/**
+ * Texto plano para meta/title: una sola línea (sin saltos de línea en el atributo HTML).
+ */
+function normalizeMetaPlainText(str) {
+  if (str == null) return '';
+  return String(str)
+    .replace(/\r\n?/g, '\n')
+    .replace(/\n/g, ' ')
+    .replace(/[ \t]+/g, ' ')
+    .trim();
+}
+
 function escapeHtmlCatalog(str) {
   if (str == null || typeof str !== 'string') return '';
   return str
@@ -29,6 +41,11 @@ function escapeHtmlCatalog(str) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+/** Meta og:title, og:description, twitter:*, name=description, <title> */
+function metaPlainTextAttr(str) {
+  return escapeHtmlCatalog(normalizeMetaPlainText(str));
 }
 
 function getOriginCatalog(request) {
@@ -92,6 +109,10 @@ async function handleCatalogHtml(request) {
   const ogImage = resolveCatalogOgImageUrl(row, origin, { cacheBust: row.updated_at });
   const catalogUrl = `${origin}/${publicPath}/${slug}`;
 
+  const metaTitle = metaPlainTextAttr(pageTitle);
+  const metaDesc = metaPlainTextAttr(metaDescription);
+  const metaOgLocale = metaPlainTextAttr(ri.ogLocale || '');
+
   console.log(
     '[catalog-og-html]',
     JSON.stringify({
@@ -125,18 +146,18 @@ async function handleCatalogHtml(request) {
     `<meta name="robots" content="index, follow" />`,
     `<meta property="og:type" content="website" />`,
     `<meta property="og:url" content="${escapeHtmlCatalog(catalogUrl)}" />`,
-    `<meta property="og:title" content="${escapeHtmlCatalog(pageTitle)}" />`,
-    `<meta property="og:description" content="${escapeHtmlCatalog(metaDescription)}" />`,
+    `<meta property="og:title" content="${metaTitle}" />`,
+    `<meta property="og:description" content="${metaDesc}" />`,
     `<meta property="og:image" content="${escapeHtmlCatalog(ogImage)}" />`,
     ogImageSecure,
     `<meta property="og:image:width" content="1200" />`,
     `<meta property="og:image:height" content="630" />`,
-    `<meta property="og:locale" content="${escapeHtmlCatalog(ri.ogLocale)}" />`,
+    `<meta property="og:locale" content="${metaOgLocale}" />`,
     `<meta name="twitter:card" content="summary_large_image" />`,
-    `<meta name="twitter:title" content="${escapeHtmlCatalog(pageTitle)}" />`,
-    `<meta name="twitter:description" content="${escapeHtmlCatalog(metaDescription)}" />`,
+    `<meta name="twitter:title" content="${metaTitle}" />`,
+    `<meta name="twitter:description" content="${metaDesc}" />`,
     `<meta name="twitter:image" content="${escapeHtmlCatalog(ogImage)}" />`,
-    `<meta name="description" content="${escapeHtmlCatalog(metaDescription)}" />`,
+    `<meta name="description" content="${metaDesc}" />`,
     `<link rel="canonical" href="${escapeHtmlCatalog(catalogUrl)}" />`,
     jsonLdScript,
   ]
@@ -153,7 +174,7 @@ async function handleCatalogHtml(request) {
     return new Response(`Failed to load template: ${e.message}`, { status: 502 });
   }
 
-  html = html.replace(/<title>[^<]*<\/title>/i, `<title>${escapeHtmlCatalog(pageTitle)}</title>`);
+  html = html.replace(/<title>[^<]*<\/title>/i, `<title>${metaTitle}</title>`);
 
   const injectBefore = '</head>';
   const insertIndex = html.indexOf(injectBefore);
@@ -202,6 +223,8 @@ async function handleGoHtml(request) {
   const ogImage = getGoInternationalOgImage(origin);
   const title = GO_INTERNATIONAL_TITLE;
   const description = GO_INTERNATIONAL_DESCRIPTION;
+  const metaTitleGo = metaPlainTextAttr(title);
+  const metaDescGo = metaPlainTextAttr(description);
 
   const jsonLd = buildGoInternationalJsonLd({ url: canonicalUrl });
   const jsonLdScript = `<script type="application/ld+json">${stringifyJsonLdGo(jsonLd)}</script>`;
@@ -210,15 +233,15 @@ async function handleGoHtml(request) {
     `<meta name="robots" content="index, follow" />`,
     `<meta property="og:type" content="website" />`,
     `<meta property="og:url" content="${escapeHtmlGo(canonicalUrl)}" />`,
-    `<meta property="og:title" content="${escapeHtmlGo(title)}" />`,
-    `<meta property="og:description" content="${escapeHtmlGo(description)}" />`,
+    `<meta property="og:title" content="${metaTitleGo}" />`,
+    `<meta property="og:description" content="${metaDescGo}" />`,
     `<meta property="og:image" content="${escapeHtmlGo(ogImage)}" />`,
     `<meta property="og:locale" content="es" />`,
     `<meta name="twitter:card" content="summary_large_image" />`,
-    `<meta name="twitter:title" content="${escapeHtmlGo(title)}" />`,
-    `<meta name="twitter:description" content="${escapeHtmlGo(description)}" />`,
+    `<meta name="twitter:title" content="${metaTitleGo}" />`,
+    `<meta name="twitter:description" content="${metaDescGo}" />`,
     `<meta name="twitter:image" content="${escapeHtmlGo(ogImage)}" />`,
-    `<meta name="description" content="${escapeHtmlGo(description)}" />`,
+    `<meta name="description" content="${metaDescGo}" />`,
     `<link rel="canonical" href="${escapeHtmlGo(canonicalUrl)}" />`,
     jsonLdScript,
   ].join('\n  ');
@@ -234,7 +257,7 @@ async function handleGoHtml(request) {
   }
 
   html = html.replace(/<html[^>]*>/i, '<html lang="es">');
-  html = html.replace(/<title>[^<]*<\/title>/i, `<title>${escapeHtmlGo(title)}</title>`);
+  html = html.replace(/<title>[^<]*<\/title>/i, `<title>${metaTitleGo}</title>`);
 
   const injectBefore = '</head>';
   const insertIndex = html.indexOf(injectBefore);
