@@ -11,10 +11,13 @@
  * Requires in Vercel: SUPABASE_URL (or VITE_SUPABASE_URL), SUPABASE_ANON_KEY (or VITE_SUPABASE_ANON_KEY).
  */
 
-import { detectCatalogRegion, getCatalogMetaDescription, getCatalogPageTitle } from './src/utils/catalogSeo.js';
+import {
+  detectCatalogRegion,
+  getCatalogShareDescription,
+  getCatalogShareDocumentTitle,
+  resolveCatalogOgImageUrl,
+} from './src/utils/catalogSeo.js';
 import { getCatalogSlugFromPath } from './src/utils/seoPassThrough.js';
-
-const OG_FALLBACK_IMAGE = 'https://media.gong.cl/test/preview.jpg';
 const BOT_UA =
   /(whatsapp|whatsappbot|facebookexternalhit|facebot|meta-externalagent|meta-externalfetcher|twitterbot|telegrambot|slackbot|discordbot|linkedinbot)/i;
 
@@ -29,45 +32,6 @@ function getSupabaseConfig() {
   return { url: url.replace(/\/$/, ''), key };
 }
 
-function parseDesignSettingsSafe(value) {
-  if (!value) return {};
-  if (typeof value === 'object' && !Array.isArray(value)) return value;
-  if (typeof value !== 'string') return {};
-  try {
-    const parsed = JSON.parse(value);
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-  } catch (_) {
-    return {};
-  }
-}
-
-function toAbsoluteUrl(url, origin) {
-  if (!url || typeof url !== 'string') return '';
-  const trimmed = url.trim();
-  if (!trimmed) return '';
-  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return trimmed;
-  return `${origin}${trimmed.startsWith('/') ? '' : '/'}${trimmed}`;
-}
-
-function getOgImageUrl(row, origin) {
-  const ds = parseDesignSettingsSafe(row?.design_settings);
-  const candidates = [
-    row?.og_image_url,
-    row?.cover_image_url,
-    ds?.coverImageUrl,
-    ds?.headerImageUrl,
-    row?.logo_url,
-    ds?.logoUrl,
-  ];
-
-  for (const candidate of candidates) {
-    const absolute = toAbsoluteUrl(candidate, origin);
-    if (absolute) return absolute;
-  }
-
-  return OG_FALLBACK_IMAGE;
-}
-
 function buildOgHtml(payload) {
   const { title, description, ogImage, canonicalUrl, ogLocale } = payload;
   const escaped = (s) => String(s || '')
@@ -75,6 +39,10 @@ function buildOgHtml(payload) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+  const secure =
+    ogImage && String(ogImage).startsWith('https://')
+      ? `\n  <meta property="og:image:secure_url" content="${escaped(ogImage)}" />`
+      : '';
   return `<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -86,7 +54,7 @@ function buildOgHtml(payload) {
   <meta property="og:url" content="${escaped(canonicalUrl)}" />
   <meta property="og:title" content="${escaped(title)}" />
   <meta property="og:description" content="${escaped(description)}" />
-  <meta property="og:image" content="${escaped(ogImage)}" />
+  <meta property="og:image" content="${escaped(ogImage)}" />${secure}
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
   <meta property="og:locale" content="${escaped(ogLocale || 'es_CL')}" />
@@ -125,7 +93,8 @@ export default async function middleware(request) {
 
   const { url: supabaseUrl, key: supabaseKey } = getSupabaseConfig();
   const origin = url.origin;
-  const canonicalUrl = `${origin}/catalogo/${slug}`;
+  const pathClean = url.pathname.replace(/\/$/, '') || `/catalogo/${slug}`;
+  const canonicalUrl = `${origin}${pathClean}`;
 
   const seoInput = {
     storeName: 'Catálogo',
@@ -135,12 +104,12 @@ export default async function middleware(request) {
     currency: undefined,
     host: url.host,
   };
-  let catalogDescription = getCatalogMetaDescription(seoInput);
-  let ogImage = OG_FALLBACK_IMAGE;
+  let catalogDescription = getCatalogShareDescription(null);
+  let ogImage = resolveCatalogOgImageUrl(null, origin);
   try {
     if (supabaseUrl && supabaseKey) {
       const res = await fetch(
-        `${supabaseUrl}/rest/v1/wa_businesses?slug=eq.${encodeURIComponent(slug)}&is_active=eq.true&select=name,description,slug,og_image_url,logo_url,cover_image_url,design_settings,city,region,country,country_code,currency`,
+        `${supabaseUrl}/rest/v1/wa_businesses?slug=eq.${encodeURIComponent(slug)}&is_active=eq.true&select=name,description,slug,og_image_url,logo_url,cover_image_url,design_settings,city,region,country,country_code,currency,updated_at`,
         {
           headers: {
             Accept: 'application/json',
@@ -159,8 +128,17 @@ export default async function middleware(request) {
           seoInput.country = row?.country;
           seoInput.currency = row?.currency;
           seoInput.countryCode = row?.country_code;
-          catalogDescription = getCatalogMetaDescription(seoInput);
-          ogImage = getOgImageUrl(row, origin);
+          catalogDescription = getCatalogShareDescription(row);
+          ogImage = resolveCatalogOgImageUrl(row, origin, { cacheBust: row?.updated_at });
+          console.log(
+            '[catalog-og-middleware]',
+            JSON.stringify({
+              slug,
+              canonicalUrl,
+              ogImage,
+              title: getCatalogShareDocumentTitle(row?.name),
+            }),
+          );
         }
       }
     }
@@ -168,7 +146,7 @@ export default async function middleware(request) {
     // Fallback silencioso: siempre responder HTML OG.
   }
 
-  const pageTitle = getCatalogPageTitle(seoInput);
+  const pageTitle = getCatalogShareDocumentTitle(seoInput.storeName);
   const ri = detectCatalogRegion(seoInput);
 
   const html = buildOgHtml({

@@ -65,7 +65,11 @@
     },
     {
       "source": "/catalogo/:slug",
-      "destination": "/api/seo?slug=:slug"
+      "destination": "/api/seo?slug=:slug&publicPath=catalogo"
+    },
+    {
+      "source": "/catalog/:slug",
+      "destination": "/api/seo?slug=:slug&publicPath=catalog"
     },
     {
       "source": "/(.*)",

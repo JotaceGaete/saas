@@ -1,10 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import Icon from 'components/AppIcon';
 import GoogleIcon from 'components/GoogleIcon';
 import PasswordStrengthIndicator from './PasswordStrengthIndicator';
-import { getCountryLabels } from 'config/country';
+import { getCountryLabels, getCountryCode } from 'config/country';
+import { COUNTRY_CODES } from 'config/countryConfig';
+
+const NEUTRAL_HERO_SUBTITLE = 'Hecho para negocios que venden por WhatsApp';
+const LATAM_REGION_LABEL = 'Disponible en toda Latinoamérica';
+
+function readCountryFromStorage() {
+  if (typeof window === 'undefined') return null;
+  return getCountryCode();
+}
 
 const BENEFITS = [
   'Comparte tu catálogo en redes',
@@ -63,7 +72,51 @@ function CatalogPhoneMock() {
 }
 
 export default function AuthStep({ onRegister, onLogin, onGoogleLogin, isLoading, cooldownMs = 0, authError, onClearError }) {
-  const countryLabels = getCountryLabels(null);
+  /** País desde localStorage / hostname (misma lógica que el resto de la app). */
+  const [storageCountryCode, setStorageCountryCode] = useState(readCountryFromStorage);
+  /** País inferido por IP solo si no hay país en almacenamiento (evita “Sin definir”). */
+  const [geoCountryCode, setGeoCountryCode] = useState(null);
+  const [geoLookupDone, setGeoLookupDone] = useState(false);
+
+  useEffect(() => {
+    setStorageCountryCode(readCountryFromStorage());
+  }, []);
+
+  useEffect(() => {
+    if (storageCountryCode) {
+      setGeoLookupDone(true);
+      return undefined;
+    }
+    let cancelled = false;
+    const t = setTimeout(() => {
+      fetch('https://ipwho.is/', { method: 'GET', credentials: 'omit' })
+        .then((r) => r.json())
+        .then((data) => {
+          if (cancelled || !data?.success) return;
+          const c = String(data.country_code || '').trim().toUpperCase();
+          if (c && COUNTRY_CODES.includes(c)) setGeoCountryCode(c);
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (!cancelled) setGeoLookupDone(true);
+        });
+    }, 0);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [storageCountryCode]);
+
+  const effectiveCountryCode = storageCountryCode || geoCountryCode || null;
+  const countryLabelsResolved = useMemo(
+    () => (effectiveCountryCode ? getCountryLabels(effectiveCountryCode) : null),
+    [effectiveCountryCode],
+  );
+  /** País ISO (localStorage o IP): bandera + nombre. Si no hay ISO tras intentar IP: mensaje regional (nunca “Sin definir”). */
+  const showCountryBadge = Boolean(countryLabelsResolved);
+  const showLatamFallbackBadge = !countryLabelsResolved && geoLookupDone;
+  const heroSubtitle = countryLabelsResolved?.heroSubtitle ?? NEUTRAL_HERO_SUBTITLE;
+
   const [mode, setMode] = useState('register');
   const [googleLoading, setGoogleLoading] = useState(false);
   const [formData, setFormData] = useState({ businessName: '', email: '', password: '', confirmPassword: '' });
@@ -118,14 +171,32 @@ export default function AuthStep({ onRegister, onLogin, onGoogleLogin, isLoading
         style={{ background: 'linear-gradient(145deg, #7C3AED 0%, #5B21B6 55%, #4C1D95 100%)' }}
       >
         <div>
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.35 }}
-            className="mb-6 md:mb-8"
-          >
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-sm bg-white/15 text-white/95" aria-label={countryLabels.countryName} title={countryLabels.countryName}>{countryLabels.flag} {countryLabels.countryName}</span>
-          </motion.div>
+          {(showCountryBadge || showLatamFallbackBadge) && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.35 }}
+              className="mb-6 md:mb-8"
+            >
+              {showCountryBadge ? (
+                <span
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-sm bg-white/15 text-white/95"
+                  aria-label={countryLabelsResolved.countryName}
+                  title={countryLabelsResolved.countryName}
+                >
+                  {countryLabelsResolved.flag} {countryLabelsResolved.countryName}
+                </span>
+              ) : (
+                <span
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-sm bg-white/15 text-white/95"
+                  aria-label={LATAM_REGION_LABEL}
+                  title={LATAM_REGION_LABEL}
+                >
+                  🌍 {LATAM_REGION_LABEL}
+                </span>
+              )}
+            </motion.div>
+          )}
 
           <motion.div
             initial={{ opacity: 0, y: 10 }}
@@ -162,7 +233,7 @@ export default function AuthStep({ onRegister, onLogin, onGoogleLogin, isLoading
                   ))}
                 </ul>
                 <p className="text-white/70 text-sm mb-8" style={{ fontFamily: 'var(--font-caption)' }}>
-                  {countryLabels.heroSubtitle}
+                  {heroSubtitle}
                 </p>
               </>
             )}
@@ -212,7 +283,14 @@ export default function AuthStep({ onRegister, onLogin, onGoogleLogin, isLoading
               <Icon name="LayoutGrid" size={18} color="#fff" />
             </div>
             <span className="font-bold text-lg" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>VentALink</span>
-            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs bg-violet-100 text-violet-700 ml-auto" title={countryLabels.countryName}>{countryLabels.flag}</span>
+            {(showCountryBadge || showLatamFallbackBadge) && (
+              <span
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs bg-violet-100 text-violet-700 ml-auto max-w-[min(100%,11rem)] truncate"
+                title={showCountryBadge ? countryLabelsResolved.countryName : LATAM_REGION_LABEL}
+              >
+                {showCountryBadge ? countryLabelsResolved.flag : '🌍'}
+              </span>
+            )}
           </div>
 
           <div
@@ -225,9 +303,13 @@ export default function AuthStep({ onRegister, onLogin, onGoogleLogin, isLoading
             <h1 className="text-2xl sm:text-3xl font-bold mb-1" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.03em' }}>
               {mode === 'register' ? 'Crear cuenta' : 'Iniciar sesión'}
             </h1>
-            <p className="text-sm mb-6 flex items-center gap-2" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+            <p className="text-sm mb-6 flex items-center gap-2 flex-wrap" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
               {mode === 'register' ? 'Solo toma un minuto.' : 'Ingresa tus credenciales.'}
-              <span className="text-base lg:hidden" title={countryLabels.countryName}>{countryLabels.flag}</span>
+              {(showCountryBadge || showLatamFallbackBadge) && (
+                <span className="text-base lg:hidden" title={showCountryBadge ? countryLabelsResolved.countryName : LATAM_REGION_LABEL}>
+                  {showCountryBadge ? countryLabelsResolved.flag : '🌍'}
+                </span>
+              )}
             </p>
 
             {authError && (

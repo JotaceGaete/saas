@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import tsconfigPaths from "vite-tsconfig-paths";
 import { VitePWA } from "vite-plugin-pwa";
@@ -7,7 +7,12 @@ import { VitePWA } from "vite-plugin-pwa";
 const PWA_CACHE_VERSION = "v2026-03-22-1";
 
 // https://vitejs.dev/config/
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), "");
+  return {
+  define: {
+    "process.env.VITE_OG_IMAGE_API_BASE": JSON.stringify(env.VITE_OG_IMAGE_API_BASE || ""),
+  },
   // This changes the out put dir from dist to build
   // comment this out if that isn't relevant for your project
   build: {
@@ -71,4 +76,5 @@ export default defineConfig({
     strictPort: true,
     allowedHosts: ['.amazonaws.com', '.ventalink.app', 'go.ventalink.app']
   }
+};
 });

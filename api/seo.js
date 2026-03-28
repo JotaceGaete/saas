@@ -6,8 +6,9 @@ import { createClient } from '@supabase/supabase-js';
 import {
   buildLocalBusinessJsonLd,
   detectCatalogRegion,
-  getCatalogMetaDescription,
-  getCatalogPageTitle,
+  getCatalogShareDescription,
+  getCatalogShareDocumentTitle,
+  resolveCatalogOgImageUrl,
   stringifyJsonLd,
 } from '../src/utils/catalogSeo.js';
 import {
@@ -39,50 +40,13 @@ function getOriginCatalog(request) {
   return '';
 }
 
-function parseDesignSettingsSafe(value) {
-  if (!value) return {};
-  if (typeof value === 'object' && !Array.isArray(value)) return value;
-  if (typeof value !== 'string') return {};
-  try {
-    const parsed = JSON.parse(value);
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-  } catch (_) {
-    return {};
-  }
-}
-
-function toAbsoluteUrl(url, origin) {
-  if (!url || typeof url !== 'string') return '';
-  const trimmed = url.trim();
-  if (!trimmed) return '';
-  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return trimmed;
-  return `${origin}${trimmed.startsWith('/') ? '' : '/'}${trimmed}`;
-}
-
-function buildOgImageUrl(row, origin) {
-  const ds = parseDesignSettingsSafe(row?.design_settings);
-  const candidates = [
-    row?.og_image_url,
-    row?.cover_image_url,
-    ds?.coverImageUrl,
-    ds?.headerImageUrl,
-    row?.logo_url,
-    ds?.logoUrl,
-  ];
-  for (const candidate of candidates) {
-    const absolute = toAbsoluteUrl(candidate, origin);
-    if (absolute) return absolute;
-  }
-  const name = (row?.name || 'Catálogo').replace(/[^a-zA-Z0-9\s]/g, '').trim() || 'Catalogo';
-  return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=7C3AED&color=fff&size=1200&format=png`;
-}
-
 async function handleCatalogHtml(request) {
   const url = new URL(request.url);
   const slug = url.searchParams.get('slug')?.trim();
   if (!slug) {
     return new Response('Slug required', { status: 400 });
   }
+  const publicPath = url.searchParams.get('publicPath') === 'catalog' ? 'catalog' : 'catalogo';
 
   const origin = getOriginCatalog(request);
   if (!origin) {
@@ -102,7 +66,7 @@ async function handleCatalogHtml(request) {
   const { data: row, error } = await supabase
     .from('wa_businesses')
     .select(
-      'id, name, description, slug, logo_url, cover_image_url, design_settings, og_image_url, city, region, country, country_code, currency, whatsapp'
+      'id, name, description, slug, logo_url, cover_image_url, design_settings, og_image_url, city, region, country, country_code, currency, whatsapp, updated_at'
     )
     .eq('slug', slug)
     .eq('is_active', true)
@@ -122,11 +86,22 @@ async function handleCatalogHtml(request) {
     host,
   };
 
-  const pageTitle = getCatalogPageTitle(seoInput);
-  const metaDescription = getCatalogMetaDescription(seoInput);
+  const pageTitle = getCatalogShareDocumentTitle(row.name);
+  const metaDescription = getCatalogShareDescription(row);
   const ri = detectCatalogRegion(seoInput);
-  const ogImage = buildOgImageUrl(row, origin);
-  const catalogUrl = `${origin}/catalogo/${slug}`;
+  const ogImage = resolveCatalogOgImageUrl(row, origin, { cacheBust: row.updated_at });
+  const catalogUrl = `${origin}/${publicPath}/${slug}`;
+
+  console.log(
+    '[catalog-og-html]',
+    JSON.stringify({
+      slug,
+      publicPath,
+      ogImage,
+      title: pageTitle,
+      source: 'api/seo',
+    }),
+  );
 
   const jsonLd = buildLocalBusinessJsonLd({
     name: row.name || 'Catálogo',
@@ -143,6 +118,9 @@ async function handleCatalogHtml(request) {
 
   const jsonLdScript = `<script type="application/ld+json">${stringifyJsonLd(jsonLd)}</script>`;
 
+  const ogImageSecure =
+    ogImage.startsWith('https://') ? `<meta property="og:image:secure_url" content="${escapeHtmlCatalog(ogImage)}" />` : '';
+
   const metaTags = [
     `<meta name="robots" content="index, follow" />`,
     `<meta property="og:type" content="website" />`,
@@ -150,6 +128,7 @@ async function handleCatalogHtml(request) {
     `<meta property="og:title" content="${escapeHtmlCatalog(pageTitle)}" />`,
     `<meta property="og:description" content="${escapeHtmlCatalog(metaDescription)}" />`,
     `<meta property="og:image" content="${escapeHtmlCatalog(ogImage)}" />`,
+    ogImageSecure,
     `<meta property="og:image:width" content="1200" />`,
     `<meta property="og:image:height" content="630" />`,
     `<meta property="og:locale" content="${escapeHtmlCatalog(ri.ogLocale)}" />`,
@@ -160,7 +139,9 @@ async function handleCatalogHtml(request) {
     `<meta name="description" content="${escapeHtmlCatalog(metaDescription)}" />`,
     `<link rel="canonical" href="${escapeHtmlCatalog(catalogUrl)}" />`,
     jsonLdScript,
-  ].join('\n  ');
+  ]
+    .filter(Boolean)
+    .join('\n  ');
 
   let html;
   try {
@@ -185,7 +166,8 @@ async function handleCatalogHtml(request) {
     status: 200,
     headers: {
       'Content-Type': 'text/html; charset=utf-8',
-      'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
+      'Cache-Control': 'public, s-maxage=120, stale-while-revalidate=600',
+      'X-Catalog-Og-Source': 'seo-handler-v2',
     },
   });
 }

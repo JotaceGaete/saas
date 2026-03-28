@@ -1,14 +1,10 @@
 import {
-  CATALOG_OG_DESCRIPTION,
   detectCatalogRegion,
-  getCatalogMetaDescription,
-  getCatalogOgImageUrl,
-  getCatalogOgSocialTitle,
-  getCatalogPageTitle,
+  getCatalogShareDescription,
+  getCatalogShareDocumentTitle,
+  resolveCatalogOgImageUrl,
 } from './src/utils/catalogSeo.js';
 import { getCatalogSlugFromPath } from './src/utils/seoPassThrough.js';
-
-const OG_FALLBACK_IMAGE = 'https://media.gong.cl/test/preview.jpg';
 const CF_MEDIA_HOST = 'media.gong.cl';
 
 const BOT_UA =
@@ -17,18 +13,6 @@ const BOT_UA =
 function isBot(userAgent) {
   const ua = String(userAgent || '').trim();
   return BOT_UA.test(ua);
-}
-
-function parseDesignSettingsSafe(value) {
-  if (!value) return {};
-  if (typeof value === 'object' && !Array.isArray(value)) return value;
-  if (typeof value !== 'string') return {};
-  try {
-    const parsed = JSON.parse(value);
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-  } catch (_) {
-    return {};
-  }
 }
 
 /** Tras `/cdn-cgi/image/<opciones>/`, la URL original suele empezar por `https://`. */
@@ -53,24 +37,10 @@ function isAllowedOgImageUpstreamUrl(u) {
   }
 }
 
-function rowToBusinessForOg(row) {
-  const ds = parseDesignSettingsSafe(row?.design_settings);
-  return {
-    id: row?.id,
-    name: row?.name,
-    ogImageUrl: row?.og_image_url,
-    logoUrl: row?.logo_url,
-    coverImageUrl: row?.cover_image_url || ds?.coverImageUrl || ds?.headerImageUrl,
-    designSettings: ds,
-  };
-}
-
 function buildOgHtml(payload) {
   const {
-    htmlTitle,
-    ogTitle,
-    metaDescription,
-    ogDescription,
+    title,
+    description,
     ogImage,
     canonicalUrl,
     ogLocale,
@@ -81,25 +51,29 @@ function buildOgHtml(payload) {
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;');
+  const secure =
+    ogImage && String(ogImage).startsWith('https://')
+      ? `\n  <meta property="og:image:secure_url" content="${escaped(ogImage)}" />`
+      : '';
 
   return `<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>${escaped(htmlTitle)}</title>
-  <meta name="description" content="${escaped(metaDescription)}" />
+  <title>${escaped(title)}</title>
+  <meta name="description" content="${escaped(description)}" />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="${escaped(canonicalUrl)}" />
-  <meta property="og:title" content="${escaped(ogTitle)}" />
-  <meta property="og:description" content="${escaped(ogDescription)}" />
-  <meta property="og:image" content="${escaped(ogImage)}" />
+  <meta property="og:title" content="${escaped(title)}" />
+  <meta property="og:description" content="${escaped(description)}" />
+  <meta property="og:image" content="${escaped(ogImage)}" />${secure}
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
   <meta property="og:locale" content="${escaped(ogLocale || 'es_CL')}" />
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="${escaped(ogTitle)}" />
-  <meta name="twitter:description" content="${escaped(ogDescription)}" />
+  <meta name="twitter:title" content="${escaped(title)}" />
+  <meta name="twitter:description" content="${escaped(description)}" />
   <meta name="twitter:image" content="${escaped(ogImage)}" />
   <link rel="canonical" href="${escaped(canonicalUrl)}" />
   <meta name="robots" content="index, follow" />
@@ -147,7 +121,8 @@ export default {
     const supabaseUrl = (env?.SUPABASE_URL || '').replace(/\/$/, '');
     const supabaseKey = env?.SUPABASE_ANON_KEY || '';
     const origin = url.origin;
-    const canonicalUrl = `${origin}/catalogo/${slug}`;
+    const pathClean = url.pathname.replace(/\/$/, '') || `/catalogo/${slug}`;
+    const canonicalUrl = `${origin}${pathClean}`;
 
     const seoInput = {
       storeName: 'Catálogo',
@@ -157,13 +132,13 @@ export default {
       currency: undefined,
       host: url.host,
     };
-    let catalogDescription = getCatalogMetaDescription(seoInput);
-    let ogImage = OG_FALLBACK_IMAGE;
+    let catalogDescription = getCatalogShareDescription(null);
+    let ogImage = resolveCatalogOgImageUrl(null, origin);
 
     try {
       if (supabaseUrl && supabaseKey) {
         const res = await fetch(
-          `${supabaseUrl}/rest/v1/wa_businesses?slug=eq.${encodeURIComponent(slug)}&is_active=eq.true&select=id,name,description,slug,og_image_url,logo_url,cover_image_url,design_settings,city,region,country,country_code,currency`,
+          `${supabaseUrl}/rest/v1/wa_businesses?slug=eq.${encodeURIComponent(slug)}&is_active=eq.true&select=id,name,description,slug,og_image_url,logo_url,cover_image_url,design_settings,city,region,country,country_code,currency,updated_at`,
           {
             headers: {
               Accept: 'application/json',
@@ -182,10 +157,12 @@ export default {
             seoInput.country = row?.country;
             seoInput.currency = row?.currency;
             seoInput.countryCode = row?.country_code;
-            catalogDescription = getCatalogMetaDescription(seoInput);
-            ogImage = getCatalogOgImageUrl(rowToBusinessForOg(row), origin, {
-              ogImageApiBase: env?.OG_IMAGE_API_ORIGIN || '',
-            });
+            catalogDescription = getCatalogShareDescription(row);
+            ogImage = resolveCatalogOgImageUrl(row, origin, { cacheBust: row?.updated_at });
+            console.log(
+              '[catalog-og-worker]',
+              JSON.stringify({ slug, canonicalUrl, ogImage, title: getCatalogShareDocumentTitle(row?.name) }),
+            );
           }
         }
       }
@@ -193,15 +170,12 @@ export default {
       // Fallback silencioso: siempre responder HTML OG.
     }
 
-    const pageTitle = getCatalogPageTitle(seoInput);
-    const socialTitle = getCatalogOgSocialTitle(seoInput.storeName);
+    const pageTitle = getCatalogShareDocumentTitle(seoInput.storeName);
     const ri = detectCatalogRegion(seoInput);
 
     const html = buildOgHtml({
-      htmlTitle: pageTitle,
-      ogTitle: socialTitle,
-      metaDescription: catalogDescription,
-      ogDescription: CATALOG_OG_DESCRIPTION,
+      title: pageTitle,
+      description: catalogDescription,
       ogImage,
       canonicalUrl,
       ogLocale: ri.ogLocale,

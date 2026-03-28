@@ -9,6 +9,103 @@ import { getCountryConfig } from '../config/countryConfig';
 export const CATALOG_OG_DESCRIPTION =
   'Mira nuestros productos y haz tu pedido por WhatsApp.';
 
+/** Descripción por defecto cuando el negocio no tiene `description` (previews server-side / share). */
+export const CATALOG_SHARE_DESCRIPTION_FALLBACK =
+  'Mira mi catálogo y haz tu pedido por WhatsApp.';
+
+/**
+ * Parsea `design_settings` desde fila Supabase (objeto o JSON string).
+ * @param {unknown} value
+ * @returns {Record<string, unknown>}
+ */
+export function parseDesignSettingsFromDb(value) {
+  if (!value) return {};
+  if (typeof value === 'object' && !Array.isArray(value)) return /** @type {Record<string, unknown>} */ (value);
+  if (typeof value === 'string') {
+    try {
+      const p = JSON.parse(value);
+      return p && typeof p === 'object' && !Array.isArray(p) ? p : {};
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
+/**
+ * URL absoluta HTTPS para crawlers (WhatsApp, etc.). `origin` sin barra final.
+ * @param {string|null|undefined} url
+ * @param {string} originBase
+ */
+export function toAbsoluteCatalogUrl(url, originBase) {
+  const base = String(originBase || '').replace(/\/$/, '');
+  if (!url || typeof url !== 'string') return '';
+  const t = url.trim();
+  if (!t) return '';
+  if (t.startsWith('https://')) return t;
+  if (t.startsWith('http://')) return t.replace(/^http:\/\//i, 'https://');
+  if (!base) return '';
+  return `${base}${t.startsWith('/') ? '' : '/'}${t}`;
+}
+
+/**
+ * Imagen OG desde fila `wa_businesses` (REST) o middleware/worker.
+ * Prioridad: portada y header en diseño → cover en BD → cover_url legacy → logos → og_image_url → asset Ventalink.
+ * Último fallback: `{origin}/logo-ventalink.png`.
+ *
+ * @param {Record<string, unknown>|null|undefined} row
+ * @param {string} origin - Origen público (https://dominio) sin barra final
+ * @param {{ cacheBust?: string|null }} [options]
+ */
+export function resolveCatalogOgImageUrl(row, origin, options = {}) {
+  const base = String(origin || '').replace(/\/$/, '');
+  const ds = parseDesignSettingsFromDb(row?.design_settings);
+  const candidates = [
+    ds?.coverImageUrl,
+    ds?.headerImageUrl,
+    row?.cover_image_url,
+    row?.cover_url,
+    row?.logo_url,
+    ds?.logoUrl,
+    row?.og_image_url,
+  ];
+  let chosen = '';
+  for (const c of candidates) {
+    const abs = toAbsoluteCatalogUrl(typeof c === 'string' ? c : c != null ? String(c) : '', base);
+    if (abs) {
+      chosen = abs;
+      break;
+    }
+  }
+  if (!chosen) {
+    chosen = base ? `${base}/logo-ventalink.png` : 'https://go.ventalink.app/logo-ventalink.png';
+  }
+  const bust = options.cacheBust;
+  if (bust && chosen && !chosen.includes('ui-avatars.com')) {
+    const sep = chosen.includes('?') ? '&' : '?';
+    chosen = `${chosen}${sep}ogv=${encodeURIComponent(String(bust))}`;
+  }
+  return chosen;
+}
+
+/** Título del documento / og:title = nombre del catálogo (sin sufijo de marketing). */
+export function getCatalogShareDocumentTitle(storeName) {
+  const n = (storeName || '').trim();
+  return n || 'Catálogo';
+}
+
+/**
+ * Meta description para compartir: descripción del negocio o fallback corto.
+ * @param {Record<string, unknown>|null|undefined} row
+ */
+export function getCatalogShareDescription(row) {
+  const raw = row && typeof row.description === 'string' ? row.description.trim() : '';
+  if (raw) {
+    return raw.length > 320 ? `${raw.slice(0, 317)}...` : raw;
+  }
+  return CATALOG_SHARE_DESCRIPTION_FALLBACK;
+}
+
 /**
  * Título corto para og:title / Twitter (marca Ventalink).
  * @param {string} [storeName]
@@ -25,11 +122,22 @@ export function getCatalogOgSocialTitle(storeName) {
  * @param {object | null} business — objeto de negocio (camelCase) con id, coverImageUrl, etc.
  * @param {string} [baseUrl] — origen para URLs relativas
  */
+/**
+ * Base URL para generate-og-image (opcional). En Node (Vercel/api) usa process.env;
+ * en el navegador Vite puede inyectar process.env.VITE_OG_IMAGE_API_BASE vía define (vite.config.mjs).
+ * No usar import.meta: este archivo se importa desde handlers CommonJS.
+ */
+function readOgImageApiBaseEnv() {
+  if (typeof process !== 'undefined' && process.env && typeof process.env.VITE_OG_IMAGE_API_BASE === 'string') {
+    const v = process.env.VITE_OG_IMAGE_API_BASE.trim();
+    return v || '';
+  }
+  return '';
+}
+
 export function getCatalogOgImageUrl(business, baseUrl, options = {}) {
   const ogApi =
-    (options.ogImageApiBase && String(options.ogImageApiBase).trim()) ||
-    (typeof import.meta !== 'undefined' && import.meta.env?.VITE_OG_IMAGE_API_BASE?.trim()) ||
-    '';
+    (options.ogImageApiBase && String(options.ogImageApiBase).trim()) || readOgImageApiBaseEnv();
   if (ogApi && business?.id) {
     return `${ogApi.replace(/\/$/, '')}/api/og-image?store=${encodeURIComponent(business.id)}`;
   }
@@ -40,9 +148,16 @@ export function getCatalogOgImageUrl(business, baseUrl, options = {}) {
     ''
   ).replace(/\/$/, '');
   const ds = business?.designSettings || {};
+  const rowLike = {
+    design_settings: ds,
+    cover_image_url: business?.coverImageUrl,
+    logo_url: business?.logoUrl,
+    og_image_url: business?.ogImageUrl,
+  };
+  const coverFirst =
+    (ds?.coverImageUrl || ds?.headerImageUrl || business?.coverImageUrl || '').trim() || '';
   const og = (business?.ogImageUrl)?.trim();
   const logo = (business?.logoUrl || ds?.logoUrl)?.trim();
-  const cover = (business?.coverImageUrl || ds?.headerImageUrl || ds?.coverImageUrl)?.trim();
 
   const toAbsolute = (url) => {
     if (!url) return '';
@@ -50,11 +165,10 @@ export function getCatalogOgImageUrl(business, baseUrl, options = {}) {
     return `${origin}${url.startsWith('/') ? '' : '/'}${url}`;
   };
 
-  if (cover) return toAbsolute(cover);
+  if (coverFirst) return toAbsolute(coverFirst);
   if (og) return toAbsolute(og);
   if (logo) return toAbsolute(logo);
-  const name = (business?.name || 'Catálogo').replace(/[^a-zA-Z0-9\s]/g, '').trim() || 'Catalogo';
-  return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=7C3AED&color=fff&size=1200&format=png`;
+  return resolveCatalogOgImageUrl(rowLike, origin);
 }
 
 /**
