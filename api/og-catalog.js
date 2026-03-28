@@ -1,5 +1,6 @@
 /**
  * GET /api/og-catalog?slug= — PNG 1200×630 para og:image (Vercel Node; @resvg/resvg-js).
+ * HEAD — mismos headers que GET, sin cuerpo (probes de crawlers / WhatsApp).
  */
 
 import { createClient } from '@supabase/supabase-js';
@@ -302,5 +303,76 @@ export async function GET(request) {
     } catch {
       return new Response('Internal error', { status: 500 });
     }
+  }
+}
+
+/**
+ * Sin generar PNG: validación ligera + headers alineados con GET (200 siempre salvo error irrecuperable).
+ */
+export async function HEAD(request) {
+  try {
+    const url = new URL(request.url);
+    const slug = (url.searchParams.get('slug') || '').trim();
+
+    if (!slug || slug.length > 200) {
+      return new Response(null, {
+        status: 200,
+        headers: {
+          'Content-Type': 'image/png',
+          'Cache-Control': 'public, max-age=60',
+        },
+      });
+    }
+
+    const supabaseUrl = (process.env.VITE_SUPABASE_URL || '').replace(/\/$/, '');
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+    if (!supabaseUrl || !serviceKey) {
+      return new Response(null, {
+        status: 200,
+        headers: {
+          'Content-Type': 'image/png',
+          'Cache-Control': 'public, max-age=60',
+        },
+      });
+    }
+
+    const supabase = createClient(supabaseUrl, serviceKey);
+    const { data: row, error } = await supabase
+      .from('wa_businesses')
+      .select('updated_at')
+      .eq('slug', slug)
+      .eq('is_active', true)
+      .maybeSingle();
+
+    if (error || !row) {
+      return new Response(null, {
+        status: 200,
+        headers: {
+          'Content-Type': 'image/png',
+          'Cache-Control': 'public, max-age=120',
+        },
+      });
+    }
+
+    const cache = row.updated_at
+      ? 'public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800'
+      : 'public, max-age=3600, s-maxage=86400';
+
+    return new Response(null, {
+      status: 200,
+      headers: {
+        'Content-Type': 'image/png',
+        'Cache-Control': cache,
+      },
+    });
+  } catch (e) {
+    console.error('[og-catalog] HEAD', e?.message || e);
+    return new Response(null, {
+      status: 200,
+      headers: {
+        'Content-Type': 'image/png',
+        'Cache-Control': 'public, max-age=60',
+      },
+    });
   }
 }
