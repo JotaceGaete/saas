@@ -4,7 +4,7 @@
  * - assets y rutas típicas de build
  * - URLs con extensión de archivo estático
  *
- * Usado en middleware (Vercel) y worker (Cloudflare).
+ * Usado en el worker (Cloudflare) si aplica; el catálogo en go usa `api/seo`.
  */
 
 const STATIC_EXT =

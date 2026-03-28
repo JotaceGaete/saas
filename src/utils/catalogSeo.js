@@ -49,7 +49,7 @@ export function toAbsoluteCatalogUrl(url, originBase) {
 }
 
 /**
- * Imagen OG desde fila `wa_businesses` (REST) o middleware/worker.
+ * Imagen OG desde fila `wa_businesses` (REST) o `api/seo` (catálogo público).
  * Prioridad: portada y header en diseño → cover en BD → cover_url legacy → logos → og_image_url → asset Ventalink.
  * Último fallback: `{origin}/logo-ventalink.png`.
  *
