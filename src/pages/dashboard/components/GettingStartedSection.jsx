@@ -4,6 +4,7 @@ import Icon from "components/AppIcon";
 import ProgressCircle from "components/common/ProgressCircle";
 import { QRCodeSVG } from "qrcode.react";
 import { getCatalogShareMessage } from "../../../utils/branding";
+import { getPublicCatalogRelativePath } from "../../../config/appUrl";
 import { hasCompletedCatalogShare } from "../../../utils/catalogShareCelebration";
 
 const STEPS = [
@@ -153,7 +154,7 @@ export default function GettingStartedSection({
         navigate(card?.path);
         break;
       case "open_catalog":
-        if (business?.slug) navigate(`/catalogo/${business.slug}`);
+        if (business?.slug) navigate(getPublicCatalogRelativePath(business.slug));
         else if (catalogUrl) window.location.href = catalogUrl;
         break;
       case "share_whatsapp": {

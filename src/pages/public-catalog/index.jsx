@@ -8,7 +8,12 @@ import { formatCurrency } from '../../utils/formatCLP';
 import { getBusinessLocale } from '../../lib/locale/businessLocale';
 import { useIsDesktop } from '../../hooks/useMediaQuery';
 import { useAuth } from '../../contexts/AuthContext';
-import { getPublicCatalogBaseUrl, getPublicCatalogUrl, getWhatsAppOrderCatalogUrl } from '../../config/appUrl';
+import {
+  getPublicCatalogBaseUrl,
+  getPublicCatalogRelativePath,
+  getPublicCatalogUrl,
+  getWhatsAppOrderCatalogUrl,
+} from '../../config/appUrl';
 import BrandingFooter from '../../components/BrandingFooter';
 import { hasViralBranding, getOrderMessageBrandingSuffix } from '../../utils/branding';
 import { isRestaurantBusiness } from '../../utils/businessType';
@@ -197,7 +202,7 @@ function CatalogInner({ slug }) {
     const { data: biz, error: bizErr } = await getBusinessBySlug(slug);
     if (bizErr || !biz) { setNotFound(true); setLoading(false); return; }
     setBusiness(biz);
-    const path = typeof window !== 'undefined' ? window.location?.pathname || `/catalogo/${slug}` : `/catalogo/${slug}`;
+    const path = typeof window !== 'undefined' ? window.location?.pathname || getPublicCatalogRelativePath(slug) : getPublicCatalogRelativePath(slug);
     recordCatalogVisit(slug, path)
       .then((r) => console.log('[public-catalog] recordCatalogVisit result', { slug, recorded: r?.recorded, throttled: r?.throttled, error: r?.error }))
       .catch((e) => console.error('[public-catalog] recordCatalogVisit error', slug, e));
@@ -754,7 +759,7 @@ function CatalogInner({ slug }) {
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={() => {
-                      const path = typeof window !== 'undefined' ? window.location?.pathname || `/catalogo/${slug}` : `/catalogo/${slug}`;
+                      const path = typeof window !== 'undefined' ? window.location?.pathname || getPublicCatalogRelativePath(slug) : getPublicCatalogRelativePath(slug);
                       recordCatalogWhatsAppClick(slug, path, 'store_header').catch(() => {});
                     }}
                     className="inline-flex items-center justify-center gap-2 w-full md:w-auto px-4 py-2.5 rounded-xl text-sm font-bold text-white transition-all duration-150 hover:opacity-90 active:scale-[0.98]"
@@ -1437,7 +1442,7 @@ function OrderPanel({ business, slug, formatPrice, onClose, theme }) {
           message += `${catalogUrl ? '\n\n\n' : '\n\n'}${getOrderMessageBrandingSuffix(business)}`;
         }
         const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
-        const path = typeof window !== 'undefined' ? window.location?.pathname || `/catalogo/${slug}` : `/catalogo/${slug}`;
+        const path = typeof window !== 'undefined' ? window.location?.pathname || getPublicCatalogRelativePath(slug) : getPublicCatalogRelativePath(slug);
         recordCatalogWhatsAppClick(slug, path, 'cart_checkout').catch(() => {});
         console.info('[catalog-order] opening whatsapp...');
         const popup = window.open(url, '_blank', 'noopener,noreferrer');
@@ -2153,7 +2158,7 @@ function ProductModal({ product, business, slug, formatPrice, whatsAppUrl, whats
             target="_blank"
             rel="noopener noreferrer"
             onClick={() => {
-              const path = typeof window !== 'undefined' ? window.location?.pathname || `/catalogo/${slug}` : `/catalogo/${slug}`;
+              const path = typeof window !== 'undefined' ? window.location?.pathname || getPublicCatalogRelativePath(slug) : getPublicCatalogRelativePath(slug);
               recordCatalogWhatsAppClick(slug, path, 'product_modal').catch(() => {});
             }}
             className="flex items-center justify-center gap-2 w-full py-3 rounded-2xl text-sm font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50 transition-all"

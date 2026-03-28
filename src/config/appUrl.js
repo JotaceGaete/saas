@@ -32,25 +32,42 @@ export function getPublicCatalogBaseUrl() {
 const PUBLIC_CATALOG_ROUTES = new Set(['catalogo', 'catalog']);
 
 /**
- * URL absoluta del catálogo público en el host canónico.
- * @param {string} slug
- * @param {'catalogo'|'catalog'} [route='catalogo'] - Ruta canónica compartible: `catalogo`. `catalog` solo como alias.
- * @returns {string}
+ * Segmento de ruta único para enlaces compartibles (WhatsApp, QR, copiar, pedidos, OG).
+ * Prueba temporal: `catalog` para alinear capa OG entre flujos; `/catalogo/:slug` sigue como alias en la SPA.
  */
-export function buildPublicCatalogUrl(slug, route = 'catalogo') {
+export const PUBLIC_CATALOG_SHARE_SEGMENT = 'catalog';
+
+/**
+ * Ruta relativa canónica del catálogo público (mismo segmento que enlaces compartibles).
+ * @param {string} slug
+ * @returns {string} p. ej. `/catalog/mi-tienda` o ''
+ */
+export function getPublicCatalogRelativePath(slug) {
   const s = String(slug || '').trim();
   if (!s) return '';
-  const seg = PUBLIC_CATALOG_ROUTES.has(route) ? route : 'catalogo';
+  return `/${PUBLIC_CATALOG_SHARE_SEGMENT}/${s}`;
+}
+
+/**
+ * URL absoluta del catálogo público en el host canónico.
+ * @param {string} slug
+ * @param {'catalogo'|'catalog'} [route] - Por defecto {@link PUBLIC_CATALOG_SHARE_SEGMENT} (compartir/pedidos).
+ * @returns {string}
+ */
+export function buildPublicCatalogUrl(slug, route = PUBLIC_CATALOG_SHARE_SEGMENT) {
+  const s = String(slug || '').trim();
+  if (!s) return '';
+  const seg = PUBLIC_CATALOG_ROUTES.has(route) ? route : PUBLIC_CATALOG_SHARE_SEGMENT;
   return `${getPublicCatalogBaseUrl()}/${seg}/${s}`;
 }
 
 /**
- * Enlace compartible estándar: /catalogo/:slug en go.ventalink.app
+ * Enlace compartible estándar: `https://go.ventalink.app/catalog/:slug` (unificado con mensajes de pedido).
  * @param {string} slug
  * @returns {string}
  */
 export function getPublicCatalogUrl(slug) {
-  return buildPublicCatalogUrl(slug, 'catalogo');
+  return buildPublicCatalogUrl(slug, PUBLIC_CATALOG_SHARE_SEGMENT);
 }
 
 /**
