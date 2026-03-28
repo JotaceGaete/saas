@@ -8,7 +8,7 @@ import { formatCurrency } from '../../utils/formatCLP';
 import { getBusinessLocale } from '../../lib/locale/businessLocale';
 import { useIsDesktop } from '../../hooks/useMediaQuery';
 import { useAuth } from '../../contexts/AuthContext';
-import { getAppBaseUrl, getPublicCatalogUrl } from '../../config/appUrl';
+import { getAppBaseUrl, getPublicCatalogUrl, getWhatsAppOrderCatalogUrl } from '../../config/appUrl';
 import BrandingFooter from '../../components/BrandingFooter';
 import { hasViralBranding, getOrderMessageBrandingSuffix } from '../../utils/branding';
 import { isRestaurantBusiness } from '../../utils/businessType';
@@ -469,10 +469,10 @@ function CatalogInner({ slug }) {
     let message = code
       ? `Hola, quiero este producto: ${code} - ${product?.name}\n\nPrecio: ${formatPrice(product?.price)}\n\nTienda: ${storeName}`
       : `Hola! Me interesa el producto:\n\n*${product?.name}*\nPrecio: ${formatPrice(product?.price)}\n\nTienda: ${storeName}`;
-    const catalogUrl = slug ? getPublicCatalogUrl(slug) : '';
+    const catalogUrl = slug ? getWhatsAppOrderCatalogUrl(slug) : '';
     if (catalogUrl) message += `\n\n${catalogUrl}`;
     const branding = getOrderMessageBrandingSuffix(business);
-    if (branding) message += `\n\n${branding}`;
+    if (branding) message += `${catalogUrl ? '\n\n\n' : '\n\n'}${branding}`;
     return message;
   };
 
@@ -1431,9 +1431,11 @@ function OrderPanel({ business, slug, formatPrice, onClose, theme }) {
         }
         message += `\n\nPedido:\n${lines?.join('\n')}`;
         if (notes?.trim()) message += `\n\nComentario:\n${notes?.trim()}`;
-        const catalogUrl = slug ? getPublicCatalogUrl(slug) : '';
+        const catalogUrl = slug ? getWhatsAppOrderCatalogUrl(slug) : '';
         if (catalogUrl) message += `\n\n${catalogUrl}`;
-        if (hasViralBranding(business)) message += `\n\n${getOrderMessageBrandingSuffix(business)}`;
+        if (hasViralBranding(business)) {
+          message += `${catalogUrl ? '\n\n\n' : '\n\n'}${getOrderMessageBrandingSuffix(business)}`;
+        }
         const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
         const path = typeof window !== 'undefined' ? window.location?.pathname || `/catalogo/${slug}` : `/catalogo/${slug}`;
         recordCatalogWhatsAppClick(slug, path, 'cart_checkout').catch(() => {});

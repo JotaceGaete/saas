@@ -66,4 +66,43 @@ export function getPublicCatalogUrl(slug) {
   return clean ? `${clean}/catalogo/${slug}` : '';
 }
 
+/**
+ * `/catalogo/` por defecto; `/catalog/` si la vista actual usa esa ruta (en inglés).
+ */
+export function getPublicCatalogPathSegment() {
+  if (typeof window === 'undefined') return 'catalogo';
+  const path = window.location?.pathname || '';
+  return path.startsWith('/catalog/') ? 'catalog' : 'catalogo';
+}
+
+/**
+ * URL absoluta del catálogo alineada con la ruta actual (catalogo vs catalog).
+ */
+export function getPublicCatalogUrlWithLocalePath(slug) {
+  if (!slug) return '';
+  const base = getAppBaseUrl();
+  const origin = base || (typeof window !== 'undefined' && window?.location?.origin) || '';
+  const clean = String(origin).replace(/\/$/, '');
+  if (!clean) return '';
+  const seg = getPublicCatalogPathSegment();
+  return `${clean}/${seg}/${slug}`;
+}
+
+/**
+ * Evita que WhatsApp reutilice la miniatura/link preview en caché entre envíos.
+ * @param {string} url
+ */
+export function appendOgPreviewCacheBust(url) {
+  if (!url || typeof url !== 'string') return '';
+  const sep = url.includes('?') ? '&' : '?';
+  return `${url}${sep}p=${Date.now()}`;
+}
+
+/**
+ * Link del catálogo para mensajes de pedido por WhatsApp (URL única por envío).
+ */
+export function getWhatsAppOrderCatalogUrl(slug) {
+  return appendOgPreviewCacheBust(getPublicCatalogUrlWithLocalePath(slug));
+}
+
 export default getAppBaseUrl;
