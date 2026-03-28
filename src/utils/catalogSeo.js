@@ -49,9 +49,46 @@ export function toAbsoluteCatalogUrl(url, originBase) {
 }
 
 /**
- * Imagen OG desde fila `wa_businesses` (REST) o `api/seo` (catálogo público).
- * Prioridad: portada y header en diseño → cover en BD → cover_url legacy → logos → og_image_url → asset Ventalink.
- * Último fallback: `{origin}/logo-ventalink.png`.
+ * Origen público para `/api/og-catalog` (mismo host que el catálogo en prod).
+ * Override: `OG_CATALOG_PUBLIC_ORIGIN` o `VITE_APP_URL`; fallback canónico go.
+ */
+function readOgCatalogPublicOrigin() {
+  if (typeof process !== 'undefined' && process.env?.OG_CATALOG_PUBLIC_ORIGIN) {
+    return String(process.env.OG_CATALOG_PUBLIC_ORIGIN).replace(/\/$/, '');
+  }
+  if (typeof process !== 'undefined' && process.env?.VITE_APP_URL) {
+    return String(process.env.VITE_APP_URL).replace(/\/$/, '');
+  }
+  return 'https://go.ventalink.app';
+}
+
+/**
+ * PNG 1200×630 vía Vercel Serverless (`/api/og-catalog`). No usar portada cruda como og:image.
+ * @param {string} slug
+ * @param {string|null|undefined} [cacheBust] - ej. updated_at
+ * @param {string} [catalogOrigin] - mismo host que `resolveCatalogOgImageUrl(..., origin)` (p. ej. https://go.ventalink.app)
+ * @returns {string}
+ */
+export function getOgCatalogShareImageUrl(slug, cacheBust, catalogOrigin) {
+  const base = String(catalogOrigin || readOgCatalogPublicOrigin()).replace(/\/$/, '');
+  const s = String(slug || '').trim();
+  if (!base || !s) return '';
+  let u = `${base}/api/og-catalog?slug=${encodeURIComponent(s)}`;
+  if (cacheBust != null && String(cacheBust).trim() !== '') {
+    u += `&v=${encodeURIComponent(String(cacheBust))}`;
+  }
+  return u;
+}
+
+function appendOgCacheBust(url, bust) {
+  if (!url || !bust || String(url).includes('ui-avatars.com')) return url || '';
+  const sep = String(url).includes('?') ? '&' : '?';
+  return `${url}${sep}ogv=${encodeURIComponent(String(bust))}`;
+}
+
+/**
+ * URL de og:image para catálogo: PNG 1200×630 (guardado o `/api/og-catalog`), nunca cover plano si hay slug.
+ * Prioridad: `og_image_url` en BD → Vercel `api/og-catalog` → logo → logo-ventalink.
  *
  * @param {Record<string, unknown>|null|undefined} row
  * @param {string} origin - Origen público (https://dominio) sin barra final
@@ -59,33 +96,25 @@ export function toAbsoluteCatalogUrl(url, originBase) {
  */
 export function resolveCatalogOgImageUrl(row, origin, options = {}) {
   const base = String(origin || '').replace(/\/$/, '');
+  const slug = row?.slug != null ? String(row.slug).trim() : '';
+  const storedOg = row?.og_image_url;
+  if (typeof storedOg === 'string' && storedOg.startsWith('https://')) {
+    return appendOgCacheBust(storedOg, options.cacheBust);
+  }
+  const share = slug ? getOgCatalogShareImageUrl(slug, options.cacheBust, base) : '';
+  if (share) return share;
+
   const ds = parseDesignSettingsFromDb(row?.design_settings);
-  const candidates = [
-    ds?.coverImageUrl,
-    ds?.headerImageUrl,
-    row?.cover_image_url,
-    row?.cover_url,
-    row?.logo_url,
+  const logoCandidates = [
+    typeof row?.logo_url === 'string' ? row.logo_url : null,
     ds?.logoUrl,
-    row?.og_image_url,
   ];
-  let chosen = '';
-  for (const c of candidates) {
+  for (const c of logoCandidates) {
     const abs = toAbsoluteCatalogUrl(typeof c === 'string' ? c : c != null ? String(c) : '', base);
-    if (abs) {
-      chosen = abs;
-      break;
-    }
+    if (abs) return appendOgCacheBust(abs, options.cacheBust);
   }
-  if (!chosen) {
-    chosen = base ? `${base}/logo-ventalink.png` : 'https://go.ventalink.app/logo-ventalink.png';
-  }
-  const bust = options.cacheBust;
-  if (bust && chosen && !chosen.includes('ui-avatars.com')) {
-    const sep = chosen.includes('?') ? '&' : '?';
-    chosen = `${chosen}${sep}ogv=${encodeURIComponent(String(bust))}`;
-  }
-  return chosen;
+  const fallback = base ? `${base}/logo-ventalink.png` : 'https://go.ventalink.app/logo-ventalink.png';
+  return appendOgCacheBust(fallback, options.cacheBust);
 }
 
 /** Título del documento / og:title = nombre del catálogo (sin sufijo de marketing). */
@@ -149,26 +178,14 @@ export function getCatalogOgImageUrl(business, baseUrl, options = {}) {
   ).replace(/\/$/, '');
   const ds = business?.designSettings || {};
   const rowLike = {
+    slug: business?.slug,
     design_settings: ds,
     cover_image_url: business?.coverImageUrl,
     logo_url: business?.logoUrl,
     og_image_url: business?.ogImageUrl,
   };
-  const coverFirst =
-    (ds?.coverImageUrl || ds?.headerImageUrl || business?.coverImageUrl || '').trim() || '';
-  const og = (business?.ogImageUrl)?.trim();
-  const logo = (business?.logoUrl || ds?.logoUrl)?.trim();
-
-  const toAbsolute = (url) => {
-    if (!url) return '';
-    if (url.startsWith('http://') || url.startsWith('https://')) return url;
-    return `${origin}${url.startsWith('/') ? '' : '/'}${url}`;
-  };
-
-  if (coverFirst) return toAbsolute(coverFirst);
-  if (og) return toAbsolute(og);
-  if (logo) return toAbsolute(logo);
-  return resolveCatalogOgImageUrl(rowLike, origin);
+  const bust = options.cacheBust ?? business?.updatedAt ?? null;
+  return resolveCatalogOgImageUrl(rowLike, origin, { cacheBust: bust });
 }
 
 /**

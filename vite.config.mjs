@@ -12,6 +12,10 @@ export default defineConfig(({ mode }) => {
   return {
   define: {
     "process.env.VITE_OG_IMAGE_API_BASE": JSON.stringify(env.VITE_OG_IMAGE_API_BASE || ""),
+    "process.env.VITE_SUPABASE_URL": JSON.stringify(env.VITE_SUPABASE_URL || ""),
+    "process.env.OG_CATALOG_PUBLIC_ORIGIN": JSON.stringify(
+      env.OG_CATALOG_PUBLIC_ORIGIN || env.VITE_APP_URL || "https://go.ventalink.app",
+    ),
   },
   // This changes the out put dir from dist to build
   // comment this out if that isn't relevant for your project
