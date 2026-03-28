@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import Icon from 'components/AppIcon';
 import GoogleIcon from 'components/GoogleIcon';
+import VentalinkLogo from 'components/branding/VentalinkLogo';
 
 export default function LoginForm({ onSubmit, onGoogleLogin, onForgotPassword, isLoading, googleLoading, authError, forgotPasswordSuccess, forgotPasswordLoading, onClearForgotSuccess, redirectMessage }) {
   const [formData, setFormData] = useState({ email: '', password: '' });
@@ -31,23 +32,10 @@ export default function LoginForm({ onSubmit, onGoogleLogin, onForgotPassword, i
 
   return (
     <div className="w-full max-w-md">
-      {/* Mobile logo (solo icono, sin texto) */}
+      <div className="rounded-2xl border border-slate-200/90 bg-white/90 backdrop-blur-sm shadow-sm shadow-slate-200/50 px-6 py-8 sm:px-8 sm:py-9">
+      {/* Misma marca que la landing; en desktop el panel derecho también lleva logo */}
       <div className="flex items-center mb-8 lg:hidden">
-        <div className="h-14 flex items-center">
-          <img
-            src="/logo-ventalink.png"
-            alt="VentALink"
-            className="h-14 w-auto object-contain"
-            onError={(e) => {
-              e.target.style.display = 'none';
-              const fb = e.target.parentElement?.querySelector('.logo-fallback');
-              if (fb) { fb.classList.remove('hidden'); fb.style.display = 'flex'; }
-            }}
-          />
-          <div className="logo-fallback hidden w-14 h-14 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'var(--color-primary)' }} aria-hidden>
-            <Icon name="MessageCircle" size={28} color="#fff" />
-          </div>
-        </div>
+        <VentalinkLogo />
       </div>
 
       <h1 className="text-2xl font-bold mb-1" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Iniciar sesión</h1>
@@ -92,7 +80,7 @@ export default function LoginForm({ onSubmit, onGoogleLogin, onForgotPassword, i
             type="button"
             onClick={onGoogleLogin}
             disabled={googleLoading || isLoading}
-            className="w-full h-12 rounded-lg font-medium text-sm flex items-center justify-center gap-3 border transition-all mb-4"
+            className="w-full h-12 rounded-xl font-medium text-sm flex items-center justify-center gap-3 border transition-all mb-4 shadow-sm"
             style={{
               borderColor: 'var(--color-border)',
               backgroundColor: 'var(--color-surface)',
@@ -136,7 +124,7 @@ export default function LoginForm({ onSubmit, onGoogleLogin, onForgotPassword, i
             onChange={e => updateField('email', e?.target?.value)}
             placeholder="tu@negocio.com"
             autoComplete="email"
-            className="w-full h-12 px-4 rounded-lg border text-sm transition-all outline-none"
+            className="w-full h-12 px-4 rounded-xl border text-sm transition-all outline-none shadow-sm"
             style={{
               borderColor: errors?.email ? 'var(--color-error)' : 'var(--color-border)',
               backgroundColor: 'var(--color-surface)',
@@ -166,7 +154,7 @@ export default function LoginForm({ onSubmit, onGoogleLogin, onForgotPassword, i
               onChange={e => updateField('password', e?.target?.value)}
               placeholder="••••••••"
               autoComplete="current-password"
-              className="w-full h-12 px-4 pr-11 rounded-lg border text-sm transition-all outline-none"
+              className="w-full h-12 px-4 pr-11 rounded-xl border text-sm transition-all outline-none shadow-sm"
               style={{
                 borderColor: errors?.password ? 'var(--color-error)' : 'var(--color-border)',
                 backgroundColor: 'var(--color-surface)',
@@ -224,7 +212,7 @@ export default function LoginForm({ onSubmit, onGoogleLogin, onForgotPassword, i
         <button
           type="submit"
           disabled={isLoading}
-          className="w-full h-12 rounded-lg font-semibold text-sm flex items-center justify-center gap-2 transition-all mt-2"
+          className="w-full h-12 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all mt-2 shadow-md"
           style={{
             backgroundColor: isLoading ? 'rgba(124,58,237,0.7)' : 'var(--color-primary)',
             color: '#fff',
@@ -256,6 +244,7 @@ export default function LoginForm({ onSubmit, onGoogleLogin, onForgotPassword, i
             Crear cuenta gratis
           </Link>
         </p>
+      </div>
       </div>
     </div>
   );

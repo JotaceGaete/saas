@@ -33,7 +33,7 @@ export default defineConfig(({ mode }) => {
       devOptions: {
         enabled: false,
       },
-      includeAssets: ["favicon.ico", "favicon-16x16.png", "favicon-32x32.png", "apple-touch-icon.png", "icon-192.png", "icon-512.png", "offline.html"],
+      includeAssets: ["favicon.ico", "favicon-16x16.png", "favicon-32x32.png", "apple-touch-icon.png", "icon-192.png", "icon-512.png", "v-check-isotype.svg", "offline.html"],
       manifest: false,
       workbox: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],

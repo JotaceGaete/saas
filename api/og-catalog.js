@@ -97,6 +97,39 @@ async function loadImageDataUri(url) {
   }
 }
 
+/** Isotipo V-Check (misma geometría que `src/components/branding/VCheckIsotype.jsx`) cuando no hay logo del negocio. */
+function ogVcheckGradientDef(gradId = 'ogVcheckGrad') {
+  return `
+    <linearGradient id="${gradId}" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#7C3AED" />
+      <stop offset="100%" stop-color="#6D28D9" />
+    </linearGradient>`;
+}
+
+function ogDefaultLogoBlockCover(gradId = 'ogVcheckGrad') {
+  return `
+    <g>
+      <rect x="1000" y="36" width="164" height="164" rx="22" fill="rgba(255,255,255,0.12)" stroke="rgba(255,255,255,0.2)" stroke-width="1" />
+      <g transform="translate(1012,48) scale(2.1875)">
+        <rect width="64" height="64" rx="14" fill="url(#${gradId})" />
+        <path d="M18 34 L28 44 L46 22" fill="none" stroke="rgba(255,255,255,0.82)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" />
+        <path d="M26 34 L36 44 L54 22" fill="none" stroke="#FFFFFF" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" />
+      </g>
+    </g>`;
+}
+
+function ogDefaultLogoBlockPlain(gradId = 'ogVcheckGrad') {
+  return `
+    <g>
+      <rect x="860" y="160" width="220" height="220" rx="28" fill="rgba(255,255,255,0.96)" />
+      <g transform="translate(886,186) scale(2.625)">
+        <rect width="64" height="64" rx="14" fill="url(#${gradId})" />
+        <path d="M18 34 L28 44 L46 22" fill="none" stroke="rgba(255,255,255,0.82)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" />
+        <path d="M26 34 L36 44 L54 22" fill="none" stroke="#FFFFFF" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" />
+      </g>
+    </g>`;
+}
+
 function buildCatalogOgSvg({ storeName, logoDataUri, coverDataUri }) {
   const lines = wrapStoreName(storeName, 26, 2);
   const line1 = escapeXml(lines[0] ?? 'Tu tienda');
@@ -109,7 +142,7 @@ function buildCatalogOgSvg({ storeName, logoDataUri, coverDataUri }) {
       <clipPath id="ogLogoClip"><rect x="1012" y="48" width="140" height="140" rx="18" /></clipPath>
       <image href="${logoDataUri}" x="1012" y="48" width="140" height="140" preserveAspectRatio="xMidYMid meet" clip-path="url(#ogLogoClip)" />
     </g>`
-    : '';
+    : ogDefaultLogoBlockCover();
 
   if (coverDataUri) {
     const yTitle1 = line2 ? 498 : 532;
@@ -123,6 +156,7 @@ function buildCatalogOgSvg({ storeName, logoDataUri, coverDataUri }) {
       <stop offset="55%" stop-color="rgba(15,23,42,0.55)" />
       <stop offset="100%" stop-color="rgba(15,23,42,0.97)" />
     </linearGradient>
+    ${logoDataUri ? '' : ogVcheckGradientDef()}
   </defs>
   <rect width="${OG_W}" height="${OG_H}" fill="#0f172a" />
   <rect x="36" y="36" width="1128" height="468" rx="20" fill="#1e293b" />
@@ -155,6 +189,7 @@ function buildCatalogOgSvg({ storeName, logoDataUri, coverDataUri }) {
       <stop offset="0%" stop-color="rgba(255,255,255,0.02)" />
       <stop offset="100%" stop-color="rgba(30,20,60,0.08)" />
     </linearGradient>
+    ${logoDataUri ? '' : ogVcheckGradientDef()}
   </defs>
   <rect width="${OG_W}" height="${OG_H}" fill="url(#bg)" />
   <rect x="0" y="0" width="${OG_W}" height="${OG_H}" fill="url(#overlay)" />
@@ -170,7 +205,7 @@ function buildCatalogOgSvg({ storeName, logoDataUri, coverDataUri }) {
       <rect x="886" y="186" width="168" height="168" rx="20" fill="#ffffff" />
       <image href="${logoDataUri}" x="886" y="186" width="168" height="168" preserveAspectRatio="xMidYMid meet" clip-path="url(#logoClip)" />
     </g>`
-      : ''
+      : ogDefaultLogoBlockPlain()
   }
 </svg>`;
 }

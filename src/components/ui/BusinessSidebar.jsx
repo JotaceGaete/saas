@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import Icon from 'components/AppIcon';
+import VCheckIsotype from 'components/branding/VCheckIsotype';
 import MobileBottomNav from 'components/MobileBottomNav';
 import FloatingActionButton from 'components/FloatingActionButton';
 import { useAuth } from '../../contexts/AuthContext';
@@ -84,7 +85,7 @@ export default function BusinessSidebar({ isCollapsed = false, onCollapsedChange
       {/* Logo */}
       <div className="sidebar-header">
         <div className="sidebar-logo">
-          <Icon name="ShoppingBag" size={16} color="#FFFFFF" />
+          <VCheckIsotype variant="embedded" size={20} title="VentALink" />
         </div>
         {!collapsed && (
           <div className="overflow-hidden">

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Icon from "components/AppIcon";
+import VCheckIsotype from "components/branding/VCheckIsotype";
 import Button from "components/ui/Button";
 import { getCountryLabels, getCountryCode } from "config/country";
 
@@ -216,7 +217,7 @@ function HeroMockup() {
             className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
             style={{ background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)', boxShadow: '0 2px 8px rgba(124,58,237,0.3)' }}>
             
-            <Icon name="ShoppingBag" size={15} color="#FFFFFF" />
+            <VCheckIsotype variant="embedded" size={22} title="VentALink" />
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-xs font-bold leading-none" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>Dulces Mariana</p>

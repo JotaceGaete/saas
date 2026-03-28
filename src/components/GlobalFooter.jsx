@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import Icon from 'components/AppIcon';
+import VentalinkLogo from 'components/branding/VentalinkLogo';
 
 const LEGAL_LINKS = [
   { label: 'Plans', path: '/plans' },
@@ -33,12 +33,7 @@ export default function GlobalFooter() {
               className="flex items-center gap-2.5 mb-2 w-fit"
               style={{ textDecoration: 'none', color: 'inherit' }}
             >
-              <div
-                className="w-7 h-7 rounded-lg flex items-center justify-center"
-                style={{ background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)' }}
-              >
-                <Icon name="ShoppingBag" size={13} color="#FFFFFF" />
-              </div>
+              <VentalinkLogo size={28} />
               <span
                 className="font-bold text-sm tracking-tight"
                 style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}

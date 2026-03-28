@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import Icon from "components/AppIcon";
 import Button from "components/ui/Button";
+import VentalinkLogo from "components/branding/VentalinkLogo";
 
 export default function LandingNavbar({ onOpenRegister }) {
   const navigate = useNavigate();
@@ -44,21 +45,10 @@ export default function LandingNavbar({ onOpenRegister }) {
           {/* Logo */}
           <button
             onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-            className="flex items-center gap-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-lg flex-shrink-0"
+            className="flex items-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-lg flex-shrink-0"
             aria-label="Ir al inicio"
           >
-            <div
-              className="w-8 h-8 rounded-lg flex items-center justify-center"
-              style={{ background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)', boxShadow: '0 2px 8px rgba(124,58,237,0.3)' }}
-            >
-              <Icon name="ShoppingBag" size={15} color="#FFFFFF" />
-            </div>
-            <span
-              className="font-bold text-sm tracking-tight"
-              style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}
-            >
-              VentALink
-            </span>
+            <VentalinkLogo />
           </button>
 
           {/* Desktop nav links */}
@@ -125,10 +115,7 @@ export default function LandingNavbar({ onOpenRegister }) {
         >
           <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: 'var(--color-border)' }}>
             <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)' }}>
-                <Icon name="ShoppingBag" size={13} color="#FFFFFF" />
-              </div>
-              <span className="font-bold text-sm" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>VentALink</span>
+              <VentalinkLogo size={28} />
             </div>
             <button
               onClick={() => setMobileMenuOpen(false)}

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import LoginLeftPanel from './components/LoginLeftPanel';
+import LoginBrandPanel from './components/LoginBrandPanel';
 import LoginForm from './components/LoginForm';
 
 export default function Login() {
@@ -118,9 +118,14 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen flex" style={{ backgroundColor: 'var(--color-background)' }}>
-      <LoginLeftPanel />
-      <div className="flex-1 flex flex-col items-center justify-center p-6 md:p-10">
+    <div
+      className="min-h-screen flex flex-col lg:flex-row"
+      style={{
+        background:
+          'linear-gradient(180deg, #fafafa 0%, #ffffff 35%, rgba(245,243,255,0.5) 100%)',
+      }}
+    >
+      <div className="flex-1 flex flex-col items-center justify-center px-5 py-10 md:px-10 md:py-12 lg:px-14 lg:order-1 min-h-0">
         <LoginForm
           onSubmit={handleLogin}
           onGoogleLogin={handleGoogleLogin}
@@ -134,6 +139,7 @@ export default function Login() {
           redirectMessage={location?.state?.message}
         />
       </div>
+      <LoginBrandPanel />
     </div>
   );
 }

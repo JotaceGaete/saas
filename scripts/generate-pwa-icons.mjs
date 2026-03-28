@@ -1,19 +1,37 @@
 /**
- * Genera iconos PWA y favicons en public/ desde la imagen fuente.
- * Fuente: public/ventalink-icon-source.png
+ * Genera iconos PWA y favicons en public/ desde el isotipo SVG (V-Check).
+ * Fuente: public/v-check-isotype.svg (fallback: public/ventalink-icon-source.png)
  * Genera: favicon.ico, favicon-16x16.png, favicon-32x32.png, apple-touch-icon.png (180),
- *         icon-192.png, icon-512.png
+ *          icon-192.png, icon-512.png
  * Ejecutar: node scripts/generate-pwa-icons.mjs
  */
+import { Resvg } from '@resvg/resvg-js';
 import { make, encodePNGToStream, decodePNGFromStream } from 'pureimage';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { Readable } from 'stream';
 import pngToIco from 'png-to-ico';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, '..', 'public');
-const sourcePath = path.join(publicDir, 'ventalink-icon-source.png');
+const svgSourcePath = path.join(publicDir, 'v-check-isotype.svg');
+const legacyPngPath = path.join(publicDir, 'ventalink-icon-source.png');
+
+async function loadSourceBitmap() {
+  if (fs.existsSync(svgSourcePath)) {
+    const svg = fs.readFileSync(svgSourcePath);
+    const resvg = new Resvg(svg, { fitTo: { mode: 'width', value: 512 } });
+    const pngBuffer = Buffer.from(resvg.render().asPng());
+    const stream = Readable.from(pngBuffer);
+    return decodePNGFromStream(stream);
+  }
+  if (fs.existsSync(legacyPngPath)) {
+    const readStream = fs.createReadStream(legacyPngPath);
+    return decodePNGFromStream(readStream);
+  }
+  throw new Error(`No se encontró ${svgSourcePath} ni ${legacyPngPath}`);
+}
 
 async function generateIconFromSource(sourceBitmap, size, outputName = null) {
   const name = outputName ?? `icon-${size}.png`;
@@ -30,23 +48,14 @@ async function generateIconFromSource(sourceBitmap, size, outputName = null) {
 }
 
 async function main() {
-  if (!fs.existsSync(sourcePath)) {
-    console.error(`No se encontró la imagen fuente: ${sourcePath}`);
-    process.exit(1);
-  }
-  const readStream = fs.createReadStream(sourcePath);
-  const sourceBitmap = await decodePNGFromStream(readStream);
+  const sourceBitmap = await loadSourceBitmap();
 
-  // Favicons
   await generateIconFromSource(sourceBitmap, 16, 'favicon-16x16.png');
   await generateIconFromSource(sourceBitmap, 32, 'favicon-32x32.png');
-  // Apple touch icon (180x180)
   await generateIconFromSource(sourceBitmap, 180, 'apple-touch-icon.png');
-  // PWA icons
   await generateIconFromSource(sourceBitmap, 192, 'icon-192.png');
   await generateIconFromSource(sourceBitmap, 512, 'icon-512.png');
 
-  // favicon.ico (multi-size desde 16 y 32)
   const path16 = path.join(publicDir, 'favicon-16x16.png');
   const path32 = path.join(publicDir, 'favicon-32x32.png');
   const icoBuf = await pngToIco([path16, path32]);
