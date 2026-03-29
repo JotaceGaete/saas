@@ -65,17 +65,6 @@ const FONTS = [
 ];
 const FONT_PREVIEW_LINES = { sample: 'Aa Bb Cc 123', body: 'Texto del catálogo' };
 
-const CATALOG_LAYOUTS = [
-  { id: 'list', label: 'Lista', description: 'Productos en fila horizontal', icon: 'LayoutList' },
-  { id: 'grid', label: 'Cuadrícula', description: 'Productos en 2 columnas', icon: 'LayoutGrid' },
-  { id: 'card', label: 'Tarjeta', description: 'Tarjetas grandes con imagen', icon: 'CreditCard' },
-];
-
-const CATALOG_VIEW_MODES = [
-  { id: 'featured', label: 'Vista destacada', description: '1 columna en móvil, tarjetas grandes, imagen protagonista', icon: 'LayoutGrid' },
-  { id: 'compact', label: 'Vista compacta', description: '2 columnas en móvil, tarjetas pequeñas, ideal para muchos productos', icon: 'LayoutList' },
-];
-
 function SectionCard({ icon, title, subtitle, children, accent }) {
   return (
     <div
@@ -186,6 +175,7 @@ export default function DesignCustomization({
   onSave,
   showToast,
   designOnly = false,
+  hideSaveButton = false,
 }) {
   const logoInputRef = useRef(null);
   const coverInputRef = useRef(null);
@@ -275,18 +265,6 @@ export default function DesignCustomization({
   const selectedStyle = design?.catalogStyle || 'clasico';
   const selectedTheme = design?.theme || 'minimal';
   const selectedFont = design?.font || 'Inter';
-  const selectedLayout = design?.catalogLayout || 'list';
-  const selectedViewMode = design?.catalogViewMode || 'featured';
-  const cardSettings = design?.cardSettings || { showPrice: true, showDescription: true, showStock: false, showWhatsApp: true };
-  const storeHeader = design?.storeHeader || { showStoreName: true, showDescription: true, showWhatsAppButton: true };
-
-  const handleCardSetting = (key, value) => {
-    onChange?.({ ...design, cardSettings: { ...cardSettings, [key]: value } });
-  };
-
-  const handleStoreHeaderToggle = (key) => {
-    onChange?.({ ...design, storeHeader: { ...storeHeader, [key]: !storeHeader?.[key] } });
-  };
 
   return (
     <div className="flex flex-col gap-5 max-w-2xl">
@@ -503,48 +481,6 @@ export default function DesignCustomization({
         </div>
       </SectionCard>
 
-      {/* 2b. Usar categorías en el catálogo (opcional) — solo en Configuración, no en Diseño */}
-      {!designOnly && (
-      <SectionCard icon="Tags" title="Categorías en el catálogo" subtitle="Activa para mostrar filtros por categoría. Las categorías dependen del rubro que elijas en Configuración.">
-        <label
-          className="flex items-center justify-between px-4 py-3 rounded-xl border cursor-pointer transition-all"
-          style={{
-            borderColor: design?.useCategories ? primaryColor : 'var(--color-border)',
-            backgroundColor: design?.useCategories ? `${primaryColor}08` : '#fafafa',
-          }}
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: design?.useCategories ? `${primaryColor}18` : '#f0f0f8' }}>
-              <Icon name="Tags" size={14} color={design?.useCategories ? primaryColor : '#a0a0b8'} />
-            </div>
-            <span className="text-sm font-medium" style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-caption)' }}>Usar categorías en el catálogo</span>
-          </div>
-          <div
-            className="relative w-10 h-5.5 rounded-full transition-all flex-shrink-0 cursor-pointer"
-            style={{
-              width: '40px',
-              height: '22px',
-              backgroundColor: design?.useCategories ? primaryColor : '#d1d5db',
-            }}
-            onClick={(e) => { e.preventDefault(); onChange?.({ ...design, useCategories: !design?.useCategories }); }}
-          >
-            <div
-              className="absolute top-0.5 rounded-full bg-white transition-all"
-              style={{
-                width: '18px',
-                height: '18px',
-                left: design?.useCategories ? '20px' : '2px',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
-              }}
-            />
-          </div>
-        </label>
-        <p className="mt-2 text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-          Asigna un <strong>rubro principal</strong> en la pestaña Configuración. Las categorías disponibles se definen por ese rubro (ej. Ropa, Ferretería).
-        </p>
-      </SectionCard>
-      )}
-
       {/* 3. Store Logo */}
       <SectionCard icon="CircleUser" title="Logo de la tienda" subtitle="Aparece centrado en el encabezado, sobre el nombre de la tienda">
         <div className="flex items-center gap-6">
@@ -654,45 +590,11 @@ export default function DesignCustomization({
         </div>
       </SectionCard>
 
-      {/* Vista del catálogo (móvil): destacada vs compacta — solo en Configuración */}
-      {!designOnly && (
-      <SectionCard icon="Smartphone" title="Vista del catálogo en móvil" subtitle="Elige cómo se muestran los productos en celulares">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {CATALOG_VIEW_MODES?.map(mode => (
-            <button
-              key={mode?.id}
-              onClick={() => onChange?.({ ...design, catalogViewMode: mode?.id })}
-              className="relative flex flex-col gap-2 p-4 rounded-xl border-2 transition-all text-left"
-              style={{
-                borderColor: selectedViewMode === mode?.id ? primaryColor : 'var(--color-border)',
-                backgroundColor: selectedViewMode === mode?.id ? `${primaryColor}08` : '#fafafa',
-              }}
-            >
-              {selectedViewMode === mode?.id && (
-                <div className="absolute top-2 right-2 w-5 h-5 rounded-full flex items-center justify-center" style={{ backgroundColor: primaryColor }}>
-                  <Icon name="Check" size={11} color="#fff" />
-                </div>
-              )}
-              <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: selectedViewMode === mode?.id ? `${primaryColor}20` : '#f0f0f8' }}>
-                <Icon name={mode?.icon} size={18} color={selectedViewMode === mode?.id ? primaryColor : '#a0a0b8'} />
-              </div>
-              <div>
-                <p className="text-xs font-bold" style={{ color: selectedViewMode === mode?.id ? primaryColor : 'var(--color-text-primary)', fontFamily: 'var(--font-caption)' }}>
-                  {mode?.label}
-                </p>
-                <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-                  {mode?.description}
-                </p>
-              </div>
-            </button>
-          ))}
-        </div>
-      </SectionCard>
-      )}
-
       {/* Save button */}
+      {!hideSaveButton && (
       <div className="flex items-center justify-end gap-3 pt-2">
         <button
+          type="button"
           onClick={onSave}
           disabled={isSaving}
           className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:opacity-90 disabled:opacity-60"
@@ -718,6 +620,7 @@ export default function DesignCustomization({
           )}
         </button>
       </div>
+      )}
 
       {/* Advanced options collapsible */}
       <div className="border rounded-2xl overflow-hidden" style={{ borderColor: 'var(--color-border)' }}>
@@ -732,7 +635,7 @@ export default function DesignCustomization({
               Opciones avanzadas
             </span>
             <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: 'var(--color-border)', color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-              Tema, tipografía, layout
+              Tema y tipografía
             </span>
           </div>
           <Icon name={showAdvanced ? 'ChevronUp' : 'ChevronDown'} size={16} color="var(--color-text-tertiary)" />
@@ -799,180 +702,6 @@ export default function DesignCustomization({
                 ))}
               </div>
             </div>
-
-            {/* Catalog Layout — solo en Configuración (Pedidos y catálogo) */}
-            {!designOnly && (
-            <div>
-              <p className="text-xs font-bold mb-3" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Diseño del catálogo</p>
-              <div className="grid grid-cols-3 gap-3">
-                {CATALOG_LAYOUTS?.map(layout => (
-                  <button
-                    key={layout?.id}
-                    onClick={() => onChange?.({ ...design, catalogLayout: layout?.id })}
-                    className="flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all"
-                    style={{
-                      borderColor: selectedLayout === layout?.id ? primaryColor : 'var(--color-border)',
-                      backgroundColor: selectedLayout === layout?.id ? `${primaryColor}08` : '#fafafa',
-                    }}
-                  >
-                    <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: selectedLayout === layout?.id ? `${primaryColor}15` : '#f0f0f8' }}>
-                      <Icon name={layout?.icon} size={18} color={selectedLayout === layout?.id ? primaryColor : '#a0a0b8'} />
-                    </div>
-                    <div className="text-center">
-                      <p className="text-xs font-bold" style={{ color: selectedLayout === layout?.id ? primaryColor : 'var(--color-text-primary)', fontFamily: 'var(--font-caption)' }}>{layout?.label}</p>
-                      <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>{layout?.description}</p>
-                    </div>
-                    {selectedLayout === layout?.id && (
-                      <div className="w-4 h-4 rounded-full flex items-center justify-center" style={{ backgroundColor: primaryColor }}>
-                        <Icon name="Check" size={9} color="#fff" />
-                      </div>
-                    )}
-                  </button>
-                ))}
-              </div>
-            </div>
-            )}
-
-            {/* Store Header Options — solo en Configuración */}
-            {!designOnly && (
-            <div>
-              <p className="text-xs font-bold mb-3" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Encabezado de la tienda</p>
-              <div className="flex flex-col gap-2">
-                {[
-                  { key: 'showStoreName', label: 'Mostrar nombre de la tienda', icon: 'Type' },
-                  { key: 'showDescription', label: 'Mostrar descripción', icon: 'AlignLeft' },
-                  { key: 'showWhatsAppButton', label: 'Mostrar botón de WhatsApp', icon: 'MessageCircle' },
-                ]?.map(item => (
-                  <label
-                    key={item?.key}
-                    className="flex items-center justify-between px-4 py-3 rounded-xl border cursor-pointer transition-all"
-                    style={{
-                      borderColor: storeHeader?.[item?.key] ? primaryColor : 'var(--color-border)',
-                      backgroundColor: storeHeader?.[item?.key] ? `${primaryColor}08` : '#fafafa',
-                    }}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: storeHeader?.[item?.key] ? `${primaryColor}18` : '#f0f0f8' }}>
-                        <Icon name={item?.icon} size={14} color={storeHeader?.[item?.key] ? primaryColor : '#a0a0b8'} />
-                      </div>
-                      <span className="text-sm font-medium" style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-caption)' }}>{item?.label}</span>
-                    </div>
-                    <div
-                      className="relative w-10 h-5.5 rounded-full transition-all flex-shrink-0"
-                      style={{
-                        width: '40px',
-                        height: '22px',
-                        backgroundColor: storeHeader?.[item?.key] ? primaryColor : '#d1d5db',
-                      }}
-                      onClick={() => handleStoreHeaderToggle(item?.key)}
-                    >
-                      <div
-                        className="absolute top-0.5 rounded-full bg-white transition-all"
-                        style={{
-                          width: '18px',
-                          height: '18px',
-                          left: storeHeader?.[item?.key] ? '20px' : '2px',
-                          boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
-                        }}
-                      />
-                    </div>
-                  </label>
-                ))}
-              </div>
-              {/* Color del texto de la descripción */}
-              <p className="text-xs font-bold mt-4 mb-2" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Color del texto de la descripción</p>
-              <div className="flex flex-wrap gap-2">
-                {[
-                  { value: '', label: 'Por defecto' },
-                  { value: '#374151', label: 'Gris oscuro' },
-                  { value: '#1f2937', label: 'Casi negro' },
-                  { value: primaryColor, label: 'Color principal' },
-                  { value: '#059669', label: 'Verde' },
-                  { value: '#0284c7', label: 'Azul' },
-                ].map(({ value, label }) => {
-                  const isSelected = (storeHeader?.descriptionColor || '') === value;
-                  return (
-                    <button
-                      key={value || 'default'}
-                      type="button"
-                      onClick={() => onChange?.({ ...design, storeHeader: { ...storeHeader, descriptionColor: value } })}
-                      className="flex items-center gap-2 px-3 py-2 rounded-lg border-2 transition-all"
-                      style={{
-                        borderColor: isSelected ? primaryColor : 'var(--color-border)',
-                        backgroundColor: isSelected ? `${primaryColor}08` : '#fafafa',
-                      }}
-                      title={label}
-                    >
-                      {value ? (
-                        <span className="w-5 h-5 rounded-full border border-gray-200" style={{ backgroundColor: value }} />
-                      ) : (
-                        <span className="w-5 h-5 rounded-full border border-gray-300 bg-white" />
-                      )}
-                      <span className="text-xs font-medium" style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-caption)' }}>{label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-            )}
-
-            {/* Product Card Settings — solo en Configuración */}
-            {!designOnly && (
-            <div>
-              <p className="text-xs font-bold mb-3" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Tarjeta de producto</p>
-              <div className="flex flex-col gap-2">
-                {[
-                  { key: 'showPrice', label: 'Mostrar precio', icon: 'DollarSign', description: 'Precio del producto' },
-                  { key: 'showDescription', label: 'Mostrar descripción', icon: 'AlignLeft', description: 'Texto descriptivo' },
-                  { key: 'showStock', label: 'Mostrar stock', icon: 'Package', description: 'Disponibilidad del producto' },
-                  { key: 'showWhatsApp', label: 'Botón de WhatsApp', icon: 'MessageCircle', description: 'Botón para contactar' },
-                ]?.map(item => (
-                  <div
-                    key={item?.key}
-                    className="flex items-center justify-between px-4 py-3 rounded-xl border transition-all"
-                    style={{
-                      borderColor: cardSettings?.[item?.key] ? `${primaryColor}40` : 'var(--color-border)',
-                      backgroundColor: cardSettings?.[item?.key] ? `${primaryColor}05` : '#fafafa',
-                    }}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: cardSettings?.[item?.key] ? `${primaryColor}15` : '#f0f0f8' }}>
-                        <Icon name={item?.icon} size={15} color={cardSettings?.[item?.key] ? primaryColor : '#a0a0b8'} />
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-caption)' }}>{item?.label}</p>
-                        <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>{item?.description}</p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => handleCardSetting(item?.key, !cardSettings?.[item?.key])}
-                      className="relative flex-shrink-0 transition-all"
-                      style={{
-                        width: '44px',
-                        height: '24px',
-                        borderRadius: '12px',
-                        backgroundColor: cardSettings?.[item?.key] ? primaryColor : '#d1d5db',
-                        transition: 'background-color 0.2s',
-                      }}
-                    >
-                      <span
-                        className="absolute top-0.5 transition-all"
-                        style={{
-                          width: '20px',
-                          height: '20px',
-                          borderRadius: '50%',
-                          backgroundColor: '#ffffff',
-                          boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
-                          left: cardSettings?.[item?.key] ? '22px' : '2px',
-                          transition: 'left 0.2s',
-                        }}
-                      />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-            )}
           </div>
         )}
       </div>

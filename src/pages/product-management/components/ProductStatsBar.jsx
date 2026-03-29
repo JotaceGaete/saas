@@ -1,60 +1,66 @@
 import React from "react";
-import Icon from "components/AppIcon";
+import { Package, CircleCheck, CircleOff } from "lucide-react";
 
 export default function ProductStatsBar({ stats }) {
   const items = [
     {
       label: "Total",
-      value: stats?.total,
-      icon: "Package",
-      color: 'var(--color-foreground)',
-      bg: 'rgba(15,23,42,0.06)',
-      iconColor: 'var(--color-foreground)',
+      value: stats?.total ?? 0,
+      Icon: Package,
+      accent: "text-slate-800",
+      iconBg: "bg-slate-100",
+      iconColor: "text-slate-600",
     },
     {
       label: "Activos",
-      value: stats?.active,
-      icon: "CheckCircle",
-      color: '#059669',
-      bg: 'rgba(16,185,129,0.1)',
-      iconColor: '#059669',
+      value: stats?.active ?? 0,
+      Icon: CircleCheck,
+      accent: "text-emerald-700",
+      iconBg: "bg-emerald-50",
+      iconColor: "text-emerald-600",
     },
     {
       label: "Inactivos",
-      value: stats?.inactive,
-      icon: "XCircle",
-      color: '#64748B',
-      bg: 'rgba(100,116,139,0.1)',
-      iconColor: '#64748B',
+      value: stats?.inactive ?? 0,
+      Icon: CircleOff,
+      accent: "text-slate-600",
+      iconBg: "bg-slate-100",
+      iconColor: "text-slate-500",
     },
   ];
 
   return (
-    <div className="flex items-center gap-2 flex-wrap">
-      {items?.map((item, i) => (
-        <div
-          key={i}
-          className="flex items-center gap-2 px-3.5 py-2 rounded-xl border"
-          style={{
-            backgroundColor: item?.bg,
-            borderColor: 'transparent',
-          }}
-        >
-          <Icon name={item?.icon} size={14} color={item?.iconColor} />
-          <span
-            className="text-sm font-bold"
-            style={{ color: item?.color, fontFamily: 'var(--font-heading)' }}
+    <div className="flex items-stretch gap-3 flex-wrap">
+      {items?.map((item, i) => {
+        const LucideIcon = item.Icon;
+        return (
+          <div
+            key={i}
+            className="flex items-center gap-3 min-w-[140px] pl-4 pr-5 py-3.5 rounded-2xl border border-slate-100 bg-white shadow-sm shadow-slate-200/40"
           >
-            {item?.value}
-          </span>
-          <span
-            className="text-xs font-medium"
-            style={{ color: item?.color, fontFamily: 'var(--font-caption)', opacity: 0.8 }}
-          >
-            {item?.label}
-          </span>
-        </div>
-      ))}
+            <div
+              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${item.iconBg}`}
+              aria-hidden
+            >
+              <LucideIcon className={`h-5 w-5 ${item.iconColor}`} strokeWidth={2} />
+            </div>
+            <div className="min-w-0 flex flex-col gap-0.5">
+              <span
+                className={`text-2xl font-bold tabular-nums leading-none tracking-tight ${item.accent}`}
+                style={{ fontFamily: "var(--font-heading)" }}
+              >
+                {item?.value}
+              </span>
+              <span
+                className="text-xs font-medium text-slate-500"
+                style={{ fontFamily: "var(--font-caption)" }}
+              >
+                {item?.label}
+              </span>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

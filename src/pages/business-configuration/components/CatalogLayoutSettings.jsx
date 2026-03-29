@@ -36,7 +36,11 @@ function SectionCard({ icon, title, subtitle, children }) {
   );
 }
 
-export default function CatalogAndOrdersConfig({ design, onChange }) {
+/**
+ * Ajustes de layout del catálogo (JSONB `design_settings`).
+ * Pestaña Diseño en configuración del negocio.
+ */
+export default function CatalogLayoutSettings({ design, onChange }) {
   const primaryColor = design?.primaryColor || '#7C3AED';
   const storeHeader = design?.storeHeader ?? { showStoreName: true, showDescription: true, showWhatsAppButton: true, descriptionColor: '' };
   const cardSettings = design?.cardSettings ?? { showPrice: true, showDescription: true, showStock: false, showWhatsApp: true };
@@ -50,7 +54,7 @@ export default function CatalogAndOrdersConfig({ design, onChange }) {
 
   return (
     <div className="flex flex-col gap-5">
-      <SectionCard icon="Tags" title="Categorías en el catálogo" subtitle="Activa para mostrar filtros por categoría. El rubro se define en Datos del negocio.">
+      <SectionCard icon="Tags" title="Categorías en el catálogo" subtitle="Activa filtros por categoría. El rubro principal está en la pestaña Identidad.">
         <label
           className="flex items-center justify-between px-4 py-3 rounded-xl border cursor-pointer transition-all"
           style={{
@@ -72,6 +76,9 @@ export default function CatalogAndOrdersConfig({ design, onChange }) {
             <div className="absolute top-0.5 rounded-full bg-white transition-all" style={{ width: '18px', height: '18px', left: design?.useCategories ? '20px' : '2px', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
           </div>
         </label>
+        <p className="mt-2 text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+          Las categorías sugeridas dependen del <strong>rubro principal</strong> (Identidad). Si cambias de rubro, revisa tus categorías de producto.
+        </p>
       </SectionCard>
 
       <SectionCard icon="Smartphone" title="Vista del catálogo en móvil" subtitle="Cómo se muestran los productos en celulares">
@@ -79,6 +86,7 @@ export default function CatalogAndOrdersConfig({ design, onChange }) {
           {CATALOG_VIEW_MODES?.map(mode => (
             <button
               key={mode?.id}
+              type="button"
               onClick={() => onChange?.({ ...design, catalogViewMode: mode?.id })}
               className="relative flex flex-col gap-2 p-4 rounded-xl border-2 transition-all text-left"
               style={{
@@ -108,6 +116,7 @@ export default function CatalogAndOrdersConfig({ design, onChange }) {
           {CATALOG_LAYOUTS?.map(layout => (
             <button
               key={layout?.id}
+              type="button"
               onClick={() => onChange?.({ ...design, catalogLayout: layout?.id })}
               className="flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all"
               style={{
@@ -217,6 +226,7 @@ export default function CatalogAndOrdersConfig({ design, onChange }) {
                 </div>
               </div>
               <button
+                type="button"
                 onClick={() => handleCardSetting(item?.key, !cardSettings?.[item?.key])}
                 className="relative flex-shrink-0 transition-all"
                 style={{

@@ -107,7 +107,13 @@ async function handleCatalogHtml(request) {
   const metaDescription = getCatalogShareDescription(row);
   const ri = detectCatalogRegion(seoInput);
   const ogImage = resolveCatalogOgImageUrl(row, origin, { cacheBust: row.updated_at });
+  const ogImageHttps =
+    typeof ogImage === 'string' && ogImage.startsWith('http://')
+      ? `https://${ogImage.slice(7)}`
+      : ogImage;
   const catalogUrl = `${origin}/${publicPath}/${slug}`;
+  // App ID numérico: https://developers.facebook.com/apps/ → Crear app → Configuración → Información básica → «ID de la aplicación». En Vercel: META_FB_APP_ID o FB_APP_ID.
+  const fbAppId = String(process.env.META_FB_APP_ID || process.env.FB_APP_ID || '').trim();
 
   const metaTitle = metaPlainTextAttr(pageTitle);
   const metaDesc = metaPlainTextAttr(metaDescription);
@@ -118,7 +124,7 @@ async function handleCatalogHtml(request) {
     JSON.stringify({
       slug,
       publicPath,
-      ogImage,
+      ogImage: ogImageHttps,
       title: pageTitle,
       source: 'api/seo',
     }),
@@ -126,7 +132,7 @@ async function handleCatalogHtml(request) {
 
   const jsonLd = buildLocalBusinessJsonLd({
     name: row.name || 'Catálogo',
-    imageUrl: ogImage,
+    imageUrl: ogImageHttps,
     city: row.city,
     region: row.region,
     country: row.country,
@@ -140,15 +146,21 @@ async function handleCatalogHtml(request) {
   const jsonLdScript = `<script type="application/ld+json">${stringifyJsonLd(jsonLd)}</script>`;
 
   const ogImageSecure =
-    ogImage.startsWith('https://') ? `<meta property="og:image:secure_url" content="${escapeHtmlCatalog(ogImage)}" />` : '';
+    typeof ogImageHttps === 'string' && ogImageHttps.startsWith('https://')
+      ? `<meta property="og:image:secure_url" content="${escapeHtmlCatalog(ogImageHttps)}" />`
+      : '';
+
+  const fbAppIdContent = fbAppId || '0';
+  const fbAppIdMeta = `<meta property="fb:app_id" content="${escapeHtmlCatalog(fbAppIdContent)}" />`;
 
   const metaTags = [
+    fbAppIdMeta,
     `<meta name="robots" content="index, follow" />`,
     `<meta property="og:type" content="website" />`,
     `<meta property="og:url" content="${escapeHtmlCatalog(catalogUrl)}" />`,
     `<meta property="og:title" content="${metaTitle}" />`,
     `<meta property="og:description" content="${metaDesc}" />`,
-    `<meta property="og:image" content="${escapeHtmlCatalog(ogImage)}" />`,
+    `<meta property="og:image" content="${escapeHtmlCatalog(ogImageHttps)}" />`,
     ogImageSecure,
     `<meta property="og:image:width" content="1200" />`,
     `<meta property="og:image:height" content="630" />`,
@@ -156,7 +168,7 @@ async function handleCatalogHtml(request) {
     `<meta name="twitter:card" content="summary_large_image" />`,
     `<meta name="twitter:title" content="${metaTitle}" />`,
     `<meta name="twitter:description" content="${metaDesc}" />`,
-    `<meta name="twitter:image" content="${escapeHtmlCatalog(ogImage)}" />`,
+    `<meta name="twitter:image" content="${escapeHtmlCatalog(ogImageHttps)}" />`,
     `<meta name="description" content="${metaDesc}" />`,
     `<link rel="canonical" href="${escapeHtmlCatalog(catalogUrl)}" />`,
     jsonLdScript,
@@ -213,6 +225,57 @@ function getOriginGo(request) {
   return '';
 }
 
+/** HTML estático minimal (SEO / sin JS): mismo lenguaje visual que ventalink.app (violeta, Inter/Manrope, hero). */
+function buildGoSeoFallbackHtml(origin) {
+  const base = String(origin || '').replace(/\/$/, '');
+  const title = escapeHtmlGo(GO_INTERNATIONAL_TITLE);
+  const desc = escapeHtmlGo(GO_INTERNATIONAL_DESCRIPTION);
+  const demoImg = escapeHtmlGo(`${base}/demo-dashboard.png`);
+  const marketing = 'https://ventalink.app';
+  return `<div id="go-seo-fallback" style="margin:0;padding:0;font-family:Inter,Manrope,system-ui,-apple-system,sans-serif;color:#0f172a;background:#fff;min-height:100vh">
+  <div style="position:absolute;inset:0;z-index:0;pointer-events:none;overflow:hidden" aria-hidden="true">
+    <div style="position:absolute;inset:0;background:radial-gradient(ellipse 90% 70% at 50% -5%, rgba(124,58,237,0.09) 0%, transparent 65%)"></div>
+    <div style="position:absolute;inset:0;background:radial-gradient(circle at 85% 20%, rgba(139,92,246,0.07) 0%, transparent 50%)"></div>
+  </div>
+  <header style="position:relative;z-index:1;border-bottom:1px solid #e2e8f0;background:rgba(255,255,255,0.92);backdrop-filter:blur(12px);padding:14px 24px">
+    <div style="max-width:1152px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:16px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#7C3AED 0%,#6D28D9 100%);box-shadow:0 2px 8px rgba(124,58,237,0.3)"></div>
+        <span style="font-weight:800;font-size:14px;letter-spacing:-0.02em;font-family:Manrope,Inter,sans-serif">VentALink</span>
+      </div>
+      <a href="${marketing}" style="font-size:14px;font-weight:600;color:#7C3AED;text-decoration:none">Ir a ${escapeHtmlGo(marketing.replace(/^https?:\/\//, ''))} →</a>
+    </div>
+  </header>
+  <main style="position:relative;z-index:1;max-width:1152px;margin:0 auto;padding:48px 24px 64px">
+    <div style="display:inline-flex;align-items:center;gap:8px;padding:6px 14px;border-radius:9999px;font-size:12px;font-weight:600;border:1px solid rgba(124,58,237,0.18);background:rgba(124,58,237,0.06);color:#7C3AED;margin-bottom:24px">Gratis para empezar · Sin tarjeta</div>
+    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:48px;justify-content:space-between">
+      <div style="flex:1;min-width:280px;max-width:560px">
+        <h1 style="margin:0 0 16px;font-size:clamp(1.75rem,4vw,3rem);font-weight:800;line-height:1.08;letter-spacing:-0.035em;font-family:Manrope,Inter,sans-serif">
+          Crea tu catálogo y recibe pedidos por <span style="background:linear-gradient(135deg,#7C3AED 0%,#A78BFA 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent">WhatsApp</span>
+        </h1>
+        <p style="margin:0 0 28px;font-size:1.05rem;line-height:1.65;color:#64748b;max-width:36rem">${desc}</p>
+        <a href="${marketing}" style="display:inline-block;padding:14px 24px;border-radius:12px;font-weight:700;font-size:15px;color:#fff;background:linear-gradient(135deg,#7C3AED,#6D28D9);text-decoration:none;box-shadow:0 4px 14px rgba(124,58,237,0.35)">Descubre VentALink en ventalink.app</a>
+      </div>
+      <div style="flex:1;min-width:260px;max-width:380px;display:flex;flex-direction:column;align-items:center;gap:20px">
+        <div style="display:flex;gap:14px;align-items:flex-end;justify-content:center">
+          <div style="width:112px;height:224px;border-radius:28px;border:1px solid #e2e8f0;background:#fff;box-shadow:0 24px 48px rgba(124,58,237,0.15)"></div>
+          <div style="width:112px;height:224px;border-radius:28px;border:1px solid #e2e8f0;background:#f8fafc;box-shadow:0 20px 40px rgba(124,58,237,0.12);margin-bottom:18px"></div>
+        </div>
+        <div style="width:100%;max-width:320px;border-radius:20px;overflow:hidden;border:1px solid #e2e8f0;box-shadow:0 20px 50px rgba(15,23,42,0.08)">
+          <img src="${demoImg}" alt="Panel VentALink: catálogo y pedidos" width="640" height="400" style="display:block;width:100%;height:auto;vertical-align:middle" loading="eager" decoding="async" />
+        </div>
+        <p style="margin:0;font-size:12px;color:#94a3b8;text-align:center">Catálogo en el móvil · pedidos por WhatsApp</p>
+      </div>
+    </div>
+  </main>
+  <noscript>
+    <p style="padding:16px 24px;text-align:center;font-size:14px;color:#64748b">${title} — <a href="${marketing}" style="color:#7C3AED;font-weight:600">ventalink.app</a></p>
+  </noscript>
+</div>`;
+}
+
+const GO_FALLBACK_STYLES = `<style id="go-seo-fallback-css">html.vl-js #go-seo-fallback{display:none!important}#go-seo-fallback *{box-sizing:border-box}</style>`;
+
 async function handleGoHtml(request) {
   const origin = getOriginGo(request);
   if (!origin) {
@@ -257,16 +320,31 @@ async function handleGoHtml(request) {
   }
 
   html = html.replace(/<html[^>]*>/i, '<html lang="es">');
+  html = html.replace(
+    /<head[^>]*>/i,
+    (m) =>
+      `${m}\n  <script>document.documentElement.classList.add('vl-js');document.documentElement.setAttribute('lang','es');</script>`,
+  );
   html = html.replace(/<title>[^<]*<\/title>/i, `<title>${metaTitleGo}</title>`);
 
   const injectBefore = '</head>';
   const insertIndex = html.indexOf(injectBefore);
   const injected =
     insertIndex !== -1
-      ? html.slice(0, insertIndex) + '\n  ' + metaTags + '\n  ' + html.slice(insertIndex)
+      ? html.slice(0, insertIndex) +
+        '\n  ' +
+        metaTags +
+        '\n  ' +
+        GO_FALLBACK_STYLES +
+        '\n  ' +
+        html.slice(insertIndex)
       : html;
+  html = injected;
 
-  return new Response(injected, {
+  const fallbackBlock = buildGoSeoFallbackHtml(origin);
+  html = html.replace(/(<div[^>]*\bid="root"[^>]*><\/div>)/i, `${fallbackBlock}\n  $1`);
+
+  return new Response(html, {
     status: 200,
     headers: {
       'Content-Type': 'text/html; charset=utf-8',

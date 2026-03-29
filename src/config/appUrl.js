@@ -3,8 +3,12 @@
  * Prioridad: VITE_APP_URL (build) → window.location.origin (runtime).
  * No usar para enlaces del catálogo público compartibles: usar getPublicCatalogBaseUrl / buildPublicCatalogUrl.
  */
+import { appendOgPreviewCacheBust } from '../utils/catalogSeo.js';
+
 const BASE_URL = import.meta.env?.VITE_APP_URL?.trim() || '';
 const GO_APP_ORIGIN = 'https://go.ventalink.app';
+
+export { appendOgPreviewCacheBust };
 
 function isLocalhostHostname(hostname) {
   const host = String(hostname || '').trim().toLowerCase();
@@ -71,20 +75,12 @@ export function getPublicCatalogUrl(slug) {
 }
 
 /**
- * Evita que WhatsApp reutilice la miniatura/link preview en caché entre envíos.
- * @param {string} url
+ * Link del catálogo para mensajes de pedido por WhatsApp (URL única por pedido cuando se pasa id, host canónico).
+ * @param {string} slug
+ * @param {string|number|null|undefined} [orderUniqueKey] - Id de pedido tras `createOrder`; si falta, timestamp+aleatorio.
  */
-export function appendOgPreviewCacheBust(url) {
-  if (!url || typeof url !== 'string') return '';
-  const sep = url.includes('?') ? '&' : '?';
-  return `${url}${sep}p=${Date.now()}`;
-}
-
-/**
- * Link del catálogo para mensajes de pedido por WhatsApp (URL única por envío, host canónico).
- */
-export function getWhatsAppOrderCatalogUrl(slug) {
-  return appendOgPreviewCacheBust(getPublicCatalogUrl(slug));
+export function getWhatsAppOrderCatalogUrl(slug, orderUniqueKey) {
+  return appendOgPreviewCacheBust(getPublicCatalogUrl(slug), orderUniqueKey);
 }
 
 /**

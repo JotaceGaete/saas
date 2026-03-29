@@ -1436,7 +1436,7 @@ function OrderPanel({ business, slug, formatPrice, onClose, theme }) {
         }
         message += `\n\nPedido:\n${lines?.join('\n')}`;
         if (notes?.trim()) message += `\n\nComentario:\n${notes?.trim()}`;
-        const catalogUrl = slug ? getWhatsAppOrderCatalogUrl(slug) : '';
+        const catalogUrl = slug ? getWhatsAppOrderCatalogUrl(slug, order?.id) : '';
         if (catalogUrl) message += `\n\n${catalogUrl}`;
         if (hasViralBranding(business)) {
           message += `${catalogUrl ? '\n\n\n' : '\n\n'}${getOrderMessageBrandingSuffix(business)}`;

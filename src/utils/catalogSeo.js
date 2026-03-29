@@ -335,3 +335,23 @@ export function buildLocalBusinessJsonLd(p) {
 export function stringifyJsonLd(obj) {
   return JSON.stringify(obj).replace(/</g, '\\u003c');
 }
+
+/**
+ * Evita que WhatsApp reutilice la vista previa del enlace (mismo catálogo, distinto pedido).
+ * Usa `p` + `v` para forzar recrawl; con `orderUniqueKey` (p. ej. id de pedido) la URL es estable por pedido pero única entre pedidos.
+ *
+ * @param {string} url
+ * @param {string|number|null|undefined} [orderUniqueKey] - Id de pedido u otro identificador; si falta, timestamp + aleatorio.
+ * @returns {string}
+ */
+export function appendOgPreviewCacheBust(url, orderUniqueKey) {
+  if (!url || typeof url !== 'string') return '';
+  const ts = Date.now();
+  const rand = Math.random().toString(36).slice(2, 12);
+  const p =
+    orderUniqueKey != null && String(orderUniqueKey).trim() !== ''
+      ? `${String(orderUniqueKey).trim()}-${ts}`
+      : `${ts}-${rand}`;
+  const sep = url.includes('?') ? '&' : '?';
+  return `${url}${sep}p=${encodeURIComponent(p)}&v=${encodeURIComponent(String(ts))}`;
+}

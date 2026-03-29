@@ -8,7 +8,6 @@ import RequireAdmin from "components/RequireAdmin";
 import RequireAuth from "components/RequireAuth";
 import SessionExpiredHandler from "components/SessionExpiredHandler";
 import CountrySelectPage from "./pages/country-select";
-import GoInternationalLanding from "./pages/go-international-landing";
 import BusinessRegistration from './pages/business-registration';
 import LandingPage from './pages/landing-page';
 import BusinessConfiguration from './pages/business-configuration';
@@ -43,17 +42,49 @@ import TermsPage from './pages/legal/TermsPage';
 import PrivacyPage from './pages/legal/PrivacyPage';
 import RefundsPage from './pages/legal/RefundsPage';
 import DLocalReturnPage from './pages/billing-dlocal-return';
+import { useAuth } from './contexts/AuthContext';
+
+const MAIN_MARKETING_ORIGIN = 'https://ventalink.app';
 
 /**
- * Raíz: en go.ventalink.app es la landing internacional SEO; en cl/ar redirige al panel.
+ * Raíz en go.ventalink.app: sin sesión → marketing principal (una sola landing);
+ * con sesión → panel. Otros hosts → panel.
  */
 function GoRootEntry() {
   const isGo =
     typeof window !== "undefined" &&
     /(^|\.)go\.ventalink\.app$/.test((window.location?.hostname || "").toLowerCase());
-  if (isGo) {
-    return <GoInternationalLanding />;
+  const { user, loading } = useAuth();
+
+  if (!isGo) {
+    return <Navigate to="/dashboard" replace />;
   }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-white" style={{ fontFamily: 'var(--font-body)' }}>
+        <svg className="animate-spin mb-3" width={36} height={36} viewBox="0 0 24 24" fill="none" aria-hidden>
+          <circle cx="12" cy="12" r="10" stroke="rgba(124,58,237,0.2)" strokeWidth="3" />
+          <path d="M12 2a10 10 0 0 1 10 10" stroke="#7C3AED" strokeWidth="3" strokeLinecap="round" />
+        </svg>
+        <p className="text-sm text-slate-500">Cargando…</p>
+      </div>
+    );
+  }
+
+  if (!user) {
+    window.location.replace(MAIN_MARKETING_ORIGIN);
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-white" style={{ fontFamily: 'var(--font-body)' }}>
+        <svg className="animate-spin mb-3" width={36} height={36} viewBox="0 0 24 24" fill="none" aria-hidden>
+          <circle cx="12" cy="12" r="10" stroke="rgba(124,58,237,0.2)" strokeWidth="3" />
+          <path d="M12 2a10 10 0 0 1 10 10" stroke="#7C3AED" strokeWidth="3" strokeLinecap="round" />
+        </svg>
+        <p className="text-sm text-slate-500">Redirigiendo a VentALink…</p>
+      </div>
+    );
+  }
+
   return <Navigate to="/dashboard" replace />;
 }
 

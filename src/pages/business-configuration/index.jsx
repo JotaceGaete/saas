@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import PanelHeader from 'components/ui/PanelHeader';
 import DashboardAppShell from 'components/ui/DashboardAppShell';
@@ -11,8 +11,9 @@ import StoreCreationStep from '../business-registration/components/StoreCreation
 import WhatsAppMessageTemplate from './components/WhatsAppMessageTemplate';
 import DynamicWhatsAppField from 'components/DynamicWhatsAppField';
 import { getCountryLabels, getCountryCode } from '../../config/country';
-import CatalogAndOrdersConfig from './components/CatalogAndOrdersConfig';
 import InstallAppBlock from './components/InstallAppBlock';
+import SettingsSwitch from './components/SettingsSwitch';
+import { Building2, CreditCard, Sparkles } from 'lucide-react';
 import { truncateAtWordBoundary } from '../../utils/textTruncate';
 import CountryIsoSelect from '../../components/country/CountryIsoSelect';
 import {
@@ -24,10 +25,79 @@ import { getCountryConfig, COUNTRY_CODES } from '../../config/countryConfig';
 
 const BUSINESS_DESCRIPTION_MAX = 280;
 
+/** Línea base para detectar cambios sin depender del ciclo de setState. */
+function buildSavedConfigSnapshotFromBusiness(business) {
+  if (!business?.id) return '';
+  const labels = getCountryLabels(
+    business.countryCodeDb != null && String(business.countryCodeDb).trim() !== ''
+      ? String(business.countryCodeDb).trim().toUpperCase()
+      : null,
+  );
+  const dsSnap = business.designSettings || {};
+  const designSnap = {
+    ...dsSnap,
+    theme: dsSnap.theme ?? 'minimal',
+    primaryColor: dsSnap.primaryColor ?? '#7C3AED',
+    font: dsSnap.font ?? 'Inter',
+    logoUrl: dsSnap.logoUrl ?? '',
+    headerImageUrl: dsSnap.headerImageUrl ?? '',
+    coverFit: dsSnap.coverFit ?? 'cover',
+    coverPosition: dsSnap.coverPosition ?? 'center',
+    catalogLayout: dsSnap.catalogLayout ?? 'list',
+    catalogViewMode: dsSnap?.catalogViewMode === 'compact' ? 'compact' : 'featured',
+    useCategories: dsSnap?.useCategories === true,
+    categories: Array.isArray(dsSnap?.categories) ? dsSnap.categories : [],
+    storeHeader: {
+      showStoreName: true,
+      showDescription: true,
+      showWhatsAppButton: true,
+      descriptionColor: '',
+      ...(dsSnap.storeHeader || {}),
+    },
+    cardSettings: {
+      showPrice: true,
+      showDescription: true,
+      showStock: false,
+      showWhatsApp: true,
+      ...(dsSnap.cardSettings || {}),
+    },
+    showAddress: dsSnap?.showAddress === true,
+    businessHours: dsSnap?.businessHours ?? '',
+    shippingMethods: dsSnap?.shippingMethods ?? '',
+    shippingCost: dsSnap?.shippingCost ?? '',
+    retiroEnTienda: dsSnap?.retiroEnTienda === true,
+  };
+  return JSON.stringify({
+    form: {
+      name: business?.name || '',
+      slug: business?.slug || '',
+      description: business?.description || '',
+      whatsapp: business?.whatsapp || '',
+      email: business?.email || '',
+      address: business?.address || '',
+      city: business?.city || '',
+      region: business?.region || '',
+      country: labels.countryName,
+      currency: business?.currency || labels.currency,
+      rubroId: business?.rubroId || '',
+    },
+    design: designSnap,
+    bankForm: {
+      bankName: business?.bankName || '',
+      bankAccountType: business?.bankAccountType || '',
+      bankAccountNumber: business?.bankAccountNumber || '',
+      bankAccountHolder: business?.bankAccountHolder || '',
+      bankRut: business?.bankRut || '',
+      bankEmail: business?.bankEmail || '',
+    },
+    orderMessageTemplate: business?.orderMessageTemplate || '',
+  });
+}
+
 function Toast({ message, type, onClose }) {
   return (
     <div
-      className="fixed top-4 right-4 z-50 flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg toast-enter"
+      className="fixed top-4 right-4 z-[80] flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg toast-enter"
       style={{
         backgroundColor: type === 'success' ? '#10b981' : '#ef4444',
         color: '#fff',
@@ -117,6 +187,11 @@ export default function BusinessConfiguration() {
     rubroId: '',
   });
   const [rubros, setRubros] = useState([]);
+  const [settingsTab, setSettingsTab] = useState('identity');
+
+  useEffect(() => {
+    setSettingsTab((t) => (t === 'design' ? 'identity' : t));
+  }, []);
   const [isImprovingBusinessDescription, setIsImprovingBusinessDescription] = useState(false);
 
   const effectivePlan = getEffectivePlanSlug(business?.planSlug, business?.planExpiresAt, business?.trialExpiresAt);
@@ -155,6 +230,20 @@ export default function BusinessConfiguration() {
   });
 
   const toastTimer = useRef(null);
+  const [savedConfigSnapshot, setSavedConfigSnapshot] = useState('');
+
+  const currentConfigSnapshot = useMemo(
+    () =>
+      JSON.stringify({
+        form,
+        design,
+        bankForm,
+        orderMessageTemplate,
+      }),
+    [form, design, bankForm, orderMessageTemplate],
+  );
+
+  const isDirty = Boolean(business?.id && savedConfigSnapshot && currentConfigSnapshot !== savedConfigSnapshot);
 
   useEffect(() => {
     console.log('[VTLK_ROUTE] Renderizando: ' + (typeof window !== 'undefined' ? window.location.pathname : ''));
@@ -269,7 +358,7 @@ export default function BusinessConfiguration() {
           retiroEnTienda: ds?.retiroEnTienda === true,
         }));
       }
-      if (business?.orderMessageTemplate) setOrderMessageTemplate(business?.orderMessageTemplate);
+      setOrderMessageTemplate(business?.orderMessageTemplate || '');
       setBankForm({
         bankName: business?.bankName || '',
         bankAccountType: business?.bankAccountType || '',
@@ -278,6 +367,7 @@ export default function BusinessConfiguration() {
         bankRut: business?.bankRut || '',
         bankEmail: business?.bankEmail || '',
       });
+      setSavedConfigSnapshot(buildSavedConfigSnapshotFromBusiness(business));
     }
   }, [business?.id, business?.updatedAt]);
 
@@ -293,6 +383,18 @@ export default function BusinessConfiguration() {
 
   const handleFormChange = (field, value) => {
     setForm(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleRubroChange = (nextRaw) => {
+    const next = nextRaw != null ? String(nextRaw) : '';
+    const prev = form?.rubroId != null ? String(form.rubroId) : '';
+    if (prev && next && prev !== next) {
+      const ok = window.confirm(
+        'Cambiar el rubro puede resetear tus categorías sugeridas. ¿Deseas continuar?',
+      );
+      if (!ok) return;
+    }
+    handleFormChange('rubroId', next);
   };
 
   const handleImproveBusinessDescription = async () => {
@@ -446,6 +548,14 @@ export default function BusinessConfiguration() {
       }
       if (updated) setBusiness(updated);
       await refreshBusiness();
+      setSavedConfigSnapshot(
+        JSON.stringify({
+          form,
+          design,
+          bankForm,
+          orderMessageTemplate,
+        }),
+      );
       showToast('¡Configuración guardada!', 'success');
     } catch (e) {
       console.error('[BusinessConfig] handleSaveSettings exception:', e);
@@ -455,18 +565,69 @@ export default function BusinessConfiguration() {
     }
   };
 
+  const discardConfigChanges = useCallback(() => {
+    if (!business) return;
+    const code =
+      business.countryCodeDb != null && String(business.countryCodeDb).trim() !== ''
+        ? String(business.countryCodeDb).trim().toUpperCase()
+        : null;
+    setSelectedCountryCode(code);
+    const revertedLabels = getCountryLabels(code);
+    setForm({
+      name: business?.name || '',
+      slug: business?.slug || '',
+      description: business?.description || '',
+      whatsapp: business?.whatsapp || '',
+      email: business?.email || '',
+      address: business?.address || '',
+      city: business?.city || '',
+      region: business?.region || '',
+      country: revertedLabels.countryName,
+      currency: business?.currency || revertedLabels.currency,
+      rubroId: business?.rubroId || '',
+    });
+    setOrderMessageTemplate(business?.orderMessageTemplate || '');
+    setBankForm({
+      bankName: business?.bankName || '',
+      bankAccountType: business?.bankAccountType || '',
+      bankAccountNumber: business?.bankAccountNumber || '',
+      bankAccountHolder: business?.bankAccountHolder || '',
+      bankRut: business?.bankRut || '',
+      bankEmail: business?.bankEmail || '',
+    });
+    if (business?.designSettings) {
+      const ds = business.designSettings;
+      setDesign(prev => ({
+        ...prev,
+        ...ds,
+        catalogViewMode: ds?.catalogViewMode === 'compact' ? 'compact' : 'featured',
+        useCategories: ds?.useCategories === true,
+        categories: Array.isArray(ds?.categories) ? ds.categories : prev.categories,
+        storeHeader: { ...prev.storeHeader, ...(ds.storeHeader || {}) },
+        cardSettings: { ...prev.cardSettings, ...(ds.cardSettings || {}) },
+        showAddress: ds?.showAddress === true,
+        businessHours: ds?.businessHours ?? '',
+        shippingMethods: ds?.shippingMethods ?? '',
+        shippingCost: ds?.shippingCost ?? '',
+        retiroEnTienda: ds?.retiroEnTienda === true,
+      }));
+    }
+    setSavedConfigSnapshot(buildSavedConfigSnapshotFromBusiness(business));
+  }, [business]);
+
   const isLoading = businessLoading || businessFetchLoading;
 
   const inputClass = [
-    'w-full px-3 py-2.5 rounded-lg border text-sm outline-none transition-all',
-    'focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500',
-  ]?.join(' ');
+    'w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-sm text-slate-900',
+    'outline-none transition-all font-[family-name:var(--font-caption)]',
+    'focus:ring-4 focus:ring-violet-500/10 focus:border-violet-500',
+  ].join(' ');
   const inputStyle = {
-    borderColor: 'var(--color-border)',
-    backgroundColor: '#ffffff',
-    color: 'var(--color-text-primary)',
     fontFamily: 'var(--font-caption)',
   };
+
+  const cardClass =
+    'rounded-2xl bg-white p-8 shadow-sm shadow-slate-200/50 border border-slate-100/80';
 
   if (loading) {
     return (
@@ -514,7 +675,7 @@ export default function BusinessConfiguration() {
           title={<h1 className="text-base font-bold text-foreground" style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}>Configuración</h1>}
         />
 
-        <DashboardLayoutContent>
+        <DashboardLayoutContent className={isDirty ? 'pb-28 md:pb-32' : ''}>
           {isLoading ? (
             <div className="flex items-center justify-center py-20">
               <svg className="animate-spin" width="28" height="28" viewBox="0 0 24 24" fill="none">
@@ -635,9 +796,40 @@ export default function BusinessConfiguration() {
             )}
 
             <div
-              className="rounded-2xl border p-5 lg:p-6 mb-8"
-              style={{ backgroundColor: '#ffffff', borderColor: 'var(--color-border)', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}
+              className="flex flex-wrap gap-2 mb-8"
+              role="tablist"
+              aria-label="Secciones de configuración"
             >
+              {[
+                { id: 'identity', label: 'Identidad', Icon: Building2 },
+                { id: 'payments', label: 'Pagos y envíos', Icon: CreditCard },
+              ].map((tab) => {
+                const active = settingsTab === tab.id;
+                const TabIcon = tab.Icon;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => setSettingsTab(tab.id)}
+                    className={[
+                      'inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all border',
+                      'font-[family-name:var(--font-caption)]',
+                      active
+                        ? 'border-violet-500 bg-violet-50 text-violet-700 shadow-sm shadow-violet-200/40'
+                        : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50/80',
+                    ].join(' ')}
+                  >
+                    <TabIcon className="w-4 h-4 shrink-0" strokeWidth={2} aria-hidden />
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {settingsTab === 'identity' && (
+            <div className={`${cardClass} mb-8`}>
               <div className="flex items-center gap-3 mb-6">
                 <div
                   className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
@@ -678,9 +870,9 @@ export default function BusinessConfiguration() {
                 <SettingsField label="Rubro principal" hint="Define el sector de tu negocio. Las categorías de productos se filtran por este rubro.">
                   <select
                     value={form?.rubroId ?? ''}
-                    onChange={e => handleFormChange('rubroId', e?.target?.value)}
-                    className={inputClass}
-                    style={{ ...inputStyle, cursor: 'pointer' }}
+                    onChange={e => handleRubroChange(e?.target?.value)}
+                    className={`${inputClass} cursor-pointer`}
+                    style={inputStyle}
                   >
                     <option value="">Sin rubro</option>
                     {rubros?.map((r) => (
@@ -694,30 +886,22 @@ export default function BusinessConfiguration() {
                   label="Descripción del negocio"
                   hint="Aparece en la cabecera del catálogo. Máximo 280 caracteres (la IA respeta este límite)."
                 >
-                  <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
-                    <span className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-                      {(form?.description ?? '').length}/{BUSINESS_DESCRIPTION_MAX}
-                    </span>
+                  <div className="flex flex-wrap items-center justify-end gap-2 mb-1.5 min-h-[1.25rem]">
                     {canUseAiDescription && (
                       <button
                         type="button"
                         onClick={handleImproveBusinessDescription}
                         disabled={isImprovingBusinessDescription}
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-opacity hover:opacity-90 disabled:opacity-50"
-                        style={{
-                          backgroundColor: 'rgba(124,58,237,0.1)',
-                          color: 'var(--color-primary)',
-                          fontFamily: 'var(--font-caption)',
-                        }}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-opacity hover:opacity-90 disabled:opacity-50 bg-violet-100/90 text-violet-700 font-[family-name:var(--font-caption)]"
                         aria-label="Mejorar descripción orientada a ventas"
                       >
                         {isImprovingBusinessDescription ? (
                           <span
-                            className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin flex-shrink-0"
+                            className="w-3.5 h-3.5 border-2 border-violet-600 border-t-transparent rounded-full animate-spin flex-shrink-0"
                             aria-hidden
                           />
                         ) : (
-                          <span aria-hidden>✨</span>
+                          <Sparkles className="w-3.5 h-3.5 text-violet-600 shrink-0" strokeWidth={2} aria-hidden />
                         )}
                         Mejorar con IA
                       </button>
@@ -732,6 +916,9 @@ export default function BusinessConfiguration() {
                     value={form?.description}
                     onChange={e => handleFormChange('description', e?.target?.value)}
                   />
+                  <p className="text-right text-[11px] text-slate-400 tabular-nums mt-1.5 font-[family-name:var(--font-caption)]">
+                    {(form?.description ?? '').length}/{BUSINESS_DESCRIPTION_MAX}
+                  </p>
                 </SettingsField>
 
                 {/* WhatsApp: prefijo dinámico según país (countryConfig) */}
@@ -828,215 +1015,102 @@ export default function BusinessConfiguration() {
                     </p>
                   </SettingsField>
                 )}
-              </div>
 
-              <div className="mt-8 flex items-center justify-end gap-3 pt-5 border-t" style={{ borderColor: 'var(--color-border)' }}>
-                <button
-                  onClick={() => {
-                    if (business) {
-                      const code =
-                        business.countryCodeDb != null && String(business.countryCodeDb).trim() !== ''
-                          ? String(business.countryCodeDb).trim().toUpperCase()
-                          : null;
-                      setSelectedCountryCode(code);
-                      const revertedLabels = getCountryLabels(code);
-                      setForm({
-                        name: business?.name || '',
-                        slug: business?.slug || '',
-                        description: business?.description || '',
-                        whatsapp: business?.whatsapp || '',
-                        email: business?.email || '',
-                        address: business?.address || '',
-                        city: business?.city || '',
-                        region: business?.region || '',
-                        country: revertedLabels.countryName,
-                        currency: business?.currency || revertedLabels.currency,
-                        rubroId: business?.rubroId || '',
-                      });
-                      setOrderMessageTemplate(business?.orderMessageTemplate || '');
-                      setBankForm({
-                        bankName: business?.bankName || '',
-                        bankAccountType: business?.bankAccountType || '',
-                        bankAccountNumber: business?.bankAccountNumber || '',
-                        bankAccountHolder: business?.bankAccountHolder || '',
-                        bankRut: business?.bankRut || '',
-                        bankEmail: business?.bankEmail || '',
-                      });
-                      if (business?.designSettings) {
-                        const ds = business.designSettings;
-                        setDesign(prev => ({
-                          ...prev,
-                          ...ds,
-                          catalogViewMode: ds?.catalogViewMode === 'compact' ? 'compact' : 'featured',
-                          useCategories: ds?.useCategories === true,
-                          categories: Array.isArray(ds?.categories) ? ds.categories : prev.categories,
-                          storeHeader: { ...prev.storeHeader, ...(ds.storeHeader || {}) },
-                          cardSettings: { ...prev.cardSettings, ...(ds.cardSettings || {}) },
-                          showAddress: ds?.showAddress === true,
-                          businessHours: ds?.businessHours ?? '',
-                          shippingMethods: ds?.shippingMethods ?? '',
-                          shippingCost: ds?.shippingCost ?? '',
-                          retiroEnTienda: ds?.retiroEnTienda === true,
-                        }));
-                      }
-                    }
-                  }}
-                  disabled={isSaving}
-                  className="px-4 py-2.5 rounded-lg text-sm font-medium transition-all hover:opacity-80 disabled:opacity-50"
-                  style={{
-                    border: '1px solid var(--color-border)',
-                    color: 'var(--color-text-secondary)',
-                    backgroundColor: '#ffffff',
-                    fontFamily: 'var(--font-caption)',
-                  }}
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={handleSaveSettings}
-                  disabled={isSaving}
-                  className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold text-white transition-all hover:opacity-90 disabled:opacity-60"
-                  style={{
-                    background: 'linear-gradient(135deg, var(--color-primary) 0%, #7c3aed 100%)',
-                    fontFamily: 'var(--font-caption)',
-                    boxShadow: '0 2px 8px rgba(139,92,246,0.35)',
-                  }}
-                >
-                  {isSaving ? (
-                    <>
-                      <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none">
-                        <circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,0.3)" strokeWidth="3" />
-                        <path d="M12 2a10 10 0 0 1 10 10" stroke="#fff" strokeWidth="3" strokeLinecap="round" />
-                      </svg>
-                      Guardando...
-                    </>
-                  ) : (
-                    <>
-                      <Icon name="Save" size={14} color="#fff" />
-                      Guardar configuración
-                    </>
-                  )}
-                </button>
+                <div className="mt-6 pt-6 border-t" style={{ borderColor: 'var(--color-border)' }}>
+                  <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Información de tienda</p>
+                  <p className="text-xs mb-4" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+                    Horario y si mostrar tu dirección en el catálogo. La calle y ciudad las cargás arriba en Datos del negocio.
+                  </p>
+                  <div className="flex flex-col gap-4">
+                    <SettingsField label="Horario de atención" hint="Ej: Lun–Vie 9:00–18:00, Sáb 10:00–14:00">
+                      <textarea
+                        rows={2}
+                        className={inputClass}
+                        style={inputStyle}
+                        placeholder="Opcional"
+                        value={design?.businessHours ?? ''}
+                        onChange={e => setDesign(prev => ({ ...prev, businessHours: e?.target?.value ?? '' }))}
+                      />
+                    </SettingsField>
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-slate-800 font-[family-name:var(--font-caption)]">
+                          Mostrar dirección en el catálogo
+                        </p>
+                        <p className="text-xs text-slate-500 mt-0.5">Si está activado, se muestra la dirección y un enlace al mapa</p>
+                      </div>
+                      <SettingsSwitch
+                        checked={design?.showAddress === true}
+                        onCheckedChange={(v) => setDesign(prev => ({ ...prev, showAddress: v }))}
+                        label="Mostrar dirección en el catálogo"
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
+            )}
 
-            {/* Información para el catálogo (horario, dirección, envíos, retiro) */}
-            <div className="rounded-2xl border p-5 lg:p-6 mb-8" style={{ backgroundColor: '#ffffff', borderColor: 'var(--color-border)', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
-              <div className="flex items-center gap-3 mb-5">
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(139,92,246,0.1)' }}>
-                  <Icon name="Info" size={18} color="var(--color-primary)" />
-                </div>
-                <div>
-                  <h2 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-text-primary)' }}>Información para el catálogo</h2>
-                  <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Horario, dirección, envíos y retiro en tienda (opcional, para dar más confianza)</p>
-                </div>
-              </div>
-              <div className="flex flex-col gap-5">
-                <SettingsField label="Horario de atención" hint="Ej: Lun–Vie 9:00–18:00, Sáb 10:00–14:00">
-                  <textarea
-                    rows={2}
-                    className={inputClass}
-                    style={inputStyle}
-                    placeholder="Opcional"
-                    value={design?.businessHours ?? ''}
-                    onChange={e => setDesign(prev => ({ ...prev, businessHours: e?.target?.value ?? '' }))}
-                  />
-                </SettingsField>
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-caption)' }}>
-                    Mostrar dirección en el catálogo
-                  </label>
-                  <p className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>Si está activado, se muestra la dirección (calle, ciudad, etc.) y un enlace para ver en mapa</p>
-                  <label className="inline-flex items-center gap-2 cursor-pointer mt-1">
-                    <input
-                      type="checkbox"
-                      checked={design?.showAddress === true}
-                      onChange={e => setDesign(prev => ({ ...prev, showAddress: e?.target?.checked }))}
-                      className="w-4 h-4 rounded border-gray-300"
-                      style={{ accentColor: 'var(--color-primary)' }}
-                    />
-                    <span className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>Mostrar dirección</span>
-                  </label>
-                </div>
-                <SettingsField label="Métodos de envío" hint="Ej: Correo, mensajería, envío a domicilio">
-                  <input
-                    type="text"
-                    className={inputClass}
-                    style={inputStyle}
-                    placeholder="Opcional"
-                    value={design?.shippingMethods ?? ''}
-                    onChange={e => setDesign(prev => ({ ...prev, shippingMethods: e?.target?.value ?? '' }))}
-                  />
-                </SettingsField>
-                <SettingsField label="Costo de envío" hint="Ej: Desde $X según zona, o gratis sobre $Y">
-                  <input
-                    type="text"
-                    className={inputClass}
-                    style={inputStyle}
-                    placeholder="Opcional"
-                    value={design?.shippingCost ?? ''}
-                    onChange={e => setDesign(prev => ({ ...prev, shippingCost: e?.target?.value ?? '' }))}
-                  />
-                </SettingsField>
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-caption)' }}>
-                    Retiro en tienda
-                  </label>
-                  <p className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>Mostrar en el catálogo que se puede retirar en tu local</p>
-                  <label className="inline-flex items-center gap-2 cursor-pointer mt-1">
-                    <input
-                      type="checkbox"
-                      checked={design?.retiroEnTienda === true}
-                      onChange={e => setDesign(prev => ({ ...prev, retiroEnTienda: e?.target?.checked }))}
-                      className="w-4 h-4 rounded border-gray-300"
-                      style={{ accentColor: 'var(--color-primary)' }}
-                    />
-                    <span className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>Ofrecer retiro en tienda</span>
-                  </label>
-                </div>
-              </div>
-              <p className="text-xs mt-4" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-                Guarda los cambios con el botón &quot;Guardar configuración&quot; de la sección Datos del negocio.
-              </p>
-            </div>
-
-            <div className="rounded-2xl border p-5 lg:p-6 mb-8" style={{ backgroundColor: '#ffffff', borderColor: 'var(--color-border)', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
-              <div className="flex items-center gap-3 mb-5">
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(139,92,246,0.1)' }}>
-                  <Icon name="ShoppingBag" size={18} color="var(--color-primary)" />
-                </div>
-                <div>
-                  <h2 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-text-primary)' }}>Pedidos y catálogo</h2>
-                  <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Categorías, vista, layout y opciones de tarjeta</p>
-                </div>
-              </div>
-              <CatalogAndOrdersConfig design={design} onChange={setDesign} />
-            </div>
-
-            {/* Mensajes y pagos: plantilla WhatsApp + datos para transferencia */}
-            {business?.id && (
-              <div className="rounded-2xl border p-5 lg:p-6 mb-8" style={{ backgroundColor: '#ffffff', borderColor: 'var(--color-border)', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
+            {settingsTab === 'payments' && business?.id && (
+              <div className={`${cardClass} mb-8`}>
                 <div className="flex items-center gap-3 mb-5">
                   <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(139,92,246,0.1)' }}>
-                    <Icon name="MessageCircle" size={18} color="var(--color-primary)" />
+                    <Icon name="Truck" size={18} color="var(--color-primary)" />
                   </div>
                   <div>
-                    <h2 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-text-primary)' }}>Mensajes y pagos</h2>
-                    <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Plantilla de pedido y datos para cobros por transferencia</p>
+                    <h2 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-text-primary)' }}>Pagos y envíos</h2>
+                    <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Envíos, retiro, plantilla de pedido y datos para transferencia</p>
                   </div>
                 </div>
+
+                <div className="flex flex-col gap-5 mb-8 pb-8 border-b" style={{ borderColor: 'var(--color-border)' }}>
+                  <p className="text-xs font-bold uppercase tracking-wide" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Envío y retiro</p>
+                  <SettingsField label="Métodos de envío" hint="Ej: Correo, mensajería, envío a domicilio">
+                    <input
+                      type="text"
+                      className={inputClass}
+                      style={inputStyle}
+                      placeholder="Opcional"
+                      value={design?.shippingMethods ?? ''}
+                      onChange={e => setDesign(prev => ({ ...prev, shippingMethods: e?.target?.value ?? '' }))}
+                    />
+                  </SettingsField>
+                  <SettingsField label="Costo de envío" hint="Ej: Desde $X según zona, o gratis sobre $Y">
+                    <input
+                      type="text"
+                      className={inputClass}
+                      style={inputStyle}
+                      placeholder="Opcional"
+                      value={design?.shippingCost ?? ''}
+                      onChange={e => setDesign(prev => ({ ...prev, shippingCost: e?.target?.value ?? '' }))}
+                    />
+                  </SettingsField>
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-slate-800 font-[family-name:var(--font-caption)]">Retiro en tienda</p>
+                      <p className="text-xs text-slate-500 mt-0.5">Mostrar en el catálogo que se puede retirar en tu local</p>
+                    </div>
+                    <SettingsSwitch
+                      checked={design?.retiroEnTienda === true}
+                      onCheckedChange={(v) => setDesign(prev => ({ ...prev, retiroEnTienda: v }))}
+                      label="Ofrecer retiro en tienda"
+                    />
+                  </div>
+                </div>
+
                 <WhatsAppMessageTemplate
                   value={orderMessageTemplate}
                   onChange={setOrderMessageTemplate}
                   isSaving={isSaving}
                   onSave={handleSaveSettings}
                 />
-                <div className="pt-6 mt-6 border-t" style={{ borderColor: 'var(--color-border)' }}>
+
+                <div id="datos-transferencia" className="pt-6 mt-6 border-t scroll-mt-24" style={{ borderColor: 'var(--color-border)' }}>
                   <div className="flex items-center gap-2 mb-4">
                     <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(139,92,246,0.1)' }}>
                       <Icon name="Landmark" size={14} color="var(--color-primary)" />
                     </div>
-                    <h3 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-text-primary)' }}>Cobros por transferencia</h3>
+                    <h3 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-text-primary)' }}>Datos de transferencia</h3>
                   </div>
                   <p className="text-xs mb-4" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
                     Usa estos datos para responder al cliente o completar mensajes de pago sin escribir siempre lo mismo.
@@ -1046,7 +1120,7 @@ export default function BusinessConfiguration() {
                       <input type="text" className={inputClass} style={inputStyle} placeholder={countryLabels.bankPlaceholder} value={bankForm?.bankName} onChange={e => setBankForm(prev => ({ ...prev, bankName: e.target.value }))} />
                     </SettingsField>
                     <SettingsField label="Tipo de cuenta">
-                      <select className={inputClass} style={{ ...inputStyle, cursor: 'pointer' }} value={bankForm?.bankAccountType} onChange={e => setBankForm(prev => ({ ...prev, bankAccountType: e.target.value }))}>
+                      <select className={`${inputClass} cursor-pointer`} style={inputStyle} value={bankForm?.bankAccountType} onChange={e => setBankForm(prev => ({ ...prev, bankAccountType: e.target.value }))}>
                         <option value="">Seleccionar...</option>
                         {(countryLabels.bankAccountTypes || []).map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
                       </select>
@@ -1068,9 +1142,6 @@ export default function BusinessConfiguration() {
                       </SettingsField>
                     </div>
                   </div>
-                  <p className="text-xs mt-4" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-                    Guarda los cambios con el botón &quot;Guardar configuración&quot; de la sección Datos del negocio.
-                  </p>
                 </div>
               </div>
             )}
@@ -1080,6 +1151,48 @@ export default function BusinessConfiguration() {
           )}
         </DashboardLayoutContent>
       </div>
+
+      {isDirty && (
+        <div
+          className="fixed bottom-0 left-0 right-0 z-[60] border-t border-slate-200/70 bg-white/80 backdrop-blur-md px-4 py-3.5 shadow-[0_-8px_32px_rgba(15,23,42,0.07)]"
+          style={{ paddingBottom: 'max(0.875rem, env(safe-area-inset-bottom, 0px))' }}
+          role="region"
+          aria-label="Acciones de guardado"
+        >
+          <div className="max-w-7xl mx-auto flex flex-col-reverse sm:flex-row items-stretch sm:items-center sm:justify-end gap-3">
+            <button
+              type="button"
+              onClick={discardConfigChanges}
+              disabled={isSaving}
+              className="px-4 py-2.5 rounded-xl text-sm font-medium border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 transition-colors font-[family-name:var(--font-caption)]"
+            >
+              Descartar cambios
+            </button>
+            <button
+              type="button"
+              onClick={handleSaveSettings}
+              disabled={isSaving}
+              className="inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-60 transition-all bg-gradient-to-r from-violet-600 via-violet-600 to-violet-500 hover:from-violet-500 hover:to-violet-600 shadow-lg shadow-violet-500/20 font-[family-name:var(--font-caption)]"
+            >
+              {isSaving ? (
+                <>
+                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden>
+                    <circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,0.3)" strokeWidth="3" />
+                    <path d="M12 2a10 10 0 0 1 10 10" stroke="#fff" strokeWidth="3" strokeLinecap="round" />
+                  </svg>
+                  Guardando…
+                </>
+              ) : (
+                <>
+                  <Icon name="Save" size={16} color="#fff" aria-hidden />
+                  Guardar cambios
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
+
       {toast && (
         <Toast message={toast?.message} type={toast?.type} onClose={() => setToast(null)} />
       )}

@@ -219,7 +219,7 @@ export default function OrderDetailDrawer({
             className="rounded-xl border p-3 text-xs"
             style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-muted)', fontFamily: 'var(--font-caption)', color: 'var(--color-muted-foreground)' }}
           >
-            Los datos para cobros por transferencia están en la banda <strong className="text-foreground">Cobros por transferencia</strong> en la parte superior de la página Pedidos (una sola vez para todos los pedidos).
+            Configura tus datos bancarios en <strong className="text-foreground">Configuración</strong> para poder copiar datos de transferencia y mensajes de cobro desde el detalle del pedido.
           </div>
 
           <div>

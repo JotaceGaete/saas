@@ -10,7 +10,7 @@ import { useToast } from '../../components/ui/Toast';
 import { supabase } from '../../lib/supabase';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { BankTransferBanner } from './components/TransferPaymentSection';
+import BankTransferSetupSlimAlert from 'components/BankTransferSetupSlimAlert';
 import { formatCLP } from '../../utils/formatCLP';
 import OrderDetailDrawer from './components/OrderDetailDrawer';
 import OrdersKanban from './components/OrdersKanban';
@@ -346,11 +346,6 @@ export default function OrdersPage() {
     [filteredOrders],
   );
 
-  const sampleOrderForBanner = useMemo(
-    () => filteredOrders.find(o => (o?.paymentStatus || 'pendiente') === 'pendiente') || null,
-    [filteredOrders],
-  );
-
   const statusCounts = useMemo(() => {
     const list = visibleBoardOrders || [];
     const c = { all: list.length };
@@ -463,6 +458,8 @@ export default function OrdersPage() {
             </button>
           </div>
         </div>
+
+        <BankTransferSetupSlimAlert business={business} />
 
         <div className="flex lg:grid gap-3 lg:gap-3 mb-6 overflow-x-auto lg:overflow-visible pb-2 -mx-1 px-1 lg:mx-0 lg:px-0 lg:grid-cols-6 snap-x snap-mandatory lg:snap-none scroll-smooth [-webkit-overflow-scrolling:touch]">
           <button
@@ -595,8 +592,6 @@ export default function OrdersPage() {
             </button>
           )}
         </div>
-
-        <BankTransferBanner business={business} formatCLP={formatCLP} sampleOrder={sampleOrderForBanner} />
 
         {loading ? (
           <div className="flex flex-col lg:flex-row gap-4">

@@ -11,6 +11,8 @@ if (import.meta.env.DEV && typeof navigator !== "undefined" && "serviceWorker" i
   });
 }
 
+document.getElementById("go-seo-fallback")?.remove();
+
 const container = document.getElementById("root");
 const root = createRoot(container);
 
