@@ -9,39 +9,70 @@ import { useConfirmedEmailGuard } from '../../hooks/useConfirmedEmailGuard';
 import { supabase } from '../../lib/supabase';
 import { getAppBaseUrl } from '../../config/appUrl';
 import { formatSubscriptionPlanPrice } from '../../utils/formatCLP';
-import { PLAN_SLUGS, getPlanLimits, getPlanLabel, getPlanActionButtonLabel } from '../../constants/plans';
-import { TRIAL_DURATION_DAYS, getTrialDaysLeft } from '../../constants/trial';
+import { PLAN_SLUGS, getPlanLimits, getPlanLabel } from '../../constants/plans';
 import {
   normalizeBillingProvider,
   PAYMENT_PROVIDERS,
   getBillingStatusSafe,
-  getBillingResolutionUiMessage,
   resolveMarket,
   resolveBillingProvider,
   resolveBillingDisplayCurrency,
   getLocaleForBillingDisplayCurrency,
   getPlanPrice,
   getPlanConfig,
-  getProviderDisplayLabel,
   getProviderShortLabel,
-  getPaymentSummaryCopy,
-  getMarketNoticeCopy,
   getPlanUnavailableCopy,
-  getDlocalLocalChargeDisclaimer,
 } from '../../lib/billing';
 import { getPlansActivationWhatsappUrl } from '../../config/plansActivation';
 import { getCurrentSubscription } from '../../lib/billing/subscriptionService';
+import { normalizePlanSlugForBilling } from '../../lib/billing/billingSubscriptionsClient';
+import { buildUnifiedSubscriptionViewModel } from '../../lib/billing/unifiedSubscriptionCardModel';
+import { useBillingSubscriptionDisplayRow } from '../../hooks/useBillingSubscriptionDisplayRow';
 import { resolveCountryState, resolveBillingSetup, logCountryStateDebug } from '../../lib/country/state-model';
+import UnifiedSubscriptionCard from './components/UnifiedSubscriptionCard';
+import { useToast } from '../../components/ui/Toast';
 
 const PAYMENT_DEBUG_PREFIX = '[plans-payment-debug]';
 
+/** Badge de confianza bajo el botón "Elegir plan" (método principal). */
+function PlanPrimaryTrustBadge({ provider, billingCountryCode }) {
+  const n = normalizeBillingProvider(provider);
+  if (!n) return null;
+  if (n === PAYMENT_PROVIDERS.MANUAL) {
+    return (
+      <div className="flex justify-center pt-1">
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-100 bg-emerald-50/80 px-2.5 py-1 text-[10px] text-slate-600 font-[family-name:var(--font-caption)] max-w-full text-center leading-snug">
+          <Icon name="ShieldCheck" size={12} className="text-emerald-600 shrink-0" aria-hidden />
+          Activación coordinada por el equipo
+        </span>
+      </div>
+    );
+  }
+  const label =
+    n === PAYMENT_PROVIDERS.MERCADO_PAGO
+      ? 'Mercado Pago es el método principal para tu negocio'
+      : n === PAYMENT_PROVIDERS.PAYPAL
+        ? 'PayPal disponible para tu región'
+        : n === PAYMENT_PROVIDERS.DLOCAL
+          ? `Pago seguro con ${getProviderShortLabel({ provider: PAYMENT_PROVIDERS.DLOCAL, billingCountryCode })}`
+        : null;
+  if (!label) return null;
+  return (
+    <div className="flex justify-center pt-1">
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50/90 px-2.5 py-1 text-[10px] text-slate-600 font-[family-name:var(--font-caption)] max-w-full text-center leading-snug">
+        <Icon name="ShieldCheck" size={12} className="text-slate-600 shrink-0" aria-hidden />
+        {label}
+      </span>
+    </div>
+  );
+}
 
 export default function PlansPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user, business, businessLoading, refreshBusiness, loading: authLoading, isAuthenticated } = useAuth();
   const guard = useConfirmedEmailGuard();
-  const [paymentMessage, setPaymentMessage] = useState(null);
+  const toast = useToast();
   const [paymentReturnStatus, setPaymentReturnStatus] = useState(null); // 'success' | 'failure' | 'pending' al volver del checkout
   const [loadingPlanSlug, setLoadingPlanSlug] = useState(null);
   const [preview, setPreview] = useState(null);
@@ -50,7 +81,18 @@ export default function PlansPage() {
   const [billingReady, setBillingReady] = useState(false);
   const [billingRemoteError, setBillingRemoteError] = useState(null);
   const [currentSubscription, setCurrentSubscription] = useState(null);
-  const currentPlan = currentSubscription?.planSlug || business?.planSlug || 'starter';
+  /** `billing_subscriptions` o, si falta, fila virtual desde `wa_businesses` (legacy). */
+  const { row: billingSubscriptionRow, refetch: refetchBillingSubscriptionRow } = useBillingSubscriptionDisplayRow(
+    business?.id,
+    business?.planSlug,
+  );
+  const currentPlan = useMemo(() => {
+    if (billingSubscriptionRow?._displaySource === 'legacy_wa_businesses' && billingSubscriptionRow?.plan_slug) {
+      const n = normalizePlanSlugForBilling(billingSubscriptionRow.plan_slug);
+      if (n) return n;
+    }
+    return currentSubscription?.planSlug || business?.planSlug || 'starter';
+  }, [billingSubscriptionRow, currentSubscription?.planSlug, business?.planSlug]);
   /** Fuente de verdad: columna `country_code` en BD (`countryCodeDb`). */
   const businessCountryCode =
     business?.countryCodeDb ?? business?.routingCountryCode ?? business?.countryCode ?? null;
@@ -139,16 +181,7 @@ export default function PlansPage() {
     return subscriptionState?.checkoutPolicy?.message
       || 'Este método de pago no está disponible para tu mercado en este momento.';
   }, [hasPersistedBusinessCountry, billingReady, billingRemoteError, subscriptionState?.checkoutPolicy?.message]);
-  const marketStatus = useMemo(() => {
-    if (billingReady && subscriptionState?.marketStatus != null) return subscriptionState.marketStatus;
-    return resolvedBillingSetup?.marketStatus || 'active';
-  }, [billingReady, subscriptionState?.marketStatus, resolvedBillingSetup?.marketStatus]);
-  const showMarketDebugBadge = import.meta.env?.MODE !== 'production';
   const checkoutAvailability = subscriptionState?.billingProvider || null;
-  const billingResolutionMessage = useMemo(
-    () => (billingReady ? getBillingResolutionUiMessage(subscriptionState) : null),
-    [billingReady, subscriptionState],
-  );
   const alternativeAvailabilityMap = useMemo(
     () => (
       Array.isArray(subscriptionState?.billingProvider?.alternatives)
@@ -159,24 +192,37 @@ export default function PlansPage() {
   );
   const getDisplayPlanPrice = (slug) =>
     getPlanPrice({ countryCode: businessCountryCode, planSlug: slug }) ?? 0;
-  const dlocalLocalChargeDisclaimer = useMemo(
-    () => getDlocalLocalChargeDisclaimer(billingCountryForUi),
-    [billingCountryForUi],
-  );
-  const planExpiryMs = business?.planExpiresAt ? new Date(business.planExpiresAt).getTime() : null;
-  const trialExpiryMs = business?.trialExpiresAt ? new Date(business.trialExpiresAt).getTime() : null;
+  const planExpiryMs = useMemo(() => {
+    const iso = billingSubscriptionRow?.next_billing_date || business?.planExpiresAt;
+    return iso ? new Date(iso).getTime() : null;
+  }, [billingSubscriptionRow?.next_billing_date, business?.planExpiresAt]);
+  const trialExpiryMs = useMemo(() => {
+    const iso = billingSubscriptionRow?.trial_ends_at || business?.trialExpiresAt;
+    return iso ? new Date(iso).getTime() : null;
+  }, [billingSubscriptionRow?.trial_ends_at, business?.trialExpiresAt]);
   const hasFuturePlanExpiry = Number.isFinite(planExpiryMs) && planExpiryMs > Date.now();
   const hasFutureTrialExpiry = Number.isFinite(trialExpiryMs) && trialExpiryMs > Date.now();
-  const isProPlan = (business?.planSlug || 'starter') === 'pro';
-  /** Trial Pro: prueba vigente o estado de facturación en trial (no requiere scheduled_plan_slug = starter). */
+  const isPaidPlanSlug = (s) => s === 'pro' || s === 'business';
+  /** Trial en plan de pago (Pro o Full): prueba vigente o estado de facturación en trial. */
   const isProTrialActive = useMemo(() => {
-    if (!isProPlan) return false;
+    const slug = business?.planSlug || 'starter';
+    if (!isPaidPlanSlug(slug)) return false;
     if (hasFutureTrialExpiry) return true;
     const bs = subscriptionState?.billing_status;
     return bs === 'trial_with_subscription' || bs === 'trial_without_subscription';
-  }, [isProPlan, hasFutureTrialExpiry, subscriptionState?.billing_status]);
-  const trialEndDateIso = business?.trialExpiresAt || business?.scheduledChangeAt || business?.planExpiresAt || null;
+  }, [business?.planSlug, hasFutureTrialExpiry, subscriptionState?.billing_status]);
   const isTrialWithSubscription = subscriptionState?.billing_status === 'trial_with_subscription';
+
+  const unifiedSubscriptionViewModel = useMemo(
+    () =>
+      buildUnifiedSubscriptionViewModel({
+        business,
+        subscriptionState,
+        currentPlanSlug: currentPlan,
+        billingSubscriptionRow,
+      }),
+    [business, subscriptionState, currentPlan, billingSubscriptionRow],
+  );
   /** "Suscripción programada" solo si hay downgrade/cambio futuro confirmado en BD, no solo por estar en trial. */
   const showStarterScheduledSubscriptionLabel = isTrialWithSubscription && Boolean(business?.scheduledPlanSlug);
   /** Obtiene access_token válido para Edge Functions que validan JWT internamente. */
@@ -228,20 +274,20 @@ export default function PlansPage() {
     const payment = searchParams.get('payment');
     if (payment === 'success') {
       setPaymentReturnStatus('success');
-      setPaymentMessage({ type: 'info', text: 'Verificando tu pago…' });
+      toast?.info?.('Verificando tu pago…');
       setSearchParams({}, { replace: true });
       refreshBusiness?.();
     } else if (payment === 'failure' || payment === 'failed') {
-      setPaymentMessage({ type: 'error', text: 'El pago no pudo completarse. Intenta de nuevo.' });
+      toast?.error?.('El pago no pudo completarse. Intenta de nuevo.');
       setSearchParams({}, { replace: true });
     } else if (payment === 'pending') {
-      setPaymentMessage({ type: 'info', text: 'Pago pendiente. Cuando se acredite, tu plan se actualizará.' });
+      toast?.info?.('Pago pendiente. Cuando se acredite, tu plan se actualizará.');
       setSearchParams({}, { replace: true });
     } else if (payment === 'error') {
-      setPaymentMessage({ type: 'error', text: 'No se pudo verificar el retorno del pago. Revisa tu plan o intenta de nuevo.' });
+      toast?.error?.('No se pudo verificar el retorno del pago. Revisa tu plan o intenta de nuevo.');
       setSearchParams({}, { replace: true });
     }
-  }, [searchParams, setSearchParams, refreshBusiness]);
+  }, [searchParams, setSearchParams, refreshBusiness, toast]);
 
   // Solo mostrar éxito cuando la BD confirma: wa_payments.status = approved (no por success_url ni query params)
   useEffect(() => {
@@ -258,19 +304,22 @@ export default function PlansPage() {
       if (cancelled) return;
       setPaymentReturnStatus(null);
       if (!lastPayment) {
-        setPaymentMessage({ type: 'info', text: 'El pago está en proceso. Cuando se acredite, tu plan se actualizará.' });
+        toast?.info?.('El pago está en proceso. Cuando se acredite, tu plan se actualizará.');
         return;
       }
       if (lastPayment.status === 'approved') {
-        setPaymentMessage({ type: 'success', text: 'Pago realizado. Tu plan se ha actualizado.' });
+        toast?.success?.('Pago realizado. Tu plan se ha actualizado.');
+        if (business?.id && !cancelled) {
+          await refetchBillingSubscriptionRow();
+        }
       } else if (lastPayment.status === 'cancelled' || lastPayment.status === 'rejected') {
-        setPaymentMessage({ type: 'error', text: 'El pago no pudo completarse. Intenta de nuevo.' });
+        toast?.error?.('El pago no pudo completarse. Intenta de nuevo.');
       } else {
-        setPaymentMessage({ type: 'info', text: 'El pago está en proceso. Cuando se acredite, tu plan se actualizará.' });
+        toast?.info?.('El pago está en proceso. Cuando se acredite, tu plan se actualizará.');
       }
     })();
     return () => { cancelled = true; };
-  }, [paymentReturnStatus, user, businessLoading]);
+  }, [paymentReturnStatus, user, businessLoading, business?.id, refetchBillingSubscriptionRow]);
 
   useEffect(() => {
     let cancelled = false;
@@ -330,38 +379,38 @@ export default function PlansPage() {
     console.info(PAYMENT_DEBUG_PREFIX, { event: 'click_plan_button', handler: 'handleOpenIntlPlanPreview', planSlug, resolvedCountryCode: countryCode });
     if (getDisplayPlanPrice(planSlug) <= 0) return;
     setLoadingPlanSlug(planSlug);
-    setPaymentMessage(null);
+
     setPreview(null);
     setPreviewPlanSlug(null);
     try {
       if (authLoading) {
-        setPaymentMessage({ type: 'info', text: 'Cargando sesión. Intenta nuevamente en unos segundos.' });
+        toast.info('Cargando sesión. Intenta nuevamente en unos segundos.');
         return;
       }
       if (!isAuthenticated || !user) {
-        setPaymentMessage({ type: 'error', text: 'Debes iniciar sesión para contratar un plan.' });
+        toast.error('Debes iniciar sesión para contratar un plan.');
         navigate('/login');
         return;
       }
       const token = await getValidAccessToken();
       if (!token) {
-        setPaymentMessage({ type: 'error', text: 'Debes iniciar sesión para contratar un plan.' });
+        toast.error('Debes iniciar sesión para contratar un plan.');
         navigate('/login');
         return;
       }
       const previewData = await fetchPlanPreview(planSlug);
       if (!previewData) {
-        setPaymentMessage({ type: 'error', text: 'No se pudo obtener el resumen del cambio de plan.' });
+        toast.error('No se pudo obtener el resumen del cambio de plan.');
         return;
       }
       if (previewData.changeType === 'downgrade') {
-        setPaymentMessage({ type: 'info', text: previewData.message || 'El cambio se aplicará al vencer tu plan actual. No se realiza ningún cargo.' });
+        toast.info(previewData.message || 'El cambio se aplicará al vencer tu plan actual. No se realiza ningún cargo.');
         return;
       }
       setPreview(previewData);
       setPreviewPlanSlug(planSlug);
     } catch (err) {
-      setPaymentMessage({ type: 'error', text: err?.message || 'Error al cargar el resumen.' });
+      toast.error(err?.message || 'Error al cargar el resumen.');
     } finally {
       setLoadingPlanSlug(null);
     }
@@ -381,50 +430,50 @@ export default function PlansPage() {
     });
     if (getDisplayPlanPrice(planSlug) <= 0) return;
     if (isAutomaticCheckoutBlocked) {
-      setPaymentMessage({ type: 'info', text: automaticCheckoutBlockedMessage });
+      toast.info(automaticCheckoutBlockedMessage);
       return;
     }
     setLoadingPlanSlug(planSlug);
-    setPaymentMessage(null);
+
     setPreview(null);
     setPreviewPlanSlug(null);
     try {
       if (authLoading) {
-        setPaymentMessage({ type: 'info', text: 'Cargando sesión. Intenta nuevamente en unos segundos.' });
+        toast.info('Cargando sesión. Intenta nuevamente en unos segundos.');
         return;
       }
       if (!isAuthenticated || !user) {
-        setPaymentMessage({ type: 'error', text: 'Debes iniciar sesión para contratar un plan.' });
+        toast.error('Debes iniciar sesión para contratar un plan.');
         navigate('/login');
         return;
       }
       const token = await getValidAccessToken();
       if (!token) {
-        setPaymentMessage({ type: 'error', text: 'Debes iniciar sesión para contratar un plan.' });
+        toast.error('Debes iniciar sesión para contratar un plan.');
         navigate('/login');
         return;
       }
       const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
       if (!!anonKey && token === anonKey) {
-        setPaymentMessage({ type: 'error', text: 'Error de autenticación: token inválido.' });
+        toast.error('Error de autenticación: token inválido.');
         return;
       }
 
       const previewData = await fetchPlanPreview(planSlug);
       if (!previewData) {
-        setPaymentMessage({ type: 'error', text: 'No se pudo obtener el resumen del cambio de plan.' });
+        toast.error('No se pudo obtener el resumen del cambio de plan.');
         return;
       }
 
       if (previewData.changeType === 'downgrade') {
-        setPaymentMessage({ type: 'info', text: previewData.message || 'El cambio se aplicará al vencer tu plan actual. No se realiza ningún cargo.' });
+        toast.info(previewData.message || 'El cambio se aplicará al vencer tu plan actual. No se realiza ningún cargo.');
         return;
       }
 
       setPreview(previewData);
       setPreviewPlanSlug(planSlug);
     } catch (err) {
-      setPaymentMessage({ type: 'error', text: err?.message || 'Error al cargar el resumen.' });
+      toast.error(err?.message || 'Error al cargar el resumen.');
     } finally {
       setLoadingPlanSlug(null);
     }
@@ -444,44 +493,44 @@ export default function PlansPage() {
     });
     if (getDisplayPlanPrice(planSlug) <= 0) return;
     if (isAutomaticCheckoutBlocked) {
-      setPaymentMessage({ type: 'info', text: automaticCheckoutBlockedMessage });
+      toast.info(automaticCheckoutBlockedMessage);
       return;
     }
     setLoadingPlanSlug(planSlug);
-    setPaymentMessage(null);
+
     setPreview(null);
     setPreviewPlanSlug(null);
     try {
       if (authLoading) {
-        setPaymentMessage({ type: 'info', text: 'Cargando sesión. Intenta nuevamente en unos segundos.' });
+        toast.info('Cargando sesión. Intenta nuevamente en unos segundos.');
         return;
       }
       if (!isAuthenticated || !user || !business?.id) {
-        setPaymentMessage({ type: 'error', text: 'Debes iniciar sesión y tener un negocio activo para suscribirte.' });
+        toast.error('Debes iniciar sesión y tener un negocio activo para suscribirte.');
         navigate('/login');
         return;
       }
       const token = await getValidAccessToken();
       if (!token) {
-        setPaymentMessage({ type: 'error', text: 'Debes iniciar sesión para suscribirte.' });
+        toast.error('Debes iniciar sesión para suscribirte.');
         navigate('/login');
         return;
       }
 
       const previewData = await fetchPlanPreview(planSlug);
       if (!previewData) {
-        setPaymentMessage({ type: 'error', text: 'No se pudo obtener el resumen del cambio de plan.' });
+        toast.error('No se pudo obtener el resumen del cambio de plan.');
         return;
       }
       if (previewData.changeType === 'downgrade') {
-        setPaymentMessage({ type: 'info', text: previewData.message || 'El cambio se aplicará al vencer tu plan actual. No se realiza ningún cargo.' });
+        toast.info(previewData.message || 'El cambio se aplicará al vencer tu plan actual. No se realiza ningún cargo.');
         return;
       }
 
       setPreview(previewData);
       setPreviewPlanSlug(planSlug);
     } catch (err) {
-      setPaymentMessage({ type: 'error', text: err?.message || 'Error al iniciar PayPal.' });
+      toast.error(err?.message || 'Error al iniciar PayPal.');
     } finally {
       setLoadingPlanSlug(null);
     }
@@ -494,36 +543,36 @@ export default function PlansPage() {
     }
     if (getDisplayPlanPrice(planSlug) <= 0) return;
     if (isAutomaticCheckoutBlocked) {
-      setPaymentMessage({ type: 'info', text: automaticCheckoutBlockedMessage });
+      toast.info(automaticCheckoutBlockedMessage);
       return;
     }
     setLoadingPlanSlug(planSlug);
-    setPaymentMessage(null);
+
     setPreview(null);
     setPreviewPlanSlug(null);
     try {
       if (authLoading) {
-        setPaymentMessage({ type: 'info', text: 'Cargando sesión. Intenta nuevamente en unos segundos.' });
+        toast.info('Cargando sesión. Intenta nuevamente en unos segundos.');
         return;
       }
       if (!isAuthenticated || !user || !business?.id) {
-        setPaymentMessage({ type: 'error', text: 'Debes iniciar sesión y tener un negocio activo para suscribirte.' });
+        toast.error('Debes iniciar sesión y tener un negocio activo para suscribirte.');
         navigate('/login');
         return;
       }
       const previewData = await fetchPlanPreview(planSlug);
       if (!previewData) {
-        setPaymentMessage({ type: 'error', text: 'No se pudo obtener el resumen del cambio de plan.' });
+        toast.error('No se pudo obtener el resumen del cambio de plan.');
         return;
       }
       if (previewData.changeType === 'downgrade') {
-        setPaymentMessage({ type: 'info', text: previewData.message || 'El cambio se aplicará al vencer tu plan actual. No se realiza ningún cargo.' });
+        toast.info(previewData.message || 'El cambio se aplicará al vencer tu plan actual. No se realiza ningún cargo.');
         return;
       }
       setPreview(previewData);
       setPreviewPlanSlug(planSlug);
     } catch (err) {
-      setPaymentMessage({ type: 'error', text: err?.message || 'Error al iniciar el pago con tarjeta.' });
+      toast.error(err?.message || 'Error al iniciar el pago con tarjeta.');
     } finally {
       setLoadingPlanSlug(null);
     }
@@ -539,10 +588,7 @@ export default function PlansPage() {
     if (typeof window !== 'undefined') {
       window.open(url, '_blank', 'noopener,noreferrer');
     }
-    setPaymentMessage({
-      type: 'info',
-      text: 'Se abrió WhatsApp para que coordinemos la activación de tu plan. Si no se abrió, revisa el bloqueador de ventanas emergentes.',
-    });
+    toast.info('Se abrió WhatsApp para que coordinemos la activación de tu plan. Si no se abrió, revisa el bloqueador de ventanas emergentes.');
     setPreview(null);
     setPreviewPlanSlug(null);
   };
@@ -560,24 +606,24 @@ export default function PlansPage() {
     });
     if (!previewPlanSlug) return;
     if (isAutomaticCheckoutBlocked) {
-      setPaymentMessage({ type: 'info', text: automaticCheckoutBlockedMessage });
+      toast.info(automaticCheckoutBlockedMessage);
       return;
     }
     setLoadingPlanSlug(previewPlanSlug);
-    setPaymentMessage(null);
+
     try {
       if (authLoading) {
-        setPaymentMessage({ type: 'info', text: 'Cargando sesión. Intenta nuevamente en unos segundos.' });
+        toast.info('Cargando sesión. Intenta nuevamente en unos segundos.');
         return;
       }
       if (!isAuthenticated || !user) {
-        setPaymentMessage({ type: 'error', text: 'Debes iniciar sesión.' });
+        toast.error('Debes iniciar sesión.');
         navigate('/login');
         return;
       }
       const token = await getValidAccessToken();
       if (!token) {
-        setPaymentMessage({ type: 'error', text: 'Debes iniciar sesión.' });
+        toast.error('Debes iniciar sesión.');
         navigate('/login');
         return;
       }
@@ -608,7 +654,7 @@ export default function PlansPage() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         if (data?.changeType === 'downgrade') {
-          setPaymentMessage({ type: 'info', text: data?.message || 'El cambio se aplicará al vencer tu plan actual.' });
+          toast.info(data?.message || 'El cambio se aplicará al vencer tu plan actual.');
           setPreview(null);
           setPreviewPlanSlug(null);
           return;
@@ -617,10 +663,13 @@ export default function PlansPage() {
       }
       if (data?.error) throw new Error(data.error);
       if (data?.applied) {
-        setPaymentMessage({ type: 'success', text: 'Plan actualizado correctamente. No se requirió pago (crédito por tiempo restante).' });
+        toast.success('Plan actualizado correctamente. No se requirió pago (crédito por tiempo restante).');
         setPreview(null);
         setPreviewPlanSlug(null);
-        refreshBusiness?.();
+        await refreshBusiness?.();
+        if (business?.id) {
+          await refetchBillingSubscriptionRow();
+        }
         return;
       }
       if (data?.init_point) {
@@ -629,7 +678,7 @@ export default function PlansPage() {
       }
       throw new Error('No se recibió enlace de pago');
     } catch (err) {
-      setPaymentMessage({ type: 'error', text: err?.message || 'Error al iniciar el pago.' });
+      toast.error(err?.message || 'Error al iniciar el pago.');
     } finally {
       setLoadingPlanSlug(null);
     }
@@ -642,24 +691,24 @@ export default function PlansPage() {
     }
     if (!previewPlanSlug) return;
     if (isAutomaticCheckoutBlocked) {
-      setPaymentMessage({ type: 'info', text: automaticCheckoutBlockedMessage });
+      toast.info(automaticCheckoutBlockedMessage);
       return;
     }
     setLoadingPlanSlug(previewPlanSlug);
-    setPaymentMessage(null);
+
     try {
       if (authLoading) {
-        setPaymentMessage({ type: 'info', text: 'Cargando sesión. Intenta nuevamente en unos segundos.' });
+        toast.info('Cargando sesión. Intenta nuevamente en unos segundos.');
         return;
       }
       if (!isAuthenticated || !user || !business?.id) {
-        setPaymentMessage({ type: 'error', text: 'Debes iniciar sesión y tener un negocio activo para suscribirte.' });
+        toast.error('Debes iniciar sesión y tener un negocio activo para suscribirte.');
         navigate('/login');
         return;
       }
       const token = await getValidAccessToken();
       if (!token) {
-        setPaymentMessage({ type: 'error', text: 'Debes iniciar sesión para suscribirte.' });
+        toast.error('Debes iniciar sesión para suscribirte.');
         navigate('/login');
         return;
       }
@@ -716,7 +765,7 @@ export default function PlansPage() {
       }
       window.location.assign(redirectUrl);
     } catch (err) {
-      setPaymentMessage({ type: 'error', text: err?.message || `Error al iniciar ${provider}.` });
+      toast.error(err?.message || `Error al iniciar ${provider}.`);
     } finally {
       setLoadingPlanSlug(null);
     }
@@ -727,10 +776,7 @@ export default function PlansPage() {
     if (checkoutProvider === PAYMENT_PROVIDERS.PAYPAL) return confirmPayWithProvider(PAYMENT_PROVIDERS.PAYPAL);
     if (checkoutProvider === PAYMENT_PROVIDERS.MERCADO_PAGO) return confirmPayWithMercadoPago();
     if (checkoutProvider === PAYMENT_PROVIDERS.MANUAL) return confirmActivationViaWhatsApp();
-    setPaymentMessage({
-      type: 'error',
-      text: `Proveedor no soportado para checkout: ${String(checkoutProvider || 'unknown')}`,
-    });
+    toast.error(`Proveedor no soportado para checkout: ${String(checkoutProvider || 'unknown')}`);
     return undefined;
   };
 
@@ -779,257 +825,21 @@ export default function PlansPage() {
         />
         <DashboardLayoutContent>
 
-          {/* Tu plan */}
           {business?.id && (
-            <div
-              className="rounded-xl border p-5 flex flex-wrap items-center justify-between gap-4"
-              style={{ backgroundColor: 'rgba(124,58,237,0.06)', borderColor: 'var(--color-primary)' }}
-            >
-              <div>
-                <p className="text-sm font-medium" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Tu plan</p>
-                <p className="text-lg font-bold mt-0.5" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>
-                  {getPlanLabel(currentPlan)}
-                </p>
-                <p className="text-xs mt-1" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-                  {(() => {
-                    const limits = getPlanLimits(currentPlan);
-                    const products = limits.maxProducts == null ? 'Productos ilimitados' : `Hasta ${limits.maxProducts} productos`;
-                    const orders = limits.maxOrdersPerMonth == null ? 'Pedidos ilimitados' : `${limits.maxOrdersPerMonth} pedidos/mes`;
-                    return `${products} · ${orders}`;
-                  })()}
-                </p>
-                {isProTrialActive && trialEndDateIso && (
-                  <p className="text-xs mt-1 font-medium" style={{ color: '#D97706', fontFamily: 'var(--font-caption)' }}>
-                    ✨ Prueba gratuita · vence el {new Date(trialEndDateIso).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })}
-                  </p>
-                )}
-                {isTrialWithSubscription && (
-                  <>
-                    <p className="text-xs mt-1 font-medium" style={{ color: '#059669', fontFamily: 'var(--font-caption)' }}>
-                      Tu suscripción está activada.
-                    </p>
-                    <p className="text-xs mt-1" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
-                      {subscriptionState?.subscription_starts_at
-                        ? `Inicia el ${new Date(subscriptionState.subscription_starts_at).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })}.`
-                        : 'Iniciará al finalizar tu prueba gratuita.'}
-                      {' '}El cobro se realizará al finalizar tu prueba gratuita.
-                    </p>
-                  </>
-                )}
-                {business?.planExpiresAt && (currentPlan === 'pro' || currentPlan === 'business') && new Date(business.planExpiresAt) > new Date() && (
-                  <p className="text-xs mt-1" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-                    Vence el {new Date(business.planExpiresAt).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })}
-                  </p>
-                )}
-                {business?.scheduledPlanSlug && (
-                  <p className="text-xs mt-1" style={{ color: 'var(--color-primary)', fontFamily: 'var(--font-caption)' }}>
-                    Cambio a <strong>{getPlanLabel(business.scheduledPlanSlug)}</strong>
-                    {business.scheduledChangeAt ? ` el ${new Date(business.scheduledChangeAt).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })}` : ''}
-                  </p>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={() => document.getElementById('planes-grid')?.scrollIntoView({ behavior: 'smooth' })}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90"
-                style={{ backgroundColor: 'var(--color-primary)' }}
-              >
-                <Icon name="TrendingUp" size={16} color="#fff" />
-                Mejorar plan
-              </button>
-            </div>
+            <UnifiedSubscriptionCard
+              subscription={currentPlan}
+              viewModel={unifiedSubscriptionViewModel}
+              onScrollToPlans={() => document.getElementById('planes-grid')?.scrollIntoView({ behavior: 'smooth' })}
+            />
           )}
-
-          {paymentMessage && (
-            <div
-              className="rounded-xl border px-4 py-3 flex items-center gap-3"
-              style={{
-                backgroundColor: paymentMessage.type === 'success' ? 'rgba(16,185,129,0.1)' : paymentMessage.type === 'error' ? 'rgba(239,68,68,0.1)' : 'var(--color-muted)',
-                borderColor: paymentMessage.type === 'success' ? '#10b981' : paymentMessage.type === 'error' ? '#ef4444' : 'var(--color-border)',
-                color: paymentMessage.type === 'success' ? '#059669' : paymentMessage.type === 'error' ? '#dc2626' : 'var(--color-text-secondary)',
-              }}
-            >
-              <Icon name={paymentMessage.type === 'success' ? 'CheckCircle' : paymentMessage.type === 'error' ? 'AlertCircle' : 'Info'} size={18} color="currentColor" />
-              <span className="text-sm" style={{ fontFamily: 'var(--font-caption)' }}>{paymentMessage.text}</span>
-            </div>
-          )}
-
-          {billingRemoteError && (
-            <div
-              className="rounded-xl border px-4 py-3 flex items-start gap-3"
-              role="alert"
-              style={{
-                backgroundColor: 'rgba(180,83,9,0.08)',
-                borderColor: 'rgba(180,83,9,0.35)',
-                color: 'var(--color-text-secondary)',
-              }}
-            >
-              <Icon name="AlertCircle" size={18} color="#b45309" className="flex-shrink-0 mt-0.5" />
-              <div className="flex flex-col gap-1 min-w-0">
-                <span className="text-sm font-medium" style={{ fontFamily: 'var(--font-caption)', color: '#92400e' }}>
-                  Estado de facturación no disponible
-                  {billingRemoteError.httpStatus != null ? ` (${billingRemoteError.httpStatus})` : ''}
-                </span>
-                {billingRemoteError.hint && (
-                  <span className="text-sm" style={{ fontFamily: 'var(--font-caption)' }}>{billingRemoteError.hint}</span>
-                )}
-                {!billingRemoteError.hint && billingRemoteError.error && (
-                  <span className="text-xs break-words" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-text-tertiary)' }}>
-                    {billingRemoteError.error}
-                  </span>
-                )}
-                {billingRemoteError.details?.message && billingRemoteError.hint == null && (
-                  <span className="text-xs break-words" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-text-tertiary)' }}>
-                    {billingRemoteError.details.message}
-                  </span>
-                )}
-                <span className="text-xs" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-text-tertiary)' }}>
-                  El checkout automático permanece deshabilitado hasta que podamos cargar el estado de facturación.
-                </span>
-              </div>
-            </div>
-          )}
-
-          {preview && previewPlanSlug && (
-            <div className="rounded-xl border p-5" style={{ backgroundColor: 'var(--color-muted)', borderColor: 'var(--color-primary)' }}>
-              <h3 className="text-sm font-semibold mb-3" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>Resumen antes de pagar</h3>
-              <ul className="space-y-1.5 text-sm mb-4" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
-                <li>Plan actual: <strong>{getPlanLabel(preview.currentPlanSlug)}</strong></li>
-                <li>Plan destino: <strong>{getPlanLabel(preview.targetPlanSlug)}</strong></li>
-                <li>Días restantes: <strong>{preview.daysRemaining}</strong></li>
-                {preview.creditAmount > 0 && (
-                  <li>Crédito aplicado: <strong>{formatSubscriptionPlanPrice(preview.creditAmount, planBillingDisplayCurrency, planBillingDisplayLocale)}</strong></li>
-                )}
-                <li>Precio del plan: <strong>{formatSubscriptionPlanPrice(getDisplayPlanPrice(preview.targetPlanSlug), planBillingDisplayCurrency, planBillingDisplayLocale)}</strong></li>
-                {preview.effectiveAt && (
-                  <li>Vigente desde: <strong>{new Date(preview.effectiveAt).toLocaleDateString(planBillingDisplayLocale, { dateStyle: 'medium' })}</strong></li>
-                )}
-                <li className="pt-2 border-t" style={{ borderColor: 'var(--color-border)' }}>
-                  Total a pagar: <strong className="text-base" style={{ color: 'var(--color-foreground)' }}>
-                    {preview.changeType === 'downgrade' || preview.finalAmount === 0
-                      ? 'Sin cargo (crédito aplicado)'
-                      : formatSubscriptionPlanPrice(getSafePreviewTotal(), planBillingDisplayCurrency, planBillingDisplayLocale)}
-                  </strong>
-                </li>
-              </ul>
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={handleConfirmPrimaryPayment}
-                  disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !billingReady || !isProviderReadyForCheckout(checkoutProvider) || isAutomaticCheckoutBlocked}
-                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
-                  style={{ backgroundColor: checkoutProvider === PAYMENT_PROVIDERS.DLOCAL ? '#111827' : checkoutProvider === PAYMENT_PROVIDERS.PAYPAL ? '#0070ba' : checkoutProvider === PAYMENT_PROVIDERS.MERCADO_PAGO ? '#009EE3' : '#25D366' }}
-                >
-                  {loadingPlanSlug ? (
-                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  ) : checkoutProvider === PAYMENT_PROVIDERS.DLOCAL ? (
-                    <>
-                      <Icon name="CreditCard" size={16} color="#fff" />
-                      {preview.finalAmount === 0
-                        ? 'Confirmar cambio (sin cargo)'
-                        : (previewPlanSlug === 'pro' && isProTrialActive
-                          ? 'Activar suscripción Pro'
-                          : getProviderDisplayLabel({ provider: PAYMENT_PROVIDERS.DLOCAL, billingCountryCode: billingCountryForUi }))}
-                    </>
-                  ) : checkoutProvider === PAYMENT_PROVIDERS.PAYPAL ? (
-                    <>
-                      <Icon name="CreditCard" size={16} color="#fff" />
-                      {preview.finalAmount === 0 ? 'Confirmar cambio (sin cargo)' : 'Continuar con PayPal'}
-                    </>
-                  ) : checkoutProvider === PAYMENT_PROVIDERS.MANUAL ? (
-                    <>
-                      <Icon name="MessageCircle" size={16} color="#fff" />
-                      {preview.finalAmount === 0 ? 'Solicitar activación (sin cargo)' : 'Solicitar activación'}
-                    </>
-                  ) : preview.finalAmount === 0 ? (
-                    <><Icon name="CheckCircle" size={16} color="#fff" /> Confirmar cambio (sin cargo)</>
-                  ) : (
-                    <><Icon name="Wallet" size={16} color="#fff" /> Confirmar y pagar</>
-                  )}
-                </button>
-                <button
-                  type="button"
-                  onClick={cancelPreview}
-                  className="px-4 py-2.5 rounded-lg text-sm font-medium transition-opacity hover:opacity-90"
-                  style={{ color: 'var(--color-muted-foreground)', border: '1px solid var(--color-border)' }}
-                >
-                  Cancelar
-                </button>
-                {secondaryCheckoutProviders.includes(PAYMENT_PROVIDERS.PAYPAL) && (
-                  <button
-                    type="button"
-                    onClick={() => confirmPayWithProvider(PAYMENT_PROVIDERS.PAYPAL)}
-                    disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !billingReady || !isProviderReadyForCheckout(PAYMENT_PROVIDERS.PAYPAL) || isAutomaticCheckoutBlocked}
-                    className="px-4 py-2.5 rounded-lg text-sm font-medium transition-opacity hover:opacity-90 disabled:opacity-60"
-                    style={{ color: '#0070ba', border: '1px solid #0070ba' }}
-                  >
-                    PayPal
-                  </button>
-                )}
-                {secondaryCheckoutProviders.includes(PAYMENT_PROVIDERS.MERCADO_PAGO) && (
-                  <button
-                    type="button"
-                    onClick={confirmPayWithMercadoPago}
-                    disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !billingReady || !isProviderReadyForCheckout(PAYMENT_PROVIDERS.MERCADO_PAGO) || isAutomaticCheckoutBlocked}
-                    className="px-4 py-2.5 rounded-lg text-sm font-medium transition-opacity hover:opacity-90 disabled:opacity-60"
-                    style={{ color: '#009EE3', border: '1px solid #009EE3' }}
-                  >
-                    {getProviderShortLabel({ provider: PAYMENT_PROVIDERS.MERCADO_PAGO, billingCountryCode: billingCountryForUi })}
-                  </button>
-                )}
-                {secondaryCheckoutProviders.includes(PAYMENT_PROVIDERS.DLOCAL) && (
-                  <button
-                    type="button"
-                    onClick={() => confirmPayWithProvider(PAYMENT_PROVIDERS.DLOCAL)}
-                    disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !billingReady || !isProviderReadyForCheckout(PAYMENT_PROVIDERS.DLOCAL) || isAutomaticCheckoutBlocked}
-                    className="px-4 py-2.5 rounded-lg text-sm font-medium transition-opacity hover:opacity-90 disabled:opacity-60"
-                    style={{ color: '#111827', border: '1px solid #111827' }}
-                  >
-                    {getProviderShortLabel({ provider: PAYMENT_PROVIDERS.DLOCAL, billingCountryCode: billingCountryForUi })}
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Banner de trial activo (PRO en prueba gratuita) */}
-          {!isTrialWithSubscription && isProTrialActive && trialEndDateIso && (() => {
-            const trialExp = new Date(trialEndDateIso);
-            const now = new Date();
-            if (trialExp <= now) return null;
-            const daysLeft = getTrialDaysLeft(trialEndDateIso, now);
-            return (
-              <div
-                className="rounded-xl border px-5 py-4 flex items-start gap-3"
-                style={{ backgroundColor: 'rgba(245,158,11,0.08)', borderColor: '#F59E0B' }}
-              >
-                <span className="text-xl leading-none mt-0.5">✨</span>
-                <div>
-                  <p className="text-sm font-semibold" style={{ color: '#92400E', fontFamily: 'var(--font-heading)' }}>
-                    Estás usando una prueba gratuita de {TRIAL_DURATION_DAYS} días del plan PRO.
-                  </p>
-                  <p className="text-xs mt-0.5" style={{ color: '#B45309', fontFamily: 'var(--font-caption)' }}>
-                    Al pagar con tarjeta, el mes pagado se suma desde el fin de tu prueba (o de tu período vigente), no desde hoy.
-                  </p>
-                  <p className="text-xs mt-1" style={{ color: '#B45309', fontFamily: 'var(--font-caption)' }}>
-                    {daysLeft === 1
-                      ? 'Queda 1 día de prueba.'
-                      : `Quedan ${daysLeft} días de prueba.`}
-                    {' '}Puedes activar Pro o Full; el período de 30 días pagado se acumula a lo que ya tienes.
-                  </p>
-                </div>
-              </div>
-            );
-          })()}
 
           <div id="planes-grid" className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-5">
             {PLAN_SLUGS.map((slug) => {
               const limits = getPlanLimits(slug);
               const isProTrialCard = slug === 'pro' && isProTrialActive;
               const isCurrent = currentPlan === slug && !isProTrialCard;
-              const actionLabel = isProTrialCard
-                ? 'Activar suscripción Pro'
-                : getPlanActionButtonLabel(currentPlan, slug);
+              const actionLabel = `Elegir plan ${getPlanLabel(slug)}`;
+              const isProRecommended = slug === 'pro';
               const marketPlan = getPlanConfig({
                 marketCode,
                 planSlug: slug,
@@ -1039,14 +849,25 @@ export default function PlansPage() {
               return (
                 <div
                   key={slug}
-                  className="rounded-2xl border p-5 flex flex-col transition-all"
+                  className={[
+                    'relative rounded-2xl border p-5 flex flex-col transition-all',
+                    isProRecommended ? 'ring-2 ring-violet-500/20 border-violet-200/90 shadow-md shadow-violet-500/10' : '',
+                  ].filter(Boolean).join(' ')}
                   style={{
                     backgroundColor: isCurrent ? 'rgba(124,58,237,0.06)' : '#ffffff',
                     borderColor: isCurrent ? 'var(--color-primary)' : 'var(--color-border)',
                     boxShadow: isCurrent ? '0 0 0 2px rgba(124,58,237,0.2)' : '0 1px 4px rgba(0,0,0,0.05)',
                   }}
                 >
-                  <div className="flex items-center justify-between mb-4">
+                  {isProRecommended && (
+                    <span
+                      className="absolute -top-2.5 left-1/2 -translate-x-1/2 rounded-full bg-violet-600 px-3 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white shadow-sm font-[family-name:var(--font-caption)]"
+                      aria-hidden
+                    >
+                      Popular
+                    </span>
+                  )}
+                  <div className="flex items-center justify-between mb-4 pt-1">
                     <h2 className="text-lg font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>
                       {getPlanLabel(slug)}
                     </h2>
@@ -1057,23 +878,46 @@ export default function PlansPage() {
                     )}
                   </div>
                   <div className="mb-4">
-                    <p className="text-2xl font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>
-                      {getDisplayPlanPrice(slug) === 0
-                        ? 'Gratis'
-                        : formatSubscriptionPlanPrice(getDisplayPlanPrice(slug), planBillingDisplayCurrency, planBillingDisplayLocale)}
-                    </p>
-                    <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+                    {getDisplayPlanPrice(slug) === 0 ? (
+                      <p className="text-2xl font-bold text-slate-900" style={{ fontFamily: 'var(--font-heading)' }}>
+                        Gratis
+                      </p>
+                    ) : (
+                      <p
+                        className={
+                          planBillingDisplayCurrency === 'CLP'
+                            ? 'text-3xl font-extrabold text-violet-900 tracking-tight'
+                            : 'text-2xl font-bold text-slate-900'
+                        }
+                        style={{ fontFamily: 'var(--font-heading)' }}
+                      >
+                        {formatSubscriptionPlanPrice(getDisplayPlanPrice(slug), planBillingDisplayCurrency, planBillingDisplayLocale)}
+                      </p>
+                    )}
+                    <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
                       {getDisplayPlanPrice(slug) === 0 ? '' : `por mes · ${planBillingDisplayCurrency}`}
                     </p>
                   </div>
                   <ul className="space-y-2 mb-6 flex-1">
-                    <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
-                      <Icon name="Package" size={14} color="var(--color-muted-foreground)" />
-                      Productos: {limits.maxProducts == null ? 'Ilimitados' : limits.maxProducts}
+                    <li className="flex items-center gap-2.5 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
+                      <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600" aria-hidden>
+                        <Icon name="Package" size={16} color="currentColor" />
+                      </span>
+                      <span>
+                        <span className="font-semibold text-slate-800">Productos</span>
+                        {' · '}
+                        {limits.maxProducts == null ? 'Ilimitados' : limits.maxProducts}
+                      </span>
                     </li>
-                    <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
-                      <Icon name="ShoppingCart" size={14} color="var(--color-muted-foreground)" />
-                      Pedidos/mes: {limits.maxOrdersPerMonth == null ? 'Ilimitados' : limits.maxOrdersPerMonth}
+                    <li className="flex items-center gap-2.5 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
+                      <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600" aria-hidden>
+                        <Icon name="ShoppingCart" size={16} color="currentColor" />
+                      </span>
+                      <span>
+                        <span className="font-semibold text-slate-800">Pedidos/mes</span>
+                        {' · '}
+                        {limits.maxOrdersPerMonth == null ? 'Ilimitados' : limits.maxOrdersPerMonth}
+                      </span>
                     </li>
                     {slug === 'starter' && (
                       <>
@@ -1121,75 +965,85 @@ export default function PlansPage() {
                                 : 'Cargando facturación…'}
                         </button>
                       ) : checkoutProvider === PAYMENT_PROVIDERS.MERCADO_PAGO ? (
-                        <button
-                          type="button"
-                          disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !isPurchasable || isAutomaticCheckoutBlocked}
-                          onClick={() => handlePayWithMercadoPago(slug)}
-                          className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
-                          style={{ backgroundColor: '#009EE3' }}
-                        >
-                          {loadingPlanSlug === slug ? (
-                            <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                          ) : (
-                            <>
-                              <Icon name="Wallet" size={16} color="#fff" />
-                              {actionLabel}
-                            </>
-                          )}
-                        </button>
+                        <div className="w-full flex flex-col gap-1">
+                          <button
+                            type="button"
+                            disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !isPurchasable || isAutomaticCheckoutBlocked}
+                            onClick={() => handlePayWithMercadoPago(slug)}
+                            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+                            style={{ backgroundColor: '#009EE3' }}
+                          >
+                            {loadingPlanSlug === slug ? (
+                              <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            ) : (
+                              <>
+                                <Icon name="Wallet" size={16} color="#fff" />
+                                {actionLabel}
+                              </>
+                            )}
+                          </button>
+                          <PlanPrimaryTrustBadge provider={checkoutProvider} billingCountryCode={billingCountryForUi} />
+                        </div>
                       ) : checkoutProvider === PAYMENT_PROVIDERS.DLOCAL ? (
-                        <button
-                          type="button"
-                          disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !isPurchasable || isAutomaticCheckoutBlocked}
-                          onClick={() => handlePayWithDlocal(slug)}
-                          className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
-                          style={{ backgroundColor: '#111827' }}
-                        >
-                          {loadingPlanSlug === slug ? (
-                            <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                          ) : (
-                            <>
-                              <Icon name="CreditCard" size={16} color="#fff" />
-                              {isProTrialCard
-                                ? 'Activar suscripción Pro'
-                                : getProviderDisplayLabel({ provider: PAYMENT_PROVIDERS.DLOCAL, billingCountryCode: billingCountryForUi })}
-                            </>
-                          )}
-                        </button>
+                        <div className="w-full flex flex-col gap-1">
+                          <button
+                            type="button"
+                            disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !isPurchasable || isAutomaticCheckoutBlocked}
+                            onClick={() => handlePayWithDlocal(slug)}
+                            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+                            style={{ backgroundColor: '#111827' }}
+                          >
+                            {loadingPlanSlug === slug ? (
+                              <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            ) : (
+                              <>
+                                <Icon name="CreditCard" size={16} color="#fff" />
+                                {actionLabel}
+                              </>
+                            )}
+                          </button>
+                          <PlanPrimaryTrustBadge provider={checkoutProvider} billingCountryCode={billingCountryForUi} />
+                        </div>
                       ) : checkoutProvider === PAYMENT_PROVIDERS.PAYPAL ? (
-                        <button
-                          type="button"
-                          disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !isPurchasable || isAutomaticCheckoutBlocked}
-                          onClick={() => handlePayWithPaypal(slug)}
-                          className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
-                          style={{ backgroundColor: '#0070ba' }}
-                        >
-                          {loadingPlanSlug === slug ? (
-                            <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                          ) : (
-                            <>
-                              <Icon name="CreditCard" size={16} color="#fff" />
-                              {isProTrialCard ? 'Activar suscripción Pro' : 'Suscribirme'}
-                            </>
-                          )}
-                        </button>
+                        <div className="w-full flex flex-col gap-1">
+                          <button
+                            type="button"
+                            disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !isPurchasable || isAutomaticCheckoutBlocked}
+                            onClick={() => handlePayWithPaypal(slug)}
+                            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+                            style={{ backgroundColor: '#0070ba' }}
+                          >
+                            {loadingPlanSlug === slug ? (
+                              <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            ) : (
+                              <>
+                                <Icon name="CreditCard" size={16} color="#fff" />
+                                {actionLabel}
+                              </>
+                            )}
+                          </button>
+                          <PlanPrimaryTrustBadge provider={checkoutProvider} billingCountryCode={billingCountryForUi} />
+                        </div>
                       ) : checkoutProvider === PAYMENT_PROVIDERS.MANUAL ? (
-                        <button
-                          type="button"
-                          disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !isPurchasable}
-                          onClick={() => handleOpenIntlPlanPreview(slug)}
-                          className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
-                          style={{ backgroundColor: '#25D366' }}
-                        >
-                          {loadingPlanSlug === slug ? (
-                            <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                          ) : (
-                            <>
-                              <Icon name="MessageCircle" size={16} color="#fff" />
-                              Solicitar activación
-                            </>
-                          )}
-                        </button>
+                        <div className="w-full flex flex-col gap-1">
+                          <button
+                            type="button"
+                            disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !isPurchasable}
+                            onClick={() => handleOpenIntlPlanPreview(slug)}
+                            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+                            style={{ backgroundColor: '#25D366' }}
+                          >
+                            {loadingPlanSlug === slug ? (
+                              <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            ) : (
+                              <>
+                                <Icon name="MessageCircle" size={16} color="#fff" />
+                                {actionLabel}
+                              </>
+                            )}
+                          </button>
+                          <PlanPrimaryTrustBadge provider={checkoutProvider} billingCountryCode={billingCountryForUi} />
+                        </div>
                       ) : (
                         <span className="text-sm font-medium" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
                           {getPlanUnavailableCopy()}
@@ -1206,57 +1060,109 @@ export default function PlansPage() {
             })}
           </div>
 
-          <div className="mt-8 rounded-xl border p-5" style={{ backgroundColor: 'var(--color-muted)', borderColor: 'var(--color-border)' }}>
-            {showMarketDebugBadge && (
-              <p className="text-xs mb-2" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-                QA market: <strong>{countryState.billingCountry}</strong> · status: <strong>{marketStatus}</strong> · provider: <strong>{checkoutProvider || '—'}</strong> · plan currency: <strong>{planBillingDisplayCurrency}</strong>
-                {subscriptionState?.currency && subscriptionState.currency !== planBillingDisplayCurrency ? (
-                  <span> · server/business currency: <strong>{subscriptionState.currency}</strong></span>
-                ) : null}
-              </p>
-            )}
-            <p className="text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
-              {getPaymentSummaryCopy({ provider: checkoutProvider || undefined, marketCode })}
-            </p>
-            {billingResolutionMessage && (
-              <p className="text-xs mt-2" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-                <span className="font-medium" style={{ color: '#92400e' }}>Facturación (servidor): </span>
-                {billingResolutionMessage}
-              </p>
-            )}
-            {dlocalLocalChargeDisclaimer && checkoutProvider === PAYMENT_PROVIDERS.DLOCAL && (
-              <p className="text-xs mt-2" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-                {dlocalLocalChargeDisclaimer}
-              </p>
-            )}
-            {secondaryCheckoutProviders.length > 0 && (
-              <p className="text-xs mt-2" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-                Otras opciones: {secondaryCheckoutProviders.map((provider) => {
-                  if (provider === PAYMENT_PROVIDERS.MERCADO_PAGO) return 'Mercado Pago';
-                  if (provider === PAYMENT_PROVIDERS.PAYPAL) return 'PayPal';
-                  if (provider === PAYMENT_PROVIDERS.DLOCAL) {
-                    return getProviderShortLabel({ provider: PAYMENT_PROVIDERS.DLOCAL, billingCountryCode: billingCountryForUi });
-                  }
-                  return provider;
-                }).join(' · ')}.
-              </p>
-            )}
-            {getMarketNoticeCopy({ billingCountryCode: billingCountryForUi }) && (
-              <p className="text-xs mt-2" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-                {getMarketNoticeCopy({ billingCountryCode: billingCountryForUi })}
-              </p>
-            )}
-            {checkoutAvailability && (!checkoutAvailability.enabled || !checkoutAvailability.supportsCheckout) && (
-              <p className="text-xs mt-2" style={{ color: '#b45309', fontFamily: 'var(--font-caption)' }}>
-                Este método de pago estará disponible próximamente.
-              </p>
-            )}
-            {isAutomaticCheckoutBlocked && (
-              <p className="text-xs mt-2" style={{ color: '#b45309', fontFamily: 'var(--font-caption)' }}>
-                {automaticCheckoutBlockedMessage}
-              </p>
-            )}
-          </div>
+          {preview && previewPlanSlug && (
+            <div className="rounded-xl border p-5 mt-6" style={{ backgroundColor: 'var(--color-muted)', borderColor: 'var(--color-primary)' }}>
+              <h3 className="text-sm font-semibold mb-3" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>Resumen antes de pagar</h3>
+              <ul className="space-y-1.5 text-sm mb-4" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
+                <li>Plan actual: <strong>{getPlanLabel(preview.currentPlanSlug)}</strong></li>
+                <li>Plan destino: <strong>{getPlanLabel(preview.targetPlanSlug)}</strong></li>
+                <li>Días restantes: <strong>{preview.daysRemaining}</strong></li>
+                {preview.creditAmount > 0 && (
+                  <li>Crédito aplicado: <strong>{formatSubscriptionPlanPrice(preview.creditAmount, planBillingDisplayCurrency, planBillingDisplayLocale)}</strong></li>
+                )}
+                <li>Precio del plan: <strong>{formatSubscriptionPlanPrice(getDisplayPlanPrice(preview.targetPlanSlug), planBillingDisplayCurrency, planBillingDisplayLocale)}</strong></li>
+                {preview.effectiveAt && (
+                  <li>Vigente desde: <strong>{new Date(preview.effectiveAt).toLocaleDateString(planBillingDisplayLocale, { dateStyle: 'medium' })}</strong></li>
+                )}
+                <li className="pt-2 border-t" style={{ borderColor: 'var(--color-border)' }}>
+                  Total a pagar: <strong className="text-base" style={{ color: 'var(--color-foreground)' }}>
+                    {preview.changeType === 'downgrade' || preview.finalAmount === 0
+                      ? 'Sin cargo (crédito aplicado)'
+                      : formatSubscriptionPlanPrice(getSafePreviewTotal(), planBillingDisplayCurrency, planBillingDisplayLocale)}
+                  </strong>
+                </li>
+              </ul>
+              {(() => {
+                const previewChoose = `Elegir plan ${getPlanLabel(previewPlanSlug)}`;
+                const previewSuffix = preview.finalAmount === 0 ? ' (sin cargo)' : '';
+                const previewIcon =
+                  checkoutProvider === PAYMENT_PROVIDERS.MANUAL
+                    ? 'MessageCircle'
+                    : checkoutProvider === PAYMENT_PROVIDERS.MERCADO_PAGO
+                      ? 'Wallet'
+                      : 'CreditCard';
+                return (
+              <div className="flex flex-wrap gap-3 items-start">
+                <div className="flex flex-col gap-1 min-w-[10rem]">
+                <button
+                  type="button"
+                  onClick={handleConfirmPrimaryPayment}
+                  disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !billingReady || !isProviderReadyForCheckout(checkoutProvider) || isAutomaticCheckoutBlocked}
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60 w-full"
+                  style={{ backgroundColor: checkoutProvider === PAYMENT_PROVIDERS.DLOCAL ? '#111827' : checkoutProvider === PAYMENT_PROVIDERS.PAYPAL ? '#0070ba' : checkoutProvider === PAYMENT_PROVIDERS.MERCADO_PAGO ? '#009EE3' : '#25D366' }}
+                >
+                  {loadingPlanSlug ? (
+                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <>
+                      <Icon name={previewIcon} size={16} color="#fff" />
+                      {previewChoose}{previewSuffix}
+                    </>
+                  )}
+                </button>
+                <PlanPrimaryTrustBadge provider={checkoutProvider} billingCountryCode={billingCountryForUi} />
+                </div>
+                <button
+                  type="button"
+                  onClick={cancelPreview}
+                  className="px-4 py-2.5 rounded-lg text-sm font-medium transition-opacity hover:opacity-90"
+                  style={{ color: 'var(--color-muted-foreground)', border: '1px solid var(--color-border)' }}
+                >
+                  Cancelar
+                </button>
+                {secondaryCheckoutProviders.includes(PAYMENT_PROVIDERS.PAYPAL) && (
+                  <button
+                    type="button"
+                    onClick={() => confirmPayWithProvider(PAYMENT_PROVIDERS.PAYPAL)}
+                    disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !billingReady || !isProviderReadyForCheckout(PAYMENT_PROVIDERS.PAYPAL) || isAutomaticCheckoutBlocked}
+                    className="inline-flex flex-col items-center justify-center gap-0.5 px-4 py-2.5 rounded-lg text-sm font-medium transition-opacity hover:opacity-90 disabled:opacity-60 min-w-[9rem]"
+                    style={{ color: '#0070ba', border: '1px solid #0070ba' }}
+                  >
+                    <span>{previewChoose}</span>
+                    <span className="text-[10px] font-normal opacity-80">PayPal</span>
+                  </button>
+                )}
+                {secondaryCheckoutProviders.includes(PAYMENT_PROVIDERS.MERCADO_PAGO) && (
+                  <button
+                    type="button"
+                    onClick={confirmPayWithMercadoPago}
+                    disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !billingReady || !isProviderReadyForCheckout(PAYMENT_PROVIDERS.MERCADO_PAGO) || isAutomaticCheckoutBlocked}
+                    className="inline-flex flex-col items-center justify-center gap-0.5 px-4 py-2.5 rounded-lg text-sm font-medium transition-opacity hover:opacity-90 disabled:opacity-60 min-w-[9rem]"
+                    style={{ color: '#009EE3', border: '1px solid #009EE3' }}
+                  >
+                    <span>{previewChoose}</span>
+                    <span className="text-[10px] font-normal opacity-80">Mercado Pago</span>
+                  </button>
+                )}
+                {secondaryCheckoutProviders.includes(PAYMENT_PROVIDERS.DLOCAL) && (
+                  <button
+                    type="button"
+                    onClick={() => confirmPayWithProvider(PAYMENT_PROVIDERS.DLOCAL)}
+                    disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !billingReady || !isProviderReadyForCheckout(PAYMENT_PROVIDERS.DLOCAL) || isAutomaticCheckoutBlocked}
+                    className="inline-flex flex-col items-center justify-center gap-0.5 px-4 py-2.5 rounded-lg text-sm font-medium transition-opacity hover:opacity-90 disabled:opacity-60 min-w-[9rem]"
+                    style={{ color: '#111827', border: '1px solid #111827' }}
+                  >
+                    <span>{previewChoose}</span>
+                    <span className="text-[10px] font-normal opacity-80 text-center leading-tight">
+                      {getProviderShortLabel({ provider: PAYMENT_PROVIDERS.DLOCAL, billingCountryCode: billingCountryForUi })}
+                    </span>
+                  </button>
+                )}
+              </div>
+                );
+              })()}
+            </div>
+          )}
         </DashboardLayoutContent>
       
     </DashboardAppShell>

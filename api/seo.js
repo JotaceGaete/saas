@@ -63,6 +63,7 @@ async function handleCatalogHtml(request) {
   if (!slug) {
     return new Response('Slug required', { status: 400 });
   }
+  /** Ruta solicitada (/catalog o /catalogo); la URL canónica OG siempre es /catalogo/:slug */
   const publicPath = url.searchParams.get('publicPath') === 'catalog' ? 'catalog' : 'catalogo';
 
   const origin = getOriginCatalog(request);
@@ -72,6 +73,7 @@ async function handleCatalogHtml(request) {
 
   const host =
     request.headers.get('x-forwarded-host') || request.headers.get('host') || '';
+  const ua = request.headers.get('user-agent') || '';
 
   const supabaseUrl = (process.env.VITE_SUPABASE_URL || '').replace(/\/$/, '');
   const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
@@ -106,12 +108,13 @@ async function handleCatalogHtml(request) {
   const pageTitle = getCatalogShareDocumentTitle(row.name);
   const metaDescription = getCatalogShareDescription(row);
   const ri = detectCatalogRegion(seoInput);
-  const ogImage = resolveCatalogOgImageUrl(row, origin, { cacheBust: row.updated_at });
+  const ogImage = resolveCatalogOgImageUrl(row, origin, { cacheBust: null });
   const ogImageHttps =
     typeof ogImage === 'string' && ogImage.startsWith('http://')
       ? `https://${ogImage.slice(7)}`
       : ogImage;
-  const catalogUrl = `${origin}/${publicPath}/${slug}`;
+  const catalogUrl = `${origin}/catalogo/${slug}`;
+  const queryStripped = Boolean(url.search && url.search.length > 1);
   // App ID numérico: https://developers.facebook.com/apps/ → Crear app → Configuración → Información básica → «ID de la aplicación». En Vercel: META_FB_APP_ID o FB_APP_ID.
   const fbAppId = String(process.env.META_FB_APP_ID || process.env.FB_APP_ID || '').trim();
 
@@ -120,13 +123,15 @@ async function handleCatalogHtml(request) {
   const metaOgLocale = metaPlainTextAttr(ri.ogLocale || '');
 
   console.log(
-    '[catalog-og-html]',
+    '[og-preview]',
     JSON.stringify({
       slug,
-      publicPath,
-      ogImage: ogImageHttps,
-      title: pageTitle,
-      source: 'api/seo',
+      ua,
+      requestUrl: request.url,
+      canonical: catalogUrl,
+      selectedImage: ogImageHttps,
+      queryStripped,
+      routeSegment: publicPath,
     }),
   );
 
@@ -166,6 +171,7 @@ async function handleCatalogHtml(request) {
     `<meta property="og:image:height" content="630" />`,
     `<meta property="og:locale" content="${metaOgLocale}" />`,
     `<meta name="twitter:card" content="summary_large_image" />`,
+    `<meta name="twitter:url" content="${escapeHtmlCatalog(catalogUrl)}" />`,
     `<meta name="twitter:title" content="${metaTitle}" />`,
     `<meta name="twitter:description" content="${metaDesc}" />`,
     `<meta name="twitter:image" content="${escapeHtmlCatalog(ogImageHttps)}" />`,

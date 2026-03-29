@@ -72,6 +72,7 @@ function buildOgHtml(payload) {
   <meta property="og:image:height" content="630" />
   <meta property="og:locale" content="${escaped(ogLocale || 'es_CL')}" />
   <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:url" content="${escaped(canonicalUrl)}" />
   <meta name="twitter:title" content="${escaped(title)}" />
   <meta name="twitter:description" content="${escaped(description)}" />
   <meta name="twitter:image" content="${escaped(ogImage)}" />
@@ -121,8 +122,7 @@ export default {
     const supabaseUrl = (env?.SUPABASE_URL || '').replace(/\/$/, '');
     const supabaseKey = env?.SUPABASE_ANON_KEY || '';
     const origin = url.origin;
-    const pathClean = url.pathname.replace(/\/$/, '') || `/catalogo/${slug}`;
-    const canonicalUrl = `${origin}${pathClean}`;
+    const canonicalUrl = `${origin}/catalogo/${slug}`;
 
     const seoInput = {
       storeName: 'Catálogo',
@@ -133,7 +133,7 @@ export default {
       host: url.host,
     };
     let catalogDescription = getCatalogShareDescription(null);
-    let ogImage = resolveCatalogOgImageUrl(null, origin);
+    let ogImage = resolveCatalogOgImageUrl(null, origin, { cacheBust: null });
 
     try {
       if (supabaseUrl && supabaseKey) {
@@ -158,10 +158,18 @@ export default {
             seoInput.currency = row?.currency;
             seoInput.countryCode = row?.country_code;
             catalogDescription = getCatalogShareDescription(row);
-            ogImage = resolveCatalogOgImageUrl(row, origin, { cacheBust: row?.updated_at });
+            ogImage = resolveCatalogOgImageUrl(row, origin, { cacheBust: null });
             console.log(
-              '[catalog-og-worker]',
-              JSON.stringify({ slug, canonicalUrl, ogImage, title: getCatalogShareDocumentTitle(row?.name) }),
+              '[og-preview]',
+              JSON.stringify({
+                slug,
+                ua,
+                requestUrl: request.url,
+                canonical: canonicalUrl,
+                selectedImage: ogImage,
+                queryStripped: Boolean(url.search && url.search.length > 1),
+                source: 'worker',
+              }),
             );
           }
         }

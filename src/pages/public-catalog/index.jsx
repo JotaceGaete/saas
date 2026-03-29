@@ -471,11 +471,11 @@ function CatalogInner({ slug }) {
   const buildSingleWhatsAppMessage = (product) => {
     const storeName = business?.name || 'la tienda';
     const code = product?.publicCode;
-    let message = code
+    const catalogUrl = slug ? getWhatsAppOrderCatalogUrl(slug) : '';
+    const body = code
       ? `Hola, quiero este producto: ${code} - ${product?.name}\n\nPrecio: ${formatPrice(product?.price)}\n\nTienda: ${storeName}`
       : `Hola! Me interesa el producto:\n\n*${product?.name}*\nPrecio: ${formatPrice(product?.price)}\n\nTienda: ${storeName}`;
-    const catalogUrl = slug ? getWhatsAppOrderCatalogUrl(slug) : '';
-    if (catalogUrl) message += `\n\n${catalogUrl}`;
+    let message = catalogUrl ? `${catalogUrl}\n\n${body}` : body;
     const branding = getOrderMessageBrandingSuffix(business);
     if (branding) message += `${catalogUrl ? '\n\n\n' : '\n\n'}${branding}`;
     return message;
@@ -573,7 +573,7 @@ function CatalogInner({ slug }) {
   const catalogAboutBlock = business ? buildCatalogAboutBlock(seoInput, catalogAboutKind) : null;
   const ogRegion = detectCatalogRegion(seoInput);
   const canonicalUrl = getPublicCatalogUrl(slug);
-  const ogImage = getCatalogOgImageUrl(business, baseUrl);
+  const ogImage = getCatalogOgImageUrl(business, baseUrl, { cacheBust: null });
   const jsonLd =
     business && canonicalUrl
       ? buildLocalBusinessJsonLd({
@@ -610,6 +610,7 @@ function CatalogInner({ slug }) {
           <meta property="og:image:height" content="630" />
           <meta property="og:locale" content={ogRegion.ogLocale} />
           <meta name="twitter:card" content="summary_large_image" />
+          <meta name="twitter:url" content={canonicalUrl} />
           <meta name="twitter:title" content={shareDocumentTitle} />
           <meta name="twitter:description" content={shareDescription} />
           <meta name="twitter:image" content={ogImage} />
@@ -1422,7 +1423,10 @@ function OrderPanel({ business, slug, formatPrice, onClose, theme }) {
           const label = item?.publicCode ? `${item.publicCode} - ${item?.name}` : item?.name;
           return `- ${item?.quantity} ${label}`;
         });
-        let message = `Hola, quiero hacer un pedido.\n\nNombre: ${customerName?.trim()}`;
+        const catalogUrl = slug ? getWhatsAppOrderCatalogUrl(slug) : '';
+        let message = '';
+        if (catalogUrl) message += `${catalogUrl}\n\n`;
+        message += `Hola, quiero hacer un pedido.\n\nNombre: ${customerName?.trim()}`;
         if (phoneForOrder) message += `\nTeléfono: ${phoneForOrder}`;
         if (isRestaurant) {
           const serviceTypeLabel = serviceType === 'delivery'
@@ -1436,8 +1440,6 @@ function OrderPanel({ business, slug, formatPrice, onClose, theme }) {
         }
         message += `\n\nPedido:\n${lines?.join('\n')}`;
         if (notes?.trim()) message += `\n\nComentario:\n${notes?.trim()}`;
-        const catalogUrl = slug ? getWhatsAppOrderCatalogUrl(slug, order?.id) : '';
-        if (catalogUrl) message += `\n\n${catalogUrl}`;
         if (hasViralBranding(business)) {
           message += `${catalogUrl ? '\n\n\n' : '\n\n'}${getOrderMessageBrandingSuffix(business)}`;
         }

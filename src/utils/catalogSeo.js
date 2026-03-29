@@ -80,15 +80,23 @@ export function getOgCatalogShareImageUrl(slug, cacheBust, catalogOrigin) {
   return u;
 }
 
-function appendOgCacheBust(url, bust) {
-  if (!url || !bust || String(url).includes('ui-avatars.com')) return url || '';
-  const sep = String(url).includes('?') ? '&' : '?';
-  return `${url}${sep}ogv=${encodeURIComponent(String(bust))}`;
+/**
+ * Normaliza a https para meta og:image / Twitter.
+ * @param {string} abs
+ */
+function toHttpsOgImage(abs) {
+  if (!abs || typeof abs !== 'string') return '';
+  const t = abs.trim();
+  if (!t) return '';
+  if (t.startsWith('https://')) return t;
+  if (t.startsWith('http://')) return `https://${t.slice(7)}`;
+  return t;
 }
 
 /**
- * URL de og:image para catálogo: PNG 1200×630 (guardado o `/api/og-catalog`), nunca cover plano si hay slug.
- * Prioridad: `og_image_url` en BD → Vercel `api/og-catalog` → logo → logo-ventalink.
+ * URL de og:image: prioridad portada del negocio → logos → og guardada → PNG `/api/og-catalog` → fallback.
+ * Sin `ogv=` ni query extra en URLs de imagen de BD (preview estable en WhatsApp).
+ * `options.cacheBust` solo afecta la URL generada de `/api/og-catalog` si se pasa (omitir para URL mínima).
  *
  * @param {Record<string, unknown>|null|undefined} row
  * @param {string} origin - Origen público (https://dominio) sin barra final
@@ -97,24 +105,30 @@ function appendOgCacheBust(url, bust) {
 export function resolveCatalogOgImageUrl(row, origin, options = {}) {
   const base = String(origin || '').replace(/\/$/, '');
   const slug = row?.slug != null ? String(row.slug).trim() : '';
-  const storedOg = row?.og_image_url;
-  if (typeof storedOg === 'string' && storedOg.startsWith('https://')) {
-    return appendOgCacheBust(storedOg, options.cacheBust);
+  const ds = parseDesignSettingsFromDb(row?.design_settings);
+
+  const candidates = [
+    row?.cover_image_url,
+    ds?.coverImageUrl,
+    ds?.headerImageUrl,
+    row?.logo_url,
+    ds?.logoUrl,
+    row?.og_image_url,
+  ];
+
+  for (const c of candidates) {
+    if (c == null || c === '') continue;
+    const raw = typeof c === 'string' ? c.trim() : String(c).trim();
+    if (!raw) continue;
+    const abs = toHttpsOgImage(toAbsoluteCatalogUrl(raw, base));
+    if (abs && /^https:\/\//i.test(abs)) return abs;
   }
-  const share = slug ? getOgCatalogShareImageUrl(slug, options.cacheBust, base) : '';
+
+  const share = slug ? getOgCatalogShareImageUrl(slug, options.cacheBust ?? null, base) : '';
   if (share) return share;
 
-  const ds = parseDesignSettingsFromDb(row?.design_settings);
-  const logoCandidates = [
-    typeof row?.logo_url === 'string' ? row.logo_url : null,
-    ds?.logoUrl,
-  ];
-  for (const c of logoCandidates) {
-    const abs = toAbsoluteCatalogUrl(typeof c === 'string' ? c : c != null ? String(c) : '', base);
-    if (abs) return appendOgCacheBust(abs, options.cacheBust);
-  }
   const fallback = base ? `${base}/logo-ventalink.png` : 'https://go.ventalink.app/logo-ventalink.png';
-  return appendOgCacheBust(fallback, options.cacheBust);
+  return fallback;
 }
 
 /** Título del documento / og:title = nombre del catálogo (sin sufijo de marketing). */
@@ -184,7 +198,7 @@ export function getCatalogOgImageUrl(business, baseUrl, options = {}) {
     logo_url: business?.logoUrl,
     og_image_url: business?.ogImageUrl,
   };
-  const bust = options.cacheBust ?? business?.updatedAt ?? null;
+  const bust = options.cacheBust !== undefined ? options.cacheBust : business?.updatedAt ?? null;
   return resolveCatalogOgImageUrl(rowLike, origin, { cacheBust: bust });
 }
 
@@ -336,22 +350,3 @@ export function stringifyJsonLd(obj) {
   return JSON.stringify(obj).replace(/</g, '\\u003c');
 }
 
-/**
- * Evita que WhatsApp reutilice la vista previa del enlace (mismo catálogo, distinto pedido).
- * Usa `p` + `v` para forzar recrawl; con `orderUniqueKey` (p. ej. id de pedido) la URL es estable por pedido pero única entre pedidos.
- *
- * @param {string} url
- * @param {string|number|null|undefined} [orderUniqueKey] - Id de pedido u otro identificador; si falta, timestamp + aleatorio.
- * @returns {string}
- */
-export function appendOgPreviewCacheBust(url, orderUniqueKey) {
-  if (!url || typeof url !== 'string') return '';
-  const ts = Date.now();
-  const rand = Math.random().toString(36).slice(2, 12);
-  const p =
-    orderUniqueKey != null && String(orderUniqueKey).trim() !== ''
-      ? `${String(orderUniqueKey).trim()}-${ts}`
-      : `${ts}-${rand}`;
-  const sep = url.includes('?') ? '&' : '?';
-  return `${url}${sep}p=${encodeURIComponent(p)}&v=${encodeURIComponent(String(ts))}`;
-}

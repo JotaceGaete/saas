@@ -1,6 +1,7 @@
 import React from 'react';
 import Icon from 'components/AppIcon';
 import { getOrderCardTimeCaption } from 'utils/orderDates';
+import PaymentStatusToggle from './PaymentStatusToggle';
 
 const STATUS_BADGE = {
   pedido: { label: 'Pedido', color: '#6366F1', bg: 'rgba(99,102,241,0.14)', icon: 'ShoppingBag' },
@@ -43,9 +44,9 @@ function nextQuickStatus(order) {
   return null;
 }
 
-function showQuickPay(order) {
-  if ((order?.status || '') === 'cancelado') return false;
-  return (order?.paymentStatus || 'pendiente') === 'pendiente';
+/** Mostrar conciliación de pago salvo pedidos cancelados. */
+function showPaymentReconciliation(order) {
+  return (order?.status || '') !== 'cancelado';
 }
 
 /**
@@ -67,7 +68,7 @@ export default function KanbanOrderCardView({
   const shortId = shortIdFn ? shortIdFn(order?.id) : orderShortIdLocal(order?.id);
   const timeCaption = getOrderCardTimeCaption(order);
   const next = nextQuickStatus(order);
-  const pay = showQuickPay(order);
+  const showPayToggle = showPaymentReconciliation(order);
 
   return (
     <div
@@ -133,9 +134,9 @@ export default function KanbanOrderCardView({
           </div>
         </button>
       </div>
-      {(next || pay) && (
+      {(next || showPayToggle) && (
         <div
-          className="flex flex-wrap gap-2 px-2.5 pb-2.5 pt-0 sm:px-3 sm:pb-3"
+          className="flex flex-wrap items-center gap-2 px-2.5 pb-2.5 pt-0 sm:px-3 sm:pb-3"
           style={{
             borderTop: '1px solid rgba(15, 23, 42, 0.06)',
           }}
@@ -143,11 +144,12 @@ export default function KanbanOrderCardView({
           {next ? (
             <button
               type="button"
-              className="inline-flex items-center justify-center gap-1 rounded-xl px-3 py-2 min-h-[40px] sm:min-h-[38px] text-left text-[10px] sm:text-[11px] font-semibold leading-tight flex-1 sm:flex-initial min-w-0 transition-transform duration-150 hover:scale-105 active:scale-[0.98]"
+              className="inline-flex items-center justify-center gap-1 rounded-xl px-3 py-2 min-h-[40px] sm:min-h-[38px] text-left text-[10px] sm:text-[11px] font-semibold leading-tight flex-1 min-w-0 sm:min-w-[140px] transition-transform duration-150 hover:scale-[1.02] active:scale-[0.98]"
               style={{
                 fontFamily: 'var(--font-caption)',
-                backgroundColor: 'rgba(124,58,237,0.12)',
-                color: 'var(--color-primary)',
+                backgroundColor: 'var(--color-primary)',
+                color: '#fff',
+                boxShadow: '0 1px 2px rgba(124, 58, 237, 0.25)',
               }}
               aria-label={next.label}
               onClick={(e) => {
@@ -156,29 +158,17 @@ export default function KanbanOrderCardView({
                 onUpdate(order.id, { status: next.status });
               }}
             >
-              <Icon name="ChevronRight" size={12} color="var(--color-primary)" className="shrink-0" />
+              <Icon name="ChevronRight" size={12} color="#fff" className="shrink-0" />
               <span className="break-words">{next.label}</span>
             </button>
           ) : null}
-          {pay ? (
-            <button
-              type="button"
-              className="inline-flex items-center justify-center gap-1 rounded-xl px-3 py-2 min-h-[40px] sm:min-h-[38px] text-[11px] font-semibold flex-1 sm:flex-initial transition-transform duration-150 hover:scale-105 active:scale-[0.98]"
-              style={{
-                fontFamily: 'var(--font-caption)',
-                backgroundColor: 'rgba(16,185,129,0.12)',
-                color: '#059669',
-              }}
-              aria-label="Marcar como pagado"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                onUpdate(order.id, { paymentStatus: 'pagado' });
-              }}
-            >
-              <Icon name="DollarSign" size={12} color="#059669" />
-              Pagado
-            </button>
+          {showPayToggle ? (
+            <PaymentStatusToggle
+              orderId={order.id}
+              paymentStatus={order?.paymentStatus}
+              onUpdate={onUpdate}
+              disabled={false}
+            />
           ) : null}
         </div>
       )}

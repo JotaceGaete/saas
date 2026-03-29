@@ -3,12 +3,8 @@
  * Prioridad: VITE_APP_URL (build) → window.location.origin (runtime).
  * No usar para enlaces del catálogo público compartibles: usar getPublicCatalogBaseUrl / buildPublicCatalogUrl.
  */
-import { appendOgPreviewCacheBust } from '../utils/catalogSeo.js';
-
 const BASE_URL = import.meta.env?.VITE_APP_URL?.trim() || '';
 const GO_APP_ORIGIN = 'https://go.ventalink.app';
-
-export { appendOgPreviewCacheBust };
 
 function isLocalhostHostname(hostname) {
   const host = String(hostname || '').trim().toLowerCase();
@@ -36,15 +32,15 @@ export function getPublicCatalogBaseUrl() {
 const PUBLIC_CATALOG_ROUTES = new Set(['catalogo', 'catalog']);
 
 /**
- * Segmento de ruta único para enlaces compartibles (WhatsApp, QR, copiar, pedidos, OG).
- * Prueba temporal: `catalog` para alinear capa OG entre flujos; `/catalogo/:slug` sigue como alias en la SPA.
+ * Segmento canónico para enlaces compartibles (WhatsApp, QR, OG, sitemap).
+ * URL pública: `https://go.ventalink.app/catalogo/:slug` (sin query params).
  */
-export const PUBLIC_CATALOG_SHARE_SEGMENT = 'catalog';
+export const PUBLIC_CATALOG_SHARE_SEGMENT = 'catalogo';
 
 /**
  * Ruta relativa canónica del catálogo público (mismo segmento que enlaces compartibles).
  * @param {string} slug
- * @returns {string} p. ej. `/catalog/mi-tienda` o ''
+ * @returns {string} p. ej. `/catalogo/mi-tienda` o ''
  */
 export function getPublicCatalogRelativePath(slug) {
   const s = String(slug || '').trim();
@@ -66,7 +62,7 @@ export function buildPublicCatalogUrl(slug, route = PUBLIC_CATALOG_SHARE_SEGMENT
 }
 
 /**
- * Enlace compartible estándar: `https://go.ventalink.app/catalog/:slug` (unificado con mensajes de pedido).
+ * Enlace compartible estándar: `https://go.ventalink.app/catalogo/:slug`.
  * @param {string} slug
  * @returns {string}
  */
@@ -75,12 +71,13 @@ export function getPublicCatalogUrl(slug) {
 }
 
 /**
- * Link del catálogo para mensajes de pedido por WhatsApp (URL única por pedido cuando se pasa id, host canónico).
+ * Enlace del catálogo para WhatsApp: URL totalmente canónica, sin query params
+ * (el crawler de WhatsApp debe ver siempre la misma URL para OG / portada).
+ *
  * @param {string} slug
- * @param {string|number|null|undefined} [orderUniqueKey] - Id de pedido tras `createOrder`; si falta, timestamp+aleatorio.
  */
-export function getWhatsAppOrderCatalogUrl(slug, orderUniqueKey) {
-  return appendOgPreviewCacheBust(getPublicCatalogUrl(slug), orderUniqueKey);
+export function getWhatsAppOrderCatalogUrl(slug) {
+  return getPublicCatalogUrl(slug);
 }
 
 /**

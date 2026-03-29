@@ -22,6 +22,8 @@ import {
 import { resolveCountryState, resolveBillingSetup } from '../../lib/country/state-model';
 import { suggestCountryCodeHint } from '../../lib/country/suggest-country-hint';
 import { getCountryConfig, COUNTRY_CODES } from '../../config/countryConfig';
+import BusinessConfigContextBanner from 'components/business/BusinessConfigContextBanner';
+import { parseAddressByCountry, buildFullAddressLine } from '../../utils/addressParse';
 
 const BUSINESS_DESCRIPTION_MAX = 280;
 
@@ -91,6 +93,11 @@ function buildSavedConfigSnapshotFromBusiness(business) {
       bankEmail: business?.bankEmail || '',
     },
     orderMessageTemplate: business?.orderMessageTemplate || '',
+    fullAddressInput: buildFullAddressLine({
+      address: business?.address,
+      city: business?.city,
+      region: business?.region,
+    }),
   });
 }
 
@@ -187,6 +194,8 @@ export default function BusinessConfiguration() {
     rubroId: '',
   });
   const [rubros, setRubros] = useState([]);
+  const [fullAddressInput, setFullAddressInput] = useState('');
+  const [slugEditUnlocked, setSlugEditUnlocked] = useState(false);
   const [settingsTab, setSettingsTab] = useState('identity');
 
   useEffect(() => {
@@ -239,8 +248,9 @@ export default function BusinessConfiguration() {
         design,
         bankForm,
         orderMessageTemplate,
+        fullAddressInput,
       }),
-    [form, design, bankForm, orderMessageTemplate],
+    [form, design, bankForm, orderMessageTemplate, fullAddressInput],
   );
 
   const isDirty = Boolean(business?.id && savedConfigSnapshot && currentConfigSnapshot !== savedConfigSnapshot);
@@ -367,6 +377,14 @@ export default function BusinessConfiguration() {
         bankRut: business?.bankRut || '',
         bankEmail: business?.bankEmail || '',
       });
+      setFullAddressInput(
+        buildFullAddressLine({
+          address: business?.address,
+          city: business?.city,
+          region: business?.region,
+        }),
+      );
+      setSlugEditUnlocked(false);
       setSavedConfigSnapshot(buildSavedConfigSnapshotFromBusiness(business));
     }
   }, [business?.id, business?.updatedAt]);
@@ -513,15 +531,21 @@ export default function BusinessConfiguration() {
     }
     setIsSaving(true);
 
+    const parsedAddr = parseAddressByCountry(fullAddressInput, persistedCountryCode);
+    const slugClean = (s) => (String(s || '').trim() || '').replace(/\s+/g, '-').toLowerCase();
+    const nextSlug = slugEditUnlocked
+      ? slugClean(form?.slug) || slugClean(business?.slug)
+      : (business?.slug || '');
+
     const payload = {
       name: form?.name?.trim() || business?.name,
-      slug: (form?.slug?.trim() || business?.slug || '').replace(/\s+/g, '-').toLowerCase(),
+      slug: nextSlug || business?.slug,
       description: form?.description,
       whatsapp: form?.whatsapp,
       email: form?.email,
-      address: form?.address,
-      city: form?.city,
-      region: form?.region,
+      address: parsedAddr.address,
+      city: parsedAddr.city,
+      region: parsedAddr.region,
       rubroId: form?.rubroId || null,
       logoUrl: (design?.logoUrl ?? business?.logoUrl ?? '').trim() || null,
       coverImageUrl: (
@@ -548,12 +572,23 @@ export default function BusinessConfiguration() {
       }
       if (updated) setBusiness(updated);
       await refreshBusiness();
+      const formAfterAddr = {
+        ...form,
+        address: parsedAddr.address,
+        city: parsedAddr.city,
+        region: parsedAddr.region,
+        slug: nextSlug || form?.slug,
+      };
+      setForm(formAfterAddr);
+      setFullAddressInput(buildFullAddressLine(parsedAddr));
+      setSlugEditUnlocked(false);
       setSavedConfigSnapshot(
         JSON.stringify({
-          form,
+          form: formAfterAddr,
           design,
           bankForm,
           orderMessageTemplate,
+          fullAddressInput: buildFullAddressLine(parsedAddr),
         }),
       );
       showToast('¡Configuración guardada!', 'success');
@@ -595,6 +630,14 @@ export default function BusinessConfiguration() {
       bankRut: business?.bankRut || '',
       bankEmail: business?.bankEmail || '',
     });
+    setFullAddressInput(
+      buildFullAddressLine({
+        address: business?.address,
+        city: business?.city,
+        region: business?.region,
+      }),
+    );
+    setSlugEditUnlocked(false);
     if (business?.designSettings) {
       const ds = business.designSettings;
       setDesign(prev => ({
@@ -627,7 +670,26 @@ export default function BusinessConfiguration() {
   };
 
   const cardClass =
-    'rounded-2xl bg-white p-8 shadow-sm shadow-slate-200/50 border border-slate-100/80';
+    'rounded-xl bg-white p-6 sm:p-7 shadow-sm shadow-slate-200/40 border border-slate-100/70';
+
+  const sectionHeadingClass =
+    'text-[11px] font-semibold uppercase tracking-wide text-slate-500 font-[family-name:var(--font-caption)] mb-3';
+
+  const unlockSlugForEdit = () => {
+    if (
+      !window.confirm(
+        'Cambiar el enlace del catálogo puede invalidar enlaces y QR ya compartidos. ¿Seguro que quieres editarlo?',
+      )
+    ) {
+      return;
+    }
+    setSlugEditUnlocked(true);
+  };
+
+  const cancelSlugEdit = () => {
+    setSlugEditUnlocked(false);
+    setForm(prev => ({ ...prev, slug: business?.slug || '' }));
+  };
 
   if (loading) {
     return (
@@ -688,9 +750,10 @@ export default function BusinessConfiguration() {
             <StoreCreationStep user={user} businessLoading={isLoading} />
           ) : (
           <>
+            <div className="max-w-2xl mx-auto w-full min-w-0">
             {!hasPersistedCountry && (
               <div
-                className="rounded-2xl border p-5 lg:p-6 mb-8"
+                className="rounded-xl border border-slate-100/80 p-5 lg:p-6 mb-8 shadow-sm shadow-slate-200/30"
                 style={{
                   borderColor: 'rgba(124, 58, 237, 0.35)',
                   background: 'linear-gradient(145deg, rgba(124, 58, 237, 0.09) 0%, #ffffff 55%)',
@@ -795,6 +858,13 @@ export default function BusinessConfiguration() {
               </div>
             )}
 
+            {hasPersistedCountry && (
+              <BusinessConfigContextBanner
+                countryCode={persistedCountryCode}
+                currencyLabel={business?.currency || countryLabels.currency}
+              />
+            )}
+
             <div
               className="flex flex-wrap gap-2 mb-8"
               role="tablist"
@@ -839,187 +909,185 @@ export default function BusinessConfiguration() {
                 </div>
                 <div>
                   <h2 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-text-primary)' }}>Datos del negocio</h2>
-                  <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Esta información aparece en tu catálogo público</p>
+                  <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Visible en tu catálogo público</p>
                 </div>
               </div>
 
-              <div className="flex flex-col gap-5">
-                <SettingsField label="Nombre del negocio" hint="Nombre que verán tus clientes en el catálogo">
-                  <input
-                    type="text"
-                    className={inputClass}
-                    style={inputStyle}
-                    placeholder="Ej: Mi Tienda"
-                    value={form?.name}
-                    onChange={e => handleFormChange('name', e?.target?.value)}
-                  />
-                </SettingsField>
-                <SettingsField label="Enlace del catálogo (slug)" hint="Parte de la URL pública. Solo letras, números y guiones.">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs flex-shrink-0" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>/c/</span>
-                    <input
-                      type="text"
-                      className={inputClass}
-                      style={inputStyle}
-                      placeholder="mi-tienda"
-                      value={form?.slug}
-                      onChange={e => handleFormChange('slug', (e?.target?.value || '').replace(/\s+/g, '-').toLowerCase())}
-                    />
-                  </div>
-                </SettingsField>
-                <SettingsField label="Rubro principal" hint="Define el sector de tu negocio. Las categorías de productos se filtran por este rubro.">
-                  <select
-                    value={form?.rubroId ?? ''}
-                    onChange={e => handleRubroChange(e?.target?.value)}
-                    className={`${inputClass} cursor-pointer`}
-                    style={inputStyle}
-                  >
-                    <option value="">Sin rubro</option>
-                    {rubros?.map((r) => (
-                      <option key={r?.id} value={r?.id}>{r?.name}</option>
-                    ))}
-                  </select>
-                </SettingsField>
+              <div className="flex flex-col gap-6">
+                <div>
+                  <p className={sectionHeadingClass}>Identidad operativa</p>
+                  <div className="flex flex-col gap-5">
+                    <SettingsField label="Nombre del negocio" hint="Nombre que verán tus clientes en el catálogo">
+                      <input
+                        type="text"
+                        className={inputClass}
+                        style={inputStyle}
+                        placeholder="Ej: Mi Tienda"
+                        value={form?.name}
+                        onChange={e => handleFormChange('name', e?.target?.value)}
+                      />
+                    </SettingsField>
 
-                {/* Description */}
-                <SettingsField
-                  label="Descripción del negocio"
-                  hint="Aparece en la cabecera del catálogo. Máximo 280 caracteres (la IA respeta este límite)."
-                >
-                  <div className="flex flex-wrap items-center justify-end gap-2 mb-1.5 min-h-[1.25rem]">
-                    {canUseAiDescription && (
-                      <button
-                        type="button"
-                        onClick={handleImproveBusinessDescription}
-                        disabled={isImprovingBusinessDescription}
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-opacity hover:opacity-90 disabled:opacity-50 bg-violet-100/90 text-violet-700 font-[family-name:var(--font-caption)]"
-                        aria-label="Mejorar descripción orientada a ventas"
+                    <SettingsField
+                      label="Enlace del catálogo (slug)"
+                      hint="Solo lectura por defecto: cambiarlo puede romper enlaces ya compartidos."
+                    >
+                      {!slugEditUnlocked ? (
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                          <div
+                            className="flex-1 min-w-0 flex items-center gap-2 px-3 py-2.5 rounded-xl border border-slate-100 bg-slate-50/80 text-sm text-slate-700 font-mono"
+                            style={{ fontFamily: 'var(--font-caption)' }}
+                          >
+                            <span className="text-slate-400 flex-shrink-0 select-none">/c/</span>
+                            <span className="truncate">{business?.slug || form?.slug || '—'}</span>
+                            <Icon name="Lock" size={14} className="flex-shrink-0 text-slate-400 ml-auto" aria-hidden />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={unlockSlugForEdit}
+                            className="text-sm font-medium text-violet-700 hover:text-violet-800 px-2 py-1.5 rounded-lg font-[family-name:var(--font-caption)]"
+                          >
+                            Editar enlace
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs flex-shrink-0 text-slate-500 font-[family-name:var(--font-caption)]">/c/</span>
+                            <input
+                              type="text"
+                              className={`${inputClass} flex-1 min-w-0`}
+                              style={inputStyle}
+                              placeholder="mi-tienda"
+                              value={form?.slug}
+                              onChange={e => handleFormChange('slug', (e?.target?.value || '').replace(/\s+/g, '-').toLowerCase())}
+                              autoComplete="off"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={cancelSlugEdit}
+                            className="self-start text-xs font-medium text-slate-600 hover:text-slate-800 font-[family-name:var(--font-caption)]"
+                          >
+                            Cancelar edición del enlace
+                          </button>
+                        </div>
+                      )}
+                    </SettingsField>
+
+                    <SettingsField label="Rubro principal" hint="Sector de tu negocio; filtra categorías sugeridas de productos.">
+                      <select
+                        value={form?.rubroId ?? ''}
+                        onChange={e => handleRubroChange(e?.target?.value)}
+                        className={`${inputClass} cursor-pointer`}
+                        style={inputStyle}
                       >
-                        {isImprovingBusinessDescription ? (
-                          <span
-                            className="w-3.5 h-3.5 border-2 border-violet-600 border-t-transparent rounded-full animate-spin flex-shrink-0"
-                            aria-hidden
-                          />
-                        ) : (
-                          <Sparkles className="w-3.5 h-3.5 text-violet-600 shrink-0" strokeWidth={2} aria-hidden />
+                        <option value="">Sin rubro</option>
+                        {rubros?.map((r) => (
+                          <option key={r?.id} value={r?.id}>{r?.name}</option>
+                        ))}
+                      </select>
+                    </SettingsField>
+
+                    <SettingsField
+                      label="Descripción del negocio"
+                      hint="Cabecera del catálogo. Máximo 280 caracteres; la IA respeta el límite."
+                    >
+                      <div className="relative">
+                        {canUseAiDescription && (
+                          <button
+                            type="button"
+                            onClick={handleImproveBusinessDescription}
+                            disabled={isImprovingBusinessDescription}
+                            className="absolute top-2 right-2 z-[1] inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium transition-opacity hover:opacity-90 disabled:opacity-50 bg-violet-100/95 text-violet-800 border border-violet-200/80 shadow-sm font-[family-name:var(--font-caption)]"
+                            aria-label="Mejorar descripción orientada a ventas"
+                          >
+                            {isImprovingBusinessDescription ? (
+                              <span
+                                className="w-3 h-3 border-2 border-violet-600 border-t-transparent rounded-full animate-spin flex-shrink-0"
+                                aria-hidden
+                              />
+                            ) : (
+                              <Sparkles className="w-3 h-3 text-violet-700 shrink-0" strokeWidth={2} aria-hidden />
+                            )}
+                            Mejorar con IA
+                          </button>
                         )}
-                        Mejorar con IA
-                      </button>
-                    )}
+                        <textarea
+                          rows={4}
+                          maxLength={BUSINESS_DESCRIPTION_MAX}
+                          className={`${inputClass} pr-[9.5rem] pt-2.5`}
+                          style={inputStyle}
+                          placeholder="Ej: Tienda de ropa y accesorios para toda la familia..."
+                          value={form?.description}
+                          onChange={e => handleFormChange('description', e?.target?.value)}
+                        />
+                        <p className="text-right text-[11px] text-slate-400 tabular-nums mt-1.5 font-[family-name:var(--font-caption)]">
+                          {(form?.description ?? '').length}/{BUSINESS_DESCRIPTION_MAX}
+                        </p>
+                      </div>
+                    </SettingsField>
+
+                    <SettingsField label="Correo electrónico" hint="Contacto del negocio (opcional)">
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2">
+                          <Icon name="Mail" size={16} color="var(--color-text-tertiary)" />
+                        </span>
+                        <input
+                          type="email"
+                          className={inputClass}
+                          style={{ ...inputStyle, paddingLeft: '2.25rem' }}
+                          placeholder="contacto@minegocio.com"
+                          value={form?.email}
+                          onChange={e => handleFormChange('email', e?.target?.value)}
+                        />
+                      </div>
+                    </SettingsField>
                   </div>
-                  <textarea
-                    rows={3}
-                    maxLength={BUSINESS_DESCRIPTION_MAX}
-                    className={inputClass}
-                    style={inputStyle}
-                    placeholder="Ej: Tienda de ropa y accesorios para toda la familia..."
-                    value={form?.description}
-                    onChange={e => handleFormChange('description', e?.target?.value)}
+                </div>
+
+                <div>
+                  <p className={sectionHeadingClass}>Canal de ventas (WhatsApp)</p>
+                  <DynamicWhatsAppField
+                    label="Número de WhatsApp"
+                    hint={
+                      hasPersistedCountry
+                        ? `${countryLabels.whatsappHint ?? ''} Prefijo fijado según tu país.`
+                        : undefined
+                    }
+                    countryCode={hasPersistedCountry ? uiCountryCode : null}
+                    editableCountry={false}
+                    persistCountrySelection={false}
+                    value={form?.whatsapp}
+                    onChange={(v) => handleFormChange('whatsapp', v)}
                   />
-                  <p className="text-right text-[11px] text-slate-400 tabular-nums mt-1.5 font-[family-name:var(--font-caption)]">
-                    {(form?.description ?? '').length}/{BUSINESS_DESCRIPTION_MAX}
-                  </p>
-                </SettingsField>
+                </div>
 
-                {/* WhatsApp: prefijo dinámico según país (countryConfig) */}
-                <DynamicWhatsAppField
-                  label="Número de WhatsApp"
-                  hint={hasPersistedCountry ? countryLabels.whatsappHint : undefined}
-                  countryCode={hasPersistedCountry ? uiCountryCode : null}
-                  editableCountry={false}
-                  persistCountrySelection={false}
-                  value={form?.whatsapp}
-                  onChange={(v) => handleFormChange('whatsapp', v)}
-                />
-
-                {/* Email */}
-                <SettingsField label="Correo electrónico" hint="Correo de contacto del negocio (opcional)">
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2">
-                      <Icon name="Mail" size={16} color="var(--color-text-tertiary)" />
-                    </span>
-                    <input
-                      type="email"
-                      className={inputClass}
-                      style={{ ...inputStyle, paddingLeft: '2.25rem' }}
-                      placeholder="contacto@minegocio.com"
-                      value={form?.email}
-                      onChange={e => handleFormChange('email', e?.target?.value)}
-                    />
-                  </div>
-                </SettingsField>
-
-                {/* Dirección: etiquetas según país (Comuna/Región vs Ciudad/Provincia) */}
-                <SettingsField label="Dirección" hint="Calle, número, depto (opcional)">
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2">
-                      <Icon name="MapPin" size={16} color="var(--color-text-tertiary)" />
-                    </span>
-                    <input
-                      type="text"
-                      className={inputClass}
-                      style={{ ...inputStyle, paddingLeft: '2.25rem' }}
-                      placeholder={countryLabels.addressPlaceholder}
-                      value={form?.address}
-                      onChange={e => handleFormChange('address', e?.target?.value)}
-                    />
-                  </div>
-                </SettingsField>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <SettingsField label={countryLabels.cityLabel} hint={countryLabels.cityPlaceholder}>
-                    <input
-                      type="text"
+                <div>
+                  <p className={sectionHeadingClass}>Ubicación simplificada</p>
+                  <SettingsField
+                    label="Dirección completa"
+                    hint="Un solo campo. Al guardar, comuna y región se deducen del texto (no hace falta escribirlos aparte)."
+                  >
+                    <textarea
+                      rows={3}
                       className={inputClass}
                       style={inputStyle}
-                      placeholder={countryLabels.cityPlaceholder}
-                      value={form?.city}
-                      onChange={e => handleFormChange('city', e?.target?.value)}
-                    />
-                  </SettingsField>
-                  <SettingsField label={countryLabels.regionLabel} hint={countryLabels.regionPlaceholder}>
-                    <input
-                      type="text"
-                      className={inputClass}
-                      style={inputStyle}
-                      placeholder={countryLabels.regionPlaceholder}
-                      value={form?.region}
-                      onChange={e => handleFormChange('region', e?.target?.value)}
+                      placeholder={
+                        hasPersistedCountry
+                          ? 'Ej: Av. Principal 123, Las Condes, Región Metropolitana'
+                          : 'Calle, ciudad y referencia'
+                      }
+                      value={fullAddressInput}
+                      onChange={e => setFullAddressInput(e?.target?.value ?? '')}
                     />
                   </SettingsField>
                 </div>
 
-                {hasPersistedCountry && (
-                  <SettingsField
-                    label="País del negocio"
-                    hint="El país está fijado. Los cambios de mercado en el futuro serán por un flujo asistido."
-                  >
-                    <div
-                      className="flex items-center gap-2 px-3 py-2.5 rounded-lg border"
-                      style={{
-                        borderColor: 'var(--color-border)',
-                        backgroundColor: 'var(--color-muted)',
-                        fontFamily: 'var(--font-caption)',
-                        color: 'var(--color-text-primary)',
-                      }}
-                    >
-                      <span className="text-lg" aria-hidden>{getCountryConfig(persistedCountryCode)?.flag || '🌐'}</span>
-                      <span className="text-sm font-medium flex-1">{getCountryConfig(persistedCountryCode)?.name || persistedCountryCode}</span>
-                      <Icon name="Lock" size={16} color="var(--color-text-tertiary)" aria-hidden />
-                    </div>
-                    <p className="text-xs mt-1.5" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-                      Moneda: <strong>{countryLabels.currency}</strong>
-                      {billingPreview?.billingProvider ? (
-                        <> · Proveedor de planes: <strong>{String(billingPreview.billingProvider)}</strong></>
-                      ) : null}
-                    </p>
-                  </SettingsField>
-                )}
-
-                <div className="mt-6 pt-6 border-t" style={{ borderColor: 'var(--color-border)' }}>
+                <div className="mt-2 pt-6 border-t border-slate-100">
                   <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Información de tienda</p>
                   <p className="text-xs mb-4" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-                    Horario y si mostrar tu dirección en el catálogo. La calle y ciudad las cargás arriba en Datos del negocio.
+                    Horario y si mostrar tu dirección en el catálogo (la dirección la cargás arriba).
                   </p>
                   <div className="flex flex-col gap-4">
                     <SettingsField label="Horario de atención" hint="Ej: Lun–Vie 9:00–18:00, Sáb 10:00–14:00">
@@ -1147,6 +1215,7 @@ export default function BusinessConfiguration() {
             )}
 
             <InstallAppBlock />
+            </div>
           </>
           )}
         </DashboardLayoutContent>
@@ -1159,7 +1228,7 @@ export default function BusinessConfiguration() {
           role="region"
           aria-label="Acciones de guardado"
         >
-          <div className="max-w-7xl mx-auto flex flex-col-reverse sm:flex-row items-stretch sm:items-center sm:justify-end gap-3">
+          <div className="max-w-2xl mx-auto w-full flex flex-col-reverse sm:flex-row items-stretch sm:items-center sm:justify-end gap-3">
             <button
               type="button"
               onClick={discardConfigChanges}

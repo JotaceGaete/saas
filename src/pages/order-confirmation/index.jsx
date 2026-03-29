@@ -65,14 +65,14 @@ export default function OrderConfirmation() {
     return errs;
   };
 
-  const buildWhatsappMessage = ({ biz, phoneForOrder, orderId }) => {
+  const buildWhatsappMessage = ({ biz, phoneForOrder }) => {
     const lines = items?.map(i => `- ${i?.quantity} ${i?.name}`);
     const serviceTypeLabel = serviceType === 'delivery'
       ? 'Delivery'
       : serviceType === 'pickup'
         ? 'Retiro en mostrador'
         : 'Mesa';
-    const baseMessage = [
+    const body = [
       'Hola, quiero hacer un pedido.',
       '',
       `Nombre: ${customerName?.trim()}`,
@@ -85,11 +85,10 @@ export default function OrderConfirmation() {
       ...lines,
       notes?.trim() ? `\nComentario:\n${notes?.trim()}` : '',
     ]?.filter(Boolean)?.join('\n')?.trim();
-    const catalogUrl = slug ? getWhatsAppOrderCatalogUrl(slug, orderId) : '';
-    let message = baseMessage;
-    if (catalogUrl) message += `\n\n${catalogUrl}`;
+    const catalogUrl = slug ? getWhatsAppOrderCatalogUrl(slug) : '';
+    let message = catalogUrl ? `${catalogUrl}\n\n${body}` : body;
     const branding = getBrandingMessage(biz);
-    if (branding) message += `${catalogUrl ? '\n\n\n' : '\n\n'}${branding}`;
+    if (branding) message += `\n\n\n${branding}`;
     return message;
   };
 
@@ -159,7 +158,7 @@ export default function OrderConfirmation() {
       }
       console.info('[checkout] order created id=', order?.id || '(unknown)');
 
-      const message = buildWhatsappMessage({ biz, phoneForOrder, orderId: order?.id });
+      const message = buildWhatsappMessage({ biz, phoneForOrder });
 
       const whatsappNumber = biz?.whatsapp?.replace(/[^0-9]/g, '');
       const waUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`;
