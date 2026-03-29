@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import Icon from 'components/AppIcon';
 import VCheckIsotype from 'components/branding/VCheckIsotype';
+import VentalinkLogo from 'components/branding/VentalinkLogo';
 import MobileBottomNav from 'components/MobileBottomNav';
 import FloatingActionButton from 'components/FloatingActionButton';
 import { useAuth } from '../../contexts/AuthContext';
@@ -83,16 +84,15 @@ export default function BusinessSidebar({ isCollapsed = false, onCollapsedChange
   const SidebarContent = () => (
     <div className="flex flex-col h-full bg-white">
       {/* Logo */}
-      <div className="sidebar-header">
-        <div className="sidebar-logo">
-          <VCheckIsotype variant="embedded" size={20} title="VentALink" />
-        </div>
-        {!collapsed && (
-          <div className="overflow-hidden">
-            <span className="block font-bold text-sm leading-tight truncate" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.015em' }}>
-              VentALink
-            </span>
-            <span className="block text-xs mt-0.5" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+      <div className={`sidebar-header ${collapsed ? 'justify-center' : ''}`}>
+        {collapsed ? (
+          <div className="sidebar-logo">
+            <VCheckIsotype variant="embedded" size={20} title="Ventalink" />
+          </div>
+        ) : (
+          <div className="min-w-0 flex-1 overflow-hidden">
+            <VentalinkLogo variant="default" height={28} className="max-w-full [&_svg]:max-w-full" />
+            <span className="block text-xs mt-1 truncate" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
               Panel de Negocios
             </span>
           </div>

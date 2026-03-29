@@ -4,6 +4,7 @@ import Button from 'components/ui/Button';
 import Input from 'components/ui/Input';
 import PasswordStrengthIndicator from './PasswordStrengthIndicator';
 import FeatureExplainCards from 'components/FeatureExplainCards';
+import VentalinkLogo from 'components/branding/VentalinkLogo';
 
 export default function RegistrationForm({ mode = 'register', onModeChange, onRegister, onLogin, isLoading, authError }) {
   const [formData, setFormData] = useState({ businessName: '', email: '', password: '', confirmPassword: '' });
@@ -59,9 +60,8 @@ export default function RegistrationForm({ mode = 'register', onModeChange, onRe
       </div>
       <div className="flex-1 flex flex-col items-center justify-center p-6 md:p-10">
         <div className="w-full max-w-md">
-          <div className="flex items-center gap-2 mb-8 lg:hidden">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'var(--color-primary)' }}><Icon name="MessageCircle" size={16} color="#fff" /></div>
-            <span className="font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>VentALink</span>
+          <div className="flex flex-col items-center w-full mb-9 sm:mb-11">
+            <VentalinkLogo variant="default" width={300} className="w-full max-w-[min(100%,320px)]" />
           </div>
 
           <h1 className="text-2xl font-bold mb-1" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>{mode === 'register' ? 'Crear cuenta' : 'Iniciar sesión'}</h1>

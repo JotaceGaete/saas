@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, useMotionValue, useSpring, useTransform } from 'framer-motion';
 import Icon from 'components/AppIcon';
 import GoogleIcon from 'components/GoogleIcon';
+import VentalinkLogo from 'components/branding/VentalinkLogo';
 import PasswordStrengthIndicator from './PasswordStrengthIndicator';
 import { getCountryLabels, getCountryCode } from 'config/country';
 import { COUNTRY_CODES } from 'config/countryConfig';
@@ -28,46 +29,182 @@ const FEATURE_CARDS = [
   { icon: 'BarChart2', title: 'Métricas', description: 'Visitas y ventas en un vistazo.' },
 ];
 
-/** Vista previa estática tipo catálogo VentALink dentro de un marco estilo iPhone */
+const CATALOG_PREVIEW_PRODUCTS = [
+  {
+    name: 'Polera Essential',
+    price: '$15.990',
+    image: 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=500&q=80',
+  },
+  {
+    name: 'Pulsera de Plata',
+    price: '$22.500',
+    image: 'https://images.unsplash.com/photo-1611591437281-460bfbe1220a?w=500&q=80',
+  },
+  {
+    name: 'Burger Especial',
+    price: '$8.900',
+    image: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=500&q=80',
+  },
+  {
+    name: 'Planta de Interior',
+    price: '$12.000',
+    image: 'https://images.unsplash.com/photo-1485955900006-10f4d324d411?w=500&q=80',
+  },
+];
+
+/** Isotipo V-Check en blanco (misma geometría que el branding) */
+function VCheckWhiteIsotype({ size = 22 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+      <path
+        d="M18 34 L28 44 L46 22"
+        stroke="rgba(255,255,255,0.88)"
+        strokeWidth="5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M26 34 L36 44 L54 22"
+        stroke="#FFFFFF"
+        strokeWidth="5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function WhatsAppGlyphTiny({ className = '' }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" width={12} height={12} fill="#25D366" aria-hidden>
+      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.123 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.435 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
+    </svg>
+  );
+}
+
+/**
+ * Parallax suave: el marco del teléfono rota hasta ±5° siguiendo el puntero.
+ */
+function PhonePreviewParallax({ children }) {
+  const zoneRef = useRef(null);
+  const mx = useMotionValue(0);
+  const my = useMotionValue(0);
+  const springX = useSpring(mx, { stiffness: 280, damping: 32, mass: 0.6 });
+  const springY = useSpring(my, { stiffness: 280, damping: 32, mass: 0.6 });
+  const rotateY = useTransform(springX, [-1, 1], [-5, 5]);
+  const rotateX = useTransform(springY, [-1, 1], [5, -5]);
+
+  const updateFromEvent = (clientX, clientY) => {
+    const el = zoneRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    if (r.width < 1 || r.height < 1) return;
+    const nx = ((clientX - r.left) / r.width - 0.5) * 2;
+    const ny = ((clientY - r.top) / r.height - 0.5) * 2;
+    mx.set(Math.max(-1, Math.min(1, nx)));
+    my.set(Math.max(-1, Math.min(1, ny)));
+  };
+
+  const handleMove = (e) => updateFromEvent(e.clientX, e.clientY);
+  const handleLeave = () => {
+    mx.set(0);
+    my.set(0);
+  };
+
+  const handleTouch = (e) => {
+    const t = e.touches?.[0];
+    if (t) updateFromEvent(t.clientX, t.clientY);
+  };
+  const handleTouchEnd = () => {
+    mx.set(0);
+    my.set(0);
+  };
+
+  return (
+    <div
+      ref={zoneRef}
+      className="w-full max-w-[320px] mx-auto [perspective:1100px]"
+      onMouseMove={handleMove}
+      onMouseLeave={handleLeave}
+      onTouchMove={handleTouch}
+      onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchEnd}
+    >
+      <motion.div
+        style={{ rotateX, rotateY, transformStyle: 'preserve-3d' }}
+        className="will-change-transform"
+      >
+        {children}
+      </motion.div>
+    </div>
+  );
+}
+
+/** Vista previa tipo catálogo multi-rubro dentro de un marco estilo iPhone + parallax */
 function CatalogPhoneMock() {
   return (
-    <div className="bg-white/5 backdrop-blur-sm rounded-3xl p-5 sm:p-6 w-full max-w-[320px] mx-auto">
-      <div
-        className="mx-auto rounded-[2.25rem] p-2 shadow-2xl"
-        style={{
-          background: 'linear-gradient(145deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.04) 100%)',
-          boxShadow: '0 25px 50px -12px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.1)',
-        }}
-      >
-        <div className="rounded-[1.85rem] overflow-hidden bg-white aspect-[9/18] flex flex-col">
-          <div className="h-7 bg-neutral-100 flex items-center justify-center shrink-0">
-            <div className="h-4 w-20 rounded-full bg-neutral-200/90" aria-hidden />
-          </div>
-          <div className="px-3 pt-3 pb-2 shrink-0" style={{ background: 'linear-gradient(135deg, #7C3AED 0%, #5B21B6 100%)' }}>
-            <div className="flex items-center justify-between text-white">
-              <span className="text-[11px] font-bold tracking-tight" style={{ fontFamily: 'var(--font-heading)' }}>VentALink</span>
-              <div className="flex gap-1">
-                <span className="w-4 h-4 rounded-full bg-white/20" />
-                <span className="w-4 h-4 rounded-full bg-white/20" />
+    <PhonePreviewParallax>
+      <div className="bg-white/5 backdrop-blur-sm rounded-3xl p-5 sm:p-6 w-full">
+        <div
+          className="mx-auto rounded-[2.25rem] p-2 shadow-2xl"
+          style={{
+            background: 'linear-gradient(145deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.04) 100%)',
+            boxShadow: '0 25px 50px -12px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.1)',
+          }}
+        >
+          <div className="rounded-[1.85rem] overflow-hidden bg-white aspect-[9/18] flex flex-col min-h-[320px]">
+            <div className="h-7 bg-neutral-100 flex items-center justify-center shrink-0">
+              <div className="h-4 w-20 rounded-full bg-neutral-200/90" aria-hidden />
+            </div>
+            <div className="px-3 pt-2.5 pb-2 shrink-0" style={{ background: 'linear-gradient(135deg, #7C3AED 0%, #5B21B6 100%)' }}>
+              <div className="flex items-center gap-2 text-white">
+                <VCheckWhiteIsotype size={22} />
+                <span className="text-[11px] font-bold tracking-tight flex-1 min-w-0 truncate" style={{ fontFamily: 'var(--font-heading)' }}>
+                  Mi tienda
+                </span>
+                <div className="flex gap-1 shrink-0">
+                  <span className="w-3.5 h-3.5 rounded-full bg-white/20" />
+                  <span className="w-3.5 h-3.5 rounded-full bg-white/20" />
+                </div>
+              </div>
+              <div className="mt-2 h-7 rounded-lg bg-white/15 backdrop-blur-sm flex items-center px-2 gap-1.5">
+                <Icon name="Search" size={12} color="rgba(255,255,255,0.7)" />
+                <span className="text-[10px] text-white/50" style={{ fontFamily: 'var(--font-caption)' }}>Buscar…</span>
               </div>
             </div>
-            <div className="mt-2 h-7 rounded-lg bg-white/15 backdrop-blur-sm flex items-center px-2 gap-1.5">
-              <Icon name="Search" size={12} color="rgba(255,255,255,0.7)" />
-              <span className="text-[10px] text-white/50" style={{ fontFamily: 'var(--font-caption)' }}>Buscar…</span>
+            <div className="flex-1 min-h-0 p-2.5 bg-neutral-50 grid grid-cols-2 gap-2 content-start overflow-y-auto">
+              {CATALOG_PREVIEW_PRODUCTS.map((p) => (
+                <article
+                  key={p.name}
+                  className="rounded-xl bg-white p-1.5 shadow-sm border border-neutral-100/90 flex flex-col"
+                >
+                  <div className="aspect-square rounded-lg overflow-hidden bg-neutral-100 mb-1.5 relative">
+                    <img
+                      src={p.image}
+                      alt=""
+                      className="w-full h-full object-cover"
+                      loading="lazy"
+                      decoding="async"
+                    />
+                  </div>
+                  <div className="flex items-start justify-between gap-1 min-w-0">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[10px] font-semibold text-neutral-800 leading-tight line-clamp-2" style={{ fontFamily: 'var(--font-caption)' }}>
+                        {p.name}
+                      </p>
+                      <p className="text-[10px] font-bold text-violet-700 tabular-nums mt-0.5" style={{ fontFamily: 'var(--font-caption)' }}>
+                        {p.price}
+                      </p>
+                    </div>
+                    <WhatsAppGlyphTiny className="shrink-0 mt-0.5 opacity-95" />
+                  </div>
+                </article>
+              ))}
             </div>
-          </div>
-          <div className="flex-1 p-2.5 bg-neutral-50 grid grid-cols-2 gap-2 content-start">
-            {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="rounded-xl bg-white p-1.5 shadow-sm border border-neutral-100/80">
-                <div className="aspect-square rounded-lg bg-gradient-to-br from-violet-100 to-violet-50 mb-1.5" />
-                <div className="h-2 w-3/4 rounded bg-neutral-200 mb-1" />
-                <div className="h-2 w-1/2 rounded bg-neutral-100" />
-              </div>
-            ))}
           </div>
         </div>
       </div>
-    </div>
+    </PhonePreviewParallax>
   );
 }
 
@@ -278,20 +415,16 @@ export default function AuthStep({ onRegister, onLogin, onGoogleLogin, isLoading
           transition={{ duration: 0.4, delay: 0.12 }}
           className="w-full max-w-[420px]"
         >
-          <div className="mb-6 lg:hidden flex items-center gap-2">
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ backgroundColor: 'var(--color-primary)' }}>
-              <Icon name="LayoutGrid" size={18} color="#fff" />
-            </div>
-            <span className="font-bold text-lg" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>VentALink</span>
-            {(showCountryBadge || showLatamFallbackBadge) && (
+          {(showCountryBadge || showLatamFallbackBadge) && (
+            <div className="lg:hidden flex justify-end w-full mb-4">
               <span
-                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs bg-violet-100 text-violet-700 ml-auto max-w-[min(100%,11rem)] truncate"
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs bg-violet-100 text-violet-700 max-w-[min(100%,11rem)] truncate"
                 title={showCountryBadge ? countryLabelsResolved.countryName : LATAM_REGION_LABEL}
               >
                 {showCountryBadge ? countryLabelsResolved.flag : '🌍'}
               </span>
-            )}
-          </div>
+            </div>
+          )}
 
           <div
             className="border-none rounded-[40px] p-8 md:p-10"
@@ -300,7 +433,11 @@ export default function AuthStep({ onRegister, onLogin, onGoogleLogin, isLoading
               boxShadow: '0 20px 50px rgba(0,0,0,0.1)',
             }}
           >
-            <h1 className="text-2xl sm:text-3xl font-bold mb-1" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.03em' }}>
+            <div className="flex flex-col items-center w-full mb-9 sm:mb-11">
+              <VentalinkLogo variant="default" width={300} className="w-full max-w-[min(100%,320px)]" />
+            </div>
+
+            <h1 className="text-2xl sm:text-3xl font-bold mb-1 w-full" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.03em' }}>
               {mode === 'register' ? 'Crear cuenta' : 'Iniciar sesión'}
             </h1>
             <p className="text-sm mb-6 flex items-center gap-2 flex-wrap" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>

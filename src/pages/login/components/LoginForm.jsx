@@ -33,9 +33,9 @@ export default function LoginForm({ onSubmit, onGoogleLogin, onForgotPassword, i
   return (
     <div className="w-full max-w-md">
       <div className="rounded-2xl border border-slate-200/90 bg-white/90 backdrop-blur-sm shadow-sm shadow-slate-200/50 px-6 py-8 sm:px-8 sm:py-9">
-      {/* Misma marca que la landing; en desktop el panel derecho también lleva logo */}
-      <div className="flex items-center mb-8 lg:hidden">
-        <VentalinkLogo />
+      {/* Marca centrada en móvil; en desktop el panel morado lleva el logo principal */}
+      <div className="flex flex-col items-center w-full mb-9 lg:hidden">
+        <VentalinkLogo variant="default" width={260} className="w-full max-w-[min(100%,280px)]" />
       </div>
 
       <h1 className="text-2xl font-bold mb-1" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Iniciar sesión</h1>

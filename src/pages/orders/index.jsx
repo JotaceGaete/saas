@@ -417,6 +417,8 @@ export default function OrdersPage() {
   return (
     <DashboardAppShell backgroundColor="var(--color-background)">
       <DashboardLayoutContent>
+        <BankTransferSetupSlimAlert business={business} />
+
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex items-start gap-3 min-w-0">
             <div
@@ -458,8 +460,6 @@ export default function OrdersPage() {
             </button>
           </div>
         </div>
-
-        <BankTransferSetupSlimAlert business={business} />
 
         <div className="flex lg:grid gap-3 lg:gap-3 mb-6 overflow-x-auto lg:overflow-visible pb-2 -mx-1 px-1 lg:mx-0 lg:px-0 lg:grid-cols-6 snap-x snap-mandatory lg:snap-none scroll-smooth [-webkit-overflow-scrolling:touch]">
           <button

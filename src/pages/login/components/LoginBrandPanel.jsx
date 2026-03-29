@@ -16,8 +16,8 @@ export default function LoginBrandPanel() {
       aria-hidden={false}
     >
       <div className="flex flex-col flex-1 min-h-0">
-        <div className="mb-8">
-          <VentalinkLogo variant="light" />
+        <div className="flex flex-col items-center w-full mb-10 xl:mb-12">
+          <VentalinkLogo variant="white" width={320} className="w-full max-w-[min(100%,320px)]" />
         </div>
 
         <p
