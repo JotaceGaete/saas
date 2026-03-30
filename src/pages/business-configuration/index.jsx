@@ -164,14 +164,14 @@ export default function BusinessConfiguration() {
 
   const suggestedCountryCode = useMemo(() => suggestCountryCodeHint({ user }), [user]);
 
-  /** Solo BD `country_code` — no usar `countryCode` inferido por moneda. */
-  const persistedCountryCode =
+  /** País persistido en BD (`country_code` / `countryCodeDb`). */
+  const businessCountry =
     business?.countryCodeDb != null && String(business.countryCodeDb).trim() !== ''
       ? String(business.countryCodeDb).trim().toUpperCase()
       : null;
-  /** Solo con `country_code` en BD (`countryCodeDb`): UI con etiquetas/prefijos; si no, neutro (sin fallback). */
-  const hasPersistedCountry = persistedCountryCode != null;
-  const uiCountryCode = uxCountry ?? persistedCountryCode;
+  /** Solo con país en BD: UI con etiquetas/prefijos; si no, neutro (sin fallback). */
+  const hasPersistedCountry = businessCountry != null;
+  const uiCountryCode = uxCountry ?? businessCountry;
   const countryLabels = getCountryLabels(uiCountryCode);
   const countryChangePolicy = business ? evaluateBusinessCountryChangePolicy(business) : { allowed: false };
   const countryStatePreview = resolveCountryState({
@@ -266,7 +266,11 @@ export default function BusinessConfiguration() {
   );
 
   const isDirty = Boolean(business?.id && savedConfigSnapshot && currentConfigSnapshot !== savedConfigSnapshot);
-  const hasUnsavedCountryChange = (uxCountry ?? null) !== (persistedCountryCode ?? null);
+  const hasUnsavedCountryChange = (uxCountry ?? null) !== (businessCountry ?? null);
+  /** Bloqueo solo si ya hay país guardado y hay suscripción activa, pedidos o trial iniciado. */
+  const isCountryLocked =
+    hasPersistedCountry &&
+    (countryGuards.hasActiveSubscription || countryGuards.hasOrders || countryGuards.trialStarted);
 
   useEffect(() => {
     console.log('[VTLK_ROUTE] Renderizando: ' + (typeof window !== 'undefined' ? window.location.pathname : ''));
@@ -350,14 +354,14 @@ export default function BusinessConfiguration() {
       hostnameUxHint: getCountryCode(),
       uxCountry,
       uiCountryCode,
-      neutralNoCountry: !persistedCountryCode,
+      neutralNoCountry: !businessCountry,
       billingCountry: countryStatePreview.billingCountry,
       billingProvider: billingPreview.billingProvider,
       billingCurrency: billingPreview.currency,
       policyAllowed: countryChangePolicy.allowed,
     });
   }, [
-    persistedCountryCode,
+    businessCountry,
     uxCountry,
     uiCountryCode,
     countryStatePreview.billingCountry,
@@ -535,9 +539,12 @@ export default function BusinessConfiguration() {
       showToast('Selecciona un país válido.', 'error');
       return;
     }
-    if (raw === (uxCountry ?? persistedCountryCode)) return;
-    if (countryGuards.hasActiveSubscription || countryGuards.hasOrders || countryGuards.trialStarted) {
-      showToast('No puedes cambiar el país: hay suscripción activa, pedidos o el trial ya comenzó.', 'error');
+    if (raw === (uxCountry ?? businessCountry)) return;
+    if (isCountryLocked) {
+      return;
+    }
+    if (!hasPersistedCountry) {
+      setUxCountry(raw);
       return;
     }
     const ok = window.confirm(
@@ -555,7 +562,7 @@ export default function BusinessConfiguration() {
     }
     setIsSaving(true);
 
-    const countryToPersist = uxCountry ?? persistedCountryCode;
+    const countryToPersist = uxCountry ?? businessCountry;
     const parsedAddr = parseAddressByCountry(fullAddressInput, countryToPersist);
     const slugClean = (s) => (String(s || '').trim() || '').replace(/\s+/g, '-').toLowerCase();
     const nextSlug = slugEditUnlocked
@@ -588,7 +595,7 @@ export default function BusinessConfiguration() {
       bankRut: bankForm?.bankRut,
       bankEmail: bankForm?.bankEmail,
     };
-    if (countryToPersist && countryToPersist !== persistedCountryCode) {
+    if (countryToPersist && countryToPersist !== businessCountry) {
       payload.countryCode = countryToPersist;
       payload.persistCountry = true;
       payload.designSettings = {
@@ -839,7 +846,7 @@ export default function BusinessConfiguration() {
                         : 'Selecciona el país que corresponda a tu negocio.'}
                     </p>
                     <CountryIsoSelect
-                      value={manualCountryCode || ''}
+                      value={manualCountryCode || uxCountry || ''}
                       onChange={(code) => {
                         setManualCountryCode(code || '');
                         handleCountrySelection(code || '');
@@ -876,9 +883,45 @@ export default function BusinessConfiguration() {
 
             {hasPersistedCountry && (
               <BusinessConfigContextBanner
-                countryCode={persistedCountryCode}
+                countryCode={businessCountry}
                 currencyLabel={business?.currency || countryLabels.currency}
               />
+            )}
+
+            {hasPersistedCountry && (
+              <div className={`${cardClass} mb-8`}>
+                <p className={sectionHeadingClass}>País del negocio</p>
+                <SettingsField
+                  label="País"
+                  hint="El cambio queda en borrador hasta que guardes con Guardar cambios."
+                >
+                  <CountryIsoSelect
+                    value={uxCountry ?? businessCountry ?? ''}
+                    onChange={(code) => handleCountrySelection(code || '')}
+                    disabled={countryGuards.loading || isCountryLocked}
+                    className={inputClass}
+                    style={{
+                      ...inputStyle,
+                      cursor: countryGuards.loading || isCountryLocked ? 'not-allowed' : 'pointer',
+                    }}
+                  />
+                  {isCountryLocked && (
+                    <p className="mt-2 text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+                      El país no se puede cambiar porque tu negocio ya tiene país definido y hay suscripción activa, pedidos registrados o el período de prueba ya comenzó. Si necesitas otro mercado, contacta a soporte.
+                    </p>
+                  )}
+                  {hasUnsavedCountryChange && !isCountryLocked && (
+                    <button
+                      type="button"
+                      onClick={() => setUxCountry(businessCountry)}
+                      className="mt-2 text-sm font-medium underline-offset-2 hover:underline"
+                      style={{ color: 'var(--color-primary)', fontFamily: 'var(--font-caption)' }}
+                    >
+                      Restore
+                    </button>
+                  )}
+                </SettingsField>
+              </div>
             )}
 
             <div
@@ -1003,24 +1046,6 @@ export default function BusinessConfiguration() {
                           <option key={r?.id} value={r?.id}>{r?.name}</option>
                         ))}
                       </select>
-                    </SettingsField>
-
-                    <SettingsField
-                      label="País del negocio"
-                      hint="Solo se guarda cuando presionas Guardar cambios."
-                    >
-                      <CountryIsoSelect
-                        value={uxCountry || ''}
-                        onChange={(code) => handleCountrySelection(code || '')}
-                        disabled={countryGuards.loading}
-                        className={`${inputClass} cursor-pointer`}
-                        style={inputStyle}
-                      />
-                      {(countryGuards.hasActiveSubscription || countryGuards.hasOrders || countryGuards.trialStarted) && (
-                        <p className="mt-1 text-xs" style={{ color: '#dc2626', fontFamily: 'var(--font-caption)' }}>
-                          Cambio bloqueado: suscripción activa, pedidos o trial iniciado.
-                        </p>
-                      )}
                     </SettingsField>
 
                     <SettingsField
@@ -1266,7 +1291,7 @@ export default function BusinessConfiguration() {
             {hasUnsavedCountryChange && (
               <button
                 type="button"
-                onClick={() => setUxCountry(persistedCountryCode)}
+                onClick={() => setUxCountry(businessCountry)}
                 disabled={isSaving}
                 className="px-4 py-2.5 rounded-xl text-sm font-medium border border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100 disabled:opacity-50 transition-colors font-[family-name:var(--font-caption)]"
               >

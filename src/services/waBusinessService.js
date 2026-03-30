@@ -113,7 +113,7 @@ async function validateCountryUpdateAllowed({ businessId, userId }) {
   const [{ data: businessRow, error: businessErr }, { count, error: ordersErr }] = await Promise.all([
     supabase
       .from('wa_businesses')
-      .select('plan_slug, plan_expires_at, trial_expires_at, plan_started_at')
+      .select('plan_slug, plan_expires_at, trial_expires_at, plan_started_at, country_code')
       .eq('id', businessId)
       .eq('user_id', userId)
       .maybeSingle(),
@@ -126,6 +126,12 @@ async function validateCountryUpdateAllowed({ businessId, userId }) {
   if (businessErr) return { allowed: false, message: businessErr.message || 'No se pudo validar el negocio.' };
   if (ordersErr) return { allowed: false, message: ordersErr.message || 'No se pudo validar pedidos del negocio.' };
   if (!businessRow) return { allowed: false, message: 'No se encontró el negocio.' };
+
+  const hasPersistedCountry =
+    businessRow?.country_code != null && String(businessRow.country_code).trim() !== '';
+  if (!hasPersistedCountry) {
+    return { allowed: true, message: null };
+  }
 
   const now = new Date();
   const planSlug = String(businessRow?.plan_slug || '').trim().toLowerCase();
