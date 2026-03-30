@@ -23,7 +23,12 @@ function isAllowedOrigin(origin: string | null): boolean {
 
   const allowed = [
     'https://go.ventalink.app',
+    'https://ventalink.app',
+    'https://www.ventalink.app',
     'http://localhost:4028',
+    // Legacy / regionales (fronts antiguos o previews)
+    'https://ar.ventalink.app',
+    'https://cl.ventalink.app',
   ];
 
   if (allowed.includes(origin)) return true;
@@ -160,7 +165,7 @@ Deno.serve(async (req) => {
         body: JSON.stringify({
           model: 'gpt-4o-mini',
           messages: [
-            { role: 'system', content: SYSTEM_PROMPT },
+            { role: 'system', content: buildSystemPrompt(maxDescLen) },
             { role: 'user', content: userMessage },
           ],
           max_tokens: 350,

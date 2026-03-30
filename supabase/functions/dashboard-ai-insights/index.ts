@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+/** CORS: * es suficiente para esta función (Bearer en header, sin cookies). */
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -122,6 +123,54 @@ async function collectMetrics(adminClient: ReturnType<typeof createClient>, busi
       .eq("wa_orders.business_id", businessId),
   ]);
 
+  const metricQueryLabels = [
+    "visitsToday",
+    "visits7d",
+    "visits30d",
+    "clicksToday",
+    "clicks7d",
+    "clicks30d",
+    "ordersPlacedToday",
+    "ordersPlaced7d",
+    "ordersPlacedMonth",
+    "ordersPaidToday",
+    "ordersPaid7d",
+    "ordersPaidMonth",
+    "productsActive",
+    "pendingOrders",
+    "recentOrders",
+    "topProducts",
+  ];
+  const metricResults = [
+    visitsTodayRes,
+    visits7dRes,
+    visits30dRes,
+    clicksTodayRes,
+    clicks7dRes,
+    clicks30dRes,
+    ordersPlacedTodayRes,
+    ordersPlaced7dRes,
+    ordersPlacedMonthRes,
+    ordersPaidTodayRes,
+    ordersPaid7dRes,
+    ordersPaidMonthRes,
+    productsActiveRes,
+    pendingOrdersRes,
+    recentOrdersRes,
+    topProductsRes,
+  ];
+  metricResults.forEach((r, i) => {
+    if (r?.error) {
+      console.warn("[dashboard-ai-insights] metric query error", {
+        label: metricQueryLabels[i],
+        message: r.error.message,
+        code: r.error.code,
+        details: r.error.details,
+        hint: r.error.hint,
+      });
+    }
+  });
+
   const paidToday = filterPaidInRange(ordersPaidTodayRes.data, startToday, endToday);
   const paid7d = filterPaidInRange(ordersPaid7dRes.data, start7d, now);
   const paidMonth = filterPaidInRange(ordersPaidMonthRes.data, startMonth, now);
@@ -218,14 +267,27 @@ Deno.serve(async (req) => {
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
     const openaiKey = Deno.env.get("OPENAI_API_KEY") ?? "";
-    if (!supabaseUrl || !anonKey || !serviceRoleKey || !openaiKey) {
-      return jsonResponse({ error: "Server configuration error" }, 500);
+    const missingEnv: string[] = [];
+    if (!supabaseUrl) missingEnv.push("SUPABASE_URL");
+    if (!anonKey) missingEnv.push("SUPABASE_ANON_KEY");
+    if (!serviceRoleKey) missingEnv.push("SUPABASE_SERVICE_ROLE_KEY");
+    if (!openaiKey) missingEnv.push("OPENAI_API_KEY");
+    if (missingEnv.length > 0) {
+      console.error("[dashboard-ai-insights] missing Edge secrets (names only):", missingEnv.join(", "));
+      return jsonResponse({
+        error: "Server configuration error",
+        code: "MISSING_EDGE_SECRETS",
+        missing: missingEnv,
+      }, 500);
     }
 
     const userClient = createClient(supabaseUrl, anonKey, {
       global: { headers: { Authorization: authHeader } },
     });
-    const { data: { user } } = await userClient.auth.getUser();
+    const { data: { user }, error: userAuthErr } = await userClient.auth.getUser();
+    if (userAuthErr) {
+      console.warn("[dashboard-ai-insights] auth.getUser:", userAuthErr.message);
+    }
     if (!user?.id) return jsonResponse({ error: "User not authenticated" }, 401);
 
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
@@ -239,8 +301,14 @@ Deno.serve(async (req) => {
       .eq("id", businessId)
       .eq("user_id", user.id)
       .maybeSingle();
+    if (ownBusinessError) {
+      console.error("[dashboard-ai-insights] wa_businesses ownership check", {
+        message: ownBusinessError.message,
+        code: ownBusinessError.code,
+      });
+    }
     if (ownBusinessError || !ownBusiness?.id) {
-      return jsonResponse({ error: "Business not found or unauthorized" }, 403);
+      return jsonResponse({ error: "Business not found or unauthorized", code: "BUSINESS_FORBIDDEN" }, 403);
     }
 
     const insightDate = toIsoDate(new Date());
@@ -250,11 +318,28 @@ Deno.serve(async (req) => {
       .eq("business_id", businessId)
       .eq("insight_date", insightDate)
       .maybeSingle();
+    if (existingError) {
+      console.warn("[dashboard-ai-insights] existing insight lookup", {
+        message: existingError.message,
+        code: existingError.code,
+      });
+    }
 
     const { data: lockData, error: lockError } = await adminClient
       .rpc("wa_try_daily_insight_lock", { p_business_id: businessId, p_insight_date: insightDate });
     if (lockError) {
-      return jsonResponse({ error: "Failed to acquire insight lock", details: lockError.message }, 500);
+      console.error("[dashboard-ai-insights] wa_try_daily_insight_lock failed — ¿migración aplicada?", {
+        message: lockError.message,
+        code: lockError.code,
+        hint: lockError.hint,
+        details: lockError.details,
+      });
+      return jsonResponse({
+        error: "Failed to acquire insight lock",
+        code: "LOCK_RPC_ERROR",
+        details: lockError.message,
+        hint: "Asegura migración 20260320002000_wa_business_daily_ai_insights.sql en la base remota.",
+      }, 500);
     }
     const lockAcquired = !!lockData;
 
@@ -374,7 +459,16 @@ ${JSON.stringify(metrics)}`;
 
       const aiText = await aiRes.text();
       if (!aiRes.ok) {
-        return jsonResponse({ error: "AI provider error", details: aiText.slice(0, 300) }, 500);
+        console.error("[dashboard-ai-insights] OpenAI error", {
+          status: aiRes.status,
+          bodyPreview: aiText.slice(0, 400),
+        });
+        return jsonResponse({
+          error: "AI provider error",
+          code: "OPENAI_HTTP_ERROR",
+          status: aiRes.status,
+          details: aiText.slice(0, 300),
+        }, 500);
       }
 
       let parsedApi: any = {};
@@ -410,17 +504,24 @@ ${JSON.stringify(metrics)}`;
         }, { onConflict: "business_id,insight_date" })
         .select("hallazgo, alerta, accion, prioridad, generated_at")
         .single();
-      if (saveError) return jsonResponse({ error: "Failed to persist insight", details: saveError.message }, 500);
+      if (saveError) {
+        console.error("[dashboard-ai-insights] upsert insight", saveError.message, saveError.code);
+        return jsonResponse({
+          error: "Failed to persist insight",
+          code: "INSIGHT_PERSIST_ERROR",
+          details: saveError.message,
+        }, 500);
+      }
 
       return jsonResponse({
         ok: true,
         cached: false,
         insight: {
-          hallazgo: saved.hallazgo,
-          alerta: saved.alerta,
-          accion: saved.accion,
-          prioridad: saved.prioridad,
-          generated_at: saved.generated_at,
+          hallazgo: saved?.hallazgo,
+          alerta: saved?.alerta,
+          accion: saved?.accion,
+          prioridad: saved?.prioridad,
+          generated_at: saved?.generated_at,
         },
       }, 200);
     } finally {
@@ -429,7 +530,14 @@ ${JSON.stringify(metrics)}`;
         .catch(() => undefined);
     }
   } catch (err) {
-    return jsonResponse({ error: "Internal server error", message: err instanceof Error ? err.message : String(err) }, 500);
+    const msg = err instanceof Error ? err.message : String(err);
+    const stack = err instanceof Error ? err.stack : undefined;
+    console.error("[dashboard-ai-insights] unhandled:", msg, stack ?? "");
+    return jsonResponse({
+      error: "Internal server error",
+      code: "UNHANDLED",
+      message: msg,
+    }, 500);
   }
 });
 
