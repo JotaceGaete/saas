@@ -179,8 +179,10 @@ export default function DesignCustomization({
 }) {
   const logoInputRef = useRef(null);
   const coverInputRef = useRef(null);
+  const shareInputRef = useRef(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [uploadingCover, setUploadingCover] = useState(false);
+  const [uploadingShareImage, setUploadingShareImage] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   // Cargar la fuente seleccionada para el catálogo (preview móvil, etc.)
@@ -258,6 +260,33 @@ export default function DesignCustomization({
     } finally {
       setUploadingCover(false);
       if (coverInputRef?.current) coverInputRef.current.value = '';
+    }
+  };
+
+  const handleShareImageUpload = async (e) => {
+    const file = e?.target?.files?.[0];
+    if (!file || !businessId) {
+      if (!businessId) console.warn('[DesignCustomization] handleShareImageUpload: sin businessId');
+      return;
+    }
+    console.log('[DesignCustomization] Subiendo shareImageUrl', file.name);
+    setUploadingShareImage(true);
+    try {
+      // Reutiliza el mismo uploader de portada (R2). No modifica la portada visual del catálogo.
+      const { url, error } = await uploadBusinessCover(file, businessId);
+      if (error) {
+        console.error('[DesignCustomization] Error subir share image', error);
+        showToast?.(error?.message || 'Error al subir imagen para compartir', 'error');
+        return;
+      }
+      onChange?.({ ...design, shareImageUrl: url });
+      showToast?.('Imagen para compartir actualizada', 'success');
+    } catch (err) {
+      console.error('[DesignCustomization] Excepción subir share image', err);
+      showToast?.(err?.message || 'Error inesperado al subir imagen', 'error');
+    } finally {
+      setUploadingShareImage(false);
+      if (shareInputRef?.current) shareInputRef.current.value = '';
     }
   };
 
@@ -478,6 +507,87 @@ export default function DesignCustomization({
               )}
             </div>
           )}
+        </div>
+      </SectionCard>
+
+      {/* 2b. Share Image (OG/WhatsApp) */}
+      <SectionCard
+        icon="Share2"
+        title="Imagen para compartir en WhatsApp"
+        subtitle="Se usa en la vista previa (og:image) al compartir tu catálogo en WhatsApp y redes. No cambia la portada visual del catálogo."
+      >
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
+            <div className="flex-1 min-w-0">
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
+                URL de la imagen (opcional)
+              </label>
+              <input
+                type="url"
+                inputMode="url"
+                value={design?.shareImageUrl ?? ''}
+                onChange={(e) => onChange?.({ ...design, shareImageUrl: e?.target?.value ?? '' })}
+                placeholder="https://..."
+                className="w-full px-3 py-2.5 rounded-xl border text-sm"
+                style={{ borderColor: 'var(--color-border)', fontFamily: 'var(--font-caption)' }}
+              />
+              <p className="text-[11px] mt-1" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+                Recomendado: 1200×630px (formato horizontal). Esta imagen es la que verá el cliente en la previsualización de WhatsApp.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => shareInputRef?.current?.click()}
+                disabled={uploadingShareImage}
+                className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg font-medium transition-all hover:opacity-80 disabled:opacity-50"
+                style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)', backgroundColor: '#ffffff', fontFamily: 'var(--font-caption)' }}
+              >
+                <Icon name="Upload" size={12} color="var(--color-text-secondary)" />
+                {uploadingShareImage ? 'Subiendo...' : (design?.shareImageUrl ? 'Cambiar imagen' : 'Subir imagen')}
+              </button>
+              {!!(design?.shareImageUrl || '').trim() && (
+                <button
+                  type="button"
+                  onClick={() => onChange?.({ ...design, shareImageUrl: '' })}
+                  className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg font-medium transition-all hover:opacity-80"
+                  style={{ border: '1px solid #fecaca', color: '#ef4444', backgroundColor: '#fff5f5', fontFamily: 'var(--font-caption)' }}
+                >
+                  <Icon name="Trash2" size={12} color="#ef4444" />
+                  Quitar
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div
+            className="rounded-xl border overflow-hidden"
+            style={{ borderColor: 'var(--color-border)', backgroundColor: '#0b1020' }}
+          >
+            {((design?.shareImageUrl || '').trim()) ? (
+              <Image
+                key={design?.shareImageUrl}
+                src={design?.shareImageUrl}
+                alt="Vista previa de imagen para compartir"
+                className="w-full"
+                style={{ aspectRatio: '1200/630', objectFit: 'cover' }}
+              />
+            ) : (
+              <div className="px-4 py-4">
+                <p className="text-xs" style={{ color: 'rgba(255,255,255,0.72)', fontFamily: 'var(--font-caption)' }}>
+                  Vista previa: si no configuras una imagen, usaremos tu portada o logo automáticamente.
+                </p>
+              </div>
+            )}
+          </div>
+
+          <input
+            ref={shareInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleShareImageUpload}
+            className="hidden"
+          />
         </div>
       </SectionCard>
 

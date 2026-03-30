@@ -108,6 +108,7 @@ export function resolveCatalogOgImageUrl(row, origin, options = {}) {
   const ds = parseDesignSettingsFromDb(row?.design_settings);
 
   const candidates = [
+    ds?.shareImageUrl,
     row?.cover_image_url,
     ds?.coverImageUrl,
     ds?.headerImageUrl,
