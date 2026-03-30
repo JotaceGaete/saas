@@ -47,6 +47,10 @@
       "destination": "/api/billing"
     },
     {
+      "source": "/api/v1/ai/generate-product-description",
+      "destination": "/api/ai"
+    },
+    {
       "source": "/api/v1/billing/dlocal/callback",
       "destination": "/api/billing"
     },

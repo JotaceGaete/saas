@@ -125,26 +125,57 @@ export default function ProductEditor() {
         return;
       }
       const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
-      const endpoint = `${supabaseUrl}/functions/v1/improve-product-description`;
-      console.log('[Mejorar con IA] Endpoint:', endpoint);
+      /**
+       * Ruta canónica (backend Ventalink): POST /api/v1/ai/generate-product-description
+       * (rewrites → /api/ai). Configurar VITE_AI_PRODUCT_DESCRIPTION_URL en producción.
+       *
+       * @deprecated Fallback: Supabase Edge `improve-product-description` — solo transición;
+       * retirar cuando el despliegue use siempre la API propia.
+       */
+      const ventaAiUrl = (import.meta.env?.VITE_AI_PRODUCT_DESCRIPTION_URL || '').trim();
+      const useVentaAi = Boolean(ventaAiUrl);
+      if (useVentaAi && !business?.id) {
+        toast.error('Carga el negocio antes de usar la IA.');
+        return;
+      }
+      const endpoint = useVentaAi
+        ? ventaAiUrl
+        : `${supabaseUrl}/functions/v1/improve-product-description`;
+      console.log('[Mejorar con IA] Endpoint:', useVentaAi ? '(canónica: /api/v1/ai/generate-product-description)' : '(deprecado: edge improve-product-description)');
       const inputText = (text || '').slice(0, 300);
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${session.access_token}`,
-          apikey: import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '',
+          ...(useVentaAi ? {} : { apikey: import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '' }),
         },
-        body: JSON.stringify({
-          text: inputText,
-          productName: productName || '',
-          maxDescriptionLength: 300,
-        }),
+        body: JSON.stringify(
+          useVentaAi
+            ? {
+                businessId: business?.id,
+                ...(productId ? { productId } : {}),
+                text: inputText,
+                productName: productName || '',
+                maxDescriptionLength: 300,
+              }
+            : {
+                text: inputText,
+                productName: productName || '',
+                maxDescriptionLength: 300,
+              },
+        ),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
+      if (!res.ok || data?.ok === false) {
         console.error('[Mejorar con IA] Error API:', res.status, res.statusText, data);
-        toast.error(data?.error ?? 'No se pudo mejorar la descripción');
+        if (res.status === 429) {
+          toast.error(data?.error ?? 'Demasiadas solicitudes. Espera un momento e intenta de nuevo.');
+        } else if (res.status === 504) {
+          toast.error('El servicio de IA tardó demasiado. Intenta de nuevo.');
+        } else {
+          toast.error(data?.error ?? data?.message ?? 'No se pudo mejorar la descripción');
+        }
         return;
       }
       const improvedTitle = typeof data?.title === 'string' ? data.title.trim() : '';
@@ -159,11 +190,16 @@ export default function ProductEditor() {
         ...((!prev?.nombre?.trim() && improvedTitle) ? { nombre: improvedTitle.slice(0, 80) } : {}),
       }));
 
-      // Mostrar hashtags en un toast para que el usuario los pueda copiar
       const hashtags = Array.isArray(data?.hashtags) && data.hashtags.length > 0
         ? data.hashtags.filter((h) => typeof h === 'string').map((h) => `#${h}`).join(' ')
         : null;
-      if (hashtags) {
+      if (useVentaAi && data?.cached === true) {
+        toast.success(
+          hashtags
+            ? `⚡ Generado previamente (caché) — ${hashtags}`
+            : '⚡ Generado previamente (caché)',
+        );
+      } else if (hashtags) {
         toast.success(`Hashtags sugeridos: ${hashtags}`);
       }
     } catch (err) {
@@ -172,7 +208,7 @@ export default function ProductEditor() {
     } finally {
       setIsImprovingDescription(false);
     }
-  }, [toast]);
+  }, [toast, business?.id, productId]);
 
   const handleUploadRequested = React.useCallback(async (imageId, file) => {
     console.log('[ProductEditor] handleUploadRequested', { imageId, hasFile: !!file, businessId: business?.id ?? null, productId: productId ?? null });
