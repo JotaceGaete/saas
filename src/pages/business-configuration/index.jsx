@@ -24,6 +24,7 @@ import { suggestCountryCodeHint } from '../../lib/country/suggest-country-hint';
 import { getCountryConfig, COUNTRY_CODES } from '../../config/countryConfig';
 import BusinessConfigContextBanner from 'components/business/BusinessConfigContextBanner';
 import { parseAddressByCountry, buildFullAddressLine } from '../../utils/addressParse';
+import { resolveVentaAiProductDescriptionEndpoint } from '../../lib/ai/resolveVentaAiProductDescriptionUrl.js';
 
 const BUSINESS_DESCRIPTION_MAX = 280;
 
@@ -492,23 +493,45 @@ export default function BusinessConfiguration() {
         return;
       }
       const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
-      const endpoint = `${supabaseUrl}/functions/v1/improve-product-description`;
+      const { ventaAiUrl, useVentaAi } = resolveVentaAiProductDescriptionEndpoint();
+      if (useVentaAi && !business?.id) {
+        showToast('Carga el negocio antes de usar la IA.', 'error');
+        return;
+      }
+      const endpoint = useVentaAi
+        ? ventaAiUrl
+        : `${supabaseUrl}/functions/v1/improve-product-description`;
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${session.access_token}`,
-          apikey: import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '',
+          ...(useVentaAi ? {} : { apikey: import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '' }),
         },
-        body: JSON.stringify({
-          text: truncateAtWordBoundary(rawDesc, BUSINESS_DESCRIPTION_MAX),
-          productName: storeName,
-          maxDescriptionLength: BUSINESS_DESCRIPTION_MAX,
-        }),
+        body: JSON.stringify(
+          useVentaAi
+            ? {
+                businessId: business?.id,
+                text: truncateAtWordBoundary(rawDesc, BUSINESS_DESCRIPTION_MAX),
+                productName: storeName,
+                maxDescriptionLength: BUSINESS_DESCRIPTION_MAX,
+              }
+            : {
+                text: truncateAtWordBoundary(rawDesc, BUSINESS_DESCRIPTION_MAX),
+                productName: storeName,
+                maxDescriptionLength: BUSINESS_DESCRIPTION_MAX,
+              },
+        ),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        showToast(data?.error ?? 'No se pudo mejorar la descripción. Intenta de nuevo.', 'error');
+      if (!res.ok || data?.ok === false) {
+        if (res.status === 429) {
+          showToast(data?.error ?? 'Demasiadas solicitudes. Espera un momento e intenta de nuevo.', 'error');
+        } else if (res.status === 504) {
+          showToast('El servicio de IA tardó demasiado. Intenta de nuevo.', 'error');
+        } else {
+          showToast(data?.error ?? data?.message ?? 'No se pudo mejorar la descripción. Intenta de nuevo.', 'error');
+        }
         return;
       }
       let improved = typeof data?.description === 'string' ? data.description.trim() : '';
@@ -524,7 +547,12 @@ export default function BusinessConfiguration() {
         BUSINESS_DESCRIPTION_MAX,
       );
       handleFormChange('description', improved);
-      showToast('Descripción actualizada. Revisa y guarda si te convence.', 'success');
+      showToast(
+        useVentaAi && data?.cached === true
+          ? '⚡ Generado previamente (caché). Revisa y guarda si te convence.'
+          : 'Descripción actualizada. Revisa y guarda si te convence.',
+        'success',
+      );
     } catch (e) {
       console.error('[BusinessConfiguration] Mejorar descripción:', e);
       showToast('Error de conexión. Intenta de nuevo.', 'error');

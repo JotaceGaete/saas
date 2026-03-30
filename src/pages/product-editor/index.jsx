@@ -18,6 +18,7 @@ import { useToast } from '../../components/ui/Toast';
 import { useConfirmedEmailGuard } from '../../hooks/useConfirmedEmailGuard';
 import { supabase } from '../../lib/supabase';
 import { getBusinessLocale } from '../../lib/locale/businessLocale';
+import { resolveVentaAiProductDescriptionEndpoint } from '../../lib/ai/resolveVentaAiProductDescriptionUrl.js';
 
 const EMPTY_FORM = {
   nombre: '',
@@ -125,20 +126,7 @@ export default function ProductEditor() {
         return;
       }
       const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
-      /**
-       * Ruta canónica: POST `VITE_AI_PRODUCT_DESCRIPTION_URL`
-       * (producción: https://go.ventalink.app/api/v1/ai/generate-product-description).
-       * En build de producción, si la variable no está definida se usa esa URL por defecto.
-       *
-       * @deprecated Fallback: Supabase Edge `improve-product-description` — solo transición / dev sin API;
-       * retirar cuando no haya clientes dependiendo del edge.
-       */
-      const CANONICAL_AI_PRODUCT_DESCRIPTION_URL =
-        'https://go.ventalink.app/api/v1/ai/generate-product-description';
-      const fromEnv = (import.meta.env?.VITE_AI_PRODUCT_DESCRIPTION_URL ?? '').trim();
-      const ventaAiUrl =
-        fromEnv || (import.meta.env.PROD ? CANONICAL_AI_PRODUCT_DESCRIPTION_URL : '');
-      const useVentaAi = Boolean(ventaAiUrl);
+      const { ventaAiUrl, useVentaAi } = resolveVentaAiProductDescriptionEndpoint();
       if (useVentaAi && !business?.id) {
         toast.error('Carga el negocio antes de usar la IA.');
         return;
