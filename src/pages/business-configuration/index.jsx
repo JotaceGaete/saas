@@ -13,7 +13,7 @@ import DynamicWhatsAppField from 'components/DynamicWhatsAppField';
 import { getCountryLabels, getCountryCode } from '../../config/country';
 import InstallAppBlock from './components/InstallAppBlock';
 import SettingsSwitch from './components/SettingsSwitch';
-import { Building2, CreditCard, Sparkles } from 'lucide-react';
+import { Building2, CreditCard, Palette, Sparkles } from 'lucide-react';
 import { truncateAtWordBoundary } from '../../utils/textTruncate';
 import CountryIsoSelect from '../../components/country/CountryIsoSelect';
 import {
@@ -25,6 +25,7 @@ import { getCountryConfig, COUNTRY_CODES } from '../../config/countryConfig';
 import BusinessConfigContextBanner from 'components/business/BusinessConfigContextBanner';
 import { parseAddressByCountry, buildFullAddressLine } from '../../utils/addressParse';
 import { resolveVentaAiProductDescriptionEndpoint } from '../../lib/ai/resolveVentaAiProductDescriptionUrl.js';
+import DesignSettings from './components/DesignSettings';
 
 const BUSINESS_DESCRIPTION_MAX = 280;
 
@@ -209,9 +210,6 @@ export default function BusinessConfiguration() {
   const [slugEditUnlocked, setSlugEditUnlocked] = useState(false);
   const [settingsTab, setSettingsTab] = useState('identity');
 
-  useEffect(() => {
-    setSettingsTab((t) => (t === 'design' ? 'identity' : t));
-  }, []);
   const [isImprovingBusinessDescription, setIsImprovingBusinessDescription] = useState(false);
 
   const effectivePlan = getEffectivePlanSlug(business?.planSlug, business?.planExpiresAt, business?.trialExpiresAt);
@@ -959,6 +957,7 @@ export default function BusinessConfiguration() {
             >
               {[
                 { id: 'identity', label: 'Identidad', Icon: Building2 },
+                { id: 'design', label: 'Diseño', Icon: Palette },
                 { id: 'payments', label: 'Pagos y envíos', Icon: CreditCard },
               ].map((tab) => {
                 const active = settingsTab === tab.id;
@@ -1204,6 +1203,27 @@ export default function BusinessConfiguration() {
                 </div>
               </div>
             </div>
+            )}
+
+            {settingsTab === 'design' && business?.id && (
+              <div className="mb-8">
+                <DesignSettings
+                  design={design}
+                  onChange={setDesign}
+                  businessId={business.id}
+                  isSaving={isSaving}
+                  onSave={handleSaveSettings}
+                  showToast={showToast}
+                />
+              </div>
+            )}
+
+            {settingsTab === 'design' && !business?.id && (
+              <div className={`${cardClass} mb-8`}>
+                <p className="text-sm text-slate-600 font-[family-name:var(--font-caption)]">
+                  Completa la creación de tu negocio para editar diseño y categorías del catálogo.
+                </p>
+              </div>
             )}
 
             {settingsTab === 'payments' && business?.id && (
