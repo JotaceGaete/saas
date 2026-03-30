@@ -109,6 +109,44 @@ export function getActivePlan(subscription = {}) {
   return planSlug;
 }
 
+async function validateCountryUpdateAllowed({ businessId, userId }) {
+  const [{ data: businessRow, error: businessErr }, { count, error: ordersErr }] = await Promise.all([
+    supabase
+      .from('wa_businesses')
+      .select('plan_slug, plan_expires_at, trial_expires_at, plan_started_at')
+      .eq('id', businessId)
+      .eq('user_id', userId)
+      .maybeSingle(),
+    supabase
+      .from('wa_orders')
+      .select('id', { count: 'exact', head: true })
+      .eq('business_id', businessId),
+  ]);
+
+  if (businessErr) return { allowed: false, message: businessErr.message || 'No se pudo validar el negocio.' };
+  if (ordersErr) return { allowed: false, message: ordersErr.message || 'No se pudo validar pedidos del negocio.' };
+  if (!businessRow) return { allowed: false, message: 'No se encontró el negocio.' };
+
+  const now = new Date();
+  const planSlug = String(businessRow?.plan_slug || '').trim().toLowerCase();
+  const planExpiresAt = businessRow?.plan_expires_at ? new Date(businessRow.plan_expires_at) : null;
+  const hasActiveSubscription =
+    (planSlug === 'pro' || planSlug === 'business') &&
+    planExpiresAt instanceof Date &&
+    !Number.isNaN(planExpiresAt.getTime()) &&
+    planExpiresAt > now;
+  const hasOrders = (count || 0) > 0;
+  const trialStarted = Boolean(businessRow?.plan_started_at || businessRow?.trial_expires_at);
+
+  if (hasActiveSubscription || hasOrders || trialStarted) {
+    return {
+      allowed: false,
+      message: 'No se puede cambiar el país: hay suscripción activa, pedidos o el trial ya comenzó.',
+    };
+  }
+  return { allowed: true, message: null };
+}
+
 function getProductLimitByPlan(planSlug) {
   const activePlan = normalizePlanSlug(planSlug);
   if (activePlan === 'business') return null;
@@ -543,8 +581,12 @@ export async function updateBusiness(businessId, updates) {
   if (updates?.city !== undefined)        dbUpdates.city = updates?.city;
   if (updates?.region !== undefined)      dbUpdates.region = updates?.region;
 
-  // País/moneda: persistir cuando la UI envía `countryCode` (tras política de billing en pantalla).
-  if (updates?.countryCode !== undefined) {
+  // País/moneda: solo persistir con acción explícita de guardado (`persistCountry = true`).
+  if (updates?.countryCode !== undefined && updates?.persistCountry === true) {
+    const countryGuard = await validateCountryUpdateAllowed({ businessId, userId: user?.id });
+    if (!countryGuard.allowed) {
+      return { data: null, error: { message: countryGuard.message } };
+    }
     const raw = String(updates.countryCode || '').trim().toUpperCase();
     if (raw && COUNTRY_CODES.includes(raw)) {
       const cfg = getCountryConfig(raw);
@@ -562,6 +604,11 @@ export async function updateBusiness(businessId, updates) {
         currency: dbUpdates.currency,
       });
     }
+  } else if (updates?.countryCode !== undefined && updates?.persistCountry !== true) {
+    console.info('[VENTALINK_COUNTRY_PERSIST]', {
+      event: 'skip_country_update_without_explicit_save',
+      businessId,
+    });
   }
 
   if (updates?.logoUrl !== undefined)     dbUpdates.logo_url = updates?.logoUrl;

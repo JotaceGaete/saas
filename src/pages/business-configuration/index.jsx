@@ -99,6 +99,10 @@ function buildSavedConfigSnapshotFromBusiness(business) {
       city: business?.city,
       region: business?.region,
     }),
+    uxCountry:
+      business?.countryCodeDb != null && String(business.countryCodeDb).trim() !== ''
+        ? String(business.countryCodeDb).trim().toUpperCase()
+        : null,
   });
 }
 
@@ -146,12 +150,17 @@ export default function BusinessConfiguration() {
   const [orderMessageTemplate, setOrderMessageTemplate] = useState('');
   const [business, setBusiness] = useState(null);
   const [businessFetchLoading, setBusinessFetchLoading] = useState(false);
-  /** País ISO persistido (sincronizado con BD). */
-  const [selectedCountryCode, setSelectedCountryCode] = useState(null);
+  /** País ISO en UX (solo se persiste al guardar). */
+  const [uxCountry, setUxCountry] = useState(null);
   /** Sin país en BD: `suggest` (bloque sugerido) o `manual` (selector explícito). */
   const [countryFlowMode, setCountryFlowMode] = useState('suggest');
   const [manualCountryCode, setManualCountryCode] = useState('');
-  const [isConfirmingCountry, setIsConfirmingCountry] = useState(false);
+  const [countryGuards, setCountryGuards] = useState({
+    loading: false,
+    hasOrders: false,
+    trialStarted: false,
+    hasActiveSubscription: false,
+  });
 
   const suggestedCountryCode = useMemo(() => suggestCountryCodeHint({ user }), [user]);
 
@@ -162,7 +171,7 @@ export default function BusinessConfiguration() {
       : null;
   /** Solo con `country_code` en BD (`countryCodeDb`): UI con etiquetas/prefijos; si no, neutro (sin fallback). */
   const hasPersistedCountry = persistedCountryCode != null;
-  const uiCountryCode = hasPersistedCountry ? (selectedCountryCode ?? persistedCountryCode) : null;
+  const uiCountryCode = uxCountry ?? persistedCountryCode;
   const countryLabels = getCountryLabels(uiCountryCode);
   const countryChangePolicy = business ? evaluateBusinessCountryChangePolicy(business) : { allowed: false };
   const countryStatePreview = resolveCountryState({
@@ -251,11 +260,13 @@ export default function BusinessConfiguration() {
         bankForm,
         orderMessageTemplate,
         fullAddressInput,
+        uxCountry,
       }),
-    [form, design, bankForm, orderMessageTemplate, fullAddressInput],
+    [form, design, bankForm, orderMessageTemplate, fullAddressInput, uxCountry],
   );
 
   const isDirty = Boolean(business?.id && savedConfigSnapshot && currentConfigSnapshot !== savedConfigSnapshot);
+  const hasUnsavedCountryChange = (uxCountry ?? null) !== (persistedCountryCode ?? null);
 
   useEffect(() => {
     console.log('[VTLK_ROUTE] Renderizando: ' + (typeof window !== 'undefined' ? window.location.pathname : ''));
@@ -267,8 +278,53 @@ export default function BusinessConfiguration() {
       business.countryCodeDb != null && String(business.countryCodeDb).trim() !== ''
         ? String(business.countryCodeDb).trim().toUpperCase()
         : null;
-    setSelectedCountryCode(code);
+    setUxCountry(code);
   }, [business?.id, business?.countryCodeDb]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadCountryGuards = async () => {
+      const bizId = business?.id;
+      if (!bizId) return;
+      setCountryGuards((prev) => ({ ...prev, loading: true }));
+      try {
+        const [{ count }, { data: businessRow }] = await Promise.all([
+          supabase
+            .from('wa_orders')
+            .select('id', { count: 'exact', head: true })
+            .eq('business_id', bizId),
+          supabase
+            .from('wa_businesses')
+            .select('plan_slug, plan_expires_at, trial_expires_at, plan_started_at')
+            .eq('id', bizId)
+            .maybeSingle(),
+        ]);
+        if (cancelled) return;
+        const now = new Date();
+        const planSlug = String(businessRow?.plan_slug || '').trim().toLowerCase();
+        const expiresAt = businessRow?.plan_expires_at ? new Date(businessRow.plan_expires_at) : null;
+        const hasActiveSubscription =
+          (planSlug === 'pro' || planSlug === 'business') &&
+          expiresAt instanceof Date &&
+          !Number.isNaN(expiresAt.getTime()) &&
+          expiresAt > now;
+        const trialStarted = Boolean(businessRow?.plan_started_at || businessRow?.trial_expires_at);
+        setCountryGuards({
+          loading: false,
+          hasOrders: (count || 0) > 0,
+          trialStarted,
+          hasActiveSubscription,
+        });
+      } catch (_) {
+        if (cancelled) return;
+        setCountryGuards((prev) => ({ ...prev, loading: false }));
+      }
+    };
+    loadCountryGuards();
+    return () => {
+      cancelled = true;
+    };
+  }, [business?.id, business?.updatedAt]);
 
   useEffect(() => {
     if (hasPersistedCountry) return;
@@ -292,7 +348,7 @@ export default function BusinessConfiguration() {
     console.info(window.__VTLK_COUNTRY_DEBUG__ ? '[VTLK_COUNTRY_CONFIG]' : '[VENTALINK_BUSINESS_CONFIG_COUNTRY]', {
       persistedDb: business?.countryCodeDb ?? null,
       hostnameUxHint: getCountryCode(),
-      selectedCountryCode,
+      uxCountry,
       uiCountryCode,
       neutralNoCountry: !persistedCountryCode,
       billingCountry: countryStatePreview.billingCountry,
@@ -302,7 +358,7 @@ export default function BusinessConfiguration() {
     });
   }, [
     persistedCountryCode,
-    selectedCountryCode,
+    uxCountry,
     uiCountryCode,
     countryStatePreview.billingCountry,
     billingPreview.billingProvider,
@@ -473,56 +529,22 @@ export default function BusinessConfiguration() {
     }
   };
 
-  const handleConfirmCountry = async (isoCode) => {
+  const handleCountrySelection = (isoCode) => {
     const raw = String(isoCode || '').trim().toUpperCase();
     if (!raw || !COUNTRY_CODES.includes(raw)) {
       showToast('Selecciona un país válido.', 'error');
       return;
     }
-    const bizId = business?.id;
-    if (!bizId) {
-      showToast('No se encontró el negocio. Intenta recargar la página.', 'error');
+    if (raw === (uxCountry ?? persistedCountryCode)) return;
+    if (countryGuards.hasActiveSubscription || countryGuards.hasOrders || countryGuards.trialStarted) {
+      showToast('No puedes cambiar el país: hay suscripción activa, pedidos o el trial ya comenzó.', 'error');
       return;
     }
-    if (persistedCountryCode) {
-      showToast('El país del negocio ya está fijado.', 'error');
-      return;
-    }
-
-    setIsConfirmingCountry(true);
-    try {
-      const nextDesign = { ...design };
-      nextDesign.showCatalogCurrencySymbol = false;
-
-      const cfg = getCountryConfig(raw);
-      const payload = {
-        countryCode: raw,
-        designSettings: nextDesign,
-      };
-      if (typeof window !== 'undefined') {
-        console.log('[VTLK_COUNTRY_SAVE]', {
-          countryCode: raw,
-          country: cfg?.name ?? raw,
-          currency: cfg?.currency ?? 'USD',
-          payload,
-        });
-      }
-
-      const { data: updated, error } = await updateBusiness(bizId, payload);
-      if (error) {
-        showToast('Error al guardar el país: ' + (error?.message || JSON.stringify(error)), 'error');
-        return;
-      }
-      await refreshBusiness();
-      if (updated) setBusiness(updated);
-      setSelectedCountryCode(raw);
-      showToast('País del negocio guardado.', 'success');
-    } catch (e) {
-      console.error('[BusinessConfig] handleConfirmCountry', e);
-      showToast('Error inesperado al confirmar el país.', 'error');
-    } finally {
-      setIsConfirmingCountry(false);
-    }
+    const ok = window.confirm(
+      'Changing the country will affect currency, pricing and payment providers. This action may not be reversible. Do you want to continue?',
+    );
+    if (!ok) return;
+    setUxCountry(raw);
   };
 
   const handleSaveSettings = async () => {
@@ -533,7 +555,8 @@ export default function BusinessConfiguration() {
     }
     setIsSaving(true);
 
-    const parsedAddr = parseAddressByCountry(fullAddressInput, persistedCountryCode);
+    const countryToPersist = uxCountry ?? persistedCountryCode;
+    const parsedAddr = parseAddressByCountry(fullAddressInput, countryToPersist);
     const slugClean = (s) => (String(s || '').trim() || '').replace(/\s+/g, '-').toLowerCase();
     const nextSlug = slugEditUnlocked
       ? slugClean(form?.slug) || slugClean(business?.slug)
@@ -565,6 +588,14 @@ export default function BusinessConfiguration() {
       bankRut: bankForm?.bankRut,
       bankEmail: bankForm?.bankEmail,
     };
+    if (countryToPersist && countryToPersist !== persistedCountryCode) {
+      payload.countryCode = countryToPersist;
+      payload.persistCountry = true;
+      payload.designSettings = {
+        ...design,
+        showCatalogCurrencySymbol: false,
+      };
+    }
 
     try {
       const { data: updated, error } = await updateBusiness(bizId, payload);
@@ -591,6 +622,7 @@ export default function BusinessConfiguration() {
           bankForm,
           orderMessageTemplate,
           fullAddressInput: buildFullAddressLine(parsedAddr),
+          uxCountry: countryToPersist,
         }),
       );
       showToast('¡Configuración guardada!', 'success');
@@ -608,7 +640,7 @@ export default function BusinessConfiguration() {
       business.countryCodeDb != null && String(business.countryCodeDb).trim() !== ''
         ? String(business.countryCodeDb).trim().toUpperCase()
         : null;
-    setSelectedCountryCode(code);
+    setUxCountry(code);
     const revertedLabels = getCountryLabels(code);
     setForm({
       name: business?.name || '',
@@ -773,8 +805,8 @@ export default function BusinessConfiguration() {
                     <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                       <button
                         type="button"
-                        disabled={isConfirmingCountry}
-                        onClick={() => handleConfirmCountry(suggestedCountryCode)}
+                        disabled={countryGuards.loading}
+                        onClick={() => handleCountrySelection(suggestedCountryCode)}
                         className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold text-white transition-all hover:opacity-90 disabled:opacity-60"
                         style={{
                           background: 'linear-gradient(135deg, var(--color-primary) 0%, #7c3aed 100%)',
@@ -782,17 +814,11 @@ export default function BusinessConfiguration() {
                           boxShadow: '0 2px 8px rgba(139,92,246,0.35)',
                         }}
                       >
-                        {isConfirmingCountry ? (
-                          <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none">
-                            <circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,0.3)" strokeWidth="3" />
-                            <path d="M12 2a10 10 0 0 1 10 10" stroke="#fff" strokeWidth="3" strokeLinecap="round" />
-                          </svg>
-                        ) : null}
                         Usar {suggestedCfg.name}
                       </button>
                       <button
                         type="button"
-                        disabled={isConfirmingCountry}
+                        disabled={countryGuards.loading}
                         onClick={() => {
                           setCountryFlowMode('manual');
                           setManualCountryCode('');
@@ -814,36 +840,24 @@ export default function BusinessConfiguration() {
                     </p>
                     <CountryIsoSelect
                       value={manualCountryCode || ''}
-                      onChange={(code) => setManualCountryCode(code || '')}
-                      disabled={isConfirmingCountry}
+                      onChange={(code) => {
+                        setManualCountryCode(code || '');
+                        handleCountrySelection(code || '');
+                      }}
+                      disabled={countryGuards.loading}
                       className={inputClass}
-                      style={{ ...inputStyle, cursor: isConfirmingCountry ? 'not-allowed' : 'pointer' }}
+                      style={{ ...inputStyle, cursor: countryGuards.loading ? 'not-allowed' : 'pointer' }}
                     />
                     <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                      <button
-                        type="button"
-                        disabled={isConfirmingCountry || !manualCountryCode}
-                        onClick={() => handleConfirmCountry(manualCountryCode)}
-                        className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold text-white transition-all hover:opacity-90 disabled:opacity-60"
-                        style={{
-                          background: 'linear-gradient(135deg, var(--color-primary) 0%, #7c3aed 100%)',
-                          fontFamily: 'var(--font-caption)',
-                          boxShadow: '0 2px 8px rgba(139,92,246,0.35)',
-                        }}
-                      >
-                        {isConfirmingCountry ? (
-                          <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none">
-                            <circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,0.3)" strokeWidth="3" />
-                            <path d="M12 2a10 10 0 0 1 10 10" stroke="#fff" strokeWidth="3" strokeLinecap="round" />
-                          </svg>
-                        ) : null}
-                        Confirmar país
-                        {manualCfg?.name ? ` (${manualCfg.name})` : ''}
-                      </button>
+                      {manualCfg?.name && (
+                        <p className="text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
+                          País elegido: <strong>{manualCfg.name}</strong>
+                        </p>
+                      )}
                       {suggestedCfg?.name && (
                         <button
                           type="button"
-                          disabled={isConfirmingCountry}
+                          disabled={countryGuards.loading}
                           onClick={() => {
                             setCountryFlowMode('suggest');
                             setManualCountryCode('');
@@ -989,6 +1003,24 @@ export default function BusinessConfiguration() {
                           <option key={r?.id} value={r?.id}>{r?.name}</option>
                         ))}
                       </select>
+                    </SettingsField>
+
+                    <SettingsField
+                      label="País del negocio"
+                      hint="Solo se guarda cuando presionas Guardar cambios."
+                    >
+                      <CountryIsoSelect
+                        value={uxCountry || ''}
+                        onChange={(code) => handleCountrySelection(code || '')}
+                        disabled={countryGuards.loading}
+                        className={`${inputClass} cursor-pointer`}
+                        style={inputStyle}
+                      />
+                      {(countryGuards.hasActiveSubscription || countryGuards.hasOrders || countryGuards.trialStarted) && (
+                        <p className="mt-1 text-xs" style={{ color: '#dc2626', fontFamily: 'var(--font-caption)' }}>
+                          Cambio bloqueado: suscripción activa, pedidos o trial iniciado.
+                        </p>
+                      )}
                     </SettingsField>
 
                     <SettingsField
@@ -1231,6 +1263,16 @@ export default function BusinessConfiguration() {
           aria-label="Acciones de guardado"
         >
           <div className="max-w-2xl mx-auto w-full flex flex-col-reverse sm:flex-row items-stretch sm:items-center sm:justify-end gap-3">
+            {hasUnsavedCountryChange && (
+              <button
+                type="button"
+                onClick={() => setUxCountry(persistedCountryCode)}
+                disabled={isSaving}
+                className="px-4 py-2.5 rounded-xl text-sm font-medium border border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100 disabled:opacity-50 transition-colors font-[family-name:var(--font-caption)]"
+              >
+                Restore
+              </button>
+            )}
             <button
               type="button"
               onClick={discardConfigChanges}
