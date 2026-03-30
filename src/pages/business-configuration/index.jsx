@@ -1205,24 +1205,9 @@ export default function BusinessConfiguration() {
             </div>
             )}
 
-            {settingsTab === 'design' && business?.id && (
+            {settingsTab === 'design' && (
               <div className="mb-8">
-                <DesignSettings
-                  design={design}
-                  onChange={setDesign}
-                  businessId={business.id}
-                  isSaving={isSaving}
-                  onSave={handleSaveSettings}
-                  showToast={showToast}
-                />
-              </div>
-            )}
-
-            {settingsTab === 'design' && !business?.id && (
-              <div className={`${cardClass} mb-8`}>
-                <p className="text-sm text-slate-600 font-[family-name:var(--font-caption)]">
-                  Completa la creación de tu negocio para editar diseño y categorías del catálogo.
-                </p>
+                <DesignSettings />
               </div>
             )}
 

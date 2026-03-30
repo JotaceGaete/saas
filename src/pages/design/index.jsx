@@ -152,7 +152,7 @@ export default function DesignPage() {
     <DashboardAppShell backgroundColor="#f7f7f9">
         <PanelHeader
           title={<h1 className="text-lg font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>Diseño</h1>}
-          subtitle={<p className="text-xs hidden sm:block" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Todo lo visual vive aquí.</p>}
+          subtitle={<p className="text-xs hidden sm:block" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Apariencia, categorías, layout y encabezado del catálogo.</p>}
         />
 
         <DashboardLayoutContent
@@ -168,7 +168,6 @@ export default function DesignPage() {
                 isSaving={isSaving}
                 onSave={handleSaveDesign}
                 showToast={showToast}
-                designOnly
               />
             </div>
             <div

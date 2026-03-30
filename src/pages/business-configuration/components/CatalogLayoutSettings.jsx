@@ -38,7 +38,7 @@ function SectionCard({ icon, title, subtitle, children }) {
 
 /**
  * Ajustes de layout del catálogo (JSONB `design_settings`).
- * Pestaña Diseño en configuración del negocio.
+ * Montado desde la pantalla principal **Diseño** (`/design`) vía `DesignCustomization`.
  */
 export default function CatalogLayoutSettings({ design, onChange }) {
   const primaryColor = design?.primaryColor || '#7C3AED';

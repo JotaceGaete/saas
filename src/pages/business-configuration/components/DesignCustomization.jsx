@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import Icon from 'components/AppIcon';
 import Image from 'components/AppImage';
 import { uploadBusinessLogo, uploadBusinessCover } from '../../../services/waBusinessService';
+import CatalogLayoutSettings from './CatalogLayoutSettings';
 
 const CATALOG_STYLES = [
   {
@@ -167,6 +168,20 @@ function ThemeMiniPreview({ theme, primaryColor }) {
   );
 }
 
+/** Encabezados de sección en la pantalla Diseño (orden unificado). */
+function DesignUnifiedHeading({ title, subtitle, isFirst }) {
+  return (
+    <div
+      className={`flex flex-col gap-1 ${isFirst ? 'pt-0' : 'border-t border-slate-100 pt-8'}`}
+    >
+      <h2 className="text-lg font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-text-primary)' }}>{title}</h2>
+      {subtitle ? (
+        <p className="text-xs pb-1" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>{subtitle}</p>
+      ) : null}
+    </div>
+  );
+}
+
 export default function DesignCustomization({
   design,
   onChange,
@@ -174,7 +189,6 @@ export default function DesignCustomization({
   isSaving,
   onSave,
   showToast,
-  designOnly = false,
   hideSaveButton = false,
 }) {
   const logoInputRef = useRef(null);
@@ -183,7 +197,6 @@ export default function DesignCustomization({
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [uploadingCover, setUploadingCover] = useState(false);
   const [uploadingShareImage, setUploadingShareImage] = useState(false);
-  const [showAdvanced, setShowAdvanced] = useState(false);
 
   // Cargar la fuente seleccionada para el catálogo (preview móvil, etc.)
   useEffect(() => {
@@ -296,24 +309,8 @@ export default function DesignCustomization({
   const selectedFont = design?.font || 'Inter';
 
   return (
-    <div className="flex flex-col gap-5 max-w-2xl">
-      {/* Section heading */}
-      <div className="flex items-center gap-3 pb-1">
-        <div
-          className="w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0"
-          style={{ background: `linear-gradient(135deg, ${primaryColor}20 0%, ${primaryColor}10 100%)` }}
-        >
-          <Icon name="Palette" size={20} color={primaryColor} />
-        </div>
-        <div>
-          <h2 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-text-primary)' }}>
-            Apariencia del catálogo
-          </h2>
-          <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-            Personaliza cómo se ve tu tienda para tus clientes
-          </p>
-        </div>
-      </div>
+    <div className="flex flex-col gap-6 max-w-2xl">
+      <DesignUnifiedHeading isFirst title="Apariencia" subtitle="Color, portada y logo" />
 
       {/* 1. Primary Color */}
       <SectionCard icon="Droplets" title="Color principal" subtitle="Se aplica a botones, badges y acentos de tu catálogo" accent={primaryColor}>
@@ -510,7 +507,121 @@ export default function DesignCustomization({
         </div>
       </SectionCard>
 
-      {/* 2b. Share Image (OG/WhatsApp) */}
+      {/* 3. Store Logo */}
+      <SectionCard icon="CircleUser" title="Logo de la tienda" subtitle="Aparece centrado en el encabezado, sobre el nombre de la tienda">
+        <div className="flex items-center gap-6">
+          {/* Logo preview */}
+          <div
+            className="relative w-24 h-24 rounded-full overflow-hidden border-2 flex items-center justify-center group cursor-pointer flex-shrink-0 transition-all"
+            style={{
+              borderColor: design?.logoUrl ? primaryColor : 'var(--color-border)',
+              backgroundColor: '#f0f0f8',
+              boxShadow: design?.logoUrl ? `0 0 0 3px ${primaryColor}20` : 'none',
+            }}
+            onClick={() => logoInputRef?.current?.click()}
+          >
+            {design?.logoUrl ? (
+              <>
+                <Image key={design?.logoUrl} src={design?.logoUrl} alt="Logo de la tienda" className="w-full h-full object-cover" />
+                <div
+                  className="absolute inset-0 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity gap-0.5"
+                  style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}
+                >
+                  <Icon name="Camera" size={18} color="#fff" />
+                  <span className="text-[10px] text-white font-medium" style={{ fontFamily: 'var(--font-caption)' }}>Cambiar</span>
+                </div>
+              </>
+            ) : (
+              <div className="flex flex-col items-center gap-1.5">
+                {uploadingLogo ? (
+                  <svg className="animate-spin" width="20" height="20" viewBox="0 0 24 24" fill="none">
+                    <circle cx="12" cy="12" r="10" stroke="rgba(139,92,246,0.2)" strokeWidth="3" />
+                    <path d="M12 2a10 10 0 0 1 10 10" stroke="var(--color-primary)" strokeWidth="3" strokeLinecap="round" />
+                  </svg>
+                ) : (
+                  <Icon name="Store" size={24} color="#a0a0b8" />
+                )}
+                <span className="text-xs text-center" style={{ color: '#a0a0b8', fontFamily: 'var(--font-caption)', fontSize: '9px' }}>Sin logo</span>
+              </div>
+            )}
+          </div>
+          {/* Logo actions */}
+          <div className="flex flex-col gap-2">
+            <p className="text-xs" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
+              El logo aparece en un contenedor circular centrado sobre el nombre de la tienda.
+            </p>
+            <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+              Si no hay logo, se muestra el ícono predeterminado.
+            </p>
+            <div className="flex flex-wrap gap-2 mt-1">
+              <button
+                onClick={() => logoInputRef?.current?.click()}
+                disabled={uploadingLogo}
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium transition-all hover:opacity-80 disabled:opacity-50"
+                style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)', backgroundColor: '#ffffff', fontFamily: 'var(--font-caption)' }}
+              >
+                <Icon name="Upload" size={12} color="var(--color-text-secondary)" />
+                {uploadingLogo ? 'Subiendo...' : design?.logoUrl ? 'Cambiar logo' : 'Subir logo'}
+              </button>
+              {design?.logoUrl && (
+                <button
+                  onClick={() => onChange?.({ ...design, logoUrl: '' })}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium transition-all hover:opacity-80"
+                  style={{ border: '1px solid #fecaca', color: '#ef4444', backgroundColor: '#fff5f5', fontFamily: 'var(--font-caption)' }}
+                >
+                  <Icon name="Trash2" size={12} color="#ef4444" />
+                  Eliminar logo
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </SectionCard>
+
+      <DesignUnifiedHeading title="Estilo del catálogo" subtitle="Sombra y espaciado de las tarjetas de producto" />
+
+      {/* 4. Catalog Style Selector */}
+      <SectionCard icon="Layers" title="Estilo de tarjetas" subtitle="Ajusta la presentación visual de las tarjetas de producto">
+        <div className="grid grid-cols-3 gap-3">
+          {CATALOG_STYLES?.map(style => (
+            <button
+              key={style?.id}
+              onClick={() => onChange?.({ ...design, catalogStyle: style?.id })}
+              className="relative flex flex-col gap-2 p-3 rounded-xl border-2 transition-all text-left"
+              style={{
+                borderColor: selectedStyle === style?.id ? primaryColor : 'var(--color-border)',
+                backgroundColor: selectedStyle === style?.id ? `${primaryColor}08` : '#fafafa',
+              }}
+            >
+              {selectedStyle === style?.id && (
+                <div
+                  className="absolute top-2 right-2 w-5 h-5 rounded-full flex items-center justify-center"
+                  style={{ backgroundColor: primaryColor }}
+                >
+                  <Icon name="Check" size={11} color="#fff" />
+                </div>
+              )}
+              <StyleMiniCard style={style} primaryColor={primaryColor} isSelected={selectedStyle === style?.id} />
+              <div>
+                <p
+                  className="text-xs font-bold"
+                  style={{ color: selectedStyle === style?.id ? primaryColor : 'var(--color-text-primary)', fontFamily: 'var(--font-caption)' }}
+                >
+                  {style?.label}
+                </p>
+                <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+                  {style?.description}
+                </p>
+              </div>
+            </button>
+          ))}
+        </div>
+      </SectionCard>
+
+      <CatalogLayoutSettings design={design} onChange={onChange} />
+
+      <DesignUnifiedHeading title="Opciones avanzadas" subtitle="Imagen para compartir, tema y tipografía" />
+
       <SectionCard
         icon="Share2"
         title="Imagen para compartir en WhatsApp"
@@ -591,123 +702,80 @@ export default function DesignCustomization({
         </div>
       </SectionCard>
 
-      {/* 3. Store Logo */}
-      <SectionCard icon="CircleUser" title="Logo de la tienda" subtitle="Aparece centrado en el encabezado, sobre el nombre de la tienda">
-        <div className="flex items-center gap-6">
-          {/* Logo preview */}
-          <div
-            className="relative w-24 h-24 rounded-full overflow-hidden border-2 flex items-center justify-center group cursor-pointer flex-shrink-0 transition-all"
-            style={{
-              borderColor: design?.logoUrl ? primaryColor : 'var(--color-border)',
-              backgroundColor: '#f0f0f8',
-              boxShadow: design?.logoUrl ? `0 0 0 3px ${primaryColor}20` : 'none',
-            }}
-            onClick={() => logoInputRef?.current?.click()}
-          >
-            {design?.logoUrl ? (
-              <>
-                <Image key={design?.logoUrl} src={design?.logoUrl} alt="Logo de la tienda" className="w-full h-full object-cover" />
-                <div
-                  className="absolute inset-0 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity gap-0.5"
-                  style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}
-                >
-                  <Icon name="Camera" size={18} color="#fff" />
-                  <span className="text-[10px] text-white font-medium" style={{ fontFamily: 'var(--font-caption)' }}>Cambiar</span>
-                </div>
-              </>
-            ) : (
-              <div className="flex flex-col items-center gap-1.5">
-                {uploadingLogo ? (
-                  <svg className="animate-spin" width="20" height="20" viewBox="0 0 24 24" fill="none">
-                    <circle cx="12" cy="12" r="10" stroke="rgba(139,92,246,0.2)" strokeWidth="3" />
-                    <path d="M12 2a10 10 0 0 1 10 10" stroke="var(--color-primary)" strokeWidth="3" strokeLinecap="round" />
-                  </svg>
-                ) : (
-                  <Icon name="Store" size={24} color="#a0a0b8" />
-                )}
-                <span className="text-xs text-center" style={{ color: '#a0a0b8', fontFamily: 'var(--font-caption)', fontSize: '9px' }}>Sin logo</span>
-              </div>
-            )}
-          </div>
-          {/* Logo actions */}
-          <div className="flex flex-col gap-2">
-            <p className="text-xs" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
-              El logo aparece en un contenedor circular centrado sobre el nombre de la tienda.
-            </p>
-            <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-              Si no hay logo, se muestra el ícono predeterminado.
-            </p>
-            <div className="flex flex-wrap gap-2 mt-1">
-              <button
-                onClick={() => logoInputRef?.current?.click()}
-                disabled={uploadingLogo}
-                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium transition-all hover:opacity-80 disabled:opacity-50"
-                style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)', backgroundColor: '#ffffff', fontFamily: 'var(--font-caption)' }}
-              >
-                <Icon name="Upload" size={12} color="var(--color-text-secondary)" />
-                {uploadingLogo ? 'Subiendo...' : design?.logoUrl ? 'Cambiar logo' : 'Subir logo'}
-              </button>
-              {design?.logoUrl && (
+      <SectionCard icon="Settings2" title="Tema y tipografía" subtitle="Tema de color global y fuente del catálogo">
+        <div className="flex flex-col gap-5">
+          <div>
+            <p className="text-xs font-bold mb-3" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Tema de color</p>
+            <div className="grid grid-cols-3 gap-3">
+              {THEMES?.map(theme => (
                 <button
-                  onClick={() => onChange?.({ ...design, logoUrl: '' })}
-                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium transition-all hover:opacity-80"
-                  style={{ border: '1px solid #fecaca', color: '#ef4444', backgroundColor: '#fff5f5', fontFamily: 'var(--font-caption)' }}
+                  key={theme?.id}
+                  type="button"
+                  onClick={() => onChange?.({ ...design, theme: theme?.id })}
+                  className="relative flex flex-col gap-2 p-3 rounded-xl border-2 transition-all text-left"
+                  style={{
+                    borderColor: selectedTheme === theme?.id ? primaryColor : 'var(--color-border)',
+                    backgroundColor: selectedTheme === theme?.id ? `${primaryColor}08` : '#fafafa',
+                  }}
                 >
-                  <Icon name="Trash2" size={12} color="#ef4444" />
-                  Eliminar logo
+                  {selectedTheme === theme?.id && (
+                    <div className="absolute top-2 right-2 w-5 h-5 rounded-full flex items-center justify-center" style={{ backgroundColor: primaryColor }}>
+                      <Icon name="Check" size={11} color="#fff" />
+                    </div>
+                  )}
+                  <ThemeMiniPreview theme={theme} primaryColor={primaryColor} />
+                  <div>
+                    <p className="text-xs font-bold" style={{ color: selectedTheme === theme?.id ? primaryColor : 'var(--color-text-primary)', fontFamily: 'var(--font-caption)' }}>{theme?.label}</p>
+                    <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>{theme?.description}</p>
+                  </div>
                 </button>
-              )}
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <p className="text-xs font-bold mb-3" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Tipografía</p>
+            <div className="flex flex-col gap-2">
+              {FONTS?.map(font => (
+                <button
+                  key={font?.id}
+                  type="button"
+                  onClick={() => onChange?.({ ...design, font: font?.id })}
+                  className="flex items-center justify-between px-4 py-3 rounded-xl border-2 transition-all text-left"
+                  style={{
+                    borderColor: selectedFont === font?.id ? primaryColor : 'var(--color-border)',
+                    backgroundColor: selectedFont === font?.id ? `${primaryColor}08` : '#fafafa',
+                  }}
+                >
+                  <div className="flex flex-col gap-1 min-w-0 flex-1">
+                    <span className="text-xs font-semibold" style={{ color: selectedFont === font?.id ? primaryColor : 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>{font?.label}</span>
+                    <div className="flex flex-col gap-0.5" style={{ fontFamily: `'${font?.id}', sans-serif`, color: 'var(--color-text-primary)' }}>
+                      <span className="text-sm font-semibold leading-tight">{FONT_PREVIEW_LINES.sample}</span>
+                      <span className="text-xs leading-snug">{FONT_PREVIEW_LINES.body}</span>
+                    </div>
+                  </div>
+                  {selectedFont === font?.id && (
+                    <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ml-2" style={{ backgroundColor: primaryColor }}>
+                      <Icon name="Check" size={11} color="#fff" />
+                    </div>
+                  )}
+                </button>
+              ))}
             </div>
           </div>
         </div>
       </SectionCard>
 
-      {/* 4. Catalog Style Selector */}
-      <SectionCard icon="Layers" title="Estilo del catálogo" subtitle="Ajusta la presentación visual de las tarjetas de producto">
-        <div className="grid grid-cols-3 gap-3">
-          {CATALOG_STYLES?.map(style => (
-            <button
-              key={style?.id}
-              onClick={() => onChange?.({ ...design, catalogStyle: style?.id })}
-              className="relative flex flex-col gap-2 p-3 rounded-xl border-2 transition-all text-left"
-              style={{
-                borderColor: selectedStyle === style?.id ? primaryColor : 'var(--color-border)',
-                backgroundColor: selectedStyle === style?.id ? `${primaryColor}08` : '#fafafa',
-              }}
-            >
-              {selectedStyle === style?.id && (
-                <div
-                  className="absolute top-2 right-2 w-5 h-5 rounded-full flex items-center justify-center"
-                  style={{ backgroundColor: primaryColor }}
-                >
-                  <Icon name="Check" size={11} color="#fff" />
-                </div>
-              )}
-              <StyleMiniCard style={style} primaryColor={primaryColor} isSelected={selectedStyle === style?.id} />
-              <div>
-                <p
-                  className="text-xs font-bold"
-                  style={{ color: selectedStyle === style?.id ? primaryColor : 'var(--color-text-primary)', fontFamily: 'var(--font-caption)' }}
-                >
-                  {style?.label}
-                </p>
-                <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-                  {style?.description}
-                </p>
-              </div>
-            </button>
-          ))}
-        </div>
-      </SectionCard>
-
-      {/* Save button */}
       {!hideSaveButton && (
-      <div className="flex items-center justify-end gap-3 pt-2">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-4 border-t" style={{ borderColor: 'var(--color-border)' }}>
+        <p className="text-xs order-2 sm:order-1" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+          Los cambios se guardan en <strong>design_settings</strong> de tu negocio.
+        </p>
         <button
           type="button"
           onClick={onSave}
           disabled={isSaving}
-          className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:opacity-90 disabled:opacity-60"
+          className="order-1 sm:order-2 flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:opacity-90 disabled:opacity-60"
           style={{
             background: `linear-gradient(135deg, ${primaryColor} 0%, #7c3aed 100%)`,
             fontFamily: 'var(--font-caption)',
@@ -725,96 +793,12 @@ export default function DesignCustomization({
           ) : (
             <>
               <Icon name="Save" size={14} color="#fff" />
-              Guardar apariencia
+              Guardar diseño
             </>
           )}
         </button>
       </div>
       )}
-
-      {/* Advanced options collapsible */}
-      <div className="border rounded-2xl overflow-hidden" style={{ borderColor: 'var(--color-border)' }}>
-        <button
-          onClick={() => setShowAdvanced(v => !v)}
-          className="w-full flex items-center justify-between px-5 py-4 transition-all hover:bg-gray-50"
-          style={{ backgroundColor: '#fafafa' }}
-        >
-          <div className="flex items-center gap-2">
-            <Icon name="Settings2" size={15} color="var(--color-text-secondary)" />
-            <span className="text-sm font-semibold" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
-              Opciones avanzadas
-            </span>
-            <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: 'var(--color-border)', color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-              Tema y tipografía
-            </span>
-          </div>
-          <Icon name={showAdvanced ? 'ChevronUp' : 'ChevronDown'} size={16} color="var(--color-text-tertiary)" />
-        </button>
-
-        {showAdvanced && (
-          <div className="flex flex-col gap-5 p-5 border-t" style={{ borderColor: 'var(--color-border)', backgroundColor: '#ffffff' }}>
-            {/* Theme Selector */}
-            <div>
-              <p className="text-xs font-bold mb-3" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Tema de color</p>
-              <div className="grid grid-cols-3 gap-3">
-                {THEMES?.map(theme => (
-                  <button
-                    key={theme?.id}
-                    onClick={() => onChange?.({ ...design, theme: theme?.id })}
-                    className="relative flex flex-col gap-2 p-3 rounded-xl border-2 transition-all text-left"
-                    style={{
-                      borderColor: selectedTheme === theme?.id ? primaryColor : 'var(--color-border)',
-                      backgroundColor: selectedTheme === theme?.id ? `${primaryColor}08` : '#fafafa',
-                    }}
-                  >
-                    {selectedTheme === theme?.id && (
-                      <div className="absolute top-2 right-2 w-5 h-5 rounded-full flex items-center justify-center" style={{ backgroundColor: primaryColor }}>
-                        <Icon name="Check" size={11} color="#fff" />
-                      </div>
-                    )}
-                    <ThemeMiniPreview theme={theme} primaryColor={primaryColor} />
-                    <div>
-                      <p className="text-xs font-bold" style={{ color: selectedTheme === theme?.id ? primaryColor : 'var(--color-text-primary)', fontFamily: 'var(--font-caption)' }}>{theme?.label}</p>
-                      <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>{theme?.description}</p>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Font Selector — cada tarjeta renderiza con la fuente real para distinguir tipografías */}
-            <div>
-              <p className="text-xs font-bold mb-3" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Tipografía</p>
-              <div className="flex flex-col gap-2">
-                {FONTS?.map(font => (
-                  <button
-                    key={font?.id}
-                    onClick={() => onChange?.({ ...design, font: font?.id })}
-                    className="flex items-center justify-between px-4 py-3 rounded-xl border-2 transition-all text-left"
-                    style={{
-                      borderColor: selectedFont === font?.id ? primaryColor : 'var(--color-border)',
-                      backgroundColor: selectedFont === font?.id ? `${primaryColor}08` : '#fafafa',
-                    }}
-                  >
-                    <div className="flex flex-col gap-1 min-w-0 flex-1">
-                      <span className="text-xs font-semibold" style={{ color: selectedFont === font?.id ? primaryColor : 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>{font?.label}</span>
-                      <div className="flex flex-col gap-0.5" style={{ fontFamily: `'${font?.id}', sans-serif`, color: 'var(--color-text-primary)' }}>
-                        <span className="text-sm font-semibold leading-tight">{FONT_PREVIEW_LINES.sample}</span>
-                        <span className="text-xs leading-snug">{FONT_PREVIEW_LINES.body}</span>
-                      </div>
-                    </div>
-                    {selectedFont === font?.id && (
-                      <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ml-2" style={{ backgroundColor: primaryColor }}>
-                        <Icon name="Check" size={11} color="#fff" />
-                      </div>
-                    )}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
 
       {/* Hidden file inputs */}
       <input ref={logoInputRef} type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
