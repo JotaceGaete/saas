@@ -6,7 +6,7 @@ import { assertBusinessOwnership } from '../services/billing/ownershipService.js
 import { getEffectivePlanSlug } from '../lib/billing/effectivePlan.js';
 import { generateProductDescription, AI_TASKS } from '../lib/ai/provider.js';
 import { assertGenerateProductDescriptionPlanPolicy } from '../lib/ai/planPolicy.js';
-import { resolveProviderAndModelForTask } from '../lib/ai/config.js';
+import { resolveProviderAndModelForTask, getSecondaryProviderId } from '../lib/ai/config.js';
 import { insertAiUsageLog } from '../services/ai/aiUsageLogService.js';
 import { consumeGenerateProductDescriptionSlot } from '../lib/ai/rateLimit.js';
 
@@ -78,16 +78,33 @@ function computeContentInputHash({ text, productName, maxDescriptionLength }) {
 }
 
 /**
- * Clave de cache: businessId + input canónico + provider + model (64 hex).
+ * Clave de cache: businessId + input canónico (sin provider/model).
+ * Así un acierto vía fallback (p. ej. OpenAI) reutiliza la misma entrada que si el primario hubiera sido otro.
  */
-function computeCacheKey({ businessId, text, productName, maxDescriptionLength, providerId, model }) {
+function computeCacheKey({ businessId, text, productName, maxDescriptionLength }) {
   const stable = JSON.stringify({
     businessId: String(businessId || '').trim(),
     inputHash: computeContentInputHash({ text, productName, maxDescriptionLength }),
-    provider: String(providerId || '').trim().toLowerCase(),
-    model: String(model || '').trim(),
   });
   return createHash('sha256').update(stable, 'utf8').digest('hex');
+}
+
+/**
+ * Log único y visible: primary / fallback / final / fallback_used / cache hit|miss.
+ * @param {object} p
+ */
+function logGenerateProductDescriptionRouting(p) {
+  console.info('[ai][routing] generate-product-description', {
+    primaryProvider: p.primaryProvider,
+    fallbackProvider: p.fallbackProvider,
+    finalProvider: p.finalProvider,
+    fallback_used: p.fallback_used,
+    cache: p.cache,
+    model: p.model ?? null,
+    businessId: p.businessId ?? null,
+    productId: p.productId ?? null,
+    durationMs: p.durationMs ?? null,
+  });
 }
 
 /**
@@ -173,14 +190,12 @@ export async function aiGenerateProductDescriptionController(request) {
     }
 
     const taskId = AI_TASKS.GENERATE_PRODUCT_DESCRIPTION;
-    const { providerId, model } = resolveProviderAndModelForTask(taskId);
+    const { providerId: configuredProviderId } = resolveProviderAndModelForTask(taskId);
     const cacheKey = computeCacheKey({
       businessId,
       text,
       productName,
       maxDescriptionLength,
-      providerId,
-      model,
     });
     const inputHash = computeContentInputHash({ text, productName, maxDescriptionLength });
 
@@ -198,12 +213,18 @@ export async function aiGenerateProductDescriptionController(request) {
     }
 
     if (cached?.description) {
-      console.info('[ai] generate-product-description cache hit', {
+      const fallbackProvider = getSecondaryProviderId(configuredProviderId);
+      const finalProv = String(cached.provider || '').trim() || configuredProviderId;
+      const fbUsed = Boolean(cached.usage_metadata?.fallback_used);
+      logGenerateProductDescriptionRouting({
+        primaryProvider: configuredProviderId,
+        fallbackProvider,
+        finalProvider: finalProv,
+        fallback_used: fbUsed,
+        cache: 'hit',
+        model: cached.model,
         businessId,
         productId: productId || null,
-        provider: cached.provider,
-        model: cached.model,
-        cacheKey: `${cacheKey.slice(0, 12)}…`,
         durationMs: Date.now() - routeStart,
       });
       await insertAiUsageLog({
@@ -213,7 +234,7 @@ export async function aiGenerateProductDescriptionController(request) {
         provider: cached.provider,
         model: cached.model,
         cached: true,
-        usage: null,
+        usage: cached.usage_metadata ?? null,
         productId: productId || null,
       });
       return json({
@@ -221,6 +242,7 @@ export async function aiGenerateProductDescriptionController(request) {
         cached: true,
         provider: cached.provider,
         model: cached.model,
+        fallback_used: fbUsed,
         title: cached.title,
         description: cached.description,
         benefits: cached.benefits || [],
@@ -236,6 +258,14 @@ export async function aiGenerateProductDescriptionController(request) {
       taskId,
     });
 
+    const cacheUsageMeta = {
+      ...(gen.usage && typeof gen.usage === 'object' ? gen.usage : {}),
+      configured_provider: gen.configuredProvider,
+      final_provider: gen.provider,
+      fallback_used: gen.fallbackUsed === true,
+      ...(gen.primaryErrorSummary ? { primary_error_summary: gen.primaryErrorSummary } : {}),
+    };
+
     const { error: insErr } = await admin.from('wa_ai_product_description_cache').insert({
       business_id: businessId,
       product_id: productId || null,
@@ -248,7 +278,7 @@ export async function aiGenerateProductDescriptionController(request) {
       benefits: gen.data?.benefits ?? [],
       call_to_action: gen.data?.call_to_action ?? null,
       hashtags: gen.data?.hashtags ?? [],
-      usage_metadata: gen.usage,
+      usage_metadata: Object.keys(cacheUsageMeta).length ? cacheUsageMeta : null,
     });
 
     if (insErr) {
@@ -264,13 +294,22 @@ export async function aiGenerateProductDescriptionController(request) {
       cached: false,
       usage: gen.usage,
       productId: productId || null,
+      configuredProvider: gen.configuredProvider,
+      fallbackUsed: gen.fallbackUsed,
+      primaryErrorSummary: gen.primaryErrorSummary,
     });
 
-    console.info('[ai] generate-product-description done', {
-      provider: gen.provider,
+    const fallbackProvider = getSecondaryProviderId(gen.configuredProvider);
+    logGenerateProductDescriptionRouting({
+      primaryProvider: gen.configuredProvider,
+      fallbackProvider,
+      finalProvider: gen.provider,
+      fallback_used: gen.fallbackUsed === true,
+      cache: 'miss',
       model: gen.model,
+      businessId,
+      productId: productId || null,
       durationMs: Date.now() - routeStart,
-      usage: gen.usage,
     });
 
     return json({
@@ -278,6 +317,7 @@ export async function aiGenerateProductDescriptionController(request) {
       cached: false,
       provider: gen.provider,
       model: gen.model,
+      fallback_used: gen.fallbackUsed === true,
       title: gen.data?.title,
       description: gen.data?.description,
       benefits: gen.data?.benefits || [],

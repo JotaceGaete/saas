@@ -19,6 +19,25 @@ function getAdminClient() {
  * Extrae tokens de usageMetadata (Gemini / OpenAI) para columnas numéricas.
  * @param {object|null|undefined} usage
  */
+/**
+ * @param {object} row
+ * @returns {object|null}
+ */
+function buildUsageMetadataForLog(row) {
+  const base = row.usage && typeof row.usage === 'object' ? { ...row.usage } : {};
+  if (row.configuredProvider != null && row.configuredProvider !== '') {
+    base.configured_provider = row.configuredProvider;
+  }
+  base.final_provider = row.provider;
+  if (row.fallbackUsed === true) {
+    base.fallback_used = true;
+  }
+  if (row.primaryErrorSummary) {
+    base.primary_error_summary = row.primaryErrorSummary;
+  }
+  return Object.keys(base).length ? base : null;
+}
+
 function extractTokenCounts(usage) {
   if (!usage || typeof usage !== 'object') {
     return { prompt_tokens: null, completion_tokens: null, total_tokens: null };
@@ -45,11 +64,14 @@ function extractTokenCounts(usage) {
  * @param {string} row.businessId
  * @param {string} row.userId
  * @param {string} row.feature
- * @param {string} row.provider
+ * @param {string} row.provider - proveedor que respondió (final)
  * @param {string} row.model
  * @param {boolean} row.cached
- * @param {object|null} [row.usage]
+ * @param {object|null} [row.usage] - metadata del proveedor final (tokens, etc.)
  * @param {string|null} [row.productId]
+ * @param {string} [row.configuredProvider] - proveedor elegido por env (antes de fallback)
+ * @param {boolean} [row.fallbackUsed]
+ * @param {string|null} [row.primaryErrorSummary]
  */
 export async function insertAiUsageLog(row) {
   const admin = getAdminClient();
@@ -58,6 +80,10 @@ export async function insertAiUsageLog(row) {
     return;
   }
   const tokens = extractTokenCounts(row.usage);
+  const usageMeta =
+    row.cached === true
+      ? row.usage ?? null
+      : buildUsageMetadataForLog(row);
   const { error } = await admin.from('wa_ai_usage_log').insert({
     business_id: row.businessId,
     user_id: row.userId,
@@ -68,7 +94,7 @@ export async function insertAiUsageLog(row) {
     prompt_tokens: tokens.prompt_tokens,
     completion_tokens: tokens.completion_tokens,
     total_tokens: tokens.total_tokens,
-    usage_metadata: row.usage ?? null,
+    usage_metadata: usageMeta,
     product_id: row.productId || null,
   });
   if (error) {

@@ -44,6 +44,15 @@ export function resolveProviderAndModelForTask(taskId) {
   return { providerId, model };
 }
 
+/**
+ * Otro proveedor para fallback (gemini ↔ openai).
+ * @param {'gemini'|'openai'} primaryId
+ * @returns {'gemini'|'openai'}
+ */
+export function getSecondaryProviderId(primaryId) {
+  return primaryId === 'openai' ? 'gemini' : 'openai';
+}
+
 /** Timeout de llamada al proveedor (ms). Env: AI_PROVIDER_TIMEOUT_MS (default 8000). */
 export function getAiProviderTimeoutMs() {
   const n = Number(process.env.AI_PROVIDER_TIMEOUT_MS);

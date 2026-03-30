@@ -2,9 +2,20 @@
  * Capa de abstracción de IA — proveedor intercambiable por tarea.
  * (Paridad con la estructura solicitada: provider.ts + providers/*)
  */
-import { getProviderIdForTask, getGeminiModel, getAiProviderTimeoutMs } from './config.js';
+import {
+  getProviderIdForTask,
+  getGeminiModel,
+  getOpenAiModel,
+  getAiProviderTimeoutMs,
+  getSecondaryProviderId,
+} from './config.js';
 import { generateProductDescriptionGemini } from './providers/gemini.js';
 import { generateProductDescriptionOpenAi } from './providers/openai.js';
+import {
+  shouldAttemptFallbackFromPrimaryError,
+  summarizeAiError,
+  hasProviderApiKeyConfigured,
+} from './retryableError.js';
 
 /**
  * @typedef {object} ProductDescriptionStructured
@@ -26,6 +37,25 @@ import { generateProductDescriptionOpenAi } from './providers/openai.js';
 export const AI_TASKS = {
   GENERATE_PRODUCT_DESCRIPTION: 'generateProductDescription',
 };
+
+/**
+ * Log visible: primary / fallback / final / fallback_used (sin cache; lo añade el controller).
+ * @param {string} taskId
+ * @param {string} phase
+ * @param {object} p
+ * @param {'gemini'|'openai'} p.primaryProvider
+ * @param {'gemini'|'openai'} p.fallbackProvider
+ * @param {'gemini'|'openai'|null} [p.finalProvider]
+ * @param {boolean} p.fallback_used
+ */
+function logAiRouting(taskId, phase, p) {
+  console.info(`[ai][routing] ${taskId} :: ${phase}`, {
+    primaryProvider: p.primaryProvider,
+    fallbackProvider: p.fallbackProvider,
+    finalProvider: p.finalProvider ?? null,
+    fallback_used: p.fallback_used,
+  });
+}
 
 function buildSystemPrompt(maxDescChars) {
   return `Eres un optimizador de publicaciones para ventas online. Recibes un texto básico del usuario y devuelves datos estructurados para publicar el producto.
@@ -57,62 +87,176 @@ function buildUserMessage(input) {
 }
 
 /**
- * Punto de entrada común: genera descripción de producto estructurada.
- * El proveedor se elige por env (por task), sin hardcodear Gemini a nivel de app.
- *
- * @param {GenerateProductDescriptionInput} input
- * @returns {Promise<{ provider: string, model: string, durationMs: number, usage: object|null, data: ProductDescriptionStructured }>}
+ * @param {'gemini'|'openai'} providerId
+ * @param {object} ctx
+ * @param {string} ctx.systemPrompt
+ * @param {string} ctx.userMessage
+ * @param {number} ctx.timeoutMs
  */
-export async function generateProductDescription(input) {
-  const taskId = input.taskId || AI_TASKS.GENERATE_PRODUCT_DESCRIPTION;
-  const providerId = getProviderIdForTask(taskId);
-  const maxDescChars = Math.min(Math.max(Number(input.maxDescriptionLength) || 300, 50), 2000);
-  const systemPrompt = buildSystemPrompt(maxDescChars);
-  const userMessage = buildUserMessage(input);
-  const timeoutMs = getAiProviderTimeoutMs();
-
+async function callProductDescriptionProvider(providerId, ctx) {
+  const { systemPrompt, userMessage, timeoutMs } = ctx;
   if (providerId === 'openai') {
     const r = await generateProductDescriptionOpenAi({
       systemPrompt,
       userMessage,
       timeoutMs,
+      model: getOpenAiModel(),
     });
-    console.info('[ai] generateProductDescription', {
-      taskId,
-      provider: 'openai',
-      model: r.model,
-      durationMs: r.durationMs,
-      usage: r.usage,
-    });
+    const data = normalizeProductDescription(r.parsed);
     return {
       provider: 'openai',
       model: r.model,
       durationMs: r.durationMs,
       usage: r.usage,
-      data: normalizeProductDescription(r.parsed),
+      data,
     };
   }
-
   const r = await generateProductDescriptionGemini({
     systemPrompt,
     userMessage,
     model: getGeminiModel(),
     timeoutMs,
   });
-  console.info('[ai] generateProductDescription', {
-    taskId,
-    provider: 'gemini',
-    model: r.model,
-    durationMs: r.durationMs,
-    usage: r.usage,
-  });
+  const data = normalizeProductDescription(r.parsed);
   return {
     provider: 'gemini',
     model: r.model,
     durationMs: r.durationMs,
     usage: r.usage,
-    data: normalizeProductDescription(r.parsed),
+    data,
   };
+}
+
+/**
+ * Punto de entrada común: genera descripción de producto estructurada.
+ * El proveedor primario se elige por env (por task); si falla con error recuperable, se intenta el otro.
+ *
+ * @param {GenerateProductDescriptionInput} input
+ * @returns {Promise<{
+ *   provider: string,
+ *   model: string,
+ *   configuredProvider: string,
+ *   fallbackUsed: boolean,
+ *   primaryErrorSummary: string|null,
+ *   durationMs: number,
+ *   totalDurationMs: number,
+ *   usage: object|null,
+ *   data: ProductDescriptionStructured
+ * }>}
+ */
+export async function generateProductDescription(input) {
+  const taskId = input.taskId || AI_TASKS.GENERATE_PRODUCT_DESCRIPTION;
+  const primaryId = getProviderIdForTask(taskId);
+  const secondaryId = getSecondaryProviderId(primaryId);
+  const maxDescChars = Math.min(Math.max(Number(input.maxDescriptionLength) || 300, 50), 2000);
+  const systemPrompt = buildSystemPrompt(maxDescChars);
+  const userMessage = buildUserMessage(input);
+  const timeoutMs = getAiProviderTimeoutMs();
+  const ctx = { systemPrompt, userMessage, timeoutMs };
+
+  const started = Date.now();
+
+  try {
+    const result = await callProductDescriptionProvider(primaryId, ctx);
+    const totalDurationMs = Date.now() - started;
+    logAiRouting(taskId, 'primary_ok', {
+      primaryProvider: primaryId,
+      fallbackProvider: secondaryId,
+      finalProvider: result.provider,
+      fallback_used: false,
+    });
+    console.info('[ai] generateProductDescription timing', {
+      taskId,
+      model: result.model,
+      durationMs: result.durationMs,
+      totalDurationMs,
+    });
+    return {
+      provider: result.provider,
+      model: result.model,
+      configuredProvider: primaryId,
+      fallbackUsed: false,
+      primaryErrorSummary: null,
+      durationMs: result.durationMs,
+      totalDurationMs,
+      usage: result.usage,
+      data: result.data,
+    };
+  } catch (primaryErr) {
+    if (!shouldAttemptFallbackFromPrimaryError(primaryErr)) {
+      throw primaryErr;
+    }
+
+    logAiRouting(taskId, 'primary_fail_recoverable', {
+      primaryProvider: primaryId,
+      fallbackProvider: secondaryId,
+      finalProvider: null,
+      fallback_used: false,
+    });
+    console.warn('[ai] primary provider failed', {
+      task: taskId,
+      primaryProvider: primaryId,
+      fallbackProvider: secondaryId,
+      error: summarizeAiError(primaryErr),
+    });
+
+    if (!hasProviderApiKeyConfigured(secondaryId)) {
+      const keyName = secondaryId === 'openai' ? 'OPENAI_API_KEY' : 'GEMINI_API_KEY';
+      throw new Error(
+        `[ai] Fallback unavailable: ${keyName} is not set. Primary error: ${summarizeAiError(primaryErr)}`,
+      );
+    }
+
+    logAiRouting(taskId, 'fallback_start', {
+      primaryProvider: primaryId,
+      fallbackProvider: secondaryId,
+      finalProvider: null,
+      fallback_used: false,
+    });
+
+    try {
+      const result = await callProductDescriptionProvider(secondaryId, ctx);
+      const totalDurationMs = Date.now() - started;
+      logAiRouting(taskId, 'fallback_ok', {
+        primaryProvider: primaryId,
+        fallbackProvider: secondaryId,
+        finalProvider: result.provider,
+        fallback_used: true,
+      });
+      console.info('[ai] fallback provider success timing', {
+        taskId,
+        model: result.model,
+        durationMs: result.durationMs,
+        totalDurationMs,
+        primaryErrorSummary: summarizeAiError(primaryErr),
+      });
+      return {
+        provider: result.provider,
+        model: result.model,
+        configuredProvider: primaryId,
+        fallbackUsed: true,
+        primaryErrorSummary: summarizeAiError(primaryErr),
+        durationMs: result.durationMs,
+        totalDurationMs,
+        usage: result.usage,
+        data: result.data,
+      };
+    } catch (fallbackErr) {
+      logAiRouting(taskId, 'fallback_fail', {
+        primaryProvider: primaryId,
+        fallbackProvider: secondaryId,
+        finalProvider: null,
+        fallback_used: false,
+      });
+      console.error('[ai] fallback provider failed', {
+        task: taskId,
+        primaryProvider: primaryId,
+        fallbackProvider: secondaryId,
+        error: summarizeAiError(fallbackErr),
+      });
+      throw fallbackErr;
+    }
+  }
 }
 
 /**
