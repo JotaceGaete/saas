@@ -1,14 +1,22 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import Icon from 'components/AppIcon';
 import { getOrderCardTimeCaption } from 'utils/orderDates';
 import PaymentStatusToggle from './PaymentStatusToggle';
+import { isOrdersRenderDebug } from '../ordersRenderDebug';
+import { isOrdersDoubleFlickerDebug, ordersDoubleFlickerLog } from '../ordersDoubleFlickerLog';
 
 const STATUS_BADGE = {
   pedido: { label: 'Pedido', color: '#6366F1', bg: 'rgba(99,102,241,0.14)', icon: 'ShoppingBag' },
   en_preparacion: { label: 'En preparación', color: '#B45309', bg: 'rgba(245, 158, 11, 0.22)', icon: 'ChefHat' },
   enviado: { label: 'Enviado', color: '#0369A1', bg: 'rgba(14, 165, 233, 0.18)', icon: 'Truck' },
   entregado: { label: 'Entregado', color: '#059669', bg: 'rgba(16, 185, 129, 0.18)', icon: 'PackageCheck' },
+  cancelado: { label: 'Cancelado', color: '#6B7280', bg: 'rgba(107, 114, 128, 0.16)', icon: 'XCircle' },
 };
+
+/** Fuente canónica: `order.status` (mapeado desde `order_status` en BD). */
+export function getCanonicalOrderStatus(order) {
+  return order?.status || 'pedido';
+}
 
 function OrderStatusBadge({ status }) {
   const s = status || 'pedido';
@@ -37,10 +45,11 @@ function orderShortIdLocal(id) {
 }
 
 function nextQuickStatus(order) {
-  const s = order?.status || 'pedido';
+  const s = getCanonicalOrderStatus(order);
+  if (s === 'cancelado' || s === 'entregado') return null;
   if (s === 'pedido') return { status: 'en_preparacion', label: 'Pasar a preparación' };
-  if (s === 'en_preparacion') return { status: 'enviado', label: 'Marcar como Enviado' };
-  if (s === 'enviado') return { status: 'entregado', label: 'Marcar entregado' };
+  if (s === 'en_preparacion') return { status: 'enviado', label: 'Marcar como enviado' };
+  if (s === 'enviado') return { status: 'entregado', label: 'Marcar como entregado' };
   return null;
 }
 
@@ -71,6 +80,24 @@ function KanbanOrderCardView({
   const showPayToggle = showPaymentReconciliation(order);
   const shouldKeepActionSlot = Boolean(showPayToggle);
 
+  useEffect(() => {
+    if (!isOrdersRenderDebug()) return undefined;
+    console.log(`[mount] OrderCard:${order.id}`);
+    return () => console.log(`[unmount] OrderCard:${order.id}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- diagnóstico: instancia de card por order.id
+  }, []);
+
+  if (isOrdersRenderDebug()) {
+    console.count(`[render] OrderCard:${order.id}`);
+  }
+  if (isOrdersDoubleFlickerDebug()) {
+    ordersDoubleFlickerLog('render:OrderCard', {
+      orderId: order?.id ?? null,
+      status: getCanonicalOrderStatus(order),
+      paymentStatus: order?.paymentStatus ?? null,
+    });
+  }
+
   return (
     <div
       ref={cardRef}
@@ -98,7 +125,7 @@ function KanbanOrderCardView({
             <p className="text-[10px] font-mono shrink-0" style={{ color: 'var(--color-muted-foreground)' }}>
               #{shortId}
             </p>
-            <OrderStatusBadge status={order?.status} />
+            <OrderStatusBadge status={getCanonicalOrderStatus(order)} />
           </div>
           <div className="min-h-[30px]">
             {timeCaption.primary ? (
@@ -188,11 +215,25 @@ function KanbanOrderCardView({
   );
 }
 
+function orderDataShallowEqual(a, b) {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    String(a.id) === String(b.id) &&
+    getCanonicalOrderStatus(a) === getCanonicalOrderStatus(b) &&
+    (a.paymentStatus || 'pendiente') === (b.paymentStatus || 'pendiente') &&
+    String(a.updatedAt || '') === String(b.updatedAt || '') &&
+    String(a.deliveredAt || '') === String(b.deliveredAt || '') &&
+    String(a.sentAt || '') === String(b.sentAt || '') &&
+    Number(a.totalAmount) === Number(b.totalAmount)
+  );
+}
+
 export default React.memo(KanbanOrderCardView, (prev, next) => {
   const prevStyle = prev.cardStyle || {};
   const nextStyle = next.cardStyle || {};
   return (
-    prev.order === next.order &&
+    orderDataShallowEqual(prev.order, next.order) &&
     prev.formatCLP === next.formatCLP &&
     prev.onOpenDetail === next.onOpenDetail &&
     prev.onUpdate === next.onUpdate &&

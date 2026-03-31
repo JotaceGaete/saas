@@ -1,4 +1,4 @@
-import React, { useMemo, useState, memo, useRef, useCallback } from 'react';
+import React, { useMemo, useState, memo, useCallback, useEffect } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -15,6 +15,8 @@ import Icon from 'components/AppIcon';
 import { useIsDesktop } from '../../../hooks/useMediaQuery';
 import KanbanOrderCardView, { KANBAN_STATUS_BADGE_MAP } from './KanbanOrderCardView';
 import { getDeliveredSortTimeMs, getPreparacionSortTimeMs } from 'utils/orderDates';
+import { isOrdersRenderDebug, ordersDebugSeq } from '../ordersRenderDebug';
+import { isOrdersDoubleFlickerDebug, ordersDoubleFlickerLog } from '../ordersDoubleFlickerLog';
 
 const KANBAN_COLUMNS = [
   {
@@ -97,16 +99,6 @@ function sortDeliveredDesc(list) {
   });
 }
 
-function sameOrderIds(prevList, nextList) {
-  if (prevList === nextList) return true;
-  if (!Array.isArray(prevList) || !Array.isArray(nextList)) return false;
-  if (prevList.length !== nextList.length) return false;
-  for (let i = 0; i < prevList.length; i += 1) {
-    if (String(prevList[i]?.id) !== String(nextList[i]?.id)) return false;
-  }
-  return true;
-}
-
 /** Marco visual compartido (desktop droppable / móvil scroll horizontal). */
 function KanbanColumnFrame({
   column,
@@ -174,6 +166,14 @@ function KanbanColumn({ column, children, count }) {
 }
 
 const DesktopKanbanColumn = memo(function DesktopKanbanColumn({ column, list, renderCard }) {
+  useEffect(() => {
+    if (!isOrdersRenderDebug()) return undefined;
+    console.log(`[mount] OrderColumn:${column.id}`);
+    return () => console.log(`[unmount] OrderColumn:${column.id}`);
+  }, [column.id]);
+  if (isOrdersRenderDebug()) {
+    console.count(`[render] OrderColumn:${column.id}`);
+  }
   return (
     <KanbanColumn column={column} count={list.length}>
       {list.map((o) => renderCard(o))}
@@ -237,7 +237,6 @@ function OrdersKanban({
 }) {
   const isDesktop = useIsDesktop();
   const [activeId, setActiveId] = useState(null);
-  const stableListsRef = useRef({ pendientes: [], preparacion: [], entregado: [] });
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
@@ -253,19 +252,13 @@ function OrdersKanban({
       else if (col === 'preparacion') r.push(o);
       else if (col === 'entregado') e.push(o);
     }
-    const nextLists = {
+    // Siempre usar listas derivadas de `orders` actuales. Reutilizar arrays por solo-ID
+    // dejaba referencias viejas a objetos order → badge/CTA stale en la misma columna.
+    return {
       pendientes: sortByCreatedAsc(p),
       preparacion: sortPreparacionAsc(r),
       entregado: sortDeliveredDesc(e),
     };
-    const prevLists = stableListsRef.current;
-    const stable = {
-      pendientes: sameOrderIds(prevLists.pendientes, nextLists.pendientes) ? prevLists.pendientes : nextLists.pendientes,
-      preparacion: sameOrderIds(prevLists.preparacion, nextLists.preparacion) ? prevLists.preparacion : nextLists.preparacion,
-      entregado: sameOrderIds(prevLists.entregado, nextLists.entregado) ? prevLists.entregado : nextLists.entregado,
-    };
-    stableListsRef.current = stable;
-    return stable;
   }, [orders]);
 
   const activeOrder = useMemo(
@@ -274,10 +267,19 @@ function OrdersKanban({
   );
 
   const handleDragStart = useCallback(({ active }) => {
+    if (isOrdersRenderDebug()) {
+      ordersDebugSeq('dnd:dragStart', { activeId: active?.id ?? null });
+    }
     setActiveId(active?.id ?? null);
   }, []);
 
   const handleDragEnd = useCallback(({ active, over }) => {
+    if (isOrdersRenderDebug()) {
+      ordersDebugSeq('dnd:dragEnd', {
+        activeId: active?.id ?? null,
+        overId: over?.id ?? null,
+      });
+    }
     setActiveId(null);
     if (!over || !active) return;
     const orderId = active.id;
@@ -292,7 +294,38 @@ function OrdersKanban({
     onUpdate(orderId, { status: newStatus });
   }, [orders, onUpdate]);
 
-  const handleDragCancel = useCallback(() => setActiveId(null), []);
+  const handleDragCancel = useCallback(() => {
+    if (isOrdersRenderDebug()) {
+      ordersDebugSeq('dnd:dragCancel', {});
+    }
+    setActiveId(null);
+  }, []);
+
+  useEffect(() => {
+    if (!isOrdersRenderDebug()) return;
+    if (activeId) {
+      ordersDebugSeq('dnd:DragOverlay active', { activeId });
+    }
+  }, [activeId]);
+
+  useEffect(() => {
+    if (!isOrdersDoubleFlickerDebug()) return;
+    ordersDoubleFlickerLog('OrdersKanban:commit (orders prop new reference)', {
+      len: orders?.length,
+    });
+  }, [orders]);
+
+  if (isOrdersRenderDebug()) {
+    console.count('[render] OrdersKanban');
+  }
+  if (isOrdersDoubleFlickerDebug()) {
+    ordersDoubleFlickerLog('render:OrdersKanban', {
+      ordersLen: orders?.length ?? 0,
+      pendientes: pendientes?.length ?? 0,
+      preparacion: preparacion?.length ?? 0,
+      entregado: entregado?.length ?? 0,
+    });
+  }
 
   const renderCard = useCallback((order) => (
     <DraggableOrderCard

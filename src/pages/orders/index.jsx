@@ -25,6 +25,15 @@ import {
   isOrderVisibleOnActiveBoard,
 } from '../../constants/ordersBoard';
 import { filterDeliveredOrdersMissingDeliveredAt } from '../../utils/orderDates';
+import { isOrdersRenderDebug, ordersDebugSeq } from './ordersRenderDebug';
+import {
+  isOrdersDoubleFlickerDebug,
+  ordersDoubleFlickerLog,
+  startOrdersDoubleFlickerSession,
+} from './ordersDoubleFlickerLog';
+
+/** Ventana única: skip realtime UPDATE mientras el optimistic + API cubren el mismo cambio. */
+const LOCAL_UPDATE_REALTIME_SKIP_MS = 3000;
 
 const ORDER_STATUSES = [
   { key: 'pedido', label: 'Pedido', color: '#6366F1', bg: '#EEF2FF', icon: 'ShoppingBag' },
@@ -60,12 +69,27 @@ function mergeOrderFromRealtimeRow(prev, row) {
   };
 }
 
+/** Evita segundo setOrders/repaint si el merge realtime no cambia nada visible en tablero/resumen. */
+function isOrderKanbanMergeRedundant(prevOrder, merged) {
+  if (!prevOrder || !merged) return false;
+  return (
+    prevOrder.status === merged.status &&
+    prevOrder.paymentStatus === merged.paymentStatus &&
+    String(prevOrder.deliveredAt || '') === String(merged.deliveredAt || '') &&
+    String(prevOrder.sentAt || '') === String(merged.sentAt || '') &&
+    (Number(prevOrder.totalAmount) || 0) === (Number(merged.totalAmount) || 0)
+  );
+}
+
 /** Conteo animado al cambiar totales por estado. */
-function QuickCount({ value, className, style }) {
+const QuickCount = React.memo(function QuickCount({ value, className, style }) {
   const [display, setDisplay] = useState(() => Number(value) || 0);
   const fromRef = useRef(null);
 
   useEffect(() => {
+    if (isOrdersDoubleFlickerDebug()) {
+      ordersDoubleFlickerLog('QuickCount:value effect', { value: Number(value) || 0 });
+    }
     const target = Number(value) || 0;
     if (fromRef.current === null) {
       fromRef.current = target;
@@ -96,7 +120,7 @@ function QuickCount({ value, className, style }) {
       {display}
     </span>
   );
-}
+});
 
 function orderShortId(id) {
   if (!id) return '—';
@@ -156,19 +180,53 @@ function CompactOrderCardStatic({ order, formatCLP: fmt, onOpenDetail, shortIdFn
 
 export default function OrdersPage() {
   const { business, businessLoading } = useAuth();
-  const toast = useToast();
+  /** Solo callbacks estables; el objeto `useToast()` cambia de referencia en cada render del ToastProvider. */
+  const { error: toastError, success: toastSuccess } = useToast();
   const guard = useConfirmedEmailGuard();
   const [orders, setOrders] = useState([]);
+  const ordersRef = useRef([]);
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [showCancelledSection, setShowCancelledSection] = useState(false);
   const [detailOrder, setDetailOrder] = useState(null);
   const detailOrderRef = useRef(null);
+  const loadingRef = useRef(true);
+  const isUpdatingOrderRef = useRef(false);
+  const updatingUntilRef = useRef(0);
+  const businessIdRef = useRef(null);
   const pendingRealtimeSkipsRef = useRef(new Map());
+  const setDetailOrderTracked = useCallback((nextOrUpdater, source = 'unknown') => {
+    setDetailOrder((prev) => {
+      const next = typeof nextOrUpdater === 'function' ? nextOrUpdater(prev) : nextOrUpdater;
+      if (isOrdersDoubleFlickerDebug()) {
+        ordersDoubleFlickerLog('setDetailOrder', {
+          source,
+          prevId: prev?.id ?? null,
+          nextId: next?.id ?? null,
+          prevStatus: prev?.status ?? null,
+          nextStatus: next?.status ?? null,
+          changedRef: next !== prev,
+        });
+      }
+      return next;
+    });
+  }, []);
+  useEffect(() => {
+    ordersRef.current = orders;
+  }, [orders]);
+
   useEffect(() => {
     detailOrderRef.current = detailOrder;
   }, [detailOrder]);
+
+  useEffect(() => {
+    loadingRef.current = loading;
+  }, [loading]);
+
+  useEffect(() => {
+    businessIdRef.current = business?.id ?? null;
+  }, [business?.id]);
 
   const [boardVisibilityTick, setBoardVisibilityTick] = useState(0);
   useEffect(() => {
@@ -176,23 +234,128 @@ export default function OrdersPage() {
     return () => window.clearInterval(id);
   }, []);
 
-  const loadOrders = useCallback(async ({ silent = false } = {}) => {
-    if (!business?.id) {
-      if (!silent) setLoading(false);
+  /**
+   * Regla: `loadOrders` solo puede correr por razones explícitas:
+   * - 'initial_mount'
+   * - 'business_change'
+   * - 'manual_refresh'
+   *
+   * Además se bloquea durante 3s tras `handleUpdate` para evitar pisar estado local.
+   */
+  const loadOrders = useCallback(async ({ reason, silent = false } = {}) => {
+    if (!reason) throw new Error('OrdersPage.loadOrders: reason is required');
+    const allowedReasons = new Set(['initial_mount', 'business_change', 'manual_refresh']);
+    const now = Date.now();
+    const blockedByUpdate = isUpdatingOrderRef.current && updatingUntilRef.current > now;
+    const allowed = allowedReasons.has(reason);
+
+    if (isOrdersRenderDebug()) {
+      ordersDebugSeq('loadOrders:call', { reason, silent, businessId: business?.id ?? null });
+    }
+    if (isOrdersDoubleFlickerDebug()) {
+      ordersDoubleFlickerLog('loadOrders:call', {
+        reason,
+        allowed,
+        blockedByUpdate,
+        silent,
+        businessId: business?.id ?? null,
+        updatingUntil: updatingUntilRef.current || null,
+      });
+    }
+
+    if (!allowed) {
+      if (isOrdersDoubleFlickerDebug()) {
+        ordersDoubleFlickerLog('loadOrders:blocked (reason not allowed)', { reason });
+      }
       return;
     }
-    if (!silent) setLoading(true);
+    if (blockedByUpdate) {
+      if (isOrdersDoubleFlickerDebug()) {
+        ordersDoubleFlickerLog('loadOrders:blocked (local update window)', {
+          reason,
+          msLeft: Math.max(0, updatingUntilRef.current - now),
+        });
+      }
+      return;
+    }
+
+    if (!business?.id) {
+      if (!silent) {
+        if (isOrdersDoubleFlickerDebug()) {
+          ordersDoubleFlickerLog('setLoading', {
+            from: 'loadOrders',
+            value: false,
+            prevValue: loadingRef.current,
+            changedValue: loadingRef.current !== false,
+          });
+        }
+        setLoading(false);
+      }
+      return;
+    }
+    if (!silent) {
+      if (isOrdersDoubleFlickerDebug()) {
+        ordersDoubleFlickerLog('setLoading', {
+          from: 'loadOrders',
+          value: true,
+          prevValue: loadingRef.current,
+          changedValue: loadingRef.current !== true,
+        });
+      }
+      setLoading(true);
+    }
     await expireDeliveredOrders(business.id);
     const { data, error } = await getOrders(business?.id);
     if (error) {
-      toast?.error('Error al cargar los pedidos');
+      toastError('Error al cargar los pedidos');
     } else {
-      setOrders(data || []);
+      if (isOrdersRenderDebug()) {
+        ordersDebugSeq('loadOrders:setOrders(full replace)', {
+          silent,
+          count: (data || []).length,
+        });
+      }
+      if (isOrdersDoubleFlickerDebug()) {
+        ordersDoubleFlickerLog('setOrders:call', {
+          label: 'loadOrders:full replace',
+          reason,
+          count: (data || []).length,
+          silent,
+        });
+      }
+      setOrders((prev) => {
+        const next = data || [];
+        if (isOrdersDoubleFlickerDebug()) {
+          ordersDoubleFlickerLog('setOrders', {
+            label: 'loadOrders:full replace',
+            reason,
+            prevLen: prev?.length ?? 0,
+            nextLen: next?.length ?? 0,
+            changedRef: next !== prev,
+          });
+        }
+        return next;
+      });
     }
-    if (!silent) setLoading(false);
-  }, [business?.id, toast]);
+    if (!silent) {
+      if (isOrdersDoubleFlickerDebug()) {
+        ordersDoubleFlickerLog('setLoading', {
+          from: 'loadOrders',
+          value: false,
+          prevValue: loadingRef.current,
+          changedValue: loadingRef.current !== false,
+        });
+      }
+      setLoading(false);
+    }
+  }, [business?.id, toastError]);
 
-  useEffect(() => { loadOrders(); }, [loadOrders]);
+  /** Solo carga inicial / cambio de negocio — no debe re-ejecutarse por re-renders del Toast u otros contextos. */
+  useEffect(() => {
+    if (!business?.id) return;
+    // Carga inicial (1 vez por business.id)
+    loadOrders({ reason: 'initial_mount', silent: false });
+  }, [business?.id, loadOrders]);
 
   /** Dev: `?debugDeliveredAt=1` lista entregados sin `delivered_at`; `window.__inspectDeliveredAtGaps__()` en cualquier momento. */
   const devDeliveredDebugOnce = useRef(false);
@@ -230,13 +393,6 @@ export default function OrdersPage() {
 
   useEffect(() => {
     if (!business?.id) return;
-    const onVisible = () => { if (document.visibilityState === 'visible') loadOrders({ silent: true }); };
-    document.addEventListener('visibilitychange', onVisible);
-    return () => document.removeEventListener('visibilitychange', onVisible);
-  }, [business?.id, loadOrders]);
-
-  useEffect(() => {
-    if (!business?.id) return;
     const channelName = `wa_orders_business_${business.id}`;
     const ch = supabase
       ?.channel(channelName)
@@ -245,25 +401,48 @@ export default function OrdersPage() {
         { event: 'INSERT', schema: 'public', table: 'wa_orders', filter: `business_id=eq.${business.id}` },
         (payload) => {
           const id = payload?.new?.id;
+          if (isOrdersRenderDebug()) {
+            ordersDebugSeq('realtime:INSERT', { id: id ?? null });
+          }
+          if (isOrdersDoubleFlickerDebug()) {
+            ordersDoubleFlickerLog('realtime:INSERT received', { id: id ?? null });
+          }
           if (!id) {
-            loadOrders({ silent: true });
+            if (isOrdersDoubleFlickerDebug()) ordersDoubleFlickerLog('realtime:INSERT skipped (no id, no full reload)', {});
             return;
           }
           void (async () => {
             const { data, error } = await getOrderById(id);
             if (error || !data) {
-              loadOrders({ silent: true });
+              if (isOrdersDoubleFlickerDebug()) {
+                ordersDoubleFlickerLog('realtime:INSERT getOrderById failed (no full reload)', { id: String(id) });
+              }
+              toastError('No se pudo cargar un pedido nuevo. Usa Refrescar si hace falta.');
               return;
+            }
+            if (isOrdersRenderDebug()) {
+              ordersDebugSeq('realtime:INSERT merge (getOrderById)', { id: String(id) });
             }
             setOrders((prev) => {
               const sid = String(id);
               const idx = prev.findIndex((o) => String(o?.id) === sid);
+              let next;
               if (idx >= 0) {
-                const next = [...prev];
+                next = [...prev];
                 next[idx] = data;
-                return next;
+              } else {
+                next = [data, ...prev];
               }
-              return [data, ...prev];
+              if (isOrdersDoubleFlickerDebug()) {
+                ordersDoubleFlickerLog('setOrders', {
+                  label: 'realtime:INSERT merge',
+                  id: sid,
+                  prevLen: prev?.length ?? 0,
+                  nextLen: next?.length ?? 0,
+                  changedRef: next !== prev,
+                });
+              }
+              return next;
             });
           })();
         },
@@ -273,13 +452,40 @@ export default function OrdersPage() {
         { event: 'UPDATE', schema: 'public', table: 'wa_orders', filter: `business_id=eq.${business.id}` },
         (payload) => {
           const row = payload?.new;
+          if (isOrdersRenderDebug()) {
+            ordersDebugSeq('realtime:UPDATE received', {
+              id: row?.id ?? null,
+              order_status: row?.order_status ?? null,
+              updated_at: row?.updated_at ?? null,
+            });
+          }
+          if (isOrdersDoubleFlickerDebug()) {
+            ordersDoubleFlickerLog('realtime:UPDATE received', {
+              id: row?.id ?? null,
+              order_status: row?.order_status ?? null,
+              updated_at: row?.updated_at ?? null,
+            });
+          }
           if (!row?.id) {
-            loadOrders({ silent: true });
+            if (isOrdersDoubleFlickerDebug()) ordersDoubleFlickerLog('realtime:UPDATE skipped (no id, no full reload)', {});
             return;
           }
           const orderId = String(row.id);
           const expiresAt = pendingRealtimeSkipsRef.current.get(orderId);
           if (expiresAt && expiresAt > Date.now()) {
+            if (isOrdersRenderDebug()) {
+              ordersDebugSeq('realtime:UPDATE skipped (pending local window)', {
+                orderId,
+                until: expiresAt,
+              });
+            }
+            if (isOrdersDoubleFlickerDebug()) {
+              ordersDoubleFlickerLog('realtime:UPDATE skipped (local skip window)', {
+                orderId,
+                until: expiresAt,
+                msLeft: Math.round(expiresAt - Date.now()),
+              });
+            }
             return;
           }
           if (expiresAt) pendingRealtimeSkipsRef.current.delete(orderId);
@@ -287,26 +493,142 @@ export default function OrdersPage() {
           setOrders((prev) => {
             const idx = prev.findIndex((o) => String(o?.id) === orderId);
             if (idx < 0) {
+              if (isOrdersRenderDebug()) {
+                ordersDebugSeq('realtime:UPDATE order not in list → getOrderById', { orderId });
+              }
+              if (isOrdersDoubleFlickerDebug()) {
+                ordersDoubleFlickerLog('realtime:UPDATE fetch missing order', { orderId });
+              }
               void getOrderById(orderId).then(({ data }) => {
                 if (!data) return;
                 setOrders((p) => {
-                  if (p.some((o) => String(o?.id) === orderId)) return p;
-                  return [data, ...p];
+                  if (p.some((o) => String(o?.id) === orderId)) {
+                    if (isOrdersDoubleFlickerDebug()) {
+                      ordersDoubleFlickerLog('setOrders', {
+                        label: 'realtime:UPDATE after getOrderById (noop exists)',
+                        orderId,
+                        prevLen: p?.length ?? 0,
+                        nextLen: p?.length ?? 0,
+                        changedRef: false,
+                      });
+                    }
+                    return p;
+                  }
+                  const next = [data, ...p];
+                  if (isOrdersDoubleFlickerDebug()) {
+                    ordersDoubleFlickerLog('setOrders', {
+                      label: 'realtime:UPDATE after getOrderById',
+                      orderId,
+                      prevLen: p?.length ?? 0,
+                      nextLen: next?.length ?? 0,
+                      changedRef: next !== p,
+                    });
+                  }
+                  return next;
                 });
               });
+              if (isOrdersDoubleFlickerDebug()) {
+                ordersDoubleFlickerLog('setOrders', {
+                  label: 'realtime:UPDATE merge (noop missing in list)',
+                  orderId,
+                  prevLen: prev?.length ?? 0,
+                  nextLen: prev?.length ?? 0,
+                  changedRef: false,
+                });
+              }
               return prev;
             }
             const merged = mergeOrderFromRealtimeRow(prev[idx], row);
-            if (!merged) return prev;
+            if (!merged) {
+              if (isOrdersDoubleFlickerDebug()) {
+                ordersDoubleFlickerLog('setOrders', {
+                  label: 'realtime:UPDATE merge (noop merged null)',
+                  orderId,
+                  prevLen: prev?.length ?? 0,
+                  nextLen: prev?.length ?? 0,
+                  changedRef: false,
+                });
+              }
+              return prev;
+            }
+            if (isOrderKanbanMergeRedundant(prev[idx], merged)) {
+              if (isOrdersDoubleFlickerDebug()) {
+                ordersDoubleFlickerLog('realtime:UPDATE merge skipped (redundant vs list)', { orderId });
+                ordersDoubleFlickerLog('setOrders', {
+                  label: 'realtime:UPDATE merge (noop redundant)',
+                  orderId,
+                  prevLen: prev?.length ?? 0,
+                  nextLen: prev?.length ?? 0,
+                  changedRef: false,
+                });
+              }
+              return prev;
+            }
+            if (isOrdersRenderDebug()) {
+              ordersDebugSeq('realtime:UPDATE merge row', {
+                orderId,
+                prevStatus: prev[idx]?.status,
+                nextStatus: merged?.status,
+              });
+            }
+            if (isOrdersDoubleFlickerDebug()) {
+              ordersDoubleFlickerLog('setOrders', {
+                label: 'realtime:UPDATE merge',
+                orderId,
+                prevStatus: prev[idx]?.status,
+                nextStatus: merged?.status,
+                prevLen: prev?.length ?? 0,
+                nextLen: prev?.length ?? 0,
+                changedRef: true,
+              });
+            }
             const next = [...prev];
             next[idx] = merged;
             return next;
           });
 
           setDetailOrder((prev) => {
-            if (!prev || String(prev.id) !== orderId) return prev;
+            if (!prev || String(prev.id) !== orderId) {
+              if (isOrdersDoubleFlickerDebug()) {
+                ordersDoubleFlickerLog('setDetailOrder', {
+                  label: 'realtime:UPDATE merge (noop different detail)',
+                  orderId,
+                  changedRef: false,
+                });
+              }
+              return prev;
+            }
             const merged = mergeOrderFromRealtimeRow(prev, row);
-            return merged || prev;
+            if (!merged) {
+              if (isOrdersDoubleFlickerDebug()) {
+                ordersDoubleFlickerLog('setDetailOrder', {
+                  label: 'realtime:UPDATE merge (noop merged null)',
+                  orderId,
+                  changedRef: false,
+                });
+              }
+              return prev;
+            }
+            if (isOrderKanbanMergeRedundant(prev, merged)) {
+              if (isOrdersDoubleFlickerDebug()) {
+                ordersDoubleFlickerLog('setDetailOrder', {
+                  label: 'realtime:UPDATE merge (noop redundant)',
+                  orderId,
+                  changedRef: false,
+                });
+              }
+              return prev;
+            }
+            if (isOrdersDoubleFlickerDebug()) {
+              ordersDoubleFlickerLog('setDetailOrder', {
+                label: 'realtime:UPDATE merge',
+                orderId,
+                prevStatus: prev?.status,
+                nextStatus: merged?.status,
+                changedRef: merged !== prev,
+              });
+            }
+            return merged;
           });
         },
       )
@@ -315,26 +637,117 @@ export default function OrdersPage() {
         { event: 'DELETE', schema: 'public', table: 'wa_orders', filter: `business_id=eq.${business.id}` },
         (payload) => {
           const id = String(payload?.old?.id || '');
+          if (isOrdersRenderDebug()) {
+            ordersDebugSeq('realtime:DELETE', { id: id || null });
+          }
           if (!id) return;
-          setOrders((prev) => prev.filter((o) => String(o?.id) !== id));
-          setDetailOrder((prev) => (prev && String(prev.id) === id ? null : prev));
+          if (isOrdersDoubleFlickerDebug()) {
+            ordersDoubleFlickerLog('realtime:DELETE', { id });
+          }
+          setOrders((prev) => {
+            const next = prev.filter((o) => String(o?.id) !== id);
+            if (isOrdersDoubleFlickerDebug()) {
+              ordersDoubleFlickerLog('setOrders', {
+                label: 'realtime:DELETE filter',
+                id,
+                prevLen: prev?.length ?? 0,
+                nextLen: next?.length ?? 0,
+                changedRef: next !== prev,
+              });
+            }
+            return next;
+          });
+          setDetailOrder((prev) => {
+            const next = prev && String(prev.id) === id ? null : prev;
+            if (isOrdersDoubleFlickerDebug()) {
+              ordersDoubleFlickerLog('setDetailOrder', {
+                label: 'realtime:DELETE',
+                id,
+                changedRef: next !== prev,
+              });
+            }
+            return next;
+          });
         },
       )
       ?.subscribe();
     return () => {
       if (ch) supabase?.removeChannel(ch);
     };
-  }, [business?.id, loadOrders]);
+  }, [business?.id, toastError]);
 
   const handleUpdate = useCallback(async (orderId, updates) => {
     return guard.runIfConfirmedAsync(async () => {
       const oid = String(orderId);
+      const current = ordersRef.current?.find((x) => String(x?.id) === oid);
+      if (updates?.status != null && current) {
+        const cur = current.status || 'pedido';
+        if (updates.status === cur) {
+          console.warn('[orders] handleUpdate skipped (noop): status already matches', {
+            orderId: oid,
+            currentStatus: cur,
+          });
+          return;
+        }
+      }
+      if (updates?.paymentStatus != null && current) {
+        const curPay = current.paymentStatus || 'pendiente';
+        if (updates.paymentStatus === curPay) {
+          console.warn('[orders] handleUpdate skipped (noop): paymentStatus already matches', {
+            orderId: oid,
+            currentPaymentStatus: curPay,
+          });
+          return;
+        }
+      }
+      if (isOrdersDoubleFlickerDebug()) {
+        startOrdersDoubleFlickerSession('handleUpdate', { orderId: oid, updates });
+        ordersDoubleFlickerLog('handleUpdate:begin (click / action)', { orderId: oid, updates });
+      }
+      // Bloquea refetch accidental que pisa estado local post-optimistic.
+      isUpdatingOrderRef.current = true;
+      updatingUntilRef.current = Date.now() + 3000;
+      if (isOrdersDoubleFlickerDebug()) {
+        ordersDoubleFlickerLog('guard:isUpdatingOrderRef', {
+          value: true,
+          until: updatingUntilRef.current,
+          ms: 3000,
+        });
+      }
+      window.setTimeout(() => {
+        if (Date.now() >= updatingUntilRef.current) {
+          isUpdatingOrderRef.current = false;
+          if (isOrdersDoubleFlickerDebug()) {
+            ordersDoubleFlickerLog('guard:isUpdatingOrderRef', { value: false });
+          }
+        }
+      }, 3100);
+      if (isOrdersRenderDebug()) {
+        ordersDebugSeq('handleUpdate:begin (before optimistic)', { orderId: oid, updates });
+      }
       let listSnapshot = null;
       setOrders((prev) => {
         const o = prev?.find((x) => String(x?.id) === oid);
-        if (!o) return prev;
+        if (!o) {
+          if (isOrdersDoubleFlickerDebug()) {
+            ordersDoubleFlickerLog('setOrders', {
+              label: 'optimistic (noop order not found)',
+              orderId: oid,
+              prevLen: prev?.length ?? 0,
+              nextLen: prev?.length ?? 0,
+              changedRef: false,
+            });
+          }
+          return prev;
+        }
         listSnapshot = { ...o };
-        return prev?.map((x) => {
+        if (isOrdersRenderDebug()) {
+          ordersDebugSeq('optimistic:setOrders (updater running)', {
+            orderId: oid,
+            prevStatus: o?.status,
+          });
+        }
+        const next = prev?.map((x) => {
           if (String(x?.id) !== oid) return x;
           const merged = { ...x, ...updates };
           if (updates.status === 'entregado' && !merged.deliveredAt) {
@@ -355,17 +768,52 @@ export default function OrdersPage() {
           }
           return merged;
         });
+        if (isOrdersDoubleFlickerDebug()) {
+          const nextOrder = next?.find((x) => String(x?.id) === oid);
+          ordersDoubleFlickerLog('setOrders', {
+            label: 'optimistic',
+            orderId: oid,
+            prevStatus: o?.status,
+            nextStatus: nextOrder?.status,
+            prevLen: prev?.length ?? 0,
+            nextLen: next?.length ?? 0,
+            changedRef: next !== prev,
+          });
+        }
+        return next;
       });
       if (!listSnapshot) return;
-      pendingRealtimeSkipsRef.current.set(oid, Date.now() + 2800);
+      const skipUntil = Date.now() + LOCAL_UPDATE_REALTIME_SKIP_MS;
+      if (isOrdersDoubleFlickerDebug()) {
+        ordersDoubleFlickerLog('pendingRealtimeSkipsRef.set', { orderId: oid, skipUntil, ms: LOCAL_UPDATE_REALTIME_SKIP_MS });
+      }
+      if (isOrdersRenderDebug()) {
+        ordersDebugSeq('optimistic:after setOrders scheduled', {
+          orderId: oid,
+          skipRealtimeUntil: skipUntil,
+        });
+      }
+      pendingRealtimeSkipsRef.current.set(oid, skipUntil);
 
       const detailSnap =
         detailOrderRef.current?.id != null && String(detailOrderRef.current.id) === oid
           ? { ...detailOrderRef.current }
           : null;
       if (detailSnap) {
+        if (isOrdersDoubleFlickerDebug()) {
+          ordersDoubleFlickerLog('setDetailOrder:call', { label: 'optimistic (drawer open)', orderId: oid });
+        }
         setDetailOrder((prev) => {
-          if (!prev || String(prev.id) !== oid) return prev;
+          if (!prev || String(prev.id) !== oid) {
+            if (isOrdersDoubleFlickerDebug()) {
+              ordersDoubleFlickerLog('setDetailOrder', {
+                label: 'optimistic (noop different detail)',
+                orderId: oid,
+                changedRef: false,
+              });
+            }
+            return prev;
+          }
           const merged = { ...prev, ...updates };
           if (updates.status === 'entregado' && !merged.deliveredAt) {
             merged.deliveredAt = new Date().toISOString();
@@ -383,21 +831,67 @@ export default function OrdersPage() {
           ) {
             merged.sentAt = null;
           }
+          if (isOrdersDoubleFlickerDebug()) {
+            ordersDoubleFlickerLog('setDetailOrder', {
+              label: 'optimistic',
+              orderId: oid,
+              prevStatus: prev?.status,
+              nextStatus: merged?.status,
+              changedRef: merged !== prev,
+            });
+          }
           return merged;
         });
       }
 
       const { error } = await updateOrder(orderId, updates);
       if (error) {
-        toast?.error('No se pudo guardar el cambio.');
-        setOrders((prev) => prev?.map((x) => (String(x?.id) === oid ? listSnapshot : x)));
-        if (detailSnap) setDetailOrder(detailSnap);
+        if (isOrdersDoubleFlickerDebug()) {
+          ordersDoubleFlickerLog('handleUpdate:API error → rollback', { orderId: oid });
+        }
+        if (isOrdersRenderDebug()) {
+          ordersDebugSeq('handleUpdate:API error → rollback', { orderId: oid });
+        }
+        toastError('No se pudo guardar el cambio.');
+        setOrders((prev) => {
+          const next = prev?.map((x) => (String(x?.id) === oid ? listSnapshot : x));
+          if (isOrdersDoubleFlickerDebug()) {
+            ordersDoubleFlickerLog('setOrders', {
+              label: 'rollback',
+              orderId: oid,
+              prevLen: prev?.length ?? 0,
+              nextLen: next?.length ?? 0,
+              changedRef: next !== prev,
+            });
+          }
+          return next;
+        });
+        if (detailSnap) {
+          setDetailOrder((prev) => {
+            const next = detailSnap;
+            if (isOrdersDoubleFlickerDebug()) {
+              ordersDoubleFlickerLog('setDetailOrder', {
+                label: 'rollback',
+                orderId: oid,
+                prevStatus: prev?.status,
+                nextStatus: next?.status,
+                changedRef: next !== prev,
+              });
+            }
+            return next;
+          });
+        }
         pendingRealtimeSkipsRef.current.delete(oid);
         return;
       }
 
-      window.setTimeout(() => pendingRealtimeSkipsRef.current.delete(oid), 2200);
-      toast?.success(
+      if (isOrdersDoubleFlickerDebug()) {
+        ordersDoubleFlickerLog('handleUpdate:API ok (no early skip delete — expiry only)', { orderId: oid });
+      }
+      if (isOrdersRenderDebug()) {
+        ordersDebugSeq('handleUpdate:API ok', { orderId: oid });
+      }
+      toastSuccess(
         updates?.status !== undefined
           ? 'Estado actualizado'
           : updates?.paymentStatus !== undefined
@@ -405,7 +899,7 @@ export default function OrdersPage() {
             : 'Pedido actualizado',
       );
     });
-  }, [guard, toast]);
+  }, [guard, toastError, toastSuccess]);
 
   const visibleBoardOrders = useMemo(
     () => (orders || []).filter((o) => isOrderVisibleOnActiveBoard(o)),
@@ -442,6 +936,53 @@ export default function OrdersPage() {
     });
     return c;
   }, [visibleBoardOrders]);
+
+  useEffect(() => {
+    if (!isOrdersDoubleFlickerDebug()) return;
+    ordersDoubleFlickerLog('derived:orders state (new reference)', { len: orders?.length });
+  }, [orders]);
+
+  useEffect(() => {
+    if (!isOrdersDoubleFlickerDebug()) return;
+    ordersDoubleFlickerLog('derived:visibleBoardOrders', {
+      len: visibleBoardOrders?.length ?? 0,
+      ids: (visibleBoardOrders || []).map((o) => String(o?.id)).slice(0, 12).join(','),
+    });
+  }, [visibleBoardOrders]);
+
+  useEffect(() => {
+    if (!isOrdersDoubleFlickerDebug()) return;
+    ordersDoubleFlickerLog('derived:statusCounts', { ...statusCounts });
+  }, [statusCounts]);
+
+  useEffect(() => {
+    if (!isOrdersDoubleFlickerDebug()) return;
+    ordersDoubleFlickerLog('state:detailOrder', {
+      id: detailOrder?.id ?? null,
+      status: detailOrder?.status ?? null,
+    });
+  }, [detailOrder]);
+
+  useEffect(() => {
+    if (!isOrdersDoubleFlickerDebug()) return;
+    ordersDoubleFlickerLog('state:loading', { loading });
+  }, [loading]);
+
+  useEffect(() => {
+    if (!isOrdersDoubleFlickerDebug()) return;
+    ordersDoubleFlickerLog('state:filterStatus', { filterStatus });
+  }, [filterStatus]);
+
+  if (isOrdersRenderDebug()) {
+    console.count('[render] OrdersPage');
+  }
+  if (isOrdersDoubleFlickerDebug()) {
+    ordersDoubleFlickerLog('render:OrdersPage', {
+      loading,
+      visibleBoardOrders: visibleBoardOrders?.length ?? 0,
+      filterStatus,
+    });
+  }
 
   if (businessLoading) {
     return (
@@ -487,7 +1028,7 @@ export default function OrdersPage() {
             </Link>
             <button
               type="button"
-              onClick={() => loadOrders()}
+              onClick={() => loadOrders({ reason: 'manual_refresh', silent: false })}
               disabled={loading}
               className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-medium transition-colors hover:bg-muted disabled:opacity-60 min-h-[44px]"
               style={{ borderColor: 'var(--color-border)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)', backgroundColor: '#fff' }}
@@ -675,7 +1216,7 @@ export default function OrdersPage() {
                 key={order.id}
                 order={order}
                 formatCLP={formatCLP}
-                onOpenDetail={setDetailOrder}
+                onOpenDetail={(o) => setDetailOrderTracked(o, 'CompactOrderCardStatic:open')}
                 shortIdFn={orderShortId}
               />
             ))}
@@ -685,7 +1226,7 @@ export default function OrdersPage() {
             <OrdersKanban
               orders={boardOrders}
               onUpdate={handleUpdate}
-              onOpenDetail={setDetailOrder}
+              onOpenDetail={(o) => setDetailOrderTracked(o, 'OrdersKanban:openDetail')}
               formatCLP={formatCLP}
               orderShortId={orderShortId}
             />
@@ -714,7 +1255,7 @@ export default function OrdersPage() {
                         key={order.id}
                         order={order}
                         formatCLP={formatCLP}
-                        onOpenDetail={setDetailOrder}
+                        onOpenDetail={(o) => setDetailOrderTracked(o, 'CancelledSection:openDetail')}
                         shortIdFn={orderShortId}
                       />
                     ))}
@@ -730,7 +1271,7 @@ export default function OrdersPage() {
             order={detailOrder}
             business={business}
             businessName={business?.name}
-            onClose={() => setDetailOrder(null)}
+            onClose={() => setDetailOrderTracked(null, 'OrderDetailDrawer:close')}
             onUpdate={handleUpdate}
             statusOptions={ORDER_STATUSES}
             paymentStatusOptions={PAYMENT_STATUSES}
