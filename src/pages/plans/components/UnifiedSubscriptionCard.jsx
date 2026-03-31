@@ -43,6 +43,8 @@ export default function UnifiedSubscriptionCard({ viewModel, onScrollToPlans, su
       progressPercent,
       showTrialBadge,
       subscriptionNote,
+      ctaLabel,
+      footerCopy,
     } = viewModel;
     const pct = Math.min(100, Math.max(0, Number(progressPercent) || 0));
 
@@ -105,14 +107,20 @@ export default function UnifiedSubscriptionCard({ viewModel, onScrollToPlans, su
             className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-lg font-semibold flex items-center justify-center gap-2 transition-colors shrink-0 font-[family-name:var(--font-caption)] w-full lg:w-auto"
           >
             <CreditCard size={18} aria-hidden />
-            Activar suscripción ahora
+            {ctaLabel || 'Activar suscripción ahora'}
           </button>
         </div>
 
         <div className="bg-gray-50 px-6 py-3 border-t border-gray-100">
           <p className="text-xs text-gray-500 text-center md:text-left font-[family-name:var(--font-caption)]">
-            Al pagar hoy, el mes contratado se sumará al final de tu prueba actual.{' '}
-            <strong className="text-gray-700 font-semibold">No pierdes tus días gratis.</strong>
+            {footerCopy ? (
+              footerCopy
+            ) : (
+              <>
+                Al pagar hoy, el mes contratado se sumará al final de tu prueba actual.{' '}
+                <strong className="text-gray-700 font-semibold">No pierdes tus días gratis.</strong>
+              </>
+            )}
           </p>
         </div>
       </div>

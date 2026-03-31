@@ -1,7 +1,6 @@
 import { requireAuthenticatedUser } from '../services/auth/requestAuthService.js';
 import { assertBusinessOwnership } from '../services/billing/ownershipService.js';
 import { getBillingSubscriptionState } from '../services/billing/subscriptionStateService.js';
-import { getCurrentSubscriptionState } from '../services/billing/currentSubscriptionService.js';
 import { isHttpError } from '../lib/http/HttpError.js';
 import { createClient } from '@supabase/supabase-js';
 import { HttpError } from '../lib/http/HttpError.js';
@@ -28,6 +27,27 @@ const CURRENT_SUB_ROUTE = 'GET /api/v1/billing/current-subscription';
 function truncateStack(stack, maxLines = 8) {
   if (!stack || typeof stack !== 'string') return null;
   return stack.split('\n').slice(0, maxLines).join('\n');
+}
+
+function adaptCurrentSubscriptionFromState(state, businessId) {
+  if (!state || state.ok !== true) return { ok: true, subscription: null };
+  return {
+    ok: true,
+    subscription: {
+      source: 'subscription_state_adapter',
+      id: null,
+      businessId,
+      status: state.billing_status || null,
+      planSlug: state.plan_slug || null,
+      planName: null,
+      planId: null,
+      currentPeriodEnd: state.current_period_ends_at || null,
+      trialEnd: state.trial_ends_at || null,
+      amount: null,
+      currency: state.currency || null,
+      raw: state,
+    },
+  };
 }
 
 async function getBusinessCountryCodeById(businessId) {
@@ -147,8 +167,8 @@ export async function getCurrentSubscriptionController(request) {
       hasServiceRoleKey: !!getServiceRoleKey(),
     });
     assertMarketAccess({ requestUrl: request.url, businessCountryCode });
-    const result = await getCurrentSubscriptionState({ businessId });
-    return json(result, 200);
+    const state = await getBillingSubscriptionState({ businessId });
+    return json(adaptCurrentSubscriptionFromState(state, businessId), 200);
   } catch (err) {
     const message = String(err?.message || '');
     if (message.includes('[auth] Missing Bearer token') || message.includes('[auth] Invalid or expired user token')) {

@@ -150,6 +150,7 @@ export default function PlansPage() {
     [planBillingDisplayCurrency],
   );
   const hasServerSelectedProvider = !!subscriptionState?.providerResolution?.selectedProvider;
+  const isManualBillingMode = subscriptionState?.billing_mode === 'manual';
   const hasPersistedBusinessCountry = !!businessCountryCode;
   const secondaryCheckoutProviders = useMemo(() => {
     if (!billingReady || !hasServerSelectedProvider || !checkoutProvider || !Array.isArray(subscriptionState?.billingProvider?.alternatives)) {
@@ -779,7 +780,7 @@ export default function PlansPage() {
     <DashboardAppShell backgroundColor="var(--color-background)">
         <PanelHeader
           title={<h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Plan y facturación</h1>}
-          subtitle={<p className="text-xs hidden sm:block mt-0.5" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Gestiona tu plan, límites y renovación</p>}
+          subtitle={<p className="text-xs hidden sm:block mt-0.5" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>{isManualBillingMode ? 'Gestiona tu plan, límites y renovación manual' : 'Gestiona tu plan, límites y renovación'}</p>}
         />
         <DashboardLayoutContent>
 

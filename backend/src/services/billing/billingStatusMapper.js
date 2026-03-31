@@ -1,3 +1,5 @@
+import { normalizeBillingProvider } from './providerSelectionService.js';
+
 export const BILLING_STATUSES = Object.freeze({
   TRIAL_WITHOUT_SUBSCRIPTION: 'trial_without_subscription',
   TRIAL_WITH_SUBSCRIPTION: 'trial_with_subscription',
@@ -40,11 +42,7 @@ export function mapDlocalStatus(providerStatus) {
 }
 
 export function mapProviderStatus(provider, providerStatus) {
-  const rawProvider = String(provider || '').trim().toLowerCase();
-  const normalizedProvider = rawProvider === 'mercadopago' ? 'mercado_pago' : rawProvider;
-  if (rawProvider === 'mercadopago') {
-    console.warn('[billing-provider] normalized mercadopago -> mercado_pago');
-  }
+  const normalizedProvider = normalizeBillingProvider(provider);
   if (normalizedProvider === 'paypal') return mapPaypalStatus(providerStatus);
   if (normalizedProvider === 'dlocal') {
     return mapDlocalStatus(providerStatus);

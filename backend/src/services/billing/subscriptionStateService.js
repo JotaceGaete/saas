@@ -18,6 +18,12 @@ import {
 } from './billingMarketMetaService.js';
 
 const SUB_STATE_LOG = '[billing-subscription-state]';
+const MANUAL_BILLING_COUNTRIES = new Set(['CL', 'AR']);
+
+function resolveBillingMode(billingCountryCode) {
+  const code = String(billingCountryCode || '').trim().toUpperCase();
+  return MANUAL_BILLING_COUNTRIES.has(code) ? 'manual' : 'subscription';
+}
 
 function summarizeAvailability(provider) {
   const a = getBillingProviderAvailability({ provider });
@@ -136,9 +142,18 @@ export async function getBillingSubscriptionState({ businessId }) {
   const paymentOptions = getPaymentOptions({ countryCode: billingCountry });
   const recommendation = getProviderAvailabilityByBusinessCountry({ businessCountryCode: billingCountry });
   const subscriptionNorm = normalizeBillingProvider(subscription?.provider);
-  const selectedProvider = subscriptionNorm || recommendation.selectedProvider;
+  const billingMode = resolveBillingMode(billingCountry);
+  let selectedProvider = subscriptionNorm || recommendation.selectedProvider;
+  if (selectedProvider === 'dlocal') {
+    console.warn(`[billing] legacy_fallback businessId=${id} from=dlocal to=${recommendation.selectedProvider}`);
+    selectedProvider = recommendation.selectedProvider;
+  }
   const selectedAvailability = getBillingProviderAvailability({ provider: selectedProvider });
   const alternatives = recommendation.alternatives;
+  const source = subscription ? 'billing_subscriptions' : 'legacy_wa_businesses';
+  if (!subscription) {
+    console.warn(`${SUB_STATE_LOG} businessId=${id} source=legacy reason=no_billing_subscription_row`);
+  }
 
   const marketStatus = getMarketStatusForBillingCountry(billingCountry);
   const checkoutPolicy = getAutomaticCheckoutPolicyByMarketStatus(marketStatus);
@@ -183,14 +198,18 @@ export async function getBillingSubscriptionState({ businessId }) {
     subscriptionProviderOverride: subscriptionNorm || null,
   };
 
+  console.info(`${SUB_STATE_LOG} businessId=${id} source=${source} provider=${selectedProvider || 'unknown'} status=${billingStatus} billingMode=${billingMode}`);
+
   return {
     ok: true,
+    source,
+    billing_mode: billingMode,
     billingCountry,
     currency: planDisplayCurrency,
     marketStatus,
     checkoutPolicy,
     providerResolution,
-    provider,
+    provider: selectedProvider,
     plan_slug: normalizePlanSlug(subscription?.plan_slug || business?.plan_slug),
     billing_status: billingStatus,
     has_subscription: hasSubscription,

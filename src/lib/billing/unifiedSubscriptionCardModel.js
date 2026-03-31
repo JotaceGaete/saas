@@ -60,6 +60,7 @@ export function buildUnifiedSubscriptionViewModel({
 
   const rawStatus = effectiveSubscriptionState?.billing_status;
   const normalizedStatus = normalizeBillingStatusFromApi(rawStatus);
+  const billingMode = effectiveSubscriptionState?.billing_mode === 'manual' ? 'manual' : 'subscription';
 
   const fromRow = normalizePlanSlugForBilling(billingSubscriptionRow?.plan_slug);
   const fromSlug = normalizePlanSlugForBilling(currentPlanSlug) || currentPlanSlug || 'starter';
@@ -91,11 +92,13 @@ export function buildUnifiedSubscriptionViewModel({
       layout: 'pending',
       normalizedStatus,
       rawStatus,
+      billingMode,
       planLabel,
       limitsLine,
       title: 'Estamos confirmando tu pago',
-      subtitle:
-        'Cuando el proveedor acredite el pago, tu plan se actualizará automáticamente. No necesitas repetir el cobro.',
+      subtitle: billingMode === 'manual'
+        ? 'Cuando se confirme el pago manual, tu plan quedará activo por 30 días.'
+        : 'Cuando el proveedor acredite el pago, tu plan se actualizará automáticamente. No necesitas repetir el cobro.',
     };
   }
 
@@ -106,13 +109,16 @@ export function buildUnifiedSubscriptionViewModel({
 
     let subscriptionNote = null;
     if (hasFutureNextBilling && nextBillingDate) {
-      subscriptionNote = `Próximo cobro según suscripción: ${formatEsCL(nextBillingDate)}.`;
+      subscriptionNote = billingMode === 'manual'
+        ? `Vigencia del plan actual hasta: ${formatEsCL(nextBillingDate)}. Renovación manual.`
+        : `Próximo cobro según suscripción: ${formatEsCL(nextBillingDate)}.`;
     }
 
     return {
       layout: 'trial',
       normalizedStatus,
       rawStatus,
+      billingMode,
       planLabel,
       limitsLine,
       days_left: daysLeft,
@@ -120,6 +126,10 @@ export function buildUnifiedSubscriptionViewModel({
       progressPercent,
       showTrialBadge: true,
       subscriptionNote,
+      ctaLabel: billingMode === 'manual' ? 'Activar plan por 30 días' : 'Activar suscripción ahora',
+      footerCopy: billingMode === 'manual'
+        ? 'Al pagar hoy, activas 30 días de plan al finalizar tu prueba actual. La renovación se realiza manualmente.'
+        : 'Al pagar hoy, el mes contratado se sumará al final de tu prueba actual. No pierdes tus días gratis.',
     };
   }
 
@@ -128,6 +138,7 @@ export function buildUnifiedSubscriptionViewModel({
       layout: 'starter',
       normalizedStatus,
       rawStatus,
+      billingMode,
       planLabel,
       limitsLine,
       title: `Plan ${planLabel}`,
@@ -141,11 +152,14 @@ export function buildUnifiedSubscriptionViewModel({
       layout: 'paid',
       normalizedStatus,
       rawStatus,
+      billingMode,
       planLabel,
       limitsLine,
       next_billing_date: nextLabel,
-      title: `Plan ${planLabel} activo`,
-      subtitle: `Próxima renovación: ${nextLabel}.`,
+      title: billingMode === 'manual' ? `Plan ${planLabel} activo (pago manual)` : `Plan ${planLabel} activo`,
+      subtitle: billingMode === 'manual'
+        ? `Vigente hasta ${nextLabel}. Renovación manual desde Planes.`
+        : `Próxima renovación: ${nextLabel}.`,
     };
   }
 
@@ -153,9 +167,12 @@ export function buildUnifiedSubscriptionViewModel({
     layout: 'default',
     normalizedStatus,
     rawStatus,
+    billingMode,
     planLabel,
     limitsLine,
     title: `Plan ${planLabel}`,
-    subtitle: 'Las fechas de facturación aparecerán cuando la suscripción esté sincronizada en el servidor.',
+    subtitle: billingMode === 'manual'
+      ? 'Las fechas del ciclo manual aparecerán cuando el pago quede sincronizado en el servidor.'
+      : 'Las fechas de facturación aparecerán cuando la suscripción esté sincronizada en el servidor.',
   };
 }
