@@ -11,25 +11,19 @@ const STEPS = [
   {
     number: 1,
     title: "Configura tu tienda",
-    description: "Agrega logo, portada (banner) y WhatsApp",
     icon: "Settings2",
-    cta: "Ir a configuración",
     path: "/business-configuration",
   },
   {
     number: 2,
     title: "Agrega tu primer producto",
-    description: "Crea productos con imagen, nombre y precio",
     icon: "Package",
-    cta: "Crear producto",
     path: "/product-editor",
   },
   {
     number: 3,
     title: "Comparte tu catálogo",
-    description: "Envía tu link a clientes por WhatsApp",
     icon: "Share2",
-    cta: "Copiar link",
     path: null,
   },
 ];
@@ -112,6 +106,20 @@ export default function GettingStartedSection({
     [business?.id, shareTick],
   );
 
+  const stepTaskGroups = useMemo(() => ([
+    [
+      { key: "logo", label: "Agregar logo", done: hasLogo, cta: "Agregar logo" },
+      { key: "cover", label: "Agregar imagen de portada", done: hasBanner, cta: "Agregar portada" },
+      { key: "whatsapp", label: "Configurar número de WhatsApp", done: hasWhatsapp, cta: "Agregar WhatsApp" },
+    ],
+    [
+      { key: "first_product", label: "Crear al menos 1 producto", done: hasProducts, cta: "Crear producto" },
+    ],
+    [
+      { key: "share_catalog", label: "Copiar link del catálogo", done: hasSharedCatalog, cta: "Copiar link" },
+    ],
+  ]), [hasLogo, hasBanner, hasWhatsapp, hasProducts, hasSharedCatalog]);
+
   const stepCompleted = [
     hasWhatsapp && hasLogo && hasBanner,
     hasProducts,
@@ -180,11 +188,23 @@ export default function GettingStartedSection({
   };
 
   const handleStepCta = (step) => {
+    const idx = Number(step?.number || 0) - 1;
+    const tasks = stepTaskGroups?.[idx] || [];
+    const firstPendingTask = tasks.find((t) => !t.done) || null;
     if (step?.number === 3) {
       handleCopyLink();
     } else {
       navigate(step?.path);
     }
+    return firstPendingTask?.cta || null;
+  };
+
+  const getStepMeta = (step, idx) => {
+    const tasks = stepTaskGroups?.[idx] || [];
+    const pending = tasks.find((t) => !t.done) || null;
+    const cta = pending?.cta || (step.number === 3 ? "Copiar link" : "Completado");
+    const description = tasks.map((t) => `${t.done ? "✔" : "○"} ${t.label}`).join(" · ");
+    return { tasks, cta, description };
   };
 
   return (
@@ -306,6 +326,7 @@ export default function GettingStartedSection({
               {STEPS?.map((step, idx) => {
                 const isCompleted = stepCompleted?.[idx];
                 const isActive = !isCompleted && (idx === 0 || stepCompleted?.[idx - 1]);
+                const stepMeta = getStepMeta(step, idx);
                 return (
                   <li key={step?.number} className="flex gap-4">
                     <div className="flex-shrink-0 w-11 flex justify-center pt-0.5">
@@ -343,8 +364,19 @@ export default function GettingStartedSection({
                             {step?.title}
                           </p>
                           <p className="text-xs mt-1" style={{ color: "var(--color-muted-foreground)", fontFamily: "var(--font-caption)" }}>
-                            {step?.description}
+                            {stepMeta.description}
                           </p>
+                          <ul className="mt-2 space-y-1">
+                            {stepMeta.tasks.map((task) => (
+                              <li
+                                key={task.key}
+                                className="text-xs"
+                                style={{ color: task.done ? "#059669" : "var(--color-muted-foreground)", fontFamily: "var(--font-caption)" }}
+                              >
+                                {task.done ? "✔" : "○"} {task.label}
+                              </li>
+                            ))}
+                          </ul>
                         </div>
                       </div>
                       <button
@@ -358,7 +390,7 @@ export default function GettingStartedSection({
                           fontFamily: "var(--font-caption)",
                         }}
                       >
-                        {isCompleted ? "✓ Completado" : step?.cta}
+                        {isCompleted ? "✓ Completado" : stepMeta.cta}
                       </button>
                     </div>
                   </li>
@@ -372,6 +404,7 @@ export default function GettingStartedSection({
             {STEPS?.map((step, idx) => {
               const isCompleted = stepCompleted?.[idx];
               const isActive = !isCompleted && (idx === 0 || stepCompleted?.[idx - 1]);
+              const stepMeta = getStepMeta(step, idx);
               return (
                 <React.Fragment key={step?.number}>
                   <div className="flex flex-col items-center gap-2 flex-1 min-w-0">
@@ -391,8 +424,19 @@ export default function GettingStartedSection({
                         {step?.title}
                       </p>
                       <p className="text-xs mt-1 mb-3" style={{ color: "var(--color-muted-foreground)", fontFamily: "var(--font-caption)" }}>
-                        {step?.description}
+                        {stepMeta.description}
                       </p>
+                      <ul className="text-left mb-3 space-y-1">
+                        {stepMeta.tasks.map((task) => (
+                          <li
+                            key={task.key}
+                            className="text-xs"
+                            style={{ color: task.done ? "#059669" : "var(--color-muted-foreground)", fontFamily: "var(--font-caption)" }}
+                          >
+                            {task.done ? "✔" : "○"} {task.label}
+                          </li>
+                        ))}
+                      </ul>
                       <button
                         type="button"
                         onClick={() => handleStepCta(step)}
@@ -404,7 +448,7 @@ export default function GettingStartedSection({
                           fontFamily: "var(--font-caption)",
                         }}
                       >
-                        {isCompleted ? "✓ Completado" : step?.cta}
+                        {isCompleted ? "✓ Completado" : stepMeta.cta}
                       </button>
                     </div>
                   </div>

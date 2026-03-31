@@ -6,7 +6,6 @@ import DashboardLayoutContent from 'components/ui/DashboardLayoutContent';
 import PanelHeader from 'components/ui/PanelHeader';
 import ImageUploadSection from './components/ImageUploadSection';
 import ProductFormFields from './components/ProductFormFields';
-import VariantManager from './components/VariantManager';
 import ProductToggles from './components/ProductToggles';
 import ProductPreview from './components/ProductPreview';
 import SaveBar from './components/SaveBar';
@@ -42,11 +41,9 @@ export default function ProductEditor() {
   const refreshAttempted = React.useRef(false);
   const [formData, setFormData] = useState({ ...EMPTY_FORM });
   const [images, setImages] = useState([]);
-  const [variants, setVariants] = useState([]);
   const [errors, setErrors] = useState({});
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const [showAdvanced, setShowAdvanced] = useState(false);
   const [pageLoading, setPageLoading] = useState(isEditing);
   const [rubroCategories, setRubroCategories] = useState([]);
   const [isImprovingDescription, setIsImprovingDescription] = useState(false);
@@ -339,7 +336,6 @@ export default function ProductEditor() {
       if (andNew) {
         setFormData({ ...EMPTY_FORM });
         setImages([]);
-        setVariants([]);
         setPublicCode('');
         setErrors({});
         setSaveSuccess(false);
@@ -557,32 +553,7 @@ export default function ProductEditor() {
                   />
                 </div>
 
-                {/* Advanced / Variants */}
-                <div
-                  className="rounded-xl border overflow-hidden"
-                  style={{ backgroundColor: 'var(--color-card)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-sm)' }}
-                >
-                  <button
-                    onClick={() => setShowAdvanced(!showAdvanced)}
-                    className="w-full flex items-center justify-between p-5 md:p-6 hover:bg-muted/50 transition-colors"
-                    aria-expanded={showAdvanced}
-                  >
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(124,58,237,0.08)' }}>
-                        <Icon name="Sliders" size={15} color="var(--color-primary)" />
-                      </div>
-                      <span className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>Variantes y opciones avanzadas</span>
-                    </div>
-                    <Icon name={showAdvanced ? 'ChevronUp' : 'ChevronDown'} size={16} color="var(--color-muted-foreground)" />
-                  </button>
-                  {showAdvanced && (
-                    <div className="px-5 md:px-6 pb-5 md:pb-6 border-t" style={{ borderColor: 'var(--color-border)' }}>
-                      <div className="pt-4">
-                        <VariantManager variants={variants} onVariantsChange={setVariants} />
-                      </div>
-                    </div>
-                  )}
-                </div>
+                {/* Feature temporarily hidden until end-to-end implementation (UI + persistence + catalog/cart/order flow). */}
 
                 {/* Bottom spacer for SaveBar */}
                 <div className="h-4" />
