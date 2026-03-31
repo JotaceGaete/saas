@@ -53,9 +53,26 @@ export default function HelpPage() {
             <p className="text-sm mb-4" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
               ¿Necesitas ayuda para configurar tu tienda, productos o pedidos? Revisa las secciones del menú: <strong>Configuración</strong> para datos del negocio y opciones del catálogo, <strong>Diseño</strong> para logo, portada y colores, y <strong>Plan y facturación</strong> para tu suscripción.
             </p>
-            <p className="text-sm" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-              Para soporte directo, escríbenos a tu canal de contacto o al correo de atención.
+            <p className="text-sm mb-0" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+              Soporte directo con el equipo Ventalink:
             </p>
+            <div className="mt-4 flex flex-col sm:flex-row gap-3">
+              <a
+                href="https://wa.me/56993443682?text=Hola,%20necesito%20ayuda%20con%20Ventalink"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-4 py-2 rounded-lg bg-green-500 text-white font-medium hover:bg-green-600 transition text-center"
+              >
+                💬 Contactar por WhatsApp
+              </a>
+
+              <a
+                href="mailto:contacto@ventalink.app"
+                className="px-4 py-2 rounded-lg bg-gray-100 text-gray-800 font-medium hover:bg-gray-200 transition text-center"
+              >
+                📧 Enviar correo
+              </a>
+            </div>
           </div>
         </div>
       </main>
