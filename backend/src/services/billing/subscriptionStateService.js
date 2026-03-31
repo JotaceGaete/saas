@@ -143,10 +143,9 @@ export async function getBillingSubscriptionState({ businessId }) {
   const recommendation = getProviderAvailabilityByBusinessCountry({ businessCountryCode: billingCountry });
   const subscriptionNorm = normalizeBillingProvider(subscription?.provider);
   const billingMode = resolveBillingMode(billingCountry);
-  let selectedProvider = subscriptionNorm || recommendation.selectedProvider;
-  if (selectedProvider === 'dlocal') {
-    console.warn(`[billing] legacy_fallback businessId=${id} from=dlocal to=${recommendation.selectedProvider}`);
-    selectedProvider = recommendation.selectedProvider;
+  const selectedProvider = recommendation.selectedProvider;
+  if (subscriptionNorm && subscriptionNorm !== recommendation.selectedProvider) {
+    console.warn(`[billing] legacy_fallback businessId=${id} from=${subscriptionNorm} to=${recommendation.selectedProvider}`);
   }
   const selectedAvailability = getBillingProviderAvailability({ provider: selectedProvider });
   const alternatives = recommendation.alternatives;

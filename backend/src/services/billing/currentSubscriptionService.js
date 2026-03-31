@@ -1,6 +1,18 @@
 import { createClient } from '@supabase/supabase-js';
 import { HttpError } from '../../lib/http/HttpError.js';
 
+/**
+ * @deprecated legacy transition path
+ * do not use for new billing flows
+ *
+ * Fuente oficial de estado de billing:
+ * - GET /api/v1/billing/subscription-state
+ * - backend/src/services/billing/subscriptionStateService.js
+ *
+ * Este servicio se mantiene solo por compatibilidad temporal del endpoint
+ * legacy `current-subscription`.
+ */
+
 function getSupabaseUrl() {
   return String(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').trim();
 }

@@ -1,5 +1,14 @@
 import { supabase } from '../supabase';
 
+/**
+ * @deprecated legacy transition path
+ * do not use for new billing flows
+ *
+ * Para nuevos flujos de billing en frontend, usar exclusivamente:
+ * - GET /api/v1/billing/subscription-state
+ * y sus adapters oficiales.
+ */
+
 /** @param {string|null|undefined} raw */
 export function normalizePlanSlugForBilling(raw) {
   const slug = String(raw || '').trim().toLowerCase();
@@ -40,6 +49,9 @@ export async function fetchBillingSubscriptionByBusinessId(businessId) {
 }
 
 /**
+ * @deprecated legacy transition path
+ * do not use for new billing flows
+ *
  * Paso 1: `billing_subscriptions`. Paso 2: si no hay fila útil, `wa_businesses` (legacy).
  * Marca `_displaySource` para que el UI sepa si las fechas vienen de la tabla moderna o legacy.
  *

@@ -60,12 +60,12 @@ export function getPaymentOptions({ countryCode }) {
   if (normalized === 'AR') {
     return Object.freeze({
       primary: PAYMENT_PROVIDERS.MERCADO_PAGO,
-      secondary: [PAYMENT_PROVIDERS.PAYPAL],
+      secondary: [],
     });
   }
   return Object.freeze({
     primary: PAYMENT_PROVIDERS.PAYPAL,
-    secondary: [PAYMENT_PROVIDERS.MERCADO_PAGO],
+    secondary: [],
   });
 }
 

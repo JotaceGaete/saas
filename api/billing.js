@@ -24,6 +24,8 @@ export async function GET(request) {
     normalizedPath.endsWith('/api/v1/billing/current-subscription')
     || normalizedPath.endsWith('/api/billing-current-subscription')
   ) {
+    // @deprecated legacy transition path
+    // do not use for new billing flows
     return getCurrentSubscriptionController(request);
   }
   return getBillingSubscriptionStateController(request);

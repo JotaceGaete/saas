@@ -28,6 +28,13 @@ async function getValidAccessToken() {
   return token && token.includes('.') ? token : null;
 }
 
+/**
+ * @deprecated legacy transition path
+ * do not use for new billing flows
+ *
+ * Adapter temporal para mantener el shape histórico de `getCurrentSubscription`
+ * en consumers antiguos (ej. dashboard) mientras migran al contrato oficial.
+ */
 function mapSubscriptionStateToCurrentSubscriptionShape(state, businessId) {
   if (!state || state.ok !== true) return null;
   const mappedStatus = String(state.billing_status || '').trim().toLowerCase() || null;

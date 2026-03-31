@@ -29,16 +29,16 @@ export function getPaymentOptions({ countryCode }) {
   const normalized = country && SUPPORTED_COUNTRIES.has(country) ? country : 'US';
 
   if (normalized === 'CL') {
-    const options = Object.freeze({ primary: 'mercado_pago', secondary: ['paypal'] });
+    const options = Object.freeze({ primary: 'mercado_pago', secondary: [] });
     console.info(`[billing-provider] country=${normalized} provider=${options.primary}`);
     return options;
   }
   if (normalized === 'AR') {
-    const options = Object.freeze({ primary: 'mercado_pago', secondary: ['paypal'] });
+    const options = Object.freeze({ primary: 'mercado_pago', secondary: [] });
     console.info(`[billing-provider] country=${normalized} provider=${options.primary}`);
     return options;
   }
-  const options = Object.freeze({ primary: 'paypal', secondary: ['mercado_pago'] });
+  const options = Object.freeze({ primary: 'paypal', secondary: [] });
   console.info(`[billing-provider] country=${normalized} provider=${options.primary}`);
   return options;
 }

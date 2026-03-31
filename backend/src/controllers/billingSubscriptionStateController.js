@@ -146,6 +146,14 @@ export async function getBillingSubscriptionStateController(request) {
   }
 }
 
+/**
+ * @deprecated legacy transition path
+ * do not use for new billing flows
+ *
+ * Compatibilidad temporal para clientes antiguos que todavía consumen
+ * `GET /api/v1/billing/current-subscription`.
+ * La lógica de negocio debe vivir en `subscription-state`.
+ */
 export async function getCurrentSubscriptionController(request) {
   let businessId = null;
   let businessCountryCode = null;
