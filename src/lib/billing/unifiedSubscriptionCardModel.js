@@ -61,6 +61,10 @@ export function buildUnifiedSubscriptionViewModel({
   const rawStatus = effectiveSubscriptionState?.billing_status;
   const normalizedStatus = normalizeBillingStatusFromApi(rawStatus);
   const billingMode = effectiveSubscriptionState?.billing_mode === 'manual' ? 'manual' : 'subscription';
+  const hasPaidSubscription = effectiveSubscriptionState?.has_paid_subscription === true
+    || effectiveSubscriptionState?.has_subscription === true;
+  const activatesAfterTrial = effectiveSubscriptionState?.activates_after_trial === true
+    || normalizedStatus === BILLING_STATUSES.TRIAL_WITH_SUBSCRIPTION;
 
   const fromRow = normalizePlanSlugForBilling(billingSubscriptionRow?.plan_slug);
   const fromSlug = normalizePlanSlugForBilling(currentPlanSlug) || currentPlanSlug || 'starter';
@@ -114,6 +118,7 @@ export function buildUnifiedSubscriptionViewModel({
         : `Próximo cobro según suscripción: ${formatEsCL(nextBillingDate)}.`;
     }
 
+    const isTrialWithPaidSubscription = activatesAfterTrial && hasPaidSubscription;
     return {
       layout: 'trial',
       normalizedStatus,
@@ -125,11 +130,19 @@ export function buildUnifiedSubscriptionViewModel({
       trial_end: trialEndLabel,
       progressPercent,
       showTrialBadge: true,
-      subscriptionNote,
-      ctaLabel: billingMode === 'manual' ? 'Activar plan por 30 días' : 'Activar suscripción ahora',
-      footerCopy: billingMode === 'manual'
-        ? 'Al pagar hoy, activas 30 días de plan al finalizar tu prueba actual. La renovación se realiza manualmente.'
-        : 'Al pagar hoy, el mes contratado se sumará al final de tu prueba actual. No pierdes tus días gratis.',
+      subscriptionNote: isTrialWithPaidSubscription
+        ? 'Ya tienes tu plan pagado. Se activará al finalizar tu prueba actual.'
+        : subscriptionNote,
+      showActivateCta: !isTrialWithPaidSubscription,
+      ctaLabel: isTrialWithPaidSubscription
+        ? 'Ver planes'
+        : (billingMode === 'manual' ? 'Activar plan por 30 días' : 'Activar suscripción ahora'),
+      footerCopy: isTrialWithPaidSubscription
+        ? 'Tu pago ya fue confirmado. No perderás días gratis: el período contratado comenzará al finalizar la prueba.'
+        : (billingMode === 'manual'
+          ? 'Al pagar hoy, activas 30 días de plan al finalizar tu prueba actual. La renovación se realiza manualmente.'
+          : 'Al pagar hoy, el mes contratado se sumará al final de tu prueba actual. No pierdes tus días gratis.'),
+      trialWithSubscription: isTrialWithPaidSubscription,
     };
   }
 

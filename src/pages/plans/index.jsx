@@ -221,6 +221,15 @@ export default function PlansPage() {
       }),
     [business, subscriptionState, currentPlan, billingSubscriptionRow],
   );
+  useEffect(() => {
+    if (!business?.id || !unifiedSubscriptionViewModel) return;
+    const displayState = unifiedSubscriptionViewModel.layout;
+    const showActivateCta = unifiedSubscriptionViewModel.showActivateCta !== false;
+    const billingMode = unifiedSubscriptionViewModel.billingMode || 'subscription';
+    console.info(
+      `[billing-ui-debug] businessId=${business.id} displayState=${displayState} showActivateCta=${showActivateCta} billingMode=${billingMode}`,
+    );
+  }, [business?.id, unifiedSubscriptionViewModel]);
   /** "Suscripción programada" solo si hay downgrade/cambio futuro confirmado en BD, no solo por estar en trial. */
   const showStarterScheduledSubscriptionLabel = isTrialWithSubscription && Boolean(business?.scheduledPlanSlug);
   /** Obtiene access_token válido para Edge Functions que validan JWT internamente. */

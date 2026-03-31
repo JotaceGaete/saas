@@ -45,6 +45,8 @@ export default function UnifiedSubscriptionCard({ viewModel, onScrollToPlans, su
       subscriptionNote,
       ctaLabel,
       footerCopy,
+      showActivateCta,
+      trialWithSubscription,
     } = viewModel;
     const pct = Math.min(100, Math.max(0, Number(progressPercent) || 0));
 
@@ -101,14 +103,20 @@ export default function UnifiedSubscriptionCard({ viewModel, onScrollToPlans, su
             ) : null}
           </div>
 
-          <button
-            type="button"
-            onClick={onScrollToPlans}
-            className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-lg font-semibold flex items-center justify-center gap-2 transition-colors shrink-0 font-[family-name:var(--font-caption)] w-full lg:w-auto"
-          >
-            <CreditCard size={18} aria-hidden />
-            {ctaLabel || 'Activar suscripción ahora'}
-          </button>
+          {showActivateCta !== false ? (
+            <button
+              type="button"
+              onClick={onScrollToPlans}
+              className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-lg font-semibold flex items-center justify-center gap-2 transition-colors shrink-0 font-[family-name:var(--font-caption)] w-full lg:w-auto"
+            >
+              <CreditCard size={18} aria-hidden />
+              {ctaLabel || 'Activar suscripción ahora'}
+            </button>
+          ) : (
+            <div className="shrink-0 w-full lg:w-auto rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-800 font-[family-name:var(--font-caption)]">
+              {trialWithSubscription ? 'Suscripción pagada confirmada' : 'Estado sincronizado'}
+            </div>
+          )}
         </div>
 
         <div className="bg-gray-50 px-6 py-3 border-t border-gray-100">

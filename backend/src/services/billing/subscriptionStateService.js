@@ -175,6 +175,9 @@ export async function getBillingSubscriptionState({ businessId }) {
   const subscriptionStartsAt = billingStatus === BILLING_STATUSES.TRIAL_WITH_SUBSCRIPTION
     ? trialEndsAt
     : (startsAt || subscription?.current_period_starts_at || null);
+  const hasPaidSubscription = hasSubscription && !!provider && provider !== 'mercado_pago';
+  const activatesAfterTrial = billingStatus === BILLING_STATUSES.TRIAL_WITH_SUBSCRIPTION
+    || (trialActive && hasPaidSubscription);
 
   const selectionSnapshot = buildProviderSelectionSnapshot(paymentOptions, recommendation);
   console.info(`${SUB_STATE_LOG} structured`, {
@@ -198,6 +201,9 @@ export async function getBillingSubscriptionState({ businessId }) {
   };
 
   console.info(`${SUB_STATE_LOG} businessId=${id} source=${source} provider=${selectedProvider || 'unknown'} status=${billingStatus} billingMode=${billingMode}`);
+  console.info(
+    `[billing-subscription-state-debug] businessId=${id} status=${billingStatus} providerStatus=${providerStatus || 'null'} trialEndsAt=${trialEndsAt || 'null'} currentPeriodEndsAt=${subscription?.current_period_ends_at || 'null'} hasPaidSubscription=${hasPaidSubscription} activatesAfterTrial=${activatesAfterTrial}`,
+  );
 
   return {
     ok: true,
@@ -212,6 +218,8 @@ export async function getBillingSubscriptionState({ businessId }) {
     plan_slug: normalizePlanSlug(subscription?.plan_slug || business?.plan_slug),
     billing_status: billingStatus,
     has_subscription: hasSubscription,
+    has_paid_subscription: hasPaidSubscription,
+    activates_after_trial: activatesAfterTrial,
     provider_status: providerStatus,
     trial_ends_at: trialEndsAt,
     subscription_starts_at: subscriptionStartsAt,
