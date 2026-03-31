@@ -33,6 +33,12 @@ import {
 } from '../../utils/catalogSeo';
 import { getProductCardTrustBadge } from '../../utils/productCardBadge';
 
+function isWhatsAppWebView() {
+  if (typeof navigator === 'undefined') return false;
+  const ua = String(navigator.userAgent || '');
+  return ua.includes('WhatsApp');
+}
+
 // Normalizar imágenes del producto: la primera es siempre imageUrl (misma que la tarjeta);
 // el resto viene de product.images para galería. Así el modal usa la misma URL que la tarjeta.
 function getProductImages(product) {
@@ -1447,6 +1453,13 @@ function OrderPanel({ business, slug, formatPrice, onClose, theme }) {
         const path = typeof window !== 'undefined' ? window.location?.pathname || getPublicCatalogRelativePath(slug) : getPublicCatalogRelativePath(slug);
         recordCatalogWhatsAppClick(slug, path, 'cart_checkout').catch(() => {});
         console.info('[catalog-order] opening whatsapp...');
+        if (isWhatsAppWebView()) {
+          console.info('[whatsapp-webview] detected, blocking auto-open');
+          setCheckoutState('error');
+          setSubmitInfo('No podemos abrir WhatsApp desde aquí. Abre este catálogo en Safari o Chrome para enviar tu pedido.');
+          setPendingWhatsappMessage(message);
+          return;
+        }
         const popup = window.open(url, '_blank', 'noopener,noreferrer');
         if (!popup) {
           setCheckoutState('error');

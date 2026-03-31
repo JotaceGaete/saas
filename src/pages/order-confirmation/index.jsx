@@ -13,6 +13,12 @@ import CheckoutPhoneOptional from '../../components/checkout/CheckoutPhoneOption
 import { buildCfImageErrorHandler, cfImageUrl } from '../../utils/cloudflareImage';
 import { getCountryLabels } from '../../config/country';
 
+function isWhatsAppWebView() {
+  if (typeof navigator === 'undefined') return false;
+  const ua = String(navigator.userAgent || '');
+  return ua.includes('WhatsApp');
+}
+
 export default function OrderConfirmation() {
   const { slug } = useParams();
   const navigate = useNavigate();
@@ -163,6 +169,13 @@ export default function OrderConfirmation() {
       const whatsappNumber = biz?.whatsapp?.replace(/[^0-9]/g, '');
       const waUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`;
       console.info('[checkout] opening whatsapp...');
+      if (isWhatsAppWebView()) {
+        console.info('[whatsapp-webview] detected, blocking auto-open');
+        setCheckoutState('error');
+        setSubmitInfo('No podemos abrir WhatsApp desde aquí. Abre este catálogo en Safari o Chrome para enviar tu pedido.');
+        setPendingWhatsappMessage(message);
+        return;
+      }
       const popup = window.open(waUrl, '_blank', 'noopener,noreferrer');
 
       if (!popup) {
