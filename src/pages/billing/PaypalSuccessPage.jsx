@@ -18,11 +18,12 @@ export default function PaypalSuccessPage() {
     () => params.get('subscription_id') || params.get('subscriptionId') || '',
     [params]
   );
-  const baToken = params.get('ba_token') || params.get('token');
+  const baToken = params.get('ba_token') || '';
+  const tokenParam = params.get('token') || '';
 
   useEffect(() => {
     console.info('[paypal-success] Subscription ID:', subscriptionId);
-    console.info('[paypal-success] Token:', baToken);
+    console.info('[paypal-success] Token:', baToken || tokenParam || null);
 
     let cancelled = false;
 
@@ -58,7 +59,8 @@ export default function PaypalSuccessPage() {
     };
 
     const confirmSubscription = async () => {
-      if (!subscriptionId) {
+      const mappedSubscriptionId = String(subscriptionId || '').trim();
+      if (!mappedSubscriptionId) {
         if (!cancelled) {
           setSyncState({
             loading: false,
@@ -73,11 +75,9 @@ export default function PaypalSuccessPage() {
       try {
         const token = await getValidAccessToken();
         const resolvedBusinessId = await resolveBusinessIdForConfirm();
-        console.info('[paypal-confirm-debug] client confirm request', {
-          businessId: resolvedBusinessId || null,
-          subscriptionId: subscriptionId || null,
-          hasAuth: !!token,
-        });
+        console.info(
+          `[paypal-confirm-debug] payload businessId=${resolvedBusinessId || 'null'} subscriptionId=${mappedSubscriptionId || 'null'} token=${tokenParam || 'null'} baToken=${baToken || 'null'} hasAuth=${!!token}`,
+        );
         if (!token) {
           throw new Error('Tu sesion no es valida. Inicia sesion nuevamente.');
         }
@@ -89,7 +89,7 @@ export default function PaypalSuccessPage() {
             Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({
-            subscriptionId,
+            subscriptionId: mappedSubscriptionId,
             businessId: resolvedBusinessId || undefined,
           }),
         });
@@ -100,7 +100,7 @@ export default function PaypalSuccessPage() {
           error: data?.error || null,
           code: data?.code || null,
           businessId: resolvedBusinessId || null,
-          subscriptionId: subscriptionId || null,
+          subscriptionId: mappedSubscriptionId || null,
         });
         if (!res.ok || !data?.ok) {
           throw new Error(data?.error || `No se pudo confirmar la suscripcion (HTTP ${res.status}).`);

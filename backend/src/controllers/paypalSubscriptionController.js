@@ -53,6 +53,13 @@ function logPaypalConfirmDebug(payload) {
   );
 }
 
+function extractBusinessIdFromCustomId(customId) {
+  const raw = String(customId || '').trim();
+  if (!raw.toLowerCase().startsWith('business:')) return null;
+  const id = raw.slice('business:'.length).trim();
+  return id || null;
+}
+
 export async function createPaypalSubscriptionController(request) {
   try {
     assertPaypalAllowedForRequest(request);
@@ -177,20 +184,25 @@ export async function cancelPaypalSubscriptionController(request) {
 export async function confirmPaypalSubscriptionController(request) {
   try {
     assertPaypalAllowedForRequest(request);
+    const authHeader = String(request.headers.get('authorization') || '').trim();
+    const hasAuth = authHeader.toLowerCase().startsWith('bearer ');
     const authUser = await requireAuthenticatedUser(request);
     const body = await readJsonBody(request);
     const subscriptionId = String(body?.subscriptionId || '').trim();
-    const businessId = String(body?.businessId || '').trim();
+    let businessId = String(body?.businessId || '').trim();
 
     console.info('[PAYPAL_SUBSCRIPTION_CONFIRM_REQUEST]', {
       subscription_id: subscriptionId || null,
       business_id: businessId || null,
       user_id: authUser.id,
     });
+    console.info(
+      `[paypal-confirm-debug] received businessId=${businessId || 'null'} subscriptionId=${subscriptionId || 'null'} hasAuth=${hasAuth} reason=request_received`,
+    );
     logPaypalConfirmDebug({
       businessId: businessId || null,
       subscriptionId: subscriptionId || null,
-      hasAuth: true,
+      hasAuth,
       userId: authUser.id,
       ownership: 'pending',
       reason: 'request_received',
@@ -200,7 +212,7 @@ export async function confirmPaypalSubscriptionController(request) {
       logPaypalConfirmDebug({
         businessId: businessId || null,
         subscriptionId: subscriptionId || null,
-        hasAuth: true,
+        hasAuth,
         userId: authUser.id,
         ownership: 'denied',
         reason: 'missing_subscription_id',
@@ -222,12 +234,30 @@ export async function confirmPaypalSubscriptionController(request) {
       });
     }
 
-    const localBefore = await getLocalSubscriptionRecord(subscriptionId);
+    let localBefore = await getLocalSubscriptionRecord(subscriptionId);
+    if (!localBefore && !businessId) {
+      const remoteForBusiness = await getSubscription(subscriptionId);
+      const businessIdFromCustomId = extractBusinessIdFromCustomId(remoteForBusiness?.custom_id);
+      if (businessIdFromCustomId) {
+        businessId = businessIdFromCustomId;
+        await assertBusinessOwnership({ businessId, userId: authUser.id });
+        businessOwnershipChecked = true;
+        logPaypalConfirmDebug({
+          businessId,
+          subscriptionId,
+          hasAuth,
+          userId: authUser.id,
+          ownership: 'allowed',
+          reason: 'business_id_resolved_from_paypal_custom_id',
+        });
+        localBefore = await getLocalSubscriptionRecord(subscriptionId);
+      }
+    }
     if (!localBefore && !businessId) {
       logPaypalConfirmDebug({
         businessId: null,
         subscriptionId,
-        hasAuth: true,
+        hasAuth,
         userId: authUser.id,
         ownership: 'denied',
         reason: 'missing_business_id_and_local_record',
@@ -250,7 +280,7 @@ export async function confirmPaypalSubscriptionController(request) {
         logPaypalConfirmDebug({
           businessId: businessId || null,
           subscriptionId,
-          hasAuth: true,
+          hasAuth,
           userId: authUser.id,
           ownership: 'denied',
           reason: 'local_record_user_mismatch',
@@ -268,7 +298,7 @@ export async function confirmPaypalSubscriptionController(request) {
         logPaypalConfirmDebug({
           businessId: businessId || null,
           subscriptionId,
-          hasAuth: true,
+          hasAuth,
           userId: authUser.id,
           ownership: 'denied',
           reason: 'post_sync_local_record_user_mismatch',
@@ -281,7 +311,7 @@ export async function confirmPaypalSubscriptionController(request) {
     logPaypalConfirmDebug({
       businessId: businessId || null,
       subscriptionId,
-      hasAuth: true,
+      hasAuth,
       userId: authUser.id,
       ownership: 'allowed',
       reason: `confirmed_${paypalStatus || 'UNKNOWN'}`,
