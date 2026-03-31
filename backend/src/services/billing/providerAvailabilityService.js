@@ -1,4 +1,5 @@
 import { getPaymentOptions, normalizeBillingProvider } from './providerSelectionService.js';
+import { getEnv } from '../../config/env.js';
 
 function isTruthy(value) {
   const raw = String(value || '').trim().toLowerCase();
@@ -41,15 +42,33 @@ function getMercadopagoAvailability() {
 }
 
 function getPaypalAvailability() {
-  const mode = String(process.env.PAYPAL_MODE || '').trim().toLowerCase() || 'sandbox';
-  const hasCreds = !!String(process.env.PAYPAL_CLIENT_ID || '').trim()
-    && !!String(process.env.PAYPAL_CLIENT_SECRET || '').trim();
+  let mode = String(process.env.PAYPAL_MODE || '').trim().toLowerCase() || 'sandbox';
+  let enabled = false;
+  let reason = 'missing_provider_env';
+  const hasClientId = !!String(process.env.PAYPAL_CLIENT_ID || '').trim();
+  const hasClientSecret = !!String(process.env.PAYPAL_CLIENT_SECRET || '').trim();
+  const hasWebhookId = !!String(process.env.PAYPAL_WEBHOOK_ID || '').trim();
+  try {
+    const env = getEnv();
+    mode = env?.paypal?.mode || mode;
+    enabled = true;
+    reason = null;
+  } catch (err) {
+    enabled = false;
+    reason = 'missing_provider_env';
+    console.warn('[billing-paypal-debug] getEnv validation failed', {
+      message: err?.message || 'unknown_error',
+    });
+  }
+  console.info(
+    `[billing-paypal-debug] country=NA provider=paypal enabled=${enabled} supportsCheckout=${enabled} supportsSubscriptions=${enabled} reason=${reason || 'none'} mode=${mode} hasClientId=${hasClientId} hasClientSecret=${hasClientSecret} hasWebhookId=${hasWebhookId}`,
+  );
   return {
     provider: 'paypal',
-    enabled: hasCreds,
-    supportsCheckout: hasCreds,
-    supportsSubscriptions: hasCreds,
-    reason: hasCreds ? null : 'missing_provider_env',
+    enabled,
+    supportsCheckout: enabled,
+    supportsSubscriptions: enabled,
+    reason,
     mode,
   };
 }

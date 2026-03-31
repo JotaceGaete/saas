@@ -46,6 +46,11 @@ export async function createBillingSubscription({
   }
   let availability = getBillingProviderAvailability({ provider });
   const alternatives = paymentOptions.secondary.map((p) => getBillingProviderAvailability({ provider: p }));
+  if (provider === 'paypal') {
+    console.info(
+      `[billing-paypal-debug] country=${String(businessCountryCode || 'NA').toUpperCase()} provider=paypal enabled=${availability.enabled} supportsCheckout=${availability.supportsCheckout} supportsSubscriptions=${availability.supportsSubscriptions} reason=${availability.reason || 'none'}`,
+    );
+  }
 
   console.info('[BILLING_PROVIDER_SELECTION]', {
     route: '/api/v1/billing/subscriptions/create',
@@ -68,6 +73,11 @@ export async function createBillingSubscription({
   }
 
   if (!availability.enabled || !availability.supportsCheckout) {
+    if (provider === 'paypal') {
+      console.warn(
+        `[billing-paypal-debug] country=${String(businessCountryCode || 'NA').toUpperCase()} provider=paypal enabled=${availability.enabled} supportsCheckout=${availability.supportsCheckout} supportsSubscriptions=${availability.supportsSubscriptions} reason=${availability.reason || 'none'} rejected=provider_not_ready`,
+      );
+    }
     throw new HttpError(422, `[billing] Provider ${provider} is not ready`, {
       code: 'PROVIDER_NOT_READY',
       provider,
