@@ -1,8 +1,7 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import Icon from 'components/AppIcon';
 import { getOrderCardTimeCaption } from 'utils/orderDates';
 import PaymentStatusToggle from './PaymentStatusToggle';
-import { isOrdersRenderDebug } from '../ordersRenderDebug';
 import { isOrdersDoubleFlickerDebug, ordersDoubleFlickerLog } from '../ordersDoubleFlickerLog';
 
 const STATUS_BADGE = {
@@ -80,16 +79,6 @@ function KanbanOrderCardView({
   const showPayToggle = showPaymentReconciliation(order);
   const shouldKeepActionSlot = Boolean(showPayToggle);
 
-  useEffect(() => {
-    if (!isOrdersRenderDebug()) return undefined;
-    console.log(`[mount] OrderCard:${order.id}`);
-    return () => console.log(`[unmount] OrderCard:${order.id}`);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- diagnóstico: instancia de card por order.id
-  }, []);
-
-  if (isOrdersRenderDebug()) {
-    console.count(`[render] OrderCard:${order.id}`);
-  }
   if (isOrdersDoubleFlickerDebug()) {
     ordersDoubleFlickerLog('render:OrderCard', {
       orderId: order?.id ?? null,

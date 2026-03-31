@@ -15,7 +15,6 @@ import Icon from 'components/AppIcon';
 import { useIsDesktop } from '../../../hooks/useMediaQuery';
 import KanbanOrderCardView, { KANBAN_STATUS_BADGE_MAP } from './KanbanOrderCardView';
 import { getDeliveredSortTimeMs, getPreparacionSortTimeMs } from 'utils/orderDates';
-import { isOrdersRenderDebug, ordersDebugSeq } from '../ordersRenderDebug';
 import { isOrdersDoubleFlickerDebug, ordersDoubleFlickerLog } from '../ordersDoubleFlickerLog';
 
 const KANBAN_COLUMNS = [
@@ -166,14 +165,6 @@ function KanbanColumn({ column, children, count }) {
 }
 
 const DesktopKanbanColumn = memo(function DesktopKanbanColumn({ column, list, renderCard }) {
-  useEffect(() => {
-    if (!isOrdersRenderDebug()) return undefined;
-    console.log(`[mount] OrderColumn:${column.id}`);
-    return () => console.log(`[unmount] OrderColumn:${column.id}`);
-  }, [column.id]);
-  if (isOrdersRenderDebug()) {
-    console.count(`[render] OrderColumn:${column.id}`);
-  }
   return (
     <KanbanColumn column={column} count={list.length}>
       {list.map((o) => renderCard(o))}
@@ -267,19 +258,10 @@ function OrdersKanban({
   );
 
   const handleDragStart = useCallback(({ active }) => {
-    if (isOrdersRenderDebug()) {
-      ordersDebugSeq('dnd:dragStart', { activeId: active?.id ?? null });
-    }
     setActiveId(active?.id ?? null);
   }, []);
 
   const handleDragEnd = useCallback(({ active, over }) => {
-    if (isOrdersRenderDebug()) {
-      ordersDebugSeq('dnd:dragEnd', {
-        activeId: active?.id ?? null,
-        overId: over?.id ?? null,
-      });
-    }
     setActiveId(null);
     if (!over || !active) return;
     const orderId = active.id;
@@ -295,18 +277,8 @@ function OrdersKanban({
   }, [orders, onUpdate]);
 
   const handleDragCancel = useCallback(() => {
-    if (isOrdersRenderDebug()) {
-      ordersDebugSeq('dnd:dragCancel', {});
-    }
     setActiveId(null);
   }, []);
-
-  useEffect(() => {
-    if (!isOrdersRenderDebug()) return;
-    if (activeId) {
-      ordersDebugSeq('dnd:DragOverlay active', { activeId });
-    }
-  }, [activeId]);
 
   useEffect(() => {
     if (!isOrdersDoubleFlickerDebug()) return;
@@ -315,9 +287,6 @@ function OrdersKanban({
     });
   }, [orders]);
 
-  if (isOrdersRenderDebug()) {
-    console.count('[render] OrdersKanban');
-  }
   if (isOrdersDoubleFlickerDebug()) {
     ordersDoubleFlickerLog('render:OrdersKanban', {
       ordersLen: orders?.length ?? 0,

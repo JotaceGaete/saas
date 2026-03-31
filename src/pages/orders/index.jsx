@@ -25,7 +25,6 @@ import {
   isOrderVisibleOnActiveBoard,
 } from '../../constants/ordersBoard';
 import { filterDeliveredOrdersMissingDeliveredAt } from '../../utils/orderDates';
-import { isOrdersRenderDebug, ordersDebugSeq } from './ordersRenderDebug';
 import {
   isOrdersDoubleFlickerDebug,
   ordersDoubleFlickerLog,
@@ -249,9 +248,6 @@ export default function OrdersPage() {
     const blockedByUpdate = isUpdatingOrderRef.current && updatingUntilRef.current > now;
     const allowed = allowedReasons.has(reason);
 
-    if (isOrdersRenderDebug()) {
-      ordersDebugSeq('loadOrders:call', { reason, silent, businessId: business?.id ?? null });
-    }
     if (isOrdersDoubleFlickerDebug()) {
       ordersDoubleFlickerLog('loadOrders:call', {
         reason,
@@ -309,12 +305,6 @@ export default function OrdersPage() {
     if (error) {
       toastError('Error al cargar los pedidos');
     } else {
-      if (isOrdersRenderDebug()) {
-        ordersDebugSeq('loadOrders:setOrders(full replace)', {
-          silent,
-          count: (data || []).length,
-        });
-      }
       if (isOrdersDoubleFlickerDebug()) {
         ordersDoubleFlickerLog('setOrders:call', {
           label: 'loadOrders:full replace',
@@ -401,9 +391,6 @@ export default function OrdersPage() {
         { event: 'INSERT', schema: 'public', table: 'wa_orders', filter: `business_id=eq.${business.id}` },
         (payload) => {
           const id = payload?.new?.id;
-          if (isOrdersRenderDebug()) {
-            ordersDebugSeq('realtime:INSERT', { id: id ?? null });
-          }
           if (isOrdersDoubleFlickerDebug()) {
             ordersDoubleFlickerLog('realtime:INSERT received', { id: id ?? null });
           }
@@ -419,9 +406,6 @@ export default function OrdersPage() {
               }
               toastError('No se pudo cargar un pedido nuevo. Usa Refrescar si hace falta.');
               return;
-            }
-            if (isOrdersRenderDebug()) {
-              ordersDebugSeq('realtime:INSERT merge (getOrderById)', { id: String(id) });
             }
             setOrders((prev) => {
               const sid = String(id);
@@ -452,13 +436,6 @@ export default function OrdersPage() {
         { event: 'UPDATE', schema: 'public', table: 'wa_orders', filter: `business_id=eq.${business.id}` },
         (payload) => {
           const row = payload?.new;
-          if (isOrdersRenderDebug()) {
-            ordersDebugSeq('realtime:UPDATE received', {
-              id: row?.id ?? null,
-              order_status: row?.order_status ?? null,
-              updated_at: row?.updated_at ?? null,
-            });
-          }
           if (isOrdersDoubleFlickerDebug()) {
             ordersDoubleFlickerLog('realtime:UPDATE received', {
               id: row?.id ?? null,
@@ -473,12 +450,6 @@ export default function OrdersPage() {
           const orderId = String(row.id);
           const expiresAt = pendingRealtimeSkipsRef.current.get(orderId);
           if (expiresAt && expiresAt > Date.now()) {
-            if (isOrdersRenderDebug()) {
-              ordersDebugSeq('realtime:UPDATE skipped (pending local window)', {
-                orderId,
-                until: expiresAt,
-              });
-            }
             if (isOrdersDoubleFlickerDebug()) {
               ordersDoubleFlickerLog('realtime:UPDATE skipped (local skip window)', {
                 orderId,
@@ -493,9 +464,6 @@ export default function OrdersPage() {
           setOrders((prev) => {
             const idx = prev.findIndex((o) => String(o?.id) === orderId);
             if (idx < 0) {
-              if (isOrdersRenderDebug()) {
-                ordersDebugSeq('realtime:UPDATE order not in list → getOrderById', { orderId });
-              }
               if (isOrdersDoubleFlickerDebug()) {
                 ordersDoubleFlickerLog('realtime:UPDATE fetch missing order', { orderId });
               }
@@ -564,13 +532,6 @@ export default function OrdersPage() {
               }
               return prev;
             }
-            if (isOrdersRenderDebug()) {
-              ordersDebugSeq('realtime:UPDATE merge row', {
-                orderId,
-                prevStatus: prev[idx]?.status,
-                nextStatus: merged?.status,
-              });
-            }
             if (isOrdersDoubleFlickerDebug()) {
               ordersDoubleFlickerLog('setOrders', {
                 label: 'realtime:UPDATE merge',
@@ -637,9 +598,6 @@ export default function OrdersPage() {
         { event: 'DELETE', schema: 'public', table: 'wa_orders', filter: `business_id=eq.${business.id}` },
         (payload) => {
           const id = String(payload?.old?.id || '');
-          if (isOrdersRenderDebug()) {
-            ordersDebugSeq('realtime:DELETE', { id: id || null });
-          }
           if (!id) return;
           if (isOrdersDoubleFlickerDebug()) {
             ordersDoubleFlickerLog('realtime:DELETE', { id });
@@ -722,9 +680,6 @@ export default function OrdersPage() {
           }
         }
       }, 3100);
-      if (isOrdersRenderDebug()) {
-        ordersDebugSeq('handleUpdate:begin (before optimistic)', { orderId: oid, updates });
-      }
       let listSnapshot = null;
       setOrders((prev) => {
         const o = prev?.find((x) => String(x?.id) === oid);
@@ -741,12 +696,6 @@ export default function OrdersPage() {
           return prev;
         }
         listSnapshot = { ...o };
-        if (isOrdersRenderDebug()) {
-          ordersDebugSeq('optimistic:setOrders (updater running)', {
-            orderId: oid,
-            prevStatus: o?.status,
-          });
-        }
         const next = prev?.map((x) => {
           if (String(x?.id) !== oid) return x;
           const merged = { ...x, ...updates };
@@ -786,12 +735,6 @@ export default function OrdersPage() {
       const skipUntil = Date.now() + LOCAL_UPDATE_REALTIME_SKIP_MS;
       if (isOrdersDoubleFlickerDebug()) {
         ordersDoubleFlickerLog('pendingRealtimeSkipsRef.set', { orderId: oid, skipUntil, ms: LOCAL_UPDATE_REALTIME_SKIP_MS });
-      }
-      if (isOrdersRenderDebug()) {
-        ordersDebugSeq('optimistic:after setOrders scheduled', {
-          orderId: oid,
-          skipRealtimeUntil: skipUntil,
-        });
       }
       pendingRealtimeSkipsRef.current.set(oid, skipUntil);
 
@@ -849,9 +792,6 @@ export default function OrdersPage() {
         if (isOrdersDoubleFlickerDebug()) {
           ordersDoubleFlickerLog('handleUpdate:API error → rollback', { orderId: oid });
         }
-        if (isOrdersRenderDebug()) {
-          ordersDebugSeq('handleUpdate:API error → rollback', { orderId: oid });
-        }
         toastError('No se pudo guardar el cambio.');
         setOrders((prev) => {
           const next = prev?.map((x) => (String(x?.id) === oid ? listSnapshot : x));
@@ -887,9 +827,6 @@ export default function OrdersPage() {
 
       if (isOrdersDoubleFlickerDebug()) {
         ordersDoubleFlickerLog('handleUpdate:API ok (no early skip delete — expiry only)', { orderId: oid });
-      }
-      if (isOrdersRenderDebug()) {
-        ordersDebugSeq('handleUpdate:API ok', { orderId: oid });
       }
       toastSuccess(
         updates?.status !== undefined
@@ -973,9 +910,6 @@ export default function OrdersPage() {
     ordersDoubleFlickerLog('state:filterStatus', { filterStatus });
   }, [filterStatus]);
 
-  if (isOrdersRenderDebug()) {
-    console.count('[render] OrdersPage');
-  }
   if (isOrdersDoubleFlickerDebug()) {
     ordersDoubleFlickerLog('render:OrdersPage', {
       loading,

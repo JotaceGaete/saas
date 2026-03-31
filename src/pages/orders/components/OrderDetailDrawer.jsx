@@ -7,6 +7,7 @@ import {
   formatDeliverySegmentDurationLabel,
   formatPreparationDurationLabel,
 } from 'utils/orderDates';
+import { isOrdersDoubleFlickerDebug, ordersDoubleFlickerLog } from '../ordersDoubleFlickerLog';
 
 export default function OrderDetailDrawer({
   order,
@@ -51,22 +52,40 @@ export default function OrderDetailDrawer({
 
   const handleStatusChange = async (newStatus) => {
     if (newStatus === currentOrderStatus) return;
+    if (isOrdersDoubleFlickerDebug()) {
+      ordersDoubleFlickerLog('setSavingStatus', { value: true, prevValue: savingStatus, changedValue: savingStatus !== true });
+    }
     setSavingStatus(true);
     await onUpdate(order?.id, { status: newStatus });
+    if (isOrdersDoubleFlickerDebug()) {
+      ordersDoubleFlickerLog('setSavingStatus', { value: false, prevValue: true, changedValue: true });
+    }
     setSavingStatus(false);
   };
 
   const handlePaymentStatusChange = async (newPaymentStatus) => {
     if (newPaymentStatus === currentPaymentStatus) return;
+    if (isOrdersDoubleFlickerDebug()) {
+      ordersDoubleFlickerLog('setSavingPayment', { value: true, prevValue: savingPayment, changedValue: savingPayment !== true });
+    }
     setSavingPayment(true);
     await onUpdate(order?.id, { paymentStatus: newPaymentStatus });
+    if (isOrdersDoubleFlickerDebug()) {
+      ordersDoubleFlickerLog('setSavingPayment', { value: false, prevValue: true, changedValue: true });
+    }
     setSavingPayment(false);
   };
 
   const handleMarkAsPaid = async () => {
     if (currentPaymentStatus === 'pagado') return;
+    if (isOrdersDoubleFlickerDebug()) {
+      ordersDoubleFlickerLog('setSavingPayment', { value: true, prevValue: savingPayment, changedValue: savingPayment !== true });
+    }
     setSavingPayment(true);
     await onUpdate(order?.id, { paymentStatus: 'pagado' });
+    if (isOrdersDoubleFlickerDebug()) {
+      ordersDoubleFlickerLog('setSavingPayment', { value: false, prevValue: true, changedValue: true });
+    }
     setSavingPayment(false);
   };
 
