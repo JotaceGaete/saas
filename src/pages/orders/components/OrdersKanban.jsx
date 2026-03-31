@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, memo, useRef, useCallback } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -97,6 +97,16 @@ function sortDeliveredDesc(list) {
   });
 }
 
+function sameOrderIds(prevList, nextList) {
+  if (prevList === nextList) return true;
+  if (!Array.isArray(prevList) || !Array.isArray(nextList)) return false;
+  if (prevList.length !== nextList.length) return false;
+  for (let i = 0; i < prevList.length; i += 1) {
+    if (String(prevList[i]?.id) !== String(nextList[i]?.id)) return false;
+  }
+  return true;
+}
+
 /** Marco visual compartido (desktop droppable / móvil scroll horizontal). */
 function KanbanColumnFrame({
   column,
@@ -163,6 +173,14 @@ function KanbanColumn({ column, children, count }) {
   );
 }
 
+const DesktopKanbanColumn = memo(function DesktopKanbanColumn({ column, list, renderCard }) {
+  return (
+    <KanbanColumn column={column} count={list.length}>
+      {list.map((o) => renderCard(o))}
+    </KanbanColumn>
+  );
+}, (prev, next) => prev.column.id === next.column.id && prev.list === next.list && prev.renderCard === next.renderCard);
+
 function StatusBadgeOverlay({ status }) {
   const s = status || 'pedido';
   const cfg = KANBAN_STATUS_BADGE_MAP[s];
@@ -178,7 +196,7 @@ function StatusBadgeOverlay({ status }) {
   );
 }
 
-function DraggableOrderCard({ order, formatCLP, onOpenDetail, onUpdate, orderShortId: shortIdFn }) {
+const DraggableOrderCard = memo(function DraggableOrderCard({ order, formatCLP, onOpenDetail, onUpdate, orderShortId: shortIdFn }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: String(order.id) });
   const style = {
     transform: transform ? CSS.Translate.toString(transform) : undefined,
@@ -200,7 +218,7 @@ function DraggableOrderCard({ order, formatCLP, onOpenDetail, onUpdate, orderSho
       cardStyle={style}
     />
   );
-}
+});
 
 function resolveDropColumn(overId, allOrders) {
   const sid = String(overId);
@@ -210,7 +228,7 @@ function resolveDropColumn(overId, allOrders) {
   return null;
 }
 
-export default function OrdersKanban({
+function OrdersKanban({
   orders,
   onUpdate,
   onOpenDetail,
@@ -219,6 +237,7 @@ export default function OrdersKanban({
 }) {
   const isDesktop = useIsDesktop();
   const [activeId, setActiveId] = useState(null);
+  const stableListsRef = useRef({ pendientes: [], preparacion: [], entregado: [] });
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
@@ -234,11 +253,19 @@ export default function OrdersKanban({
       else if (col === 'preparacion') r.push(o);
       else if (col === 'entregado') e.push(o);
     }
-    return {
+    const nextLists = {
       pendientes: sortByCreatedAsc(p),
       preparacion: sortPreparacionAsc(r),
       entregado: sortDeliveredDesc(e),
     };
+    const prevLists = stableListsRef.current;
+    const stable = {
+      pendientes: sameOrderIds(prevLists.pendientes, nextLists.pendientes) ? prevLists.pendientes : nextLists.pendientes,
+      preparacion: sameOrderIds(prevLists.preparacion, nextLists.preparacion) ? prevLists.preparacion : nextLists.preparacion,
+      entregado: sameOrderIds(prevLists.entregado, nextLists.entregado) ? prevLists.entregado : nextLists.entregado,
+    };
+    stableListsRef.current = stable;
+    return stable;
   }, [orders]);
 
   const activeOrder = useMemo(
@@ -246,11 +273,11 @@ export default function OrdersKanban({
     [activeId, orders],
   );
 
-  const handleDragStart = ({ active }) => {
+  const handleDragStart = useCallback(({ active }) => {
     setActiveId(active?.id ?? null);
-  };
+  }, []);
 
-  const handleDragEnd = ({ active, over }) => {
+  const handleDragEnd = useCallback(({ active, over }) => {
     setActiveId(null);
     if (!over || !active) return;
     const orderId = active.id;
@@ -263,11 +290,11 @@ export default function OrdersKanban({
     const newStatus = kanbanColumnToStatus(targetCol, order.status);
     if (newStatus === (order.status || 'pedido')) return;
     onUpdate(orderId, { status: newStatus });
-  };
+  }, [orders, onUpdate]);
 
-  const handleDragCancel = () => setActiveId(null);
+  const handleDragCancel = useCallback(() => setActiveId(null), []);
 
-  const renderCard = (order) => (
+  const renderCard = useCallback((order) => (
     <DraggableOrderCard
       key={order.id}
       order={order}
@@ -276,7 +303,7 @@ export default function OrdersKanban({
       onUpdate={onUpdate}
       orderShortId={shortIdFn}
     />
-  );
+  ), [formatCLP, onOpenDetail, onUpdate, shortIdFn]);
 
   if (!isDesktop) {
     return (
@@ -345,11 +372,7 @@ export default function OrdersKanban({
         {KANBAN_COLUMNS.map((col) => {
           const list =
             col.id === 'pendientes' ? pendientes : col.id === 'preparacion' ? preparacion : entregado;
-          return (
-            <KanbanColumn key={col.id} column={col} count={list.length}>
-              {list.map((o) => renderCard(o))}
-            </KanbanColumn>
-          );
+          return <DesktopKanbanColumn key={col.id} column={col} list={list} renderCard={renderCard} />;
         })}
       </div>
 
@@ -374,3 +397,5 @@ export default function OrdersKanban({
     </DndContext>
   );
 }
+
+export default OrdersKanban;

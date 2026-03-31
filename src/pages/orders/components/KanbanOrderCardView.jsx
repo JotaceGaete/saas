@@ -100,22 +100,28 @@ function KanbanOrderCardView({
             </p>
             <OrderStatusBadge status={order?.status} />
           </div>
-          {timeCaption.primary ? (
-            <p
-              className="text-[11px] font-semibold tabular-nums leading-tight"
-              style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}
-            >
-              {timeCaption.primary}
-            </p>
-          ) : null}
-          {order?.status === 'entregado' && timeCaption.durationLabel ? (
-            <p
-              className="text-[11px] font-bold tabular-nums mt-0.5"
-              style={{ color: '#059669', fontFamily: 'var(--font-caption)' }}
-            >
-              Entregado en {timeCaption.durationLabel}
-            </p>
-          ) : null}
+          <div className="min-h-[30px]">
+            {timeCaption.primary ? (
+              <p
+                className="text-[11px] font-semibold tabular-nums leading-tight"
+                style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}
+              >
+                {timeCaption.primary}
+              </p>
+            ) : (
+              <p className="text-[11px] leading-tight invisible">placeholder</p>
+            )}
+            {order?.status === 'entregado' && timeCaption.durationLabel ? (
+              <p
+                className="text-[11px] font-bold tabular-nums mt-0.5"
+                style={{ color: '#059669', fontFamily: 'var(--font-caption)' }}
+              >
+                Entregado en {timeCaption.durationLabel}
+              </p>
+            ) : (
+              <p className="text-[11px] mt-0.5 invisible">placeholder</p>
+            )}
+          </div>
           <p
             className="text-base font-bold leading-snug break-words line-clamp-2 mt-2 tracking-tight"
             style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}

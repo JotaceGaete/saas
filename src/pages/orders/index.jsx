@@ -5,7 +5,13 @@ import DashboardLayoutContent from 'components/ui/DashboardLayoutContent';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
 import { useConfirmedEmailGuard } from '../../hooks/useConfirmedEmailGuard';
-import { getOrders, updateOrder, expireDeliveredOrders } from '../../services/waBusinessService';
+import {
+  getOrders,
+  getOrderById,
+  updateOrder,
+  expireDeliveredOrders,
+  mapOrderFromDb,
+} from '../../services/waBusinessService';
 import { useToast } from '../../components/ui/Toast';
 import { supabase } from '../../lib/supabase';
 import { format } from 'date-fns';
@@ -38,6 +44,21 @@ const STATUS_MAP = Object.fromEntries(ORDER_STATUSES?.map(s => [s?.key, s]));
 const PAYMENT_STATUS_MAP = Object.fromEntries(PAYMENT_STATUSES?.map(s => [s?.key, s]));
 
 const PRIMARY_HEX = '#7c3aed';
+
+/**
+ * Merge incremental desde fila realtime (sin join de items en UPDATE típico).
+ * Evita reemplazar `items` con [] cuando el payload no trae `wa_order_items`.
+ */
+function mergeOrderFromRealtimeRow(prev, row) {
+  if (!row?.id) return null;
+  const mapped = mapOrderFromDb(row);
+  if (!prev) return mapped;
+  const hasItemsPayload = Array.isArray(row.wa_order_items);
+  return {
+    ...mapped,
+    items: hasItemsPayload ? mapped.items : prev.items,
+  };
+}
 
 /** Conteo animado al cambiar totales por estado. */
 function QuickCount({ value, className, style }) {
@@ -222,24 +243,82 @@ export default function OrdersPage() {
       ?.on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'wa_orders', filter: `business_id=eq.${business.id}` },
-        () => loadOrders({ silent: true })
+        (payload) => {
+          const id = payload?.new?.id;
+          if (!id) {
+            loadOrders({ silent: true });
+            return;
+          }
+          void (async () => {
+            const { data, error } = await getOrderById(id);
+            if (error || !data) {
+              loadOrders({ silent: true });
+              return;
+            }
+            setOrders((prev) => {
+              const sid = String(id);
+              const idx = prev.findIndex((o) => String(o?.id) === sid);
+              if (idx >= 0) {
+                const next = [...prev];
+                next[idx] = data;
+                return next;
+              }
+              return [data, ...prev];
+            });
+          })();
+        },
       )
       ?.on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'wa_orders', filter: `business_id=eq.${business.id}` },
         (payload) => {
-          const orderId = String(payload?.new?.id || '');
-          if (!orderId) {
+          const row = payload?.new;
+          if (!row?.id) {
             loadOrders({ silent: true });
             return;
           }
+          const orderId = String(row.id);
           const expiresAt = pendingRealtimeSkipsRef.current.get(orderId);
           if (expiresAt && expiresAt > Date.now()) {
             return;
           }
           if (expiresAt) pendingRealtimeSkipsRef.current.delete(orderId);
-          loadOrders({ silent: true });
-        }
+
+          setOrders((prev) => {
+            const idx = prev.findIndex((o) => String(o?.id) === orderId);
+            if (idx < 0) {
+              void getOrderById(orderId).then(({ data }) => {
+                if (!data) return;
+                setOrders((p) => {
+                  if (p.some((o) => String(o?.id) === orderId)) return p;
+                  return [data, ...p];
+                });
+              });
+              return prev;
+            }
+            const merged = mergeOrderFromRealtimeRow(prev[idx], row);
+            if (!merged) return prev;
+            const next = [...prev];
+            next[idx] = merged;
+            return next;
+          });
+
+          setDetailOrder((prev) => {
+            if (!prev || String(prev.id) !== orderId) return prev;
+            const merged = mergeOrderFromRealtimeRow(prev, row);
+            return merged || prev;
+          });
+        },
+      )
+      ?.on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'wa_orders', filter: `business_id=eq.${business.id}` },
+        (payload) => {
+          const id = String(payload?.old?.id || '');
+          if (!id) return;
+          setOrders((prev) => prev.filter((o) => String(o?.id) !== id));
+          setDetailOrder((prev) => (prev && String(prev.id) === id ? null : prev));
+        },
       )
       ?.subscribe();
     return () => {

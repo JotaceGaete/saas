@@ -401,7 +401,8 @@ function localCalendarDateKey(d) {
   return `${y}-${m}-${day}`;
 }
 
-const mapOrderFromDb = (row) => ({
+/** Mapea fila `wa_orders` (+ items) al shape usado en la app. Exportado para merges incrementales (realtime). */
+export const mapOrderFromDb = (row) => ({
   id: row?.id,
   businessId: row?.business_id,
   customerName: row?.customer_name,
