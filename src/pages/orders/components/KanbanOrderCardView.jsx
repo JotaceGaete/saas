@@ -52,7 +52,7 @@ function showPaymentReconciliation(order) {
 /**
  * Contenido de tarjeta de pedido (kanban): usado con drag (desktop) o estático (mobile).
  */
-export default function KanbanOrderCardView({
+function KanbanOrderCardView({
   order,
   formatCLP,
   onOpenDetail,
@@ -181,6 +181,22 @@ export default function KanbanOrderCardView({
     </div>
   );
 }
+
+export default React.memo(KanbanOrderCardView, (prev, next) => {
+  const prevStyle = prev.cardStyle || {};
+  const nextStyle = next.cardStyle || {};
+  return (
+    prev.order === next.order &&
+    prev.formatCLP === next.formatCLP &&
+    prev.onOpenDetail === next.onOpenDetail &&
+    prev.onUpdate === next.onUpdate &&
+    prev.orderShortId === next.orderShortId &&
+    prev.showDragHandle === next.showDragHandle &&
+    prevStyle.transform === nextStyle.transform &&
+    prevStyle.opacity === nextStyle.opacity &&
+    prevStyle.zIndex === nextStyle.zIndex
+  );
+});
 
 /** Para DragOverlay: mismo mapa de icono/etiqueta que la tarjeta. */
 export const KANBAN_STATUS_BADGE_MAP = STATUS_BADGE;

@@ -141,6 +141,7 @@ export default function OrdersPage() {
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [showCancelledSection, setShowCancelledSection] = useState(false);
   const [detailOrder, setDetailOrder] = useState(null);
   const detailOrderRef = useRef(null);
   const pendingRealtimeSkipsRef = useRef(new Map());
@@ -154,9 +155,12 @@ export default function OrdersPage() {
     return () => window.clearInterval(id);
   }, []);
 
-  const loadOrders = useCallback(async () => {
-    if (!business?.id) { setLoading(false); return; }
-    setLoading(true);
+  const loadOrders = useCallback(async ({ silent = false } = {}) => {
+    if (!business?.id) {
+      if (!silent) setLoading(false);
+      return;
+    }
+    if (!silent) setLoading(true);
     await expireDeliveredOrders(business.id);
     const { data, error } = await getOrders(business?.id);
     if (error) {
@@ -164,7 +168,7 @@ export default function OrdersPage() {
     } else {
       setOrders(data || []);
     }
-    setLoading(false);
+    if (!silent) setLoading(false);
   }, [business?.id, toast]);
 
   useEffect(() => { loadOrders(); }, [loadOrders]);
@@ -205,7 +209,7 @@ export default function OrdersPage() {
 
   useEffect(() => {
     if (!business?.id) return;
-    const onVisible = () => { if (document.visibilityState === 'visible') loadOrders(); };
+    const onVisible = () => { if (document.visibilityState === 'visible') loadOrders({ silent: true }); };
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, [business?.id, loadOrders]);
@@ -218,7 +222,7 @@ export default function OrdersPage() {
       ?.on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'wa_orders', filter: `business_id=eq.${business.id}` },
-        () => loadOrders()
+        () => loadOrders({ silent: true })
       )
       ?.on(
         'postgres_changes',
@@ -226,7 +230,7 @@ export default function OrdersPage() {
         (payload) => {
           const orderId = String(payload?.new?.id || '');
           if (!orderId) {
-            loadOrders();
+            loadOrders({ silent: true });
             return;
           }
           const expiresAt = pendingRealtimeSkipsRef.current.get(orderId);
@@ -234,7 +238,7 @@ export default function OrdersPage() {
             return;
           }
           if (expiresAt) pendingRealtimeSkipsRef.current.delete(orderId);
-          loadOrders();
+          loadOrders({ silent: true });
         }
       )
       ?.subscribe();
@@ -274,6 +278,7 @@ export default function OrdersPage() {
         });
       });
       if (!listSnapshot) return;
+      pendingRealtimeSkipsRef.current.set(oid, Date.now() + 2800);
 
       const detailSnap =
         detailOrderRef.current?.id != null && String(detailOrderRef.current.id) === oid
@@ -312,7 +317,6 @@ export default function OrdersPage() {
         return;
       }
 
-      pendingRealtimeSkipsRef.current.set(oid, Date.now() + 1800);
       window.setTimeout(() => pendingRealtimeSkipsRef.current.delete(oid), 2200);
       toast?.success(
         updates?.status !== undefined
@@ -608,20 +612,34 @@ export default function OrdersPage() {
             />
             {cancelledFiltered.length > 0 && filterStatus === 'all' && (
               <div className="mt-8 pt-6 border-t" style={{ borderColor: 'var(--color-border)' }}>
-                <h2 className="text-sm font-bold mb-3 flex items-center gap-2" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-muted-foreground)' }}>
-                  <Icon name="XCircle" size={16} />
-                  Cancelados ({cancelledFiltered.length})
-                </h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                  {cancelledFiltered.map(order => (
-                    <CompactOrderCardStatic
-                      key={order.id}
-                      order={order}
-                      formatCLP={formatCLP}
-                      onOpenDetail={setDetailOrder}
-                      shortIdFn={orderShortId}
-                    />
-                  ))}
+                <button
+                  type="button"
+                  onClick={() => setShowCancelledSection((prev) => !prev)}
+                  className="w-full mb-3 flex items-center justify-between rounded-xl border px-3 py-2.5 text-left transition-colors hover:bg-muted/30"
+                  style={{ borderColor: 'var(--color-border)', backgroundColor: '#fff' }}
+                  aria-expanded={showCancelledSection}
+                  aria-controls="orders-cancelled-section"
+                >
+                  <span className="text-sm font-bold flex items-center gap-2" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-muted-foreground)' }}>
+                    <Icon name="XCircle" size={16} />
+                    Cancelados ({cancelledFiltered.length}) {showCancelledSection ? '▾' : '▸'}
+                  </span>
+                </button>
+                <div
+                  id="orders-cancelled-section"
+                  className={`overflow-hidden transition-[max-height,opacity] duration-200 ease-out ${showCancelledSection ? 'max-h-[1400px] opacity-100' : 'max-h-0 opacity-0'}`}
+                >
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
+                    {cancelledFiltered.map(order => (
+                      <CompactOrderCardStatic
+                        key={order.id}
+                        order={order}
+                        formatCLP={formatCLP}
+                        onOpenDetail={setDetailOrder}
+                        shortIdFn={orderShortId}
+                      />
+                    ))}
+                  </div>
                 </div>
               </div>
             )}
