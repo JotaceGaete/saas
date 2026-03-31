@@ -490,6 +490,7 @@ export default function PlansPage() {
       resolvedProvider: checkoutProvider,
     });
     if (getDisplayPlanPrice(planSlug) <= 0) return;
+    console.info(`[billing-cta] provider=paypal plan=${planSlug} action=start`);
     if (isAutomaticCheckoutBlocked) {
       toast.info(automaticCheckoutBlockedMessage);
       return;
@@ -524,10 +525,10 @@ export default function PlansPage() {
         toast.info(previewData.message || 'El cambio se aplicará al vencer tu plan actual. No se realiza ningún cargo.');
         return;
       }
-
-      setPreview(previewData);
-      setPreviewPlanSlug(planSlug);
+      // Internacional (PayPal): iniciar checkout directo para evitar CTA sin acción visible.
+      await confirmPayWithProvider(PAYMENT_PROVIDERS.PAYPAL, { planSlugOverride: planSlug });
     } catch (err) {
+      console.error(`[billing-cta] provider=paypal plan=${planSlug} error=${err?.message || 'unknown_error'}`);
       toast.error(err?.message || 'Error al iniciar PayPal.');
     } finally {
       setLoadingPlanSlug(null);
@@ -640,17 +641,18 @@ export default function PlansPage() {
     }
   };
 
-  const confirmPayWithProvider = async (provider) => {
+  const confirmPayWithProvider = async (provider, options = {}) => {
     if (guard.isBlocked) {
       guard.runIfConfirmed(() => {});
       return;
     }
-    if (!previewPlanSlug) return;
+    const targetPlanSlug = String(options?.planSlugOverride || previewPlanSlug || '').trim().toLowerCase();
+    if (!targetPlanSlug) return;
     if (isAutomaticCheckoutBlocked) {
       toast.info(automaticCheckoutBlockedMessage);
       return;
     }
-    setLoadingPlanSlug(previewPlanSlug);
+    setLoadingPlanSlug(targetPlanSlug);
 
     try {
       if (authLoading) {
@@ -679,6 +681,7 @@ export default function PlansPage() {
       const safeProvider = normalizedProvider === PAYMENT_PROVIDERS.DLOCAL
         ? PAYMENT_PROVIDERS.PAYPAL
         : normalizedProvider;
+      console.info(`[billing-cta] provider=${safeProvider} plan=${targetPlanSlug} action=start`);
       const allowedForUi = normalizedProvider === checkoutProvider
         || secondaryCheckoutProviders.includes(normalizedProvider);
       if (!allowedForUi) {
@@ -696,7 +699,7 @@ export default function PlansPage() {
         body: JSON.stringify({
           provider: safeProvider,
           businessId: business.id,
-          planSlug: previewPlanSlug,
+          planSlug: targetPlanSlug,
           returnUrl: safeProvider === PAYMENT_PROVIDERS.PAYPAL
             ? `${window.location.origin}/billing/paypal/success`
             : `${window.location.origin}/planes?payment=success`,
@@ -721,10 +724,15 @@ export default function PlansPage() {
       }
       const redirectUrl = data?.redirectUrl || data?.redirect_url || data?.checkoutUrl || null;
       if (!redirectUrl) {
+        console.error(`[billing-cta] provider=${safeProvider} plan=${targetPlanSlug} error=missing_redirect_url`);
+        toast.error('No pudimos iniciar PayPal. Intenta nuevamente.');
         throw new Error(`${safeProvider} no devolvió URL de checkout.`);
       }
+      console.info(`[billing-cta] provider=${safeProvider} plan=${targetPlanSlug} result=redirect`);
       window.location.assign(redirectUrl);
     } catch (err) {
+      const normalizedProvider = normalizeBillingProvider(provider) || String(provider || 'unknown');
+      console.error(`[billing-cta] provider=${normalizedProvider} plan=${targetPlanSlug} error=${err?.message || 'unknown_error'}`);
       toast.error(err?.message || `Error al iniciar ${provider}.`);
     } finally {
       setLoadingPlanSlug(null);
