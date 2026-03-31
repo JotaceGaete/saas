@@ -123,6 +123,7 @@ export function buildUnifiedSubscriptionViewModel({
     }
 
     const isTrialWithPaidSubscription = activatesAfterTrial && hasPaidSubscription;
+    const manualExpiryNote = nextBillingDate ? `Tu plan vence el ${formatEsCL(nextBillingDate)}.` : 'Tu plan se activará al finalizar tu prueba actual.';
     return {
       layout: 'trial',
       normalizedStatus,
@@ -135,14 +136,18 @@ export function buildUnifiedSubscriptionViewModel({
       progressPercent,
       showTrialBadge: true,
       subscriptionNote: isTrialWithPaidSubscription
-        ? 'Ya tienes tu plan pagado. Se activará al finalizar tu prueba actual.'
+        ? (billingMode === 'manual' ? manualExpiryNote : 'Ya tienes tu plan pagado. Se activará al finalizar tu prueba actual.')
         : subscriptionNote,
       showActivateCta: !isTrialWithPaidSubscription,
       ctaLabel: isTrialWithPaidSubscription
         ? 'Ver planes'
         : (billingMode === 'manual' ? 'Activar plan por 30 días' : 'Activar suscripción ahora'),
       footerCopy: isTrialWithPaidSubscription
-        ? 'Tu pago ya fue confirmado. No perderás días gratis: el período contratado comenzará al finalizar la prueba.'
+        ? (
+          billingMode === 'manual'
+            ? 'Tu pago ya fue confirmado. No perderás días gratis: tu ciclo de 30 días comenzará al finalizar la prueba.'
+            : 'Tu pago ya fue confirmado. No perderás días gratis: el período contratado comenzará al finalizar la prueba.'
+        )
         : (billingMode === 'manual'
           ? 'Al pagar hoy, activas 30 días de plan al finalizar tu prueba actual. La renovación se realiza manualmente.'
           : 'Al pagar hoy, el mes contratado se sumará al final de tu prueba actual. No pierdes tus días gratis.'),

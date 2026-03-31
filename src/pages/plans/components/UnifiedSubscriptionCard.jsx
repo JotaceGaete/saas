@@ -49,6 +49,7 @@ export default function UnifiedSubscriptionCard({ viewModel, onScrollToPlans, su
       trialWithSubscription,
       hasPaidSubscription,
       activatesAfterTrial,
+      billingMode,
     } = viewModel;
     const pct = Math.min(100, Math.max(0, Number(progressPercent) || 0));
     console.info(
@@ -119,7 +120,9 @@ export default function UnifiedSubscriptionCard({ viewModel, onScrollToPlans, su
             </button>
           ) : (
             <div className="shrink-0 w-full lg:w-auto rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-800 font-[family-name:var(--font-caption)]">
-              {trialWithSubscription ? 'Suscripción pagada confirmada' : 'Estado sincronizado'}
+              {trialWithSubscription
+                ? (billingMode === 'manual' ? 'Pago del plan confirmado' : 'Suscripción pagada confirmada')
+                : 'Estado sincronizado'}
             </div>
           )}
         </div>
