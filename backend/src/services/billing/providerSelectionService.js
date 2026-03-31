@@ -1,5 +1,5 @@
 const SUPPORTED_COUNTRIES = new Set([
-  'CL', 'AR', 'BO', 'BR', 'CO', 'CR', 'EC', 'GT', 'MX', 'PA', 'PE', 'PY', 'UY',
+  'CL', 'AR', 'BO', 'BR', 'CO', 'CR', 'EC', 'GT', 'MX', 'PA', 'PE', 'PY', 'UY', 'US',
 ]);
 
 function normalizeCountryCode(countryCode) {
@@ -20,21 +20,27 @@ export function normalizeBillingProvider(provider) {
 
 /**
  * Reglas por pais (fuente: business.country_code):
- * CL -> mercado_pago (sec: dlocal, paypal)
- * AR -> dlocal (sec: mercado_pago)
- * OTROS -> dlocal (sec: paypal)
+ * CL -> mercado_pago
+ * AR -> mercado_pago
+ * OTROS -> paypal
  */
 export function getPaymentOptions({ countryCode }) {
   const country = normalizeCountryCode(countryCode);
-  const normalized = country && SUPPORTED_COUNTRIES.has(country) ? country : 'CL';
+  const normalized = country && SUPPORTED_COUNTRIES.has(country) ? country : 'US';
 
   if (normalized === 'CL') {
-    return Object.freeze({ primary: 'mercado_pago', secondary: ['dlocal', 'paypal'] });
+    const options = Object.freeze({ primary: 'mercado_pago', secondary: ['paypal'] });
+    console.info(`[billing-provider] country=${normalized} provider=${options.primary}`);
+    return options;
   }
   if (normalized === 'AR') {
-    return Object.freeze({ primary: 'dlocal', secondary: ['mercado_pago'] });
+    const options = Object.freeze({ primary: 'mercado_pago', secondary: ['paypal'] });
+    console.info(`[billing-provider] country=${normalized} provider=${options.primary}`);
+    return options;
   }
-  return Object.freeze({ primary: 'dlocal', secondary: ['paypal'] });
+  const options = Object.freeze({ primary: 'paypal', secondary: ['mercado_pago'] });
+  console.info(`[billing-provider] country=${normalized} provider=${options.primary}`);
+  return options;
 }
 
 export function getAvailableBillingProviders({ businessCountryCode }) {

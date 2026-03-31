@@ -23,7 +23,7 @@ function mapPricingProviderToPayment(row) {
   const key = row?.defaultProvider;
   if (key === 'mercado_pago') return PAYMENT_PROVIDERS.MERCADO_PAGO;
   if (key === 'paypal') return PAYMENT_PROVIDERS.PAYPAL;
-  return PAYMENT_PROVIDERS.DLOCAL;
+  return PAYMENT_PROVIDERS.PAYPAL;
 }
 
 function buildMarketBlockFromCountry(isoCountry) {

@@ -3,7 +3,6 @@ import { HttpError, isHttpError } from '../lib/http/HttpError.js';
 import { requireAuthenticatedUser } from '../services/auth/requestAuthService.js';
 import { assertBusinessOwnership } from '../services/billing/ownershipService.js';
 import { confirmBillingSubscription, createBillingSubscription } from '../services/billing/billingSubscriptionService.js';
-import { createDlocalPlanCheckout } from '../services/providers/dlocal/checkoutService.js';
 import { assertMarketAccess } from '../services/market/marketValidationService.js';
 
 function json(body, status = 200) {
@@ -148,30 +147,16 @@ export async function dlocalCheckoutController(request) {
     const returnUrl = String(body?.returnUrl || `${origin}/planes?payment=success`).trim();
     const cancelUrl = String(body?.cancelUrl || `${origin}/planes?payment=failure`).trim();
 
-    const result = await createDlocalPlanCheckout({
+    console.warn(`[billing] dlocal_disabled businessId=${businessId} route=/api/v1/billing/dlocal/checkout fallback=paypal`);
+    const result = await createBillingSubscription({
       business,
       authUser,
       planSlug,
+      provider: 'paypal',
       returnUrl,
       cancelUrl,
     });
-    const redirectUrl = result?.redirectUrl ?? null;
-    const responseToClient = {
-      ok: true,
-      paymentId: result?.paymentId ?? null,
-      status: result?.status ?? null,
-      redirectUrl,
-      // Backward-compat temporal para clientes viejos
-      redirect_url: redirectUrl,
-      checkoutUrl: redirectUrl,
-    };
-    console.info('[DLOCAL_CHECKOUT_RESPONSE_TO_CLIENT]', {
-      paymentId: responseToClient.paymentId,
-      status: responseToClient.status,
-      redirectUrl: responseToClient.redirectUrl,
-      hasCheckoutToken: !!(result?.merchantCheckoutToken),
-    });
-    return json(responseToClient, 200);
+    return json(result, 200);
   } catch (err) {
     console.error('[DLOCAL_CHECKOUT_ERROR]', {
       route: '/api/v1/billing/dlocal/checkout',

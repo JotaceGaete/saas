@@ -28,13 +28,8 @@ export function normalizeBillingProvider(provider) {
   return null;
 }
 
-function isTruthy(value) {
-  const raw = String(value || '').trim().toLowerCase();
-  return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
-}
-
 export function isDlocalFeatureEnabled() {
-  return isTruthy(import.meta.env?.VITE_BILLING_DLOCAL_ENABLED);
+  return false;
 }
 
 /**
@@ -44,15 +39,14 @@ export function isDlocalFeatureEnabled() {
  */
 /**
  * Opciones de pago por país ISO del negocio (o sugerencia pre-login).
- * Sin país: no asumir Chile; usar flujo internacional (dLocal/PayPal según flag).
+ * Sin país: usar flujo internacional por defecto (PayPal).
  */
 export function getPaymentOptions({ countryCode }) {
   const normalized = normalize(countryCode);
-  const dlocalEnabled = isDlocalFeatureEnabled();
 
   if (!normalized) {
     return Object.freeze({
-      primary: dlocalEnabled ? PAYMENT_PROVIDERS.DLOCAL : PAYMENT_PROVIDERS.PAYPAL,
+      primary: PAYMENT_PROVIDERS.PAYPAL,
       secondary: [],
     });
   }
@@ -66,18 +60,12 @@ export function getPaymentOptions({ countryCode }) {
   if (normalized === 'AR') {
     return Object.freeze({
       primary: PAYMENT_PROVIDERS.MERCADO_PAGO,
-      secondary: dlocalEnabled ? [PAYMENT_PROVIDERS.DLOCAL] : [],
-    });
-  }
-  if (!dlocalEnabled) {
-    return Object.freeze({
-      primary: PAYMENT_PROVIDERS.PAYPAL,
-      secondary: [],
+      secondary: [PAYMENT_PROVIDERS.PAYPAL],
     });
   }
   return Object.freeze({
-    primary: PAYMENT_PROVIDERS.DLOCAL,
-    secondary: [PAYMENT_PROVIDERS.PAYPAL],
+    primary: PAYMENT_PROVIDERS.PAYPAL,
+    secondary: [PAYMENT_PROVIDERS.MERCADO_PAGO],
   });
 }
 

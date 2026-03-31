@@ -3,7 +3,6 @@ import {
   getBillingSubscriptionByBusinessId,
   upsertBillingSubscriptionByBusiness,
 } from '../../repositories/billingSubscriptionRepository.js';
-import { createDlocalPlanCheckout } from '../providers/dlocal/checkoutService.js';
 import { createSubscription as createPaypalSubscription, getSubscription as getPaypalSubscription } from '../paypal/subscriptionService.js';
 import { mapProviderStatus } from './billingStatusMapper.js';
 import { normalizeBillingProvider, getPaymentOptions } from './providerSelectionService.js';
@@ -41,6 +40,10 @@ export async function createBillingSubscription({
   }
 
   let provider = explicitProvider || paymentOptions.primary;
+  if (provider === 'dlocal') {
+    console.warn(`[billing] dlocal_disabled businessId=${business?.id || 'unknown'} requestedProvider=dlocal fallback=paypal`);
+    provider = 'paypal';
+  }
   let availability = getBillingProviderAvailability({ provider });
   const alternatives = paymentOptions.secondary.map((p) => getBillingProviderAvailability({ provider: p }));
 
@@ -54,6 +57,7 @@ export async function createBillingSubscription({
     availability,
     alternatives,
   });
+  console.info(`[billing-provider] country=${String(businessCountryCode || 'NA').toUpperCase()} provider=${provider}`);
 
   if ((!availability.enabled || !availability.supportsCheckout) && !explicitProvider) {
     const fallback = alternatives.find((item) => item.enabled && item.supportsCheckout);
@@ -82,25 +86,6 @@ export async function createBillingSubscription({
       provider: 'mercado_pago',
       mode: 'client_side_checkout',
       message: 'MercadoPago se procesa con el flujo existente del frontend.',
-    };
-  }
-
-  if (provider === 'dlocal') {
-    const dlocal = await createDlocalPlanCheckout({
-      business,
-      authUser,
-      planSlug: normalizedPlan,
-      returnUrl,
-      cancelUrl,
-    });
-    return {
-      ok: true,
-      provider: 'dlocal',
-      providerSubscriptionId: dlocal.paymentId,
-      providerStatus: dlocal.status,
-      checkoutUrl: dlocal.redirectUrl,
-      currencyCode: dlocal.currencyCode,
-      amount: dlocal.amount,
     };
   }
 

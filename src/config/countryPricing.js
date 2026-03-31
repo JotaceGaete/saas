@@ -4,7 +4,7 @@
  * La moneda **mostrada** en /planes depende del proveedor de facturación (`resolveBillingDisplayCurrency`
  * en `lib/billing/billingDisplayCurrency.js`), no de `wa_businesses.currency`.
  * Solo Chile y Argentina usan montos locales en catálogo cuando el proveedor es Mercado Pago (CLP / ARS).
- * Resto: montos USD de referencia; con dLocal el cargo puede liquidarse en moneda local — ver `getDlocalLocalChargeDisclaimer`.
+ * Resto: montos USD de referencia con PayPal.
  *
  * El catálogo del negocio (productos) sigue usando `wa_businesses.currency` (CRC, MXN, etc.).
  */
@@ -19,7 +19,7 @@ export const PRICING_MARKET_STATUS = Object.freeze({
   UNSUPPORTED: 'unsupported',
 });
 
-/** @typedef {'mercado_pago'|'paypal'|'dlocal'} BillingProviderKey */
+/** @typedef {'mercado_pago'|'paypal'} BillingProviderKey */
 
 /** Precios mostrados en USD para países que no usan moneda local en la UI de planes. */
 const USD_DISPLAY_PRICES = Object.freeze({
@@ -40,18 +40,18 @@ const COUNTRY_PRICING_OVERRIDES = Object.freeze({
   },
   AR: {
     marketStatus: PRICING_MARKET_STATUS.ACTIVE,
-    defaultProvider: 'dlocal',
+    defaultProvider: 'mercado_pago',
     localPrices: { starter: 0, pro: 8990, business: 13990 },
   },
-  BO: { marketStatus: PRICING_MARKET_STATUS.BETA, defaultProvider: 'dlocal' },
-  PE: { marketStatus: PRICING_MARKET_STATUS.BETA, defaultProvider: 'dlocal' },
+  BO: { marketStatus: PRICING_MARKET_STATUS.BETA, defaultProvider: 'paypal' },
+  PE: { marketStatus: PRICING_MARKET_STATUS.BETA, defaultProvider: 'paypal' },
 });
 
 const FALLBACK_COUNTRY = 'US';
 
 const DEFAULT_OVERRIDE = Object.freeze({
   marketStatus: PRICING_MARKET_STATUS.ACTIVE,
-  defaultProvider: /** @type {BillingProviderKey} */ ('dlocal'),
+  defaultProvider: /** @type {BillingProviderKey} */ ('paypal'),
 });
 
 function normalizeCountryCode(value) {
@@ -108,10 +108,7 @@ export function getCountryPricingRow(countryCode) {
   const currency = localDisplay ? settlementCurrency : 'USD';
   const locale = localDisplay ? (cfg?.locale || 'en-US') : 'en-US';
 
-  const showDlocalLocalChargeNotice =
-    defaultProvider === 'dlocal' &&
-    !localDisplay &&
-    settlementCurrency !== 'USD';
+  const showDlocalLocalChargeNotice = false;
 
   return {
     countryCode: normalized,
@@ -127,16 +124,13 @@ export function getCountryPricingRow(countryCode) {
 }
 
 /**
- * Texto para /planes cuando el pago con dLocal se liquida en moneda local (ej. MXN) aunque el precio mostrado sea USD.
+ * Legacy: dLocal en stand-by. Este aviso queda desactivado.
  * @param {string|null|undefined} countryCode
  * @returns {string|null}
  */
 export function getDlocalLocalChargeDisclaimer(countryCode) {
-  const row = getCountryPricingRow(countryCode);
-  if (!row.showDlocalLocalChargeNotice) return null;
-  const cfg = getCountryConfig(row.countryCode);
-  const label = cfg?.currencyName ? `${row.settlementCurrency} (${cfg.currencyName})` : row.settlementCurrency;
-  return `Los precios en USD son referencia. Al pagar con tarjeta u otros medios locales, el cobro se liquidará en ${label}, según el tipo de cambio y condiciones vigentes al momento de pagar.`;
+  void countryCode;
+  return null;
 }
 
 /**

@@ -19,7 +19,7 @@ import { getBillingCurrencyForCountry } from '../../config/countryPricing';
 export function getBillingRegion(countryCode) {
   if (!countryCode || typeof countryCode !== 'string') return BILLING_REGION_INT;
   const code = countryCode.toUpperCase().trim();
-  return code === 'CL' ? BILLING_REGION_CL : BILLING_REGION_INT;
+  return (code === 'CL' || code === 'AR') ? BILLING_REGION_CL : BILLING_REGION_INT;
 }
 
 /**

@@ -20,7 +20,6 @@ import {
   getLocaleForBillingDisplayCurrency,
   getPlanPrice,
   getPlanConfig,
-  getProviderShortLabel,
   getPlanUnavailableCopy,
 } from '../../lib/billing';
 import { getPlansActivationWhatsappUrl } from '../../config/plansActivation';
@@ -53,8 +52,6 @@ function PlanPrimaryTrustBadge({ provider, billingCountryCode }) {
       ? 'Mercado Pago es el método principal para tu negocio'
       : n === PAYMENT_PROVIDERS.PAYPAL
         ? 'PayPal disponible para tu región'
-        : n === PAYMENT_PROVIDERS.DLOCAL
-          ? `Pago seguro con ${getProviderShortLabel({ provider: PAYMENT_PROVIDERS.DLOCAL, billingCountryCode })}`
         : null;
   if (!label) return null;
   return (
@@ -134,7 +131,7 @@ export default function PlansPage() {
     subscriptionState?.providerResolution?.selectedProvider,
     subscriptionState?.billingProvider?.provider,
   ]);
-  /** Proveedor efectivo para precios en pantalla: servidor si ya cargó; si no, regla por país (CL/AR → MP, resto → dLocal). */
+  /** Proveedor efectivo para precios en pantalla: servidor si ya cargó; si no, regla por país (CL/AR → MP, resto → PayPal). */
   const effectiveProviderForPlanDisplay = useMemo(() => {
     if (checkoutProvider) return checkoutProvider;
     if (businessCountryCode) return resolveBillingProvider(businessCountryCode);
@@ -536,48 +533,6 @@ export default function PlansPage() {
     }
   };
 
-  const handlePayWithDlocal = async (planSlug) => {
-    if (guard.isBlocked) {
-      guard.runIfConfirmed(() => {});
-      return;
-    }
-    if (getDisplayPlanPrice(planSlug) <= 0) return;
-    if (isAutomaticCheckoutBlocked) {
-      toast.info(automaticCheckoutBlockedMessage);
-      return;
-    }
-    setLoadingPlanSlug(planSlug);
-
-    setPreview(null);
-    setPreviewPlanSlug(null);
-    try {
-      if (authLoading) {
-        toast.info('Cargando sesión. Intenta nuevamente en unos segundos.');
-        return;
-      }
-      if (!isAuthenticated || !user || !business?.id) {
-        toast.error('Debes iniciar sesión y tener un negocio activo para suscribirte.');
-        navigate('/login');
-        return;
-      }
-      const previewData = await fetchPlanPreview(planSlug);
-      if (!previewData) {
-        toast.error('No se pudo obtener el resumen del cambio de plan.');
-        return;
-      }
-      if (previewData.changeType === 'downgrade') {
-        toast.info(previewData.message || 'El cambio se aplicará al vencer tu plan actual. No se realiza ningún cargo.');
-        return;
-      }
-      setPreview(previewData);
-      setPreviewPlanSlug(planSlug);
-    } catch (err) {
-      toast.error(err?.message || 'Error al iniciar el pago con tarjeta.');
-    } finally {
-      setLoadingPlanSlug(null);
-    }
-  };
-
   const confirmActivationViaWhatsApp = () => {
     if (guard.isBlocked) {
       guard.runIfConfirmed(() => {});
@@ -717,15 +672,19 @@ export default function PlansPage() {
       if (!normalizedProvider) {
         throw new Error(`Proveedor no soportado: ${provider}`);
       }
+      if (normalizedProvider === PAYMENT_PROVIDERS.DLOCAL) {
+        console.warn('[billing] dlocal_disabled_ui_fallback provider=dlocal fallback=paypal');
+      }
+      const safeProvider = normalizedProvider === PAYMENT_PROVIDERS.DLOCAL
+        ? PAYMENT_PROVIDERS.PAYPAL
+        : normalizedProvider;
       const allowedForUi = normalizedProvider === checkoutProvider
         || secondaryCheckoutProviders.includes(normalizedProvider);
       if (!allowedForUi) {
         throw new Error('Este método de pago no está disponible según el estado del servidor.');
       }
 
-      const endpoint = normalizedProvider === PAYMENT_PROVIDERS.DLOCAL
-        ? '/api/v1/billing/dlocal/checkout'
-        : '/api/v1/billing/subscriptions/create';
+      const endpoint = '/api/v1/billing/subscriptions/create';
 
       const res = await fetch(endpoint, {
         method: 'POST',
@@ -734,13 +693,13 @@ export default function PlansPage() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          provider: normalizedProvider,
+          provider: safeProvider,
           businessId: business.id,
           planSlug: previewPlanSlug,
-          returnUrl: normalizedProvider === PAYMENT_PROVIDERS.PAYPAL
+          returnUrl: safeProvider === PAYMENT_PROVIDERS.PAYPAL
             ? `${window.location.origin}/billing/paypal/success`
             : `${window.location.origin}/planes?payment=success`,
-          cancelUrl: normalizedProvider === PAYMENT_PROVIDERS.PAYPAL
+          cancelUrl: safeProvider === PAYMENT_PROVIDERS.PAYPAL
             ? `${window.location.origin}/billing/paypal/cancel`
             : `${window.location.origin}/planes?payment=failure`,
         }),
@@ -757,11 +716,11 @@ export default function PlansPage() {
         if (data?.code === 'PROVIDER_NOT_READY') {
           throw new Error('Este método de pago no está disponible por el momento.');
         }
-        throw new Error(data?.error || `No se pudo crear la suscripción ${normalizedProvider} (HTTP ${res.status}).`);
+        throw new Error(data?.error || `No se pudo crear la suscripción ${safeProvider} (HTTP ${res.status}).`);
       }
       const redirectUrl = data?.redirectUrl || data?.redirect_url || data?.checkoutUrl || null;
       if (!redirectUrl) {
-        throw new Error(`${normalizedProvider} no devolvió URL de checkout.`);
+        throw new Error(`${safeProvider} no devolvió URL de checkout.`);
       }
       window.location.assign(redirectUrl);
     } catch (err) {
@@ -772,7 +731,6 @@ export default function PlansPage() {
   };
 
   const handleConfirmPrimaryPayment = () => {
-    if (checkoutProvider === PAYMENT_PROVIDERS.DLOCAL) return confirmPayWithProvider(PAYMENT_PROVIDERS.DLOCAL);
     if (checkoutProvider === PAYMENT_PROVIDERS.PAYPAL) return confirmPayWithProvider(PAYMENT_PROVIDERS.PAYPAL);
     if (checkoutProvider === PAYMENT_PROVIDERS.MERCADO_PAGO) return confirmPayWithMercadoPago();
     if (checkoutProvider === PAYMENT_PROVIDERS.MANUAL) return confirmActivationViaWhatsApp();
@@ -984,26 +942,6 @@ export default function PlansPage() {
                           </button>
                           <PlanPrimaryTrustBadge provider={checkoutProvider} billingCountryCode={billingCountryForUi} />
                         </div>
-                      ) : checkoutProvider === PAYMENT_PROVIDERS.DLOCAL ? (
-                        <div className="w-full flex flex-col gap-1">
-                          <button
-                            type="button"
-                            disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !isPurchasable || isAutomaticCheckoutBlocked}
-                            onClick={() => handlePayWithDlocal(slug)}
-                            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
-                            style={{ backgroundColor: '#111827' }}
-                          >
-                            {loadingPlanSlug === slug ? (
-                              <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                            ) : (
-                              <>
-                                <Icon name="CreditCard" size={16} color="#fff" />
-                                {actionLabel}
-                              </>
-                            )}
-                          </button>
-                          <PlanPrimaryTrustBadge provider={checkoutProvider} billingCountryCode={billingCountryForUi} />
-                        </div>
                       ) : checkoutProvider === PAYMENT_PROVIDERS.PAYPAL ? (
                         <div className="w-full flex flex-col gap-1">
                           <button
@@ -1099,7 +1037,7 @@ export default function PlansPage() {
                   onClick={handleConfirmPrimaryPayment}
                   disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !billingReady || !isProviderReadyForCheckout(checkoutProvider) || isAutomaticCheckoutBlocked}
                   className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60 w-full"
-                  style={{ backgroundColor: checkoutProvider === PAYMENT_PROVIDERS.DLOCAL ? '#111827' : checkoutProvider === PAYMENT_PROVIDERS.PAYPAL ? '#0070ba' : checkoutProvider === PAYMENT_PROVIDERS.MERCADO_PAGO ? '#009EE3' : '#25D366' }}
+                  style={{ backgroundColor: checkoutProvider === PAYMENT_PROVIDERS.PAYPAL ? '#0070ba' : checkoutProvider === PAYMENT_PROVIDERS.MERCADO_PAGO ? '#009EE3' : '#25D366' }}
                 >
                   {loadingPlanSlug ? (
                     <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -1142,20 +1080,6 @@ export default function PlansPage() {
                   >
                     <span>{previewChoose}</span>
                     <span className="text-[10px] font-normal opacity-80">Mercado Pago</span>
-                  </button>
-                )}
-                {secondaryCheckoutProviders.includes(PAYMENT_PROVIDERS.DLOCAL) && (
-                  <button
-                    type="button"
-                    onClick={() => confirmPayWithProvider(PAYMENT_PROVIDERS.DLOCAL)}
-                    disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !billingReady || !isProviderReadyForCheckout(PAYMENT_PROVIDERS.DLOCAL) || isAutomaticCheckoutBlocked}
-                    className="inline-flex flex-col items-center justify-center gap-0.5 px-4 py-2.5 rounded-lg text-sm font-medium transition-opacity hover:opacity-90 disabled:opacity-60 min-w-[9rem]"
-                    style={{ color: '#111827', border: '1px solid #111827' }}
-                  >
-                    <span>{previewChoose}</span>
-                    <span className="text-[10px] font-normal opacity-80 text-center leading-tight">
-                      {getProviderShortLabel({ provider: PAYMENT_PROVIDERS.DLOCAL, billingCountryCode: billingCountryForUi })}
-                    </span>
                   </button>
                 )}
               </div>
