@@ -22,8 +22,8 @@ const KANBAN_COLUMNS = [
     title: 'Pendientes',
     subtitle: 'Pedido recibido',
     accent: '#7c3aed',
-    headerTint: 'rgba(124, 58, 237, 0.1)',
-    bodyTint: 'rgba(124, 58, 237, 0.04)',
+    headerTint: 'rgba(124, 58, 237, 0.08)',
+    bodyTint: 'rgba(124, 58, 237, 0.02)',
     variant: 'accent',
   },
   {
@@ -31,8 +31,8 @@ const KANBAN_COLUMNS = [
     title: 'En proceso',
     subtitle: 'Preparación o enviado',
     accent: '#d97706',
-    headerTint: 'rgba(245, 158, 11, 0.14)',
-    bodyTint: 'rgba(245, 158, 11, 0.05)',
+    headerTint: 'rgba(245, 158, 11, 0.1)',
+    bodyTint: 'rgba(245, 158, 11, 0.025)',
     variant: 'warm',
   },
   {
@@ -40,11 +40,15 @@ const KANBAN_COLUMNS = [
     title: 'Entregados',
     subtitle: 'Listo',
     accent: '#059669',
-    headerTint: 'rgba(16, 185, 129, 0.12)',
-    bodyTint: 'rgba(16, 185, 129, 0.05)',
+    headerTint: 'rgba(16, 185, 129, 0.08)',
+    bodyTint: 'rgba(16, 185, 129, 0.02)',
     variant: 'accent',
   },
 ];
+
+function compareById(a, b) {
+  return String(a?.id || '').localeCompare(String(b?.id || ''));
+}
 
 /** Columna visual del tablero (no confundir con order.status en backend). */
 export function orderToKanbanColumn(status) {
@@ -70,16 +74,27 @@ function sortByCreatedAsc(list) {
   return [...list].sort((a, b) => {
     const ta = new Date(a?.createdAt || 0).getTime();
     const tb = new Date(b?.createdAt || 0).getTime();
-    return ta - tb;
+    if (ta !== tb) return ta - tb;
+    return compareById(a, b);
   });
 }
 
 function sortPreparacionAsc(list) {
-  return [...list].sort((a, b) => getPreparacionSortTimeMs(a) - getPreparacionSortTimeMs(b));
+  return [...list].sort((a, b) => {
+    const da = getPreparacionSortTimeMs(a);
+    const db = getPreparacionSortTimeMs(b);
+    if (da !== db) return da - db;
+    return compareById(a, b);
+  });
 }
 
 function sortDeliveredDesc(list) {
-  return [...list].sort((a, b) => getDeliveredSortTimeMs(b) - getDeliveredSortTimeMs(a));
+  return [...list].sort((a, b) => {
+    const da = getDeliveredSortTimeMs(a);
+    const db = getDeliveredSortTimeMs(b);
+    if (da !== db) return db - da;
+    return compareById(a, b);
+  });
 }
 
 /** Marco visual compartido (desktop droppable / móvil scroll horizontal). */
@@ -100,7 +115,7 @@ function KanbanColumnFrame({
         backgroundColor: 'var(--color-card)',
         boxShadow: isOver
           ? `0 8px 30px -8px ${accent}33, 0 0 0 1px ${accent}22`
-          : '0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04)',
+          : '0 1px 2px rgba(15, 23, 42, 0.05)',
       }}
     >
       <div

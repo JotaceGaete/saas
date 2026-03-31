@@ -19,7 +19,6 @@ import {
   isOrderVisibleOnActiveBoard,
 } from '../../constants/ordersBoard';
 import { filterDeliveredOrdersMissingDeliveredAt } from '../../utils/orderDates';
-import { celebrarPrimerEnvio } from '../../utils/confettiCelebrations';
 
 const ORDER_STATUSES = [
   { key: 'pedido', label: 'Pedido', color: '#6366F1', bg: '#EEF2FF', icon: 'ShoppingBag' },
@@ -144,6 +143,7 @@ export default function OrdersPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [detailOrder, setDetailOrder] = useState(null);
   const detailOrderRef = useRef(null);
+  const pendingRealtimeSkipsRef = useRef(new Map());
   useEffect(() => {
     detailOrderRef.current = detailOrder;
   }, [detailOrder]);
@@ -223,7 +223,19 @@ export default function OrdersPage() {
       ?.on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'wa_orders', filter: `business_id=eq.${business.id}` },
-        () => loadOrders()
+        (payload) => {
+          const orderId = String(payload?.new?.id || '');
+          if (!orderId) {
+            loadOrders();
+            return;
+          }
+          const expiresAt = pendingRealtimeSkipsRef.current.get(orderId);
+          if (expiresAt && expiresAt > Date.now()) {
+            return;
+          }
+          if (expiresAt) pendingRealtimeSkipsRef.current.delete(orderId);
+          loadOrders();
+        }
       )
       ?.subscribe();
     return () => {
@@ -263,11 +275,6 @@ export default function OrdersPage() {
       });
       if (!listSnapshot) return;
 
-      const shouldCelebratePrimerEnvio =
-        updates.status === 'enviado' &&
-        listSnapshot.status !== 'enviado' &&
-        !(orders || []).some((x) => String(x?.id) !== oid && x?.status === 'enviado');
-
       const detailSnap =
         detailOrderRef.current?.id != null && String(detailOrderRef.current.id) === oid
           ? { ...detailOrderRef.current }
@@ -301,23 +308,21 @@ export default function OrdersPage() {
         toast?.error('No se pudo guardar el cambio.');
         setOrders((prev) => prev?.map((x) => (String(x?.id) === oid ? listSnapshot : x)));
         if (detailSnap) setDetailOrder(detailSnap);
+        pendingRealtimeSkipsRef.current.delete(oid);
         return;
       }
 
-      if (shouldCelebratePrimerEnvio) {
-        celebrarPrimerEnvio();
-        toast?.success('¡Felicidades por tu primer envío! 🚀 El camino al éxito acaba de empezar.');
-      } else {
-        toast?.success(
-          updates?.status !== undefined
-            ? 'Estado actualizado'
-            : updates?.paymentStatus !== undefined
-              ? 'Pago actualizado'
-              : 'Pedido actualizado',
-        );
-      }
+      pendingRealtimeSkipsRef.current.set(oid, Date.now() + 1800);
+      window.setTimeout(() => pendingRealtimeSkipsRef.current.delete(oid), 2200);
+      toast?.success(
+        updates?.status !== undefined
+          ? 'Estado actualizado'
+          : updates?.paymentStatus !== undefined
+            ? 'Pago actualizado'
+            : 'Pedido actualizado',
+      );
     });
-  }, [guard, toast, orders]);
+  }, [guard, toast]);
 
   const visibleBoardOrders = useMemo(
     () => (orders || []).filter((o) => isOrderVisibleOnActiveBoard(o)),
@@ -354,57 +359,6 @@ export default function OrdersPage() {
     });
     return c;
   }, [visibleBoardOrders]);
-
-  const [cardAnim, setCardAnim] = useState({ deflate: null, shine: null });
-  const prevCountsRef = useRef(null);
-
-  useEffect(() => {
-    const next = statusCounts;
-    const prev = prevCountsRef.current;
-    if (!prev) {
-      prevCountsRef.current = { ...next };
-      return undefined;
-    }
-    let decKey = null;
-    let maxDec = 0;
-    let incKey = null;
-    let maxInc = 0;
-    for (const k of Object.keys(next)) {
-      const d = (prev[k] ?? 0) - (next[k] ?? 0);
-      if (d > maxDec) {
-        maxDec = d;
-        decKey = k;
-      }
-      const i = (next[k] ?? 0) - (prev[k] ?? 0);
-      if (i > maxInc) {
-        maxInc = i;
-        incKey = k;
-      }
-    }
-    prevCountsRef.current = { ...next };
-    if (maxDec > 0 && maxInc > 0 && decKey !== incKey) {
-      setCardAnim({ deflate: decKey, shine: incKey });
-      const t = window.setTimeout(() => setCardAnim({ deflate: null, shine: null }), 620);
-      return () => window.clearTimeout(t);
-    }
-    if (maxInc > 0 && maxDec === 0 && incKey != null) {
-      setCardAnim({ deflate: null, shine: incKey });
-      const t = window.setTimeout(() => setCardAnim({ deflate: null, shine: null }), 620);
-      return () => window.clearTimeout(t);
-    }
-    if (maxDec > 0 && maxInc === 0 && decKey != null) {
-      setCardAnim({ deflate: decKey, shine: null });
-      const t = window.setTimeout(() => setCardAnim({ deflate: null, shine: null }), 620);
-      return () => window.clearTimeout(t);
-    }
-    return undefined;
-  }, [statusCounts]);
-
-  const statusCardAnimClass = (key) => {
-    if (cardAnim.deflate === key) return 'animate-status-card-deflate';
-    if (cardAnim.shine === key) return 'animate-status-card-shine';
-    return '';
-  };
 
   if (businessLoading) {
     return (
@@ -465,7 +419,7 @@ export default function OrdersPage() {
           <button
             type="button"
             onClick={() => setFilterStatus('all')}
-            className={`group relative shrink-0 snap-start w-[min(46vw,176px)] lg:w-auto overflow-hidden rounded-2xl bg-white p-3.5 lg:p-4 text-left touch-manipulation transition-[transform,box-shadow] duration-300 ease-out hover:-translate-y-1 hover:shadow-xl active:translate-y-0 shadow-md ${statusCardAnimClass('all')} ${
+            className={`group relative shrink-0 snap-start w-[min(46vw,176px)] lg:w-auto overflow-hidden rounded-2xl bg-white p-3.5 lg:p-4 text-left touch-manipulation transition-shadow duration-200 shadow-sm ${
               filterStatus === 'all' ? 'ring-2 ring-[#7c3aed]/35 shadow-lg' : ''
             }`}
             style={{
@@ -509,13 +463,12 @@ export default function OrdersPage() {
           {ORDER_STATUSES?.map((s) => {
             const active = filterStatus === s.key;
             const count = statusCounts[s.key] ?? 0;
-            const pulsePending = s.key === 'enviado' && count > 0;
             return (
               <button
                 key={s.key}
                 type="button"
                 onClick={() => setFilterStatus((prev) => (prev === s.key ? 'all' : s.key))}
-                className={`group relative shrink-0 snap-start w-[min(46vw,176px)] lg:w-auto overflow-hidden rounded-2xl bg-white p-3.5 lg:p-4 text-left touch-manipulation transition-[transform,box-shadow] duration-300 ease-out hover:-translate-y-1 hover:shadow-xl active:translate-y-0 shadow-md ${statusCardAnimClass(s.key)} ${pulsePending ? 'animate-pulse-slow' : ''}`}
+                className="group relative shrink-0 snap-start w-[min(46vw,176px)] lg:w-auto overflow-hidden rounded-2xl bg-white p-3.5 lg:p-4 text-left touch-manipulation transition-shadow duration-200 shadow-sm"
                 style={
                   active
                     ? { boxShadow: `0 14px 44px -14px ${s.color}55, 0 0 0 2px ${s.color}44` }

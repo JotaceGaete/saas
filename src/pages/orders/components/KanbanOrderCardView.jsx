@@ -69,6 +69,7 @@ export default function KanbanOrderCardView({
   const timeCaption = getOrderCardTimeCaption(order);
   const next = nextQuickStatus(order);
   const showPayToggle = showPaymentReconciliation(order);
+  const shouldKeepActionSlot = Boolean(showPayToggle);
 
   return (
     <div
@@ -134,17 +135,15 @@ export default function KanbanOrderCardView({
           </div>
         </button>
       </div>
-      {(next || showPayToggle) && (
+      {(next || showPayToggle) ? (
         <div
-          className="flex flex-wrap items-center gap-2 px-2.5 pb-2.5 pt-0 sm:px-3 sm:pb-3"
-          style={{
-            borderTop: '1px solid rgba(15, 23, 42, 0.06)',
-          }}
+          className="flex flex-wrap items-center gap-2 px-2.5 pb-2.5 pt-0 sm:px-3 sm:pb-3 min-h-[48px]"
+          style={{ borderTop: '1px solid rgba(15, 23, 42, 0.06)' }}
         >
           {next ? (
             <button
               type="button"
-              className="inline-flex items-center justify-center gap-1 rounded-xl px-3 py-2 min-h-[40px] sm:min-h-[38px] text-left text-[10px] sm:text-[11px] font-semibold leading-tight flex-1 min-w-0 sm:min-w-[140px] transition-transform duration-150 hover:scale-[1.02] active:scale-[0.98]"
+              className="inline-flex items-center justify-center gap-1 rounded-xl px-3 py-2 min-h-[40px] sm:min-h-[38px] text-left text-[10px] sm:text-[11px] font-semibold leading-tight flex-1 min-w-0 sm:min-w-[140px] transition-colors duration-150 hover:opacity-95"
               style={{
                 fontFamily: 'var(--font-caption)',
                 backgroundColor: 'var(--color-primary)',
@@ -161,6 +160,13 @@ export default function KanbanOrderCardView({
               <Icon name="ChevronRight" size={12} color="#fff" className="shrink-0" />
               <span className="break-words">{next.label}</span>
             </button>
+          ) : shouldKeepActionSlot ? (
+            <div
+              aria-hidden
+              className="inline-flex items-center justify-center rounded-xl px-3 py-2 min-h-[40px] sm:min-h-[38px] flex-1 min-w-0 sm:min-w-[140px] invisible"
+            >
+              placeholder
+            </div>
           ) : null}
           {showPayToggle ? (
             <PaymentStatusToggle
@@ -171,7 +177,7 @@ export default function KanbanOrderCardView({
             />
           ) : null}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
