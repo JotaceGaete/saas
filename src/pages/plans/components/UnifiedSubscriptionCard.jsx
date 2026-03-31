@@ -47,8 +47,13 @@ export default function UnifiedSubscriptionCard({ viewModel, onScrollToPlans, su
       footerCopy,
       showActivateCta,
       trialWithSubscription,
+      hasPaidSubscription,
+      activatesAfterTrial,
     } = viewModel;
     const pct = Math.min(100, Math.max(0, Number(progressPercent) || 0));
+    console.info(
+      `[billing-ui-debug] showActivateCta=${showActivateCta === true} hasPaidSubscription=${hasPaidSubscription === true} activatesAfterTrial=${activatesAfterTrial === true}`,
+    );
 
     return (
       <div
@@ -103,7 +108,7 @@ export default function UnifiedSubscriptionCard({ viewModel, onScrollToPlans, su
             ) : null}
           </div>
 
-          {showActivateCta !== false ? (
+          {showActivateCta === true ? (
             <button
               type="button"
               onClick={onScrollToPlans}

@@ -61,8 +61,12 @@ export function buildUnifiedSubscriptionViewModel({
   const rawStatus = effectiveSubscriptionState?.billing_status;
   const normalizedStatus = normalizeBillingStatusFromApi(rawStatus);
   const billingMode = effectiveSubscriptionState?.billing_mode === 'manual' ? 'manual' : 'subscription';
+  const providerStatus = String(effectiveSubscriptionState?.provider_status || '').trim().toUpperCase();
   const hasPaidSubscription = effectiveSubscriptionState?.has_paid_subscription === true
-    || effectiveSubscriptionState?.has_subscription === true;
+    || effectiveSubscriptionState?.has_subscription === true
+    || normalizedStatus === BILLING_STATUSES.ACTIVE
+    || normalizedStatus === BILLING_STATUSES.SCHEDULED
+    || providerStatus === 'ACTIVE';
   const activatesAfterTrial = effectiveSubscriptionState?.activates_after_trial === true
     || normalizedStatus === BILLING_STATUSES.TRIAL_WITH_SUBSCRIPTION;
 
@@ -143,6 +147,8 @@ export function buildUnifiedSubscriptionViewModel({
           ? 'Al pagar hoy, activas 30 días de plan al finalizar tu prueba actual. La renovación se realiza manualmente.'
           : 'Al pagar hoy, el mes contratado se sumará al final de tu prueba actual. No pierdes tus días gratis.'),
       trialWithSubscription: isTrialWithPaidSubscription,
+      hasPaidSubscription,
+      activatesAfterTrial,
     };
   }
 
