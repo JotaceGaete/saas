@@ -39,6 +39,20 @@ function ensureRecordOwnership({ record, authUserId }) {
   }
 }
 
+function logPaypalConfirmDebug(payload) {
+  const {
+    businessId = null,
+    subscriptionId = null,
+    hasAuth = false,
+    userId = null,
+    ownership = 'unknown',
+    reason = 'none',
+  } = payload || {};
+  console.info(
+    `[paypal-confirm-debug] businessId=${businessId || 'null'} subscriptionId=${subscriptionId || 'null'} hasAuth=${Boolean(hasAuth)} userId=${userId || 'null'} ownership=${ownership} reason=${reason}`,
+  );
+}
+
 export async function createPaypalSubscriptionController(request) {
   try {
     assertPaypalAllowedForRequest(request);
@@ -173,26 +187,105 @@ export async function confirmPaypalSubscriptionController(request) {
       business_id: businessId || null,
       user_id: authUser.id,
     });
+    logPaypalConfirmDebug({
+      businessId: businessId || null,
+      subscriptionId: subscriptionId || null,
+      hasAuth: true,
+      userId: authUser.id,
+      ownership: 'pending',
+      reason: 'request_received',
+    });
 
     if (!subscriptionId) {
+      logPaypalConfirmDebug({
+        businessId: businessId || null,
+        subscriptionId: subscriptionId || null,
+        hasAuth: true,
+        userId: authUser.id,
+        ownership: 'denied',
+        reason: 'missing_subscription_id',
+      });
       throw new HttpError(400, 'subscriptionId is required');
     }
 
+    let businessOwnershipChecked = false;
     if (businessId) {
       await assertBusinessOwnership({ businessId, userId: authUser.id });
+      businessOwnershipChecked = true;
+      logPaypalConfirmDebug({
+        businessId,
+        subscriptionId,
+        hasAuth: true,
+        userId: authUser.id,
+        ownership: 'allowed',
+        reason: 'business_ownership_ok',
+      });
     }
 
     const localBefore = await getLocalSubscriptionRecord(subscriptionId);
     if (!localBefore && !businessId) {
+      logPaypalConfirmDebug({
+        businessId: null,
+        subscriptionId,
+        hasAuth: true,
+        userId: authUser.id,
+        ownership: 'denied',
+        reason: 'missing_business_id_and_local_record',
+      });
       throw new HttpError(400, 'businessId is required when local subscription record is missing');
     }
-    ensureRecordOwnership({ record: localBefore, authUserId: authUser.id });
+    try {
+      ensureRecordOwnership({ record: localBefore, authUserId: authUser.id });
+    } catch (err) {
+      if (businessOwnershipChecked) {
+        logPaypalConfirmDebug({
+          businessId,
+          subscriptionId,
+          hasAuth: true,
+          userId: authUser.id,
+          ownership: 'allowed',
+          reason: 'legacy_local_record_without_userid_using_business_ownership',
+        });
+      } else {
+        logPaypalConfirmDebug({
+          businessId: businessId || null,
+          subscriptionId,
+          hasAuth: true,
+          userId: authUser.id,
+          ownership: 'denied',
+          reason: 'local_record_user_mismatch',
+        });
+        throw err;
+      }
+    }
 
     const remote = await getSubscription(subscriptionId);
     const local = await getLocalSubscriptionRecord(subscriptionId);
-    ensureRecordOwnership({ record: local, authUserId: authUser.id });
+    try {
+      ensureRecordOwnership({ record: local, authUserId: authUser.id });
+    } catch (err) {
+      if (!businessOwnershipChecked) {
+        logPaypalConfirmDebug({
+          businessId: businessId || null,
+          subscriptionId,
+          hasAuth: true,
+          userId: authUser.id,
+          ownership: 'denied',
+          reason: 'post_sync_local_record_user_mismatch',
+        });
+        throw err;
+      }
+    }
 
     const paypalStatus = String(remote?.status || '').toUpperCase();
+    logPaypalConfirmDebug({
+      businessId: businessId || null,
+      subscriptionId,
+      hasAuth: true,
+      userId: authUser.id,
+      ownership: 'allowed',
+      reason: `confirmed_${paypalStatus || 'UNKNOWN'}`,
+    });
     return json({
       ok: true,
       subscriptionId,
@@ -202,6 +295,14 @@ export async function confirmPaypalSubscriptionController(request) {
       remote,
     });
   } catch (err) {
+    logPaypalConfirmDebug({
+      businessId: null,
+      subscriptionId: null,
+      hasAuth: false,
+      userId: null,
+      ownership: 'denied',
+      reason: err?.message || 'unknown_error',
+    });
     console.error('[PAYPAL_SUBSCRIPTION_CONFIRM_ERROR]', {
       business_id: null,
       subscription_id: null,

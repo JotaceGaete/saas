@@ -35,6 +35,28 @@ export default function PaypalSuccessPage() {
       return token && token.includes('.') ? token : null;
     };
 
+    const resolveBusinessIdForConfirm = async () => {
+      if (business?.id) return business.id;
+      const { data: { user } } = await supabase.auth.getUser();
+      const userId = String(user?.id || '').trim();
+      if (!userId) return null;
+      const { data, error } = await supabase
+        .from('wa_businesses')
+        .select('id')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) {
+        console.warn('[paypal-confirm-debug] failed to resolve businessId from wa_businesses', {
+          message: error.message,
+          userId,
+        });
+        return null;
+      }
+      return data?.id || null;
+    };
+
     const confirmSubscription = async () => {
       if (!subscriptionId) {
         if (!cancelled) {
@@ -50,6 +72,12 @@ export default function PaypalSuccessPage() {
 
       try {
         const token = await getValidAccessToken();
+        const resolvedBusinessId = await resolveBusinessIdForConfirm();
+        console.info('[paypal-confirm-debug] client confirm request', {
+          businessId: resolvedBusinessId || null,
+          subscriptionId: subscriptionId || null,
+          hasAuth: !!token,
+        });
         if (!token) {
           throw new Error('Tu sesion no es valida. Inicia sesion nuevamente.');
         }
@@ -62,10 +90,18 @@ export default function PaypalSuccessPage() {
           },
           body: JSON.stringify({
             subscriptionId,
-            businessId: business?.id || undefined,
+            businessId: resolvedBusinessId || undefined,
           }),
         });
         const data = await res.json().catch(() => ({}));
+        console.info('[paypal-confirm-debug] client confirm response', {
+          status: res.status,
+          ok: res.ok,
+          error: data?.error || null,
+          code: data?.code || null,
+          businessId: resolvedBusinessId || null,
+          subscriptionId: subscriptionId || null,
+        });
         if (!res.ok || !data?.ok) {
           throw new Error(data?.error || `No se pudo confirmar la suscripcion (HTTP ${res.status}).`);
         }
