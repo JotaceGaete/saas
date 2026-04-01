@@ -729,6 +729,12 @@ export default function PlansPage() {
         if (data?.code === 'PROVIDER_NOT_READY') {
           throw new Error('Este método de pago no está disponible por el momento.');
         }
+        if (data?.code === 'PAYPAL_PLAN_MAPPING_MISSING') {
+          throw new Error(
+            data?.error
+            || 'PayPal no está configurado para este plan. Revisa la tabla paypal_plan_mappings o las variables PAYPAL_PLAN_ID_* en el servidor.',
+          );
+        }
         throw new Error(data?.error || `No se pudo crear la suscripción ${safeProvider} (HTTP ${res.status}).`);
       }
       const redirectUrl = data?.redirectUrl || data?.redirect_url || data?.checkoutUrl || null;
@@ -777,6 +783,9 @@ export default function PlansPage() {
     if (!billingReady) return false;
     const normalized = normalizeBillingProvider(provider);
     if (!normalized) return false;
+    if (normalized === PAYMENT_PROVIDERS.PAYPAL && subscriptionState?.paypalPlanCatalog?.ready === false) {
+      return false;
+    }
     if (normalized === checkoutProvider && checkoutAvailability) {
       return checkoutAvailability.enabled === true && checkoutAvailability.supportsCheckout === true;
     }
@@ -964,7 +973,7 @@ export default function PlansPage() {
                         <div className="w-full flex flex-col gap-1">
                           <button
                             type="button"
-                            disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !isPurchasable || isAutomaticCheckoutBlocked}
+                            disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !isPurchasable || isAutomaticCheckoutBlocked || !isProviderReadyForCheckout(PAYMENT_PROVIDERS.PAYPAL)}
                             onClick={() => handlePayWithPaypal(slug)}
                             className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
                             style={{ backgroundColor: '#0070ba' }}

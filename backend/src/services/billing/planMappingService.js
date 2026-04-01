@@ -15,6 +15,61 @@ function normalizeInternalPlanSlug(planSlug) {
 }
 
 /**
+ * Fallback cuando no hay fila en `paypal_plan_mappings` (p. ej. producción sin migración aún).
+ * Prioridad: PAYPAL_PLAN_ID_{PRO|FULL}_{LIVE|SANDBOX}, luego PAYPAL_PLAN_ID_{PRO|FULL}.
+ */
+function getEnvFallbackPaypalPlanId(normalizedSlug, environment) {
+  const env = String(environment || '').trim().toLowerCase();
+  const suffix = env === 'live' ? 'LIVE' : 'SANDBOX';
+  if (normalizedSlug === 'pro') {
+    return String(
+      process.env[`PAYPAL_PLAN_ID_PRO_${suffix}`] || process.env.PAYPAL_PLAN_ID_PRO || '',
+    ).trim();
+  }
+  if (normalizedSlug === 'full') {
+    return String(
+      process.env[`PAYPAL_PLAN_ID_FULL_${suffix}`] || process.env.PAYPAL_PLAN_ID_FULL || '',
+    ).trim();
+  }
+  return '';
+}
+
+/**
+ * Resuelve `paypal_plan_id` (DB `paypal_plan_mappings` o env).
+ */
+export async function resolvePaypalPlanIdOrNull(planSlug) {
+  const normalized = normalizeInternalPlanSlug(planSlug);
+  if (!normalized || normalized === 'free') return null;
+  const environment = getPaypalMode();
+  const mapping = await getPaypalPlanMapping({
+    environment,
+    planSlug: normalized,
+  });
+  const fromDb = mapping?.paypal_plan_id ? String(mapping.paypal_plan_id).trim() : '';
+  if (fromDb) return fromDb;
+  const fromEnv = getEnvFallbackPaypalPlanId(normalized, environment);
+  return fromEnv || null;
+}
+
+/**
+ * Indica si el catálogo PayPal (pro + full) está cubierto para el entorno actual.
+ */
+export async function getPaypalPlanCatalogReadiness() {
+  const environment = getPaypalMode();
+  const required = ['pro', 'full'];
+  const missing = [];
+  for (const slug of required) {
+    const id = await resolvePaypalPlanIdOrNull(slug);
+    if (!id) missing.push(slug);
+  }
+  return {
+    environment,
+    ready: missing.length === 0,
+    missing_plans: missing,
+  };
+}
+
+/**
  * Mapea plan interno a paypal_plan_id (por entorno actual).
  * free|starter|control => null (sin PayPal)
  * pro => planId pro
@@ -30,16 +85,25 @@ export async function getPaypalPlanIdForInternalPlan(planSlug) {
   }
 
   const environment = getPaypalMode();
-  const mapping = await getPaypalPlanMapping({
-    environment,
-    planSlug: normalized,
-  });
-  if (!mapping) {
-    throw new HttpError(400, `[plan-mapping] Missing mapping for plan=${normalized}, environment=${environment}`);
-  }
-  const paypalPlanId = String(mapping?.paypal_plan_id || '').trim();
+  const paypalPlanId = await resolvePaypalPlanIdOrNull(planSlug);
   if (!paypalPlanId) {
-    throw new HttpError(400, `[plan-mapping] paypal_plan_id is null for plan=${normalized}, environment=${environment}`);
+    const hint =
+      'Añade filas en la tabla `paypal_plan_mappings` para este entorno, o define variables de entorno: '
+      + `PAYPAL_PLAN_ID_PRO_${environment === 'live' ? 'LIVE' : 'SANDBOX'} y `
+      + `PAYPAL_PLAN_ID_FULL_${environment === 'live' ? 'LIVE' : 'SANDBOX'} (valores = Plan ID de PayPal Billing).`;
+    throw new HttpError(
+      503,
+      `[plan-mapping] Falta el Plan ID de PayPal para plan "${normalized}" en entorno "${environment}". Configura la tabla paypal_plan_mappings o las variables PAYPAL_PLAN_ID_* en el servidor.`,
+      {
+        code: 'PAYPAL_PLAN_MAPPING_MISSING',
+        details: {
+          plan: normalized,
+          environment,
+          planSlug: normalized,
+          hint,
+        },
+      },
+    );
   }
 
   return paypalPlanId;
@@ -76,4 +140,3 @@ export function isPaidInternalPlan(planSlug) {
 export function normalizePlanSlugForBilling(planSlug) {
   return normalizeInternalPlanSlug(planSlug);
 }
-

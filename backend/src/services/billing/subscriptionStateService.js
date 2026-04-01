@@ -16,6 +16,7 @@ import {
   getMarketStatusForBillingCountry,
   getPlanDisplayCurrencyForBilling,
 } from './billingMarketMetaService.js';
+import { getPaypalPlanCatalogReadiness } from './planMappingService.js';
 
 const SUB_STATE_LOG = '[billing-subscription-state]';
 const MANUAL_BILLING_COUNTRIES = new Set(['CL', 'AR']);
@@ -205,6 +206,15 @@ export async function getBillingSubscriptionState({ businessId }) {
     `[billing-subscription-state-debug] businessId=${id} status=${billingStatus} providerStatus=${providerStatus || 'null'} trialEndsAt=${trialEndsAt || 'null'} currentPeriodEndsAt=${subscription?.current_period_ends_at || 'null'} hasPaidSubscription=${hasPaidSubscription} activatesAfterTrial=${activatesAfterTrial}`,
   );
 
+  const paypalPlanCatalog = await getPaypalPlanCatalogReadiness();
+  if (paypalPlanCatalog.ready === false) {
+    console.warn(`${SUB_STATE_LOG} paypalPlanCatalog incomplete`, {
+      businessId: id,
+      environment: paypalPlanCatalog.environment,
+      missing_plans: paypalPlanCatalog.missing_plans,
+    });
+  }
+
   return {
     ok: true,
     source,
@@ -235,5 +245,7 @@ export async function getBillingSubscriptionState({ businessId }) {
       alternatives,
       recommendedProvider: recommendation.selectedProvider,
     },
+    /** Catálogo PayPal (pro/full): DB `paypal_plan_mappings` o env PAYPAL_PLAN_ID_* */
+    paypalPlanCatalog,
   };
 }
