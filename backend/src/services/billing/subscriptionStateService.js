@@ -117,6 +117,17 @@ function normalizePlanSlug(planSlug) {
   return 'starter';
 }
 
+/**
+ * PayPal: el usuario completó el acuerdo de cobro (no abandonó en APPROVAL_PENDING).
+ * Sin esto no debe mostrarse "pago confirmado" ni trial_with_subscription por fila creada al iniciar checkout.
+ */
+function isPaypalSubscriptionApprovedForBilling(provider, providerStatus) {
+  if (normalizeBillingProvider(provider) !== 'paypal') return true;
+  const ps = String(providerStatus || '').trim().toUpperCase();
+  if (!ps || ps === 'APPROVAL_PENDING') return false;
+  return ['ACTIVE', 'APPROVED', 'SUSPENDED'].includes(ps);
+}
+
 export async function getBillingSubscriptionState({ businessId }) {
   const id = String(businessId || '').trim();
   if (!id) throw new HttpError(400, 'businessId is required');
@@ -160,15 +171,25 @@ export async function getBillingSubscriptionState({ businessId }) {
   const planDisplayCurrency = getPlanDisplayCurrencyForBilling(billingCountry, business?.currency);
 
   let billingStatus = subscriptionStatus || BILLING_STATUSES.PENDING_PAYMENT;
+  const subscriptionStatusNorm = String(subscriptionStatus || '').trim().toLowerCase();
+  const providerStatusUpper = String(providerStatus || '').trim().toUpperCase();
+  const paypalAwaitingApproval = provider === 'paypal' && providerStatusUpper === 'APPROVAL_PENDING';
+
   if (!subscription) {
     billingStatus = trialActive
       ? BILLING_STATUSES.TRIAL_WITHOUT_SUBSCRIPTION
       : (normalizePlanSlug(business?.plan_slug) === 'starter'
         ? BILLING_STATUSES.EXPIRED
         : BILLING_STATUSES.ACTIVE);
-  } else if (trialActive && hasSubscription) {
+  } else if (
+    subscriptionStatusNorm === BILLING_STATUSES.PENDING_PAYMENT
+    || paypalAwaitingApproval
+  ) {
+    /** Checkout iniciado pero usuario no aprobó en PayPal: mantener pending (UI ámbar), no trial “sin suscripción”. */
+    billingStatus = BILLING_STATUSES.PENDING_PAYMENT;
+  } else if (trialActive && hasSubscription && isPaypalSubscriptionApprovedForBilling(provider, providerStatus)) {
     billingStatus = BILLING_STATUSES.TRIAL_WITH_SUBSCRIPTION;
-  } else if (trialActive && !hasSubscription) {
+  } else if (trialActive && (!hasSubscription || !isPaypalSubscriptionApprovedForBilling(provider, providerStatus))) {
     billingStatus = BILLING_STATUSES.TRIAL_WITHOUT_SUBSCRIPTION;
   }
 
@@ -176,7 +197,12 @@ export async function getBillingSubscriptionState({ businessId }) {
   const subscriptionStartsAt = billingStatus === BILLING_STATUSES.TRIAL_WITH_SUBSCRIPTION
     ? trialEndsAt
     : (startsAt || subscription?.current_period_starts_at || null);
-  const hasPaidSubscription = hasSubscription && !!provider && provider !== 'mercado_pago';
+  /** Solo tras aprobación real en PayPal (no fila nueva en APPROVAL_PENDING). */
+  const hasPaidSubscription =
+    hasSubscription
+    && !!provider
+    && provider !== 'mercado_pago'
+    && isPaypalSubscriptionApprovedForBilling(provider, providerStatus);
   const activatesAfterTrial = billingStatus === BILLING_STATUSES.TRIAL_WITH_SUBSCRIPTION
     || (trialActive && hasPaidSubscription);
 

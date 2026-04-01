@@ -89,6 +89,9 @@ function mergeLegacySubscriptionState({ subscriptionState, business, billingSubs
       billing_status: hasScheduled
         ? BILLING_STATUSES.TRIAL_WITH_SUBSCRIPTION
         : BILLING_STATUSES.TRIAL_WITHOUT_SUBSCRIPTION,
+      ...(hasScheduled
+        ? { has_paid_subscription: true, activates_after_trial: true }
+        : {}),
     };
   }
   return subscriptionState;
@@ -111,12 +114,7 @@ export function buildUnifiedSubscriptionViewModel({
   const rawStatus = effectiveSubscriptionState?.billing_status;
   const normalizedStatus = normalizeBillingStatusFromApi(rawStatus);
   const billingMode = effectiveSubscriptionState?.billing_mode === 'manual' ? 'manual' : 'subscription';
-  const providerStatus = String(effectiveSubscriptionState?.provider_status || '').trim().toUpperCase();
-  const hasPaidSubscription = effectiveSubscriptionState?.has_paid_subscription === true
-    || effectiveSubscriptionState?.has_subscription === true
-    || normalizedStatus === BILLING_STATUSES.ACTIVE
-    || normalizedStatus === BILLING_STATUSES.SCHEDULED
-    || providerStatus === 'ACTIVE';
+  const hasPaidSubscription = effectiveSubscriptionState?.has_paid_subscription === true;
   const activatesAfterTrial = effectiveSubscriptionState?.activates_after_trial === true
     || normalizedStatus === BILLING_STATUSES.TRIAL_WITH_SUBSCRIPTION;
 

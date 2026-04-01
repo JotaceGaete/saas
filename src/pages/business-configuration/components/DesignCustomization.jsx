@@ -311,7 +311,7 @@ export default function DesignCustomization({
   const selectedFont = design?.font || 'Inter';
 
   return (
-    <div className="flex flex-col gap-6 max-w-2xl">
+    <div className="flex w-full min-w-0 flex-col gap-6">
       <DesignUnifiedHeading isFirst title="Apariencia" subtitle="Color, portada y logo" />
 
       {/* 1. Primary Color */}

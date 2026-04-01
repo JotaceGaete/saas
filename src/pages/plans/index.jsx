@@ -436,8 +436,15 @@ export default function PlansPage() {
         toast?.info?.('El pago está en proceso. Cuando se acredite, tu plan se actualizará.');
         return;
       }
-      if (lastPayment.status === 'approved') {
+      const createdMs = lastPayment.created_at ? new Date(lastPayment.created_at).getTime() : NaN;
+      const isRecentPayment = Number.isFinite(createdMs) && Date.now() - createdMs < 25 * 60 * 1000;
+      if (lastPayment.status === 'approved' && isRecentPayment) {
         toast?.success?.('Pago realizado. Tu plan se ha actualizado.');
+        if (business?.id && !cancelled) {
+          await refetchBillingSubscriptionRow();
+        }
+      } else if (lastPayment.status === 'approved' && !isRecentPayment) {
+        toast?.info?.('Volviste desde el checkout. Si el pago ya se acreditó, el plan se actualizará en breve; si no, puedes intentar de nuevo.');
         if (business?.id && !cancelled) {
           await refetchBillingSubscriptionRow();
         }

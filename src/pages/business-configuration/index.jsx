@@ -825,7 +825,7 @@ export default function BusinessConfiguration() {
             <StoreCreationStep user={user} businessLoading={isLoading} />
           ) : (
           <>
-            <div className="max-w-2xl mx-auto w-full min-w-0">
+            <div className="w-full min-w-0">
             {!hasPersistedCountry && (
               <div
                 className="rounded-xl border border-slate-100/80 p-5 lg:p-6 mb-8 shadow-sm shadow-slate-200/30"
@@ -1317,12 +1317,12 @@ export default function BusinessConfiguration() {
 
       {isDirty && (
         <div
-          className="fixed bottom-0 left-0 right-0 z-[60] border-t border-slate-200/70 bg-white/80 backdrop-blur-md px-4 py-3.5 shadow-[0_-8px_32px_rgba(15,23,42,0.07)]"
+          className="fixed bottom-0 left-0 right-0 z-[60] border-t border-slate-200/70 bg-white/80 backdrop-blur-md px-4 sm:px-5 md:px-6 lg:px-8 py-3.5 shadow-[0_-8px_32px_rgba(15,23,42,0.07)]"
           style={{ paddingBottom: 'max(0.875rem, env(safe-area-inset-bottom, 0px))' }}
           role="region"
           aria-label="Acciones de guardado"
         >
-          <div className="max-w-2xl mx-auto w-full flex flex-col-reverse sm:flex-row items-stretch sm:items-center sm:justify-end gap-3">
+          <div className="max-w-7xl mx-auto w-full flex flex-col-reverse sm:flex-row items-stretch sm:items-center sm:justify-end gap-3">
             {hasUnsavedCountryChange && (
               <button
                 type="button"

@@ -159,6 +159,8 @@ export function buildBillingFallbackState({ business }) {
     plan_slug: business?.planSlug || 'starter',
     billing_status: billingStatus,
     has_subscription: hasScheduledPaidPlan,
+    has_paid_subscription: hasScheduledPaidPlan,
+    activates_after_trial: trialActive && hasScheduledPaidPlan,
     provider_status: null,
     trial_ends_at: trialExpiresAt,
     subscription_starts_at: scheduledChangeAt,
