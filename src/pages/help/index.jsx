@@ -6,6 +6,10 @@ import { useIsDesktop } from 'hooks/useMediaQuery';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
 
+const HELP_WHATSAPP_NUMBER = '56993443682';
+const HELP_WHATSAPP_MESSAGE = 'Hola, estoy en la sección Centro de ayuda y necesito soporte';
+const HELP_WHATSAPP_HREF = `https://wa.me/${HELP_WHATSAPP_NUMBER}?text=${encodeURIComponent(HELP_WHATSAPP_MESSAGE)}`;
+
 export default function HelpPage() {
   const navigate = useNavigate();
   const { user, loading } = useAuth();
@@ -58,7 +62,7 @@ export default function HelpPage() {
             </p>
             <div className="mt-4 flex flex-col sm:flex-row gap-3">
               <a
-                href="https://wa.me/56993443682?text=Hola,%20necesito%20ayuda%20con%20Ventalink"
+                href={HELP_WHATSAPP_HREF}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="px-4 py-2 rounded-lg bg-green-500 text-white font-medium hover:bg-green-600 transition text-center"

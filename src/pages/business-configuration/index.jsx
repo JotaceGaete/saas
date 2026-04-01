@@ -26,6 +26,7 @@ import BusinessConfigContextBanner from 'components/business/BusinessConfigConte
 import { parseAddressByCountry, buildFullAddressLine } from '../../utils/addressParse';
 import { resolveVentaAiProductDescriptionEndpoint } from '../../lib/ai/resolveVentaAiProductDescriptionUrl.js';
 import DesignSettings from './components/DesignSettings';
+import RubroPrincipalSelector from './components/RubroPrincipalSelector';
 
 const BUSINESS_DESCRIPTION_MAX = 280;
 
@@ -1062,17 +1063,11 @@ export default function BusinessConfiguration() {
                     </SettingsField>
 
                     <SettingsField label="Rubro principal" hint="Sector de tu negocio; filtra categorías sugeridas de productos.">
-                      <select
+                      <RubroPrincipalSelector
+                        rubros={rubros}
                         value={form?.rubroId ?? ''}
-                        onChange={e => handleRubroChange(e?.target?.value)}
-                        className={`${inputClass} cursor-pointer`}
-                        style={inputStyle}
-                      >
-                        <option value="">Sin rubro</option>
-                        {rubros?.map((r) => (
-                          <option key={r?.id} value={r?.id}>{r?.name}</option>
-                        ))}
-                      </select>
+                        onChange={handleRubroChange}
+                      />
                     </SettingsField>
 
                     <SettingsField

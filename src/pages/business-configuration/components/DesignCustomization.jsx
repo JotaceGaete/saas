@@ -186,6 +186,8 @@ export default function DesignCustomization({
   design,
   onChange,
   businessId,
+  businessName,
+  userEmail,
   isSaving,
   onSave,
   showToast,
@@ -618,7 +620,12 @@ export default function DesignCustomization({
         </div>
       </SectionCard>
 
-      <CatalogLayoutSettings design={design} onChange={onChange} />
+      <CatalogLayoutSettings
+        design={design}
+        onChange={onChange}
+        businessName={businessName}
+        userEmail={userEmail}
+      />
 
       <DesignUnifiedHeading title="Opciones avanzadas" subtitle="Imagen para compartir, tema y tipografía" />
 

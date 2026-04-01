@@ -93,7 +93,12 @@ export async function POST(request) {
     });
   } catch (err) {
     const environment = (() => {
-      try { return getPaypalMode(); } catch { return 'sandbox'; }
+      try {
+        return getPaypalMode();
+      } catch {
+        // No asumir sandbox en producción: env inválido o no cargado.
+        return 'unknown';
+      }
     })();
     if (eventId) {
       try {

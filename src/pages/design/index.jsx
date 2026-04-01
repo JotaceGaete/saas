@@ -165,6 +165,8 @@ export default function DesignPage() {
                 design={design}
                 onChange={setDesign}
                 businessId={business?.id}
+                businessName={business?.name}
+                userEmail={user?.email}
                 isSaving={isSaving}
                 onSave={handleSaveDesign}
                 showToast={showToast}
