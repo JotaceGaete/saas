@@ -59,6 +59,44 @@
       ]
     }
   ],
+  "redirects": [
+    {
+      "source": "/dashboard",
+      "has": [{ "type": "host", "value": "ventalink.app" }],
+      "destination": "https://go.ventalink.app/dashboard",
+      "permanent": false
+    },
+    {
+      "source": "/planes",
+      "has": [{ "type": "host", "value": "ventalink.app" }],
+      "destination": "https://go.ventalink.app/planes",
+      "permanent": false
+    },
+    {
+      "source": "/business-registration",
+      "has": [{ "type": "host", "value": "ventalink.app" }],
+      "destination": "https://go.ventalink.app/business-registration",
+      "permanent": false
+    },
+    {
+      "source": "/login",
+      "has": [{ "type": "host", "value": "ventalink.app" }],
+      "destination": "https://go.ventalink.app/login",
+      "permanent": false
+    },
+    {
+      "source": "/orders",
+      "has": [{ "type": "host", "value": "ventalink.app" }],
+      "destination": "https://go.ventalink.app/orders",
+      "permanent": false
+    },
+    {
+      "source": "/(dashboard|planes|business-registration|login|orders)(.*)",
+      "has": [{ "type": "host", "value": "ventalink.app" }],
+      "destination": "https://go.ventalink.app/$1$2",
+      "permanent": false
+    }
+  ],
   "rewrites": [
     {
       "source": "/api/v1/billing/paypal/subscriptions",
