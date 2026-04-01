@@ -4,7 +4,7 @@ import { Helmet } from 'react-helmet';
 import { getBusinessBySlug, getPublicProducts, getCategoriesByRubroId, recordCatalogVisit, recordCatalogWhatsAppClick, createOrder } from '../../services/waBusinessService';
 import Icon from '../../components/AppIcon';
 import { CartProvider, useCart } from '../../contexts/CartContext';
-import { formatCurrency } from '../../utils/formatCLP';
+import { formatCatalogPrice } from '../../utils/formatCLP';
 import { getBusinessLocale } from '../../lib/locale/businessLocale';
 import { useIsDesktop } from '../../hooks/useMediaQuery';
 import { useAuth } from '../../contexts/AuthContext';
@@ -234,8 +234,8 @@ function CatalogInner({ slug }) {
   const countryLabels = useMemo(() => getCountryLabels(catalogMoney.countryCode), [catalogMoney.countryCode]);
   const businessCurrency = String(business?.currency || catalogMoney.currencyCode || 'USD').trim().toUpperCase();
   const formatPrice = useCallback(
-    (price) => formatCurrency(price, businessCurrency, catalogMoney.locale),
-    [businessCurrency, catalogMoney.locale],
+    (price) => formatCatalogPrice(price, catalogMoney.countryCode, businessCurrency, catalogMoney.locale),
+    [businessCurrency, catalogMoney.countryCode, catalogMoney.locale],
   );
 
   // Derivar useCategories y categoryNames desde business y rubroCategories

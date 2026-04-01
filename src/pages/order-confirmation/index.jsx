@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useCart } from '../../contexts/CartContext';
 import { createOrder, getBusinessBySlug } from '../../services/waBusinessService';
 import Icon from '../../components/AppIcon';
-import { formatCurrency } from '../../utils/formatCLP';
+import { formatCatalogPrice } from '../../utils/formatCLP';
 import { getBusinessLocale } from '../../lib/locale/businessLocale';
 import { getPublicCatalogRelativePath, getWhatsAppOrderCatalogUrl } from '../../config/appUrl';
 import { getBrandingMessage } from '../../utils/branding';
@@ -59,8 +59,10 @@ export default function OrderConfirmation() {
   const formatPrice = (amount) => {
     const currency = String(business?.currency || checkoutMoney.currencyCode || 'USD').trim().toUpperCase();
     const numeric = Number(amount);
-    if (!Number.isFinite(numeric)) return formatCurrency(0, currency, checkoutMoney.locale);
-    return formatCurrency(numeric, currency, checkoutMoney.locale);
+    if (!Number.isFinite(numeric)) {
+      return formatCatalogPrice(0, checkoutMoney.countryCode, currency, checkoutMoney.locale);
+    }
+    return formatCatalogPrice(numeric, checkoutMoney.countryCode, currency, checkoutMoney.locale);
   };
 
   const validate = () => {
