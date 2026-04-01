@@ -1,16 +1,17 @@
 import { supabase } from '../lib/supabase';
+import { APP_ORIGIN } from '../config/appUrl';
 
 const MOCK_DEFAULTS = {
   user_name: 'Juan',
   name: 'Juan',
   business_name: 'La Tienda de Lola',
   businessName: 'La Tienda de Lola',
-  dashboard_url: 'https://go.ventalink.app/dashboard',
-  dashboardUrl: 'https://go.ventalink.app/dashboard',
-  confirm_url: 'https://go.ventalink.app/auth/callback?token=mock-confirm-token',
-  confirmUrl: 'https://go.ventalink.app/auth/callback?token=mock-confirm-token',
-  reset_url: 'https://go.ventalink.app/auth/reset-password?token=mock-recovery-token',
-  resetUrl: 'https://go.ventalink.app/auth/reset-password?token=mock-recovery-token',
+  dashboard_url: `${APP_ORIGIN}/dashboard`,
+  dashboardUrl: `${APP_ORIGIN}/dashboard`,
+  confirm_url: `${APP_ORIGIN}/auth/callback?token=mock-confirm-token`,
+  confirmUrl: `${APP_ORIGIN}/auth/callback?token=mock-confirm-token`,
+  reset_url: `${APP_ORIGIN}/auth/reset-password?token=mock-recovery-token`,
+  resetUrl: `${APP_ORIGIN}/auth/reset-password?token=mock-recovery-token`,
 };
 
 /**

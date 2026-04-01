@@ -189,7 +189,7 @@ export const AuthProvider = ({ children }) => {
         const sessionToken = data?.session?.access_token ?? anonKey
         const userName = user?.user_metadata?.name || user?.user_metadata?.full_name || businessData?.name || ''
         const nameDisplay = (userName || '').trim() || 'Usuario'
-        const appBaseUrl = getAppBaseUrl() || 'https://go.ventalink.app'
+        const appBaseUrl = getAppBaseUrl()
         const dashboardUrl = `${appBaseUrl.replace(/\/$/, '')}/dashboard`
         const bizName = (businessData?.name || '').trim() || nameDisplay
         const payload = {

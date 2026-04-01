@@ -1,4 +1,5 @@
 import { getManualMarketChoice } from '../../config/countryConfig';
+import { APP_ORIGIN } from '../../config/appUrl';
 
 function normalizeCountryCode(value) {
   const code = String(value || '').trim().toUpperCase();
@@ -12,9 +13,9 @@ export function getMarketCodeByCountry(countryCode) {
   return 'GLOBAL';
 }
 
-/** Toda la app vive en go.ventalink.app (sin subdominios por país). */
+/** Toda la app vive en APP_ORIGIN (sin subdominios por país). */
 export function getDefaultDomainByMarket(_marketCode) {
-  return 'https://go.ventalink.app';
+  return APP_ORIGIN;
 }
 
 /**
@@ -77,23 +78,15 @@ export function shouldSkipAutoMarketRedirect(decision) {
  * Solo CL y AR tienen dominio dedicado. Resto de países (BO, CR, etc.) → GLOBAL (go. u host actual).
  * `businessCountryCode` debe ser el código persistido en wa_businesses.country_code (sin inferir por moneda).
  */
-export function resolveMarketRouting({ businessCountryCode, hostname, path = '/dashboard' }) {
+export function resolveMarketRouting({ businessCountryCode, hostname: _h, path: _p = '/dashboard' }) {
   const targetMarketCode = getMarketCodeByCountry(businessCountryCode);
-  const currentMarketCode = detectCurrentMarketByHostname(hostname);
   const defaultDomain = getDefaultDomainByMarket(targetMarketCode);
-  const shouldRedirect =
-    targetMarketCode !== 'GLOBAL' &&
-    currentMarketCode !== 'GLOBAL' &&
-    currentMarketCode !== targetMarketCode;
-  const shouldRedirectFromGo = currentMarketCode === 'GLOBAL' && targetMarketCode !== 'GLOBAL';
-  const redirect = shouldRedirect || shouldRedirectFromGo;
+  // Sin redirección cross-host: CL/AR/GL comparten APP_ORIGIN (go.ventalink.app).
   return {
     marketCode: targetMarketCode,
     defaultDomain,
-    redirect,
-    redirectUrl: redirect ? `${defaultDomain.replace(/\/$/, '')}${path.startsWith('/') ? path : `/${path}`}` : null,
-    message: redirect
-      ? `Tu cuenta está registrada en Ventalink ${targetMarketCode === 'CL' ? 'Chile' : 'Argentina'}. Te llevaremos al acceso correcto.`
-      : null,
+    redirect: false,
+    redirectUrl: null,
+    message: null,
   };
 }

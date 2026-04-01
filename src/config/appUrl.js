@@ -1,39 +1,70 @@
 /**
- * URL base pública de la app (panel, rutas internas).
- * Prioridad: VITE_APP_URL (build) → window.location.origin (runtime).
- * No usar para enlaces del catálogo público compartibles: usar getPublicCatalogBaseUrl / buildPublicCatalogUrl.
+ * Origen canónico de la app (panel, login, registro, billing, admin) en producción.
+ * Landing/catálogo/legal en apex/www; no usar este origen para enlaces solo de marketing.
  */
+export const APP_ORIGIN = 'https://go.ventalink.app';
+
 const BASE_URL = import.meta.env?.VITE_APP_URL?.trim() || '';
-const GO_APP_ORIGIN = 'https://go.ventalink.app';
 
 function isLocalhostHostname(hostname) {
   const host = String(hostname || '').trim().toLowerCase();
   return host === 'localhost' || host === '127.0.0.1' || host.endsWith('.localhost');
 }
 
+/** Producción VentALink: cualquier host bajo ventalink.app (incl. go, apex, www). */
+function isVentalinkProductionHostname(hostname) {
+  const h = String(hostname || '').trim().toLowerCase();
+  if (!h) return false;
+  return h === 'ventalink.app' || h === 'www.ventalink.app' || h.endsWith('.ventalink.app');
+}
+
 /**
- * @returns {string} URL base pública (sin trailing slash), o '' si no hay origen.
+ * Host canónico para la app autenticada: siempre APP_ORIGIN en prod VentALink,
+ * salvo localhost y previews (Vercel).
+ * @returns {string} URL base (sin trailing slash)
  */
 export function getAppBaseUrl() {
+  if (typeof window !== 'undefined') {
+    const host = (window.location.hostname || '').toLowerCase();
+    if (isLocalhostHostname(host)) {
+      return String(window.location.origin || '').replace(/\/$/, '');
+    }
+    if (host.endsWith('.vercel.app')) {
+      return String(window.location.origin || '').replace(/\/$/, '');
+    }
+  }
   if (BASE_URL) return BASE_URL.replace(/\/$/, '');
-  if (typeof window !== 'undefined' && window?.location?.origin) return window.location.origin;
-  return '';
+  if (typeof window !== 'undefined' && isVentalinkProductionHostname(window.location.hostname)) {
+    return APP_ORIGIN;
+  }
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return String(window.location.origin).replace(/\/$/, '');
+  }
+  return APP_ORIGIN;
+}
+
+/**
+ * @returns {boolean} true si el hostname es el subdominio de app (go.ventalink.app).
+ */
+export function isCanonicalAppHostname(hostname) {
+  const h = String(hostname || '').trim().toLowerCase();
+  return h === 'go.ventalink.app';
 }
 
 /**
  * Host canónico para catálogo público (compartir, WhatsApp, QR, SEO cliente).
- * Siempre https://go.ventalink.app — nunca localhost, cl/ar ni VITE_APP_URL.
+ * Siempre APP_ORIGIN — nunca localhost, cl/ar ni VITE_APP_URL.
  * @returns {string}
  */
 export function getPublicCatalogBaseUrl() {
-  return GO_APP_ORIGIN;
+  return APP_ORIGIN;
 }
 
 const PUBLIC_CATALOG_ROUTES = new Set(['catalogo', 'catalog']);
 
 /**
  * Segmento canónico para enlaces compartibles (WhatsApp, QR, OG, sitemap).
- * URL pública: `https://go.ventalink.app/catalogo/:slug` (sin query params).
+ * URL pública: `${APP_ORIGIN}/catalogo/:slug` (sin query params).
  */
 export const PUBLIC_CATALOG_SHARE_SEGMENT = 'catalogo';
 
@@ -62,7 +93,7 @@ export function buildPublicCatalogUrl(slug, route = PUBLIC_CATALOG_SHARE_SEGMENT
 }
 
 /**
- * Enlace compartible estándar: `https://go.ventalink.app/catalogo/:slug`.
+ * Enlace compartible estándar: `${APP_ORIGIN}/catalogo/:slug`.
  * @param {string} slug
  * @returns {string}
  */
@@ -81,31 +112,34 @@ export function getWhatsAppOrderCatalogUrl(slug) {
 }
 
 /**
- * URL de callback para OAuth (Google, etc.).
- * @returns {string} URL absoluta para redirectTo en signInWithOAuth
+ * URL de callback para OAuth (Google, etc.) y confirmación de email.
+ * En producción VentALink siempre APP_ORIGIN (nunca apex/www).
  */
 export function getAuthRedirectUrl() {
   if (typeof window === 'undefined' || !window?.location?.origin) {
-    return `${GO_APP_ORIGIN}/auth/callback`;
+    return `${APP_ORIGIN}/auth/callback`;
   }
   const hostname = String(window.location.hostname || '').trim().toLowerCase();
   if (isLocalhostHostname(hostname)) {
     const origin = String(window.location.origin || '').replace(/\/$/, '');
     if (origin) return `${origin}/auth/callback`;
   }
-  return `${GO_APP_ORIGIN}/auth/callback`;
+  return `${APP_ORIGIN}/auth/callback`;
 }
 
 /**
- * URL de redirección para reset de contraseña (olvidé mi contraseña).
+ * URL de redirección para reset de contraseña (misma política que auth/callback).
  */
 export function getResetPasswordRedirectUrl() {
   if (typeof window === 'undefined' || !window?.location?.origin) {
-    return `${GO_APP_ORIGIN}/auth/reset-password`;
+    return `${APP_ORIGIN}/auth/reset-password`;
   }
-  const origin = String(window.location.origin || '').replace(/\/$/, '');
-  if (!origin) return `${GO_APP_ORIGIN}/auth/reset-password`;
-  return `${origin}/auth/reset-password`;
+  const hostname = String(window.location.hostname || '').trim().toLowerCase();
+  if (isLocalhostHostname(hostname)) {
+    const origin = String(window.location.origin || '').replace(/\/$/, '');
+    if (origin) return `${origin}/auth/reset-password`;
+  }
+  return `${APP_ORIGIN}/auth/reset-password`;
 }
 
 export default getAppBaseUrl;

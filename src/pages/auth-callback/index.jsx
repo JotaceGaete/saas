@@ -4,8 +4,7 @@ import { supabase } from '../../lib/supabase';
 import { getMyBusiness } from '../../services/waBusinessService';
 import { hasPersistedBusinessCountry } from '../../lib/country/business-country-policy';
 import Icon from 'components/AppIcon';
-
-const GO_APP_ORIGIN = 'https://go.ventalink.app';
+import { APP_ORIGIN, isCanonicalAppHostname } from '../../config/appUrl';
 
 function isLocalhostHost(hostname) {
   const host = String(hostname || '').trim().toLowerCase();
@@ -28,9 +27,9 @@ export default function AuthCallback() {
     const resolveAndRedirect = async () => {
       if (typeof window !== 'undefined') {
         const host = String(window.location.hostname || '').trim().toLowerCase();
-        // Si el callback llega a un host no canónico (ej. ventalink.app), reenviar al host app.
-        if (!isLocalhostHost(host) && host !== 'go.ventalink.app') {
-          const nextUrl = `${GO_APP_ORIGIN}/auth/callback${window.location.search || ''}${window.location.hash || ''}`;
+        // Callback OAuth/email debe resolverse siempre en APP_ORIGIN (no apex/www).
+        if (!isLocalhostHost(host) && !isCanonicalAppHostname(host)) {
+          const nextUrl = `${APP_ORIGIN}/auth/callback${window.location.search || ''}${window.location.hash || ''}`;
           console.warn('[AuthCallback] wrong_host_redirect', {
             currentOrigin: window.location.origin,
             nextUrl,
