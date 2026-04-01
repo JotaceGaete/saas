@@ -128,6 +128,43 @@ function isPaypalSubscriptionApprovedForBilling(provider, providerStatus) {
   return ['ACTIVE', 'APPROVED', 'SUSPENDED'].includes(ps);
 }
 
+/**
+ * Plan operativo expuesto en `subscription-state.plan_slug` (fuente de verdad para UI / permisos).
+ *
+ * Casos validados (plan desde `wa_businesses.plan_slug` = bizPlan):
+ * - APPROVAL_PENDING o `billing_status` pending_payment → bizPlan (intento de checkout, no operativo).
+ * - Fila `billing_subscriptions.status` cancelled / expired → bizPlan.
+ * - PayPal sin estado aprobado operativo (solo ACTIVE / APPROVED / SUSPENDED cuentan) → bizPlan.
+ *
+ * Caso validado (plan desde `billing_subscriptions`):
+ * - Suscripción realmente aprobada/activa (p. ej. PayPal ACTIVE/APPROVED/SUSPENDED) → `subscription.plan_slug` (fallback biz).
+ */
+function resolveOperationalPlanSlug({
+  business,
+  subscription,
+  billingStatus,
+  provider,
+  providerStatus,
+  paypalAwaitingApproval,
+  subscriptionRowStatus,
+}) {
+  const bizPlan = normalizePlanSlug(business?.plan_slug);
+  if (!subscription) return bizPlan;
+
+  const rowStatusNorm = String(subscriptionRowStatus || '').trim().toLowerCase();
+  if (isTerminalBillingStatus(rowStatusNorm)) {
+    return bizPlan;
+  }
+  if (billingStatus === BILLING_STATUSES.PENDING_PAYMENT || paypalAwaitingApproval) {
+    return bizPlan;
+  }
+  const p = normalizeBillingProvider(provider);
+  if (p === 'paypal' && !isPaypalSubscriptionApprovedForBilling(provider, providerStatus)) {
+    return bizPlan;
+  }
+  return normalizePlanSlug(subscription?.plan_slug || business?.plan_slug);
+}
+
 export async function getBillingSubscriptionState({ businessId }) {
   const id = String(businessId || '').trim();
   if (!id) throw new HttpError(400, 'businessId is required');
@@ -241,6 +278,16 @@ export async function getBillingSubscriptionState({ businessId }) {
     });
   }
 
+  const operationalPlanSlug = resolveOperationalPlanSlug({
+    business,
+    subscription,
+    billingStatus,
+    provider,
+    providerStatus,
+    paypalAwaitingApproval,
+    subscriptionRowStatus: subscriptionStatus,
+  });
+
   return {
     ok: true,
     source,
@@ -251,7 +298,7 @@ export async function getBillingSubscriptionState({ businessId }) {
     checkoutPolicy,
     providerResolution,
     provider: selectedProvider,
-    plan_slug: normalizePlanSlug(subscription?.plan_slug || business?.plan_slug),
+    plan_slug: operationalPlanSlug,
     billing_status: billingStatus,
     has_subscription: hasSubscription,
     has_paid_subscription: hasPaidSubscription,
