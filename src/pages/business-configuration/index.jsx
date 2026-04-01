@@ -805,7 +805,14 @@ export default function BusinessConfiguration() {
           title={<h1 className="text-base font-bold text-foreground" style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}>Configuración</h1>}
         />
 
-        <DashboardLayoutContent className={isDirty ? 'pb-28 md:pb-32' : ''}>
+        <DashboardLayoutContent
+          className={
+            isDirty
+              ? // Reservar espacio para la barra fija inferior + safe area; ! anula lg:pb-8 del layout (evita tapar “Instalar aplicación”).
+                '!pb-[calc(11rem+env(safe-area-inset-bottom,0px))] sm:!pb-[calc(7.75rem+env(safe-area-inset-bottom,0px))]'
+              : ''
+          }
+        >
           {isLoading ? (
             <div className="flex items-center justify-center py-20">
               <svg className="animate-spin" width="28" height="28" viewBox="0 0 24 24" fill="none">
