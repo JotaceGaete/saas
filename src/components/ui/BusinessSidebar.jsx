@@ -7,6 +7,8 @@ import MobileBottomNav from 'components/MobileBottomNav';
 import FloatingActionButton from 'components/FloatingActionButton';
 import { useAuth } from '../../contexts/AuthContext';
 import { getPlanLabel } from '../../constants/plans';
+import { buildWhatsAppUrl } from '../../utils/whatsapp';
+import { SUPPORT_WHATSAPP_NUMBER } from '../../config/support';
 
 const NAV_ITEMS = [
   { label: 'Mi tienda', path: '/dashboard', icon: 'Store' },
@@ -27,6 +29,7 @@ export default function BusinessSidebar({ isCollapsed = false, onCollapsedChange
   const [collapsed, setCollapsed] = useState(isCollapsed);
   const [expandedItems, setExpandedItems] = useState({});
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const userMenuRef = useRef(null);
 
   useEffect(() => { setCollapsed(isCollapsed); }, [isCollapsed]);
@@ -56,8 +59,41 @@ export default function BusinessSidebar({ isCollapsed = false, onCollapsedChange
     navigate('/login');
   };
 
+  const handleOpenProfile = () => {
+    setUserMenuOpen(false);
+    setProfileOpen(true);
+  };
+
+  const handleGoTo = (path) => {
+    setUserMenuOpen(false);
+    setMobileOpen(false);
+    navigate(path);
+  };
+
+  const handleCancelRequest = () => {
+    const businessNameForMessage = business?.name != null ? String(business.name) : '';
+    const userEmailForMessage = user?.email != null ? String(user.email) : '';
+    const planForMessage = planLabel != null ? String(planLabel) : '';
+    const countryForMessage = business?.country != null ? String(business.country) : '';
+    const message = `Hola, quiero solicitar la cancelación de mi suscripción en Ventalink.
+
+Negocio: ${businessNameForMessage}
+Email: ${userEmailForMessage}
+Plan: ${planForMessage}
+País: ${countryForMessage}
+
+Motivo (opcional):`;
+    const url = buildWhatsAppUrl(message, SUPPORT_WHATSAPP_NUMBER);
+    window.open(url, '_blank');
+    setUserMenuOpen(false);
+  };
+
   const userInitial = business?.name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0)?.toUpperCase() || 'U';
   const userLabel = business?.name || user?.email || 'Mi Negocio';
+  const userEmail = user?.email || 'Sin email';
+  const planLabel = getPlanLabel(business?.planSlug);
+  const businessWhatsApp = business?.whatsapp || '';
+  const businessCountry = business?.country || business?.countryCodeDb || '';
 
   const handleCollapse = () => {
     const next = !collapsed;
@@ -239,14 +275,49 @@ export default function BusinessSidebar({ isCollapsed = false, onCollapsedChange
                 className="absolute bottom-full left-0 right-0 mb-1 py-1 rounded-lg border shadow-lg overflow-hidden"
                 style={{ backgroundColor: '#FFFFFF', borderColor: 'var(--color-border)', zIndex: 9999 }}
               >
+                <div
+                  className="px-3 py-2.5 border-b"
+                  style={{ borderColor: 'var(--color-border)', fontFamily: 'var(--font-caption)' }}
+                >
+                  <p className="text-xs font-semibold truncate" style={{ color: 'var(--color-foreground)' }}>{userLabel}</p>
+                  <p className="text-xs truncate" style={{ color: 'var(--color-muted-foreground)' }}>{userEmail}</p>
+                  <p className="text-xs truncate mt-0.5" style={{ color: 'var(--color-muted-foreground)' }}>Plan: {planLabel}</p>
+                </div>
                 <button
                   type="button"
-                  onClick={(e) => { e.stopPropagation(); setUserMenuOpen(false); navigate('/planes'); }}
+                  onClick={(e) => { e.stopPropagation(); handleOpenProfile(); }}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 text-left text-sm hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}
+                >
+                  <Icon name="User" size={14} color="var(--color-muted-foreground)" />
+                  Ver perfil
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); handleGoTo('/planes'); }}
                   className="w-full flex items-center gap-3 px-3 py-2.5 text-left text-sm hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}
                 >
                   <Icon name="CreditCard" size={14} color="var(--color-muted-foreground)" />
-                  Ver planes
+                  Plan y facturación
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); handleCancelRequest(); }}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 text-left text-sm hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}
+                >
+                  <Icon name="MessageCircle" size={14} color="var(--color-muted-foreground)" />
+                  Solicitar cancelación
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); handleGoTo('/ayuda'); }}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 text-left text-sm hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}
+                >
+                  <Icon name="HelpCircle" size={14} color="var(--color-muted-foreground)" />
+                  Soporte
                 </button>
                 {isAdmin && isImpersonating && (
                   <button
@@ -299,14 +370,49 @@ export default function BusinessSidebar({ isCollapsed = false, onCollapsedChange
                 className="absolute bottom-full left-0 right-0 mb-1 py-1 rounded-lg border shadow-lg"
                 style={{ backgroundColor: '#FFFFFF', borderColor: 'var(--color-border)', minWidth: '160px', zIndex: 9999 }}
               >
+                <div
+                  className="px-3 py-2.5 border-b"
+                  style={{ borderColor: 'var(--color-border)', fontFamily: 'var(--font-caption)' }}
+                >
+                  <p className="text-xs font-semibold truncate" style={{ color: 'var(--color-foreground)' }}>{userLabel}</p>
+                  <p className="text-xs truncate" style={{ color: 'var(--color-muted-foreground)' }}>{userEmail}</p>
+                  <p className="text-xs truncate mt-0.5" style={{ color: 'var(--color-muted-foreground)' }}>Plan: {planLabel}</p>
+                </div>
                 <button
                   type="button"
-                  onClick={(e) => { e.stopPropagation(); setUserMenuOpen(false); navigate('/planes'); }}
+                  onClick={(e) => { e.stopPropagation(); handleOpenProfile(); }}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 text-left text-sm hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}
+                >
+                  <Icon name="User" size={14} color="var(--color-muted-foreground)" />
+                  Ver perfil
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); handleGoTo('/planes'); }}
                   className="w-full flex items-center gap-3 px-3 py-2.5 text-left text-sm hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}
                 >
                   <Icon name="CreditCard" size={14} color="var(--color-muted-foreground)" />
-                  Ver planes
+                  Plan y facturación
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); handleCancelRequest(); }}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 text-left text-sm hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}
+                >
+                  <Icon name="MessageCircle" size={14} color="var(--color-muted-foreground)" />
+                  Solicitar cancelación
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); handleGoTo('/ayuda'); }}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 text-left text-sm hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}
+                >
+                  <Icon name="HelpCircle" size={14} color="var(--color-muted-foreground)" />
+                  Soporte
                 </button>
                 <button
                   type="button"
@@ -342,6 +448,44 @@ export default function BusinessSidebar({ isCollapsed = false, onCollapsedChange
           <Icon name={collapsed ? 'PanelLeftOpen' : 'PanelLeftClose'} size={15} color="currentColor" />
         </button>
       </div>
+      {profileOpen && (
+        <div
+          className="fixed inset-0 z-modal"
+          style={{ backgroundColor: 'rgba(15,23,42,0.45)' }}
+          onClick={() => setProfileOpen(false)}
+        >
+          <div className="w-full h-full flex items-center justify-center p-4">
+            <div
+              className="w-full max-w-md rounded-2xl border shadow-xl p-5"
+              style={{ backgroundColor: '#FFFFFF', borderColor: 'var(--color-border)', fontFamily: 'var(--font-caption)' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-bold" style={{ color: 'var(--color-foreground)' }}>Perfil</h3>
+                <button
+                  type="button"
+                  onClick={() => setProfileOpen(false)}
+                  className="w-8 h-8 rounded-lg hover:bg-muted flex items-center justify-center transition-colors"
+                  aria-label="Cerrar perfil"
+                >
+                  <Icon name="X" size={15} color="var(--color-muted-foreground)" />
+                </button>
+              </div>
+              <div className="space-y-2 text-sm">
+                <p style={{ color: 'var(--color-foreground)' }}><span className="font-semibold">Negocio:</span> {userLabel}</p>
+                <p style={{ color: 'var(--color-foreground)' }}><span className="font-semibold">Email:</span> {userEmail}</p>
+                {businessWhatsApp ? (
+                  <p style={{ color: 'var(--color-foreground)' }}><span className="font-semibold">WhatsApp:</span> {businessWhatsApp}</p>
+                ) : null}
+                {businessCountry ? (
+                  <p style={{ color: 'var(--color-foreground)' }}><span className="font-semibold">País:</span> {businessCountry}</p>
+                ) : null}
+                <p style={{ color: 'var(--color-foreground)' }}><span className="font-semibold">Plan:</span> {planLabel}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 

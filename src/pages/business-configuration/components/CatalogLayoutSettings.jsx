@@ -1,7 +1,7 @@
 import React from 'react';
 import Icon from 'components/AppIcon';
-import { buildWhatsAppUrl } from '../../../utils/buildWhatsAppUrl';
-import { VENTALINK_SUPPORT_WHATSAPP_NUMBER } from '../../../config/ventalinkSupportWhatsApp';
+import { buildWhatsAppUrl } from '../../../utils/whatsapp';
+import { SUPPORT_WHATSAPP_NUMBER } from '../../../config/support';
 
 function buildCategoryRequestWhatsAppMessage(businessName, userEmail) {
   const biz = businessName != null && businessName !== '' ? String(businessName) : '';
@@ -102,8 +102,8 @@ export default function CatalogLayoutSettings({ design, onChange, businessName, 
             type="button"
             onClick={() => {
               const msg = buildCategoryRequestWhatsAppMessage(businessName, userEmail);
-              const url = buildWhatsAppUrl(msg, VENTALINK_SUPPORT_WHATSAPP_NUMBER);
-              if (url !== '#') window.open(url, '_blank');
+              const url = buildWhatsAppUrl(msg, SUPPORT_WHATSAPP_NUMBER);
+              window.open(url, '_blank');
             }}
             className="px-4 py-2 rounded-lg bg-green-500 text-white text-sm font-medium hover:bg-green-600 transition text-center"
           >

@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import Icon from 'components/AppIcon';
-import { buildWhatsAppUrl } from '../../../utils/buildWhatsAppUrl';
-import { VENTALINK_SUPPORT_WHATSAPP_NUMBER } from '../../../config/ventalinkSupportWhatsApp';
+import { buildWhatsAppUrl } from '../../../utils/whatsapp';
+import { SUPPORT_WHATSAPP_NUMBER } from '../../../config/support';
 
 function normalizeSearch(str) {
   return String(str || '')
@@ -62,7 +62,7 @@ export default function RubroPrincipalSelector({ rubros = [], value, onChange })
 
   const waRubroHelpUrl = buildWhatsAppUrl(
     'Hola, necesito solicitar un rubro que no aparece en la lista de Ventalink.',
-    VENTALINK_SUPPORT_WHATSAPP_NUMBER,
+    SUPPORT_WHATSAPP_NUMBER,
   );
 
   return (
