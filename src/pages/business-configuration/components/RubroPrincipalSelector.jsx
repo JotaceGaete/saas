@@ -3,15 +3,6 @@ import Icon from 'components/AppIcon';
 import { buildWhatsAppUrl } from '../../../utils/buildWhatsAppUrl';
 import { VENTALINK_SUPPORT_WHATSAPP_NUMBER } from '../../../config/ventalinkSupportWhatsApp';
 
-/** Orden fijo de rubros populares; solo se muestran si existen en `rubros` con el mismo `name`. */
-const POPULAR_NAMES = [
-  'Gastronomía',
-  'Verdulería',
-  'Ropa',
-  'Repuestos automotrices',
-  'Belleza y Cuidado Personal',
-];
-
 function normalizeSearch(str) {
   return String(str || '')
     .normalize('NFD')
@@ -32,14 +23,6 @@ const inputClass = [
 ].join(' ');
 
 const inputStyle = { fontFamily: 'var(--font-caption)' };
-
-function SectionLabel({ children }) {
-  return (
-    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 font-[family-name:var(--font-caption)] mb-2 mt-3 first:mt-0">
-      {children}
-    </p>
-  );
-}
 
 function RubroRow({ rubro, selected, onPick }) {
   const id = rubro?.id != null ? String(rubro.id) : '';
@@ -67,44 +50,15 @@ export default function RubroPrincipalSelector({ rubros = [], value, onChange })
   const [query, setQuery] = useState('');
   const selected = value != null ? String(value) : '';
 
-  const byName = useMemo(() => {
-    const m = new Map();
-    (rubros || []).forEach((r) => {
-      if (r?.name && !m.has(r.name)) m.set(r.name, r);
-    });
-    return m;
-  }, [rubros]);
-
-  const popularFromSource = useMemo(() => {
-    return POPULAR_NAMES.map((name) => byName.get(name)).filter(Boolean);
-  }, [byName]);
-
-  const popularIds = useMemo(() => new Set(popularFromSource.map((r) => String(r.id))), [popularFromSource]);
-
-  const allNonPopularAZ = useMemo(() => {
-    return sortRubrosAZ((rubros || []).filter((r) => r?.id != null && !popularIds.has(String(r.id))));
-  }, [rubros, popularIds]);
-
   const q = query.trim();
-  const filtered = useMemo(() => {
-    if (!q) return null;
+  const listToShow = useMemo(() => {
+    const base = (rubros || []).filter((r) => r?.id != null);
+    if (!q) return sortRubrosAZ(base);
     const nq = normalizeSearch(q);
-    return (rubros || []).filter((r) => normalizeSearch(r?.name || '').includes(nq));
+    return sortRubrosAZ(base.filter((r) => normalizeSearch(r?.name || '').includes(nq)));
   }, [rubros, q]);
 
-  const { popularShow, restShow } = useMemo(() => {
-    if (filtered === null) {
-      return { popularShow: popularFromSource, restShow: allNonPopularAZ };
-    }
-    const fid = new Set(filtered.map((r) => String(r.id)));
-    const pop = POPULAR_NAMES.map((name) => byName.get(name))
-      .filter((r) => r && fid.has(String(r.id)));
-    const popId = new Set(pop.map((r) => String(r.id)));
-    const rest = sortRubrosAZ(filtered.filter((r) => !popId.has(String(r.id))));
-    return { popularShow: pop, restShow: rest };
-  }, [filtered, popularFromSource, allNonPopularAZ, byName]);
-
-  const showEmptySearch = q.length > 0 && filtered && filtered.length === 0;
+  const showEmptySearch = q.length > 0 && listToShow.length === 0;
 
   const waRubroHelpUrl = buildWhatsAppUrl(
     'Hola, necesito solicitar un rubro que no aparece en la lista de Ventalink.',
@@ -155,34 +109,14 @@ export default function RubroPrincipalSelector({ rubros = [], value, onChange })
             </button>
           )}
         </div>
+      ) : listToShow.length > 0 ? (
+        <div className="flex flex-col gap-2 max-h-[min(320px,50vh)] overflow-y-auto pr-0.5">
+          {listToShow.map((r) => (
+            <RubroRow key={r.id} rubro={r} selected={selected} onPick={(id) => onChange?.(id)} />
+          ))}
+        </div>
       ) : (
-        <>
-          {popularShow.length > 0 && (
-            <div>
-              <SectionLabel>Rubros populares</SectionLabel>
-              <div className="flex flex-col gap-2">
-                {popularShow.map((r) => (
-                  <RubroRow key={r.id} rubro={r} selected={selected} onPick={(id) => onChange?.(id)} />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {restShow.length > 0 && (
-            <div>
-              <SectionLabel>Todos los rubros</SectionLabel>
-              <div className="flex flex-col gap-2 max-h-[min(320px,50vh)] overflow-y-auto pr-0.5">
-                {restShow.map((r) => (
-                  <RubroRow key={r.id} rubro={r} selected={selected} onPick={(id) => onChange?.(id)} />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {!popularShow.length && !restShow.length && (
-            <p className="text-sm text-slate-500 font-[family-name:var(--font-caption)]">No hay rubros disponibles.</p>
-          )}
-        </>
+        <p className="text-sm text-slate-500 font-[family-name:var(--font-caption)]">No hay rubros disponibles.</p>
       )}
     </div>
   );
