@@ -4,12 +4,14 @@ import tsconfigPaths from "vite-tsconfig-paths";
 import { VitePWA } from "vite-plugin-pwa";
 
 /** Bump al cambiar estrategia de caché PWA (invalida caches runtime con este prefijo). */
-const PWA_CACHE_VERSION = "v2026-03-22-1";
+const PWA_CACHE_VERSION = "v2026-04-01-1";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   return {
+  /** Siempre raíz del sitio; nunca URL absoluta (evita manifest/PWA apuntando a otro host, p. ej. www). */
+  base: "/",
   define: {
     "process.env.VITE_OG_IMAGE_API_BASE": JSON.stringify(env.VITE_OG_IMAGE_API_BASE || ""),
     "process.env.VITE_SUPABASE_URL": JSON.stringify(env.VITE_SUPABASE_URL || ""),
@@ -29,12 +31,32 @@ export default defineConfig(({ mode }) => {
     VitePWA({
       registerType: "autoUpdate",
       injectRegister: "inline",
+      /** Mismo nombre que en index; href en build = `${base}${manifestFilename}` → siempre origen actual (go, no www). */
+      manifestFilename: "manifest.json",
+      /** Alineado con `base: "/"`; el SW controla todo el origen. */
+      scope: "/",
+      /**
+       * Manifest generado en build: solo rutas relativas (sin host).
+       * No usar manifest: false + solo public/manifest.json: el plugin inyecta el <link> con buildBase correcto.
+       */
+      manifest: {
+        name: "VentALink",
+        short_name: "VentALink",
+        start_url: "/",
+        scope: "/",
+        display: "standalone",
+        background_color: "#a855f7",
+        theme_color: "#a855f7",
+        icons: [
+          { src: "/icon-192.png", sizes: "192x192", type: "image/png" },
+          { src: "/icon-512.png", sizes: "512x512", type: "image/png" },
+        ],
+      },
       /** Sin SW en `vite` / dev: siempre ves el bundle en caliente; evita “código viejo” en local. */
       devOptions: {
         enabled: false,
       },
       includeAssets: ["favicon.ico", "favicon-16x16.png", "favicon-32x32.png", "apple-touch-icon.png", "icon-192.png", "icon-512.png", "v-check-isotype.svg", "offline.html"],
-      manifest: false,
       workbox: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
