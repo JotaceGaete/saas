@@ -12,6 +12,56 @@ function formatEsCL(iso) {
 }
 
 /**
+ * Prioridad: current_period (subscription-state o fila) → plan_expires_at (negocio) → trial.
+ */
+function pickDisplayDateIso({ subscriptionState, billingSubscriptionRow, business }) {
+  const cp = subscriptionState?.current_period_ends_at
+    || billingSubscriptionRow?.current_period_ends_at
+    || billingSubscriptionRow?.next_billing_date
+    || null;
+  if (cp) return { iso: cp, role: 'current_period' };
+
+  const pe = business?.planExpiresAt || null;
+  if (pe) return { iso: pe, role: 'plan_expires' };
+
+  const te = subscriptionState?.trial_ends_at
+    || billingSubscriptionRow?.trial_ends_at
+    || business?.trialExpiresAt
+    || null;
+  if (te) return { iso: te, role: 'trial' };
+
+  return { iso: null, role: null };
+}
+
+function buildPaidCardSubtitle({
+  dateRole,
+  billingMode,
+  nextLabel,
+  isFuture,
+  normalizedStatus,
+}) {
+  if (normalizedStatus === BILLING_STATUSES.CANCELLED) {
+    return `Suscripción cancelada. Fecha de referencia: ${nextLabel}.`;
+  }
+  if (dateRole === 'current_period') {
+    if (billingMode === 'manual') {
+      return `Vigente hasta ${nextLabel}. Renovación manual desde Planes.`;
+    }
+    return isFuture
+      ? `Próxima renovación: ${nextLabel}.`
+      : `Período de facturación (referencia): ${nextLabel}.`;
+  }
+  if (dateRole === 'plan_expires') {
+    return isFuture
+      ? `Plan vigente hasta ${nextLabel}.`
+      : `Vigencia registrada hasta ${nextLabel}.`;
+  }
+  return isFuture
+    ? `Fin de prueba: ${nextLabel}.`
+    : `Prueba finalizada el ${nextLabel}.`;
+}
+
+/**
  * Vista para `UnifiedSubscriptionCard`.
  * Fechas: prioridad `billing_subscriptions`; si `_displaySource === 'legacy_wa_businesses'`,
  * las mismas columnas vienen de `wa_businesses` (trial_expires_at → trial_ends_at, plan_expires_at → next_billing_date).
@@ -83,14 +133,21 @@ export function buildUnifiedSubscriptionViewModel({
     limits.maxOrdersPerMonth == null ? 'pedidos ilimitados' : `${limits.maxOrdersPerMonth} pedidos/mes`,
   ].join(' · ');
 
-  const trialEndsAt = billingSubscriptionRow?.trial_ends_at || null;
-  const nextBillingDate = billingSubscriptionRow?.next_billing_date || null;
+  const trialEndsAt = subscriptionState?.trial_ends_at
+    || billingSubscriptionRow?.trial_ends_at
+    || business?.trialExpiresAt
+    || null;
+  /** Próximo ciclo / renovación tras la prueba (misma prioridad que subscription-state). */
+  const nextPeriodAfterTrial = subscriptionState?.current_period_ends_at
+    || billingSubscriptionRow?.current_period_ends_at
+    || billingSubscriptionRow?.next_billing_date
+    || null;
 
   const now = Date.now();
   const trialEndMs = trialEndsAt ? new Date(trialEndsAt).getTime() : NaN;
   const trialIsActive = Number.isFinite(trialEndMs) && trialEndMs > now;
 
-  const nextBillMs = nextBillingDate ? new Date(nextBillingDate).getTime() : NaN;
+  const nextBillMs = nextPeriodAfterTrial ? new Date(nextPeriodAfterTrial).getTime() : NaN;
   const hasFutureNextBilling = Number.isFinite(nextBillMs) && nextBillMs > now;
 
   const isPaidTier = planSlug === 'pro' || planSlug === 'business';
@@ -116,14 +173,16 @@ export function buildUnifiedSubscriptionViewModel({
     const trialEndLabel = formatEsCL(trialEndsAt);
 
     let subscriptionNote = null;
-    if (hasFutureNextBilling && nextBillingDate) {
+    if (hasFutureNextBilling && nextPeriodAfterTrial) {
       subscriptionNote = billingMode === 'manual'
-        ? `Vigencia del plan actual hasta: ${formatEsCL(nextBillingDate)}. Renovación manual.`
-        : `Próximo cobro según suscripción: ${formatEsCL(nextBillingDate)}.`;
+        ? `Vigencia del plan actual hasta: ${formatEsCL(nextPeriodAfterTrial)}. Renovación manual.`
+        : `Próximo cobro según suscripción: ${formatEsCL(nextPeriodAfterTrial)}.`;
     }
 
     const isTrialWithPaidSubscription = activatesAfterTrial && hasPaidSubscription;
-    const manualExpiryNote = nextBillingDate ? `Tu plan vence el ${formatEsCL(nextBillingDate)}.` : 'Tu plan se activará al finalizar tu prueba actual.';
+    const manualExpiryNote = nextPeriodAfterTrial
+      ? `Tu plan vence el ${formatEsCL(nextPeriodAfterTrial)}.`
+      : 'Tu plan se activará al finalizar tu prueba actual.';
     return {
       layout: 'trial',
       normalizedStatus,
@@ -170,8 +229,34 @@ export function buildUnifiedSubscriptionViewModel({
     };
   }
 
-  if (hasFutureNextBilling && nextBillingDate) {
-    const nextLabel = formatEsCL(nextBillingDate);
+  const { iso: displayIso, role: dateRole } = pickDisplayDateIso({
+    subscriptionState,
+    billingSubscriptionRow,
+    business,
+  });
+  const displayMs = displayIso ? new Date(displayIso).getTime() : NaN;
+  const hasValidDisplayDate = Number.isFinite(displayMs);
+  const isFutureDisplay = hasValidDisplayDate && displayMs > now;
+
+  if (isPaidTier && hasValidDisplayDate && displayIso) {
+    const nextLabel = formatEsCL(displayIso);
+    const title =
+      billingMode === 'manual'
+        ? `Plan ${planLabel} activo (pago manual)`
+        : normalizedStatus === BILLING_STATUSES.CANCELLED
+          ? `Plan ${planLabel} (cancelado)`
+          : `Plan ${planLabel} activo`;
+    const subtitle = buildPaidCardSubtitle({
+      dateRole,
+      billingMode,
+      nextLabel,
+      isFuture: isFutureDisplay,
+      normalizedStatus,
+    });
+    let dateHint = 'Renovación / facturación';
+    if (dateRole === 'plan_expires') dateHint = 'Vigencia del plan';
+    else if (dateRole === 'trial') dateHint = 'Calendario de prueba';
+
     return {
       layout: 'paid',
       normalizedStatus,
@@ -180,10 +265,10 @@ export function buildUnifiedSubscriptionViewModel({
       planLabel,
       limitsLine,
       next_billing_date: nextLabel,
-      title: billingMode === 'manual' ? `Plan ${planLabel} activo (pago manual)` : `Plan ${planLabel} activo`,
-      subtitle: billingMode === 'manual'
-        ? `Vigente hasta ${nextLabel}. Renovación manual desde Planes.`
-        : `Próxima renovación: ${nextLabel}.`,
+      date_context: dateRole,
+      date_hint: dateHint,
+      title,
+      subtitle,
     };
   }
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import PanelHeader from 'components/ui/PanelHeader';
 import DashboardAppShell from 'components/ui/DashboardAppShell';
@@ -23,6 +23,9 @@ import {
   getPlanUnavailableCopy,
 } from '../../lib/billing';
 import { getPlansActivationWhatsappUrl } from '../../config/plansActivation';
+import { SUPPORT_WHATSAPP_NUMBER } from '../../config/support';
+import { buildWhatsAppUrl } from '../../utils/whatsapp';
+import { trackEvent } from '../../lib/analytics';
 import { getCurrentSubscription } from '../../lib/billing/subscriptionService';
 import { normalizePlanSlugForBilling } from '../../lib/billing/billingSubscriptionsClient';
 import { buildUnifiedSubscriptionViewModel } from '../../lib/billing/unifiedSubscriptionCardModel';
@@ -32,6 +35,113 @@ import UnifiedSubscriptionCard from './components/UnifiedSubscriptionCard';
 import { useToast } from '../../components/ui/Toast';
 
 const PAYMENT_DEBUG_PREFIX = '[plans-payment-debug]';
+
+/** Copy y alternativa manual bajo el CTA PayPal (sin tocar backend). */
+function PayPalCheckoutHelper({ planSlug, onOpenManualPayment }) {
+  const handlePayWithCard = () => {
+    const plan = String(planSlug || 'unknown').toLowerCase();
+    trackEvent('manual_payment_requested', {
+      plan,
+      provider: 'dlocal_manual',
+    });
+    onOpenManualPayment?.();
+  };
+
+  return (
+    <div className="w-full space-y-2 pt-0.5">
+      <p className="text-xs text-center leading-snug" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
+        Pago automático mensual con tu cuenta PayPal
+      </p>
+      <p className="text-[11px] text-center leading-snug" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+        Necesitas una cuenta PayPal para usar este método
+      </p>
+      <div className="pt-2 mt-1 border-t" style={{ borderColor: 'var(--color-border)' }}>
+        <p className="text-[11px] text-center leading-snug" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
+          Puedes pagar con tarjeta sin necesidad de tener cuenta PayPal.
+        </p>
+        <p className="text-[11px] text-center mt-1.5 leading-snug" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+          Te enviaremos un link de pago seguro para completar tu suscripción.
+        </p>
+        <button
+          type="button"
+          onClick={handlePayWithCard}
+          className="mt-2.5 w-full py-2 px-3 rounded-lg text-xs font-medium transition-colors hover:opacity-90"
+          style={{
+            color: 'var(--color-text-secondary)',
+            border: '1px solid var(--color-border)',
+            backgroundColor: 'var(--color-background)',
+            fontFamily: 'var(--font-caption)',
+          }}
+        >
+          Pagar con tarjeta
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ManualPaymentLinkModal({ open, onClose, planSlug, user, business }) {
+  if (!open) return null;
+  const message = [
+    'Hola, quiero solicitar un link de pago con tarjeta para mi plan en Ventalink (prefiero no usar PayPal).',
+    planSlug ? `Plan: ${planSlug}` : null,
+    `Email: ${user?.email || ''}`,
+    `Negocio: ${business?.name || ''}`,
+  ].filter(Boolean).join('\n\n');
+  const waUrl = buildWhatsAppUrl(message, SUPPORT_WHATSAPP_NUMBER);
+
+  const handleWhatsApp = () => {
+    const plan = String(planSlug || 'unknown').toLowerCase();
+    trackEvent('manual_payment_whatsapp_continue', {
+      plan,
+      provider: 'dlocal_manual',
+    });
+    if (waUrl) window.open(waUrl, '_blank', 'noopener,noreferrer');
+    onClose();
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+      style={{ backgroundColor: 'rgba(15,23,42,0.45)' }}
+      onClick={onClose}
+      role="presentation"
+    >
+      <div
+        className="w-full max-w-md rounded-2xl border p-5 shadow-xl"
+        style={{ backgroundColor: '#fff', borderColor: 'var(--color-border)' }}
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-labelledby="manual-payment-title"
+      >
+        <h3 id="manual-payment-title" className="text-sm font-semibold mb-2" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>
+          Pago con tarjeta (link manual)
+        </h3>
+        <p className="text-sm leading-relaxed mb-4" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
+          Te enviaremos un enlace seguro para pagar con tarjeta por WhatsApp o email. No necesitas cuenta PayPal.
+        </p>
+        <div className="flex flex-col sm:flex-row gap-2">
+          <button
+            type="button"
+            onClick={handleWhatsApp}
+            className="flex-1 py-2.5 px-3 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90"
+            style={{ backgroundColor: '#25D366', fontFamily: 'var(--font-caption)' }}
+          >
+            Continuar por WhatsApp
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 py-2.5 px-3 rounded-lg text-sm font-medium transition-opacity hover:opacity-90"
+            style={{ color: 'var(--color-muted-foreground)', border: '1px solid var(--color-border)', fontFamily: 'var(--font-caption)' }}
+          >
+            Cerrar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /** Badge de confianza bajo el botón "Elegir plan" (método principal). */
 function PlanPrimaryTrustBadge({ provider, billingCountryCode }) {
@@ -74,7 +184,19 @@ export default function PlansPage() {
   const [loadingPlanSlug, setLoadingPlanSlug] = useState(null);
   const [preview, setPreview] = useState(null);
   const [previewPlanSlug, setPreviewPlanSlug] = useState(null);
+  const [manualPaymentModalOpen, setManualPaymentModalOpen] = useState(false);
+  const [manualPaymentPlanSlug, setManualPaymentPlanSlug] = useState(null);
   const [subscriptionState, setSubscriptionState] = useState(null);
+
+  const openManualPaymentModal = useCallback((planSlug) => {
+    setManualPaymentPlanSlug(planSlug ?? null);
+    setManualPaymentModalOpen(true);
+  }, []);
+
+  const closeManualPaymentModal = useCallback(() => {
+    setManualPaymentModalOpen(false);
+    setManualPaymentPlanSlug(null);
+  }, []);
   const [billingReady, setBillingReady] = useState(false);
   const [billingRemoteError, setBillingRemoteError] = useState(null);
   const [currentSubscription, setCurrentSubscription] = useState(null);
@@ -970,7 +1092,7 @@ export default function PlansPage() {
                           <PlanPrimaryTrustBadge provider={checkoutProvider} billingCountryCode={billingCountryForUi} />
                         </div>
                       ) : checkoutProvider === PAYMENT_PROVIDERS.PAYPAL ? (
-                        <div className="w-full flex flex-col gap-1">
+                        <div className="w-full flex flex-col gap-2">
                           <button
                             type="button"
                             disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !isPurchasable || isAutomaticCheckoutBlocked || !isProviderReadyForCheckout(PAYMENT_PROVIDERS.PAYPAL)}
@@ -987,7 +1109,7 @@ export default function PlansPage() {
                               </>
                             )}
                           </button>
-                          <PlanPrimaryTrustBadge provider={checkoutProvider} billingCountryCode={billingCountryForUi} />
+                          <PayPalCheckoutHelper planSlug={slug} onOpenManualPayment={() => openManualPaymentModal(slug)} />
                         </div>
                       ) : checkoutProvider === PAYMENT_PROVIDERS.MANUAL ? (
                         <div className="w-full flex flex-col gap-1">
@@ -1058,7 +1180,7 @@ export default function PlansPage() {
                       : 'CreditCard';
                 return (
               <div className="flex flex-wrap gap-3 items-start">
-                <div className="flex flex-col gap-1 min-w-[10rem]">
+                <div className="flex flex-col gap-2 min-w-[10rem] max-w-[min(100%,20rem)]">
                 <button
                   type="button"
                   onClick={handleConfirmPrimaryPayment}
@@ -1075,7 +1197,11 @@ export default function PlansPage() {
                     </>
                   )}
                 </button>
-                <PlanPrimaryTrustBadge provider={checkoutProvider} billingCountryCode={billingCountryForUi} />
+                {checkoutProvider === PAYMENT_PROVIDERS.PAYPAL ? (
+                  <PayPalCheckoutHelper planSlug={previewPlanSlug} onOpenManualPayment={() => openManualPaymentModal(previewPlanSlug)} />
+                ) : (
+                  <PlanPrimaryTrustBadge provider={checkoutProvider} billingCountryCode={billingCountryForUi} />
+                )}
                 </div>
                 <button
                   type="button"
@@ -1115,7 +1241,14 @@ export default function PlansPage() {
             </div>
           )}
         </DashboardLayoutContent>
-      
+
+        <ManualPaymentLinkModal
+          open={manualPaymentModalOpen}
+          onClose={closeManualPaymentModal}
+          planSlug={manualPaymentPlanSlug}
+          user={user}
+          business={business}
+        />
     </DashboardAppShell>
   );
 }

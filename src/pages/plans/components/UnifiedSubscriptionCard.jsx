@@ -163,6 +163,12 @@ export default function UnifiedSubscriptionCard({ viewModel, onScrollToPlans, su
               {viewModel.subtitle && (
                 <p className="text-sm text-gray-600 mt-1 font-[family-name:var(--font-caption)]">{viewModel.subtitle}</p>
               )}
+              {viewModel.date_hint && (
+                <p className="text-xs text-gray-500 mt-1.5 flex items-center gap-1.5 font-[family-name:var(--font-caption)]">
+                  <Calendar size={12} className="shrink-0 opacity-80" aria-hidden />
+                  {viewModel.date_hint}
+                </p>
+              )}
               <p className="text-sm text-gray-500 mt-2 font-[family-name:var(--font-caption)]">{viewModel.limitsLine}</p>
             </div>
           </div>
