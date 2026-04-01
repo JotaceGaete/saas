@@ -1155,17 +1155,13 @@ export default function BusinessConfiguration() {
                   <p className={sectionHeadingClass}>Ubicación simplificada</p>
                   <SettingsField
                     label="Dirección completa"
-                    hint="Un solo campo. Al guardar, comuna y región se deducen del texto (no hace falta escribirlos aparte)."
+                    hint="Incluye tu dirección y ciudad para que tus clientes te encuentren fácilmente. Un solo campo: calle, ciudad y referencias de ubicación."
                   >
                     <textarea
                       rows={3}
                       className={inputClass}
                       style={inputStyle}
-                      placeholder={
-                        hasPersistedCountry
-                          ? 'Ej: Av. Principal 123, Las Condes, Región Metropolitana'
-                          : 'Calle, ciudad y referencia'
-                      }
+                      placeholder="Ej: Calle 123, Ciudad"
                       value={fullAddressInput}
                       onChange={e => setFullAddressInput(e?.target?.value ?? '')}
                     />

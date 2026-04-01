@@ -77,7 +77,7 @@ export const COUNTRY_LABELS = Object.freeze({
     cityPlaceholder: 'Ej: Providencia, Las Condes',
     regionLabel: 'Región',
     regionPlaceholder: 'Ej: Metropolitana, Valparaíso',
-    addressPlaceholder: 'Ej: Av. Providencia 1234, of. 56',
+    addressPlaceholder: 'Ej: Calle 123, Ciudad',
     bankPlaceholder: 'Ej: Banco de Chile, BancoEstado, Santander...',
     idNumberLabel: 'RUT',
     idNumberPlaceholder: 'Ej: 12.345.678-9',
@@ -402,7 +402,7 @@ const NEUTRAL_LABELS = Object.freeze({
   cityPlaceholder: 'Ej: Ciudad',
   regionLabel: 'Región',
   regionPlaceholder: 'Ej: Región',
-  addressPlaceholder: 'Ej: Dirección',
+  addressPlaceholder: 'Ej: Calle 123, Ciudad',
   bankPlaceholder: 'Ej: Banco...',
   idNumberLabel: 'ID',
   idNumberPlaceholder: 'Ej: Número',
@@ -417,6 +417,12 @@ const NEUTRAL_LABELS = Object.freeze({
   benefitsTitle: 'Multi-país',
   benefitsDescription: 'Precios y WhatsApp según tu país.',
 });
+
+/**
+ * Ayuda bajo el campo «Dirección de entrega» en catálogo público y confirmación de pedido (perspectiva del cliente).
+ */
+export const DELIVERY_ADDRESS_FIELD_HINT =
+  'Incluye tu dirección y ciudad para facilitar la entrega. Calle, número, ciudad y referencias de ubicación.';
 
 export function getCountryLabels(countryCode) {
   if (countryCode === null || countryCode === undefined || countryCode === '') return NEUTRAL_LABELS;

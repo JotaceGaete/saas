@@ -4,7 +4,7 @@ import { Helmet } from 'react-helmet';
 import { getBusinessBySlug, getPublicProducts, getCategoriesByRubroId, recordCatalogVisit, recordCatalogWhatsAppClick, createOrder } from '../../services/waBusinessService';
 import Icon from '../../components/AppIcon';
 import { CartProvider, useCart } from '../../contexts/CartContext';
-import { formatCatalogPrice } from '../../utils/formatCLP';
+import { formatPriceCatalog } from '../../utils/formatPrice';
 import { getBusinessLocale } from '../../lib/locale/businessLocale';
 import { useIsDesktop } from '../../hooks/useMediaQuery';
 import { useAuth } from '../../contexts/AuthContext';
@@ -21,7 +21,7 @@ import { normalizeOptionalCustomerPhone } from '../../utils/customerPhone';
 import { buildCfImageErrorHandler, cfImageUrl, isCfTransformableUrl } from '../../utils/cloudflareImage';
 import { useResponsiveCfImageProfile } from '../../hooks/useResponsiveCfImageProfile';
 import CheckoutPhoneOptional from '../../components/checkout/CheckoutPhoneOptional';
-import { getCountryLabels } from '../../config/country';
+import { getCountryLabels, DELIVERY_ADDRESS_FIELD_HINT } from '../../config/country';
 import { buildCatalogAboutBlock, inferCatalogAboutKind } from '../../utils/catalogAboutBlock';
 import {
   buildLocalBusinessJsonLd,
@@ -234,8 +234,8 @@ function CatalogInner({ slug }) {
   const countryLabels = useMemo(() => getCountryLabels(catalogMoney.countryCode), [catalogMoney.countryCode]);
   const businessCurrency = String(business?.currency || catalogMoney.currencyCode || 'USD').trim().toUpperCase();
   const formatPrice = useCallback(
-    (price) => formatCatalogPrice(price, catalogMoney.countryCode, businessCurrency, catalogMoney.locale),
-    [businessCurrency, catalogMoney.countryCode, catalogMoney.locale],
+    (price) => formatPriceCatalog(price, businessCurrency),
+    [businessCurrency],
   );
 
   // Derivar useCategories y categoryNames desde business y rubroCategories
@@ -1670,6 +1670,7 @@ function OrderPanel({ business, slug, formatPrice, onClose, theme }) {
                     className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:border-transparent transition-all"
                     style={{ ['--tw-ring-color']: primaryColor }}
                   />
+                  <p className="text-xs text-gray-500 mt-1.5 leading-relaxed">{DELIVERY_ADDRESS_FIELD_HINT}</p>
                   {fieldErrors?.deliveryAddress && (
                     <p className="text-xs text-red-600 mt-1.5">{fieldErrors.deliveryAddress}</p>
                   )}

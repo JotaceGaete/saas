@@ -42,35 +42,6 @@ export function formatCurrency(amount, currency, locale) {
 }
 
 /**
- * Precio solo para vitrina de catálogo público / checkout del cliente (no billing ni panel).
- * Chile y Argentina: símbolo "$" + número local, sin prefijos "CLP"/"ARS".
- * Otros países: mismo comportamiento que {@link formatCurrency}.
- *
- * @param {number|string} amount
- * @param {string|null|undefined} countryCode - ISO 3166-1 alpha-2 (p. ej. CL, AR)
- * @param {string} [currencyCode] - ISO 4217 (fallback fuera de CL/AR)
- * @param {string} [locale]
- * @returns {string}
- */
-export function formatCatalogPrice(amount, countryCode, currencyCode, locale) {
-  const cc = String(countryCode || '').trim().toUpperCase();
-  const n = Number(amount);
-  const value = Number.isFinite(n) && n >= 0 ? n : 0;
-
-  if (cc === 'CL') {
-    const loc = locale || 'es-CL';
-    const num = new Intl.NumberFormat(loc, { maximumFractionDigits: 0, minimumFractionDigits: 0 }).format(Math.round(value));
-    return `$ ${num}`;
-  }
-  if (cc === 'AR') {
-    const loc = locale || 'es-AR';
-    const num = new Intl.NumberFormat(loc, { maximumFractionDigits: 0, minimumFractionDigits: 0 }).format(Math.round(value));
-    return `$ ${num}`;
-  }
-  return formatCurrency(value, currencyCode || 'USD', locale);
-}
-
-/**
  * Precios de suscripción en /planes: USD con prefijo "US$" explícito; CLP/ARS con Intl local.
  * Evita confundir con símbolos de moneda local del país (ej. CRC) cuando el cobro es en USD.
  * @param {number|string} amount

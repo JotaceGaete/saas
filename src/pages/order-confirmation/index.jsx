@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useCart } from '../../contexts/CartContext';
 import { createOrder, getBusinessBySlug } from '../../services/waBusinessService';
 import Icon from '../../components/AppIcon';
-import { formatCatalogPrice } from '../../utils/formatCLP';
+import { formatPriceCatalog } from '../../utils/formatPrice';
 import { getBusinessLocale } from '../../lib/locale/businessLocale';
 import { getPublicCatalogRelativePath, getWhatsAppOrderCatalogUrl } from '../../config/appUrl';
 import { getBrandingMessage } from '../../utils/branding';
@@ -11,7 +11,7 @@ import { isRestaurantBusiness } from '../../utils/businessType';
 import { normalizeOptionalCustomerPhone } from '../../utils/customerPhone';
 import CheckoutPhoneOptional from '../../components/checkout/CheckoutPhoneOptional';
 import { buildCfImageErrorHandler, cfImageUrl } from '../../utils/cloudflareImage';
-import { getCountryLabels } from '../../config/country';
+import { getCountryLabels, DELIVERY_ADDRESS_FIELD_HINT } from '../../config/country';
 
 function isWhatsAppWebView() {
   if (typeof navigator === 'undefined') return false;
@@ -59,10 +59,8 @@ export default function OrderConfirmation() {
   const formatPrice = (amount) => {
     const currency = String(business?.currency || checkoutMoney.currencyCode || 'USD').trim().toUpperCase();
     const numeric = Number(amount);
-    if (!Number.isFinite(numeric)) {
-      return formatCatalogPrice(0, checkoutMoney.countryCode, currency, checkoutMoney.locale);
-    }
-    return formatCatalogPrice(numeric, checkoutMoney.countryCode, currency, checkoutMoney.locale);
+    if (!Number.isFinite(numeric)) return formatPriceCatalog(0, currency);
+    return formatPriceCatalog(numeric, currency);
   };
 
   const validate = () => {
@@ -344,6 +342,7 @@ export default function OrderConfirmation() {
                       className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none transition-all"
                       style={{ borderColor: errors?.deliveryAddress ? 'var(--color-error)' : 'var(--color-border)', fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)', backgroundColor: '#FFFFFF' }}
                     />
+                    <p className="text-xs mt-1.5 leading-relaxed" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>{DELIVERY_ADDRESS_FIELD_HINT}</p>
                     {errors?.deliveryAddress && <p className="text-xs mt-1" style={{ color: 'var(--color-error)', fontFamily: 'var(--font-caption)' }}>{errors?.deliveryAddress}</p>}
                   </div>
                 )}
