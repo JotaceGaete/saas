@@ -3,6 +3,9 @@
  * Nombre histórico "formatCLP": muchos imports siguen usando este archivo.
  */
 
+/** Monedas que no usan decimales en su uso comercial habitual (ARS lo define ISO con 2 pero no se usan). */
+const ZERO_DECIMAL_CURRENCIES = new Set(['CLP', 'ARS']);
+
 /** Si no se pasa locale, se infiere solo por código ISO de moneda (último recurso). */
 const FALLBACK_LOCALE_BY_CURRENCY = Object.freeze({
   CLP: 'es-CL',
@@ -30,11 +33,17 @@ export function formatCurrency(amount, currency, locale) {
   const loc = locale || FALLBACK_LOCALE_BY_CURRENCY[cur] || 'en-US';
   const n = Number(amount);
   const value = Number.isFinite(n) && n >= 0 ? n : 0;
+  const zeroDecimal = ZERO_DECIMAL_CURRENCIES.has(cur);
+  const opts = {
+    style: 'currency',
+    currency: cur,
+    ...(zeroDecimal && { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
+  };
   try {
-    return new Intl.NumberFormat(loc, { style: 'currency', currency: cur }).format(value);
+    return new Intl.NumberFormat(loc, opts).format(zeroDecimal ? Math.round(value) : value);
   } catch {
     try {
-      return new Intl.NumberFormat('en-US', { style: 'currency', currency: cur }).format(value);
+      return new Intl.NumberFormat('en-US', opts).format(zeroDecimal ? Math.round(value) : value);
     } catch {
       return String(value);
     }

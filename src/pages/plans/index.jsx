@@ -418,11 +418,37 @@ export default function PlansPage() {
     }
   }, [searchParams, setSearchParams, refreshBusiness, toast]);
 
-  // Solo mostrar éxito cuando la BD confirma: wa_payments.status = approved (no por success_url ni query params)
+  // Fuente de verdad: subscription-state (PayPal). Fallback: wa_payments (MercadoPago).
   useEffect(() => {
     if (paymentReturnStatus !== 'success' || !user || businessLoading) return;
     let cancelled = false;
     (async () => {
+      // 1. Consultar subscription-state primero (PayPal ya confirmó en PaypalSuccessPage)
+      try {
+        const token = await getValidAccessToken();
+        if (token && business?.id) {
+          const q = new URLSearchParams({ businessId: business.id });
+          const r = await fetch(`/api/v1/billing/subscription-state?${q}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          const sd = await r.json().catch(() => ({}));
+          if (!cancelled && r.ok && sd?.ok) {
+            const bs = sd?.billing_status;
+            if (bs === 'active' || bs === 'trial_with_subscription') {
+              setPaymentReturnStatus(null);
+              toast?.success?.('Plan activado correctamente.');
+              await refetchBillingSubscriptionRow();
+              return;
+            }
+            // billing_status es pending_payment o no concluyente: caer a wa_payments
+          }
+        }
+      } catch {
+        // Red o parse error: caer a wa_payments
+      }
+      if (cancelled) return;
+
+      // 2. Fallback: wa_payments (flujo MercadoPago — sin cambios)
       const { data: lastPayment } = await supabase
         .from('wa_payments')
         .select('id, status, plan_slug, created_at')

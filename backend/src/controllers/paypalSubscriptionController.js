@@ -316,11 +316,12 @@ export async function confirmPaypalSubscriptionController(request) {
       ownership: 'allowed',
       reason: `confirmed_${paypalStatus || 'UNKNOWN'}`,
     });
+    // /confirm es lectura remota (PayPal API) únicamente.
+    // La escritura en billing_subscriptions la realiza el webhook BILLING.SUBSCRIPTION.ACTIVATED.
     return json({
       ok: true,
       subscriptionId,
       paypalStatus: remote?.status || null,
-      isActive: paypalStatus === 'ACTIVE',
       local,
       remote,
     });

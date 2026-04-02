@@ -11,7 +11,7 @@ export default function PaypalSuccessPage() {
     loading: true,
     ok: false,
     paypalStatus: null,
-    message: 'Confirmando suscripcion con el backend...',
+    message: 'Estamos confirmando tu suscripción...',
   });
 
   const subscriptionId = useMemo(
@@ -58,7 +58,21 @@ export default function PaypalSuccessPage() {
       return data?.id || null;
     };
 
-    const confirmSubscription = async () => {
+    const pollSubscriptionState = async (token, businessId) => {
+      try {
+        const q = new URLSearchParams({ businessId });
+        const r = await fetch(`/api/v1/billing/subscription-state?${q}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const d = await r.json().catch(() => ({}));
+        if (r.ok && d?.ok) return d?.billing_status || null;
+      } catch {
+        // red o parse error: ignorar este intento
+      }
+      return null;
+    };
+
+    const confirmAndPoll = async () => {
       const mappedSubscriptionId = String(subscriptionId || '').trim();
       if (!mappedSubscriptionId) {
         if (!cancelled) {
@@ -66,7 +80,7 @@ export default function PaypalSuccessPage() {
             loading: false,
             ok: false,
             paypalStatus: null,
-            message: 'No se recibio subscription_id en el retorno de PayPal.',
+            message: 'No se recibió subscription_id en el retorno de PayPal.',
           });
         }
         return;
@@ -74,20 +88,17 @@ export default function PaypalSuccessPage() {
 
       try {
         const token = await getValidAccessToken();
+        if (!token) throw new Error('Tu sesión no es válida. Inicia sesión nuevamente.');
+
         const resolvedBusinessId = await resolveBusinessIdForConfirm();
         console.info(
-          `[paypal-confirm-debug] payload businessId=${resolvedBusinessId || 'null'} subscriptionId=${mappedSubscriptionId || 'null'} token=${tokenParam || 'null'} baToken=${baToken || 'null'} hasAuth=${!!token}`,
+          `[paypal-confirm-debug] payload businessId=${resolvedBusinessId || 'null'} subscriptionId=${mappedSubscriptionId} hasAuth=true`,
         );
-        if (!token) {
-          throw new Error('Tu sesion no es valida. Inicia sesion nuevamente.');
-        }
 
+        // Paso 1: /confirm — verificación de propiedad y chequeo remoto (sin escritura en BD)
         const res = await fetch('/api/v1/billing/paypal/confirm', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({
             subscriptionId: mappedSubscriptionId,
             businessId: resolvedBusinessId || undefined,
@@ -97,67 +108,79 @@ export default function PaypalSuccessPage() {
         console.info('[paypal-confirm-debug] client confirm response', {
           status: res.status,
           ok: res.ok,
+          paypalStatus: data?.paypalStatus || null,
           error: data?.error || null,
-          code: data?.code || null,
-          businessId: resolvedBusinessId || null,
-          subscriptionId: mappedSubscriptionId || null,
         });
         if (!res.ok || !data?.ok) {
-          throw new Error(data?.error || `No se pudo confirmar la suscripcion (HTTP ${res.status}).`);
+          throw new Error(data?.error || `No se pudo confirmar la suscripción (HTTP ${res.status}).`);
+        }
+
+        const confirmedPaypalStatus = data?.paypalStatus || null;
+        const effectiveBizId = resolvedBusinessId || business?.id || null;
+
+        if (!effectiveBizId) {
+          // Sin businessId no se puede hacer polling; ir a estado neutro
+          console.warn('[paypal-poll] no businessId available; redirecting to pending');
+          if (!cancelled) navigate('/planes?payment=pending', { replace: true });
+          return;
         }
 
         if (!cancelled) {
-          const paypalStatus = data?.paypalStatus || 'UNKNOWN';
-          const isActive = data?.isActive === true;
+          setSyncState({
+            loading: true,
+            ok: false,
+            paypalStatus: confirmedPaypalStatus,
+            message: 'Estamos confirmando tu suscripción con el servidor...',
+          });
+        }
 
-          if (isActive) {
-            setSyncState({
-              loading: false,
-              ok: true,
-              paypalStatus,
-              message: 'Suscripcion activada correctamente.',
-            });
-          } else if (paypalStatus === 'APPROVAL_PENDING') {
-            setSyncState({
-              loading: false,
-              ok: false,
-              paypalStatus,
-              message: 'Tu suscripcion fue aprobada en PayPal y se esta confirmando. Esto puede tardar unos segundos.',
-            });
-          } else {
-            setSyncState({
-              loading: false,
-              ok: false,
-              paypalStatus,
-              message: `La suscripcion volvio desde PayPal, pero su estado actual es: ${paypalStatus}.`,
-            });
+        // Paso 2: polling a subscription-state cada 2 s, máx 20 s (10 intentos)
+        const POLL_MS = 2000;
+        const MAX_ATTEMPTS = 10;
+        for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+          if (cancelled) return;
+          if (attempt > 0) await new Promise(r => setTimeout(r, POLL_MS));
+          if (cancelled) return;
+
+          const billingStatus = await pollSubscriptionState(token, effectiveBizId);
+          const isConfirmed = billingStatus === 'active' || billingStatus === 'trial_with_subscription';
+          console.info(`[paypal-poll] attempt=${attempt + 1} billing_status=${billingStatus || 'null'} confirmed=${isConfirmed}`);
+
+          if (isConfirmed) {
+            if (!cancelled) {
+              setSyncState({
+                loading: false,
+                ok: true,
+                paypalStatus: confirmedPaypalStatus,
+                message: 'Suscripción activada correctamente.',
+              });
+              setTimeout(() => {
+                if (!cancelled) navigate('/planes?payment=success', { replace: true });
+              }, 3000);
+            }
+            return;
           }
         }
+
+        // Timeout: el webhook aún no actualizó billing_subscriptions — estado neutro
+        console.warn('[paypal-poll] timeout after 20s; billing_status still pending_payment');
+        if (!cancelled) navigate('/planes?payment=pending', { replace: true });
+
       } catch (err) {
         if (!cancelled) {
           setSyncState({
             loading: false,
             ok: false,
             paypalStatus: null,
-            message: err?.message || 'Ocurrio un error confirmando la suscripcion.',
+            message: err?.message || 'Ocurrió un error confirmando la suscripción.',
           });
         }
       }
     };
 
-    confirmSubscription();
-    return () => {
-      cancelled = true;
-    };
-  }, [subscriptionId, baToken, business?.id]);
-
-  useEffect(() => {
-    if (!syncState.ok) return undefined;
-    const timeoutId = setTimeout(() => {
-      navigate('/planes', { replace: true });
-    }, 4000);
-    return () => clearTimeout(timeoutId);
-  }, [syncState.ok, navigate]);
+    confirmAndPoll();
+    return () => { cancelled = true; };
+  }, [subscriptionId, baToken, business?.id, navigate]);
 
   return (
     <div

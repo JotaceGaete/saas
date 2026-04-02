@@ -123,6 +123,7 @@ export function formatMoneyByMarket({ amount, marketCode, countryCode, currency,
   return new Intl.NumberFormat(resolvedLocale, {
     style: 'currency',
     currency: resolvedCurrency,
+    minimumFractionDigits: maxFractionDigitsForCurrency(resolvedCurrency),
     maximumFractionDigits: maxFractionDigitsForCurrency(resolvedCurrency),
   }).format(numeric);
 }
