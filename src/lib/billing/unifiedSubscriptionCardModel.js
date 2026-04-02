@@ -150,7 +150,10 @@ export function buildUnifiedSubscriptionViewModel({
 
   const isPaidTier = planSlug === 'pro' || planSlug === 'business';
 
-  if (normalizedStatus === BILLING_STATUSES.PENDING_PAYMENT) {
+  // Solo forzar layout 'pending' si el plan operativo NO es de pago.
+  // Si isPaidTier=true, el pending_payment es de un checkout abandonado/fallido con fila
+  // APPROVAL_PENDING huérfana; mostrar el estado real del plan activo en su lugar.
+  if (normalizedStatus === BILLING_STATUSES.PENDING_PAYMENT && !isPaidTier) {
     return {
       layout: 'pending',
       normalizedStatus,

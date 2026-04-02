@@ -176,58 +176,6 @@ export const AuthProvider = ({ children }) => {
       }
       if (error) return { data: null, error }
 
-      // Email de bienvenida (fallback client-side; trigger en BD también puede enviarlo).
-      const user = data?.user
-      const userEmail = user?.email
-      if (!user || !userEmail || typeof userEmail !== 'string' || !userEmail.trim()) {
-        if (typeof window !== 'undefined') {
-          console.log('[Auth] send-email skip: no user or user.email', { hasUser: !!user, email: user?.email })
-        }
-      } else {
-        const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '')
-        const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? ''
-        const sessionToken = data?.session?.access_token ?? anonKey
-        const userName = user?.user_metadata?.name || user?.user_metadata?.full_name || businessData?.name || ''
-        const nameDisplay = (userName || '').trim() || 'Usuario'
-        const appBaseUrl = getAppBaseUrl()
-        const dashboardUrl = `${appBaseUrl.replace(/\/$/, '')}/dashboard`
-        const bizName = (businessData?.name || '').trim() || nameDisplay
-        const payload = {
-          to: userEmail.trim(),
-          type: 'welcome',
-          name: nameDisplay,
-          text: `Bienvenido a VentAlink, ${nameDisplay}. Empieza a vender en minutos: crea tu catálogo en ${dashboardUrl}.`,
-          data: {
-            user_name: nameDisplay,
-            business_name: bizName,
-            businessName: bizName,
-            dashboard_url: dashboardUrl,
-            dashboardUrl,
-          },
-        }
-        console.log('[Auth] send-email payload (final, before fetch):', payload)
-        const headers = {
-          'Content-Type': 'application/json',
-          apikey: anonKey,
-          Authorization: `Bearer ${sessionToken}`,
-        }
-        fetch(`${supabaseUrl}/functions/v1/send-email`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify(payload),
-        })
-          .then(async (res) => {
-            const responseJson = await res.json().catch(() => ({}))
-            if (typeof window !== 'undefined') {
-              console.log('[Auth] send-email response:', { status: res.status, statusText: res.statusText, body: responseJson })
-            }
-            if (!res.ok) {
-              console.error('[Auth] send-email failed:', res.status, responseJson)
-            }
-          })
-          .catch((err) => console.error('[Auth] send-email fetch error:', err?.message ?? err))
-      }
-
       const userId = data?.user?.id
       const hasSession = !!data?.session
 
