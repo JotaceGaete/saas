@@ -48,3 +48,10 @@ verify_jwt = false
 # así que desactivar verify_jwt permite que el handler responda el `OPTIONS` correctamente.
 [functions.generate-og-image]
 verify_jwt = false
+
+# admin-users: JWT y rol admin validados internamente por la función (líneas 29-45).
+# verify_jwt=false es necesario para que el gateway no rechace el CORS preflight:
+# OPTIONS no incluye Authorization, por lo que con verify_jwt=true el gateway
+# devuelve 401 antes de que el handler pueda responder al preflight correctamente.
+[functions.admin-users]
+verify_jwt = false
