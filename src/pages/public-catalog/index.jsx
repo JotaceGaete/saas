@@ -4,7 +4,7 @@ import { Helmet } from 'react-helmet';
 import { getBusinessBySlug, getPublicProducts, getCategoriesByRubroId, recordCatalogVisit, recordCatalogWhatsAppClick, createOrder } from '../../services/waBusinessService';
 import Icon from '../../components/AppIcon';
 import { CartProvider, useCart } from '../../contexts/CartContext';
-import { formatPriceCatalog } from '../../utils/formatPrice';
+import { formatPriceCatalog, resolveCatalogCurrency } from '../../utils/formatPrice';
 import { getBusinessLocale } from '../../lib/locale/businessLocale';
 import { useIsDesktop } from '../../hooks/useMediaQuery';
 import { useAuth } from '../../contexts/AuthContext';
@@ -232,7 +232,10 @@ function CatalogInner({ slug }) {
 
   const catalogMoney = useMemo(() => getBusinessLocale(business), [business]);
   const countryLabels = useMemo(() => getCountryLabels(catalogMoney.countryCode), [catalogMoney.countryCode]);
-  const businessCurrency = String(business?.currency || catalogMoney.currencyCode || 'USD').trim().toUpperCase();
+  const businessCurrency = useMemo(
+    () => resolveCatalogCurrency(business, catalogMoney),
+    [business, catalogMoney],
+  );
   const formatPrice = useCallback(
     (price) => formatPriceCatalog(price, businessCurrency),
     [businessCurrency],

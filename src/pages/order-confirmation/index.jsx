@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useCart } from '../../contexts/CartContext';
 import { createOrder, getBusinessBySlug } from '../../services/waBusinessService';
 import Icon from '../../components/AppIcon';
-import { formatPriceCatalog } from '../../utils/formatPrice';
+import { formatPriceCatalog, resolveCatalogCurrency } from '../../utils/formatPrice';
 import { getBusinessLocale } from '../../lib/locale/businessLocale';
 import { getPublicCatalogRelativePath, getWhatsAppOrderCatalogUrl } from '../../config/appUrl';
 import { getBrandingMessage } from '../../utils/branding';
@@ -57,7 +57,7 @@ export default function OrderConfirmation() {
   const countryLabels = useMemo(() => getCountryLabels(checkoutMoney.countryCode), [checkoutMoney.countryCode]);
 
   const formatPrice = (amount) => {
-    const currency = String(business?.currency || checkoutMoney.currencyCode || 'USD').trim().toUpperCase();
+    const currency = resolveCatalogCurrency(business, checkoutMoney);
     const numeric = Number(amount);
     if (!Number.isFinite(numeric)) return formatPriceCatalog(0, currency);
     return formatPriceCatalog(numeric, currency);

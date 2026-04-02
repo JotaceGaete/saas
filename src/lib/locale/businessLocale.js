@@ -10,7 +10,9 @@ function normalizeText(value) {
 }
 
 function resolveCountryCodeFromBusiness(business) {
-  const fromDb = normalizeText(business?.countryCodeDb ?? business?.country_code);
+  const fromDb = normalizeText(
+    business?.countryCodeDb ?? business?.country_code ?? business?.countryCode ?? business?.routingCountryCode,
+  );
   if (fromDb && COUNTRY_CONFIG[fromDb]) return fromDb;
   return null;
 }
