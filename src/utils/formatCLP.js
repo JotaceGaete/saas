@@ -3,8 +3,7 @@
  * Nombre histórico "formatCLP": muchos imports siguen usando este archivo.
  */
 
-/** Monedas que no usan decimales en su uso comercial habitual (ARS lo define ISO con 2 pero no se usan). */
-const ZERO_DECIMAL_CURRENCIES = new Set(['CLP', 'ARS']);
+import { formatPriceByCountry, resolveCountryCodeForFormatting } from './formatPriceByCountry';
 
 /** Si no se pasa locale, se infiere solo por código ISO de moneda (último recurso). */
 const FALLBACK_LOCALE_BY_CURRENCY = Object.freeze({
@@ -26,27 +25,25 @@ const FALLBACK_LOCALE_BY_CURRENCY = Object.freeze({
  * @param {number|string} amount
  * @param {string} [currency] - ISO 4217
  * @param {string} [locale] - BCP 47 (preferir el del negocio vía getBusinessLocale / getCountryMoneyFormat)
+ * @param {string|null} [countryCode] - ISO país; mejora reglas CL/AR/CO/PY vs solo moneda
  * @returns {string}
  */
-export function formatCurrency(amount, currency, locale) {
+export function formatCurrency(amount, currency, locale, countryCode) {
   const cur = (currency || 'USD').toUpperCase();
   const loc = locale || FALLBACK_LOCALE_BY_CURRENCY[cur] || 'en-US';
   const n = Number(amount);
   const value = Number.isFinite(n) && n >= 0 ? n : 0;
-  const zeroDecimal = ZERO_DECIMAL_CURRENCIES.has(cur);
-  const opts = {
-    style: 'currency',
-    currency: cur,
-    ...(zeroDecimal && { minimumFractionDigits: 0, maximumFractionDigits: 0 }),
-  };
+  const cc = resolveCountryCodeForFormatting(countryCode, cur, loc);
   try {
-    return new Intl.NumberFormat(loc, opts).format(zeroDecimal ? Math.round(value) : value);
+    return formatPriceByCountry(value, {
+      countryCode: cc,
+      currency: cur,
+      locale: loc,
+      showCurrencyCode: true,
+      useSymbol: true,
+    });
   } catch {
-    try {
-      return new Intl.NumberFormat('en-US', opts).format(zeroDecimal ? Math.round(value) : value);
-    } catch {
-      return String(value);
-    }
+    return String(value);
   }
 }
 

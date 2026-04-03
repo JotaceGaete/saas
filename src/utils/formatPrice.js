@@ -1,4 +1,4 @@
-import { formatCurrency } from './formatCLP';
+import { formatCatalogPrice } from './formatPriceByCountry';
 
 /**
  * Moneda para precios en catálogo público y checkout (cliente).
@@ -31,33 +31,14 @@ export function resolveCatalogCurrency(business, catalogMoney) {
 }
 
 /**
- * Precios solo para catálogo público y checkout del cliente (no billing /planes).
- * CLP y ARS: sin decimales; resto delega en {@link formatCurrency}.
+ * Precios para catálogo público y checkout del cliente (no billing /planes).
+ * Reglas por país: ver {@link formatCatalogPrice} en formatPriceByCountry.ts
  *
  * @param {number|string} amount
  * @param {string} currency - ISO 4217 (CLP, ARS, USD, …)
+ * @param {string|null|undefined} countryCode - ISO país; prioridad sobre solo moneda
  * @returns {string}
  */
-export function formatPriceCatalog(amount, currency) {
-  const c = String(currency || 'USD')
-    .trim()
-    .toUpperCase()
-    .replace(/[\s\u200e\u200f\u202a-\u202e]/g, '');
-  const n = Number(amount);
-  const value = Number.isFinite(n) && n >= 0 ? n : 0;
-
-  if (c === 'CLP' || c === 'ARS') {
-    const locale = c === 'CLP' ? 'es-CL' : 'es-AR';
-    let out = new Intl.NumberFormat(locale, {
-      style: 'currency',
-      currency: c,
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(Math.round(value));
-    // Refuerzo: algunos entornos/ICU aún muestran centavos para ARS/CLP
-    out = out.replace(/,00(\s*)$/u, '$1').replace(/\.00(\s*)$/u, '$1');
-    return out;
-  }
-
-  return formatCurrency(value, c);
+export function formatPriceCatalog(amount, currency, countryCode) {
+  return formatCatalogPrice(amount, countryCode ?? null, currency ?? null);
 }

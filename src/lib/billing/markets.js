@@ -105,6 +105,10 @@ export function getPaymentProvider({ marketCode, countryCode }) {
   return mapPricingProviderToPayment(getCountryPricingRow(iso));
 }
 
+/**
+ * Formato de montos para billing / planes (no catálogo público).
+ * Reglas por moneda ISO; no usar formatPriceByCountry (reservado a catálogo / UX retail).
+ */
 function maxFractionDigitsForCurrency(currency) {
   const c = String(currency || '').toUpperCase();
   if (['CLP', 'ARS', 'COP', 'PYG', 'CRC', 'BOB', 'UYU', 'MXN', 'PEN', 'GTQ'].includes(c)) return 0;
