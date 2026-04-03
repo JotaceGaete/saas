@@ -249,12 +249,18 @@ export function applyTrialOverride(
   const isActiveTrial = trialExpMs !== null && trialExpMs > now;
   if (!isActiveTrial) return preview;
 
+  // El plan pago comienza al terminar el trial, no de forma inmediata.
+  const effectiveAt = trialExpiresAt ?? new Date(now).toISOString();
+
   return {
     ...preview,
     creditAmount: 0,
     daysRemaining: 0,
     remainingDaysFraction: 0,
     finalAmount: preview.changeType === 'downgrade' ? 0 : preview.targetPlanPrice,
-    effectiveAt: new Date(now).toISOString(),
+    effectiveAt,
+    scheduledChange: preview.changeType !== 'downgrade' && trialExpiresAt
+      ? { targetPlanSlug: preview.targetPlanSlug, effectiveAt }
+      : preview.scheduledChange,
   };
 }

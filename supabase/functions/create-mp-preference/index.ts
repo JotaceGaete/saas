@@ -291,22 +291,22 @@ Deno.serve(async (req) => {
   const planExpiresAt   = (business as { plan_expires_at?: string | null }).plan_expires_at ?? null;
   const trialExpiresAt  = (business as { trial_expires_at?: string | null }).trial_expires_at ?? null;
   const scheduledPlanSlug = (business as { scheduled_plan_slug?: string | null }).scheduled_plan_slug ?? null;
-  let planChange        = computePlanChange(currentPlanSlug, planExpiresAt, planSlug, catalog);
+  let planChange = computePlanChange(currentPlanSlug, planExpiresAt, planSlug, catalog);
 
-  // PRO en trial comprando PRO: programar activación al fin del trial (scheduled_plan_slug / scheduled_change_at).
+  // Si hay trial vigente: precio completo, sin crédito/prorrateo, plan programado al fin del trial.
+  // Aplica a cualquier plan destino (pro, business), no solo pro→pro.
   const now = Date.now();
-  const isActiveProTrial =
-    currentPlanSlug === 'pro' &&
-    trialExpiresAt &&
-    new Date(trialExpiresAt).getTime() > now &&
-    scheduledPlanSlug === 'starter';
-  if (
-    isActiveProTrial &&
-    planSlug === 'pro' &&
-    trialExpiresAt
-  ) {
+  const isActiveTrial =
+    !!trialExpiresAt &&
+    new Date(trialExpiresAt).getTime() > now;
+
+  if (isActiveTrial && trialExpiresAt) {
     planChange = {
       ...planChange,
+      creditAmount: 0,
+      daysRemaining: 0,
+      remainingDaysFraction: 0,
+      finalAmount: planChange.targetPlanPrice,
       effectiveAt: trialExpiresAt,
       scheduledChange: { targetPlanSlug: planSlug, effectiveAt: trialExpiresAt },
     };
@@ -339,11 +339,7 @@ Deno.serve(async (req) => {
   }
 
   const finalAmount = planChange.finalAmount;
-  const isScheduledTrialConversion =
-    isActiveProTrial &&
-    planSlug === 'pro' &&
-    trialExpiresAt &&
-    new Date(trialExpiresAt).getTime() > now;
+  const isScheduledTrialConversion = isActiveTrial;
   const metadata: Record<string, unknown> = {
     currentPlanSlug,
     currentPlanPrice: planChange.currentPlanPrice,
