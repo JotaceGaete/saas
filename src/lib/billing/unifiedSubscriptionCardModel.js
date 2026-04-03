@@ -4,11 +4,44 @@ import { getTrialDaysLeft } from '../../constants/trial';
 import { getTrialRemainingPercent } from './subscriptionCardModel';
 import { normalizePlanSlugForBilling } from './billingSubscriptionsClient';
 
+/** Alineado con ciclo mensual MP / planes (30 días). */
+const PAID_CYCLE_DAYS_AFTER_TRIAL = 30;
+
 function formatEsCL(iso) {
   if (!iso) return '';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
   return d.toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+/** Fechas de la tarjeta trial: es-AR (Argentina) o es-CL (Chile y resto). */
+function formatDateForBillingCountry(iso, countryCode) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const cc = String(countryCode || '').trim().toUpperCase();
+  const locale = cc === 'AR' ? 'es-AR' : 'es-CL';
+  return d.toLocaleDateString(locale, { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+/**
+ * Próximo vencimiento del ciclo pago tras la prueba: prioriza fecha del backend si es posterior al fin de trial; si no, trial + 30 días.
+ */
+function computeNextBillingAfterTrialEnd({ trialEndsAt, nextPeriodAfterTrial }) {
+  if (!trialEndsAt) return null;
+  const trialEnd = new Date(trialEndsAt);
+  if (Number.isNaN(trialEnd.getTime())) return null;
+  const fromBackend = nextPeriodAfterTrial ? new Date(nextPeriodAfterTrial) : null;
+  if (
+    fromBackend
+    && !Number.isNaN(fromBackend.getTime())
+    && fromBackend.getTime() > trialEnd.getTime()
+  ) {
+    return nextPeriodAfterTrial;
+  }
+  const d = new Date(trialEnd);
+  d.setDate(d.getDate() + PAID_CYCLE_DAYS_AFTER_TRIAL);
+  return d.toISOString();
 }
 
 /**
@@ -181,9 +214,31 @@ export function buildUnifiedSubscriptionViewModel({
     }
 
     const isTrialWithPaidSubscription = activatesAfterTrial && hasPaidSubscription;
+    const isTrialWithSubscriptionStatus = normalizedStatus === BILLING_STATUSES.TRIAL_WITH_SUBSCRIPTION;
+    /** Solo layout “pago confirmado” cuando el API confirma ambos (conservador si falta has_paid). */
+    const trialWithSubscriptionDetailed =
+      isTrialWithSubscriptionStatus && hasPaidSubscription === true;
+
+    const billingCountryForDates =
+      String(subscriptionState?.billingCountry || business?.countryCode || business?.routingCountryCode || '')
+        .trim()
+        .toUpperCase();
+
     const manualExpiryNote = nextPeriodAfterTrial
       ? `Tu plan vence el ${formatEsCL(nextPeriodAfterTrial)}.`
       : 'Tu plan se activará al finalizar tu prueba actual.';
+
+    const nextBillingAfterTrialIso = computeNextBillingAfterTrialEnd({
+      trialEndsAt,
+      nextPeriodAfterTrial,
+    });
+    const nextPaymentDueLabel = nextBillingAfterTrialIso
+      ? formatDateForBillingCountry(nextBillingAfterTrialIso, billingCountryForDates)
+      : '';
+
+    const hidePurchaseCtaForTrialPaid =
+      isTrialWithSubscriptionStatus && hasPaidSubscription === true;
+
     return {
       layout: 'trial',
       normalizedStatus,
@@ -194,24 +249,47 @@ export function buildUnifiedSubscriptionViewModel({
       days_left: daysLeft,
       trial_end: trialEndLabel,
       progressPercent,
-      showTrialBadge: true,
-      subscriptionNote: isTrialWithPaidSubscription
-        ? (billingMode === 'manual' ? manualExpiryNote : 'Ya tienes tu plan pagado. Se activará al finalizar tu prueba actual.')
-        : subscriptionNote,
-      showActivateCta: !isTrialWithPaidSubscription,
+      showTrialBadge: !trialWithSubscriptionDetailed,
+      subscriptionNote: trialWithSubscriptionDetailed
+        ? null
+        : (isTrialWithPaidSubscription
+          ? (billingMode === 'manual' ? manualExpiryNote : 'Ya tienes tu plan pagado. Se activará al finalizar tu prueba actual.')
+          : subscriptionNote),
+      showActivateCta: hidePurchaseCtaForTrialPaid || trialWithSubscriptionDetailed
+        ? false
+        : !isTrialWithPaidSubscription,
       ctaLabel: isTrialWithPaidSubscription
         ? 'Ver planes'
         : (billingMode === 'manual' ? 'Activar plan por 30 días' : 'Activar suscripción ahora'),
-      footerCopy: isTrialWithPaidSubscription
-        ? (
-          billingMode === 'manual'
-            ? 'Tu pago ya fue confirmado. No perderás días gratis: tu ciclo de 30 días comenzará al finalizar la prueba.'
-            : 'Tu pago ya fue confirmado. No perderás días gratis: el período contratado comenzará al finalizar la prueba.'
-        )
-        : (billingMode === 'manual'
-          ? 'Al pagar hoy, activas 30 días de plan al finalizar tu prueba actual. La renovación se realiza manualmente.'
-          : 'Al pagar hoy, el mes contratado se sumará al final de tu prueba actual. No pierdes tus días gratis.'),
+      footerCopy: trialWithSubscriptionDetailed
+        ? 'No perderás días de prueba. Tu ciclo de 30 días comenzará al terminar la prueba y no necesitas realizar ningún pago adicional ahora.'
+        : (isTrialWithPaidSubscription
+          ? (
+            billingMode === 'manual'
+              ? 'Tu pago ya fue confirmado. No perderás días gratis: tu ciclo de 30 días comenzará al finalizar la prueba.'
+              : 'Tu pago ya fue confirmado. No perderás días gratis: el período contratado comenzará al finalizar la prueba.'
+          )
+          : (billingMode === 'manual'
+            ? 'Al pagar hoy, activas 30 días de plan al finalizar tu prueba actual. La renovación se realiza manualmente.'
+            : 'Al pagar hoy, el mes contratado se sumará al final de tu prueba actual. No pierdes tus días gratis.')),
       trialWithSubscription: isTrialWithPaidSubscription,
+      trialWithSubscriptionDetailed,
+      statusBadgeText: trialWithSubscriptionDetailed ? 'Pago confirmado · activación programada' : null,
+      trialCurrentPlanTitle: trialWithSubscriptionDetailed
+        ? `Tu plan actual: Plan ${planLabel}`
+        : null,
+      trialPaidMainBody: trialWithSubscriptionDetailed
+        ? `Tu pago está confirmado. Mantendrás tus días de prueba gratuita y tu plan ${planLabel} comenzará automáticamente cuando finalice la prueba.`
+        : null,
+      trialSidePanelCopy: trialWithSubscriptionDetailed
+        ? 'Ya aseguraste tu plan. Todo está listo para activarse automáticamente al finalizar tu prueba.'
+        : null,
+      trialFreeEndLine: trialWithSubscriptionDetailed && trialEndsAt
+        ? `Fin de prueba gratuita: ${formatDateForBillingCountry(trialEndsAt, billingCountryForDates)}`
+        : null,
+      nextPaymentDueLine: trialWithSubscriptionDetailed && nextPaymentDueLabel
+        ? `Próximo vencimiento de pago: ${nextPaymentDueLabel}`
+        : null,
       hasPaidSubscription,
       activatesAfterTrial,
     };

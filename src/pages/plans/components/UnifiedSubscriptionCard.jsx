@@ -47,6 +47,13 @@ export default function UnifiedSubscriptionCard({ viewModel, onScrollToPlans, su
       footerCopy,
       showActivateCta,
       trialWithSubscription,
+      trialWithSubscriptionDetailed,
+      statusBadgeText,
+      trialCurrentPlanTitle,
+      trialPaidMainBody,
+      trialSidePanelCopy,
+      trialFreeEndLine,
+      nextPaymentDueLine,
       hasPaidSubscription,
       activatesAfterTrial,
       billingMode,
@@ -55,6 +62,83 @@ export default function UnifiedSubscriptionCard({ viewModel, onScrollToPlans, su
     console.info(
       `[billing-ui-debug] showActivateCta=${showActivateCta === true} hasPaidSubscription=${hasPaidSubscription === true} activatesAfterTrial=${activatesAfterTrial === true}`,
     );
+
+    if (trialWithSubscriptionDetailed) {
+      return (
+        <div
+          className="bg-white border border-emerald-100 rounded-xl shadow-sm overflow-hidden mb-8"
+          data-billing-status={rawStatus ?? normalizedStatus ?? ''}
+          data-subscription={dataSubscription}
+        >
+          <div className="p-6 flex flex-col lg:flex-row lg:items-start justify-between gap-6">
+            <div className="flex items-start gap-4 min-w-0 flex-1">
+              <div className="bg-emerald-100 p-3 rounded-lg shrink-0">
+                <CheckCircle2 className="text-emerald-700 w-6 h-6" aria-hidden />
+              </div>
+              <div className="min-w-0 space-y-3">
+                {statusBadgeText ? (
+                  <span className="inline-flex items-center rounded-full bg-emerald-50 text-emerald-900 border border-emerald-200 text-xs font-semibold px-3 py-1 font-[family-name:var(--font-caption)]">
+                    {statusBadgeText}
+                  </span>
+                ) : null}
+                {trialCurrentPlanTitle ? (
+                  <p className="text-lg font-bold text-gray-900 font-[family-name:var(--font-heading)]">
+                    {trialCurrentPlanTitle}
+                  </p>
+                ) : null}
+                {trialPaidMainBody ? (
+                  <p className="text-sm text-gray-700 leading-relaxed font-[family-name:var(--font-caption)]">
+                    {trialPaidMainBody}
+                  </p>
+                ) : null}
+                <p className="text-sm text-gray-500 font-[family-name:var(--font-caption)]">{limitsLine}</p>
+                {trialFreeEndLine ? (
+                  <p className="text-sm text-gray-800 flex items-start gap-2 font-[family-name:var(--font-caption)]">
+                    <Calendar size={16} className="shrink-0 mt-0.5 text-emerald-600" aria-hidden />
+                    <span>{trialFreeEndLine}</span>
+                  </p>
+                ) : null}
+                {nextPaymentDueLine ? (
+                  <p className="text-sm text-gray-800 flex items-start gap-2 font-[family-name:var(--font-caption)]">
+                    <Calendar size={16} className="shrink-0 mt-0.5 text-emerald-600" aria-hidden />
+                    <span>{nextPaymentDueLine}</span>
+                  </p>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="flex-1 max-w-md w-full">
+              <div className="flex justify-between text-sm mb-2">
+                <span className="text-gray-600 font-medium font-[family-name:var(--font-caption)]">Días de prueba restantes</span>
+                <span className="text-emerald-800 font-bold tabular-nums font-[family-name:var(--font-caption)]">
+                  {days_left} {days_left === 1 ? 'día' : 'días'}
+                </span>
+              </div>
+              <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden" role="progressbar" aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100}>
+                <div
+                  className="bg-emerald-600 h-full transition-all duration-500 rounded-full"
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+            </div>
+
+            {trialSidePanelCopy ? (
+              <div className="shrink-0 w-full lg:w-auto rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 font-[family-name:var(--font-caption)] text-center lg:text-left max-w-sm">
+                {trialSidePanelCopy}
+              </div>
+            ) : null}
+          </div>
+
+          {footerCopy ? (
+            <div className="bg-gray-50 px-6 py-3 border-t border-gray-100">
+              <p className="text-xs text-gray-600 text-center md:text-left font-[family-name:var(--font-caption)]">
+                {footerCopy}
+              </p>
+            </div>
+          ) : null}
+        </div>
+      );
+    }
 
     return (
       <div
