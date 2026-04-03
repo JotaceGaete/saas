@@ -110,8 +110,30 @@ export async function getPaypalPlanIdForInternalPlan(planSlug) {
 }
 
 /**
+ * Si no hay fila en DB, compara el Plan ID con PAYPAL_PLAN_ID_* del mismo entorno (mismo criterio que resolvePaypalPlanIdOrNull).
+ * Solo afecta resolución inversa PayPal → interno; Mercado Pago no usa este archivo para cobros.
+ */
+function getInternalPlanFromEnvPaypalPlanId(paypalPlanId) {
+  const id = String(paypalPlanId || '').trim();
+  if (!id) return null;
+  const environment = getPaypalMode();
+  const suffix = environment === 'live' ? 'LIVE' : 'SANDBOX';
+  const pairs = [
+    [String(process.env[`PAYPAL_PLAN_ID_PRO_${suffix}`] || '').trim(), 'pro'],
+    [String(process.env.PAYPAL_PLAN_ID_PRO || '').trim(), 'pro'],
+    [String(process.env[`PAYPAL_PLAN_ID_FULL_${suffix}`] || '').trim(), 'full'],
+    [String(process.env.PAYPAL_PLAN_ID_FULL || '').trim(), 'full'],
+  ];
+  for (const [envId, slug] of pairs) {
+    if (envId && envId === id) return slug;
+  }
+  return null;
+}
+
+/**
  * Mapea paypal_plan_id a plan interno.
- * Retorna: pro | full | null
+ * Retorna: pro | full | free | null
+ * Orden: tabla `paypal_plan_mappings` → variables de entorno PAYPAL_PLAN_ID_* (mismo entorno que getPaypalMode).
  */
 export async function getInternalPlanFromPaypalPlanId(paypalPlanId) {
   const id = String(paypalPlanId || '').trim();
@@ -121,12 +143,14 @@ export async function getInternalPlanFromPaypalPlanId(paypalPlanId) {
     environment,
     paypalPlanId: id,
   });
-  if (!mapping?.plan_slug) return null;
-  const slug = String(mapping.plan_slug).trim().toLowerCase();
-  if (slug === 'business') return 'full';
-  if (slug === 'pro' || slug === 'full') return slug;
-  if (slug === 'starter' || slug === 'free' || slug === 'control') return 'free';
-  return null;
+  if (mapping?.plan_slug) {
+    const slug = String(mapping.plan_slug).trim().toLowerCase();
+    if (slug === 'business') return 'full';
+    if (slug === 'pro' || slug === 'full') return slug;
+    if (slug === 'starter' || slug === 'free' || slug === 'control') return 'free';
+    return null;
+  }
+  return getInternalPlanFromEnvPaypalPlanId(id);
 }
 
 /**

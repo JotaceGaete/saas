@@ -29,26 +29,46 @@ function parseCustomId(rawCustomId) {
   return { userId: null, businessId: null, customId: value };
 }
 
+/**
+ * Resuelve plan interno (pro|full|free) desde fila guardada y/o plan_id de PayPal.
+ * Si hay `paypalPlanId` y no existe mapeo en DB ni en PAYPAL_PLAN_ID_* → error explícito (no degradar a starter).
+ */
 async function resolveInternalPlanSlug({ internalPlanSlug, paypalPlanId }) {
   const normalized = normalizePlanSlugForBilling(internalPlanSlug);
   if (normalized === 'pro' || normalized === 'full') return normalized;
   if (paypalPlanId) {
     const fromPaypal = await getInternalPlanFromPaypalPlanId(paypalPlanId);
     if (fromPaypal) return fromPaypal;
+    throw new Error(
+      `[paypal-sync] Cannot resolve PayPal plan_id "${String(paypalPlanId).trim()}" to a known paid plan. `
+      + 'Add a row in paypal_plan_mappings or set PAYPAL_PLAN_ID_PRO_LIVE/SANDBOX and PAYPAL_PLAN_ID_FULL_* to match this Billing Plan ID.',
+    );
   }
   return null;
 }
 
-function toBusinessPlanSlug(internalPlanSlug) {
-  const slug = String(internalPlanSlug || '').trim().toLowerCase();
-  if (slug === 'full') return 'business';
-  if (slug === 'pro') return 'pro';
-  return 'starter';
+/** Mapeo interno (pro|full|free|null) → slug en billing_subscriptions (starter|pro|business). null = desconocido. */
+function internalToBillingPlanSlug(internalPlanSlug) {
+  if (internalPlanSlug == null || internalPlanSlug === '') return null;
+  const raw = String(internalPlanSlug).trim().toLowerCase();
+  if (raw === 'pro') return 'pro';
+  if (raw === 'full') return 'business';
+  if (raw === 'free') return 'starter';
+  return null;
+}
+
+const PAYPAL_PAID_PROVIDER_STATUSES = new Set(['ACTIVE', 'APPROVED', 'SUSPENDED']);
+
+function validateBillingPlanSlug(planSlug) {
+  if (!['starter', 'pro', 'business'].includes(planSlug)) {
+    throw new Error(`[billing] Invalid planSlug resolved: ${planSlug}`);
+  }
 }
 
 async function mirrorToBillingSubscription({
   businessId,
   paypalSubscriptionId,
+  paypalPlanId,
   internalPlanSlug,
   providerStatus,
   subscriberEmail,
@@ -63,11 +83,40 @@ async function mirrorToBillingSubscription({
   if (!business) return null;
   const normalizedProviderStatus = String(providerStatus || '').trim().toUpperCase() || null;
   const status = mapProviderStatus('paypal', normalizedProviderStatus);
+
+  let plan_slug = internalToBillingPlanSlug(internalPlanSlug);
+  if (plan_slug === null) {
+    plan_slug = 'starter';
+  }
+  validateBillingPlanSlug(plan_slug);
+
+  if (PAYPAL_PAID_PROVIDER_STATUSES.has(normalizedProviderStatus) && plan_slug === 'starter') {
+    console.error('[PAYPAL PLAN RESOLUTION]', {
+      providerSubscriptionId: String(paypalSubscriptionId || '').trim() || null,
+      planId: paypalPlanId || null,
+      resolvedPlanSlug: plan_slug,
+      internalPlanSlug: internalPlanSlug ?? null,
+      providerStatus: normalizedProviderStatus,
+    });
+    throw new Error(
+      '[billing] PayPal subscription is in a paid provider state but plan_slug resolved to starter. '
+      + 'Fix paypal_plan_mappings / PAYPAL_PLAN_ID_* or internal plan resolution.',
+    );
+  }
+
+  if (plan_slug === 'pro' || plan_slug === 'business') {
+    console.log('[PAYPAL PLAN RESOLUTION]', {
+      providerSubscriptionId: String(paypalSubscriptionId || '').trim() || null,
+      planId: paypalPlanId || null,
+      resolvedPlanSlug: plan_slug,
+    });
+  }
+
   return upsertBillingSubscriptionByBusiness({
     business_id: business,
     provider: 'paypal',
     provider_subscription_id: String(paypalSubscriptionId || '').trim() || null,
-    plan_slug: toBusinessPlanSlug(internalPlanSlug),
+    plan_slug,
     currency_code: 'USD',
     amount: null,
     interval_unit: 'month',
@@ -118,6 +167,7 @@ export async function applyCreateSnapshot({
   await mirrorToBillingSubscription({
     businessId: saved?.businessId,
     paypalSubscriptionId: saved?.paypalSubscriptionId,
+    paypalPlanId: saved?.paypalPlanId ?? paypalPlanId ?? null,
     internalPlanSlug: saved?.internalPlanSlug,
     providerStatus: saved?.status,
     subscriberEmail: saved?.subscriberEmail,
@@ -160,6 +210,7 @@ export async function applyRemoteSnapshot(paypalSubscriptionBody) {
   await mirrorToBillingSubscription({
     businessId: saved?.businessId,
     paypalSubscriptionId: saved?.paypalSubscriptionId,
+    paypalPlanId: saved?.paypalPlanId ?? paypalPlanId ?? null,
     internalPlanSlug: saved?.internalPlanSlug,
     providerStatus: saved?.status,
     subscriberEmail: saved?.subscriberEmail,
@@ -195,6 +246,7 @@ export async function applyCancelSnapshot({ paypalSubscriptionId, reason }) {
   await mirrorToBillingSubscription({
     businessId: saved?.businessId,
     paypalSubscriptionId: saved?.paypalSubscriptionId,
+    paypalPlanId: saved?.paypalPlanId ?? null,
     internalPlanSlug: saved?.internalPlanSlug,
     providerStatus: saved?.status,
     subscriberEmail: saved?.subscriberEmail,
@@ -243,6 +295,7 @@ export async function applyEventSnapshot({
   await mirrorToBillingSubscription({
     businessId: saved?.businessId,
     paypalSubscriptionId: saved?.paypalSubscriptionId,
+    paypalPlanId: saved?.paypalPlanId ?? paypalPlanId ?? existing?.paypalPlanId ?? null,
     internalPlanSlug: saved?.internalPlanSlug,
     providerStatus: saved?.status,
     subscriberEmail: saved?.subscriberEmail,
