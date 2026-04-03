@@ -4,231 +4,15 @@
 // Resto (INT): catálogo USD (PayPal/dLocal/manual según provider).
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-
-const VALID_PLAN_SLUGS = ['starter', 'pro', 'business'];
-const PLAN_ORDER: Record<string, number> = { starter: 0, control: 0, pro: 1, business: 2 };
-type PlanCatalog = Record<string, { displayName: string; price: number; durationDays: number }>;
-
-// Chile: Mercado Pago (CLP). Valores alineados con src/lib/billing/constants.js
-const PLAN_CATALOG_CL: PlanCatalog = {
-  starter:  { displayName: 'Starter',  price: 0,     durationDays: 30 },
-  pro:      { displayName: 'Plan Pro', price: 5990, durationDays: 30 },
-  business: { displayName: 'Plan Full', price: 9990, durationDays: 30 },
-};
-
-const PLAN_CATALOG_AR: PlanCatalog = {
-  starter:  { displayName: 'Starter',  price: 0,     durationDays: 30 },
-  pro:      { displayName: 'Plan Pro', price: 8990, durationDays: 30 },
-  business: { displayName: 'Plan Business', price: 13990, durationDays: 30 },
-};
-
-/** Precios USD de referencia (INT). Pro=6, Full=10. */
-const INTL_USD_PRICES: Record<string, number> = { starter: 0, pro: 6, business: 10 };
-
-function getPlanCatalog(country: string | undefined, provider?: string): PlanCatalog | null {
-  if (provider === 'manual' || provider === 'lemonsqueezy') return null;
-  if (country && country !== 'CL' && country !== 'AR') return null;
-  return country === 'AR' ? PLAN_CATALOG_AR : PLAN_CATALOG_CL;
-}
-
-function normalizeCountryCode(value: string | undefined): string {
-  const code = (value ?? '').toUpperCase().trim();
-  if (!code) return 'CL';
-  if (['AR', 'BO', 'BR', 'CL', 'CO', 'CR', 'EC', 'GT', 'MX', 'PA', 'PE', 'PY', 'UY'].includes(code)) return code;
-  return 'CL';
-}
-
-function resolveBusinessCountryCode(
-  business: { country_code?: string | null; country?: string | null; currency?: string | null },
-): string {
-  if (business.country_code) return normalizeCountryCode(business.country_code ?? undefined);
-  const countryRaw = (business.country ?? '').toUpperCase().trim();
-  const countryAliases: Record<string, string> = {
-    ARGENTINA: 'AR', CHILE: 'CL', BOLIVIA: 'BO', BRASIL: 'BR', BRAZIL: 'BR',
-    COLOMBIA: 'CO', 'COSTA RICA': 'CR', ECUADOR: 'EC', GUATEMALA: 'GT',
-    MEXICO: 'MX', PANAMA: 'PA', PERU: 'PE', PARAGUAY: 'PY', URUGUAY: 'UY',
-  };
-  if (countryRaw && countryAliases[countryRaw]) return countryAliases[countryRaw];
-  if (countryRaw) return normalizeCountryCode(countryRaw);
-  const currency = (business.currency ?? '').toUpperCase().trim();
-  if (currency === 'ARS') return 'AR';
-  if (currency === 'CLP') return 'CL';
-  return 'CL';
-}
-
-const PRORATION_FORMULA_VERSION = '2024-03-exact-time';
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
-type ChangeType = 'upgrade' | 'renewal' | 'downgrade';
-
-function computePlanChange(
-  currentPlanSlug: string,
-  planExpiresAt: string | null,
-  targetPlanSlug: string,
-  catalog: PlanCatalog,
-): {
-  currentPlanSlug: string;
-  currentPlanPrice: number;
-  targetPlanSlug: string;
-  targetPlanPrice: number;
-  daysRemaining: number;
-  remainingDaysFraction: number;
-  creditAmount: number;
-  finalAmount: number;
-  changeType: ChangeType;
-  message?: string;
-  effectiveAt?: string;
-  scheduledChange?: { targetPlanSlug: string; effectiveAt: string };
-  prorationFormulaVersion: string;
-} {
-  const now = Date.now();
-  const currentOrder = PLAN_ORDER[currentPlanSlug] ?? 0;
-  const targetOrder = PLAN_ORDER[targetPlanSlug] ?? 0;
-  const currentPlanPrice = catalog[currentPlanSlug]?.price ?? 0;
-  const targetPlanPrice = catalog[targetPlanSlug]?.price ?? 0;
-
-  let changeType: ChangeType = 'renewal';
-  if (targetOrder > currentOrder) changeType = 'upgrade';
-  else if (targetOrder < currentOrder) changeType = 'downgrade';
-
-  let remainingMs = 0;
-  if (planExpiresAt) {
-    const exp = new Date(planExpiresAt).getTime();
-    remainingMs = Math.max(0, exp - now);
-  }
-  const msPerPeriod = (catalog[currentPlanSlug]?.durationDays ?? 30) * MS_PER_DAY;
-  const remainingDaysFraction = msPerPeriod > 0
-    ? Math.min((remainingMs / msPerPeriod) * (catalog[currentPlanSlug]?.durationDays ?? 30), 30)
-    : 0;
-  const daysRemaining = Math.floor(remainingDaysFraction);
-
-  let creditAmount = 0;
-  if (changeType === 'upgrade' && currentPlanPrice > 0) {
-    const rawCredit = (currentPlanPrice / 30) * remainingDaysFraction;
-    creditAmount = Math.floor(rawCredit);
-    creditAmount = Math.min(creditAmount, currentPlanPrice);
-  }
-
-  let finalAmount = targetPlanPrice;
-  if (changeType === 'upgrade') {
-    finalAmount = Math.max(0, Math.floor(targetPlanPrice - creditAmount));
-  } else if (changeType === 'renewal') {
-    finalAmount = targetPlanPrice;
-  } else {
-    finalAmount = 0;
-  }
-
-  let effectiveAt: string | undefined;
-  let scheduledChange: { targetPlanSlug: string; effectiveAt: string } | undefined;
-
-  if (changeType === 'downgrade' && planExpiresAt) {
-    effectiveAt = new Date(planExpiresAt).toISOString();
-    scheduledChange = { targetPlanSlug, effectiveAt };
-  } else if (changeType === 'renewal' || changeType === 'upgrade') {
-    if (planExpiresAt) {
-      const exp = new Date(planExpiresAt).getTime();
-      effectiveAt = exp > now ? planExpiresAt : new Date(now).toISOString();
-    } else {
-      effectiveAt = new Date(now).toISOString();
-    }
-  }
-
-  const message = changeType === 'downgrade'
-    ? 'El cambio a un plan inferior se aplicará al vencer tu plan actual. No se realiza ningún cargo.'
-    : undefined;
-
-  return {
-    currentPlanSlug,
-    currentPlanPrice,
-    targetPlanSlug,
-    targetPlanPrice,
-    daysRemaining,
-    remainingDaysFraction,
-    creditAmount,
-    finalAmount,
-    changeType,
-    message,
-    effectiveAt,
-    scheduledChange,
-    prorationFormulaVersion: PRORATION_FORMULA_VERSION,
-  };
-}
-
-function buildIntlUsdPreview(
-  currentPlanSlug: string,
-  targetPlanSlug: string,
-  planExpiresAt: string | null,
-  trialExpiresAt: string | null,
-  _scheduledPlanSlug: string | null,
-): {
-  currentPlanSlug: string;
-  currentPlanPrice: number;
-  targetPlanSlug: string;
-  targetPlanPrice: number;
-  daysRemaining: number;
-  remainingDaysFraction: number;
-  creditAmount: number;
-  finalAmount: number;
-  changeType: ChangeType;
-  message?: string;
-  effectiveAt?: string;
-  scheduledChange?: { targetPlanSlug: string; effectiveAt: string };
-  prorationFormulaVersion: string;
-} {
-  const targetPrice = INTL_USD_PRICES[targetPlanSlug] ?? 0;
-  const currentPrice = INTL_USD_PRICES[currentPlanSlug] ?? 0;
-  const currentOrder = PLAN_ORDER[currentPlanSlug] ?? 0;
-  const targetOrder = PLAN_ORDER[targetPlanSlug] ?? 0;
-  let changeType: ChangeType = 'renewal';
-  if (targetOrder > currentOrder) changeType = 'upgrade';
-  else if (targetOrder < currentOrder) changeType = 'downgrade';
-
-  let daysRemaining = 0;
-  let effectiveAt: string | undefined;
-  let scheduledChange: { targetPlanSlug: string; effectiveAt: string } | undefined;
-
-  if (planExpiresAt) {
-    const exp = new Date(planExpiresAt).getTime();
-    const now = Date.now();
-    const remainingMs = Math.max(0, exp - now);
-    daysRemaining = Math.floor(remainingMs / MS_PER_DAY);
-    if (changeType === 'downgrade') {
-      effectiveAt = planExpiresAt;
-      scheduledChange = { targetPlanSlug, effectiveAt };
-    } else {
-      effectiveAt = exp > now ? planExpiresAt : new Date(now).toISOString();
-    }
-  } else {
-    effectiveAt = new Date().toISOString();
-  }
-
-  const now = Date.now();
-  /** Pro en prueba: no exige scheduled_plan_slug = starter; el cobro es al pagar (preview alineado con webhook +30 días desde fin de período vigente). */
-  const isActiveProTrial =
-    currentPlanSlug === 'pro' && !!trialExpiresAt && new Date(trialExpiresAt).getTime() > now;
-  if (isActiveProTrial && targetPlanSlug === 'pro') {
-    effectiveAt = new Date().toISOString();
-  }
-
-  const message = changeType === 'downgrade'
-    ? 'El cambio a un plan inferior se aplicará al vencer tu plan actual. No se realiza ningún cargo.'
-    : undefined;
-
-  return {
-    currentPlanSlug,
-    currentPlanPrice: currentPrice,
-    targetPlanSlug,
-    targetPlanPrice: targetPrice,
-    daysRemaining,
-    remainingDaysFraction: daysRemaining / 30,
-    creditAmount: 0,
-    finalAmount: changeType === 'downgrade' ? 0 : targetPrice,
-    changeType,
-    message,
-    effectiveAt,
-    scheduledChange,
-    prorationFormulaVersion: 'intl-static-usd',
-  };
-}
+import {
+  VALID_PLAN_SLUGS,
+  getPlanCatalog,
+  resolveBusinessCountryCode,
+  computePlanChange,
+  buildIntlUsdPreview,
+  applyTrialOverride,
+  type PlanChangeResult,
+} from './lib.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -321,7 +105,7 @@ Deno.serve(async (req) => {
   const useIntlUsd =
     useIntlUsdProviders.has(normalizedProvider) ||
     (countryCode && countryCode !== 'CL' && countryCode !== 'AR');
-  let preview: Record<string, unknown>;
+  let preview: PlanChangeResult;
 
   if (useIntlUsd) {
     preview = buildIntlUsdPreview(currentPlanSlug, targetPlanSlug, planExpiresAt, trialExpiresAt, scheduledPlanSlug);
@@ -331,18 +115,11 @@ Deno.serve(async (req) => {
       preview = buildIntlUsdPreview(currentPlanSlug, targetPlanSlug, planExpiresAt, trialExpiresAt, scheduledPlanSlug);
     } else {
       preview = computePlanChange(currentPlanSlug, planExpiresAt, targetPlanSlug, catalog);
-
-      const now = Date.now();
-      const isActiveProTrial =
-        currentPlanSlug === 'pro' && !!trialExpiresAt && new Date(trialExpiresAt).getTime() > now;
-      if (isActiveProTrial && targetPlanSlug === 'pro') {
-        preview = {
-          ...preview,
-          effectiveAt: new Date().toISOString(),
-        };
-      }
     }
   }
+
+  // FIX-2: trial override unificado — aplica para CL, AR e INTL en un solo lugar.
+  preview = applyTrialOverride(preview, trialExpiresAt);
 
   console.log('[plan-change-preview]', {
     currentPlanSlug,

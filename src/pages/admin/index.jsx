@@ -7,8 +7,21 @@ import { getBusinessesForAdmin, getAdminStats, getAdminSuspiciousInfo } from 'se
 import AdminRubrosSection from './components/AdminRubrosSection';
 import { getPlanLabel, getPlanColors, PLAN_SLUGS } from '../../constants/plans';
 import { getPublicCatalogUrl } from '../../config/appUrl';
+import { getCountryLabels } from '../../config/country';
 
 const PLAN_ICON = { starter: 'User', pro: 'Star', business: 'Building' };
+
+function CountryCell({ countryCode }) {
+  if (!countryCode) {
+    return <span style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)', fontSize: '12px' }}>Sin país</span>;
+  }
+  const labels = getCountryLabels(countryCode);
+  return (
+    <span style={{ fontFamily: 'var(--font-caption)', fontSize: '12px', color: 'var(--color-foreground)', whiteSpace: 'nowrap' }}>
+      {labels.flag} {labels.countryName}
+    </span>
+  );
+}
 
 function PlanBadge({ slug }) {
   const label  = getPlanLabel(slug);
@@ -31,8 +44,9 @@ export default function AdminDashboard() {
   const [suspicious, setSuspicious] = useState({ multiBusinessUsers: [], demoBusinesses: [] });
   const [loading,   setLoading]   = useState(true);
   const [error,     setError]     = useState(null);
-  const [planFilter, setPlanFilter] = useState('all');
-  const [searchQ,   setSearchQ]   = useState('');
+  const [planFilter,    setPlanFilter]    = useState('all');
+  const [countryFilter, setCountryFilter] = useState('all');
+  const [searchQ,       setSearchQ]       = useState('');
 
   const formatDate = (d) => d ? new Date(d).toLocaleDateString('es-CL', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
 
@@ -54,11 +68,26 @@ export default function AdminDashboard() {
 
   useEffect(() => { load(); }, [load]);
 
+  const availableCountries = React.useMemo(() => {
+    const seen = new Set();
+    const result = [];
+    for (const b of businesses) {
+      const code = b.countryCodeDb || null;
+      if (code && !seen.has(code)) {
+        seen.add(code);
+        const labels = getCountryLabels(code);
+        result.push({ code, flag: labels.flag, name: labels.countryName });
+      }
+    }
+    return result.sort((a, b) => a.name.localeCompare(b.name));
+  }, [businesses]);
+
   const filteredBusinesses = businesses.filter(b => {
-    const matchPlan = planFilter === 'all' || (b.effectivePlan || b.planSlug) === planFilter;
+    const matchPlan    = planFilter === 'all' || (b.effectivePlan || b.planSlug) === planFilter;
+    const matchCountry = countryFilter === 'all' || (b.countryCodeDb || null) === countryFilter;
     const q = searchQ.toLowerCase();
-    const matchSearch = !q || b.name?.toLowerCase().includes(q) || b.email?.toLowerCase().includes(q) || b.slug?.toLowerCase().includes(q);
-    return matchPlan && matchSearch;
+    const matchSearch  = !q || b.name?.toLowerCase().includes(q) || b.email?.toLowerCase().includes(q) || b.slug?.toLowerCase().includes(q);
+    return matchPlan && matchCountry && matchSearch;
   });
 
   const multiUserIds = new Set((suspicious.multiBusinessUsers || []).map(u => u.userId));
@@ -232,6 +261,20 @@ export default function AdminDashboard() {
                     </button>
                   ))}
                 </div>
+                {/* Filtro por país */}
+                {availableCountries.length > 0 && (
+                  <select
+                    value={countryFilter}
+                    onChange={e => setCountryFilter(e.target.value)}
+                    className="px-3 py-1.5 rounded-lg border text-xs"
+                    style={{ borderColor: 'var(--color-border)', fontFamily: 'var(--font-caption)', outline: 'none', backgroundColor: 'var(--color-card)', color: 'var(--color-foreground)' }}
+                  >
+                    <option value="all">Todos los países</option>
+                    {availableCountries.map(c => (
+                      <option key={c.code} value={c.code}>{c.flag} {c.name}</option>
+                    ))}
+                  </select>
+                )}
                 {/* Buscador */}
                 <input
                   type="text"
@@ -260,6 +303,7 @@ export default function AdminDashboard() {
                       <tr className="text-xs font-semibold" style={{ backgroundColor: 'var(--color-muted)', color: 'var(--color-muted-foreground)' }}>
                         <th className="px-3 py-2.5">Negocio</th>
                         <th className="px-3 py-2.5">Plan</th>
+                        <th className="px-3 py-2.5 hidden md:table-cell">País</th>
                         <th className="px-3 py-2.5 hidden sm:table-cell">Productos</th>
                         <th className="px-3 py-2.5 hidden sm:table-cell">Pedidos / mes</th>
                         <th className="px-3 py-2.5 hidden md:table-cell">Creado</th>
@@ -299,6 +343,9 @@ export default function AdminDashboard() {
                                   <span className="text-xs opacity-50">(era {getPlanLabel(b.planSlug)})</span>
                                 )}
                               </div>
+                            </td>
+                            <td className="px-3 py-3 hidden md:table-cell">
+                              <CountryCell countryCode={b.countryCodeDb} />
                             </td>
                             <td className="px-3 py-3 hidden sm:table-cell">
                               <span className="font-medium">{b.activeProducts ?? b.totalProducts ?? '—'}</span>

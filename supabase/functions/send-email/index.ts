@@ -263,7 +263,17 @@ function renderTemplate(type: string, data: TemplateData): { subject: string; ht
 
 async function logEmail(
   supabase: ReturnType<typeof createClient>,
-  opts: { userId?: string; businessId?: string; toEmail: string; type: string; status: 'sent' | 'failed'; providerMessageId?: string; errorMessage?: string }
+  opts: {
+    userId?: string;
+    businessId?: string;
+    toEmail: string;
+    type: string;
+    status: 'sent' | 'failed';
+    providerMessageId?: string;
+    errorMessage?: string;
+    idempotencyKey?: string | null;
+    source?: string | null;
+  }
 ) {
   try {
     await supabase.from('wa_email_logs').insert({
@@ -274,6 +284,8 @@ async function logEmail(
       status: opts.status,
       provider_message_id: opts.providerMessageId || null,
       error_message: opts.errorMessage || null,
+      idempotency_key: opts.idempotencyKey || null,
+      source: opts.source || null,
     });
   } catch (e) {
     console.error('[send-email] logEmail failed:', e);
@@ -372,6 +384,20 @@ Deno.serve(async (req) => {
   }
 
   const action = typeof body?.action === 'string' ? body.action.trim() : '';
+
+  // QW-4: validar x-email-secret para requests no-admin.
+  // Solo se aplica si EMAIL_FUNCTION_SECRET está configurado como env var en la Edge Function.
+  // Mientras no esté configurado, el endpoint funciona igual que antes (sin validación adicional).
+  if (action !== 'preview' && action !== 'admin_send_test') {
+    const functionSecret = Deno.env.get('EMAIL_FUNCTION_SECRET') ?? '';
+    if (functionSecret) {
+      const requestSecret = req.headers.get('x-email-secret') ?? '';
+      if (requestSecret !== functionSecret) {
+        console.warn('[send-email] unauthorized: x-email-secret inválido o ausente');
+        return jsonResponse({ error: 'Unauthorized' }, 401);
+      }
+    }
+  }
 
   if (action === 'preview' || action === 'admin_send_test') {
     if (!supabaseUrl || !anonKey) {
@@ -523,6 +549,27 @@ Deno.serve(async (req) => {
   const userId = typeof body.userId === 'string' ? body.userId : undefined;
   const businessId = typeof body.businessId === 'string' ? body.businessId : undefined;
   const logType = emailType || 'custom';
+  const idempotencyKey = typeof body.idempotencyKey === 'string' && body.idempotencyKey.trim() ? body.idempotencyKey.trim() : null;
+  const source = typeof body.source === 'string' && body.source.trim() ? body.source.trim() : null;
+
+  // QW-2: Guard de idempotencia en la Edge Function.
+  // Si ya existe un log con esta idempotency_key, el email ya fue enviado — saltar sin error.
+  if (idempotencyKey && supabase) {
+    try {
+      const { data: existing } = await supabase
+        .from('wa_email_logs')
+        .select('id, status')
+        .eq('idempotency_key', idempotencyKey)
+        .maybeSingle();
+      if (existing) {
+        console.log('[send-email] idempotency hit, skipping:', { idempotencyKey, existingId: existing.id, status: existing.status });
+        return jsonResponse({ success: true, skipped: true, reason: 'already_sent', idempotencyKey }, 200);
+      }
+    } catch (e) {
+      // Si falla la consulta de idempotencia, seguir adelante (no bloquear el envío)
+      console.warn('[send-email] idempotency check failed, proceeding anyway:', e);
+    }
+  }
 
   const resendBody = {
     from: FROM_EMAIL,
@@ -564,6 +611,8 @@ Deno.serve(async (req) => {
           type: logType,
           status: 'failed',
           errorMessage: message,
+          idempotencyKey,
+          source,
         });
       }
       return jsonResponse({ error: message, details: resData }, res.status >= 400 && res.status < 500 ? res.status : 500);
@@ -578,6 +627,8 @@ Deno.serve(async (req) => {
         type: logType,
         status: 'sent',
         providerMessageId: providerId,
+        idempotencyKey,
+        source,
       });
     }
 
@@ -593,6 +644,8 @@ Deno.serve(async (req) => {
         type: logType,
         status: 'failed',
         errorMessage: msg,
+        idempotencyKey,
+        source,
       });
     }
     return jsonResponse({ error: 'Failed to send email', details: msg }, 500);
