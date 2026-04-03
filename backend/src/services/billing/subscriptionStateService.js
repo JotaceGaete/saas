@@ -91,7 +91,9 @@ async function getBusinessById(businessId) {
   const client = getAdminClient();
   const { data, error } = await client
     .from('wa_businesses')
-    .select('id, plan_slug, trial_expires_at, plan_expires_at, country_code, currency')
+    .select(
+      'id, plan_slug, trial_expires_at, plan_expires_at, country_code, currency, scheduled_plan_slug, scheduled_change_at',
+    )
     .eq('id', businessId)
     .maybeSingle();
   if (error) {
@@ -115,6 +117,64 @@ function normalizePlanSlug(planSlug) {
   if (raw === 'business') return 'business';
   if (raw === 'pro') return 'pro';
   return 'starter';
+}
+
+/** Último pago aprobado (webhook MP actualiza wa_businesses; billing_subscriptions puede seguir pending_payment). */
+async function fetchLatestApprovedWaPayment(businessId) {
+  const client = getAdminClient();
+  const { data, error } = await client
+    .from('wa_payments')
+    .select('id, status, plan_slug, metadata, created_at')
+    .eq('business_id', businessId)
+    .eq('status', 'approved')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    console.warn(`${SUB_STATE_LOG} wa_payments read failed: ${error.message}`);
+    return null;
+  }
+  return data;
+}
+
+/**
+ * CL/AR + Mercado Pago: reconciliar pending_payment de billing_subscriptions con wa_payments + wa_businesses
+ * tras el webhook (misma lógica para Chile y Argentina).
+ */
+async function applyMercadoPagoManualBillingOverride({
+  billingCountry,
+  business,
+  subscription,
+  billingStatus,
+  trialActive,
+  businessId,
+}) {
+  const cc = String(billingCountry || '').trim().toUpperCase();
+  if (!MANUAL_BILLING_COUNTRIES.has(cc)) return billingStatus;
+  if (normalizeBillingProvider(subscription?.provider) !== 'mercado_pago') return billingStatus;
+  if (billingStatus !== BILLING_STATUSES.PENDING_PAYMENT) return billingStatus;
+
+  const approved = await fetchLatestApprovedWaPayment(businessId);
+  if (!approved) return billingStatus;
+
+  const bizPlan = normalizePlanSlug(business?.plan_slug);
+  const exp = business?.plan_expires_at;
+  const scheduled = normalizePlanSlug(business?.scheduled_plan_slug);
+  const payPlan = normalizePlanSlug(approved.plan_slug);
+
+  if (trialActive && (scheduled === 'pro' || scheduled === 'business') && payPlan === scheduled) {
+    return BILLING_STATUSES.TRIAL_WITH_SUBSCRIPTION;
+  }
+
+  if (
+    !trialActive
+    && (bizPlan === 'pro' || bizPlan === 'business')
+    && isFutureDate(exp)
+  ) {
+    return BILLING_STATUSES.ACTIVE;
+  }
+
+  return billingStatus;
 }
 
 /**
@@ -161,6 +221,17 @@ function resolveOperationalPlanSlug({
   const p = normalizeBillingProvider(provider);
   if (p === 'paypal' && !isPaypalSubscriptionApprovedForBilling(provider, providerStatus)) {
     return bizPlan;
+  }
+  /** MP no actualiza billing_subscriptions al aprobar; el plan operativo vive en wa_businesses (y scheduled_* en trial pagado). */
+  if (
+    p === 'mercado_pago'
+    && (billingStatus === BILLING_STATUSES.ACTIVE || billingStatus === BILLING_STATUSES.TRIAL_WITH_SUBSCRIPTION)
+  ) {
+    if (billingStatus === BILLING_STATUSES.TRIAL_WITH_SUBSCRIPTION) {
+      const sched = normalizePlanSlug(business?.scheduled_plan_slug);
+      if (sched === 'pro' || sched === 'business') return sched;
+    }
+    return normalizePlanSlug(business?.plan_slug || subscription?.plan_slug);
   }
   return normalizePlanSlug(subscription?.plan_slug || business?.plan_slug);
 }
@@ -230,16 +301,31 @@ export async function getBillingSubscriptionState({ businessId }) {
     billingStatus = BILLING_STATUSES.TRIAL_WITHOUT_SUBSCRIPTION;
   }
 
+  billingStatus = await applyMercadoPagoManualBillingOverride({
+    billingCountry,
+    business,
+    subscription,
+    billingStatus,
+    trialActive,
+    businessId: id,
+  });
+
   const startsAt = subscription?.starts_at || null;
   const subscriptionStartsAt = billingStatus === BILLING_STATUSES.TRIAL_WITH_SUBSCRIPTION
     ? trialEndsAt
     : (startsAt || subscription?.current_period_starts_at || null);
-  /** Solo tras aprobación real en PayPal (no fila nueva en APPROVAL_PENDING). */
-  const hasPaidSubscription =
+  /** PayPal: aprobación real. Mercado Pago manual: reconciliado arriba vía wa_payments + wa_businesses. */
+  let hasPaidSubscription =
     hasSubscription
     && !!provider
     && provider !== 'mercado_pago'
     && isPaypalSubscriptionApprovedForBilling(provider, providerStatus);
+  if (
+    provider === 'mercado_pago'
+    && (billingStatus === BILLING_STATUSES.ACTIVE || billingStatus === BILLING_STATUSES.TRIAL_WITH_SUBSCRIPTION)
+  ) {
+    hasPaidSubscription = true;
+  }
   const activatesAfterTrial = billingStatus === BILLING_STATUSES.TRIAL_WITH_SUBSCRIPTION
     || (trialActive && hasPaidSubscription);
 

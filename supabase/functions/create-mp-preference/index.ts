@@ -421,6 +421,7 @@ Deno.serve(async (req) => {
       amount:             finalAmount,
       currency:           currencyId,
       status:             'pending',
+      provider:           'mercado_pago',
       external_reference: 'pending',
       metadata,
     })

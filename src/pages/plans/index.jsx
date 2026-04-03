@@ -418,37 +418,54 @@ export default function PlansPage() {
     }
   }, [searchParams, setSearchParams, refreshBusiness, toast]);
 
-  // Fuente de verdad: subscription-state (PayPal). Fallback: wa_payments (MercadoPago).
+  // Fuente de verdad: subscription-state (PayPal + MP tras override). Polling: webhook puede llegar unos segundos después del redirect.
   useEffect(() => {
     if (paymentReturnStatus !== 'success' || !user || businessLoading) return;
     let cancelled = false;
     (async () => {
-      // 1. Consultar subscription-state primero (PayPal ya confirmó en PaypalSuccessPage)
-      try {
-        const token = await getValidAccessToken();
-        if (token && business?.id) {
-          const q = new URLSearchParams({ businessId: business.id });
+      const POLL_MS = 2000;
+      const MAX_ATTEMPTS = 10;
+
+      const pollSubscriptionStateOnce = async (token, businessId) => {
+        try {
+          const q = new URLSearchParams({ businessId });
           const r = await fetch(`/api/v1/billing/subscription-state?${q}`, {
             headers: { Authorization: `Bearer ${token}` },
           });
           const sd = await r.json().catch(() => ({}));
           if (!cancelled && r.ok && sd?.ok) {
             const bs = sd?.billing_status;
-            if (bs === 'active' || bs === 'trial_with_subscription') {
+            if (bs === 'active' || bs === 'trial_with_subscription') return { ok: true };
+          }
+        } catch {
+          /* red o parse: siguiente intento */
+        }
+        return { ok: false };
+      };
+
+      // 1. Polling subscription-state (mismo criterio que PaypalSuccessPage)
+      try {
+        const token = await getValidAccessToken();
+        if (token && business?.id) {
+          for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+            if (cancelled) return;
+            if (attempt > 0) await new Promise((r) => setTimeout(r, POLL_MS));
+            if (cancelled) return;
+            const { ok } = await pollSubscriptionStateOnce(token, business.id);
+            if (ok) {
               setPaymentReturnStatus(null);
               toast?.success?.('Plan activado correctamente.');
               await refetchBillingSubscriptionRow();
               return;
             }
-            // billing_status es pending_payment o no concluyente: caer a wa_payments
           }
         }
       } catch {
-        // Red o parse error: caer a wa_payments
+        // seguir a fallback wa_payments
       }
       if (cancelled) return;
 
-      // 2. Fallback: wa_payments (flujo MercadoPago — sin cambios)
+      // 2. Fallback: wa_payments (MercadoPago si el webhook aún no reflejó en subscription-state)
       const { data: lastPayment } = await supabase
         .from('wa_payments')
         .select('id, status, plan_slug, created_at')

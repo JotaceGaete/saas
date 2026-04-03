@@ -7,7 +7,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const ALLOWED_PLANS = ['control', 'pro', 'business'];
+const ALLOWED_PLANS = ['control', 'starter', 'pro', 'business'];
 const PLAN_DURATION_DAYS = 30;
 
 function resolveMpAccessToken(countryCode: string): string {
@@ -54,14 +54,17 @@ Deno.serve(async (req) => {
 
   const type   = body?.type as string | undefined;
   const data   = body?.data as { id?: string } | undefined;
-  const dataId = data?.id != null ? String(data.id) : '';
+  // let: para merchant order se sobreescribe con el payment ID resuelto
+  let   dataId = data?.id != null ? String(data.id) : '';
 
-  console.log('[mp-webhook] webhook_received', { type, payment_id: dataId || null });
+  // Merchant order: topic_merchant_order_wh (nuevo formato) o merchant_order (IPN legado)
+  const isMerchantOrder = type === 'topic_merchant_order_wh' || type === 'merchant_order';
 
-  // Solo procesamos notificaciones de tipo 'payment'
-  if (type !== 'payment') {
-    console.log('[mp-webhook] ignored: type is not payment, got:', type);
-    return jsonResponse({ ok: true, ignored: true, reason: 'not_payment_type' }, 200);
+  console.log('[mp-webhook] webhook_received', { type, data_id: dataId || null, is_merchant_order: isMerchantOrder });
+
+  if (type !== 'payment' && !isMerchantOrder) {
+    console.log('[mp-webhook] ignored: type not supported, got:', type);
+    return jsonResponse({ ok: true, ignored: true, reason: 'not_supported_type' }, 200);
   }
   if (!dataId) {
     console.log('[mp-webhook] bad payload: data.id missing');
@@ -92,7 +95,56 @@ Deno.serve(async (req) => {
 
   const db = createClient(supabaseUrl, serviceRoleKey);
 
-  // ── 2. Idempotencia: ¿ya procesamos este mp_payment_id como 'approved'? ────
+  // ── 2. Resolver payment ID desde merchant order (si aplica) ─────────────────
+  // Para tipo 'payment': dataId ya es el payment ID — nada que resolver.
+  // Para merchant order: dataId es el MO ID — consultar la API y extraer el payment aprobado,
+  // luego sobreescribir dataId para que todo el flujo downstream lo use normalmente.
+  if (isMerchantOrder) {
+    const merchantOrderId = dataId;
+    console.log('[mp-webhook] merchant_order_resolving', { merchantOrderId, country: countryHint });
+
+    const moRes  = await fetch(`https://api.mercadopago.com/merchant_orders/${merchantOrderId}`, {
+      headers: { Authorization: `Bearer ${mpAccessToken}` },
+    });
+    const moBody = await moRes.text();
+    console.log('[mp-webhook] merchant_order API status:', moRes.status, '| body (300 chars):', moBody.slice(0, 300));
+
+    if (!moRes.ok) {
+      console.error('[mp-webhook] error fetching merchant order:', merchantOrderId, moRes.status);
+      await db.from('wa_payment_events').insert({
+        mp_payment_id: merchantOrderId,
+        event_type:    'webhook_merchant_order_error',
+        mp_status:     `mo_api_error_${moRes.status}`,
+        raw_payload:   body as Record<string, unknown>,
+      }).catch(() => {});
+      return jsonResponse({ ok: true, ignored: true, reason: 'merchant_order_fetch_error' }, 200);
+    }
+
+    let merchantOrder: {
+      id?: number | string;
+      status?: string;
+      payments?: Array<{ id?: number | string; status?: string }>;
+    };
+    try { merchantOrder = JSON.parse(moBody); }
+    catch {
+      console.error('[mp-webhook] error parseando merchant order');
+      return jsonResponse({ ok: true, ignored: true, reason: 'invalid_merchant_order_response' }, 200);
+    }
+
+    console.log('[MP WEBHOOK] merchantOrder.payments:', merchantOrder.payments);
+
+    const approvedPayment = merchantOrder.payments?.find(p => p.status === 'approved');
+    if (!approvedPayment) {
+      console.warn('[MP WEBHOOK] no approved payment in merchant order');
+      return new Response('ok', { status: 200 });
+    }
+
+    const resolvedPaymentId = String(approvedPayment.id);
+    console.log('[mp-webhook] merchant_order_resolved', { merchantOrderId, resolvedPaymentId });
+    dataId = resolvedPaymentId; // a partir de aquí, dataId es el payment ID real
+  }
+
+  // ── 4. Idempotencia: ¿ya procesamos este mp_payment_id como 'approved'? ────
   const { data: existingEvents } = await db
     .from('wa_payment_events')
     .select('id, mp_status, processed_at')
@@ -229,56 +281,11 @@ Deno.serve(async (req) => {
 
   console.log('[mp-webhook] pago APROBADO', { mp_payment_id: dataId, businessId, planSlug, paymentId });
 
-  // ── 7b. Leer metadata del pago (para conversión trial PRO → PRO programada) ─
-  let paymentMetadata: { isScheduledTrialConversion?: boolean; effectiveAt?: string } | null = null;
-  if (paymentId) {
-    const { data: payRow } = await db.from('wa_payments').select('metadata').eq('id', paymentId).maybeSingle();
-    paymentMetadata = (payRow?.metadata as typeof paymentMetadata) ?? null;
-  }
-  const isScheduledTrialConversion = !!paymentMetadata?.isScheduledTrialConversion && !!paymentMetadata?.effectiveAt;
-  const effectiveAtIso = paymentMetadata?.effectiveAt ?? null;
-
-  // ── 8. Calcular fechas ─────────────────────────────────────────────────────
-  const now = new Date();
-  let planActivatedAtIso: string;
-  let planExpiresAtIso: string;
-  if (isScheduledTrialConversion && effectiveAtIso) {
-    planActivatedAtIso = effectiveAtIso;
-    const endOfPeriod = new Date(effectiveAtIso);
-    endOfPeriod.setDate(endOfPeriod.getDate() + PLAN_DURATION_DAYS);
-    planExpiresAtIso = endOfPeriod.toISOString();
-  } else {
-    planActivatedAtIso = now.toISOString();
-    const planExpiresAt = new Date(now);
-    planExpiresAt.setDate(planExpiresAt.getDate() + PLAN_DURATION_DAYS);
-    planExpiresAtIso = planExpiresAt.toISOString();
-  }
-
-  // ── 9. Actualizar wa_payments con status=approved ──────────────────────────
-  if (paymentId) {
-    const { error: paymentUpdateError } = await db.from('wa_payments').update({
-      status:            'approved',
-      mp_payment_id:     dataId,
-      mp_status:         mpStatus,
-      mp_status_detail:  mpStatusDetail,
-      mp_payment_type:   payment?.payment_type_id   ?? null,
-      mp_payment_method: payment?.payment_method_id ?? null,
-      plan_activated_at: planActivatedAtIso,
-      plan_expires_at:   planExpiresAtIso,
-      raw_mp_response:   payment as Record<string, unknown>,
-    }).eq('id', paymentId);
-
-    if (paymentUpdateError) {
-      console.error('[mp-webhook] error actualizando wa_payments:', paymentUpdateError.message);
-    } else {
-      console.log('[mp-webhook] wa_payments actualizado: id=', paymentId, 'status=approved');
-    }
-  }
-
-  // ── 10. Verificar que el negocio exista y leer metadata del pago si hay paymentId ─
+  // ── 8. Verificar negocio y determinar estado de trial (fuente de verdad) ────
+  // Se hace ANTES de calcular fechas para que bizIsActiveTrial guíe todo lo demás.
   const { data: bizRow, error: bizCheckError } = await db
     .from('wa_businesses')
-    .select('id, user_id, plan_slug, country_code')
+    .select('id, user_id, plan_slug, country_code, trial_expires_at')
     .eq('id', businessId)
     .single();
 
@@ -286,25 +293,104 @@ Deno.serve(async (req) => {
     console.error('[mp-webhook] negocio no encontrado en wa_businesses:', businessId, bizCheckError?.message);
     return jsonResponse({ ok: false, error: 'Business not found' }, 404);
   }
-  const bizCountry = (bizRow.country_code as string | null) ?? 'CL';
+
+  const bizCountry        = (bizRow.country_code   as string | null) ?? 'CL';
+  const bizTrialExpiresAt = (bizRow.trial_expires_at as string | null) ?? null;
+  const nowMs             = Date.now();
+  // Fuente de verdad: trial activo según el campo real de la BD, no el metadata del pago.
+  const bizIsActiveTrial  = bizTrialExpiresAt !== null && new Date(bizTrialExpiresAt).getTime() > nowMs;
+
   console.log('[MP WEBHOOK] validated payment', {
-    paymentId: dataId,
+    paymentId:        dataId,
     businessId,
-    country: bizCountry,
-    status: mpStatus,
+    country:          bizCountry,
+    status:           mpStatus,
+    trial_expires_at: bizTrialExpiresAt,
+    is_active_trial:  bizIsActiveTrial,
   });
-  console.log('[mp-webhook] negocio encontrado:', { id: bizRow.id, user_id: bizRow.user_id, plan_slug_anterior: bizRow.plan_slug, country_code: bizCountry });
+  console.log('[mp-webhook] negocio encontrado:', {
+    id:                bizRow.id,
+    plan_slug_anterior: bizRow.plan_slug,
+    country_code:      bizCountry,
+    trial_expires_at:  bizTrialExpiresAt,
+  });
   if (bizCountry !== countryHint) {
     console.warn('[mp-webhook] country mismatch: URL param=', countryHint, '!= business.country_code=', bizCountry);
   }
 
+  // ── 9. Calcular fechas ─────────────────────────────────────────────────────
+  // Si hay trial activo: los 30 días pagos corren desde el fin del trial.
+  // Si no: activación inmediata.
+  const now = new Date();
+  let planActivatedAtIso: string;
+  let planExpiresAtIso: string;
+  if (bizIsActiveTrial && bizTrialExpiresAt) {
+    planActivatedAtIso = bizTrialExpiresAt;
+    const endOfPeriod  = new Date(bizTrialExpiresAt);
+    endOfPeriod.setDate(endOfPeriod.getDate() + PLAN_DURATION_DAYS);
+    planExpiresAtIso   = endOfPeriod.toISOString();
+  } else {
+    planActivatedAtIso = now.toISOString();
+    const planExpiresAt = new Date(now);
+    planExpiresAt.setDate(planExpiresAt.getDate() + PLAN_DURATION_DAYS);
+    planExpiresAtIso    = planExpiresAt.toISOString();
+  }
+
+  // ── 10. Actualizar wa_payments con status=approved ─────────────────────────
+  const waPaymentsUpdate = {
+    status:              'approved',
+    provider_payment_id: dataId,
+    mp_payment_id:       dataId,
+    mp_status:           mpStatus,
+    mp_status_detail:    mpStatusDetail,
+    mp_payment_type:     payment?.payment_type_id  ?? null,
+    mp_payment_method:   payment?.payment_method_id ?? null,
+    plan_activated_at:   planActivatedAtIso,
+    plan_expires_at:     planExpiresAtIso,
+    raw_mp_response:     payment as Record<string, unknown>,
+  };
+
+  if (paymentId) {
+    // Ruta normal: actualizamos por id (UUID de wa_payments en external_reference)
+    const { error: payErr } = await db.from('wa_payments')
+      .update(waPaymentsUpdate)
+      .eq('id', paymentId);
+    if (payErr) {
+      console.error('[mp-webhook] error actualizando wa_payments (por id):', payErr.message);
+    } else {
+      console.log('[mp-webhook] wa_payments actualizado', { paymentId, provider_payment_id: dataId, status: 'approved' });
+    }
+  } else {
+    // Fallback: sin paymentId en external_reference (formato legado) — buscar por business+plan+pending
+    const { data: pendingRows } = await db
+      .from('wa_payments')
+      .select('id')
+      .eq('business_id', businessId)
+      .eq('plan_slug',   planSlug)
+      .eq('status',      'pending')
+      .order('created_at', { ascending: false })
+      .limit(1);
+    const fallbackId = pendingRows?.[0]?.id ?? null;
+    console.log('[mp-webhook] paymentId null — fallback wa_payments:', { fallbackId, businessId, planSlug });
+    if (fallbackId) {
+      const { error: payErr } = await db.from('wa_payments')
+        .update(waPaymentsUpdate)
+        .eq('id', fallbackId);
+      if (payErr) {
+        console.error('[mp-webhook] error actualizando wa_payments (fallback):', payErr.message);
+      } else {
+        console.log('[mp-webhook] wa_payments actualizado (fallback)', { fallbackId, provider_payment_id: dataId });
+      }
+    }
+  }
+
   // ── 11. Actualizar plan en wa_businesses ──────────────────────────────────
-  // Si es compra PRO durante trial PRO: solo programar activación al fin del trial (scheduled_*).
-  if (isScheduledTrialConversion && effectiveAtIso) {
-    const scheduledChangeAt = effectiveAtIso;
+  // Trial activo → programar plan al fin del trial, NO cambiar plan_slug ahora.
+  // Sin trial → activar inmediatamente.
+  if (bizIsActiveTrial && bizTrialExpiresAt) {
     const { error: bizUpdateError } = await db.from('wa_businesses').update({
       scheduled_plan_slug: planSlug,
-      scheduled_change_at: scheduledChangeAt,
+      scheduled_change_at: bizTrialExpiresAt,
     }).eq('id', businessId);
 
     if (bizUpdateError) {
@@ -312,11 +398,11 @@ Deno.serve(async (req) => {
       return jsonResponse({ ok: false, error: 'Database update failed' }, 500);
     }
     console.log('[mp-webhook] payment_approved_scheduled_at_trial_end', {
-      mp_payment_id: dataId,
+      mp_payment_id:       dataId,
       paymentId,
       businessId,
       planSlug,
-      scheduled_change_at: scheduledChangeAt,
+      scheduled_change_at: bizTrialExpiresAt,
     });
   } else {
     const { error: bizUpdateError } = await db.from('wa_businesses').update({
@@ -329,11 +415,11 @@ Deno.serve(async (req) => {
       return jsonResponse({ ok: false, error: 'Database update failed' }, 500);
     }
     console.log('[mp-webhook] payment_approved_and_plan_updated', {
-      mp_payment_id:   dataId,
+      mp_payment_id:    dataId,
       paymentId,
       businessId,
       planSlug,
-      planExpiresAt:   planExpiresAtIso,
+      planExpiresAt:    planExpiresAtIso,
       previousPlanSlug: bizRow.plan_slug,
     });
   }
