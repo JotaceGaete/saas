@@ -151,7 +151,10 @@ async function applyMercadoPagoManualBillingOverride({
 }) {
   const cc = String(billingCountry || '').trim().toUpperCase();
   if (!MANUAL_BILLING_COUNTRIES.has(cc)) return billingStatus;
-  if (normalizeBillingProvider(subscription?.provider) !== 'mercado_pago') return billingStatus;
+  // Permitir rows legacy (provider=signup → null) además de rows explícitas mercado_pago.
+  // Bloquear solo si hay un provider reconocido que NO es mercado_pago (ej. paypal).
+  const subProviderNorm = normalizeBillingProvider(subscription?.provider);
+  if (subProviderNorm !== null && subProviderNorm !== 'mercado_pago') return billingStatus;
   if (billingStatus !== BILLING_STATUSES.PENDING_PAYMENT) return billingStatus;
 
   const approved = await fetchLatestApprovedWaPayment(businessId);
@@ -325,6 +328,19 @@ export async function getBillingSubscriptionState({ businessId }) {
     && (billingStatus === BILLING_STATUSES.ACTIVE || billingStatus === BILLING_STATUSES.TRIAL_WITH_SUBSCRIPTION)
   ) {
     hasPaidSubscription = true;
+  }
+  // Patch: para CL/AR con billing_subscriptions legacy (provider=signup → null), hasPaidSubscription
+  // queda false porque !!provider = false. Verificar wa_payments directamente como fuente de verdad.
+  if (
+    billingMode === 'manual'
+    && !hasPaidSubscription
+    && (billingStatus === BILLING_STATUSES.ACTIVE || billingStatus === BILLING_STATUSES.TRIAL_WITH_SUBSCRIPTION)
+  ) {
+    const approvedWaPayment = await fetchLatestApprovedWaPayment(id);
+    if (approvedWaPayment) {
+      hasPaidSubscription = true;
+      console.info(`${SUB_STATE_LOG} businessId=${id} hasPaidSubscription=true via wa_payments fallback (billing_subscriptions.provider=${subscription?.provider ?? 'none'})`);
+    }
   }
   const activatesAfterTrial = billingStatus === BILLING_STATUSES.TRIAL_WITH_SUBSCRIPTION
     || (trialActive && hasPaidSubscription);
