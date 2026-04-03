@@ -53,8 +53,27 @@ export function getSecondaryProviderId(primaryId) {
   return primaryId === 'openai' ? 'gemini' : 'openai';
 }
 
-/** Timeout de llamada al proveedor (ms). Env: AI_PROVIDER_TIMEOUT_MS (default 8000). */
+/** Timeout de llamada al proveedor OpenAI (ms). Env: AI_PROVIDER_TIMEOUT_MS (default 8000). */
 export function getAiProviderTimeoutMs() {
   const n = Number(process.env.AI_PROVIDER_TIMEOUT_MS);
   return Number.isFinite(n) && n >= 1000 && n <= 120_000 ? Math.floor(n) : 8000;
+}
+
+/**
+ * Timeout específico para Gemini. Intencionalmente corto para que el fallback
+ * a OpenAI ocurra dentro del presupuesto total de la función.
+ * Env: AI_GEMINI_TIMEOUT_MS (default 4000).
+ */
+export function getGeminiTimeoutMs() {
+  const n = Number(process.env.AI_GEMINI_TIMEOUT_MS);
+  return Number.isFinite(n) && n >= 1000 && n <= 30_000 ? Math.floor(n) : 4000;
+}
+
+/**
+ * Presupuesto total de tiempo para primario + fallback juntos (ms).
+ * Env: AI_TOTAL_TIMEOUT_MS (default 11000).
+ */
+export function getTotalAiTimeoutMs() {
+  const n = Number(process.env.AI_TOTAL_TIMEOUT_MS);
+  return Number.isFinite(n) && n >= 2000 && n <= 60_000 ? Math.floor(n) : 11_000;
 }
