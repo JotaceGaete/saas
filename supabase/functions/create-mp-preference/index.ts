@@ -11,14 +11,14 @@ type PlanCatalog = Record<string, { displayName: string; price: number; duration
 
 const PLAN_CATALOG_CL: PlanCatalog = {
   starter:  { displayName: 'Starter',  price: 0,     durationDays: 30 },
-  pro:      { displayName: 'Plan Pro', price: 5990, durationDays: 30 },
+  pro:      { displayName: 'Plan Pro', price: 5990,  durationDays: 30 },
   business: { displayName: 'Plan Full', price: 9990, durationDays: 30 },
 };
 
 const PLAN_CATALOG_AR: PlanCatalog = {
-  starter:  { displayName: 'Starter',  price: 0,     durationDays: 30 },
-  pro:      { displayName: 'Plan Pro', price: 15000, durationDays: 30 },
-  business: { displayName: 'Plan Business', price: 30000, durationDays: 30 },
+  starter:  { displayName: 'Starter',       price: 0,     durationDays: 30 },
+  pro:      { displayName: 'Plan Pro',      price: 8990,  durationDays: 30 },
+  business: { displayName: 'Plan Business', price: 13990, durationDays: 30 },
 };
 
 function getPlanCatalog(country: string | undefined): PlanCatalog {
@@ -67,6 +67,7 @@ function resolveBusinessCountryCode(
 
   return normalizeCountryCode(fallbackCountry);
 }
+
 const PRORATION_FORMULA_VERSION = '2024-03-exact-time';
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -151,6 +152,7 @@ function computePlanChange(
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
 function jsonResponse(body: Record<string, unknown>, status: number) {
@@ -162,7 +164,7 @@ function jsonResponse(body: Record<string, unknown>, status: number) {
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response('ok', { status: 200, headers: corsHeaders });
   }
 
   const authHeader = (req.headers.get('authorization') ?? '').trim();
@@ -176,17 +178,19 @@ Deno.serve(async (req) => {
   const supabaseUrl      = Deno.env.get('SUPABASE_URL')              ?? '';
   const anonKey          = Deno.env.get('SUPABASE_ANON_KEY')         ?? '';
   const serviceRoleKey   = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-  const mpAccessToken    = Deno.env.get('MP_ACCESS_TOKEN')           ?? '';
+  // Credenciales MP por país. Fallback a MP_ACCESS_TOKEN genérico para compatibilidad.
+  const mpAccessTokenCl  = Deno.env.get('MP_ACCESS_TOKEN_CL') ?? Deno.env.get('MP_ACCESS_TOKEN') ?? '';
+  const mpAccessTokenAr  = Deno.env.get('MP_ACCESS_TOKEN_AR') ?? Deno.env.get('MP_ACCESS_TOKEN') ?? '';
   // Fallback solo si el front no envía success_url (app en go.ventalink.app).
-  const appBaseUrl = (Deno.env.get('APP_BASE_URL') ?? 'https://go.ventalink.app').replace(/\/$/, '');
-  const notificationUrl  = Deno.env.get('MP_WEBHOOK_URL')            ?? '';
+  const appBaseUrl    = (Deno.env.get('APP_BASE_URL') ?? 'https://go.ventalink.app').replace(/\/$/, '');
+  const mpWebhookBase = Deno.env.get('MP_WEBHOOK_URL') ?? '';
 
   if (!serviceRoleKey) {
     console.error('[create-mp-preference] SUPABASE_SERVICE_ROLE_KEY not set');
     return jsonResponse({ error: 'Server configuration error' }, 500);
   }
-  if (!mpAccessToken) {
-    console.error('[create-mp-preference] MP_ACCESS_TOKEN not set');
+  if (!mpAccessTokenCl && !mpAccessTokenAr) {
+    console.error('[create-mp-preference] No MP access token configured (MP_ACCESS_TOKEN_CL / MP_ACCESS_TOKEN_AR)');
     return jsonResponse({ error: 'Server configuration error' }, 500);
   }
 
@@ -265,8 +269,18 @@ Deno.serve(async (req) => {
     business as { country_code?: string | null; country?: string | null; currency?: string | null },
     fallbackCountry,
   );
-  if (countryCode !== 'CL') {
-    return jsonResponse({ error: 'Mercado Pago solo está disponible para Chile', country_code: countryCode }, 400);
+  if (countryCode !== 'CL' && countryCode !== 'AR') {
+    return jsonResponse({ error: 'Mercado Pago solo está disponible para Chile y Argentina', country_code: countryCode }, 400);
+  }
+  // Seleccionar token según país — determina en qué dominio MP abre el checkout.
+  const mpAccessToken = countryCode === 'AR' ? mpAccessTokenAr : mpAccessTokenCl;
+  // Incluir país en notification_url para que mp-webhook use el token correcto sin fallback.
+  const notificationUrl = mpWebhookBase
+    ? `${mpWebhookBase}${mpWebhookBase.includes('?') ? '&' : '?'}country=${countryCode}`
+    : '';
+  if (!mpAccessToken) {
+    console.error(`[create-mp-preference] MP_ACCESS_TOKEN_${countryCode} no configurado`);
+    return jsonResponse({ error: 'Server configuration error', reason: `mp_token_missing_${countryCode.toLowerCase()}` }, 500);
   }
   const catalog = getPlanCatalog(countryCode);
   const currencyId = countryCode === 'AR' ? 'ARS' : 'CLP';
@@ -433,7 +447,7 @@ Deno.serve(async (req) => {
     .update({ external_reference: externalReference })
     .eq('id', paymentId);
 
-  // ── 5. Crear preferencia en Mercado Pago ──────────────────────────────────
+  // ── 6. Crear preferencia en Mercado Pago ──────────────────────────────────
   const successUrl = (body?.success_url as string) || `${appBaseUrl}/plans?payment=success`;
   const failureUrl = (body?.failure_url as string) || `${appBaseUrl}/plans?payment=failure`;
   const pendingUrl = (body?.pending_url as string) || `${appBaseUrl}/plans?payment=pending`;
@@ -481,7 +495,7 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: 'Mercado Pago response missing init_point' }, 500);
   }
 
-  // ── 6. Guardar preference_id y respuesta cruda en wa_payments ─────────────
+  // ── 7. Guardar preference_id y respuesta cruda en wa_payments ─────────────
   await adminClient.from('wa_payments').update({
     mp_preference_id: preference?.id ?? null,
     raw_mp_response:  preference as Record<string, unknown>,

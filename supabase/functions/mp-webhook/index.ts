@@ -10,6 +10,17 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 const ALLOWED_PLANS = ['control', 'pro', 'business'];
 const PLAN_DURATION_DAYS = 30;
 
+function resolveMpAccessToken(countryCode: string): string {
+  if (countryCode === 'AR') {
+    const token = Deno.env.get('MP_ACCESS_TOKEN_AR');
+    if (!token) throw new Error('Missing MP_ACCESS_TOKEN_AR');
+    return token;
+  }
+  const token = Deno.env.get('MP_ACCESS_TOKEN_CL');
+  if (!token) throw new Error('Missing MP_ACCESS_TOKEN_CL');
+  return token;
+}
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -57,16 +68,25 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: false, error: 'Missing data.id' }, 400);
   }
 
+  // País derivado del query param que create-mp-preference añade a la notification_url.
+  // Ejemplo: https://.../mp-webhook?country=AR
+  const reqUrl      = new URL(req.url);
+  const countryHint = (reqUrl.searchParams.get('country') ?? 'CL').toUpperCase();
+
   const supabaseUrl    = Deno.env.get('SUPABASE_URL')              ?? '';
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-  const mpAccessToken  = Deno.env.get('MP_ACCESS_TOKEN')           ?? '';
 
   if (!supabaseUrl || !serviceRoleKey) {
     console.error('[mp-webhook] env: SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY no configurados');
     return jsonResponse({ ok: false, error: 'Server configuration error' }, 500);
   }
-  if (!mpAccessToken) {
-    console.error('[mp-webhook] env: MP_ACCESS_TOKEN no configurado');
+
+  // Resolver token según país — falla rápido si no está configurado.
+  let mpAccessToken: string;
+  try {
+    mpAccessToken = resolveMpAccessToken(countryHint);
+  } catch (e) {
+    console.error('[mp-webhook] token config error:', (e as Error).message, { countryHint });
     return jsonResponse({ ok: false, error: 'Server configuration error' }, 500);
   }
 
@@ -91,16 +111,16 @@ Deno.serve(async (req) => {
     return jsonResponse({ ok: true, ignored: true, reason: 'already_processed' }, 200);
   }
 
-  // ── 3. Consultar pago real en Mercado Pago ─────────────────────────────────
+  // ── 3. Consultar pago real en Mercado Pago — una sola llamada, token determinístico ──
   const mpRes     = await fetch(`https://api.mercadopago.com/v1/payments/${dataId}`, {
     headers: { Authorization: `Bearer ${mpAccessToken}` },
   });
   const mpApiBody = await mpRes.text();
-  console.log('[mp-webhook] MP API status:', mpRes.status, '| body (200 chars):', mpApiBody.slice(0, 200));
+  console.log('[mp-webhook] MP API status:', mpRes.status, '| country:', countryHint, '| body (200 chars):', mpApiBody.slice(0, 200));
 
   if (!mpRes.ok) {
     if (mpRes.status === 401) {
-      console.error('[mp-webhook] MP API 401: credenciales inválidas');
+      console.error('[mp-webhook] MP API 401: token incorrecto para país', countryHint);
       return jsonResponse({ ok: false, error: 'Invalid MP credentials' }, 500);
     }
     console.log('[mp-webhook] MP API error', mpRes.status, '→ evento ignorado (puede ser simulación)');
@@ -258,7 +278,7 @@ Deno.serve(async (req) => {
   // ── 10. Verificar que el negocio exista y leer metadata del pago si hay paymentId ─
   const { data: bizRow, error: bizCheckError } = await db
     .from('wa_businesses')
-    .select('id, user_id, plan_slug')
+    .select('id, user_id, plan_slug, country_code')
     .eq('id', businessId)
     .single();
 
@@ -266,7 +286,17 @@ Deno.serve(async (req) => {
     console.error('[mp-webhook] negocio no encontrado en wa_businesses:', businessId, bizCheckError?.message);
     return jsonResponse({ ok: false, error: 'Business not found' }, 404);
   }
-  console.log('[mp-webhook] negocio encontrado:', { id: bizRow.id, user_id: bizRow.user_id, plan_slug_anterior: bizRow.plan_slug });
+  const bizCountry = (bizRow.country_code as string | null) ?? 'CL';
+  console.log('[MP WEBHOOK] validated payment', {
+    paymentId: dataId,
+    businessId,
+    country: bizCountry,
+    status: mpStatus,
+  });
+  console.log('[mp-webhook] negocio encontrado:', { id: bizRow.id, user_id: bizRow.user_id, plan_slug_anterior: bizRow.plan_slug, country_code: bizCountry });
+  if (bizCountry !== countryHint) {
+    console.warn('[mp-webhook] country mismatch: URL param=', countryHint, '!= business.country_code=', bizCountry);
+  }
 
   // ── 11. Actualizar plan en wa_businesses ──────────────────────────────────
   // Si es compra PRO durante trial PRO: solo programar activación al fin del trial (scheduled_*).
