@@ -6,9 +6,10 @@ import { useIsDesktop } from 'hooks/useMediaQuery';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
 
-const HELP_WHATSAPP_NUMBER = '56993443682';
+import { SUPPORT_WHATSAPP_NUMBER } from '../../config/support';
+
 const HELP_WHATSAPP_MESSAGE = 'Hola, estoy en la sección Centro de ayuda y necesito soporte';
-const HELP_WHATSAPP_HREF = `https://wa.me/${HELP_WHATSAPP_NUMBER}?text=${encodeURIComponent(HELP_WHATSAPP_MESSAGE)}`;
+const HELP_WHATSAPP_HREF = `https://wa.me/${SUPPORT_WHATSAPP_NUMBER}?text=${encodeURIComponent(HELP_WHATSAPP_MESSAGE)}`;
 
 export default function HelpPage() {
   const navigate = useNavigate();

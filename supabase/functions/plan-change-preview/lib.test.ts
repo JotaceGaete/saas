@@ -308,19 +308,23 @@ describe('buildIntlUsdPreview', () => {
   });
 
   it('B6b: flujo completo INTL trial pro → pro (buildIntlUsdPreview + applyTrialOverride)', () => {
-    const raw = buildIntlUsdPreview('pro', 'pro', daysFromNow(15), daysFromNow(7), null);
-    const r = applyTrialOverride(raw, daysFromNow(7));
-    expect(r.effectiveAt).toBe(new Date(NOW).toISOString());
+    const trialEnd = daysFromNow(7);
+    const raw = buildIntlUsdPreview('pro', 'pro', daysFromNow(15), trialEnd, null);
+    const r = applyTrialOverride(raw, trialEnd);
+    // el plan pago inicia al terminar el trial
+    expect(r.effectiveAt).toBe(trialEnd);
+    expect(r.scheduledChange).toEqual({ targetPlanSlug: 'pro', effectiveAt: trialEnd });
     expect(r.creditAmount).toBe(0);
     expect(r.finalAmount).toBe(6);
     expect(r.daysRemaining).toBe(0);
   });
 
   it('B6c: flujo completo INTL trial pro → business (antes no cubría este caso)', () => {
-    // Antes del fix, trial-pro → business INTL no aplicaba ningún patch.
-    const raw = buildIntlUsdPreview('pro', 'business', daysFromNow(15), daysFromNow(7), null);
-    const r = applyTrialOverride(raw, daysFromNow(7));
-    expect(r.effectiveAt).toBe(new Date(NOW).toISOString());
+    const trialEnd = daysFromNow(7);
+    const raw = buildIntlUsdPreview('pro', 'business', daysFromNow(15), trialEnd, null);
+    const r = applyTrialOverride(raw, trialEnd);
+    expect(r.effectiveAt).toBe(trialEnd);
+    expect(r.scheduledChange).toEqual({ targetPlanSlug: 'business', effectiveAt: trialEnd });
     expect(r.daysRemaining).toBe(0);
     expect(r.finalAmount).toBe(10);
   });
@@ -376,20 +380,25 @@ describe('applyTrialOverride', () => {
     creditAmount: 0,
   };
 
-  it('C1: trial activo → upgrade — resetea crédito y cobra precio completo', () => {
-    const r = applyTrialOverride(baseUpgrade, daysFromNow(7), NOW);
+  it('C1: trial activo → upgrade — resetea crédito, cobra completo, programa al fin del trial', () => {
+    const trialEnd = daysFromNow(7);
+    const r = applyTrialOverride(baseUpgrade, trialEnd, NOW);
     expect(r.creditAmount).toBe(0);
     expect(r.daysRemaining).toBe(0);
     expect(r.remainingDaysFraction).toBe(0);
     expect(r.finalAmount).toBe(13990); // targetPlanPrice
-    expect(r.effectiveAt).toBe(new Date(NOW).toISOString());
+    // el plan pago inicia al terminar el trial, no inmediatamente
+    expect(r.effectiveAt).toBe(trialEnd);
+    expect(r.scheduledChange).toEqual({ targetPlanSlug: 'business', effectiveAt: trialEnd });
   });
 
-  it('C2: trial activo → renewal (pro→pro) — cobra precio completo sin crédito', () => {
-    const r = applyTrialOverride(baseRenewal, daysFromNow(7), NOW);
+  it('C2: trial activo → renewal (pro→pro) — cobra completo, programa al fin del trial', () => {
+    const trialEnd = daysFromNow(7);
+    const r = applyTrialOverride(baseRenewal, trialEnd, NOW);
     expect(r.creditAmount).toBe(0);
     expect(r.finalAmount).toBe(8990);
-    expect(r.effectiveAt).toBe(new Date(NOW).toISOString());
+    expect(r.effectiveAt).toBe(trialEnd);
+    expect(r.scheduledChange).toEqual({ targetPlanSlug: 'pro', effectiveAt: trialEnd });
   });
 
   it('C3: trial activo → downgrade — finalAmount sigue siendo 0', () => {
@@ -420,10 +429,13 @@ describe('applyTrialOverride', () => {
     const inconsistentResult = computePlanChange('pro', daysFromNow(20), 'business', PLAN_CATALOG_AR);
     expect(inconsistentResult.creditAmount).toBeGreaterThan(0); // confirma que hay crédito sin override
 
-    const r = applyTrialOverride(inconsistentResult, daysFromNow(7), NOW);
+    const trialEnd = daysFromNow(7);
+    const r = applyTrialOverride(inconsistentResult, trialEnd, NOW);
     expect(r.creditAmount).toBe(0);
     expect(r.daysRemaining).toBe(0);
     expect(r.finalAmount).toBe(13990);
+    expect(r.effectiveAt).toBe(trialEnd);
+    expect(r.scheduledChange).toEqual({ targetPlanSlug: 'business', effectiveAt: trialEnd });
   });
 
   it('C7: trialExpiresAt exactamente = NOW — no es activo (0 ms restantes)', () => {
@@ -605,12 +617,15 @@ describe('casos edge', () => {
   });
 
   it('G5: trial pro → pro CL (renovación desde trial)', () => {
+    const trialEnd = daysFromNow(7);
     const rawPreview = computePlanChange('pro', null, 'pro', PLAN_CATALOG_CL);
-    const fixed = applyTrialOverride(rawPreview, daysFromNow(7), NOW);
+    const fixed = applyTrialOverride(rawPreview, trialEnd, NOW);
     expect(fixed.changeType).toBe('renewal');
     expect(fixed.creditAmount).toBe(0);
     expect(fixed.finalAmount).toBe(5990);
-    expect(fixed.effectiveAt).toBe(new Date(NOW).toISOString());
+    // el plan pago inicia al terminar el trial
+    expect(fixed.effectiveAt).toBe(trialEnd);
+    expect(fixed.scheduledChange).toEqual({ targetPlanSlug: 'pro', effectiveAt: trialEnd });
   });
 
   it('G6: trial business → pro CL (downgrade desde trial)', () => {

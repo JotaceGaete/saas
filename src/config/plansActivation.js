@@ -1,7 +1,9 @@
 /**
  * Activación manual de planes (fuera de Chile, sin pasarela activa).
- * Configura VITE_PLANS_SUPPORT_WHATSAPP con dígitos internacionales sin + (ej. 56912345678).
+ * Opcional: VITE_PLANS_SUPPORT_WHATSAPP (dígitos sin +). Si no hay, usa {@link SUPPORT_WHATSAPP_NUMBER}.
  */
+
+import { SUPPORT_WHATSAPP_NUMBER } from './support';
 
 /**
  * @param {string} [userEmail] - Email del usuario logueado (se incluye en el mensaje).
@@ -9,7 +11,7 @@
  */
 export function getPlansActivationWhatsappUrl(userEmail) {
   const raw = import.meta.env?.VITE_PLANS_SUPPORT_WHATSAPP ?? '';
-  const phone = String(raw).replace(/\D/g, '');
+  const phone = String(raw).replace(/\D/g, '') || String(SUPPORT_WHATSAPP_NUMBER).replace(/\D/g, '');
   const base = `Hola, quiero solicitar la activación de un plan en Ventalink (Pro o Full).`;
   const suffix = userEmail ? ` Mi cuenta: ${userEmail}` : '';
   const text = encodeURIComponent(`${base}${suffix}`);
