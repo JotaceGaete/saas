@@ -16,6 +16,7 @@ import SettingsSwitch from './components/SettingsSwitch';
 import { Building2, CreditCard, Palette, Sparkles } from 'lucide-react';
 import { truncateAtWordBoundary } from '../../utils/textTruncate';
 import CountryIsoSelect from '../../components/country/CountryIsoSelect';
+import CountryFlagDropdown from '../../components/country/CountryFlagDropdown';
 import {
   evaluateBusinessCountryChangePolicy,
 } from '../../lib/country/business-country-policy';
@@ -841,7 +842,7 @@ export default function BusinessConfiguration() {
                 {countryFlowMode === 'suggest' && suggestedCfg?.name && (
                   <div className="flex flex-col gap-4">
                     <p className="text-sm leading-relaxed" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
-                      Detectamos que probablemente estás en <strong>{suggestedCfg.name}</strong>. Esto definirá formatos, moneda y opciones de pago.
+                      Detectamos que probablemente estás en <strong>{suggestedCfg.flag} {suggestedCfg.name}</strong>. Esto definirá formatos, moneda y opciones de pago.
                     </p>
                     <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                       <button
@@ -855,7 +856,7 @@ export default function BusinessConfiguration() {
                           boxShadow: '0 2px 8px rgba(139,92,246,0.35)',
                         }}
                       >
-                        Usar {suggestedCfg.name}
+                        Usar {suggestedCfg.flag} {suggestedCfg.name}
                       </button>
                       <button
                         type="button"
@@ -879,7 +880,7 @@ export default function BusinessConfiguration() {
                         ? 'Elige el país de tu negocio. Esto definirá formatos, moneda y opciones de pago.'
                         : 'Selecciona el país que corresponda a tu negocio.'}
                     </p>
-                    <CountryIsoSelect
+                    <CountryFlagDropdown
                       value={manualCountryCode || uxCountry || ''}
                       onChange={(code) => {
                         setManualCountryCode(code || '');
@@ -892,7 +893,7 @@ export default function BusinessConfiguration() {
                     <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                       {manualCfg?.name && (
                         <p className="text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
-                          País elegido: <strong>{manualCfg.name}</strong>
+                          País elegido: <strong>{manualCfg.flag} {manualCfg.name}</strong>
                         </p>
                       )}
                       {suggestedCfg?.name && (
@@ -929,7 +930,7 @@ export default function BusinessConfiguration() {
                   label="País"
                   hint="El cambio queda en borrador hasta que guardes con Guardar cambios."
                 >
-                  <CountryIsoSelect
+                  <CountryFlagDropdown
                     value={uxCountry ?? businessCountry ?? ''}
                     onChange={(code) => handleCountrySelection(code || '')}
                     disabled={countryGuards.loading || isCountryLocked}
