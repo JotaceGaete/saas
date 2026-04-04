@@ -93,22 +93,47 @@ export function buildPublicCatalogUrl(slug, route = PUBLIC_CATALOG_SHARE_SEGMENT
 }
 
 /**
- * Enlace compartible estándar: `${APP_ORIGIN}/catalogo/:slug`.
+ * URL corta canónica del catálogo: `${APP_ORIGIN}/:slug`.
+ * Úsala para compartir (WhatsApp, QR, CTA), ya que es la URL pública principal.
+ * La URL larga /catalogo/:slug sigue funcionando y es el canonical OG en api/seo.js.
+ * @param {string} slug
+ * @returns {string}
+ */
+export function getShortCatalogUrl(slug) {
+  const s = String(slug || '').trim();
+  if (!s) return '';
+  return `${APP_ORIGIN}/${s}`;
+}
+
+/**
+ * Enlace compartible estándar del catálogo. Retorna la URL corta (Fase 1).
+ * Cambiar sólo esta función es suficiente para actualizar todos los CTAs,
+ * QR, mensajes de WhatsApp y OG que dependen de ella.
  * @param {string} slug
  * @returns {string}
  */
 export function getPublicCatalogUrl(slug) {
-  return buildPublicCatalogUrl(slug, PUBLIC_CATALOG_SHARE_SEGMENT);
+  return getShortCatalogUrl(slug);
 }
 
 /**
- * Enlace del catálogo para WhatsApp: URL totalmente canónica, sin query params
- * (el crawler de WhatsApp debe ver siempre la misma URL para OG / portada).
- *
+ * Enlace del catálogo para WhatsApp: sin query params para que el crawler
+ * de WhatsApp resuelva el OG correctamente.
  * @param {string} slug
  */
 export function getWhatsAppOrderCatalogUrl(slug) {
-  return getPublicCatalogUrl(slug);
+  return getShortCatalogUrl(slug);
+}
+
+/**
+ * URL canónica larga del catálogo (/catalogo/:slug).
+ * Usada internamente por api/seo.js para og:url y rel=canonical.
+ * No usar para compartir — preferir getShortCatalogUrl().
+ * @param {string} slug
+ * @returns {string}
+ */
+export function getCanonicalCatalogUrl(slug) {
+  return buildPublicCatalogUrl(slug, PUBLIC_CATALOG_SHARE_SEGMENT);
 }
 
 /**

@@ -63,8 +63,9 @@ async function handleCatalogHtml(request) {
   if (!slug) {
     return new Response('Slug required', { status: 400 });
   }
-  /** Ruta solicitada (/catalog o /catalogo); la URL canónica OG siempre es /catalogo/:slug */
-  const publicPath = url.searchParams.get('publicPath') === 'catalog' ? 'catalog' : 'catalogo';
+  /** Ruta de entrada: 'catalog', 'catalogo', o 'short' (URL corta /:slug).
+   *  La URL canónica OG es siempre /catalogo/:slug independientemente de la entrada. */
+  const publicPath = url.searchParams.get('publicPath') || 'catalogo';
 
   const origin = getOriginCatalog(request);
   if (!origin) {
@@ -92,6 +93,23 @@ async function handleCatalogHtml(request) {
     .maybeSingle();
 
   if (error || !row) {
+    // For short URLs (/:slug) the slug might actually be an internal app route
+    // (e.g. /dashboard, /login) that slipped through the Vercel rewrite before
+    // the catch-all. Serve the SPA shell so React Router handles it correctly.
+    if (publicPath === 'short') {
+      try {
+        const indexUrl = `${origin}/index.html`;
+        const res = await fetch(indexUrl, { headers: { Accept: 'text/html' } });
+        if (!res.ok) throw new Error(`index.html ${res.status}`);
+        const html = await res.text();
+        return new Response(html, {
+          status: 200,
+          headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store, no-cache' },
+        });
+      } catch (_) {
+        return new Response(null, { status: 404 });
+      }
+    }
     return new Response(null, { status: 404 });
   }
 

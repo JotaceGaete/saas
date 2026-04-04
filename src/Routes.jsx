@@ -128,6 +128,11 @@ const Routes = () => {
             <Route path="/admin/businesses/:businessId" element={<RequireAdmin><AdminBusinessDetailPage /></RequireAdmin>} />
             <Route path="/admin/audit-log" element={<RequireAdmin><AdminAuditLogPage /></RequireAdmin>} />
             <Route path="/admin/emails" element={<RequireAdmin><AdminEmailsPage /></RequireAdmin>} />
+            {/* Short catalog URL: /:slug → same catalog page.
+                React Router v6 scores static segments higher than dynamic ones,
+                so /dashboard, /login, /planes, etc. all resolve to their own
+                routes above and never reach this rule. */}
+            <Route path="/:slug" element={<PublicCatalog />} />
             <Route path="*" element={<NotFound />} />
           </Route>
         </RouterRoutes>

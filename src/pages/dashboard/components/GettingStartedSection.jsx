@@ -4,7 +4,7 @@ import Icon from "components/AppIcon";
 import ProgressCircle from "components/common/ProgressCircle";
 import { QRCodeSVG } from "qrcode.react";
 import { getCatalogShareMessage } from "../../../utils/branding";
-import { getPublicCatalogRelativePath } from "../../../config/appUrl";
+// getPublicCatalogRelativePath removed — open_catalog now navigates to the short URL (/:slug)
 import { hasCompletedCatalogShare } from "../../../utils/catalogShareCelebration";
 
 const STEPS = [
@@ -116,7 +116,7 @@ export default function GettingStartedSection({
       { key: "first_product", label: "Crear al menos 1 producto", done: hasProducts, cta: "Crear producto" },
     ],
     [
-      { key: "share_catalog", label: "Copiar link del catálogo", done: hasSharedCatalog, cta: "Copiar link" },
+      { key: "share_catalog", label: "Compartir catálogo por WhatsApp", done: hasSharedCatalog, cta: "Compartir por WhatsApp" },
     ],
   ]), [hasLogo, hasBanner, hasWhatsapp, hasProducts, hasSharedCatalog]);
 
@@ -162,7 +162,7 @@ export default function GettingStartedSection({
         navigate(card?.path);
         break;
       case "open_catalog":
-        if (business?.slug) navigate(getPublicCatalogRelativePath(business.slug));
+        if (business?.slug) navigate('/' + business.slug);
         else if (catalogUrl) window.location.href = catalogUrl;
         break;
       case "share_whatsapp": {
@@ -192,7 +192,15 @@ export default function GettingStartedSection({
     const tasks = stepTaskGroups?.[idx] || [];
     const firstPendingTask = tasks.find((t) => !t.done) || null;
     if (step?.number === 3) {
-      handleCopyLink();
+      if (catalogUrl) {
+        const msg = getCatalogShareMessage({
+          businessName: business?.name,
+          catalogUrl,
+          plan: business?.planSlug,
+        });
+        window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank', 'noopener,noreferrer');
+        onCatalogShare?.();
+      }
     } else {
       navigate(step?.path);
     }
@@ -202,7 +210,7 @@ export default function GettingStartedSection({
   const getStepMeta = (step, idx) => {
     const tasks = stepTaskGroups?.[idx] || [];
     const pending = tasks.find((t) => !t.done) || null;
-    const cta = pending?.cta || (step.number === 3 ? "Copiar link" : "Completado");
+    const cta = pending?.cta || (step.number === 3 ? "Compartir por WhatsApp" : "Completado");
     const description = tasks.map((t) => `${t.done ? "✔" : "○"} ${t.label}`).join(" · ");
     return { tasks, cta, description };
   };
@@ -385,7 +393,7 @@ export default function GettingStartedSection({
                         disabled={!isActive && !isCompleted}
                         className="w-full sm:w-auto text-xs font-semibold px-4 py-2.5 rounded-xl transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
                         style={{
-                          backgroundColor: isCompleted ? "rgba(124,58,237,0.08)" : isActive ? "var(--color-primary)" : "rgba(0,0,0,0.06)",
+                          backgroundColor: isCompleted ? "rgba(124,58,237,0.08)" : isActive ? (step.number === 3 ? "#059669" : "var(--color-primary)") : "rgba(0,0,0,0.06)",
                           color: isCompleted ? "var(--color-primary)" : isActive ? "#FFFFFF" : "var(--color-muted-foreground)",
                           fontFamily: "var(--font-caption)",
                         }}
@@ -443,7 +451,7 @@ export default function GettingStartedSection({
                         disabled={!isActive && !isCompleted}
                         className="text-xs font-semibold px-3 py-2 rounded-xl transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed w-full"
                         style={{
-                          backgroundColor: isCompleted ? "rgba(124,58,237,0.08)" : isActive ? "var(--color-primary)" : "rgba(0,0,0,0.06)",
+                          backgroundColor: isCompleted ? "rgba(124,58,237,0.08)" : isActive ? (step.number === 3 ? "#059669" : "var(--color-primary)") : "rgba(0,0,0,0.06)",
                           color: isCompleted ? "var(--color-primary)" : isActive ? "#FFFFFF" : "var(--color-muted-foreground)",
                           fontFamily: "var(--font-caption)",
                         }}

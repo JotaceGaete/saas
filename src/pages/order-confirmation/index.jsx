@@ -5,7 +5,7 @@ import { createOrder, getBusinessBySlug } from '../../services/waBusinessService
 import Icon from '../../components/AppIcon';
 import { formatPriceCatalog, resolveCatalogCurrency } from '../../utils/formatPrice';
 import { getBusinessLocale } from '../../lib/locale/businessLocale';
-import { getPublicCatalogRelativePath, getWhatsAppOrderCatalogUrl } from '../../config/appUrl';
+import { getWhatsAppOrderCatalogUrl } from '../../config/appUrl';
 import { getBrandingMessage } from '../../utils/branding';
 import { isRestaurantBusiness } from '../../utils/businessType';
 import { normalizeOptionalCustomerPhone } from '../../utils/customerPhone';
@@ -59,8 +59,8 @@ export default function OrderConfirmation() {
   const formatPrice = (amount) => {
     const currency = resolveCatalogCurrency(business, checkoutMoney);
     const numeric = Number(amount);
-    if (!Number.isFinite(numeric)) return formatPriceCatalog(0, currency);
-    return formatPriceCatalog(numeric, currency);
+    if (!Number.isFinite(numeric)) return formatPriceCatalog(0, currency, checkoutMoney.countryCode);
+    return formatPriceCatalog(numeric, currency, checkoutMoney.countryCode);
   };
 
   const validate = () => {
@@ -188,7 +188,7 @@ export default function OrderConfirmation() {
       setCheckoutState('success');
       setSubmitInfo('Pedido confirmado. Te abrimos WhatsApp para enviarlo.');
       clearCart();
-      navigate(getPublicCatalogRelativePath(slug));
+      navigate('/' + slug);
     } catch (e) {
       console.error('[checkout] unexpected error', e?.message || e);
       setCheckoutState('error');
@@ -206,7 +206,7 @@ export default function OrderConfirmation() {
             <Icon name="ShoppingCart" size={32} color="var(--color-muted-foreground)" />
           </div>
           <h1 className="text-xl font-bold mb-2" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>Tu carrito está vacío</h1>
-          <button onClick={() => navigate(getPublicCatalogRelativePath(slug))} className="mt-4 px-5 py-2.5 rounded-xl text-sm font-semibold text-white" style={{ backgroundColor: 'var(--color-primary)', fontFamily: 'var(--font-caption)' }}>Ver catálogo</button>
+          <button onClick={() => navigate('/' + slug)} className="mt-4 px-5 py-2.5 rounded-xl text-sm font-semibold text-white" style={{ backgroundColor: 'var(--color-primary)', fontFamily: 'var(--font-caption)' }}>Ver catálogo</button>
         </div>
       </div>
     );
@@ -217,7 +217,7 @@ export default function OrderConfirmation() {
       {/* Header */}
       <header className="sticky top-0 z-40 border-b" style={{ backgroundColor: '#FFFFFF', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-xs)' }}>
         <div className="max-w-lg mx-auto px-4 py-3 flex items-center gap-3">
-          <button onClick={() => navigate(getPublicCatalogRelativePath(slug))} className="w-9 h-9 rounded-xl flex items-center justify-center transition-colors hover:bg-gray-100" style={{ color: 'var(--color-foreground)' }}>
+          <button onClick={() => navigate('/' + slug)} className="w-9 h-9 rounded-xl flex items-center justify-center transition-colors hover:bg-gray-100" style={{ color: 'var(--color-foreground)' }}>
             <Icon name="ArrowLeft" size={18} color="var(--color-foreground)" />
           </button>
           <h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>Confirmar pedido</h1>

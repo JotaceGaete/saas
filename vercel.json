@@ -160,6 +160,10 @@
       "destination": "/api/seo?slug=:slug&publicPath=catalog"
     },
     {
+      "source": "/:slug",
+      "destination": "/api/seo?slug=:slug&publicPath=short"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

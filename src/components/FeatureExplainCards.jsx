@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Icon from 'components/AppIcon';
-import { getPublicCatalogRelativePath } from 'config/appUrl';
+import { getPublicCatalogUrl } from 'config/appUrl';
 
 /** Items usados en login/registro/dashboard con label, descripción y ruta */
 export const FEATURE_ITEMS = [
@@ -51,7 +51,7 @@ export default function FeatureExplainCards({ variant = 'grid', catalogUrl, busi
   const handleGoTo = (item) => {
     if (item?.openCatalog && (catalogUrl || businessSlug)) {
       if (catalogUrl) window.open(catalogUrl, '_blank', 'noopener,noreferrer');
-      else if (businessSlug) navigate(getPublicCatalogRelativePath(businessSlug));
+      else if (businessSlug) window.open(getPublicCatalogUrl(businessSlug), '_blank', 'noopener,noreferrer');
     } else if (item?.path) {
       navigate(item.path);
     }
