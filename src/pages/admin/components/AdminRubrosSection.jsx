@@ -27,6 +27,8 @@ export default function AdminRubrosSection() {
   const [editingRubro, setEditingRubro] = useState(null);
   const [editingCategory, setEditingCategory] = useState(null);
   const [newRubroName, setNewRubroName] = useState('');
+  const [newRubroSlug, setNewRubroSlug] = useState('');
+  const [newRubroSlugDirty, setNewRubroSlugDirty] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState({});
   const [saving, setSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -68,17 +70,28 @@ export default function AdminRubrosSection() {
   }, [rubros, searchQuery]);
 
   const slugFromName = (name) =>
-    (name || '').toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') || 'rubro';
+    String(name || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, '-')
+      .replace(/[^a-z0-9-]/g, '')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '') || 'rubro';
 
   const handleCreateRubro = async (e) => {
     e?.preventDefault?.();
     const name = newRubroName?.trim();
     if (!name) return;
+    const slug = newRubroSlug.trim() || slugFromName(name);
     setSaving(true);
-    const { data, error: err } = await createRubro({ name, slug: slugFromName(name) });
+    const { data, error: err } = await createRubro({ name, slug });
     setSaving(false);
     if (err) { setError(err?.message || 'Error al crear rubro'); return; }
     setNewRubroName('');
+    setNewRubroSlug('');
+    setNewRubroSlugDirty(false);
     await loadRubros();
   };
 
@@ -153,27 +166,43 @@ export default function AdminRubrosSection() {
         </div>
       )}
 
-      <div className="flex flex-wrap items-center gap-2">
-        <form onSubmit={handleCreateRubro} className="flex gap-2 flex-wrap items-center">
+      <form onSubmit={handleCreateRubro} className="flex gap-2 flex-wrap items-end">
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Nombre</label>
           <input
             type="text"
             value={newRubroName}
-            onChange={(e) => setNewRubroName(e?.target?.value)}
-            placeholder="Nuevo rubro (ej: Ropa)"
-            className="px-3 py-2 rounded-lg border text-sm w-48"
+            onChange={(e) => {
+              const v = e.target.value;
+              setNewRubroName(v);
+              if (!newRubroSlugDirty) setNewRubroSlug(slugFromName(v));
+            }}
+            placeholder="Ej: Botillería"
+            className="px-3 py-2 rounded-lg border text-sm w-44"
             style={{ borderColor: 'var(--color-border)', fontFamily: 'var(--font-caption)' }}
           />
-          <button
-            type="submit"
-            disabled={saving || !newRubroName?.trim()}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-50"
-            style={{ backgroundColor: 'var(--color-primary)', fontFamily: 'var(--font-caption)' }}
-          >
-            <Icon name="Plus" size={14} color="#fff" />
-            Agregar rubro
-          </button>
-        </form>
-      </div>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Slug</label>
+          <input
+            type="text"
+            value={newRubroSlug}
+            onChange={(e) => { setNewRubroSlug(e.target.value); setNewRubroSlugDirty(true); }}
+            placeholder="ej: botilleria"
+            className="px-3 py-2 rounded-lg border text-sm w-44 font-mono"
+            style={{ borderColor: 'var(--color-border)', fontFamily: 'var(--font-caption)' }}
+          />
+        </div>
+        <button
+          type="submit"
+          disabled={saving || !newRubroName?.trim()}
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-50"
+          style={{ backgroundColor: 'var(--color-primary)', fontFamily: 'var(--font-caption)' }}
+        >
+          <Icon name="Plus" size={14} color="#fff" />
+          Agregar rubro
+        </button>
+      </form>
 
       <div className="relative">
         <span className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--color-muted-foreground)' }}>
@@ -223,12 +252,19 @@ export default function AdminRubrosSection() {
                     </button>
                   </td>
                   <td className="px-4 py-2">
-                    {editingRubro === rubro.id ? (
+                    {editingRubro?.id === rubro.id ? (
                       <input
                         type="text"
-                        defaultValue={rubro.name}
-                        onKeyDown={(e) => { if (e?.key === 'Enter') handleUpdateRubro(rubro.id, { name: e?.target?.value }); if (e?.key === 'Escape') setEditingRubro(null); }}
-                        onBlur={(e) => { const v = e?.target?.value?.trim(); if (v && v !== rubro.name) handleUpdateRubro(rubro.id, { name: v }); setEditingRubro(null); }}
+                        value={editingRubro.name}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setEditingRubro((prev) => ({
+                            ...prev,
+                            name: v,
+                            slug: prev.slugDirty ? prev.slug : slugFromName(v),
+                          }));
+                        }}
+                        onKeyDown={(e) => { if (e.key === 'Escape') setEditingRubro(null); }}
                         className="px-2 py-1 text-sm border rounded w-40"
                         style={{ borderColor: 'var(--color-border)' }}
                         autoFocus
@@ -237,11 +273,45 @@ export default function AdminRubrosSection() {
                       <span className="font-medium">{rubro.name}</span>
                     )}
                   </td>
-                  <td className="px-4 py-2 text-sm" style={{ color: 'var(--color-muted-foreground)' }}>{rubro.slug}</td>
+                  <td className="px-4 py-2 text-sm" style={{ color: 'var(--color-muted-foreground)' }}>
+                    {editingRubro?.id === rubro.id ? (
+                      <input
+                        type="text"
+                        value={editingRubro.slug}
+                        onChange={(e) =>
+                          setEditingRubro((prev) => ({ ...prev, slug: e.target.value, slugDirty: true }))
+                        }
+                        onKeyDown={(e) => { if (e.key === 'Escape') setEditingRubro(null); }}
+                        className="px-2 py-1 text-sm border rounded w-36 font-mono"
+                        style={{ borderColor: 'var(--color-border)' }}
+                      />
+                    ) : (
+                      rubro.slug
+                    )}
+                  </td>
                   <td className="px-4 py-2 text-right">
-                    {editingRubro !== rubro.id && (
+                    {editingRubro?.id === rubro.id ? (
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateRubro(rubro.id, { name: editingRubro.name, slug: editingRubro.slug })}
+                          className="p-1.5 rounded hover:bg-green-50 text-green-600"
+                          title="Guardar"
+                        >
+                          <Icon name="Check" size={14} color="currentColor" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingRubro(null)}
+                          className="p-1.5 rounded hover:bg-muted"
+                          title="Cancelar"
+                        >
+                          <Icon name="X" size={14} color="currentColor" />
+                        </button>
+                      </div>
+                    ) : (
                       <>
-                        <button type="button" onClick={() => setEditingRubro(rubro.id)} className="p-1.5 rounded hover:bg-muted mr-1" title="Editar"><Icon name="Pencil" size={14} color="currentColor" /></button>
+                        <button type="button" onClick={() => setEditingRubro({ id: rubro.id, name: rubro.name, slug: rubro.slug, slugDirty: false })} className="p-1.5 rounded hover:bg-muted mr-1" title="Editar"><Icon name="Pencil" size={14} color="currentColor" /></button>
                         <button type="button" onClick={() => handleDeleteRubro(rubro.id)} className="p-1.5 rounded hover:bg-red-50 text-red-600" title="Eliminar"><Icon name="Trash2" size={14} color="currentColor" /></button>
                       </>
                     )}
