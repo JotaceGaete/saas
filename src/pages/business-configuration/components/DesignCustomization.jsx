@@ -388,7 +388,7 @@ export default function DesignCustomization({
             className="relative rounded-xl overflow-hidden border-2 flex items-center justify-center group cursor-pointer transition-all hover:border-violet-400"
             style={{
               borderColor: design?.headerImageUrl ? primaryColor : 'var(--color-border)',
-              backgroundColor: (design?.headerImageUrl && (design?.coverFit || 'cover') === 'contain') ? (primaryColor || '#f0f0f8') : '#f0f0f8',
+              backgroundColor: '#f0f0f8',
               aspectRatio: '16/5',
               minHeight: '80px',
             }}
@@ -396,15 +396,28 @@ export default function DesignCustomization({
           >
             {design?.headerImageUrl ? (
               <>
+                {/* Capa fondo blur — preview del smart banner */}
+                <Image
+                  key={`bg-${design?.headerImageUrl}`}
+                  src={design?.headerImageUrl}
+                  alt=""
+                  aria-hidden="true"
+                  className="absolute inset-0 w-full h-full"
+                  style={{
+                    objectFit: 'cover',
+                    objectPosition: 'center',
+                    filter: 'blur(10px)',
+                    transform: 'scale(1.15)',
+                    opacity: 0.75,
+                  }}
+                />
+                {/* Capa principal: imagen completa */}
                 <Image
                   key={design?.headerImageUrl}
                   src={design?.headerImageUrl}
                   alt="Imagen de portada del catálogo"
-                  className="w-full h-full object-cover"
-                  style={{
-                    objectFit: (design?.coverFit || 'cover') === 'contain' ? 'contain' : 'cover',
-                    objectPosition: (design?.coverFit || 'cover') === 'cover' ? (design?.coverPosition || 'center') : 'center',
-                  }}
+                  className="absolute inset-0 w-full h-full"
+                  style={{ objectFit: 'contain', objectPosition: 'center' }}
                 />
                 <div
                   className="absolute inset-0 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity gap-1"
@@ -427,7 +440,7 @@ export default function DesignCustomization({
                 <span className="text-xs" style={{ color: '#a0a0b8', fontFamily: 'var(--font-caption)' }}>
                   {uploadingCover ? 'Subiendo...' : 'Haz clic para subir una imagen de portada'}
                 </span>
-                <span className="text-xs" style={{ color: '#c0c0d0', fontFamily: 'var(--font-caption)' }}>Recomendado: 1200×400px</span>
+                <span className="text-xs" style={{ color: '#c0c0d0', fontFamily: 'var(--font-caption)' }}>Recomendado: 1200×630px</span>
               </div>
             )}
           </div>
@@ -452,60 +465,6 @@ export default function DesignCustomization({
               </button>
             )}
           </div>
-          {/* Ajuste de visualización del banner */}
-          {design?.headerImageUrl && (
-            <div className="flex flex-col gap-3 pt-2 border-t" style={{ borderColor: 'var(--color-border)' }}>
-              <p className="text-xs font-semibold" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Visualización del banner</p>
-              <div className="flex flex-wrap gap-3">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="coverFit"
-                    checked={(design?.coverFit || 'cover') === 'cover'}
-                    onChange={() => onChange?.({ ...design, coverFit: 'cover' })}
-                    className="rounded-full border-2"
-                    style={{ borderColor: 'var(--color-border)', accentColor: primaryColor }}
-                  />
-                  <span className="text-xs" style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-caption)' }}>Rellenar banner</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="coverFit"
-                    checked={(design?.coverFit || 'cover') === 'contain'}
-                    onChange={() => onChange?.({ ...design, coverFit: 'contain' })}
-                    className="rounded-full border-2"
-                    style={{ borderColor: 'var(--color-border)', accentColor: primaryColor }}
-                  />
-                  <span className="text-xs" style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-caption)' }}>Mostrar imagen completa</span>
-                </label>
-              </div>
-              {(design?.coverFit || 'cover') === 'cover' && (
-                <>
-                  <p className="text-xs font-semibold mt-1" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Posición de la imagen</p>
-                  <div className="flex flex-wrap gap-3">
-                    {[
-                      { value: 'top', label: 'Arriba' },
-                      { value: 'center', label: 'Centro' },
-                      { value: 'bottom', label: 'Abajo' },
-                    ].map(({ value, label }) => (
-                      <label key={value} className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="radio"
-                          name="coverPosition"
-                          checked={(design?.coverPosition || 'center') === value}
-                          onChange={() => onChange?.({ ...design, coverPosition: value })}
-                          className="rounded-full border-2"
-                          style={{ borderColor: 'var(--color-border)', accentColor: primaryColor }}
-                        />
-                        <span className="text-xs" style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-caption)' }}>{label}</span>
-                      </label>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-          )}
         </div>
       </SectionCard>
 

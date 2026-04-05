@@ -529,8 +529,6 @@ function CatalogInner({ slug }) {
 
   const primaryColor = design?.primaryColor || '#25D366';
   const primaryColorDark = darkenHex(primaryColor);
-  const coverFit = design?.coverFit === 'contain' ? 'contain' : 'cover';
-  const coverPosition = ['top', 'center', 'bottom'].includes(design?.coverPosition) ? design.coverPosition : 'center';
   const theme = { primaryColor, primaryColorDark, primaryRgba: (a) => hexToRgba(primaryColor, a) };
   const cardSettings = { showPrice: true, showDescription: true, showStock: false, showWhatsApp: true, ...design?.cardSettings };
   const storeHeader = { showStoreName: true, showDescription: true, showWhatsAppButton: true, ...design?.storeHeader };
@@ -680,27 +678,41 @@ function CatalogInner({ slug }) {
 
       {/* ── Header: banner + tarjeta de identidad ── */}
       <div className="bg-white shadow-sm pt-[calc(3.5rem+var(--safe-area-top))] md:pt-0">
-        {/* 1. Banner — solo fondo visual, sin texto encima */}
+        {/* 1. Banner — smart banner: imagen completa sobre fondo difuminado */}
         <div
           className="h-[80px] sm:h-[110px] md:h-[130px] w-full relative overflow-hidden"
           style={{
-            background: business?.coverImageUrl
-              ? (coverFit === 'contain' ? primaryColor : undefined)
-              : `linear-gradient(135deg, ${primaryColor} 0%, ${primaryColorDark} 50%, ${primaryColorDark} 100%)`
+            background: !business?.coverImageUrl
+              ? `linear-gradient(135deg, ${primaryColor} 0%, ${primaryColorDark} 50%, ${primaryColorDark} 100%)`
+              : undefined,
           }}
         >
           {business?.coverImageUrl && (
-            <img
-              src={cfImageUrl(business.coverImageUrl, cfCoverProfile)}
-              alt=""
-              role="presentation"
-              className="w-full h-full"
-              style={{
-                objectFit: coverFit,
-                objectPosition: coverFit === 'cover' ? coverPosition : 'center',
-              }}
-              onError={buildCfImageErrorHandler(business.coverImageUrl)}
-            />
+            <>
+              {/* Capa fondo: imagen con cover + blur para rellenar sin bordes vacíos */}
+              <img
+                src={cfImageUrl(business.coverImageUrl, cfCoverProfile)}
+                aria-hidden="true"
+                className="absolute inset-0 w-full h-full"
+                style={{
+                  objectFit: 'cover',
+                  objectPosition: 'center',
+                  filter: 'blur(14px)',
+                  transform: 'scale(1.15)',
+                  opacity: 0.75,
+                }}
+                onError={buildCfImageErrorHandler(business.coverImageUrl)}
+              />
+              {/* Capa principal: imagen completa sin recorte */}
+              <img
+                src={cfImageUrl(business.coverImageUrl, cfCoverProfile)}
+                alt=""
+                role="presentation"
+                className="absolute inset-0 w-full h-full"
+                style={{ objectFit: 'contain', objectPosition: 'center' }}
+                onError={buildCfImageErrorHandler(business.coverImageUrl)}
+              />
+            </>
           )}
         </div>
 
