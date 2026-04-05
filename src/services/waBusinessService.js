@@ -318,7 +318,7 @@ const mapBusinessFromDb = (row) => {
   defaultDomain: 'https://go.ventalink.app',
   currency: row?.currency,
   logoUrl: row?.logo_url || designSettings?.logoUrl || null,
-  coverImageUrl: row?.cover_image_url || designSettings?.headerImageUrl || designSettings?.coverImageUrl || null,
+  coverImageUrl: designSettings?.headerImageUrl || designSettings?.coverImageUrl || row?.cover_image_url || null,
   ogImageUrl: row?.og_image_url || null,
   slug: row?.slug,
   isActive: row?.is_active,
