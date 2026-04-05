@@ -22,8 +22,6 @@ function buildDesignPreviewFlashKey(design, logoUrl, coverImageUrl) {
     d.logoUrl ?? '',
     logoUrl ?? '',
     coverImageUrl ?? '',
-    d.coverFit,
-    d.coverPosition,
     d.catalogStyle,
     d.font,
     d.catalogLayout,
@@ -231,8 +229,6 @@ export default function MobilePreviewPanel({
   const font = design?.font || 'Inter';
   const designLogoUrl = design?.logoUrl || logoUrl;
   const headerImageUrl = (coverImageUrl && coverImageUrl.trim()) ? coverImageUrl.trim() : (design?.headerImageUrl || '');
-  const coverFit = design?.coverFit === 'contain' ? 'contain' : 'cover';
-  const coverPosition = ['top', 'center', 'bottom'].includes(design?.coverPosition) ? design.coverPosition : 'center';
   const catalogLayout = design?.catalogLayout || 'list';
   const catalogViewMode = design?.catalogViewMode === 'compact' ? 'compact' : 'featured';
   const catalogStyle = design?.catalogStyle || 'clasico';
@@ -316,25 +312,31 @@ export default function MobilePreviewPanel({
         {/* Screen content */}
         <div className="h-full overflow-y-auto" style={{ backgroundColor: t?.screenBg }}>
 
-          {/* Cover image banner */}
+          {/* Cover image banner — smart banner: imagen completa sobre fondo difuminado */}
           {headerImageUrl ? (
             <div className="relative w-full">
-              <div
-                className="relative w-full h-[72px] overflow-hidden"
-                style={{
-                  backgroundColor: coverFit === 'contain' ? (primaryColor || '#7C3AED') : undefined,
-                }}
-              >
+              <div className="relative w-full h-[72px] overflow-hidden">
+                {/* Capa fondo: blur */}
+                <Image
+                  src={headerImageUrl}
+                  alt=""
+                  aria-hidden="true"
+                  className="absolute inset-0 w-full h-full"
+                  style={{
+                    objectFit: 'cover',
+                    objectPosition: 'center',
+                    filter: 'blur(10px)',
+                    transform: 'scale(1.15)',
+                    opacity: 0.75,
+                  }}
+                />
+                {/* Capa principal: imagen completa */}
                 <Image
                   src={headerImageUrl}
                   alt="Portada del catálogo en vista previa"
-                  className="w-full h-full"
-                  style={{
-                    objectFit: coverFit,
-                    objectPosition: coverFit === 'cover' ? coverPosition : 'center',
-                  }}
+                  className="absolute inset-0 w-full h-full"
+                  style={{ objectFit: 'contain', objectPosition: 'center' }}
                 />
-                <div className="absolute inset-0" style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.45) 100%)' }} />
               </div>
               <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 z-10">
                 <div
