@@ -678,9 +678,9 @@ function CatalogInner({ slug }) {
 
       {/* ── Header: banner + tarjeta de identidad ── */}
       <div className="bg-white shadow-sm pt-[calc(3.5rem+var(--safe-area-top))] md:pt-0">
-        {/* 1. Banner — smart banner: imagen completa sobre fondo difuminado */}
+        {/* 1. Banner — altura mínima fija + cover para que llene el bloque (sin miniatura) */}
         <div
-          className="h-[80px] sm:h-[110px] md:h-[130px] w-full relative overflow-hidden"
+          className="relative w-full min-h-[180px] md:min-h-[240px] lg:min-h-[300px] overflow-hidden"
           style={{
             background: !business?.coverImageUrl
               ? `linear-gradient(135deg, ${primaryColor} 0%, ${primaryColorDark} 50%, ${primaryColorDark} 100%)`
@@ -689,27 +689,24 @@ function CatalogInner({ slug }) {
         >
           {business?.coverImageUrl && (
             <>
-              {/* Capa fondo: imagen con cover + blur para rellenar sin bordes vacíos */}
+              {/* Capa fondo: cover + blur (relleno si la capa superior falla parcialmente) */}
               <img
                 src={cfImageUrl(business.coverImageUrl, cfCoverProfile)}
                 aria-hidden="true"
-                className="absolute inset-0 w-full h-full"
+                className="absolute inset-0 h-full w-full object-cover object-center"
                 style={{
-                  objectFit: 'cover',
-                  objectPosition: 'center',
                   filter: 'blur(14px)',
                   transform: 'scale(1.15)',
                   opacity: 0.75,
                 }}
                 onError={buildCfImageErrorHandler(business.coverImageUrl)}
               />
-              {/* Capa principal: imagen completa sin recorte */}
+              {/* Capa principal: cubre todo el contenedor, centrada */}
               <img
                 src={cfImageUrl(business.coverImageUrl, cfCoverProfile)}
                 alt=""
                 role="presentation"
-                className="absolute inset-0 w-full h-full"
-                style={{ objectFit: 'contain', objectPosition: 'center' }}
+                className="absolute inset-0 h-full w-full object-cover object-center"
                 onError={buildCfImageErrorHandler(business.coverImageUrl)}
               />
             </>
