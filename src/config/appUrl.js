@@ -93,12 +93,15 @@ export function buildPublicCatalogUrl(slug, route = PUBLIC_CATALOG_SHARE_SEGMENT
 }
 
 /**
- * Enlace compartible estándar: `${APP_ORIGIN}/catalogo/:slug`.
+ * Enlace compartible estándar: URL corta `${APP_ORIGIN}/:slug`.
+ * getWhatsAppOrderCatalogUrl, QR y copiar-link delegan aquí.
  * @param {string} slug
  * @returns {string}
  */
 export function getPublicCatalogUrl(slug) {
-  return buildPublicCatalogUrl(slug, PUBLIC_CATALOG_SHARE_SEGMENT);
+  const s = String(slug || '').trim();
+  if (!s) return '';
+  return `${APP_ORIGIN}/${s}`;
 }
 
 /**
