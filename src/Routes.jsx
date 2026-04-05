@@ -128,6 +128,10 @@ const Routes = () => {
             <Route path="/admin/businesses/:businessId" element={<RequireAdmin><AdminBusinessDetailPage /></RequireAdmin>} />
             <Route path="/admin/audit-log" element={<RequireAdmin><AdminAuditLogPage /></RequireAdmin>} />
             <Route path="/admin/emails" element={<RequireAdmin><AdminEmailsPage /></RequireAdmin>} />
+            {/* URL corta del catálogo: /:slug → PublicCatalog.
+                React Router v6 prioriza estáticos sobre dinámicos,
+                por lo que /dashboard, /login, /planes, etc. nunca caen aquí. */}
+            <Route path="/:slug" element={<PublicCatalog />} />
             <Route path="*" element={<NotFound />} />
           </Route>
         </RouterRoutes>

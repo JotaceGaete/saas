@@ -63,8 +63,9 @@ async function handleCatalogHtml(request) {
   if (!slug) {
     return new Response('Slug required', { status: 400 });
   }
-  /** Ruta solicitada (/catalog o /catalogo); la URL canónica OG siempre es /catalogo/:slug */
-  const publicPath = url.searchParams.get('publicPath') === 'catalog' ? 'catalog' : 'catalogo';
+  /** Ruta de entrada: 'catalog', 'catalogo', o 'short' (URL corta /:slug).
+   *  La URL canónica OG es siempre /catalogo/:slug independientemente de la entrada. */
+  const publicPath = url.searchParams.get('publicPath') || 'catalogo';
 
   const origin = getOriginCatalog(request);
   if (!origin) {
@@ -92,6 +93,25 @@ async function handleCatalogHtml(request) {
     .maybeSingle();
 
   if (error || !row) {
+    // /:slug puede coincidir con una ruta de app que escapó al catch-all de
+    // Vercel. Servimos index.html para que React Router lo maneje en cliente.
+    if (publicPath === 'short') {
+      try {
+        const indexUrl = `${origin}/index.html`;
+        const res = await fetch(indexUrl, { headers: { Accept: 'text/html' } });
+        if (!res.ok) throw new Error(`index.html ${res.status}`);
+        const html = await res.text();
+        return new Response(html, {
+          status: 200,
+          headers: {
+            'Content-Type': 'text/html; charset=utf-8',
+            'Cache-Control': 'no-store, no-cache',
+          },
+        });
+      } catch (_) {
+        return new Response(null, { status: 404 });
+      }
+    }
     return new Response(null, { status: 404 });
   }
 
