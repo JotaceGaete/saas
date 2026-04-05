@@ -29,7 +29,8 @@ function isAllowedOriginHost(origin: string): boolean {
       u.origin === origin &&
       (u.hostname === "ventalink.app" ||
         u.hostname.endsWith(".ventalink.app") ||
-        u.hostname === "app.gong.cl")
+        u.hostname === "app.gong.cl" ||
+        u.hostname.endsWith(".vercel.app")) // preview deployments
     );
   } catch {
     return false;
