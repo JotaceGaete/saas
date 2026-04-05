@@ -678,9 +678,9 @@ function CatalogInner({ slug }) {
 
       {/* ── Header: banner + tarjeta de identidad ── */}
       <div className="bg-white shadow-sm pt-[calc(3.5rem+var(--safe-area-top))] md:pt-0">
-        {/* 1. Banner — smart banner: imagen completa sobre fondo difuminado */}
+        {/* 1. Banner — smart banner: stage central sobre fondo blur */}
         <div
-          className="h-[80px] sm:h-[110px] md:h-[130px] w-full relative overflow-hidden"
+          className="h-[196px] sm:h-[240px] md:h-[300px] w-full relative overflow-hidden"
           style={{
             background: !business?.coverImageUrl
               ? `linear-gradient(135deg, ${primaryColor} 0%, ${primaryColorDark} 50%, ${primaryColorDark} 100%)`
@@ -689,7 +689,7 @@ function CatalogInner({ slug }) {
         >
           {business?.coverImageUrl && (
             <>
-              {/* Capa fondo: imagen con cover + blur para rellenar sin bordes vacíos */}
+              {/* Capa fondo: blur full-bleed */}
               <img
                 src={cfImageUrl(business.coverImageUrl, cfCoverProfile)}
                 aria-hidden="true"
@@ -697,21 +697,32 @@ function CatalogInner({ slug }) {
                 style={{
                   objectFit: 'cover',
                   objectPosition: 'center',
-                  filter: 'blur(14px)',
-                  transform: 'scale(1.15)',
-                  opacity: 0.75,
+                  filter: 'blur(16px)',
+                  transform: 'scale(1.2)',
+                  opacity: 0.7,
                 }}
                 onError={buildCfImageErrorHandler(business.coverImageUrl)}
               />
-              {/* Capa principal: imagen completa sin recorte */}
-              <img
-                src={cfImageUrl(business.coverImageUrl, cfCoverProfile)}
-                alt=""
-                role="presentation"
-                className="absolute inset-0 w-full h-full"
-                style={{ objectFit: 'contain', objectPosition: 'center' }}
-                onError={buildCfImageErrorHandler(business.coverImageUrl)}
-              />
+              {/* Stage central: ancho derivado de la altura disponible con ratio 1200/630 */}
+              <div className="absolute inset-0 flex items-center justify-center p-3 md:p-4">
+                <div
+                  className="h-full max-w-full overflow-hidden"
+                  style={{
+                    aspectRatio: '1200 / 630',
+                    borderRadius: '10px',
+                    boxShadow: '0 4px 28px rgba(0,0,0,0.4)',
+                  }}
+                >
+                  <img
+                    src={cfImageUrl(business.coverImageUrl, cfCoverProfile)}
+                    alt=""
+                    role="presentation"
+                    className="w-full h-full"
+                    style={{ objectFit: 'contain', objectPosition: 'center', display: 'block' }}
+                    onError={buildCfImageErrorHandler(business.coverImageUrl)}
+                  />
+                </div>
+              </div>
             </>
           )}
         </div>

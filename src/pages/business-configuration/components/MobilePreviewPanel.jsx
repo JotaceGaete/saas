@@ -312,10 +312,10 @@ export default function MobilePreviewPanel({
         {/* Screen content */}
         <div className="h-full overflow-y-auto" style={{ backgroundColor: t?.screenBg }}>
 
-          {/* Cover image banner — smart banner: imagen completa sobre fondo difuminado */}
+          {/* Cover image banner — smart banner con stage central */}
           {headerImageUrl ? (
             <div className="relative w-full">
-              <div className="relative w-full h-[72px] overflow-hidden">
+              <div className="relative w-full h-[96px] overflow-hidden">
                 {/* Capa fondo: blur */}
                 <Image
                   src={headerImageUrl}
@@ -326,17 +326,24 @@ export default function MobilePreviewPanel({
                     objectFit: 'cover',
                     objectPosition: 'center',
                     filter: 'blur(10px)',
-                    transform: 'scale(1.15)',
-                    opacity: 0.75,
+                    transform: 'scale(1.2)',
+                    opacity: 0.7,
                   }}
                 />
-                {/* Capa principal: imagen completa */}
-                <Image
-                  src={headerImageUrl}
-                  alt="Portada del catálogo en vista previa"
-                  className="absolute inset-0 w-full h-full"
-                  style={{ objectFit: 'contain', objectPosition: 'center' }}
-                />
+                {/* Stage central */}
+                <div className="absolute inset-0 flex items-center justify-center p-2">
+                  <div
+                    className="h-full max-w-full overflow-hidden"
+                    style={{ aspectRatio: '1200 / 630', borderRadius: '6px', boxShadow: '0 2px 12px rgba(0,0,0,0.35)' }}
+                  >
+                    <Image
+                      src={headerImageUrl}
+                      alt="Portada del catálogo en vista previa"
+                      className="w-full h-full"
+                      style={{ objectFit: 'contain', objectPosition: 'center', display: 'block' }}
+                    />
+                  </div>
+                </div>
               </div>
               <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 z-10">
                 <div

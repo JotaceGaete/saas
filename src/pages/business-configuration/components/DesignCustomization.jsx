@@ -396,7 +396,7 @@ export default function DesignCustomization({
           >
             {design?.headerImageUrl ? (
               <>
-                {/* Capa fondo blur — preview del smart banner */}
+                {/* Capa fondo blur */}
                 <Image
                   key={`bg-${design?.headerImageUrl}`}
                   src={design?.headerImageUrl}
@@ -407,18 +407,25 @@ export default function DesignCustomization({
                     objectFit: 'cover',
                     objectPosition: 'center',
                     filter: 'blur(10px)',
-                    transform: 'scale(1.15)',
-                    opacity: 0.75,
+                    transform: 'scale(1.2)',
+                    opacity: 0.7,
                   }}
                 />
-                {/* Capa principal: imagen completa */}
-                <Image
-                  key={design?.headerImageUrl}
-                  src={design?.headerImageUrl}
-                  alt="Imagen de portada del catálogo"
-                  className="absolute inset-0 w-full h-full"
-                  style={{ objectFit: 'contain', objectPosition: 'center' }}
-                />
+                {/* Stage central — preview del smart banner */}
+                <div className="absolute inset-0 flex items-center justify-center p-2">
+                  <div
+                    className="h-full max-w-full overflow-hidden"
+                    style={{ aspectRatio: '1200 / 630', borderRadius: '6px', boxShadow: '0 2px 10px rgba(0,0,0,0.3)' }}
+                  >
+                    <Image
+                      key={design?.headerImageUrl}
+                      src={design?.headerImageUrl}
+                      alt="Imagen de portada del catálogo"
+                      className="w-full h-full"
+                      style={{ objectFit: 'contain', objectPosition: 'center', display: 'block' }}
+                    />
+                  </div>
+                </div>
                 <div
                   className="absolute inset-0 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity gap-1"
                   style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
