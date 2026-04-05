@@ -206,18 +206,21 @@ export function buildCatalogOgSvg(params: CatalogOgSvgParams): string {
 </svg>`;
 }
 
+// Módulo-level init: se reutiliza entre invocaciones del mismo proceso (warm starts).
+let _resvgWasmInit: Promise<void> | null = null;
+
 export async function renderSvgToPng(svg: string): Promise<Uint8Array> {
-  let ResvgCtor: unknown | null = null;
-  const mod = await import("npm:@resvg/resvg-js@2.6.2");
-  ResvgCtor = (mod as { Resvg?: unknown; default?: unknown }).Resvg ?? (mod as { default?: unknown }).default ?? null;
-  if (!ResvgCtor || typeof ResvgCtor !== "function") {
-    throw new Error("Resvg not available");
+  // @resvg/resvg-wasm: WASM puro, sin binarios .node nativos → deployable en Deno Edge Functions.
+  // @resvg/resvg-js usa addons nativos compilados desde Rust → falla en bundle de Supabase
+  // con "No such file or directory (os error 2)" porque el .node no existe en el sandbox Deno.
+  // deno-lint-ignore no-explicit-any
+  const mod = await import("npm:@resvg/resvg-wasm@2.6.0") as any;
+  if (!_resvgWasmInit) {
+    _resvgWasmInit = mod.initWasm(
+      fetch("https://esm.sh/@resvg/resvg-wasm@2.6.0/index_bg.wasm"),
+    ) as Promise<void>;
   }
-  const pngBytes = new (ResvgCtor as new (s: string, o: unknown) => { render: () => { asPng: () => Uint8Array } })(
-    svg,
-    { fitTo: { mode: "width", value: OG_WIDTH } },
-  )
-    .render()
-    .asPng();
-  return pngBytes;
+  await _resvgWasmInit;
+  if (!mod.Resvg) throw new Error("Resvg WASM not available");
+  return new mod.Resvg(svg, { fitTo: { mode: "width", value: OG_WIDTH } }).render().asPng();
 }
