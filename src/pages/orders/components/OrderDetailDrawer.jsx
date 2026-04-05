@@ -234,13 +234,6 @@ export default function OrderDetailDrawer({
             <p className="text-xs mt-2" style={{ color: 'var(--color-muted-foreground)' }}>Actual: {PaymentStatusBadge && <PaymentStatusBadge paymentStatus={currentPaymentStatus} />}</p>
           </div>
 
-          <div
-            className="rounded-xl border p-3 text-xs"
-            style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-muted)', fontFamily: 'var(--font-caption)', color: 'var(--color-muted-foreground)' }}
-          >
-            Configura tus datos bancarios en <strong className="text-foreground">Configuración</strong> para poder copiar datos de transferencia y mensajes de cobro desde el detalle del pedido.
-          </div>
-
           <div>
             <p className="text-xs font-semibold mb-2" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Productos</p>
             <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--color-border)' }}>

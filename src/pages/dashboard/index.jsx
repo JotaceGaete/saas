@@ -37,7 +37,6 @@ import DailyRevenueCard from "./components/DailyRevenueCard";
 import ConversionFunnelCard from "./components/ConversionFunnelCard";
 import PlanUsageCard from "./components/PlanUsageCard";
 import TrialConversionBanner from "./components/TrialConversionBanner";
-import BankTransferSetupSlimAlert from "components/BankTransferSetupSlimAlert";
 import AiInsightsCard from "./components/AiInsightsCard";
 import { getCatalogShareMessage } from "../../utils/branding";
 import { getCountryLabels } from "../../config/country";
@@ -568,8 +567,6 @@ export default function Dashboard() {
         </PanelHeader>
 
         <DashboardLayoutContent className="page-enter">
-
-          <BankTransferSetupSlimAlert business={business} />
 
           {/* Banner: negocio sin configurar */}
           {!business && !businessLoading && (

@@ -88,14 +88,6 @@ function buildSavedConfigSnapshotFromBusiness(business) {
       rubroId: business?.rubroId || '',
     },
     design: designSnap,
-    bankForm: {
-      bankName: business?.bankName || '',
-      bankAccountType: business?.bankAccountType || '',
-      bankAccountNumber: business?.bankAccountNumber || '',
-      bankAccountHolder: business?.bankAccountHolder || '',
-      bankRut: business?.bankRut || '',
-      bankEmail: business?.bankEmail || '',
-    },
     orderMessageTemplate: business?.orderMessageTemplate || '',
     fullAddressInput: buildFullAddressLine({
       address: business?.address,
@@ -184,14 +176,6 @@ export default function BusinessConfiguration() {
     hostnameSuggestionCountryCode: null,
   });
   const billingPreview = resolveBillingSetup(countryStatePreview);
-  const [bankForm, setBankForm] = useState({
-    bankName: '',
-    bankAccountType: '',
-    bankAccountNumber: '',
-    bankAccountHolder: '',
-    bankRut: '',
-    bankEmail: '',
-  });
 
   const [form, setForm] = useState({
     name: '',
@@ -257,12 +241,11 @@ export default function BusinessConfiguration() {
       JSON.stringify({
         form,
         design,
-        bankForm,
         orderMessageTemplate,
         fullAddressInput,
         uxCountry,
       }),
-    [form, design, bankForm, orderMessageTemplate, fullAddressInput, uxCountry],
+    [form, design, orderMessageTemplate, fullAddressInput, uxCountry],
   );
 
   const isDirty = Boolean(business?.id && savedConfigSnapshot && currentConfigSnapshot !== savedConfigSnapshot);
@@ -431,14 +414,6 @@ export default function BusinessConfiguration() {
         }));
       }
       setOrderMessageTemplate(business?.orderMessageTemplate || '');
-      setBankForm({
-        bankName: business?.bankName || '',
-        bankAccountType: business?.bankAccountType || '',
-        bankAccountNumber: business?.bankAccountNumber || '',
-        bankAccountHolder: business?.bankAccountHolder || '',
-        bankRut: business?.bankRut || '',
-        bankEmail: business?.bankEmail || '',
-      });
       setFullAddressInput(
         buildFullAddressLine({
           address: business?.address,
@@ -615,12 +590,6 @@ export default function BusinessConfiguration() {
       ).trim() || null,
       designSettings: design,
       orderMessageTemplate,
-      bankName: bankForm?.bankName,
-      bankAccountType: bankForm?.bankAccountType,
-      bankAccountNumber: bankForm?.bankAccountNumber,
-      bankAccountHolder: bankForm?.bankAccountHolder,
-      bankRut: bankForm?.bankRut,
-      bankEmail: bankForm?.bankEmail,
     };
     if (countryToPersist && countryToPersist !== businessCountry) {
       payload.countryCode = countryToPersist;
@@ -653,7 +622,6 @@ export default function BusinessConfiguration() {
         JSON.stringify({
           form: formAfterAddr,
           design,
-          bankForm,
           orderMessageTemplate,
           fullAddressInput: buildFullAddressLine(parsedAddr),
           uxCountry: countryToPersist,
@@ -690,14 +658,6 @@ export default function BusinessConfiguration() {
       rubroId: business?.rubroId || '',
     });
     setOrderMessageTemplate(business?.orderMessageTemplate || '');
-    setBankForm({
-      bankName: business?.bankName || '',
-      bankAccountType: business?.bankAccountType || '',
-      bankAccountNumber: business?.bankAccountNumber || '',
-      bankAccountHolder: business?.bankAccountHolder || '',
-      bankRut: business?.bankRut || '',
-      bankEmail: business?.bankEmail || '',
-    });
     setFullAddressInput(
       buildFullAddressLine({
         address: business?.address,
@@ -1217,7 +1177,7 @@ export default function BusinessConfiguration() {
                   </div>
                   <div>
                     <h2 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-text-primary)' }}>Pagos y envíos</h2>
-                    <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Envíos, retiro, plantilla de pedido y datos para transferencia</p>
+                    <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Envíos, retiro y plantilla de pedido</p>
                   </div>
                 </div>
 
@@ -1263,44 +1223,6 @@ export default function BusinessConfiguration() {
                   onSave={handleSaveSettings}
                 />
 
-                <div id="datos-transferencia" className="pt-6 mt-6 border-t scroll-mt-24" style={{ borderColor: 'var(--color-border)' }}>
-                  <div className="flex items-center gap-2 mb-4">
-                    <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(139,92,246,0.1)' }}>
-                      <Icon name="Landmark" size={14} color="var(--color-primary)" />
-                    </div>
-                    <h3 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-text-primary)' }}>Datos de transferencia</h3>
-                  </div>
-                  <p className="text-xs mb-4" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-                    Usa estos datos para responder al cliente o completar mensajes de pago sin escribir siempre lo mismo.
-                  </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <SettingsField label="Banco" hint="Nombre del banco donde recibes transferencias">
-                      <input type="text" className={inputClass} style={inputStyle} placeholder={countryLabels.bankPlaceholder} value={bankForm?.bankName} onChange={e => setBankForm(prev => ({ ...prev, bankName: e.target.value }))} />
-                    </SettingsField>
-                    <SettingsField label="Tipo de cuenta">
-                      <select className={`${inputClass} cursor-pointer`} style={inputStyle} value={bankForm?.bankAccountType} onChange={e => setBankForm(prev => ({ ...prev, bankAccountType: e.target.value }))}>
-                        <option value="">Seleccionar...</option>
-                        {(countryLabels.bankAccountTypes || []).map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
-                      </select>
-                    </SettingsField>
-                    <div className="sm:col-span-2">
-                      <SettingsField label="Número de cuenta">
-                        <input type="text" className={inputClass} style={inputStyle} placeholder="Ej: 00123456789" value={bankForm?.bankAccountNumber} onChange={e => setBankForm(prev => ({ ...prev, bankAccountNumber: e.target.value }))} />
-                      </SettingsField>
-                    </div>
-                    <SettingsField label="Titular">
-                      <input type="text" className={inputClass} style={inputStyle} placeholder="Nombre completo" value={bankForm?.bankAccountHolder} onChange={e => setBankForm(prev => ({ ...prev, bankAccountHolder: e.target.value }))} />
-                    </SettingsField>
-                    <SettingsField label={countryLabels.idNumberLabel} hint={countryLabels.idNumberPlaceholder}>
-                      <input type="text" className={inputClass} style={inputStyle} placeholder={countryLabels.idNumberPlaceholder} value={bankForm?.bankRut} onChange={e => setBankForm(prev => ({ ...prev, bankRut: e.target.value }))} />
-                    </SettingsField>
-                    <div className="sm:col-span-2">
-                      <SettingsField label="Email (transferencias)">
-                        <input type="email" className={inputClass} style={inputStyle} placeholder="transferencias@ejemplo.com" value={bankForm?.bankEmail} onChange={e => setBankForm(prev => ({ ...prev, bankEmail: e.target.value }))} />
-                      </SettingsField>
-                    </div>
-                  </div>
-                </div>
               </div>
             )}
 

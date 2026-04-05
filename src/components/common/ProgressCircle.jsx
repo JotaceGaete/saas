@@ -1,4 +1,4 @@
-import React, { useEffect, useId, useState, memo, useRef, useCallback } from 'react';
+import React, { useEffect, useId, useState, memo, useRef } from 'react';
 import { dispararCelebracion } from 'utils/confettiCelebrations';
 
 const RADIUS = 45;
@@ -14,12 +14,17 @@ const FILTER_GREEN =
 
 /**
  * Anillo de progreso SVG con degradado purple → indigo, animación al montar y glow suave.
- * Al pasar de &lt;100% a 100%: transición a verde, confeti y ✓ central.
+ * Al pasar de <100% a 100%: transición a verde, confeti y ✓ central.
+ *
+ * @param {string|null} celebrationKey - Clave de localStorage para persistir si ya se celebró.
+ *   Si se omite, el confeti se dispara en cada transición (sin persistencia).
+ *   Si se provee, el confeti solo se dispara una vez por clave (ideal: por negocio/usuario).
  */
 function ProgressCircle({
   percentage = 0,
   className = '',
   sizeClassName = 'w-[140px] h-[140px] max-w-[150px] max-h-[150px]',
+  celebrationKey = null,
 }) {
   const uid = useId();
   const gradientId = `pc-grad-${uid.replace(/:/g, '')}`;
@@ -33,15 +38,6 @@ function ProgressCircle({
   const prevPctRef = useRef(null);
   const celebratedRef = useRef(false);
 
-  const alLlegarAlCien = useCallback(() => {
-    if (celebratedRef.current) return;
-    celebratedRef.current = true;
-    setRingSuccess(true);
-    window.setTimeout(() => {
-      dispararCelebracion();
-    }, 500);
-  }, []);
-
   useEffect(() => {
     const t = requestAnimationFrame(() => setMounted(true));
     return () => cancelAnimationFrame(t);
@@ -49,18 +45,35 @@ function ProgressCircle({
 
   useEffect(() => {
     if (prevPctRef.current === null) {
+      // Primera vez que el componente ve un porcentaje.
+      // Si ya está al 100% en el render inicial, solo activa el anillo verde:
+      // no disparamos confeti porque no hay transición real del usuario.
       prevPctRef.current = pct;
-      if (pct >= 100) {
-        setRingSuccess(true);
-      }
+      if (pct >= 100) setRingSuccess(true);
       return;
     }
+
     const prev = prevPctRef.current;
-    if (prev < 100 && pct >= 100) {
-      alLlegarAlCien();
-    }
     prevPctRef.current = pct;
-  }, [pct, alLlegarAlCien]);
+
+    if (prev < 100 && pct >= 100) {
+      // Transición real: el progreso acaba de llegar al 100%.
+      setRingSuccess(true);
+
+      if (!celebratedRef.current) {
+        // Si hay una clave de persistencia, verificar si ya se celebró antes.
+        const alreadyCelebrated = celebrationKey
+          ? Boolean(localStorage.getItem(celebrationKey))
+          : false;
+
+        if (!alreadyCelebrated) {
+          celebratedRef.current = true;
+          if (celebrationKey) localStorage.setItem(celebrationKey, '1');
+          window.setTimeout(dispararCelebracion, 500);
+        }
+      }
+    }
+  }, [pct, celebrationKey]);
 
   const offset = mounted ? CIRCUMFERENCE - (pct / 100) * CIRCUMFERENCE : CIRCUMFERENCE;
 

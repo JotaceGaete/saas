@@ -3,7 +3,6 @@ import Icon from 'components/AppIcon';
 
 const PAYMENT_OPTIONS = [
   { key: 'efectivo', label: 'Efectivo', icon: 'Banknote' },
-  { key: 'transferencia', label: 'Transferencia bancaria', icon: 'Building' },
   { key: 'tarjeta', label: 'Tarjeta de crédito/débito', icon: 'CreditCard' },
   { key: 'mercadopago', label: 'MercadoPago', icon: 'Wallet' },
   { key: 'paypal', label: 'PayPal', icon: 'Globe' },

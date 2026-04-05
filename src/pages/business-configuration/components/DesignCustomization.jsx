@@ -199,6 +199,12 @@ export default function DesignCustomization({
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [uploadingCover, setUploadingCover] = useState(false);
   const [uploadingShareImage, setUploadingShareImage] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
+  const [showSaved, setShowSaved] = useState(false);
+  const autoSaveTimerRef = useRef(null);
+  const savedTimerRef = useRef(null);
+  const onSaveRef = useRef(onSave);
+  const prevIsSavingRef = useRef(false);
 
   // Cargar la fuente seleccionada para el catálogo (preview móvil, etc.)
   useEffect(() => {
@@ -226,6 +232,44 @@ export default function DesignCustomization({
     });
   }, []);
 
+  // Mantiene onSaveRef apuntando a la versión más reciente de onSave
+  // para que el timer del auto-save no use un closure obsoleto.
+  useEffect(() => { onSaveRef.current = onSave; }, [onSave]);
+
+  // Detecta cuando el guardado completa (isSaving true → false).
+  useEffect(() => {
+    if (prevIsSavingRef.current && !isSaving) {
+      setIsDirty(false);
+      setShowSaved(true);
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+      savedTimerRef.current = setTimeout(() => setShowSaved(false), 2000);
+    }
+    prevIsSavingRef.current = isSaving;
+  }, [isSaving]);
+
+  // Limpia timers al desmontar el componente.
+  useEffect(() => () => {
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+  }, []);
+
+  /** Programa un auto-guardado 1.5s después del último cambio. */
+  const scheduleAutoSave = () => {
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    autoSaveTimerRef.current = setTimeout(() => { onSaveRef.current?.(); }, 1500);
+  };
+
+  /**
+   * Wrapper de onChange que activa isDirty y programa el auto-guardado.
+   * Reemplaza todas las llamadas directas a onChange dentro de este componente.
+   */
+  const handleChange = (newDesign) => {
+    setIsDirty(true);
+    setShowSaved(false);
+    onChange?.(newDesign);
+    scheduleAutoSave();
+  };
+
   const handleLogoUpload = async (e) => {
     const file = e?.target?.files?.[0];
     if (!file || !businessId) {
@@ -241,7 +285,7 @@ export default function DesignCustomization({
         showToast?.(error?.message || 'Error al subir logo', 'error');
         return;
       }
-      onChange?.({ ...design, logoUrl: url });
+      handleChange({ ...design, logoUrl: url });
       showToast?.('Logo actualizado', 'success');
     } catch (err) {
       console.error('[DesignCustomization] Excepción subir logo', err);
@@ -267,7 +311,7 @@ export default function DesignCustomization({
         showToast?.(error?.message || 'Error al subir imagen de portada', 'error');
         return;
       }
-      onChange?.({ ...design, headerImageUrl: url });
+      handleChange({ ...design, headerImageUrl: url });
       showToast?.('Portada actualizada', 'success');
     } catch (err) {
       console.error('[DesignCustomization] Excepción subir portada', err);
@@ -294,7 +338,7 @@ export default function DesignCustomization({
         showToast?.(error?.message || 'Error al subir imagen para compartir', 'error');
         return;
       }
-      onChange?.({ ...design, shareImageUrl: url });
+      handleChange({ ...design, shareImageUrl: url });
       showToast?.('Imagen para compartir actualizada', 'success');
     } catch (err) {
       console.error('[DesignCustomization] Excepción subir share image', err);
@@ -310,8 +354,69 @@ export default function DesignCustomization({
   const selectedTheme = design?.theme || 'minimal';
   const selectedFont = design?.font || 'Inter';
 
+  const saveLabel = isSaving ? 'Guardando...' : showSaved ? 'Guardado ✓' : 'Guardar cambios';
+  const statusLabel = isSaving ? 'Guardando...' : showSaved ? 'Guardado ✓' : isDirty ? 'Cambios sin guardar' : null;
+  const statusColor = isSaving ? 'var(--color-text-tertiary)' : showSaved ? '#059669' : '#f59e0b';
+
   return (
     <div className="flex w-full min-w-0 flex-col gap-6">
+
+      {/* ── Sticky header: título + botón guardar ── */}
+      <div
+        className="sticky top-0 z-10 flex items-center justify-between gap-3 rounded-2xl border px-4 py-3"
+        style={{
+          backgroundColor: 'rgba(255,255,255,0.92)',
+          backdropFilter: 'blur(8px)',
+          WebkitBackdropFilter: 'blur(8px)',
+          borderColor: 'var(--color-border)',
+          boxShadow: '0 1px 8px rgba(0,0,0,0.06)',
+        }}
+      >
+        <span className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-text-primary)' }}>
+          Diseño
+        </span>
+        <div className="flex items-center gap-3">
+          {statusLabel && (
+            <span className="hidden sm:block text-xs font-medium" style={{ color: statusColor, fontFamily: 'var(--font-caption)' }}>
+              {statusLabel}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={isSaving || (!isDirty && !showSaved)}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-white transition-all disabled:opacity-50"
+            style={{
+              background: showSaved
+                ? 'linear-gradient(135deg, #059669 0%, #047857 100%)'
+                : `linear-gradient(135deg, ${primaryColor} 0%, #7c3aed 100%)`,
+              fontFamily: 'var(--font-caption)',
+              boxShadow: isDirty ? `0 2px 8px ${primaryColor}55` : 'none',
+            }}
+          >
+            {isSaving ? (
+              <>
+                <svg className="animate-spin" width="12" height="12" viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,0.3)" strokeWidth="3" />
+                  <path d="M12 2a10 10 0 0 1 10 10" stroke="#fff" strokeWidth="3" strokeLinecap="round" />
+                </svg>
+                Guardando...
+              </>
+            ) : showSaved ? (
+              <>
+                <Icon name="Check" size={12} color="#fff" />
+                Guardado
+              </>
+            ) : (
+              <>
+                <Icon name="Save" size={12} color="#fff" />
+                Guardar cambios
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+
       <DesignUnifiedHeading isFirst title="Apariencia" subtitle="Color, portada y logo" />
 
       {/* 1. Primary Color */}
@@ -320,7 +425,7 @@ export default function DesignCustomization({
           {COLORS?.map(color => (
             <button
               key={color?.value}
-              onClick={() => onChange?.({ ...design, primaryColor: color?.value })}
+              onClick={() => handleChange({ ...design, primaryColor: color?.value })}
               title={color?.label}
               className="relative w-8 h-8 rounded-full transition-all flex-shrink-0 flex items-center justify-center"
               style={{
@@ -342,7 +447,7 @@ export default function DesignCustomization({
               <input
                 type="color"
                 value={primaryColor}
-                onChange={e => onChange?.({ ...design, primaryColor: e?.target?.value })}
+                onChange={e => handleChange({ ...design, primaryColor: e?.target?.value })}
                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                 title="Color personalizado"
               />
@@ -456,7 +561,7 @@ export default function DesignCustomization({
             </button>
             {design?.headerImageUrl && (
               <button
-                onClick={(e) => { e.stopPropagation(); onChange?.({ ...design, headerImageUrl: '' }); }}
+                onClick={(e) => { e.stopPropagation(); handleChange({ ...design, headerImageUrl: '' }); }}
                 className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium transition-all hover:opacity-80"
                 style={{ border: '1px solid #fecaca', color: '#ef4444', backgroundColor: '#fff5f5', fontFamily: 'var(--font-caption)' }}
               >
@@ -526,7 +631,7 @@ export default function DesignCustomization({
               </button>
               {design?.logoUrl && (
                 <button
-                  onClick={() => onChange?.({ ...design, logoUrl: '' })}
+                  onClick={() => handleChange({ ...design, logoUrl: '' })}
                   className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium transition-all hover:opacity-80"
                   style={{ border: '1px solid #fecaca', color: '#ef4444', backgroundColor: '#fff5f5', fontFamily: 'var(--font-caption)' }}
                 >
@@ -547,7 +652,7 @@ export default function DesignCustomization({
           {CATALOG_STYLES?.map(style => (
             <button
               key={style?.id}
-              onClick={() => onChange?.({ ...design, catalogStyle: style?.id })}
+              onClick={() => handleChange({ ...design, catalogStyle: style?.id })}
               className="relative flex flex-col gap-2 p-3 rounded-xl border-2 transition-all text-left"
               style={{
                 borderColor: selectedStyle === style?.id ? primaryColor : 'var(--color-border)',
@@ -581,7 +686,7 @@ export default function DesignCustomization({
 
       <CatalogLayoutSettings
         design={design}
-        onChange={onChange}
+        onChange={handleChange}
         businessName={businessName}
         userEmail={userEmail}
       />
@@ -603,7 +708,7 @@ export default function DesignCustomization({
                 type="url"
                 inputMode="url"
                 value={design?.shareImageUrl ?? ''}
-                onChange={(e) => onChange?.({ ...design, shareImageUrl: e?.target?.value ?? '' })}
+                onChange={(e) => handleChange({ ...design, shareImageUrl: e?.target?.value ?? '' })}
                 placeholder="https://..."
                 className="w-full px-3 py-2.5 rounded-xl border text-sm"
                 style={{ borderColor: 'var(--color-border)', fontFamily: 'var(--font-caption)' }}
@@ -626,7 +731,7 @@ export default function DesignCustomization({
               {!!(design?.shareImageUrl || '').trim() && (
                 <button
                   type="button"
-                  onClick={() => onChange?.({ ...design, shareImageUrl: '' })}
+                  onClick={() => handleChange({ ...design, shareImageUrl: '' })}
                   className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg font-medium transition-all hover:opacity-80"
                   style={{ border: '1px solid #fecaca', color: '#ef4444', backgroundColor: '#fff5f5', fontFamily: 'var(--font-caption)' }}
                 >
@@ -677,7 +782,7 @@ export default function DesignCustomization({
                 <button
                   key={theme?.id}
                   type="button"
-                  onClick={() => onChange?.({ ...design, theme: theme?.id })}
+                  onClick={() => handleChange({ ...design, theme: theme?.id })}
                   className="relative flex flex-col gap-2 p-3 rounded-xl border-2 transition-all text-left"
                   style={{
                     borderColor: selectedTheme === theme?.id ? primaryColor : 'var(--color-border)',
@@ -706,7 +811,7 @@ export default function DesignCustomization({
                 <button
                   key={font?.id}
                   type="button"
-                  onClick={() => onChange?.({ ...design, font: font?.id })}
+                  onClick={() => handleChange({ ...design, font: font?.id })}
                   className="flex items-center justify-between px-4 py-3 rounded-xl border-2 transition-all text-left"
                   style={{
                     borderColor: selectedFont === font?.id ? primaryColor : 'var(--color-border)',
@@ -735,17 +840,23 @@ export default function DesignCustomization({
       {!hideSaveButton && (
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-4 border-t" style={{ borderColor: 'var(--color-border)' }}>
         <p className="text-xs order-2 sm:order-1" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-          Los cambios se guardan en <strong>design_settings</strong> de tu negocio.
+          {showSaved
+            ? <span style={{ color: '#059669' }}>✓ Diseño guardado correctamente.</span>
+            : isDirty
+              ? <span style={{ color: '#f59e0b' }}>Tienes cambios sin guardar.</span>
+              : 'Los cambios se guardan automáticamente.'}
         </p>
         <button
           type="button"
           onClick={onSave}
-          disabled={isSaving}
+          disabled={isSaving || (!isDirty && !showSaved)}
           className="order-1 sm:order-2 flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:opacity-90 disabled:opacity-60"
           style={{
-            background: `linear-gradient(135deg, ${primaryColor} 0%, #7c3aed 100%)`,
+            background: showSaved
+              ? 'linear-gradient(135deg, #059669 0%, #047857 100%)'
+              : `linear-gradient(135deg, ${primaryColor} 0%, #7c3aed 100%)`,
             fontFamily: 'var(--font-caption)',
-            boxShadow: `0 2px 8px ${primaryColor}55`,
+            boxShadow: isDirty ? `0 2px 8px ${primaryColor}55` : 'none',
           }}
         >
           {isSaving ? (
@@ -755,6 +866,11 @@ export default function DesignCustomization({
                 <path d="M12 2a10 10 0 0 1 10 10" stroke="#fff" strokeWidth="3" strokeLinecap="round" />
               </svg>
               Guardando...
+            </>
+          ) : showSaved ? (
+            <>
+              <Icon name="Check" size={14} color="#fff" />
+              Guardado ✓
             </>
           ) : (
             <>
@@ -769,6 +885,46 @@ export default function DesignCustomization({
       {/* Hidden file inputs */}
       <input ref={logoInputRef} type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
       <input ref={coverInputRef} type="file" accept="image/*" className="hidden" onChange={handleCoverUpload} />
+
+      {/* ── Botón flotante mobile (solo cuando hay cambios o se está guardando) ── */}
+      {(isDirty || isSaving || showSaved) && (
+        <button
+          type="button"
+          onClick={onSave}
+          disabled={isSaving || (!isDirty && !showSaved)}
+          aria-label={saveLabel}
+          className="fixed bottom-20 right-4 z-50 flex md:hidden items-center gap-2 px-5 py-3 rounded-2xl text-sm font-semibold text-white shadow-xl transition-all active:scale-95 disabled:opacity-60"
+          style={{
+            background: showSaved
+              ? 'linear-gradient(135deg, #059669 0%, #047857 100%)'
+              : `linear-gradient(135deg, ${primaryColor} 0%, #7c3aed 100%)`,
+            fontFamily: 'var(--font-caption)',
+            boxShadow: showSaved
+              ? '0 4px 20px rgba(5,150,105,0.45)'
+              : `0 4px 20px ${primaryColor}60`,
+          }}
+        >
+          {isSaving ? (
+            <>
+              <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,0.3)" strokeWidth="3" />
+                <path d="M12 2a10 10 0 0 1 10 10" stroke="#fff" strokeWidth="3" strokeLinecap="round" />
+              </svg>
+              Guardando...
+            </>
+          ) : showSaved ? (
+            <>
+              <Icon name="Check" size={14} color="#fff" />
+              Guardado
+            </>
+          ) : (
+            <>
+              <Icon name="Save" size={14} color="#fff" />
+              Guardar
+            </>
+          )}
+        </button>
+      )}
     </div>
   );
 }

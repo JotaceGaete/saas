@@ -128,6 +128,10 @@ export default function GettingStartedSection({
   const completedCount = stepCompleted?.filter(Boolean)?.length;
   const allCompleted = completedCount === 3;
 
+  // Clave estable por negocio para persistir que el confeti ya fue mostrado.
+  // Solo se celebra la primera vez que el negocio alcanza el 100% de onboarding.
+  const confettiKey = business?.id ? `confetti_onboarding_${business.id}` : null;
+
   /** Lista detallada de pasos (solo sin productos aún); el anillo de progreso se muestra siempre en móvil. */
   const showOnboardingStepper = productCount === 0;
 
@@ -260,7 +264,7 @@ export default function GettingStartedSection({
           <div className="mb-6">
             {/* Móvil: anillo SVG protagonista */}
             <div className="md:hidden flex flex-col items-center">
-              <ProgressCircle percentage={(completedCount / 3) * 100} />
+              <ProgressCircle percentage={(completedCount / 3) * 100} celebrationKey={confettiKey} />
               <p
                 className="text-xs font-medium mt-3 text-center max-w-[240px]"
                 style={{

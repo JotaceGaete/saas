@@ -326,12 +326,6 @@ const mapBusinessFromDb = (row) => {
   rubroName: rubroRow?.name ?? row?.rubro_name ?? null,
   rubroSlug: rubroRow?.slug ?? row?.rubro_slug ?? null,
   designSettings,
-  bankName: row?.bank_name || '',
-  bankAccountType: row?.bank_account_type || '',
-  bankAccountNumber: row?.bank_account_number || '',
-  bankAccountHolder: row?.bank_account_holder || '',
-  bankRut: row?.bank_rut || '',
-  bankEmail: row?.bank_email || '',
   orderMessageTemplate: row?.order_message_template || null,
   planSlug: row?.plan_slug || 'starter',
   planExpiresAt: row?.plan_expires_at ?? null,
@@ -624,12 +618,6 @@ export async function updateBusiness(businessId, updates) {
   if (updates?.isActive !== undefined)    dbUpdates.is_active = updates?.isActive;
   if (updates?.designSettings !== undefined) dbUpdates.design_settings = updates?.designSettings;
   if (updates?.rubroId !== undefined) dbUpdates.rubro_id = updates?.rubroId || null;
-  if (updates?.bankName !== undefined)          dbUpdates.bank_name = updates?.bankName;
-  if (updates?.bankAccountType !== undefined)   dbUpdates.bank_account_type = updates?.bankAccountType;
-  if (updates?.bankAccountNumber !== undefined) dbUpdates.bank_account_number = updates?.bankAccountNumber;
-  if (updates?.bankAccountHolder !== undefined) dbUpdates.bank_account_holder = updates?.bankAccountHolder;
-  if (updates?.bankRut !== undefined)           dbUpdates.bank_rut = updates?.bankRut;
-  if (updates?.bankEmail !== undefined)         dbUpdates.bank_email = updates?.bankEmail;
   if (updates?.planSlug !== undefined)         dbUpdates.plan_slug = updates?.planSlug;
   if (updates?.planExpiresAt !== undefined)    dbUpdates.plan_expires_at = updates?.planExpiresAt ?? null;
   if (updates?.trialExpiresAt !== undefined)   dbUpdates.trial_expires_at = updates?.trialExpiresAt ?? null;

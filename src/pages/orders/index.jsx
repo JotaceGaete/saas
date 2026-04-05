@@ -16,7 +16,6 @@ import { useToast } from '../../components/ui/Toast';
 import { supabase } from '../../lib/supabase';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import BankTransferSetupSlimAlert from 'components/BankTransferSetupSlimAlert';
 import { formatCLP } from '../../utils/formatCLP';
 import OrderDetailDrawer from './components/OrderDetailDrawer';
 import OrdersKanban from './components/OrdersKanban';
@@ -929,8 +928,6 @@ export default function OrdersPage() {
   return (
     <DashboardAppShell backgroundColor="var(--color-background)">
       <DashboardLayoutContent>
-        <BankTransferSetupSlimAlert business={business} />
-
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex items-start gap-3 min-w-0">
             <div
