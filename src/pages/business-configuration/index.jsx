@@ -139,7 +139,7 @@ function SettingsField({ label, children, hint }) {
 
 export default function BusinessConfiguration() {
   const navigate = useNavigate();
-  const { user, loading, business: ctxBusiness, businessLoading, refreshBusiness } = useAuth();
+  const { user, loading, business: ctxBusiness, businessLoading, refreshBusiness, patchBusiness } = useAuth();
   const [isSaving, setIsSaving] = useState(false);
   const [toast, setToast] = useState(null);
   const [orderMessageTemplate, setOrderMessageTemplate] = useState('');
@@ -606,8 +606,9 @@ export default function BusinessConfiguration() {
         showToast('Error al guardar: ' + (error?.message || JSON.stringify(error)), 'error');
         return;
       }
-      if (updated) setBusiness(updated);
-      await refreshBusiness();
+      if (updated) {
+        patchBusiness(updated);
+      }
       const formAfterAddr = {
         ...form,
         address: parsedAddr.address,

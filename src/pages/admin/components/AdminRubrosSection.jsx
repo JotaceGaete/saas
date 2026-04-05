@@ -1,5 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Icon from 'components/AppIcon';
+
+function normalizeSearch(str) {
+  return String(str || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+}
 import {
   getRubros,
   getCategoriesByRubroId,
@@ -22,6 +29,7 @@ export default function AdminRubrosSection() {
   const [newRubroName, setNewRubroName] = useState('');
   const [newCategoryName, setNewCategoryName] = useState({});
   const [saving, setSaving] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const loadRubros = async () => {
     const { data, error: err } = await getRubros();
@@ -48,6 +56,16 @@ export default function AdminRubrosSection() {
       loadCategoriesForRubro(expandedRubro);
     }
   }, [expandedRubro]);
+
+  const filteredRubros = useMemo(() => {
+    const q = normalizeSearch(searchQuery.trim());
+    if (!q) return rubros;
+    return rubros.filter(
+      (r) =>
+        normalizeSearch(r?.name).includes(q) ||
+        normalizeSearch(r?.slug).includes(q),
+    );
+  }, [rubros, searchQuery]);
 
   const slugFromName = (name) =>
     (name || '').toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') || 'rubro';
@@ -157,6 +175,22 @@ export default function AdminRubrosSection() {
         </form>
       </div>
 
+      <div className="relative">
+        <span className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--color-muted-foreground)' }}>
+          <Icon name="Search" size={15} color="currentColor" />
+        </span>
+        <input
+          type="search"
+          autoComplete="off"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Buscar rubro por nombre o slug..."
+          className="w-full pl-9 pr-3 py-2 rounded-lg border text-sm"
+          style={{ borderColor: 'var(--color-border)', fontFamily: 'var(--font-caption)' }}
+          aria-label="Buscar rubro"
+        />
+      </div>
+
       <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-card)' }}>
         <table className="w-full text-left" style={{ fontFamily: 'var(--font-caption)' }}>
           <thead>
@@ -168,7 +202,14 @@ export default function AdminRubrosSection() {
             </tr>
           </thead>
           <tbody style={{ color: 'var(--color-foreground)' }}>
-            {rubros.map((rubro) => (
+            {filteredRubros.length === 0 && (
+              <tr>
+                <td colSpan={4} className="px-4 py-6 text-center text-sm" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                  {searchQuery.trim() ? `Sin resultados para "${searchQuery}"` : 'No hay rubros aún.'}
+                </td>
+              </tr>
+            )}
+            {filteredRubros.map((rubro) => (
               <React.Fragment key={rubro.id}>
                 <tr className="border-b" style={{ borderColor: 'var(--color-border)' }}>
                   <td className="px-4 py-2">

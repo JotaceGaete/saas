@@ -289,6 +289,11 @@ export const AuthProvider = ({ children }) => {
     if (user) await businessOperations?.load(user?.id)
   }
 
+  /** Actualiza el negocio en memoria sin disparar businessLoading ni hacer fetch. */
+  const patchBusiness = (data) => {
+    if (data) setBusiness(data)
+  }
+
   /** Refresca el usuario desde Supabase (útil tras confirmar email en otro tab o enlace). */
   const refreshUser = async () => {
     try {
@@ -339,6 +344,7 @@ export const AuthProvider = ({ children }) => {
     resendConfirmationEmail,
     signOut,
     refreshBusiness,
+    patchBusiness,
     refreshUser,
     isAuthenticated: !!user,
     isEmailConfirmed: !!(user?.email_confirmed_at),
