@@ -207,6 +207,7 @@ export default function BusinessConfiguration() {
   const { user, loading, business: ctxBusiness, businessLoading, refreshBusiness, patchBusiness } = useAuth();
   const [isSaving, setIsSaving] = useState(false);
   const [toast, setToast] = useState(null);
+  const [rubroError, setRubroError] = useState(null);
   const [orderMessageTemplate, setOrderMessageTemplate] = useState('');
   const [business, setBusiness] = useState(null);
   const [businessFetchLoading, setBusinessFetchLoading] = useState(false);
@@ -513,6 +514,7 @@ export default function BusinessConfiguration() {
 
   const handleRubroChange = (nextRaw) => {
     const next = nextRaw != null ? String(nextRaw) : '';
+    if (next) setRubroError(null);
     const prev = form?.rubroId != null ? String(form.rubroId) : '';
     if (prev && next && prev !== next) {
       const ok = window.confirm(
@@ -633,6 +635,14 @@ export default function BusinessConfiguration() {
       showToast('No se encontró el negocio. Intenta recargar la página.', 'error');
       return;
     }
+
+    if (!form?.rubroId) {
+      setRubroError('Selecciona un rubro principal para continuar.');
+      document.getElementById('field-rubro-principal')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    setRubroError(null);
+
     setIsSaving(true);
 
     const countryToPersist = uxCountry ?? businessCountry;
@@ -1124,13 +1134,21 @@ export default function BusinessConfiguration() {
                       )}
                     </SettingsField>
 
-                    <SettingsField label="Rubro principal" hint="Sector de tu negocio; filtra categorías sugeridas de productos.">
-                      <RubroPrincipalSelector
-                        rubros={rubros}
-                        value={form?.rubroId ?? ''}
-                        onChange={handleRubroChange}
-                      />
-                    </SettingsField>
+                    <div id="field-rubro-principal">
+                      <SettingsField label="Rubro principal" hint="Sector de tu negocio; filtra categorías sugeridas de productos.">
+                        <RubroPrincipalSelector
+                          rubros={rubros}
+                          value={form?.rubroId ?? ''}
+                          onChange={handleRubroChange}
+                          hasError={!!rubroError}
+                        />
+                        {rubroError && (
+                          <p className="mt-1.5 text-xs font-medium" style={{ color: 'var(--color-error, #ef4444)', fontFamily: 'var(--font-caption)' }}>
+                            {rubroError}
+                          </p>
+                        )}
+                      </SettingsField>
+                    </div>
 
                     {business?.designSettings?.useCategories && business?.id && (
                       <div className={`${cardClass} mb-2`}>

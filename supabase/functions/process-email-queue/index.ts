@@ -24,12 +24,15 @@ function jsonResponse(body: Record<string, unknown>, status = 200) {
   });
 }
 
+const MAX_RETRIES = 3;
+
 interface QueueRow {
   id: string;
   user_id: string;
   business_id: string;
   type: string;
   send_at: string;
+  retry_count: number;
 }
 
 interface BusinessRow {
@@ -56,6 +59,15 @@ Deno.serve(async (req) => {
   const emailSecret = Deno.env.get('EMAIL_FUNCTION_SECRET') ?? '';
   const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
 
+  // Guard: si EMAIL_FUNCTION_SECRET está configurado, solo el cron (que lo conoce) puede invocar este endpoint.
+  if (emailSecret) {
+    const incoming = req.headers.get('x-email-secret') ?? '';
+    if (incoming !== emailSecret) {
+      console.warn('[process-email-queue] Unauthorized: x-email-secret inválido o ausente');
+      return jsonResponse({ error: 'Unauthorized' }, 401);
+    }
+  }
+
   if (!supabaseUrl || !serviceKey) {
     console.error('[process-email-queue] Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
     return jsonResponse({ error: 'Server configuration error' }, 500);
@@ -67,7 +79,7 @@ Deno.serve(async (req) => {
   const now = new Date().toISOString();
   const { data: pending, error: fetchErr } = await supabase
     .from('email_queue')
-    .select('id, user_id, business_id, type, send_at')
+    .select('id, user_id, business_id, type, send_at, retry_count')
     .eq('status', 'pending')
     .lte('send_at', now)
     .limit(BATCH_SIZE);
@@ -92,7 +104,7 @@ Deno.serve(async (req) => {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[process-email-queue] Unhandled error for queue row ${row.id}:`, msg);
-      await markFailed(supabase, row.id, msg);
+      await markFailed(supabase, row.id, msg, (row as QueueRow).retry_count ?? 0);
       results.failed++;
     }
   }
@@ -120,7 +132,8 @@ async function processRow(
 
   if (bizErr || !business) {
     console.warn(`[process-email-queue] Business not found for queue row ${row.id} (business_id=${row.business_id})`);
-    await markFailed(supabase, row.id, 'Business not found');
+    // No reintentar si el negocio no existe — error permanente
+    await markFailed(supabase, row.id, 'Business not found', MAX_RETRIES);
     results.failed++;
     return;
   }
@@ -131,7 +144,8 @@ async function processRow(
 
   if (userErr || !user?.email) {
     console.warn(`[process-email-queue] User not found for queue row ${row.id} (user_id=${row.user_id})`);
-    await markFailed(supabase, row.id, 'User email not found');
+    // No reintentar si el usuario no existe — error permanente
+    await markFailed(supabase, row.id, 'User email not found', MAX_RETRIES);
     results.failed++;
     return;
   }
@@ -176,7 +190,7 @@ async function processRow(
   if (!res.ok) {
     const msg = (resData?.error as string) || resText?.slice(0, 200) || 'send-email error';
     console.error(`[process-email-queue] send-email failed for row ${row.id}:`, msg);
-    await markFailed(supabase, row.id, msg);
+    await markFailed(supabase, row.id, msg, row.retry_count ?? 0);
     results.failed++;
     return;
   }
@@ -201,11 +215,32 @@ async function markSent(supabase: ReturnType<typeof createClient>, id: string) {
   if (error) console.error('[process-email-queue] markSent error:', error.message);
 }
 
-async function markFailed(supabase: ReturnType<typeof createClient>, id: string, reason: string) {
-  const { error } = await supabase
-    .from('email_queue')
-    .update({ status: 'failed' })
-    .eq('id', id);
-  if (error) console.error('[process-email-queue] markFailed error:', error.message);
-  console.warn(`[process-email-queue] Marked failed (id=${id}): ${reason}`);
+async function markFailed(
+  supabase: ReturnType<typeof createClient>,
+  id: string,
+  reason: string,
+  currentRetryCount = 0
+) {
+  const nextRetry = currentRetryCount + 1;
+  const exhausted = nextRetry >= MAX_RETRIES;
+
+  if (exhausted) {
+    // Sin más reintentos: marcar como failed definitivo
+    const { error } = await supabase
+      .from('email_queue')
+      .update({ status: 'failed', retry_count: nextRetry })
+      .eq('id', id);
+    if (error) console.error('[process-email-queue] markFailed error:', error.message);
+    console.warn(`[process-email-queue] Exhausted retries (id=${id}, retries=${nextRetry}): ${reason}`);
+  } else {
+    // Reintentar: dejar en pending con send_at diferido (backoff lineal: 30 min × intento)
+    const retryDelay = nextRetry * 30; // minutos
+    const retryAt = new Date(Date.now() + retryDelay * 60 * 1000).toISOString();
+    const { error } = await supabase
+      .from('email_queue')
+      .update({ retry_count: nextRetry, send_at: retryAt })
+      .eq('id', id);
+    if (error) console.error('[process-email-queue] markFailed (retry schedule) error:', error.message);
+    console.warn(`[process-email-queue] Will retry in ${retryDelay}min (id=${id}, attempt=${nextRetry}): ${reason}`);
+  }
 }

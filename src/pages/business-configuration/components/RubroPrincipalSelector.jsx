@@ -2,20 +2,60 @@ import React, { useMemo, useRef, useState } from 'react';
 import Icon from 'components/AppIcon';
 import { buildWhatsAppUrl } from '../../../utils/whatsapp';
 import { SUPPORT_WHATSAPP_NUMBER } from '../../../config/support';
+import { RUBRO_KEYWORDS } from '../../../config/rubroKeywords';
 
 const MAX_RESULTS = 7;
 
-function normalizeSearch(str) {
-  return String(str || '')
+/** Normaliza texto para comparación: minúsculas, sin tildes, trim. */
+function normalizeText(value) {
+  return String(value || '')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase();
+    .toLowerCase()
+    .trim();
 }
 
-function sortRubrosAZ(list) {
-  return [...list].sort((a, b) =>
-    String(a?.name || '').localeCompare(String(b?.name || ''), 'es', { sensitivity: 'base' }),
-  );
+/**
+ * Busca rubros por nombre y keywords con ranking de relevancia.
+ * Prioridad (menor número = más relevante):
+ *   0 – nombre exacto
+ *   1 – nombre empieza por query
+ *   2 – keyword exacta
+ *   3 – keyword empieza por query
+ *   4 – nombre contiene query    (solo si query.length >= 3)
+ *   5 – keyword contiene query   (solo si query.length >= 3)
+ * Resultados sin match no se incluyen.
+ */
+function searchRubros(rubros, rawQuery) {
+  const q = normalizeText(rawQuery);
+  if (!q) return [];
+  const allowContains = q.length >= 3;
+
+  const scored = [];
+
+  for (const r of rubros) {
+    if (r?.id == null) continue;
+    const name = normalizeText(r.name);
+    const keywords = (RUBRO_KEYWORDS[r.slug] || []).map(normalizeText);
+
+    let score = Infinity;
+
+    if (name === q)                               score = Math.min(score, 0);
+    else if (name.startsWith(q))                  score = Math.min(score, 1);
+    else if (allowContains && name.includes(q))   score = Math.min(score, 4);
+
+    for (const kw of keywords) {
+      if (kw === q)                               score = Math.min(score, 2);
+      else if (kw.startsWith(q))                  score = Math.min(score, 3);
+      else if (allowContains && kw.includes(q))   score = Math.min(score, 5);
+    }
+
+    if (score < Infinity) scored.push({ rubro: r, score, keywords });
+  }
+
+  return scored
+    .sort((a, b) => a.score - b.score || normalizeText(a.rubro.name).localeCompare(normalizeText(b.rubro.name)))
+    .slice(0, MAX_RESULTS);
 }
 
 /**
@@ -23,7 +63,7 @@ function sortRubrosAZ(list) {
  * - Sin rubro seleccionado: muestra input de búsqueda.
  * - Con rubro seleccionado: muestra badge con opción de quitar.
  */
-export default function RubroPrincipalSelector({ rubros = [], value, onChange }) {
+export default function RubroPrincipalSelector({ rubros = [], value, onChange, hasError = false }) {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const inputRef = useRef(null);
@@ -34,16 +74,10 @@ export default function RubroPrincipalSelector({ rubros = [], value, onChange })
     [rubros, selected],
   );
 
-  const suggestions = useMemo(() => {
-    const q = query.trim();
-    if (!q) return [];
-    const base = (rubros || []).filter((r) => r?.id != null);
-    const nq = normalizeSearch(q);
-    return sortRubrosAZ(base.filter((r) => normalizeSearch(r?.name || '').includes(nq))).slice(
-      0,
-      MAX_RESULTS,
-    );
-  }, [rubros, query]);
+  const suggestions = useMemo(
+    () => searchRubros(rubros || [], query),
+    [rubros, query],
+  );
 
   const showSuggestions = open && query.trim().length > 0;
   const noResults = showSuggestions && suggestions.length === 0;
@@ -115,26 +149,41 @@ export default function RubroPrincipalSelector({ rubros = [], value, onChange })
             }}
             onFocus={() => setOpen(true)}
             onBlur={() => setTimeout(() => setOpen(false), 150)}
-            className="w-full px-3 py-2.5 pl-9 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 outline-none transition-all font-[family-name:var(--font-caption)] focus:ring-4 focus:ring-violet-500/10 focus:border-violet-500"
+            className={`w-full px-3 py-2.5 pl-9 rounded-xl border bg-white text-sm text-slate-900 outline-none transition-all font-[family-name:var(--font-caption)] focus:ring-4 focus:ring-violet-500/10 focus:border-violet-500 ${hasError ? 'border-red-400 focus:ring-red-500/10 focus:border-red-500' : 'border-slate-200'}`}
             style={{ fontFamily: 'var(--font-caption)' }}
             aria-label="Buscar rubro"
+            aria-invalid={hasError}
           />
         </div>
 
         {/* Dropdown de sugerencias */}
         {showSuggestions && !noResults && (
           <ul className="absolute z-20 mt-1.5 w-full rounded-xl border border-slate-200 bg-white shadow-lg overflow-hidden">
-            {suggestions.map((r) => (
-              <li key={r.id}>
-                <button
-                  type="button"
-                  onMouseDown={() => handleSelect(String(r.id))}
-                  className="w-full text-left px-3 py-2.5 text-sm text-slate-800 hover:bg-violet-50 hover:text-violet-900 transition-colors font-[family-name:var(--font-caption)]"
-                >
-                  {r.name}
-                </button>
-              </li>
-            ))}
+            {suggestions.map(({ rubro: r, score, keywords }) => {
+              // Mostrar hasta 3 keywords que hicieron match, solo cuando el match vino por keyword (score >= 2)
+              const q = normalizeText(query);
+              const matchedKws = score >= 2
+                ? keywords.filter((kw) => kw.includes(q)).slice(0, 3)
+                : [];
+              return (
+                <li key={r.id}>
+                  <button
+                    type="button"
+                    onMouseDown={() => handleSelect(String(r.id))}
+                    className="w-full text-left px-3 py-2.5 hover:bg-violet-50 transition-colors"
+                  >
+                    <span className="block text-sm text-slate-800 font-[family-name:var(--font-caption)]">
+                      {r.name}
+                    </span>
+                    {matchedKws.length > 0 && (
+                      <span className="block text-xs text-slate-400 font-[family-name:var(--font-caption)] mt-0.5">
+                        {matchedKws.join(', ')}
+                      </span>
+                    )}
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         )}
 
