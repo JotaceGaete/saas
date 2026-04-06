@@ -144,8 +144,21 @@ const ONBOARDING_FIELD_LABELS = {
   whatsapp: 'Número de WhatsApp',
 };
 
+const ONBOARDING_SCROLL_PRIORITY = ['country', 'whatsapp', 'name'];
+
 function OnboardingIncompleteBanner({ missingFields }) {
   const hasMissing = missingFields.length > 0;
+
+  const handleScrollToFields = () => {
+    const first = ONBOARDING_SCROLL_PRIORITY.find((f) => missingFields.includes(f));
+    const el = first
+      ? document.getElementById(`onboarding-field-${first}`)
+      : null;
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  };
+
   return (
     <div
       className="rounded-xl border p-4 mb-6 flex gap-3"
@@ -157,9 +170,9 @@ function OnboardingIncompleteBanner({ missingFields }) {
       <div className="flex-shrink-0 mt-0.5">
         <Icon name="AlertTriangle" size={18} color="#ca8a04" />
       </div>
-      <div>
+      <div className="flex-1 min-w-0">
         <p className="text-sm font-semibold mb-1" style={{ color: '#854d0e', fontFamily: 'var(--font-caption)' }}>
-          Completa tu negocio para empezar a vender
+          Debes completar estos datos para continuar
         </p>
         {hasMissing && (
           <ul className="mt-1 space-y-0.5">
@@ -171,6 +184,18 @@ function OnboardingIncompleteBanner({ missingFields }) {
             ))}
           </ul>
         )}
+        <p className="mt-2 text-xs" style={{ color: '#92400e', fontFamily: 'var(--font-caption)' }}>
+          Esto es necesario para activar tu catálogo y recibir pedidos.
+        </p>
+        <button
+          type="button"
+          onClick={handleScrollToFields}
+          className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold underline underline-offset-2 transition-opacity hover:opacity-70"
+          style={{ color: '#854d0e', fontFamily: 'var(--font-caption)' }}
+        >
+          Completar ahora
+          <Icon name="ArrowDown" size={12} color="#854d0e" />
+        </button>
       </div>
     </div>
   );
@@ -808,6 +833,16 @@ export default function BusinessConfiguration() {
   const suggestedCfg = suggestedCountryCode ? getCountryConfig(suggestedCountryCode) : null;
   const manualCfg = manualCountryCode ? getCountryConfig(manualCountryCode) : null;
 
+  const onboardingMissingFields = location.state?.onboardingIncomplete
+    ? (location.state?.missingFields ?? [])
+    : [];
+
+  // Applies a subtle amber ring to fields that are required but missing.
+  const onboardingFieldStyle = (field) =>
+    onboardingMissingFields.includes(field)
+      ? { outline: '2px solid rgba(234,179,8,0.45)', outlineOffset: '4px', borderRadius: '10px' }
+      : {};
+
   return (
     <DashboardAppShell backgroundColor="#f7f7f9">
       <div
@@ -839,16 +874,18 @@ export default function BusinessConfiguration() {
           ) : (
           <>
             <div className="w-full min-w-0">
-            {location.state?.onboardingIncomplete && (
-              <OnboardingIncompleteBanner missingFields={location.state?.missingFields ?? []} />
+            {onboardingMissingFields.length > 0 && (
+              <OnboardingIncompleteBanner missingFields={onboardingMissingFields} />
             )}
             {!hasPersistedCountry && (
               <div
+                id="onboarding-field-country"
                 className="rounded-xl border border-slate-100/80 p-5 lg:p-6 mb-8 shadow-sm shadow-slate-200/30"
                 style={{
                   borderColor: 'rgba(124, 58, 237, 0.35)',
                   background: 'linear-gradient(145deg, rgba(124, 58, 237, 0.09) 0%, #ffffff 55%)',
                   boxShadow: '0 2px 12px rgba(124, 58, 237, 0.08)',
+                  ...onboardingFieldStyle('country'),
                 }}
               >
                 <h2 className="text-base font-bold mb-2" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-text-primary)' }}>
@@ -1027,16 +1064,18 @@ export default function BusinessConfiguration() {
                 <div>
                   <p className={sectionHeadingClass}>Identidad operativa</p>
                   <div className="flex flex-col gap-5">
-                    <SettingsField label="Nombre del negocio" hint="Nombre que verán tus clientes en el catálogo">
-                      <input
-                        type="text"
-                        className={inputClass}
-                        style={inputStyle}
-                        placeholder="Ej: Mi Tienda"
-                        value={form?.name}
-                        onChange={e => handleFormChange('name', e?.target?.value)}
-                      />
-                    </SettingsField>
+                    <div id="onboarding-field-name" style={onboardingFieldStyle('name')}>
+                      <SettingsField label="Nombre del negocio" hint="Nombre que verán tus clientes en el catálogo">
+                        <input
+                          type="text"
+                          className={inputClass}
+                          style={inputStyle}
+                          placeholder="Ej: Mi Tienda"
+                          value={form?.name}
+                          onChange={e => handleFormChange('name', e?.target?.value)}
+                        />
+                      </SettingsField>
+                    </div>
 
                     <SettingsField
                       label="Enlace del catálogo (slug)"
@@ -1226,7 +1265,7 @@ export default function BusinessConfiguration() {
                   </div>
                 </div>
 
-                <div>
+                <div id="onboarding-field-whatsapp" style={onboardingFieldStyle('whatsapp')}>
                   <p className={sectionHeadingClass}>Canal de ventas (WhatsApp)</p>
                   <DynamicWhatsAppField
                     label="Número de WhatsApp"
