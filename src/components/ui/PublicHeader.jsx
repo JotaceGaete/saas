@@ -2,6 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Icon from 'components/AppIcon';
 import Image from 'components/AppImage';
+import { SUPPORT_WHATSAPP_NUMBER } from 'config/support';
+import { buildWhatsAppUrl } from 'utils/whatsapp';
+
+const SUPPORT_WHATSAPP_CONTACT_HREF = buildWhatsAppUrl('Hola', SUPPORT_WHATSAPP_NUMBER);
 
 export default function PublicHeader({
   businessName = 'Mi Negocio',
@@ -109,7 +113,7 @@ export default function PublicHeader({
 
         {/* WhatsApp CTA */}
         <a
-          href="https://wa.me/"
+          href={SUPPORT_WHATSAPP_CONTACT_HREF}
           target="_blank"
           rel="noopener noreferrer"
           className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-md text-sm font-medium text-secondary-foreground transition-all duration-250 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring hover:opacity-90 active:scale-95"
