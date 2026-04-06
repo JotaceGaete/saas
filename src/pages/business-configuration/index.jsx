@@ -27,6 +27,7 @@ import { parseAddressByCountry, buildFullAddressLine } from '../../utils/address
 import { resolveVentaAiProductDescriptionEndpoint } from '../../lib/ai/resolveVentaAiProductDescriptionUrl.js';
 import DesignSettings from './components/DesignSettings';
 import RubroPrincipalSelector from './components/RubroPrincipalSelector';
+import BusinessCategoriesManager from './components/BusinessCategoriesManager';
 
 const BUSINESS_DESCRIPTION_MAX = 280;
 
@@ -189,6 +190,9 @@ export default function BusinessConfiguration() {
     country: countryLabels.countryName,
     currency: countryLabels.currency,
     rubroId: '',
+    instagramUrl: '',
+    tiktokUrl: '',
+    facebookUrl: '',
   });
   const [rubros, setRubros] = useState([]);
   const [fullAddressInput, setFullAddressInput] = useState('');
@@ -395,6 +399,9 @@ export default function BusinessConfiguration() {
         country: countryLabels.countryName,
         currency: business?.currency || countryLabels.currency,
         rubroId: business?.rubroId || '',
+        instagramUrl: business?.instagramUrl || '',
+        tiktokUrl: business?.tiktokUrl || '',
+        facebookUrl: business?.facebookUrl || '',
       });
       if (business?.designSettings) {
         const ds = business.designSettings;
@@ -581,6 +588,9 @@ export default function BusinessConfiguration() {
       city: parsedAddr.city,
       region: parsedAddr.region,
       rubroId: form?.rubroId || null,
+      instagramUrl: form?.instagramUrl || null,
+      tiktokUrl: form?.tiktokUrl || null,
+      facebookUrl: form?.facebookUrl || null,
       logoUrl: (design?.logoUrl ?? business?.logoUrl ?? '').trim() || null,
       coverImageUrl: (
         design?.coverImageUrl ??
@@ -657,6 +667,9 @@ export default function BusinessConfiguration() {
       country: revertedLabels.countryName,
       currency: business?.currency || revertedLabels.currency,
       rubroId: business?.rubroId || '',
+      instagramUrl: business?.instagramUrl || '',
+      tiktokUrl: business?.tiktokUrl || '',
+      facebookUrl: business?.facebookUrl || '',
     });
     setOrderMessageTemplate(business?.orderMessageTemplate || '');
     setFullAddressInput(
@@ -1038,6 +1051,25 @@ export default function BusinessConfiguration() {
                       />
                     </SettingsField>
 
+                    {business?.designSettings?.useCategories && business?.id && (
+                      <div className={`${cardClass} mb-2`}>
+                        <div className="flex items-center gap-3 mb-5">
+                          <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(139,92,246,0.1)' }}>
+                            <Icon name="Tags" size={18} color="var(--color-primary)" />
+                          </div>
+                          <div>
+                            <h2 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-text-primary)' }}>
+                              Mis categorías
+                            </h2>
+                            <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+                              Categorías propias de tu negocio — aparecen primero en el catálogo y en el editor de productos
+                            </p>
+                          </div>
+                        </div>
+                        <BusinessCategoriesManager business={business} />
+                      </div>
+                    )}
+
                     <SettingsField
                       label="Descripción del negocio"
                       hint="Cabecera del catálogo. Máximo 280 caracteres; la IA respeta el límite."
@@ -1089,6 +1121,66 @@ export default function BusinessConfiguration() {
                           placeholder="contacto@minegocio.com"
                           value={form?.email}
                           onChange={e => handleFormChange('email', e?.target?.value)}
+                        />
+                      </div>
+                    </SettingsField>
+                  </div>
+                </div>
+
+                <div>
+                  <p className={sectionHeadingClass}>Redes sociales</p>
+                  <p className="text-xs mb-3" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+                    Aparecen en tu catálogo público como iconos de enlace. Puedes escribir solo el usuario (@minegocio) o la URL completa.
+                  </p>
+                  <div className="space-y-3">
+                    <SettingsField label="Instagram" hint="Opcional">
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-tertiary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/>
+                          </svg>
+                        </span>
+                        <input
+                          type="text"
+                          className={inputClass}
+                          style={{ ...inputStyle, paddingLeft: '2.25rem' }}
+                          placeholder="@minegocio"
+                          value={form?.instagramUrl}
+                          onChange={e => handleFormChange('instagramUrl', e?.target?.value)}
+                        />
+                      </div>
+                    </SettingsField>
+                    <SettingsField label="TikTok" hint="Opcional">
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="var(--color-text-tertiary)">
+                            <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1V9.01a6.27 6.27 0 0 0-.79-.05 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.33-6.34V8.69a8.18 8.18 0 0 0 4.78 1.52V6.76a4.85 4.85 0 0 1-1.01-.07z"/>
+                          </svg>
+                        </span>
+                        <input
+                          type="text"
+                          className={inputClass}
+                          style={{ ...inputStyle, paddingLeft: '2.25rem' }}
+                          placeholder="@minegocio"
+                          value={form?.tiktokUrl}
+                          onChange={e => handleFormChange('tiktokUrl', e?.target?.value)}
+                        />
+                      </div>
+                    </SettingsField>
+                    <SettingsField label="Facebook" hint="Opcional">
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="var(--color-text-tertiary)">
+                            <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/>
+                          </svg>
+                        </span>
+                        <input
+                          type="text"
+                          className={inputClass}
+                          style={{ ...inputStyle, paddingLeft: '2.25rem' }}
+                          placeholder="@minegocio o URL completa"
+                          value={form?.facebookUrl}
+                          onChange={e => handleFormChange('facebookUrl', e?.target?.value)}
                         />
                       </div>
                     </SettingsField>

@@ -687,8 +687,6 @@ export default function DesignCustomization({
       <CatalogLayoutSettings
         design={design}
         onChange={handleChange}
-        businessName={businessName}
-        userEmail={userEmail}
       />
 
       <DesignUnifiedHeading title="Opciones avanzadas" subtitle="Imagen para compartir, tema y tipografía" />

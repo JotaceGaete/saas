@@ -8,7 +8,10 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 const RESEND_API_URL = 'https://api.resend.com/emails';
 const FROM_EMAIL = 'Ventalink <hola@mail.ventalink.app>';
 
-const ADMIN_PREVIEW_TYPES = new Set(['welcome', 'email_confirm', 'password_recovery', 'activation_24h']);
+const ADMIN_PREVIEW_TYPES = new Set([
+  'welcome', 'email_confirm', 'password_recovery', 'activation_24h', 'test_ping',
+  'trial_expiring', 'payment_confirmed', 'plan_changed', 'new_order', 'daily_summary', 'weekly_summary',
+]);
 
 const corsHeaders: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -127,42 +130,134 @@ function renderTemplate(type: string, data: TemplateData): { subject: string; ht
     case 'welcome': {
       const person = String(d.user_name || d.name || 'Usuario');
       const biz = String(d.businessName || d.business_name || d.name || 'Tu negocio');
-      const subject = `Bienvenido a VentAlink 🚀 Empieza a vender en minutos`;
+      const subject = `${escapeHtml(person)}, tu tienda online está lista — empieza hoy`;
       const html = `<!doctype html>
-<html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/></head>
-<body style="margin:0;padding:0;background:#f5f3ff;font-family:Arial,Helvetica,sans-serif;">
-  <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">Tu catálogo online listo para vender por WhatsApp</div>
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f5f3ff;padding:24px 12px;">
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <meta name="color-scheme" content="light"/>
+  <title>Bienvenido a VentAlink</title>
+</head>
+<body style="margin:0;padding:0;background:#f5f3ff;font-family:Arial,Helvetica,sans-serif;-webkit-text-size-adjust:100%;text-size-adjust:100%;">
+
+  <!-- Preheader oculto -->
+  <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">Tu catálogo online ya existe. Compártelo hoy y recibe tu primer pedido.</div>
+
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f5f3ff;padding:32px 16px;">
     <tr><td align="center">
-      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;background:#ffffff;border-radius:14px;overflow:hidden;">
-        <tr><td style="background:#6d28d9;padding:24px 24px 20px;color:#ffffff;">
-          <p style="margin:0;font-size:13px;opacity:.9;">VentAlink</p>
-          <h1 style="margin:8px 0 0;font-size:26px;line-height:1.2;">Bienvenido a VentAlink</h1>
-        </td></tr>
-        <tr><td style="padding:24px;color:#1f2937;">
-          <p style="margin:0 0 12px;font-size:16px;">Hola ${escapeHtml(person)},</p>
-          <p style="margin:0 0 12px;font-size:15px;line-height:1.6;">Ya estás listo para empezar a vender de forma simple y organizada con <strong>${escapeHtml(biz)}</strong>.</p>
-          <p style="margin:0 0 16px;font-size:15px;line-height:1.6;">Con VentAlink puedes crear tu catálogo online y recibir pedidos directamente por WhatsApp, sin complicaciones.</p>
-          <ul style="margin:0 0 18px 18px;padding:0;font-size:14px;line-height:1.7;color:#374151;">
-            <li>Organiza tus pedidos automáticamente</li>
-            <li>Comparte un solo link en todas tus redes</li>
-            <li>Recibe pedidos claros, sin mensajes confusos</li>
-            <li>Mejora la presentación de tus productos</li>
-          </ul>
-          ${dashboardUrl ? `<table role="presentation" cellspacing="0" cellpadding="0" style="margin:0 0 18px;"><tr><td style="border-radius:10px;background:#7c3aed;">
-            <a href="${escapeHtml(dashboardUrl)}" style="display:inline-block;padding:12px 18px;color:#ffffff;text-decoration:none;font-size:15px;font-weight:700;">Crear mi catálogo</a>
-          </td></tr></table>` : ''}
-          <p style="margin:0 0 8px;font-size:14px;font-weight:700;color:#111827;">Empieza en menos de 2 minutos:</p>
-          <p style="margin:0 0 4px;font-size:14px;color:#374151;">1. Agrega tu primer producto</p>
-          <p style="margin:0 0 4px;font-size:14px;color:#374151;">2. Comparte tu enlace</p>
-          <p style="margin:0 0 14px;font-size:14px;color:#374151;">3. Recibe tu primer pedido</p>
-          <p style="margin:0 0 14px;font-size:14px;color:#6d28d9;font-weight:700;">Muchos negocios comienzan a recibir pedidos el mismo día.</p>
-          <p style="margin:0 0 6px;font-size:14px;color:#374151;">Estamos aquí para ayudarte a crecer.</p>
-          <p style="margin:0;font-size:14px;color:#111827;font-weight:700;">Equipo VentAlink</p>
-        </td></tr>
-        <tr><td style="padding:14px 24px 20px;border-top:1px solid #ede9fe;">
-          <p style="margin:0;font-size:12px;color:#6b7280;">Si tienes dudas, puedes responder este correo.</p>
-        </td></tr>
+
+      <!-- Card principal -->
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:580px;">
+
+        <!-- Logo bar -->
+        <tr>
+          <td style="padding:0 0 20px;">
+            <table role="presentation" cellspacing="0" cellpadding="0" border="0">
+              <tr>
+                <td style="background:#7c3aed;border-radius:10px;padding:6px 14px;">
+                  <span style="font-size:13px;font-weight:700;color:#ffffff;letter-spacing:0.5px;">VentAlink</span>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- Hero -->
+        <tr>
+          <td style="background:#ffffff;border-radius:16px 16px 0 0;padding:40px 36px 32px;">
+            <p style="margin:0 0 10px;font-size:13px;font-weight:600;color:#7c3aed;letter-spacing:0.8px;text-transform:uppercase;">Bienvenido</p>
+            <h1 style="margin:0 0 16px;font-size:28px;font-weight:800;line-height:1.25;color:#111827;">Hola ${escapeHtml(person)},<br/>ya puedes vender online.</h1>
+            <p style="margin:0;font-size:16px;line-height:1.7;color:#4b5563;">
+              <strong style="color:#111827;">${escapeHtml(biz)}</strong> ya tiene su espacio en VentAlink.
+              Ahora solo necesitas agregar tus productos, compartir el link y empezar a recibir pedidos por WhatsApp.
+            </p>
+          </td>
+        </tr>
+
+        <!-- Separador con gradiente -->
+        <tr>
+          <td style="background:linear-gradient(90deg,#7c3aed,#a78bfa);height:3px;font-size:0;line-height:0;">&nbsp;</td>
+        </tr>
+
+        <!-- Pasos -->
+        <tr>
+          <td style="background:#faf9ff;padding:32px 36px;">
+            <p style="margin:0 0 20px;font-size:13px;font-weight:700;color:#6b7280;letter-spacing:0.6px;text-transform:uppercase;">Cómo empezar</p>
+
+            <!-- Paso 1 -->
+            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:16px;">
+              <tr>
+                <td width="36" valign="top">
+                  <div style="width:28px;height:28px;background:#7c3aed;border-radius:50%;text-align:center;line-height:28px;font-size:13px;font-weight:700;color:#ffffff;">1</div>
+                </td>
+                <td style="padding-left:12px;">
+                  <p style="margin:0;font-size:14px;font-weight:700;color:#111827;">Agrega tus productos</p>
+                  <p style="margin:4px 0 0;font-size:13px;color:#6b7280;line-height:1.5;">Foto, nombre, precio y descripción. Listo en minutos.</p>
+                </td>
+              </tr>
+            </table>
+
+            <!-- Paso 2 -->
+            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:16px;">
+              <tr>
+                <td width="36" valign="top">
+                  <div style="width:28px;height:28px;background:#7c3aed;border-radius:50%;text-align:center;line-height:28px;font-size:13px;font-weight:700;color:#ffffff;">2</div>
+                </td>
+                <td style="padding-left:12px;">
+                  <p style="margin:0;font-size:14px;font-weight:700;color:#111827;">Comparte tu link único</p>
+                  <p style="margin:4px 0 0;font-size:13px;color:#6b7280;line-height:1.5;">Instagram, WhatsApp, TikTok — un solo enlace para todo.</p>
+                </td>
+              </tr>
+            </table>
+
+            <!-- Paso 3 -->
+            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+              <tr>
+                <td width="36" valign="top">
+                  <div style="width:28px;height:28px;background:#7c3aed;border-radius:50%;text-align:center;line-height:28px;font-size:13px;font-weight:700;color:#ffffff;">3</div>
+                </td>
+                <td style="padding-left:12px;">
+                  <p style="margin:0;font-size:14px;font-weight:700;color:#111827;">Recibe pedidos ordenados</p>
+                  <p style="margin:4px 0 0;font-size:13px;color:#6b7280;line-height:1.5;">Cada pedido llega claro y completo, directo a tu WhatsApp.</p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- CTA -->
+        <tr>
+          <td style="background:#ffffff;padding:32px 36px 36px;text-align:center;">
+            <p style="margin:0 0 8px;font-size:15px;color:#4b5563;line-height:1.6;">
+              Muchos negocios reciben su <strong style="color:#7c3aed;">primer pedido el mismo día</strong> que comparten el link.
+            </p>
+            <p style="margin:0 0 28px;font-size:13px;color:#9ca3af;">Tu catálogo te espera — solo falta el primer paso.</p>
+            ${dashboardUrl ? `<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 auto;">
+              <tr>
+                <td style="background:#7c3aed;border-radius:12px;box-shadow:0 4px 14px rgba(124,58,237,0.35);">
+                  <a href="${escapeHtml(dashboardUrl)}" style="display:inline-block;padding:15px 32px;color:#ffffff;text-decoration:none;font-size:16px;font-weight:700;letter-spacing:0.3px;">Abrir mi panel →</a>
+                </td>
+              </tr>
+            </table>` : ''}
+          </td>
+        </tr>
+
+        <!-- Footer -->
+        <tr>
+          <td style="background:#f9f8ff;border-radius:0 0 16px 16px;padding:20px 36px;border-top:1px solid #ede9fe;">
+            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+              <tr>
+                <td>
+                  <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:#374151;">Equipo VentAlink</p>
+                  <p style="margin:0 0 8px;font-size:12px;color:#9ca3af;">Si necesitas ayuda, escríbenos a <a href="mailto:contacto@ventalink.app" style="color:#7c3aed;text-decoration:none;">contacto@ventalink.app</a></p>
+                  <p style="margin:0;font-size:11px;"><a href="mailto:contacto@ventalink.app?subject=Desuscribir" style="color:#d1d5db;text-decoration:underline;">Dejar de recibir estos correos</a></p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
       </table>
     </td></tr>
   </table>
@@ -191,7 +286,8 @@ function renderTemplate(type: string, data: TemplateData): { subject: string; ht
           <p style="margin:0;font-size:13px;color:#6b7280;">Si no creaste una cuenta en VentAlink, ignora este mensaje.</p>
         </td></tr>
         <tr><td style="padding:14px 24px 20px;border-top:1px solid #ede9fe;">
-          <p style="margin:0;font-size:12px;color:#6b7280;">Si tienes dudas, puedes responder este correo.</p>
+          <p style="margin:0 0 6px;font-size:12px;color:#6b7280;">Si necesitas ayuda, escríbenos a <a href="mailto:contacto@ventalink.app" style="color:#7c3aed;text-decoration:none;">contacto@ventalink.app</a></p>
+          <p style="margin:0;font-size:11px;"><a href="mailto:contacto@ventalink.app?subject=Desuscribir" style="color:#9ca3af;text-decoration:underline;">Dejar de recibir estos correos</a></p>
         </td></tr>
       </table>
     </td></tr>
@@ -221,7 +317,8 @@ function renderTemplate(type: string, data: TemplateData): { subject: string; ht
           <p style="margin:0;font-size:13px;color:#6b7280;">Si no solicitaste este cambio, puedes ignorar este correo.</p>
         </td></tr>
         <tr><td style="padding:14px 24px 20px;border-top:1px solid #ede9fe;">
-          <p style="margin:0;font-size:12px;color:#6b7280;">Si tienes dudas, puedes responder este correo.</p>
+          <p style="margin:0 0 6px;font-size:12px;color:#6b7280;">Si necesitas ayuda, escríbenos a <a href="mailto:contacto@ventalink.app" style="color:#7c3aed;text-decoration:none;">contacto@ventalink.app</a></p>
+          <p style="margin:0;font-size:11px;"><a href="mailto:contacto@ventalink.app?subject=Desuscribir" style="color:#9ca3af;text-decoration:underline;">Dejar de recibir estos correos</a></p>
         </td></tr>
       </table>
     </td></tr>
@@ -287,11 +384,25 @@ function renderTemplate(type: string, data: TemplateData): { subject: string; ht
           <p style="margin:0 0 6px;font-size:14px;color:#6d28d9;font-weight:700;">Muchos negocios reciben su primer pedido el mismo día que comparten el link.</p>
         </td></tr>
         <tr><td style="padding:14px 24px 20px;border-top:1px solid #ede9fe;">
-          <p style="margin:0;font-size:12px;color:#6b7280;">Ventalink — Catálogo y pedidos por WhatsApp. Si tienes dudas, responde este correo.</p>
+          <p style="margin:0 0 6px;font-size:12px;color:#6b7280;">Ventalink — Catálogo y pedidos por WhatsApp. Si necesitas ayuda, escríbenos a <a href="mailto:contacto@ventalink.app" style="color:#7c3aed;text-decoration:none;">contacto@ventalink.app</a></p>
+          <p style="margin:0;font-size:11px;"><a href="mailto:contacto@ventalink.app?subject=Desuscribir" style="color:#9ca3af;text-decoration:underline;">Dejar de recibir estos correos</a></p>
         </td></tr>
       </table>
     </td></tr>
   </table>
+</body></html>`;
+      return { subject, html };
+    }
+    case 'test_ping': {
+      const ts = new Date().toISOString();
+      const subject = `[TEST PING] Verificación de envío — VentAlink`;
+      const html = `<!doctype html>
+<html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
+<body style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:40px auto;padding:24px;color:#1f2937;border:2px solid #7c3aed;border-radius:12px;">
+  <h1 style="color:#7c3aed;margin:0 0 16px;font-size:22px;">Test Ping ✓</h1>
+  <p style="margin:0 0 10px;font-size:15px;">Este es un correo de prueba enviado desde la Edge Function <strong>send-email</strong> de VentAlink.</p>
+  <p style="margin:0 0 6px;font-size:13px;color:#6b7280;">Timestamp: <code>${ts}</code></p>
+  <p style="margin:0;font-size:13px;color:#6b7280;">Si recibes este mensaje, el sistema de correo funciona correctamente.</p>
 </body></html>`;
       return { subject, html };
     }
@@ -471,8 +582,11 @@ Deno.serve(async (req) => {
       return jsonResponse({ preview: true, type: emailType, subject, html }, 200);
     }
 
-    const to = typeof body?.to === 'string' ? body.to.trim() : '';
-    if (!to) return jsonResponse({ error: 'to is required' }, 400);
+    // admin_send_test: SIEMPRE envía al inbox de prueba, nunca al "to" del body.
+    const requestedTo = typeof body?.to === 'string' ? body.to.trim() : '(no especificado)';
+    const finalTo = (Deno.env.get('EMAIL_TEST_INBOX') ?? '').trim() || 'jotacegaete@gmail.com';
+
+    console.log('[send-email] admin_send_test', { action, type: emailType, requestedTo, finalTo });
 
     const apiKey = Deno.env.get('RESEND_API_KEY');
     if (!apiKey || !apiKey.trim()) {
@@ -490,7 +604,7 @@ Deno.serve(async (req) => {
         },
         body: JSON.stringify({
           from: FROM_EMAIL,
-          to: [to],
+          to: [finalTo],
           subject,
           html,
         }),
@@ -506,12 +620,12 @@ Deno.serve(async (req) => {
 
       if (!res.ok) {
         const message = (resData?.message as string) || (resData?.name as string) || resText?.slice(0, 200) || 'Failed to send email';
-        console.error('[send-email] admin_send_test Resend error:', { status: res.status, message, resData });
+        console.error('[send-email] admin_send_test Resend error:', { action, type: emailType, requestedTo, finalTo, status: res.status, message });
         if (supabase) {
           await logAdminTest(supabase, {
             adminUserId: admin.userId,
             templateKey: emailType,
-            toEmail: to,
+            toEmail: finalTo,
             subject,
             status: 'failed',
             errorMessage: message,
@@ -521,24 +635,25 @@ Deno.serve(async (req) => {
       }
 
       const providerId = (resData?.id as string) || null;
-      console.log('[send-email] admin_send_test sent', { to, providerId, subject: subject?.slice(0, 60) });
+      console.log('[send-email] admin_send_test sent OK', { action, type: emailType, requestedTo, finalTo, providerId, subject: subject?.slice(0, 60) });
       if (supabase) {
         await logAdminTest(supabase, {
           adminUserId: admin.userId,
           templateKey: emailType,
-          toEmail: to,
+          toEmail: finalTo,
           subject,
           status: 'sent',
         });
       }
-      return jsonResponse({ success: true, id: providerId, type: emailType, message: 'Queued by provider; check inbox and spam.' }, 200);
+      return jsonResponse({ success: true, requestedTo, finalTo, type: emailType, id: providerId }, 200);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unknown error';
+      console.error('[send-email] admin_send_test fetch error:', { action, type: emailType, requestedTo, finalTo, msg });
       if (supabase) {
         await logAdminTest(supabase, {
           adminUserId: admin.userId,
           templateKey: emailType,
-          toEmail: to,
+          toEmail: finalTo,
           subject,
           status: 'failed',
           errorMessage: msg,

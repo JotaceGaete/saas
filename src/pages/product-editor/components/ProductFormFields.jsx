@@ -13,9 +13,13 @@ function formatPriceInput(value, locale) {
   return formatIntegerInputGrouped(value, locale);
 }
 
-export default function ProductFormFields({ formData, errors, onChange, currencyCode = 'USD', locale = 'en-US', useCategories = false, categories = [], onImproveWithAi, isImprovingDescription = false, publicCode = '' }) {
+export default function ProductFormFields({ formData, errors, onChange, currencyCode = 'USD', locale = 'en-US', useCategories = false, businessCategories = [], rubroCategories = [], onImproveWithAi, isImprovingDescription = false, publicCode = '' }) {
   const handleChange = (field, value) => onChange(field, value);
-  const categoryOptions = Array.isArray(categories) ? categories.filter((c) => c?.name?.trim()) : [];
+  const ownOptions   = Array.isArray(businessCategories) ? businessCategories.filter((c) => c?.name?.trim()) : [];
+  const rubroOptions = Array.isArray(rubroCategories)    ? rubroCategories.filter((c) => c?.name?.trim())    : [];
+  const hasOwn  = ownOptions.length > 0;
+  const hasRubro = rubroOptions.length > 0;
+  const useGroups = hasOwn && hasRubro; // solo agrupa si hay ambas fuentes
 
   return (
     <div className="space-y-5">
@@ -133,9 +137,19 @@ export default function ProductFormFields({ formData, errors, onChange, currency
       {/* Categoría (solo si el negocio tiene categorías activadas) */}
       {useCategories && (
         <div>
-          <label className="block text-sm font-medium mb-1" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}>
-            Categoría
-          </label>
+          <div className="flex items-center justify-between mb-1">
+            <label className="block text-sm font-medium" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}>
+              Categoría
+            </label>
+            <a
+              href="/business-configuration"
+              className="text-xs font-medium hover:underline"
+              style={{ color: 'var(--color-primary)', fontFamily: 'var(--font-caption)' }}
+              tabIndex={-1}
+            >
+              {hasOwn ? 'Gestionar mis categorías' : 'Crear categoría propia'}
+            </a>
+          </div>
           <select
             value={formData?.categoria ?? ''}
             onChange={(e) => handleChange('categoria', e?.target?.value)}
@@ -149,11 +163,31 @@ export default function ProductFormFields({ formData, errors, onChange, currency
             }}
             aria-label="Categoría del producto"
           >
-            <option value="">Otros (sin categoría)</option>
-            {categoryOptions?.map((c) => (
-              <option key={c?.id} value={c?.name ?? ''}>{c?.name}</option>
-            ))}
+            <option value="">Sin categoría</option>
+            {useGroups ? (
+              <>
+                <optgroup label="Mis categorías">
+                  {ownOptions.map((c) => (
+                    <option key={c.id} value={c.name}>{c.name}</option>
+                  ))}
+                </optgroup>
+                <optgroup label="Sugeridas para tu rubro">
+                  {rubroOptions.map((c) => (
+                    <option key={c.id} value={c.name}>{c.name}</option>
+                  ))}
+                </optgroup>
+              </>
+            ) : (
+              [...ownOptions, ...rubroOptions].map((c) => (
+                <option key={c.id} value={c.name}>{c.name}</option>
+              ))
+            )}
           </select>
+          {hasOwn && (
+            <p className="mt-1 text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+              Tus categorías aparecen primero.
+            </p>
+          )}
         </div>
       )}
       {/* Inventario */}

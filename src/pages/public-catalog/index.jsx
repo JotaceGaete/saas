@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
-import { getBusinessBySlug, getPublicProducts, getCategoriesByRubroId, recordCatalogVisit, recordCatalogWhatsAppClick, createOrder } from '../../services/waBusinessService';
+import { getBusinessBySlug, getPublicProducts, getCategoriesByRubroId, getBusinessCategories, recordCatalogVisit, recordCatalogWhatsAppClick, createOrder } from '../../services/waBusinessService';
 import Icon from '../../components/AppIcon';
 import { CartProvider, useCart } from '../../contexts/CartContext';
 import { formatPriceCatalog, resolveCatalogCurrency } from '../../utils/formatPrice';
@@ -78,6 +78,78 @@ function darkenHex(hex, pct = 0.2) {
 function hexToRgba(hex, alpha = 0.4) {
   const [r, g, b] = hexToRgb(hex);
   return `rgba(${r},${g},${b},${alpha})`;
+}
+
+/** Sección "Síguenos" — solo se renderiza si el negocio tiene al menos una red configurada. */
+function SocialLinks({ business, primaryColor }) {
+  const links = [
+    {
+      key: 'instagram',
+      url: business?.instagramUrl,
+      label: 'Instagram',
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/>
+          <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/>
+          <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/>
+        </svg>
+      ),
+    },
+    {
+      key: 'tiktok',
+      url: business?.tiktokUrl,
+      label: 'TikTok',
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1V9.01a6.27 6.27 0 0 0-.79-.05 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.33-6.34V8.69a8.18 8.18 0 0 0 4.78 1.52V6.76a4.85 4.85 0 0 1-1.01-.07z"/>
+        </svg>
+      ),
+    },
+    {
+      key: 'facebook',
+      url: business?.facebookUrl,
+      label: 'Facebook',
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/>
+        </svg>
+      ),
+    },
+  ].filter((l) => l.url);
+
+  if (links.length === 0) return null;
+
+  return (
+    <div className="max-w-5xl mx-auto px-4 mt-3">
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-4 sm:px-5 py-4">
+        <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-3">Síguenos</p>
+        <div className="flex flex-wrap gap-2">
+          {links.map((l) => (
+            <a
+              key={l.key}
+              href={l.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2.5 px-4 py-2 rounded-full border border-gray-200 bg-gray-50 text-sm font-semibold text-gray-700 transition-all duration-150 active:scale-[0.97]"
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = primaryColor;
+                e.currentTarget.style.borderColor = primaryColor;
+                e.currentTarget.style.color = '#fff';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = '';
+                e.currentTarget.style.borderColor = '';
+                e.currentTarget.style.color = '';
+              }}
+            >
+              <span className="flex-shrink-0 opacity-80">{l.icon}</span>
+              {l.label}
+            </a>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 /** Bloque de info tienda: fondo gris suave + icono a la izquierda (escritorio y acordeón móvil). */
@@ -174,6 +246,7 @@ function CatalogInner({ slug }) {
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [cartOpen, setCartOpen] = useState(false);
   const [rubroCategories, setRubroCategories] = useState([]);
+  const [bizCategories, setBizCategories] = useState([]);
 
   // Filter state
   const [searchQuery, setSearchQuery] = useState('');
@@ -221,11 +294,17 @@ function CatalogInner({ slug }) {
       setMaxPrice(max);
       setPriceRange([0, max]);
     }
-    if (biz?.rubroId && biz?.designSettings?.useCategories) {
-      const { data: cats } = await getCategoriesByRubroId(biz.rubroId);
-      setRubroCategories(cats || []);
+    if (biz?.designSettings?.useCategories) {
+      // Cargar en paralelo: categorías del rubro (globales) + propias del negocio
+      const [rubroResult, bizResult] = await Promise.all([
+        biz?.rubroId ? getCategoriesByRubroId(biz.rubroId) : Promise.resolve({ data: [] }),
+        biz?.id ? getBusinessCategories(biz.id) : Promise.resolve({ data: [] }),
+      ]);
+      setRubroCategories(rubroResult.data || []);
+      setBizCategories(bizResult.data || []);
     } else {
       setRubroCategories([]);
+      setBizCategories([]);
     }
     setLoading(false);
   };
@@ -241,10 +320,21 @@ function CatalogInner({ slug }) {
     [businessCurrency],
   );
 
-  // Derivar useCategories y categoryNames desde business y rubroCategories
+  // Derivar useCategories y categoryNames desde business, rubros y categorías propias
   const design = business?.designSettings || {};
-  const useCategories = design?.useCategories === true && !!business?.rubroId;
-  const categoryNames = (rubroCategories || []).map((c) => c?.name?.trim()).filter(Boolean);
+  // useCategories activo si el toggle está on y hay al menos una fuente de categorías
+  const useCategories = design?.useCategories === true && (!!business?.rubroId || bizCategories.length > 0);
+  // Categorías propias primero, luego globales del rubro; deduplicar por nombre
+  const categoryNames = useMemo(() => {
+    const bizNames = bizCategories.map((c) => c?.name?.trim()).filter(Boolean);
+    const rubroNames = (rubroCategories || []).map((c) => c?.name?.trim()).filter(Boolean);
+    const seen = new Set(bizNames.map((n) => n.toLowerCase()));
+    const merged = [...bizNames];
+    for (const name of rubroNames) {
+      if (!seen.has(name.toLowerCase())) merged.push(name);
+    }
+    return merged;
+  }, [bizCategories, rubroCategories]);
 
   // Categorías visibles en el filtro: solo las que tienen al menos un producto activo
   const visibleCategories = useMemo(() => {
@@ -867,7 +957,10 @@ function CatalogInner({ slug }) {
           </div>
         </div>
 
-        {/* 2b. Información adicional (escritorio; en móvil va en el acordeón de la tarjeta) */}
+        {/* 2b. Redes sociales del negocio (si están configuradas) */}
+        <SocialLinks business={business} primaryColor={primaryColor} />
+
+        {/* 2c. Información adicional (escritorio; en móvil va en el acordeón de la tarjeta) */}
         {hasCatalogInfo && (
           <div className="max-w-5xl mx-auto px-4 mt-3 hidden md:block">
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">

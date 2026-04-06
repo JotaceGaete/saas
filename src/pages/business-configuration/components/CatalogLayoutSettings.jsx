@@ -1,19 +1,5 @@
 import React from 'react';
 import Icon from 'components/AppIcon';
-import { buildWhatsAppUrl } from '../../../utils/whatsapp';
-import { SUPPORT_WHATSAPP_NUMBER } from '../../../config/support';
-
-function buildCategoryRequestWhatsAppMessage(businessName, userEmail) {
-  const biz = businessName != null && businessName !== '' ? String(businessName) : '';
-  const email = userEmail != null && userEmail !== '' ? String(userEmail) : '';
-  return `Hola, necesito agregar una categoría para mi catálogo en Ventalink.
-
-Negocio: ${biz}
-Email: ${email}
-
-Rubro:
-Categoría solicitada:`;
-}
 
 const CATALOG_LAYOUTS = [
   { id: 'list', label: 'Lista', description: 'Productos en fila horizontal', icon: 'LayoutList' },
@@ -54,7 +40,7 @@ function SectionCard({ icon, title, subtitle, children }) {
  * Ajustes de layout del catálogo (JSONB `design_settings`).
  * Montado desde la pantalla principal **Diseño** (`/design`) vía `DesignCustomization`.
  */
-export default function CatalogLayoutSettings({ design, onChange, businessName, userEmail }) {
+export default function CatalogLayoutSettings({ design, onChange }) {
   const primaryColor = design?.primaryColor || '#7C3AED';
   const storeHeader = design?.storeHeader ?? { showStoreName: true, showDescription: true, showWhatsAppButton: true, descriptionColor: '' };
   const cardSettings = design?.cardSettings ?? { showPrice: true, showDescription: true, showStock: false, showWhatsApp: true };
@@ -93,22 +79,17 @@ export default function CatalogLayoutSettings({ design, onChange, businessName, 
         <p className="mt-2 text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
           Las categorías sugeridas dependen del <strong>rubro principal</strong> (Identidad). Si cambias de rubro, revisa tus categorías de producto.
         </p>
-        <div className="mt-5 pt-5 border-t" style={{ borderColor: 'var(--color-border)' }}>
-          <p className="text-xs mb-3" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
-            ¿Tu rubro no está listado o necesitas una categoría específica?
-            Escríbenos por WhatsApp y la agregamos por ti para que tu catálogo quede perfecto.
+        <div className="mt-4 pt-4 border-t" style={{ borderColor: 'var(--color-border)' }}>
+          <p className="text-xs" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)', lineHeight: '1.6' }}>
+            ¿Necesitas categorías que no están en tu rubro?{' '}
+            <a
+              href="/business-configuration"
+              className="font-semibold underline underline-offset-2"
+              style={{ color: 'var(--color-primary)' }}
+            >
+              Crea tus propias categorías en Configuración →
+            </a>
           </p>
-          <button
-            type="button"
-            onClick={() => {
-              const msg = buildCategoryRequestWhatsAppMessage(businessName, userEmail);
-              const url = buildWhatsAppUrl(msg, SUPPORT_WHATSAPP_NUMBER);
-              window.open(url, '_blank');
-            }}
-            className="px-4 py-2 rounded-lg bg-green-500 text-white text-sm font-medium hover:bg-green-600 transition text-center"
-          >
-            Solicitar categoría
-          </button>
         </div>
       </SectionCard>
 

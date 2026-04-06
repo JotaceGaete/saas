@@ -7,6 +7,20 @@ import { getCountryConfig, COUNTRY_CODES } from '../config/countryConfig';
 // Helpers
 
 /** E.164: solo dígitos tras + (evita espacios y separadores locales). */
+/**
+ * Normaliza un valor de red social a URL completa.
+ * Acepta username (con o sin @) o URL completa.
+ * Devuelve null si el valor está vacío.
+ */
+function normalizeSocialUrl(value, baseUrl) {
+  const v = String(value ?? '').trim();
+  if (!v) return null;
+  if (/^https?:\/\//i.test(v)) return v.replace(/\/$/, '');
+  // handle → username (quitar @ si viene)
+  const handle = v.replace(/^@/, '').trim();
+  return handle ? `${baseUrl}/${handle}` : null;
+}
+
 function normalizeWhatsappForStorage(value) {
   if (value === undefined || value === null) return value;
   const t = String(value).trim();
@@ -325,6 +339,9 @@ const mapBusinessFromDb = (row) => {
   rubroId: row?.rubro_id || null,
   rubroName: rubroRow?.name ?? row?.rubro_name ?? null,
   rubroSlug: rubroRow?.slug ?? row?.rubro_slug ?? null,
+  instagramUrl: row?.instagram_url || null,
+  tiktokUrl: row?.tiktok_url || null,
+  facebookUrl: row?.facebook_url || null,
   designSettings,
   orderMessageTemplate: row?.order_message_template || null,
   planSlug: row?.plan_slug || 'starter',
@@ -618,6 +635,9 @@ export async function updateBusiness(businessId, updates) {
   if (updates?.isActive !== undefined)    dbUpdates.is_active = updates?.isActive;
   if (updates?.designSettings !== undefined) dbUpdates.design_settings = updates?.designSettings;
   if (updates?.rubroId !== undefined) dbUpdates.rubro_id = updates?.rubroId || null;
+  if (updates?.instagramUrl !== undefined) dbUpdates.instagram_url = normalizeSocialUrl(updates.instagramUrl, 'https://instagram.com');
+  if (updates?.tiktokUrl    !== undefined) dbUpdates.tiktok_url    = normalizeSocialUrl(updates.tiktokUrl,    'https://tiktok.com');
+  if (updates?.facebookUrl  !== undefined) dbUpdates.facebook_url  = normalizeSocialUrl(updates.facebookUrl,  'https://facebook.com');
   if (updates?.planSlug !== undefined)         dbUpdates.plan_slug = updates?.planSlug;
   if (updates?.planExpiresAt !== undefined)    dbUpdates.plan_expires_at = updates?.planExpiresAt ?? null;
   if (updates?.trialExpiresAt !== undefined)   dbUpdates.trial_expires_at = updates?.trialExpiresAt ?? null;
@@ -1832,6 +1852,150 @@ export const getCategoriesByRubroId = async (rubroId) => {
     ?.order('sort_order', { ascending: true });
   if (error) return { data: null, error };
   return { data: (data || []).map(mapRubroCategoryFromDb), error: null };
+};
+
+// ——— Categorías propias del negocio ———
+
+const BUSINESS_CATEGORY_LIMIT = 30;
+const BUSINESS_CATEGORY_NAME_MAX = 60;
+
+/** Convierte texto a slug limpio (sin acentos, solo a-z0-9-). */
+function slugifyBusinessCategory(name) {
+  return String(name || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-');
+}
+
+const mapBusinessCategoryFromDb = (row) => ({
+  id: row?.id,
+  businessId: row?.business_id,
+  name: row?.name,
+  slug: row?.slug,
+  sortOrder: row?.sort_order ?? 0,
+  createdAt: row?.created_at,
+  updatedAt: row?.updated_at,
+});
+
+/** Devuelve las categorías propias de un negocio, ordenadas por sort_order. */
+export const getBusinessCategories = async (businessId) => {
+  if (!businessId) return { data: [], error: null };
+  const { data, error } = await supabase
+    ?.from('wa_business_categories')
+    ?.select('*')
+    ?.eq('business_id', businessId)
+    ?.order('sort_order', { ascending: true });
+  if (error) return { data: null, error };
+  return { data: (data || []).map(mapBusinessCategoryFromDb), error: null };
+};
+
+/**
+ * Crea una categoría propia para el negocio.
+ * Valida límite (30) y longitud de nombre.
+ */
+export const createBusinessCategory = async (businessId, { name, sortOrder = 0 }) => {
+  const trimmed = String(name || '').trim();
+  if (!trimmed) return { data: null, error: { message: 'El nombre de la categoría es obligatorio' } };
+  if (trimmed.length > BUSINESS_CATEGORY_NAME_MAX) {
+    return { data: null, error: { message: `El nombre no puede superar ${BUSINESS_CATEGORY_NAME_MAX} caracteres` } };
+  }
+  // Verificar límite
+  const { count } = await supabase
+    ?.from('wa_business_categories')
+    ?.select('id', { count: 'exact', head: true })
+    ?.eq('business_id', businessId) ?? {};
+  if ((count ?? 0) >= BUSINESS_CATEGORY_LIMIT) {
+    return { data: null, error: { message: `Límite de ${BUSINESS_CATEGORY_LIMIT} categorías propias alcanzado` } };
+  }
+  const slug = slugifyBusinessCategory(trimmed);
+  const { data, error } = await supabase
+    ?.from('wa_business_categories')
+    ?.insert({ business_id: businessId, name: trimmed, slug, sort_order: sortOrder })
+    ?.select()
+    ?.single();
+  if (error) {
+    const isDuplicate = error?.code === '23505';
+    return { data: null, error: { message: isDuplicate ? 'Ya existe una categoría con ese nombre' : error.message } };
+  }
+  return { data: mapBusinessCategoryFromDb(data), error: null };
+};
+
+/**
+ * Renombra una categoría propia.
+ * Actualiza en cascada los productos del negocio que usaban el nombre anterior.
+ */
+export const updateBusinessCategory = async (id, businessId, { name, sortOrder }) => {
+  const updates = {};
+  if (name !== undefined) {
+    const trimmed = String(name || '').trim();
+    if (!trimmed) return { data: null, error: { message: 'El nombre es obligatorio' } };
+    if (trimmed.length > BUSINESS_CATEGORY_NAME_MAX) {
+      return { data: null, error: { message: `Máximo ${BUSINESS_CATEGORY_NAME_MAX} caracteres` } };
+    }
+    updates.name = trimmed;
+    updates.slug = slugifyBusinessCategory(trimmed);
+  }
+  if (sortOrder !== undefined) updates.sort_order = sortOrder;
+  // Obtener nombre actual antes de actualizar (para cascade)
+  const { data: existing } = await supabase
+    ?.from('wa_business_categories')?.select('name')?.eq('id', id)?.single() ?? {};
+  const { data, error } = await supabase
+    ?.from('wa_business_categories')
+    ?.update(updates)
+    ?.eq('id', id)
+    ?.select()
+    ?.single();
+  if (error) {
+    const isDuplicate = error?.code === '23505';
+    return { data: null, error: { message: isDuplicate ? 'Ya existe una categoría con ese nombre' : error.message } };
+  }
+  // Cascade: actualizar productos que tenían el nombre anterior
+  if (updates.name && existing?.name && existing.name !== updates.name) {
+    await supabase
+      ?.from('wa_products')
+      ?.update({ category: updates.name })
+      ?.eq('business_id', businessId)
+      ?.eq('category', existing.name);
+  }
+  return { data: mapBusinessCategoryFromDb(data), error: null };
+};
+
+/**
+ * Cuenta cuántos productos activos usan una categoría.
+ * Se usa para mostrar el aviso de confirmación antes de eliminar.
+ */
+export const countProductsInBusinessCategory = async (businessId, categoryName) => {
+  const { count } = await supabase
+    ?.from('wa_products')
+    ?.select('id', { count: 'exact', head: true })
+    ?.eq('business_id', businessId)
+    ?.eq('category', categoryName) ?? {};
+  return count ?? 0;
+};
+
+/**
+ * Elimina una categoría propia.
+ * Si desassignProducts=true, pone category=null en los productos afectados antes de borrar.
+ */
+export const deleteBusinessCategory = async (id, businessId, { desassignProducts = true } = {}) => {
+  const { data: cat } = await supabase
+    ?.from('wa_business_categories')?.select('name')?.eq('id', id)?.single() ?? {};
+  if (desassignProducts && cat?.name) {
+    await supabase
+      ?.from('wa_products')
+      ?.update({ category: null })
+      ?.eq('business_id', businessId)
+      ?.eq('category', cat.name);
+  }
+  const { error } = await supabase
+    ?.from('wa_business_categories')
+    ?.delete()
+    ?.eq('id', id);
+  return { error };
 };
 
 // ——— Admin: CRUD rubros ———

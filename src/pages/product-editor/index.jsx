@@ -11,7 +11,7 @@ import ProductPreview from './components/ProductPreview';
 import SaveBar from './components/SaveBar';
 import ProductOptionsSection from './components/ProductOptionsSection';
 import { useAuth } from '../../contexts/AuthContext';
-import { getProduct, createProduct, updateProduct, uploadProductImage, getMyBusiness, getCategoriesByRubroId, getEffectivePlanSlug } from '../../services/waBusinessService';
+import { getProduct, createProduct, updateProduct, uploadProductImage, getMyBusiness, getCategoriesByRubroId, getBusinessCategories, getEffectivePlanSlug } from '../../services/waBusinessService';
 import { convertUnsupportedImageToJpeg } from '../../utils/imageUploadUtils';
 import { useToast } from '../../components/ui/Toast';
 import { useConfirmedEmailGuard } from '../../hooks/useConfirmedEmailGuard';
@@ -46,6 +46,7 @@ export default function ProductEditor() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [pageLoading, setPageLoading] = useState(isEditing);
   const [rubroCategories, setRubroCategories] = useState([]);
+  const [businessCategories, setBusinessCategories] = useState([]);
   const [isImprovingDescription, setIsImprovingDescription] = useState(false);
   const [publicCode, setPublicCode] = useState('');
   const toast = useToast();
@@ -100,14 +101,20 @@ export default function ProductEditor() {
     }
   }, [user, business, businessLoading, refreshBusiness]);
 
-  // Categorías del rubro del negocio (para selector cuando useCategories está activo)
+  // Categorías del rubro (globales) + propias del negocio — se cargan cuando useCategories está activo
   useEffect(() => {
-    if (!business?.rubroId || !business?.designSettings?.useCategories) {
+    if (!business?.designSettings?.useCategories) {
       setRubroCategories([]);
+      setBusinessCategories([]);
       return;
     }
-    getCategoriesByRubroId(business.rubroId).then(({ data }) => setRubroCategories(data || []));
-  }, [business?.rubroId, business?.designSettings?.useCategories]);
+    if (business?.rubroId) {
+      getCategoriesByRubroId(business.rubroId).then(({ data }) => setRubroCategories(data || []));
+    }
+    if (business?.id) {
+      getBusinessCategories(business.id).then(({ data }) => setBusinessCategories(data || []));
+    }
+  }, [business?.id, business?.rubroId, business?.designSettings?.useCategories]);
 
   const handleFieldChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -505,8 +512,9 @@ export default function ProductEditor() {
                     onChange={handleFieldChange}
                     currencyCode={locale.currencyCode}
                     locale={locale.locale}
-                    useCategories={business?.designSettings?.useCategories === true && !!business?.rubroId}
-                    categories={rubroCategories}
+                    useCategories={business?.designSettings?.useCategories === true && (!!business?.rubroId || businessCategories.length > 0)}
+                    businessCategories={businessCategories}
+                    rubroCategories={rubroCategories}
                     onImproveWithAi={canUseAi ? handleImproveWithAi : undefined}
                     isImprovingDescription={isImprovingDescription}
                     publicCode={isEditing ? publicCode : ''}

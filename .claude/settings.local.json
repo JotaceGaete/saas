@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs grep:*)",
+      "Bash(grep -h \"ADD COLUMN\" /c/saas1/supabase/migrations/*.sql)",
+      "Bash(grep -B 2 -A 20 \"ADD COLUMN.*design_settings\\\\|ADD COLUMN.*region\\\\|ADD COLUMN.*country_code\" /c/saas1/supabase/migrations/202603*.sql)"
+    ]
+  }
+}
