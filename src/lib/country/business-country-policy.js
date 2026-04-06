@@ -17,6 +17,25 @@ export function hasPersistedBusinessCountry(business) {
 }
 
 /**
+ * Campos mínimos que deben estar completos para acceder al dashboard.
+ * Devuelve array de claves faltantes (vacío = completo).
+ */
+export function getMissingOnboardingFields(business) {
+  const missing = [];
+  if (!hasPersistedBusinessCountry(business)) missing.push('country');
+  if (!String(business?.name ?? '').trim()) missing.push('name');
+  if (!String(business?.whatsapp ?? '').trim()) missing.push('whatsapp');
+  return missing;
+}
+
+/**
+ * True si el negocio tiene los 3 datos mínimos para operar: país, nombre y WhatsApp.
+ */
+export function isOnboardingComplete(business) {
+  return getMissingOnboardingFields(business).length === 0;
+}
+
+/**
  * “Bloqueo” por billing para UI de cambio de país (no aplica a la primera fijación).
  * Solo cuando la política denie explícitamente un cambio ya existente.
  */

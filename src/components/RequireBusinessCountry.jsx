@@ -1,7 +1,7 @@
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { hasPersistedBusinessCountry } from '../lib/country/business-country-policy';
+import { isOnboardingComplete, getMissingOnboardingFields } from '../lib/country/business-country-policy';
 
 /** Rutas donde no se exige `country_code` (evita redirect a /business-configuration → loop). */
 const EXEMPT_PATHS = [
@@ -21,10 +21,6 @@ function normalizePathname(pathname) {
 function isExemptRoute(pathname) {
   const p = normalizePathname(pathname);
   return EXEMPT_PATHS.some((ex) => p === ex || p.startsWith(`${ex}/`));
-}
-
-function hasConfiguredCountryCode(business) {
-  return hasPersistedBusinessCountry(business);
 }
 
 function RouteGuardSpinner() {
@@ -51,15 +47,6 @@ export default function RequireBusinessCountry({ children }) {
 
   const isExempt = isExemptRoute(pathname);
 
-  if (typeof window !== 'undefined') {
-    console.log('[VTLK_GUARD_COUNTRY]', {
-      pathname,
-      isExempt,
-      country_code: business?.country_code,
-      business,
-    });
-  }
-
   if (isExempt) {
     return children;
   }
@@ -72,8 +59,15 @@ export default function RequireBusinessCountry({ children }) {
     return <RouteGuardSpinner />;
   }
 
-  if (business?.id && !hasConfiguredCountryCode(business)) {
-    return <Navigate to="/business-configuration" replace state={{ from: location }} />;
+  if (business?.id && !isOnboardingComplete(business)) {
+    const missingFields = getMissingOnboardingFields(business);
+    return (
+      <Navigate
+        to="/business-configuration"
+        replace
+        state={{ from: location, onboardingIncomplete: true, missingFields }}
+      />
+    );
   }
 
   return children;
