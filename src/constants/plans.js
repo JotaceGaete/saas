@@ -2,7 +2,7 @@ import { getPlanPriceForCountry } from '../config/countryPricing';
 
 /**
  * Planes del producto: nombres, límites numéricos y helpers.
- * starter = gratis (10 productos, 30 pedidos/mes; sin estadísticas ni IA).
+ * starter = gratis (20 productos, 50 pedidos/mes; sin estadísticas ni IA).
  * pro     = pago o trial (100 productos, pedidos ilimitados, estadísticas, IA).
  * business = Full (productos y pedidos ilimitados, estadísticas completas, IA ilimitada).
  */
@@ -58,8 +58,8 @@ export const PLAN_PRICES_USD = Object.freeze({
  */
 export const PLAN_LIMITS = Object.freeze({
   starter: {
-    maxProducts:       10,
-    maxOrdersPerMonth: 30,
+    maxProducts:       20,
+    maxOrdersPerMonth: 50,
     maxBusinesses:     1,
   },
   pro: {

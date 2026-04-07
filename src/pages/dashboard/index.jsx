@@ -451,6 +451,40 @@ export default function Dashboard() {
     });
   }
 
+  // Avisos progresivos para plan Starter (solo cuando los datos están listos)
+  if (!planUsageLoading && planUsage && effectivePlan === 'starter') {
+    const usedOrders = planUsage?.ordersThisMonth ?? 0;
+    const usedProducts = planUsage?.activeProducts ?? 0;
+    const maxOrders = planUsage?.maxOrdersPerMonth ?? 50;
+    const maxProducts = planUsage?.maxProducts ?? 20;
+
+    if (usedOrders >= 35 && usedOrders < maxOrders) {
+      alerts.push({
+        id: 'orders-limit-warning',
+        icon: 'TrendingUp',
+        color: '#D97706',
+        bg: 'rgba(245,158,11,0.08)',
+        border: 'rgba(245,158,11,0.25)',
+        text: `🚀 Estás vendiendo bien. Te quedan ${maxOrders - usedOrders} pedidos en tu plan gratis.`,
+        action: 'Ver planes',
+        onAction: () => navigate('/planes'),
+      });
+    }
+
+    if (usedProducts >= 15 && usedProducts < maxProducts) {
+      alerts.push({
+        id: 'products-limit-warning',
+        icon: 'Package',
+        color: '#D97706',
+        bg: 'rgba(245,158,11,0.08)',
+        border: 'rgba(245,158,11,0.25)',
+        text: `⚠️ Te quedan ${maxProducts - usedProducts} espacios para productos en tu plan gratis.`,
+        action: 'Ver planes',
+        onAction: () => navigate('/planes'),
+      });
+    }
+  }
+
   const METRICS = [
     {
       title: 'Pedidos pendientes',

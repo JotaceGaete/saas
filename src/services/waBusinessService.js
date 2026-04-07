@@ -168,10 +168,7 @@ async function validateCountryUpdateAllowed({ businessId, userId }) {
 }
 
 function getProductLimitByPlan(planSlug) {
-  const activePlan = normalizePlanSlug(planSlug);
-  if (activePlan === 'business') return null;
-  if (activePlan === 'pro') return 100;
-  return 10; // starter
+  return getPlanLimits(normalizePlanSlug(planSlug)).maxProducts;
 }
 
 const generateSlug = async (name) => {
@@ -791,6 +788,54 @@ export const getActiveProductCount = async (businessId) => {
   return count ?? 0;
 };
 
+/**
+ * Verifica si el negocio puede crear más productos u órdenes según su plan.
+ * @param {string} businessId
+ * @param {'products'|'orders'} type
+ * @returns {Promise<{ allowed: boolean, current: number, limit: number|null }>}
+ */
+export const checkPlanLimits = async (businessId, type) => {
+  try {
+    if (type === 'products') {
+      const { data: biz } = await supabase
+        ?.from('wa_businesses')
+        ?.select('plan_slug')
+        ?.eq('id', businessId)
+        ?.single();
+      const activePlan = getActivePlan(biz || {});
+      const limit = getProductLimitByPlan(activePlan);
+      const current = await getActiveProductCount(businessId);
+      return { allowed: limit === null || current < limit, current, limit };
+    }
+    if (type === 'orders') {
+      const { data: biz } = await supabase
+        ?.from('wa_businesses')
+        ?.select('plan_slug, plan_expires_at, trial_expires_at')
+        ?.eq('id', businessId)
+        ?.single();
+      const effectivePlan = getEffectivePlanSlug(
+        biz?.plan_slug || 'starter',
+        biz?.plan_expires_at ?? null,
+        biz?.trial_expires_at ?? null,
+      );
+      const { maxOrdersPerMonth: limit } = getPlanLimits(effectivePlan);
+      const startOfMonth = new Date();
+      startOfMonth.setDate(1);
+      startOfMonth.setHours(0, 0, 0, 0);
+      const { count: current } = await supabase
+        ?.from('wa_orders')
+        ?.select('id', { count: 'exact', head: true })
+        ?.eq('business_id', businessId)
+        ?.gte('created_at', startOfMonth.toISOString());
+      return { allowed: limit === null || (current ?? 0) < limit, current: current ?? 0, limit };
+    }
+    return { allowed: true, current: 0, limit: null };
+  } catch (err) {
+    console.error('[checkPlanLimits]', err);
+    return { allowed: true, current: 0, limit: null };
+  }
+};
+
 export const createProduct = async (businessId, productData) => {
   const { data: biz } = await supabase
     ?.from('wa_businesses')
@@ -803,7 +848,7 @@ export const createProduct = async (businessId, productData) => {
     const activeCount = await getActiveProductCount(businessId);
     const willBeActive = productData?.isActive !== false;
     if (willBeActive && activeCount >= maxProducts) {
-      return { data: null, error: { message: `Has alcanzado el límite de ${maxProducts} productos activos de tu plan. Actualiza a Pro o Business para más.` } };
+      return { data: null, error: { message: `🚀 Llegaste al límite de productos del plan gratis. Actualiza a Pro para seguir agregando más.`, code: 'PLAN_LIMIT_EXCEEDED' } };
     }
   }
   const imagesArr = Array.isArray(productData?.images) ? productData.images : [];
@@ -845,7 +890,7 @@ export const updateProduct = async (productId, productData) => {
       if (maxProducts != null && !product?.is_active) {
         const activeCount = await getActiveProductCount(product.business_id);
         if (activeCount >= maxProducts) {
-          return { data: null, error: { message: `Límite de ${maxProducts} productos activos. Desactiva uno o actualiza tu plan.` } };
+          return { data: null, error: { message: `🚀 Llegaste al límite de productos del plan gratis. Desactiva uno existente o actualiza a Pro para continuar.`, code: 'PLAN_LIMIT_EXCEEDED' } };
         }
       }
     }
@@ -993,11 +1038,10 @@ export const createOrder = async (businessId, orderData, items) => {
         ?.gte('created_at', startOfMonth.toISOString());
 
       if ((monthCount ?? 0) >= maxOrdersPerMonth) {
-        const label = maxOrdersPerMonth === 30 ? 'Starter/Control' : effectivePlan;
         return {
           data: null,
           error: {
-            message: `Este catálogo alcanzó el límite de ${maxOrdersPerMonth} pedidos del mes (plan ${label}). El negocio debe actualizar su plan para seguir recibiendo pedidos.`,
+            message: `Este catálogo alcanzó el límite de ${maxOrdersPerMonth} pedidos del mes en el plan gratuito. El negocio debe actualizar a Pro para seguir recibiendo pedidos.`,
             code: 'PLAN_LIMIT_EXCEEDED',
           },
         };
@@ -1032,7 +1076,7 @@ export const createOrder = async (businessId, orderData, items) => {
     return {
       data: null,
       error: isPlanLimit
-        ? { message: 'Tu plan Free permite 30 pedidos por mes. Actualiza a Pro para recibir pedidos ilimitados.', code: 'PLAN_LIMIT_EXCEEDED' }
+        ? { message: 'Este catálogo alcanzó el límite de pedidos del mes del plan gratuito. Actualiza a Pro para recibir pedidos ilimitados.', code: 'PLAN_LIMIT_EXCEEDED' }
         : orderError,
     };
   }
