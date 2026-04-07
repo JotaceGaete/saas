@@ -5,6 +5,9 @@ import {
   resolveCatalogOgImageUrl,
 } from './src/utils/catalogSeo.js';
 import { getCatalogSlugFromPath } from './src/utils/seoPassThrough.js';
+
+// Dominio canónico público para catálogos. Debe coincidir con CATALOG_ORIGIN en appUrl.js y api/seo.js.
+const CATALOG_ORIGIN = 'https://miralatienda.de';
 const CF_MEDIA_HOST = 'media.gong.cl';
 
 const BOT_UA =
@@ -122,7 +125,7 @@ export default {
     const supabaseUrl = (env?.SUPABASE_URL || '').replace(/\/$/, '');
     const supabaseKey = env?.SUPABASE_ANON_KEY || '';
     const origin = url.origin;
-    const canonicalUrl = `${origin}/catalogo/${slug}`;
+    const canonicalUrl = `${CATALOG_ORIGIN}/${slug}`;
 
     const seoInput = {
       storeName: 'Catálogo',

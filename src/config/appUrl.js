@@ -1,8 +1,14 @@
 /**
- * Origen canónico de la app (panel, login, registro, billing, admin) en producción.
- * Landing/catálogo/legal en apex/www; no usar este origen para enlaces solo de marketing.
+ * Origen canónico de la app autenticada (panel, login, registro, billing, admin).
+ * NO usar para enlaces del catálogo público — usar CATALOG_ORIGIN.
  */
 export const APP_ORIGIN = 'https://go.ventalink.app';
+
+/**
+ * Dominio público de catálogos: enlaces compartibles, QR, WhatsApp, og:url, canonical.
+ * Fuente de verdad única para URLs de catálogo. Cambiar aquí propaga a toda la app.
+ */
+export const CATALOG_ORIGIN = 'https://miralatienda.de';
 
 const BASE_URL = import.meta.env?.VITE_APP_URL?.trim() || '';
 
@@ -52,24 +58,23 @@ export function isCanonicalAppHostname(hostname) {
 }
 
 /**
- * Host canónico para catálogo público (compartir, WhatsApp, QR, SEO cliente).
- * Siempre APP_ORIGIN — nunca localhost, cl/ar ni VITE_APP_URL.
+ * Dominio canónico para catálogo público (compartir, WhatsApp, QR, SEO cliente).
+ * Siempre CATALOG_ORIGIN — nunca localhost ni APP_ORIGIN.
  * @returns {string}
  */
 export function getPublicCatalogBaseUrl() {
-  return APP_ORIGIN;
+  return CATALOG_ORIGIN;
 }
 
-const PUBLIC_CATALOG_ROUTES = new Set(['catalogo', 'catalog']);
-
 /**
- * Segmento canónico para enlaces compartibles (WhatsApp, QR, OG, sitemap).
- * URL pública: `${APP_ORIGIN}/catalogo/:slug` (sin query params).
+ * Segmento interno de ruta para React Router y navegación SPA.
+ * NO usar para URLs públicas compartibles — usar getPublicCatalogUrl.
  */
 export const PUBLIC_CATALOG_SHARE_SEGMENT = 'catalogo';
 
 /**
- * Ruta relativa canónica del catálogo público (mismo segmento que enlaces compartibles).
+ * Ruta relativa interna del catálogo (para navigate() de React Router).
+ * NO es una URL pública compartible.
  * @param {string} slug
  * @returns {string} p. ej. `/catalogo/mi-tienda` o ''
  */
@@ -80,20 +85,8 @@ export function getPublicCatalogRelativePath(slug) {
 }
 
 /**
- * URL absoluta del catálogo público en el host canónico.
- * @param {string} slug
- * @param {'catalogo'|'catalog'} [route] - Por defecto {@link PUBLIC_CATALOG_SHARE_SEGMENT} (compartir/pedidos).
- * @returns {string}
- */
-export function buildPublicCatalogUrl(slug, route = PUBLIC_CATALOG_SHARE_SEGMENT) {
-  const s = String(slug || '').trim();
-  if (!s) return '';
-  const seg = PUBLIC_CATALOG_ROUTES.has(route) ? route : PUBLIC_CATALOG_SHARE_SEGMENT;
-  return `${getPublicCatalogBaseUrl()}/${seg}/${s}`;
-}
-
-/**
- * Enlace compartible estándar: URL corta `${APP_ORIGIN}/:slug`.
+ * Enlace compartible estándar: URL corta en CATALOG_ORIGIN (nuevo dominio público).
+ * Formato: `https://miralatienda.de/:slug`
  * getWhatsAppOrderCatalogUrl, QR y copiar-link delegan aquí.
  * @param {string} slug
  * @returns {string}
@@ -101,13 +94,12 @@ export function buildPublicCatalogUrl(slug, route = PUBLIC_CATALOG_SHARE_SEGMENT
 export function getPublicCatalogUrl(slug) {
   const s = String(slug || '').trim();
   if (!s) return '';
-  return `${APP_ORIGIN}/${s}`;
+  return `${CATALOG_ORIGIN}/${s}`;
 }
 
 /**
  * Enlace del catálogo para WhatsApp: URL totalmente canónica, sin query params
  * (el crawler de WhatsApp debe ver siempre la misma URL para OG / portada).
- *
  * @param {string} slug
  */
 export function getWhatsAppOrderCatalogUrl(slug) {

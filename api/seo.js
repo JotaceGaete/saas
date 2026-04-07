@@ -20,6 +20,13 @@ import {
   stringifyJsonLd as stringifyJsonLdGo,
 } from '../src/utils/goInternationalSeo.js';
 
+// Dominio público canónico para catálogos. Debe coincidir con CATALOG_ORIGIN en appUrl.js.
+// Override via env var CATALOG_ORIGIN si se requiere (staging, etc.).
+// Se normaliza: sin trailing slash, sin www (ej. https://www.miralatienda.de → https://miralatienda.de).
+const CATALOG_ORIGIN = (process.env.CATALOG_ORIGIN || 'https://miralatienda.de')
+  .replace(/\/$/, '')
+  .replace(/^(https?:\/\/)www\./, '$1');
+
 // --- Catálogo (antes catalog-html.js) ---
 
 /**
@@ -64,7 +71,7 @@ async function handleCatalogHtml(request) {
     return new Response('Slug required', { status: 400 });
   }
   /** Ruta de entrada: 'catalog', 'catalogo', o 'short' (URL corta /:slug).
-   *  La URL canónica OG es siempre /catalogo/:slug independientemente de la entrada. */
+   *  La URL canónica OG es siempre CATALOG_ORIGIN/:slug (forma corta, sin prefijo /catalogo/). */
   const publicPath = url.searchParams.get('publicPath') || 'catalogo';
 
   const origin = getOriginCatalog(request);
@@ -133,7 +140,9 @@ async function handleCatalogHtml(request) {
     typeof ogImage === 'string' && ogImage.startsWith('http://')
       ? `https://${ogImage.slice(7)}`
       : ogImage;
-  const catalogUrl = `${origin}/catalogo/${slug}`;
+  // URL canónica siempre en el dominio público de catálogos (miralatienda.de), forma corta.
+  // `origin` se conserva para resolver imágenes relativas (og:image, portadas, etc.).
+  const catalogUrl = `${CATALOG_ORIGIN}/${slug}`;
   const queryStripped = Boolean(url.search && url.search.length > 1);
   // App ID numérico: https://developers.facebook.com/apps/ → Crear app → Configuración → Información básica → «ID de la aplicación». En Vercel: META_FB_APP_ID o FB_APP_ID.
   const fbAppId = String(process.env.META_FB_APP_ID || process.env.FB_APP_ID || '').trim();
@@ -433,7 +442,7 @@ async function handleSitemap(request) {
     .map((r) => {
       const slug = (r.slug || '').trim();
       if (!slug) return null;
-      const loc = `${origin}/catalogo/${slug}`;
+      const loc = `${CATALOG_ORIGIN}/${slug}`;
       let lastmod = '';
       if (r.updated_at) {
         try {

@@ -151,7 +151,7 @@ async function processRow(
   }
 
   // 4. Construir URL del catálogo
-  const catalogUrl = `https://go.ventalink.app/catalog/${business.slug}`;
+  const catalogUrl = `https://miralatienda.de/${business.slug}`;
 
   // 5. Llamar a send-email con el template activation_24h
   const sendEmailUrl = `${supabaseUrl.replace(/\/$/, '')}/functions/v1/send-email`;
