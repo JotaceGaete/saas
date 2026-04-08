@@ -1,6 +1,5 @@
 import React from "react";
 import { Search } from "lucide-react";
-
 import Button from "components/ui/Button";
 
 export const statusFilterOptions = [
@@ -9,30 +8,15 @@ export const statusFilterOptions = [
   { value: "inactive", label: "Inactivos" },
 ];
 
-export const categoryFilterOptions = [
-  { value: "all", label: "Todas" },
-  { value: "food", label: "Alimentos" },
-  { value: "drinks", label: "Bebidas" },
-  { value: "clothing", label: "Ropa" },
-  { value: "accessories", label: "Accesorios" },
-  { value: "home", label: "Hogar" },
-  { value: "beauty", label: "Belleza" },
-];
-
 export default function ProductFilters({
   searchQuery,
   onSearchChange,
   statusFilter,
   onStatusChange,
-  categoryFilter,
-  onCategoryChange,
   resultsCount = 0,
   onClearFilters,
 }) {
-  const hasActiveFilters =
-    Boolean(searchQuery?.trim()) ||
-    statusFilter !== "all" ||
-    categoryFilter !== "all";
+  const hasActiveFilters = Boolean(searchQuery?.trim()) || statusFilter !== "all";
 
   const badgeClass = (active) =>
     [
@@ -45,7 +29,7 @@ export default function ProductFilters({
 
   return (
     <div className="mb-5 space-y-4">
-      {/* Búsqueda: sin caja gris pesada */}
+      {/* Search */}
       <div className="relative w-full max-w-2xl">
         <span className="pointer-events-none absolute left-4 top-1/2 z-10 -translate-y-1/2 text-slate-400">
           <Search className="h-4 w-4" strokeWidth={2} aria-hidden />
@@ -59,26 +43,8 @@ export default function ProductFilters({
         />
       </div>
 
-      {/* Filtros tipo badge */}
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between lg:gap-6">
-        <div className="flex flex-col gap-2 min-w-0">
-          <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 font-[family-name:var(--font-caption)]">
-            Categoría
-          </span>
-          <div className="flex flex-wrap gap-2">
-            {categoryFilterOptions?.map((opt) => (
-              <button
-                key={opt?.value}
-                type="button"
-                onClick={() => onCategoryChange(opt?.value)}
-                className={badgeClass(categoryFilter === opt?.value)}
-              >
-                {opt?.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
+      {/* Status filter + results count */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-col gap-2 min-w-0">
           <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 font-[family-name:var(--font-caption)]">
             Estado
@@ -97,10 +63,8 @@ export default function ProductFilters({
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 lg:ml-auto lg:pb-0.5">
-          <span
-            className="text-sm text-slate-500 whitespace-nowrap font-[family-name:var(--font-caption)]"
-          >
+        <div className="flex items-center gap-2 pb-0.5">
+          <span className="text-sm text-slate-500 whitespace-nowrap font-[family-name:var(--font-caption)]">
             {resultsCount} resultado{resultsCount !== 1 ? "s" : ""}
           </span>
           {hasActiveFilters && (

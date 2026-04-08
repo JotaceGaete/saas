@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import PanelHeader from "components/ui/PanelHeader";
 import DashboardAppShell from "components/ui/DashboardAppShell";
 import DashboardLayoutContent from "components/ui/DashboardLayoutContent";
-import ProductFilters, { categoryFilterOptions } from "./components/ProductFilters";
+import ProductFilters from "./components/ProductFilters";
 import ProductTable from "./components/ProductTable";
 import BulkActionBar from "./components/BulkActionBar";
 import DeleteConfirmDialog from "./components/DeleteConfirmDialog";
@@ -27,7 +27,6 @@ export default function ProductManagement() {
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [categoryFilter, setCategoryFilter] = useState("all");
   const [sortField, setSortField] = useState("name");
   const [sortDir, setSortDir] = useState("asc");
   const [selectedIds, setSelectedIds] = useState([]);
@@ -76,13 +75,6 @@ export default function ProductManagement() {
       );
     }
     if (statusFilter !== "all") result = result?.filter(p => statusFilter === "active" ? p?.active : !p?.active);
-    if (categoryFilter !== "all") {
-      const opt = categoryFilterOptions.find((o) => o.value === categoryFilter);
-      if (opt?.label) {
-        const needle = opt.label.toLowerCase();
-        result = result?.filter((p) => (p?.category || "").toLowerCase().includes(needle));
-      }
-    }
     result?.sort((a, b) => {
       let aVal = a?.name?.toLowerCase(), bVal = b?.name?.toLowerCase();
       if (sortField === "price") { aVal = a?.price; bVal = b?.price; }
@@ -92,7 +84,7 @@ export default function ProductManagement() {
       return 0;
     });
     return result;
-  }, [tableProducts, searchQuery, statusFilter, categoryFilter, sortField, sortDir]);
+  }, [tableProducts, searchQuery, statusFilter, sortField, sortDir]);
 
   const stats = useMemo(() => ({
     total: products?.length,
@@ -238,13 +230,10 @@ export default function ProductManagement() {
                   onSearchChange={setSearchQuery}
                   statusFilter={statusFilter}
                   onStatusChange={setStatusFilter}
-                  categoryFilter={categoryFilter}
-                  onCategoryChange={setCategoryFilter}
                   resultsCount={filteredProducts?.length ?? 0}
                   onClearFilters={() => {
                     setSearchQuery("");
                     setStatusFilter("all");
-                    setCategoryFilter("all");
                   }}
                 />
               </div>
