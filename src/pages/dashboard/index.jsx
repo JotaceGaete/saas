@@ -38,6 +38,7 @@ import ConversionFunnelCard from "./components/ConversionFunnelCard";
 import PlanUsageCard from "./components/PlanUsageCard";
 import TrialConversionBanner from "./components/TrialConversionBanner";
 import AiInsightsCard from "./components/AiInsightsCard";
+import AddProductHero from "./components/AddProductHero";
 import { getCatalogShareMessage } from "../../utils/branding";
 import { getCountryLabels } from "../../config/country";
 import { getBusinessLocale } from "../../lib/locale/businessLocale";
@@ -419,18 +420,8 @@ export default function Dashboard() {
       onAction: () => navigate('/orders'),
     });
   }
-  if (!dataLoading && products?.length === 0) {
-    alerts.push({
-      id: 'no-products',
-      icon: 'Package',
-      color: 'var(--color-primary)',
-      bg: 'rgba(124,58,237,0.06)',
-      border: 'rgba(124,58,237,0.2)',
-      text: 'Tu catálogo aún no tiene productos',
-      action: 'Agregar',
-      onAction: () => navigate('/product-editor'),
-    });
-  }
+  // Note: the "no-products" alert is intentionally omitted — AddProductHero (rendered above)
+  // serves as the primary CTA when products.length === 0, avoiding competing CTAs.
   if (!dataLoading && products?.length > 0 && activeProducts === 0) {
     alerts.push({
       id: 'no-active',
@@ -648,6 +639,11 @@ export default function Dashboard() {
               </span>
               <button onClick={() => navigate('/planes')} className="text-xs font-medium px-2 py-1 rounded-lg" style={{ color: 'var(--color-primary)', fontFamily: 'var(--font-caption)' }}>Ver planes</button>
             </div>
+          )}
+
+          {/* Hero CTA: visible only when the catalog has no products yet */}
+          {!dataLoading && products?.length === 0 && (
+            <AddProductHero />
           )}
 
           {/* Getting Started */}

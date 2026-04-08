@@ -84,6 +84,8 @@ export default function GettingStartedSection({
   const [copyToast, setCopyToast] = useState(false);
   const [qrModalOpen, setQrModalOpen] = useState(false);
   const [shareTick, setShareTick] = useState(0);
+  // When all steps are done the card collapses by default; user can expand it.
+  const [stepsExpanded, setStepsExpanded] = useState(false);
   const qrPrintRef = useRef(null);
 
   useEffect(() => {
@@ -237,9 +239,26 @@ export default function GettingStartedSection({
           </button>
         </div>
       )}
-      {/* Progress Steps Card — anillo/barra siempre; stepper detallado solo en onboarding */}
+      {/* Progress Steps Card — collapsed pill when complete, full card when in progress */}
+      {allCompleted && !stepsExpanded ? (
+        <div
+          className="bg-white rounded-xl p-3 text-sm text-gray-500 flex items-center justify-between mb-4"
+          style={{ border: "1px solid var(--color-border)" }}
+        >
+          <span style={{ fontFamily: "var(--font-caption)" }}>Primeros pasos completados ✓</span>
+          <button
+            type="button"
+            onClick={() => setStepsExpanded(true)}
+            className="text-xs font-semibold transition-colors hover:opacity-80"
+            style={{ color: "var(--color-primary)", fontFamily: "var(--font-caption)" }}
+          >
+            Ver
+          </button>
+        </div>
+      ) : (
       <div className="dashboard-premium-card rounded-2xl border-0 p-5 md:p-6 mb-4">
-          <div className="mb-5">
+          <div className="mb-5 flex items-start justify-between gap-2">
+            <div>
             <h2
               className="text-base font-bold tracking-tight"
               style={{
@@ -259,6 +278,17 @@ export default function GettingStartedSection({
             >
               Completa estos pasos para empezar a vender
             </p>
+            </div>
+            {allCompleted && (
+              <button
+                type="button"
+                onClick={() => setStepsExpanded(false)}
+                className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg hover:bg-black/5 transition-colors"
+                aria-label="Colapsar"
+              >
+                <Icon name="ChevronUp" size={14} color="var(--color-muted-foreground)" />
+              </button>
+            )}
           </div>
 
           <div className="mb-6">
@@ -475,6 +505,7 @@ export default function GettingStartedSection({
           </>
           )}
         </div>
+      )}
       {/* Action Cards Grid */}
       <div className="dashboard-premium-card rounded-2xl border-0 p-5 md:p-6">
         <div className="flex items-center justify-between mb-4">
