@@ -18,6 +18,10 @@ export const AuthProvider = ({ children }) => {
   const [business, setBusiness] = useState(null)
   const [impersonatedBusiness, setImpersonatedBusiness] = useState(null)
   const [loading, setLoading] = useState(true)
+  // sessionReady: true once onAuthStateChange has fired its first event (INITIAL_SESSION
+  // or SIGNED_IN). Distinct from `loading` — guards against OAuth redirect races on mobile
+  // where the page mounts before Supabase has exchanged the code for a session.
+  const [sessionReady, setSessionReady] = useState(false)
   const [businessLoading, setBusinessLoading] = useState(false)
   const [sessionExpiredMessage, setSessionExpiredMessage] = useState(null)
 
@@ -90,6 +94,7 @@ export const AuthProvider = ({ children }) => {
         return
       }
       setUser(session?.user ?? null)
+      setSessionReady(true)
       setLoading(false)
       if (session?.user) {
         businessOperations?.load(session?.user?.id)
@@ -334,6 +339,7 @@ export const AuthProvider = ({ children }) => {
     realBusiness: business,
     isImpersonating: !!impersonatedBusiness,
     loading,
+    sessionReady,
     businessLoading,
     sessionExpiredMessage,
     clearSessionExpiredMessage,

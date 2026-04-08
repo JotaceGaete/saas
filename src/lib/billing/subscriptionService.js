@@ -1,4 +1,5 @@
 import { supabase } from '../supabase';
+import { getValidToken } from '../auth/getValidToken';
 
 function normalizePlanSlug(raw) {
   const slug = String(raw || '').trim().toLowerCase();
@@ -13,20 +14,8 @@ function toIso(value) {
   return Number.isFinite(dt.getTime()) ? dt.toISOString() : null;
 }
 
-async function getValidAccessToken() {
-  const { data: { session } } = await supabase.auth.getSession();
-  let token = typeof session?.access_token === 'string' ? session.access_token.trim() : '';
-  if (token && token.includes('.')) return token;
-  try {
-    const { data: refreshed } = await supabase.auth.refreshSession();
-    token = typeof refreshed?.session?.access_token === 'string'
-      ? refreshed.session.access_token.trim()
-      : '';
-  } catch {
-    token = '';
-  }
-  return token && token.includes('.') ? token : null;
-}
+// Uses shared getValidToken which handles OAuth/mobile refresh edge cases
+const getValidAccessToken = getValidToken;
 
 /**
  * @deprecated legacy transition path

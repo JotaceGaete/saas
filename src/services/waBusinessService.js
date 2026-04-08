@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { getValidToken } from '../lib/auth/getValidToken';
 import { getPlanLimits } from '../constants/plans';
 import { getTrialEndDateFrom } from '../constants/trial';
 import { getMarketCodeByCountry } from '../lib/market/routing';
@@ -1510,8 +1511,7 @@ export const getDashboardAiInsights = async (businessId) => {
   }
   if (!businessId) return { data: null, error: { message: 'businessId required' } };
 
-  const { data: sessionData } = await supabase?.auth?.getSession();
-  const token = sessionData?.session?.access_token ?? null;
+  const token = await getValidToken();
   if (!token) return { data: null, error: { message: 'No auth token' } };
 
   try {

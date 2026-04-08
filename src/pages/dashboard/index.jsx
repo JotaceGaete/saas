@@ -52,7 +52,7 @@ const FIRST_SHARE_TOAST =
 export default function Dashboard() {
   const navigate = useNavigate();
   const toast = useToast();
-  const { user, business, businessLoading, refreshBusiness } = useAuth();
+  const { user, business, businessLoading, sessionReady, refreshBusiness } = useAuth();
   const locale = getBusinessLocale(business, {
     preferredCountryCode: user?.user_metadata?.country_code ?? null,
   });
@@ -224,10 +224,12 @@ export default function Dashboard() {
     loadAnalytics();
   }, [business?.id, loadAnalytics]);
 
+  // Guard with sessionReady: on mobile OAuth, business?.id can become truthy before
+  // Supabase has finished exchanging the auth code, causing a 401 on the Edge Function.
   useEffect(() => {
-    if (!business?.id) return;
+    if (!business?.id || !sessionReady) return;
     loadDailyAiInsight();
-  }, [business?.id, loadDailyAiInsight]);
+  }, [business?.id, sessionReady, loadDailyAiInsight]);
 
   useEffect(() => {
     if (!business?.id) { setPlanUsageLoading(false); return; }
@@ -253,11 +255,14 @@ export default function Dashboard() {
       if (document.visibilityState === 'visible') {
         loadDashboardData();
         loadAnalytics();
+        // Reload AI insight on visibility restore — token may have expired while
+        // the app was backgrounded (common on mobile after OAuth login).
+        loadDailyAiInsight();
       }
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
-  }, [business?.id, loadDashboardData, loadAnalytics]);
+  }, [business?.id, loadDashboardData, loadAnalytics, loadDailyAiInsight]);
 
   // Supabase Realtime subscription
   useEffect(() => {
