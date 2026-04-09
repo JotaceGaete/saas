@@ -425,7 +425,8 @@ export default function Dashboard() {
     weeklyOrdersCount,
     conversionFunnel,
     monthlyRevenue,
-  }), [visits30d, visits7d, visitsToday, totalVisits, sourceBreakdown, activeProducts, inactiveProducts, recentOrders, pendingOrdersCount, weeklyOrdersCount, conversionFunnel, monthlyRevenue]);
+    businessSlug: business?.slug ?? null,
+  }), [visits30d, visits7d, visitsToday, totalVisits, sourceBreakdown, activeProducts, inactiveProducts, recentOrders, pendingOrdersCount, weeklyOrdersCount, conversionFunnel, monthlyRevenue, business?.slug]);
 
   // Prefer AI insight when available; fall back to local once data has loaded.
   const displayedInsight = aiInsights ?? (analyticsLoading || dataLoading ? null : localInsight);
