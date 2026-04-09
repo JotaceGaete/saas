@@ -24,7 +24,7 @@ Deno.serve(async (req) => {
   }
   if (req.method !== 'POST') return jsonResponse({ error: 'Method not allowed' }, 405);
 
-  let body: { slug?: string; path?: string; visitor_id?: string };
+  let body: { slug?: string; path?: string; visitor_id?: string; source?: string; referrer?: string; utm_source?: string };
   try {
     body = (await req.json().catch(() => ({}))) as typeof body;
   } catch {
@@ -38,7 +38,10 @@ Deno.serve(async (req) => {
 
   const path = typeof body?.path === 'string' ? body.path.trim() : null;
   const visitorId = typeof body?.visitor_id === 'string' ? body.visitor_id.trim() || null : null;
-  const referrer = req.headers.get('referer') || req.headers.get('referrer') || null;
+  const source = typeof body?.source === 'string' ? body.source.trim() || null : null;
+  const referrer = typeof body?.referrer === 'string' ? body.referrer.trim() || null
+    : req.headers.get('referer') || req.headers.get('referrer') || null;
+  const utmSource = typeof body?.utm_source === 'string' ? body.utm_source.trim() || null : null;
   const userAgent = req.headers.get('user-agent') || null;
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
@@ -83,7 +86,9 @@ Deno.serve(async (req) => {
     slug,
     path,
     visitor_id: visitorId,
+    source,
     referrer,
+    utm_source: utmSource,
     user_agent: userAgent,
   });
 

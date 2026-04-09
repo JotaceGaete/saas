@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
 import { getBusinessBySlug, getPublicProducts, getCategoriesByRubroId, getBusinessCategories, recordCatalogVisit, recordCatalogWhatsAppClick, createOrder } from '../../services/waBusinessService';
+import { collectVisitAttribution } from '../../utils/analytics';
 import Icon from '../../components/AppIcon';
 import { CartProvider, useCart } from '../../contexts/CartContext';
 import { formatPriceCatalog, resolveCatalogCurrency } from '../../utils/formatPrice';
@@ -282,7 +283,8 @@ function CatalogInner({ slug }) {
     if (bizErr || !biz) { setNotFound(true); setLoading(false); return; }
     setBusiness(biz);
     const path = typeof window !== 'undefined' ? window.location?.pathname || getPublicCatalogRelativePath(slug) : getPublicCatalogRelativePath(slug);
-    recordCatalogVisit(slug, path)
+    const attribution = collectVisitAttribution();
+    recordCatalogVisit(slug, path, attribution)
       .then((r) => console.log('[public-catalog] recordCatalogVisit result', { slug, recorded: r?.recorded, throttled: r?.throttled, error: r?.error }))
       .catch((e) => console.error('[public-catalog] recordCatalogVisit error', slug, e));
     const { data: prods } = await getPublicProducts(biz?.id);

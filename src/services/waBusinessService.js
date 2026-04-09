@@ -1625,7 +1625,7 @@ function markVisitDone(slug) {
  * @param {string} slug - Slug del negocio
  * @param {string} [path] - Ruta actual, ej. /catalogo/mi-tienda
  */
-export async function recordCatalogVisit(slug, path) {
+export async function recordCatalogVisit(slug, path, attribution = {}) {
   if (!slug?.trim()) return { recorded: false, error: null };
   if (shouldThrottleVisit(slug)) return { recorded: false, throttled: true, error: null };
 
@@ -1641,7 +1641,14 @@ export async function recordCatalogVisit(slug, path) {
   }
 
   const visitorId = getOrCreateVisitorId();
-  const body = { slug: slug.trim(), path: path || null, visitor_id: visitorId };
+  const body = {
+    slug: slug.trim(),
+    path: path || null,
+    visitor_id: visitorId,
+    source: attribution.source || null,
+    referrer: attribution.referrer || null,
+    utm_source: attribution.utm_source || null,
+  };
 
   const url = `${supabaseUrl}/functions/v1/record-catalog-visit`;
   try {
@@ -1714,7 +1721,7 @@ export async function recordCatalogWhatsAppClick(slug, path, source = 'unknown')
 
 /**
  * Estadísticas de visitas al catálogo del negocio (solo dueño).
- * @returns {{ data: { totalVisits, visits30d, visits7d, visitsToday } | null, error }}
+ * @returns {{ data: { totalVisits, visits30d, visits7d, visitsToday, sourceBreakdown } | null, error }}
  */
 export async function getBusinessVisitStats(businessId) {
   if (!businessId) return { data: null, error: null };
@@ -1727,6 +1734,7 @@ export async function getBusinessVisitStats(businessId) {
       visits30d: data?.visits30d ?? 0,
       visits7d: data?.visits7d ?? 0,
       visitsToday: data?.visitsToday ?? 0,
+      sourceBreakdown: data?.sourceBreakdown ?? {},
     },
     error: null,
   };

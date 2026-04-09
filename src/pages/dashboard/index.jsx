@@ -46,6 +46,7 @@ import { getTrialDaysLeft } from "../../constants/trial";
 import { getCurrentSubscription } from "../../lib/billing/subscriptionService";
 import { useToast } from "../../components/ui/Toast";
 import { tryCelebrateFirstCatalogShare } from "../../utils/catalogShareCelebration";
+import { getSourceLabel } from "../../utils/analytics";
 
 const FIRST_SHARE_TOAST =
   '¡Tu tienda ya está en el mundo! 🌍 Link copiado y listo para enviar.';
@@ -405,6 +406,7 @@ export default function Dashboard() {
   const visits7d = visitStats?.visits7d ?? 0;
   const totalVisits = visitStats?.totalVisits ?? 0;
   const hasAnyVisits = totalVisits > 0;
+  const sourceBreakdown = visitStats?.sourceBreakdown ?? null;
 
   // Alertas del negocio
   const alerts = [];
@@ -739,6 +741,45 @@ export default function Dashboard() {
                   currency={displayCurrency}
                   numberLocale={displayLocale}
                 />
+              </div>
+              {/* Origen de visitas */}
+              <div className="mt-4">
+                <div className="dashboard-premium-card rounded-2xl border-0 p-5">
+                  <h3 className="text-sm font-bold mb-3" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>
+                    Origen de visitas <span style={{ color: 'var(--color-text-tertiary)', fontWeight: 400 }}>· últimos 30d</span>
+                  </h3>
+                  {analyticsLoading ? (
+                    <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Cargando...</p>
+                  ) : !sourceBreakdown || Object.keys(sourceBreakdown).length === 0 ? (
+                    <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Sin datos de origen aún.</p>
+                  ) : (
+                    <ul className="flex flex-col gap-2">
+                      {(() => {
+                        const entries = Object.entries(sourceBreakdown).sort(([, a], [, b]) => b - a);
+                        const total = entries.reduce((s, [, n]) => s + n, 0);
+                        return entries.map(([src, count]) => {
+                          const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+                          return (
+                            <li key={src} className="flex items-center gap-2">
+                              <span className="text-xs w-24 truncate" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>
+                                {getSourceLabel(src)}
+                              </span>
+                              <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--color-border)' }}>
+                                <div
+                                  className="h-full rounded-full"
+                                  style={{ width: `${pct}%`, background: 'var(--color-primary)' }}
+                                />
+                              </div>
+                              <span className="text-xs tabular-nums w-8 text-right" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
+                                {count}
+                              </span>
+                            </li>
+                          );
+                        });
+                      })()}
+                    </ul>
+                  )}
+                </div>
               </div>
             </section>
           )}
