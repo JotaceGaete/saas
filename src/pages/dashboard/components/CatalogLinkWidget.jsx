@@ -1,14 +1,19 @@
 import React, { useState, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import Icon from "components/AppIcon";
 import Button from "components/ui/Button";
 import { getCatalogShareMessage } from "../../../utils/branding";
+import { useOgGuard } from "../../../hooks/useOgGuard";
+import OgShareGuardModal from "./OgShareGuardModal";
 
 export default function CatalogLinkWidget({
   catalogUrl,
   businessName,
   businessPlanSlug,
   onCatalogShare,
+  business = null,
 }) {
+  const navigate = useNavigate();
   const [copied, setCopied] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const qrRef = useRef(null);
@@ -18,13 +23,21 @@ export default function CatalogLinkWidget({
     plan: businessPlanSlug,
   });
 
+  const whatsappShareUrl = `https://wa.me/?text=${encodeURIComponent(shareMessage)}`;
+  const { guardShare, ogGuardState } = useOgGuard(business, navigate);
+
+  const handleWhatsAppShare = () => {
+    guardShare(() => {
+      window.open(whatsappShareUrl, '_blank', 'noopener,noreferrer');
+      onCatalogShare?.();
+    });
+  };
+
   const handleCopy = () => {
     navigator.clipboard?.writeText(catalogUrl || '')?.catch(() => {});
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
-
-  const whatsappShareUrl = `https://wa.me/?text=${encodeURIComponent(shareMessage)}`;
 
   const handleDownloadQR = () => {
     const canvas = document.createElement('canvas');
@@ -139,18 +152,16 @@ export default function CatalogLinkWidget({
           <Icon name="ExternalLink" size={13} color="#0EA5E9" />
           Ver
         </a>
-        <a
-          href={whatsappShareUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={() => onCatalogShare?.()}
-          className="flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-sm font-medium text-white transition-all duration-200 hover:opacity-90"
+        <button
+          type="button"
+          onClick={handleWhatsAppShare}
+          className="flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-sm font-medium text-white transition-all duration-200 hover:opacity-90 active:scale-95"
           style={{ backgroundColor: '#25D366', fontFamily: 'var(--font-caption)' }}
           aria-label="Compartir catálogo por WhatsApp"
         >
           <Icon name="MessageCircle" size={13} color="#fff" />
           WA
-        </a>
+        </button>
       </div>
       <button
         onClick={() => setShowQR(!showQR)}
@@ -198,6 +209,8 @@ export default function CatalogLinkWidget({
           </div>
         </div>
       )}
+
+      <OgShareGuardModal {...ogGuardState} />
     </div>
   );
 }

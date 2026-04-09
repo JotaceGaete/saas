@@ -940,6 +940,7 @@ export default function Dashboard() {
                   businessName={business?.name || ''}
                   businessPlanSlug={activePlanSlug}
                   onCatalogShare={notifyFirstCatalogShare}
+                  business={business}
                 />
               </section>
               <section aria-label="Acceso rápido">
