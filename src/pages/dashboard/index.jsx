@@ -39,6 +39,7 @@ import PlanUsageCard from "./components/PlanUsageCard";
 import TrialConversionBanner from "./components/TrialConversionBanner";
 import AiInsightsCard from "./components/AiInsightsCard";
 import AddProductHero from "./components/AddProductHero";
+import ChartEmptyWave from "./components/ChartEmptyWave";
 import { getCatalogShareMessage } from "../../utils/branding";
 import { getCountryLabels } from "../../config/country";
 import { getBusinessLocale } from "../../lib/locale/businessLocale";
@@ -50,6 +51,20 @@ import { getSourceLabel } from "../../utils/analytics";
 
 const FIRST_SHARE_TOAST =
   '¡Tu tienda ya está en el mundo! 🌍 Link copiado y listo para enviar.';
+
+const SOURCE_COLORS = {
+  instagram: { dot: '#E1306C', bar: 'rgba(225,48,108,0.75)', bg: 'rgba(225,48,108,0.10)', text: '#BE185D' },
+  facebook:  { dot: '#1877F2', bar: 'rgba(24,119,242,0.75)',  bg: 'rgba(24,119,242,0.10)',  text: '#1D4ED8' },
+  tiktok:    { dot: '#2DD4BF', bar: 'rgba(45,212,191,0.75)',  bg: 'rgba(45,212,191,0.12)',  text: '#0F766E' },
+  google:    { dot: '#EA4335', bar: 'rgba(234,67,53,0.75)',   bg: 'rgba(234,67,53,0.10)',   text: '#B91C1C' },
+  whatsapp:  { dot: '#25D366', bar: 'rgba(37,211,102,0.75)',  bg: 'rgba(37,211,102,0.12)',  text: '#15803D' },
+  twitter:   { dot: '#1DA1F2', bar: 'rgba(29,161,242,0.75)',  bg: 'rgba(29,161,242,0.10)',  text: '#0369A1' },
+  direct:    { dot: '#7C3AED', bar: 'rgba(124,58,237,0.65)',  bg: 'rgba(124,58,237,0.10)',  text: 'var(--color-primary)' },
+};
+
+function getSourceColors(src) {
+  return SOURCE_COLORS[src] ?? { dot: '#94A3B8', bar: 'rgba(148,163,184,0.65)', bg: 'rgba(148,163,184,0.10)', text: '#475569' };
+}
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -744,41 +759,86 @@ export default function Dashboard() {
               </div>
               {/* Origen de visitas */}
               <div className="mt-4">
-                <div className="dashboard-premium-card rounded-2xl border-0 p-5">
-                  <h3 className="text-sm font-bold mb-3" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>
-                    Origen de visitas <span style={{ color: 'var(--color-text-tertiary)', fontWeight: 400 }}>· últimos 30d</span>
-                  </h3>
+                <div className="dashboard-premium-card relative overflow-hidden rounded-2xl border-0 p-5 flex flex-col gap-4">
+                  {/* Header */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-medium" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                        Origen de visitas
+                      </p>
+                      <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+                        Últimos 30 días
+                      </p>
+                    </div>
+                    <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(124,58,237,0.08)' }}>
+                      <Icon name="BarChart2" size={17} color="var(--color-primary)" />
+                    </div>
+                  </div>
+
+                  {/* States */}
                   {analyticsLoading ? (
                     <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Cargando...</p>
                   ) : !sourceBreakdown || Object.keys(sourceBreakdown).length === 0 ? (
-                    <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Sin datos de origen aún.</p>
-                  ) : (
-                    <ul className="flex flex-col gap-2">
-                      {(() => {
-                        const entries = Object.entries(sourceBreakdown).sort(([, a], [, b]) => b - a);
-                        const total = entries.reduce((s, [, n]) => s + n, 0);
-                        return entries.map(([src, count]) => {
-                          const pct = total > 0 ? Math.round((count / total) * 100) : 0;
-                          return (
-                            <li key={src} className="flex items-center gap-2">
-                              <span className="text-xs w-24 truncate" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>
-                                {getSourceLabel(src)}
-                              </span>
-                              <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--color-border)' }}>
-                                <div
-                                  className="h-full rounded-full"
-                                  style={{ width: `${pct}%`, background: 'var(--color-primary)' }}
-                                />
-                              </div>
-                              <span className="text-xs tabular-nums w-8 text-right" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
-                                {count}
-                              </span>
-                            </li>
-                          );
-                        });
-                      })()}
-                    </ul>
-                  )}
+                    <>
+                      <ChartEmptyWave />
+                      <div className="relative z-[1] flex flex-col items-center justify-center py-4 gap-2 min-h-[5rem]">
+                        <Icon name="BarChart2" size={26} color="var(--color-muted-foreground)" />
+                        <p className="text-xs text-center" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                          Sin visitas registradas aún
+                        </p>
+                      </div>
+                    </>
+                  ) : (() => {
+                    const entries = Object.entries(sourceBreakdown)
+                      .sort(([, a], [, b]) => b - a)
+                      .slice(0, 5);
+                    const total = entries.reduce((s, [, n]) => s + n, 0);
+                    const onlyDirect = entries.length === 1 && entries[0][0] === 'direct';
+                    return (
+                      <>
+                        <ol className="flex flex-col gap-3">
+                          {entries.map(([src, count]) => {
+                            const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+                            const colors = getSourceColors(src);
+                            return (
+                              <li key={src} className="flex flex-col gap-1">
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="flex items-center gap-1.5 min-w-0">
+                                    <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: colors.dot }} />
+                                    <span className="text-xs font-medium truncate" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>
+                                      {getSourceLabel(src)}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                                    <span className="text-xs tabular-nums" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
+                                      {count}
+                                    </span>
+                                    <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full tabular-nums" style={{ backgroundColor: colors.bg, color: colors.text, fontFamily: 'var(--font-caption)' }}>
+                                      {pct}%
+                                    </span>
+                                  </div>
+                                </div>
+                                <div className="h-1 rounded-full overflow-hidden" style={{ backgroundColor: 'rgba(0,0,0,0.06)' }}>
+                                  <div
+                                    className="h-full rounded-full transition-all duration-500"
+                                    style={{ width: `${pct}%`, backgroundColor: colors.bar }}
+                                  />
+                                </div>
+                              </li>
+                            );
+                          })}
+                        </ol>
+                        {onlyDirect && (
+                          <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl" style={{ backgroundColor: 'rgba(124,58,237,0.06)' }}>
+                            <Icon name="Info" size={13} color="var(--color-primary)" />
+                            <p className="text-xs" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)', lineHeight: '1.45' }}>
+                              Todo el tráfico llega de forma directa. Comparte tu catálogo en redes sociales para ver de dónde viene cada visita.
+                            </p>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             </section>
