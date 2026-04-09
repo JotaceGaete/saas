@@ -1823,6 +1823,30 @@ export async function getAdminSiteVisitStats() {
   };
 }
 
+// ——— Consejo del día ———
+
+/**
+ * Obtiene el mensaje del día configurado por el admin.
+ * @returns {{ data: string | null, error }}
+ */
+export async function getDailyMessage() {
+  const { data, error } = await supabase?.rpc('wa_get_daily_message');
+  if (error) return { data: null, error };
+  return { data: data ?? null, error: null };
+}
+
+/**
+ * Guarda el mensaje del día (solo admin).
+ * @param {string} message
+ * @returns {{ ok: boolean, error }}
+ */
+export async function setDailyMessage(message) {
+  const { data, error } = await supabase?.rpc('wa_admin_set_daily_message', { p_message: message });
+  if (error) return { ok: false, error };
+  if (data?.error) return { ok: false, error: { message: data.error } };
+  return { ok: true, error: null };
+}
+
 // ——— Uso del plan actual (para dashboard) ———
 
 /**

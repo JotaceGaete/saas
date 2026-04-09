@@ -26,6 +26,7 @@ import {
   getDashboardAiInsights,
   getEffectivePlanSlug,
   expireDeliveredOrders,
+  getDailyMessage,
 } from "../../services/waBusinessService";
 import { supabase } from "../../lib/supabase";
 import { getPublicCatalogUrl } from "../../config/appUrl";
@@ -38,6 +39,7 @@ import ConversionFunnelCard from "./components/ConversionFunnelCard";
 import PlanUsageCard from "./components/PlanUsageCard";
 import TrialConversionBanner from "./components/TrialConversionBanner";
 import AiInsightsCard from "./components/AiInsightsCard";
+import DailyMessageCard from "./components/DailyMessageCard";
 import AddProductHero from "./components/AddProductHero";
 import ChartEmptyWave from "./components/ChartEmptyWave";
 import { getCatalogShareMessage } from "../../utils/branding";
@@ -82,6 +84,7 @@ export default function Dashboard() {
   const [planUsageLoading, setPlanUsageLoading] = useState(true);
   const [currentSubscription, setCurrentSubscription] = useState(null);
   const [sendingTestEmail, setSendingTestEmail] = useState(false);
+  const [dailyMessage, setDailyMessage] = useState(null);
 
   // Realtime state
   const [realtimeStatus, setRealtimeStatus] = useState('disconnected');
@@ -239,6 +242,10 @@ export default function Dashboard() {
     if (!business?.id) { setPlanUsageLoading(false); return; }
     loadPlanUsage();
   }, [business?.id, loadPlanUsage]);
+
+  useEffect(() => {
+    getDailyMessage().then(res => { if (res?.data) setDailyMessage(res.data); }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -706,6 +713,8 @@ export default function Dashboard() {
               </div>
             </section>
           )}
+
+          <DailyMessageCard message={dailyMessage} />
 
           {!isStarterPlan && (
             <section aria-label="Insight IA">

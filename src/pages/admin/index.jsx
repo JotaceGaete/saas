@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Icon from 'components/AppIcon';
 import BusinessSidebar from 'components/ui/BusinessSidebar';
 import { useIsDesktop } from 'hooks/useMediaQuery';
-import { getBusinessesForAdmin, getAdminStats, getAdminSuspiciousInfo, getAdminSiteVisitStats } from 'services/waBusinessService';
+import { getBusinessesForAdmin, getAdminStats, getAdminSuspiciousInfo, getAdminSiteVisitStats, getDailyMessage, setDailyMessage } from 'services/waBusinessService';
 import { getSourceLabel, getSourceColors } from '../../utils/analytics';
 import AdminRubrosSection from './components/AdminRubrosSection';
 import { getPlanLabel, getPlanColors, PLAN_SLUGS } from '../../constants/plans';
@@ -44,6 +44,9 @@ export default function AdminDashboard() {
   const [businesses, setBusinesses] = useState([]);
   const [suspicious, setSuspicious] = useState({ multiBusinessUsers: [], demoBusinesses: [] });
   const [siteVisits, setSiteVisits] = useState(null);
+  const [dailyMsg,      setDailyMsg]      = useState('');
+  const [dailyMsgSaved, setDailyMsgSaved] = useState(false);
+  const [dailyMsgSaving, setDailyMsgSaving] = useState(false);
   const [loading,   setLoading]   = useState(true);
   const [error,     setError]     = useState(null);
   const [planFilter,    setPlanFilter]    = useState('all');
@@ -55,11 +58,12 @@ export default function AdminDashboard() {
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const [statsRes, listRes, suspRes, siteVisitsRes] = await Promise.all([
+    const [statsRes, listRes, suspRes, siteVisitsRes, dailyMsgRes] = await Promise.all([
       getAdminStats(),
       getBusinessesForAdmin(),
       getAdminSuspiciousInfo(),
       getAdminSiteVisitStats(),
+      getDailyMessage(),
     ]);
     if (statsRes?.error) setError(statsRes.error?.message || 'Error al cargar estadísticas');
     else if (statsRes?.data) setStats(statsRes.data);
@@ -67,6 +71,7 @@ export default function AdminDashboard() {
     else if (listRes?.data) setBusinesses(listRes.data);
     if (suspRes?.data) setSuspicious(suspRes.data);
     if (siteVisitsRes?.data) setSiteVisits(siteVisitsRes.data);
+    if (dailyMsgRes?.data != null) setDailyMsg(dailyMsgRes.data);
     setLoading(false);
   }, []);
 
@@ -389,6 +394,72 @@ export default function AdminDashboard() {
                 </div>
               </>
             )}
+          </section>
+
+          {/* ── Consejo del día ── */}
+          <section className="mb-6">
+            <h2 className="text-sm font-bold mb-3" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>Consejo del día</h2>
+            <div className="px-4 py-4 rounded-xl border" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-card)' }}>
+              <p className="text-xs mb-2" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                Este mensaje se mostrará en el dashboard de todos los usuarios activos.
+              </p>
+              <textarea
+                value={dailyMsg}
+                onChange={e => { setDailyMsg(e.target.value); setDailyMsgSaved(false); }}
+                rows={3}
+                placeholder="Escribe un consejo, motivación o aviso para los vendedores..."
+                className="w-full text-sm rounded-lg border px-3 py-2.5 resize-none focus:outline-none focus:ring-2"
+                style={{
+                  borderColor: 'var(--color-border)',
+                  backgroundColor: 'var(--color-background)',
+                  color: 'var(--color-foreground)',
+                  fontFamily: 'var(--font-body)',
+                  '--tw-ring-color': 'var(--color-primary)',
+                }}
+              />
+              <div className="flex items-center justify-between mt-2">
+                {dailyMsgSaved ? (
+                  <span className="text-xs flex items-center gap-1" style={{ color: '#10B981', fontFamily: 'var(--font-caption)' }}>
+                    <Icon name="CheckCircle" size={13} color="#10B981" />
+                    Guardado
+                  </span>
+                ) : (
+                  <span />
+                )}
+                <div className="flex items-center gap-2">
+                  {dailyMsg.trim() && (
+                    <button
+                      onClick={() => { setDailyMsg(''); setDailyMsgSaved(false); }}
+                      className="text-xs px-3 py-1.5 rounded-lg transition-colors"
+                      style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}
+                    >
+                      Limpiar
+                    </button>
+                  )}
+                  <button
+                    disabled={dailyMsgSaving}
+                    onClick={async () => {
+                      setDailyMsgSaving(true);
+                      const res = await setDailyMessage(dailyMsg.trim());
+                      setDailyMsgSaving(false);
+                      if (res.ok) setDailyMsgSaved(true);
+                    }}
+                    className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-semibold transition-opacity hover:opacity-90 disabled:opacity-60"
+                    style={{ backgroundColor: 'var(--color-primary)', color: '#fff', fontFamily: 'var(--font-caption)' }}
+                  >
+                    {dailyMsgSaving ? (
+                      <svg className="animate-spin" width={12} height={12} viewBox="0 0 24 24" fill="none">
+                        <circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,0.3)" strokeWidth="3" />
+                        <path d="M12 2a10 10 0 0 1 10 10" stroke="#fff" strokeWidth="3" strokeLinecap="round" />
+                      </svg>
+                    ) : (
+                      <Icon name="Save" size={12} color="#fff" />
+                    )}
+                    Guardar
+                  </button>
+                </div>
+              </div>
+            </div>
           </section>
 
           {/* ── Rubros ── */}
