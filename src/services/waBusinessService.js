@@ -1740,6 +1740,89 @@ export async function getBusinessVisitStats(businessId) {
   };
 }
 
+// ——— Tracking de visitas al sitio principal ———
+
+const SITE_VISIT_THROTTLE_MS = 30 * 60 * 1000; // 30 min
+
+function shouldThrottleSiteVisit(path) {
+  if (typeof sessionStorage === 'undefined') return true;
+  const key = `wa_site_visit_${path}`;
+  const last = sessionStorage.getItem(key);
+  if (!last) return false;
+  const t = parseInt(last, 10);
+  if (Number.isNaN(t)) return false;
+  return Date.now() - t < SITE_VISIT_THROTTLE_MS;
+}
+
+function markSiteVisitDone(path) {
+  if (typeof sessionStorage === 'undefined') return;
+  sessionStorage.setItem(`wa_site_visit_${path}`, String(Date.now()));
+}
+
+/**
+ * Registra una visita al sitio principal de Ventalink.
+ * Throttle client-side: no envía si ya se registró en los últimos 30 min para esta ruta.
+ *
+ * @param {{ path: string, hostname?: string, attribution?: object }} options
+ */
+export async function recordSiteVisit({ path, hostname, attribution = {} } = {}) {
+  const normalizedPath = (path || '/').trim();
+  if (shouldThrottleSiteVisit(normalizedPath)) return { recorded: false, throttled: true };
+
+  const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
+  const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
+  if (!supabaseUrl || !anonKey) return { recorded: false, error: { message: 'Missing Supabase config' } };
+
+  const visitorId = getOrCreateVisitorId();
+  const body = {
+    path: normalizedPath,
+    hostname: hostname || (typeof window !== 'undefined' ? window.location.hostname : null),
+    visitor_id:   visitorId,
+    source:       attribution.source       || null,
+    referrer:     attribution.referrer     || null,
+    utm_source:   attribution.utm_source   || null,
+    utm_medium:   attribution.utm_medium   || null,
+    utm_campaign: attribution.utm_campaign || null,
+  };
+
+  const url = `${supabaseUrl}/functions/v1/record-site-visit`;
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: anonKey },
+      keepalive: true,
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data?.recorded) markSiteVisitDone(normalizedPath);
+    return { recorded: !!data?.recorded, error: res.ok ? null : (data?.error || { message: res.statusText }) };
+  } catch (err) {
+    console.error('[record-site-visit] fetch failed', err?.message);
+    return { recorded: false, error: { message: err?.message || 'Network error' } };
+  }
+}
+
+/**
+ * Estadísticas de visitas al sitio principal. Solo admin.
+ * @returns {{ data: { total30d, total7d, totalToday, sources, pages, hostnames } | null, error }}
+ */
+export async function getAdminSiteVisitStats() {
+  const { data, error } = await supabase?.rpc('wa_admin_get_site_visit_stats');
+  if (error) return { data: null, error };
+  if (data?.error) return { data: null, error: { message: data.error } };
+  return {
+    data: {
+      total30d:   data?.total30d   ?? 0,
+      total7d:    data?.total7d    ?? 0,
+      totalToday: data?.totalToday ?? 0,
+      sources:    Array.isArray(data?.sources)   ? data.sources   : [],
+      pages:      Array.isArray(data?.pages)     ? data.pages     : [],
+      hostnames:  Array.isArray(data?.hostnames) ? data.hostnames : [],
+    },
+    error: null,
+  };
+}
+
 // ——— Uso del plan actual (para dashboard) ———
 
 /**

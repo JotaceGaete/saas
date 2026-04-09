@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import PanelHeader from "components/ui/PanelHeader";
 import DashboardAppShell from "components/ui/DashboardAppShell";
@@ -47,24 +47,11 @@ import { getTrialDaysLeft } from "../../constants/trial";
 import { getCurrentSubscription } from "../../lib/billing/subscriptionService";
 import { useToast } from "../../components/ui/Toast";
 import { tryCelebrateFirstCatalogShare } from "../../utils/catalogShareCelebration";
-import { getSourceLabel } from "../../utils/analytics";
+import { getSourceLabel, getSourceColors } from "../../utils/analytics";
+import { generateInsights } from "../../utils/dashboardInsights";
 
 const FIRST_SHARE_TOAST =
   '¡Tu tienda ya está en el mundo! 🌍 Link copiado y listo para enviar.';
-
-const SOURCE_COLORS = {
-  instagram: { dot: '#E1306C', bar: 'rgba(225,48,108,0.75)', bg: 'rgba(225,48,108,0.10)', text: '#BE185D' },
-  facebook:  { dot: '#1877F2', bar: 'rgba(24,119,242,0.75)',  bg: 'rgba(24,119,242,0.10)',  text: '#1D4ED8' },
-  tiktok:    { dot: '#2DD4BF', bar: 'rgba(45,212,191,0.75)',  bg: 'rgba(45,212,191,0.12)',  text: '#0F766E' },
-  google:    { dot: '#EA4335', bar: 'rgba(234,67,53,0.75)',   bg: 'rgba(234,67,53,0.10)',   text: '#B91C1C' },
-  whatsapp:  { dot: '#25D366', bar: 'rgba(37,211,102,0.75)',  bg: 'rgba(37,211,102,0.12)',  text: '#15803D' },
-  twitter:   { dot: '#1DA1F2', bar: 'rgba(29,161,242,0.75)',  bg: 'rgba(29,161,242,0.10)',  text: '#0369A1' },
-  direct:    { dot: '#7C3AED', bar: 'rgba(124,58,237,0.65)',  bg: 'rgba(124,58,237,0.10)',  text: 'var(--color-primary)' },
-};
-
-function getSourceColors(src) {
-  return SOURCE_COLORS[src] ?? { dot: '#94A3B8', bar: 'rgba(148,163,184,0.65)', bg: 'rgba(148,163,184,0.10)', text: '#475569' };
-}
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -423,6 +410,26 @@ export default function Dashboard() {
   const hasAnyVisits = totalVisits > 0;
   const sourceBreakdown = visitStats?.sourceBreakdown ?? null;
 
+  // Rule-based local insight — recomputes whenever relevant data changes.
+  // Used as fallback when the AI insight is unavailable or still loading.
+  const localInsight = useMemo(() => generateInsights({
+    visits30d,
+    visits7d,
+    visitsToday,
+    totalVisits,
+    sourceBreakdown,
+    activeProducts,
+    inactiveProducts,
+    recentOrders,
+    pendingOrdersCount,
+    weeklyOrdersCount,
+    conversionFunnel,
+    monthlyRevenue,
+  }), [visits30d, visits7d, visitsToday, totalVisits, sourceBreakdown, activeProducts, inactiveProducts, recentOrders, pendingOrdersCount, weeklyOrdersCount, conversionFunnel, monthlyRevenue]);
+
+  // Prefer AI insight when available; fall back to local once data has loaded.
+  const displayedInsight = aiInsights ?? (analyticsLoading || dataLoading ? null : localInsight);
+
   // Alertas del negocio
   const alerts = [];
   if (!dataLoading && pendingOrdersCount > 0) {
@@ -701,7 +708,10 @@ export default function Dashboard() {
 
           {!isStarterPlan && (
             <section aria-label="Insight IA">
-              <AiInsightsCard data={aiInsights} loading={aiInsightLoading} />
+              <AiInsightsCard
+                data={displayedInsight}
+                loading={aiInsightLoading && !displayedInsight}
+              />
             </section>
           )}
 

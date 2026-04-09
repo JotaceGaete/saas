@@ -11,9 +11,12 @@ export default function AiInsightsCard({ data, loading }) {
   const priority = PRIORITY_STYLES[priorityKey] || PRIORITY_STYLES.baja;
   const hallazgo = data?.hallazgo || data?.hallazgo_principal || 'Sin datos suficientes por ahora.';
   const accion = data?.accion || data?.accion_recomendada || 'Mantener monitoreo diario del dashboard.';
+  const isLocal = data?.source === 'local';
   const generatedAt = data?.generated_at ? new Date(data.generated_at) : null;
-  const updatedLabel = generatedAt
-    ? `Actualizado ${generatedAt.toLocaleDateString('es-CL')} ${generatedAt.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}`
+  const updatedLabel = isLocal
+    ? 'Análisis en tiempo real'
+    : generatedAt
+    ? `IA · ${generatedAt.toLocaleDateString('es-CL')} ${generatedAt.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}`
     : 'Actualizado hoy';
 
   return (

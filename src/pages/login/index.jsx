@@ -3,6 +3,8 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import LoginBrandPanel from './components/LoginBrandPanel';
 import LoginForm from './components/LoginForm';
+import { collectVisitAttribution } from '../../utils/analytics';
+import { recordSiteVisit } from '../../services/waBusinessService';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -13,6 +15,10 @@ export default function Login() {
   const [authError, setAuthError] = useState(null);
   const [forgotPasswordSuccess, setForgotPasswordSuccess] = useState(false);
   const [forgotPasswordLoading, setForgotPasswordLoading] = useState(false);
+
+  useEffect(() => {
+    recordSiteVisit({ path: '/login', attribution: collectVisitAttribution() }).catch(() => {});
+  }, []);
 
   // Redirección centralizada tras resolver sesión y negocio.
   useEffect(() => {

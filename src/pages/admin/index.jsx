@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import Icon from 'components/AppIcon';
 import BusinessSidebar from 'components/ui/BusinessSidebar';
 import { useIsDesktop } from 'hooks/useMediaQuery';
-import { getBusinessesForAdmin, getAdminStats, getAdminSuspiciousInfo } from 'services/waBusinessService';
+import { getBusinessesForAdmin, getAdminStats, getAdminSuspiciousInfo, getAdminSiteVisitStats } from 'services/waBusinessService';
+import { getSourceLabel, getSourceColors } from '../../utils/analytics';
 import AdminRubrosSection from './components/AdminRubrosSection';
 import { getPlanLabel, getPlanColors, PLAN_SLUGS } from '../../constants/plans';
 import { getPublicCatalogUrl } from '../../config/appUrl';
@@ -42,6 +43,7 @@ export default function AdminDashboard() {
   const [stats,     setStats]     = useState({ totalBusinesses: 0, totalProducts: 0, totalOrders: 0, byPlan: {} });
   const [businesses, setBusinesses] = useState([]);
   const [suspicious, setSuspicious] = useState({ multiBusinessUsers: [], demoBusinesses: [] });
+  const [siteVisits, setSiteVisits] = useState(null);
   const [loading,   setLoading]   = useState(true);
   const [error,     setError]     = useState(null);
   const [planFilter,    setPlanFilter]    = useState('all');
@@ -53,16 +55,18 @@ export default function AdminDashboard() {
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const [statsRes, listRes, suspRes] = await Promise.all([
+    const [statsRes, listRes, suspRes, siteVisitsRes] = await Promise.all([
       getAdminStats(),
       getBusinessesForAdmin(),
       getAdminSuspiciousInfo(),
+      getAdminSiteVisitStats(),
     ]);
     if (statsRes?.error) setError(statsRes.error?.message || 'Error al cargar estadísticas');
     else if (statsRes?.data) setStats(statsRes.data);
     if (listRes?.error)  setError(prev => prev || listRes.error?.message || 'Error al cargar negocios');
     else if (listRes?.data) setBusinesses(listRes.data);
     if (suspRes?.data) setSuspicious(suspRes.data);
+    if (siteVisitsRes?.data) setSiteVisits(siteVisitsRes.data);
     setLoading(false);
   }, []);
 
@@ -229,6 +233,163 @@ export default function AdminDashboard() {
               </div>
             </section>
           )}
+
+          {/* ── Tráfico del sitio ── */}
+          <section className="mb-6">
+            <h2 className="text-sm font-bold mb-3" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>Tráfico del sitio</h2>
+            {loading ? (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {[1, 2, 3].map(i => <div key={i} className="h-24 rounded-xl border animate-pulse" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-muted)' }} />)}
+              </div>
+            ) : !siteVisits ? (
+              <div className="px-4 py-6 rounded-xl border text-center" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-card)' }}>
+                <Icon name="BarChart2" size={24} color="var(--color-muted-foreground)" />
+                <p className="text-xs mt-2" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Sin datos de tráfico aún</p>
+              </div>
+            ) : (
+              <>
+                {/* Contadores rápidos */}
+                <div className="grid grid-cols-3 gap-3 mb-4">
+                  {[
+                    { label: 'Hoy',       value: siteVisits.totalToday, icon: 'Sunrise', color: '#F59E0B' },
+                    { label: '7 días',    value: siteVisits.total7d,    icon: 'TrendingUp', color: 'var(--color-primary)' },
+                    { label: '30 días',   value: siteVisits.total30d,   icon: 'BarChart2', color: '#10B981' },
+                  ].map(s => (
+                    <div key={s.label} className="flex items-center gap-3 px-4 py-3 rounded-xl border" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-card)' }}>
+                      <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: `${s.color}18` }}>
+                        <Icon name={s.icon} size={16} color={s.color} />
+                      </div>
+                      <div>
+                        <p className="text-xl font-bold tabular-nums" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>{s.value}</p>
+                        <p className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>{s.label}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {/* Fuentes */}
+                  <div className="px-4 py-4 rounded-xl border" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-card)' }}>
+                    <p className="text-xs font-semibold mb-3" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                      Origen · últimos 30d
+                    </p>
+                    {siteVisits.sources.length === 0 ? (
+                      <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Sin datos</p>
+                    ) : (() => {
+                      const total = siteVisits.sources.reduce((s, r) => s + Number(r.cnt), 0);
+                      const onlyDirect = siteVisits.sources.length === 1 && siteVisits.sources[0].source === 'direct';
+                      return (
+                        <>
+                          <ol className="flex flex-col gap-2.5">
+                            {siteVisits.sources.map(({ source, cnt }) => {
+                              const count = Number(cnt);
+                              const pct   = total > 0 ? Math.round((count / total) * 100) : 0;
+                              const colors = getSourceColors(source);
+                              return (
+                                <li key={source} className="flex flex-col gap-1">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-1.5 min-w-0">
+                                      <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: colors.dot }} />
+                                      <span className="text-xs font-medium truncate" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>
+                                        {getSourceLabel(source)}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                                      <span className="text-xs tabular-nums" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>{count}</span>
+                                      <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full tabular-nums" style={{ backgroundColor: colors.bg, color: colors.text, fontFamily: 'var(--font-caption)' }}>{pct}%</span>
+                                    </div>
+                                  </div>
+                                  <div className="h-1 rounded-full overflow-hidden" style={{ backgroundColor: 'rgba(0,0,0,0.06)' }}>
+                                    <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, backgroundColor: colors.bar }} />
+                                  </div>
+                                </li>
+                              );
+                            })}
+                          </ol>
+                          {onlyDirect && (
+                            <div className="flex items-start gap-1.5 mt-3 px-2.5 py-2 rounded-lg" style={{ backgroundColor: 'rgba(124,58,237,0.06)' }}>
+                              <Icon name="Info" size={12} color="var(--color-primary)" />
+                              <p className="text-[11px]" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)', lineHeight: '1.4' }}>
+                                Solo tráfico directo. Activa campañas con UTMs para ver atribución detallada.
+                              </p>
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
+
+                  {/* Top páginas */}
+                  <div className="px-4 py-4 rounded-xl border" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-card)' }}>
+                    <p className="text-xs font-semibold mb-3" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                      Top páginas · últimos 30d
+                    </p>
+                    {siteVisits.pages.length === 0 ? (
+                      <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Sin datos</p>
+                    ) : (() => {
+                      const maxCnt = Math.max(...siteVisits.pages.map(r => Number(r.cnt)), 1);
+                      return (
+                        <ol className="flex flex-col gap-2.5">
+                          {siteVisits.pages.map(({ path, cnt }, idx) => {
+                            const count = Number(cnt);
+                            const pct   = Math.round((count / maxCnt) * 100);
+                            return (
+                              <li key={path} className="flex flex-col gap-1">
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="flex items-center gap-1.5 min-w-0">
+                                    <span className="text-xs font-bold w-4 flex-shrink-0" style={{ color: idx === 0 ? 'var(--color-primary)' : 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>{idx + 1}</span>
+                                    <span className="text-xs font-medium truncate font-mono" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>{path}</span>
+                                  </div>
+                                  <span className="text-xs tabular-nums flex-shrink-0" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>{count}</span>
+                                </div>
+                                <div className="h-1 rounded-full overflow-hidden" style={{ backgroundColor: 'rgba(124,58,237,0.1)' }}>
+                                  <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, backgroundColor: idx === 0 ? 'var(--color-primary)' : 'rgba(124,58,237,0.4)' }} />
+                                </div>
+                              </li>
+                            );
+                          })}
+                        </ol>
+                      );
+                    })()}
+                  </div>
+
+                  {/* Por hostname */}
+                  <div className="px-4 py-4 rounded-xl border" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-card)' }}>
+                    <p className="text-xs font-semibold mb-3" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                      Por dominio · últimos 30d
+                    </p>
+                    {siteVisits.hostnames.length === 0 ? (
+                      <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Sin datos</p>
+                    ) : (() => {
+                      const total = siteVisits.hostnames.reduce((s, r) => s + Number(r.cnt), 0);
+                      return (
+                        <ol className="flex flex-col gap-2.5">
+                          {siteVisits.hostnames.map(({ hostname, cnt }) => {
+                            const count = Number(cnt);
+                            const pct   = total > 0 ? Math.round((count / total) * 100) : 0;
+                            return (
+                              <li key={hostname} className="flex flex-col gap-1">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-xs font-medium truncate font-mono" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>{hostname}</span>
+                                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                                    <span className="text-xs tabular-nums" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>{count}</span>
+                                    <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: 'rgba(14,165,233,0.10)', color: '#0284C7', fontFamily: 'var(--font-caption)' }}>{pct}%</span>
+                                  </div>
+                                </div>
+                                <div className="h-1 rounded-full overflow-hidden" style={{ backgroundColor: 'rgba(14,165,233,0.1)' }}>
+                                  <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, backgroundColor: 'rgba(14,165,233,0.75)' }} />
+                                </div>
+                              </li>
+                            );
+                          })}
+                        </ol>
+                      );
+                    })()}
+                  </div>
+                </div>
+              </>
+            )}
+          </section>
 
           {/* ── Rubros ── */}
           <section className="mb-6">

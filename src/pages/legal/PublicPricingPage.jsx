@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import PublicPageLayout from 'components/PublicPageLayout';
+import { collectVisitAttribution } from 'utils/analytics';
+import { recordSiteVisit } from 'services/waBusinessService';
 import { formatCurrency } from 'utils/formatCLP';
 import { PLAN_SLUGS, getPlanLabel, getPlanLimits } from 'constants/plans';
 import { getStoredCountryCode } from 'config/countryConfig';
@@ -45,6 +47,10 @@ async function detectCountryForPricing() {
 export default function PublicPricingPage() {
   const [country, setCountry] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    recordSiteVisit({ path: '/plans', attribution: collectVisitAttribution() }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     let cancelled = false;

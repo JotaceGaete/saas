@@ -3,6 +3,8 @@ import { useNavigate, Navigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCountry } from '../../contexts/CountryContext';
 import { resolveCountryState, resolveBillingSetup, logCountryStateDebug } from '../../lib/country/state-model';
+import { collectVisitAttribution } from '../../utils/analytics';
+import { recordSiteVisit } from '../../services/waBusinessService';
 import AuthStep from './components/AuthStep';
 import ConfirmEmailStep from './components/ConfirmEmailStep';
 import StoreCreationStep from './components/StoreCreationStep';
@@ -72,6 +74,10 @@ export default function BusinessRegistration() {
 
   const cooldownRemainingMs = Math.max(0, (signupCooldownUntil || 0) - Date.now());
   const signupCooldownActive = cooldownRemainingMs > 0;
+
+  useEffect(() => {
+    recordSiteVisit({ path: '/register', attribution: collectVisitAttribution() }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!signupCooldownActive) return;
