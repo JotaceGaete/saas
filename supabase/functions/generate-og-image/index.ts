@@ -98,7 +98,7 @@ Deno.serve(async (req) => {
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
     const { data: biz, error: bizErr } = await adminClient
       .from("wa_businesses")
-      .select("id, user_id, name, logo_url, cover_image_url, design_settings")
+      .select("id, user_id, name, logo_url, cover_image_url, design_settings, og_image_url")
       .eq("id", businessId)
       .maybeSingle();
 
@@ -108,10 +108,52 @@ Deno.serve(async (req) => {
 
     const r = biz as Record<string, unknown>;
     const ds = parseDesignSettingsSafe(r.design_settings);
+
+    // ── Guard 1: shareImageUrl set ───────────────────────────────────────────
+    // resolveCatalogOgImageUrl gives shareImageUrl absolute priority, so any
+    // og_image_url we'd generate here would never be served. Skip unconditionally.
+    if ((ds?.shareImageUrl as string)?.trim()) {
+      console.log(JSON.stringify({
+        event: "generate-og-image:skip",
+        skip_reason: "shareImageUrl_set",
+        businessId,
+      }));
+      return jsonResponse({ skipped: true, reason: "shareImageUrl_set" }, 200, corsHeaders);
+    }
+
+    // ── Guard 2: og_image_url already exists, no force ───────────────────────
+    // Avoid WASM + R2 churn on every minor design save (color, font, etc.).
+    // Callers pass force=true only when cover or logo explicitly changed.
+    const forceRegen = body?.force === true;
+    if (!forceRegen && (r.og_image_url as string)?.trim()) {
+      console.log(JSON.stringify({
+        event: "generate-og-image:skip",
+        skip_reason: "og_image_url_exists",
+        businessId,
+        ogImageUrl: r.og_image_url,
+      }));
+      return jsonResponse({ skipped: true, reason: "og_image_url_exists", ogImageUrl: r.og_image_url }, 200, corsHeaders);
+    }
+
+    // ── Guard 3: no visual inputs ────────────────────────────────────────────
+    // If there is no cover and no logo, generating a text-only gradient is wasteful:
+    // /api/og-catalog already renders the same result on demand and is the preferred
+    // fallback in resolveCatalogOgImageUrl. Skip and let the dynamic endpoint serve.
     const storeName = String(r.name || "Tu tienda");
     const coverUrl = pickCoverUrl(r, ds);
     const logoUrl = pickLogoUrl(r, ds);
 
+    if (!coverUrl && !logoUrl) {
+      console.log(JSON.stringify({
+        event: "generate-og-image:skip",
+        skip_reason: "no_visual_inputs",
+        businessId,
+        storeName,
+      }));
+      return jsonResponse({ skipped: true, reason: "no_visual_inputs" }, 200, corsHeaders);
+    }
+
+    // ── Render ───────────────────────────────────────────────────────────────
     const [coverDataUri, logoDataUri] = await Promise.all([
       loadImageDataUri(coverUrl),
       loadImageDataUri(logoUrl),
@@ -127,7 +169,12 @@ Deno.serve(async (req) => {
     try {
       pngBytes = await renderSvgToPng(svg);
     } catch (err) {
-      console.error("[generate-og-image] render failed", err);
+      console.error(JSON.stringify({
+        event: "generate-og-image:error",
+        error: "render_failed",
+        businessId,
+        message: err instanceof Error ? err.message : String(err),
+      }));
       return jsonResponse(
         { error: "Render failed", message: err instanceof Error ? err.message : String(err) },
         500,
@@ -181,6 +228,8 @@ Deno.serve(async (req) => {
     }));
 
     const ogImageUrl = `${publicBaseUrl}/${key}`;
+
+    // ── Persist — only reached if render + upload both succeeded ─────────────
     const { error: updateErr } = await adminClient
       .from("wa_businesses")
       .update({ og_image_url: ogImageUrl })
@@ -188,12 +237,33 @@ Deno.serve(async (req) => {
       .eq("user_id", user.id);
 
     if (updateErr) {
+      console.error(JSON.stringify({
+        event: "generate-og-image:error",
+        error: "db_update_failed",
+        businessId,
+        ogImageUrl,
+        message: updateErr.message,
+      }));
       return jsonResponse({ error: "Failed to update business og_image_url" }, 500, corsHeaders);
     }
 
+    console.log(JSON.stringify({
+      event: "generate-og-image:generated",
+      businessId,
+      ogImageUrl,
+      hasCover: !!coverDataUri,
+      hasLogo: !!logoDataUri,
+      force: forceRegen,
+    }));
+
     return jsonResponse({ ok: true, businessId, ogImageUrl }, 200, corsHeaders);
   } catch (err) {
-    console.error("[generate-og-image] Unhandled error", err);
+    console.error(JSON.stringify({
+      event: "generate-og-image:error",
+      error: "unhandled",
+      businessId: typeof body?.businessId === "string" ? body.businessId : "unknown",
+      message: err instanceof Error ? err.message : String(err),
+    }));
     return jsonResponse(
       { error: "Internal server error", message: err instanceof Error ? err.message : String(err) },
       500,

@@ -185,8 +185,14 @@ const generateSlug = async (name) => {
   return slug;
 };
 
-async function triggerOgImageGeneration(businessId) {
-  console.log('[waBusinessService] triggerOgImageGeneration called', { businessId });
+/**
+ * @param {string} businessId
+ * @param {{ force?: boolean }} [opts]
+ *   force=true  → regenerate even if og_image_url already exists (use when cover/logo changed)
+ *   force=false → Edge Function will skip if og_image_url is already set (default, safe for minor saves)
+ */
+async function triggerOgImageGeneration(businessId, { force = false } = {}) {
+  console.log('[waBusinessService] triggerOgImageGeneration called', { businessId, force });
 
   if (!businessId) return;
   const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
@@ -241,7 +247,7 @@ async function triggerOgImageGeneration(businessId) {
             Authorization: `Bearer ${resolvedToken}`,
             apikey: anonKey,
           },
-          body: JSON.stringify({ businessId }),
+          body: JSON.stringify({ businessId, force }),
         })
           .then((res) => {
             const status = res.status;
@@ -536,7 +542,7 @@ export const createBusiness = async (businessData) => {
   if (error) return { data: null, error };
   if (data?.id) {
     console.log('[waBusinessService] createBusiness: triggerOgImageGeneration', { businessId: data?.id });
-    triggerOgImageGeneration(data?.id);
+    triggerOgImageGeneration(data?.id, { force: true });
   } else {
     console.warn('[waBusinessService] createBusiness: no business id returned, skipping OG generation');
   }
@@ -573,7 +579,7 @@ export const createBusinessForUser = async (userId, businessData) => {
   if (error) return { data: null, error };
   if (data?.id) {
     console.log('[waBusinessService] createBusinessForUser: triggerOgImageGeneration', { businessId: data?.id });
-    triggerOgImageGeneration(data?.id);
+    triggerOgImageGeneration(data?.id, { force: true });
   } else {
     console.warn('[waBusinessService] createBusinessForUser: no business id returned, skipping OG generation');
   }
@@ -647,8 +653,11 @@ export async function updateBusiness(businessId, updates) {
   }
   console.log('[waBusinessService] updateBusiness success: updated id =', data?.id);
   if (data?.id) {
-    console.log('[waBusinessService] updateBusiness: triggerOgImageGeneration', { businessId: data?.id });
-    triggerOgImageGeneration(data?.id);
+    // Force re-render only when cover or logo explicitly changed — these affect the OG image visually.
+    // Minor saves (color, font, description) skip re-render if og_image_url already exists.
+    const coverOrLogoChanged = updates?.logoUrl !== undefined || updates?.coverImageUrl !== undefined;
+    console.log('[waBusinessService] updateBusiness: triggerOgImageGeneration', { businessId: data?.id, force: coverOrLogoChanged });
+    triggerOgImageGeneration(data?.id, { force: coverOrLogoChanged });
   } else {
     console.warn('[waBusinessService] updateBusiness: no business id returned, skipping OG generation');
   }

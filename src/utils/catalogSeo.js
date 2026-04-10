@@ -125,29 +125,31 @@ export function resolveCatalogOgImageUrl(row, origin, options = {}) {
     return !/\.(tiff?|heic|heif|bmp|raw|cr2|nef|arw)(\?|$)/i.test(url);
   }
 
-  // 1. Imagen designada explícitamente para compartir
+  // 1. Imagen designada explícitamente para compartir (prioridad absoluta del usuario).
   const shareImage = toAbs(ds?.shareImageUrl);
   if (shareImage) return shareImage;
 
-  // 2. Imagen OG pre-generada (1200×630 PNG optimizado, guardado en R2).
-  //    Tiene prioridad sobre la portada cruda porque ya está validada y dimensionada.
+  // 2. Imagen OG pre-generada y persistida (1200×630 PNG en R2, formato garantizado).
   const generatedOg = toAbs(row?.og_image_url);
   if (generatedOg) return generatedOg;
 
-  // 3–5. Portadas/headers — solo si pasan la validación de formato.
-  //      Se omiten si el formato es incompatible con crawlers de redes sociales.
+  // 3. Endpoint dinámico /api/og-catalog — siempre produce una imagen válida 1200×630,
+  //    incluye la portada embebida si existe. Es estrictamente mejor que una portada cruda:
+  //    dimensiones correctas, texto overlay, logo en esquina.
+  //    Solo disponible si el negocio tiene slug.
+  const dynamic = slug ? getOgCatalogShareImageUrl(slug, options.cacheBust ?? null, base) : '';
+  if (dynamic) return dynamic;
+
+  // 4–6. Fallback a imágenes crudas del negocio — solo si el slug no está disponible
+  //      (e.g. contexto de previsualización interna sin slug) y pasan la validación de formato.
   for (const c of [row?.cover_image_url, ds?.coverImageUrl, ds?.headerImageUrl]) {
     const a = toAbs(c);
     if (a && isShareSafe(a)) return a;
   }
 
-  // 6. Logo (generalmente pequeño y seguro para compartir)
+  // 7. Logo como último recurso con imagen del negocio.
   const logo = toAbs(row?.logo_url) || toAbs(ds?.logoUrl);
   if (logo) return logo;
-
-  // 7. PNG generado dinámicamente en /api/og-catalog (siempre funciona, se renderiza al vuelo)
-  const share = slug ? getOgCatalogShareImageUrl(slug, options.cacheBust ?? null, base) : '';
-  if (share) return share;
 
   return base ? `${base}/logo-ventalink.png` : 'https://go.ventalink.app/logo-ventalink.png';
 }
