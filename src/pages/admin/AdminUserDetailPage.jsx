@@ -14,7 +14,7 @@ import {
 } from 'services/adminUsersService';
 import { adminChangePlan } from 'services/adminPaymentsService';
 import { getPlanLabel, getPlanColors } from 'constants/plans';
-import { getAppBaseUrl } from 'config/appUrl';
+import { APP_ORIGIN } from 'config/appUrl';
 import { supabase } from 'lib/supabase';
 
 function formatDate(d) {
@@ -122,11 +122,10 @@ export default function AdminUserDetailPage() {
       adminEmail = session?.user?.email ?? '';
     } catch { /* non-fatal */ }
 
-    const base = getAppBaseUrl();
-    // Pass only the local-part of the admin email (before @) to reduce exposure in
-    // browser history / address bar. The full email is already in the audit log row.
+    // Always use the canonical app origin — never window.location.origin,
+    // which would break if the admin panel is accessed from a non-canonical host.
     const adminHandle = adminEmail ? adminEmail.split('@')[0] : '';
-    const redirectTo = `${base}/dashboard?impersonated=1${adminHandle ? `&ae=${encodeURIComponent(adminHandle)}` : ''}`;
+    const redirectTo = `${APP_ORIGIN}/dashboard?impersonated=1${adminHandle ? `&ae=${encodeURIComponent(adminHandle)}` : ''}`;
 
     const { data, error: err } = await impersonateUser(user.id, redirectTo);
     setActionLoading(null);
