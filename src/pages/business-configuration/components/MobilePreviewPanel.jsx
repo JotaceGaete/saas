@@ -1,16 +1,17 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'components/AppImage';
 import Icon from 'components/AppIcon';
-import { formatCurrency } from 'utils/formatCLP';
 import { resolveCatalogTheme } from '../../../utils/catalogTheme';
+import { formatPrice } from '../../../utils/formatPrice';
 
-function formatPreviewPrice(amount, currency, locale, hideSymbol) {
+function formatPreviewPrice(amount, currency, countryCode, hideSymbol) {
   if (hideSymbol) {
+    // No symbol: plain number with dot-thousands via es-CL locale.
     const n = Number(amount);
     const value = Number.isFinite(n) && n >= 0 ? n : 0;
-    return new Intl.NumberFormat(locale || 'en-US', { maximumFractionDigits: 0, useGrouping: true }).format(value);
+    return new Intl.NumberFormat('es-CL', { maximumFractionDigits: 0, useGrouping: true }).format(value);
   }
-  return formatCurrency(amount, currency, locale);
+  return formatPrice(amount, currency, countryCode);
 }
 
 /** Clave estable para detectar cambios visuales (color, banner, etc.) y disparar el flash en vista previa. */
@@ -79,7 +80,7 @@ const CATALOG_STYLE_PROPS = {
   destacado: { shadow: '0 4px 16px rgba(0,0,0,0.16)', radius: '14px', gap: '10px', imgHeight: '60px' },
 };
 
-function ProductListItem({ product, t, primaryColor, fontFamily, cardSettings, styleProps, currency, locale, hideCurrencySymbol }) {
+function ProductListItem({ product, t, primaryColor, fontFamily, cardSettings, styleProps, currency, locale, countryCode, hideCurrencySymbol }) {
   return (
     <div
       className="flex items-center gap-2.5 p-2.5 border"
@@ -109,7 +110,7 @@ function ProductListItem({ product, t, primaryColor, fontFamily, cardSettings, s
         )}
         {cardSettings?.showPrice && (
           <p className="text-xs font-bold mt-0.5" style={{ color: t?.priceColor || primaryColor, fontFamily }}>
-            {formatPreviewPrice(product?.price, currency, locale, hideCurrencySymbol)}
+            {formatPreviewPrice(product?.price, currency, countryCode, hideCurrencySymbol)}
           </p>
         )}
       </div>
@@ -123,7 +124,7 @@ function ProductListItem({ product, t, primaryColor, fontFamily, cardSettings, s
   );
 }
 
-function ProductGridItem({ product, t, primaryColor, fontFamily, cardSettings, styleProps, currency, locale, hideCurrencySymbol }) {
+function ProductGridItem({ product, t, primaryColor, fontFamily, cardSettings, styleProps, currency, locale, countryCode, hideCurrencySymbol }) {
   return (
     <div
       className="overflow-hidden border"
@@ -142,7 +143,7 @@ function ProductGridItem({ product, t, primaryColor, fontFamily, cardSettings, s
         <p className="text-xs font-semibold truncate" style={{ color: t?.headerText, fontFamily }}>{product?.name}</p>
         {cardSettings?.showPrice && (
           <p className="text-xs font-bold" style={{ color: t?.priceColor || primaryColor, fontFamily }}>
-            {formatPreviewPrice(product?.price, currency, locale, hideCurrencySymbol)}
+            {formatPreviewPrice(product?.price, currency, countryCode, hideCurrencySymbol)}
           </p>
         )}
         <div
@@ -156,7 +157,7 @@ function ProductGridItem({ product, t, primaryColor, fontFamily, cardSettings, s
   );
 }
 
-function ProductCardItem({ product, t, primaryColor, fontFamily, cardSettings, styleProps, currency, locale, hideCurrencySymbol }) {
+function ProductCardItem({ product, t, primaryColor, fontFamily, cardSettings, styleProps, currency, locale, countryCode, hideCurrencySymbol }) {
   return (
     <div
       className="overflow-hidden border"
@@ -181,7 +182,7 @@ function ProductCardItem({ product, t, primaryColor, fontFamily, cardSettings, s
         <div className="flex items-center justify-between mt-1.5 gap-1">
           {cardSettings?.showPrice && (
             <p className="text-xs font-bold" style={{ color: t?.priceColor || primaryColor, fontFamily }}>
-              {formatPreviewPrice(product?.price, currency, locale, hideCurrencySymbol)}
+              {formatPreviewPrice(product?.price, currency, countryCode, hideCurrencySymbol)}
             </p>
           )}
           <div
@@ -204,6 +205,7 @@ export default function MobilePreviewPanel({
   products,
   currency,
   locale = 'en-US',
+  countryCode,
   design,
   /** Si es true, precios numéricos sin símbolo de moneda (vista previa tras fijar país). */
   hideCurrencySymbol = false,
@@ -264,7 +266,7 @@ export default function MobilePreviewPanel({
 
   const cur = String(currency || 'USD').trim().toUpperCase();
   const loc = locale || 'en-US';
-  const productItemProps = { t, primaryColor, fontFamily, cardSettings, styleProps, currency: cur, locale: loc, hideCurrencySymbol };
+  const productItemProps = { t, primaryColor, fontFamily, cardSettings, styleProps, currency: cur, locale: loc, countryCode, hideCurrencySymbol };
 
   return (
     <div className="flex flex-col items-center w-full">

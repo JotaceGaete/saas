@@ -5,7 +5,7 @@ import { getBusinessBySlug, getPublicProducts, getCategoriesByRubroId, getBusine
 import { collectVisitAttribution } from '../../utils/analytics';
 import Icon from '../../components/AppIcon';
 import { CartProvider, useCart } from '../../contexts/CartContext';
-import { formatPriceCatalog, resolveCatalogCurrency } from '../../utils/formatPrice';
+import { formatPrice as formatPriceUtil, resolveCatalogCurrency } from '../../utils/formatPrice';
 import { getBusinessLocale } from '../../lib/locale/businessLocale';
 import { useIsDesktop } from '../../hooks/useMediaQuery';
 import { useAuth } from '../../contexts/AuthContext';
@@ -238,6 +238,8 @@ function CatalogInner({ slug }) {
   const [filtersOpen, setFiltersOpen] = useState(false);
   /** Móvil (pantallas menores a md / 768px): datos del negocio en acordeón, cerrado por defecto. */
   const [mobileStoreInfoOpen, setMobileStoreInfoOpen] = useState(false);
+  /** Desktop: sección de datos del negocio colapsada por defecto para dar protagonismo al catálogo. */
+  const [desktopInfoOpen, setDesktopInfoOpen] = useState(false);
   /** Desktop: si el carril de categorías puede seguir scrolleando a izquierda/derecha (para flechas). */
   const [categoryScrollMore, setCategoryScrollMore] = useState({ left: false, right: false });
 
@@ -299,8 +301,8 @@ function CatalogInner({ slug }) {
     [business, catalogMoney],
   );
   const formatPrice = useCallback(
-    (price) => formatPriceCatalog(price, businessCurrency),
-    [businessCurrency],
+    (price) => formatPriceUtil(price, businessCurrency, catalogMoney?.countryCode),
+    [businessCurrency, catalogMoney?.countryCode],
   );
 
   // Derivar useCategories y categoryNames desde business, rubros y categorías propias
@@ -954,19 +956,85 @@ function CatalogInner({ slug }) {
         {/* 2b. Redes sociales del negocio (si están configuradas) */}
         <SocialLinks business={business} primaryColor={primaryColor} />
 
-        {/* 2c. Información adicional (escritorio; en móvil va en el acordeón de la tarjeta) */}
+        {/* 2c. Información adicional (escritorio; colapsada por defecto) */}
         {hasCatalogInfo && (
           <div className="max-w-5xl mx-auto px-4 mt-3 hidden md:block">
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-              <div className="p-4 sm:p-5 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-                <CatalogInfoGrid
-                  design={design}
-                  primaryColor={primaryColor}
-                  fullAddress={fullAddress}
-                  mapsSearchUrl={mapsSearchUrl}
-                  showAddressInCatalog={showAddressInCatalog}
-                />
+
+              {/* Fila siempre visible: señales rápidas de confianza + toggle */}
+              <button
+                type="button"
+                onClick={() => setDesktopInfoOpen((o) => !o)}
+                className="w-full flex items-center justify-between gap-4 px-4 py-3 text-left hover:bg-gray-50/70 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset"
+                style={{ '--tw-ring-color': primaryColor }}
+                aria-expanded={desktopInfoOpen}
+                aria-controls="catalog-desktop-store-info"
+              >
+                {/* Chips de señales rápidas */}
+                <div className="flex items-center gap-4 flex-wrap min-w-0">
+                  {(design?.businessHours ?? '').trim() !== '' && (
+                    <span className="flex items-center gap-1.5 text-xs text-gray-500 min-w-0">
+                      <Icon name="Clock" size={13} color="#9CA3AF" aria-hidden />
+                      <span className="truncate">{design.businessHours.trim().split('\n')[0].trim()}</span>
+                    </span>
+                  )}
+                  {showAddressInCatalog && business?.city && (
+                    <span className="flex items-center gap-1.5 text-xs text-gray-500">
+                      <Icon name="MapPin" size={13} color="#9CA3AF" aria-hidden />
+                      {business.city}
+                    </span>
+                  )}
+                  {(design?.shippingMethods ?? '').trim() !== '' && (
+                    <span className="flex items-center gap-1.5 text-xs text-gray-500">
+                      <Icon name="Truck" size={13} color="#9CA3AF" aria-hidden />
+                      Envíos
+                    </span>
+                  )}
+                  {design?.retiroEnTienda === true && (
+                    <span className="flex items-center gap-1.5 text-xs text-gray-500">
+                      <Icon name="Store" size={13} color="#9CA3AF" aria-hidden />
+                      Retiro en tienda
+                    </span>
+                  )}
+                </div>
+
+                {/* Toggle label + chevron */}
+                <span
+                  className="flex items-center gap-1 text-xs font-medium shrink-0 transition-colors duration-150"
+                  style={{ color: primaryColor }}
+                >
+                  {desktopInfoOpen ? 'Ocultar' : 'Ver más'}
+                  <Icon
+                    name="ChevronDown"
+                    size={14}
+                    color={primaryColor}
+                    aria-hidden
+                    className={`transition-transform duration-200 ease-out ${desktopInfoOpen ? 'rotate-180' : ''}`}
+                  />
+                </span>
+              </button>
+
+              {/* Detalle completo — animado con grid-rows */}
+              <div
+                id="catalog-desktop-store-info"
+                role="region"
+                className={`grid transition-[grid-template-rows] duration-300 ease-in-out motion-reduce:transition-none ${desktopInfoOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}
+              >
+                <div className="min-h-0 overflow-hidden">
+                  <div className="border-t border-gray-100 px-4 pb-4 pt-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                      <CatalogInfoGrid
+                        design={design}
+                        primaryColor={primaryColor}
+                        fullAddress={fullAddress}
+                        mapsSearchUrl={mapsSearchUrl}
+                        showAddressInCatalog={showAddressInCatalog}
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
+
             </div>
           </div>
         )}
@@ -1888,7 +1956,7 @@ function ProductCard({ product, formatPrice, onOpen, theme, cardSettings, useCat
 
   return (
     <div
-      className="group flex h-full min-h-0 flex-col rounded-2xl bg-white text-left transition-all duration-200 ease-out md:hover:translate-y-[-4px] md:hover:shadow-lg overflow-hidden"
+      className="group flex h-full min-h-0 flex-col rounded-2xl bg-white text-left overflow-hidden will-change-transform transition-[transform,box-shadow] duration-200 ease-out md:hover:-translate-y-1 md:hover:scale-[1.01] md:hover:shadow-lg active:scale-[0.98]"
       style={{ boxShadow: '0 2px 10px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.04)' }}
     >
       {/* Imagen: aspect-ratio + overflow aquí (no en la card entera) para no recortar el botón */}
@@ -1951,6 +2019,7 @@ function ProductCard({ product, formatPrice, onOpen, theme, cardSettings, useCat
       <div
         className={`flex min-h-0 flex-1 flex-col justify-between bg-white ${compact ? 'gap-1 rounded-b-2xl px-1.5 pb-1.5 pt-1.5' : 'gap-1.5 rounded-b-2xl px-2.5 pb-2.5 pt-2'}`}
       >
+        {/* Top: category badge + name — only these grow/shrink */}
         <div className="flex min-h-0 w-full flex-col gap-1">
           {useCategories && product?.category && (
             <span
@@ -1960,7 +2029,7 @@ function ProductCard({ product, formatPrice, onOpen, theme, cardSettings, useCat
               {product?.category}
             </span>
           )}
-          {/* Altura fija = reserva exacta para 2 líneas; evita que flex min-height crezca con texto largo */}
+          {/* Fixed-height container: reserves exact space for 2 lines regardless of content */}
           <div
             className={`w-full shrink-0 overflow-hidden ${compact ? 'h-[2.2rem]' : 'h-[2.45rem] sm:h-[2.7rem]'}`}
           >
@@ -1972,19 +2041,20 @@ function ProductCard({ product, formatPrice, onOpen, theme, cardSettings, useCat
               {(product?.name || '').trim() || 'Producto'}
             </h3>
           </div>
+        </div>
+
+        {/* Bottom: price + button — always anchored at the card bottom */}
+        <div className={`w-full shrink-0 flex flex-col ${compact ? 'gap-1.5' : 'gap-2'} pt-1`}>
           {showPrice && (
             <p className={`shrink-0 font-bold leading-none tracking-tight text-gray-900 ${compact ? 'text-lg' : 'text-xl'}`}>
               {formatPrice(product?.price)}
             </p>
           )}
-        </div>
-
-        <div className="w-full shrink-0 pt-1">
           {qty === 0 ? (
             <button
               type="button"
               onClick={handleAdd}
-              className={`flex w-full items-center justify-center gap-1.5 rounded-xl text-white transition-all duration-150 active:scale-95 ${bump ? 'scale-105' : ''} ${
+              className={`flex w-full items-center justify-center gap-1.5 rounded-xl text-white transition-[transform,filter] duration-150 ease-out md:hover:brightness-[1.08] active:scale-95 ${bump ? 'scale-105' : ''} ${
                 compact ? 'rounded-lg py-1.5 text-[11px] font-bold' : 'py-2.5 text-xs font-bold sm:py-3'
               }`}
               style={{ background: `linear-gradient(135deg, ${primaryColor}, ${primaryColorDark})` }}

@@ -224,6 +224,7 @@ export default function DesignPage() {
                 products={products}
                 currency={business?.currency || locale.currencyCode}
                 locale={locale.locale}
+                countryCode={locale.countryCode}
                 design={draftDesign}
                 hideCurrencySymbol={draftDesign?.showCatalogCurrencySymbol === false}
               />
