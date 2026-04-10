@@ -3,15 +3,19 @@ import { useNavigate, useParams } from 'react-router-dom';
 import Icon from 'components/AppIcon';
 import BusinessSidebar from 'components/ui/BusinessSidebar';
 import { useIsDesktop } from 'hooks/useMediaQuery';
+import { useToast } from 'components/ui/Toast';
 import {
   getAdminUser,
   banAdminUser,
   unbanAdminUser,
   deleteAdminUser,
   setAdminUserRole,
+  impersonateUser,
 } from 'services/adminUsersService';
 import { adminChangePlan } from 'services/adminPaymentsService';
 import { getPlanLabel, getPlanColors } from 'constants/plans';
+import { getAppBaseUrl } from 'config/appUrl';
+import { supabase } from 'lib/supabase';
 
 function formatDate(d) {
   if (!d) return '—';
@@ -31,6 +35,7 @@ function PlanBadge({ slug }) {
 export default function AdminUserDetailPage() {
   const navigate = useNavigate();
   const { userId } = useParams();
+  const toast = useToast();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const isDesktop = useIsDesktop();
   const sidebarWidth = sidebarCollapsed ? 'var(--sidebar-collapsed-width)' : 'var(--sidebar-width)';
@@ -103,6 +108,36 @@ export default function AdminUserDetailPage() {
       setNewPlanSlug('');
       load();
     }
+  };
+
+  const handleImpersonate = async () => {
+    if (!user?.id) return;
+    setActionLoading('impersonate');
+
+    // Get admin's own email to embed in the redirectTo URL.
+    // The impersonated tab reads it from ?ae= to display in the support banner.
+    let adminEmail = '';
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      adminEmail = session?.user?.email ?? '';
+    } catch { /* non-fatal */ }
+
+    const base = getAppBaseUrl();
+    // Pass only the local-part of the admin email (before @) to reduce exposure in
+    // browser history / address bar. The full email is already in the audit log row.
+    const adminHandle = adminEmail ? adminEmail.split('@')[0] : '';
+    const redirectTo = `${base}/dashboard?impersonated=1${adminHandle ? `&ae=${encodeURIComponent(adminHandle)}` : ''}`;
+
+    const { data, error: err } = await impersonateUser(user.id, redirectTo);
+    setActionLoading(null);
+
+    if (err) {
+      toast.error(err.message || 'No se pudo generar el acceso de soporte');
+      return;
+    }
+
+    toast.success(`Abriendo sesión como ${data.targetEmail}`);
+    window.open(data.loginUrl, '_blank', 'noopener,noreferrer');
   };
 
   const banned = user?.banned_until && new Date(user.banned_until) > new Date();
@@ -184,6 +219,17 @@ export default function AdminUserDetailPage() {
               )}
               <button type="button" onClick={() => handleSetRole(!isAdmin)} disabled={!!actionLoading} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border" style={{ borderColor: 'var(--color-border)' }}>
                 {actionLoading === 'role' ? '...' : isAdmin ? 'Quitar rol admin' : 'Asignar rol admin'}
+              </button>
+              <button
+                type="button"
+                onClick={handleImpersonate}
+                disabled={!!actionLoading || isAdmin}
+                title={isAdmin ? 'No se puede impersonar a otros admins' : 'Abrir sesión como este usuario en nueva pestaña'}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
+                style={{ backgroundColor: 'rgba(124,58,237,0.12)', color: '#7C3AED', opacity: isAdmin ? 0.4 : 1 }}
+              >
+                <Icon name="LogIn" size={13} color="#7C3AED" />
+                {actionLoading === 'impersonate' ? 'Generando...' : 'Entrar como usuario'}
               </button>
               <button type="button" onClick={() => setDeleteConfirm(true)} disabled={!!actionLoading} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium" style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#dc2626' }}>
                 Eliminar usuario

@@ -6,6 +6,7 @@ import { supabase } from '../lib/supabase';
 
 const VITE_SUPABASE_URL = import.meta.env?.VITE_SUPABASE_URL ?? '';
 const FUNCTIONS_BASE = `${VITE_SUPABASE_URL.replace(/\/$/, '')}/functions/v1/admin-users`;
+const IMPERSONATE_URL = `${VITE_SUPABASE_URL.replace(/\/$/, '')}/functions/v1/admin-impersonate`;
 
 async function getAuthHeaders() {
   const { data: { session } } = await supabase.auth.getSession();
@@ -157,4 +158,27 @@ export async function setAdminUserRole(userId, isAdmin) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) return { data: null, error: { message: data?.error ?? 'Error al cambiar rol' } };
   return { data: data?.user ?? null, error: null };
+}
+
+/**
+ * Solicita un magic link para entrar a la cuenta del usuario indicado.
+ * El link se abre en una nueva pestaña por el admin — nunca se envía al usuario.
+ * @param {string} userId - ID del usuario objetivo
+ * @param {string} redirectTo - URL completa con ?impersonated=1 a la que redirigir tras login
+ * @returns {{ data: { loginUrl, targetEmail, targetUserId } | null, error: { message } | null }}
+ */
+export async function impersonateUser(userId, redirectTo) {
+  const headers = await getAuthHeaders();
+  if (!headers) return { data: null, error: { message: 'No autenticado' } };
+  const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
+
+  const res = await fetch(IMPERSONATE_URL, {
+    method: 'POST',
+    headers: { ...headers, apikey: anonKey },
+    body: JSON.stringify({ userId, redirectTo }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) return { data: null, error: { message: data?.error ?? 'Error al generar acceso' } };
+  return { data, error: null };
 }
