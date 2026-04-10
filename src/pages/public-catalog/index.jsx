@@ -640,6 +640,9 @@ function CatalogInner({ slug }) {
     return 'compact';
   })();
 
+  const coverPositionY = design?.coverPositionY ?? 50;
+  const coverObjectPosition = `50% ${coverPositionY}%`;
+
   const catalogTheme = resolveCatalogTheme(design);
   const { primaryColor, primaryColorDark, primaryRgba, bgColor, textColor } = catalogTheme;
   const theme = { primaryColor, primaryColorDark, primaryRgba };
@@ -923,7 +926,8 @@ function CatalogInner({ slug }) {
                   src={cfImageUrl(business.coverImageUrl, cfCoverProfile)}
                   alt=""
                   role="presentation"
-                  className="absolute inset-0 w-full h-full object-cover"
+                  className="absolute inset-0 w-full h-full"
+                  style={{ objectFit: 'cover', objectPosition: coverObjectPosition }}
                   onError={buildCfImageErrorHandler(business.coverImageUrl)}
                 />
               ) : (
@@ -946,7 +950,7 @@ function CatalogInner({ slug }) {
 
         {/* 1. Banner — shown on mobile always; on desktop only for cover template */}
         <div
-          className={`relative w-full min-h-[180px] md:min-h-[240px] lg:min-h-[300px] overflow-hidden${headerTemplate !== 'cover' ? ' md:hidden' : ''}`}
+          className={`relative w-full overflow-hidden aspect-[16/7] md:aspect-[16/5]${headerTemplate !== 'cover' ? ' md:hidden' : ''}`}
           style={{
             background: !business?.coverImageUrl
               ? `linear-gradient(135deg, ${primaryColor} 0%, ${primaryColorDark} 50%, ${primaryColorDark} 100%)`
@@ -955,24 +959,27 @@ function CatalogInner({ slug }) {
         >
           {business?.coverImageUrl && (
             <>
-              {/* Capa fondo: cover + blur (relleno si la capa superior falla parcialmente) */}
+              {/* Capa fondo: cover + blur */}
               <img
                 src={cfImageUrl(business.coverImageUrl, cfCoverProfile)}
                 aria-hidden="true"
-                className="absolute inset-0 h-full w-full object-cover object-center"
+                className="absolute inset-0 h-full w-full"
                 style={{
+                  objectFit: 'cover',
+                  objectPosition: coverObjectPosition,
                   filter: 'blur(14px)',
                   transform: 'scale(1.15)',
                   opacity: 0.75,
                 }}
                 onError={buildCfImageErrorHandler(business.coverImageUrl)}
               />
-              {/* Capa principal: cubre todo el contenedor, centrada */}
+              {/* Capa principal */}
               <img
                 src={cfImageUrl(business.coverImageUrl, cfCoverProfile)}
                 alt=""
                 role="presentation"
-                className="absolute inset-0 h-full w-full object-cover object-center"
+                className="absolute inset-0 h-full w-full"
+                style={{ objectFit: 'cover', objectPosition: coverObjectPosition }}
                 onError={buildCfImageErrorHandler(business.coverImageUrl)}
               />
             </>

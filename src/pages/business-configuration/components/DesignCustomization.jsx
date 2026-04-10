@@ -613,19 +613,19 @@ export default function DesignCustomization({
                   className="absolute inset-0 w-full h-full"
                   style={{
                     objectFit: 'cover',
-                    objectPosition: 'center',
+                    objectPosition: `50% ${design?.coverPositionY ?? 50}%`,
                     filter: 'blur(10px)',
                     transform: 'scale(1.15)',
                     opacity: 0.75,
                   }}
                 />
-                {/* Capa principal: imagen completa */}
+                {/* Capa principal: imagen con posición ajustable */}
                 <Image
                   key={design?.headerImageUrl}
                   src={design?.headerImageUrl}
                   alt="Imagen de portada del catálogo"
                   className="absolute inset-0 w-full h-full"
-                  style={{ objectFit: 'contain', objectPosition: 'center' }}
+                  style={{ objectFit: 'cover', objectPosition: `50% ${design?.coverPositionY ?? 50}%` }}
                 />
                 <div
                   className="absolute inset-0 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity gap-1"
@@ -673,6 +673,32 @@ export default function DesignCustomization({
               </button>
             )}
           </div>
+          {design?.headerImageUrl && (
+            <div className="flex flex-col gap-1.5 pt-1">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-medium" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
+                  Ajustar posición de portada
+                </label>
+                <span className="text-xs tabular-nums" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+                  {design?.coverPositionY ?? 50}%
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Arriba</span>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value={design?.coverPositionY ?? 50}
+                  onChange={(e) => handleChange({ ...design, coverPositionY: Number(e.target.value) })}
+                  className="flex-1 h-1.5 cursor-pointer rounded-full accent-violet-500"
+                  style={{ accentColor: primaryColor }}
+                />
+                <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Abajo</span>
+              </div>
+            </div>
+          )}
         </div>
       </SectionCard>
 

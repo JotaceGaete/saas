@@ -344,18 +344,18 @@ export default function MobilePreviewPanel({
                   className="absolute inset-0 w-full h-full"
                   style={{
                     objectFit: 'cover',
-                    objectPosition: 'center',
+                    objectPosition: `50% ${design?.coverPositionY ?? 50}%`,
                     filter: 'blur(10px)',
                     transform: 'scale(1.15)',
                     opacity: 0.75,
                   }}
                 />
-                {/* Capa principal: imagen completa */}
+                {/* Capa principal */}
                 <Image
                   src={headerImageUrl}
                   alt="Portada del catálogo en vista previa"
                   className="absolute inset-0 w-full h-full"
-                  style={{ objectFit: 'contain', objectPosition: 'center' }}
+                  style={{ objectFit: 'cover', objectPosition: `50% ${design?.coverPositionY ?? 50}%` }}
                 />
               </div>
               <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 z-10">
