@@ -15,6 +15,7 @@ export default function CatalogLinkWidget({
 }) {
   const navigate = useNavigate();
   const [copied, setCopied] = useState(false);
+  const [refreshed, setRefreshed] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const qrRef = useRef(null);
   const shareMessage = getCatalogShareMessage({
@@ -37,6 +38,20 @@ export default function CatalogLinkWidget({
     navigator.clipboard?.writeText(catalogUrl || '')?.catch(() => {});
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleRefreshPreview = async () => {
+    const refreshUrl = `${catalogUrl}?r=${Date.now()}`;
+    try {
+      await navigator.clipboard.writeText(refreshUrl);
+    } catch { /* clipboard unavailable */ }
+    setRefreshed(true);
+    setTimeout(() => setRefreshed(false), 4000);
+    window.open(
+      `https://wa.me/?text=${encodeURIComponent(refreshUrl)}`,
+      '_blank',
+      'noopener,noreferrer',
+    );
   };
 
   const handleDownloadQR = () => {
@@ -163,6 +178,25 @@ export default function CatalogLinkWidget({
           WA
         </button>
       </div>
+      <button
+        type="button"
+        onClick={handleRefreshPreview}
+        className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-200 hover:opacity-90 active:scale-95 mb-3"
+        style={{
+          backgroundColor: refreshed ? 'rgba(16,185,129,0.08)' : 'rgba(124,58,237,0.06)',
+          color: refreshed ? '#059669' : 'var(--color-primary)',
+          border: `1px solid ${refreshed ? 'rgba(16,185,129,0.25)' : 'var(--color-border)'}`,
+          fontFamily: 'var(--font-caption)',
+        }}
+      >
+        <Icon name={refreshed ? 'Check' : 'RefreshCw'} size={12} color={refreshed ? '#059669' : 'var(--color-primary)'} />
+        {refreshed ? 'Enlace copiado — compártelo en WhatsApp' : 'Actualizar vista previa de WhatsApp'}
+      </button>
+      {!refreshed && (
+        <p className="text-xs mb-3" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+          Si la vista previa no refleja tus cambios, usa este botón para compartir una versión actualizada del enlace.
+        </p>
+      )}
       <button
         onClick={() => setShowQR(!showQR)}
         className="flex items-center gap-1.5 text-xs font-medium hover:underline focus-visible:outline-none"
