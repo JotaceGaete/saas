@@ -56,6 +56,25 @@ export function darkenHex(hex, pct = 0.2) {
 }
 
 /**
+ * Mixes two hex colors. weight=1 → pure hex1, weight=0 → pure hex2.
+ * Used to derive subtle tints without rgba transparency.
+ * @param {string} hex1
+ * @param {string} hex2
+ * @param {number} weight - 0 to 1
+ * @returns {string}
+ */
+export function mixHex(hex1, hex2, weight) {
+  const [r1, g1, b1] = hexToRgb(hex1);
+  const [r2, g2, b2] = hexToRgb(hex2);
+  const w = Math.max(0, Math.min(1, weight));
+  return `#${[
+    Math.round(r1 * w + r2 * (1 - w)),
+    Math.round(g1 * w + g2 * (1 - w)),
+    Math.round(b1 * w + b2 * (1 - w)),
+  ].map((c) => Math.max(0, Math.min(255, c)).toString(16).padStart(2, '0')).join('')}`;
+}
+
+/**
  * WCAG 2.1 relative luminance for a single 8-bit channel value.
  * https://www.w3.org/TR/WCAG21/#dfn-relative-luminance
  */
@@ -187,15 +206,35 @@ export function resolveCatalogTheme(design) {
 
   const primaryColorDark = darkenHex(primaryColor, 0.2);
 
+  const isDark = textColor === '#ffffff';
+  const [pr, pg, pb] = hexToRgb(primaryColor);
+
+  // Desktop lateral framing: solid tints derived by mixing primaryColor into bgColor.
+  // Solid (not rgba) so the gradient is fully opaque — no white bleed on dark themes.
+  const sideTint = mixHex(primaryColor, bgColor, isDark ? 0.15 : 0.07);
+  const sideGlow = mixHex(primaryColor, bgColor, isDark ? 0.28 : 0.13);
+
+  // Semantic UI tokens
+  const sectionBg = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.018)';
+  const chipBg    = `rgba(${pr},${pg},${pb},${isDark ? 0.22 : 0.11})`;
+  const chipText  = isDark ? '#ffffff' : primaryColor;
+
   return {
     bgColor,
     textColor,
-    cardBg:           templateDef.cardBg,
-    borderColor:      templateDef.borderColor,
+    cardBg:      templateDef.cardBg,
+    borderColor: templateDef.borderColor,
     primaryColor,
     primaryColorDark,
-    primaryRgba:      (alpha) => hexToRgba(primaryColor, alpha),
-    template:         templateDef.id,
-    isDark:           textColor === '#ffffff',
+    primaryRgba: (alpha) => hexToRgba(primaryColor, alpha),
+    template:    templateDef.id,
+    isDark,
+    // Extended layout tokens
+    pageBg:     bgColor,
+    sideTint,
+    sideGlow,
+    sectionBg,
+    chipBg,
+    chipText,
   };
 }

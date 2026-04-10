@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import CatalogLayout from './CatalogLayout';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
 import { getBusinessBySlug, getPublicProducts, getCategoriesByRubroId, getBusinessCategories, recordCatalogVisit, recordCatalogWhatsAppClick, createOrder } from '../../services/waBusinessService';
@@ -63,7 +64,7 @@ function getProductImages(product) {
 
 
 /** Sección "Síguenos" — solo se renderiza si el negocio tiene al menos una red configurada. */
-function SocialLinks({ business, primaryColor }) {
+function SocialLinks({ business, primaryColor, theme }) {
   const links = [
     {
       key: 'instagram',
@@ -101,10 +102,17 @@ function SocialLinks({ business, primaryColor }) {
 
   if (links.length === 0) return null;
 
+  const sectionBg  = theme?.sectionBg  ?? 'rgba(0,0,0,0.018)';
+  const borderColor = theme?.borderColor ?? '#e5e7eb';
+  const chipBg     = theme?.chipBg      ?? 'rgba(0,0,0,0.07)';
+  const chipText   = theme?.chipText    ?? primaryColor;
+  const textColor  = theme?.textColor   ?? '#111111';
+  const mutedColor = theme?.isDark ? 'rgba(255,255,255,0.45)' : '#9CA3AF';
+
   return (
     <div className="max-w-5xl mx-auto px-4 mt-3">
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-4 sm:px-5 py-4">
-        <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-3">Síguenos</p>
+      <div className="rounded-xl shadow-sm px-4 sm:px-5 py-4" style={{ background: sectionBg, border: `1px solid ${borderColor}` }}>
+        <p className="text-[11px] font-bold uppercase tracking-widest mb-3" style={{ color: mutedColor }}>Síguenos</p>
         <div className="flex flex-wrap gap-2">
           {links.map((l) => (
             <a
@@ -112,16 +120,17 @@ function SocialLinks({ business, primaryColor }) {
               href={l.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2.5 px-4 py-2 rounded-full border border-gray-200 bg-gray-50 text-sm font-semibold text-gray-700 transition-all duration-150 active:scale-[0.97]"
+              className="inline-flex items-center gap-2.5 px-4 py-2 rounded-full text-sm font-semibold transition-all duration-150 active:scale-[0.97]"
+              style={{ background: chipBg, border: `1px solid ${borderColor}`, color: chipText }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.backgroundColor = primaryColor;
                 e.currentTarget.style.borderColor = primaryColor;
                 e.currentTarget.style.color = '#fff';
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = '';
-                e.currentTarget.style.borderColor = '';
-                e.currentTarget.style.color = '';
+                e.currentTarget.style.backgroundColor = chipBg;
+                e.currentTarget.style.borderColor = borderColor;
+                e.currentTarget.style.color = chipText;
               }}
             >
               <span className="flex-shrink-0 opacity-80">{l.icon}</span>
@@ -135,31 +144,44 @@ function SocialLinks({ business, primaryColor }) {
 }
 
 /** Bloque de info tienda: fondo gris suave + icono a la izquierda (escritorio y acordeón móvil). */
-function CatalogInfoBlock({ icon, title, children }) {
+function CatalogInfoBlock({ icon, title, children, sectionBg, borderColor, textColor, isDark }) {
+  const bg      = sectionBg  ?? 'rgba(0,0,0,0.018)';
+  const border  = borderColor ?? '#e5e7eb';
+  const iconBg  = isDark ? 'rgba(255,255,255,0.08)' : '#ffffff';
+  const iconColor = isDark ? 'rgba(255,255,255,0.5)' : '#6B7280';
+  const labelColor = isDark ? 'rgba(255,255,255,0.45)' : '#6B7280';
+  const valueColor = textColor ?? '#1F2937';
+
   return (
-    <div className="flex gap-3 rounded-xl bg-gray-50 p-3 sm:p-3.5 border border-gray-100/80">
-      <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-white shadow-sm border border-gray-100">
-        <Icon name={icon} size={18} color="#6B7280" />
+    <div className="flex gap-3 rounded-xl p-3 sm:p-3.5" style={{ background: bg, border: `1px solid ${border}` }}>
+      <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl shadow-sm" style={{ background: iconBg, border: `1px solid ${border}` }}>
+        <Icon name={icon} size={18} color={iconColor} />
       </div>
       <div className="min-w-0 flex-1">
-        <span className="font-semibold text-gray-500 block mb-1 text-[11px] uppercase tracking-wide">{title}</span>
-        <div className="text-gray-800 text-sm font-normal leading-relaxed">{children}</div>
+        <span className="font-semibold block mb-1 text-[11px] uppercase tracking-wide" style={{ color: labelColor }}>{title}</span>
+        <div className="text-sm font-normal leading-relaxed" style={{ color: valueColor }}>{children}</div>
       </div>
     </div>
   );
 }
 
 /** Horarios, dirección, envíos y retiro — mismo contenido en escritorio y en el acordeón móvil. */
-function CatalogInfoGrid({ design, primaryColor, fullAddress, mapsSearchUrl, showAddressInCatalog }) {
+function CatalogInfoGrid({ design, primaryColor, fullAddress, mapsSearchUrl, showAddressInCatalog, theme }) {
+  const blockProps = {
+    sectionBg:   theme?.sectionBg,
+    borderColor: theme?.borderColor,
+    textColor:   theme?.textColor,
+    isDark:      theme?.isDark,
+  };
   return (
     <>
       {(design?.businessHours ?? '').trim() !== '' && (
-        <CatalogInfoBlock icon="Clock" title="Horario">
+        <CatalogInfoBlock icon="Clock" title="Horario" {...blockProps}>
           <span className="whitespace-pre-line">{design.businessHours.trim()}</span>
         </CatalogInfoBlock>
       )}
       {showAddressInCatalog && (
-        <CatalogInfoBlock icon="MapPin" title="Dirección">
+        <CatalogInfoBlock icon="MapPin" title="Dirección" {...blockProps}>
           {mapsSearchUrl ? (
             <>
               <a
@@ -189,18 +211,18 @@ function CatalogInfoGrid({ design, primaryColor, fullAddress, mapsSearchUrl, sho
         </CatalogInfoBlock>
       )}
       {(design?.shippingMethods ?? '').trim() !== '' && (
-        <CatalogInfoBlock icon="Truck" title="Envíos">
+        <CatalogInfoBlock icon="Truck" title="Envíos" {...blockProps}>
           {design.shippingMethods.trim()}
         </CatalogInfoBlock>
       )}
       {(design?.shippingCost ?? '').trim() !== '' && (
-        <CatalogInfoBlock icon="Package" title="Costo de envío">
+        <CatalogInfoBlock icon="Package" title="Costo de envío" {...blockProps}>
           {design.shippingCost.trim()}
         </CatalogInfoBlock>
       )}
       {design?.retiroEnTienda === true && (
         <div className="sm:col-span-2">
-          <CatalogInfoBlock icon="Store" title="Retiro en tienda">
+          <CatalogInfoBlock icon="Store" title="Retiro en tienda" {...blockProps}>
             Disponible
           </CatalogInfoBlock>
         </div>
@@ -602,6 +624,22 @@ function CatalogInner({ slug }) {
   const whatsappPhone = business?.whatsapp?.replace(/\D/g, '');
   const storeWhatsAppUrl = whatsappPhone ? `https://wa.me/${whatsappPhone}?text=${encodeURIComponent(`Hola! Vi tu catálogo en línea.`)}` : null;
 
+  /**
+   * Header template resolution (desktop only; mobile always uses cover+card).
+   * Priority: explicit design setting → auto-detect from available content.
+   *
+   * 'cover'   – tall banner image + overlapping card (current default).
+   * 'split'   – colored left panel (identity) + image/pattern right panel.
+   * 'compact' – slim horizontal bar; minimal height; maximizes catalog space.
+   */
+  const headerTemplate = (() => {
+    const t = design?.headerTemplate;
+    if (t === 'cover' || t === 'split' || t === 'compact') return t;
+    if (business?.coverImageUrl) return 'cover';
+    if (business?.description?.trim()) return 'split';
+    return 'compact';
+  })();
+
   const catalogTheme = resolveCatalogTheme(design);
   const { primaryColor, primaryColorDark, primaryRgba, bgColor, textColor } = catalogTheme;
   const theme = { primaryColor, primaryColorDark, primaryRgba };
@@ -673,15 +711,16 @@ function CatalogInner({ slug }) {
       : null;
 
   return (
-    <div
+    <CatalogLayout
+      theme={catalogTheme}
+      isDesktop={isDesktop}
       className="min-h-screen font-catalog antialiased"
       style={{
-        '--cat-bg':     bgColor,
-        '--cat-text':   textColor,
-        '--cat-card':   catalogTheme.cardBg,
-        '--cat-border': catalogTheme.borderColor,
+        '--cat-bg':      bgColor,
+        '--cat-text':    textColor,
+        '--cat-card':    catalogTheme.cardBg,
+        '--cat-border':  catalogTheme.borderColor,
         '--cat-primary': primaryColor,
-        backgroundColor: bgColor,
         color:           textColor,
       }}
     >
@@ -763,10 +802,151 @@ function CatalogInner({ slug }) {
       )}
 
       {/* ── Header: banner + tarjeta de identidad ── */}
-      <div className="bg-white shadow-sm pt-[calc(3.5rem+var(--safe-area-top))] md:pt-0">
-        {/* 1. Banner — altura mínima fija + cover para que llene el bloque (sin miniatura) */}
+      <div className="pt-[calc(3.5rem+var(--safe-area-top))] md:pt-0">
+
+        {/* ── Desktop: compact ─────────────────────────────────────── */}
+        {headerTemplate === 'compact' && (
+          <div className="hidden md:block" style={{ borderBottom: `1px solid ${catalogTheme.borderColor}` }}>
+            <div className="max-w-5xl mx-auto px-6 py-3.5 flex items-center gap-4">
+              {/* Accent stripe */}
+              <div className="w-1 h-9 rounded-full flex-shrink-0" style={{ backgroundColor: primaryColor }} />
+              {/* Logo */}
+              {business?.logoUrl ? (
+                <img
+                  src={cfImageUrl(business.logoUrl, 'thumbnail')}
+                  alt={business?.name}
+                  className="w-10 h-10 rounded-full object-cover flex-shrink-0"
+                  onError={buildCfImageErrorHandler(business.logoUrl)}
+                />
+              ) : (
+                <div
+                  className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
+                  style={{ background: `linear-gradient(135deg, ${primaryColor}, ${primaryColorDark})` }}
+                >
+                  <Icon name="Store" size={18} color="#ffffff" />
+                </div>
+              )}
+              {/* Name + badge + city */}
+              <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                <h1 className="text-lg font-bold truncate tracking-tight" style={{ color: textColor }}>{business?.name}</h1>
+                <span
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold flex-shrink-0"
+                  style={{ background: catalogTheme.chipBg, color: catalogTheme.isDark ? primaryColor : primaryColorDark }}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: primaryColor }} />
+                  Activa
+                </span>
+                {business?.city && (
+                  <span className="flex items-center gap-1 text-xs flex-shrink-0" style={{ color: catalogTheme.isDark ? 'rgba(255,255,255,0.45)' : '#9CA3AF' }}>
+                    <Icon name="MapPin" size={11} color={catalogTheme.isDark ? 'rgba(255,255,255,0.35)' : '#9CA3AF'} />
+                    {business.city}
+                  </span>
+                )}
+              </div>
+              {/* WhatsApp button */}
+              {storeHeader?.showWhatsAppButton !== false && storeWhatsAppUrl && (
+                <a
+                  href={storeWhatsAppUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => {
+                    const path = typeof window !== 'undefined' ? window.location?.pathname || getPublicCatalogRelativePath(slug) : getPublicCatalogRelativePath(slug);
+                    recordCatalogWhatsAppClick(slug, path, 'store_header').catch(() => {});
+                  }}
+                  className="flex-shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-bold text-white transition-all hover:opacity-90 active:scale-[0.98]"
+                  style={{ background: `linear-gradient(135deg, ${primaryColor}, ${primaryColorDark})` }}
+                >
+                  <Icon name="MessageCircle" size={15} color="#ffffff" />
+                  Contactar
+                </a>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── Desktop: split ───────────────────────────────────────── */}
+        {headerTemplate === 'split' && (
+          <div className="hidden md:flex overflow-hidden" style={{ minHeight: '240px' }}>
+            {/* Left: identity on primary-color background */}
+            <div
+              className="flex-1 flex flex-col justify-center px-8 py-8 min-w-0"
+              style={{ background: `linear-gradient(135deg, ${primaryColor} 0%, ${primaryColorDark} 100%)` }}
+            >
+              <div className="flex items-center gap-4 mb-3">
+                {business?.logoUrl ? (
+                  <img
+                    src={cfImageUrl(business.logoUrl, 'thumbnail')}
+                    alt={business?.name}
+                    className="w-14 h-14 rounded-full object-cover border-2 border-white/30 flex-shrink-0"
+                    onError={buildCfImageErrorHandler(business.logoUrl)}
+                  />
+                ) : (
+                  <div className="w-14 h-14 rounded-full flex items-center justify-center border-2 border-white/30 bg-white/20 flex-shrink-0">
+                    <Icon name="Store" size={24} color="#ffffff" />
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <h1 className="text-2xl font-bold text-white leading-tight tracking-tight">{business?.name}</h1>
+                  {business?.city && (
+                    <div className="flex items-center gap-1 mt-0.5">
+                      <Icon name="MapPin" size={12} color="rgba(255,255,255,0.65)" />
+                      <span className="text-sm" style={{ color: 'rgba(255,255,255,0.65)' }}>{business.city}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+              {business?.description?.trim() && (
+                <p className="text-sm leading-relaxed line-clamp-3 mb-5" style={{ color: 'rgba(255,255,255,0.82)' }}>
+                  {business.description.trim()}
+                </p>
+              )}
+              {storeHeader?.showWhatsAppButton !== false && storeWhatsAppUrl && (
+                <a
+                  href={storeWhatsAppUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => {
+                    const path = typeof window !== 'undefined' ? window.location?.pathname || getPublicCatalogRelativePath(slug) : getPublicCatalogRelativePath(slug);
+                    recordCatalogWhatsAppClick(slug, path, 'store_header').catch(() => {});
+                  }}
+                  className="self-start flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-white bg-white/20 hover:bg-white/30 transition-colors border border-white/25 active:scale-[0.98]"
+                >
+                  <Icon name="MessageCircle" size={15} color="#ffffff" />
+                  Contactar por WhatsApp
+                </a>
+              )}
+            </div>
+            {/* Right: cover image or tinted pattern */}
+            <div className="w-[42%] flex-shrink-0 relative overflow-hidden">
+              {business?.coverImageUrl ? (
+                <img
+                  src={cfImageUrl(business.coverImageUrl, cfCoverProfile)}
+                  alt=""
+                  role="presentation"
+                  className="absolute inset-0 w-full h-full object-cover"
+                  onError={buildCfImageErrorHandler(business.coverImageUrl)}
+                />
+              ) : (
+                // No cover: use a lighter tint of the primary color to fill the space intentionally
+                <div
+                  className="absolute inset-0"
+                  style={{
+                    background: `linear-gradient(160deg, ${primaryColorDark}cc 0%, ${primaryColor}55 60%, ${primaryColorDark}88 100%)`,
+                  }}
+                />
+              )}
+              {/* Soft gradient blending left edge into the colored panel */}
+              <div
+                className="pointer-events-none absolute inset-y-0 left-0 w-16"
+                style={{ background: `linear-gradient(to right, ${primaryColor}, transparent)` }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* 1. Banner — shown on mobile always; on desktop only for cover template */}
         <div
-          className="relative w-full min-h-[180px] md:min-h-[240px] lg:min-h-[300px] overflow-hidden"
+          className={`relative w-full min-h-[180px] md:min-h-[240px] lg:min-h-[300px] overflow-hidden${headerTemplate !== 'cover' ? ' md:hidden' : ''}`}
           style={{
             background: !business?.coverImageUrl
               ? `linear-gradient(135deg, ${primaryColor} 0%, ${primaryColorDark} 50%, ${primaryColorDark} 100%)`
@@ -799,8 +979,8 @@ function CatalogInner({ slug }) {
           )}
         </div>
 
-        {/* 2. Tarjeta de identidad superpuesta (todo el contenido sobre fondo blanco) */}
-        <div className="max-w-5xl mx-auto px-4 -mt-6 sm:-mt-8 relative z-10">
+        {/* 2. Tarjeta de identidad superpuesta — mobile always, desktop only for cover template */}
+        <div className={`max-w-5xl mx-auto px-4 -mt-6 sm:-mt-8 relative z-10${headerTemplate !== 'cover' ? ' md:hidden' : ''}`}>
           <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
             <div className="p-4 sm:p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
               {/* Izquierda: logo + nombre + badge + descripción */}
@@ -943,6 +1123,7 @@ function CatalogInner({ slug }) {
                           fullAddress={fullAddress}
                           mapsSearchUrl={mapsSearchUrl}
                           showAddressInCatalog={showAddressInCatalog}
+                          theme={catalogTheme}
                         />
                       </div>
                     </div>
@@ -954,18 +1135,18 @@ function CatalogInner({ slug }) {
         </div>
 
         {/* 2b. Redes sociales del negocio (si están configuradas) */}
-        <SocialLinks business={business} primaryColor={primaryColor} />
+        <SocialLinks business={business} primaryColor={primaryColor} theme={catalogTheme} />
 
         {/* 2c. Información adicional (escritorio; colapsada por defecto) */}
         {hasCatalogInfo && (
           <div className="max-w-5xl mx-auto px-4 mt-3 hidden md:block">
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+            <div className="rounded-xl shadow-sm overflow-hidden" style={{ background: catalogTheme.sectionBg, border: `1px solid ${catalogTheme.borderColor}` }}>
 
               {/* Fila siempre visible: señales rápidas de confianza + toggle */}
               <button
                 type="button"
                 onClick={() => setDesktopInfoOpen((o) => !o)}
-                className="w-full flex items-center justify-between gap-4 px-4 py-3 text-left hover:bg-gray-50/70 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset"
+                className="w-full flex items-center justify-between gap-4 px-4 py-3 text-left transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset"
                 style={{ '--tw-ring-color': primaryColor }}
                 aria-expanded={desktopInfoOpen}
                 aria-controls="catalog-desktop-store-info"
@@ -973,26 +1154,26 @@ function CatalogInner({ slug }) {
                 {/* Chips de señales rápidas */}
                 <div className="flex items-center gap-4 flex-wrap min-w-0">
                   {(design?.businessHours ?? '').trim() !== '' && (
-                    <span className="flex items-center gap-1.5 text-xs text-gray-500 min-w-0">
-                      <Icon name="Clock" size={13} color="#9CA3AF" aria-hidden />
+                    <span className="flex items-center gap-1.5 text-xs min-w-0" style={{ color: catalogTheme.isDark ? 'rgba(255,255,255,0.5)' : '#6B7280' }}>
+                      <Icon name="Clock" size={13} color={catalogTheme.isDark ? 'rgba(255,255,255,0.4)' : '#9CA3AF'} aria-hidden />
                       <span className="truncate">{design.businessHours.trim().split('\n')[0].trim()}</span>
                     </span>
                   )}
                   {showAddressInCatalog && business?.city && (
-                    <span className="flex items-center gap-1.5 text-xs text-gray-500">
-                      <Icon name="MapPin" size={13} color="#9CA3AF" aria-hidden />
+                    <span className="flex items-center gap-1.5 text-xs" style={{ color: catalogTheme.isDark ? 'rgba(255,255,255,0.5)' : '#6B7280' }}>
+                      <Icon name="MapPin" size={13} color={catalogTheme.isDark ? 'rgba(255,255,255,0.4)' : '#9CA3AF'} aria-hidden />
                       {business.city}
                     </span>
                   )}
                   {(design?.shippingMethods ?? '').trim() !== '' && (
-                    <span className="flex items-center gap-1.5 text-xs text-gray-500">
-                      <Icon name="Truck" size={13} color="#9CA3AF" aria-hidden />
+                    <span className="flex items-center gap-1.5 text-xs" style={{ color: catalogTheme.isDark ? 'rgba(255,255,255,0.5)' : '#6B7280' }}>
+                      <Icon name="Truck" size={13} color={catalogTheme.isDark ? 'rgba(255,255,255,0.4)' : '#9CA3AF'} aria-hidden />
                       Envíos
                     </span>
                   )}
                   {design?.retiroEnTienda === true && (
-                    <span className="flex items-center gap-1.5 text-xs text-gray-500">
-                      <Icon name="Store" size={13} color="#9CA3AF" aria-hidden />
+                    <span className="flex items-center gap-1.5 text-xs" style={{ color: catalogTheme.isDark ? 'rgba(255,255,255,0.5)' : '#6B7280' }}>
+                      <Icon name="Store" size={13} color={catalogTheme.isDark ? 'rgba(255,255,255,0.4)' : '#9CA3AF'} aria-hidden />
                       Retiro en tienda
                     </span>
                   )}
@@ -1021,7 +1202,7 @@ function CatalogInner({ slug }) {
                 className={`grid transition-[grid-template-rows] duration-300 ease-in-out motion-reduce:transition-none ${desktopInfoOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}
               >
                 <div className="min-h-0 overflow-hidden">
-                  <div className="border-t border-gray-100 px-4 pb-4 pt-4">
+                  <div className="px-4 pb-4 pt-4" style={{ borderTop: `1px solid ${catalogTheme.borderColor}` }}>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                       <CatalogInfoGrid
                         design={design}
@@ -1029,6 +1210,7 @@ function CatalogInner({ slug }) {
                         fullAddress={fullAddress}
                         mapsSearchUrl={mapsSearchUrl}
                         showAddressInCatalog={showAddressInCatalog}
+                        theme={catalogTheme}
                       />
                     </div>
                   </div>
@@ -1042,7 +1224,13 @@ function CatalogInner({ slug }) {
       </div>
 
       {/* ── Buscador + categorías + precio (sticky): siempre accesibles al hacer scroll ── */}
-      <div className="sticky z-30 border-b border-gray-100 bg-white/95 backdrop-blur-md shadow-sm top-[calc(56px+var(--safe-area-top))] md:top-0 supports-[backdrop-filter]:bg-white/90">
+      <div
+        className="sticky z-30 backdrop-blur-md shadow-sm top-[calc(56px+var(--safe-area-top))] md:top-0"
+        style={{
+          backgroundColor: hexToRgba(bgColor, 0.96),
+          borderBottom: `1px solid ${catalogTheme.borderColor}`,
+        }}
+      >
         <div className="max-w-5xl mx-auto px-4 py-3 space-y-3">
           <div className="max-w-3xl mx-auto w-full">
             <div className="relative">
@@ -1054,8 +1242,13 @@ function CatalogInner({ slug }) {
                 value={searchQuery}
                 onChange={e => setSearchQuery(e?.target?.value)}
                 placeholder="Buscar productos..."
-                className="w-full pl-9 pr-9 py-2.5 rounded-2xl border border-gray-200 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:border-transparent transition-all bg-gray-50"
-                style={{ '--tw-ring-color': primaryColor }}
+                className="w-full pl-9 pr-9 py-2.5 rounded-2xl border text-sm focus:outline-none focus:ring-2 focus:border-transparent transition-all"
+                style={{
+                  '--tw-ring-color': primaryColor,
+                  backgroundColor: catalogTheme.sectionBg,
+                  borderColor: catalogTheme.borderColor,
+                  color: textColor,
+                }}
               />
               {searchQuery && (
                 <button type="button" onClick={() => setSearchQuery('')} className="absolute inset-y-0 right-3 flex items-center" aria-label="Limpiar búsqueda">
@@ -1082,7 +1275,8 @@ function CatalogInner({ slug }) {
                   aria-hidden={!categoryScrollMore.left}
                 >
                   <div
-                    className="absolute inset-0 bg-gradient-to-r from-white from-45% via-white/80 to-transparent pointer-events-none"
+                    className="absolute inset-0 to-transparent pointer-events-none"
+                    style={{ background: `linear-gradient(to right, ${bgColor} 45%, ${hexToRgba(bgColor, 0.8)} 70%, transparent 100%)` }}
                     aria-hidden
                   />
                   <button
@@ -1090,8 +1284,8 @@ function CatalogInner({ slug }) {
                     onClick={() => scrollCategoryStrip(-1)}
                     aria-label="Categorías anteriores"
                     disabled={!categoryScrollMore.left}
-                    className="pointer-events-auto absolute left-0 top-1/2 -translate-y-1/2 flex h-10 w-10 items-center justify-center rounded-full border border-gray-200/90 bg-white shadow-sm backdrop-blur-sm hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 disabled:pointer-events-none disabled:opacity-0"
-                    style={{ '--tw-ring-color': primaryColor }}
+                    className="pointer-events-auto absolute left-0 top-1/2 -translate-y-1/2 flex h-10 w-10 items-center justify-center rounded-full shadow-sm backdrop-blur-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 disabled:pointer-events-none disabled:opacity-0"
+                    style={{ '--tw-ring-color': primaryColor, background: catalogTheme.sectionBg, border: `1px solid ${catalogTheme.borderColor}` }}
                   >
                     <Icon name="ChevronLeft" size={20} color={primaryColorDark} />
                   </button>
@@ -1103,7 +1297,8 @@ function CatalogInner({ slug }) {
                   aria-hidden={!categoryScrollMore.right}
                 >
                   <div
-                    className="absolute inset-0 bg-gradient-to-l from-white from-45% via-white/80 to-transparent pointer-events-none"
+                    className="absolute inset-0 to-transparent pointer-events-none"
+                    style={{ background: `linear-gradient(to left, ${bgColor} 45%, ${hexToRgba(bgColor, 0.8)} 70%, transparent 100%)` }}
                     aria-hidden
                   />
                   <button
@@ -1111,8 +1306,8 @@ function CatalogInner({ slug }) {
                     onClick={() => scrollCategoryStrip(1)}
                     aria-label="Más categorías"
                     disabled={!categoryScrollMore.right}
-                    className="pointer-events-auto absolute right-0 top-1/2 -translate-y-1/2 flex h-10 w-10 items-center justify-center rounded-full border border-gray-200/90 bg-white shadow-sm backdrop-blur-sm hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 disabled:pointer-events-none disabled:opacity-0"
-                    style={{ '--tw-ring-color': primaryColor }}
+                    className="pointer-events-auto absolute right-0 top-1/2 -translate-y-1/2 flex h-10 w-10 items-center justify-center rounded-full shadow-sm backdrop-blur-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 disabled:pointer-events-none disabled:opacity-0"
+                    style={{ '--tw-ring-color': primaryColor, background: catalogTheme.sectionBg, border: `1px solid ${catalogTheme.borderColor}` }}
                   >
                     <Icon name="ChevronRight" size={20} color={primaryColorDark} />
                   </button>
@@ -1130,10 +1325,12 @@ function CatalogInner({ slug }) {
                     <button
                       type="button"
                       onClick={() => setSelectedCategory('all')}
-                      className={`flex-shrink-0 snap-start px-4 py-1.5 rounded-full text-xs font-bold border transition-all ${
-                        selectedCategory === 'all' ? 'text-white border-transparent shadow-sm' : 'border-gray-200 text-gray-600 bg-white hover:bg-gray-50'
-                      }`}
-                      style={selectedCategory === 'all' ? { background: `linear-gradient(135deg, ${primaryColor}, ${primaryColorDark})` } : {}}
+                      className="flex-shrink-0 snap-start px-4 py-1.5 rounded-full text-xs font-bold border transition-all shadow-sm"
+                      style={
+                        selectedCategory === 'all'
+                          ? { background: `linear-gradient(135deg, ${primaryColor}, ${primaryColorDark})`, borderColor: 'transparent', color: '#ffffff' }
+                          : { background: catalogTheme.sectionBg, borderColor: catalogTheme.borderColor, color: catalogTheme.chipText }
+                      }
                     >
                       Todos
                     </button>
@@ -1143,12 +1340,12 @@ function CatalogInner({ slug }) {
                       type="button"
                       key={cat}
                       onClick={() => setSelectedCategory(cat)}
-                      className={`flex-shrink-0 snap-start px-4 py-1.5 rounded-full text-xs font-bold border transition-all ${
+                      className="flex-shrink-0 snap-start px-4 py-1.5 rounded-full text-xs font-bold border transition-all"
+                      style={
                         selectedCategory === cat
-                          ? 'text-white border-transparent shadow-sm'
-                          : 'border-gray-200 text-gray-600 bg-white hover:bg-gray-50'
-                      }`}
-                      style={selectedCategory === cat ? { background: `linear-gradient(135deg, ${primaryColor}, ${primaryColorDark})` } : {}}
+                          ? { background: `linear-gradient(135deg, ${primaryColor}, ${primaryColorDark})`, borderColor: 'transparent', color: '#ffffff', boxShadow: '0 1px 4px rgba(0,0,0,0.15)' }
+                          : { background: catalogTheme.sectionBg, borderColor: catalogTheme.borderColor, color: catalogTheme.chipText }
+                      }
                     >
                       {cat}
                     </button>
@@ -1163,13 +1360,14 @@ function CatalogInner({ slug }) {
               <button
                 type="button"
                 onClick={() => setFiltersOpen(prev => !prev)}
-                className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${
+                className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition-all"
+                style={
                   filtersOpen || (priceRange?.[0] > 0 || priceRange?.[1] < maxPrice)
-                    ? 'border-gray-200 text-gray-600 bg-white hover:bg-gray-50' :'border-gray-200 text-gray-600 bg-white hover:bg-gray-50'
-                }`}
-                style={filtersOpen || (priceRange?.[0] > 0 || priceRange?.[1] < maxPrice) ? { borderColor: primaryColor, color: primaryColorDark, backgroundColor: theme.primaryRgba(0.08) } : {}}
+                    ? { borderColor: primaryColor, color: primaryColorDark, backgroundColor: theme.primaryRgba(0.12) }
+                    : { background: catalogTheme.sectionBg, borderColor: catalogTheme.borderColor, color: catalogTheme.chipText }
+                }
               >
-                <Icon name="SlidersHorizontal" size={13} color={filtersOpen || (priceRange?.[0] > 0 || priceRange?.[1] < maxPrice) ? primaryColorDark : '#6B7280'} />
+                <Icon name="SlidersHorizontal" size={13} color={filtersOpen || (priceRange?.[0] > 0 || priceRange?.[1] < maxPrice) ? primaryColorDark : catalogTheme.chipText} />
                 Precio
               </button>
 
@@ -1187,7 +1385,7 @@ function CatalogInner({ slug }) {
 
           {/* Expanded price range filter */}
           {filtersOpen && maxPrice > 0 && (
-            <div className="bg-gray-50 rounded-xl p-2.5 border border-gray-100">
+            <div className="rounded-xl p-2.5" style={{ background: catalogTheme.sectionBg, border: `1px solid ${catalogTheme.borderColor}` }}>
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-semibold text-gray-700">Rango de precio</span>
                 <span className="text-xs text-gray-500">
@@ -1210,10 +1408,13 @@ function CatalogInner({ slug }) {
       {/* ── Products: espacio extra abajo para botón flotante y safe area ── */}
       <div
         className="max-w-7xl mx-auto px-4 py-3"
-        style={{ paddingBottom: 'calc(8rem + var(--safe-area-bottom))' }}
+        style={{
+          paddingBottom: 'calc(8rem + var(--safe-area-bottom))',
+          boxShadow: `inset 0 4px 12px ${catalogTheme.isDark ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.04)'}`,
+        }}
       >
         {/* Product count */}
-        <p className="text-xs text-gray-400 font-medium mb-3">
+        <p className="text-xs font-medium mb-3" style={{ color: catalogTheme.isDark ? 'rgba(255,255,255,0.4)' : '#9CA3AF' }}>
           {sortedProducts?.length} {sortedProducts?.length === 1 ? 'producto' : 'productos'}
           {hasActiveFilters && products?.length !== sortedProducts?.length && (
             <span> de {products?.length}</span>
@@ -1222,7 +1423,7 @@ function CatalogInner({ slug }) {
 
         {sortedProducts?.length === 0 ? (
           <div className="text-center py-20">
-            <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center mx-auto mb-4">
+            <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ background: catalogTheme.sectionBg }}>
               {hasActiveFilters ? (
                 <Icon name="SearchX" size={28} color="#9CA3AF" />
               ) : (
@@ -1267,13 +1468,18 @@ function CatalogInner({ slug }) {
         {!loading && !notFound && business && catalogAboutBlock && (
           <div className="mt-10 md:mt-14 w-full flex justify-center px-0 sm:px-1">
             <section
-              className="w-full max-w-[min(100%,1200px)] rounded-2xl border border-gray-200/90 bg-gradient-to-b from-gray-50 to-white px-6 py-8 sm:px-10 sm:py-10 text-left shadow-[0_4px_32px_-8px_rgba(15,23,42,0.1)] ring-1 ring-gray-100/80"
+              className="w-full max-w-[min(100%,1200px)] rounded-2xl px-6 py-8 sm:px-10 sm:py-10 text-left"
+              style={{
+                background: catalogTheme.sectionBg,
+                border: `1px solid ${catalogTheme.borderColor}`,
+              }}
               aria-labelledby="catalog-seo-heading"
             >
               <header className="mb-7 sm:mb-8">
                 <h2
                   id="catalog-seo-heading"
-                  className="text-2xl font-semibold tracking-tight text-gray-900 sm:text-3xl"
+                  className="text-2xl font-semibold tracking-tight sm:text-3xl"
+                  style={{ color: textColor }}
                 >
                   Sobre este catálogo
                 </h2>
@@ -1283,7 +1489,7 @@ function CatalogInner({ slug }) {
                   aria-hidden
                 />
               </header>
-              <div className="space-y-7 text-[15px] text-gray-600 sm:text-base">
+              <div className="space-y-7 text-[15px] sm:text-base" style={{ color: catalogTheme.isDark ? 'rgba(255,255,255,0.68)' : '#4B5563' }}>
                 <p className="m-0 max-w-none text-pretty leading-[1.85] sm:leading-[1.9]">
                   {catalogAboutBlock.intro}
                 </p>
@@ -1301,7 +1507,7 @@ function CatalogInner({ slug }) {
                     </li>
                   ))}
                 </ul>
-                <p className="m-0 max-w-none border-t border-gray-100 pt-6 text-pretty leading-[1.85] text-gray-700 sm:leading-[1.9]">
+                <p className="m-0 max-w-none pt-6 text-pretty leading-[1.85] sm:leading-[1.9]" style={{ borderTop: `1px solid ${catalogTheme.borderColor}`, color: catalogTheme.isDark ? 'rgba(255,255,255,0.62)' : '#374151' }}>
                   {catalogAboutBlock.closing}
                 </p>
               </div>
@@ -1341,7 +1547,7 @@ function CatalogInner({ slug }) {
           useCategories={useCategories}
         />
       )}
-    </div>
+    </CatalogLayout>
   );
 }
 
