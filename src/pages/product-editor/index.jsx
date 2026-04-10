@@ -518,6 +518,11 @@ export default function ProductEditor() {
                     onImproveWithAi={canUseAi ? handleImproveWithAi : undefined}
                     isImprovingDescription={isImprovingDescription}
                     publicCode={isEditing ? publicCode : ''}
+                    businessId={business?.id}
+                    onCategoryCreated={(cat) => {
+                      setBusinessCategories((prev) => [...prev, cat]);
+                      toast.success(`Categoría «${cat.name}» creada`);
+                    }}
                   />
                 </div>
 

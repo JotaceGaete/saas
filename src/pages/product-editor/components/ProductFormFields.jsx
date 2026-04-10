@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import Icon from 'components/AppIcon';
 import Input from 'components/ui/Input';
 import { formatIntegerInputGrouped, parseCLPInput } from '../../../utils/formatCLP';
+import { createBusinessCategory } from '../../../services/waBusinessService';
 
 const MAX_NAME = 80;
 const MAX_DESC = 300;
@@ -13,13 +14,46 @@ function formatPriceInput(value, locale) {
   return formatIntegerInputGrouped(value, locale);
 }
 
-export default function ProductFormFields({ formData, errors, onChange, currencyCode = 'USD', locale = 'en-US', useCategories = false, businessCategories = [], rubroCategories = [], onImproveWithAi, isImprovingDescription = false, publicCode = '' }) {
+export default function ProductFormFields({ formData, errors, onChange, currencyCode = 'USD', locale = 'en-US', useCategories = false, businessCategories = [], rubroCategories = [], onImproveWithAi, isImprovingDescription = false, publicCode = '', businessId, onCategoryCreated }) {
   const handleChange = (field, value) => onChange(field, value);
   const ownOptions   = Array.isArray(businessCategories) ? businessCategories.filter((c) => c?.name?.trim()) : [];
   const rubroOptions = Array.isArray(rubroCategories)    ? rubroCategories.filter((c) => c?.name?.trim())    : [];
   const hasOwn  = ownOptions.length > 0;
   const hasRubro = rubroOptions.length > 0;
   const useGroups = hasOwn && hasRubro; // solo agrupa si hay ambas fuentes
+
+  // ── Inline category creation modal ───────────────────────────────────────────
+  const [createOpen, setCreateOpen]   = useState(false);
+  const [inputVal,   setInputVal]     = useState('');
+  const [creating,   setCreating]     = useState(false);
+  const [createError, setCreateError] = useState(null);
+  const createInputRef = useRef(null);
+
+  useEffect(() => {
+    if (createOpen) {
+      setInputVal('');
+      setCreateError(null);
+      // autofocus after transition frame
+      const t = setTimeout(() => createInputRef.current?.focus(), 50);
+      return () => clearTimeout(t);
+    }
+  }, [createOpen]);
+
+  const handleCreate = async () => {
+    const name = inputVal.trim();
+    if (!name) { setCreateError('Escribe un nombre para la categoría'); return; }
+    if (ownOptions.some((c) => c.name.toLowerCase() === name.toLowerCase())) {
+      setCreateError('Ya tienes una categoría con ese nombre');
+      return;
+    }
+    setCreating(true);
+    const { data, error } = await createBusinessCategory(businessId, { name, sortOrder: ownOptions.length });
+    setCreating(false);
+    if (error) { setCreateError(error.message || 'No se pudo crear la categoría'); return; }
+    onCategoryCreated?.(data);
+    handleChange('categoria', data.name);
+    setCreateOpen(false);
+  };
 
   return (
     <div className="space-y-5">
@@ -141,14 +175,15 @@ export default function ProductFormFields({ formData, errors, onChange, currency
             <label className="block text-sm font-medium" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}>
               Categoría
             </label>
-            <a
-              href="/business-configuration"
-              className="text-xs font-medium hover:underline"
-              style={{ color: 'var(--color-primary)', fontFamily: 'var(--font-caption)' }}
+            <button
+              type="button"
+              onClick={() => setCreateOpen(true)}
+              className="text-xs font-medium hover:underline focus:outline-none"
+              style={{ color: 'var(--color-primary)', fontFamily: 'var(--font-caption)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
               tabIndex={-1}
             >
-              {hasOwn ? 'Gestionar mis categorías' : 'Crear categoría propia'}
-            </a>
+              + Crear categoría propia
+            </button>
           </div>
           <select
             value={formData?.categoria ?? ''}
@@ -188,6 +223,96 @@ export default function ProductFormFields({ formData, errors, onChange, currency
               Tus categorías aparecen primero.
             </p>
           )}
+        </div>
+      )}
+
+      {/* ── Modal: crear categoría ────────────────────────────────────────────── */}
+      {createOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}
+          onClick={(e) => { if (e.target === e.currentTarget) setCreateOpen(false); }}
+        >
+          <div
+            className="w-full max-w-sm rounded-xl shadow-xl"
+            style={{ backgroundColor: 'var(--color-card)', border: '1px solid var(--color-border)' }}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 pt-5 pb-3">
+              <div>
+                <p className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>
+                  Nueva categoría
+                </p>
+                <p className="text-xs mt-0.5" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-muted-foreground)' }}>
+                  Escribe el nombre y se añadirá automáticamente.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCreateOpen(false)}
+                className="flex items-center justify-center w-7 h-7 rounded-md transition-colors hover:opacity-70"
+                style={{ color: 'var(--color-muted-foreground)' }}
+                aria-label="Cerrar"
+              >
+                <Icon name="X" size={16} color="currentColor" />
+              </button>
+            </div>
+
+            {/* Input */}
+            <div className="px-5 pb-2">
+              <input
+                ref={createInputRef}
+                type="text"
+                maxLength={60}
+                value={inputVal}
+                onChange={(e) => { setInputVal(e.target.value); setCreateError(null); }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') { e.preventDefault(); handleCreate(); }
+                  if (e.key === 'Escape') setCreateOpen(false);
+                }}
+                placeholder="Ej: Ofertas, Novedades, Ropa..."
+                className="w-full px-3 py-2 rounded-md border text-sm focus:outline-none focus:ring-2"
+                style={{
+                  borderColor: createError ? 'var(--color-error)' : 'var(--color-input)',
+                  backgroundColor: 'var(--color-background)',
+                  color: 'var(--color-foreground)',
+                  fontFamily: 'var(--font-caption)',
+                  borderRadius: 'var(--radius-sm)',
+                  '--tw-ring-color': 'var(--color-primary)',
+                }}
+              />
+              {createError ? (
+                <p className="mt-1 text-xs" style={{ color: 'var(--color-error)', fontFamily: 'var(--font-caption)' }}>
+                  {createError}
+                </p>
+              ) : (
+                <p className="mt-1 text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                  Máx. 60 caracteres · Límite de 30 categorías
+                </p>
+              )}
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-2 justify-end px-5 py-4" style={{ borderTop: '1px solid var(--color-border)' }}>
+              <button
+                type="button"
+                onClick={() => setCreateOpen(false)}
+                className="px-4 py-2 rounded-lg text-xs font-medium transition-opacity hover:opacity-70"
+                style={{ border: '1px solid var(--color-border)', color: 'var(--color-muted-foreground)', backgroundColor: 'transparent', fontFamily: 'var(--font-caption)' }}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleCreate}
+                disabled={creating || !inputVal.trim()}
+                className="px-4 py-2 rounded-lg text-xs font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+                style={{ backgroundColor: 'var(--color-primary)', fontFamily: 'var(--font-caption)' }}
+              >
+                {creating ? 'Creando...' : 'Crear categoría'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
       {/* Inventario */}
