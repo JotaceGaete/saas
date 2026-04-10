@@ -135,7 +135,7 @@ async function handleCatalogHtml(request) {
   const pageTitle = getCatalogShareDocumentTitle(row.name);
   const metaDescription = getCatalogShareDescription(row);
   const ri = detectCatalogRegion(seoInput);
-  const ogImage = resolveCatalogOgImageUrl(row, origin, { cacheBust: null });
+  const ogImage = resolveCatalogOgImageUrl(row, origin, { cacheBust: row.updated_at ?? null });
   const ogImageHttps =
     typeof ogImage === 'string' && ogImage.startsWith('http://')
       ? `https://${ogImage.slice(7)}`
