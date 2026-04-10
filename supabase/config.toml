@@ -55,3 +55,9 @@ verify_jwt = false
 # devuelve 401 antes de que el handler pueda responder al preflight correctamente.
 [functions.admin-users]
 verify_jwt = false
+
+# admin-impersonate: misma razón que admin-users — JWT y rol admin validados dentro.
+# El preflight OPTIONS no lleva Authorization; con verify_jwt=true el gateway devuelve
+# 401 {"error":"Method not allowed"} antes de que el handler responda al preflight.
+[functions.admin-impersonate]
+verify_jwt = false

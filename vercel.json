@@ -85,6 +85,12 @@
       "permanent": false
     },
     {
+      "source": "/(.*)",
+      "has": [{ "type": "host", "value": "www.miralatienda.de" }],
+      "destination": "https://miralatienda.de/$1",
+      "permanent": true
+    },
+    {
       "source": "/(dashboard|elegir-pais|business-registration|register|complete-business-setup|business-configuration|product-management|product-editor|orders|design|ayuda|login|verify-email|auth|reset-password|planes|plan-y-facturacion|billing|admin|landing-page)(.*)",
       "has": [{ "type": "host", "value": "miralatienda.de" }],
       "destination": "https://go.ventalink.app/$1$2",

@@ -1,5 +1,5 @@
 // admin-impersonate — Genera un magic link para entrar a la cuenta de un usuario sin enviar email.
-// Solo para admins autenticados (app_metadata.role === 'admin' o user_metadata.role === 'admin').
+// Solo para admins autenticados (app_metadata.role === 'admin' — solo modificable vía service role).
 // Usa SUPABASE_SERVICE_ROLE_KEY exclusivamente en el servidor. Nunca se expone al cliente.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -16,12 +16,11 @@ function jsonResponse(body: Record<string, unknown>, status: number) {
   });
 }
 
-function isAdminUser(user: { app_metadata?: Record<string, unknown>; user_metadata?: Record<string, unknown> } | null): boolean {
+function isAdminUser(user: { app_metadata?: Record<string, unknown> } | null): boolean {
   if (!user) return false;
-  return (
-    (user.app_metadata?.role as string) === 'admin' ||
-    (user.user_metadata?.role as string) === 'admin'
-  );
+  // app_metadata is server-only (service role); user_metadata can be self-modified by users.
+  // Never check user_metadata.role for privilege decisions.
+  return (user.app_metadata?.role as string) === 'admin';
 }
 
 // ── Allowed redirect origins ─────────────────────────────────────────────────
