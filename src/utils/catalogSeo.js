@@ -94,9 +94,9 @@ function toHttpsOgImage(abs) {
 }
 
 /**
- * URL de og:image: prioridad portada del negocio → logos → og guardada → PNG `/api/og-catalog` → fallback.
- * Sin `ogv=` ni query extra en URLs de imagen de BD (preview estable en WhatsApp).
- * `options.cacheBust` solo afecta la URL generada de `/api/og-catalog` si se pasa (omitir para URL mínima).
+ * URL de og:image con prioridad correcta para compartir en WhatsApp.
+ * Orden: shareImageUrl → og_image_url (pre-generada) → covers con validación → logos → /api/og-catalog dinámico → fallback.
+ * `options.cacheBust` solo afecta la URL generada de `/api/og-catalog` si se pasa.
  *
  * @param {Record<string, unknown>|null|undefined} row
  * @param {string} origin - Origen público (https://dominio) sin barra final
@@ -107,29 +107,49 @@ export function resolveCatalogOgImageUrl(row, origin, options = {}) {
   const slug = row?.slug != null ? String(row.slug).trim() : '';
   const ds = parseDesignSettingsFromDb(row?.design_settings);
 
-  const candidates = [
-    ds?.shareImageUrl,
-    row?.cover_image_url,
-    ds?.coverImageUrl,
-    ds?.headerImageUrl,
-    row?.logo_url,
-    ds?.logoUrl,
-    row?.og_image_url,
-  ];
-
-  for (const c of candidates) {
-    if (c == null || c === '') continue;
-    const raw = typeof c === 'string' ? c.trim() : String(c).trim();
-    if (!raw) continue;
-    const abs = toHttpsOgImage(toAbsoluteCatalogUrl(raw, base));
-    if (abs && /^https:\/\//i.test(abs)) return abs;
+  /** Convierte un candidato crudo a URL https absoluta o retorna ''. */
+  function toAbs(raw) {
+    if (raw == null || raw === '') return '';
+    const s = typeof raw === 'string' ? raw.trim() : String(raw).trim();
+    if (!s) return '';
+    const a = toHttpsOgImage(toAbsoluteCatalogUrl(s, base));
+    return /^https:\/\//i.test(a) ? a : '';
   }
 
+  /**
+   * Heurística de share-safety basada en URL.
+   * No podemos hacer HEAD requests en tiempo de render, así que rechazamos
+   * formatos conocidos como no soportados por crawlers (WhatsApp, Facebook, etc.).
+   */
+  function isShareSafe(url) {
+    return !/\.(tiff?|heic|heif|bmp|raw|cr2|nef|arw)(\?|$)/i.test(url);
+  }
+
+  // 1. Imagen designada explícitamente para compartir
+  const shareImage = toAbs(ds?.shareImageUrl);
+  if (shareImage) return shareImage;
+
+  // 2. Imagen OG pre-generada (1200×630 PNG optimizado, guardado en R2).
+  //    Tiene prioridad sobre la portada cruda porque ya está validada y dimensionada.
+  const generatedOg = toAbs(row?.og_image_url);
+  if (generatedOg) return generatedOg;
+
+  // 3–5. Portadas/headers — solo si pasan la validación de formato.
+  //      Se omiten si el formato es incompatible con crawlers de redes sociales.
+  for (const c of [row?.cover_image_url, ds?.coverImageUrl, ds?.headerImageUrl]) {
+    const a = toAbs(c);
+    if (a && isShareSafe(a)) return a;
+  }
+
+  // 6. Logo (generalmente pequeño y seguro para compartir)
+  const logo = toAbs(row?.logo_url) || toAbs(ds?.logoUrl);
+  if (logo) return logo;
+
+  // 7. PNG generado dinámicamente en /api/og-catalog (siempre funciona, se renderiza al vuelo)
   const share = slug ? getOgCatalogShareImageUrl(slug, options.cacheBust ?? null, base) : '';
   if (share) return share;
 
-  const fallback = base ? `${base}/logo-ventalink.png` : 'https://go.ventalink.app/logo-ventalink.png';
-  return fallback;
+  return base ? `${base}/logo-ventalink.png` : 'https://go.ventalink.app/logo-ventalink.png';
 }
 
 /** Título del documento / og:title = nombre del catálogo (sin sufijo de marketing). */
