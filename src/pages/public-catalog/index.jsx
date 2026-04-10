@@ -950,7 +950,7 @@ function CatalogInner({ slug }) {
 
         {/* 1. Banner — shown on mobile always; on desktop only for cover template */}
         <div
-          className={`relative w-full overflow-hidden aspect-[16/7] md:aspect-[16/5]${headerTemplate !== 'cover' ? ' md:hidden' : ''}`}
+          className={`relative w-full overflow-hidden aspect-[16/7] md:aspect-[21/5]${headerTemplate !== 'cover' ? ' md:hidden' : ''}`}
           style={{
             background: !business?.coverImageUrl
               ? `linear-gradient(135deg, ${primaryColor} 0%, ${primaryColorDark} 50%, ${primaryColorDark} 100%)`
@@ -987,7 +987,7 @@ function CatalogInner({ slug }) {
         </div>
 
         {/* 2. Tarjeta de identidad superpuesta — mobile always, desktop only for cover template */}
-        <div className={`max-w-5xl mx-auto px-4 -mt-6 sm:-mt-8 relative z-10${headerTemplate !== 'cover' ? ' md:hidden' : ''}`}>
+        <div className={`max-w-5xl mx-auto px-4 -mt-6 sm:-mt-8 md:-mt-14 relative z-10${headerTemplate !== 'cover' ? ' md:hidden' : ''}`}>
           <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
             <div className="p-4 sm:p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
               {/* Izquierda: logo + nombre + badge + descripción */}
