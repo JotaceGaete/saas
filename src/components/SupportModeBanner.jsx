@@ -1,29 +1,11 @@
-/**
- * SupportModeBanner — visible when an admin has entered a user account via impersonation.
- *
- * Detection:
- *   1. ?impersonated=1 in URL → bootstraps sessionStorage keys and becomes visible.
- *   2. sessionStorage key `ventalink_impersonated` === '1' → picks up the flag after
- *      React Router strips the query param on redirect to /dashboard.
- *
- * SessionStorage keys managed here:
- *   ventalink_impersonated          → '1'
- *   ventalink_support_admin_email   → admin's email (from ?ae= param)
- *   ventalink_support_target_email  → impersonated user's email (from Supabase session)
- *   ventalink_support_initiated_at  → ISO timestamp of when the mode was entered
- *
- * Exit: signs out the impersonated session and redirects to /login.
- * Auto-clears: if auth fires SIGNED_OUT while banner is visible, clears keys + hides.
- */
 import React, { useEffect, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import Icon from './AppIcon';
 
-const SS_IMPERSONATED   = 'ventalink_impersonated';
-const SS_ADMIN_EMAIL    = 'ventalink_support_admin_email';
-const SS_TARGET_EMAIL   = 'ventalink_support_target_email';
-const SS_INITIATED_AT   = 'ventalink_support_initiated_at';
+const SS_IMPERSONATED  = 'ventalink_impersonated';
+const SS_ADMIN_EMAIL   = 'ventalink_support_admin_email';
+const SS_TARGET_EMAIL  = 'ventalink_support_target_email';
+const SS_INITIATED_AT  = 'ventalink_support_initiated_at';
 
 function clearSupportSession() {
   sessionStorage.removeItem(SS_IMPERSONATED);
@@ -32,46 +14,35 @@ function clearSupportSession() {
   sessionStorage.removeItem(SS_INITIATED_AT);
 }
 
+function stripSupportParams() {
+  const url = new URL(window.location.href);
+  url.searchParams.delete('impersonated');
+  url.searchParams.delete('ae');
+  window.history.replaceState(null, '', url.toString());
+}
+
 export default function SupportModeBanner() {
-  const location = useLocation();
-  const navigate = useNavigate();
   const [visible, setVisible] = useState(false);
   const [adminEmail, setAdminEmail] = useState('');
   const [targetEmail, setTargetEmail] = useState('');
   const [exiting, setExiting] = useState(false);
 
-  // Bootstrap from URL params on first load or whenever the search string changes.
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    if (params.get('impersonated') !== '1') return;
+    const params = new URLSearchParams(window.location.search);
+    const isImpersonated = params.get('impersonated') === '1';
 
-    // Persist flag
-    sessionStorage.setItem(SS_IMPERSONATED, '1');
-    if (!sessionStorage.getItem(SS_INITIATED_AT)) {
-      sessionStorage.setItem(SS_INITIATED_AT, new Date().toISOString());
-    }
-
-    // Persist admin email from ?ae= if present
-    const ae = params.get('ae');
-    if (ae && !sessionStorage.getItem(SS_ADMIN_EMAIL)) {
-      sessionStorage.setItem(SS_ADMIN_EMAIL, ae);
-    }
-
-    setVisible(true);
-    setAdminEmail(sessionStorage.getItem(SS_ADMIN_EMAIL) ?? '');
-
-    // Populate target email from live session and persist it
-    supabase.auth.getUser().then(({ data }) => {
-      const email = data?.user?.email ?? '';
-      if (email) {
-        sessionStorage.setItem(SS_TARGET_EMAIL, email);
-        setTargetEmail(email);
+    if (isImpersonated) {
+      sessionStorage.setItem(SS_IMPERSONATED, '1');
+      if (!sessionStorage.getItem(SS_INITIATED_AT)) {
+        sessionStorage.setItem(SS_INITIATED_AT, new Date().toISOString());
       }
-    });
-  }, [location.search]);
+      const ae = params.get('ae');
+      if (ae && !sessionStorage.getItem(SS_ADMIN_EMAIL)) {
+        sessionStorage.setItem(SS_ADMIN_EMAIL, ae);
+      }
+      stripSupportParams();
+    }
 
-  // Pick up flag from sessionStorage when query param has already been consumed.
-  useEffect(() => {
     if (sessionStorage.getItem(SS_IMPERSONATED) !== '1') return;
 
     setVisible(true);
@@ -91,7 +62,6 @@ export default function SupportModeBanner() {
     }
   }, []);
 
-  // Auto-clear if the session disappears (e.g. magic link expired, manual sign-out).
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'SIGNED_OUT' && visible) {
@@ -106,7 +76,7 @@ export default function SupportModeBanner() {
     setExiting(true);
     clearSupportSession();
     await supabase.auth.signOut();
-    navigate('/login');
+    window.location.assign('/login');
   };
 
   if (!visible) return null;
