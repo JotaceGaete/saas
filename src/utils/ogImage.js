@@ -8,28 +8,18 @@
  */
 
 /**
- * Returns true when the business has at least one image that Ventalink
- * can expose as the OG preview image for the public catalog.
+ * Returns true when the business has a dedicated share image configured.
  *
- * Priority order mirrors the catalog OG tag logic:
- *   1. designSettings.shareImageUrl — explicit share image
- *   2. coverImageUrl — already merges headerImageUrl / coverImageUrl / cover_image_url
- *   3. designSettings.headerImageUrl / coverImageUrl — raw fallbacks (safe to re-check)
- *   4. logoUrl — last resort; still better than no image
+ * We only check shareImageUrl because that is the image the user explicitly
+ * configured for sharing — it is guaranteed to be properly sized (1200×630)
+ * and safe for WhatsApp crawlers. Other images (cover, logo) may be large
+ * raw uploads or wrong aspect ratios, and are handled as fallbacks by the
+ * OG resolution layer, not as a "configured" state from the user's perspective.
  *
  * @param {object|null|undefined} business  — mapped business object from AuthContext
  * @returns {boolean}
  */
 export function hasValidOgImage(business) {
   if (!business) return false;
-
-  const ds = business.designSettings;
-
-  return !!(
-    ds?.shareImageUrl   ||
-    business.coverImageUrl ||
-    ds?.headerImageUrl  ||
-    ds?.coverImageUrl   ||
-    business.logoUrl
-  );
+  return !!(business.designSettings?.shareImageUrl);
 }

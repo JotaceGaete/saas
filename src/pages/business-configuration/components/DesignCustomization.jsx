@@ -702,7 +702,158 @@ export default function DesignCustomization({
         </div>
       </SectionCard>
 
-      {/* 3. Store Logo */}
+      {/* 3. WhatsApp Share Image */}
+      {(() => {
+        const hasShareImage = !!(design?.shareImageUrl || '').trim();
+        return (
+          <div
+            className="rounded-2xl border p-6"
+            style={{
+              backgroundColor: '#ffffff',
+              borderColor: hasShareImage ? 'rgba(5,150,105,0.3)' : 'rgba(245,158,11,0.35)',
+              boxShadow: hasShareImage ? '0 1px 4px rgba(5,150,105,0.1)' : '0 1px 4px rgba(245,158,11,0.12)',
+            }}
+          >
+            {/* Header */}
+            <div className="flex items-start gap-3 mb-5">
+              <div
+                className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                style={{ backgroundColor: hasShareImage ? 'rgba(5,150,105,0.12)' : 'rgba(245,158,11,0.12)' }}
+              >
+                <Icon name={hasShareImage ? 'CheckCircle' : 'ImageOff'} size={18} color={hasShareImage ? '#059669' : '#D97706'} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-text-primary)' }}>
+                    Imagen de vista previa para WhatsApp
+                  </h3>
+                  {!hasShareImage && (
+                    <span
+                      className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                      style={{ backgroundColor: 'rgba(245,158,11,0.15)', color: '#B45309', fontFamily: 'var(--font-caption)', letterSpacing: '0.04em' }}
+                    >
+                      RECOMENDADO
+                    </span>
+                  )}
+                  {hasShareImage && (
+                    <span
+                      className="text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1"
+                      style={{ backgroundColor: 'rgba(5,150,105,0.12)', color: '#059669', fontFamily: 'var(--font-caption)' }}
+                    >
+                      <Icon name="Check" size={9} color="#059669" />
+                      Lista
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+                  {hasShareImage
+                    ? 'Tu vista previa de WhatsApp está lista. Así verán tu catálogo cuando lo compartas.'
+                    : 'Esta imagen es la que verán tus clientes cuando compartas tu catálogo por WhatsApp.'}
+                </p>
+              </div>
+            </div>
+
+            {/* Preview area */}
+            <div
+              className="rounded-xl overflow-hidden border mb-4"
+              style={{
+                borderColor: hasShareImage ? 'rgba(5,150,105,0.2)' : 'rgba(245,158,11,0.25)',
+                backgroundColor: hasShareImage ? '#f0fdf4' : '#fffbeb',
+              }}
+            >
+              {hasShareImage ? (
+                <Image
+                  key={design.shareImageUrl}
+                  src={design.shareImageUrl}
+                  alt="Vista previa de imagen para compartir en WhatsApp"
+                  className="w-full"
+                  style={{ aspectRatio: '1200/630', objectFit: 'cover', display: 'block' }}
+                />
+              ) : (
+                <div
+                  className="flex flex-col items-center justify-center gap-3 py-8 px-6 text-center"
+                  style={{ aspectRatio: '1200/630', maxHeight: '220px' }}
+                >
+                  <div
+                    className="w-12 h-12 rounded-2xl flex items-center justify-center"
+                    style={{ backgroundColor: 'rgba(245,158,11,0.15)' }}
+                  >
+                    <Icon name="Image" size={22} color="#D97706" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold mb-1" style={{ color: '#92400E', fontFamily: 'var(--font-caption)' }}>
+                      Sin imagen configurada
+                    </p>
+                    <p className="text-[11px] leading-relaxed" style={{ color: '#B45309', fontFamily: 'var(--font-caption)' }}>
+                      Recomendado: 1200×630 px (horizontal)
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Description + warning */}
+            {!hasShareImage && (
+              <div
+                className="rounded-xl px-3.5 py-3 mb-4 flex items-start gap-2.5"
+                style={{ backgroundColor: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)' }}
+              >
+                <Icon name="AlertTriangle" size={13} color="#D97706" className="flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs font-medium mb-0.5" style={{ color: '#92400E', fontFamily: 'var(--font-caption)' }}>
+                    Te recomendamos configurarla antes de compartir tu enlace para que tu catálogo se vea profesional desde el primer momento.
+                  </p>
+                  <p className="text-[11px]" style={{ color: '#B45309', fontFamily: 'var(--font-caption)' }}>
+                    Si compartes sin esta imagen, WhatsApp puede mostrar una vista previa menos atractiva o tardar en actualizarla.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => shareInputRef?.current?.click()}
+                disabled={uploadingShareImage}
+                className="flex items-center gap-1.5 text-xs px-4 py-2 rounded-lg font-semibold transition-all hover:opacity-80 disabled:opacity-50"
+                style={
+                  hasShareImage
+                    ? { border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)', backgroundColor: '#ffffff', fontFamily: 'var(--font-caption)' }
+                    : { backgroundColor: '#D97706', color: '#ffffff', fontFamily: 'var(--font-caption)', boxShadow: '0 2px 8px rgba(217,119,6,0.3)' }
+                }
+              >
+                <Icon name="Upload" size={12} color={hasShareImage ? 'var(--color-text-secondary)' : '#ffffff'} />
+                {uploadingShareImage ? 'Subiendo...' : hasShareImage ? 'Cambiar imagen' : 'Configurar imagen'}
+              </button>
+              {hasShareImage && (
+                <button
+                  type="button"
+                  onClick={() => handleChange({ ...design, shareImageUrl: '' })}
+                  className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg font-medium transition-all hover:opacity-80"
+                  style={{ border: '1px solid #fecaca', color: '#ef4444', backgroundColor: '#fff5f5', fontFamily: 'var(--font-caption)' }}
+                >
+                  <Icon name="Trash2" size={12} color="#ef4444" />
+                  Quitar
+                </button>
+              )}
+              <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+                1200×630 px · horizontal
+              </span>
+            </div>
+
+            <input
+              ref={shareInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleShareImageUpload}
+              className="hidden"
+            />
+          </div>
+        );
+      })()}
+
+      {/* 4. Store Logo */}
       <SectionCard icon="CircleUser" title="Logo de la tienda" subtitle="Aparece centrado en el encabezado, sobre el nombre de la tienda">
         <div className="flex items-center gap-6">
           {/* Logo preview */}
@@ -818,87 +969,7 @@ export default function DesignCustomization({
         onChange={handleChange}
       />
 
-      <DesignUnifiedHeading title="Opciones avanzadas" subtitle="Imagen para compartir, tema y tipografía" />
-
-      <SectionCard
-        icon="Share2"
-        title="Imagen para compartir en WhatsApp"
-        subtitle="Se usa en la vista previa (og:image) al compartir tu catálogo en WhatsApp y redes. No cambia la portada visual del catálogo."
-      >
-        <div className="flex flex-col gap-3">
-          <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
-            <div className="flex-1 min-w-0">
-              <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
-                URL de la imagen (opcional)
-              </label>
-              <input
-                type="url"
-                inputMode="url"
-                value={design?.shareImageUrl ?? ''}
-                onChange={(e) => handleChange({ ...design, shareImageUrl: e?.target?.value ?? '' })}
-                placeholder="https://..."
-                className="w-full px-3 py-2.5 rounded-xl border text-sm"
-                style={{ borderColor: 'var(--color-border)', fontFamily: 'var(--font-caption)' }}
-              />
-              <p className="text-[11px] mt-1" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-                Recomendado: 1200×630px (formato horizontal). Esta imagen es la que verá el cliente en la previsualización de WhatsApp.
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => shareInputRef?.current?.click()}
-                disabled={uploadingShareImage}
-                className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg font-medium transition-all hover:opacity-80 disabled:opacity-50"
-                style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)', backgroundColor: '#ffffff', fontFamily: 'var(--font-caption)' }}
-              >
-                <Icon name="Upload" size={12} color="var(--color-text-secondary)" />
-                {uploadingShareImage ? 'Subiendo...' : (design?.shareImageUrl ? 'Cambiar imagen' : 'Subir imagen')}
-              </button>
-              {!!(design?.shareImageUrl || '').trim() && (
-                <button
-                  type="button"
-                  onClick={() => handleChange({ ...design, shareImageUrl: '' })}
-                  className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg font-medium transition-all hover:opacity-80"
-                  style={{ border: '1px solid #fecaca', color: '#ef4444', backgroundColor: '#fff5f5', fontFamily: 'var(--font-caption)' }}
-                >
-                  <Icon name="Trash2" size={12} color="#ef4444" />
-                  Quitar
-                </button>
-              )}
-            </div>
-          </div>
-
-          <div
-            className="rounded-xl border overflow-hidden"
-            style={{ borderColor: 'var(--color-border)', backgroundColor: '#0b1020' }}
-          >
-            {((design?.shareImageUrl || '').trim()) ? (
-              <Image
-                key={design?.shareImageUrl}
-                src={design?.shareImageUrl}
-                alt="Vista previa de imagen para compartir"
-                className="w-full"
-                style={{ aspectRatio: '1200/630', objectFit: 'cover' }}
-              />
-            ) : (
-              <div className="px-4 py-4">
-                <p className="text-xs" style={{ color: 'rgba(255,255,255,0.72)', fontFamily: 'var(--font-caption)' }}>
-                  Vista previa: si no configuras una imagen, usaremos tu portada o logo automáticamente.
-                </p>
-              </div>
-            )}
-          </div>
-
-          <input
-            ref={shareInputRef}
-            type="file"
-            accept="image/*"
-            onChange={handleShareImageUpload}
-            className="hidden"
-          />
-        </div>
-      </SectionCard>
+      <DesignUnifiedHeading title="Opciones avanzadas" subtitle="Tema y tipografía" />
 
       <SectionCard icon="Settings2" title="Tema y tipografía" subtitle="Tema de color global y fuente del catálogo">
         <div className="flex flex-col gap-5">

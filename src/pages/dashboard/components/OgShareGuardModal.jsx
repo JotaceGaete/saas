@@ -4,16 +4,14 @@ import Button from 'components/ui/Button';
 
 /**
  * Warning modal shown when the user tries to share the catalog via WhatsApp
- * but the business has no OG cover image.
+ * but the business has no configured share image (shareImageUrl).
  *
- * This is a soft gate: the user can still share, but is clearly informed
- * that WhatsApp previews are cached on first access and won't update later.
+ * Soft gate: the user can still share, but is clearly informed about the risk.
  *
  * Props mirror the shape returned by useOgGuard:
  *   isOpen, onConfirm, onDismiss, onGoToConfig
  */
 export default function OgShareGuardModal({ isOpen, onConfirm, onDismiss, onGoToConfig }) {
-  // Close on Escape key
   useEffect(() => {
     if (!isOpen) return;
     const handler = (e) => { if (e.key === 'Escape') onDismiss?.(); };
@@ -57,26 +55,24 @@ export default function OgShareGuardModal({ isOpen, onConfirm, onDismiss, onGoTo
             className="text-base font-bold"
             style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}
           >
-            Tu catálogo no tiene imagen de portada
+            Tu catálogo aún no tiene imagen de vista previa
           </h3>
           <p
             className="text-sm leading-relaxed"
             style={{ fontFamily: 'var(--font-body)', color: 'var(--color-muted-foreground)' }}
           >
-            WhatsApp solo genera la vista previa{' '}
-            <span style={{ color: 'var(--color-foreground)', fontWeight: 600 }}>una vez</span>.
-            {' '}Si compartes ahora, no se actualizará después.
+            Puedes compartirlo igual, pero podría verse sin banner o tardar en actualizarse en WhatsApp.
           </p>
           <div
             className="inline-flex items-start gap-2 px-3 py-2.5 rounded-xl text-left w-full"
             style={{ backgroundColor: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)' }}
           >
-            <Icon name="ArrowRight" size={14} color="#D97706" className="flex-shrink-0 mt-0.5" />
+            <Icon name="AlertTriangle" size={14} color="#D97706" className="flex-shrink-0 mt-0.5" />
             <p
               className="text-xs leading-relaxed"
               style={{ fontFamily: 'var(--font-caption)', color: '#92400E' }}
             >
-              Sube una portada antes de compartir para que el preview se vea profesional.
+              WhatsApp solo genera la vista previa <strong>una vez</strong>. Si compartes ahora sin imagen, no se actualizará después automáticamente.
             </p>
           </div>
         </div>
@@ -90,14 +86,14 @@ export default function OgShareGuardModal({ isOpen, onConfirm, onDismiss, onGoTo
             iconPosition="left"
             onClick={onGoToConfig}
           >
-            Subir portada
+            Configurar ahora
           </Button>
           <Button
             variant="ghost"
             fullWidth
             onClick={onConfirm}
           >
-            Compartir igual
+            Compartir de todos modos
           </Button>
         </div>
       </div>
