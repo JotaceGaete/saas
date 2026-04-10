@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import PanelHeader from 'components/ui/PanelHeader';
 import DashboardAppShell from 'components/ui/DashboardAppShell';
@@ -51,17 +51,28 @@ function Toast({ message, type, onClose }) {
 export default function DesignPage() {
   const navigate = useNavigate();
   const previewAnchorRef = useRef(null);
-  const { user, business: ctxBusiness, businessLoading, refreshBusiness } = useAuth();
+  const { user, business: ctxBusiness, businessLoading, refreshBusiness, patchBusiness } = useAuth();
   const [business, setBusiness] = useState(null);
   const [products, setProducts] = useState([]);
+  // `design` = persisted baseline (what's in the DB).
+  // `draftDesign` = working copy (only in-memory until saved).
   const [design, setDesign] = useState(defaultDesign);
+  const [draftDesign, setDraftDesign] = useState(defaultDesign);
   const [isSaving, setIsSaving] = useState(false);
+  const [showSaved, setShowSaved] = useState(false);
   const [toast, setToast] = useState(null);
+  const showSavedTimerRef = useRef(null);
   const locale = getBusinessLocale(business, {
     preferredCountryCode: user?.user_metadata?.country_code ?? null,
   });
 
   const loading = businessLoading && !ctxBusiness;
+
+  // True when the draft differs from the last-saved state.
+  const isDirty = useMemo(
+    () => JSON.stringify(draftDesign) !== JSON.stringify(design),
+    [draftDesign, design],
+  );
 
   useEffect(() => {
     if (ctxBusiness) setBusiness(ctxBusiness);
@@ -86,15 +97,18 @@ export default function DesignPage() {
   useEffect(() => {
     if (business?.designSettings) {
       const ds = business.designSettings;
-      setDesign(prev => ({
-        ...prev,
+      const resolved = {
+        ...defaultDesign,
         ...ds,
         catalogViewMode: ds?.catalogViewMode === 'compact' ? 'compact' : 'featured',
         useCategories: ds?.useCategories === true,
-        categories: Array.isArray(ds?.categories) ? ds.categories : prev.categories,
-        storeHeader: { ...prev.storeHeader, ...(ds.storeHeader || {}) },
-        cardSettings: { ...prev.cardSettings, ...(ds.cardSettings || {}) },
-      }));
+        categories: Array.isArray(ds?.categories) ? ds.categories : defaultDesign.categories,
+        storeHeader: { ...defaultDesign.storeHeader, ...(ds.storeHeader || {}) },
+        cardSettings: { ...defaultDesign.cardSettings, ...(ds.cardSettings || {}) },
+      };
+      // Both baseline and draft start from the same DB value.
+      setDesign(resolved);
+      setDraftDesign(resolved);
     }
   }, [business?.id]);
 
@@ -108,6 +122,14 @@ export default function DesignPage() {
     setTimeout(() => setToast(null), 3500);
   }, []);
 
+  // Warn browser before tab close when there are unsaved changes.
+  useEffect(() => {
+    if (!isDirty) return;
+    const handler = (e) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isDirty]);
+
   const handleSaveDesign = useCallback(async () => {
     if (!business?.id) {
       showToast('No se encontró el negocio.', 'error');
@@ -115,20 +137,30 @@ export default function DesignPage() {
     }
     setIsSaving(true);
     try {
-      const { error } = await updateBusiness(business.id, { designSettings: design });
+      const { error } = await updateBusiness(business.id, { designSettings: draftDesign });
       if (error) {
         showToast('Error al guardar: ' + (error?.message || ''), 'error');
         return;
       }
-      await refreshBusiness?.();
-      setBusiness(prev => prev ? { ...prev, designSettings: design } : null);
+      patchBusiness({ ...business, designSettings: draftDesign });
+      // Advance persisted baseline to match the saved draft.
+      setDesign(draftDesign);
+      setShowSaved(true);
+      if (showSavedTimerRef.current) clearTimeout(showSavedTimerRef.current);
+      showSavedTimerRef.current = setTimeout(() => setShowSaved(false), 2500);
       showToast('¡Diseño guardado!', 'success');
     } catch (e) {
       showToast(e?.message || 'Error inesperado', 'error');
     } finally {
       setIsSaving(false);
     }
-  }, [business, design, refreshBusiness, showToast]);
+  }, [business, draftDesign, patchBusiness, showToast]);
+
+  // Discard draft, revert to the last-saved state.
+  const handleReset = useCallback(() => {
+    setDraftDesign(design);
+    setShowSaved(false);
+  }, [design]);
 
   if (!user) return null;
 
@@ -162,14 +194,17 @@ export default function DesignPage() {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start w-full min-w-0 flex-1 min-h-0">
             <div className="min-w-0 w-full lg:col-span-8 py-6 lg:py-0">
               <DesignCustomization
-                design={design}
-                onChange={setDesign}
+                design={draftDesign}
+                onChange={setDraftDesign}
                 businessId={business?.id}
                 businessName={business?.name}
                 userEmail={user?.email}
                 isSaving={isSaving}
                 onSave={handleSaveDesign}
                 showToast={showToast}
+                isDirty={isDirty}
+                showSaved={showSaved}
+                onReset={handleReset}
               />
             </div>
             <div
@@ -184,13 +219,13 @@ export default function DesignPage() {
               <MobilePreviewPanel
                 storeName={business?.name || 'Mi Tienda'}
                 storeSlug={business?.slug || ''}
-                logoUrl={design?.logoUrl || business?.logoUrl}
-                coverImageUrl={design?.headerImageUrl || business?.coverImageUrl}
+                logoUrl={draftDesign?.logoUrl || business?.logoUrl}
+                coverImageUrl={draftDesign?.headerImageUrl || business?.coverImageUrl}
                 products={products}
                 currency={business?.currency || locale.currencyCode}
                 locale={locale.locale}
-                design={design}
-                hideCurrencySymbol={design?.showCatalogCurrencySymbol === false}
+                design={draftDesign}
+                hideCurrencySymbol={draftDesign?.showCatalogCurrencySymbol === false}
               />
             </div>
           </div>

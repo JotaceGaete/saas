@@ -33,6 +33,7 @@ import {
   stringifyJsonLd,
 } from '../../utils/catalogSeo';
 import { getProductCardTrustBadge } from '../../utils/productCardBadge';
+import { resolveCatalogTheme, hexToRgb, hexToRgba, darkenHex } from '../../utils/catalogTheme';
 
 function isWhatsAppWebView() {
   if (typeof navigator === 'undefined') return false;
@@ -60,26 +61,6 @@ function getProductImages(product) {
   return result;
 }
 
-// Helpers para aplicar color principal del negocio en el catálogo
-function hexToRgb(hex) {
-  const h = hex?.replace(/^#/, '');
-  if (h?.length === 6) {
-    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
-  }
-  if (h?.length === 3) {
-    return [parseInt(h[0] + h[0], 16), parseInt(h[1] + h[1], 16), parseInt(h[2] + h[2], 16)];
-  }
-  return [37, 211, 102]; // fallback verde
-}
-function darkenHex(hex, pct = 0.2) {
-  const [r, g, b] = hexToRgb(hex);
-  const f = 1 - pct;
-  return `#${[r, g, b].map((x) => Math.max(0, Math.min(255, Math.round(x * f))).toString(16).padStart(2, '0')).join('')}`;
-}
-function hexToRgba(hex, alpha = 0.4) {
-  const [r, g, b] = hexToRgb(hex);
-  return `rgba(${r},${g},${b},${alpha})`;
-}
 
 /** Sección "Síguenos" — solo se renderiza si el negocio tiene al menos una red configurada. */
 function SocialLinks({ business, primaryColor }) {
@@ -619,9 +600,9 @@ function CatalogInner({ slug }) {
   const whatsappPhone = business?.whatsapp?.replace(/\D/g, '');
   const storeWhatsAppUrl = whatsappPhone ? `https://wa.me/${whatsappPhone}?text=${encodeURIComponent(`Hola! Vi tu catálogo en línea.`)}` : null;
 
-  const primaryColor = design?.primaryColor || '#25D366';
-  const primaryColorDark = darkenHex(primaryColor);
-  const theme = { primaryColor, primaryColorDark, primaryRgba: (a) => hexToRgba(primaryColor, a) };
+  const catalogTheme = resolveCatalogTheme(design);
+  const { primaryColor, primaryColorDark, primaryRgba, bgColor, textColor } = catalogTheme;
+  const theme = { primaryColor, primaryColorDark, primaryRgba };
   const cardSettings = { showPrice: true, showDescription: true, showStock: false, showWhatsApp: true, ...design?.cardSettings };
   const storeHeader = { showStoreName: true, showDescription: true, showWhatsAppButton: true, ...design?.storeHeader };
   const fullAddress = [business?.address, business?.city, business?.region, business?.country].filter(Boolean).join(', ');
@@ -690,7 +671,18 @@ function CatalogInner({ slug }) {
       : null;
 
   return (
-    <div className="min-h-screen bg-gray-50 font-catalog antialiased">
+    <div
+      className="min-h-screen font-catalog antialiased"
+      style={{
+        '--cat-bg':     bgColor,
+        '--cat-text':   textColor,
+        '--cat-card':   catalogTheme.cardBg,
+        '--cat-border': catalogTheme.borderColor,
+        '--cat-primary': primaryColor,
+        backgroundColor: bgColor,
+        color:           textColor,
+      }}
+    >
       {/* Open Graph: título y descripción fijos para redes; og:image = portada real (sin /cdn-cgi/image). El bot HTML en worker.js alinea con esto. */}
       {!loading && !notFound && business && (
         <Helmet>

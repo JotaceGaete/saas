@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'components/AppImage';
 import Icon from 'components/AppIcon';
 import { formatCurrency } from 'utils/formatCLP';
+import { resolveCatalogTheme } from '../../../utils/catalogTheme';
 
 function formatPreviewPrice(amount, currency, locale, hideSymbol) {
   if (hideSymbol) {
@@ -18,10 +19,12 @@ function buildDesignPreviewFlashKey(design, logoUrl, coverImageUrl) {
   return [
     d.primaryColor,
     d.theme,
-    d.headerImageUrl ?? '',
-    d.logoUrl ?? '',
-    logoUrl ?? '',
-    coverImageUrl ?? '',
+    d.template        ?? '',
+    d.backgroundColor ?? '',
+    d.headerImageUrl  ?? '',
+    d.logoUrl         ?? '',
+    logoUrl           ?? '',
+    coverImageUrl     ?? '',
     d.catalogStyle,
     d.font,
     d.catalogLayout,
@@ -225,7 +228,6 @@ export default function MobilePreviewPanel({
   }, [previewFlashKey]);
 
   const theme = design?.theme || 'minimal';
-  const primaryColor = design?.primaryColor || '#7C3AED';
   const font = design?.font || 'Inter';
   const designLogoUrl = design?.logoUrl || logoUrl;
   const headerImageUrl = (coverImageUrl && coverImageUrl.trim()) ? coverImageUrl.trim() : (design?.headerImageUrl || '');
@@ -235,7 +237,23 @@ export default function MobilePreviewPanel({
   const cardSettings = design?.cardSettings || { showPrice: true, showDescription: true, showStock: false, showWhatsApp: true };
   const previewLayout = catalogViewMode === 'compact' ? 'grid' : catalogLayout;
 
-  const t = THEME_STYLES?.[theme] || THEME_STYLES?.minimal;
+  // Resolve the new template system — drives screenBg, cardBg, borderColor, textColor.
+  // THEME_STYLES is kept for header-area props (headerBg gradient, avatarBg, emptyBg)
+  // that don't participate in the new template/backgroundColor system.
+  const catalogTheme = resolveCatalogTheme(design);
+  const primaryColor = catalogTheme.primaryColor;
+
+  const tBase = THEME_STYLES?.[theme] || THEME_STYLES?.minimal;
+  const t = {
+    ...tBase,
+    screenBg:     catalogTheme.bgColor,
+    cardBg:       catalogTheme.cardBg,
+    cardBorder:   catalogTheme.borderColor,
+    divider:      catalogTheme.borderColor,
+    headerText:   catalogTheme.textColor,
+    headerSubtext: catalogTheme.isDark ? 'rgba(255,255,255,0.55)' : '#8888a8',
+  };
+
   const styleProps = CATALOG_STYLE_PROPS?.[catalogStyle] || CATALOG_STYLE_PROPS?.clasico;
   const fontFamily = `'${font}', sans-serif`;
 

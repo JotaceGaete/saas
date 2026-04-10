@@ -3,6 +3,7 @@ import Icon from 'components/AppIcon';
 import Image from 'components/AppImage';
 import { uploadBusinessLogo, uploadBusinessCover } from '../../../services/waBusinessService';
 import CatalogLayoutSettings from './CatalogLayoutSettings';
+import { CATALOG_TEMPLATES, getTextColorForBg, isValidHex } from '../../../utils/catalogTheme';
 
 const CATALOG_STYLES = [
   {
@@ -192,6 +193,9 @@ export default function DesignCustomization({
   onSave,
   showToast,
   hideSaveButton = false,
+  isDirty = false,
+  showSaved = false,
+  onReset,
 }) {
   const logoInputRef = useRef(null);
   const coverInputRef = useRef(null);
@@ -199,12 +203,6 @@ export default function DesignCustomization({
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [uploadingCover, setUploadingCover] = useState(false);
   const [uploadingShareImage, setUploadingShareImage] = useState(false);
-  const [isDirty, setIsDirty] = useState(false);
-  const [showSaved, setShowSaved] = useState(false);
-  const autoSaveTimerRef = useRef(null);
-  const savedTimerRef = useRef(null);
-  const onSaveRef = useRef(onSave);
-  const prevIsSavingRef = useRef(false);
 
   // Cargar la fuente seleccionada para el catálogo (preview móvil, etc.)
   useEffect(() => {
@@ -232,42 +230,9 @@ export default function DesignCustomization({
     });
   }, []);
 
-  // Mantiene onSaveRef apuntando a la versión más reciente de onSave
-  // para que el timer del auto-save no use un closure obsoleto.
-  useEffect(() => { onSaveRef.current = onSave; }, [onSave]);
-
-  // Detecta cuando el guardado completa (isSaving true → false).
-  useEffect(() => {
-    if (prevIsSavingRef.current && !isSaving) {
-      setIsDirty(false);
-      setShowSaved(true);
-      if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
-      savedTimerRef.current = setTimeout(() => setShowSaved(false), 2000);
-    }
-    prevIsSavingRef.current = isSaving;
-  }, [isSaving]);
-
-  // Limpia timers al desmontar el componente.
-  useEffect(() => () => {
-    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
-    if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
-  }, []);
-
-  /** Programa un auto-guardado 1.5s después del último cambio. */
-  const scheduleAutoSave = () => {
-    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
-    autoSaveTimerRef.current = setTimeout(() => { onSaveRef.current?.(); }, 1500);
-  };
-
-  /**
-   * Wrapper de onChange que activa isDirty y programa el auto-guardado.
-   * Reemplaza todas las llamadas directas a onChange dentro de este componente.
-   */
+  /** Propaga cambios del draft al padre sin persistir. */
   const handleChange = (newDesign) => {
-    setIsDirty(true);
-    setShowSaved(false);
     onChange?.(newDesign);
-    scheduleAutoSave();
   };
 
   const handleLogoUpload = async (e) => {
@@ -352,6 +317,8 @@ export default function DesignCustomization({
   const primaryColor = design?.primaryColor || '#7C3AED';
   const selectedStyle = design?.catalogStyle || 'clasico';
   const selectedTheme = design?.theme || 'minimal';
+  const selectedTemplate = design?.template || 'light';
+  const customBgColor = design?.backgroundColor || '';
   const selectedFont = design?.font || 'Inter';
 
   const saveLabel = isSaving ? 'Guardando...' : showSaved ? 'Guardado ✓' : 'Guardar cambios';
@@ -380,6 +347,22 @@ export default function DesignCustomization({
             <span className="hidden sm:block text-xs font-medium" style={{ color: statusColor, fontFamily: 'var(--font-caption)' }}>
               {statusLabel}
             </span>
+          )}
+          {isDirty && onReset && (
+            <button
+              type="button"
+              onClick={onReset}
+              disabled={isSaving}
+              className="hidden sm:flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-medium transition-all disabled:opacity-50"
+              style={{
+                color: 'var(--color-text-tertiary)',
+                border: '1px solid var(--color-border)',
+                fontFamily: 'var(--font-caption)',
+              }}
+            >
+              <Icon name="RotateCcw" size={11} color="var(--color-text-tertiary)" />
+              Restablecer
+            </button>
           )}
           <button
             type="button"
@@ -483,6 +466,126 @@ export default function DesignCustomization({
           <span className="text-xs pl-0.5 sm:pl-1" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
             Vista previa de elementos
           </span>
+        </div>
+      </SectionCard>
+
+      {/* 1b. Background Template + Color */}
+      <SectionCard icon="PaintBucket" title="Fondo del catálogo" subtitle="Define el color de fondo y el estilo base. El color del texto se ajusta automáticamente." accent={primaryColor}>
+        {/* Template chips */}
+        <div className="flex flex-wrap gap-2 mb-5">
+          {Object.values(CATALOG_TEMPLATES).map((tpl) => {
+            const isSelected = selectedTemplate === tpl.id && !customBgColor;
+            const autoText = getTextColorForBg(tpl.bgColor);
+            return (
+              <button
+                key={tpl.id}
+                type="button"
+                onClick={() => handleChange({ ...design, template: tpl.id, backgroundColor: '' })}
+                className="flex flex-col items-start gap-2 p-3 rounded-xl border-2 transition-all text-left min-w-[90px]"
+                style={{
+                  borderColor: isSelected ? primaryColor : 'var(--color-border)',
+                  backgroundColor: isSelected ? `${primaryColor}08` : '#fafafa',
+                  position: 'relative',
+                }}
+              >
+                {isSelected && (
+                  <div
+                    className="absolute top-2 right-2 w-4 h-4 rounded-full flex items-center justify-center"
+                    style={{ backgroundColor: primaryColor }}
+                  >
+                    <Icon name="Check" size={9} color="#fff" />
+                  </div>
+                )}
+                {/* Mini preview swatch */}
+                <div
+                  className="w-full rounded-lg flex flex-col gap-1 p-2"
+                  style={{ backgroundColor: tpl.bgColor, border: `1px solid ${tpl.borderColor}`, minHeight: '44px' }}
+                >
+                  <div className="rounded" style={{ height: '8px', backgroundColor: tpl.cardBg, border: `1px solid ${tpl.borderColor}` }} />
+                  <div className="rounded" style={{ height: '8px', backgroundColor: tpl.cardBg, border: `1px solid ${tpl.borderColor}`, width: '70%' }} />
+                </div>
+                <div>
+                  <p className="text-xs font-semibold" style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-caption)' }}>{tpl.label}</p>
+                  <p className="text-[10px]" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>{tpl.description}</p>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Custom background color override */}
+        <div className="border-t pt-4" style={{ borderColor: 'var(--color-border)' }}>
+          <p className="text-xs font-medium mb-3" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
+            Color personalizado <span style={{ color: 'var(--color-text-tertiary)' }}>(opcional — reemplaza el fondo del template)</span>
+          </p>
+          <div className="flex items-center gap-3 flex-wrap">
+            {/* Color picker */}
+            <div
+              className="relative w-9 h-9 rounded-xl overflow-hidden border-2 cursor-pointer flex items-center justify-center flex-shrink-0"
+              style={{ borderColor: customBgColor ? primaryColor : 'var(--color-border)', backgroundColor: customBgColor || '#f8f8fb' }}
+              title="Elegir color de fondo"
+            >
+              <input
+                type="color"
+                value={customBgColor || '#f8f8fb'}
+                onChange={(e) => handleChange({ ...design, backgroundColor: e.target.value })}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                title="Color de fondo personalizado"
+              />
+              <Icon name="Pipette" size={13} color={customBgColor ? getTextColorForBg(customBgColor) : '#a0a0b8'} />
+            </div>
+
+            {/* Hex input */}
+            <input
+              type="text"
+              value={customBgColor}
+              onChange={(e) => {
+                const val = e.target.value.trim();
+                handleChange({ ...design, backgroundColor: val });
+              }}
+              placeholder="#f8f8fb"
+              maxLength={7}
+              className="h-9 px-3 rounded-lg border text-xs font-mono w-28 focus:outline-none focus:ring-2"
+              style={{
+                borderColor: 'var(--color-border)',
+                backgroundColor: 'var(--color-background)',
+                color: 'var(--color-foreground)',
+                fontFamily: 'var(--font-caption)',
+                '--tw-ring-color': primaryColor,
+              }}
+            />
+
+            {/* Auto text color preview */}
+            {isValidHex(customBgColor) && (
+              <div
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-medium"
+                style={{
+                  backgroundColor: customBgColor,
+                  color: getTextColorForBg(customBgColor),
+                  borderColor: 'var(--color-border)',
+                  fontFamily: 'var(--font-caption)',
+                }}
+              >
+                <Icon name="Type" size={11} color={getTextColorForBg(customBgColor)} />
+                Texto automático
+              </div>
+            )}
+
+            {/* Clear custom color */}
+            {customBgColor && (
+              <button
+                type="button"
+                onClick={() => handleChange({ ...design, backgroundColor: '' })}
+                className="text-xs px-2.5 py-1.5 rounded-lg border transition-colors hover:opacity-80"
+                style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}
+              >
+                Restablecer
+              </button>
+            )}
+          </div>
+          <p className="text-[10px] mt-2.5" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+            El color del texto se determina automáticamente para máximo contraste y legibilidad.
+          </p>
         </div>
       </SectionCard>
 
@@ -837,13 +940,27 @@ export default function DesignCustomization({
 
       {!hideSaveButton && (
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-4 border-t" style={{ borderColor: 'var(--color-border)' }}>
-        <p className="text-xs order-2 sm:order-1" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-          {showSaved
-            ? <span style={{ color: '#059669' }}>✓ Diseño guardado correctamente.</span>
-            : isDirty
-              ? <span style={{ color: '#f59e0b' }}>Tienes cambios sin guardar.</span>
-              : 'Los cambios se guardan automáticamente.'}
-        </p>
+        <div className="flex items-center gap-3 order-2 sm:order-1">
+          <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+            {showSaved
+              ? <span style={{ color: '#059669' }}>✓ Diseño guardado correctamente.</span>
+              : isDirty
+                ? <span style={{ color: '#f59e0b' }}>Tienes cambios sin guardar.</span>
+                : 'Presiona "Guardar cambios" para publicar.'}
+          </p>
+          {isDirty && onReset && (
+            <button
+              type="button"
+              onClick={onReset}
+              disabled={isSaving}
+              className="flex items-center gap-1 text-xs font-medium transition-all disabled:opacity-50"
+              style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}
+            >
+              <Icon name="RotateCcw" size={10} color="var(--color-text-tertiary)" />
+              Restablecer
+            </button>
+          )}
+        </div>
         <button
           type="button"
           onClick={onSave}
