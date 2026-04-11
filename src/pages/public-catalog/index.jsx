@@ -697,7 +697,7 @@ function CatalogInner({ slug }) {
   const catalogAboutBlock = business ? buildCatalogAboutBlock(seoInput, catalogAboutKind) : null;
   const ogRegion = detectCatalogRegion(seoInput);
   const canonicalUrl = getPublicCatalogUrl(slug);
-  const ogImage = getCatalogOgImageUrl(business, baseUrl, { cacheBust: null });
+  const ogImage = getCatalogOgImageUrl(business, baseUrl);
   const jsonLd =
     business && canonicalUrl
       ? buildLocalBusinessJsonLd({
@@ -728,7 +728,7 @@ function CatalogInner({ slug }) {
         color:           textColor,
       }}
     >
-      {/* Open Graph: título y descripción fijos para redes; og:image = portada real (sin /cdn-cgi/image). El bot HTML en worker.js alinea con esto. */}
+      {/* Open Graph: título/descripción del negocio; og:image = /api/og-catalog (misma regla que api/seo y worker). */}
       {!loading && !notFound && business && (
         <Helmet>
           <title>{shareDocumentTitle}</title>

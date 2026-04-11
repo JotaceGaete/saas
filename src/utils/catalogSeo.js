@@ -213,6 +213,19 @@ export function getCatalogOgImageUrl(business, baseUrl, options = {}) {
     (typeof window !== 'undefined' ? window.location?.origin : '') ||
     ''
   ).replace(/\/$/, '');
+  const slugTrim = business?.slug != null ? String(business.slug).trim() : '';
+
+  // Misma regla que `api/seo` (`handleCatalogHtml`): siempre PNG 1200×630 por `/api/og-catalog`.
+  // Evita og_image_url / portadas crudas que WhatsApp no muestra o rechaza.
+  if (origin && slugTrim && /^https?:\/\//i.test(origin)) {
+    const bust = options.cacheBust !== undefined ? options.cacheBust : business?.updatedAt ?? null;
+    const v =
+      bust != null && String(bust).trim() !== ''
+        ? `&v=${encodeURIComponent(String(bust))}`
+        : '';
+    return `${origin}/api/og-catalog?slug=${encodeURIComponent(slugTrim)}${v}`;
+  }
+
   const ds = business?.designSettings || {};
   const rowLike = {
     slug: business?.slug,

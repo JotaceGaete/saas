@@ -43,13 +43,14 @@ export default function CatalogLinkWidget({
 
   const handleRefreshPreview = () => {
     if (!catalogUrl) return;
-    const refreshUrl = `${catalogUrl}?r=${Date.now()}`;
-    const waUrl = `https://wa.me/?text=${encodeURIComponent(refreshUrl)}`;
+    // URL canónica sin query: el crawler usa og:url / mismo HTML; el bust de imagen va en `/api/og-catalog?v=…` (servidor).
+    const shareLink = catalogUrl;
+    const waUrl = `https://wa.me/?text=${encodeURIComponent(shareLink)}`;
     if (isIOSDevice()) {
       window.location.assign(waUrl);
-      void navigator.clipboard?.writeText(refreshUrl).catch(() => {});
+      void navigator.clipboard?.writeText(shareLink).catch(() => {});
     } else {
-      void navigator.clipboard?.writeText(refreshUrl).catch(() => {});
+      void navigator.clipboard?.writeText(shareLink).catch(() => {});
       openWhatsAppUrl(waUrl);
     }
     setRefreshed(true);
