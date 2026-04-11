@@ -1,8 +1,8 @@
 import {
   detectCatalogRegion,
+  getCatalogOpenGraphImageUrl,
   getCatalogShareDescription,
   getCatalogShareDocumentTitle,
-  resolveCatalogOgImageUrl,
 } from './src/utils/catalogSeo.js';
 import { getCatalogSlugFromPath } from './src/utils/seoPassThrough.js';
 
@@ -136,7 +136,7 @@ export default {
       host: url.host,
     };
     let catalogDescription = getCatalogShareDescription(null);
-    let ogImage = resolveCatalogOgImageUrl(null, origin, { cacheBust: null });
+    let ogImage = getCatalogOpenGraphImageUrl(origin, slug, null);
 
     try {
       if (supabaseUrl && supabaseKey) {
@@ -161,8 +161,7 @@ export default {
             seoInput.currency = row?.currency;
             seoInput.countryCode = row?.country_code;
             catalogDescription = getCatalogShareDescription(row);
-            const v = row.updated_at ? `&v=${encodeURIComponent(row.updated_at)}` : '';
-            ogImage = `${origin}/api/og-catalog?slug=${encodeURIComponent(slug)}${v}`;
+            ogImage = getCatalogOpenGraphImageUrl(origin, slug, row.updated_at);
             console.log(
               '[og-preview]',
               JSON.stringify({

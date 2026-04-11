@@ -6,9 +6,9 @@ import { createClient } from '@supabase/supabase-js';
 import {
   buildLocalBusinessJsonLd,
   detectCatalogRegion,
+  getCatalogOpenGraphImageUrl,
   getCatalogShareDescription,
   getCatalogShareDocumentTitle,
-  resolveCatalogOgImageUrl,
   stringifyJsonLd,
 } from '../src/utils/catalogSeo.js';
 import {
@@ -135,10 +135,7 @@ async function handleCatalogHtml(request) {
   const pageTitle = getCatalogShareDocumentTitle(row.name);
   const metaDescription = getCatalogShareDescription(row);
   const ri = detectCatalogRegion(seoInput);
-  // Always use the dynamic 1200×630 endpoint — bypasses resolveCatalogOgImageUrl
-  // which was falling through to cover_image_url before reaching /api/og-catalog.
-  const cacheBustParam = row.updated_at ? `&v=${encodeURIComponent(row.updated_at)}` : '';
-  const ogImageHttps = `${origin}/api/og-catalog?slug=${encodeURIComponent(slug)}${cacheBustParam}`;
+  const ogImageHttps = getCatalogOpenGraphImageUrl(origin, slug, row.updated_at);
   // URL canónica siempre en el dominio público de catálogos (miralatienda.de), forma corta.
   // `origin` se conserva para resolver imágenes relativas (og:image, portadas, etc.).
   const catalogUrl = `${CATALOG_ORIGIN}/${slug}`;

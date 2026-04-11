@@ -81,6 +81,31 @@ export function getOgCatalogShareImageUrl(slug, cacheBust, catalogOrigin) {
 }
 
 /**
+ * URL única de og:image para catálogos públicos: siempre `/api/og-catalog?slug=…` (opcional `&v=`).
+ * Usar en Helmet (SPA), `api/seo`, worker (bots) — misma cadena en todas las capas.
+ *
+ * @param {string} origin - Origen del request (ej. https://miralatienda.de), sin barra final
+ * @param {string} slug
+ * @param {string|null|undefined} cacheBust - típicamente `updated_at` (ISO)
+ */
+export function getCatalogOpenGraphImageUrl(origin, slug, cacheBust) {
+  const base = normalizeOriginForOpenGraph(origin);
+  const s = String(slug || '').trim();
+  if (!base || !s) return '';
+  return getOgCatalogShareImageUrl(s, cacheBust ?? null, base);
+}
+
+/** HTTPS para og:image en dominios públicos (WhatsApp); conserva http en localhost. */
+function normalizeOriginForOpenGraph(origin) {
+  let o = String(origin || '').trim().replace(/\/$/, '');
+  if (!o) return '';
+  if (o.startsWith('http://') && !/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(o)) {
+    o = `https://${o.slice(7)}`;
+  }
+  return o;
+}
+
+/**
  * Normaliza a https para meta og:image / Twitter.
  * @param {string} abs
  */
@@ -94,9 +119,8 @@ function toHttpsOgImage(abs) {
 }
 
 /**
- * URL de og:image con prioridad correcta para compartir en WhatsApp.
- * Orden: shareImageUrl → og_image_url (pre-generada) → covers con validación → logos → /api/og-catalog dinámico → fallback.
- * `options.cacheBust` solo afecta la URL generada de `/api/og-catalog` si se pasa.
+ * Resolución de URL de imagen para contextos sin catálogo con slug, o previews internos.
+ * Si `row.slug` existe, la og:image pública es **siempre** `/api/og-catalog?slug=…` (única fuente, alineada con api/seo y worker).
  *
  * @param {Record<string, unknown>|null|undefined} row
  * @param {string} origin - Origen público (https://dominio) sin barra final
@@ -105,6 +129,19 @@ function toHttpsOgImage(abs) {
 export function resolveCatalogOgImageUrl(row, origin, options = {}) {
   const base = String(origin || '').replace(/\/$/, '');
   const slug = row?.slug != null ? String(row.slug).trim() : '';
+
+  if (slug) {
+    const bust =
+      options.cacheBust !== undefined
+        ? options.cacheBust
+        : row?.updated_at != null
+          ? row.updated_at
+          : row?.updatedAt != null
+            ? row.updatedAt
+            : null;
+    return getCatalogOpenGraphImageUrl(base, slug, bust);
+  }
+
   const ds = parseDesignSettingsFromDb(row?.design_settings);
 
   /** Convierte un candidato crudo a URL https absoluta o retorna ''. */
@@ -116,38 +153,21 @@ export function resolveCatalogOgImageUrl(row, origin, options = {}) {
     return /^https:\/\//i.test(a) ? a : '';
   }
 
-  /**
-   * Heurística de share-safety basada en URL.
-   * No podemos hacer HEAD requests en tiempo de render, así que rechazamos
-   * formatos conocidos como no soportados por crawlers (WhatsApp, Facebook, etc.).
-   */
   function isShareSafe(url) {
     return !/\.(tiff?|heic|heif|bmp|raw|cr2|nef|arw)(\?|$)/i.test(url);
   }
 
-  // 1. Imagen designada explícitamente para compartir (prioridad absoluta del usuario).
   const shareImage = toAbs(ds?.shareImageUrl);
   if (shareImage) return shareImage;
 
-  // 2. Imagen OG pre-generada y persistida (1200×630 PNG en R2, formato garantizado).
   const generatedOg = toAbs(row?.og_image_url);
   if (generatedOg) return generatedOg;
 
-  // 3. Endpoint dinámico /api/og-catalog — siempre produce una imagen válida 1200×630,
-  //    incluye la portada embebida si existe. Es estrictamente mejor que una portada cruda:
-  //    dimensiones correctas, texto overlay, logo en esquina.
-  //    Solo disponible si el negocio tiene slug.
-  const dynamic = slug ? getOgCatalogShareImageUrl(slug, options.cacheBust ?? null, base) : '';
-  if (dynamic) return dynamic;
-
-  // 4–6. Fallback a imágenes crudas del negocio — solo si el slug no está disponible
-  //      (e.g. contexto de previsualización interna sin slug) y pasan la validación de formato.
   for (const c of [row?.cover_image_url, ds?.coverImageUrl, ds?.headerImageUrl]) {
     const a = toAbs(c);
     if (a && isShareSafe(a)) return a;
   }
 
-  // 7. Logo como último recurso con imagen del negocio.
   const logo = toAbs(row?.logo_url) || toAbs(ds?.logoUrl);
   if (logo) return logo;
 
@@ -182,32 +202,12 @@ export function getCatalogOgSocialTitle(storeName) {
 }
 
 /**
- * URL absoluta para og:image: opcional API de imagen OG, si no portada → og → logo → fallback.
- * No usar /cdn-cgi/image/ aquí: los crawlers (WhatsApp) deben recibir JPEG/PNG originales.
+ * og:image del catálogo: con `slug` siempre {@link getCatalogOpenGraphImageUrl} (`/api/og-catalog`).
  *
- * @param {object | null} business — objeto de negocio (camelCase) con id, coverImageUrl, etc.
- * @param {string} [baseUrl] — origen para URLs relativas
+ * @param {object | null} business — objeto de negocio (camelCase) con slug, updatedAt, etc.
+ * @param {string} [baseUrl] — origen público (p. ej. CATALOG_ORIGIN)
  */
-/**
- * Base URL para generate-og-image (opcional). En Node (Vercel/api) usa process.env;
- * en el navegador Vite puede inyectar process.env.VITE_OG_IMAGE_API_BASE vía define (vite.config.mjs).
- * No usar import.meta: este archivo se importa desde handlers CommonJS.
- */
-function readOgImageApiBaseEnv() {
-  if (typeof process !== 'undefined' && process.env && typeof process.env.VITE_OG_IMAGE_API_BASE === 'string') {
-    const v = process.env.VITE_OG_IMAGE_API_BASE.trim();
-    return v || '';
-  }
-  return '';
-}
-
 export function getCatalogOgImageUrl(business, baseUrl, options = {}) {
-  const ogApi =
-    (options.ogImageApiBase && String(options.ogImageApiBase).trim()) || readOgImageApiBaseEnv();
-  if (ogApi && business?.id) {
-    return `${ogApi.replace(/\/$/, '')}/api/og-image?store=${encodeURIComponent(business.id)}`;
-  }
-
   const origin = (
     baseUrl ||
     (typeof window !== 'undefined' ? window.location?.origin : '') ||
@@ -215,15 +215,9 @@ export function getCatalogOgImageUrl(business, baseUrl, options = {}) {
   ).replace(/\/$/, '');
   const slugTrim = business?.slug != null ? String(business.slug).trim() : '';
 
-  // Misma regla que `api/seo` (`handleCatalogHtml`): siempre PNG 1200×630 por `/api/og-catalog`.
-  // Evita og_image_url / portadas crudas que WhatsApp no muestra o rechaza.
   if (origin && slugTrim && /^https?:\/\//i.test(origin)) {
     const bust = options.cacheBust !== undefined ? options.cacheBust : business?.updatedAt ?? null;
-    const v =
-      bust != null && String(bust).trim() !== ''
-        ? `&v=${encodeURIComponent(String(bust))}`
-        : '';
-    return `${origin}/api/og-catalog?slug=${encodeURIComponent(slugTrim)}${v}`;
+    return getCatalogOpenGraphImageUrl(origin, slugTrim, bust);
   }
 
   const ds = business?.designSettings || {};
@@ -233,6 +227,7 @@ export function getCatalogOgImageUrl(business, baseUrl, options = {}) {
     cover_image_url: business?.coverImageUrl,
     logo_url: business?.logoUrl,
     og_image_url: business?.ogImageUrl,
+    updatedAt: business?.updatedAt,
   };
   const bust = options.cacheBust !== undefined ? options.cacheBust : business?.updatedAt ?? null;
   return resolveCatalogOgImageUrl(rowLike, origin, { cacheBust: bust });
