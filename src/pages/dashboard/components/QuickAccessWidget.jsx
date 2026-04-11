@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Icon from "components/AppIcon";
 import { appendBranding } from "../../../utils/branding";
+import { openWhatsAppUrl } from "../../../utils/openWhatsAppUrl";
 
 const STATUS_MESSAGE_TEMPLATE = `Nuevo catálogo disponible 👇
 
@@ -26,7 +27,7 @@ export default function QuickAccessWidget({ catalogUrl, businessName, businessPl
 
   const handleOpenWhatsAppStatus = () => {
     if (!statusMessage) return;
-    window.open(`https://wa.me/?text=${encodeURIComponent(statusMessage)}`, '_blank', 'noopener,noreferrer');
+    openWhatsAppUrl(`https://wa.me/?text=${encodeURIComponent(statusMessage)}`);
     setShowStatusModal(false);
     onCatalogShare?.();
   };

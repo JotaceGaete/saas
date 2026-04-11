@@ -43,6 +43,7 @@ import DailyMessageCard from "./components/DailyMessageCard";
 import AddProductHero from "./components/AddProductHero";
 import ChartEmptyWave from "./components/ChartEmptyWave";
 import { getCatalogShareMessage } from "../../utils/branding";
+import { openWhatsAppUrl } from "../../utils/openWhatsAppUrl";
 import { getCountryLabels } from "../../config/country";
 import { getBusinessLocale } from "../../lib/locale/businessLocale";
 import { getTrialDaysLeft } from "../../constants/trial";
@@ -577,7 +578,7 @@ export default function Dashboard() {
       plan: business?.planSlug,
     });
     const url = `https://wa.me/?text=${encodeURIComponent(shareMessage)}`;
-    window.open(url, '_blank', 'noopener,noreferrer');
+    openWhatsAppUrl(url);
     notifyFirstCatalogShare();
   };
 

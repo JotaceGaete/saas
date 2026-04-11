@@ -35,6 +35,7 @@ import {
 } from '../../utils/catalogSeo';
 import { getProductCardTrustBadge } from '../../utils/productCardBadge';
 import { resolveCatalogTheme, hexToRgb, hexToRgba, darkenHex } from '../../utils/catalogTheme';
+import { openWhatsAppUrl } from '../../utils/openWhatsAppUrl';
 
 function isWhatsAppWebView() {
   if (typeof navigator === 'undefined') return false;
@@ -1840,8 +1841,8 @@ function OrderPanel({ business, slug, formatPrice, onClose, theme }) {
           setPendingWhatsappMessage(message);
           return;
         }
-        const popup = window.open(url, '_blank', 'noopener,noreferrer');
-        if (!popup) {
+        const opened = openWhatsAppUrl(url);
+        if (!opened) {
           setCheckoutState('error');
           setSubmitInfo('Pedido guardado, pero no pudimos abrir WhatsApp.');
           setPendingWhatsappMessage(message);

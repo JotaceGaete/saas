@@ -2,6 +2,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import Icon from 'components/AppIcon';
 import { buildWhatsAppUrl } from '../../../utils/whatsapp';
 import { SUPPORT_WHATSAPP_NUMBER } from '../../../config/support';
+import { openWhatsAppUrl } from '../../../utils/openWhatsAppUrl';
 import { RUBRO_KEYWORDS } from '../../../config/rubroKeywords';
 
 const MAX_RESULTS = 7;
@@ -196,7 +197,7 @@ export default function RubroPrincipalSelector({ rubros = [], value, onChange, h
             {waRubroHelpUrl !== '#' && (
               <button
                 type="button"
-                onClick={() => window.open(waRubroHelpUrl, '_blank')}
+                onClick={() => openWhatsAppUrl(waRubroHelpUrl)}
                 className="mt-1.5 text-xs font-medium text-violet-700 hover:text-violet-800 font-[family-name:var(--font-caption)]"
               >
                 Solicitar por WhatsApp

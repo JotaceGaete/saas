@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import Icon from "components/AppIcon";
 import Button from "components/ui/Button";
 import { getCatalogShareMessage } from "../../../utils/branding";
+import { isIOSDevice, openWhatsAppUrl } from "../../../utils/openWhatsAppUrl";
 import { useOgGuard } from "../../../hooks/useOgGuard";
 import OgShareGuardModal from "./OgShareGuardModal";
 
@@ -29,7 +30,7 @@ export default function CatalogLinkWidget({
 
   const handleWhatsAppShare = () => {
     guardShare(() => {
-      window.open(whatsappShareUrl, '_blank', 'noopener,noreferrer');
+      openWhatsAppUrl(whatsappShareUrl);
       onCatalogShare?.();
     });
   };
@@ -40,18 +41,19 @@ export default function CatalogLinkWidget({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleRefreshPreview = async () => {
+  const handleRefreshPreview = () => {
+    if (!catalogUrl) return;
     const refreshUrl = `${catalogUrl}?r=${Date.now()}`;
-    try {
-      await navigator.clipboard.writeText(refreshUrl);
-    } catch { /* clipboard unavailable */ }
+    const waUrl = `https://wa.me/?text=${encodeURIComponent(refreshUrl)}`;
+    if (isIOSDevice()) {
+      window.location.assign(waUrl);
+      void navigator.clipboard?.writeText(refreshUrl).catch(() => {});
+    } else {
+      void navigator.clipboard?.writeText(refreshUrl).catch(() => {});
+      openWhatsAppUrl(waUrl);
+    }
     setRefreshed(true);
     setTimeout(() => setRefreshed(false), 4000);
-    window.open(
-      `https://wa.me/?text=${encodeURIComponent(refreshUrl)}`,
-      '_blank',
-      'noopener,noreferrer',
-    );
   };
 
   const handleDownloadQR = () => {

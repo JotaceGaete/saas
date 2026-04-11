@@ -25,6 +25,7 @@ import {
 import { getPlansActivationWhatsappUrl } from '../../config/plansActivation';
 import { SUPPORT_WHATSAPP_NUMBER } from '../../config/support';
 import { buildWhatsAppUrl } from '../../utils/whatsapp';
+import { openWhatsAppUrl } from '../../utils/openWhatsAppUrl';
 import { trackEvent } from '../../lib/analytics';
 import { getCurrentSubscription } from '../../lib/billing/subscriptionService';
 import { normalizePlanSlugForBilling } from '../../lib/billing/billingSubscriptionsClient';
@@ -96,7 +97,7 @@ function ManualPaymentLinkModal({ open, onClose, planSlug, user, business }) {
       plan,
       provider: 'dlocal_manual',
     });
-    if (waUrl) window.open(waUrl, '_blank', 'noopener,noreferrer');
+    if (waUrl) openWhatsAppUrl(waUrl);
     onClose();
   };
 
@@ -724,7 +725,7 @@ export default function PlansPage() {
     if (!previewPlanSlug) return;
     const url = getPlansActivationWhatsappUrl(user?.email);
     if (typeof window !== 'undefined') {
-      window.open(url, '_blank', 'noopener,noreferrer');
+      openWhatsAppUrl(url);
     }
     toast.info('Se abrió WhatsApp para que coordinemos la activación de tu plan. Si no se abrió, revisa el bloqueador de ventanas emergentes.');
     setPreview(null);

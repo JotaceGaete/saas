@@ -12,6 +12,7 @@ import { normalizeOptionalCustomerPhone } from '../../utils/customerPhone';
 import CheckoutPhoneOptional from '../../components/checkout/CheckoutPhoneOptional';
 import { buildCfImageErrorHandler, cfImageUrl } from '../../utils/cloudflareImage';
 import { getCountryLabels, DELIVERY_ADDRESS_FIELD_HINT } from '../../config/country';
+import { openWhatsAppUrl } from '../../utils/openWhatsAppUrl';
 
 function isWhatsAppWebView() {
   if (typeof navigator === 'undefined') return false;
@@ -175,9 +176,9 @@ export default function OrderConfirmation() {
         setPendingWhatsappMessage(message);
         return;
       }
-      const popup = window.open(waUrl, '_blank', 'noopener,noreferrer');
+      const opened = openWhatsAppUrl(waUrl);
 
-      if (!popup) {
+      if (!opened) {
         setCheckoutState('error');
         setSubmitInfo('Pedido guardado, pero no pudimos abrir WhatsApp.');
         setPendingWhatsappMessage(message);

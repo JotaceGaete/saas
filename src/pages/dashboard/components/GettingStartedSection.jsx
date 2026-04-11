@@ -4,6 +4,7 @@ import Icon from "components/AppIcon";
 import ProgressCircle from "components/common/ProgressCircle";
 import { QRCodeSVG } from "qrcode.react";
 import { getCatalogShareMessage } from "../../../utils/branding";
+import { openWhatsAppUrl } from "../../../utils/openWhatsAppUrl";
 import { getPublicCatalogRelativePath } from "../../../config/appUrl";
 import { hasCompletedCatalogShare } from "../../../utils/catalogShareCelebration";
 
@@ -178,7 +179,7 @@ export default function GettingStartedSection({
           catalogUrl,
           plan: business?.planSlug,
         });
-        window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank", "noopener,noreferrer");
+        openWhatsAppUrl(`https://wa.me/?text=${encodeURIComponent(msg)}`);
         onCatalogShare?.();
         break;
       }

@@ -8,6 +8,7 @@ import FloatingActionButton from 'components/FloatingActionButton';
 import { useAuth } from '../../contexts/AuthContext';
 import { getPlanLabel } from '../../constants/plans';
 import { buildWhatsAppUrl } from '../../utils/whatsapp';
+import { openWhatsAppUrl } from '../../utils/openWhatsAppUrl';
 import { SUPPORT_WHATSAPP_NUMBER } from '../../config/support';
 
 const NAV_ITEMS = [
@@ -84,7 +85,7 @@ País: ${countryForMessage}
 
 Motivo (opcional):`;
     const url = buildWhatsAppUrl(message, SUPPORT_WHATSAPP_NUMBER);
-    window.open(url, '_blank');
+    openWhatsAppUrl(url);
     setUserMenuOpen(false);
   };
 
