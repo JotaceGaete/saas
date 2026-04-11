@@ -23,6 +23,7 @@ const EMPTY_FORM = {
   nombre: '',
   precio: '',
   descripcion: '',
+  longDescription: '',
   categoria: '',
   stock: '',
   activo: true,
@@ -71,6 +72,7 @@ export default function ProductEditor() {
           nombre: data?.name || '',
           precio: data?.price != null ? Number(data.price) : '',
           descripcion: data?.description || '',
+          longDescription: data?.longDescription || '',
           categoria: data?.category ?? '',
           stock: '',
           activo: data?.isActive !== undefined ? data?.isActive : true,
@@ -332,6 +334,7 @@ export default function ProductEditor() {
         onSale: formData?.onSale,
         hasOptions: formData?.hasOptions,
         optionsDescription: formData?.hasOptions ? (formData?.optionsDescription || null) : null,
+        longDescription: formData?.longDescription?.trim() || null,
         category: formData?.categoria?.trim() || null,
       };
       const result = isEditing

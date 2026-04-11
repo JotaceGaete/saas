@@ -6,6 +6,7 @@ import { createBusinessCategory } from '../../../services/waBusinessService';
 
 const MAX_NAME = 80;
 const MAX_DESC = 300;
+const MAX_LONG_DESC = 2000;
 
 /** useCategories: si el negocio tiene categorías activadas. categories: array de { id, name } del negocio. */
 /** onImproveWithAi: (text, productName) => Promise<void> — opcional; optimiza título y descripción y el padre actualiza el formulario. */
@@ -23,6 +24,7 @@ export default function ProductFormFields({ formData, errors, onChange, currency
   const useGroups = hasOwn && hasRubro; // solo agrupa si hay ambas fuentes
 
   // ── Inline category creation modal ───────────────────────────────────────────
+  const [showLongDesc, setShowLongDesc] = useState(!!formData?.longDescription);
   const [createOpen, setCreateOpen]   = useState(false);
   const [inputVal,   setInputVal]     = useState('');
   const [creating,   setCreating]     = useState(false);
@@ -166,6 +168,61 @@ export default function ProductFormFields({ formData, errors, onChange, currency
         />
         {errors?.descripcion && (
           <p className="mt-1 text-xs" style={{ color: 'var(--color-error)', fontFamily: 'var(--font-caption)' }}>{errors?.descripcion}</p>
+        )}
+      </div>
+      {/* Descripción extendida (opcional) */}
+      <div>
+        <button
+          type="button"
+          onClick={() => {
+            const next = !showLongDesc;
+            setShowLongDesc(next);
+            if (!next) handleChange('longDescription', '');
+          }}
+          className="flex items-center gap-2 text-sm font-medium transition-opacity hover:opacity-80"
+          style={{ color: showLongDesc ? 'var(--color-primary)' : 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+        >
+          <span
+            className="flex items-center justify-center w-4 h-4 rounded border transition-colors"
+            style={{
+              borderColor: showLongDesc ? 'var(--color-primary)' : 'var(--color-border)',
+              backgroundColor: showLongDesc ? 'var(--color-primary)' : 'transparent',
+            }}
+          >
+            {showLongDesc && <Icon name="Check" size={10} color="#fff" />}
+          </span>
+          Agregar más detalles
+          <span className="text-xs font-normal" style={{ color: 'var(--color-muted-foreground)' }}>(opcional)</span>
+        </button>
+        {showLongDesc && (
+          <div className="mt-3">
+            <div className="flex items-end justify-between mb-1">
+              <label className="block text-sm font-medium" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}>
+                Más detalles del producto
+              </label>
+              <span className="text-xs" style={{ color: (formData?.longDescription?.length || 0) > MAX_LONG_DESC * 0.9 ? 'var(--color-warning)' : 'var(--color-muted-foreground)', fontFamily: 'var(--font-data)' }}>
+                {formData?.longDescription?.length || 0}/{MAX_LONG_DESC}
+              </span>
+            </div>
+            <textarea
+              placeholder="Describe en detalle: ingredientes, tallas, materiales, instrucciones de uso, política de cambios..."
+              value={formData?.longDescription || ''}
+              onChange={(e) => handleChange('longDescription', e?.target?.value?.slice(0, MAX_LONG_DESC))}
+              rows={6}
+              className="w-full px-3 py-2 text-sm rounded-md border resize-none focus:outline-none focus:ring-2 focus:ring-ring transition-all"
+              style={{
+                borderColor: 'var(--color-input)',
+                backgroundColor: 'var(--color-card)',
+                color: 'var(--color-foreground)',
+                fontFamily: 'var(--font-body)',
+                borderRadius: 'var(--radius-sm)',
+              }}
+              aria-label="Descripción extendida del producto"
+            />
+            <p className="mt-1 text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+              Solo visible en el catálogo al pulsar "Más detalles". No reemplaza la descripción corta.
+            </p>
+          </div>
         )}
       </div>
       {/* Categoría (solo si el negocio tiene categorías activadas) */}

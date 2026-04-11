@@ -377,6 +377,7 @@ const mapProductFromDb = (row) => {
     category: row?.category || null,
     hasOptions: row?.has_options || false,
     optionsDescription: row?.options_description || null,
+    longDescription: row?.long_description || null,
     featured: row?.featured ?? false,
     onSale: row?.on_sale ?? false,
     createdAt: row?.created_at,
@@ -882,6 +883,7 @@ export const createProduct = async (businessId, productData) => {
     category: productData?.category || null,
     has_options: productData?.hasOptions || false,
     options_description: productData?.optionsDescription || null,
+    long_description: productData?.longDescription || null,
     featured: productData?.featured === true,
     on_sale: productData?.onSale === true,
   })?.select()?.single();
@@ -921,6 +923,7 @@ export const updateProduct = async (productId, productData) => {
   if (productData?.sortOrder !== undefined)   dbUpdates.sort_order = productData?.sortOrder;
   if (productData?.hasOptions !== undefined)  dbUpdates.has_options = productData?.hasOptions;
   if (productData?.optionsDescription !== undefined) dbUpdates.options_description = productData?.optionsDescription;
+  if (productData?.longDescription !== undefined) dbUpdates.long_description = productData?.longDescription || null;
   if (productData?.category !== undefined) dbUpdates.category = productData?.category || null;
   if (productData?.featured !== undefined) dbUpdates.featured = !!productData.featured;
   if (productData?.onSale !== undefined) dbUpdates.on_sale = !!productData.onSale;

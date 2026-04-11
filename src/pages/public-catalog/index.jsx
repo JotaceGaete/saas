@@ -2521,6 +2521,17 @@ function ProductModal({ product, business, slug, formatPrice, whatsAppUrl, whats
             </p>
           )}
 
+          {product?.longDescription && (
+            <div className="mb-5">
+              {showDescription && product?.description && (
+                <div className="my-3 border-t border-gray-100" />
+              )}
+              <p className="whitespace-pre-line break-words text-[13.5px] font-normal leading-relaxed text-gray-500 sm:text-sm">
+                {product.longDescription}
+              </p>
+            </div>
+          )}
+
           {product?.hasOptions && product?.optionsDescription && (
             <div
               className="mb-5 flex items-start gap-2.5 rounded-xl p-3"
