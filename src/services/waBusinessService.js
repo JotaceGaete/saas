@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { compressImageForUpload } from '../utils/imageUploadUtils';
 import { getValidToken } from '../lib/auth/getValidToken';
 import { getPlanLimits } from '../constants/plans';
 import { getTrialEndDateFrom } from '../constants/trial';
@@ -766,11 +767,13 @@ async function uploadToR2(file, { type, businessId, productId }) {
 }
 
 export const uploadBusinessLogo = async (file, businessId) => {
-  return uploadToR2(file, { type: 'logo', businessId });
+  const compressed = await compressImageForUpload(file, 'logo');
+  return uploadToR2(compressed, { type: 'logo', businessId });
 };
 
 export const uploadBusinessCover = async (file, businessId) => {
-  return uploadToR2(file, { type: 'cover', businessId });
+  const compressed = await compressImageForUpload(file, 'cover');
+  return uploadToR2(compressed, { type: 'cover', businessId });
 };
 
 // wa_products
