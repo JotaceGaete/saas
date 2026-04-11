@@ -1,6 +1,11 @@
 /**
  * GET /api/og-catalog?slug= — PNG 1200×630 para og:image (Vercel Node; @resvg/resvg-js).
  * HEAD — mismos headers que GET, sin cuerpo (probes de crawlers / WhatsApp).
+ *
+ * Determinismo: sin bitmaps remotos, el PNG depende solo de datos en BD (nombre, etc.).
+ * Portada/logo se cargan en serie (no Promise.all), con timeout + magic bytes; si fallan o resvg
+ * falla, se reintenta con layout solo vectorial (sin URLs externas). Para máxima estabilidad
+ * entre requests: OG_CATALOG_VECTOR_ONLY=true (solo SVG interno, mismo slug → mismo resultado).
  */
 
 import { createClient } from '@supabase/supabase-js';
@@ -9,6 +14,44 @@ import { Resvg } from '@resvg/resvg-js';
 const OG_W = 1200;
 const OG_H = 630;
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
+/** Mismo timeout en cada request (sin carreras entre cover/logo). */
+const REMOTE_IMAGE_FETCH_MS = 10_000;
+
+function logOgCatalog(event, payload) {
+  try {
+    console.log(
+      `[og-catalog] ${event}`,
+      JSON.stringify({
+        t: new Date().toISOString(),
+        ...payload,
+      }),
+    );
+  } catch {
+    console.log(`[og-catalog] ${event}`, payload);
+  }
+}
+
+/** JPEG / PNG / GIF / WebP — evita data: inválidos que rompen resvg de forma intermitente. */
+function isSupportedRasterBuffer(ab) {
+  if (!ab || ab.byteLength < 12) return false;
+  const u = new Uint8Array(ab);
+  if (u[0] === 0xff && u[1] === 0xd8) return true;
+  if (u[0] === 0x89 && u[1] === 0x50 && u[2] === 0x4e && u[3] === 0x47) return true;
+  if (u[0] === 0x47 && u[1] === 0x49 && u[2] === 0x46) return true;
+  if (
+    u[0] === 0x52 &&
+    u[1] === 0x49 &&
+    u[2] === 0x46 &&
+    u[3] === 0x46 &&
+    u[8] === 0x57 &&
+    u[9] === 0x45 &&
+    u[10] === 0x42 &&
+    u[11] === 0x50
+  ) {
+    return true;
+  }
+  return false;
+}
 
 function escapeXml(input) {
   return String(input ?? '')
@@ -76,24 +119,47 @@ function pickLogoUrl(row, ds) {
   return direct || dsLogo || null;
 }
 
-async function loadImageDataUri(url) {
-  if (!url || !/^https?:\/\//i.test(url)) return null;
+/**
+ * Carga una imagen remota de forma validada. Sin esto, resvg puede fallar o rasterizar mal con bytes corruptos.
+ * @returns {{ ok: boolean, dataUri: string | null, reason?: string }}
+ */
+async function loadImageDataUriValidated(url) {
+  if (!url || !/^https?:\/\//i.test(url)) {
+    return { ok: false, dataUri: null, reason: 'invalid_or_missing_url' };
+  }
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), REMOTE_IMAGE_FETCH_MS);
   try {
     const res = await fetch(url, {
       redirect: 'follow',
-      headers: { Accept: 'image/*,*/*;q=0.8' },
+      signal: controller.signal,
+      headers: { Accept: 'image/jpeg,image/png,image/webp,image/gif,*/*;q=0.8' },
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      return { ok: false, dataUri: null, reason: `http_${res.status}` };
+    }
     const len = res.headers.get('content-length');
-    if (len && Number(len) > MAX_IMAGE_BYTES) return null;
+    if (len && Number(len) > MAX_IMAGE_BYTES) {
+      return { ok: false, dataUri: null, reason: 'content_length_too_large' };
+    }
     const ab = await res.arrayBuffer();
-    if (ab.byteLength > MAX_IMAGE_BYTES) return null;
-    const ct = (res.headers.get('content-type') || 'image/jpeg').split(';')[0].trim();
-    if (!ct.startsWith('image/')) return null;
+    if (ab.byteLength > MAX_IMAGE_BYTES || ab.byteLength === 0) {
+      return { ok: false, dataUri: null, reason: 'body_size_invalid' };
+    }
+    if (!isSupportedRasterBuffer(ab)) {
+      return { ok: false, dataUri: null, reason: 'unsupported_or_corrupt_image_magic' };
+    }
+    const ct = (res.headers.get('content-type') || 'image/jpeg').split(';')[0].trim().toLowerCase();
+    if (!ct.startsWith('image/')) {
+      return { ok: false, dataUri: null, reason: 'not_image_content_type' };
+    }
     const b64 = Buffer.from(ab).toString('base64');
-    return `data:${ct};base64,${b64}`;
-  } catch {
-    return null;
+    return { ok: true, dataUri: `data:${ct};base64,${b64}`, reason: 'ok' };
+  } catch (e) {
+    const name = e?.name === 'AbortError' ? 'timeout' : 'fetch_error';
+    return { ok: false, dataUri: null, reason: name };
+  } finally {
+    clearTimeout(t);
   }
 }
 
@@ -228,12 +294,61 @@ function svgToPng(svg) {
   return Buffer.from(resvg.render().asPng());
 }
 
+/**
+ * Renderiza PNG: primero con bitmaps opcionales; si resvg falla, solo vectores (mismo slug → mismo layout estable sin URLs rotas).
+ */
+function pngFromOgPipeline(storeName, coverDataUri, logoDataUri, slug, logContext = {}) {
+  const tryVectorOnly = () => {
+    const svg = buildCatalogOgSvg({
+      storeName,
+      logoDataUri: null,
+      coverDataUri: null,
+    });
+    return svgToPng(svg);
+  };
+
+  try {
+    const svg = buildCatalogOgSvg({ storeName, logoDataUri, coverDataUri });
+    try {
+      return { png: svgToPng(svg), mode: 'primary' };
+    } catch (resvgErr) {
+      logOgCatalog('resvg_retry_vector_only', {
+        slug,
+        ...logContext,
+        error: String(resvgErr?.message || resvgErr),
+      });
+      return { png: tryVectorOnly(), mode: 'vector_only_after_resvg' };
+    }
+  } catch (buildErr) {
+    logOgCatalog('svg_build_retry', {
+      slug,
+      ...logContext,
+      error: String(buildErr?.message || buildErr),
+    });
+    try {
+      return { png: tryVectorOnly(), mode: 'vector_only_after_build' };
+    } catch {
+      return { png: svgToPng(buildFallbackSvg(storeName)), mode: 'minimal_svg_fallback' };
+    }
+  }
+}
+
 export async function GET(request) {
   let svgFallbackName = 'Catálogo';
   try {
     const url = new URL(request.url);
     const slug = (url.searchParams.get('slug') || '').trim();
     if (!slug || slug.length > 200) {
+      logOgCatalog('render', {
+        slug: slug || '(empty)',
+        renderMode: 'reject_bad_slug',
+        coverUrl: null,
+        logoUrl: null,
+        coverOk: false,
+        logoOk: false,
+        coverReason: null,
+        logoReason: null,
+      });
       const png = svgToPng(buildFallbackSvg('Catálogo'));
       return new Response(png, {
         status: 200,
@@ -248,6 +363,16 @@ export async function GET(request) {
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
     if (!supabaseUrl || !serviceKey) {
       console.error('[og-catalog] missing VITE_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
+      logOgCatalog('render', {
+        slug,
+        renderMode: 'missing_env',
+        coverUrl: null,
+        logoUrl: null,
+        coverOk: false,
+        logoOk: false,
+        coverReason: null,
+        logoReason: null,
+      });
       const png = svgToPng(buildFallbackSvg('Catálogo'));
       return new Response(png, {
         status: 200,
@@ -267,6 +392,17 @@ export async function GET(request) {
       .maybeSingle();
 
     if (error || !row) {
+      logOgCatalog('render', {
+        slug,
+        renderMode: 'business_not_found',
+        dbError: error?.message || null,
+        coverUrl: null,
+        logoUrl: null,
+        coverOk: false,
+        logoOk: false,
+        coverReason: null,
+        logoReason: null,
+      });
       const png = svgToPng(buildFallbackSvg(slug));
       return new Response(png, {
         status: 200,
@@ -283,36 +419,47 @@ export async function GET(request) {
     const coverUrl = pickCoverUrl(row, ds);
     const logoUrl = pickLogoUrl(row, ds);
 
+    const vectorOnly =
+      process.env.OG_CATALOG_VECTOR_ONLY === '1' || process.env.OG_CATALOG_VECTOR_ONLY === 'true';
+
     let coverDataUri = null;
     let logoDataUri = null;
-    try {
-      [coverDataUri, logoDataUri] = await Promise.all([
-        loadImageDataUri(coverUrl),
-        loadImageDataUri(logoUrl),
-      ]);
-    } catch {
-      coverDataUri = null;
-      logoDataUri = null;
+    let coverMeta = { ok: false, reason: vectorOnly ? 'vector_only_env' : 'no_url' };
+    let logoMeta = { ok: false, reason: vectorOnly ? 'vector_only_env' : 'no_url' };
+
+    if (!vectorOnly) {
+      if (coverUrl) {
+        coverMeta = await loadImageDataUriValidated(coverUrl);
+        if (coverMeta.ok) coverDataUri = coverMeta.dataUri;
+      } else {
+        coverMeta = { ok: false, reason: 'no_url' };
+      }
+      if (logoUrl) {
+        logoMeta = await loadImageDataUriValidated(logoUrl);
+        if (logoMeta.ok) logoDataUri = logoMeta.dataUri;
+      } else {
+        logoMeta = { ok: false, reason: 'no_url' };
+      }
     }
 
-    let svg;
-    try {
-      svg = buildCatalogOgSvg({
-        storeName,
-        logoDataUri,
-        coverDataUri,
-      });
-    } catch {
-      svg = buildFallbackSvg(storeName);
-    }
+    const { png, mode } = pngFromOgPipeline(storeName, coverDataUri, logoDataUri, slug, {
+      coverUrl: coverUrl || null,
+      logoUrl: logoUrl || null,
+    });
 
-    let png;
-    try {
-      png = svgToPng(svg);
-    } catch (e) {
-      console.error('[og-catalog] resvg failed', e?.message || e);
-      png = svgToPng(buildFallbackSvg(svgFallbackName));
-    }
+    logOgCatalog('render', {
+      slug,
+      businessId: row.id,
+      storeName,
+      vectorOnlyEnv: vectorOnly,
+      coverUrl: coverUrl || null,
+      logoUrl: logoUrl || null,
+      coverOk: !!coverDataUri,
+      logoOk: !!logoDataUri,
+      coverReason: coverMeta.reason ?? null,
+      logoReason: logoMeta.reason ?? null,
+      renderMode: mode,
+    });
 
     const v = row.updated_at ? encodeURIComponent(String(row.updated_at)) : '';
     const cache = `public, max-age=3600, s-maxage=86400${v ? `, stale-while-revalidate=604800` : ''}`;
@@ -326,6 +473,13 @@ export async function GET(request) {
     });
   } catch (e) {
     console.error('[og-catalog] unhandled', e?.message || e);
+    logOgCatalog('render', {
+      slug: '(error)',
+      renderMode: 'unhandled_exception',
+      error: String(e?.message || e),
+      coverOk: false,
+      logoOk: false,
+    });
     try {
       const png = svgToPng(buildFallbackSvg(svgFallbackName));
       return new Response(png, {
