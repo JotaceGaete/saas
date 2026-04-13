@@ -29,7 +29,7 @@ import {
   getDailyMessage,
 } from "../../services/waBusinessService";
 import { supabase } from "../../lib/supabase";
-import { getPublicCatalogUrl } from "../../config/appUrl";
+import { getPublicCatalogUrl, getPublicOffersUrl } from "../../config/appUrl";
 import { buildCfImageErrorHandler, cfImageUrl } from "../../utils/cloudflareImage";
 import OrdersByDayCard from "./components/OrdersByDayCard";
 import TopProductsCard from "./components/TopProductsCard";
@@ -97,6 +97,7 @@ export default function Dashboard() {
   const [dismissedExpiredBanner, setDismissedExpiredBanner] = useState(false);
 
   const catalogUrl = getPublicCatalogUrl(business?.slug ?? '');
+  const offersUrl = getPublicOffersUrl(business?.slug ?? '');
 
   const planExpiresAt = business?.planExpiresAt ?? null;
   const trialExpiresAt = business?.trialExpiresAt ?? null;
@@ -938,6 +939,7 @@ export default function Dashboard() {
               <section aria-label="Enlace del catálogo">
                 <CatalogLinkWidget
                   catalogUrl={catalogUrl}
+                  offersUrl={offersUrl}
                   businessName={business?.name || ''}
                   businessPlanSlug={activePlanSlug}
                   onCatalogShare={notifyFirstCatalogShare}

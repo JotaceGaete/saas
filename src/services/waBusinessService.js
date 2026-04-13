@@ -380,6 +380,7 @@ const mapProductFromDb = (row) => {
     longDescription: row?.long_description || null,
     featured: row?.featured ?? false,
     onSale: row?.on_sale ?? false,
+    compareAtPrice: (() => { const v = parseFloat(row?.compare_at_price); return (row?.compare_at_price != null && !isNaN(v)) ? v : null; })(),
     createdAt: row?.created_at,
     updatedAt: row?.updated_at,
   };
@@ -886,6 +887,7 @@ export const createProduct = async (businessId, productData) => {
     long_description: productData?.longDescription || null,
     featured: productData?.featured === true,
     on_sale: productData?.onSale === true,
+    compare_at_price: productData?.compareAtPrice ?? null,
   })?.select()?.single();
   if (error) return { data: null, error };
   return { data: mapProductFromDb(data), error: null };
@@ -927,6 +929,7 @@ export const updateProduct = async (productId, productData) => {
   if (productData?.category !== undefined) dbUpdates.category = productData?.category || null;
   if (productData?.featured !== undefined) dbUpdates.featured = !!productData.featured;
   if (productData?.onSale !== undefined) dbUpdates.on_sale = !!productData.onSale;
+  if (productData?.compareAtPrice !== undefined) dbUpdates.compare_at_price = productData.compareAtPrice ?? null;
   if (productData?.images !== undefined) dbUpdates.images = Array.isArray(productData.images) ? productData.images : (productData?.imageUrl ? [productData.imageUrl] : []);
   const { data, error } = await supabase?.from('wa_products')?.update(dbUpdates)?.eq('id', productId)?.select()?.single();
   if (error) return { data: null, error };
@@ -1147,6 +1150,29 @@ export async function getPublicProducts(businessId) {
     ?.order('sort_order', { ascending: true });
   if (error) return { data: null, error };
   return { data: (data || [])?.map(mapProductFromDb), error: null };
+}
+
+export async function getPublicOfferProducts(businessId) {
+  const { data, error } = await supabase
+    ?.from('wa_products')
+    ?.select('*')
+    ?.eq('business_id', businessId)
+    ?.eq('is_active', true)
+    ?.eq('on_sale', true)
+    ?.order('sort_order', { ascending: true });
+  if (error) return { data: null, error };
+  const mapped = (data || []).map(mapProductFromDb);
+  // Primero los de mayor descuento real (compareAtPrice > price), luego sort_order.
+  const realDiscount = (p) =>
+    p.compareAtPrice != null && !isNaN(p.compareAtPrice) && p.compareAtPrice > p.price
+      ? (p.compareAtPrice - p.price) / p.compareAtPrice
+      : 0;
+  mapped.sort((a, b) => {
+    const diff = realDiscount(b) - realDiscount(a);
+    if (Math.abs(diff) > 1e-9) return diff;
+    return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
+  });
+  return { data: mapped, error: null };
 }
 
 // Analytics

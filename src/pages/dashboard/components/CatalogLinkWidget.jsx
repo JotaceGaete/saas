@@ -9,6 +9,7 @@ import OgShareGuardModal from "./OgShareGuardModal";
 
 export default function CatalogLinkWidget({
   catalogUrl,
+  offersUrl = '',
   businessName,
   businessPlanSlug,
   onCatalogShare,
@@ -17,6 +18,7 @@ export default function CatalogLinkWidget({
   const navigate = useNavigate();
   const [copied, setCopied] = useState(false);
   const [refreshed, setRefreshed] = useState(false);
+  const [copiedOffers, setCopiedOffers] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const qrRef = useRef(null);
   const shareMessage = getCatalogShareMessage({
@@ -39,6 +41,17 @@ export default function CatalogLinkWidget({
     navigator.clipboard?.writeText(catalogUrl || '')?.catch(() => {});
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleCopyOffers = () => {
+    navigator.clipboard?.writeText(offersUrl || '')?.catch(() => {});
+    setCopiedOffers(true);
+    setTimeout(() => setCopiedOffers(false), 2000);
+  };
+
+  const handleWhatsAppOffers = () => {
+    if (!offersUrl) return;
+    openWhatsAppUrl(`https://wa.me/?text=${encodeURIComponent(`🏷️ Mira las ofertas de ${businessName}: ${offersUrl}`)}`);
   };
 
   const handleRefreshPreview = () => {
@@ -242,6 +255,47 @@ export default function CatalogLinkWidget({
             >
               <Icon name="Printer" size={14} color="var(--color-primary)" />
               Imprimir QR
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Sección de ofertas */}
+      {offersUrl && (
+        <div className="mt-4 pt-4 border-t" style={{ borderColor: 'var(--color-border)' }}>
+          <div className="flex items-center gap-1.5 mb-2">
+            <span className="text-sm">🏷️</span>
+            <span className="text-xs font-semibold" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>
+              Link de ofertas
+            </span>
+          </div>
+          <div className="flex items-center gap-2 p-2.5 rounded-lg border mb-2" style={{ backgroundColor: 'var(--color-muted)', borderColor: 'var(--color-border)' }}>
+            <Icon name="Tag" size={12} color="var(--color-muted-foreground)" className="flex-shrink-0" />
+            <span className="flex-1 text-xs truncate" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-data)' }}>{offersUrl}</span>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={handleCopyOffers}
+              className="flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-sm font-medium transition-all duration-200 hover:opacity-90 active:scale-95"
+              style={{
+                backgroundColor: copiedOffers ? 'rgba(16,185,129,0.12)' : 'rgba(124,58,237,0.08)',
+                color: copiedOffers ? '#059669' : 'var(--color-primary)',
+                fontFamily: 'var(--font-caption)',
+                border: `1px solid ${copiedOffers ? 'rgba(16,185,129,0.25)' : 'var(--color-border)'}`,
+              }}
+            >
+              <Icon name={copiedOffers ? 'Check' : 'Copy'} size={13} color={copiedOffers ? '#059669' : 'var(--color-primary)'} />
+              {copiedOffers ? '¡Copiado!' : 'Copiar link'}
+            </button>
+            <button
+              type="button"
+              onClick={handleWhatsAppOffers}
+              className="flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-sm font-medium text-white transition-all duration-200 hover:opacity-90 active:scale-95"
+              style={{ backgroundColor: '#25D366', fontFamily: 'var(--font-caption)' }}
+            >
+              <Icon name="MessageCircle" size={13} color="#fff" />
+              Compartir WA
             </button>
           </div>
         </div>

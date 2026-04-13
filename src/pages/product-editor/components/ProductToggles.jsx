@@ -62,6 +62,11 @@ export default function ProductToggles({ activo, featured, onSale, onActiveChang
         checked={activo}
         onChange={onActiveChange}
       />
+      {/* TODO(compare_at_price): add a numeric input here for "Precio anterior (antes de oferta)".
+          When onSale is true, show a field for compareAtPrice (e.g. "Precio anterior").
+          Pass it up via a new onCompareAtPriceChange prop and wire to formData.compareAtPrice.
+          The service layer (createProduct / updateProduct) already accepts compareAtPrice.
+          In /ofertas, products with compareAtPrice > price show a strikethrough + % OFF badge. */}
       <ToggleRow
         icon="Tag"
         iconColor="#dc2626"

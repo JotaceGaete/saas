@@ -98,6 +98,17 @@ export function getPublicCatalogUrl(slug) {
 }
 
 /**
+ * Enlace compartible de la vista de ofertas del catálogo.
+ * @param {string} slug
+ * @returns {string}
+ */
+export function getPublicOffersUrl(slug) {
+  const s = String(slug || '').trim();
+  if (!s) return '';
+  return `${CATALOG_ORIGIN}/catalogo/${s}/ofertas`;
+}
+
+/**
  * Enlace del catálogo para WhatsApp: URL totalmente canónica, sin query params
  * (el crawler de WhatsApp debe ver siempre la misma URL para OG / portada).
  * @param {string} slug
