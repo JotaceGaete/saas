@@ -34,6 +34,7 @@ import {
   stringifyJsonLd,
 } from '../../utils/catalogSeo';
 import { getProductCardTrustBadge } from '../../utils/productCardBadge';
+import { getDiscountPercent } from '../../utils/offerHelpers';
 import { resolveCatalogTheme, hexToRgb, hexToRgba, darkenHex } from '../../utils/catalogTheme';
 import { openWhatsAppUrl } from '../../utils/openWhatsAppUrl';
 
@@ -375,13 +376,17 @@ function CatalogInner({ slug }) {
     });
   }, [products, searchQuery, selectedCategory, priceRange, useCategories]);
 
-  // Orden: sortOrder ascendente, luego createdAt descendente (más recientes al final si mismo sortOrder)
+  // Orden: sortOrder ASC → onSale DESC (tiebreaker, mismo sort_order) → createdAt DESC
   const sortedProducts = useMemo(() => {
     if (!filteredProducts?.length) return [];
     return [...filteredProducts].sort((a, b) => {
       const orderA = a?.sortOrder != null ? Number(a.sortOrder) : Infinity;
       const orderB = b?.sortOrder != null ? Number(b.sortOrder) : Infinity;
       if (orderA !== orderB) return orderA - orderB;
+      // Dentro del mismo sort_order: productos en oferta primero
+      const saleA = a?.onSale ? 1 : 0;
+      const saleB = b?.onSale ? 1 : 0;
+      if (saleA !== saleB) return saleB - saleA;
       const dateA = new Date(a?.createdAt || 0).getTime();
       const dateB = new Date(b?.createdAt || 0).getTime();
       return dateB - dateA;
@@ -2163,15 +2168,21 @@ function ProductCard({ product, formatPrice, onOpen, theme, cardSettings, useCat
   const imgs = getProductImages(product);
   const extraImages = imgs.length > 1 ? imgs.length - 1 : 0;
   const trustBadge = getProductCardTrustBadge(product);
+  // discount viene del badge para no recalcular; null cuando no hay descuento real
+  const discount = trustBadge?.discount ?? null;
   const imgAspect = compact ? 'aspect-square' : 'aspect-[4/5]';
   const roundTop = 'rounded-t-2xl';
   const qtyTopClass =
     qty > 0 && trustBadge ? (compact ? 'top-7' : 'top-[1.85rem]') : 'top-1';
+  // Sombra levemente más intensa para productos en oferta — señal visual sin romper diseño
+  const cardShadow = product?.onSale
+    ? '0 2px 14px rgba(220,38,38,0.10), 0 1px 4px rgba(0,0,0,0.06)'
+    : '0 2px 10px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.04)';
 
   return (
     <div
       className="group flex h-full min-h-0 flex-col rounded-2xl bg-white text-left overflow-hidden will-change-transform transition-[transform,box-shadow] duration-200 ease-out md:hover:-translate-y-1 md:hover:scale-[1.01] md:hover:shadow-lg active:scale-[0.98]"
-      style={{ boxShadow: '0 2px 10px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.04)' }}
+      style={{ boxShadow: cardShadow }}
     >
       {/* Imagen: aspect-ratio + overflow aquí (no en la card entera) para no recortar el botón */}
       <button
@@ -2260,9 +2271,17 @@ function ProductCard({ product, formatPrice, onOpen, theme, cardSettings, useCat
         {/* Bottom: price + button — always anchored at the card bottom */}
         <div className={`w-full shrink-0 flex flex-col ${compact ? 'gap-1.5' : 'gap-2'} pt-1`}>
           {showPrice && (
-            <p className={`shrink-0 font-bold leading-none tracking-tight text-gray-900 ${compact ? 'text-lg' : 'text-xl'}`}>
-              {formatPrice(product?.price)}
-            </p>
+            <div className="flex flex-col gap-0.5">
+              <p className={`shrink-0 font-bold leading-none tracking-tight text-gray-900 ${compact ? 'text-lg' : 'text-xl'}`}>
+                {formatPrice(product?.price)}
+              </p>
+              {/* Precio tachado — solo cuando hay descuento real (compareAtPrice > price) */}
+              {discount !== null && (
+                <p className={`text-gray-400 line-through leading-none ${compact ? 'text-[10px]' : 'text-[11px]'}`}>
+                  {formatPrice(product?.compareAtPrice)}
+                </p>
+              )}
+            </div>
           )}
           {qty === 0 ? (
             <button
