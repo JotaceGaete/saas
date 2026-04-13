@@ -29,6 +29,7 @@ const EMPTY_FORM = {
   activo: true,
   featured: false,
   onSale: false,
+  compareAtPrice: '',
   hasOptions: false,
   optionsDescription: '',
 };
@@ -77,6 +78,8 @@ export default function ProductEditor() {
           stock: '',
           activo: data?.isActive !== undefined ? data?.isActive : true,
           featured: data?.featured || false,
+          onSale: data?.onSale || false,
+          compareAtPrice: data?.compareAtPrice != null ? Number(data.compareAtPrice) : '',
           hasOptions: data?.hasOptions || false,
           optionsDescription: data?.optionsDescription || '',
         });
@@ -323,6 +326,8 @@ export default function ProductEditor() {
         ?.filter(i => (i?.status === 'uploaded' && i?.url) || (i?.url && !i?.url?.startsWith?.('blob:')))
         ?.map(i => i?.url) ?? [];
       const finalImageUrl = imageUrl || imagesUrls?.[0] || null;
+      const rawCompareAt = formData?.compareAtPrice;
+      const compareAtNum = rawCompareAt !== '' && rawCompareAt != null ? Number(rawCompareAt) : NaN;
       const productData = {
         name: formData?.nombre,
         description: formData?.descripcion || null,
@@ -332,6 +337,7 @@ export default function ProductEditor() {
         isActive: formData?.activo,
         featured: formData?.featured,
         onSale: formData?.onSale,
+        compareAtPrice: !isNaN(compareAtNum) ? Math.round(compareAtNum) : null,
         hasOptions: formData?.hasOptions,
         optionsDescription: formData?.hasOptions ? (formData?.optionsDescription || null) : null,
         longDescription: formData?.longDescription?.trim() || null,
@@ -544,6 +550,7 @@ export default function ProductEditor() {
                     activo={formData?.activo}
                     featured={formData?.featured}
                     onSale={formData?.onSale}
+                    slug={business?.slug ?? ''}
                     onActiveChange={(val) => handleFieldChange('activo', val)}
                     onFeaturedChange={(val) => handleFieldChange('featured', val)}
                     onOnSaleChange={(val) => handleFieldChange('onSale', val)}

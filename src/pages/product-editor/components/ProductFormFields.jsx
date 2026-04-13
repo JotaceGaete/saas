@@ -3,6 +3,7 @@ import Icon from 'components/AppIcon';
 import Input from 'components/ui/Input';
 import { formatIntegerInputGrouped, parseCLPInput } from '../../../utils/formatCLP';
 import { createBusinessCategory } from '../../../services/waBusinessService';
+import { getDiscountPercent } from '../../../utils/offerHelpers';
 
 const MAX_NAME = 80;
 const MAX_DESC = 300;
@@ -112,6 +113,46 @@ export default function ProductFormFields({ formData, errors, onChange, currency
           required
         />
       </div>
+      {/* Precio anterior — solo visible cuando el producto está marcado como oferta */}
+      {formData?.onSale && (() => {
+        const currentPrice = Number(formData?.precio) || 0;
+        const compareAtPrice = formData?.compareAtPrice;
+        const hasValue = compareAtPrice !== '' && compareAtPrice != null;
+        const discount = getDiscountPercent(currentPrice, compareAtPrice);
+        const hint = !hasValue
+          ? { text: 'Puedes dejarlo vacío si solo quieres incluir el producto en la página de ofertas.', isWarning: false }
+          : discount !== null
+            ? { text: `Se mostrará un descuento aproximado de ${discount}% en la página de ofertas.`, isWarning: false }
+            : { text: 'Para mostrar descuento, el precio anterior debe ser mayor al precio actual.', isWarning: true };
+        return (
+          <div>
+            <label className="block text-sm font-medium mb-1" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}>
+              Precio anterior ({currencyCode})
+              <span className="ml-1 text-xs font-normal" style={{ color: 'var(--color-muted-foreground)' }}>(opcional)</span>
+            </label>
+            <Input
+              type="text"
+              inputMode="numeric"
+              placeholder="Ej: precio original antes del descuento"
+              value={formatPriceInput(compareAtPrice, locale)}
+              onChange={(e) => {
+                const raw = parseCLPInput(e?.target?.value);
+                handleChange('compareAtPrice', raw === '' ? '' : raw);
+              }}
+            />
+            <p
+              className="mt-1 text-xs flex items-center gap-1"
+              style={{
+                fontFamily: 'var(--font-caption)',
+                color: hint.isWarning ? '#D97706' : 'var(--color-muted-foreground)',
+              }}
+            >
+              {hint.isWarning && <Icon name="AlertTriangle" size={11} color="#D97706" />}
+              {hint.text}
+            </p>
+          </div>
+        );
+      })()}
       {/* Descripción */}
       <div>
         <div className="flex items-end justify-between mb-1 flex-wrap gap-2">

@@ -13,15 +13,10 @@ import CatalogLayout from '../public-catalog/CatalogLayout';
 import BrandingFooter from '../../components/BrandingFooter';
 import Icon from '../../components/AppIcon';
 import { useIsDesktop } from '../../hooks/useMediaQuery';
+import { getDiscountPercent } from '../../utils/offerHelpers';
 
 // SEO note: this page is intentionally noindex for now.
 // og:title/og:image are not set — add them when an OG endpoint is available for /ofertas.
-
-/** Returns the percentage discount, or null if compare_at_price is not a valid "higher" price. */
-function calcDiscount(price, compareAtPrice) {
-  if (price == null || isNaN(price) || compareAtPrice == null || isNaN(compareAtPrice) || compareAtPrice <= price) return null;
-  return Math.round(((compareAtPrice - price) / compareAtPrice) * 100);
-}
 
 // ─── OfferCard ────────────────────────────────────────────────────────────────
 function OfferCard({ product, formatPrice, theme }) {
@@ -31,7 +26,7 @@ function OfferCard({ product, formatPrice, theme }) {
   const cartItem = items?.find(i => i?.id === product?.id);
   const qty = cartItem?.quantity || 0;
   const [bump, setBump] = useState(false);
-  const discount = calcDiscount(product?.price, product?.compareAtPrice);
+  const discount = getDiscountPercent(product?.price, product?.compareAtPrice);
   // Shift the qty bubble down when the discount badge occupies the top-left corner
   const qtyTopClass = discount !== null ? 'top-[1.85rem]' : 'top-1';
 

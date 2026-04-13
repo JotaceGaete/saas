@@ -1,5 +1,6 @@
 import React from 'react';
 import Icon from 'components/AppIcon';
+import { getPublicOffersUrl } from '../../../config/appUrl';
 
 function ToggleRow({ icon, iconColor, iconBg, title, description, checked, onChange, accentColor }) {
   return (
@@ -49,7 +50,9 @@ function ToggleRow({ icon, iconColor, iconBg, title, description, checked, onCha
   );
 }
 
-export default function ProductToggles({ activo, featured, onSale, onActiveChange, onFeaturedChange, onOnSaleChange }) {
+export default function ProductToggles({ activo, featured, onSale, slug = '', onActiveChange, onFeaturedChange, onOnSaleChange }) {
+  const offersUrl = slug ? getPublicOffersUrl(slug) : '';
+
   return (
     <div className="space-y-3">
       <ToggleRow
@@ -62,21 +65,75 @@ export default function ProductToggles({ activo, featured, onSale, onActiveChang
         checked={activo}
         onChange={onActiveChange}
       />
-      {/* TODO(compare_at_price): add a numeric input here for "Precio anterior (antes de oferta)".
-          When onSale is true, show a field for compareAtPrice (e.g. "Precio anterior").
-          Pass it up via a new onCompareAtPriceChange prop and wire to formData.compareAtPrice.
-          The service layer (createProduct / updateProduct) already accepts compareAtPrice.
-          In /ofertas, products with compareAtPrice > price show a strikethrough + % OFF badge. */}
-      <ToggleRow
-        icon="Tag"
-        iconColor="#dc2626"
-        iconBg="rgba(220,38,38,0.1)"
-        accentColor="#dc2626"
-        title="Marcar como oferta"
-        description={onSale ? 'En el catálogo se muestra el badge «Oferta» (prioridad sobre destacado)' : 'Activa para resaltar precio u ofertas en la tarjeta del producto'}
-        checked={!!onSale}
-        onChange={onOnSaleChange}
-      />
+
+      <div>
+        <ToggleRow
+          icon="Tag"
+          iconColor="#dc2626"
+          iconBg="rgba(220,38,38,0.1)"
+          accentColor="#dc2626"
+          title="Incluir en página de ofertas"
+          description={
+            onSale
+              ? 'Este producto ya aparece en tu página pública de ofertas y se destacará en el catálogo.'
+              : 'Publica este producto en una página especial de ofertas que puedes compartir con tus clientes.'
+          }
+          checked={!!onSale}
+          onChange={onOnSaleChange}
+        />
+        {/* Hint visible cuando el toggle está activo */}
+        {onSale && (
+          <div
+            className="mt-1.5 rounded-lg px-3 py-3 flex flex-col gap-2"
+            style={{
+              backgroundColor: 'rgba(220,38,38,0.05)',
+              border: '1px solid rgba(220,38,38,0.15)',
+            }}
+          >
+            {/* A) Mensaje principal */}
+            <p className="text-xs leading-snug flex items-center gap-1.5"
+              style={{ color: '#dc2626', fontFamily: 'var(--font-caption)' }}>
+              <span aria-hidden>🏷️</span>
+              {offersUrl
+                ? 'Este producto ya está disponible en tu página de ofertas.'
+                : 'Este producto aparecerá en tu página de ofertas una vez que tu tienda esté publicada.'}
+            </p>
+
+            {/* B) URL clicable */}
+            {offersUrl && (
+              <a
+                href={offersUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 self-start rounded-md px-2 py-1 text-[11px] font-semibold underline-offset-2 transition-opacity hover:opacity-80"
+                style={{
+                  color: '#dc2626',
+                  backgroundColor: 'rgba(220,38,38,0.08)',
+                  fontFamily: 'var(--font-data)',
+                  wordBreak: 'break-all',
+                }}
+              >
+                <Icon name="ExternalLink" size={11} color="#dc2626" />
+                {offersUrl}
+              </a>
+            )}
+
+            {/* C) CTA de compartir */}
+            {offersUrl && (
+              <p className="text-[11px] leading-snug"
+                style={{ color: '#dc2626', opacity: 0.7, fontFamily: 'var(--font-caption)' }}>
+                Comparte este enlace para promocionar tus productos en oferta.
+              </p>
+            )}
+
+            <p className="text-[11px] leading-snug"
+              style={{ color: '#dc2626', opacity: 0.55, fontFamily: 'var(--font-caption)' }}>
+              Agrega el precio anterior en el campo de precio para mostrar el % de descuento.
+            </p>
+          </div>
+        )}
+      </div>
+
       <ToggleRow
         icon="Star"
         iconColor="#D97706"
