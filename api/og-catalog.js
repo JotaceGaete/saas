@@ -16,6 +16,7 @@ const OG_H = 630;
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 /** Mismo timeout en cada request (sin carreras entre cover/logo). */
 const REMOTE_IMAGE_FETCH_MS = 10_000;
+const OG_CATALOG_CACHE_CONTROL = 'public, max-age=0, must-revalidate';
 
 function logOgCatalog(event, payload) {
   try {
@@ -354,7 +355,7 @@ export async function GET(request) {
         status: 200,
         headers: {
           'Content-Type': 'image/png',
-          'Cache-Control': 'public, max-age=60',
+          'Cache-Control': OG_CATALOG_CACHE_CONTROL,
         },
       });
     }
@@ -378,7 +379,7 @@ export async function GET(request) {
         status: 200,
         headers: {
           'Content-Type': 'image/png',
-          'Cache-Control': 'public, max-age=60',
+          'Cache-Control': OG_CATALOG_CACHE_CONTROL,
         },
       });
     }
@@ -408,7 +409,7 @@ export async function GET(request) {
         status: 200,
         headers: {
           'Content-Type': 'image/png',
-          'Cache-Control': 'public, max-age=120',
+          'Cache-Control': OG_CATALOG_CACHE_CONTROL,
         },
       });
     }
@@ -461,14 +462,11 @@ export async function GET(request) {
       renderMode: mode,
     });
 
-    const v = row.updated_at ? encodeURIComponent(String(row.updated_at)) : '';
-    const cache = `public, max-age=3600, s-maxage=86400${v ? `, stale-while-revalidate=604800` : ''}`;
-
     return new Response(png, {
       status: 200,
       headers: {
         'Content-Type': 'image/png',
-        'Cache-Control': cache,
+        'Cache-Control': OG_CATALOG_CACHE_CONTROL,
       },
     });
   } catch (e) {
@@ -486,7 +484,7 @@ export async function GET(request) {
         status: 200,
         headers: {
           'Content-Type': 'image/png',
-          'Cache-Control': 'public, max-age=60',
+          'Cache-Control': OG_CATALOG_CACHE_CONTROL,
         },
       });
     } catch {
@@ -508,7 +506,7 @@ export async function HEAD(request) {
         status: 200,
         headers: {
           'Content-Type': 'image/png',
-          'Cache-Control': 'public, max-age=60',
+          'Cache-Control': OG_CATALOG_CACHE_CONTROL,
         },
       });
     }
@@ -520,7 +518,7 @@ export async function HEAD(request) {
         status: 200,
         headers: {
           'Content-Type': 'image/png',
-          'Cache-Control': 'public, max-age=60',
+          'Cache-Control': OG_CATALOG_CACHE_CONTROL,
         },
       });
     }
@@ -538,20 +536,16 @@ export async function HEAD(request) {
         status: 200,
         headers: {
           'Content-Type': 'image/png',
-          'Cache-Control': 'public, max-age=120',
+          'Cache-Control': OG_CATALOG_CACHE_CONTROL,
         },
       });
     }
-
-    const cache = row.updated_at
-      ? 'public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800'
-      : 'public, max-age=3600, s-maxage=86400';
 
     return new Response(null, {
       status: 200,
       headers: {
         'Content-Type': 'image/png',
-        'Cache-Control': cache,
+        'Cache-Control': OG_CATALOG_CACHE_CONTROL,
       },
     });
   } catch (e) {
@@ -560,7 +554,7 @@ export async function HEAD(request) {
       status: 200,
       headers: {
         'Content-Type': 'image/png',
-        'Cache-Control': 'public, max-age=60',
+        'Cache-Control': OG_CATALOG_CACHE_CONTROL,
       },
     });
   }

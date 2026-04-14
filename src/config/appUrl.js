@@ -85,8 +85,8 @@ export function getPublicCatalogRelativePath(slug) {
 }
 
 /**
- * Enlace compartible estándar: URL corta en CATALOG_ORIGIN (nuevo dominio público).
- * Formato: `https://miralatienda.de/:slug`
+ * Enlace compartible estándar del catálogo público.
+ * Formato oficial: `https://miralatienda.de/catalogo/:slug`
  * getWhatsAppOrderCatalogUrl, QR y copiar-link delegan aquí.
  * @param {string} slug
  * @returns {string}
@@ -94,7 +94,7 @@ export function getPublicCatalogRelativePath(slug) {
 export function getPublicCatalogUrl(slug) {
   const s = String(slug || '').trim();
   if (!s) return '';
-  return `${CATALOG_ORIGIN}/${s}`;
+  return `${CATALOG_ORIGIN}/catalogo/${s}`;
 }
 
 /**

@@ -95,6 +95,12 @@
       "has": [{ "type": "host", "value": "miralatienda.de" }],
       "destination": "https://go.ventalink.app/$1$2",
       "permanent": false
+    },
+    {
+      "source": "/catalog/:slug",
+      "has": [{ "type": "host", "value": "miralatienda.de" }],
+      "destination": "https://miralatienda.de/catalogo/:slug",
+      "permanent": true
     }
   ],
   "rewrites": [

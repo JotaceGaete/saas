@@ -64,6 +64,11 @@ function getOriginCatalog(request) {
   return '';
 }
 
+function getOfficialCatalogUrl(slug) {
+  const safeSlug = encodeURIComponent(String(slug || '').trim());
+  return `${CATALOG_ORIGIN}/catalogo/${safeSlug}`;
+}
+
 async function handleCatalogHtml(request) {
   const url = new URL(request.url);
   const slug = url.searchParams.get('slug')?.trim();
@@ -71,7 +76,7 @@ async function handleCatalogHtml(request) {
     return new Response('Slug required', { status: 400 });
   }
   /** Ruta de entrada: 'catalog', 'catalogo', o 'short' (URL corta /:slug).
-   *  La URL canónica OG es siempre CATALOG_ORIGIN/:slug (forma corta, sin prefijo /catalogo/). */
+   *  La URL pública oficial declarada es siempre CATALOG_ORIGIN/catalogo/:slug. */
   const publicPath = url.searchParams.get('publicPath') || 'catalogo';
 
   const origin = getOriginCatalog(request);
@@ -136,10 +141,14 @@ async function handleCatalogHtml(request) {
   const metaDescription = getCatalogShareDescription(row);
   const ri = detectCatalogRegion(seoInput);
   const ogImageHttps = getCatalogOpenGraphImageUrl(origin, slug, row.updated_at);
-  // URL canónica siempre en el dominio público de catálogos (miralatienda.de), forma corta.
+  // URL pública oficial única para OG, Twitter y canonical.
   // `origin` se conserva para resolver imágenes relativas (og:image, portadas, etc.).
-  const catalogUrl = `${CATALOG_ORIGIN}/${slug}`;
-  const queryStripped = Boolean(url.search && url.search.length > 1);
+  const catalogUrl = getOfficialCatalogUrl(slug);
+  const externalQueryParams = new URLSearchParams(url.searchParams);
+  externalQueryParams.delete('slug');
+  externalQueryParams.delete('publicPath');
+  externalQueryParams.delete('mode');
+  const queryStripped = externalQueryParams.toString().length > 0;
   // App ID numérico: https://developers.facebook.com/apps/ → Crear app → Configuración → Información básica → «ID de la aplicación». En Vercel: META_FB_APP_ID o FB_APP_ID.
   const fbAppId = String(process.env.META_FB_APP_ID || process.env.FB_APP_ID || '').trim();
 
