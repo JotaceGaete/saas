@@ -100,6 +100,14 @@ Deno.serve(async (req) => {
     if (!businessId) return jsonResponse({ error: "businessId is required" }, 400, corsHeaders);
     _logBusinessId = businessId;
 
+    // ── 1. start ─────────────────────────────────────────────────────────────
+    console.log(JSON.stringify({
+      event: "generate-og-image:start",
+      businessId,
+      userId: user.id,
+      force: body?.force === true,
+    }));
+
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
     const { data: biz, error: bizErr } = await adminClient
       .from("wa_businesses")
@@ -108,8 +116,27 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (bizErr || !biz?.id || (biz as { user_id?: string }).user_id !== user.id) {
+      console.warn(JSON.stringify({
+        event: "generate-og-image:error",
+        error: "business_not_found_or_forbidden",
+        businessId,
+        userId: user.id,
+        bizErr: bizErr?.message ?? null,
+        bizFound: !!biz?.id,
+        userIdMatch: biz ? (biz as { user_id?: string }).user_id === user.id : null,
+      }));
       return jsonResponse({ error: "Business not found or access denied" }, 403, corsHeaders);
     }
+
+    // ── 2. business loaded ────────────────────────────────────────────────────
+    console.log(JSON.stringify({
+      event: "generate-og-image:business_loaded",
+      businessId,
+      slug: (biz as Record<string, unknown>).slug,
+      hasOgImageUrl: !!(biz as Record<string, unknown>).og_image_url,
+      hasCoverCol: !!(biz as Record<string, unknown>).cover_image_url,
+      hasDesignSettings: !!(biz as Record<string, unknown>).design_settings,
+    }));
 
     const r = biz as Record<string, unknown>;
     const ds = parseDesignSettingsSafe(r.design_settings);
@@ -139,6 +166,16 @@ Deno.serve(async (req) => {
     const coverUrl = pickCoverUrl(r, ds);
     const logoUrl = pickLogoUrl(r, ds);
 
+    // ── 3. visual inputs resolved ────────────────────────────────────────────
+    console.log(JSON.stringify({
+      event: "generate-og-image:visual_inputs_resolved",
+      businessId,
+      hasCoverUrl: !!coverUrl,
+      hasLogoUrl: !!logoUrl,
+      coverUrl: coverUrl ?? null,
+      logoUrl: logoUrl ?? null,
+    }));
+
     if (!coverUrl && !logoUrl) {
       console.log(JSON.stringify({
         event: "generate-og-image:skip",
@@ -148,6 +185,12 @@ Deno.serve(async (req) => {
       }));
       return jsonResponse({ skipped: true, reason: "no_visual_inputs" }, 200, corsHeaders);
     }
+
+    // ── 4. render start ──────────────────────────────────────────────────────
+    console.log(JSON.stringify({
+      event: "generate-og-image:render_start",
+      businessId,
+    }));
 
     // ── Render ───────────────────────────────────────────────────────────────
     const [coverDataUri, logoDataUri] = await Promise.all([
@@ -160,6 +203,14 @@ Deno.serve(async (req) => {
       logoDataUri,
       coverDataUri,
     });
+
+    // ── 4b. images loaded ────────────────────────────────────────────────────
+    console.log(JSON.stringify({
+      event: "generate-og-image:images_loaded",
+      businessId,
+      hasCoverDataUri: !!coverDataUri,
+      hasLogoDataUri: !!logoDataUri,
+    }));
 
     let pngBytes: Uint8Array;
     try {
@@ -177,6 +228,13 @@ Deno.serve(async (req) => {
         corsHeaders,
       );
     }
+
+    // ── 5. render success ────────────────────────────────────────────────────
+    console.log(JSON.stringify({
+      event: "generate-og-image:render_success",
+      businessId,
+      pngBytes: pngBytes.length,
+    }));
 
     const accountId = Deno.env.get("R2_ACCOUNT_ID") ?? "";
     const accessKeyId = Deno.env.get("R2_ACCESS_KEY_ID") ?? "";
@@ -217,6 +275,14 @@ Deno.serve(async (req) => {
       credentials: { accessKeyId, secretAccessKey },
     });
 
+    // ── 6. upload start ──────────────────────────────────────────────────────
+    console.log(JSON.stringify({
+      event: "generate-og-image:upload_start",
+      businessId,
+      bucket,
+      key,
+    }));
+
     await s3.send(new (PutObjectCommandCtor as any)({
       Bucket: bucket,
       Key: key,
@@ -226,6 +292,20 @@ Deno.serve(async (req) => {
     }));
 
     const ogImageUrl = `${publicBaseUrl}/${key}`;
+
+    // ── 7. upload success ────────────────────────────────────────────────────
+    console.log(JSON.stringify({
+      event: "generate-og-image:upload_success",
+      businessId,
+      ogImageUrl,
+    }));
+
+    // ── 8. db update start ───────────────────────────────────────────────────
+    console.log(JSON.stringify({
+      event: "generate-og-image:db_update_start",
+      businessId,
+      ogImageUrl,
+    }));
 
     // ── Persist — only reached if render + upload both succeeded ─────────────
     const { error: updateErr } = await adminClient
