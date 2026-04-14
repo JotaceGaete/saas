@@ -984,8 +984,6 @@ function CatalogInner({ slug }) {
           </div>
         )}
 
-      </div>
-
       {/* ── Buscador + categorías + precio (sticky): siempre accesibles al hacer scroll ── */}
       <div
         className="sticky z-30 backdrop-blur-md shadow-sm top-[calc(56px+var(--safe-area-top))] md:top-0"
