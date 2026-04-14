@@ -272,6 +272,7 @@ Deno.serve(async (req) => {
     const s3 = new (S3ClientCtor as any)({
       region: "auto",
       endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+      forcePathStyle: false, // R2 supports virtual-hosted-style; set true if 403/NoSuchBucket
       credentials: { accessKeyId, secretAccessKey },
     });
 
@@ -281,15 +282,33 @@ Deno.serve(async (req) => {
       businessId,
       bucket,
       key,
+      endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
     }));
 
-    await s3.send(new (PutObjectCommandCtor as any)({
-      Bucket: bucket,
-      Key: key,
-      Body: pngBytes,
-      ContentType: "image/png",
-      CacheControl: "public, max-age=31536000, immutable",
-    }));
+    try {
+      await s3.send(new (PutObjectCommandCtor as any)({
+        Bucket: bucket,
+        Key: key,
+        Body: pngBytes,
+        ContentType: "image/png",
+        CacheControl: "public, max-age=31536000, immutable",
+      }));
+    } catch (uploadErr) {
+      const e = uploadErr as any;
+      console.error(JSON.stringify({
+        event: "generate-og-image:upload_failed",
+        businessId,
+        bucket,
+        key,
+        errorName: e?.name ?? null,
+        errorMessage: e?.message ?? String(uploadErr),
+        errorCode: e?.Code ?? e?.code ?? null,
+        httpStatusCode: e?.$metadata?.httpStatusCode ?? null,
+        requestId: e?.$metadata?.requestId ?? null,
+        attempts: e?.$metadata?.attempts ?? null,
+      }));
+      throw uploadErr;
+    }
 
     const ogImageUrl = `${publicBaseUrl}/${key}`;
 
