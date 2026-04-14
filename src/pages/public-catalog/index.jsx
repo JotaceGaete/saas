@@ -37,6 +37,7 @@ import { getProductCardTrustBadge } from '../../utils/productCardBadge';
 import { getDiscountPercent } from '../../utils/offerHelpers';
 import { resolveCatalogTheme, hexToRgb, hexToRgba, darkenHex } from '../../utils/catalogTheme';
 import { openWhatsAppUrl } from '../../utils/openWhatsAppUrl';
+import CatalogStoreHeader from './CatalogStoreHeader';
 
 function isWhatsAppWebView() {
   if (typeof navigator === 'undefined') return false;
@@ -65,173 +66,7 @@ export function getProductImages(product) {
 }
 
 
-/** Sección "Síguenos" — solo se renderiza si el negocio tiene al menos una red configurada. */
-function SocialLinks({ business, primaryColor, theme }) {
-  const links = [
-    {
-      key: 'instagram',
-      url: business?.instagramUrl,
-      label: 'Instagram',
-      icon: (
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/>
-          <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/>
-          <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/>
-        </svg>
-      ),
-    },
-    {
-      key: 'tiktok',
-      url: business?.tiktokUrl,
-      label: 'TikTok',
-      icon: (
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-          <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1V9.01a6.27 6.27 0 0 0-.79-.05 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.33-6.34V8.69a8.18 8.18 0 0 0 4.78 1.52V6.76a4.85 4.85 0 0 1-1.01-.07z"/>
-        </svg>
-      ),
-    },
-    {
-      key: 'facebook',
-      url: business?.facebookUrl,
-      label: 'Facebook',
-      icon: (
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-          <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/>
-        </svg>
-      ),
-    },
-  ].filter((l) => l.url);
-
-  if (links.length === 0) return null;
-
-  const sectionBg  = theme?.sectionBg  ?? 'rgba(0,0,0,0.018)';
-  const borderColor = theme?.borderColor ?? '#e5e7eb';
-  const chipBg     = theme?.chipBg      ?? 'rgba(0,0,0,0.07)';
-  const chipText   = theme?.chipText    ?? primaryColor;
-  const textColor  = theme?.textColor   ?? '#111111';
-  const mutedColor = theme?.isDark ? 'rgba(255,255,255,0.45)' : '#9CA3AF';
-
-  return (
-    <div className="max-w-5xl mx-auto px-4 mt-3">
-      <div className="rounded-xl shadow-sm px-4 sm:px-5 py-4" style={{ background: sectionBg, border: `1px solid ${borderColor}` }}>
-        <p className="text-[11px] font-bold uppercase tracking-widest mb-3" style={{ color: mutedColor }}>Síguenos</p>
-        <div className="flex flex-wrap gap-2">
-          {links.map((l) => (
-            <a
-              key={l.key}
-              href={l.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2.5 px-4 py-2 rounded-full text-sm font-semibold transition-all duration-150 active:scale-[0.97]"
-              style={{ background: chipBg, border: `1px solid ${borderColor}`, color: chipText }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = primaryColor;
-                e.currentTarget.style.borderColor = primaryColor;
-                e.currentTarget.style.color = '#fff';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = chipBg;
-                e.currentTarget.style.borderColor = borderColor;
-                e.currentTarget.style.color = chipText;
-              }}
-            >
-              <span className="flex-shrink-0 opacity-80">{l.icon}</span>
-              {l.label}
-            </a>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/** Bloque de info tienda: fondo gris suave + icono a la izquierda (escritorio y acordeón móvil). */
-function CatalogInfoBlock({ icon, title, children, sectionBg, borderColor, textColor, isDark }) {
-  const bg      = sectionBg  ?? 'rgba(0,0,0,0.018)';
-  const border  = borderColor ?? '#e5e7eb';
-  const iconBg  = isDark ? 'rgba(255,255,255,0.08)' : '#ffffff';
-  const iconColor = isDark ? 'rgba(255,255,255,0.5)' : '#6B7280';
-  const labelColor = isDark ? 'rgba(255,255,255,0.45)' : '#6B7280';
-  const valueColor = textColor ?? '#1F2937';
-
-  return (
-    <div className="flex gap-3 rounded-xl p-3 sm:p-3.5" style={{ background: bg, border: `1px solid ${border}` }}>
-      <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl shadow-sm" style={{ background: iconBg, border: `1px solid ${border}` }}>
-        <Icon name={icon} size={18} color={iconColor} />
-      </div>
-      <div className="min-w-0 flex-1">
-        <span className="font-semibold block mb-1 text-[11px] uppercase tracking-wide" style={{ color: labelColor }}>{title}</span>
-        <div className="text-sm font-normal leading-relaxed" style={{ color: valueColor }}>{children}</div>
-      </div>
-    </div>
-  );
-}
-
-/** Horarios, dirección, envíos y retiro — mismo contenido en escritorio y en el acordeón móvil. */
-function CatalogInfoGrid({ design, primaryColor, fullAddress, mapsSearchUrl, showAddressInCatalog, theme }) {
-  const blockProps = {
-    sectionBg:   theme?.sectionBg,
-    borderColor: theme?.borderColor,
-    textColor:   theme?.textColor,
-    isDark:      theme?.isDark,
-  };
-  return (
-    <>
-      {(design?.businessHours ?? '').trim() !== '' && (
-        <CatalogInfoBlock icon="Clock" title="Horario" {...blockProps}>
-          <span className="whitespace-pre-line">{design.businessHours.trim()}</span>
-        </CatalogInfoBlock>
-      )}
-      {showAddressInCatalog && (
-        <CatalogInfoBlock icon="MapPin" title="Dirección" {...blockProps}>
-          {mapsSearchUrl ? (
-            <>
-              <a
-                href={mapsSearchUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:underline focus:outline-none focus:underline"
-                style={{ color: primaryColor }}
-              >
-                {fullAddress}
-              </a>
-              <span className="block mt-1.5">
-                <a
-                  href={mapsSearchUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs font-medium hover:underline"
-                  style={{ color: primaryColor }}
-                >
-                  Ver en mapa
-                </a>
-              </span>
-            </>
-          ) : (
-            <span>{fullAddress}</span>
-          )}
-        </CatalogInfoBlock>
-      )}
-      {(design?.shippingMethods ?? '').trim() !== '' && (
-        <CatalogInfoBlock icon="Truck" title="Envíos" {...blockProps}>
-          {design.shippingMethods.trim()}
-        </CatalogInfoBlock>
-      )}
-      {(design?.shippingCost ?? '').trim() !== '' && (
-        <CatalogInfoBlock icon="Package" title="Costo de envío" {...blockProps}>
-          {design.shippingCost.trim()}
-        </CatalogInfoBlock>
-      )}
-      {design?.retiroEnTienda === true && (
-        <div className="sm:col-span-2">
-          <CatalogInfoBlock icon="Store" title="Retiro en tienda" {...blockProps}>
-            Disponible
-          </CatalogInfoBlock>
-        </div>
-      )}
-    </>
-  );
-}
+// SocialLinks, CatalogInfoBlock, CatalogInfoGrid → moved to CatalogStoreHeader.jsx
 
 export default function PublicCatalog() {
   const { slug } = useParams();
@@ -260,16 +95,11 @@ function CatalogInner({ slug }) {
   const [priceRange, setPriceRange] = useState([0, 0]);
   const [maxPrice, setMaxPrice] = useState(0);
   const [filtersOpen, setFiltersOpen] = useState(false);
-  /** Móvil (pantallas menores a md / 768px): datos del negocio en acordeón, cerrado por defecto. */
-  const [mobileStoreInfoOpen, setMobileStoreInfoOpen] = useState(false);
-  /** Desktop: sección de datos del negocio colapsada por defecto para dar protagonismo al catálogo. */
-  const [desktopInfoOpen, setDesktopInfoOpen] = useState(false);
   /** Desktop: si el carril de categorías puede seguir scrolleando a izquierda/derecha (para flechas). */
   const [categoryScrollMore, setCategoryScrollMore] = useState({ left: false, right: false });
 
   const { itemCount } = useCart();
   const isDesktop = useIsDesktop();
-  const cfCoverProfile = useResponsiveCfImageProfile();
   const isOwner = !!(user && business && authBusiness && business.id === authBusiness.id);
   if (typeof window !== 'undefined' && window.__AUTH_DEBUG__ && business) {
     console.log('[PublicCatalog] viewMode:', isOwner ? 'owner' : 'public', { hasUser: !!user, catalogBizId: business?.id, authBizId: authBusiness?.id });
@@ -278,10 +108,6 @@ function CatalogInner({ slug }) {
   useEffect(() => {
     if (!slug) return;
     loadCatalog();
-  }, [slug]);
-
-  useEffect(() => {
-    setMobileStoreInfoOpen(false);
   }, [slug]);
 
   const loadCatalog = async () => {
@@ -627,47 +453,10 @@ function CatalogInner({ slug }) {
     );
   }
 
-  const whatsappPhone = business?.whatsapp?.replace(/\D/g, '');
-  const storeWhatsAppUrl = whatsappPhone ? `https://wa.me/${whatsappPhone}?text=${encodeURIComponent(`Hola! Vi tu catálogo en línea.`)}` : null;
-
-  /**
-   * Header template resolution (desktop only; mobile always uses cover+card).
-   * Priority: explicit design setting → auto-detect from available content.
-   *
-   * 'cover'   – tall banner image + overlapping card (current default).
-   * 'split'   – colored left panel (identity) + image/pattern right panel.
-   * 'compact' – slim horizontal bar; minimal height; maximizes catalog space.
-   */
-  const headerTemplate = (() => {
-    const t = design?.headerTemplate;
-    if (t === 'cover' || t === 'split' || t === 'compact') return t;
-    if (business?.coverImageUrl) return 'cover';
-    if (business?.description?.trim()) return 'split';
-    return 'compact';
-  })();
-
-  const coverPositionY = design?.coverPositionY ?? 50;
-  const coverObjectPosition = `50% ${coverPositionY}%`;
-
   const catalogTheme = resolveCatalogTheme(design);
   const { primaryColor, primaryColorDark, primaryRgba, bgColor, textColor } = catalogTheme;
   const theme = { primaryColor, primaryColorDark, primaryRgba };
   const cardSettings = { showPrice: true, showDescription: true, showStock: false, showWhatsApp: true, ...design?.cardSettings };
-  const storeHeader = { showStoreName: true, showDescription: true, showWhatsAppButton: true, ...design?.storeHeader };
-  const fullAddress = [business?.address, business?.city, business?.region, business?.country].filter(Boolean).join(', ');
-  const mapsSearchUrl = fullAddress ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(fullAddress)}` : '';
-  const showAddressInCatalog = design?.showAddress === true && fullAddress;
-  const hasCatalogInfo =
-    (design?.businessHours ?? '').trim() !== '' ||
-    showAddressInCatalog ||
-    (design?.shippingMethods ?? '').trim() !== '' ||
-    (design?.shippingCost ?? '').trim() !== '' ||
-    design?.retiroEnTienda === true;
-  const hasBusinessDescription =
-    storeHeader?.showDescription !== false && !!business?.description?.trim();
-  /** En móvil, si hay algo que mostrar bajo “Ver datos del negocio”. */
-  const hasMobileStoreInfoAccordion =
-    hasBusinessDescription || hasCatalogInfo || !!business?.city;
   const catalogViewMode = design?.catalogViewMode === 'compact' ? 'compact' : 'featured';
   const useCompactCard = catalogViewMode === 'compact' && !isDesktop;
   // Grid con min-width para que las tarjetas no queden demasiado angostas ni demasiado anchas
@@ -765,56 +554,17 @@ function CatalogInner({ slug }) {
         </Helmet>
       )}
 
-      {/* Cabecera móvil: Volver al dashboard SOLO para el dueño; en vista pública compartida no se muestra */}
-      {!loading && !notFound && business && (
-        <header
-          className="fixed left-0 right-0 z-50 bg-white border-b border-gray-200 shadow-sm md:hidden"
-          role="banner"
-          style={{
-            top: 0,
-            paddingTop: 'var(--safe-area-top)',
-            minHeight: 'calc(56px + var(--safe-area-top))',
-          }}
-        >
-          <div className="flex items-center h-14 px-4 gap-3">
-            {isOwner ? (
-              <button
-                type="button"
-                onClick={() => navigate('/dashboard')}
-                className="flex-shrink-0 flex items-center justify-center w-10 h-10 -ml-1 rounded-lg text-gray-600 hover:bg-gray-100 active:bg-gray-200 transition-colors"
-                aria-label="Volver al dashboard"
-              >
-                <Icon name="ArrowLeft" size={22} color="currentColor" />
-              </button>
-            ) : (
-              <div className="w-10 h-10 flex-shrink-0" aria-hidden />
-            )}
-            <div className="flex-1 min-w-0 flex items-center gap-2.5">
-              {business?.logoUrl ? (
-                <img
-                  src={cfImageUrl(business.logoUrl, 'thumbnail')}
-                  alt=""
-                  className="w-8 h-8 rounded-full object-cover flex-shrink-0"
-                  onError={buildCfImageErrorHandler(business.logoUrl)}
-                />
-              ) : (
-                <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: `linear-gradient(135deg, ${primaryColor}, ${primaryColorDark})` }}>
-                  <Icon name="Store" size={16} color="#FFFFFF" />
-                </div>
-              )}
-              <span className="font-bold text-gray-900 truncate text-base tracking-tight">
-                {business?.name}
-              </span>
-            </div>
-          </div>
-        </header>
-      )}
+      {/* ── Cabecera del negocio (reutilizada en /ofertas) ── */}
+      <CatalogStoreHeader
+        business={business}
+        theme={catalogTheme}
+        slug={slug}
+        isDesktop={isDesktop}
+        onBack={isOwner ? () => navigate('/dashboard') : null}
+      />
 
-      {/* ── Header: banner + tarjeta de identidad ── */}
-      <div className="pt-[calc(3.5rem+var(--safe-area-top))] md:pt-0">
-
-        {/* ── Desktop: compact ─────────────────────────────────────── */}
-        {headerTemplate === 'compact' && (
+        {/* OLD HEADER CONTENT REMOVED — now handled by CatalogStoreHeader */}
+        {false && (
           <div className="hidden md:block" style={{ borderBottom: `1px solid ${catalogTheme.borderColor}` }}>
             <div className="max-w-5xl mx-auto px-6 py-3.5 flex items-center gap-4">
               {/* Accent stripe */}

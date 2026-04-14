@@ -11,6 +11,7 @@ import { getPublicCatalogUrl, getPublicOffersUrl } from '../../config/appUrl';
 import { openWhatsAppUrl } from '../../utils/openWhatsAppUrl';
 import CatalogLayout from '../public-catalog/CatalogLayout';
 import { ProductCard, ProductModal } from '../public-catalog';
+import CatalogStoreHeader from '../public-catalog/CatalogStoreHeader';
 import BrandingFooter from '../../components/BrandingFooter';
 import Icon from '../../components/AppIcon';
 import { useIsDesktop } from '../../hooks/useMediaQuery';
@@ -199,100 +200,6 @@ function CartBar({ business, formatPrice, offersUrl }) {
   );
 }
 
-function OffersHero({ business, slug, hasOffers, catalogUrl, theme, coverObjectPosition }) {
-  return (
-    <section className="pb-6">
-      <div
-        className="relative w-full overflow-hidden aspect-[16/7] md:aspect-[21/5]"
-        style={{
-          background: !business?.coverImageUrl
-            ? `linear-gradient(135deg, ${theme?.primaryColor || '#25D366'} 0%, ${theme?.primaryColorDark || '#128C7E'} 50%, ${theme?.primaryColorDark || '#128C7E'} 100%)`
-            : undefined,
-        }}
-      >
-        {business?.coverImageUrl && (
-          <>
-            <img
-              src={cfImageUrl(business.coverImageUrl, 'hero')}
-              aria-hidden="true"
-              className="absolute inset-0 h-full w-full"
-              style={{
-                objectFit: 'cover',
-                objectPosition: coverObjectPosition,
-                filter: 'blur(14px)',
-                transform: 'scale(1.15)',
-                opacity: 0.72,
-              }}
-              onError={buildCfImageErrorHandler(business.coverImageUrl)}
-            />
-            <img
-              src={cfImageUrl(business.coverImageUrl, 'hero')}
-              alt=""
-              role="presentation"
-              className="absolute inset-0 h-full w-full"
-              style={{ objectFit: 'cover', objectPosition: coverObjectPosition }}
-              onError={buildCfImageErrorHandler(business.coverImageUrl)}
-            />
-          </>
-        )}
-      </div>
-
-      <div className="relative z-10 mx-auto -mt-6 max-w-5xl px-4 sm:-mt-8 md:-mt-14">
-        <div className="overflow-hidden rounded-[28px] border border-gray-100 bg-white shadow-lg">
-          <div className="flex flex-col gap-5 p-5 sm:p-6 md:flex-row md:items-center md:justify-between md:p-7">
-            <div className="min-w-0 flex-1">
-              <div className="mb-3 flex items-center gap-3">
-                {business?.logoUrl ? (
-                  <img
-                    src={cfImageUrl(business.logoUrl, 'thumbnail')}
-                    alt={business?.name}
-                    className="h-14 w-14 flex-shrink-0 rounded-full border-2 border-gray-100 object-cover"
-                    onError={buildCfImageErrorHandler(business.logoUrl)}
-                  />
-                ) : (
-                  <div
-                    className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-full border-2 border-gray-100"
-                    style={{ background: `linear-gradient(135deg, ${theme?.primaryColor || '#25D366'}, ${theme?.primaryColorDark || '#128C7E'})` }}
-                  >
-                    <Icon name="BadgePercent" size={24} color="#FFFFFF" />
-                  </div>
-                )}
-                <div className="min-w-0">
-                  <p className="text-[11px] font-black uppercase tracking-[0.24em]" style={{ color: theme?.primaryColorDark || '#128C7E' }}>
-                    Ofertas
-                  </p>
-                  <h1 className="text-2xl font-bold tracking-tight text-gray-900 sm:text-3xl">
-                    {business?.name || slug}
-                  </h1>
-                </div>
-              </div>
-
-              <p className="text-base font-semibold text-gray-900 sm:text-lg">
-                {hasOffers ? 'Descuentos activos para aprovechar hoy' : 'Hoy no hay ofertas activas, pero hay productos esperando por ti.'}
-              </p>
-              <p className="mt-2 max-w-2xl text-sm leading-relaxed text-gray-600 sm:text-base">
-                {hasOffers
-                  ? 'Revisa las promociones disponibles y arma tu pedido en pocos pasos.'
-                  : 'Mientras vuelven las promociones, puedes explorar el catalogo completo y descubrir productos disponibles ahora mismo.'}
-              </p>
-            </div>
-
-            {catalogUrl && (
-              <a
-                href={catalogUrl}
-                className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-2xl px-5 py-3 text-sm font-bold text-white transition-all hover:brightness-105 active:scale-[0.98]"
-                style={{ background: `linear-gradient(135deg, ${theme?.primaryColor || '#25D366'}, ${theme?.primaryColorDark || '#128C7E'})` }}
-              >
-                <Icon name="ShoppingBag" size={16} color="#fff" />
-                {hasOffers ? 'Ver todos los productos' : 'Explorar catalogo'}
-              </a>
-            )}
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
 
 function PublicOffersContent() {
   const { slug } = useParams();
@@ -365,8 +272,6 @@ function PublicOffersContent() {
   const hasOffers = products.length > 0;
   const hasFallbackProducts = fallbackProducts.length > 0;
   const pageTitle = business ? `Ofertas de ${business.name}` : 'Ofertas';
-  const coverPositionY = business?.design?.coverPositionY ?? 50;
-  const coverObjectPosition = `50% ${coverPositionY}%`;
   const openCatalog = () => {
     if (catalogUrl && typeof window !== 'undefined') window.location.href = catalogUrl;
   };
@@ -392,15 +297,28 @@ function PublicOffersContent() {
         <meta name="robots" content="noindex,nofollow" />
       </Helmet>
 
-      {(status === 'loading' || status === 'ok') && (
-        <OffersHero
-          business={business}
-          slug={slug}
-          hasOffers={hasOffers}
-          catalogUrl={catalogUrl}
-          theme={theme}
-          coverObjectPosition={coverObjectPosition}
-        />
+      <CatalogStoreHeader
+        business={business}
+        theme={theme}
+        slug={slug}
+        isDesktop={isDesktop}
+        badgeLabel="Ofertas"
+        onBack={null}
+      />
+
+      {status === 'ok' && (
+        <div className="mx-auto max-w-7xl px-4 pb-2 pt-5">
+          <div className="flex flex-col gap-0.5">
+            <h1 className="text-2xl font-bold tracking-tight text-gray-900 sm:text-3xl">
+              Ofertas activas
+            </h1>
+            <p className="text-sm text-gray-500">
+              {hasOffers
+                ? `${products.length} ${products.length === 1 ? 'producto en oferta' : 'productos en oferta'} · Descuentos para aprovechar hoy`
+                : 'Hoy no hay ofertas activas, pero puedes explorar el catálogo completo.'}
+            </p>
+          </div>
+        </div>
       )}
 
       <main className="pb-28">
@@ -467,9 +385,6 @@ function PublicOffersContent() {
 
           {status === 'ok' && hasOffers && (
             <>
-              <p className="mb-4 text-xs text-gray-500">
-                {products.length} {products.length === 1 ? 'producto en oferta' : 'productos en oferta'}
-              </p>
               <div
                 className="grid items-stretch gap-3 md:gap-4"
                 style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}
