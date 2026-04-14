@@ -68,9 +68,13 @@ Deno.serve(async (req) => {
   // (const inside try {} is block-scoped and not accessible in catch {}.)
   let _logBusinessId = "unknown";
 
+  // Earliest possible log — confirms the handler body is executing.
+  console.log(JSON.stringify({ event: "generate-og-image:invoked", method: req.method }));
+
   try {
     const authHeader = (req.headers.get("authorization") ?? "").trim();
     if (!authHeader || !authHeader.toLowerCase().startsWith("bearer ")) {
+      console.warn(JSON.stringify({ event: "generate-og-image:error", error: "missing_auth_header" }));
       return jsonResponse({ error: "User not authenticated" }, 401, corsHeaders);
     }
 
@@ -78,22 +82,28 @@ Deno.serve(async (req) => {
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
     if (!supabaseUrl || !anonKey || !serviceRoleKey) {
+      console.error(JSON.stringify({ event: "generate-og-image:error", error: "missing_env_vars", supabaseUrl: !!supabaseUrl, anonKey: !!anonKey, serviceRoleKey: !!serviceRoleKey }));
       return jsonResponse({ error: "Server configuration error" }, 500, corsHeaders);
     }
 
     const userClient = createClient(supabaseUrl, anonKey, {
       global: { headers: { Authorization: authHeader } },
     });
-    const { data: userData } = await userClient.auth.getUser();
+    const { data: userData, error: userErr } = await userClient.auth.getUser();
     const user = userData?.user ?? null;
-    if (!user?.id) return jsonResponse({ error: "User not authenticated" }, 401, corsHeaders);
+    if (!user?.id) {
+      console.warn(JSON.stringify({ event: "generate-og-image:error", error: "invalid_token", userErr: userErr?.message ?? null }));
+      return jsonResponse({ error: "User not authenticated" }, 401, corsHeaders);
+    }
 
     const body = await req.json().catch(() => ({} as Record<string, unknown>));
     const businessId = typeof body?.businessId === "string" ? body.businessId.trim() : "";
-    if (!businessId) return jsonResponse({ error: "businessId is required" }, 400, corsHeaders);
+    if (!businessId) {
+      console.warn(JSON.stringify({ event: "generate-og-image:error", error: "missing_business_id", userId: user.id }));
+      return jsonResponse({ error: "businessId is required" }, 400, corsHeaders);
+    }
     _logBusinessId = businessId;
 
-    // ── 1. start ─────────────────────────────────────────────────────────────
     console.log(JSON.stringify({
       event: "generate-og-image:start",
       businessId,
@@ -121,27 +131,24 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "Business not found or access denied" }, 403, corsHeaders);
     }
 
-    // ── 2. business loaded ────────────────────────────────────────────────────
+    const r = biz as Record<string, unknown>;
+    const ds = parseDesignSettingsSafe(r.design_settings);
+    const shareImageUrl = typeof ds?.shareImageUrl === "string" ? ds.shareImageUrl.trim() : "";
+    const currentOgUrl = typeof r.og_image_url === "string" ? r.og_image_url.trim() : "";
+
     console.log(JSON.stringify({
       event: "generate-og-image:business_loaded",
       businessId,
-      slug: (biz as Record<string, unknown>).slug,
-      hasOgImageUrl: !!(biz as Record<string, unknown>).og_image_url,
-      hasCoverCol: !!(biz as Record<string, unknown>).cover_image_url,
-      hasDesignSettings: !!(biz as Record<string, unknown>).design_settings,
+      hasShareImageUrl: !!shareImageUrl,
+      shareImageUrl: shareImageUrl || null,
+      currentOgUrl: currentOgUrl || null,
+      hasDesignSettings: !!r.design_settings,
     }));
 
-    const r = biz as Record<string, unknown>;
-    const ds = parseDesignSettingsSafe(r.design_settings);
-
     // ── Guard 1: no shareImageUrl ────────────────────────────────────────────
-    // Only the explicitly-uploaded WhatsApp image is a valid OG source.
-    // Cover, logo and header images must not be used for og:image.
-    const shareImageUrl = typeof ds?.shareImageUrl === "string" ? ds.shareImageUrl.trim() : "";
     if (!shareImageUrl) {
       console.log(JSON.stringify({
-        event: "generate-og-image:skip",
-        skip_reason: "no_share_image",
+        event: "generate-og-image:skip_no_share_image",
         businessId,
       }));
       return jsonResponse({ skipped: true, reason: "no_share_image" }, 200, corsHeaders);
@@ -149,11 +156,9 @@ Deno.serve(async (req) => {
 
     // ── Guard 2: og_image_url already matches shareImageUrl, no force ────────
     const forceRegen = body?.force === true;
-    const currentOgUrl = typeof r.og_image_url === "string" ? r.og_image_url.trim() : "";
     if (!forceRegen && currentOgUrl === shareImageUrl) {
       console.log(JSON.stringify({
-        event: "generate-og-image:skip",
-        skip_reason: "og_image_url_current",
+        event: "generate-og-image:skip_same_value",
         businessId,
         ogImageUrl: currentOgUrl,
       }));
@@ -161,9 +166,8 @@ Deno.serve(async (req) => {
     }
 
     // ── Persist — commit shareImageUrl as og_image_url ───────────────────────
-    // shareImageUrl is already a user-supplied 1200×630 image; no render needed.
     console.log(JSON.stringify({
-      event: "generate-og-image:db_update_start",
+      event: "generate-og-image:updating",
       businessId,
       ogImageUrl: shareImageUrl,
       force: forceRegen,
@@ -187,7 +191,7 @@ Deno.serve(async (req) => {
     }
 
     console.log(JSON.stringify({
-      event: "generate-og-image:generated",
+      event: "generate-og-image:updated",
       businessId,
       ogImageUrl: shareImageUrl,
       force: forceRegen,
