@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
 import { getBusinessBySlug, getPublicOfferProducts, getPublicProducts } from '../../services/waBusinessService';
@@ -209,6 +209,7 @@ function PublicOffersContent() {
   const [fallbackProducts, setFallbackProducts] = useState([]);
   const [status, setStatus] = useState('loading');
   const [selectedProduct, setSelectedProduct] = useState(null);
+  const [selectedCategory, setSelectedCategory] = useState('all');
 
   useEffect(() => {
     if (!slug) return;
@@ -266,11 +267,40 @@ function PublicOffersContent() {
       ? formatPriceUtil(amount, currency, locale.countryCode)
       : `$${Number(amount || 0).toFixed(2)}`;
 
-  const theme = resolveCatalogTheme(business?.design || null);
+  const theme = resolveCatalogTheme(business?.designSettings || null);
   const catalogUrl = business?.slug ? getPublicCatalogUrl(business.slug) : null;
   const offersUrl = business?.slug ? getPublicOffersUrl(business.slug) : null;
   const hasOffers = products.length > 0;
   const hasFallbackProducts = fallbackProducts.length > 0;
+
+  // Categorías derivadas exclusivamente de los productos en oferta
+  const offerCategories = useMemo(() => {
+    if (!products.length) return [];
+    const seen = new Set();
+    const cats = [];
+    for (const p of products) {
+      const cat = (p?.category || '').trim();
+      if (cat && !seen.has(cat)) { seen.add(cat); cats.push(cat); }
+    }
+    const hasOtros = products.some((p) => !(p?.category || '').trim());
+    if (hasOtros) cats.push('Otros');
+    // Solo mostrar barra si hay 2+ categorías distintas
+    return cats.length >= 2 ? cats : [];
+  }, [products]);
+
+  const hasCategoryBar = offerCategories.length >= 2;
+
+  // Resetear selección cuando cambien los productos
+  useEffect(() => { setSelectedCategory('all'); }, [products]);
+
+  const filteredOfferProducts = useMemo(() => {
+    if (!hasCategoryBar || selectedCategory === 'all') return products;
+    return products.filter((p) =>
+      selectedCategory === 'Otros'
+        ? !(p?.category || '').trim()
+        : (p?.category || '').trim() === selectedCategory
+    );
+  }, [products, selectedCategory, hasCategoryBar]);
   const pageTitle = business ? `Ofertas de ${business.name}` : 'Ofertas';
   const openCatalog = () => {
     if (catalogUrl && typeof window !== 'undefined') window.location.href = catalogUrl;
@@ -309,10 +339,10 @@ function PublicOffersContent() {
       {status === 'ok' && (
         <div className="mx-auto max-w-7xl px-4 pb-2 pt-5">
           <div className="flex flex-col gap-0.5">
-            <h1 className="text-2xl font-bold tracking-tight text-gray-900 sm:text-3xl">
+            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl" style={{ color: theme?.textColor || '#111111' }}>
               Ofertas activas
             </h1>
-            <p className="text-sm text-gray-500">
+            <p className="text-sm" style={{ color: theme?.isDark ? 'rgba(255,255,255,0.5)' : '#6B7280' }}>
               {hasOffers
                 ? `${products.length} ${products.length === 1 ? 'producto en oferta' : 'productos en oferta'} · Descuentos para aprovechar hoy`
                 : 'Hoy no hay ofertas activas, pero puedes explorar el catálogo completo.'}
@@ -385,11 +415,52 @@ function PublicOffersContent() {
 
           {status === 'ok' && hasOffers && (
             <>
+              {hasCategoryBar && (
+                <div className="mb-4 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCategory('all')}
+                    className="rounded-full px-4 py-1.5 text-xs font-bold border transition-all active:scale-95"
+                    style={
+                      selectedCategory === 'all'
+                        ? { background: `linear-gradient(135deg, ${theme?.primaryColor || '#25D366'}, ${theme?.primaryColorDark || '#128C7E'})`, borderColor: 'transparent', color: '#ffffff' }
+                        : { background: theme?.sectionBg || 'rgba(0,0,0,0.04)', borderColor: theme?.borderColor || '#e5e7eb', color: theme?.chipText || theme?.primaryColor || '#25D366' }
+                    }
+                  >
+                    Todos ({products.length})
+                  </button>
+                  {offerCategories.map((cat) => {
+                    const count = products.filter((p) =>
+                      cat === 'Otros' ? !(p?.category || '').trim() : (p?.category || '').trim() === cat
+                    ).length;
+                    return (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => setSelectedCategory(cat)}
+                        className="rounded-full px-4 py-1.5 text-xs font-bold border transition-all active:scale-95"
+                        style={
+                          selectedCategory === cat
+                            ? { background: `linear-gradient(135deg, ${theme?.primaryColor || '#25D366'}, ${theme?.primaryColorDark || '#128C7E'})`, borderColor: 'transparent', color: '#ffffff' }
+                            : { background: theme?.sectionBg || 'rgba(0,0,0,0.04)', borderColor: theme?.borderColor || '#e5e7eb', color: theme?.chipText || theme?.primaryColor || '#25D366' }
+                        }
+                      >
+                        {cat} ({count})
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              {hasCategoryBar && selectedCategory !== 'all' && (
+                <p className="mb-3 text-xs" style={{ color: theme?.isDark ? 'rgba(255,255,255,0.4)' : '#9CA3AF' }}>
+                  {filteredOfferProducts.length} de {products.length} {products.length === 1 ? 'producto' : 'productos'}
+                </p>
+              )}
               <div
                 className="grid items-stretch gap-3 md:gap-4"
                 style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}
               >
-                {products.map((product) => (
+                {filteredOfferProducts.map((product) => (
                   <OfferCard
                     key={product.id}
                     product={product}
