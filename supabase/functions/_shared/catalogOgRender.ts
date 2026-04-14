@@ -206,30 +206,61 @@ export function buildCatalogOgSvg(params: CatalogOgSvgParams): string {
 </svg>`;
 }
 
-// Módulo-level init: se reutiliza entre invocaciones del mismo proceso (warm starts).
-// IMPORTANT: si la Promise rechaza se resetea a null para que el próximo warm call
-// pueda reintentar en vez de envenenar todos los llamados siguientes.
-let _resvgWasmInit: Promise<void> | null = null;
+// ── WASM renderer ────────────────────────────────────────────────────────────
+//
+// IMPORTANT: se importa desde esm.sh (URL ESM), NO desde "npm:@resvg/resvg-wasm".
+// El especificador npm: hace que Deno resuelva las dependencias opcionales del
+// paquete, lo que arrastra @resvg/resvg-js-linux-arm64-gnu (binding nativo) que
+// no existe en el sandbox de Supabase Edge Functions y causa:
+//   "Cannot find module '@resvg/resvg-js-linux-arm64-gnu'"
+// La URL de esm.sh entrega el bundle ESM puro sin ningún binding nativo.
+//
+// Estado a nivel de módulo: se reutiliza en warm starts; se resetea completo
+// si la inicialización falla para que el siguiente llamado pueda reintentar.
+//
+type ResvgConstructor = new (
+  svg: string,
+  opts?: Record<string, unknown>,
+) => { render(): { asPng(): Uint8Array } };
+
+let _wasmInitPromise: Promise<void> | null = null;
+let _ResvgClass: ResvgConstructor | null = null;
 
 export async function renderSvgToPng(svg: string): Promise<Uint8Array> {
-  // @resvg/resvg-wasm: WASM puro, sin binarios .node nativos → deployable en Deno Edge Functions.
-  // @resvg/resvg-js usa addons nativos compilados desde Rust → falla en bundle de Supabase
-  // con "No such file or directory (os error 2)" porque el .node no existe en el sandbox Deno.
-  // deno-lint-ignore no-explicit-any
-  const mod = await import("npm:@resvg/resvg-wasm@2.6.0") as any;
-  if (!_resvgWasmInit) {
-    _resvgWasmInit = mod.initWasm(
-      fetch("https://esm.sh/@resvg/resvg-wasm@2.6.0/index_bg.wasm"),
-    ) as Promise<void>;
+  if (!_wasmInitPromise) {
+    _wasmInitPromise = (async () => {
+      // Named imports desde esm.sh — bundle ESM puro, sin dependencias nativas.
+      const { initWasm, Resvg } = await import(
+        "https://esm.sh/@resvg/resvg-wasm@2.6.0"
+      ) as { initWasm: (src: Response) => Promise<void>; Resvg: ResvgConstructor };
+      const wasmResponse = await fetch(
+        "https://esm.sh/@resvg/resvg-wasm@2.6.0/index_bg.wasm",
+      );
+      if (!wasmResponse.ok) {
+        throw new Error(`WASM fetch failed: ${wasmResponse.status} ${wasmResponse.statusText}`);
+      }
+      await initWasm(wasmResponse);
+      _ResvgClass = Resvg;
+      console.log(JSON.stringify({ event: "resvg-wasm:initialized" }));
+    })();
   }
+
   try {
-    await _resvgWasmInit;
+    await _wasmInitPromise;
   } catch (e) {
-    // Reset para que el próximo llamado pueda reintentar la inicialización
-    // en vez de fallar permanentemente con la misma Promise rechazada.
-    _resvgWasmInit = null;
+    // Resetear ambas variables para que el próximo llamado pueda reintentar
+    // desde cero en vez de fallar permanentemente con la Promise rechazada.
+    _wasmInitPromise = null;
+    _ResvgClass = null;
+    console.error(JSON.stringify({
+      event: "resvg-wasm:init-failed",
+      message: e instanceof Error ? e.message : String(e),
+    }));
     throw e;
   }
-  if (!mod.Resvg) throw new Error("Resvg WASM not available");
-  return new mod.Resvg(svg, { fitTo: { mode: "width", value: OG_WIDTH } }).render().asPng();
+
+  if (!_ResvgClass) throw new Error("Resvg WASM class unavailable after init");
+  return new _ResvgClass(svg, { fitTo: { mode: "width", value: OG_WIDTH } })
+    .render()
+    .asPng();
 }
