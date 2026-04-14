@@ -658,9 +658,14 @@ export async function updateBusiness(businessId, updates) {
   if (data?.id) {
     // Force re-render only when cover or logo explicitly changed — these affect the OG image visually.
     // Minor saves (color, font, description) skip re-render if og_image_url already exists.
-    const coverOrLogoChanged = updates?.logoUrl !== undefined || updates?.coverImageUrl !== undefined;
-    console.log('[waBusinessService] updateBusiness: triggerOgImageGeneration', { businessId: data?.id, force: coverOrLogoChanged });
-    triggerOgImageGeneration(data?.id, { force: coverOrLogoChanged });
+    const visualOgChange =
+      updates?.logoUrl !== undefined ||
+      updates?.coverImageUrl !== undefined ||
+      updates?.name !== undefined ||
+      updates?.description !== undefined ||
+      updates?.designSettings !== undefined;
+    console.log('[waBusinessService] updateBusiness: triggerOgImageGeneration', { businessId: data?.id, force: visualOgChange });
+    triggerOgImageGeneration(data?.id, { force: visualOgChange });
   } else {
     console.warn('[waBusinessService] updateBusiness: no business id returned, skipping OG generation');
   }

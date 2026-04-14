@@ -98,7 +98,7 @@ Deno.serve(async (req) => {
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
     const { data: biz, error: bizErr } = await adminClient
       .from("wa_businesses")
-      .select("id, user_id, name, logo_url, cover_image_url, design_settings, og_image_url")
+      .select("id, user_id, name, description, slug, updated_at, logo_url, cover_image_url, design_settings, og_image_url")
       .eq("id", businessId)
       .maybeSingle();
 
@@ -112,15 +112,6 @@ Deno.serve(async (req) => {
     // ── Guard 1: shareImageUrl set ───────────────────────────────────────────
     // resolveCatalogOgImageUrl gives shareImageUrl absolute priority, so any
     // og_image_url we'd generate here would never be served. Skip unconditionally.
-    if ((ds?.shareImageUrl as string)?.trim()) {
-      console.log(JSON.stringify({
-        event: "generate-og-image:skip",
-        skip_reason: "shareImageUrl_set",
-        businessId,
-      }));
-      return jsonResponse({ skipped: true, reason: "shareImageUrl_set" }, 200, corsHeaders);
-    }
-
     // ── Guard 2: og_image_url already exists, no force ───────────────────────
     // Avoid WASM + R2 churn on every minor design save (color, font, etc.).
     // Callers pass force=true only when cover or logo explicitly changed.
@@ -198,7 +189,9 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "Storage not configured", missing: missingR2 }, 500, corsHeaders);
     }
 
-    const key = `businesses/${businessId}/og/og-${Date.now()}.png`;
+    const versionSeed = String(r.updated_at ?? Date.now()).replace(/[^0-9A-Za-z_-]/g, "");
+    const slugPart = String(r.slug ?? businessId).trim().replace(/[^0-9A-Za-z_-]/g, "-") || businessId;
+    const key = `businesses/${businessId}/og/${slugPart}-${versionSeed}.png`;
     let S3ClientCtor: unknown | null = null;
     let PutObjectCommandCtor: unknown | null = null;
     try {

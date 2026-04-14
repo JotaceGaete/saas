@@ -129,19 +129,6 @@ function toHttpsOgImage(abs) {
 export function resolveCatalogOgImageUrl(row, origin, options = {}) {
   const base = String(origin || '').replace(/\/$/, '');
   const slug = row?.slug != null ? String(row.slug).trim() : '';
-
-  if (slug) {
-    const bust =
-      options.cacheBust !== undefined
-        ? options.cacheBust
-        : row?.updated_at != null
-          ? row.updated_at
-          : row?.updatedAt != null
-            ? row.updatedAt
-            : null;
-    return getCatalogOpenGraphImageUrl(base, slug, bust);
-  }
-
   const ds = parseDesignSettingsFromDb(row?.design_settings);
 
   /** Convierte un candidato crudo a URL https absoluta o retorna ''. */
@@ -157,11 +144,23 @@ export function resolveCatalogOgImageUrl(row, origin, options = {}) {
     return !/\.(tiff?|heic|heif|bmp|raw|cr2|nef|arw)(\?|$)/i.test(url);
   }
 
+  const generatedOg = toAbs(row?.og_image_url);
+  if (generatedOg) return generatedOg;
+
   const shareImage = toAbs(ds?.shareImageUrl);
   if (shareImage) return shareImage;
 
-  const generatedOg = toAbs(row?.og_image_url);
-  if (generatedOg) return generatedOg;
+  if (slug) {
+    const bust =
+      options.cacheBust !== undefined
+        ? options.cacheBust
+        : row?.updated_at != null
+          ? row.updated_at
+          : row?.updatedAt != null
+            ? row.updatedAt
+            : null;
+    return getCatalogOpenGraphImageUrl(base, slug, bust);
+  }
 
   for (const c of [row?.cover_image_url, ds?.coverImageUrl, ds?.headerImageUrl]) {
     const a = toAbs(c);
@@ -213,13 +212,6 @@ export function getCatalogOgImageUrl(business, baseUrl, options = {}) {
     (typeof window !== 'undefined' ? window.location?.origin : '') ||
     ''
   ).replace(/\/$/, '');
-  const slugTrim = business?.slug != null ? String(business.slug).trim() : '';
-
-  if (origin && slugTrim && /^https?:\/\//i.test(origin)) {
-    const bust = options.cacheBust !== undefined ? options.cacheBust : business?.updatedAt ?? null;
-    return getCatalogOpenGraphImageUrl(origin, slugTrim, bust);
-  }
-
   const ds = business?.designSettings || {};
   const rowLike = {
     slug: business?.slug,

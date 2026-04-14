@@ -6,9 +6,9 @@ import { createClient } from '@supabase/supabase-js';
 import {
   buildLocalBusinessJsonLd,
   detectCatalogRegion,
-  getCatalogOpenGraphImageUrl,
   getCatalogShareDescription,
   getCatalogShareDocumentTitle,
+  resolveCatalogOgImageUrl,
   stringifyJsonLd,
 } from '../src/utils/catalogSeo.js';
 import {
@@ -140,7 +140,9 @@ async function handleCatalogHtml(request) {
   const pageTitle = getCatalogShareDocumentTitle(row.name);
   const metaDescription = getCatalogShareDescription(row);
   const ri = detectCatalogRegion(seoInput);
-  const ogImageHttps = getCatalogOpenGraphImageUrl(origin, slug, row.updated_at);
+  const ogImageHttps = resolveCatalogOgImageUrl(row, origin, {
+    cacheBust: row.updated_at ?? null,
+  });
   // URL pública oficial única para OG, Twitter y canonical.
   // `origin` se conserva para resolver imágenes relativas (og:image, portadas, etc.).
   const catalogUrl = getOfficialCatalogUrl(slug);
