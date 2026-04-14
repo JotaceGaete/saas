@@ -140,36 +140,19 @@ export function resolveCatalogOgImageUrl(row, origin, options = {}) {
     return /^https:\/\//i.test(a) ? a : '';
   }
 
-  function isShareSafe(url) {
-    return !/\.(tiff?|heic|heif|bmp|raw|cr2|nef|arw)(\?|$)/i.test(url);
-  }
+  // Only the explicitly-uploaded WhatsApp share image is valid for OG.
+  // Cover image, header image and logo must NOT be used as og:image — they are
+  // visual elements for the catalog UI only, not guaranteed to be crawlable or
+  // correctly sized for WhatsApp / Facebook previews.
 
   const generatedOg = toAbs(row?.og_image_url);
   if (generatedOg) return generatedOg;
 
+  // Direct fallback: the raw shareImageUrl before og_image_url has been committed.
   const shareImage = toAbs(ds?.shareImageUrl);
   if (shareImage) return shareImage;
 
-  if (slug) {
-    const bust =
-      options.cacheBust !== undefined
-        ? options.cacheBust
-        : row?.updated_at != null
-          ? row.updated_at
-          : row?.updatedAt != null
-            ? row.updatedAt
-            : null;
-    return getCatalogOpenGraphImageUrl(base, slug, bust);
-  }
-
-  for (const c of [row?.cover_image_url, ds?.coverImageUrl, ds?.headerImageUrl]) {
-    const a = toAbs(c);
-    if (a && isShareSafe(a)) return a;
-  }
-
-  const logo = toAbs(row?.logo_url) || toAbs(ds?.logoUrl);
-  if (logo) return logo;
-
+  // No WhatsApp image configured → static system fallback.
   return base ? `${base}/logo-ventalink.png` : 'https://go.ventalink.app/logo-ventalink.png';
 }
 
@@ -216,10 +199,7 @@ export function getCatalogOgImageUrl(business, baseUrl, options = {}) {
   const rowLike = {
     slug: business?.slug,
     design_settings: ds,
-    cover_image_url: business?.coverImageUrl,
-    logo_url: business?.logoUrl,
     og_image_url: business?.ogImageUrl,
-    updatedAt: business?.updatedAt,
   };
   const bust = options.cacheBust !== undefined ? options.cacheBust : business?.updatedAt ?? null;
   return resolveCatalogOgImageUrl(rowLike, origin, { cacheBust: bust });

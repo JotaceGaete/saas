@@ -1,15 +1,8 @@
-// generate-og-image — genera imagen Open Graph (1200x630) por negocio y sube a R2.
-// Mismo layout que api/og-catalog.js en Vercel (portada centrada + branding).
+// generate-og-image — commits design_settings.shareImageUrl as og_image_url in wa_businesses.
+// Only the explicit WhatsApp share image is a valid OG source; cover/logo are not used.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import {
-  buildCatalogOgSvg,
-  loadImageDataUri,
-  parseDesignSettingsSafe,
-  pickCoverUrl,
-  pickLogoUrl,
-  renderSvgToPng,
-} from "../_shared/catalogOgRender.ts";
+import { parseDesignSettingsSafe } from "../_shared/catalogOgRender.ts";
 
 const ALLOWED_ORIGINS = [
   "https://ventalink.app",
@@ -141,203 +134,44 @@ Deno.serve(async (req) => {
     const r = biz as Record<string, unknown>;
     const ds = parseDesignSettingsSafe(r.design_settings);
 
-    // ── Guard 1: shareImageUrl set ───────────────────────────────────────────
-    // resolveCatalogOgImageUrl gives shareImageUrl absolute priority, so any
-    // og_image_url we'd generate here would never be served. Skip unconditionally.
-    // ── Guard 2: og_image_url already exists, no force ───────────────────────
-    // Avoid WASM + R2 churn on every minor design save (color, font, etc.).
-    // Callers pass force=true only when cover or logo explicitly changed.
+    // ── Guard 1: no shareImageUrl ────────────────────────────────────────────
+    // Only the explicitly-uploaded WhatsApp image is a valid OG source.
+    // Cover, logo and header images must not be used for og:image.
+    const shareImageUrl = typeof ds?.shareImageUrl === "string" ? ds.shareImageUrl.trim() : "";
+    if (!shareImageUrl) {
+      console.log(JSON.stringify({
+        event: "generate-og-image:skip",
+        skip_reason: "no_share_image",
+        businessId,
+      }));
+      return jsonResponse({ skipped: true, reason: "no_share_image" }, 200, corsHeaders);
+    }
+
+    // ── Guard 2: og_image_url already matches shareImageUrl, no force ────────
     const forceRegen = body?.force === true;
-    if (!forceRegen && (r.og_image_url as string)?.trim()) {
+    const currentOgUrl = typeof r.og_image_url === "string" ? r.og_image_url.trim() : "";
+    if (!forceRegen && currentOgUrl === shareImageUrl) {
       console.log(JSON.stringify({
         event: "generate-og-image:skip",
-        skip_reason: "og_image_url_exists",
+        skip_reason: "og_image_url_current",
         businessId,
-        ogImageUrl: r.og_image_url,
+        ogImageUrl: currentOgUrl,
       }));
-      return jsonResponse({ skipped: true, reason: "og_image_url_exists", ogImageUrl: r.og_image_url }, 200, corsHeaders);
+      return jsonResponse({ skipped: true, reason: "og_image_url_current", ogImageUrl: currentOgUrl }, 200, corsHeaders);
     }
 
-    // ── Guard 3: no visual inputs ────────────────────────────────────────────
-    // If there is no cover and no logo, generating a text-only gradient is wasteful:
-    // /api/og-catalog already renders the same result on demand and is the preferred
-    // fallback in resolveCatalogOgImageUrl. Skip and let the dynamic endpoint serve.
-    const storeName = String(r.name || "Tu tienda");
-    const coverUrl = pickCoverUrl(r, ds);
-    const logoUrl = pickLogoUrl(r, ds);
-
-    // ── 3. visual inputs resolved ────────────────────────────────────────────
-    console.log(JSON.stringify({
-      event: "generate-og-image:visual_inputs_resolved",
-      businessId,
-      hasCoverUrl: !!coverUrl,
-      hasLogoUrl: !!logoUrl,
-      coverUrl: coverUrl ?? null,
-      logoUrl: logoUrl ?? null,
-    }));
-
-    if (!coverUrl && !logoUrl) {
-      console.log(JSON.stringify({
-        event: "generate-og-image:skip",
-        skip_reason: "no_visual_inputs",
-        businessId,
-        storeName,
-      }));
-      return jsonResponse({ skipped: true, reason: "no_visual_inputs" }, 200, corsHeaders);
-    }
-
-    // ── 4. render start ──────────────────────────────────────────────────────
-    console.log(JSON.stringify({
-      event: "generate-og-image:render_start",
-      businessId,
-    }));
-
-    // ── Render ───────────────────────────────────────────────────────────────
-    const [coverDataUri, logoDataUri] = await Promise.all([
-      loadImageDataUri(coverUrl),
-      loadImageDataUri(logoUrl),
-    ]);
-
-    const svg = buildCatalogOgSvg({
-      storeName,
-      logoDataUri,
-      coverDataUri,
-    });
-
-    // ── 4b. images loaded ────────────────────────────────────────────────────
-    console.log(JSON.stringify({
-      event: "generate-og-image:images_loaded",
-      businessId,
-      hasCoverDataUri: !!coverDataUri,
-      hasLogoDataUri: !!logoDataUri,
-    }));
-
-    let pngBytes: Uint8Array;
-    try {
-      pngBytes = await renderSvgToPng(svg);
-    } catch (err) {
-      console.error(JSON.stringify({
-        event: "generate-og-image:error",
-        error: "render_failed",
-        businessId,
-        message: err instanceof Error ? err.message : String(err),
-      }));
-      return jsonResponse(
-        { error: "Render failed", message: err instanceof Error ? err.message : String(err) },
-        500,
-        corsHeaders,
-      );
-    }
-
-    // ── 5. render success ────────────────────────────────────────────────────
-    console.log(JSON.stringify({
-      event: "generate-og-image:render_success",
-      businessId,
-      pngBytes: pngBytes.length,
-    }));
-
-    const accountId = Deno.env.get("R2_ACCOUNT_ID") ?? "";
-    const accessKeyId = Deno.env.get("R2_ACCESS_KEY_ID") ?? "";
-    const secretAccessKey = Deno.env.get("R2_SECRET_ACCESS_KEY") ?? "";
-    const bucket = Deno.env.get("R2_BUCKET_NAME") ?? "";
-    const publicBaseUrl = (Deno.env.get("R2_PUBLIC_URL") ?? "").replace(/\/$/, "");
-
-    const missingR2: string[] = [];
-    if (!accountId) missingR2.push("R2_ACCOUNT_ID");
-    if (!accessKeyId) missingR2.push("R2_ACCESS_KEY_ID");
-    if (!secretAccessKey) missingR2.push("R2_SECRET_ACCESS_KEY");
-    if (!bucket) missingR2.push("R2_BUCKET_NAME");
-    if (!publicBaseUrl) missingR2.push("R2_PUBLIC_URL");
-    if (missingR2.length) {
-      return jsonResponse({ error: "Storage not configured", missing: missingR2 }, 500, corsHeaders);
-    }
-
-    const versionSeed = String(r.updated_at ?? Date.now()).replace(/[^0-9A-Za-z_-]/g, "");
-    const slugPart = String(r.slug ?? businessId).trim().replace(/[^0-9A-Za-z_-]/g, "-") || businessId;
-    const key = `businesses/${businessId}/og/${slugPart}-${versionSeed}.png`;
-
-    // ── 6. upload start ──────────────────────────────────────────────────────
-    // aws4fetch: ESM-native SigV4 signing via fetch — no Node.js shims, works in
-    // Supabase Edge Functions. @aws-sdk/client-s3 (npm:) uses Node.js HTTP
-    // internals that crash the Edge runtime silently on s3.send().
-    const uploadUrl = `https://${accountId}.r2.cloudflarestorage.com/${bucket}/${key}`;
-    console.log(JSON.stringify({
-      event: "generate-og-image:upload_start",
-      businessId,
-      bucket,
-      key,
-      uploadUrl,
-    }));
-
-    try {
-      const { AwsClient } = await import("https://esm.sh/aws4fetch@1.0.19") as {
-        AwsClient: new (cfg: Record<string, string>) => { fetch(url: string, init?: RequestInit): Promise<Response> };
-      };
-      const r2 = new AwsClient({
-        accessKeyId,
-        secretAccessKey,
-        service: "s3",
-        region: "auto",
-      });
-      const res = await r2.fetch(uploadUrl, {
-        method: "PUT",
-        body: pngBytes,
-        headers: {
-          "Content-Type": "image/png",
-          "Cache-Control": "public, max-age=31536000, immutable",
-          "Content-Length": String(pngBytes.length),
-        },
-      });
-      if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        const uploadErr = new Error(`R2 PUT ${res.status} ${res.statusText}: ${text}`);
-        console.error(JSON.stringify({
-          event: "generate-og-image:upload_failed",
-          businessId,
-          bucket,
-          key,
-          httpStatus: res.status,
-          httpStatusText: res.statusText,
-          responseBody: text.slice(0, 500),
-        }));
-        throw uploadErr;
-      }
-    } catch (uploadErr) {
-      if (!(uploadErr instanceof Error) || !uploadErr.message.startsWith("R2 PUT")) {
-        // fetch-level failure (DNS, timeout, import error) — log and rethrow
-        const e = uploadErr as any;
-        console.error(JSON.stringify({
-          event: "generate-og-image:upload_failed",
-          businessId,
-          bucket,
-          key,
-          errorName: e?.name ?? null,
-          errorMessage: e?.message ?? String(uploadErr),
-        }));
-      }
-      throw uploadErr;
-    }
-
-    const ogImageUrl = `${publicBaseUrl}/${key}`;
-
-    // ── 7. upload success ────────────────────────────────────────────────────
-    console.log(JSON.stringify({
-      event: "generate-og-image:upload_success",
-      businessId,
-      ogImageUrl,
-    }));
-
-    // ── 8. db update start ───────────────────────────────────────────────────
+    // ── Persist — commit shareImageUrl as og_image_url ───────────────────────
+    // shareImageUrl is already a user-supplied 1200×630 image; no render needed.
     console.log(JSON.stringify({
       event: "generate-og-image:db_update_start",
       businessId,
-      ogImageUrl,
+      ogImageUrl: shareImageUrl,
+      force: forceRegen,
     }));
 
-    // ── Persist — only reached if render + upload both succeeded ─────────────
     const { error: updateErr } = await adminClient
       .from("wa_businesses")
-      .update({ og_image_url: ogImageUrl })
+      .update({ og_image_url: shareImageUrl })
       .eq("id", businessId)
       .eq("user_id", user.id);
 
@@ -346,7 +180,7 @@ Deno.serve(async (req) => {
         event: "generate-og-image:error",
         error: "db_update_failed",
         businessId,
-        ogImageUrl,
+        ogImageUrl: shareImageUrl,
         message: updateErr.message,
       }));
       return jsonResponse({ error: "Failed to update business og_image_url" }, 500, corsHeaders);
@@ -355,13 +189,11 @@ Deno.serve(async (req) => {
     console.log(JSON.stringify({
       event: "generate-og-image:generated",
       businessId,
-      ogImageUrl,
-      hasCover: !!coverDataUri,
-      hasLogo: !!logoDataUri,
+      ogImageUrl: shareImageUrl,
       force: forceRegen,
     }));
 
-    return jsonResponse({ ok: true, businessId, ogImageUrl }, 200, corsHeaders);
+    return jsonResponse({ ok: true, businessId, ogImageUrl: shareImageUrl }, 200, corsHeaders);
   } catch (err) {
     console.error(JSON.stringify({
       event: "generate-og-image:error",

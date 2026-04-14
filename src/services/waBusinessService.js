@@ -189,8 +189,8 @@ const generateSlug = async (name) => {
 /**
  * @param {string} businessId
  * @param {{ force?: boolean }} [opts]
- *   force=true  → regenerate even if og_image_url already exists (use when cover/logo changed)
- *   force=false → Edge Function will skip if og_image_url is already set (default, safe for minor saves)
+ *   force=true  → re-commit shareImageUrl → og_image_url even if og_image_url already exists
+ *   force=false → Edge Function will skip if og_image_url already matches shareImageUrl (default)
  */
 async function triggerOgImageGeneration(businessId, { force = false } = {}) {
   console.log('[waBusinessService] triggerOgImageGeneration called', { businessId, force });
@@ -656,14 +656,10 @@ export async function updateBusiness(businessId, updates) {
   }
   console.log('[waBusinessService] updateBusiness success: updated id =', data?.id);
   if (data?.id) {
-    // Force re-render only when cover or logo explicitly changed — these affect the OG image visually.
-    // Minor saves (color, font, description) skip re-render if og_image_url already exists.
-    const visualOgChange =
-      updates?.logoUrl !== undefined ||
-      updates?.coverImageUrl !== undefined ||
-      updates?.name !== undefined ||
-      updates?.description !== undefined ||
-      updates?.designSettings !== undefined;
+    // Trigger OG commit only when designSettings is saved (which is the only way
+    // shareImageUrl can change). Cover, logo, name, description do not affect OG.
+    // The Edge Function will skip if og_image_url already matches shareImageUrl.
+    const visualOgChange = updates?.designSettings !== undefined;
     console.log('[waBusinessService] updateBusiness: triggerOgImageGeneration', { businessId: data?.id, force: visualOgChange });
     triggerOgImageGeneration(data?.id, { force: visualOgChange });
   } else {
