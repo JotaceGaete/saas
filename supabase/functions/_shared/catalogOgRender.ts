@@ -207,6 +207,8 @@ export function buildCatalogOgSvg(params: CatalogOgSvgParams): string {
 }
 
 // Módulo-level init: se reutiliza entre invocaciones del mismo proceso (warm starts).
+// IMPORTANT: si la Promise rechaza se resetea a null para que el próximo warm call
+// pueda reintentar en vez de envenenar todos los llamados siguientes.
 let _resvgWasmInit: Promise<void> | null = null;
 
 export async function renderSvgToPng(svg: string): Promise<Uint8Array> {
@@ -220,7 +222,14 @@ export async function renderSvgToPng(svg: string): Promise<Uint8Array> {
       fetch("https://esm.sh/@resvg/resvg-wasm@2.6.0/index_bg.wasm"),
     ) as Promise<void>;
   }
-  await _resvgWasmInit;
+  try {
+    await _resvgWasmInit;
+  } catch (e) {
+    // Reset para que el próximo llamado pueda reintentar la inicialización
+    // en vez de fallar permanentemente con la misma Promise rechazada.
+    _resvgWasmInit = null;
+    throw e;
+  }
   if (!mod.Resvg) throw new Error("Resvg WASM not available");
   return new mod.Resvg(svg, { fitTo: { mode: "width", value: OG_WIDTH } }).render().asPng();
 }

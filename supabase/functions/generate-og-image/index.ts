@@ -71,6 +71,10 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: "Method not allowed" }, 405, corsHeaders);
   }
 
+  // Declared outside try so the catch block can reference it for error logging.
+  // (const inside try {} is block-scoped and not accessible in catch {}.)
+  let _logBusinessId = "unknown";
+
   try {
     const authHeader = (req.headers.get("authorization") ?? "").trim();
     if (!authHeader || !authHeader.toLowerCase().startsWith("bearer ")) {
@@ -94,6 +98,7 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({} as Record<string, unknown>));
     const businessId = typeof body?.businessId === "string" ? body.businessId.trim() : "";
     if (!businessId) return jsonResponse({ error: "businessId is required" }, 400, corsHeaders);
+    _logBusinessId = businessId;
 
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
     const { data: biz, error: bizErr } = await adminClient
@@ -254,8 +259,9 @@ Deno.serve(async (req) => {
     console.error(JSON.stringify({
       event: "generate-og-image:error",
       error: "unhandled",
-      businessId: typeof body?.businessId === "string" ? body.businessId : "unknown",
+      businessId: _logBusinessId,
       message: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack?.split("\n").slice(0, 5).join(" | ") : undefined,
     }));
     return jsonResponse(
       { error: "Internal server error", message: err instanceof Error ? err.message : String(err) },
