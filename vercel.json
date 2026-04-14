@@ -182,7 +182,7 @@
       "destination": "/api/seo?slug=:slug&publicPath=short"
     },
     {
-      "source": "/(.*)",
+      "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
   ]
