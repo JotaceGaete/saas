@@ -255,58 +255,66 @@ Deno.serve(async (req) => {
     const versionSeed = String(r.updated_at ?? Date.now()).replace(/[^0-9A-Za-z_-]/g, "");
     const slugPart = String(r.slug ?? businessId).trim().replace(/[^0-9A-Za-z_-]/g, "-") || businessId;
     const key = `businesses/${businessId}/og/${slugPart}-${versionSeed}.png`;
-    let S3ClientCtor: unknown | null = null;
-    let PutObjectCommandCtor: unknown | null = null;
-    try {
-      const mod = await import("npm:@aws-sdk/client-s3@3.700.0");
-      S3ClientCtor = (mod as any).S3Client ?? (mod as any).default ?? null;
-      PutObjectCommandCtor = (mod as any).PutObjectCommand ?? null;
-    } catch (err) {
-      console.error("[generate-og-image] AWS S3 import failed", err);
-      return jsonResponse({ error: "S3 import failed", message: err instanceof Error ? err.message : String(err) }, 500, corsHeaders);
-    }
-    if (!S3ClientCtor || typeof (S3ClientCtor as any) !== "function" || !PutObjectCommandCtor) {
-      return jsonResponse({ error: "S3 not available" }, 500, corsHeaders);
-    }
-
-    const s3 = new (S3ClientCtor as any)({
-      region: "auto",
-      endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
-      forcePathStyle: false, // R2 supports virtual-hosted-style; set true if 403/NoSuchBucket
-      credentials: { accessKeyId, secretAccessKey },
-    });
 
     // ── 6. upload start ──────────────────────────────────────────────────────
+    // aws4fetch: ESM-native SigV4 signing via fetch — no Node.js shims, works in
+    // Supabase Edge Functions. @aws-sdk/client-s3 (npm:) uses Node.js HTTP
+    // internals that crash the Edge runtime silently on s3.send().
+    const uploadUrl = `https://${accountId}.r2.cloudflarestorage.com/${bucket}/${key}`;
     console.log(JSON.stringify({
       event: "generate-og-image:upload_start",
       businessId,
       bucket,
       key,
-      endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+      uploadUrl,
     }));
 
     try {
-      await s3.send(new (PutObjectCommandCtor as any)({
-        Bucket: bucket,
-        Key: key,
-        Body: pngBytes,
-        ContentType: "image/png",
-        CacheControl: "public, max-age=31536000, immutable",
-      }));
+      const { AwsClient } = await import("https://esm.sh/aws4fetch@1.0.19") as {
+        AwsClient: new (cfg: Record<string, string>) => { fetch(url: string, init?: RequestInit): Promise<Response> };
+      };
+      const r2 = new AwsClient({
+        accessKeyId,
+        secretAccessKey,
+        service: "s3",
+        region: "auto",
+      });
+      const res = await r2.fetch(uploadUrl, {
+        method: "PUT",
+        body: pngBytes,
+        headers: {
+          "Content-Type": "image/png",
+          "Cache-Control": "public, max-age=31536000, immutable",
+          "Content-Length": String(pngBytes.length),
+        },
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        const uploadErr = new Error(`R2 PUT ${res.status} ${res.statusText}: ${text}`);
+        console.error(JSON.stringify({
+          event: "generate-og-image:upload_failed",
+          businessId,
+          bucket,
+          key,
+          httpStatus: res.status,
+          httpStatusText: res.statusText,
+          responseBody: text.slice(0, 500),
+        }));
+        throw uploadErr;
+      }
     } catch (uploadErr) {
-      const e = uploadErr as any;
-      console.error(JSON.stringify({
-        event: "generate-og-image:upload_failed",
-        businessId,
-        bucket,
-        key,
-        errorName: e?.name ?? null,
-        errorMessage: e?.message ?? String(uploadErr),
-        errorCode: e?.Code ?? e?.code ?? null,
-        httpStatusCode: e?.$metadata?.httpStatusCode ?? null,
-        requestId: e?.$metadata?.requestId ?? null,
-        attempts: e?.$metadata?.attempts ?? null,
-      }));
+      if (!(uploadErr instanceof Error) || !uploadErr.message.startsWith("R2 PUT")) {
+        // fetch-level failure (DNS, timeout, import error) — log and rethrow
+        const e = uploadErr as any;
+        console.error(JSON.stringify({
+          event: "generate-og-image:upload_failed",
+          businessId,
+          bucket,
+          key,
+          errorName: e?.name ?? null,
+          errorMessage: e?.message ?? String(uploadErr),
+        }));
+      }
       throw uploadErr;
     }
 
