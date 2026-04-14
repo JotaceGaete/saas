@@ -46,7 +46,7 @@ function isWhatsAppWebView() {
 
 // Normalizar imágenes del producto: la primera es siempre imageUrl (misma que la tarjeta);
 // el resto viene de product.images para galería. Así el modal usa la misma URL que la tarjeta.
-function getProductImages(product) {
+export function getProductImages(product) {
   const primary = product?.imageUrl || null;
   const extra = Array.isArray(product?.images) && product.images.length > 0 ? product.images : [];
   const seen = new Set();
@@ -2137,7 +2137,18 @@ function OrderPanel({ business, slug, formatPrice, onClose, theme }) {
 
 // ─── Product Card ─────────────────────────────────────────────────────────────
 // compact: vista compacta (2 cols móvil), tarjeta pequeña; una sola imagen + badge +N si hay más
-function ProductCard({ product, formatPrice, onOpen, theme, cardSettings, useCategories = false, compact = false }) {
+export function ProductCard({
+  product,
+  formatPrice,
+  onOpen,
+  theme,
+  cardSettings,
+  useCategories = false,
+  compact = false,
+  readOnly = false,
+  ctaLabel = 'Ver producto',
+  onCtaClick,
+}) {
   const primaryColor = theme?.primaryColor || '#25D366';
   const primaryColorDark = theme?.primaryColorDark || '#128C7E';
   const showPrice = cardSettings?.showPrice !== false;
@@ -2187,7 +2198,10 @@ function ProductCard({ product, formatPrice, onOpen, theme, cardSettings, useCat
       {/* Imagen: aspect-ratio + overflow aquí (no en la card entera) para no recortar el botón */}
       <button
         type="button"
-        onClick={() => onOpen(product)}
+        onClick={() => {
+          if (readOnly) onCtaClick?.(product);
+          else onOpen?.(product);
+        }}
         className={`relative block w-full shrink-0 overflow-hidden bg-gray-50 text-left ${roundTop}`}
       >
         <div className={`relative w-full ${imgAspect} min-h-0`}>
@@ -2283,7 +2297,23 @@ function ProductCard({ product, formatPrice, onOpen, theme, cardSettings, useCat
               )}
             </div>
           )}
-          {qty === 0 ? (
+          {readOnly ? (
+            <button
+              type="button"
+              onClick={() => onCtaClick?.(product)}
+              className={`flex w-full items-center justify-center gap-1.5 rounded-xl border text-center transition-[transform,filter] duration-150 ease-out md:hover:brightness-[1.02] active:scale-95 ${
+                compact ? 'rounded-lg py-1.5 text-[11px] font-bold' : 'py-2.5 text-xs font-bold sm:py-3'
+              }`}
+              style={{
+                borderColor: theme?.primaryRgba?.(0.24) || 'rgba(37,211,102,0.24)',
+                background: theme?.primaryRgba?.(0.08) || 'rgba(37,211,102,0.08)',
+                color: primaryColorDark,
+              }}
+            >
+              <Icon name="ArrowRight" size={compact ? 11 : 13} color={primaryColorDark} />
+              {ctaLabel}
+            </button>
+          ) : qty === 0 ? (
             <button
               type="button"
               onClick={handleAdd}
@@ -2360,7 +2390,7 @@ function ThumbnailButton({ url, productName, index, isSelected, primaryColor, on
 }
 
 // ─── Product Modal ────────────────────────────────────────────────────────────
-function ProductModal({ product, business, slug, formatPrice, whatsAppUrl, whatsAppMessage, onClose, theme, cardSettings, useCategories = false }) {
+export function ProductModal({ product, business, slug, formatPrice, whatsAppUrl, whatsAppMessage, onClose, theme, cardSettings, useCategories = false }) {
   const primaryColor = theme?.primaryColor || '#25D366';
   const primaryColorDark = theme?.primaryColorDark || '#128C7E';
   const primaryRgba = theme?.primaryRgba || (() => 'rgba(37,211,102,0.35)');
@@ -2564,11 +2594,24 @@ function ProductModal({ product, business, slug, formatPrice, whatsAppUrl, whats
             </div>
           )}
 
-          {showPrice && (
-            <div className="mb-6 flex items-baseline gap-2">
-              <span className="text-3xl font-extrabold tracking-tight text-gray-900 tabular-nums">{formatPrice(product?.price)}</span>
-            </div>
-          )}
+          {showPrice && (() => {
+            const modalDiscount = getDiscountPercent(product?.price, product?.compareAtPrice);
+            return (
+              <div className="mb-6">
+                <div className="flex items-baseline gap-2 flex-wrap">
+                  <span className="text-3xl font-extrabold tracking-tight text-gray-900 tabular-nums">{formatPrice(product?.price)}</span>
+                  {modalDiscount !== null && (
+                    <span className="rounded-md px-2 py-0.5 text-sm font-black text-white" style={{ backgroundColor: '#dc2626' }}>
+                      -{modalDiscount}% OFF
+                    </span>
+                  )}
+                </div>
+                {modalDiscount !== null && (
+                  <p className="mt-0.5 text-sm text-gray-400 line-through">{formatPrice(product?.compareAtPrice)}</p>
+                )}
+              </div>
+            );
+          })()}
           {!showPrice && <div className="mb-6" />}
 
           {/* Add to cart button */}
