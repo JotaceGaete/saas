@@ -9,6 +9,8 @@ const ALLOWED_ORIGINS = [
   "https://www.ventalink.app",
   "https://go.ventalink.app",
   "https://app.gong.cl",
+  "https://miralatienda.de",
+  "https://www.miralatienda.de",
   "http://localhost:4028",
   "http://localhost:3000",
   "http://127.0.0.1:4028",
@@ -22,7 +24,9 @@ function isAllowedOriginHost(origin: string): boolean {
       u.origin === origin &&
       (u.hostname === "ventalink.app" ||
         u.hostname.endsWith(".ventalink.app") ||
-        u.hostname === "app.gong.cl")
+        u.hostname === "app.gong.cl" ||
+        u.hostname === "miralatienda.de" ||
+        u.hostname.endsWith(".miralatienda.de"))
     );
   } catch {
     return false;
