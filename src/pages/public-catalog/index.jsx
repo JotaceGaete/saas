@@ -157,6 +157,7 @@ function CatalogInner({ slug }) {
 
   // Derivar useCategories y categoryNames desde business, rubros y categorías propias
   const design = business?.designSettings || {};
+  const headerTemplate = design?.headerTemplate || 'cover';
   // useCategories activo si el toggle está on y hay al menos una fuente de categorías
   const useCategories = design?.useCategories === true && (!!business?.rubroId || bizCategories.length > 0);
   // Categorías propias primero, luego globales del rubro; deduplicar por nombre
