@@ -1317,6 +1317,7 @@ function OrderPanel({ business, slug, formatPrice, onClose, theme }) {
             digits={customerPhoneDigits}
             onDigitsChange={setCustomerPhoneDigits}
             focusRingColor={primaryColor}
+            uxCountry={catalogMoney.countryCode}
           />
 
           {isRestaurant && (

@@ -2,13 +2,39 @@ import React from 'react';
 import { extractPhoneDigitsOnly, formatPhoneDigitsForDisplay } from '../../utils/customerPhone';
 
 /**
+ * Placeholder visual sugerido según el país del negocio.
+ * Solo orientación para el usuario — no impone país ni valida formato.
+ * El visitante puede escribir cualquier prefijo internacional.
+ */
+function getPhonePlaceholder(uxCountry) {
+  switch (uxCountry) {
+    case 'CL': return '56 9 1234 5678';
+    case 'AR': return '54 9 11 1234 5678';
+    case 'MX': return '52 1 55 1234 5678';
+    case 'CO': return '57 310 123 4567';
+    case 'PE': return '51 9 1234 5678';
+    case 'UY': return '598 9 1234 5678';
+    case 'EC': return '593 9 1234 5678';
+    case 'BO': return '591 7 1234 5678';
+    case 'PY': return '595 9 1234 5678';
+    case 'GT': return '502 5 1234 5678';
+    case 'CR': return '506 8 1234 5678';
+    case 'PA': return '507 6 1234 5678';
+    case 'US': return '1 234 567 8900';
+    case 'ES': return '34 612 345 678';
+    default:   return '1 234 567 8900';
+  }
+}
+
+/**
  * Teléfono opcional: prefijo "+" fijo + solo dígitos con formato suave.
  * @param {string} digits - Solo dígitos (sin +).
  * @param {(d: string) => void} onDigitsChange
  * @param {'catalog' | 'order'} variant
  * @param {string} [focusRingColor] - Solo catalog (ej. primaryColor del tema)
+ * @param {string} [uxCountry] - Código ISO del país del catálogo (solo para placeholder visual)
  */
-export default function CheckoutPhoneOptional({ digits, onDigitsChange, variant = 'catalog', focusRingColor }) {
+export default function CheckoutPhoneOptional({ digits, onDigitsChange, variant = 'catalog', focusRingColor, uxCountry }) {
   const handleChange = (e) => {
     onDigitsChange(extractPhoneDigitsOnly(e.target.value));
   };
@@ -55,7 +81,7 @@ export default function CheckoutPhoneOptional({ digits, onDigitsChange, variant 
             autoComplete="tel"
             value={display}
             onChange={handleChange}
-            placeholder="56 912 345 678"
+            placeholder={getPhonePlaceholder(uxCountry)}
             className="flex-1 min-w-0 px-4 py-3 text-sm text-gray-800 placeholder-gray-400 bg-white border-0 outline-none focus:ring-0"
           />
         </div>

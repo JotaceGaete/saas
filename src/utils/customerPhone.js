@@ -32,3 +32,34 @@ export function normalizeOptionalCustomerPhone(raw) {
   if (d.length < 6) return null;
   return `+${d}`;
 }
+
+/**
+ * Normaliza un teléfono libre (puede incluir "+" del usuario).
+ * Limpia caracteres inválidos, asegura a lo sumo un "+" al inicio.
+ * Útil para inputs donde el usuario puede tipear el prefijo completo.
+ */
+export function normalizeCustomerPhone(input = '') {
+  let value = String(input).trim();
+  if (!value) return '';
+  value = value.replace(/[^\d+]/g, '');
+  if (value.startsWith('++')) value = `+${value.slice(2)}`;
+  const plusCount = (value.match(/\+/g) || []).length;
+  if (plusCount > 1) {
+    value = value.replace(/\+/g, '');
+    value = `+${value}`;
+  }
+  if (value.includes('+') && !value.startsWith('+')) {
+    value = value.replace(/\+/g, '');
+  }
+  return value;
+}
+
+/**
+ * Validación liviana e internacional: 8–15 dígitos, "+" opcional al inicio.
+ * No valida por país ni impone formato local.
+ */
+export function isValidCustomerPhone(input = '') {
+  const value = normalizeCustomerPhone(input);
+  if (!value) return true; // campo opcional
+  return /^\+?\d{8,15}$/.test(value);
+}
