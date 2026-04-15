@@ -1026,6 +1026,12 @@ function FloatingCartButton({ onOpen, formatPrice, theme }) {
 
 // ─── Order Panel ──────────────────────────────────────────────────────────────
 function OrderPanel({ business, slug, formatPrice, onClose, theme }) {
+  // País para placeholder visual del teléfono — solo sugerencia, sin validación por país.
+  const checkoutUxCountry =
+    business?.routingCountryCode ||
+    business?.countryCode ||
+    business?.country ||
+    null;
   const primaryColor = theme?.primaryColor || '#25D366';
   const primaryColorDark = theme?.primaryColorDark || '#128C7E';
   const primaryRgba = theme?.primaryRgba || (() => 'rgba(37,211,102,0.35)');
@@ -1317,7 +1323,7 @@ function OrderPanel({ business, slug, formatPrice, onClose, theme }) {
             digits={customerPhoneDigits}
             onDigitsChange={setCustomerPhoneDigits}
             focusRingColor={primaryColor}
-            uxCountry={catalogMoney.countryCode}
+            uxCountry={checkoutUxCountry}
           />
 
           {isRestaurant && (
