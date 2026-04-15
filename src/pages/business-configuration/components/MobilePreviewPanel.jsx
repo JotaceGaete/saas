@@ -329,13 +329,14 @@ export default function MobilePreviewPanel({
           style={{ width: '80px', height: '22px', backgroundColor: '#1a1a2e', borderRadius: '0 0 14px 14px' }}
         />
 
-        {/* Screen content */}
-        <div className="h-full overflow-y-auto" style={{ backgroundColor: t?.screenBg }}>
+        {/* Screen content — absolute inset-0 evita dependencia de h-full con aspect-ratio
+             y overflow-x-hidden previene que el blur layer (scale+filter) expanda el scroll-width */}
+        <div className="absolute inset-0 overflow-y-auto overflow-x-hidden" style={{ backgroundColor: t?.screenBg }}>
 
           {/* Cover image banner — smart banner: imagen completa sobre fondo difuminado */}
           {headerImageUrl ? (
             <div className="relative w-full">
-              <div className="relative w-full h-[72px] overflow-hidden">
+              <div className="relative w-full h-[72px] overflow-hidden" style={{ transform: 'translateZ(0)' }}>
                 {/* Capa fondo: blur */}
                 <Image
                   src={headerImageUrl}
