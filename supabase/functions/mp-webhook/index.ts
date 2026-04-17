@@ -10,6 +10,10 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 const ALLOWED_PLANS = ['control', 'starter', 'pro', 'business'];
 const PLAN_DURATION_DAYS = 30;
 
+// Jerarquía de planes: mayor número = plan más alto.
+// 'control' y 'starter' son equivalentes (plan base).
+const PLAN_ORDER: Record<string, number> = { starter: 0, control: 0, pro: 1, business: 2 };
+
 function resolveMpAccessToken(countryCode: string): string {
   if (countryCode === 'AR') {
     const token = Deno.env.get('MP_ACCESS_TOKEN_AR');
@@ -285,7 +289,7 @@ Deno.serve(async (req) => {
   // Se hace ANTES de calcular fechas para que bizIsActiveTrial guíe todo lo demás.
   const { data: bizRow, error: bizCheckError } = await db
     .from('wa_businesses')
-    .select('id, user_id, plan_slug, country_code, trial_expires_at')
+    .select('id, user_id, plan_slug, plan_expires_at, country_code, trial_expires_at, scheduled_plan_slug')
     .eq('id', businessId)
     .single();
 
@@ -385,42 +389,84 @@ Deno.serve(async (req) => {
   }
 
   // ── 11. Actualizar plan en wa_businesses ──────────────────────────────────
-  // Trial activo → programar plan al fin del trial, NO cambiar plan_slug ahora.
-  // Sin trial → activar inmediatamente.
-  if (bizIsActiveTrial && bizTrialExpiresAt) {
+  // Regla única basada en PLAN_ORDER, independiente del estado de trial:
+  // - upgrade/renovación (newOrder >= currentOrder) → aplicar inmediatamente, cerrar trial.
+  // - downgrade (newOrder < currentOrder) con período activo → programar al vencimiento.
+  // - downgrade sin período activo → aplicar inmediatamente.
+  //
+  // "Período activo" cubre trial vigente Y plan pagado vigente.
+  const currentPlan  = (bizRow.plan_slug as string) ?? 'starter';
+  const currentOrder = PLAN_ORDER[currentPlan]  ?? 0;
+  const newOrder     = PLAN_ORDER[planSlug]      ?? 0;
+
+  // Fin del período activo: trial en curso tiene prioridad; si no hay trial, plan_expires_at.
+  const activePeriodEnd: string | null =
+    bizIsActiveTrial && bizTrialExpiresAt
+      ? bizTrialExpiresAt
+      : (bizRow.plan_expires_at !== null &&
+         new Date(bizRow.plan_expires_at as string).getTime() > Date.now()
+           ? (bizRow.plan_expires_at as string)
+           : null);
+
+  if (newOrder >= currentOrder || activePeriodEnd === null) {
+    // UPGRADE, renovación o sin período activo → aplicar inmediatamente.
     const { error: bizUpdateError } = await db.from('wa_businesses').update({
-      scheduled_plan_slug: planSlug,
-      scheduled_change_at: bizTrialExpiresAt,
+      plan_slug:           planSlug,
+      plan_expires_at:     planExpiresAtIso,
+      trial_expires_at:    null,
+      scheduled_plan_slug: null,
+      scheduled_change_at: null,
     }).eq('id', businessId);
 
     if (bizUpdateError) {
-      console.error('[mp-webhook] error actualizando wa_businesses (scheduled):', bizUpdateError.message, bizUpdateError.code);
+      console.error('[mp-webhook] error actualizando wa_businesses (upgrade/renew):', bizUpdateError.message, bizUpdateError.code);
       return jsonResponse({ ok: false, error: 'Database update failed' }, 500);
     }
-    console.log('[mp-webhook] payment_approved_scheduled_at_trial_end', {
-      mp_payment_id:       dataId,
-      paymentId,
-      businessId,
-      planSlug,
-      scheduled_change_at: bizTrialExpiresAt,
-    });
-  } else {
-    const { error: bizUpdateError } = await db.from('wa_businesses').update({
-      plan_slug:       planSlug,
-      plan_expires_at: planExpiresAtIso,
-    }).eq('id', businessId);
-
-    if (bizUpdateError) {
-      console.error('[mp-webhook] error actualizando wa_businesses:', bizUpdateError.message, bizUpdateError.code);
-      return jsonResponse({ ok: false, error: 'Database update failed' }, 500);
-    }
-    console.log('[mp-webhook] payment_approved_and_plan_updated', {
+    console.log('[mp-webhook] payment_approved_plan_applied_immediately', {
       mp_payment_id:    dataId,
       paymentId,
       businessId,
+      previousPlan:     currentPlan,
+      wasDuringTrial:   bizIsActiveTrial,
       planSlug,
       planExpiresAt:    planExpiresAtIso,
-      previousPlanSlug: bizRow.plan_slug,
+      isUpgrade:        newOrder > currentOrder,
+    });
+
+    // Sincronizar billing_subscriptions: actualización completa del estado activo.
+    const { error: subSyncError } = await db
+      .from('billing_subscriptions')
+      .update({
+        plan_slug:                planSlug,
+        status:                   'active',
+        provider:                 'mercado_pago',
+        trial_ends_at:            null,
+        current_period_starts_at: now.toISOString(),
+        current_period_ends_at:   planExpiresAtIso,
+      })
+      .eq('business_id', businessId);
+    if (subSyncError) {
+      console.error('[mp-webhook] billing_subscriptions sync failed (non-blocking):', subSyncError.message);
+    }
+  } else {
+    // DOWNGRADE con período activo → programar al vencimiento (trial o plan pagado).
+    const { error: bizUpdateError } = await db.from('wa_businesses').update({
+      scheduled_plan_slug: planSlug,
+      scheduled_change_at: activePeriodEnd,
+    }).eq('id', businessId);
+
+    if (bizUpdateError) {
+      console.error('[mp-webhook] error actualizando wa_businesses (downgrade scheduled):', bizUpdateError.message, bizUpdateError.code);
+      return jsonResponse({ ok: false, error: 'Database update failed' }, 500);
+    }
+    console.log('[mp-webhook] payment_approved_downgrade_scheduled', {
+      mp_payment_id:       dataId,
+      paymentId,
+      businessId,
+      currentPlan,
+      newPlan:             planSlug,
+      wasDuringTrial:      bizIsActiveTrial,
+      scheduled_change_at: activePeriodEnd,
     });
   }
 
