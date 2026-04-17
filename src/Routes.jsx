@@ -26,14 +26,15 @@ import Login from './pages/login';
 import AuthCallback from './pages/auth-callback';
 import ResetPassword from './pages/reset-password';
 import VerifyEmailPage from './pages/verify-email';
-import AdminDashboard from './pages/admin';
 import AdminPaymentsPage from './pages/admin/AdminPaymentsPage';
 import AdminUsersPage from './pages/admin/AdminUsersPage';
+import AdminBusinessesPage from './pages/admin/AdminBusinessesPage';
 import AdminBusinessDetailPage from './pages/admin/AdminBusinessDetailPage';
 import AdminUserDetailPage from './pages/admin/AdminUserDetailPage';
 import AdminUserNewPage from './pages/admin/AdminUserNewPage';
 import AdminAuditLogPage from './pages/admin/AdminAuditLogPage';
 import AdminEmailsPage from './pages/admin/AdminEmailsPage';
+import AdminConfigRubrosPage from './pages/admin/AdminConfigRubrosPage';
 import PlansPage from './pages/plans';
 import BillingSuccessPage from './pages/billing/BillingSuccessPage';
 import BillingCancelPage from './pages/billing/BillingCancelPage';
@@ -122,12 +123,15 @@ const Routes = () => {
             <Route path="/catalogo/:slug/ofertas" element={<PublicOffers />} />
             <Route path="/catalogo/:slug" element={<PublicCatalog />} />
             <Route path="/catalogo/:slug/checkout" element={<OrderConfirmation />} />
-            <Route path="/admin" element={<RequireAdmin><AdminDashboard /></RequireAdmin>} />
+            <Route path="/admin" element={<Navigate to="/admin/businesses" replace />} />
+            <Route path="/admin/businesses" element={<RequireAdmin><AdminBusinessesPage /></RequireAdmin>} />
+            <Route path="/admin/businesses/:businessId" element={<RequireAdmin><AdminBusinessDetailPage /></RequireAdmin>} />
             <Route path="/admin/payments" element={<RequireAdmin><AdminPaymentsPage /></RequireAdmin>} />
             <Route path="/admin/users" element={<RequireAdmin><AdminUsersPage /></RequireAdmin>} />
             <Route path="/admin/users/new" element={<RequireAdmin><AdminUserNewPage /></RequireAdmin>} />
             <Route path="/admin/users/:userId" element={<RequireAdmin><AdminUserDetailPage /></RequireAdmin>} />
-            <Route path="/admin/businesses/:businessId" element={<RequireAdmin><AdminBusinessDetailPage /></RequireAdmin>} />
+            <Route path="/admin/config/rubros" element={<RequireAdmin><AdminConfigRubrosPage /></RequireAdmin>} />
+            <Route path="/admin/config/categories" element={<RequireAdmin><AdminConfigRubrosPage /></RequireAdmin>} />
             <Route path="/admin/audit-log" element={<RequireAdmin><AdminAuditLogPage /></RequireAdmin>} />
             <Route path="/admin/emails" element={<RequireAdmin><AdminEmailsPage /></RequireAdmin>} />
             {/* URL corta del catálogo: /:slug → PublicCatalog.

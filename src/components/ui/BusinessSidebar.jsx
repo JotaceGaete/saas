@@ -205,63 +205,107 @@ Motivo (opcional):`;
           })}
           {isAdmin && (
             <>
+              {/* ── OPERACIÓN ── */}
               <li role="listitem" className="pt-2 mt-2 border-t" style={{ borderColor: 'var(--color-border)' }}>
-                <button
-                  onClick={() => navigate('/admin')}
-                  aria-current={isActive('/admin') && location?.pathname !== '/admin/payments' ? 'page' : undefined}
-                  className={[
-                    'nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium',
-                    'min-h-[42px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-all duration-150',
-                    isActive('/admin') && location?.pathname !== '/admin/payments' ? 'text-primary font-semibold' : 'text-muted-foreground hover:text-foreground hover:bg-muted',
-                    collapsed ? 'justify-center' : '',
-                  ]?.join(' ')}
-                  style={{
-                    fontFamily: 'var(--font-caption)',
-                    backgroundColor: isActive('/admin') && location?.pathname !== '/admin/payments' ? 'rgba(239,68,68,0.07)' : undefined,
-                  }}
-                >
-                  <Icon name="Shield" size={17} color={isActive('/admin') && location?.pathname !== '/admin/payments' ? 'var(--color-error)' : 'currentColor'} className="flex-shrink-0" />
-                  {!collapsed && <span className="flex-1 text-left truncate">Panel admin</span>}
-                </button>
+                {!collapsed && (
+                  <span className="block px-3 pb-1 text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--color-error)', fontFamily: 'var(--font-caption)', opacity: 0.7 }}>
+                    Operación
+                  </span>
+                )}
               </li>
-              <li role="listitem">
-                <button
-                  onClick={() => navigate('/admin/payments')}
-                  aria-current={location?.pathname === '/admin/payments' ? 'page' : undefined}
-                  className={[
-                    'nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium',
-                    'min-h-[42px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-all duration-150',
-                    location?.pathname === '/admin/payments' ? 'text-primary font-semibold' : 'text-muted-foreground hover:text-foreground hover:bg-muted',
-                    collapsed ? 'justify-center' : '',
-                  ]?.join(' ')}
-                  style={{
-                    fontFamily: 'var(--font-caption)',
-                    backgroundColor: location?.pathname === '/admin/payments' ? 'rgba(239,68,68,0.07)' : undefined,
-                  }}
-                >
-                  <Icon name="CreditCard" size={17} color={location?.pathname === '/admin/payments' ? 'var(--color-error)' : 'currentColor'} className="flex-shrink-0" />
-                  {!collapsed && <span className="flex-1 text-left truncate">Pagos y Suscripciones</span>}
-                </button>
+              {[
+                { label: 'Negocios',           path: '/admin/businesses', icon: 'Store',      match: (p) => p.startsWith('/admin/businesses') },
+                { label: 'Pagos y suscripciones', path: '/admin/payments', icon: 'CreditCard', match: (p) => p === '/admin/payments' },
+                { label: 'Usuarios',           path: '/admin/users',     icon: 'Users',      match: (p) => p.startsWith('/admin/users') },
+              ].map(item => {
+                const active = item.match(location?.pathname || '');
+                return (
+                  <li key={item.path} role="listitem">
+                    <button
+                      onClick={() => navigate(item.path)}
+                      aria-current={active ? 'page' : undefined}
+                      className={[
+                        'nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium',
+                        'min-h-[42px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-all duration-150',
+                        active ? 'text-primary font-semibold' : 'text-muted-foreground hover:text-foreground hover:bg-muted',
+                        collapsed ? 'justify-center' : '',
+                      ].join(' ')}
+                      style={{ fontFamily: 'var(--font-caption)', backgroundColor: active ? 'rgba(239,68,68,0.07)' : undefined }}
+                      title={collapsed ? item.label : undefined}
+                    >
+                      <Icon name={item.icon} size={17} color={active ? 'var(--color-error)' : 'currentColor'} className="flex-shrink-0" />
+                      {!collapsed && <span className="flex-1 text-left truncate">{item.label}</span>}
+                    </button>
+                  </li>
+                );
+              })}
+
+              {/* ── CONFIGURACIÓN ── */}
+              <li role="listitem" className="pt-2 mt-1">
+                {!collapsed && (
+                  <span className="block px-3 pb-1 text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--color-error)', fontFamily: 'var(--font-caption)', opacity: 0.7 }}>
+                    Configuración
+                  </span>
+                )}
               </li>
-              <li role="listitem">
-                <button
-                  onClick={() => navigate('/admin/users')}
-                  aria-current={location?.pathname?.startsWith('/admin/users') ? 'page' : undefined}
-                  className={[
-                    'nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium',
-                    'min-h-[42px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-all duration-150',
-                    location?.pathname?.startsWith('/admin/users') ? 'text-primary font-semibold' : 'text-muted-foreground hover:text-foreground hover:bg-muted',
-                    collapsed ? 'justify-center' : '',
-                  ]?.join(' ')}
-                  style={{
-                    fontFamily: 'var(--font-caption)',
-                    backgroundColor: location?.pathname?.startsWith('/admin/users') ? 'rgba(239,68,68,0.07)' : undefined,
-                  }}
-                >
-                  <Icon name="Users" size={17} color={location?.pathname?.startsWith('/admin/users') ? 'var(--color-error)' : 'currentColor'} className="flex-shrink-0" />
-                  {!collapsed && <span className="flex-1 text-left truncate">Usuarios</span>}
-                </button>
+              {[
+                { label: 'Rubros y categorías', path: '/admin/config/rubros', icon: 'Tag', match: (p) => p.startsWith('/admin/config') },
+              ].map(item => {
+                const active = item.match(location?.pathname || '');
+                return (
+                  <li key={item.path} role="listitem">
+                    <button
+                      onClick={() => navigate(item.path)}
+                      aria-current={active ? 'page' : undefined}
+                      className={[
+                        'nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium',
+                        'min-h-[42px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-all duration-150',
+                        active ? 'text-primary font-semibold' : 'text-muted-foreground hover:text-foreground hover:bg-muted',
+                        collapsed ? 'justify-center' : '',
+                      ].join(' ')}
+                      style={{ fontFamily: 'var(--font-caption)', backgroundColor: active ? 'rgba(239,68,68,0.07)' : undefined }}
+                      title={collapsed ? item.label : undefined}
+                    >
+                      <Icon name={item.icon} size={17} color={active ? 'var(--color-error)' : 'currentColor'} className="flex-shrink-0" />
+                      {!collapsed && <span className="flex-1 text-left truncate">{item.label}</span>}
+                    </button>
+                  </li>
+                );
+              })}
+
+              {/* ── ANALYTICS ── */}
+              <li role="listitem" className="pt-2 mt-1">
+                {!collapsed && (
+                  <span className="block px-3 pb-1 text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--color-error)', fontFamily: 'var(--font-caption)', opacity: 0.7 }}>
+                    Analytics
+                  </span>
+                )}
               </li>
+              {[
+                { label: 'Auditoría', path: '/admin/audit-log', icon: 'ClipboardList', match: (p) => p === '/admin/audit-log' },
+                { label: 'Emails',    path: '/admin/emails',    icon: 'Mail',          match: (p) => p === '/admin/emails' },
+              ].map(item => {
+                const active = item.match(location?.pathname || '');
+                return (
+                  <li key={item.path} role="listitem">
+                    <button
+                      onClick={() => navigate(item.path)}
+                      aria-current={active ? 'page' : undefined}
+                      className={[
+                        'nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium',
+                        'min-h-[42px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-all duration-150',
+                        active ? 'text-primary font-semibold' : 'text-muted-foreground hover:text-foreground hover:bg-muted',
+                        collapsed ? 'justify-center' : '',
+                      ].join(' ')}
+                      style={{ fontFamily: 'var(--font-caption)', backgroundColor: active ? 'rgba(239,68,68,0.07)' : undefined }}
+                      title={collapsed ? item.label : undefined}
+                    >
+                      <Icon name={item.icon} size={17} color={active ? 'var(--color-error)' : 'currentColor'} className="flex-shrink-0" />
+                      {!collapsed && <span className="flex-1 text-left truncate">{item.label}</span>}
+                    </button>
+                  </li>
+                );
+              })}
             </>
           )}
         </ul>
