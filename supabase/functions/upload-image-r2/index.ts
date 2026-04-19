@@ -7,6 +7,8 @@ import { S3Client, PutObjectCommand } from 'npm:@aws-sdk/client-s3@3.700.0';
 import { getSignedUrl } from 'npm:@aws-sdk/s3-request-presigner@3.700.0';
 
 const ALLOWED_ORIGINS = [
+  'https://walinka.com',
+  'https://www.walinka.com',
   'https://ventalink.app',
   'https://www.ventalink.app',
   'https://go.ventalink.app',
@@ -22,6 +24,8 @@ function isAllowedOriginHost(origin: string): boolean {
   try {
     const u = new URL(origin);
     return u.origin === origin && (
+      u.hostname === 'walinka.com' ||
+      u.hostname.endsWith('.walinka.com') ||
       u.hostname === 'ventalink.app' ||
       u.hostname.endsWith('.ventalink.app') ||
       u.hostname === 'app.gong.cl'

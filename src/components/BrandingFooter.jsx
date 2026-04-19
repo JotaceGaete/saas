@@ -38,7 +38,7 @@ export default function BrandingFooter({ business, className = '' }) {
           onMouseEnter={(e) => { e.currentTarget.style.color = '#6B7280'; e.currentTarget.style.textDecoration = 'underline'; }}
           onMouseLeave={(e) => { e.currentTarget.style.color = '#9CA3AF'; e.currentTarget.style.textDecoration = 'none'; }}
         >
-          Ventalink
+          Walinka
         </a>
       </p>
     </footer>

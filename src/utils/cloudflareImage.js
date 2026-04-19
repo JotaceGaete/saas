@@ -17,11 +17,24 @@ export const CF_IMAGE_PROFILES = {
 
 const MEDIA_HOST = 'media.gong.cl';
 
-const DEFAULT_CF_IMAGE_ORIGIN = 'https://ventalink.app';
+const DEFAULT_CF_IMAGE_ORIGIN = 'https://walinka.com';
+
+const PRODUCTION_CF_HOSTS = new Set([
+  'walinka.com',
+  'go.ventalink.app',
+  'ventalink.app',
+  'www.ventalink.app',
+]);
 
 function getCfImageOrigin() {
   const env = import.meta.env?.VITE_CF_IMAGE_ORIGIN?.trim();
   if (env) return env.replace(/\/$/, '');
+  if (typeof window !== 'undefined') {
+    const h = (window.location.hostname || '').toLowerCase();
+    if (PRODUCTION_CF_HOSTS.has(h) || h.endsWith('.ventalink.app')) {
+      return window.location.origin.replace(/\/$/, '');
+    }
+  }
   return DEFAULT_CF_IMAGE_ORIGIN;
 }
 

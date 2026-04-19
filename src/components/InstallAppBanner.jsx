@@ -62,7 +62,7 @@ export default function InstallAppBanner() {
         {platform === 'ios' ? (
           <>
             <p className="text-sm font-semibold" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>
-              Instala VentALink en tu teléfono
+              Instala Walinka en tu teléfono
             </p>
             <p className="text-xs mt-0.5" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
               Toca Compartir → Añadir a la pantalla de inicio

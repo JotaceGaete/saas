@@ -47,7 +47,7 @@ export default function RegistrationForm({ mode = 'register', onModeChange, onRe
         <div>
           <div className="flex items-center gap-3 mb-12">
             <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center"><Icon name="MessageCircle" size={20} color="#fff" /></div>
-            <span className="text-white font-bold text-lg" style={{ fontFamily: 'var(--font-heading)' }}>VentALink</span>
+            <span className="text-white font-bold text-lg" style={{ fontFamily: 'var(--font-heading)' }}>Walinka</span>
           </div>
           <h2 className="text-3xl xl:text-4xl font-bold text-white mb-4" style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.03em', lineHeight: 1.2 }}>
             {mode === 'register' ? 'Crea tu catálogo digital en minutos' : 'Bienvenido de vuelta'}

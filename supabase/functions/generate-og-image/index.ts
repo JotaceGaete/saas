@@ -5,6 +5,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { parseDesignSettingsSafe } from "../_shared/catalogOgRender.ts";
 
 const ALLOWED_ORIGINS = [
+  "https://walinka.com",
+  "https://www.walinka.com",
   "https://ventalink.app",
   "https://www.ventalink.app",
   "https://go.ventalink.app",
@@ -22,7 +24,9 @@ function isAllowedOriginHost(origin: string): boolean {
     const u = new URL(origin);
     return (
       u.origin === origin &&
-      (u.hostname === "ventalink.app" ||
+      (u.hostname === "walinka.com" ||
+        u.hostname.endsWith(".walinka.com") ||
+        u.hostname === "ventalink.app" ||
         u.hostname.endsWith(".ventalink.app") ||
         u.hostname === "app.gong.cl" ||
         u.hostname === "miralatienda.de" ||

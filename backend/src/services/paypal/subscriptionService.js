@@ -94,7 +94,7 @@ export async function createSubscription({
     plan_id: paypalPlanId,
     custom_id: customId,
     application_context: {
-      brand_name: 'Ventalink',
+      brand_name: 'Walinka',
       return_url: String(returnUrl).trim(),
       cancel_url: String(cancelUrl).trim(),
       user_action: 'SUBSCRIBE_NOW',
@@ -179,7 +179,7 @@ export async function cancelSubscription({ subscriptionId, reason }) {
 
   const { accessToken } = await getAccessToken();
   const payload = {
-    reason: String(reason || 'Cancelled by Ventalink').trim(),
+    reason: String(reason || 'Cancelled by Walinka').trim(),
   };
 
   const response = await paypalRequest(`/v1/billing/subscriptions/${encodeURIComponent(id)}/cancel`, {

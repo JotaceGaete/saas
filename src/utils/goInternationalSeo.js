@@ -3,7 +3,7 @@
  */
 
 export const GO_INTERNATIONAL_TITLE =
-  'Vende por WhatsApp con tu catálogo online | VentALink';
+  'Vende por WhatsApp con tu catálogo online | Walinka';
 
 export const GO_INTERNATIONAL_DESCRIPTION =
   'Crea tu catálogo, comparte tu link y recibe pedidos ordenados por WhatsApp sin complicaciones.';
@@ -32,7 +32,7 @@ export function buildGoInternationalJsonLd(p) {
   return {
     '@context': 'https://schema.org',
     '@type': 'WebSite',
-    name: 'VentALink',
+    name: 'Walinka',
     url: p.url,
     description: GO_INTERNATIONAL_DESCRIPTION,
     inLanguage: 'es',

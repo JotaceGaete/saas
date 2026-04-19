@@ -17,11 +17,12 @@ function isLocalhostHostname(hostname) {
   return host === 'localhost' || host === '127.0.0.1' || host.endsWith('.localhost');
 }
 
-/** Producción VentALink: cualquier host bajo ventalink.app (incl. go, apex, www). */
+/** Producción VentALink: cualquier host bajo ventalink.app (incl. go, apex, www) o walinka.com. */
 function isVentalinkProductionHostname(hostname) {
   const h = String(hostname || '').trim().toLowerCase();
   if (!h) return false;
-  return h === 'ventalink.app' || h === 'www.ventalink.app' || h.endsWith('.ventalink.app');
+  return h === 'walinka.com' || h === 'www.walinka.com' || h.endsWith('.walinka.com') ||
+    h === 'ventalink.app' || h === 'www.ventalink.app' || h.endsWith('.ventalink.app');
 }
 
 /**

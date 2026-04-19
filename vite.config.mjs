@@ -40,8 +40,8 @@ export default defineConfig(({ mode }) => {
        * No usar manifest: false + solo public/manifest.json: el plugin inyecta el <link> con buildBase correcto.
        */
       manifest: {
-        name: "VentALink",
-        short_name: "VentALink",
+        name: "Walinka",
+        short_name: "Walinka",
         start_url: "/",
         scope: "/",
         display: "standalone",

@@ -104,10 +104,10 @@ export default function HeroSection({ onOpenRegister }) {
             <div className="flex items-center gap-4 mt-8 justify-center lg:justify-start flex-wrap">
               <div className="flex -space-x-2.5">
                 {[
-                { src: "https://picsum.photos/seed/venta1/64/64", alt: "Emprendedora satisfecha usando VentALink" },
-                { src: "https://picsum.photos/seed/venta2/64/64", alt: "Emprendedor satisfecho usando VentALink" },
-                { src: "https://picsum.photos/seed/venta3/64/64", alt: "Emprendedora satisfecha usando VentALink" },
-                { src: "https://picsum.photos/seed/venta4/64/64", alt: "Emprendedor satisfecho usando VentALink" }].
+                { src: "https://picsum.photos/seed/venta1/64/64", alt: "Emprendedora satisfecha usando Walinka" },
+                { src: "https://picsum.photos/seed/venta2/64/64", alt: "Emprendedor satisfecho usando Walinka" },
+                { src: "https://picsum.photos/seed/venta3/64/64", alt: "Emprendedora satisfecha usando Walinka" },
+                { src: "https://picsum.photos/seed/venta4/64/64", alt: "Emprendedor satisfecho usando Walinka" }].
                 map((person, i) =>
                 <img
                   key={i}
@@ -217,7 +217,7 @@ function HeroMockup() {
             className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
             style={{ background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)', boxShadow: '0 2px 8px rgba(124,58,237,0.3)' }}>
             
-            <VCheckIsotype variant="embedded" size={22} title="VentALink" />
+            <VCheckIsotype variant="embedded" size={22} title="Walinka" />
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-xs font-bold leading-none" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>Dulces Mariana</p>

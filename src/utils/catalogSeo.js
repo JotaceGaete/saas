@@ -180,7 +180,7 @@ export function getCatalogShareDescription(row) {
  */
 export function getCatalogOgSocialTitle(storeName) {
   const name = (storeName || 'Catálogo').trim() || 'Catálogo';
-  return `Catálogo de ${name} - Ventalink`;
+  return `Catálogo de ${name} - Walinka`;
 }
 
 /**

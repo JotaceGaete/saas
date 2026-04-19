@@ -390,7 +390,7 @@ export default function Dashboard() {
         },
         body: JSON.stringify({
           to: 'jotacegaete@gmail.com',
-          subject: 'Prueba Ventalink',
+          subject: 'Prueba Walinka',
           html: '<h1>Hola</h1><p>Esto es una prueba</p>',
         }),
       });

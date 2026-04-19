@@ -59,7 +59,7 @@ export default function HelpPage() {
               ¿Necesitas ayuda para configurar tu tienda, productos o pedidos? Revisa las secciones del menú: <strong>Configuración</strong> para datos del negocio y opciones del catálogo, <strong>Diseño</strong> para logo, portada y colores, y <strong>Plan y facturación</strong> para tu suscripción.
             </p>
             <p className="text-sm mb-0" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-              Soporte directo con el equipo Ventalink:
+              Soporte directo con el equipo Walinka:
             </p>
             <div className="mt-4 flex flex-col sm:flex-row gap-3">
               <a

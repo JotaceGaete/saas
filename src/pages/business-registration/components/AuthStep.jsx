@@ -55,22 +55,7 @@ const CATALOG_PREVIEW_PRODUCTS = [
 /** Isotipo V-Check en blanco (misma geometría que el branding) */
 function VCheckWhiteIsotype({ size = 22 }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
-      <path
-        d="M18 34 L28 44 L46 22"
-        stroke="rgba(255,255,255,0.88)"
-        strokeWidth="5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M26 34 L36 44 L54 22"
-        stroke="#FFFFFF"
-        strokeWidth="5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
+    <img src="/walinka-white.svg" width={size} height={size} alt="" aria-hidden />
   );
 }
 

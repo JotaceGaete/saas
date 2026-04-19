@@ -8,7 +8,7 @@ export default function VCheckIsotype({
   variant = "default",
   className = "",
   size = 32,
-  title = "VentALink",
+  title = "Walinka",
 }) {
   const isLight = variant === "light";
   const onDark = variant === "onDark";
@@ -27,73 +27,27 @@ export default function VCheckIsotype({
 
   if (embedded) {
     return (
-      <svg
+      <img
+        src="/walinka-white.svg"
         width={size}
         height={size}
-        viewBox="0 0 64 64"
+        alt={title}
         className={className}
         role="img"
         aria-label={title}
-        xmlns="http://www.w3.org/2000/svg"
-      >
-        <title>{title}</title>
-        <path
-          d="M18 34 L28 44 L46 22"
-          fill="none"
-          stroke={backStroke}
-          strokeWidth="5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        <path
-          d="M26 34 L36 44 L54 22"
-          fill="none"
-          stroke={frontStroke}
-          strokeWidth="5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
+      />
     );
   }
 
   return (
-    <svg
+    <img
+      src="/walinka-white.svg"
       width={size}
       height={size}
-      viewBox="0 0 64 64"
+      alt={title}
       className={className}
       role="img"
       aria-label={title}
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <title>{title}</title>
-      <defs>
-        <linearGradient id={gradId} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#7C3AED" />
-          <stop offset="100%" stopColor="#6D28D9" />
-        </linearGradient>
-      </defs>
-      {!isLight && !onDark && <rect width="64" height="64" rx="14" fill={`url(#${gradId})`} />}
-      {(isLight || onDark) && <rect width="64" height="64" rx="14" fill="transparent" />}
-      {/* Gancho trasero */}
-      <path
-        d="M18 34 L28 44 L46 22"
-        fill="none"
-        stroke={backStroke}
-        strokeWidth="5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      {/* Gancho delantero */}
-      <path
-        d="M26 34 L36 44 L54 22"
-        fill="none"
-        stroke={frontStroke}
-        strokeWidth="5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
+    />
   );
 }

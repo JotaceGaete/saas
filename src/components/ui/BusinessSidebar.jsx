@@ -76,7 +76,7 @@ export default function BusinessSidebar({ isCollapsed = false, onCollapsedChange
     const userEmailForMessage = user?.email != null ? String(user.email) : '';
     const planForMessage = planLabel != null ? String(planLabel) : '';
     const countryForMessage = business?.country != null ? String(business.country) : '';
-    const message = `Hola, quiero solicitar la cancelación de mi suscripción en Ventalink.
+    const message = `Hola, quiero solicitar la cancelación de mi suscripción en Walinka.
 
 Negocio: ${businessNameForMessage}
 Email: ${userEmailForMessage}
@@ -124,7 +124,7 @@ Motivo (opcional):`;
       <div className={`sidebar-header ${collapsed ? 'justify-center' : ''}`}>
         {collapsed ? (
           <div className="sidebar-logo">
-            <VCheckIsotype variant="embedded" size={20} title="Ventalink" />
+            <VCheckIsotype variant="embedded" size={20} title="Walinka" />
           </div>
         ) : (
           <div className="min-w-0 flex-1 overflow-hidden">

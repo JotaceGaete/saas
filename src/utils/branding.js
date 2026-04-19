@@ -18,8 +18,8 @@ function normalizePlanSlug(businessOrPlanSlug) {
 export function getBrandingMessage(businessOrPlanSlug) {
   const plan = normalizePlanSlug(businessOrPlanSlug);
   if (plan === 'business') return '';
-  if (plan === 'pro') return 'Powered by Ventalink';
-  return '🚀 Catálogo creado con Ventalink\nCrea el tuyo gratis';
+  if (plan === 'pro') return 'Powered by Walinka';
+  return '🚀 Catálogo creado con Walinka\nCrea el tuyo gratis';
 }
 
 export function appendBranding(message, businessOrPlanSlug) {

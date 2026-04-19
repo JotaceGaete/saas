@@ -146,7 +146,7 @@ export function buildCatalogOgSvg(params: CatalogOgSvgParams): string {
   </text>
   ${line2 && yTitle2 ? `<text x="56" y="${yTitle2}" fill="#f8fafc" font-size="52" font-family="Inter, Segoe UI, Arial, sans-serif" font-weight="800" letter-spacing="-0.5">${line2}</text>` : ""}
   <text x="56" y="${ySub}" fill="#94a3b8" font-size="26" font-family="Inter, Segoe UI, Arial, sans-serif" font-weight="500">
-    Catálogo por WhatsApp · Ventalink
+    Catálogo por WhatsApp · Walinka
   </text>
   ${logoBlock}
 </svg>`;
@@ -186,7 +186,7 @@ export function buildCatalogOgSvg(params: CatalogOgSvgParams): string {
     Catálogo por WhatsApp
   </text>
   <text x="96" y="560" fill="rgba(248,250,252,0.78)" font-size="24" font-family="Inter, Segoe UI, Arial, sans-serif" font-weight="500">
-    Creado con Ventalink
+    Creado con Walinka
   </text>
 
   ${

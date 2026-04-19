@@ -234,7 +234,7 @@ function buildCatalogOgSvg({ storeName, logoDataUri, coverDataUri }) {
   </text>
   ${line2 && yTitle2 ? `<text x="56" y="${yTitle2}" fill="#f8fafc" font-size="52" font-family="Inter, Segoe UI, Arial, sans-serif" font-weight="800" letter-spacing="-0.5">${line2}</text>` : ''}
   <text x="56" y="${ySub}" fill="#94a3b8" font-size="26" font-family="Inter, Segoe UI, Arial, sans-serif" font-weight="500">
-    Catálogo por WhatsApp · Ventalink
+    Catálogo por WhatsApp · Walinka
   </text>
   ${logoBlock}
 </svg>`;
@@ -263,7 +263,7 @@ function buildCatalogOgSvg({ storeName, logoDataUri, coverDataUri }) {
   <text x="96" y="255" fill="#F8FAFC" font-size="72" font-family="Inter, Segoe UI, Arial, sans-serif" font-weight="800" letter-spacing="-1.2">${line1}</text>
   ${line2 ? `<text x="96" y="338" fill="#F8FAFC" font-size="72" font-family="Inter, Segoe UI, Arial, sans-serif" font-weight="800" letter-spacing="-1.2">${line2}</text>` : ''}
   <text x="96" y="430" fill="#EDE9FE" font-size="38" font-family="Inter, Segoe UI, Arial, sans-serif" font-weight="600">Catálogo por WhatsApp</text>
-  <text x="96" y="560" fill="rgba(248,250,252,0.78)" font-size="24" font-family="Inter, Segoe UI, Arial, sans-serif" font-weight="500">Creado con Ventalink</text>
+  <text x="96" y="560" fill="rgba(248,250,252,0.78)" font-size="24" font-family="Inter, Segoe UI, Arial, sans-serif" font-weight="500">Creado con Walinka</text>
   ${
     logoDataUri
       ? `<g>
@@ -284,7 +284,7 @@ function buildFallbackSvg(storeName) {
 <svg width="${OG_W}" height="${OG_H}" viewBox="0 0 ${OG_W} ${OG_H}" xmlns="http://www.w3.org/2000/svg">
   <rect width="${OG_W}" height="${OG_H}" fill="#1e1b4b" />
   <text x="80" y="340" fill="#f8fafc" font-size="64" font-family="Inter, Segoe UI, Arial, sans-serif" font-weight="800">${line1}</text>
-  <text x="80" y="420" fill="#94a3b8" font-size="28" font-family="Inter, Segoe UI, Arial, sans-serif">Ventalink</text>
+  <text x="80" y="420" fill="#94a3b8" font-size="28" font-family="Inter, Segoe UI, Arial, sans-serif">Walinka</text>
 </svg>`;
 }
 

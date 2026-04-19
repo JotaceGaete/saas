@@ -22,6 +22,8 @@ function isAllowedOrigin(origin: string | null): boolean {
   if (!origin) return false;
 
   const allowed = [
+    'https://walinka.com',
+    'https://www.walinka.com',
     'https://go.ventalink.app',
     'https://ventalink.app',
     'https://www.ventalink.app',

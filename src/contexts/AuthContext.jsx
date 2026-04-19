@@ -212,6 +212,19 @@ export const AuthProvider = ({ children }) => {
         }
       }
 
+      // Notify welcome webhook on successful registration
+      const WELCOME_WEBHOOK_URL = import.meta.env.VITE_WELCOME_WEBHOOK_URL;
+      if (data?.user?.email && WELCOME_WEBHOOK_URL) {
+        fetch(WELCOME_WEBHOOK_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: data.user.email,
+            name: data.user.user_metadata?.name || "amigo",
+          }),
+        }).catch(() => {}); // fire-and-forget, no bloquea el flujo
+      }
+
       // If no session (email confirmation pending), registration still succeeded
       return { data, error: null }
     } catch (error) {

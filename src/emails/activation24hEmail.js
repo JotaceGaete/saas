@@ -60,7 +60,7 @@ export function activation24hEmail({ businessName, catalogUrl }) {
         </td></tr>
 
         <tr><td style="padding:14px 24px 20px;border-top:1px solid #ede9fe;">
-          <p style="margin:0;font-size:12px;color:#6b7280;">Ventalink — Catálogo y pedidos por WhatsApp. Si tienes dudas, responde este correo.</p>
+          <p style="margin:0;font-size:12px;color:#6b7280;">Walinka — Catálogo y pedidos por WhatsApp. Si tienes dudas, responde este correo.</p>
         </td></tr>
 
       </table>

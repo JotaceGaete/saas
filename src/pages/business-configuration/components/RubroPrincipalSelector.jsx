@@ -84,7 +84,7 @@ export default function RubroPrincipalSelector({ rubros = [], value, onChange, h
   const noResults = showSuggestions && suggestions.length === 0;
 
   const waRubroHelpUrl = buildWhatsAppUrl(
-    'Hola, necesito solicitar un rubro que no aparece en la lista de Ventalink.',
+    'Hola, necesito solicitar un rubro que no aparece en la lista de Walinka.',
     SUPPORT_WHATSAPP_NUMBER,
   );
 

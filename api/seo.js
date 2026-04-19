@@ -283,7 +283,7 @@ function buildGoSeoFallbackHtml(origin) {
     <div style="max-width:1152px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:16px">
       <div style="display:flex;align-items:center;gap:10px">
         <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#7C3AED 0%,#6D28D9 100%);box-shadow:0 2px 8px rgba(124,58,237,0.3)"></div>
-        <span style="font-weight:800;font-size:14px;letter-spacing:-0.02em;font-family:Manrope,Inter,sans-serif">VentALink</span>
+        <span style="font-weight:800;font-size:14px;letter-spacing:-0.02em;font-family:Manrope,Inter,sans-serif">Walinka</span>
       </div>
       <a href="${marketing}" style="font-size:14px;font-weight:600;color:#7C3AED;text-decoration:none">Ir a ${escapeHtmlGo(marketing.replace(/^https?:\/\//, ''))} →</a>
     </div>
@@ -296,7 +296,7 @@ function buildGoSeoFallbackHtml(origin) {
           Crea tu catálogo y recibe pedidos por <span style="background:linear-gradient(135deg,#7C3AED 0%,#A78BFA 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent">WhatsApp</span>
         </h1>
         <p style="margin:0 0 28px;font-size:1.05rem;line-height:1.65;color:#64748b;max-width:36rem">${desc}</p>
-        <a href="${marketing}" style="display:inline-block;padding:14px 24px;border-radius:12px;font-weight:700;font-size:15px;color:#fff;background:linear-gradient(135deg,#7C3AED,#6D28D9);text-decoration:none;box-shadow:0 4px 14px rgba(124,58,237,0.35)">Descubre VentALink en ventalink.app</a>
+        <a href="${marketing}" style="display:inline-block;padding:14px 24px;border-radius:12px;font-weight:700;font-size:15px;color:#fff;background:linear-gradient(135deg,#7C3AED,#6D28D9);text-decoration:none;box-shadow:0 4px 14px rgba(124,58,237,0.35)">Descubre Walinka en walinka.com</a>
       </div>
       <div style="flex:1;min-width:260px;max-width:380px;display:flex;flex-direction:column;align-items:center;gap:20px">
         <div style="display:flex;gap:14px;align-items:flex-end;justify-content:center">
@@ -304,14 +304,14 @@ function buildGoSeoFallbackHtml(origin) {
           <div style="width:112px;height:224px;border-radius:28px;border:1px solid #e2e8f0;background:#f8fafc;box-shadow:0 20px 40px rgba(124,58,237,0.12);margin-bottom:18px"></div>
         </div>
         <div style="width:100%;max-width:320px;border-radius:20px;overflow:hidden;border:1px solid #e2e8f0;box-shadow:0 20px 50px rgba(15,23,42,0.08)">
-          <img src="${demoImg}" alt="Panel VentALink: catálogo y pedidos" width="640" height="400" style="display:block;width:100%;height:auto;vertical-align:middle" loading="eager" decoding="async" />
+          <img src="${demoImg}" alt="Panel Walinka: catálogo y pedidos" width="640" height="400" style="display:block;width:100%;height:auto;vertical-align:middle" loading="eager" decoding="async" />
         </div>
         <p style="margin:0;font-size:12px;color:#94a3b8;text-align:center">Catálogo en el móvil · pedidos por WhatsApp</p>
       </div>
     </div>
   </main>
   <noscript>
-    <p style="padding:16px 24px;text-align:center;font-size:14px;color:#64748b">${title} — <a href="${marketing}" style="color:#7C3AED;font-weight:600">ventalink.app</a></p>
+    <p style="padding:16px 24px;text-align:center;font-size:14px;color:#64748b">${title} — <a href="${marketing}" style="color:#7C3AED;font-weight:600">walinka.com</a></p>
   </noscript>
 </div>`;
 }

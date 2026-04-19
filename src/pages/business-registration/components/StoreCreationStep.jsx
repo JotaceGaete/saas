@@ -91,8 +91,8 @@ export default function StoreCreationStep({ user, businessLoading }) {
 
         <div className="mb-6">
           <img
-            src="/logo-ventalink-redes.png"
-            alt="VentALink"
+            src="/walinka.svg"
+            alt="Walinka"
             className="w-full max-w-[280px] h-auto object-contain mx-auto"
           />
         </div>

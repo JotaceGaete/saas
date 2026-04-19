@@ -36,7 +36,7 @@ export default function LoginBrandPanel() {
         <div className="relative rounded-2xl overflow-hidden border border-white/20 shadow-2xl shadow-black/20 bg-white/5 mt-2 mb-8 min-h-[220px] max-h-[min(42vh,380px)]">
           <img
             src={DEMO_IMAGE_SRC}
-            alt="Vista del panel VentALink: dashboard, productos y pedidos"
+            alt="Vista del panel Walinka: dashboard, productos y pedidos"
             className="w-full h-full min-h-[220px] max-h-[min(42vh,380px)] object-cover object-top"
             onError={(e) => {
               e.target.style.display = "none";
@@ -64,7 +64,7 @@ export default function LoginBrandPanel() {
           <p className="text-white/95 text-base xl:text-lg leading-relaxed font-medium">
             «Únete a +2,400 negocios que ya venden de forma organizada»
           </p>
-          <footer className="mt-3 text-sm text-violet-200/85">VentALink · WhatsApp + catálogo online</footer>
+          <footer className="mt-3 text-sm text-violet-200/85">Walinka · WhatsApp + catálogo online</footer>
         </blockquote>
       </div>
     </aside>

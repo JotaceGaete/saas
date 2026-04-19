@@ -6,7 +6,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const RESEND_API_URL = 'https://api.resend.com/emails';
-const FROM_EMAIL = 'Ventalink <hola@mail.ventalink.app>';
+const FROM_EMAIL = 'Walinka <hola@mail.ventalink.app>';
 
 const ADMIN_PREVIEW_TYPES = new Set([
   'welcome', 'email_confirm', 'password_recovery', 'activation_24h', 'test_ping',
@@ -95,7 +95,7 @@ function renderTemplate(type: string, data: TemplateData): { subject: string; ht
   </table>
   ${topRows ? `<h2 style="font-size:1rem;margin:16px 0 8px">Productos más vendidos</h2><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:6px 12px">Producto</th><th style="text-align:right;padding:6px 12px">Cant.</th><th style="text-align:right;padding:6px 12px">Total</th></tr></thead><tbody>${topRows}</tbody></table>` : ''}
   ${dashboardUrl ? `<p style="margin-top:24px"><a href="${escapeHtml(dashboardUrl)}" style="color:#7C3AED;text-decoration:none;font-weight:600">Ver panel →</a></p>` : ''}
-  <p style="margin-top:32px;font-size:0.875rem;color:#9ca3af">Ventalink — Catálogo y pedidos por WhatsApp</p>
+  <p style="margin-top:32px;font-size:0.875rem;color:#9ca3af">Walinka — Catálogo y pedidos por WhatsApp</p>
 </body></html>`;
       return { subject, html };
     }
@@ -123,7 +123,7 @@ function renderTemplate(type: string, data: TemplateData): { subject: string; ht
   </table>
   ${topRows ? `<h2 style="font-size:1rem;margin:16px 0 8px">Productos más vendidos</h2><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:6px 12px">Producto</th><th style="text-align:right;padding:6px 12px">Cant.</th><th style="text-align:right;padding:6px 12px">Total</th></tr></thead><tbody>${topRows}</tbody></table>` : ''}
   ${dashboardUrl ? `<p style="margin-top:24px"><a href="${escapeHtml(dashboardUrl)}" style="color:#7C3AED;text-decoration:none;font-weight:600">Ver panel →</a></p>` : ''}
-  <p style="margin-top:32px;font-size:0.875rem;color:#9ca3af">Ventalink — Catálogo y pedidos por WhatsApp</p>
+  <p style="margin-top:32px;font-size:0.875rem;color:#9ca3af">Walinka — Catálogo y pedidos por WhatsApp</p>
 </body></html>`;
       return { subject, html };
     }
@@ -329,28 +329,28 @@ function renderTemplate(type: string, data: TemplateData): { subject: string; ht
     case 'trial_expiring': {
       const daysLeft = Number(d.daysLeft) ?? 1;
       const subject = `Tu prueba de Pro vence en ${daysLeft} día${daysLeft !== 1 ? 's' : ''}`;
-      const html = `<p>Hola ${escapeHtml(n)},</p><p>Tu período de prueba del plan Pro termina pronto. Mantén Pro para seguir con pedidos ilimitados y estadísticas.</p>${dashboardUrl ? `<p><a href="${escapeHtml(dashboardUrl)}/planes">Ver planes</a></p>` : ''}<p>— Equipo Ventalink</p>`;
+      const html = `<p>Hola ${escapeHtml(n)},</p><p>Tu período de prueba del plan Pro termina pronto. Mantén Pro para seguir con pedidos ilimitados y estadísticas.</p>${dashboardUrl ? `<p><a href="${escapeHtml(dashboardUrl)}/planes">Ver planes</a></p>` : ''}<p>— Equipo Walinka</p>`;
       return { subject, html };
     }
     case 'payment_confirmed': {
       const planSlug = (d.planSlug as string) || 'Pro';
       const amount = Number(d.amount) || 0;
       const subject = `Pago confirmado — Plan ${planSlug}`;
-      const html = `<p>Hola ${escapeHtml(n)},</p><p>Tu pago de ${fmt(amount)} fue confirmado. Ahora tienes acceso al plan ${escapeHtml(planSlug)}.</p>${dashboardUrl ? `<p><a href="${escapeHtml(dashboardUrl)}">Ir al panel</a></p>` : ''}<p>— Equipo Ventalink</p>`;
+      const html = `<p>Hola ${escapeHtml(n)},</p><p>Tu pago de ${fmt(amount)} fue confirmado. Ahora tienes acceso al plan ${escapeHtml(planSlug)}.</p>${dashboardUrl ? `<p><a href="${escapeHtml(dashboardUrl)}">Ir al panel</a></p>` : ''}<p>— Equipo Walinka</p>`;
       return { subject, html };
     }
     case 'plan_changed': {
       const oldPlan = (d.oldPlan as string) || '';
       const newPlan = (d.newPlan as string) || '';
       const subject = `Cambio de plan a ${newPlan}`;
-      const html = `<p>Hola ${escapeHtml(n)},</p><p>Tu plan ha cambiado de ${escapeHtml(oldPlan)} a ${escapeHtml(newPlan)}.</p>${dashboardUrl ? `<p><a href="${escapeHtml(dashboardUrl)}">Ir al panel</a></p>` : ''}<p>— Equipo Ventalink</p>`;
+      const html = `<p>Hola ${escapeHtml(n)},</p><p>Tu plan ha cambiado de ${escapeHtml(oldPlan)} a ${escapeHtml(newPlan)}.</p>${dashboardUrl ? `<p><a href="${escapeHtml(dashboardUrl)}">Ir al panel</a></p>` : ''}<p>— Equipo Walinka</p>`;
       return { subject, html };
     }
     case 'new_order': {
       const customerName = (d.customerName as string) || 'Cliente';
       const total = Number(d.total) || 0;
       const subject = `Nuevo pedido de ${escapeHtml(customerName)}`;
-      const html = `<p>Hola ${escapeHtml(n)},</p><p>Recibiste un nuevo pedido de ${escapeHtml(customerName)} por ${fmt(total)}.</p>${dashboardUrl ? `<p><a href="${escapeHtml(dashboardUrl)}/orders">Ver pedidos</a></p>` : ''}<p>— Ventalink</p>`;
+      const html = `<p>Hola ${escapeHtml(n)},</p><p>Recibiste un nuevo pedido de ${escapeHtml(customerName)} por ${fmt(total)}.</p>${dashboardUrl ? `<p><a href="${escapeHtml(dashboardUrl)}/orders">Ver pedidos</a></p>` : ''}<p>— Walinka</p>`;
       return { subject, html };
     }
     case 'activation_24h': {
@@ -384,7 +384,7 @@ function renderTemplate(type: string, data: TemplateData): { subject: string; ht
           <p style="margin:0 0 6px;font-size:14px;color:#6d28d9;font-weight:700;">Muchos negocios reciben su primer pedido el mismo día que comparten el link.</p>
         </td></tr>
         <tr><td style="padding:14px 24px 20px;border-top:1px solid #ede9fe;">
-          <p style="margin:0 0 6px;font-size:12px;color:#6b7280;">Ventalink — Catálogo y pedidos por WhatsApp. Si necesitas ayuda, escríbenos a <a href="mailto:contacto@ventalink.app" style="color:#7c3aed;text-decoration:none;">contacto@ventalink.app</a></p>
+          <p style="margin:0 0 6px;font-size:12px;color:#6b7280;">Walinka — Catálogo y pedidos por WhatsApp. Si necesitas ayuda, escríbenos a <a href="mailto:contacto@ventalink.app" style="color:#7c3aed;text-decoration:none;">contacto@ventalink.app</a></p>
           <p style="margin:0;font-size:11px;"><a href="mailto:contacto@ventalink.app?subject=Desuscribir" style="color:#9ca3af;text-decoration:underline;">Dejar de recibir estos correos</a></p>
         </td></tr>
       </table>

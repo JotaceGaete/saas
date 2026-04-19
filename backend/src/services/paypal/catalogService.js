@@ -32,7 +32,7 @@ export async function createProduct() {
       name: PAYPAL_PRODUCT_NAME,
       type: PAYPAL_PRODUCT_TYPE,
       category: PAYPAL_PRODUCT_CATEGORY,
-      description: 'Ventalink subscriptions',
+      description: 'Walinka subscriptions',
     }),
   });
 

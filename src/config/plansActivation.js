@@ -12,7 +12,7 @@ import { SUPPORT_WHATSAPP_NUMBER } from './support';
 export function getPlansActivationWhatsappUrl(userEmail) {
   const raw = import.meta.env?.VITE_PLANS_SUPPORT_WHATSAPP ?? '';
   const phone = String(raw).replace(/\D/g, '') || String(SUPPORT_WHATSAPP_NUMBER).replace(/\D/g, '');
-  const base = `Hola, quiero solicitar la activación de un plan en Ventalink (Pro o Full).`;
+  const base = `Hola, quiero solicitar la activación de un plan en Walinka (Pro o Full).`;
   const suffix = userEmail ? ` Mi cuenta: ${userEmail}` : '';
   const text = encodeURIComponent(`${base}${suffix}`);
   if (phone.length >= 8) {

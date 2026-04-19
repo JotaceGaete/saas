@@ -138,7 +138,7 @@ export default function PublicPricingPage() {
                     {limits.maxOrdersPerMonth == null ? 'Pedidos ilimitados' : `${limits.maxOrdersPerMonth} pedidos/mes`}
                     {' · '}
                     {plan.id === 'starter'
-                      ? 'Branding Ventalink incluido'
+                      ? 'Branding Walinka incluido'
                       : plan.id === 'pro'
                         ? 'Branding discreto'
                         : 'Sin branding'}
