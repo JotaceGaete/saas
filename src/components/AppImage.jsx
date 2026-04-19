@@ -30,7 +30,7 @@ function Image({
           return;
         }
         el.onerror = null;
-        el.src = '/assets/images/no_image.png';
+        el.src = '/no_image.png';
       }}
       {...props}
     />
