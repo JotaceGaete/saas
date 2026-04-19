@@ -419,7 +419,7 @@ export default function AuthStep({ onRegister, onLogin, onGoogleLogin, isLoading
             }}
           >
             <div className="flex flex-col items-center w-full mb-9 sm:mb-11">
-              <VentalinkLogo variant="default" width={300} className="w-full max-w-[min(100%,320px)]" />
+              <VentalinkLogo variant="violet" width={300} className="w-full max-w-[min(100%,320px)]" />
             </div>
 
             <h1 className="text-2xl sm:text-3xl font-bold mb-1 w-full" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.03em' }}>

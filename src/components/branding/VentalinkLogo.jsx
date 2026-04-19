@@ -20,9 +20,12 @@ export default function VentalinkLogo({ variant = "default", className = "", hei
   const height = heightProp ?? size ?? 40;
   const widthMode = widthProp != null && widthProp > 0;
 
+  const isViolet = v === "violet";
+  const src = isWhite ? "/walinka-white.svg" : isViolet ? "/walinka-violet.svg" : "/walinka.svg";
+
   const svg = (
     <img
-      src={isWhite ? "/walinka-white.svg" : "/walinka.svg"}
+      src={src}
       alt="Walinka"
       className={widthMode ? "w-full h-auto block max-w-full" : "h-full w-auto block"}
     />
