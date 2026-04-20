@@ -2013,6 +2013,9 @@ function markSiteVisitDone(path) {
 
 /**
  * Registra una visita al sitio principal de Ventalink.
+ * Uso recomendado: solo superficies de marketing donde la Edge Function
+ * `record-site-visit` este desplegada y verificada. No debe usarse en
+ * onboarding/auth porque ese flujo no puede depender de analytics de sitio.
  * Throttle client-side: no envía si ya se registró en los últimos 30 min para esta ruta.
  *
  * @param {{ path: string, hostname?: string, attribution?: object }} options

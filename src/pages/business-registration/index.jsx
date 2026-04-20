@@ -2,8 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCountry } from '../../contexts/CountryContext';
-import { collectVisitAttribution } from '../../utils/analytics';
-import { recordSiteVisit } from '../../services/waBusinessService';
 import AuthStep from './components/AuthStep';
 import ConfirmEmailStep from './components/ConfirmEmailStep';
 
@@ -72,28 +70,6 @@ export default function BusinessRegistration() {
 
   const cooldownRemainingMs = Math.max(0, (signupCooldownUntil || 0) - Date.now());
   const signupCooldownActive = cooldownRemainingMs > 0;
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const trackVisit = async () => {
-      try {
-        const result = await recordSiteVisit({ path: '/register', attribution: collectVisitAttribution() });
-        if (!cancelled && result?.error) {
-          console.warn('[business-registration] recordSiteVisit failed (non-blocking)', result.error);
-        }
-      } catch (error) {
-        if (!cancelled) {
-          console.warn('[business-registration] recordSiteVisit threw (non-blocking)', error?.message || error);
-        }
-      }
-    };
-
-    trackVisit();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useEffect(() => {
     if (!signupCooldownActive) return undefined;
