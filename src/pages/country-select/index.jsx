@@ -13,9 +13,10 @@ export default function CountrySelectPage() {
   const [selected, setSelected] = React.useState(() => getStoredCountryCode());
   const [geoLoading, setGeoLoading] = React.useState(false);
   const [geoHint, setGeoHint] = React.useState(null);
+  const allowManualSelection = isSelectable || typeof window !== 'undefined';
 
   React.useEffect(() => {
-    if (!isSelectable) return;
+    if (!allowManualSelection) return;
     if (getStoredCountryCode()) return;
     if (getManualMarketChoice() === 'GLOBAL') {
       setGeoLoading(false);
@@ -40,7 +41,7 @@ export default function CountrySelectPage() {
     return () => {
       cancelled = true;
     };
-  }, [isSelectable]);
+  }, [allowManualSelection]);
 
   const handleContinue = async () => {
     if (!selected || !COUNTRY_CODES.includes(selected)) return;
@@ -51,11 +52,6 @@ export default function CountrySelectPage() {
     }
     navigate('/business-registration', { replace: true });
   };
-
-  if (!isSelectable) {
-    navigate('/business-registration', { replace: true });
-    return null;
-  }
 
   const geoCountryName = geoHint?.code ? getCountryConfig(geoHint.code).name : '';
   const selectedConfig = selected ? getCountryConfig(selected) : null;
@@ -86,6 +82,11 @@ export default function CountrySelectPage() {
           <p className="text-sm" style={{ color: 'var(--color-muted-foreground)' }}>
             Ajustaremos moneda, WhatsApp y opciones de pago segun tu ubicacion desde el primer paso.
           </p>
+          {!isSelectable && (
+            <p className="text-xs mt-2" style={{ color: 'var(--color-muted-foreground)' }}>
+              Estas en un entorno de preview, asi que habilitamos la seleccion manual para probar el onboarding completo.
+            </p>
+          )}
           {selectedConfig && (
             <p className="text-xs mt-2" style={{ color: 'var(--color-muted-foreground)' }}>
               Continuaras con <strong>{selectedConfig.currency}</strong> y prefijo <strong>{selectedConfig.phonePrefix}</strong>.
