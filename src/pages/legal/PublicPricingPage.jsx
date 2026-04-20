@@ -49,7 +49,23 @@ export default function PublicPricingPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    recordSiteVisit({ path: '/plans', attribution: collectVisitAttribution() }).catch(() => {});
+    let cancelled = false;
+
+    const trackVisit = async () => {
+      try {
+        const result = await recordSiteVisit({ path: '/plans', attribution: collectVisitAttribution() });
+        if (!cancelled && result?.error) {
+          console.warn('[public-pricing] recordSiteVisit failed (non-blocking)', result.error);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.warn('[public-pricing] recordSiteVisit threw (non-blocking)', error?.message || error);
+        }
+      }
+    };
+
+    trackVisit();
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {

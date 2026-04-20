@@ -12,7 +12,25 @@ import LandingFooter from "./components/LandingFooter";
 
 export default function LandingPage() {
   useEffect(() => {
-    recordSiteVisit({ path: '/', attribution: collectVisitAttribution() }).catch(() => {});
+    let cancelled = false;
+
+    const trackVisit = async () => {
+      try {
+        const result = await recordSiteVisit({ path: '/', attribution: collectVisitAttribution() });
+        if (!cancelled && result?.error) {
+          console.warn('[landing-page] recordSiteVisit failed (non-blocking)', result.error);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.warn('[landing-page] recordSiteVisit threw (non-blocking)', error?.message || error);
+        }
+      }
+    };
+
+    trackVisit();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return (
