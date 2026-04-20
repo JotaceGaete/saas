@@ -74,7 +74,25 @@ export default function BusinessRegistration() {
   const signupCooldownActive = cooldownRemainingMs > 0;
 
   useEffect(() => {
-    recordSiteVisit({ path: '/register', attribution: collectVisitAttribution() }).catch(() => {});
+    let cancelled = false;
+
+    const trackVisit = async () => {
+      try {
+        const result = await recordSiteVisit({ path: '/register', attribution: collectVisitAttribution() });
+        if (!cancelled && result?.error) {
+          console.warn('[business-registration] recordSiteVisit failed (non-blocking)', result.error);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.warn('[business-registration] recordSiteVisit threw (non-blocking)', error?.message || error);
+        }
+      }
+    };
+
+    trackVisit();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {

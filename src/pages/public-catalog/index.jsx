@@ -118,8 +118,12 @@ function CatalogInner({ slug }) {
     const path = typeof window !== 'undefined' ? window.location?.pathname || getPublicCatalogRelativePath(slug) : getPublicCatalogRelativePath(slug);
     const attribution = collectVisitAttribution();
     recordCatalogVisit(slug, path, attribution)
-      .then((r) => console.log('[public-catalog] recordCatalogVisit result', { slug, recorded: r?.recorded, throttled: r?.throttled, error: r?.error }))
-      .catch((e) => console.error('[public-catalog] recordCatalogVisit error', slug, e));
+      .then((r) => {
+        if (r?.error) {
+          console.warn('[public-catalog] recordCatalogVisit failed (non-blocking)', { slug, error: r.error });
+        }
+      })
+      .catch((e) => console.warn('[public-catalog] recordCatalogVisit threw (non-blocking)', slug, e?.message || e));
     const { data: prods } = await getPublicProducts(biz?.id);
     const loadedProducts = prods || [];
     setProducts(loadedProducts);
@@ -1965,7 +1969,15 @@ export function ProductModal({ product, business, slug, formatPrice, whatsAppUrl
             rel="noopener noreferrer"
             onClick={() => {
               const path = typeof window !== 'undefined' ? window.location?.pathname || getPublicCatalogRelativePath(slug) : getPublicCatalogRelativePath(slug);
-              recordCatalogWhatsAppClick(slug, path, 'product_modal').catch(() => {});
+              recordCatalogWhatsAppClick(slug, path, 'product_modal')
+                .then((result) => {
+                  if (result?.error) {
+                    console.warn('[public-catalog] recordCatalogWhatsAppClick failed (non-blocking)', { slug, error: result.error });
+                  }
+                })
+                .catch((trackingError) => {
+                  console.warn('[public-catalog] recordCatalogWhatsAppClick threw (non-blocking)', slug, trackingError?.message || trackingError);
+                });
             }}
             className="flex items-center justify-center gap-2 w-full py-3 rounded-2xl text-sm font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50 transition-all"
           >

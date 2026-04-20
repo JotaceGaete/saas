@@ -1924,7 +1924,7 @@ export async function recordCatalogVisit(slug, path, attribution = {}) {
     if (res.ok && data?.recorded) markVisitDone(slug);
     return { recorded: !!data?.recorded, throttled: data?.reason === 'throttled', error: res.ok ? null : (data?.error || { message: res.statusText }) };
   } catch (err) {
-    console.error('[record-catalog-visit] fetch failed', err?.message, err);
+    console.warn('[record-catalog-visit] fetch failed (non-blocking)', err?.message || err);
     return { recorded: false, error: { message: err?.message || 'Network error' } };
   }
 }
@@ -1966,7 +1966,7 @@ export async function recordCatalogWhatsAppClick(slug, path, source = 'unknown')
     }
     return { recorded: !!data?.recorded, error: null };
   } catch (err) {
-    console.error('[record-catalog-whatsapp-click] fetch failed', err?.message, err);
+    console.warn('[record-catalog-whatsapp-click] fetch failed (non-blocking)', err?.message || err);
     return { recorded: false, error: { message: err?.message || 'Network error' } };
   }
 }
@@ -2023,7 +2023,10 @@ export async function recordSiteVisit({ path, hostname, attribution = {} } = {})
 
   const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
   const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
-  if (!supabaseUrl || !anonKey) return { recorded: false, error: { message: 'Missing Supabase config' } };
+  if (!supabaseUrl || !anonKey) {
+    console.warn('[record-site-visit] missing config (non-blocking)');
+    return { recorded: false, error: { message: 'Missing Supabase config' } };
+  }
 
   const visitorId = getOrCreateVisitorId();
   const body = {
@@ -2046,13 +2049,16 @@ export async function recordSiteVisit({ path, hostname, attribution = {} } = {})
       body: JSON.stringify(body),
     });
     const data = await res.json().catch(() => ({}));
-    if (res.ok && data?.recorded) markSiteVisitDone(normalizedPath);
-    return { recorded: !!data?.recorded, error: res.ok ? null : (data?.error || { message: res.statusText }) };
-  } catch (err) {
-    console.error('[record-site-visit] fetch failed', err?.message);
-    return { recorded: false, error: { message: err?.message || 'Network error' } };
+      if (!res.ok) {
+        console.warn('[record-site-visit] non-OK response (non-blocking)', res.status, data);
+      }
+      if (res.ok && data?.recorded) markSiteVisitDone(normalizedPath);
+      return { recorded: !!data?.recorded, error: res.ok ? null : (data?.error || { message: res.statusText }) };
+    } catch (err) {
+      console.warn('[record-site-visit] fetch failed (non-blocking)', err?.message || err);
+      return { recorded: false, error: { message: err?.message || 'Network error' } };
+    }
   }
-}
 
 /**
  * Estadísticas de visitas al sitio principal. Solo admin.
