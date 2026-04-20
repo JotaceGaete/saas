@@ -10,6 +10,13 @@ ALTER TABLE public.wa_businesses
 ADD CONSTRAINT wa_businesses_onboarding_step_check
 CHECK (onboarding_step IN ('business_basics','first_product','preview','completed'));
 
+UPDATE public.wa_businesses
+SET
+  onboarding_step = 'completed',
+  onboarding_completed_at = COALESCE(onboarding_completed_at, updated_at, created_at, now()),
+  activated_at = COALESCE(activated_at, updated_at, created_at, now())
+WHERE onboarding_completed_at IS NULL;
+
 ALTER TABLE public.billing_subscriptions
 ADD COLUMN IF NOT EXISTS billing_country_code text NULL;
 

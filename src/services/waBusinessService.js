@@ -186,6 +186,46 @@ const generateSlug = async (name) => {
   return slug;
 };
 
+function isMissingRpcError(error) {
+  const message = String(error?.message || '').toLowerCase();
+  const code = String(error?.code || '').toUpperCase();
+  return code === 'PGRST202' || code === '42883' || message.includes('could not find the function');
+}
+
+async function upsertOnboardingBillingSubscription({ businessId, currency, trialEnd, startedAt, normalizedCountryCode, contactEmail }) {
+  if (!businessId) return;
+
+  const { error: billingError } = await supabase
+    ?.from('billing_subscriptions')
+    ?.upsert({
+      business_id: businessId,
+      provider: 'signup',
+      provider_subscription_id: null,
+      plan_slug: 'pro',
+      currency_code: currency,
+      amount: null,
+      interval_unit: 'month',
+      status: 'trial',
+      provider_status: null,
+      trial_ends_at: trialEnd,
+      starts_at: startedAt,
+      current_period_starts_at: startedAt,
+      current_period_ends_at: trialEnd,
+      cancel_at_period_end: false,
+      cancelled_at: null,
+      billing_country_code: normalizedCountryCode,
+      metadata_json: {
+        source: 'onboarding',
+        trial_days: 14,
+        contact_email: contactEmail,
+      },
+    }, { onConflict: 'business_id' });
+
+  if (billingError) {
+    console.error('[waBusinessService] createBusinessFromOnboarding billing upsert error:', billingError);
+  }
+}
+
 /**
  * @param {string} businessId
  * @param {{ force?: boolean }} [opts]
@@ -555,7 +595,7 @@ export const createBusiness = async (businessData) => {
   return { data: mapBusinessFromDb(data), error: null };
 };
 
-export const createBusinessFromOnboarding = async (businessData) => {
+const legacyCreateBusinessFromOnboarding = async (businessData) => {
   const { data: { user } } = await supabase?.auth?.getUser();
   if (!user) return { data: null, error: { message: 'Usuario no autenticado' } };
 
@@ -641,6 +681,82 @@ export const createBusinessFromOnboarding = async (businessData) => {
   }
 
   return { data: mapBusinessFromDb(data), error: null };
+};
+
+export const createBusinessFromOnboarding = async (businessData) => {
+  const { data: { user } } = await supabase?.auth?.getUser();
+  if (!user) return { data: null, error: { message: 'Usuario no autenticado' } };
+
+  const normalizedName = String(businessData?.name || '').trim();
+  const normalizedWhatsapp = normalizeWhatsappForStorage(businessData?.whatsapp || '');
+  const normalizedCountryCode = String(businessData?.countryCode || '').trim().toUpperCase();
+
+  if (!normalizedName) {
+    return { data: null, error: { message: 'El nombre del negocio es obligatorio.' } };
+  }
+
+  if (!normalizedWhatsapp) {
+    return { data: null, error: { message: 'El WhatsApp del negocio es obligatorio.' } };
+  }
+
+  if (!normalizedCountryCode || !COUNTRY_CODES.includes(normalizedCountryCode)) {
+    return { data: null, error: { message: 'Debes seleccionar un pais valido.' } };
+  }
+
+  const cfg = getCountryConfig(normalizedCountryCode);
+  const slug = await generateSlug(normalizedName);
+  const trialEnd = getTrialEndDateFrom().toISOString();
+  const startedAt = new Date().toISOString();
+  const currency = businessData?.currency || cfg?.currency || 'USD';
+
+  const rpcPayload = {
+    p_name: normalizedName,
+    p_whatsapp: normalizedWhatsapp,
+    p_country_code: normalizedCountryCode,
+    p_currency: currency,
+    p_email: businessData?.email || user?.email || null,
+    p_slug: slug,
+    p_description: businessData?.description || null,
+    p_address: businessData?.address || null,
+    p_city: businessData?.city || null,
+    p_region: businessData?.region || null,
+    p_logo_url: businessData?.logoUrl || null,
+  };
+
+  let result = null;
+  const { data: rpcBusiness, error: rpcError } = await supabase
+    ?.rpc('wa_create_business_from_onboarding', rpcPayload);
+
+  if (rpcError && !isMissingRpcError(rpcError)) {
+    return { data: null, error: rpcError };
+  }
+
+  if (rpcBusiness) {
+    result = { data: mapBusinessFromDb(rpcBusiness), error: null };
+  } else {
+    result = await legacyCreateBusinessFromOnboarding({
+      ...businessData,
+      name: normalizedName,
+      whatsapp: normalizedWhatsapp,
+      countryCode: normalizedCountryCode,
+      currency,
+    });
+  }
+
+  if (result?.error || !result?.data?.id) {
+    return result;
+  }
+
+  await upsertOnboardingBillingSubscription({
+    businessId: result.data.id,
+    currency: result.data.currency || currency,
+    trialEnd: result.data.trialExpiresAt || trialEnd,
+    startedAt: result.data.createdAt || startedAt,
+    normalizedCountryCode: result.data.countryCodeDb || normalizedCountryCode,
+    contactEmail: result.data.email || businessData?.email || user?.email || null,
+  });
+
+  return result;
 };
 
 export const createBusinessForUser = async (userId, businessData) => {

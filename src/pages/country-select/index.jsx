@@ -6,18 +6,12 @@ import { COUNTRY_CODES, getCountryConfig, getManualMarketChoice, getStoredCountr
 import Icon from '../../components/AppIcon';
 import { fetchSuggestCountryFromIp } from '../../utils/suggestCountryFromIp';
 
-/**
- * Pantalla inicial en go.ventalink.app: selector de país.
- * Si no hay país en localStorage, puede mostrar sugerencia por IP (no rellena la selección: el usuario elige).
- * Si el usuario eligió mercado GLOBAL en landing (ventalink_manual_market), no aplica geo automática.
- */
 export default function CountrySelectPage() {
   const navigate = useNavigate();
   const { setCountry, isSelectable } = useCountry();
   const { user, persistOnboardingCountry } = useAuth();
-  const [selected, setSelected] = React.useState(null);
+  const [selected, setSelected] = React.useState(() => getStoredCountryCode());
   const [geoLoading, setGeoLoading] = React.useState(false);
-  /** Resultado de IP: { code, approximate } — approximate = región fuera de la lista, sugerimos US/USD */
   const [geoHint, setGeoHint] = React.useState(null);
 
   React.useEffect(() => {
@@ -30,6 +24,7 @@ export default function CountrySelectPage() {
 
     let cancelled = false;
     setGeoLoading(true);
+
     fetchSuggestCountryFromIp()
       .then((result) => {
         if (cancelled) return;
@@ -49,6 +44,7 @@ export default function CountrySelectPage() {
 
   const handleContinue = async () => {
     if (!selected || !COUNTRY_CODES.includes(selected)) return;
+
     setCountry(selected);
     if (user) {
       await persistOnboardingCountry(selected);
@@ -56,12 +52,13 @@ export default function CountrySelectPage() {
     navigate('/business-registration', { replace: true });
   };
 
-  const geoCountryName = geoHint?.code ? getCountryConfig(geoHint.code).name : '';
-
   if (!isSelectable) {
     navigate('/business-registration', { replace: true });
     return null;
   }
+
+  const geoCountryName = geoHint?.code ? getCountryConfig(geoHint.code).name : '';
+  const selectedConfig = selected ? getCountryConfig(selected) : null;
 
   return (
     <div
@@ -78,21 +75,27 @@ export default function CountrySelectPage() {
             className="text-sm font-medium hover:underline"
             style={{ color: 'var(--color-primary)' }}
           >
-            ← Volver al inicio
+            Volver al inicio
           </Link>
         </p>
+
         <div className="text-center mb-6">
           <h1 className="text-2xl font-bold mb-2" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-heading)' }}>
-            Elige tu país
+            Elige tu pais
           </h1>
           <p className="text-sm" style={{ color: 'var(--color-muted-foreground)' }}>
-            Ajustaremos moneda, WhatsApp y opciones de pago según tu ubicación.
+            Ajustaremos moneda, WhatsApp y opciones de pago segun tu ubicacion desde el primer paso.
           </p>
+          {selectedConfig && (
+            <p className="text-xs mt-2" style={{ color: 'var(--color-muted-foreground)' }}>
+              Continuaras con <strong>{selectedConfig.currency}</strong> y prefijo <strong>{selectedConfig.phonePrefix}</strong>.
+            </p>
+          )}
         </div>
 
         {geoLoading && (
           <p className="text-sm text-center mb-4" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-            Detectando región…
+            Detectando region...
           </p>
         )}
 
@@ -106,10 +109,10 @@ export default function CountrySelectPage() {
             role="status"
           >
             <p className="text-sm font-medium m-0 mb-1" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>
-              Detectamos tu país: {geoCountryName}
+              Detectamos tu pais: {geoCountryName}
             </p>
             <p className="text-xs m-0" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-              ¿No es correcto? Elige otro país en la lista.
+              Si no coincide, puedes elegir otro antes de seguir.
             </p>
           </div>
         )}
@@ -124,10 +127,10 @@ export default function CountrySelectPage() {
             role="status"
           >
             <p className="text-sm font-medium m-0 mb-1" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>
-              Tu región sugiere configuración internacional ({geoCountryName} · USD)
+              Tu region sugiere configuracion internacional ({geoCountryName} · USD)
             </p>
             <p className="text-xs m-0" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-              Puedes cambiar el país abajo si prefieres otra moneda u opciones de pago.
+              Confirma el pais correcto para configurar bien moneda, WhatsApp y cobros.
             </p>
           </div>
         )}
@@ -170,7 +173,7 @@ export default function CountrySelectPage() {
           className="w-full py-3 px-4 rounded-xl font-semibold flex items-center justify-center gap-2 transition-opacity disabled:opacity-50"
           style={{ backgroundColor: 'var(--color-primary)', color: 'white' }}
         >
-          Continuar a la app
+          Continuar al registro
           <Icon name="ArrowRight" size={18} color="white" />
         </button>
       </div>

@@ -111,7 +111,7 @@ const RULES_V2 = [
         alert:     'Un CTR bajo indica que el botón de contacto no es visible o que el producto no genera suficiente interés.',
         action:    'Asegúrate de que el botón de WhatsApp sea visible sin necesidad de hacer scroll.',
         ctaLabel:  'Configurar catálogo',
-        ctaTarget: '/business-configuration',
+        ctaTarget: '/design',
       };
     },
   },

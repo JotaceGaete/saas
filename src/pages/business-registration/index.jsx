@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate, Navigate } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCountry } from '../../contexts/CountryContext';
 import { collectVisitAttribution } from '../../utils/analytics';
@@ -9,49 +9,46 @@ import ConfirmEmailStep from './components/ConfirmEmailStep';
 
 function normalizeAuthErrorMessage(raw) {
   const msg = String(raw || '').trim();
-  const m = msg.toLowerCase();
-  if (m.includes('rate limit') || m.includes('too many requests')) {
+  const lowered = msg.toLowerCase();
+
+  if (lowered.includes('rate limit') || lowered.includes('too many requests')) {
     return 'Has intentado crear cuentas demasiadas veces en poco tiempo. Espera 1 minuto y vuelve a intentarlo.';
   }
   if (
-    (m.includes('email') && m.includes('already') && (m.includes('registered') || m.includes('exists'))) ||
-    m.includes('user already registered') ||
-    m.includes('already registered')
+    (lowered.includes('email') && lowered.includes('already') && (lowered.includes('registered') || lowered.includes('exists'))) ||
+    lowered.includes('user already registered') ||
+    lowered.includes('already registered')
   ) {
-    return 'Este correo ya está registrado. Inicia sesión o usa otro correo.';
+    return 'Este correo ya esta registrado. Inicia sesion o usa otro correo.';
   }
-  if (m.includes('invalid') && m.includes('email')) {
-    return 'El correo no es válido. Revisa el formato e inténtalo de nuevo.';
+  if (lowered.includes('invalid') && lowered.includes('email')) {
+    return 'El correo no es valido. Revisa el formato e intentalo de nuevo.';
   }
-  if (m.includes('email') && (m.includes('not confirmed') || m.includes('confirm'))) {
+  if (lowered.includes('email') && (lowered.includes('not confirmed') || lowered.includes('confirm'))) {
     return 'Confirma tu correo antes de continuar.';
   }
-  if (m.includes('invalid login credentials') || (m.includes('invalid') && m.includes('credentials'))) {
-    return 'Correo o contraseña incorrectos.';
+  if (lowered.includes('invalid login credentials') || (lowered.includes('invalid') && lowered.includes('credentials'))) {
+    return 'Correo o contrasena incorrectos.';
   }
-  if (m.includes('signup') && (m.includes('disabled') || m.includes('not allowed'))) {
-    return 'El registro está deshabilitado temporalmente. Intenta más tarde.';
+  if (lowered.includes('signup') && (lowered.includes('disabled') || lowered.includes('not allowed'))) {
+    return 'El registro esta deshabilitado temporalmente. Intenta mas tarde.';
   }
-  if (m.includes('email') && (m.includes('not allowed') || m.includes('not authorized') || m.includes('blocked'))) {
+  if (lowered.includes('email') && (lowered.includes('not allowed') || lowered.includes('not authorized') || lowered.includes('blocked'))) {
     return 'No se permite registrar este correo. Prueba con otro correo.';
   }
-  if (m.includes('password') && (m.includes('weak') || m.includes('strength'))) {
-    return 'La contraseña es muy débil. Usa una más segura (mínimo 6 caracteres).';
+  if (lowered.includes('password') && (lowered.includes('weak') || lowered.includes('strength'))) {
+    return 'La contrasena es muy debil. Usa una mas segura (minimo 6 caracteres).';
   }
-  if (m.includes('password') && (m.includes('short') || m.includes('at least'))) {
-    return 'La contraseña es demasiado corta. Usa al menos 6 caracteres.';
+  if (lowered.includes('password') && (lowered.includes('short') || lowered.includes('at least'))) {
+    return 'La contrasena es demasiado corta. Usa al menos 6 caracteres.';
   }
-  if (m.includes('network') || m.includes('fetch') || m.includes('failed to fetch')) {
-    return 'No pudimos conectar con el servidor. Revisa tu conexión e inténtalo de nuevo.';
+  if (lowered.includes('network') || lowered.includes('fetch') || lowered.includes('failed to fetch')) {
+    return 'No pudimos conectar con el servidor. Revisa tu conexion e intentalo de nuevo.';
   }
-  return msg || 'Ocurrió un error. Por favor intenta de nuevo.';
+
+  return msg || 'Ocurrio un error. Por favor intenta de nuevo.';
 }
 
-/**
- * Flujo actual:
- *   1. Visitante no autenticado → AuthStep (login / registro con email)
- *   2. Usuario autenticado → /onboarding o /dashboard según estado real
- */
 export default function BusinessRegistration() {
   const navigate = useNavigate();
   const {
@@ -70,7 +67,7 @@ export default function BusinessRegistration() {
 
   const [authError, setAuthError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [pendingConfirmation, setPendingConfirmation] = useState(null); // { email } cuando signUp OK pero sin sesión
+  const [pendingConfirmation, setPendingConfirmation] = useState(null);
   const [signupCooldownUntil, setSignupCooldownUntil] = useState(0);
 
   const cooldownRemainingMs = Math.max(0, (signupCooldownUntil || 0) - Date.now());
@@ -81,20 +78,19 @@ export default function BusinessRegistration() {
   }, []);
 
   useEffect(() => {
-    if (!signupCooldownActive) return;
-    const t = setInterval(() => {
-      setSignupCooldownUntil((v) => v);
+    if (!signupCooldownActive) return undefined;
+    const timer = setInterval(() => {
+      setSignupCooldownUntil((value) => value);
     }, 500);
-    return () => clearInterval(t);
+    return () => clearInterval(timer);
   }, [signupCooldownActive]);
 
   useEffect(() => {
     if (!loading && !businessLoading && user) {
       navigate(resolvePostAuthRoute(), { replace: true });
     }
-  }, [loading, businessLoading, user, navigate, resolvePostAuthRoute]);
+  }, [businessLoading, loading, navigate, resolvePostAuthRoute, user]);
 
-  // ── Pantalla de carga inicial ────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--color-background)' }}>
@@ -110,36 +106,44 @@ export default function BusinessRegistration() {
     return <Navigate to="/verify-email" replace />;
   }
 
-  // ── PASO 1: No autenticado → pantalla de login/registro ─────────────────────
+  if (!countryCode && !user) {
+    return <Navigate to="/elegir-pais" replace />;
+  }
+
   if (!user) {
     const handleRegister = async ({ email, password, businessName }) => {
+      if (!countryCode) {
+        navigate('/elegir-pais', { replace: true });
+        return;
+      }
+
       if (signupCooldownActive) {
         setAuthError('Espera un minuto antes de intentarlo de nuevo.');
         return;
       }
+
       setIsSubmitting(true);
       setAuthError(null);
       setPendingConfirmation(null);
+
       try {
         const { data, error } = await signUp(email, password, {
           name: businessName || 'Mi Negocio',
           countryCode,
         });
+
         if (error) {
           setAuthError(normalizeAuthErrorMessage(error.message));
-          const msgLower = String(error.message || '').toLowerCase();
-          if (msgLower.includes('rate limit') || msgLower.includes('too many requests')) {
+          const lowered = String(error.message || '').toLowerCase();
+          if (lowered.includes('rate limit') || lowered.includes('too many requests')) {
             setSignupCooldownUntil(Date.now() + 60_000);
           }
           return;
         }
+
         if (data?.user && !data?.session) {
-          if (typeof window !== 'undefined') {
-            console.log('[BusinessRegistration] signUp: email confirmation required', { email: data.user?.email });
-          }
           setPendingConfirmation({ email: data.user?.email || email });
         }
-        // Si hay sesión, onAuthStateChange actualizará `user` y pasaremos al PASO 2.
       } catch {
         setAuthError('Error inesperado. Por favor intenta de nuevo.');
       } finally {
@@ -148,16 +152,22 @@ export default function BusinessRegistration() {
     };
 
     const handleLogin = async ({ email, password }) => {
+      if (!countryCode) {
+        navigate('/elegir-pais', { replace: true });
+        return;
+      }
+
       setIsSubmitting(true);
       setAuthError(null);
+
       try {
         const { error } = await signIn(email, password);
         if (error) {
           setAuthError(normalizeAuthErrorMessage(error.message));
-        } else if (countryCode) {
-          await persistOnboardingCountry(countryCode);
+          return;
         }
-        // Si no hay error, onAuthStateChange actualiza `user` automáticamente.
+
+        await persistOnboardingCountry(countryCode);
       } catch {
         setAuthError('Error inesperado. Por favor intenta de nuevo.');
       } finally {
@@ -166,10 +176,14 @@ export default function BusinessRegistration() {
     };
 
     const handleGoogleLogin = async () => {
+      if (!countryCode) {
+        navigate('/elegir-pais', { replace: true });
+        return;
+      }
+
       setAuthError(null);
       const { error } = await signInWithGoogle();
-      if (error) setAuthError(error?.message || 'Error al iniciar sesión con Google.');
-      // Si no hay error, redirige a Google; al volver el callback redirige a dashboard/registro
+      if (error) setAuthError(error?.message || 'Error al iniciar sesion con Google.');
     };
 
     if (pendingConfirmation?.email) {
@@ -201,7 +215,5 @@ export default function BusinessRegistration() {
     );
   }
 
-  // ── PASO 2: Autenticado sin negocio → formulario de creación de tienda ───────
-  // businessLoading = true mientras se carga el negocio por primera vez
   return <Navigate to="/onboarding" replace />;
 }

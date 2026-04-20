@@ -2,8 +2,8 @@ import React from 'react';
 import { Navigate } from 'react-router-dom';
 
 /**
- * Ruta legacy: el país se define solo en Configuración.
+ * Ruta legacy del onboarding.
  */
 export default function CompleteBusinessSetupPage() {
-  return <Navigate to="/business-configuration" replace />;
+  return <Navigate to="/onboarding" replace />;
 }

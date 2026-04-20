@@ -12,7 +12,7 @@ const LEGAL_LINKS = [
 const APP_LINKS = [
   { label: 'Dashboard', path: '/dashboard' },
   { label: 'Products', path: '/product-management' },
-  { label: 'Settings', path: '/business-configuration' },
+    { label: 'Settings', path: '/design' },
   { label: 'Create account', path: '/business-registration' },
 ];
 

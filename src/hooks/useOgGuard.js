@@ -58,11 +58,11 @@ export function useOgGuard(business, navigate) {
     setIsOpen(false);
   }, []);
 
-  /** User chose "Subir portada" — navigate to config and close. */
+  /** User chose "Subir portada" — navigate to design settings and close. */
   const handleGoToConfig = useCallback(() => {
     setIsOpen(false);
     pendingActionRef.current = null;
-    navigate('/business-configuration');
+    navigate('/design');
   }, [navigate]);
 
   return {

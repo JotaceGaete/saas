@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { getMyBusiness } from '../../services/waBusinessService';
-import { hasPersistedBusinessCountry } from '../../lib/country/business-country-policy';
+import { resolvePostAuthRoute } from '../../lib/onboarding/state';
 import Icon from 'components/AppIcon';
 import { APP_ORIGIN, isCanonicalAppHostname } from '../../config/appUrl';
 
@@ -66,27 +66,13 @@ export default function AuthCallback() {
         return;
       }
 
-      // Usuario autenticado y correo confirmado: verificar si tiene negocio
+      // Usuario autenticado y correo confirmado: resolver destino real.
       try {
         const { data: business } = await getMyBusiness();
-        if (business) {
-          console.log('[VTLK_ROUTE] AuthCallback negocio', {
-            path: typeof window !== 'undefined' ? window.location.pathname : '',
-            businessId: business.id,
-            countryCodeDb: business.countryCodeDb ?? null,
-            hasCountryCode: hasPersistedBusinessCountry(business),
-          });
-          if (!hasPersistedBusinessCountry(business)) {
-            navigate('/business-configuration', { replace: true });
-          } else {
-            navigate('/dashboard', { replace: true });
-          }
-        } else {
-          navigate('/business-registration', { replace: true });
-        }
+        navigate(resolvePostAuthRoute({ user: session.user, business }), { replace: true });
       } catch (err) {
         console.error('[AuthCallback] Error checking business:', err);
-        navigate('/business-registration', { replace: true });
+        navigate('/onboarding', { replace: true });
       }
     };
 

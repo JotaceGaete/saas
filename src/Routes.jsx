@@ -69,11 +69,11 @@ function GoRootEntry() {
   }
 
   if (!isGo) {
-    return <Navigate to={user ? resolvePostAuthRoute() : "/login"} replace />;
+    return <Navigate to={user ? resolvePostAuthRoute() : "/business-registration"} replace />;
   }
 
   if (!user) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/business-registration" replace />;
   }
 
   return <Navigate to={resolvePostAuthRoute()} replace />;

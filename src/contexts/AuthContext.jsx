@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { getMyBusiness, updateBusiness } from '../services/waBusinessService';
-import { getAppBaseUrl, getAuthRedirectUrl, getResetPasswordRedirectUrl } from '../config/appUrl';
+import { getAuthRedirectUrl, getResetPasswordRedirectUrl } from '../config/appUrl';
+import { resolvePostAuthRoute as resolveOnboardingPostAuthRoute } from '../lib/onboarding/state';
 
 const AuthContext = createContext({})
 
@@ -49,9 +50,12 @@ export const AuthProvider = ({ children }) => {
           } else {
             setBusiness(data)
           }
+        } else {
+          setBusiness(null)
         }
       } catch (err) {
         console.error('Business load error:', err)
+        setBusiness(null)
       } finally {
         setBusinessLoading(false)
       }
@@ -296,10 +300,7 @@ export const AuthProvider = ({ children }) => {
   }
 
   const resolvePostAuthRoute = () => {
-    if (!user) return '/business-registration'
-    if (!business?.id) return '/onboarding'
-    if (business?.onboardingStep !== 'completed' || !business?.onboardingCompletedAt) return '/onboarding'
-    return '/dashboard'
+    return resolveOnboardingPostAuthRoute({ user, business })
   }
 
   /** Actualiza el negocio en memoria sin disparar businessLoading ni hacer fetch. */

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { isOnboardingComplete } from '../lib/onboarding/state';
 
 function GuardSpinner() {
   return (
@@ -35,7 +36,7 @@ export default function RequireOnboardingComplete({ children }) {
     return <Navigate to="/onboarding" state={{ from: location, reason: 'missing_business' }} replace />;
   }
 
-  if (business?.onboardingStep !== 'completed' || !business?.onboardingCompletedAt) {
+  if (!isOnboardingComplete(business)) {
     return <Navigate to="/onboarding" state={{ from: location, reason: 'incomplete_onboarding' }} replace />;
   }
 

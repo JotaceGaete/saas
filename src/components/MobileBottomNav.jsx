@@ -7,7 +7,7 @@ const ITEMS = [
   { label: 'Inicio', path: '/dashboard', icon: 'LayoutDashboard' },
   { label: 'Productos', path: '/product-management', icon: 'Package' },
   { label: 'Pedidos', path: '/orders', icon: 'ShoppingCart' },
-  { label: 'Config', path: '/business-configuration', icon: 'Settings' },
+    { label: 'Config', path: '/design', icon: 'Settings' },
 ];
 
 const ADMIN_ITEM = { label: 'Admin', path: '/admin', icon: 'Shield' };
