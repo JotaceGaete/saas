@@ -2,12 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCountry } from '../../contexts/CountryContext';
-import { resolveCountryState, resolveBillingSetup, logCountryStateDebug } from '../../lib/country/state-model';
 import { collectVisitAttribution } from '../../utils/analytics';
 import { recordSiteVisit } from '../../services/waBusinessService';
 import AuthStep from './components/AuthStep';
 import ConfirmEmailStep from './components/ConfirmEmailStep';
-import StoreCreationStep from './components/StoreCreationStep';
 
 function normalizeAuthErrorMessage(raw) {
   const msg = String(raw || '').trim();
@@ -50,22 +48,25 @@ function normalizeAuthErrorMessage(raw) {
 }
 
 /**
- * Flujo de onboarding:
+ * Flujo actual:
  *   1. Visitante no autenticado → AuthStep (login / registro con email)
- *   2. Usuario autenticado sin negocio → StoreCreationStep
- *   3. Usuario autenticado con negocio → redirige a /dashboard
+ *   2. Usuario autenticado → /onboarding o /dashboard según estado real
  */
 export default function BusinessRegistration() {
   const navigate = useNavigate();
-  const { user, business, loading, businessLoading, signUp, signIn, signInWithGoogle, resendConfirmationEmail, isEmailConfirmed } = useAuth();
+  const {
+    user,
+    loading,
+    businessLoading,
+    signUp,
+    signIn,
+    signInWithGoogle,
+    resendConfirmationEmail,
+    isEmailConfirmed,
+    resolvePostAuthRoute,
+    persistOnboardingCountry,
+  } = useAuth();
   const { countryCode } = useCountry();
-  const countryState = resolveCountryState({
-    businessCountryCode: business,
-    onboardingCountryCode: null,
-    userCountryCode: user?.user_metadata?.country_code ?? user?.user_metadata?.country ?? null,
-    hostnameSuggestionCountryCode: countryCode,
-  });
-  const billingSetup = resolveBillingSetup(countryState);
 
   const [authError, setAuthError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -88,27 +89,10 @@ export default function BusinessRegistration() {
   }, [signupCooldownActive]);
 
   useEffect(() => {
-    logCountryStateDebug({
-      uxCountry: countryState.uxCountry,
-      businessCountry: countryState.businessCountry,
-      billingCountry: countryState.billingCountry,
-      provider: billingSetup.billingProvider,
-      currency: billingSetup.currency,
-    });
-  }, [
-    countryState.uxCountry,
-    countryState.businessCountry,
-    countryState.billingCountry,
-    billingSetup.billingProvider,
-    billingSetup.currency,
-  ]);
-
-  // Si ya tiene negocio → dashboard
-  useEffect(() => {
-    if (!loading && !businessLoading && user && business) {
-      navigate('/dashboard', { replace: true });
+    if (!loading && !businessLoading && user) {
+      navigate(resolvePostAuthRoute(), { replace: true });
     }
-  }, [loading, businessLoading, user, business, navigate]);
+  }, [loading, businessLoading, user, navigate, resolvePostAuthRoute]);
 
   // ── Pantalla de carga inicial ────────────────────────────────────────────────
   if (loading) {
@@ -139,6 +123,7 @@ export default function BusinessRegistration() {
       try {
         const { data, error } = await signUp(email, password, {
           name: businessName || 'Mi Negocio',
+          countryCode,
         });
         if (error) {
           setAuthError(normalizeAuthErrorMessage(error.message));
@@ -169,6 +154,8 @@ export default function BusinessRegistration() {
         const { error } = await signIn(email, password);
         if (error) {
           setAuthError(normalizeAuthErrorMessage(error.message));
+        } else if (countryCode) {
+          await persistOnboardingCountry(countryCode);
         }
         // Si no hay error, onAuthStateChange actualiza `user` automáticamente.
       } catch {
@@ -216,10 +203,5 @@ export default function BusinessRegistration() {
 
   // ── PASO 2: Autenticado sin negocio → formulario de creación de tienda ───────
   // businessLoading = true mientras se carga el negocio por primera vez
-  return (
-    <StoreCreationStep
-      user={user}
-      businessLoading={businessLoading}
-    />
-  );
+  return <Navigate to="/onboarding" replace />;
 }

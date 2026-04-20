@@ -354,6 +354,9 @@ const mapBusinessFromDb = (row) => {
   trialExpiresAt: row?.trial_expires_at ?? null,
   scheduledPlanSlug: row?.scheduled_plan_slug ?? null,
   scheduledChangeAt: row?.scheduled_change_at ?? null,
+  onboardingStep: row?.onboarding_step ?? 'business_basics',
+  onboardingCompletedAt: row?.onboarding_completed_at ?? null,
+  activatedAt: row?.activated_at ?? null,
   createdAt: row?.created_at,
   updatedAt: row?.updated_at,
 };
@@ -552,6 +555,94 @@ export const createBusiness = async (businessData) => {
   return { data: mapBusinessFromDb(data), error: null };
 };
 
+export const createBusinessFromOnboarding = async (businessData) => {
+  const { data: { user } } = await supabase?.auth?.getUser();
+  if (!user) return { data: null, error: { message: 'Usuario no autenticado' } };
+
+  const normalizedCountryCode = String(businessData?.countryCode || '').trim().toUpperCase();
+  if (!normalizedCountryCode || !COUNTRY_CODES.includes(normalizedCountryCode)) {
+    return { data: null, error: { message: 'Debes seleccionar un país válido.' } };
+  }
+
+  const { data: existingBusiness, error: existingError } = await supabase
+    ?.from('wa_businesses')
+    ?.select('*')
+    ?.eq('user_id', user?.id)
+    ?.maybeSingle();
+
+  if (existingError) return { data: null, error: existingError };
+  if (existingBusiness) return { data: mapBusinessFromDb(existingBusiness), error: null };
+
+  const cfg = getCountryConfig(normalizedCountryCode);
+  const slug = await generateSlug(businessData?.name);
+  const trialEnd = getTrialEndDateFrom().toISOString();
+  const startedAt = new Date().toISOString();
+  const currency = businessData?.currency || cfg?.currency || 'USD';
+
+  const { data, error } = await supabase?.from('wa_businesses')?.insert({
+    user_id: user?.id,
+    name: businessData?.name,
+    description: businessData?.description || null,
+    whatsapp: normalizeWhatsappForStorage(businessData?.whatsapp || ''),
+    email: businessData?.email || user?.email || null,
+    address: businessData?.address || null,
+    city: businessData?.city || null,
+    region: businessData?.region || null,
+    country: cfg?.name || normalizedCountryCode,
+    country_code: normalizedCountryCode,
+    currency,
+    logo_url: businessData?.logoUrl || null,
+    slug,
+    is_active: true,
+    plan_slug: 'pro',
+    plan_started_at: startedAt,
+    plan_expires_at: trialEnd,
+    trial_expires_at: trialEnd,
+    scheduled_plan_slug: 'starter',
+    scheduled_change_at: trialEnd,
+    onboarding_step: 'first_product',
+  })?.select()?.single();
+
+  if (error) return { data: null, error };
+
+  if (data?.id) {
+    const { error: billingError } = await supabase
+      ?.from('billing_subscriptions')
+      ?.upsert({
+        business_id: data.id,
+        provider: 'signup',
+        provider_subscription_id: null,
+        plan_slug: 'pro',
+        currency_code: currency,
+        amount: null,
+        interval_unit: 'month',
+        status: 'trial',
+        provider_status: null,
+        trial_ends_at: trialEnd,
+        starts_at: startedAt,
+        current_period_starts_at: startedAt,
+        current_period_ends_at: trialEnd,
+        cancel_at_period_end: false,
+        cancelled_at: null,
+        billing_country_code: normalizedCountryCode,
+        metadata_json: {
+          source: 'onboarding',
+          trial_days: 14,
+          contact_email: businessData?.email || user?.email || null,
+        },
+      }, { onConflict: 'business_id' });
+
+    if (billingError) {
+      console.error('[waBusinessService] createBusinessFromOnboarding billing upsert error:', billingError);
+    }
+
+    console.log('[waBusinessService] createBusinessFromOnboarding: triggerOgImageGeneration', { businessId: data?.id });
+    triggerOgImageGeneration(data?.id, { force: true });
+  }
+
+  return { data: mapBusinessFromDb(data), error: null };
+};
+
 export const createBusinessForUser = async (userId, businessData) => {
   if (!userId) return { data: null, error: { message: 'Usuario no autenticado' } };
   let slug = await generateSlug(businessData?.name);
@@ -648,6 +739,9 @@ export async function updateBusiness(businessId, updates) {
   if (updates?.planSlug !== undefined)         dbUpdates.plan_slug = updates?.planSlug;
   if (updates?.planExpiresAt !== undefined)    dbUpdates.plan_expires_at = updates?.planExpiresAt ?? null;
   if (updates?.trialExpiresAt !== undefined)   dbUpdates.trial_expires_at = updates?.trialExpiresAt ?? null;
+  if (updates?.onboardingStep !== undefined)   dbUpdates.onboarding_step = updates?.onboardingStep;
+  if (updates?.onboardingCompletedAt !== undefined) dbUpdates.onboarding_completed_at = updates?.onboardingCompletedAt ?? null;
+  if (updates?.activatedAt !== undefined)      dbUpdates.activated_at = updates?.activatedAt ?? null;
   console.log('[waBusinessService] updateBusiness: payload =', dbUpdates);
   const { data, error } = await supabase?.from('wa_businesses')?.update(dbUpdates)?.eq('id', businessId)?.eq('user_id', user?.id)?.select()?.single();
   if (error) {

@@ -6,12 +6,12 @@ import AnimatedLayout from "components/AnimatedLayout";
 import NotFound from "pages/NotFound";
 import RequireAdmin from "components/RequireAdmin";
 import RequireAuth from "components/RequireAuth";
+import RequireOnboardingComplete from "components/RequireOnboardingComplete";
 import SessionExpiredHandler from "components/SessionExpiredHandler";
 import CountrySelectPage from "./pages/country-select";
 import BusinessRegistration from './pages/business-registration';
+import OnboardingPage from './pages/onboarding';
 import LandingPage from './pages/landing-page';
-import BusinessConfiguration from './pages/business-configuration';
-import CompleteBusinessSetupPage from './pages/complete-business-setup';
 import ProductManagement from './pages/product-management';
 import Dashboard from './pages/dashboard';
 import ProductEditor from './pages/product-editor';
@@ -54,7 +54,7 @@ function GoRootEntry() {
   const isGo =
     typeof window !== "undefined" &&
     /(^|\.)go\.ventalink\.app$/.test((window.location?.hostname || "").toLowerCase());
-  const { user, loading } = useAuth();
+  const { user, loading, resolvePostAuthRoute } = useAuth();
 
   if (loading) {
     return (
@@ -69,14 +69,14 @@ function GoRootEntry() {
   }
 
   if (!isGo) {
-    return <Navigate to={user ? "/dashboard" : "/login"} replace />;
+    return <Navigate to={user ? resolvePostAuthRoute() : "/login"} replace />;
   }
 
   if (!user) {
     return <Navigate to="/login" replace />;
   }
 
-  return <Navigate to="/dashboard" replace />;
+  return <Navigate to={resolvePostAuthRoute()} replace />;
 }
 
 const Routes = () => {
@@ -93,23 +93,24 @@ const Routes = () => {
             <Route path="/business-registration" element={<BusinessRegistration />} />
             <Route path="/register" element={<BusinessRegistration />} />
             <Route path="/landing-page" element={<LandingPage />} />
-            <Route path="/complete-business-setup" element={<RequireAuth><CompleteBusinessSetupPage /></RequireAuth>} />
-            <Route path="/business-configuration" element={<RequireAuth><BusinessConfiguration /></RequireAuth>} />
-            <Route path="/product-management" element={<RequireAuth><ProductManagement /></RequireAuth>} />
-            <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
-            <Route path="/product-editor" element={<RequireAuth><ProductEditor /></RequireAuth>} />
-            <Route path="/orders/historial" element={<RequireAuth><OrdersHistory /></RequireAuth>} />
-            <Route path="/orders" element={<RequireAuth><Orders /></RequireAuth>} />
-            <Route path="/design" element={<RequireAuth><DesignPage /></RequireAuth>} />
-            <Route path="/ayuda" element={<RequireAuth><HelpPage /></RequireAuth>} />
+            <Route path="/complete-business-setup" element={<Navigate to="/onboarding" replace />} />
+            <Route path="/business-configuration" element={<Navigate to="/onboarding" replace />} />
+            <Route path="/onboarding" element={<RequireAuth><OnboardingPage /></RequireAuth>} />
+            <Route path="/product-management" element={<RequireOnboardingComplete><ProductManagement /></RequireOnboardingComplete>} />
+            <Route path="/dashboard" element={<RequireOnboardingComplete><Dashboard /></RequireOnboardingComplete>} />
+            <Route path="/product-editor" element={<RequireOnboardingComplete><ProductEditor /></RequireOnboardingComplete>} />
+            <Route path="/orders/historial" element={<RequireOnboardingComplete><OrdersHistory /></RequireOnboardingComplete>} />
+            <Route path="/orders" element={<RequireOnboardingComplete><Orders /></RequireOnboardingComplete>} />
+            <Route path="/design" element={<RequireOnboardingComplete><DesignPage /></RequireOnboardingComplete>} />
+            <Route path="/ayuda" element={<RequireOnboardingComplete><HelpPage /></RequireOnboardingComplete>} />
             <Route path="/login" element={<Login />} />
             <Route path="/verify-email" element={<VerifyEmailPage />} />
             <Route path="/auth/callback" element={<AuthCallback />} />
             {/* Misma pantalla: enlaces antiguos /reset-password siguen funcionando (conserva hash al cargar esta ruta) */}
             <Route path="/auth/reset-password" element={<ResetPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
-            <Route path="/planes" element={<RequireAuth><PlansPage /></RequireAuth>} />
-            <Route path="/plan-y-facturacion" element={<RequireAuth><PlansPage /></RequireAuth>} />
+            <Route path="/planes" element={<RequireOnboardingComplete><PlansPage /></RequireOnboardingComplete>} />
+            <Route path="/plan-y-facturacion" element={<RequireOnboardingComplete><PlansPage /></RequireOnboardingComplete>} />
             <Route path="/billing/success" element={<BillingSuccessPage />} />
             <Route path="/billing/paypal/success" element={<PaypalSuccessPage />} />
             <Route path="/billing/cancel" element={<BillingCancelPage />} />

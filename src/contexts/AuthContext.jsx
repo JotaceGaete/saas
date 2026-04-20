@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { createBusinessForUser, getMyBusiness, updateBusiness } from '../services/waBusinessService';
+import { getMyBusiness, updateBusiness } from '../services/waBusinessService';
 import { getAppBaseUrl, getAuthRedirectUrl, getResetPasswordRedirectUrl } from '../config/appUrl';
 
 const AuthContext = createContext({})
@@ -155,7 +155,7 @@ export const AuthProvider = ({ children }) => {
     }
   }
 
-  const signUp = async (email, password, businessData) => {
+  const signUp = async (email, password, businessData = {}) => {
     try {
       const emailRedirectTo = getAuthRedirectUrl(); // confirmación redirige a auth/callback
       if (typeof window !== 'undefined' && window.__AUTH_DEBUG__) {
@@ -164,6 +164,7 @@ export const AuthProvider = ({ children }) => {
       const metadata = {
         full_name: businessData?.name || email,
         name: businessData?.name || email,
+        onboarding_country_code: businessData?.countryCode || null,
       };
       if (typeof window !== 'undefined' && window.__AUTH_DEBUG__) {
         console.log('[Auth] signUp metadata (options.data):', metadata);
@@ -180,37 +181,6 @@ export const AuthProvider = ({ children }) => {
         console.log('[Auth] signUp result:', { hasUser: !!data?.user, hasSession: !!data?.session, error: error?.message });
       }
       if (error) return { data: null, error }
-
-      const userId = data?.user?.id
-      const hasSession = !!data?.session
-
-      // If we have an active session, the trigger may not have fired yet
-      // (or email confirmation is disabled). Try to ensure business exists.
-      if (userId && hasSession && businessData) {
-        try {
-          // Check if trigger already created the business
-          const { data: existingBiz } = await getMyBusiness()
-          if (!existingBiz) {
-            // Trigger didn't create it yet — create manually
-            const { data: biz, error: bizErr } = await createBusinessForUser(userId, {
-              name: businessData?.name || 'Mi Negocio',
-              whatsapp: businessData?.whatsapp || '',
-              description: businessData?.description || '',
-            })
-            if (bizErr) {
-              console.error('Business creation error:', bizErr)
-              // Don't block registration — business can be created later
-            } else if (biz) {
-              setBusiness(biz)
-            }
-          } else {
-            setBusiness(existingBiz)
-          }
-        } catch (bizErr) {
-          console.error('Business creation exception:', bizErr)
-          // Don't block registration
-        }
-      }
 
       // Notify welcome webhook on successful registration
       const WELCOME_WEBHOOK_URL = import.meta.env.VITE_WELCOME_WEBHOOK_URL;
@@ -307,6 +277,31 @@ export const AuthProvider = ({ children }) => {
     if (user) await businessOperations?.load(user?.id)
   }
 
+  const persistOnboardingCountry = async (countryCode) => {
+    const raw = String(countryCode || '').trim().toUpperCase()
+    if (!raw) return { error: null }
+    try {
+      const { data, error } = await supabase?.auth?.updateUser({
+        data: {
+          onboarding_country_code: raw,
+        },
+      }) ?? {}
+      if (!error && data?.user) {
+        setUser(data.user)
+      }
+      return { data, error: error ?? null }
+    } catch (error) {
+      return { error: { message: error?.message || 'No se pudo guardar el país del onboarding.' } }
+    }
+  }
+
+  const resolvePostAuthRoute = () => {
+    if (!user) return '/business-registration'
+    if (!business?.id) return '/onboarding'
+    if (business?.onboardingStep !== 'completed' || !business?.onboardingCompletedAt) return '/onboarding'
+    return '/dashboard'
+  }
+
   /** Actualiza el negocio en memoria sin disparar businessLoading ni hacer fetch. */
   const patchBusiness = (data) => {
     if (data) setBusiness(data)
@@ -363,6 +358,8 @@ export const AuthProvider = ({ children }) => {
     resendConfirmationEmail,
     signOut,
     refreshBusiness,
+    persistOnboardingCountry,
+    resolvePostAuthRoute,
     patchBusiness,
     refreshUser,
     isAuthenticated: !!user,

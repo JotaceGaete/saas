@@ -1,7 +1,6 @@
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import RequireBusinessCountry from './RequireBusinessCountry';
 
 /**
  * Protege rutas que requieren sesión activa.
@@ -30,5 +29,5 @@ export default function RequireAuth({ children }) {
     return <Navigate to="/verify-email" state={{ from: location }} replace />;
   }
 
-  return <RequireBusinessCountry>{children}</RequireBusinessCountry>;
+  return children;
 }

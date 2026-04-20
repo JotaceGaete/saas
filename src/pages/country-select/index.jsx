@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useCountry } from '../../contexts/CountryContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { COUNTRY_CODES, getCountryConfig, getManualMarketChoice, getStoredCountryCode } from '../../config/countryConfig';
 import Icon from '../../components/AppIcon';
 import { fetchSuggestCountryFromIp } from '../../utils/suggestCountryFromIp';
@@ -13,6 +14,7 @@ import { fetchSuggestCountryFromIp } from '../../utils/suggestCountryFromIp';
 export default function CountrySelectPage() {
   const navigate = useNavigate();
   const { setCountry, isSelectable } = useCountry();
+  const { user, persistOnboardingCountry } = useAuth();
   const [selected, setSelected] = React.useState(null);
   const [geoLoading, setGeoLoading] = React.useState(false);
   /** Resultado de IP: { code, approximate } — approximate = región fuera de la lista, sugerimos US/USD */
@@ -45,16 +47,19 @@ export default function CountrySelectPage() {
     };
   }, [isSelectable]);
 
-  const handleContinue = () => {
+  const handleContinue = async () => {
     if (!selected || !COUNTRY_CODES.includes(selected)) return;
     setCountry(selected);
-    navigate('/dashboard', { replace: true });
+    if (user) {
+      await persistOnboardingCountry(selected);
+    }
+    navigate('/business-registration', { replace: true });
   };
 
   const geoCountryName = geoHint?.code ? getCountryConfig(geoHint.code).name : '';
 
   if (!isSelectable) {
-    navigate('/dashboard', { replace: true });
+    navigate('/business-registration', { replace: true });
     return null;
   }
 
