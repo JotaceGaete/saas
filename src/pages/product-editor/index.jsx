@@ -10,6 +10,7 @@ import ProductToggles from './components/ProductToggles';
 import ProductPreview from './components/ProductPreview';
 import SaveBar from './components/SaveBar';
 import ProductOptionsSection from './components/ProductOptionsSection';
+import VideoUploadSection from './components/VideoUploadSection';
 import { useAuth } from '../../contexts/AuthContext';
 import { getProduct, createProduct, updateProduct, uploadProductImage, getMyBusiness, getCategoriesByRubroId, getBusinessCategories, getEffectivePlanSlug } from '../../services/waBusinessService';
 import { convertUnsupportedImageToJpeg } from '../../utils/imageUploadUtils';
@@ -43,6 +44,7 @@ export default function ProductEditor() {
   const refreshAttempted = React.useRef(false);
   const [formData, setFormData] = useState({ ...EMPTY_FORM });
   const [images, setImages] = useState([]);
+  const [video, setVideo] = useState(null);
   const [errors, setErrors] = useState({});
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -87,6 +89,14 @@ export default function ProductEditor() {
           ? data.images.map((url, i) => ({ id: `loaded-${i}-${url}`, url, alt: data?.name, name: `product-image-${i}`, status: 'uploaded' }))
           : (data?.imageUrl ? [{ id: 1, url: data.imageUrl, alt: data?.name, name: 'product-image', status: 'uploaded' }] : []);
         if (loadedImages.length) setImages(loadedImages);
+        if (data?.videoUrl) {
+          setVideo({
+            videoUrl: data.videoUrl,
+            videoThumbnailUrl: data.videoThumbnailUrl || null,
+            videoPath: data.videoPath || null,
+            videoThumbnailPath: data.videoThumbnailPath || null,
+          });
+        }
         setPublicCode(data?.publicCode || '');
       } catch (e) { navigate('/product-management'); }
       finally { setPageLoading(false); }
@@ -502,6 +512,25 @@ export default function ProductEditor() {
                     </span>
                   </div>
                   <ImageUploadSection images={images} onImagesChange={setImages} businessId={business?.id} onUploadRequested={handleUploadRequested} />
+                </div>
+
+                {/* Video del producto */}
+                <div
+                  className="p-5 md:p-6 rounded-xl border"
+                  style={{ backgroundColor: 'var(--color-card)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-sm)' }}
+                >
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(124,58,237,0.08)' }}>
+                      <Icon name="Video" size={15} color="var(--color-primary)" />
+                    </div>
+                    <h2 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>Video del producto</h2>
+                  </div>
+                  <VideoUploadSection
+                    productId={productId || null}
+                    businessId={business?.id}
+                    video={video}
+                    onVideoChange={setVideo}
+                  />
                 </div>
 
                 {/* Basic info */}

@@ -381,6 +381,10 @@ const mapProductFromDb = (row) => {
     featured: row?.featured ?? false,
     onSale: row?.on_sale ?? false,
     compareAtPrice: (() => { const v = parseFloat(row?.compare_at_price); return (row?.compare_at_price != null && !isNaN(v)) ? v : null; })(),
+    videoUrl: row?.video_url || null,
+    videoThumbnailUrl: row?.video_thumbnail_url || null,
+    videoPath: row?.video_path || null,
+    videoThumbnailPath: row?.video_thumbnail_path || null,
     createdAt: row?.created_at,
     updatedAt: row?.updated_at,
   };
@@ -932,6 +936,10 @@ export const updateProduct = async (productId, productData) => {
   if (productData?.onSale !== undefined) dbUpdates.on_sale = !!productData.onSale;
   if (productData?.compareAtPrice !== undefined) dbUpdates.compare_at_price = productData.compareAtPrice ?? null;
   if (productData?.images !== undefined) dbUpdates.images = Array.isArray(productData.images) ? productData.images : (productData?.imageUrl ? [productData.imageUrl] : []);
+  if (productData?.videoUrl !== undefined)           dbUpdates.video_url = productData.videoUrl;
+  if (productData?.videoThumbnailUrl !== undefined)  dbUpdates.video_thumbnail_url = productData.videoThumbnailUrl;
+  if (productData?.videoPath !== undefined)          dbUpdates.video_path = productData.videoPath;
+  if (productData?.videoThumbnailPath !== undefined) dbUpdates.video_thumbnail_path = productData.videoThumbnailPath;
   const { data, error } = await supabase?.from('wa_products')?.update(dbUpdates)?.eq('id', productId)?.select()?.single();
   if (error) return { data: null, error };
   return { data: mapProductFromDb(data), error: null };
