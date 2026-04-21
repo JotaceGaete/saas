@@ -1585,6 +1585,15 @@ export function ProductCard({
               Opciones
             </div>
           )}
+          {product?.videoUrl && (
+            <div
+              className="absolute bottom-1 right-1 flex items-center gap-0.5 rounded px-1 py-0.5 text-[9px] font-semibold text-white shadow"
+              style={{ backgroundColor: 'rgba(0,0,0,0.55)' }}
+            >
+              <Icon name="Play" size={8} color="#fff" />
+              Video
+            </div>
+          )}
         </div>
       </button>
 
@@ -1912,6 +1921,19 @@ export function ProductModal({ product, business, slug, formatPrice, whatsAppUrl
               <p className="whitespace-pre-line break-words text-[13.5px] font-normal leading-relaxed text-gray-500 sm:text-sm">
                 {product.longDescription}
               </p>
+            </div>
+          )}
+
+          {product?.videoUrl && (
+            <div className="mb-5">
+              <video
+                src={product.videoUrl}
+                poster={product.videoThumbnailUrl || undefined}
+                controls
+                playsInline
+                className="w-full rounded-2xl bg-black"
+                style={{ maxHeight: 300 }}
+              />
             </div>
           )}
 
