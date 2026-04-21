@@ -1,6 +1,11 @@
 import { updateProduct } from './waBusinessService';
 
-const MEDIA_SERVER = 'http://46.225.175.62:3001';
+const MEDIA_SERVER = (() => {
+  const url = import.meta.env.VITE_MEDIA_SERVER_URL
+    || (import.meta.env.DEV ? 'http://46.225.175.62:3001' : '');
+  if (!url) throw new Error('[productMediaService] Missing VITE_MEDIA_SERVER_URL in production');
+  return url.replace(/\/$/, '');
+})();
 
 export const uploadProductVideo = async (file, businessId, productId) => {
   const form = new FormData();
