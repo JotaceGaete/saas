@@ -47,6 +47,12 @@ function isWhatsAppWebView() {
 
 // Normalizar imágenes del producto: la primera es siempre imageUrl (misma que la tarjeta);
 // el resto viene de product.images para galería. Así el modal usa la misma URL que la tarjeta.
+function withMediaVersion(url, version) {
+  if (!url) return null;
+  const sep = url.includes('?') ? '&' : '?';
+  return `${url}${sep}v=${encodeURIComponent(version)}`;
+}
+
 export function getProductImages(product) {
   const primary = product?.imageUrl || null;
   const extra = Array.isArray(product?.images) && product.images.length > 0 ? product.images : [];
@@ -1927,8 +1933,8 @@ export function ProductModal({ product, business, slug, formatPrice, whatsAppUrl
           {product?.videoUrl && (
             <div className="mb-5">
               <video
-                src={product.videoUrl}
-                poster={product.videoThumbnailUrl || undefined}
+                src={withMediaVersion(product.videoUrl, product.updatedAt)}
+                poster={withMediaVersion(product.videoThumbnailUrl, product.updatedAt) || undefined}
                 controls
                 playsInline
                 className="w-full rounded-2xl bg-black"

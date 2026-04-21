@@ -2,10 +2,17 @@ import React, { useRef, useState } from 'react';
 import Icon from 'components/AppIcon';
 import { replaceProductVideo, removeProductVideo } from '../../../services/productMediaService';
 
+function withMediaVersion(url, version) {
+  if (!url) return null;
+  const sep = url.includes('?') ? '&' : '?';
+  return `${url}${sep}v=${encodeURIComponent(version)}`;
+}
+
 export default function VideoUploadSection({ productId, businessId, video, onVideoChange }) {
   const fileInputRef = useRef(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [cacheBust, setCacheBust] = useState(() => Date.now());
 
   const hasVideo = !!video?.videoUrl;
 
@@ -18,6 +25,7 @@ export default function VideoUploadSection({ productId, businessId, video, onVid
     try {
       const product = { id: productId, videoPath: video?.videoPath, videoThumbnailPath: video?.videoThumbnailPath };
       const uploaded = await replaceProductVideo({ file, product, businessId });
+      setCacheBust(Date.now());
       onVideoChange({
         videoUrl: uploaded.video_url,
         videoThumbnailUrl: uploaded.thumbnail_url,
@@ -67,8 +75,8 @@ export default function VideoUploadSection({ productId, businessId, video, onVid
       {hasVideo ? (
         <div className="space-y-3">
           <video
-            src={video.videoUrl}
-            poster={video.videoThumbnailUrl || undefined}
+            src={withMediaVersion(video.videoUrl, cacheBust)}
+            poster={withMediaVersion(video.videoThumbnailUrl, cacheBust) || undefined}
             controls
             className="w-full rounded-xl border"
             style={{ borderColor: 'var(--color-border)', maxHeight: 280, backgroundColor: '#000' }}
