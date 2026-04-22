@@ -20,6 +20,7 @@ import { buildCfImageErrorHandler, cfImageUrl } from '../../utils/cloudflareImag
 import { useResponsiveCfImageProfile } from '../../hooks/useResponsiveCfImageProfile';
 import { recordCatalogWhatsAppClick } from '../../services/waBusinessService';
 import { getPublicCatalogRelativePath } from '../../config/appUrl';
+import { normalizeTikTokUrl } from '../../utils/socialLinks';
 
 // ─── Bloques de info reutilizados en acordeón mobile y barra desktop ──────────
 
@@ -97,6 +98,7 @@ function CatalogInfoGrid({ design, primaryColor, fullAddress, mapsSearchUrl, sho
 }
 
 function SocialLinks({ business, primaryColor, theme }) {
+  const normalizedTikTokUrl = normalizeTikTokUrl(business?.tiktokUrl);
   const links = [
     {
       key: 'instagram',
@@ -112,7 +114,7 @@ function SocialLinks({ business, primaryColor, theme }) {
     },
     {
       key: 'tiktok',
-      url: business?.tiktokUrl,
+      url: normalizedTikTokUrl,
       label: 'TikTok',
       icon: (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">

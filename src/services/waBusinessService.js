@@ -5,6 +5,7 @@ import { getPlanLimits } from '../constants/plans';
 import { getTrialEndDateFrom } from '../constants/trial';
 import { getMarketCodeByCountry } from '../lib/market/routing';
 import { getCountryConfig, COUNTRY_CODES } from '../config/countryConfig';
+import { normalizeSocialUrl as normalizeSharedSocialUrl, normalizeTikTokUrl } from '../utils/socialLinks';
 
 // Helpers
 
@@ -348,7 +349,7 @@ const mapBusinessFromDb = (row) => {
   seoContentOverride: row?.seo_content_override ?? null,
   seoContentAi: row?.seo_content_ai ?? null,
   instagramUrl: row?.instagram_url || null,
-  tiktokUrl: row?.tiktok_url || null,
+  tiktokUrl: normalizeTikTokUrl(row?.tiktok_url),
   facebookUrl: row?.facebook_url || null,
   designSettings,
   orderMessageTemplate: row?.order_message_template || null,
@@ -649,9 +650,9 @@ export async function updateBusiness(businessId, updates) {
   if (updates?.isActive !== undefined)    dbUpdates.is_active = updates?.isActive;
   if (updates?.designSettings !== undefined) dbUpdates.design_settings = updates?.designSettings;
   if (updates?.rubroId !== undefined) dbUpdates.rubro_id = updates?.rubroId || null;
-  if (updates?.instagramUrl !== undefined) dbUpdates.instagram_url = normalizeSocialUrl(updates.instagramUrl, 'https://instagram.com');
-  if (updates?.tiktokUrl    !== undefined) dbUpdates.tiktok_url    = normalizeSocialUrl(updates.tiktokUrl,    'https://tiktok.com');
-  if (updates?.facebookUrl  !== undefined) dbUpdates.facebook_url  = normalizeSocialUrl(updates.facebookUrl,  'https://facebook.com');
+  if (updates?.instagramUrl !== undefined) dbUpdates.instagram_url = normalizeSharedSocialUrl(updates.instagramUrl, 'https://instagram.com');
+  if (updates?.tiktokUrl    !== undefined) dbUpdates.tiktok_url    = normalizeTikTokUrl(updates.tiktokUrl);
+  if (updates?.facebookUrl  !== undefined) dbUpdates.facebook_url  = normalizeSharedSocialUrl(updates.facebookUrl,  'https://facebook.com');
   if (updates?.planSlug !== undefined)         dbUpdates.plan_slug = updates?.planSlug;
   if (updates?.planExpiresAt !== undefined)    dbUpdates.plan_expires_at = updates?.planExpiresAt ?? null;
   if (updates?.trialExpiresAt !== undefined)   dbUpdates.trial_expires_at = updates?.trialExpiresAt ?? null;
