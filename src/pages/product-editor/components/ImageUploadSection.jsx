@@ -1,20 +1,42 @@
 import React, { useState, useRef } from 'react';
 import Icon from 'components/AppIcon';
 import Image from 'components/AppImage';
+import { getProductImageMaxBytes, validateProductImageFile } from '../../../services/mediaUploadService';
 
 const STATUS_PENDING = 'pending';
 const STATUS_UPLOADING = 'uploading';
 const STATUS_UPLOADED = 'uploaded';
 const STATUS_ERROR = 'error';
+const MAX_IMAGE_BYTES = getProductImageMaxBytes();
+const MAX_IMAGE_MB = Math.max(1, Math.round(MAX_IMAGE_BYTES / (1024 * 1024)));
 
-export default function ImageUploadSection({ images, onImagesChange, businessId, onUploadRequested }) {
+export default function ImageUploadSection({
+  images,
+  onImagesChange,
+  businessId,
+  onUploadRequested,
+  disabled = false,
+  uploadMessage = '',
+  uploadError = '',
+}) {
   const [isDragging, setIsDragging] = useState(false);
   const [dragOverId, setDragOverId] = useState(null);
   const [draggingId, setDraggingId] = useState(null);
+  const [selectionError, setSelectionError] = useState('');
   const fileInputRef = useRef(null);
 
   const handleFiles = (files) => {
-    const fileArray = Array.from(files)?.filter(f => f?.type?.startsWith('image/'));
+    if (disabled) return;
+    const validatedFiles = Array.from(files || [])
+      ?.map((file) => ({
+        file,
+        validationError: validateProductImageFile(file, { maxBytes: MAX_IMAGE_BYTES }),
+      }));
+    const firstError = validatedFiles.find(({ validationError }) => validationError)?.validationError || '';
+    const fileArray = validatedFiles
+      ?.filter(({ validationError }) => !validationError)
+      ?.map(({ file }) => file);
+    setSelectionError(firstError);
     if (fileArray?.length === 0) return;
     console.log('[ImageUploadSection] Archivos seleccionados', { count: fileArray.length, names: fileArray.map(f => f?.name) });
     const currentLength = (images || [])?.length;
@@ -40,16 +62,26 @@ export default function ImageUploadSection({ images, onImagesChange, businessId,
     } else {
       newItems.forEach((item) => {
         console.log('[ImageUploadSection] Disparando onUploadRequested', item.id, 'businessId=', businessId);
-        onUploadRequested(item.id, item.file);
+        onUploadRequested(item.id, item.file, {
+          isMainImage: currentLength === 0 && item.id === newItems?.[0]?.id,
+        });
       });
     }
   };
 
-  const handleDrop = (e) => { e?.preventDefault(); setIsDragging(false); handleFiles(e?.dataTransfer?.files); };
-  const handleDragOver = (e) => { e?.preventDefault(); setIsDragging(true); };
+  const handleDrop = (e) => { e?.preventDefault(); if (disabled) return; setIsDragging(false); handleFiles(e?.dataTransfer?.files); };
+  const handleDragOver = (e) => { e?.preventDefault(); if (disabled) return; setIsDragging(true); };
   const handleDragLeave = () => setIsDragging(false);
   const handleFileInput = (e) => { handleFiles(e?.target?.files); e.target.value = ''; };
-  const removeImage = (id) => { onImagesChange(prev => prev?.filter(img => img?.id !== id)); };
+  const removeImage = (id) => {
+    onImagesChange(prev => {
+      const target = (prev || []).find((img) => img?.id === id);
+      if (target?.url?.startsWith?.('blob:')) {
+        URL.revokeObjectURL(target.url);
+      }
+      return prev?.filter(img => img?.id !== id);
+    });
+  };
 
   // Drag-to-reorder handlers
   const handleItemDragStart = (e, id) => {
@@ -85,7 +117,7 @@ export default function ImageUploadSection({ images, onImagesChange, businessId,
           onDrop={handleDrop}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
-          onClick={() => fileInputRef?.current?.click()}
+          onClick={() => { if (!disabled) fileInputRef?.current?.click(); }}
           className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all duration-200 ${
             isDragging
               ? 'scale-[1.01]'
@@ -95,6 +127,8 @@ export default function ImageUploadSection({ images, onImagesChange, businessId,
             borderColor: isDragging ? 'var(--color-primary)' : 'var(--color-border)',
             backgroundColor: isDragging ? 'rgba(124,58,237,0.04)' : 'var(--color-muted)',
             borderRadius: 'var(--radius-md)',
+            opacity: disabled ? 0.7 : 1,
+            pointerEvents: disabled ? 'none' : 'auto',
           }}
           role="button"
           tabIndex={0}
@@ -118,6 +152,20 @@ export default function ImageUploadSection({ images, onImagesChange, businessId,
             </div>
           </div>
           <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleFileInput} />
+        </div>
+      )}
+      {(uploadMessage || uploadError || selectionError) && (
+        <div className="mt-3">
+          {uploadMessage ? (
+            <p className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+              {uploadMessage}
+            </p>
+          ) : null}
+          {uploadError || selectionError ? (
+            <p className="text-xs mt-1" style={{ color: 'var(--color-error)', fontFamily: 'var(--font-caption)' }}>
+              {uploadError || selectionError}
+            </p>
+          ) : null}
         </div>
       )}
       {images?.length > 0 && (
@@ -233,7 +281,13 @@ export default function ImageUploadSection({ images, onImagesChange, businessId,
                     {img?.file && (
                       <button
                         type="button"
-                        onClick={(e) => { e?.stopPropagation(); onUploadRequested?.(img?.id, img?.file); }}
+                        onClick={(e) => {
+                          e?.stopPropagation();
+                          if (disabled) return;
+                          onUploadRequested?.(img?.id, img?.file, {
+                            isMainImage: img?.id === images?.[0]?.id,
+                          });
+                        }}
                         className="rounded px-1 py-0.5 text-center text-white font-semibold"
                         style={{
                           backgroundColor: 'var(--color-primary)',
@@ -249,7 +303,7 @@ export default function ImageUploadSection({ images, onImagesChange, businessId,
 
                 {/* Delete button */}
                 <button
-                  onClick={(e) => { e?.stopPropagation(); removeImage(img?.id); }}
+                  onClick={(e) => { e?.stopPropagation(); if (!disabled) removeImage(img?.id); }}
                   className="absolute bottom-1 right-1 w-6 h-6 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:scale-110"
                   style={{ backgroundColor: 'rgba(239,68,68,0.9)' }}
                   aria-label="Eliminar imagen"

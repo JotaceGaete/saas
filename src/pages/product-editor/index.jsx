@@ -12,13 +12,26 @@ import SaveBar from './components/SaveBar';
 import ProductOptionsSection from './components/ProductOptionsSection';
 import VideoUploadSection from './components/VideoUploadSection';
 import { useAuth } from '../../contexts/AuthContext';
-import { getProduct, createProduct, updateProduct, uploadProductImage, getMyBusiness, getCategoriesByRubroId, getBusinessCategories, getEffectivePlanSlug } from '../../services/waBusinessService';
+import {
+  getProduct,
+  createProduct,
+  createProductDraft,
+  deleteProduct,
+  updateProduct,
+  uploadProductImage,
+  uploadProductMainImage,
+  getMyBusiness,
+  getCategoriesByRubroId,
+  getBusinessCategories,
+  getEffectivePlanSlug,
+} from '../../services/waBusinessService';
 import { convertUnsupportedImageToJpeg } from '../../utils/imageUploadUtils';
 import { useToast } from '../../components/ui/Toast';
 import { useConfirmedEmailGuard } from '../../hooks/useConfirmedEmailGuard';
 import { supabase } from '../../lib/supabase';
 import { getBusinessLocale } from '../../lib/locale/businessLocale';
 import { resolveVentaAiProductDescriptionEndpoint } from '../../lib/ai/resolveVentaAiProductDescriptionUrl.js';
+import { appendCacheBust } from '../../services/mediaUploadService';
 
 const EMPTY_FORM = {
   nombre: '',
@@ -42,8 +55,15 @@ export default function ProductEditor() {
   const isEditing = !!productId;
   const { business, user, businessLoading, refreshBusiness } = useAuth();
   const refreshAttempted = React.useRef(false);
+  const imagesRef = React.useRef([]);
+  const previousImagesRef = React.useRef([]);
+  const uploadRequestTokensRef = React.useRef({});
   const [formData, setFormData] = useState({ ...EMPTY_FORM });
   const [images, setImages] = useState([]);
+  const [currentProductId, setCurrentProductId] = useState(productId || null);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState(null);
+  const [imageUploading, setImageUploading] = useState(false);
+  const [imageUploadError, setImageUploadError] = useState('');
   const [video, setVideo] = useState(null);
   const [errors, setErrors] = useState({});
   const [isSaving, setIsSaving] = useState(false);
@@ -54,6 +74,8 @@ export default function ProductEditor() {
   const [isImprovingDescription, setIsImprovingDescription] = useState(false);
   const [publicCode, setPublicCode] = useState('');
   const toast = useToast();
+  const effectiveProductId = currentProductId || productId || null;
+  const isEditingFlow = !!effectiveProductId;
 
   const effectivePlan = getEffectivePlanSlug(business?.planSlug, business?.planExpiresAt, business?.trialExpiresAt);
   const canUseAi = effectivePlan === 'pro' || effectivePlan === 'business';
@@ -63,6 +85,12 @@ export default function ProductEditor() {
   });
   const initialActivoRef = React.useRef(null);
 
+  const revokeBlobUrl = React.useCallback((url) => {
+    if (typeof url === 'string' && url.startsWith('blob:')) {
+      URL.revokeObjectURL(url);
+    }
+  }, []);
+
   useEffect(() => {
     if (!isEditing || !productId) return;
     const loadProduct = async () => {
@@ -70,6 +98,7 @@ export default function ProductEditor() {
       try {
         const { data, error } = await getProduct(productId);
         if (error || !data) { navigate('/product-management'); return; }
+        setCurrentProductId(data?.id || productId);
         initialActivoRef.current = data?.isActive !== undefined ? data?.isActive : true;
         setFormData({
           nombre: data?.name || '',
@@ -86,9 +115,28 @@ export default function ProductEditor() {
           optionsDescription: data?.optionsDescription || '',
         });
         const loadedImages = Array.isArray(data?.images) && data.images.length > 0
-          ? data.images.map((url, i) => ({ id: `loaded-${i}-${url}`, url, alt: data?.name, name: `product-image-${i}`, status: 'uploaded' }))
-          : (data?.imageUrl ? [{ id: 1, url: data.imageUrl, alt: data?.name, name: 'product-image', status: 'uploaded' }] : []);
+          ? data.images.map((url, i) => ({
+              id: `loaded-${i}-${url}`,
+              url,
+              persistedUrl: url,
+              alt: data?.name,
+              name: `product-image-${i}`,
+              status: 'uploaded',
+            }))
+          : (data?.imageUrl
+              ? [{
+                  id: 1,
+                  url: data.imageUrl,
+                  persistedUrl: data.imageUrl,
+                  alt: data?.name,
+                  name: 'product-image',
+                  status: 'uploaded',
+                }]
+              : []);
         if (loadedImages.length) setImages(loadedImages);
+        setImagePreviewUrl(data?.imageUrl || loadedImages?.[0]?.url || null);
+        setImageUploadError('');
+        setImageUploading(false);
         if (data?.videoUrl) {
           setVideo({
             videoUrl: data.videoUrl,
@@ -107,6 +155,43 @@ export default function ProductEditor() {
   useEffect(() => {
     if (saveSuccess) { const t = setTimeout(() => setSaveSuccess(false), 3000); return () => clearTimeout(t); }
   }, [saveSuccess]);
+
+  useEffect(() => {
+    const previousImages = previousImagesRef.current || [];
+    const currentUrls = new Set((images || []).map((img) => img?.url).filter(Boolean));
+    previousImages.forEach((img) => {
+      if (img?.url?.startsWith?.('blob:') && !currentUrls.has(img.url)) {
+        revokeBlobUrl(img.url);
+      }
+    });
+    previousImagesRef.current = images || [];
+    imagesRef.current = images || [];
+  }, [images, revokeBlobUrl]);
+
+  useEffect(() => {
+    return () => {
+      (imagesRef.current || []).forEach((img) => {
+        revokeBlobUrl(img?.url);
+      });
+    };
+  }, [revokeBlobUrl]);
+
+  useEffect(() => {
+    const firstImage = images?.[0] || null;
+    if (!firstImage) {
+      setImagePreviewUrl(null);
+      setImageUploadError('');
+      setImageUploading(false);
+      return;
+    }
+    setImagePreviewUrl(firstImage?.url || null);
+    if (firstImage?.status !== 'uploading') {
+      setImageUploading(false);
+    }
+    if (firstImage?.status !== 'error' && imageUploadError) {
+      setImageUploadError('');
+    }
+  }, [images]);
 
   // Si el contexto no tiene negocio pero el usuario está autenticado, intentar refrescar una vez
   useEffect(() => {
@@ -166,7 +251,7 @@ export default function ProductEditor() {
           useVentaAi
             ? {
                 businessId: business?.id,
-                ...(productId ? { productId } : {}),
+                ...(effectiveProductId ? { productId: effectiveProductId } : {}),
                 text: inputText,
                 productName: productName || '',
                 maxDescriptionLength: 300,
@@ -220,7 +305,32 @@ export default function ProductEditor() {
     } finally {
       setIsImprovingDescription(false);
     }
-  }, [toast, business?.id, productId]);
+  }, [toast, business?.id, effectiveProductId]);
+
+  const buildDraftPayload = React.useCallback(() => ({
+    name: formData?.nombre?.trim() || 'Producto en edicion',
+    price: formData?.precio,
+    description: formData?.descripcion?.trim() || null,
+    category: formData?.categoria?.trim() || null,
+  }), [formData]);
+
+  const ensureProductIdForMainImageUpload = React.useCallback(async () => {
+    if (currentProductId) {
+      return { productId: currentProductId, createdDraft: false };
+    }
+    if (!business?.id) {
+      throw new Error('Negocio no cargado. Espera un momento o recarga la pagina.');
+    }
+
+    const { data, error } = await createProductDraft(business.id, buildDraftPayload());
+    if (error || !data?.id) {
+      throw new Error(error?.message || 'No se pudo crear el borrador del producto para subir la imagen.');
+    }
+
+    setCurrentProductId(data.id);
+    initialActivoRef.current = data?.isActive !== undefined ? data.isActive : false;
+    return { productId: data.id, createdDraft: true };
+  }, [business?.id, buildDraftPayload, currentProductId]);
 
   const handleUploadRequested = React.useCallback(async (imageId, file) => {
     console.log('[ProductEditor] handleUploadRequested', { imageId, hasFile: !!file, businessId: business?.id ?? null, productId: productId ?? null });
@@ -256,7 +366,7 @@ export default function ProductEditor() {
           const errMsg = typeof uploadErr?.message === 'string' ? uploadErr.message : (uploadErr?.error_description || JSON.stringify(uploadErr) || 'Error al subir');
           return { ...img, status: 'error', error: errMsg };
         }
-        if (img?.url?.startsWith?.('blob:')) URL.revokeObjectURL(img.url);
+        revokeBlobUrl(img?.url);
         return { ...img, url, status: 'uploaded', file: undefined, error: undefined };
       }));
     } catch (e) {
@@ -264,7 +374,127 @@ export default function ProductEditor() {
       const errMsg = e?.message || (e?.error?.message) || 'Error de conexión al subir. Revisa la consola.';
       setImages(prev => prev?.map(img => img?.id === imageId ? { ...img, status: 'error', error: errMsg } : img));
     }
-  }, [business?.id, productId]);
+  }, [business?.id, productId, revokeBlobUrl]);
+
+  const handleMainAwareUploadRequested = React.useCallback(async (imageId, file, meta = {}) => {
+    if (!file) {
+      return;
+    }
+
+    const isMainImage = meta?.isMainImage === true || imageId === (images?.[0]?.id || imageId);
+    const selectedImage = (images || []).find((img) => img?.id === imageId) || null;
+    const selectedImageIndex = Math.max(0, (images || []).findIndex((img) => img?.id === imageId));
+    const requestToken = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    uploadRequestTokensRef.current[imageId] = requestToken;
+
+    if (!business?.id) {
+      const message = 'Negocio no cargado. Espera un momento o recarga la pagina.';
+      if (isMainImage) {
+        setImageUploading(false);
+        setImageUploadError(message);
+      }
+      setImages(prev => prev?.map(img => img?.id === imageId ? { ...img, status: 'error', error: message } : img));
+      return;
+    }
+
+    if (isMainImage) {
+      setImageUploading(true);
+      setImageUploadError('');
+      if (selectedImage?.url) setImagePreviewUrl(selectedImage.url);
+    }
+
+    setImages(prev => prev?.map(img => img?.id === imageId ? { ...img, status: 'uploading', error: undefined } : img));
+
+    let fileToUpload = file;
+    let ensuredProductId = currentProductId;
+    let createdDraftForUpload = false;
+    try {
+      fileToUpload = await convertUnsupportedImageToJpeg(file);
+    } catch (e) {
+      const message = e?.message || 'No se pudo procesar la imagen.';
+      if (isMainImage) {
+        setImageUploading(false);
+        setImageUploadError(message);
+      }
+      setImages(prev => prev?.map(img => img?.id === imageId ? { ...img, status: 'error', error: message } : img));
+      return;
+    }
+
+    try {
+      let persistedUrl = null;
+      let renderUrl = null;
+
+      if (isMainImage) {
+        const ensureResult = await ensureProductIdForMainImageUpload();
+        ensuredProductId = ensureResult?.productId;
+        createdDraftForUpload = ensureResult?.createdDraft === true;
+        const uploaded = await uploadProductMainImage({
+          file: fileToUpload,
+          businessId: business.id,
+          productId: ensuredProductId,
+        });
+        if (uploadRequestTokensRef.current[imageId] !== requestToken) {
+          return;
+        }
+        const nextVersion = Date.now();
+        persistedUrl = uploaded.url;
+        renderUrl = appendCacheBust(uploaded.url, nextVersion);
+        setImagePreviewUrl(renderUrl);
+      } else {
+        const ensureResult = currentProductId
+          ? { productId: currentProductId, createdDraft: false }
+          : await ensureProductIdForMainImageUpload();
+        ensuredProductId = ensureResult?.productId;
+        createdDraftForUpload = ensureResult?.createdDraft === true;
+        const galleryIndex = Math.max(0, selectedImageIndex - 1);
+        const { url, error: uploadErr } = await uploadProductImage(fileToUpload, business.id, ensuredProductId, galleryIndex);
+        if (uploadErr) {
+          throw new Error(uploadErr?.message || 'No se pudo subir la imagen.');
+        }
+        if (uploadRequestTokensRef.current[imageId] !== requestToken) {
+          return;
+        }
+        persistedUrl = url;
+        renderUrl = url;
+      }
+
+      setImages(prev => prev?.map(img => {
+        if (img?.id !== imageId) return img;
+        revokeBlobUrl(img?.url);
+        return {
+          ...img,
+          url: renderUrl,
+          persistedUrl,
+          status: 'uploaded',
+          file: undefined,
+          error: undefined,
+        };
+      }));
+
+      if (isMainImage) {
+        setImageUploading(false);
+        setImageUploadError('');
+      }
+    } catch (e) {
+      const shouldHandleLatest = uploadRequestTokensRef.current[imageId] === requestToken;
+      const errMsg = e?.message || (e?.error?.message) || 'Error de conexion al subir la imagen.';
+      const shouldDeleteDraft = createdDraftForUpload && typeof ensuredProductId === 'string';
+      if (shouldDeleteDraft) {
+        const { error: deleteError } = await deleteProduct(ensuredProductId);
+        if (!deleteError) {
+          setCurrentProductId(null);
+          initialActivoRef.current = null;
+        }
+      }
+      if (isMainImage && shouldHandleLatest) {
+        setImageUploading(false);
+        setImageUploadError(errMsg);
+      }
+      if (shouldHandleLatest) {
+        setImages(prev => prev?.map(img => img?.id === imageId ? { ...img, status: 'error', error: errMsg } : img));
+      }
+    }
+  }, [business?.id, currentProductId, ensureProductIdForMainImageUpload, images, revokeBlobUrl]);
 
   const hasPendingOrUploadingImages = (images || []).some(img =>
     img?.status === 'pending' || img?.status === 'uploading' || (img?.file && img?.status !== 'uploaded' && img?.status !== 'error')
@@ -281,7 +511,7 @@ export default function ProductEditor() {
   const handleSave = async (andNew = false) => {
     const validationErrors = validate();
     if (Object.keys(validationErrors)?.length > 0) { setErrors(validationErrors); window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
-    const wouldActivate = formData?.activo === true && (isEditing ? initialActivoRef.current !== true : true);
+    const wouldActivate = formData?.activo === true && (isEditingFlow ? initialActivoRef.current !== true : true);
     if (wouldActivate) {
       guard.runIfConfirmed(() => doSave(andNew));
       return;
@@ -310,32 +540,11 @@ export default function ProductEditor() {
     }
     setIsSaving(true);
     try {
-      let imageUrl = null;
-      const firstImage = images?.[0];
-      const uploadedFirst = firstImage?.status === 'uploaded' && firstImage?.url;
-      if (uploadedFirst) {
-        imageUrl = firstImage.url;
-      } else if (firstImage?.file) {
-        let fileToUpload = firstImage.file;
-        try {
-          fileToUpload = await convertUnsupportedImageToJpeg(firstImage.file);
-        } catch (e) {
-          setErrors(prev => ({ ...prev, general: 'No se pudo procesar la imagen: ' + (e?.message || 'Usa JPG o PNG.') }));
-          return;
-        }
-        const { url, error: uploadErr } = await uploadProductImage(fileToUpload, biz?.id, productId || undefined);
-        if (uploadErr) {
-          setErrors(prev => ({ ...prev, general: 'Error al subir la imagen: ' + (uploadErr?.message || 'Intenta de nuevo.') }));
-          return;
-        }
-        imageUrl = url;
-      } else if (firstImage?.url && !firstImage?.url?.startsWith('blob:')) {
-        imageUrl = firstImage?.url;
-      }
-      const imagesUrls = (images || [])
-        ?.filter(i => (i?.status === 'uploaded' && i?.url) || (i?.url && !i?.url?.startsWith?.('blob:')))
-        ?.map(i => i?.url) ?? [];
-      const finalImageUrl = imageUrl || imagesUrls?.[0] || null;
+      const persistedImages = (images || [])
+        ?.filter(i => (i?.status === 'uploaded' && (i?.persistedUrl || i?.url)) || (i?.persistedUrl || (i?.url && !i?.url?.startsWith?.('blob:'))))
+        ?.map(i => i?.persistedUrl || i?.url?.split?.('?')?.[0] || i?.url)
+        ?.filter(Boolean) ?? [];
+      const finalImageUrl = persistedImages?.[0] || null;
       const rawCompareAt = formData?.compareAtPrice;
       const compareAtNum = rawCompareAt !== '' && rawCompareAt != null ? Number(rawCompareAt) : NaN;
       const productData = {
@@ -343,7 +552,8 @@ export default function ProductEditor() {
         description: formData?.descripcion || null,
         price: Math.round(Number(formData?.precio)),
         imageUrl: finalImageUrl,
-        images: imagesUrls?.length ? imagesUrls : (finalImageUrl ? [finalImageUrl] : []),
+        images: persistedImages?.length ? persistedImages : (finalImageUrl ? [finalImageUrl] : []),
+        isDraft: false,
         isActive: formData?.activo,
         featured: formData?.featured,
         onSale: formData?.onSale,
@@ -353,15 +563,23 @@ export default function ProductEditor() {
         longDescription: formData?.longDescription?.trim() || null,
         category: formData?.categoria?.trim() || null,
       };
-      const result = isEditing
-        ? await updateProduct(productId, productData)
+      const result = currentProductId
+        ? await updateProduct(currentProductId, productData)
         : await createProduct(biz?.id, productData);
       if (result?.error) { setErrors({ general: result?.error?.message || 'Error al guardar el producto.' }); return; }
+      if (!currentProductId && result?.data?.id) {
+        setCurrentProductId(result.data.id);
+      }
       setIsSaving(false);
       setSaveSuccess(true);
       if (andNew) {
         setFormData({ ...EMPTY_FORM });
         setImages([]);
+        setCurrentProductId(null);
+        setImagePreviewUrl(null);
+        setImageUploading(false);
+        setImageUploadError('');
+        setVideo(null);
         setPublicCode('');
         setErrors({});
         setSaveSuccess(false);
@@ -403,7 +621,7 @@ export default function ProductEditor() {
               className="text-base font-bold truncate"
               style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}
             >
-              {isEditing ? 'Editar producto' : 'Nuevo producto'}
+              {isEditingFlow ? 'Editar producto' : 'Nuevo producto'}
             </h1>
           )}
           subtitle={(
@@ -412,7 +630,7 @@ export default function ProductEditor() {
               <Icon name="ChevronRight" size={11} color="var(--color-muted-foreground)" />
               <button onClick={() => navigate('/product-management')} className="text-xs hover:underline" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Productos</button>
               <Icon name="ChevronRight" size={11} color="var(--color-muted-foreground)" />
-              <span className="text-xs" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>{isEditing ? 'Editar' : 'Nuevo'}</span>
+              <span className="text-xs" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>{isEditingFlow ? 'Editar' : 'Nuevo'}</span>
             </nav>
           )}
         >
@@ -511,7 +729,15 @@ export default function ProductEditor() {
                       {images?.length}/5
                     </span>
                   </div>
-                  <ImageUploadSection images={images} onImagesChange={setImages} businessId={business?.id} onUploadRequested={handleUploadRequested} />
+                  <ImageUploadSection
+                    images={images}
+                    onImagesChange={setImages}
+                    businessId={business?.id}
+                    onUploadRequested={handleMainAwareUploadRequested}
+                    disabled={imageUploading}
+                    uploadMessage={imageUploading ? 'Subiendo imagen principal...' : ''}
+                    uploadError={imageUploadError}
+                  />
                 </div>
 
                 {/* Video del producto */}
@@ -526,7 +752,7 @@ export default function ProductEditor() {
                     <h2 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>Video del producto</h2>
                   </div>
                   <VideoUploadSection
-                    productId={productId || null}
+                    productId={effectiveProductId}
                     businessId={business?.id}
                     video={video}
                     onVideoChange={setVideo}
@@ -555,7 +781,7 @@ export default function ProductEditor() {
                     rubroCategories={rubroCategories}
                     onImproveWithAi={canUseAi ? handleImproveWithAi : undefined}
                     isImprovingDescription={isImprovingDescription}
-                    publicCode={isEditing ? publicCode : ''}
+                    publicCode={isEditingFlow ? publicCode : ''}
                     businessId={business?.id}
                     onCategoryCreated={(cat) => {
                       setBusinessCategories((prev) => [...prev, cat]);
@@ -627,6 +853,7 @@ export default function ProductEditor() {
                     featured={formData?.featured}
                     onSale={formData?.onSale}
                     images={images}
+                    mainImageOverrideUrl={imagePreviewUrl}
                   />
                 </div>
               </div>
@@ -635,7 +862,7 @@ export default function ProductEditor() {
         </DashboardLayoutContent>
 
         <SaveBar
-          isEditing={isEditing}
+          isEditing={isEditingFlow}
           isSaving={isSaving}
           saveSuccess={saveSuccess}
           saveDisabled={hasPendingOrUploadingImages}

@@ -6,6 +6,7 @@ import { getTrialEndDateFrom } from '../constants/trial';
 import { getMarketCodeByCountry } from '../lib/market/routing';
 import { getCountryConfig, COUNTRY_CODES } from '../config/countryConfig';
 import { normalizeSocialUrl as normalizeSharedSocialUrl, normalizeTikTokUrl } from '../utils/socialLinks';
+import { uploadImageToMediaService } from './mediaUploadService';
 
 // Helpers
 
@@ -376,6 +377,7 @@ const mapProductFromDb = (row) => {
     imageUrl: row?.image_url || imagesArray?.[0] || null,
     images: imagesArray,
     isActive: row?.is_active ?? (status === 'active'),
+    isDraft: row?.is_draft === true,
     status,
     sortOrder: row?.sort_order,
     category: row?.category || null,
@@ -676,121 +678,49 @@ export async function updateBusiness(businessId, updates) {
   return { data: mapBusinessFromDb(data), error: null };
 }
 
-// ——— Upload a R2 (Cloudflare) vía presigned URL ———
-// Usa el mismo cliente supabase de la app (lib/supabase.js con VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY).
-// Solo se envía el JWT del usuario (session.access_token), nunca la anon key como Bearer.
-async function uploadToR2(file, { type, businessId, productId }) {
-  const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
-  if (!supabaseUrl) {
-    console.error('[uploadToR2] Missing Supabase URL');
-    return { url: null, error: { message: 'Falta configuración (Supabase URL)' } };
-  }
-
-  console.log('[uploadToR2] 1. Inicio', { type, businessId: businessId ?? null, productId: productId ?? null, fileName: file?.name, contentType: file?.type, fileSize: file?.size });
-
-  const { data: { session } } = await supabase.auth.getSession();
-  const { data: userData, error: userError } = await supabase.auth.getUser();
-  console.log('[uploadToR2] 2. Sesión', { hasSession: !!session, hasToken: !!session?.access_token, hasUser: !!userData?.user, userError: userError?.message ?? null });
-  let accessToken = session?.access_token ?? null;
-  if (!accessToken || !accessToken.includes('.') || !userData?.user) {
-    console.warn('[uploadToR2] Abort: token inválido o no user, intentando refreshSession');
-    const { data: refreshData } = await supabase.auth.refreshSession().catch(() => ({}));
-    const refreshedSession = refreshData?.session ?? null;
-    accessToken = refreshedSession?.access_token ?? null;
-    const { data: refreshedUserData, error: refreshedUserErr } = await supabase.auth.getUser().catch(() => ({}));
-    console.log('[uploadToR2] refresh snapshot', {
-      hasRefreshedSession: !!refreshedSession,
-      tokenPreview: accessToken ? `${accessToken.slice(0, 10)}...${accessToken.slice(-8)}` : null,
-      hasRefreshedUser: !!refreshedUserData?.user,
-      userError: refreshedUserErr?.message ?? null,
-    });
-    if (!accessToken || !accessToken.includes('.') || !refreshedUserData?.user) {
-      console.error('[uploadToR2] Abort: no autenticado (post-refresh)');
-      return { url: null, error: { message: 'Usuario no autenticado o sesión inválida' } };
-    }
-    userData.user = refreshedUserData.user;
-  }
-
-  accessToken = String(accessToken).trim();
-  const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
-  const fileName = file?.name || 'upload';
-  const contentType = file?.type || 'image/jpeg';
-  const endpoint = `${supabaseUrl}/functions/v1/upload-image-r2`;
-  console.log('[uploadToR2] 3. Pidiendo URL firmada', { endpoint });
-
-  let res;
-  try {
-    res = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${accessToken}`,
-        ...(anonKey ? { apikey: anonKey } : {}),
-      },
-      body: JSON.stringify({ type, businessId, productId: productId || undefined, fileName, contentType }),
-    });
-  } catch (networkErr) {
-    console.error('[uploadToR2] Error de red al pedir URL firmada', networkErr);
-    return { url: null, error: { message: 'Error de conexión. Revisa la red o intenta más tarde.' } };
-  }
-
-  const rawText = await res.text().catch(() => '');
-  let data = {};
-  try {
-    if (rawText) data = JSON.parse(rawText);
-  } catch {
-    console.error('[uploadToR2] Respuesta no es JSON', { status: res.status, preview: rawText?.slice(0, 200) });
-  }
-
-  if (!res.ok) {
-    const errMsg = typeof data?.error === 'string' ? data.error : (data?.message || data?.error?.message || res.statusText);
-    console.error('[uploadToR2] 4. Error al obtener URL firmada', { status: res.status, error: errMsg, body: data });
-    return { url: null, error: { message: errMsg || 'Error del servidor al generar enlace de subida' } };
-  }
-
-  const { uploadUrl, publicUrl } = data;
-  if (!uploadUrl || !publicUrl) {
-    console.error('[uploadToR2] Respuesta sin uploadUrl/publicUrl', data);
-    return { url: null, error: { message: 'Respuesta inválida del servidor (falta URL de subida)' } };
-  }
-  console.log('[uploadToR2] 5. URL firmada obtenida', { publicUrl: publicUrl?.slice(0, 60) + '...' });
-
-  let putRes;
-  try {
-    putRes = await fetch(uploadUrl, {
-      method: 'PUT',
-      headers: { 'Content-Type': contentType },
-      body: file,
-    });
-  } catch (putErr) {
-    console.error('[uploadToR2] Error de red al hacer PUT', putErr);
-    return { url: null, error: { message: 'Error de conexión al subir el archivo' } };
-  }
-
-  if (!putRes.ok) {
-    const putStatus = putRes.status;
-    const putText = await putRes.text().catch(() => '');
-    console.error('[uploadToR2] 6. PUT falló', { status: putStatus, body: putText?.slice(0, 150) });
-    return { url: null, error: { message: `Error al subir el archivo (${putStatus}). Intenta de nuevo.` } };
-  }
-  console.log('[uploadToR2] 7. Subida completada correctamente', { publicUrl: publicUrl?.slice(0, 60) + '...' });
-  return { url: publicUrl, error: null };
-}
-
 export const uploadBusinessLogo = async (file, businessId) => {
   const compressed = await compressImageForUpload(file, 'logo');
-  return uploadToR2(compressed, { type: 'logo', businessId });
+  try {
+    const uploaded = await uploadImageToMediaService({
+      file: compressed,
+      type: 'business-logo',
+      businessId,
+    });
+    return { url: uploaded.url, error: null };
+  } catch (error) {
+    return {
+      url: null,
+      error: { message: error?.message || 'No se pudo subir el logo.' },
+    };
+  }
 };
 
 export const uploadBusinessCover = async (file, businessId) => {
   const compressed = await compressImageForUpload(file, 'cover');
-  return uploadToR2(compressed, { type: 'cover', businessId });
+  try {
+    const uploaded = await uploadImageToMediaService({
+      file: compressed,
+      type: 'business-cover',
+      businessId,
+    });
+    return { url: uploaded.url, error: null };
+  } catch (error) {
+    return {
+      url: null,
+      error: { message: error?.message || 'No se pudo subir la portada.' },
+    };
+  }
 };
 
 // wa_products
 
 export const getProducts = async (businessId) => {
-  const { data, error } = await supabase?.from('wa_products')?.select('*')?.eq('business_id', businessId)?.order('sort_order', { ascending: true });
+  const { data, error } = await supabase
+    ?.from('wa_products')
+    ?.select('*')
+    ?.eq('business_id', businessId)
+    ?.neq('is_draft', true)
+    ?.order('sort_order', { ascending: true });
   if (error) return { data: null, error };
   return { data: (data || [])?.map(mapProductFromDb), error: null };
 };
@@ -897,9 +827,32 @@ export const createProduct = async (businessId, productData) => {
     featured: productData?.featured === true,
     on_sale: productData?.onSale === true,
     compare_at_price: productData?.compareAtPrice ?? null,
+    is_draft: productData?.isDraft === true,
   })?.select()?.single();
   if (error) return { data: null, error };
   return { data: mapProductFromDb(data), error: null };
+};
+
+export const createProductDraft = async (businessId, draftData = {}) => {
+  const draftName = String(draftData?.name || '').trim() || 'Producto en edicion';
+  const draftPriceRaw = Number(draftData?.price);
+  const draftPrice = Number.isFinite(draftPriceRaw) && draftPriceRaw > 0 ? Math.round(draftPriceRaw) : 1;
+
+  return createProduct(businessId, {
+    name: draftName,
+    price: draftPrice,
+    description: draftData?.description || null,
+    category: draftData?.category || null,
+    imageUrl: null,
+    images: [],
+    isActive: false,
+    featured: false,
+    onSale: false,
+    isDraft: true,
+    hasOptions: false,
+    optionsDescription: null,
+    longDescription: null,
+  });
 };
 
 export const updateProduct = async (productId, productData) => {
@@ -940,6 +893,7 @@ export const updateProduct = async (productId, productData) => {
   if (productData?.onSale !== undefined) dbUpdates.on_sale = !!productData.onSale;
   if (productData?.compareAtPrice !== undefined) dbUpdates.compare_at_price = productData.compareAtPrice ?? null;
   if (productData?.images !== undefined) dbUpdates.images = Array.isArray(productData.images) ? productData.images : (productData?.imageUrl ? [productData.imageUrl] : []);
+  if (productData?.isDraft !== undefined) dbUpdates.is_draft = productData.isDraft === true;
   if (productData?.videoUrl !== undefined)           dbUpdates.video_url = productData.videoUrl;
   if (productData?.videoThumbnailUrl !== undefined)  dbUpdates.video_thumbnail_url = productData.videoThumbnailUrl;
   if (productData?.videoPath !== undefined)          dbUpdates.video_path = productData.videoPath;
@@ -955,8 +909,66 @@ export const deleteProduct = async (productId) => {
   return { error: null };
 };
 
-export const uploadProductImage = async (file, businessId, productId) => {
-  return uploadToR2(file, { type: 'product', businessId, productId });
+export const uploadProductImage = async (file, businessId, productId, index) => {
+  if (!(file instanceof Blob)) {
+    return { url: null, error: { message: 'Selecciona una imagen valida antes de subir.' } };
+  }
+  if (!businessId) {
+    return { url: null, error: { message: 'No se encontro el negocio para subir la imagen.' } };
+  }
+  if (!productId) {
+    return { url: null, error: { message: 'No se encontro el producto para subir la imagen.' } };
+  }
+  if (!Number.isInteger(Number(index)) || Number(index) < 0) {
+    return { url: null, error: { message: 'Indice de galeria invalido.' } };
+  }
+
+  try {
+    const uploaded = await uploadImageToMediaService({
+      file,
+      type: 'product-gallery',
+      businessId,
+      productId,
+      index,
+    });
+
+    return {
+      url: uploaded.url,
+      error: null,
+    };
+  } catch (error) {
+    return {
+      url: null,
+      error: { message: error?.message || 'No se pudo subir la imagen.' },
+    };
+  }
+};
+
+export const uploadProductMainImage = async ({ file, businessId, productId }) => {
+  if (!(file instanceof Blob)) {
+    throw new Error('Selecciona una imagen valida antes de subir.');
+  }
+  if (!businessId) {
+    throw new Error('No se encontro el negocio para subir la imagen.');
+  }
+  if (!productId) {
+    throw new Error('No se encontro el producto para subir la imagen.');
+  }
+
+  const uploaded = await uploadImageToMediaService({
+    file,
+    type: 'product-main',
+    businessId,
+    productId,
+  });
+
+  return {
+    ok: true,
+    url: uploaded.url,
+    key: uploaded.key,
+    contentType: uploaded.contentType,
+    size: uploaded.size,
+  };
 };
 
 // wa_orders

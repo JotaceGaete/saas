@@ -3,11 +3,23 @@ import Icon from 'components/AppIcon';
 import Image from 'components/AppImage';
 import { formatCurrency } from 'utils/formatCLP';
 
-export default function ProductPreview({ nombre, precio, descripcion, activo, featured, onSale, images, currencyCode = 'USD', locale = 'en-US' }) {
+export default function ProductPreview({
+  nombre,
+  precio,
+  descripcion,
+  activo,
+  featured,
+  onSale,
+  images,
+  mainImageOverrideUrl = null,
+  currencyCode = 'USD',
+  locale = 'en-US',
+}) {
   const imageList = images?.length ? images : [];
   const [activeIdx, setActiveIdx] = useState(0);
   const safeIdx = Math.min(activeIdx, Math.max(0, imageList.length - 1));
   const mainImage = imageList[safeIdx];
+  const mainImageUrl = safeIdx === 0 && mainImageOverrideUrl ? mainImageOverrideUrl : mainImage?.url;
   const priceNum = Number(precio);
   const formattedPrice = Number.isFinite(priceNum) && priceNum > 0
     ? formatCurrency(priceNum, currencyCode, locale)
@@ -77,8 +89,8 @@ export default function ProductPreview({ nombre, precio, descripcion, activo, fe
 
           {/* Product image */}
           <div className="relative aspect-square w-full overflow-hidden" style={{ backgroundColor: '#f0f0f0' }}>
-            {mainImage?.url ? (
-              <Image key={`img-${safeIdx}-${mainImage?.url}`} src={mainImage.url} alt={mainImage?.alt || nombre} className="w-full h-full object-cover" />
+            {mainImageUrl ? (
+              <Image key={`img-${safeIdx}-${mainImageUrl}`} src={mainImageUrl} alt={mainImage?.alt || nombre} className="w-full h-full object-cover" />
             ) : (
               <div className="w-full h-full flex flex-col items-center justify-center gap-2">
                 <Icon name="ImageOff" size={28} color="#ccc" />
