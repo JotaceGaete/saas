@@ -2,6 +2,7 @@ const DEFAULT_UPLOAD_TIMEOUT_MS = 30000;
 const DEFAULT_PRODUCT_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 
 function getMediaServiceBaseUrl() {
+  console.log('MEDIA URL:', import.meta.env.VITE_MEDIA_SERVICE_URL);
   const baseUrl = String(import.meta.env.VITE_MEDIA_SERVICE_URL || '').trim().replace(/\/$/, '');
   if (!baseUrl) {
     throw new Error('Falta configurar VITE_MEDIA_SERVICE_URL para subir imagenes.');
