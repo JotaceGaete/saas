@@ -54,13 +54,13 @@ export function appendCacheBust(url, version) {
   return `${cleanUrl}${separator}v=${encodeURIComponent(String(version))}`;
 }
 
-export async function uploadImageToMediaService({
-  file,
+export async function uploadToMediaService(file, {
   type,
   businessId,
   productId,
+  index,
   timeoutMs = DEFAULT_UPLOAD_TIMEOUT_MS,
-}) {
+} = {}) {
   if (!(file instanceof Blob)) {
     throw new Error('Selecciona una imagen valida antes de subir.');
   }
@@ -70,7 +70,7 @@ export async function uploadImageToMediaService({
   if (!businessId) {
     throw new Error('Falta el negocio para subir la imagen.');
   }
-  if (!productId) {
+  if ((type === 'product-main' || type === 'product-gallery') && !productId) {
     throw new Error('Falta el producto para subir la imagen.');
   }
 
@@ -83,7 +83,12 @@ export async function uploadImageToMediaService({
     formData.append('file', file);
     formData.append('type', type);
     formData.append('businessId', businessId);
-    formData.append('productId', productId);
+    if (productId !== undefined && productId !== null && productId !== '') {
+      formData.append('productId', productId);
+    }
+    if (index !== undefined && index !== null && index !== '') {
+      formData.append('index', String(index));
+    }
 
     const response = await fetch(`${getMediaServiceBaseUrl()}/upload-image`, {
       method: 'POST',

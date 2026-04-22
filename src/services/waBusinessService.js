@@ -6,7 +6,7 @@ import { getTrialEndDateFrom } from '../constants/trial';
 import { getMarketCodeByCountry } from '../lib/market/routing';
 import { getCountryConfig, COUNTRY_CODES } from '../config/countryConfig';
 import { normalizeSocialUrl as normalizeSharedSocialUrl, normalizeTikTokUrl } from '../utils/socialLinks';
-import { uploadImageToMediaService } from './mediaUploadService';
+import { uploadToMediaService } from './mediaUploadService';
 
 // Helpers
 
@@ -681,8 +681,7 @@ export async function updateBusiness(businessId, updates) {
 export const uploadBusinessLogo = async (file, businessId) => {
   const compressed = await compressImageForUpload(file, 'logo');
   try {
-    const uploaded = await uploadImageToMediaService({
-      file: compressed,
+    const uploaded = await uploadToMediaService(compressed, {
       type: 'business-logo',
       businessId,
     });
@@ -698,8 +697,7 @@ export const uploadBusinessLogo = async (file, businessId) => {
 export const uploadBusinessCover = async (file, businessId) => {
   const compressed = await compressImageForUpload(file, 'cover');
   try {
-    const uploaded = await uploadImageToMediaService({
-      file: compressed,
+    const uploaded = await uploadToMediaService(compressed, {
       type: 'business-cover',
       businessId,
     });
@@ -924,8 +922,7 @@ export const uploadProductImage = async (file, businessId, productId, index) => 
   }
 
   try {
-    const uploaded = await uploadImageToMediaService({
-      file,
+    const uploaded = await uploadToMediaService(file, {
       type: 'product-gallery',
       businessId,
       productId,
@@ -955,8 +952,7 @@ export const uploadProductMainImage = async ({ file, businessId, productId }) =>
     throw new Error('No se encontro el producto para subir la imagen.');
   }
 
-  const uploaded = await uploadImageToMediaService({
-    file,
+  const uploaded = await uploadToMediaService(file, {
     type: 'product-main',
     businessId,
     productId,
