@@ -4,6 +4,7 @@
  */
 
 import { getCountryConfig } from '../config/countryConfig';
+import { resolveCatalogSeoContent } from './catalogDynamicSeo';
 
 /** Texto fijo para Open Graph / vista previa en redes (WhatsApp, etc.). */
 export const CATALOG_OG_DESCRIPTION =
@@ -167,6 +168,20 @@ export function getCatalogShareDocumentTitle(storeName) {
  * @param {Record<string, unknown>|null|undefined} row
  */
 export function getCatalogShareDescription(row) {
+  const hasSeoSignals =
+    !!row &&
+    Boolean(
+      row?.name ||
+      row?.description ||
+      row?.seo_content_override ||
+      row?.seo_content_ai ||
+      row?.seoContentOverride ||
+      row?.seoContentAi
+    );
+  if (!hasSeoSignals) return CATALOG_SHARE_DESCRIPTION_FALLBACK;
+  const content = resolveCatalogSeoContent({ business: row || {} });
+  const resolved = content?.metaDescription || '';
+  if (resolved) return resolved;
   const raw = row && typeof row.description === 'string' ? row.description.trim() : '';
   if (raw) {
     return raw.length > 320 ? `${raw.slice(0, 317)}...` : raw;

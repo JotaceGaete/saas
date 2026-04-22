@@ -24,7 +24,7 @@ import { buildCfImageErrorHandler, cfImageUrl, isCfTransformableUrl } from '../.
 import { useResponsiveCfImageProfile } from '../../hooks/useResponsiveCfImageProfile';
 import CheckoutPhoneOptional from '../../components/checkout/CheckoutPhoneOptional';
 import { getCountryLabels, DELIVERY_ADDRESS_FIELD_HINT } from '../../config/country';
-import { buildCatalogAboutBlock, inferCatalogAboutKind } from '../../utils/catalogAboutBlock';
+import { resolveCatalogSeoContent } from '../../utils/catalogDynamicSeo';
 import {
   buildLocalBusinessJsonLd,
   detectCatalogRegion,
@@ -492,9 +492,15 @@ function CatalogInner({ slug }) {
     host,
   };
   const shareDocumentTitle = getCatalogShareDocumentTitle(business?.name);
-  const shareDescription = getCatalogShareDescription({ description: business?.description });
-  const catalogAboutKind = business ? inferCatalogAboutKind(business, products) : 'general';
-  const catalogAboutBlock = business ? buildCatalogAboutBlock(seoInput, catalogAboutKind) : null;
+  const catalogSeoContent = business
+    ? resolveCatalogSeoContent({
+        business,
+        products,
+        businessCategories: [...bizCategories, ...rubroCategories],
+      })
+    : null;
+  const shareDescription = catalogSeoContent?.metaDescription || getCatalogShareDescription(business);
+  const ogDescription = catalogSeoContent?.ogDescription || shareDescription;
   const ogRegion = detectCatalogRegion(seoInput);
   const canonicalUrl = getPublicCatalogUrl(slug);
   const ogImage = getCatalogOgImageUrl(business, baseUrl);
@@ -537,7 +543,7 @@ function CatalogInner({ slug }) {
           <meta property="og:type" content="website" />
           <meta property="og:url" content={canonicalUrl} />
           <meta property="og:title" content={shareDocumentTitle} />
-          <meta property="og:description" content={shareDescription} />
+          <meta property="og:description" content={ogDescription} />
           <meta property="og:image" content={ogImage} />
           {typeof ogImage === 'string' && ogImage.startsWith('https://') && (
             <meta property="og:image:secure_url" content={ogImage} />
@@ -548,7 +554,7 @@ function CatalogInner({ slug }) {
           <meta name="twitter:card" content="summary_large_image" />
           <meta name="twitter:url" content={canonicalUrl} />
           <meta name="twitter:title" content={shareDocumentTitle} />
-          <meta name="twitter:description" content={shareDescription} />
+          <meta name="twitter:description" content={ogDescription} />
           <meta name="twitter:image" content={ogImage} />
           <link rel="canonical" href={canonicalUrl} />
           {jsonLd && (
@@ -811,7 +817,7 @@ function CatalogInner({ slug }) {
           </div>
         )}
 
-        {!loading && !notFound && business && catalogAboutBlock && (
+        {!loading && !notFound && business && catalogSeoContent?.visibleDescription && (
           <div className="mt-10 md:mt-14 w-full flex justify-center px-0 sm:px-1">
             <section
               className="w-full max-w-[min(100%,1200px)] rounded-2xl px-6 py-8 sm:px-10 sm:py-10 text-left"
@@ -837,24 +843,16 @@ function CatalogInner({ slug }) {
               </header>
               <div className="space-y-7 text-[15px] sm:text-base" style={{ color: catalogTheme.isDark ? 'rgba(255,255,255,0.68)' : '#4B5563' }}>
                 <p className="m-0 max-w-none text-pretty leading-[1.85] sm:leading-[1.9]">
-                  {catalogAboutBlock.intro}
+                  {catalogSeoContent.visibleDescription}
                 </p>
-                <ul className="m-0 list-none space-y-4 p-0" role="list">
-                  {catalogAboutBlock.bullets.map((line, i) => (
-                    <li key={i} className="flex gap-3.5 leading-[1.85] sm:leading-[1.9]">
-                      <span
-                        className="mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full"
-                        style={{ backgroundColor: `${primaryColor}18`, color: primaryColor }}
-                        aria-hidden
-                      >
-                        <Icon name="Check" size={14} strokeWidth={2.5} />
-                      </span>
-                      <span className="min-w-0 flex-1">{line}</span>
-                    </li>
-                  ))}
-                </ul>
-                <p className="m-0 max-w-none pt-6 text-pretty leading-[1.85] sm:leading-[1.9]" style={{ borderTop: `1px solid ${catalogTheme.borderColor}`, color: catalogTheme.isDark ? 'rgba(255,255,255,0.62)' : '#374151' }}>
-                  {catalogAboutBlock.closing}
+                <p
+                  className="m-0 max-w-none pt-6 text-pretty leading-[1.85] sm:leading-[1.9]"
+                  style={{
+                    borderTop: `1px solid ${catalogTheme.borderColor}`,
+                    color: catalogTheme.isDark ? 'rgba(255,255,255,0.62)' : '#374151',
+                  }}
+                >
+                  Contacta por WhatsApp para consultar disponibilidad, precios y detalles del catalogo.
                 </p>
               </div>
             </section>

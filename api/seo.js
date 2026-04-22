@@ -11,6 +11,7 @@ import {
   resolveCatalogOgImageUrl,
   stringifyJsonLd,
 } from '../src/utils/catalogSeo.js';
+import { resolveCatalogSeoContent } from '../src/utils/catalogDynamicSeo.js';
 import {
   GO_INTERNATIONAL_DESCRIPTION,
   GO_INTERNATIONAL_TITLE,
@@ -98,7 +99,7 @@ async function handleCatalogHtml(request) {
   const { data: row, error } = await supabase
     .from('wa_businesses')
     .select(
-      'id, name, description, slug, logo_url, cover_image_url, design_settings, og_image_url, city, region, country, country_code, currency, whatsapp, updated_at'
+      'id, name, description, slug, logo_url, cover_image_url, design_settings, og_image_url, city, region, country, country_code, currency, whatsapp, updated_at, rubro_id, seo_family_key, seo_content_override, seo_content_ai, wa_rubros(name, slug)'
     )
     .eq('slug', slug)
     .eq('is_active', true)
@@ -139,6 +140,7 @@ async function handleCatalogHtml(request) {
 
   const pageTitle = getCatalogShareDocumentTitle(row.name);
   const metaDescription = getCatalogShareDescription(row);
+  const ogDescription = resolveCatalogSeoContent({ business: row }).ogDescription || metaDescription;
   const ri = detectCatalogRegion(seoInput);
   const ogImageHttps = resolveCatalogOgImageUrl(row, origin, {
     cacheBust: row.updated_at ?? null,
@@ -156,6 +158,7 @@ async function handleCatalogHtml(request) {
 
   const metaTitle = metaPlainTextAttr(pageTitle);
   const metaDesc = metaPlainTextAttr(metaDescription);
+  const metaOgDesc = metaPlainTextAttr(ogDescription);
   const metaOgLocale = metaPlainTextAttr(ri.ogLocale || '');
 
   console.log(
@@ -200,7 +203,7 @@ async function handleCatalogHtml(request) {
     `<meta property="og:type" content="website" />`,
     `<meta property="og:url" content="${escapeHtmlCatalog(catalogUrl)}" />`,
     `<meta property="og:title" content="${metaTitle}" />`,
-    `<meta property="og:description" content="${metaDesc}" />`,
+    `<meta property="og:description" content="${metaOgDesc}" />`,
     `<meta property="og:image" content="${escapeHtmlCatalog(ogImageHttps)}" />`,
     ogImageSecure,
     `<meta property="og:image:width" content="1200" />`,
@@ -209,7 +212,7 @@ async function handleCatalogHtml(request) {
     `<meta name="twitter:card" content="summary_large_image" />`,
     `<meta name="twitter:url" content="${escapeHtmlCatalog(catalogUrl)}" />`,
     `<meta name="twitter:title" content="${metaTitle}" />`,
-    `<meta name="twitter:description" content="${metaDesc}" />`,
+    `<meta name="twitter:description" content="${metaOgDesc}" />`,
     `<meta name="twitter:image" content="${escapeHtmlCatalog(ogImageHttps)}" />`,
     `<meta name="description" content="${metaDesc}" />`,
     `<link rel="canonical" href="${escapeHtmlCatalog(catalogUrl)}" />`,
