@@ -1,35 +1,29 @@
-// upload-image-r2 — genera presigned PUT URL para subir imágenes a Cloudflare R2.
+// upload-image-r2 â€” genera presigned PUT URL para subir imÃ¡genes a Cloudflare R2.
 // Requiere JWT. Valida que el negocio pertenezca al usuario.
-// El cliente debe: 1) POST aquí con type, businessId, fileName, contentType → obtener uploadUrl y publicUrl; 2) PUT el file a uploadUrl; 3) usar publicUrl en la app.
+// El cliente debe: 1) POST aquÃ­ con type, businessId, fileName, contentType â†’ obtener uploadUrl y publicUrl; 2) PUT el file a uploadUrl; 3) usar publicUrl en la app.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { S3Client, PutObjectCommand } from 'npm:@aws-sdk/client-s3@3.700.0';
 import { getSignedUrl } from 'npm:@aws-sdk/s3-request-presigner@3.700.0';
 
-const ALLOWED_ORIGINS = [
+const EXACT_ALLOWED_ORIGINS = new Set([
   'https://walinka.com',
-  'https://www.walinka.com',
-  'https://ventalink.app',
-  'https://www.ventalink.app',
   'https://go.ventalink.app',
-  'https://app.gong.cl', // migración
+  'https://ventalink.app',
   'http://localhost:4028',
   'http://localhost:3000',
   'http://127.0.0.1:4028',
   'http://127.0.0.1:3000',
-];
+]);
 
-/** Orígenes permitidos por hostname (PWA puede enviar origin de nuestro dominio). */
-function isAllowedOriginHost(origin: string): boolean {
+function isAllowedOrigin(origin: string): boolean {
+  if (!origin) return false;
+  if (EXACT_ALLOWED_ORIGINS.has(origin)) return true;
+
   try {
-    const u = new URL(origin);
-    return u.origin === origin && (
-      u.hostname === 'walinka.com' ||
-      u.hostname.endsWith('.walinka.com') ||
-      u.hostname === 'ventalink.app' ||
-      u.hostname.endsWith('.ventalink.app') ||
-      u.hostname === 'app.gong.cl'
-    );
+    const url = new URL(origin);
+    if (url.origin !== origin) return false;
+    return /^saas-git-[a-z0-9-]+\.vercel\.app$/i.test(url.hostname);
   } catch {
     return false;
   }
@@ -37,16 +31,13 @@ function isAllowedOriginHost(origin: string): boolean {
 
 function getCorsHeaders(req: Request): Record<string, string> {
   const origin = (req.headers.get('origin') ?? '').trim();
-  const allowOrigin =
-    ALLOWED_ORIGINS.includes(origin)
-      ? origin
-      : isAllowedOriginHost(origin)
-        ? origin
-        : ALLOWED_ORIGINS[0];
+  const allowOrigin = isAllowedOrigin(origin) ? origin : 'https://walinka.com';
+
   return {
     'Access-Control-Allow-Origin': allowOrigin,
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Vary': 'Origin',
   };
 }
 
