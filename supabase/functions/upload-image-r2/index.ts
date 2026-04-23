@@ -31,14 +31,17 @@ function isAllowedOrigin(origin: string): boolean {
 
 function getCorsHeaders(req: Request): Record<string, string> {
   const origin = (req.headers.get('origin') ?? '').trim();
-  const allowOrigin = isAllowedOrigin(origin) ? origin : 'https://walinka.com';
-
-  return {
-    'Access-Control-Allow-Origin': allowOrigin,
+  const headers: Record<string, string> = {
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Vary': 'Origin',
   };
+
+  if (isAllowedOrigin(origin)) {
+    headers['Access-Control-Allow-Origin'] = origin;
+  }
+
+  return headers;
 }
 
 function jsonResponse(body: Record<string, unknown>, status: number, corsHeaders: Record<string, string>) {
@@ -67,7 +70,7 @@ Deno.serve(async (req) => {
 
   if (method === 'OPTIONS') {
     console.log('[upload-image-r2] OPTIONS preflight');
-    return new Response('ok', { status: 200, headers: corsHeaders });
+    return new Response('ok', { headers: corsHeaders });
   }
 
   if (method !== 'POST') {
