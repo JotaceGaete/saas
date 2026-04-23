@@ -1,12 +1,20 @@
 import React, { useRef, useState } from 'react';
 import Icon from 'components/AppIcon';
-import { replaceProductVideo, removeProductVideo } from '../../../services/productMediaService';
+import {
+  getProductVideoMaxBytes,
+  replaceProductVideo,
+  removeProductVideo,
+  validateProductVideoFile,
+} from '../../../services/productMediaService';
 
 function withMediaVersion(url, version) {
   if (!url) return null;
   const sep = url.includes('?') ? '&' : '?';
   return `${url}${sep}v=${encodeURIComponent(version)}`;
 }
+
+const MAX_VIDEO_BYTES = getProductVideoMaxBytes();
+const MAX_VIDEO_MB = Math.max(1, Math.round(MAX_VIDEO_BYTES / (1024 * 1024)));
 
 export default function VideoUploadSection({ productId, businessId, video, onVideoChange }) {
   const fileInputRef = useRef(null);
@@ -20,6 +28,13 @@ export default function VideoUploadSection({ productId, businessId, video, onVid
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
+
+    const validationError = validateProductVideoFile(file, { maxBytes: MAX_VIDEO_BYTES });
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
     setError(null);
     setLoading(true);
     try {
@@ -28,9 +43,9 @@ export default function VideoUploadSection({ productId, businessId, video, onVid
       setCacheBust(Date.now());
       onVideoChange({
         videoUrl: uploaded.video_url,
-        videoThumbnailUrl: uploaded.thumbnail_url,
+        videoThumbnailUrl: null,
         videoPath: uploaded.video_path,
-        videoThumbnailPath: uploaded.thumbnail_path,
+        videoThumbnailPath: null,
       });
     } catch (err) {
       setError(err.message || 'Error al subir el video');
@@ -40,7 +55,7 @@ export default function VideoUploadSection({ productId, businessId, video, onVid
   };
 
   const handleRemove = async () => {
-    if (!window.confirm('¿Quitar el video de este producto?')) return;
+    if (!window.confirm('Quitar el video de este producto?')) return;
     setError(null);
     setLoading(true);
     try {
@@ -76,7 +91,6 @@ export default function VideoUploadSection({ productId, businessId, video, onVid
         <div className="space-y-3">
           <video
             src={withMediaVersion(video.videoUrl, cacheBust)}
-            poster={withMediaVersion(video.videoThumbnailUrl, cacheBust) || undefined}
             controls
             className="w-full rounded-xl border"
             style={{ borderColor: 'var(--color-border)', maxHeight: 280, backgroundColor: '#000' }}
@@ -105,7 +119,7 @@ export default function VideoUploadSection({ productId, businessId, video, onVid
             {loading && (
               <span className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
                 <span className="inline-block w-3.5 h-3.5 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: 'var(--color-primary)', borderTopColor: 'transparent' }} />
-                Procesando...
+                Subiendo...
               </span>
             )}
           </div>
@@ -139,7 +153,7 @@ export default function VideoUploadSection({ productId, businessId, video, onVid
               </p>
               {!loading && (
                 <p className="text-xs mt-0.5" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-                  MP4, MOV, WEBM · se genera thumbnail automáticamente
+                  MP4, MOV, WEBM · hasta {MAX_VIDEO_MB} MB
                 </p>
               )}
             </div>
