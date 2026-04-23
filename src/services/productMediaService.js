@@ -1,20 +1,20 @@
 import { updateProduct } from './waBusinessService';
 
-const MEDIA_SERVICE_URL = String(import.meta.env.VITE_MEDIA_SERVICE_URL || '').trim().replace(/\/$/, '');
-
-if (!MEDIA_SERVICE_URL) {
-  console.error('[productMediaService] Missing VITE_MEDIA_SERVICE_URL');
+function getMediaServiceBaseUrl() {
+  const baseUrl = String(import.meta.env.VITE_MEDIA_SERVICE_URL || '').trim().replace(/\/$/, '');
+  if (!baseUrl) {
+    throw new Error('Falta configurar VITE_MEDIA_SERVICE_URL para usar video.');
+  }
+  return baseUrl;
 }
 
 export const uploadProductVideo = async (file, businessId, productId) => {
-  if (!MEDIA_SERVICE_URL) {
-    throw new Error('[productMediaService] Missing VITE_MEDIA_SERVICE_URL');
-  }
+  const mediaServiceBaseUrl = getMediaServiceBaseUrl();
   const form = new FormData();
   form.append('file', file);
   form.append('businessId', businessId);
   form.append('productId', productId);
-  const res = await fetch(`${MEDIA_SERVICE_URL}/upload-video`, { method: 'POST', body: form });
+  const res = await fetch(`${mediaServiceBaseUrl}/upload-video`, { method: 'POST', body: form });
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.ok) throw new Error(data.error || 'Error al subir el video');
   return data;
@@ -23,10 +23,8 @@ export const uploadProductVideo = async (file, businessId, productId) => {
 export const deleteRemoteMedia = async (paths) => {
   const filtered = (paths || []).filter(Boolean);
   if (!filtered.length) return;
-  if (!MEDIA_SERVICE_URL) {
-    throw new Error('[productMediaService] Missing VITE_MEDIA_SERVICE_URL');
-  }
-  const res = await fetch(`${MEDIA_SERVICE_URL}/delete-media`, {
+  const mediaServiceBaseUrl = getMediaServiceBaseUrl();
+  const res = await fetch(`${mediaServiceBaseUrl}/delete-media`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ paths: filtered }),

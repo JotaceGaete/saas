@@ -1,13 +1,29 @@
+import { getValidToken } from '../lib/auth/getValidToken';
+
 const DEFAULT_UPLOAD_TIMEOUT_MS = 30000;
 const DEFAULT_PRODUCT_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 
-function getMediaServiceBaseUrl() {
-  console.log('MEDIA URL:', import.meta.env.VITE_MEDIA_SERVICE_URL);
-  const baseUrl = String(import.meta.env.VITE_MEDIA_SERVICE_URL || '').trim().replace(/\/$/, '');
-  if (!baseUrl) {
-    throw new Error('Falta configurar VITE_MEDIA_SERVICE_URL para subir imagenes.');
+function getSupabaseFunctionUrl(functionName) {
+  const supabaseUrl = String(import.meta.env.VITE_SUPABASE_URL || '').trim().replace(/\/$/, '');
+  if (!supabaseUrl) {
+    throw new Error('Falta configurar VITE_SUPABASE_URL para subir imagenes.');
   }
-  return baseUrl;
+  return `${supabaseUrl}/functions/v1/${functionName}`;
+}
+
+function getSupabaseAnonKey() {
+  const anonKey = String(import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
+  if (!anonKey) {
+    throw new Error('Falta configurar VITE_SUPABASE_ANON_KEY para subir imagenes.');
+  }
+  return anonKey;
+}
+
+function normalizeImageUploadType(type) {
+  if (type === 'business-logo') return 'logo';
+  if (type === 'business-cover') return 'cover';
+  if (type === 'product-main' || type === 'product-gallery') return 'product';
+  throw new Error('Tipo de subida de imagen no soportado.');
 }
 
 function normalizeMediaUploadError(error, fallbackMessage) {
@@ -74,60 +90,83 @@ export async function uploadToMediaService(file, {
     throw new Error('Falta el producto para subir la imagen.');
   }
 
+  const uploadType = normalizeImageUploadType(type);
+  const token = await getValidToken();
+  if (!token) {
+    throw new Error('Tu sesion vencio. Vuelve a iniciar sesion para subir imagenes.');
+  }
+
   const controller = new AbortController();
   const timeoutHost = typeof window !== 'undefined' ? window : globalThis;
   const timeoutId = timeoutHost.setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('type', type);
-    formData.append('businessId', businessId);
-    if (productId !== undefined && productId !== null && productId !== '') {
-      formData.append('productId', productId);
-    }
-    if (index !== undefined && index !== null && index !== '') {
-      formData.append('index', String(index));
-    }
+    const requestBody = {
+      type: uploadType,
+      businessId,
+      productId: productId !== undefined && productId !== null && productId !== '' ? productId : undefined,
+      index: index !== undefined && index !== null && index !== '' ? Number(index) : undefined,
+      fileName: typeof file?.name === 'string' && file.name.trim() ? file.name.trim() : `upload-${Date.now()}.jpg`,
+      contentType: String(file?.type || 'image/jpeg').trim() || 'image/jpeg',
+    };
 
-    const response = await fetch(`${getMediaServiceBaseUrl()}/upload-image`, {
+    const signedUrlResponse = await fetch(getSupabaseFunctionUrl('upload-image-r2'), {
       method: 'POST',
-      body: formData,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        apikey: getSupabaseAnonKey(),
+      },
+      body: JSON.stringify(requestBody),
       signal: controller.signal,
     });
 
-    let payload = null;
+    let signedUrlPayload = null;
     try {
-      payload = await response.json();
+      signedUrlPayload = await signedUrlResponse.json();
     } catch {
-      throw new Error('El servidor devolvio una respuesta invalida al subir la imagen.');
+      throw new Error('El servidor devolvio una respuesta invalida al preparar la subida de la imagen.');
     }
 
-    if (!response.ok) {
+    if (!signedUrlResponse.ok) {
       const message =
-        payload?.error ||
-        payload?.message ||
-        `Error del servidor al subir la imagen (${response.status}).`;
+        signedUrlPayload?.error ||
+        signedUrlPayload?.message ||
+        `Error del servidor al preparar la subida de la imagen (${signedUrlResponse.status}).`;
       throw new Error(message);
     }
 
-    if (payload?.ok !== true) {
-      throw new Error(payload?.error || payload?.message || 'La subida de la imagen no fue aceptada.');
+    if (typeof signedUrlPayload?.uploadUrl !== 'string' || !signedUrlPayload.uploadUrl.trim()) {
+      throw new Error('La respuesta no incluyo una URL firmada valida para subir la imagen.');
     }
 
-    if (typeof payload?.url !== 'string' || !payload.url.trim()) {
-      throw new Error('La respuesta del servidor no incluyo una URL de imagen valida.');
+    if (typeof signedUrlPayload?.publicUrl !== 'string' || !signedUrlPayload.publicUrl.trim()) {
+      throw new Error('La respuesta no incluyo una URL publica valida para la imagen.');
+    }
+
+    const uploadResponse = await fetch(signedUrlPayload.uploadUrl.trim(), {
+      method: 'PUT',
+      headers: {
+        'Content-Type': requestBody.contentType,
+      },
+      body: file,
+      signal: controller.signal,
+    });
+
+    if (!uploadResponse.ok) {
+      const uploadErrorText = await uploadResponse.text().catch(() => '');
+      throw new Error(uploadErrorText || `Error al subir la imagen al storage (${uploadResponse.status}).`);
     }
 
     return {
       ok: true,
-      url: payload.url.trim(),
-      key: typeof payload?.key === 'string' ? payload.key.trim() : '',
-      contentType: typeof payload?.contentType === 'string' ? payload.contentType.trim() : '',
-      size: Number.isFinite(Number(payload?.size)) ? Number(payload.size) : null,
+      url: signedUrlPayload.publicUrl.trim(),
+      key: typeof signedUrlPayload?.key === 'string' ? signedUrlPayload.key.trim() : '',
+      contentType: requestBody.contentType,
+      size: Number.isFinite(Number(file?.size)) ? Number(file.size) : null,
     };
   } catch (error) {
-    throw normalizeMediaUploadError(error, 'No se pudo subir la imagen al servidor de media.');
+    throw normalizeMediaUploadError(error, 'No se pudo subir la imagen a R2.');
   } finally {
     timeoutHost.clearTimeout(timeoutId);
   }
