@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { Resend } from 'resend'
 import { newOrderEmail } from '../../src/emails/templates/new-order.js'
+import { welcomeEmail } from '../../src/emails/templates/welcome.js'
 
 const supabase = createClient(
   process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL,
@@ -11,6 +12,7 @@ const resend = new Resend(process.env.RESEND_API_KEY)
 
 const templates = {
   new_order: newOrderEmail,
+  welcome: welcomeEmail,
 }
 
 export default async function handler(req, res) {

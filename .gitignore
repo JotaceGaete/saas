@@ -11,4 +11,4 @@ vite.config.*s.*
 .env.*.local
 
 # Claude Code linked worktrees (same repo); tracking as gitlink breaks root commits when dirty
-.claude/worktrees/
+.claude/worktrees/dist/ 
