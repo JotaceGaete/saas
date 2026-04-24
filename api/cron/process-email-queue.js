@@ -41,7 +41,17 @@ export default async function handler(req, res) {
         const templateFn = templates[email.template]
 
         if (!templateFn) {
-          throw new Error(`Unknown email template: ${email.template}`)
+          // Permanent failure — no template exists, retrying won't help.
+          await supabase
+            .from('email_queue')
+            .update({
+              status: 'failed',
+              retry_count: 3,
+              last_error: `Unknown email template: ${email.template}. Available: ${Object.keys(templates).join(', ')}`,
+            })
+            .eq('id', email.id)
+          results.push({ id: email.id, ok: false, error: `unknown_template:${email.template}` })
+          continue
         }
 
         const rendered = templateFn(email.payload || {})
