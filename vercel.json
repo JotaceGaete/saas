@@ -103,6 +103,12 @@
       "permanent": true
     }
   ],
+  "crons": [
+    {
+      "path": "/api/cron/process-email-queue",
+      "schedule": "*/5 * * * *"
+    }
+  ],
   "rewrites": [
     {
       "source": "/api/v1/billing/paypal/subscriptions",
