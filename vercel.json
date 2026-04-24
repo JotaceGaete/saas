@@ -106,11 +106,11 @@
   "crons": [
     {
       "path": "/api/cron/process-email-queue",
-      "schedule": "*/0 * * * *"
+      "schedule": "0 8 * * *"
     },
     {
       "path": "/api/cron/process-admin-alert-queue",
-      "schedule": "*/0 * * * *"
+      "schedule": "0 8 * * *"
     }
   ],
   "rewrites": [
