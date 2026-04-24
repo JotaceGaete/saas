@@ -1,15 +1,36 @@
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+function getDisplayName({ name, business_name, user_email }) {
+  if (name && name.trim()) return name.trim()
+  if (business_name && business_name.trim()) return business_name.trim()
+  if (user_email && user_email.includes('@')) return user_email.split('@')[0]
+  return 'Emprendedor'
+}
+
+function getBusinessLine({ business_name }) {
+  if (business_name && business_name.trim())
+    return `Tu tienda ${business_name.trim()} ya está lista para vender por WhatsApp.`
+  return 'Tu catálogo ya está listo para vender por WhatsApp.'
+}
+
 /**
- * Template de email de bienvenida.
- * Invocado por process-email-queue cuando template = 'welcome'.
- *
- * @param {{ user_email?: string, business_name?: string, created_at?: string }} payload
+ * @param {{ name?: string, business_name?: string, user_email?: string, dashboardUrl?: string }} payload
  */
-export function welcomeEmail({ user_email = '', business_name = 'tu negocio', created_at } = {}) {
-  const dashboardUrl = 'https://go.ventalink.app/dashboard'
-  const firstName = user_email ? user_email.split('@')[0] : business_name
+export function welcomeEmail({ name = '', business_name = '', user_email = '', dashboardUrl: payloadUrl } = {}) {
+  const data = { name, business_name, user_email }
+  const url = payloadUrl || 'https://go.ventalink.app/dashboard'
+  const displayName = escapeHtml(getDisplayName(data))
+  const businessLine = escapeHtml(getBusinessLine(data))
 
   return {
-    subject: '¡Bienvenido a Ventalink! Tu catálogo te espera',
+    subject: 'Día 1: Tu primer cliente importa más que todos 🚀',
     html: `
 <!DOCTYPE html>
 <html lang="es">
@@ -24,7 +45,7 @@ export function welcomeEmail({ user_email = '', business_name = 'tu negocio', cr
       <td align="center">
         <table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.06);">
 
-          <!-- Header violeta -->
+          <!-- Header -->
           <tr>
             <td style="background:linear-gradient(135deg,#7C3AED 0%,#6D28D9 100%);padding:36px 40px 32px;text-align:center;">
               <p style="margin:0;font-size:28px;font-weight:800;color:#ffffff;letter-spacing:-0.5px;">
@@ -40,11 +61,10 @@ export function welcomeEmail({ user_email = '', business_name = 'tu negocio', cr
           <tr>
             <td style="padding:36px 40px 28px;">
               <h1 style="margin:0 0 12px;font-size:22px;font-weight:700;color:#0f172a;letter-spacing:-0.3px;">
-                ¡Hola, ${firstName}! 👋
+                ¡Hola, <strong>${displayName}</strong>! 👋
               </h1>
               <p style="margin:0 0 20px;font-size:15px;line-height:1.65;color:#475569;">
-                Acabas de crear <strong>${business_name}</strong> en Ventalink.
-                Ya puedes agregar tus productos y compartir tu catálogo con tus clientes por WhatsApp.
+                ${businessLine}
               </p>
 
               <!-- Pasos rápidos -->
@@ -79,7 +99,7 @@ export function welcomeEmail({ user_email = '', business_name = 'tu negocio', cr
               <table width="100%" cellpadding="0" cellspacing="0">
                 <tr>
                   <td align="center">
-                    <a href="${dashboardUrl}"
+                    <a href="${url}"
                        style="display:inline-block;background:linear-gradient(135deg,#7C3AED 0%,#6D28D9 100%);color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;padding:14px 36px;border-radius:10px;letter-spacing:-0.2px;">
                       Ir a mi panel →
                     </a>
@@ -93,7 +113,7 @@ export function welcomeEmail({ user_email = '', business_name = 'tu negocio', cr
           <tr>
             <td style="padding:20px 40px 32px;border-top:1px solid #f1f5f9;text-align:center;">
               <p style="margin:0;font-size:12px;color:#94a3b8;line-height:1.6;">
-                Este email fue enviado a <strong>${user_email}</strong> porque creaste una cuenta en Ventalink.<br/>
+                Este email fue enviado a <strong>${escapeHtml(user_email || displayName)}</strong> porque creaste una cuenta en Ventalink.<br/>
                 Si no reconoces esta cuenta, puedes ignorar este mensaje.
               </p>
             </td>
@@ -106,16 +126,16 @@ export function welcomeEmail({ user_email = '', business_name = 'tu negocio', cr
 </body>
 </html>
     `.trim(),
-    text: `¡Hola, ${firstName}!
+    text: `¡Hola, ${displayName}!
 
-Bienvenido a Ventalink. Acabas de crear "${business_name}".
+${businessLine}
 
 Primeros pasos:
 1. Agrega tus productos con foto y precio
 2. Personaliza el diseño de tu catálogo
 3. Comparte el link con tus clientes
 
-Ir a tu panel: ${dashboardUrl}
+Ir a tu panel: ${url}
 
 ---
 Ventalink · Tu catálogo de ventas por WhatsApp
