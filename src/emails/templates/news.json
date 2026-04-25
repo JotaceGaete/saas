@@ -1,0 +1,14 @@
+{
+  "announcements": [
+    {
+      "id": "product-videos-launch",
+      "status": "published",
+      "publishedAt": "2026-04-25",
+      "subject": "Tu catálogo ya tiene movimiento 🎥",
+      "title": "Videos en productos ya está disponible 🎥",
+      "body": "Hola {{displayName}},\n\nCada día estamos trabajando para que tu catálogo no solo se vea bien, sino que realmente venda.\n\nUna de las funciones más pedidas por nuestros usuarios ya está aquí: ahora puedes subir videos en tus productos 🎥\n\nUn video puede marcar la diferencia entre que alguien mire… o que te escriba.\n\nTe recomendamos probarlo con algo simple: muestra tu producto en uso, en movimiento, como lo vería tu cliente.\n\nSeguimos mejorando Walinka para ayudarte a vender más fácil, más claro y con menos esfuerzo.\n\nSe vienen nuevas funciones muy pronto… no te las pierdas 👀\n\nEquipo Walinka",
+      "cta_label": "Subir mi primer video 🚀",
+      "cta_url": "https://go.ventalink.app/dashboard"
+    }
+  ]
+}
