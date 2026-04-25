@@ -214,4 +214,22 @@ if (require.main === module) {
   console.log('🔗 CTA URL:', DASHBOARD_URL);
 }
 
-module.exports = { generateWelcomeEmail, fakeData, DASHBOARD_URL };
+module.exports = {
+  generateWelcomeEmail,
+  welcomeEmail: (data = {}) => {
+    const displayName =
+      data.name?.trim() ||
+      data.business_name?.trim() ||
+      data.user_email?.split('@')?.[0] ||
+      data.displayName ||
+      'Emprendedor';
+
+    return {
+      subject: '¡Bienvenido a Ventalink!',
+      html: generateWelcomeEmail({ displayName }),
+      text: `Hola ${displayName}. Bienvenido a Ventalink. Tu catálogo ya está listo para empezar a vender por WhatsApp.`,
+    };
+  },
+  fakeData,
+  DASHBOARD_URL,
+};
