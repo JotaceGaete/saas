@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { Resend } from 'resend'
 import { newOrderEmail } from '../../src/emails/templates/new-order.js'
 import { welcomeEmail } from '../../src/emails/templates/welcome.js'
+import { newsEmail } from '../../src/emails/templates/news.js'
 import {
   onboardingTip01,
   onboardingTip02,
@@ -25,6 +26,7 @@ const resend = new Resend(process.env.RESEND_API_KEY)
 const templates = {
   new_order: newOrderEmail,
   welcome: welcomeEmail,
+  news: newsEmail,
   onboarding_tip_01: onboardingTip01,
   onboarding_tip_02: onboardingTip02,
   onboarding_tip_03: onboardingTip03,
