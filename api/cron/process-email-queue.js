@@ -2,6 +2,18 @@ import { createClient } from '@supabase/supabase-js'
 import { Resend } from 'resend'
 import { newOrderEmail } from '../../src/emails/templates/new-order.js'
 import { welcomeEmail } from '../../src/emails/templates/welcome.js'
+import {
+  onboardingTip01,
+  onboardingTip02,
+  onboardingTip03,
+  onboardingTip04,
+  onboardingTip05,
+  onboardingTip06,
+  onboardingTip07,
+  onboardingTip08,
+  onboardingTip09,
+  onboardingTip10,
+} from '../../src/emails/templates/onboarding-tips.js'
 
 const supabase = createClient(
   process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL,
@@ -13,6 +25,16 @@ const resend = new Resend(process.env.RESEND_API_KEY)
 const templates = {
   new_order: newOrderEmail,
   welcome: welcomeEmail,
+  onboarding_tip_01: onboardingTip01,
+  onboarding_tip_02: onboardingTip02,
+  onboarding_tip_03: onboardingTip03,
+  onboarding_tip_04: onboardingTip04,
+  onboarding_tip_05: onboardingTip05,
+  onboarding_tip_06: onboardingTip06,
+  onboarding_tip_07: onboardingTip07,
+  onboarding_tip_08: onboardingTip08,
+  onboarding_tip_09: onboardingTip09,
+  onboarding_tip_10: onboardingTip10,
 }
 
 function log(level, data) {
