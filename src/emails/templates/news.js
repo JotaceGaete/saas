@@ -2,8 +2,17 @@
 
 const DASHBOARD_URL = 'https://go.ventalink.app/dashboard';
 
-function newsEmail({ displayName }) {
-  const name = displayName || 'Emprendedor';
+function resolveDisplayName(data) {
+  if (!data || typeof data !== 'object') return 'Emprendedor';
+  if (data.name && data.name.trim()) return data.name.trim();
+  if (data.displayName && data.displayName.trim()) return data.displayName.trim();
+  if (data.business_name && data.business_name.trim()) return data.business_name.trim();
+  if (data.user_email && data.user_email.includes('@')) return data.user_email.split('@')[0];
+  return 'Emprendedor';
+}
+
+function newsEmail(data = {}) {
+  const name = resolveDisplayName(data);
 
   const subject = 'Tu catálogo ya tiene movimiento 🎥';
 

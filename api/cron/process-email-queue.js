@@ -92,7 +92,14 @@ export default async function handler(req, res) {
       }
 
       try {
-        const rendered = templateFn(email.payload || {})
+        const templateData = {
+          ...(email.payload || {}),
+          to_name: email.to_name,
+          to_email: email.to_email,
+          business_id: email.business_id,
+          user_id: email.user_id,
+        }
+        const rendered = templateFn(templateData)
         const to = process.env.EMAIL_TEST_MODE === 'true'
           ? process.env.EMAIL_TEST_INBOX
           : email.to_email
