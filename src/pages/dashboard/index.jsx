@@ -973,6 +973,25 @@ export default function Dashboard() {
           </div>
         ))}
       </div>
+
+      {/* Botón flotante Ver demo — sin negocio o con onboarding pendiente */}
+      {(!business?.id || !business?.onboarding_completed_at) && (
+        <button
+          type="button"
+          onClick={() => navigate('/ayuda')}
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 inline-flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-semibold shadow-lg transition-all hover:scale-105 active:scale-95 hover:shadow-xl"
+          style={{
+            backgroundColor: 'var(--color-primary)',
+            color: '#ffffff',
+            fontFamily: 'var(--font-caption)',
+            zIndex: 300,
+          }}
+          aria-label="Ver demo de Walinka"
+        >
+          <Icon name="Play" size={15} color="#ffffff" />
+          Ver demo
+        </button>
+      )}
     </DashboardAppShell>
   );
 }
