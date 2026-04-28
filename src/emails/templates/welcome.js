@@ -1,4 +1,4 @@
-// welcome.js — Email de bienvenida Ventalink
+// welcome.js — Email de bienvenida Walinka
 // Compatible con Resend API / n8n / cualquier mailer Node.js
 // Uso: const { welcomeEmail } = require('./welcome');
 
@@ -43,7 +43,7 @@ function generateWelcomeEmail({ displayName }) {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
-  <title>Bienvenido a Ventalink</title>
+  <title>Bienvenido a Walinka</title>
 </head>
 <body style="margin:0;padding:0;background-color:#F1F5F9;font-family:Arial,Helvetica,sans-serif;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
 
@@ -56,7 +56,7 @@ function generateWelcomeEmail({ displayName }) {
           <!-- HEADER -->
           <tr>
             <td align="center" style="padding:48px 40px 32px;background-color:#ffffff;">
-              <img src="${LOGO_URL}" alt="Ventalink" width="180" style="display:block;max-width:180px;height:auto;border:0;">
+              <img src="${LOGO_URL}" alt="Walinka" width="180" style="display:block;max-width:180px;height:auto;border:0;">
             </td>
           </tr>
 
@@ -71,7 +71,7 @@ function generateWelcomeEmail({ displayName }) {
                 </tr>
               </table>
               <h1 style="font-size:32px;font-weight:800;color:#0F172A;margin:20px 0 16px;font-family:Arial,Helvetica,sans-serif;line-height:1.2;">
-                Bienvenido a Ventalink
+                Bienvenido a Walinka
               </h1>
               <p style="font-size:16px;color:#334155;margin:0 0 12px;font-family:Arial,Helvetica,sans-serif;line-height:1.6;">
                 Hola, <strong>${name}</strong>.
@@ -93,7 +93,7 @@ function generateWelcomeEmail({ displayName }) {
           <tr>
             <td style="padding:0 40px 32px;">
               <p style="font-size:15px;color:#334155;margin:0 0 24px;font-family:Arial,Helvetica,sans-serif;line-height:1.7;background-color:#F9FAFB;padding:20px;border-radius:12px;">
-                La idea de <strong style="color:#7b2ff7;">Ventalink</strong> es simple: tener todo en un solo lugar, m&#225;s claro y sin enredos. Queremos que te conviertas en un <strong style="color:#0F172A;">due&#241;o de negocio imparable.</strong>
+                La idea de <strong style="color:#7b2ff7;">Walinka</strong> es simple: tener todo en un solo lugar, m&#225;s claro y sin enredos. Queremos que te conviertas en un <strong style="color:#0F172A;">due&#241;o de negocio imparable.</strong>
               </p>
 
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:12px;">
@@ -190,7 +190,7 @@ function generateWelcomeEmail({ displayName }) {
           <!-- FOOTER -->
           <tr>
             <td align="center" style="padding:32px 40px 40px;border-top:1px solid #F1F5F9;background-color:#FAFAFA;">
-              <p style="margin:0 0 12px;font-size:13px;font-weight:700;color:#0F172A;font-family:Arial,Helvetica,sans-serif;letter-spacing:2px;">VENTALINK</p>
+              <p style="margin:0 0 12px;font-size:13px;font-weight:700;color:#0F172A;font-family:Arial,Helvetica,sans-serif;letter-spacing:2px;">WALINKA</p>
               <p style="margin:0;font-size:12px;color:#94A3B8;font-family:Arial,Helvetica,sans-serif;line-height:1.6;">
                 Vende m&#225;s por WhatsApp. Sin complicaciones.
               </p>
@@ -216,9 +216,9 @@ function welcomeEmail(data) {
   if (data === undefined || data === null) data = {};
   const displayName = getDisplayName(data);
   return {
-    subject: '¡Bienvenido a Ventalink!',
+    subject: '¡Bienvenido a Walinka!',
     html: generateWelcomeEmail({ displayName }),
-    text: 'Hola ' + displayName + '. Bienvenido a Ventalink. Tu catálogo ya está listo para empezar a vender por WhatsApp.\n\nIr a tu panel: ' + DASHBOARD_URL,
+    text: 'Hola ' + displayName + '. Bienvenido a Walinka. Tu catálogo ya está listo para empezar a vender por WhatsApp.\n\nIr a tu panel: ' + DASHBOARD_URL,
   };
 }
 
