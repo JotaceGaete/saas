@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Icon from 'components/AppIcon';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -24,6 +25,7 @@ export default function OrderDetailDrawer({
 }) {
   const [savingStatus, setSavingStatus] = useState(false);
   const [savingPayment, setSavingPayment] = useState(false);
+  const navigate = useNavigate();
 
   const formattedOrderDate = order?.createdAt
     ? format(new Date(order.createdAt), "d 'de' MMMM yyyy, HH:mm", { locale: es })
@@ -155,7 +157,20 @@ export default function OrderDetailDrawer({
           </div>
 
           <div>
-            <p className="text-xs font-semibold mb-1" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Cliente</p>
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-xs font-semibold" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Cliente</p>
+              {order?.customerId && (
+                <button
+                  type="button"
+                  onClick={() => { onClose(); navigate(`/customers/${order.customerId}`); }}
+                  className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-md transition-colors"
+                  style={{ color: 'var(--color-primary)', backgroundColor: 'rgba(124,58,237,0.08)', fontFamily: 'var(--font-caption)' }}
+                >
+                  <Icon name="User" size={12} />
+                  Ver ficha
+                </button>
+              )}
+            </div>
             <p className="text-sm font-medium" style={{ fontFamily: 'var(--font-caption)' }}>{order?.customerName || '—'}</p>
             {order?.customerPhone && (
               <a href={whatsappHref} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sm mt-0.5" style={{ color: '#25D366', fontFamily: 'var(--font-caption)' }}>

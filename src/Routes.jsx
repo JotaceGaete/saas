@@ -22,6 +22,7 @@ import PublicOffers from './pages/public-offers';
 import OrderConfirmation from './pages/order-confirmation';
 import Orders from './pages/orders';
 import OrdersHistory from './pages/orders-history';
+import CustomerPage from './pages/customers';
 import Login from './pages/login';
 import AuthCallback from './pages/auth-callback';
 import ResetPassword from './pages/reset-password';
@@ -100,6 +101,7 @@ const Routes = () => {
             <Route path="/product-editor" element={<RequireAuth><ProductEditor /></RequireAuth>} />
             <Route path="/orders/historial" element={<RequireAuth><OrdersHistory /></RequireAuth>} />
             <Route path="/orders" element={<RequireAuth><Orders /></RequireAuth>} />
+            <Route path="/customers/:customerId" element={<RequireAuth><CustomerPage /></RequireAuth>} />
             <Route path="/design" element={<RequireAuth><DesignPage /></RequireAuth>} />
             <Route path="/ayuda" element={<RequireAuth><HelpPage /></RequireAuth>} />
             <Route path="/login" element={<Login />} />

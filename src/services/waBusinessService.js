@@ -10,6 +10,13 @@ import { uploadToMediaService } from './mediaUploadService';
 
 // Helpers
 
+/** Normaliza teléfono a solo dígitos para comparación (conflict-safe en wa_customers). */
+const normalizePhone = (phone) => {
+  if (!phone) return null;
+  const digits = String(phone).replace(/\D/g, '');
+  return digits || null;
+};
+
 /** E.164: solo dígitos tras + (evita espacios y separadores locales). */
 /**
  * Normaliza un valor de red social a URL completa.
@@ -452,6 +459,7 @@ export const mapOrderFromDb = (row) => ({
   sentAt: row?.sent_at ?? null,
   /** Cobro efectivo (BD, trigger). Es la única fecha válida para métricas de ingreso; el cliente no la escribe. */
   paidAt: row?.paid_at ?? null,
+  customerId: row?.customer_id ?? null,
   notes: row?.notes,
   internalNotes: row?.internal_notes,
   items: (row?.wa_order_items || [])?.map(item => ({
@@ -1095,6 +1103,7 @@ export const createOrder = async (businessId, orderData, items) => {
     ? crypto.randomUUID()
     : `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 
+  // customer_id lo rellena automáticamente el trigger wa_orders_link_customer (SECURITY DEFINER).
   const { error: orderError } = await supabase?.from('wa_orders')?.insert({
       id: orderId,
       business_id: businessId,
@@ -1153,6 +1162,28 @@ export const createOrder = async (businessId, orderData, items) => {
     },
     error: null,
   };
+};
+
+// ─── Clientes ─────────────────────────────────────────────────────────────────
+
+export const getCustomer = async (customerId) => {
+  const { data, error } = await supabase
+    ?.from('wa_customers')
+    ?.select('*')
+    ?.eq('id', customerId)
+    ?.single();
+  if (error) return { data: null, error };
+  return { data, error: null };
+};
+
+export const getCustomerOrders = async (customerId) => {
+  const { data, error } = await supabase
+    ?.from('wa_orders')
+    ?.select('*, wa_order_items(*)')
+    ?.eq('customer_id', customerId)
+    ?.order('created_at', { ascending: false });
+  if (error) return { data: null, error };
+  return { data: (data || []).map(mapOrderFromDb), error: null };
 };
 
 export const deleteProducts = async (productIds) => {
