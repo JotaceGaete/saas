@@ -265,13 +265,13 @@ export default function ProductEditor() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data?.ok === false) {
-        console.error('[Mejorar con IA] Error API:', res.status, res.statusText, data);
+        console.error('[Mejorar con IA] Error API:', res.status, data?.code);
         if (res.status === 429) {
-          toast.error(data?.error ?? 'Demasiadas solicitudes. Espera un momento e intenta de nuevo.');
+          toast.error('Demasiadas solicitudes. Espera un momento e intenta de nuevo.');
         } else if (res.status === 504) {
           toast.error('El servicio de IA tardó demasiado. Intenta de nuevo.');
         } else {
-          toast.error(data?.error ?? data?.message ?? 'No se pudo mejorar la descripción');
+          toast.error('No pudimos generar la respuesta en este momento. Intenta nuevamente en unos segundos.');
         }
         return;
       }

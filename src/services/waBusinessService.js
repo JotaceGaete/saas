@@ -486,9 +486,24 @@ export const getMyBusiness = async () => {
     return { data: null, error: { message: 'Usuario no autenticado' } };
   }
   console.log('[waBusinessService] getMyBusiness: fetching for user_id =', user?.id);
-  const { data, error } = await supabase?.from('wa_businesses')?.select('*')?.eq('user_id', user?.id)?.maybeSingle();
+
+  // Orden + limit defensivo: si el usuario tiene filas duplicadas en wa_businesses
+  // (PGRST116 con .maybeSingle()), esta consulta devuelve la más antigua sin explotar.
+  // Diagnóstico de duplicados: supabase/diagnostics/wa_businesses_duplicates.sql
+  const { data, error } = await supabase
+    ?.from('wa_businesses')
+    ?.select('*')
+    ?.eq('user_id', user?.id)
+    ?.order('created_at', { ascending: true })
+    ?.limit(1)
+    ?.maybeSingle();
+
   if (error) {
-    console.error('[waBusinessService] getMyBusiness error:', error);
+    if (error?.code === 'PGRST116') {
+      console.warn('[waBusinessService] getMyBusiness: PGRST116 — posibles duplicados en wa_businesses para user_id', user?.id);
+    } else {
+      console.error('[waBusinessService] getMyBusiness error:', error);
+    }
     return { data: null, error };
   }
   console.log('[waBusinessService] getMyBusiness result:', data ? `found id=${data?.id}` : 'not found');
@@ -1626,10 +1641,10 @@ export const getDashboardAiInsights = async (businessId) => {
         message: body?.message || 'Insight en generación',
       };
     }
-    if (!res.ok) return { data: null, error: body?.error || { message: res.statusText }, pending: false };
+    if (!res.ok) return { data: null, error: { message: 'AI provider error', code: body?.code || 'AI_PROVIDER_ERROR' }, pending: false };
     return { data: body?.insight || null, error: null, pending: false };
   } catch (err) {
-    return { data: null, error: { message: err?.message || 'Network error' }, pending: false };
+    return { data: null, error: { message: 'Network error' }, pending: false };
   }
 };
 

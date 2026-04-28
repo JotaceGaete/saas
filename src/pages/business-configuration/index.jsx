@@ -572,12 +572,13 @@ export default function BusinessConfiguration() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data?.ok === false) {
+        console.error('[Mejorar descripción] Error API:', res.status, data?.code);
         if (res.status === 429) {
-          showToast(data?.error ?? 'Demasiadas solicitudes. Espera un momento e intenta de nuevo.', 'error');
+          showToast('Demasiadas solicitudes. Espera un momento e intenta de nuevo.', 'error');
         } else if (res.status === 504) {
           showToast('El servicio de IA tardó demasiado. Intenta de nuevo.', 'error');
         } else {
-          showToast(data?.error ?? data?.message ?? 'No se pudo mejorar la descripción. Intenta de nuevo.', 'error');
+          showToast('No pudimos generar la respuesta en este momento. Intenta nuevamente en unos segundos.', 'error');
         }
         return;
       }
@@ -687,7 +688,7 @@ export default function BusinessConfiguration() {
     try {
       const { data: updated, error } = await updateBusiness(bizId, payload);
       if (error) {
-        showToast('Error al guardar: ' + (error?.message || JSON.stringify(error)), 'error');
+        showToast('No se pudo guardar la configuración. Intenta de nuevo.', 'error');
         return;
       }
       if (updated) {
@@ -715,7 +716,7 @@ export default function BusinessConfiguration() {
       showToast('¡Configuración guardada!', 'success');
     } catch (e) {
       console.error('[BusinessConfig] handleSaveSettings exception:', e);
-      showToast('Error inesperado: ' + (e?.message || 'Intenta de nuevo'), 'error');
+      showToast('Error inesperado. Intenta de nuevo.', 'error');
     } finally {
       setIsSaving(false);
     }

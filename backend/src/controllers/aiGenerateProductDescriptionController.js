@@ -62,9 +62,14 @@ function handleError(err, fallbackMessage) {
   }
   const msg = String(err?.message || '');
   if (msg.includes('Provider timeout')) {
-    return json({ ok: false, code: 'AI_PROVIDER_TIMEOUT', error: msg }, 504);
+    return json({ ok: false, code: 'AI_PROVIDER_TIMEOUT', error: 'El servicio de IA tardó demasiado. Intenta de nuevo.' }, 504);
   }
-  return json({ ok: false, error: err?.message || fallbackMessage }, 503);
+  // Nunca enviar el mensaje crudo del proveedor al cliente: puede contener JSON de error de la API.
+  return json({
+    ok: false,
+    code: 'AI_PROVIDER_ERROR',
+    error: 'No pudimos generar la sugerencia en este momento. Intenta nuevamente en unos minutos.',
+  }, 503);
 }
 
 /** Hash de entrada de negocio + contenido + límites + proveedor/modelo (alineado con generate). */
@@ -325,7 +330,15 @@ export async function aiGenerateProductDescriptionController(request) {
       hashtags: gen.data?.hashtags || [],
     });
   } catch (err) {
-    console.error('[ai] generate-product-description error', err);
+    const errMsg = String(err?.message || '');
+    // Log seguro: nunca loggear API keys ni prompts completos.
+    console.error('[ai] generate-product-description failed', {
+      provider_attempted: /gemini/i.test(errMsg) ? 'gemini' : /openai/i.test(errMsg) ? 'openai' : 'unknown',
+      provider_failed: true,
+      fallback_used: errMsg.includes('fallback') || errMsg.includes('Fallback'),
+      final_status: 'error',
+      error_type: errMsg.slice(0, 120),
+    });
     return handleError(err, 'AI generation failed');
   }
 }
