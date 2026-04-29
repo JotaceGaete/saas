@@ -71,6 +71,12 @@ export function getProductImages(product) {
   return result;
 }
 
+function getProductCommercialState(product) {
+  if (product?.isActive === false) return 'hidden';
+  if (product?.isSoldOut === true) return 'sold_out';
+  return 'available';
+}
+
 
 // SocialLinks, CatalogInfoBlock, CatalogInfoGrid → moved to CatalogStoreHeader.jsx
 
@@ -181,9 +187,9 @@ function CatalogInner({ slug }) {
   const visibleCategories = useMemo(() => {
     if (!useCategories || !products?.length) return [];
     const withProducts = categoryNames.filter((name) =>
-      products.some((p) => (p?.category || '').trim() === name)
+      products.some((p) => getProductCommercialState(p) !== 'hidden' && (p?.category || '').trim() === name)
     );
-    const hasOtros = products.some((p) => !(p?.category || '').trim());
+    const hasOtros = products.some((p) => getProductCommercialState(p) !== 'hidden' && !(p?.category || '').trim());
     return [...withProducts, ...(hasOtros ? ['Otros'] : [])];
   }, [useCategories, categoryNames, products]);
 
@@ -193,6 +199,7 @@ function CatalogInner({ slug }) {
   // Filtered products (por búsqueda, categoría seleccionada y precio)
   const filteredProducts = useMemo(() => {
     return products?.filter(p => {
+      if (getProductCommercialState(p) === 'hidden') return false;
       const matchesSearch = !searchQuery?.trim() ||
         p?.name?.toLowerCase()?.includes(searchQuery?.toLowerCase()) ||
         p?.description?.toLowerCase()?.includes(searchQuery?.toLowerCase());
@@ -431,7 +438,10 @@ function CatalogInner({ slug }) {
     return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
   };
 
-  const openProduct = (product) => setSelectedProduct(product);
+  const openProduct = (product) => {
+    if (getProductCommercialState(product) === 'hidden') return;
+    setSelectedProduct(product);
+  };
   const closeProduct = () => setSelectedProduct(null);
 
   if (loading) {
@@ -480,7 +490,7 @@ function CatalogInner({ slug }) {
 
   const storeName = business?.name || 'Catálogo';
   const isRestaurant = isRestaurantBusiness(business);
-  const mainFeaturedProduct = products.find((p) => p?.isMainFeatured);
+  const mainFeaturedProduct = products.find((p) => p?.isMainFeatured && getProductCommercialState(p) !== 'hidden');
   const mainFeaturedImage = mainFeaturedProduct ? getProductImages(mainFeaturedProduct)?.[0] || null : null;
   const mainFeaturedTitle = isRestaurant ? '🍽️ Menú del día' : '🔥 Producto destacado';
   const mainFeaturedPrimaryCta = isRestaurant ? 'Pedir por WhatsApp' : 'Ver producto';
@@ -1606,10 +1616,13 @@ export function ProductCard({
   const primaryColor = theme?.primaryColor || '#25D366';
   const primaryColorDark = theme?.primaryColorDark || '#128C7E';
   const showPrice = cardSettings?.showPrice !== false;
+  const productState = getProductCommercialState(product);
   const { addItem, updateQuantity, items } = useCart();
   const cartItem = items?.find(i => i?.id === product?.id);
   const qty = cartItem?.quantity || 0;
   const [bump, setBump] = useState(false);
+
+  if (productState === 'hidden') return null;
 
   const handleAdd = (e) => {
     e?.stopPropagation();
@@ -1637,6 +1650,21 @@ export function ProductCard({
   const discount = trustBadge?.discount ?? null;
   const imgAspect = compact ? 'aspect-square' : 'aspect-[4/5]';
   const roundTop = 'rounded-t-2xl';
+  const stateBadge = productState === 'sold_out'
+    ? {
+        label: 'Agotado',
+        style: {
+          color: '#9A3412',
+          backgroundColor: 'rgba(251,146,60,0.18)',
+        },
+      }
+    : {
+        label: 'Disponible',
+        style: {
+          color: '#166534',
+          backgroundColor: 'rgba(34,197,94,0.16)',
+        },
+      };
   const qtyTopClass =
     qty > 0 && trustBadge ? (compact ? 'top-7' : 'top-[1.85rem]') : 'top-1';
   // Sombra levemente más intensa para productos en oferta — señal visual sin romper diseño
@@ -1679,9 +1707,15 @@ export function ProductCard({
               {trustBadge.label}
             </span>
           )}
+          <span
+            className={`absolute right-1 z-[1] rounded-full px-2 py-1 text-[9px] font-bold shadow-sm sm:text-[10px] ${compact ? 'top-1' : 'top-1.5'}`}
+            style={stateBadge.style}
+          >
+            {stateBadge.label}
+          </span>
           {extraImages > 0 && (
             <div
-              className="absolute right-1 top-1 flex items-center gap-0.5 rounded px-1 py-0.5 text-[9px] font-semibold text-white shadow"
+              className={`absolute right-1 flex items-center gap-0.5 rounded px-1 py-0.5 text-[9px] font-semibold text-white shadow ${compact ? 'top-7' : 'top-[1.85rem]'}`}
               style={{ backgroundColor: 'rgba(0,0,0,0.55)' }}
             >
               <Icon name="Images" size={8} color="#fff" />
@@ -1696,7 +1730,7 @@ export function ProductCard({
               {qty}
             </div>
           )}
-          {product?.isSoldOut && (
+          {productState === 'sold_out' && (
             <div
               className="absolute inset-0 flex items-center justify-center"
               style={{ backgroundColor: 'rgba(0,0,0,0.32)' }}
@@ -1706,7 +1740,7 @@ export function ProductCard({
               </span>
             </div>
           )}
-          {!product?.isSoldOut && product?.hasOptions && (
+          {productState === 'available' && product?.hasOptions && (
             <div
               className="absolute bottom-1 left-1 flex items-center gap-0.5 rounded px-1 py-0.5 text-[9px] font-semibold"
               style={{ backgroundColor: 'rgba(234,179,8,0.9)', color: '#713f12' }}
@@ -1770,7 +1804,7 @@ export function ProductCard({
               )}
             </div>
           )}
-          {product?.isSoldOut ? (
+          {productState === 'sold_out' ? (
             <button
               type="button"
               disabled
@@ -1926,12 +1960,13 @@ export function ProductModal({ product, products = [], business, slug, formatPri
   const primaryColorDark = theme?.primaryColorDark || '#128C7E';
   const primaryRgba = theme?.primaryRgba || (() => 'rgba(37,211,102,0.35)');
   const showPrice = cardSettings?.showPrice !== false;
+  const productState = getProductCommercialState(product);
   const isRestaurant = isRestaurantBusiness(business);
   const showDescription = cardSettings?.showDescription !== false;
   const { addItem, items } = useCart();
   const cartItem = items?.find(i => i?.id === product?.id);
   const qty = cartItem?.quantity || 0;
-  const isSoldOut = product?.isSoldOut === true;
+  const isSoldOut = productState === 'sold_out';
   const [copiedProductMessage, setCopiedProductMessage] = useState(false);
   const cfMainProfile = useResponsiveCfImageProfile();
 
@@ -1983,6 +2018,21 @@ export function ProductModal({ product, products = [], business, slug, formatPri
   }, []);
 
   const modalDiscount = getDiscountPercent(product?.price, product?.compareAtPrice);
+  const stateBadge = productState === 'sold_out'
+    ? {
+        label: 'Agotado',
+        style: {
+          color: '#9A3412',
+          backgroundColor: 'rgba(251,146,60,0.18)',
+        },
+      }
+    : {
+        label: 'Disponible',
+        style: {
+          color: '#166534',
+          backgroundColor: 'rgba(34,197,94,0.16)',
+        },
+      };
   const trackWaClick = () => {
     const path = typeof window !== 'undefined' ? window.location?.pathname || getPublicCatalogRelativePath(slug) : getPublicCatalogRelativePath(slug);
     recordCatalogWhatsAppClick(slug, path, 'product_modal').catch(() => {});
@@ -2115,6 +2165,8 @@ export function ProductModal({ product, products = [], business, slug, formatPri
     return `https://wa.me/${phone}?text=${encodeURIComponent(effectiveWaMessage)}`;
   })();
 
+  if (productState === 'hidden') return null;
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
@@ -2165,6 +2217,16 @@ export function ProductModal({ product, products = [], business, slug, formatPri
               ) : (
                 <div className="w-full h-full flex items-center justify-center">
                   <Icon name="ImageOff" size={48} color="#D1D5DB" />
+                </div>
+              )}
+              {productState === 'sold_out' && (
+                <div
+                  className="absolute inset-0 flex items-center justify-center"
+                  style={{ backgroundColor: 'rgba(0,0,0,0.32)' }}
+                >
+                  <span className="rounded-full px-3 py-1.5 text-xs font-black text-white shadow" style={{ backgroundColor: 'rgba(0,0,0,0.65)' }}>
+                    Agotado
+                  </span>
                 </div>
               )}
               {productImages.length > 1 && (
@@ -2230,6 +2292,15 @@ export function ProductModal({ product, products = [], business, slug, formatPri
               {useCategories && product?.category && (
                 <span className="ml-auto text-[10px] font-semibold rounded-md px-1.5 py-0.5" style={{ color: primaryColorDark, backgroundColor: primaryRgba(0.12) }}>{product?.category}</span>
               )}
+            </div>
+
+            <div className="mb-3">
+              <span
+                className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-bold"
+                style={stateBadge.style}
+              >
+                {stateBadge.label}
+              </span>
             </div>
 
             {/* Title + optional featured badge */}
@@ -2458,9 +2529,17 @@ export function ProductModal({ product, products = [], business, slug, formatPri
             {/* ── CTAs ─────────────────────────────────────────────────── */}
             {isSoldOut ? (
               <div className="flex flex-col items-center gap-3 py-2">
-                <div className="flex items-center gap-2 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 w-full justify-center">
+                <button
+                  type="button"
+                  disabled
+                  className="flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-4 text-base font-bold text-gray-400"
+                >
                   <Icon name="PackageX" size={18} color="#9CA3AF" />
-                  <span className="text-sm font-semibold text-gray-500">Este producto está agotado</span>
+                  Agotado
+                </button>
+                <div className="flex items-center gap-2 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 w-full justify-center">
+                  <Icon name="Info" size={18} color="#9CA3AF" />
+                  <span className="text-sm font-semibold text-gray-500">Este producto está agotado por ahora.</span>
                 </div>
               </div>
             ) : isRestaurant ? (
@@ -2563,7 +2642,7 @@ export function ProductModal({ product, products = [], business, slug, formatPri
         </div>
 
         {/* ── Sticky bottom bar: restaurant + mobile only ───────────────── */}
-        {isRestaurant && !isSoldOut && (
+        {isRestaurant && productState === 'available' && (
           <div
             className="sm:hidden flex-shrink-0 border-t border-gray-100 bg-white px-4 py-3"
             style={{ paddingBottom: 'calc(12px + var(--safe-area-bottom, 0px))' }}
