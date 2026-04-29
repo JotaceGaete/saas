@@ -4,8 +4,9 @@ import Button from "components/ui/Button";
 
 export const statusFilterOptions = [
   { value: "all", label: "Todos" },
-  { value: "active", label: "Activos" },
-  { value: "inactive", label: "Inactivos" },
+  { value: "available", label: "Disponible" },
+  { value: "sold_out", label: "Agotado" },
+  { value: "hidden", label: "Oculto" },
 ];
 
 export default function ProductFilters({
@@ -47,7 +48,7 @@ export default function ProductFilters({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-col gap-2 min-w-0">
           <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 font-[family-name:var(--font-caption)]">
-            Estado
+            Estado de venta
           </span>
           <div className="flex flex-wrap gap-2">
             {statusFilterOptions?.map((opt) => (

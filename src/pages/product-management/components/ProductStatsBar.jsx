@@ -1,5 +1,5 @@
 import React from "react";
-import { Package, CircleCheck, CircleOff } from "lucide-react";
+import { Package, CircleCheck, CircleAlert, CircleOff } from "lucide-react";
 
 export default function ProductStatsBar({ stats }) {
   const items = [
@@ -12,16 +12,24 @@ export default function ProductStatsBar({ stats }) {
       iconColor: "text-slate-600",
     },
     {
-      label: "Activos",
-      value: stats?.active ?? 0,
+      value: stats?.available ?? 0,
       Icon: CircleCheck,
       accent: "text-emerald-700",
       iconBg: "bg-emerald-50",
       iconColor: "text-emerald-600",
+      label: "Disponibles",
     },
     {
-      label: "Inactivos",
-      value: stats?.inactive ?? 0,
+      label: "Agotados",
+      value: stats?.soldOut ?? 0,
+      Icon: CircleAlert,
+      accent: "text-amber-700",
+      iconBg: "bg-amber-50",
+      iconColor: "text-amber-600",
+    },
+    {
+      label: "Ocultos",
+      value: stats?.hidden ?? 0,
       Icon: CircleOff,
       accent: "text-slate-600",
       iconBg: "bg-slate-100",

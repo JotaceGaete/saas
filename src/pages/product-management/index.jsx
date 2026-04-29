@@ -59,7 +59,10 @@ export default function ProductManagement() {
   const tableProducts = useMemo(() => products?.map(p => ({
     id: p?.id, name: p?.name, description: p?.description || '', price: p?.price,
     category: (p?.category && String(p.category).trim()) || 'General',
-    active: p?.isActive, image: p?.imageUrl || '', imageAlt: p?.name,
+    active: p?.isActive,
+    isSoldOut: p?.isSoldOut === true,
+    commercialState: p?.isActive === false ? 'hidden' : (p?.isSoldOut === true ? 'sold_out' : 'available'),
+    image: p?.imageUrl || '', imageAlt: p?.name,
     publicCode: p?.publicCode || '',
   })), [products]);
 
@@ -74,11 +77,11 @@ export default function ProductManagement() {
         || (p?.publicCode && String(p.publicCode).toUpperCase().includes(qCode)),
       );
     }
-    if (statusFilter !== "all") result = result?.filter(p => statusFilter === "active" ? p?.active : !p?.active);
+    if (statusFilter !== "all") result = result?.filter(p => p?.commercialState === statusFilter);
     result?.sort((a, b) => {
       let aVal = a?.name?.toLowerCase(), bVal = b?.name?.toLowerCase();
       if (sortField === "price") { aVal = a?.price; bVal = b?.price; }
-      else if (sortField === "status") { aVal = a?.active ? 1 : 0; bVal = b?.active ? 1 : 0; }
+      else if (sortField === "status") { aVal = a?.commercialState || ''; bVal = b?.commercialState || ''; }
       if (aVal < bVal) return sortDir === "asc" ? -1 : 1;
       if (aVal > bVal) return sortDir === "asc" ? 1 : -1;
       return 0;
@@ -88,8 +91,9 @@ export default function ProductManagement() {
 
   const stats = useMemo(() => ({
     total: products?.length,
-    active: products?.filter(p => p?.isActive)?.length,
-    inactive: products?.filter(p => !p?.isActive)?.length,
+    available: products?.filter(p => p?.isActive !== false && p?.isSoldOut !== true)?.length,
+    soldOut: products?.filter(p => p?.isActive !== false && p?.isSoldOut === true)?.length,
+    hidden: products?.filter(p => p?.isActive === false)?.length,
   }), [products]);
 
   const bizLocale = useMemo(() => getBusinessLocale(business), [business]);
@@ -109,27 +113,41 @@ export default function ProductManagement() {
   const handleSelectAll = useCallback((checked) => { setSelectedIds(checked ? filteredProducts?.map(p => p?.id) : []); }, [filteredProducts]);
   const handleSelectOne = useCallback((id, checked) => { setSelectedIds(prev => checked ? [...prev, id] : prev?.filter(x => x !== id)); }, []);
 
-  const handleToggleStatus = useCallback(async (id) => {
+  const handleChangeStatus = useCallback(async (id, nextState) => {
     const product = products?.find(p => p?.id === id);
     if (!product) return;
-    const activating = !product?.isActive;
-    if (activating) {
+
+    const payload = nextState === 'available'
+      ? { isActive: true, isSoldOut: false }
+      : nextState === 'sold_out'
+        ? { isActive: true, isSoldOut: true }
+        : { isActive: false, isSoldOut: false };
+
+    const applyLocalState = () => {
+      setProducts(prev => prev?.map(p => (
+        p?.id === id
+          ? { ...p, isActive: payload.isActive, isSoldOut: payload.isSoldOut }
+          : p
+      )));
+    };
+
+    if (nextState === 'available') {
       guard.runIfConfirmed(async () => {
-        const { error: err } = await updateProduct(id, { isActive: true });
+        const { error: err } = await updateProduct(id, payload);
         if (err) {
           toast?.error(err?.message || 'No se pudo actualizar.');
           return;
         }
-        setProducts(prev => prev?.map(p => p?.id === id ? { ...p, isActive: true } : p));
+        applyLocalState();
       });
       return;
     }
-    const { error: err } = await updateProduct(id, { isActive: false });
+    const { error: err } = await updateProduct(id, payload);
     if (err) {
       toast?.error(err?.message || 'No se pudo actualizar.');
       return;
     }
-    setProducts(prev => prev?.map(p => p?.id === id ? { ...p, isActive: false } : p));
+    applyLocalState();
   }, [products, toast, guard]);
 
   const handleEdit = useCallback((id) => { navigate(`/product-editor?id=${id}`); }, [navigate]);
@@ -184,7 +202,7 @@ export default function ProductManagement() {
     <DashboardAppShell backgroundColor="var(--color-background)">
         <PanelHeader
           title={<h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Gestión de Productos</h1>}
-          subtitle={<p className="text-xs hidden sm:block" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>{loading ? 'Cargando...' : `${stats?.total} productos · ${stats?.active} activos · ${stats?.inactive} inactivos`}</p>}
+          subtitle={<p className="text-xs hidden sm:block" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>{loading ? 'Cargando...' : `${stats?.total} productos · ${stats?.available} disponibles · ${stats?.soldOut} agotados · ${stats?.hidden} ocultos`}</p>}
         >
           <div className="flex items-center gap-2 flex-shrink-0">
             <button onClick={() => navigate("/product-editor")} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white transition-all duration-150 hover:bg-[#6D28D9] active:scale-[0.98]" style={{ backgroundColor: 'var(--color-primary)', fontFamily: 'var(--font-caption)', boxShadow: 'var(--shadow-violet)' }}>
@@ -238,7 +256,7 @@ export default function ProductManagement() {
                 />
               </div>
               {selectedIds?.length > 0 && (<div><BulkActionBar selectedCount={selectedIds?.length} onDelete={handleBulkDelete} onDeselect={() => setSelectedIds([])} /></div>)}
-              <ProductTable products={filteredProducts} selectedIds={selectedIds} onSelectAll={handleSelectAll} onSelectOne={handleSelectOne} onToggleStatus={handleToggleStatus} onEdit={handleEdit} onDuplicate={handleDuplicate} onDeleteRequest={handleDeleteRequest} sortField={sortField} sortDir={sortDir} onSort={handleSort} formatPrice={formatProductPrice} />
+              <ProductTable products={filteredProducts} selectedIds={selectedIds} onSelectAll={handleSelectAll} onSelectOne={handleSelectOne} onChangeStatus={handleChangeStatus} onEdit={handleEdit} onDuplicate={handleDuplicate} onDeleteRequest={handleDeleteRequest} sortField={sortField} sortDir={sortDir} onSort={handleSort} formatPrice={formatProductPrice} />
             </>
           )}
         </DashboardLayoutContent>

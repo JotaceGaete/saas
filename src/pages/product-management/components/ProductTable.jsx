@@ -16,7 +16,7 @@ export default function ProductTable({
   selectedIds,
   onSelectAll,
   onSelectOne,
-  onToggleStatus,
+  onChangeStatus,
   onEdit,
   onDuplicate,
   onDeleteRequest,
@@ -28,6 +28,13 @@ export default function ProductTable({
 }) {
   const allSelected = products?.length > 0 && products?.every((p) => selectedIds?.includes(p?.id));
   const someSelected = products?.some((p) => selectedIds?.includes(p?.id)) && !allSelected;
+  const [openStatusMenuId, setOpenStatusMenuId] = useState(null);
+
+  const getCommercialState = (product) => {
+    if (product?.active === false) return { key: 'hidden', label: 'Oculto', bg: '#F1F5F9', color: '#64748B' };
+    if (product?.isSoldOut === true) return { key: 'sold_out', label: 'Agotado', bg: '#FFF7ED', color: '#C2410C' };
+    return { key: 'available', label: 'Disponible', bg: '#ECFDF5', color: '#059669' };
+  };
 
   const SortIcon = ({ field }) => {
     if (sortField !== field) return <Icon name="ChevronsUpDown" size={14} color="var(--color-muted-foreground)" />;
@@ -85,12 +92,16 @@ export default function ProductTable({
                 <th className="px-4 py-4 text-left"><ThBtn field="name">Nombre</ThBtn></th>
                 <th className="px-4 py-4 text-left"><ThBtn field="category">Categoría</ThBtn></th>
                 <th className="px-4 py-4 text-right"><ThBtn field="price">Precio</ThBtn></th>
-                <th className="px-4 py-4 text-center"><ThBtn field="status">Estado</ThBtn></th>
+                <th className="px-4 py-4 text-center"><ThBtn field="status">Estado de venta</ThBtn></th>
                 <th className="px-4 py-4 text-right"><span className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Acciones</span></th>
               </tr>
             </thead>
             <tbody>
               {products?.map((product) => (
+                (() => {
+                  const commercialState = getCommercialState(product);
+                  const isStatusMenuOpen = openStatusMenuId === product?.id;
+                  return (
                 <tr
                   key={product?.id}
                   className={`border-b last:border-0 transition-colors ${
@@ -124,17 +135,51 @@ export default function ProductTable({
                     <span className="text-sm font-bold whitespace-nowrap" style={{ color: 'var(--color-primary)', fontFamily: 'var(--font-data)' }}>{formatPrice(product?.price)}</span>
                   </td>
                   <td className="px-4 py-3 text-center">
-                    <button
-                      onClick={() => onToggleStatus(product?.id)}
-                      className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 ${product?.active ? '' : ''}`}
-                      style={{ backgroundColor: product?.active ? 'var(--color-primary)' : 'var(--color-border)' }}
-                      role="switch" aria-checked={product?.active} aria-label={`${product?.active ? 'Desactivar' : 'Activar'} ${product?.name}`}
+                    <span
+                      className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold"
+                      style={{ backgroundColor: commercialState.bg, color: commercialState.color, fontFamily: 'var(--font-caption)' }}
                     >
-                      <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform ${product?.active ? 'translate-x-4' : 'translate-x-0.5'}`} />
-                    </button>
+                      {commercialState.label}
+                    </span>
                   </td>
                   <td className="px-4 py-4">
-                    <div className="flex items-center justify-end gap-3 pl-2">
+                    <div className="flex items-center justify-end gap-3 pl-2 relative">
+                      <div className="relative">
+                        <button
+                          onClick={() => setOpenStatusMenuId((prev) => prev === product?.id ? null : product?.id)}
+                          className="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors hover:bg-slate-50"
+                          style={{ borderColor: 'var(--color-border)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
+                          aria-label={`Cambiar estado de ${product?.name}`}
+                        >
+                          Cambiar estado
+                          <Icon name="ChevronDown" size={13} color="currentColor" />
+                        </button>
+                        {isStatusMenuOpen && (
+                          <div
+                            className="absolute right-0 top-full z-20 mt-2 w-48 rounded-xl border bg-white p-1.5 shadow-lg"
+                            style={{ borderColor: 'var(--color-border)', boxShadow: '0 18px 40px rgba(15,23,42,0.14)' }}
+                          >
+                            {[
+                              { key: 'available', label: 'Marcar disponible' },
+                              { key: 'sold_out', label: 'Marcar agotado' },
+                              { key: 'hidden', label: 'Ocultar del catálogo' },
+                            ].map((option) => (
+                              <button
+                                key={option.key}
+                                type="button"
+                                onClick={() => {
+                                  setOpenStatusMenuId(null);
+                                  onChangeStatus(product?.id, option.key);
+                                }}
+                                className="flex w-full items-center rounded-lg px-3 py-2 text-left text-xs font-medium transition-colors hover:bg-slate-50"
+                                style={{ color: commercialState.key === option.key ? 'var(--color-primary)' : 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
+                              >
+                                {option.label}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                       <button
                         onClick={() => onEdit(product?.id)}
                         className="w-9 h-9 flex items-center justify-center rounded-lg text-slate-500 transition-all hover:bg-slate-100 hover:text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300/80"
@@ -162,6 +207,8 @@ export default function ProductTable({
                     </div>
                   </td>
                 </tr>
+                  );
+                })()
               ))}
             </tbody>
           </table>
@@ -169,7 +216,10 @@ export default function ProductTable({
       </div>
       {/* Mobile Card Layout */}
       <div className="md:hidden space-y-3">
-        {products?.map((product) => (
+        {products?.map((product) => {
+          const commercialState = getCommercialState(product);
+          const isStatusMenuOpen = openStatusMenuId === product?.id;
+          return (
           <div
             key={product?.id}
             className={`rounded-xl border p-4 transition-all ${
@@ -211,15 +261,12 @@ export default function ProductTable({
                       {product?.description}
                     </p>
                   </div>
-                  <button
-                    onClick={() => onToggleStatus(product?.id)}
-                    className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-ring ${product?.active ? "bg-secondary" : "bg-muted"}`}
-                    role="switch"
-                    aria-checked={product?.active}
-                    aria-label={`${product?.active ? "Desactivar" : "Activar"} ${product?.name}`}
+                  <span
+                    className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold"
+                    style={{ backgroundColor: commercialState.bg, color: commercialState.color, fontFamily: 'var(--font-caption)' }}
                   >
-                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${product?.active ? "translate-x-6" : "translate-x-1"}`} />
-                  </button>
+                    {commercialState.label}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between mt-2">
                   <div className="flex items-center gap-2">
@@ -234,6 +281,42 @@ export default function ProductTable({
                     </span>
                   </div>
                   <div className="flex items-center gap-3">
+                    <div className="relative">
+                      <button
+                        onClick={() => setOpenStatusMenuId((prev) => prev === product?.id ? null : product?.id)}
+                        className="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors hover:bg-slate-50"
+                        style={{ borderColor: 'var(--color-border)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
+                        aria-label={`Cambiar estado de ${product?.name}`}
+                      >
+                        Cambiar estado
+                        <Icon name="ChevronDown" size={13} color="currentColor" />
+                      </button>
+                      {isStatusMenuOpen && (
+                        <div
+                          className="absolute right-0 top-full z-20 mt-2 w-48 rounded-xl border bg-white p-1.5 shadow-lg"
+                          style={{ borderColor: 'var(--color-border)', boxShadow: '0 18px 40px rgba(15,23,42,0.14)' }}
+                        >
+                          {[
+                            { key: 'available', label: 'Marcar disponible' },
+                            { key: 'sold_out', label: 'Marcar agotado' },
+                            { key: 'hidden', label: 'Ocultar del catálogo' },
+                          ].map((option) => (
+                            <button
+                              key={option.key}
+                              type="button"
+                              onClick={() => {
+                                setOpenStatusMenuId(null);
+                                onChangeStatus(product?.id, option.key);
+                              }}
+                              className="flex w-full items-center rounded-lg px-3 py-2 text-left text-xs font-medium transition-colors hover:bg-slate-50"
+                              style={{ color: commercialState.key === option.key ? 'var(--color-primary)' : 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
+                            >
+                              {option.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                     <button
                       onClick={() => onEdit(product?.id)}
                       className="w-9 h-9 flex items-center justify-center rounded-lg text-slate-500 transition-all hover:bg-slate-100 hover:text-slate-800"
@@ -260,7 +343,8 @@ export default function ProductTable({
               </div>
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
     </>
   );
