@@ -50,6 +50,10 @@ const EMPTY_FORM = {
   hasOptions: false,
   optionsDescription: '',
   addOns: [],
+  comboConfig: {
+    enabled: false,
+    groups: [],
+  },
 };
 
 const ADDON_LIMIT = 5;
@@ -57,6 +61,7 @@ const ADDON_SEARCH_MIN = 2;
 const ADDON_SEARCH_MAX_RESULTS = 10;
 
 const buildAddonId = () => `addon-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+const buildComboId = (prefix = 'combo') => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
 const normalizeAddon = (addon, index = 0) => {
   if (!addon || typeof addon !== 'object') return null;
@@ -78,6 +83,46 @@ const normalizeAddon = (addon, index = 0) => {
     label: addon?.label || '',
     price: Number.isFinite(priceValue) && priceValue >= 0 ? Math.round(priceValue) : 0,
     active: addon?.active !== false,
+  };
+};
+
+const normalizeComboItem = (item, index = 0) => {
+  if (!item || typeof item !== 'object') return null;
+  const priceValue = Number(item?.price);
+  return {
+    id: item?.id || `combo-item-${index}`,
+    label: item?.label || '',
+    price: Number.isFinite(priceValue) && priceValue >= 0 ? Math.round(priceValue) : 0,
+  };
+};
+
+const normalizeComboGroup = (group, index = 0) => {
+  if (!group || typeof group !== 'object') return null;
+  const maxValue = Number(group?.maxSelections);
+  return {
+    id: group?.id || `combo-group-${index}`,
+    label: group?.label || '',
+    required: group?.required === true,
+    maxSelections: Number.isFinite(maxValue) && maxValue > 0 ? Math.round(maxValue) : 1,
+    items: Array.isArray(group?.items)
+      ? group.items.map((item, itemIndex) => normalizeComboItem(item, itemIndex)).filter(Boolean)
+      : [],
+  };
+};
+
+const normalizeComboConfig = (config) => {
+  if (!config || typeof config !== 'object' || Array.isArray(config)) {
+    return {
+      enabled: false,
+      groups: [],
+    };
+  }
+
+  return {
+    enabled: config?.enabled === true,
+    groups: Array.isArray(config?.groups)
+      ? config.groups.map((group, index) => normalizeComboGroup(group, index)).filter(Boolean)
+      : [],
   };
 };
 
@@ -125,6 +170,8 @@ export default function ProductEditor() {
   const normalizedAddOns = Array.isArray(formData?.addOns)
     ? formData.addOns.map((addon, index) => normalizeAddon(addon, index)).filter(Boolean)
     : [];
+  const normalizedComboConfig = normalizeComboConfig(formData?.comboConfig);
+  const comboGroups = normalizedComboConfig.groups;
   const productAddonIds = new Set(
     normalizedAddOns
       .filter((addon) => addon?.type === 'product' && addon?.productId)
@@ -185,6 +232,7 @@ export default function ProductEditor() {
           hasOptions: data?.hasOptions || false,
           optionsDescription: data?.optionsDescription || '',
           addOns: Array.isArray(data?.addOns) ? data.addOns : [],
+          comboConfig: normalizeComboConfig(data?.comboConfig),
         });
         const loadedImages = Array.isArray(data?.images) && data.images.length > 0
           ? data.images.map((url, i) => ({
@@ -317,6 +365,121 @@ export default function ProductEditor() {
       return { ...prev, addOns: nextAddOns };
     });
   }, []);
+
+  const updateComboConfig = React.useCallback((updater) => {
+    setFormData((prev) => {
+      const current = normalizeComboConfig(prev?.comboConfig);
+      const nextComboConfig = typeof updater === 'function' ? updater(current) : updater;
+      return {
+        ...prev,
+        comboConfig: normalizeComboConfig(nextComboConfig),
+      };
+    });
+  }, []);
+
+  const addComboGroup = React.useCallback(() => {
+    updateComboConfig((current) => ({
+      ...current,
+      enabled: true,
+      groups: [
+        ...current.groups,
+        {
+          id: buildComboId('combo-group'),
+          label: '',
+          required: false,
+          maxSelections: 1,
+          items: [
+            {
+              id: buildComboId('combo-item'),
+              label: '',
+              price: 0,
+            },
+          ],
+        },
+      ],
+    }));
+  }, [updateComboConfig]);
+
+  const updateComboGroup = React.useCallback((groupId, updates) => {
+    updateComboConfig((current) => ({
+      ...current,
+      groups: current.groups.map((group) => (
+        group?.id === groupId
+          ? {
+              ...group,
+              ...updates,
+              maxSelections: updates?.maxSelections !== undefined
+                ? Math.max(1, Number(updates.maxSelections) || 1)
+                : group.maxSelections,
+            }
+          : group
+      )),
+    }));
+  }, [updateComboConfig]);
+
+  const removeComboGroup = React.useCallback((groupId) => {
+    updateComboConfig((current) => ({
+      ...current,
+      groups: current.groups.filter((group) => group?.id !== groupId),
+    }));
+  }, [updateComboConfig]);
+
+  const addComboItem = React.useCallback((groupId) => {
+    updateComboConfig((current) => ({
+      ...current,
+      groups: current.groups.map((group) => (
+        group?.id === groupId
+          ? {
+              ...group,
+              items: [
+                ...group.items,
+                {
+                  id: buildComboId('combo-item'),
+                  label: '',
+                  price: 0,
+                },
+              ],
+            }
+          : group
+      )),
+    }));
+  }, [updateComboConfig]);
+
+  const updateComboItem = React.useCallback((groupId, itemId, updates) => {
+    updateComboConfig((current) => ({
+      ...current,
+      groups: current.groups.map((group) => (
+        group?.id === groupId
+          ? {
+              ...group,
+              items: group.items.map((item) => (
+                item?.id === itemId
+                  ? {
+                      ...item,
+                      ...updates,
+                      price: updates?.price !== undefined ? Math.max(0, Number(updates.price) || 0) : item.price,
+                    }
+                  : item
+              )),
+            }
+          : group
+      )),
+    }));
+  }, [updateComboConfig]);
+
+  const removeComboItem = React.useCallback((groupId, itemId) => {
+    updateComboConfig((current) => ({
+      ...current,
+      groups: current.groups.map((group) => (
+        group?.id === groupId
+          ? {
+              ...group,
+              items: group.items.filter((item) => item?.id !== itemId),
+            }
+          : group
+      )),
+    }));
+  }, [updateComboConfig]);
 
   const addProductAddon = React.useCallback((candidate) => {
     if (!candidate?.id) return;
@@ -700,6 +863,22 @@ export default function ProductEditor() {
         longDescription: formData?.longDescription?.trim() || null,
         category: formData?.categoria?.trim() || null,
         addOns: normalizedAddOns,
+        comboConfig: isRestaurant && normalizedComboConfig.enabled
+          ? {
+              enabled: true,
+              groups: comboGroups.map((group) => ({
+                id: group.id,
+                label: group.label?.trim() || '',
+                required: group.required === true,
+                maxSelections: Math.max(1, Number(group.maxSelections) || 1),
+                items: group.items.map((item) => ({
+                  id: item.id,
+                  label: item.label?.trim() || '',
+                  price: Math.max(0, Number(item.price) || 0),
+                })),
+              })),
+            }
+          : null,
       };
       const result = currentProductId
         ? await updateProduct(currentProductId, productData)
@@ -1024,6 +1203,165 @@ export default function ProductEditor() {
                     onOptionsDescriptionChange={(val) => handleFieldChange('optionsDescription', val)}
                   />
                 </div>
+
+                {isRestaurant && (
+                  <div
+                    className="p-5 md:p-6 rounded-xl border"
+                    style={{ backgroundColor: 'var(--color-card)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-sm)' }}
+                  >
+                    <div className="flex items-start gap-3 mb-4">
+                      <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(14,165,233,0.10)' }}>
+                        <Icon name="ChefHat" size={18} color="#0284c7" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h2 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>Arma tu combo</h2>
+                          <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: 'rgba(14,165,233,0.10)', color: '#0284c7', fontFamily: 'var(--font-caption)' }}>Restaurant</span>
+                        </div>
+                        <p className="text-xs mt-1" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                          Crea pasos de selección para que el cliente arme su pedido antes de escribir por WhatsApp.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => updateComboConfig((current) => ({ ...current, enabled: !current.enabled }))}
+                        className="relative inline-flex h-8 w-14 items-center rounded-full transition-colors"
+                        style={{ backgroundColor: normalizedComboConfig.enabled ? '#0284c7' : 'rgba(148,163,184,0.45)' }}
+                        aria-pressed={normalizedComboConfig.enabled}
+                      >
+                        <span
+                          className="h-7 w-7 rounded-full bg-white shadow-sm"
+                          style={{
+                            transform: normalizedComboConfig.enabled ? 'translateX(27px)' : 'translateX(2px)',
+                            transition: 'transform 0.2s cubic-bezier(0.34,1.56,0.64,1)',
+                          }}
+                        />
+                      </button>
+                    </div>
+
+                    <p className="text-xs mb-4" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                      {normalizedComboConfig.enabled
+                        ? 'Activa grupos obligatorios u opcionales, define el máximo de elecciones y suma extras al total.'
+                        : 'Actívalo si este producto necesita pasos como elegir acompañamiento, bebida o tamaño.'}
+                    </p>
+
+                    {normalizedComboConfig.enabled && (
+                      <div className="space-y-4">
+                        {comboGroups.length === 0 && (
+                          <div className="rounded-xl border border-dashed p-4 text-sm" style={{ borderColor: 'var(--color-border)', color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                            Todavía no agregaste grupos. Crea uno para empezar tu combo.
+                          </div>
+                        )}
+
+                        {comboGroups.map((group, groupIndex) => (
+                          <div key={group.id} className="rounded-xl border p-4 space-y-3" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-background)' }}>
+                            <div className="flex items-start gap-3">
+                              <div className="flex-1 grid gap-3 sm:grid-cols-[minmax(0,1fr)_120px]">
+                                <div className="space-y-2">
+                                  <label className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                                    Grupo {groupIndex + 1}
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={group.label}
+                                    onChange={(e) => updateComboGroup(group.id, { label: e.target.value })}
+                                    placeholder="Ej: Elige tu acompañamiento"
+                                    className="w-full text-sm bg-transparent border rounded-md px-3 py-2 focus:outline-none"
+                                    style={{ borderColor: 'var(--color-border)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <label className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                                    Máx. selecciones
+                                  </label>
+                                  <input
+                                    type="number"
+                                    value={group.maxSelections}
+                                    onChange={(e) => updateComboGroup(group.id, { maxSelections: e.target.value })}
+                                    min={1}
+                                    className="w-full text-sm bg-transparent border rounded-md px-3 py-2 focus:outline-none"
+                                    style={{ borderColor: 'var(--color-border)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
+                                  />
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => removeComboGroup(group.id)}
+                                className="p-2 rounded-lg transition-colors hover:text-red-500"
+                                style={{ color: 'var(--color-muted-foreground)' }}
+                                title="Quitar grupo"
+                              >
+                                <Icon name="Trash2" size={16} color="currentColor" />
+                              </button>
+                            </div>
+
+                            <label className="inline-flex items-center gap-2 text-sm" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>
+                              <input
+                                type="checkbox"
+                                checked={group.required === true}
+                                onChange={(e) => updateComboGroup(group.id, { required: e.target.checked })}
+                                className="rounded border-gray-300"
+                              />
+                              Selección obligatoria
+                            </label>
+
+                            <div className="space-y-2">
+                              {group.items.map((item) => (
+                                <div key={item.id} className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center" style={{ borderColor: 'var(--color-border)' }}>
+                                  <input
+                                    type="text"
+                                    value={item.label}
+                                    onChange={(e) => updateComboItem(group.id, item.id, { label: e.target.value })}
+                                    placeholder="Nombre de la opción"
+                                    className="flex-1 text-sm bg-transparent border rounded-md px-3 py-2 focus:outline-none"
+                                    style={{ borderColor: 'var(--color-border)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
+                                  />
+                                  <input
+                                    type="number"
+                                    value={item.price}
+                                    onChange={(e) => updateComboItem(group.id, item.id, { price: e.target.value })}
+                                    min={0}
+                                    placeholder="0"
+                                    className="w-full sm:w-28 text-sm bg-transparent border rounded-md px-3 py-2 focus:outline-none text-right"
+                                    style={{ borderColor: 'var(--color-border)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => removeComboItem(group.id, item.id)}
+                                    className="inline-flex items-center justify-center rounded-lg border px-3 py-2 text-sm transition-colors hover:text-red-500"
+                                    style={{ borderColor: 'var(--color-border)', color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}
+                                  >
+                                    Quitar
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => addComboItem(group.id)}
+                              className="inline-flex items-center gap-2 rounded-lg border border-dashed px-3 py-2 text-sm font-medium transition-colors hover:border-sky-400"
+                              style={{ borderColor: 'var(--color-border)', color: '#0284c7', fontFamily: 'var(--font-caption)' }}
+                            >
+                              <Icon name="Plus" size={14} color="currentColor" />
+                              Agregar opción
+                            </button>
+                          </div>
+                        ))}
+
+                        <button
+                          type="button"
+                          onClick={addComboGroup}
+                          className="inline-flex items-center gap-2 rounded-lg border border-dashed px-4 py-2.5 text-sm font-medium transition-colors hover:border-sky-400"
+                          style={{ borderColor: 'var(--color-border)', color: '#0284c7', fontFamily: 'var(--font-caption)' }}
+                        >
+                          <Icon name="Plus" size={14} color="currentColor" />
+                          Agregar grupo
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Add-ons - visible solo para negocios restaurant */}
                 {isRestaurant && (
