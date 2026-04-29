@@ -884,6 +884,7 @@ function CatalogInner({ slug }) {
       {selectedProduct && (
         <ProductModal
           product={selectedProduct}
+          products={products}
           business={business}
           slug={slug}
           formatPrice={formatPrice}
@@ -1745,7 +1746,7 @@ function ThumbnailButton({ url, productName, index, isSelected, primaryColor, on
 const ENABLE_RESTAURANT_ADDONS = true;
 
 // ─── Product Modal ────────────────────────────────────────────────────────────
-export function ProductModal({ product, business, slug, formatPrice, whatsAppUrl, whatsAppMessage, onClose, theme, cardSettings, useCategories = false }) {
+export function ProductModal({ product, products = [], business, slug, formatPrice, whatsAppUrl, whatsAppMessage, onClose, theme, cardSettings, useCategories = false }) {
   const primaryColor = theme?.primaryColor || '#25D366';
   const primaryColorDark = theme?.primaryColorDark || '#128C7E';
   const primaryRgba = theme?.primaryRgba || (() => 'rgba(37,211,102,0.35)');
@@ -1818,12 +1819,39 @@ export function ProductModal({ product, business, slug, formatPrice, whatsAppUrl
   // Lista resuelta: add-ons activos del producto (vacío si flag apagado o no es restaurant)
   const resolvedAddons = (isRestaurant && ENABLE_RESTAURANT_ADDONS)
     ? (Array.isArray(product?.addOns)
-      ? product.addOns
-          .filter(a => a?.active !== false && a?.label)
-          .map((addon) => ({
+      ? product.addOns.reduce((acc, addon) => {
+          if (!addon || addon?.active === false) return acc;
+
+          if (addon?.type === 'product') {
+            const relatedProduct = Array.isArray(products)
+              ? products.find((candidate) => candidate?.id === addon?.productId && candidate?.isActive !== false)
+              : null;
+
+            if (!relatedProduct || relatedProduct?.id === product?.id) return acc;
+
+            const relatedPrice = Number(relatedProduct?.price);
+            acc.push({
+              id: addon?.id || `addon-product-${relatedProduct.id}`,
+              type: 'product',
+              productId: relatedProduct.id,
+              label: relatedProduct?.name || 'Complemento',
+              price: Number.isFinite(relatedPrice) ? Math.round(relatedPrice) : 0,
+              category: relatedProduct?.category || null,
+              _key: addon?.id || `addon-product-${relatedProduct.id}`,
+            });
+            return acc;
+          }
+
+          if (!addon?.label) return acc;
+          const manualPrice = Number(addon?.price);
+          acc.push({
             ...addon,
-            _key: addon?.id || `${addon?.label}-${addon?.price}`,
-          }))
+            type: 'manual',
+            price: Number.isFinite(manualPrice) && manualPrice >= 0 ? Math.round(manualPrice) : 0,
+            _key: addon?.id || `${addon?.label}-${addon?.price ?? 0}`,
+          });
+          return acc;
+        }, [])
       : [])
     : [];
 

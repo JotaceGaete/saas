@@ -21,6 +21,7 @@ import {
   updateProduct,
   uploadProductImage,
   uploadProductMainImage,
+  getProducts,
   getMyBusiness,
   getCategoriesByRubroId,
   getBusinessCategories,
@@ -50,6 +51,35 @@ const EMPTY_FORM = {
   addOns: [],
 };
 
+const ADDON_LIMIT = 5;
+const ADDON_SEARCH_MIN = 2;
+const ADDON_SEARCH_MAX_RESULTS = 10;
+
+const buildAddonId = () => `addon-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+const normalizeAddon = (addon, index = 0) => {
+  if (!addon || typeof addon !== 'object') return null;
+
+  if (addon?.type === 'product') {
+    return {
+      id: addon?.id || `addon-product-${addon?.productId || index}`,
+      type: 'product',
+      productId: addon?.productId || null,
+      active: addon?.active !== false,
+    };
+  }
+
+  const priceValue = Number(addon?.price);
+  return {
+    id: addon?.id || `addon-manual-${index}`,
+    type: 'manual',
+    emoji: addon?.emoji || '',
+    label: addon?.label || '',
+    price: Number.isFinite(priceValue) && priceValue >= 0 ? Math.round(priceValue) : 0,
+    active: addon?.active !== false,
+  };
+};
+
 export default function ProductEditor() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -73,6 +103,10 @@ export default function ProductEditor() {
   const [pageLoading, setPageLoading] = useState(isEditing);
   const [rubroCategories, setRubroCategories] = useState([]);
   const [businessCategories, setBusinessCategories] = useState([]);
+  const [businessProducts, setBusinessProducts] = useState([]);
+  const [addonCreationMode, setAddonCreationMode] = useState(null);
+  const [addonSearchQuery, setAddonSearchQuery] = useState('');
+  const [manualAddonDraft, setManualAddonDraft] = useState({ emoji: '', label: '', price: '' });
   const [isImprovingDescription, setIsImprovingDescription] = useState(false);
   const [publicCode, setPublicCode] = useState('');
   const toast = useToast();
@@ -86,6 +120,39 @@ export default function ProductEditor() {
     preferredCountryCode: user?.user_metadata?.country_code ?? null,
   });
   const initialActivoRef = React.useRef(null);
+  const isRestaurant = isRestaurantBusiness(business);
+  const normalizedAddOns = Array.isArray(formData?.addOns)
+    ? formData.addOns.map((addon, index) => normalizeAddon(addon, index)).filter(Boolean)
+    : [];
+  const productAddonIds = new Set(
+    normalizedAddOns
+      .filter((addon) => addon?.type === 'product' && addon?.productId)
+      .map((addon) => addon.productId),
+  );
+  const addonSearchTerm = addonSearchQuery.trim().toLowerCase();
+  const availableAddonResults = addonSearchTerm.length >= ADDON_SEARCH_MIN
+    ? businessProducts
+        .filter((candidate) => {
+          if (!candidate?.id || candidate.id === effectiveProductId) return false;
+          if (productAddonIds.has(candidate.id)) return false;
+          const haystack = [candidate?.name, candidate?.category].filter(Boolean).join(' ').toLowerCase();
+          return haystack.includes(addonSearchTerm);
+        })
+        .slice(0, ADDON_SEARCH_MAX_RESULTS)
+    : [];
+  const formatAddonPrice = (value) => {
+    const amount = Number(value);
+    if (!Number.isFinite(amount)) return 'Precio no disponible';
+    try {
+      return new Intl.NumberFormat(locale?.locale || 'es-CL', {
+        style: 'currency',
+        currency: locale?.currencyCode || 'CLP',
+        maximumFractionDigits: 0,
+      }).format(amount);
+    } catch {
+      return amount.toLocaleString(locale?.locale || 'es-CL');
+    }
+  };
 
   const revokeBlobUrl = React.useCallback((url) => {
     if (typeof url === 'string' && url.startsWith('blob:')) {
@@ -219,10 +286,74 @@ export default function ProductEditor() {
     }
   }, [business?.id, business?.rubroId, business?.designSettings?.useCategories]);
 
+  useEffect(() => {
+    if (!business?.id || !isRestaurant) {
+      setBusinessProducts([]);
+      return;
+    }
+
+    let cancelled = false;
+    getProducts(business.id).then(({ data }) => {
+      if (!cancelled) {
+        setBusinessProducts(Array.isArray(data) ? data : []);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [business?.id, isRestaurant]);
+
   const handleFieldChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
     if (errors?.[field]) setErrors(prev => { const e = { ...prev }; delete e?.[field]; return e; });
   };
+
+  const updateAddOns = React.useCallback((updater) => {
+    setFormData((prev) => {
+      const nextAddOns = typeof updater === 'function' ? updater(Array.isArray(prev?.addOns) ? prev.addOns : []) : updater;
+      return { ...prev, addOns: nextAddOns };
+    });
+  }, []);
+
+  const addProductAddon = React.useCallback((candidate) => {
+    if (!candidate?.id) return;
+    updateAddOns((current) => {
+      const normalizedCurrent = Array.isArray(current) ? current.map((addon, index) => normalizeAddon(addon, index)).filter(Boolean) : [];
+      if (normalizedCurrent.length >= ADDON_LIMIT) return current;
+      if (candidate.id === effectiveProductId) return current;
+      if (normalizedCurrent.some((addon) => addon?.type === 'product' && addon?.productId === candidate.id)) return current;
+      return [
+        ...normalizedCurrent,
+        { id: buildAddonId(), type: 'product', productId: candidate.id, active: true },
+      ];
+    });
+    setAddonSearchQuery('');
+    setAddonCreationMode(null);
+  }, [effectiveProductId, updateAddOns]);
+
+  const addManualAddon = React.useCallback(() => {
+    const label = manualAddonDraft?.label?.trim() || '';
+    if (!label) return;
+    updateAddOns((current) => {
+      const normalizedCurrent = Array.isArray(current) ? current.map((addon, index) => normalizeAddon(addon, index)).filter(Boolean) : [];
+      if (normalizedCurrent.length >= ADDON_LIMIT) return current;
+      const parsedPrice = manualAddonDraft?.price === '' ? 0 : Number(manualAddonDraft.price);
+      return [
+        ...normalizedCurrent,
+        {
+          id: buildAddonId(),
+          type: 'manual',
+          emoji: manualAddonDraft?.emoji || '',
+          label,
+          price: Number.isFinite(parsedPrice) && parsedPrice >= 0 ? Math.round(parsedPrice) : 0,
+          active: true,
+        },
+      ];
+    });
+    setManualAddonDraft({ emoji: '', label: '', price: '' });
+    setAddonCreationMode(null);
+  }, [manualAddonDraft, updateAddOns]);
 
   const handleImproveWithAi = React.useCallback(async (text, productName) => {
     setIsImprovingDescription(true);
@@ -565,7 +696,7 @@ export default function ProductEditor() {
         optionsDescription: formData?.hasOptions ? (formData?.optionsDescription || null) : null,
         longDescription: formData?.longDescription?.trim() || null,
         category: formData?.categoria?.trim() || null,
-        addOns: formData?.addOns ?? [],
+        addOns: normalizedAddOns,
       };
       const result = currentProductId
         ? await updateProduct(currentProductId, productData)
@@ -585,6 +716,9 @@ export default function ProductEditor() {
         setImageUploadError('');
         setVideo(null);
         setPublicCode('');
+        setAddonCreationMode(null);
+        setAddonSearchQuery('');
+        setManualAddonDraft({ emoji: '', label: '', price: '' });
         setErrors({});
         setSaveSuccess(false);
         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -835,8 +969,8 @@ export default function ProductEditor() {
                   />
                 </div>
 
-                {/* Add-ons — visible solo para negocios restaurant */}
-                {isRestaurantBusiness(business) && (
+                {/* Add-ons - visible solo para negocios restaurant */}
+                {isRestaurant && (
                   <div
                     className="p-5 md:p-6 rounded-xl border"
                     style={{ backgroundColor: 'var(--color-card)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-sm)' }}
@@ -845,84 +979,283 @@ export default function ProductEditor() {
                       <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(234,88,12,0.08)' }}>
                         <Icon name="UtensilsCrossed" size={15} color="#ea580c" />
                       </div>
-                      <h2 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>Add-ons / Complementos</h2>
+                      <h2 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>Complementos sugeridos</h2>
                       <span className="ml-auto text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: 'rgba(234,88,12,0.08)', color: '#ea580c', fontFamily: 'var(--font-caption)' }}>Restaurante</span>
                     </div>
                     <p className="text-xs mb-4" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-                      Extras que el cliente puede elegir al pedir (ej: papas fritas, bebida, salsa extra).
+                      Agrega productos del cat�logo o extras manuales para aumentar el pedido.
                     </p>
 
                     <div className="space-y-2 mb-3">
-                      {(formData?.addOns || []).map((addon, idx) => (
-                        <div key={addon.id || idx} className="flex items-center gap-2 p-3 rounded-lg border" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-background)' }}>
-                          <input
-                            type="text"
-                            value={addon.emoji || ''}
-                            onChange={(e) => { const v = e.target.value; setFormData(prev => ({ ...prev, addOns: prev.addOns.map((a, i) => i === idx ? { ...a, emoji: v } : a) })); }}
-                            placeholder="🍟"
-                            className="w-10 text-center text-base bg-transparent border rounded-md p-1 focus:outline-none"
-                            style={{ borderColor: 'var(--color-border)' }}
-                            maxLength={2}
-                          />
-                          <input
-                            type="text"
-                            value={addon.label || ''}
-                            onChange={(e) => { const v = e.target.value; setFormData(prev => ({ ...prev, addOns: prev.addOns.map((a, i) => i === idx ? { ...a, label: v } : a) })); }}
-                            placeholder="Nombre del extra"
-                            className="flex-1 text-sm bg-transparent border rounded-md px-2 py-1 focus:outline-none"
-                            style={{ borderColor: 'var(--color-border)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
-                          />
-                          <div className="flex items-center gap-1">
-                            <span className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>+</span>
-                            <input
-                              type="number"
-                              value={addon.price ?? ''}
-                              onChange={(e) => { const v = e.target.value === '' ? 0 : Number(e.target.value); setFormData(prev => ({ ...prev, addOns: prev.addOns.map((a, i) => i === idx ? { ...a, price: v } : a) })); }}
-                              placeholder="0"
-                              className="w-20 text-sm bg-transparent border rounded-md px-2 py-1 focus:outline-none text-right"
-                              style={{ borderColor: 'var(--color-border)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
-                              min={0}
-                            />
+                      {normalizedAddOns.map((addon) => {
+                        const relatedProduct = addon?.type === 'product'
+                          ? businessProducts.find((candidate) => candidate?.id === addon?.productId)
+                          : null;
+
+                        return (
+                          <div key={addon.id} className="rounded-lg border p-3" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-background)' }}>
+                            <div className="flex items-start gap-3">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="text-sm font-semibold" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>
+                                    {addon?.type === 'product' ? (relatedProduct?.name || 'Producto no disponible') : (addon?.label || 'Complemento manual')}
+                                  </span>
+                                  <span className="text-[11px] px-2 py-0.5 rounded-full font-medium uppercase" style={{ backgroundColor: addon?.type === 'product' ? 'rgba(59,130,246,0.10)' : 'rgba(234,88,12,0.10)', color: addon?.type === 'product' ? '#2563eb' : '#ea580c', fontFamily: 'var(--font-caption)' }}>
+                                    {addon?.type === 'product' ? 'producto' : 'manual'}
+                                  </span>
+                                </div>
+
+                                {addon?.type === 'product' ? (
+                                  <div className="space-y-1">
+                                    <p className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                                      {relatedProduct?.category?.trim()
+                                        ? `${relatedProduct.category} � ${formatAddonPrice(relatedProduct?.price)}`
+                                        : formatAddonPrice(relatedProduct?.price)}
+                                    </p>
+                                    {!relatedProduct && (
+                                      <p className="text-xs" style={{ color: '#b45309', fontFamily: 'var(--font-caption)' }}>
+                                        El producto relacionado ya no est� disponible. Puedes quitar este complemento.
+                                      </p>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                                    <input
+                                      type="text"
+                                      value={addon?.emoji || ''}
+                                      onChange={(e) => {
+                                        const value = e.target.value;
+                                        updateAddOns((current) => current.map((item, index) => {
+                                          const normalized = normalizeAddon(item, index);
+                                          return normalized?.id === addon.id ? { ...normalized, emoji: value } : normalized;
+                                        }));
+                                      }}
+                                      placeholder="Em"
+                                      className="w-12 text-center text-base bg-transparent border rounded-md p-1 focus:outline-none"
+                                      style={{ borderColor: 'var(--color-border)' }}
+                                      maxLength={2}
+                                    />
+                                    <input
+                                      type="text"
+                                      value={addon?.label || ''}
+                                      onChange={(e) => {
+                                        const value = e.target.value;
+                                        updateAddOns((current) => current.map((item, index) => {
+                                          const normalized = normalizeAddon(item, index);
+                                          return normalized?.id === addon.id ? { ...normalized, label: value } : normalized;
+                                        }));
+                                      }}
+                                      placeholder="Nombre del extra"
+                                      className="flex-1 text-sm bg-transparent border rounded-md px-2 py-1 focus:outline-none"
+                                      style={{ borderColor: 'var(--color-border)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
+                                    />
+                                    <input
+                                      type="number"
+                                      value={addon?.price ?? ''}
+                                      onChange={(e) => {
+                                        const value = e.target.value;
+                                        updateAddOns((current) => current.map((item, index) => {
+                                          const normalized = normalizeAddon(item, index);
+                                          return normalized?.id === addon.id
+                                            ? { ...normalized, price: value === '' ? 0 : Math.max(0, Number(value)) }
+                                            : normalized;
+                                        }));
+                                      }}
+                                      placeholder="0"
+                                      className="w-full sm:w-28 text-sm bg-transparent border rounded-md px-2 py-1 focus:outline-none text-right"
+                                      style={{ borderColor: 'var(--color-border)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
+                                      min={0}
+                                    />
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => updateAddOns((current) => current.map((item, index) => {
+                                    const normalized = normalizeAddon(item, index);
+                                    return normalized?.id === addon.id ? { ...normalized, active: !normalized.active } : normalized;
+                                  }))}
+                                  className="p-1.5 rounded-md transition-colors"
+                                  style={{ color: addon.active ? '#059669' : 'var(--color-muted-foreground)' }}
+                                  title={addon.active ? 'Visible' : 'Oculto'}
+                                >
+                                  <Icon name={addon.active ? 'Eye' : 'EyeOff'} size={14} color="currentColor" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => updateAddOns((current) => current.filter((item, index) => normalizeAddon(item, index)?.id !== addon.id))}
+                                  className="p-1.5 rounded-md transition-colors hover:text-red-500"
+                                  style={{ color: 'var(--color-muted-foreground)' }}
+                                  title="Eliminar"
+                                >
+                                  <Icon name="Trash2" size={14} color="currentColor" />
+                                </button>
+                              </div>
+                            </div>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => setFormData(prev => ({ ...prev, addOns: prev.addOns.map((a, i) => i === idx ? { ...a, active: !(a.active !== false) } : a) }))}
-                            className="p-1.5 rounded-md transition-colors"
-                            style={{ color: addon.active !== false ? '#059669' : 'var(--color-muted-foreground)' }}
-                            title={addon.active !== false ? 'Visible' : 'Oculto'}
-                          >
-                            <Icon name={addon.active !== false ? 'Eye' : 'EyeOff'} size={14} color="currentColor" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setFormData(prev => ({ ...prev, addOns: prev.addOns.filter((_, i) => i !== idx) }))}
-                            className="p-1.5 rounded-md transition-colors hover:text-red-500"
-                            style={{ color: 'var(--color-muted-foreground)' }}
-                            title="Eliminar"
-                          >
-                            <Icon name="Trash2" size={14} color="currentColor" />
-                          </button>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
 
-                    {(formData?.addOns || []).length < 8 && (
-                      <button
-                        type="button"
-                        onClick={() => setFormData(prev => ({
-                          ...prev,
-                          addOns: [...(prev.addOns || []), { id: `addon-${Date.now()}`, label: '', price: 0, emoji: '', active: true }],
-                        }))}
-                        className="flex items-center gap-2 text-sm font-medium px-3 py-2 rounded-lg border border-dashed transition-colors hover:border-orange-400"
-                        style={{ borderColor: 'var(--color-border)', color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}
-                      >
-                        <Icon name="Plus" size={14} color="currentColor" />
-                        Agregar extra
-                      </button>
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                      <p className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                        {normalizedAddOns.length}/{ADDON_LIMIT} complementos
+                      </p>
+                      {normalizedAddOns.length < ADDON_LIMIT && (
+                        <button
+                          type="button"
+                          onClick={() => setAddonCreationMode((prev) => prev ? null : 'chooser')}
+                          className="flex items-center gap-2 text-sm font-medium px-3 py-2 rounded-lg border border-dashed transition-colors hover:border-orange-400"
+                          style={{ borderColor: 'var(--color-border)', color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}
+                        >
+                          <Icon name="Plus" size={14} color="currentColor" />
+                          + Agregar complemento
+                        </button>
+                      )}
+                    </div>
+
+                    {normalizedAddOns.length >= ADDON_LIMIT && (
+                      <p className="text-xs mb-3" style={{ color: '#b45309', fontFamily: 'var(--font-caption)' }}>
+                        Llegaste al m�ximo de 5 complementos por producto.
+                      </p>
+                    )}
+
+                    {addonCreationMode && normalizedAddOns.length < ADDON_LIMIT && (
+                      <div className="rounded-lg border p-3 space-y-3" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-background)' }}>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setAddonCreationMode('product')}
+                            className="px-3 py-2 rounded-lg text-sm font-medium border transition-colors"
+                            style={{
+                              borderColor: addonCreationMode === 'product' ? '#2563eb' : 'var(--color-border)',
+                              color: addonCreationMode === 'product' ? '#2563eb' : 'var(--color-foreground)',
+                              fontFamily: 'var(--font-caption)',
+                            }}
+                          >
+                            Buscar producto existente
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setAddonCreationMode('manual')}
+                            className="px-3 py-2 rounded-lg text-sm font-medium border transition-colors"
+                            style={{
+                              borderColor: addonCreationMode === 'manual' ? '#ea580c' : 'var(--color-border)',
+                              color: addonCreationMode === 'manual' ? '#ea580c' : 'var(--color-foreground)',
+                              fontFamily: 'var(--font-caption)',
+                            }}
+                          >
+                            Crear complemento manual
+                          </button>
+                        </div>
+
+                        {addonCreationMode === 'product' && (
+                          <div className="space-y-3">
+                            <input
+                              type="text"
+                              value={addonSearchQuery}
+                              onChange={(e) => setAddonSearchQuery(e.target.value)}
+                              placeholder="Busca por nombre o categor�a"
+                              className="w-full text-sm bg-transparent border rounded-md px-3 py-2 focus:outline-none"
+                              style={{ borderColor: 'var(--color-border)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
+                            />
+                            {addonSearchTerm.length < ADDON_SEARCH_MIN ? (
+                              <p className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                                Escribe al menos 2 caracteres para buscar productos del cat�logo.
+                              </p>
+                            ) : availableAddonResults.length === 0 ? (
+                              <p className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                                No encontramos productos disponibles para agregar.
+                              </p>
+                            ) : (
+                              <div className="space-y-2">
+                                {availableAddonResults.map((candidate) => (
+                                  <div key={candidate.id} className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2" style={{ borderColor: 'var(--color-border)' }}>
+                                    <div className="min-w-0">
+                                      <p className="text-sm font-medium truncate" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>
+                                        {candidate?.name || 'Producto sin nombre'}
+                                      </p>
+                                      <p className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                                        {candidate?.category?.trim()
+                                          ? `${candidate.category} � ${formatAddonPrice(candidate?.price)}`
+                                          : formatAddonPrice(candidate?.price)}
+                                      </p>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => addProductAddon(candidate)}
+                                      className="px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors"
+                                      style={{ borderColor: '#2563eb', color: '#2563eb', fontFamily: 'var(--font-caption)' }}
+                                    >
+                                      Agregar
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {addonCreationMode === 'manual' && (
+                          <div className="space-y-3">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                              <input
+                                type="text"
+                                value={manualAddonDraft.emoji}
+                                onChange={(e) => setManualAddonDraft((prev) => ({ ...prev, emoji: e.target.value }))}
+                                placeholder="Em"
+                                className="w-14 text-center text-base bg-transparent border rounded-md p-2 focus:outline-none"
+                                style={{ borderColor: 'var(--color-border)' }}
+                                maxLength={2}
+                              />
+                              <input
+                                type="text"
+                                value={manualAddonDraft.label}
+                                onChange={(e) => setManualAddonDraft((prev) => ({ ...prev, label: e.target.value }))}
+                                placeholder="Nombre del extra"
+                                className="flex-1 text-sm bg-transparent border rounded-md px-3 py-2 focus:outline-none"
+                                style={{ borderColor: 'var(--color-border)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
+                              />
+                              <input
+                                type="number"
+                                value={manualAddonDraft.price}
+                                onChange={(e) => setManualAddonDraft((prev) => ({ ...prev, price: e.target.value }))}
+                                placeholder="0"
+                                className="w-full sm:w-28 text-sm bg-transparent border rounded-md px-3 py-2 focus:outline-none text-right"
+                                style={{ borderColor: 'var(--color-border)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
+                                min={0}
+                              />
+                            </div>
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setManualAddonDraft({ emoji: '', label: '', price: '' });
+                                  setAddonCreationMode(null);
+                                }}
+                                className="px-3 py-2 rounded-lg text-sm font-medium border"
+                                style={{ borderColor: 'var(--color-border)', color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}
+                              >
+                                Cancelar
+                              </button>
+                              <button
+                                type="button"
+                                onClick={addManualAddon}
+                                disabled={!manualAddonDraft?.label?.trim()}
+                                className="px-3 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-50"
+                                style={{ backgroundColor: '#ea580c', fontFamily: 'var(--font-caption)' }}
+                              >
+                                Agregar
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     )}
                   </div>
                 )}
-
                 {/* Bottom spacer for SaveBar */}
                 <div className="h-4" />
               </div>
@@ -963,3 +1296,4 @@ export default function ProductEditor() {
     </DashboardAppShell>
   );
 }
+
