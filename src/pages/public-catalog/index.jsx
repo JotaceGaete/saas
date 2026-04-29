@@ -609,9 +609,7 @@ function CatalogInner({ slug }) {
                     src={cfImageUrl(mainFeaturedImage, isDesktop ? 'card' : 'thumbnail')}
                     alt={mainFeaturedProduct?.name || 'Producto destacado'}
                     className="h-full w-full object-cover"
-                    onError={buildCfImageErrorHandler((e) => {
-                      if (mainFeaturedImage) e.currentTarget.src = mainFeaturedImage;
-                    })}
+                    onError={buildCfImageErrorHandler(mainFeaturedImage)}
                   />
                 ) : (
                   <div className="flex h-full min-h-[240px] items-center justify-center">
