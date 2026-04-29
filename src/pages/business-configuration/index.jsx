@@ -28,7 +28,7 @@ import { resolveVentaAiProductDescriptionEndpoint } from '../../lib/ai/resolveVe
 import DesignSettings from './components/DesignSettings';
 import RubroPrincipalSelector from './components/RubroPrincipalSelector';
 import BusinessCategoriesManager from './components/BusinessCategoriesManager';
-import { BUSINESS_MODES } from '../../lib/business-mode';
+import { BUSINESS_MODES, getRecommendedBusinessModeFromRubro } from '../../lib/business-mode';
 
 const BUSINESS_DESCRIPTION_MAX = 280;
 
@@ -271,6 +271,15 @@ export default function BusinessConfiguration() {
 
   const effectivePlan = getEffectivePlanSlug(business?.planSlug, business?.planExpiresAt, business?.trialExpiresAt);
   const canUseAiDescription = effectivePlan === 'pro' || effectivePlan === 'business';
+
+  const currentRubro = useMemo(
+    () => rubros.find((r) => String(r?.id) === String(form?.rubroId)) ?? null,
+    [rubros, form?.rubroId],
+  );
+  const recommendedBusinessMode = useMemo(
+    () => getRecommendedBusinessModeFromRubro(currentRubro),
+    [currentRubro],
+  );
 
   // Design settings state (valores por defecto; se rellenan desde business.designSettings al cargar)
   const [design, setDesign] = useState({
@@ -1215,6 +1224,34 @@ export default function BusinessConfiguration() {
                           );
                         })}
                       </div>
+
+                      {/* Aviso de recomendación según rubro */}
+                      {currentRubro && recommendedBusinessMode !== (form?.businessMode || BUSINESS_MODES.STORE) && (
+                        <div
+                          className="mt-3 flex flex-col sm:flex-row sm:items-center gap-3 rounded-xl px-4 py-3"
+                          style={{ backgroundColor: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.35)' }}
+                        >
+                          <div className="flex items-start gap-2 flex-1 min-w-0">
+                            <Icon name="Lightbulb" size={15} color="#B45309" className="mt-0.5 shrink-0" />
+                            <p
+                              className="text-xs leading-relaxed"
+                              style={{ color: '#92400E', fontFamily: 'var(--font-caption)' }}
+                            >
+                              {recommendedBusinessMode === BUSINESS_MODES.RESTAURANT
+                                ? `Tu rubro principal (${currentRubro.name}) parece gastronómico. Para aprovechar mejor Walinka, recomendamos usar "Restaurante / comida".`
+                                : `Tu rubro principal (${currentRubro.name}) no parece gastronómico. Para este rubro recomendamos "Tienda / productos". Usa "Restaurante / comida" solo si vendes menús, combos o pedidos gastronómicos.`}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleFormChange('businessMode', recommendedBusinessMode)}
+                            className="shrink-0 self-start sm:self-center text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors hover:opacity-90"
+                            style={{ backgroundColor: '#B45309', color: '#ffffff', fontFamily: 'var(--font-caption)' }}
+                          >
+                            Usar recomendado
+                          </button>
+                        </div>
+                      )}
                     </SettingsField>
 
                     {business?.designSettings?.useCategories && business?.id && (
