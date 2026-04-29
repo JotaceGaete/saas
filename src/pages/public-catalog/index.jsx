@@ -480,6 +480,17 @@ function CatalogInner({ slug }) {
 
   const storeName = business?.name || 'Catálogo';
   const isRestaurant = isRestaurantBusiness(business);
+  const mainFeaturedProduct = products.find((p) => p?.isMainFeatured);
+  const mainFeaturedImage = mainFeaturedProduct ? getProductImages(mainFeaturedProduct)?.[0] || null : null;
+  const mainFeaturedTitle = isRestaurant ? '🍽️ Menú del día' : '🔥 Producto destacado';
+  const mainFeaturedPrimaryCta = isRestaurant ? 'Pedir por WhatsApp' : 'Ver producto';
+  const mainFeaturedSecondaryCta = isRestaurant ? 'Ver producto' : 'Consultar por WhatsApp';
+  const hasMainFeaturedWhatsApp = !!business?.whatsapp?.replace(/\D/g, '');
+  const mainFeaturedDescription = (() => {
+    const raw = String(mainFeaturedProduct?.description || '').trim();
+    if (!raw) return '';
+    return raw.length > 140 ? `${raw.slice(0, 137).trim()}...` : raw;
+  })();
   const baseUrl = getPublicCatalogBaseUrl();
   const host =
     typeof window !== 'undefined' && window?.location?.host ? window.location.host : '';
@@ -520,6 +531,11 @@ function CatalogInner({ slug }) {
           host,
         })
       : null;
+  const openMainFeaturedWhatsApp = () => {
+    if (!mainFeaturedProduct) return;
+    const url = buildSingleWhatsAppUrl(mainFeaturedProduct);
+    if (url) openWhatsAppUrl(url);
+  };
 
   return (
     <CatalogLayout
@@ -575,6 +591,102 @@ function CatalogInner({ slug }) {
         isDesktop={isDesktop}
         onBack={isOwner ? () => navigate('/dashboard') : null}
       />
+
+      {mainFeaturedProduct && (
+        <div className="max-w-5xl mx-auto px-4 pt-4">
+          <section
+            className="overflow-hidden rounded-[28px] border shadow-sm"
+            style={{
+              background: catalogTheme.sectionBg,
+              borderColor: catalogTheme.borderColor,
+              boxShadow: catalogTheme.isDark ? '0 10px 30px rgba(0,0,0,0.24)' : '0 12px 30px rgba(15,23,42,0.08)',
+            }}
+          >
+            <div className="grid gap-0 md:grid-cols-[1.1fr_1fr]">
+              <div className="relative min-h-[240px] bg-gray-100">
+                {mainFeaturedImage ? (
+                  <img
+                    src={cfImageUrl(mainFeaturedImage, isDesktop ? 'card' : 'thumbnail')}
+                    alt={mainFeaturedProduct?.name || 'Producto destacado'}
+                    className="h-full w-full object-cover"
+                    onError={buildCfImageErrorHandler((e) => {
+                      if (mainFeaturedImage) e.currentTarget.src = mainFeaturedImage;
+                    })}
+                  />
+                ) : (
+                  <div className="flex h-full min-h-[240px] items-center justify-center">
+                    <Icon name={isRestaurant ? 'UtensilsCrossed' : 'Sparkles'} size={44} color="#9CA3AF" />
+                  </div>
+                )}
+              </div>
+
+              <div className="p-5 sm:p-6 md:p-7 flex flex-col justify-center">
+                <span
+                  className="inline-flex w-fit items-center gap-2 rounded-full px-3 py-1 text-xs font-black tracking-[0.04em]"
+                  style={{
+                    background: isRestaurant ? 'rgba(234,88,12,0.12)' : 'rgba(217,119,6,0.12)',
+                    color: isRestaurant ? '#C2410C' : '#B45309',
+                  }}
+                >
+                  {mainFeaturedTitle}
+                </span>
+
+                <h2 className="mt-4 text-2xl sm:text-[2rem] font-black tracking-tight" style={{ color: textColor }}>
+                  {mainFeaturedProduct?.name}
+                </h2>
+
+                <div className="mt-3 flex items-center gap-3 flex-wrap">
+                  <span className="text-xl font-black tabular-nums" style={{ color: primaryColorDark }}>
+                    {formatPrice(mainFeaturedProduct?.price)}
+                  </span>
+                  {mainFeaturedProduct?.category?.trim() && (
+                    <span
+                      className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold"
+                      style={{ background: catalogTheme.cardBg, color: catalogTheme.chipText, border: `1px solid ${catalogTheme.borderColor}` }}
+                    >
+                      {mainFeaturedProduct.category}
+                    </span>
+                  )}
+                </div>
+
+                {mainFeaturedDescription && (
+                  <p className="mt-3 text-sm sm:text-[15px] leading-6" style={{ color: catalogTheme.isDark ? 'rgba(255,255,255,0.72)' : '#4B5563' }}>
+                    {mainFeaturedDescription}
+                  </p>
+                )}
+
+                <div className="mt-5 flex flex-col sm:flex-row gap-3">
+                  <button
+                    type="button"
+                    onClick={() => ((isRestaurant && hasMainFeaturedWhatsApp) ? openMainFeaturedWhatsApp() : openProduct(mainFeaturedProduct))}
+                    className="inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-3 text-sm font-bold text-white transition-all active:scale-[0.98]"
+                    style={{ background: `linear-gradient(135deg, ${primaryColor}, ${primaryColorDark})` }}
+                  >
+                    <Icon name={(isRestaurant && hasMainFeaturedWhatsApp) ? 'MessageCircle' : 'Eye'} size={16} color="#FFFFFF" />
+                    {(isRestaurant && hasMainFeaturedWhatsApp) ? mainFeaturedPrimaryCta : 'Ver producto'}
+                  </button>
+
+                  {(!isRestaurant || hasMainFeaturedWhatsApp) && (
+                    <button
+                      type="button"
+                      onClick={() => (isRestaurant ? openProduct(mainFeaturedProduct) : openMainFeaturedWhatsApp())}
+                      className="inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-3 text-sm font-bold transition-all active:scale-[0.98]"
+                      style={{
+                        background: catalogTheme.cardBg,
+                        color: textColor,
+                        border: `1px solid ${catalogTheme.borderColor}`,
+                      }}
+                    >
+                      <Icon name={isRestaurant ? 'Eye' : 'MessageCircle'} size={16} color="currentColor" />
+                      {mainFeaturedSecondaryCta}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
 
       {/* ── Buscador + categorías + precio (sticky): siempre accesibles al hacer scroll ── */}
       <div

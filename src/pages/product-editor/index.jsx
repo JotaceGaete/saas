@@ -44,6 +44,7 @@ const EMPTY_FORM = {
   stock: '',
   activo: true,
   featured: false,
+  isMainFeatured: false,
   onSale: false,
   compareAtPrice: '',
   hasOptions: false,
@@ -178,6 +179,7 @@ export default function ProductEditor() {
           stock: '',
           activo: data?.isActive !== undefined ? data?.isActive : true,
           featured: data?.featured || false,
+          isMainFeatured: data?.isMainFeatured === true,
           onSale: data?.onSale || false,
           compareAtPrice: data?.compareAtPrice != null ? Number(data.compareAtPrice) : '',
           hasOptions: data?.hasOptions || false,
@@ -690,6 +692,7 @@ export default function ProductEditor() {
         isDraft: false,
         isActive: formData?.activo,
         featured: formData?.featured,
+        isMainFeatured: formData?.isMainFeatured === true,
         onSale: formData?.onSale,
         compareAtPrice: !isNaN(compareAtNum) ? Math.round(compareAtNum) : null,
         hasOptions: formData?.hasOptions,
@@ -950,6 +953,59 @@ export default function ProductEditor() {
                   />
                 </div>
 
+                <div
+                  className="p-5 md:p-6 rounded-xl border"
+                  style={{ backgroundColor: 'var(--color-card)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-sm)' }}
+                >
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(217,119,6,0.08)' }}>
+                      <Icon name="Sparkles" size={15} color="#D97706" />
+                    </div>
+                    <h2 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>Destacado principal</h2>
+                  </div>
+                  <p className="text-xs mb-4" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                    Muéstralo arriba de tu catálogo como el producto más importante.
+                  </p>
+
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={formData?.isMainFeatured === true}
+                    onClick={() => handleFieldChange('isMainFeatured', !(formData?.isMainFeatured === true))}
+                    className="w-full flex items-center justify-between p-4 rounded-xl border transition-all duration-200"
+                    style={{
+                      borderColor: formData?.isMainFeatured ? 'rgba(217,119,6,0.25)' : 'var(--color-border)',
+                      backgroundColor: formData?.isMainFeatured ? 'rgba(217,119,6,0.06)' : 'transparent',
+                    }}
+                  >
+                    <div className="text-left pr-4">
+                      <p className="text-sm font-semibold" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}>
+                        Destacar este producto arriba del catálogo
+                      </p>
+                      <p className="text-xs mt-0.5" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-muted-foreground)' }}>
+                        {isRestaurant
+                          ? 'En modo restaurante se verá como Menú del día.'
+                          : 'En tienda se verá como Producto destacado.'}
+                      </p>
+                    </div>
+                    <span
+                      className="relative inline-flex items-center w-12 h-6 rounded-full flex-shrink-0"
+                      style={{
+                        backgroundColor: formData?.isMainFeatured ? '#D97706' : 'var(--color-muted-foreground)',
+                        transition: 'background-color 0.2s ease',
+                      }}
+                    >
+                      <span
+                        className="inline-block w-5 h-5 bg-white rounded-full shadow-sm"
+                        style={{
+                          transform: formData?.isMainFeatured ? 'translateX(26px)' : 'translateX(2px)',
+                          transition: 'transform 0.2s cubic-bezier(0.34,1.56,0.64,1)',
+                        }}
+                      />
+                    </span>
+                  </button>
+                </div>
+
                 {/* Product Options */}
                 <div
                   className="p-5 md:p-6 rounded-xl border"
@@ -983,7 +1039,7 @@ export default function ProductEditor() {
                       <span className="ml-auto text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: 'rgba(234,88,12,0.08)', color: '#ea580c', fontFamily: 'var(--font-caption)' }}>Restaurante</span>
                     </div>
                     <p className="text-xs mb-4" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-                      Agrega productos del cat�logo o extras manuales para aumentar el pedido.
+                      Agrega productos del catálogo o extras manuales para aumentar el pedido.
                     </p>
 
                     <div className="space-y-2 mb-3">
@@ -1009,12 +1065,12 @@ export default function ProductEditor() {
                                   <div className="space-y-1">
                                     <p className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
                                       {relatedProduct?.category?.trim()
-                                        ? `${relatedProduct.category} � ${formatAddonPrice(relatedProduct?.price)}`
+                                        ? `${relatedProduct.category} · ${formatAddonPrice(relatedProduct?.price)}`
                                         : formatAddonPrice(relatedProduct?.price)}
                                     </p>
                                     {!relatedProduct && (
                                       <p className="text-xs" style={{ color: '#b45309', fontFamily: 'var(--font-caption)' }}>
-                                        El producto relacionado ya no est� disponible. Puedes quitar este complemento.
+                                        El producto relacionado ya no está disponible. Puedes quitar este complemento.
                                       </p>
                                     )}
                                   </div>
@@ -1118,7 +1174,7 @@ export default function ProductEditor() {
 
                     {normalizedAddOns.length >= ADDON_LIMIT && (
                       <p className="text-xs mb-3" style={{ color: '#b45309', fontFamily: 'var(--font-caption)' }}>
-                        Llegaste al m�ximo de 5 complementos por producto.
+                        Llegaste al máximo de 5 complementos por producto.
                       </p>
                     )}
 
@@ -1157,13 +1213,13 @@ export default function ProductEditor() {
                               type="text"
                               value={addonSearchQuery}
                               onChange={(e) => setAddonSearchQuery(e.target.value)}
-                              placeholder="Busca por nombre o categor�a"
+                              placeholder="Busca por nombre o categoría"
                               className="w-full text-sm bg-transparent border rounded-md px-3 py-2 focus:outline-none"
                               style={{ borderColor: 'var(--color-border)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
                             />
                             {addonSearchTerm.length < ADDON_SEARCH_MIN ? (
                               <p className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-                                Escribe al menos 2 caracteres para buscar productos del cat�logo.
+                                Escribe al menos 2 caracteres para buscar productos del catálogo.
                               </p>
                             ) : availableAddonResults.length === 0 ? (
                               <p className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
@@ -1179,7 +1235,7 @@ export default function ProductEditor() {
                                       </p>
                                       <p className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
                                         {candidate?.category?.trim()
-                                          ? `${candidate.category} � ${formatAddonPrice(candidate?.price)}`
+                                          ? `${candidate.category} · ${formatAddonPrice(candidate?.price)}`
                                           : formatAddonPrice(candidate?.price)}
                                       </p>
                                     </div>

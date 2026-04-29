@@ -393,6 +393,7 @@ const mapProductFromDb = (row) => {
     optionsDescription: row?.options_description || null,
     longDescription: row?.long_description || null,
     featured: row?.featured ?? false,
+    isMainFeatured: row?.is_main_featured ?? false,
     onSale: row?.on_sale ?? false,
     compareAtPrice: (() => { const v = parseFloat(row?.compare_at_price); return (row?.compare_at_price != null && !isNaN(v)) ? v : null; })(),
     videoUrl: row?.video_url || null,
@@ -404,6 +405,23 @@ const mapProductFromDb = (row) => {
     updatedAt: row?.updated_at,
   };
 };
+
+async function clearMainFeaturedForBusiness(businessId, excludeProductId = null) {
+  if (!businessId) return { error: null };
+
+  let query = supabase
+    ?.from('wa_products')
+    ?.update({ is_main_featured: false })
+    ?.eq('business_id', businessId)
+    ?.eq('is_main_featured', true);
+
+  if (excludeProductId) {
+    query = query?.neq('id', excludeProductId);
+  }
+
+  const { error } = await query;
+  return { error: error || null };
+}
 
 const ORDER_STATUS_VALID = ['pedido', 'en_preparacion', 'enviado', 'entregado', 'cancelado'];
 const PAYMENT_STATUS_VALID = ['pendiente', 'pagado', 'anulado'];
@@ -831,9 +849,14 @@ export const createProduct = async (businessId, productData) => {
   }
   const imagesArr = Array.isArray(productData?.images) ? productData.images : [];
   const imageUrl = productData?.imageUrl ?? imagesArr?.[0] ?? null;
+  const wantsMainFeatured = productData?.isMainFeatured === true;
   const status = ['active', 'inactive', 'archived'].includes(productData?.status)
     ? productData.status
     : (productData?.isActive !== false ? 'active' : 'inactive');
+  if (wantsMainFeatured) {
+    const { error: clearError } = await clearMainFeaturedForBusiness(businessId);
+    if (clearError) return { data: null, error: clearError };
+  }
   const { data, error } = await supabase?.from('wa_products')?.insert({
     business_id: businessId,
     name: productData?.name,
@@ -849,6 +872,7 @@ export const createProduct = async (businessId, productData) => {
     options_description: productData?.optionsDescription || null,
     long_description: productData?.longDescription || null,
     featured: productData?.featured === true,
+    is_main_featured: wantsMainFeatured,
     on_sale: productData?.onSale === true,
     compare_at_price: productData?.compareAtPrice ?? null,
     is_draft: productData?.isDraft === true,
@@ -881,8 +905,10 @@ export const createProductDraft = async (businessId, draftData = {}) => {
 };
 
 export const updateProduct = async (productId, productData) => {
+  let currentProduct = null;
   if (productData?.isActive === true) {
-    const { data: product } = await supabase?.from('wa_products')?.select('business_id, is_active')?.eq('id', productId)?.single();
+    const { data: product } = await supabase?.from('wa_products')?.select('business_id, is_active, is_main_featured')?.eq('id', productId)?.single();
+    currentProduct = product || null;
     if (product?.business_id) {
       const { data: biz } = await supabase
         ?.from('wa_businesses')
@@ -898,6 +924,10 @@ export const updateProduct = async (productId, productData) => {
         }
       }
     }
+  }
+  if (!currentProduct && productData?.isMainFeatured !== undefined) {
+    const { data: product } = await supabase?.from('wa_products')?.select('business_id, is_active, is_main_featured')?.eq('id', productId)?.single();
+    currentProduct = product || null;
   }
   const dbUpdates = {};
   if (productData?.name !== undefined)        dbUpdates.name = productData?.name;
@@ -915,6 +945,7 @@ export const updateProduct = async (productId, productData) => {
   if (productData?.longDescription !== undefined) dbUpdates.long_description = productData?.longDescription || null;
   if (productData?.category !== undefined) dbUpdates.category = productData?.category || null;
   if (productData?.featured !== undefined) dbUpdates.featured = !!productData.featured;
+  if (productData?.isMainFeatured !== undefined) dbUpdates.is_main_featured = productData.isMainFeatured === true;
   if (productData?.onSale !== undefined) dbUpdates.on_sale = !!productData.onSale;
   if (productData?.compareAtPrice !== undefined) dbUpdates.compare_at_price = productData.compareAtPrice ?? null;
   if (productData?.images !== undefined) dbUpdates.images = Array.isArray(productData.images) ? productData.images : (productData?.imageUrl ? [productData.imageUrl] : []);
@@ -924,6 +955,14 @@ export const updateProduct = async (productId, productData) => {
   if (productData?.videoPath !== undefined)          dbUpdates.video_path = productData.videoPath;
   if (productData?.videoThumbnailPath !== undefined) dbUpdates.video_thumbnail_path = productData.videoThumbnailPath;
   if (productData?.addOns !== undefined) dbUpdates.add_ons = Array.isArray(productData.addOns) ? productData.addOns : [];
+  if (productData?.isMainFeatured === true) {
+    const businessId = currentProduct?.business_id;
+    if (!businessId) {
+      return { data: null, error: { message: 'No se pudo resolver el negocio del producto.' } };
+    }
+    const { error: clearError } = await clearMainFeaturedForBusiness(businessId, productId);
+    if (clearError) return { data: null, error: clearError };
+  }
   const { data, error } = await supabase?.from('wa_products')?.update(dbUpdates)?.eq('id', productId)?.select()?.single();
   if (error) return { data: null, error };
   return { data: mapProductFromDb(data), error: null };
