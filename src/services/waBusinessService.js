@@ -366,6 +366,7 @@ const mapBusinessFromDb = (row) => {
   trialExpiresAt: row?.trial_expires_at ?? null,
   scheduledPlanSlug: row?.scheduled_plan_slug ?? null,
   scheduledChangeAt: row?.scheduled_change_at ?? null,
+  businessMode: row?.business_mode ?? 'store',
   createdAt: row?.created_at,
   updatedAt: row?.updated_at,
 };
@@ -678,6 +679,7 @@ export async function updateBusiness(businessId, updates) {
   if (updates?.instagramUrl !== undefined) dbUpdates.instagram_url = normalizeSharedSocialUrl(updates.instagramUrl, 'https://instagram.com');
   if (updates?.tiktokUrl    !== undefined) dbUpdates.tiktok_url    = normalizeTikTokUrl(updates.tiktokUrl);
   if (updates?.facebookUrl  !== undefined) dbUpdates.facebook_url  = normalizeSharedSocialUrl(updates.facebookUrl,  'https://facebook.com');
+  if (updates?.businessMode !== undefined)     dbUpdates.business_mode = updates?.businessMode;
   if (updates?.planSlug !== undefined)         dbUpdates.plan_slug = updates?.planSlug;
   if (updates?.planExpiresAt !== undefined)    dbUpdates.plan_expires_at = updates?.planExpiresAt ?? null;
   if (updates?.trialExpiresAt !== undefined)   dbUpdates.trial_expires_at = updates?.trialExpiresAt ?? null;

@@ -28,6 +28,7 @@ import { resolveVentaAiProductDescriptionEndpoint } from '../../lib/ai/resolveVe
 import DesignSettings from './components/DesignSettings';
 import RubroPrincipalSelector from './components/RubroPrincipalSelector';
 import BusinessCategoriesManager from './components/BusinessCategoriesManager';
+import { BUSINESS_MODES } from '../../lib/business-mode';
 
 const BUSINESS_DESCRIPTION_MAX = 280;
 
@@ -87,6 +88,7 @@ function buildSavedConfigSnapshotFromBusiness(business) {
       country: labels.countryName,
       currency: business?.currency || labels.currency,
       rubroId: business?.rubroId || '',
+      businessMode: business?.businessMode || BUSINESS_MODES.STORE,
     },
     design: designSnap,
     orderMessageTemplate: business?.orderMessageTemplate || '',
@@ -258,6 +260,7 @@ export default function BusinessConfiguration() {
     instagramUrl: '',
     tiktokUrl: '',
     facebookUrl: '',
+    businessMode: BUSINESS_MODES.STORE,
   });
   const [rubros, setRubros] = useState([]);
   const [fullAddressInput, setFullAddressInput] = useState('');
@@ -467,6 +470,7 @@ export default function BusinessConfiguration() {
         instagramUrl: business?.instagramUrl || '',
         tiktokUrl: business?.tiktokUrl || '',
         facebookUrl: business?.facebookUrl || '',
+        businessMode: business?.businessMode || BUSINESS_MODES.STORE,
       });
       if (business?.designSettings) {
         const ds = business.designSettings;
@@ -663,6 +667,7 @@ export default function BusinessConfiguration() {
       city: parsedAddr.city,
       region: parsedAddr.region,
       rubroId: form?.rubroId || null,
+      businessMode: form?.businessMode || BUSINESS_MODES.STORE,
       instagramUrl: form?.instagramUrl || null,
       tiktokUrl: form?.tiktokUrl || null,
       facebookUrl: form?.facebookUrl || null,
@@ -745,6 +750,7 @@ export default function BusinessConfiguration() {
       instagramUrl: business?.instagramUrl || '',
       tiktokUrl: business?.tiktokUrl || '',
       facebookUrl: business?.facebookUrl || '',
+      businessMode: business?.businessMode || BUSINESS_MODES.STORE,
     });
     setOrderMessageTemplate(business?.orderMessageTemplate || '');
     setFullAddressInput(
@@ -1150,6 +1156,66 @@ export default function BusinessConfiguration() {
                         )}
                       </SettingsField>
                     </div>
+
+                    {/* ── Tipo de negocio ──────────────────────────────────── */}
+                    <SettingsField
+                      label="Tipo de negocio"
+                      hint="Walinka adaptará la experiencia pública según lo que vendes."
+                    >
+                      <div className="flex flex-col sm:flex-row gap-3">
+                        {[
+                          {
+                            value: BUSINESS_MODES.STORE,
+                            label: 'Tienda / productos',
+                            description: 'Ideal para catálogos, productos físicos, servicios o ventas generales.',
+                            icon: 'ShoppingBag',
+                          },
+                          {
+                            value: BUSINESS_MODES.RESTAURANT,
+                            label: 'Restaurante / comida',
+                            description: 'Ideal para menús, combos, delivery y pedidos rápidos por WhatsApp.',
+                            icon: 'UtensilsCrossed',
+                          },
+                        ].map((opt) => {
+                          const selected = (form?.businessMode || BUSINESS_MODES.STORE) === opt.value;
+                          return (
+                            <button
+                              key={opt.value}
+                              type="button"
+                              onClick={() => handleFormChange('businessMode', opt.value)}
+                              className="flex-1 text-left rounded-xl border-2 p-4 transition-all duration-150 hover:border-violet-400"
+                              style={{
+                                borderColor: selected ? 'var(--color-primary)' : 'var(--color-border)',
+                                backgroundColor: selected ? 'rgba(124,58,237,0.05)' : '#ffffff',
+                              }}
+                            >
+                              <div className="flex items-center gap-2 mb-1">
+                                <Icon
+                                  name={opt.icon}
+                                  size={16}
+                                  color={selected ? 'var(--color-primary)' : 'var(--color-muted-foreground)'}
+                                />
+                                <span
+                                  className="text-sm font-semibold"
+                                  style={{
+                                    fontFamily: 'var(--font-heading)',
+                                    color: selected ? 'var(--color-primary)' : 'var(--color-foreground)',
+                                  }}
+                                >
+                                  {opt.label}
+                                </span>
+                              </div>
+                              <p
+                                className="text-xs leading-relaxed"
+                                style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}
+                              >
+                                {opt.description}
+                              </p>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </SettingsField>
 
                     {business?.designSettings?.useCategories && business?.id && (
                       <div className={`${cardClass} mb-2`}>
