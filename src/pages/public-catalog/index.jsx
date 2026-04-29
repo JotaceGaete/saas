@@ -1817,7 +1817,14 @@ export function ProductModal({ product, business, slug, formatPrice, whatsAppUrl
 
   // Lista resuelta: add-ons activos del producto (vacío si flag apagado o no es restaurant)
   const resolvedAddons = (isRestaurant && ENABLE_RESTAURANT_ADDONS)
-    ? (Array.isArray(product?.addOns) ? product.addOns.filter(a => a?.active !== false && a?.label) : [])
+    ? (Array.isArray(product?.addOns)
+      ? product.addOns
+          .filter(a => a?.active !== false && a?.label)
+          .map((addon) => ({
+            ...addon,
+            _key: addon?.id || `${addon?.label}-${addon?.price}`,
+          }))
+      : [])
     : [];
 
   const addonsTotal = selectedAddons.reduce((sum, a) => sum + a.price, 0);
@@ -1825,7 +1832,7 @@ export function ProductModal({ product, business, slug, formatPrice, whatsAppUrl
 
   // URL de WhatsApp con add-ons inyectados cuando el usuario selecciona alguno
   const effectiveWaUrl = (() => {
-    if (!selectedAddons.length) return whatsAppUrl;
+    if (!isRestaurant || !selectedAddons.length) return whatsAppUrl;
     const phone = business?.whatsapp?.replace(/\D/g, '');
     if (!phone) return whatsAppUrl;
     const addonLines = selectedAddons.map(a => `  • ${a.label}  +${formatPrice(a.price)}`).join('\n');
@@ -2063,14 +2070,15 @@ export function ProductModal({ product, business, slug, formatPrice, whatsAppUrl
                 <p className="mb-2 text-sm font-bold text-gray-800">Completa tu pedido</p>
                 <div className="flex flex-col gap-2">
                   {resolvedAddons.map((addon) => {
-                    const checked = selectedAddons.some(a => a.id === addon.id);
+                    const addonKey = addon._key;
+                    const checked = selectedAddons.some((a) => a?._key === addonKey);
                     return (
                       <button
-                        key={addon.id}
+                        key={addonKey}
                         type="button"
                         onClick={() => setSelectedAddons(prev =>
-                          prev.some(a => a.id === addon.id)
-                            ? prev.filter(a => a.id !== addon.id)
+                          prev.some((a) => a?._key === addonKey)
+                            ? prev.filter((a) => a?._key !== addonKey)
                             : [...prev, addon]
                         )}
                         className="flex items-center justify-between rounded-xl border-2 px-3 py-2.5 text-sm transition-all active:scale-[0.98]"
