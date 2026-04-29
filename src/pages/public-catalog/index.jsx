@@ -613,12 +613,17 @@ function CatalogInner({ slug }) {
             }}
           >
             <div className="grid gap-0 md:grid-cols-[1.1fr_1fr]">
-              <div className="relative min-h-[240px] bg-gray-100">
+              <button
+                type="button"
+                onClick={() => openProduct(mainFeaturedProduct)}
+                className="relative block w-full min-h-[240px] bg-gray-100 overflow-hidden text-left"
+                aria-label={`Ver ${mainFeaturedProduct?.name || 'producto destacado'}`}
+              >
                 {mainFeaturedImage ? (
                   <img
                     src={cfImageUrl(mainFeaturedImage, isDesktop ? 'card' : 'thumbnail')}
                     alt={mainFeaturedProduct?.name || 'Producto destacado'}
-                    className="h-full w-full object-cover"
+                    className="h-full w-full object-cover transition-transform duration-300 hover:scale-105"
                     onError={buildCfImageErrorHandler(mainFeaturedImage)}
                   />
                 ) : (
@@ -626,7 +631,7 @@ function CatalogInner({ slug }) {
                     <Icon name={isRestaurant ? 'UtensilsCrossed' : 'Sparkles'} size={44} color="#9CA3AF" />
                   </div>
                 )}
-              </div>
+              </button>
 
               <div className="p-5 sm:p-6 md:p-7 flex flex-col justify-center">
                 <span
@@ -639,9 +644,15 @@ function CatalogInner({ slug }) {
                   {mainFeaturedTitle}
                 </span>
 
-                <h2 className="mt-4 text-2xl sm:text-[2rem] font-black tracking-tight" style={{ color: textColor }}>
-                  {mainFeaturedProduct?.name}
-                </h2>
+                <button
+                  type="button"
+                  onClick={() => openProduct(mainFeaturedProduct)}
+                  className="mt-4 text-left hover:underline decoration-2 underline-offset-2 focus-visible:outline-none"
+                >
+                  <h2 className="text-2xl sm:text-[2rem] font-black tracking-tight" style={{ color: textColor }}>
+                    {mainFeaturedProduct?.name}
+                  </h2>
+                </button>
 
                 <div className="mt-3 flex items-center gap-3 flex-wrap">
                   <span className="text-xl font-black tabular-nums" style={{ color: primaryColorDark }}>
