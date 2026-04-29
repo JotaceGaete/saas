@@ -401,6 +401,7 @@ const mapProductFromDb = (row) => {
     videoPath: row?.video_path || null,
     videoThumbnailPath: row?.video_thumbnail_path || null,
     addOns: Array.isArray(row?.add_ons) ? row.add_ons : [],
+    isSoldOut: row?.is_sold_out === true,
     comboConfig:
       row?.combo_config && typeof row.combo_config === 'object' && !Array.isArray(row.combo_config)
         ? row.combo_config
@@ -880,6 +881,7 @@ export const createProduct = async (businessId, productData) => {
     on_sale: productData?.onSale === true,
     compare_at_price: productData?.compareAtPrice ?? null,
     is_draft: productData?.isDraft === true,
+    is_sold_out: productData?.isSoldOut === true,
     add_ons: Array.isArray(productData?.addOns) ? productData.addOns : [],
     combo_config:
       productData?.comboConfig && typeof productData.comboConfig === 'object' && !Array.isArray(productData.comboConfig)
@@ -963,6 +965,7 @@ export const updateProduct = async (productId, productData) => {
   if (productData?.videoPath !== undefined)          dbUpdates.video_path = productData.videoPath;
   if (productData?.videoThumbnailPath !== undefined) dbUpdates.video_thumbnail_path = productData.videoThumbnailPath;
   if (productData?.addOns !== undefined) dbUpdates.add_ons = Array.isArray(productData.addOns) ? productData.addOns : [];
+  if (productData?.isSoldOut !== undefined) dbUpdates.is_sold_out = productData.isSoldOut === true;
   if (productData?.comboConfig !== undefined) {
     dbUpdates.combo_config =
       productData?.comboConfig && typeof productData.comboConfig === 'object' && !Array.isArray(productData.comboConfig)

@@ -50,21 +50,23 @@ function ToggleRow({ icon, iconColor, iconBg, title, description, checked, onCha
   );
 }
 
-export default function ProductToggles({ activo, featured, onSale, slug = '', onActiveChange, onFeaturedChange, onOnSaleChange }) {
+export default function ProductToggles({ activo, featured, onSale, slug = '', onActiveChange, onFeaturedChange, onOnSaleChange, hideActive = false }) {
   const offersUrl = slug ? getPublicOffersUrl(slug) : '';
 
   return (
     <div className="space-y-3">
-      <ToggleRow
-        icon={activo ? 'Eye' : 'EyeOff'}
-        iconColor="#059669"
-        iconBg="rgba(5,150,105,0.1)"
-        accentColor="#059669"
-        title="Visible en el catálogo"
-        description={activo ? 'Los clientes pueden ver y comprar este producto' : 'El producto está oculto del catálogo público'}
-        checked={activo}
-        onChange={onActiveChange}
-      />
+      {!hideActive && (
+        <ToggleRow
+          icon={activo ? 'Eye' : 'EyeOff'}
+          iconColor="#059669"
+          iconBg="rgba(5,150,105,0.1)"
+          accentColor="#059669"
+          title="Visible en el catálogo"
+          description={activo ? 'Los clientes pueden ver y comprar este producto' : 'El producto está oculto del catálogo público'}
+          checked={activo}
+          onChange={onActiveChange}
+        />
+      )}
 
       <div>
         <ToggleRow

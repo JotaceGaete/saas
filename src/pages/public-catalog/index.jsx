@@ -1696,7 +1696,17 @@ export function ProductCard({
               {qty}
             </div>
           )}
-          {product?.hasOptions && (
+          {product?.isSoldOut && (
+            <div
+              className="absolute inset-0 flex items-center justify-center"
+              style={{ backgroundColor: 'rgba(0,0,0,0.32)' }}
+            >
+              <span className="rounded-full px-2 py-1 text-[10px] font-black text-white shadow" style={{ backgroundColor: 'rgba(0,0,0,0.65)' }}>
+                Agotado
+              </span>
+            </div>
+          )}
+          {!product?.isSoldOut && product?.hasOptions && (
             <div
               className="absolute bottom-1 left-1 flex items-center gap-0.5 rounded px-1 py-0.5 text-[9px] font-semibold"
               style={{ backgroundColor: 'rgba(234,179,8,0.9)', color: '#713f12' }}
@@ -1760,7 +1770,18 @@ export function ProductCard({
               )}
             </div>
           )}
-          {readOnly ? (
+          {product?.isSoldOut ? (
+            <button
+              type="button"
+              disabled
+              className={`flex w-full items-center justify-center gap-1.5 rounded-xl border text-center cursor-not-allowed ${
+                compact ? 'rounded-lg py-1.5 text-[11px] font-bold' : 'py-2.5 text-xs font-bold sm:py-3'
+              }`}
+              style={{ borderColor: 'rgba(107,107,107,0.2)', color: '#9CA3AF', backgroundColor: 'rgba(107,107,107,0.05)' }}
+            >
+              Agotado
+            </button>
+          ) : readOnly ? (
             <button
               type="button"
               onClick={() => onCtaClick?.(product)}
@@ -1910,6 +1931,7 @@ export function ProductModal({ product, products = [], business, slug, formatPri
   const { addItem, items } = useCart();
   const cartItem = items?.find(i => i?.id === product?.id);
   const qty = cartItem?.quantity || 0;
+  const isSoldOut = product?.isSoldOut === true;
   const [copiedProductMessage, setCopiedProductMessage] = useState(false);
   const cfMainProfile = useResponsiveCfImageProfile();
 
@@ -2434,7 +2456,14 @@ export function ProductModal({ product, products = [], business, slug, formatPri
             )}
 
             {/* ── CTAs ─────────────────────────────────────────────────── */}
-            {isRestaurant ? (
+            {isSoldOut ? (
+              <div className="flex flex-col items-center gap-3 py-2">
+                <div className="flex items-center gap-2 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 w-full justify-center">
+                  <Icon name="PackageX" size={18} color="#9CA3AF" />
+                  <span className="text-sm font-semibold text-gray-500">Este producto está agotado</span>
+                </div>
+              </div>
+            ) : isRestaurant ? (
               <>
                 {hasRequiredComboMissing && comboGroups.length > 0 && (
                   <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
@@ -2534,7 +2563,7 @@ export function ProductModal({ product, products = [], business, slug, formatPri
         </div>
 
         {/* ── Sticky bottom bar: restaurant + mobile only ───────────────── */}
-        {isRestaurant && (
+        {isRestaurant && !isSoldOut && (
           <div
             className="sm:hidden flex-shrink-0 border-t border-gray-100 bg-white px-4 py-3"
             style={{ paddingBottom: 'calc(12px + var(--safe-area-bottom, 0px))' }}

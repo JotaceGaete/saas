@@ -43,6 +43,7 @@ const EMPTY_FORM = {
   categoria: '',
   stock: '',
   activo: true,
+  soldOut: false,
   featured: false,
   isMainFeatured: false,
   onSale: false,
@@ -283,6 +284,7 @@ export default function ProductEditor() {
           categoria: data?.category ?? '',
           stock: '',
           activo: data?.isActive !== undefined ? data?.isActive : true,
+          soldOut: data?.isSoldOut === true,
           featured: data?.featured || false,
           isMainFeatured: data?.isMainFeatured === true,
           onSale: data?.onSale || false,
@@ -941,6 +943,7 @@ export default function ProductEditor() {
         images: persistedImages?.length ? persistedImages : (finalImageUrl ? [finalImageUrl] : []),
         isDraft: false,
         isActive: formData?.activo,
+        isSoldOut: formData?.soldOut === true,
         featured: formData?.featured,
         isMainFeatured: formData?.isMainFeatured === true,
         onSale: formData?.onSale,
@@ -1045,13 +1048,17 @@ export default function ProductEditor() {
             <span
               className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium"
               style={{
-                backgroundColor: formData?.activo ? 'rgba(5,150,105,0.1)' : 'rgba(107,107,107,0.1)',
-                color: formData?.activo ? '#059669' : 'var(--color-muted-foreground)',
+                backgroundColor: !formData?.activo ? 'rgba(107,107,107,0.1)' : formData?.soldOut ? 'rgba(234,88,12,0.1)' : 'rgba(5,150,105,0.1)',
+                color: !formData?.activo ? 'var(--color-muted-foreground)' : formData?.soldOut ? '#ea580c' : '#059669',
                 fontFamily: 'var(--font-caption)',
               }}
             >
-              <Icon name={formData?.activo ? 'Eye' : 'EyeOff'} size={11} color={formData?.activo ? '#059669' : 'var(--color-muted-foreground)'} />
-              {formData?.activo ? 'Visible' : 'Oculto'}
+              <Icon
+                name={!formData?.activo ? 'EyeOff' : formData?.soldOut ? 'PackageX' : 'Eye'}
+                size={11}
+                color={!formData?.activo ? 'var(--color-muted-foreground)' : formData?.soldOut ? '#ea580c' : '#059669'}
+              />
+              {!formData?.activo ? 'Oculto' : formData?.soldOut ? 'Agotado' : 'Visible'}
             </span>
             {formData?.onSale && (
               <span
@@ -1199,7 +1206,50 @@ export default function ProductEditor() {
                   />
                 </div>
 
-                {/* Visibility & Featured toggles */}
+                {/* Estado de venta */}
+                <div
+                  className="p-5 md:p-6 rounded-xl border"
+                  style={{ backgroundColor: 'var(--color-card)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-sm)' }}
+                >
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(124,58,237,0.08)' }}>
+                      <Icon name="ShoppingBag" size={15} color="var(--color-primary)" />
+                    </div>
+                    <h2 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>Estado de venta</h2>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { key: 'available', label: 'Disponible', icon: 'Eye',      color: '#059669', bg: 'rgba(5,150,105,0.08)',  border: 'rgba(5,150,105,0.3)',  desc: 'Visible y se puede pedir' },
+                      { key: 'sold_out',  label: 'Agotado',    icon: 'PackageX', color: '#ea580c', bg: 'rgba(234,88,12,0.08)', border: 'rgba(234,88,12,0.3)', desc: 'Visible, no se puede pedir' },
+                      { key: 'hidden',    label: 'Oculto',     icon: 'EyeOff',   color: '#6B7280', bg: 'rgba(107,107,107,0.06)', border: 'rgba(107,107,107,0.2)', desc: 'No aparece en el catálogo' },
+                    ].map(({ key, label, icon, color, bg, border, desc }) => {
+                      const current = !formData?.activo ? 'hidden' : formData?.soldOut ? 'sold_out' : 'available';
+                      const selected = current === key;
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => {
+                            if (key === 'available') { handleFieldChange('activo', true); handleFieldChange('soldOut', false); }
+                            else if (key === 'sold_out') { handleFieldChange('activo', true); handleFieldChange('soldOut', true); }
+                            else { handleFieldChange('activo', false); handleFieldChange('soldOut', false); }
+                          }}
+                          className="flex flex-col items-center gap-1.5 p-3 rounded-xl border transition-all text-center"
+                          style={{
+                            borderColor: selected ? border : 'var(--color-border)',
+                            backgroundColor: selected ? bg : 'transparent',
+                          }}
+                        >
+                          <Icon name={icon} size={16} color={selected ? color : 'var(--color-muted-foreground)'} />
+                          <span className="text-xs font-semibold leading-none" style={{ color: selected ? color : 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>{label}</span>
+                          <span className="text-[10px] leading-tight" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>{desc}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Featured toggles */}
                 <div
                   className="p-5 md:p-6 rounded-xl border"
                   style={{ backgroundColor: 'var(--color-card)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-sm)' }}
@@ -1218,6 +1268,7 @@ export default function ProductEditor() {
                     onActiveChange={(val) => handleFieldChange('activo', val)}
                     onFeaturedChange={(val) => handleFieldChange('featured', val)}
                     onOnSaleChange={(val) => handleFieldChange('onSale', val)}
+                    hideActive
                   />
                 </div>
 
