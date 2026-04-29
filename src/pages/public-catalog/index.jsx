@@ -1731,14 +1731,7 @@ export function ProductCard({
             </div>
           )}
           {productState === 'sold_out' && (
-            <div
-              className="absolute inset-0 flex items-center justify-center"
-              style={{ backgroundColor: 'rgba(0,0,0,0.32)' }}
-            >
-              <span className="rounded-full px-2 py-1 text-[10px] font-black text-white shadow" style={{ backgroundColor: 'rgba(0,0,0,0.65)' }}>
-                Agotado
-              </span>
-            </div>
+            <div className="absolute inset-0 pointer-events-none" style={{ backgroundColor: 'rgba(0,0,0,0.32)' }} />
           )}
           {productState === 'available' && product?.hasOptions && (
             <div
