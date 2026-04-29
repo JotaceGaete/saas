@@ -1,8 +1,9 @@
 import React from 'react';
 import Icon from 'components/AppIcon';
 
-export default function SaveBar({ isEditing, isSaving, saveSuccess, saveDisabled, onSave, onSaveAndNew, onCancel }) {
+export default function SaveBar({ isEditing, isSaving, saveSuccess, saveDisabled, onSave, onSaveAndNew, onCancel, itemSingular = 'producto' }) {
   const saveButtonDisabled = isSaving || saveDisabled;
+  const itemSingularLower = itemSingular.toLowerCase();
   return (
     <div
       className="sticky bottom-0 z-10 border-t px-4 md:px-6 lg:pl-4 lg:pr-8"
@@ -40,7 +41,7 @@ export default function SaveBar({ isEditing, isSaving, saveSuccess, saveDisabled
               className="text-xs hidden sm:block"
               style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}
             >
-              {isEditing ? 'Editando producto existente' : 'Creando nuevo producto'}
+              {isEditing ? `Editando ${itemSingularLower} existente` : `Creando nuevo ${itemSingularLower}`}
             </p>
           )}
         </div>
@@ -72,7 +73,7 @@ export default function SaveBar({ isEditing, isSaving, saveSuccess, saveDisabled
               }}
             >
               <Icon name="Plus" size={14} color="var(--color-foreground)" />
-              Guardar y crear otro
+              {`Guardar y crear otro ${itemSingularLower}`}
             </button>
           )}
 
@@ -106,7 +107,7 @@ export default function SaveBar({ isEditing, isSaving, saveSuccess, saveDisabled
             ) : (
               <>
                 <Icon name="Save" size={15} color="#fff" />
-                {isEditing ? 'Guardar cambios' : 'Guardar producto'}
+                {isEditing ? 'Guardar cambios' : `Guardar ${itemSingularLower}`}
               </>
             )}
           </button>

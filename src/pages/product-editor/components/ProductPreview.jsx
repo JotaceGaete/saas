@@ -14,6 +14,7 @@ export default function ProductPreview({
   mainImageOverrideUrl = null,
   currencyCode = 'USD',
   locale = 'en-US',
+  isRestaurant = false,
 }) {
   const imageList = images?.length ? images : [];
   const [activeIdx, setActiveIdx] = useState(0);
@@ -237,7 +238,9 @@ export default function ProductPreview({
       >
         <Icon name="Lightbulb" size={13} color="var(--color-accent)" className="flex-shrink-0 mt-0.5" />
         <p className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)', lineHeight: '1.5' }}>
-          Productos con imagen y descripción completa reciben hasta 3× más pedidos.
+          {isRestaurant
+            ? 'Los platos con imagen, descripción clara y precio visible reciben más pedidos.'
+            : 'Productos con imagen y descripción completa reciben hasta 3× más pedidos.'}
         </p>
       </div>
     </div>

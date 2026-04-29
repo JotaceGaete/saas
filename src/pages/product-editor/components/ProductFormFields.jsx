@@ -16,13 +16,23 @@ function formatPriceInput(value, locale) {
   return formatIntegerInputGrouped(value, locale);
 }
 
-export default function ProductFormFields({ formData, errors, onChange, currencyCode = 'USD', locale = 'en-US', useCategories = false, businessCategories = [], rubroCategories = [], onImproveWithAi, isImprovingDescription = false, publicCode = '', businessId, onCategoryCreated }) {
+export default function ProductFormFields({ formData, errors, onChange, currencyCode = 'USD', locale = 'en-US', useCategories = false, businessCategories = [], rubroCategories = [], onImproveWithAi, isImprovingDescription = false, publicCode = '', businessId, onCategoryCreated, isRestaurant = false }) {
   const handleChange = (field, value) => onChange(field, value);
   const ownOptions   = Array.isArray(businessCategories) ? businessCategories.filter((c) => c?.name?.trim()) : [];
   const rubroOptions = Array.isArray(rubroCategories)    ? rubroCategories.filter((c) => c?.name?.trim())    : [];
   const hasOwn  = ownOptions.length > 0;
   const hasRubro = rubroOptions.length > 0;
   const useGroups = hasOwn && hasRubro; // solo agrupa si hay ambas fuentes
+  const nameLabel = isRestaurant ? 'Nombre del plato' : 'Nombre del producto';
+  const namePlaceholder = isRestaurant ? 'Ej: Hamburguesa clásica, Pizza napolitana, Combo familiar' : 'Ej: Camiseta de algodón premium';
+  const pricePlaceholder = isRestaurant ? 'Ej: 5990' : 'Ej: precio en entero';
+  const shortDescriptionLabel = isRestaurant ? 'Descripción / ingredientes' : 'Descripción corta';
+  const shortDescriptionPlaceholder = isRestaurant
+    ? 'Ej: Carne 100% vacuno, queso cheddar, pan brioche e incluye papas fritas.'
+    : 'Describe brevemente tu producto: materiales, características, usos...';
+  const categoryLabel = isRestaurant ? 'Sección del menú' : 'Categoría';
+  const categoryEmptyLabel = isRestaurant ? 'Ej: Hamburguesas, Pizzas, Bebidas, Menús' : 'Sin categoría';
+  const categoryAriaLabel = isRestaurant ? 'Sección del menú del plato' : 'Categoría del producto';
 
   // ── Inline category creation modal ───────────────────────────────────────────
   const [showLongDesc, setShowLongDesc] = useState(!!formData?.longDescription);
@@ -80,7 +90,7 @@ export default function ProductFormFields({ formData, errors, onChange, currency
       <div>
         <div className="flex items-end justify-between mb-1">
           <label className="block text-sm font-medium" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}>
-            Nombre del producto <span style={{ color: 'var(--color-error)' }}>*</span>
+            {nameLabel} <span style={{ color: 'var(--color-error)' }}>*</span>
           </label>
           <span className="text-xs" style={{ color: (formData?.nombre?.length || 0) > MAX_NAME * 0.9 ? 'var(--color-warning)' : 'var(--color-muted-foreground)', fontFamily: 'var(--font-data)' }}>
             {formData?.nombre?.length || 0}/{MAX_NAME}
@@ -88,7 +98,7 @@ export default function ProductFormFields({ formData, errors, onChange, currency
         </div>
         <Input
           type="text"
-          placeholder="Ej: Camiseta de algodón premium"
+          placeholder={namePlaceholder}
           value={formData?.nombre}
           onChange={(e) => handleChange('nombre', e?.target?.value?.slice(0, MAX_NAME))}
           error={errors?.nombre}
@@ -103,7 +113,7 @@ export default function ProductFormFields({ formData, errors, onChange, currency
         <Input
           type="text"
           inputMode="numeric"
-          placeholder="Ej: precio en entero"
+          placeholder={pricePlaceholder}
           value={formatPriceInput(formData?.precio, locale)}
           onChange={(e) => {
             const raw = parseCLPInput(e?.target?.value);
@@ -157,7 +167,7 @@ export default function ProductFormFields({ formData, errors, onChange, currency
       <div>
         <div className="flex items-end justify-between mb-1 flex-wrap gap-2">
           <label className="block text-sm font-medium" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}>
-            Descripción corta
+            {shortDescriptionLabel}
           </label>
           <div className="flex items-center gap-2">
             <span className="text-xs" style={{ color: (formData?.descripcion?.length || 0) > MAX_DESC * 0.9 ? 'var(--color-warning)' : 'var(--color-muted-foreground)', fontFamily: 'var(--font-data)' }}>
@@ -193,7 +203,7 @@ export default function ProductFormFields({ formData, errors, onChange, currency
           </div>
         </div>
         <textarea
-          placeholder="Describe brevemente tu producto: materiales, características, usos..."
+          placeholder={shortDescriptionPlaceholder}
           value={formData?.descripcion}
           onChange={(e) => handleChange('descripcion', e?.target?.value?.slice(0, MAX_DESC))}
           rows={4}
@@ -271,7 +281,7 @@ export default function ProductFormFields({ formData, errors, onChange, currency
         <div>
           <div className="flex items-center justify-between mb-1">
             <label className="block text-sm font-medium" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}>
-              Categoría
+              {categoryLabel}
             </label>
             <button
               type="button"
@@ -294,9 +304,9 @@ export default function ProductFormFields({ formData, errors, onChange, currency
               fontFamily: 'var(--font-caption)',
               borderRadius: 'var(--radius-sm)',
             }}
-            aria-label="Categoría del producto"
+            aria-label={categoryAriaLabel}
           >
-            <option value="">Sin categoría</option>
+            <option value="">{categoryEmptyLabel}</option>
             {useGroups ? (
               <>
                 <optgroup label="Mis categorías">

@@ -8,7 +8,8 @@ const OPTION_EXAMPLES = [
   'Extras: sin cebolla, con queso extra',
 ];
 
-export default function ProductOptionsSection({ hasOptions, optionsDescription, onHasOptionsChange, onOptionsDescriptionChange }) {
+export default function ProductOptionsSection({ hasOptions, optionsDescription, onHasOptionsChange, onOptionsDescriptionChange, isRestaurant = false }) {
+  const itemLabel = isRestaurant ? 'plato' : 'producto';
   return (
     <div className="space-y-4">
       {/* Toggle row */}
@@ -28,7 +29,7 @@ export default function ProductOptionsSection({ hasOptions, optionsDescription, 
           </div>
           <div>
             <p className="text-sm font-semibold" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}>
-              Este producto requiere opciones
+              {`Este ${itemLabel} requiere opciones`}
             </p>
             <p className="text-xs mt-0.5" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-muted-foreground)' }}>
               {hasOptions ? 'El cliente deberá indicar su elección al pedir' : 'Sin opciones requeridas'}
@@ -44,7 +45,7 @@ export default function ProductOptionsSection({ hasOptions, optionsDescription, 
             backgroundColor: hasOptions ? '#25D366' : 'var(--color-muted-foreground)',
             transition: 'background-color 0.2s ease',
           }}
-          aria-label="Este producto requiere opciones"
+          aria-label={`Este ${itemLabel} requiere opciones`}
         >
           <span
             className="inline-block w-5 h-5 bg-white rounded-full shadow-sm"
@@ -62,7 +63,7 @@ export default function ProductOptionsSection({ hasOptions, optionsDescription, 
             className="block text-sm font-medium"
             style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}
           >
-            Describe las opciones que debe indicar el cliente
+            {isRestaurant ? 'Describe las opciones que puede elegir el cliente' : 'Describe las opciones que debe indicar el cliente'}
           </label>
           <textarea
             value={optionsDescription}
@@ -77,7 +78,7 @@ export default function ProductOptionsSection({ hasOptions, optionsDescription, 
               fontFamily: 'var(--font-body)',
               borderRadius: 'var(--radius-sm)',
             }}
-            aria-label="Descripción de opciones del producto"
+            aria-label={isRestaurant ? 'Descripción de opciones del plato' : 'Descripción de opciones del producto'}
           />
           {/* Examples */}
           <div className="space-y-1">

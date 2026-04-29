@@ -197,6 +197,12 @@ export default function ProductEditor() {
   });
   const initialActivoRef = React.useRef(null);
   const isRestaurant = isRestaurantBusiness(business);
+  const itemSingular = isRestaurant ? 'plato' : 'producto';
+  const itemSingularCapitalized = isRestaurant ? 'Plato' : 'Producto';
+  const collectionLabel = isRestaurant ? 'Menú' : 'Productos';
+  const editorTitle = isEditingFlow
+    ? (isRestaurant ? 'Editar plato' : 'Editar producto')
+    : (isRestaurant ? 'Agregar plato' : 'Nuevo producto');
   const normalizedAddOns = Array.isArray(formData?.addOns)
     ? formData.addOns.map((addon, index) => normalizeAddon(addon, index)).filter(Boolean)
     : [];
@@ -688,11 +694,11 @@ export default function ProductEditor() {
   }, [toast, business?.id, effectiveProductId]);
 
   const buildDraftPayload = React.useCallback(() => ({
-    name: formData?.nombre?.trim() || 'Producto en edicion',
+    name: formData?.nombre?.trim() || (isRestaurant ? 'Plato en edicion' : 'Producto en edicion'),
     price: formData?.precio,
     description: formData?.descripcion?.trim() || null,
     category: formData?.categoria?.trim() || null,
-  }), [formData]);
+  }), [formData, isRestaurant]);
 
   const ensureProductIdForMainImageUpload = React.useCallback(async () => {
     if (currentProductId) {
@@ -704,7 +710,7 @@ export default function ProductEditor() {
 
     const { data, error } = await createProductDraft(business.id, buildDraftPayload());
     if (error || !data?.id) {
-      throw new Error(error?.message || 'No se pudo crear el borrador del producto para subir la imagen.');
+      throw new Error(error?.message || `No se pudo crear el borrador del ${itemSingular} para subir la imagen.`);
     }
 
     setCurrentProductId(data.id);
@@ -882,7 +888,7 @@ export default function ProductEditor() {
 
   const validate = () => {
     const newErrors = {};
-    if (!formData?.nombre?.trim()) newErrors.nombre = 'El nombre del producto es obligatorio.';
+    if (!formData?.nombre?.trim()) newErrors.nombre = `El nombre del ${itemSingular} es obligatorio.`;
     const priceNum = Number(formData?.precio);
     if (formData?.precio === '' || formData?.precio === null || formData?.precio === undefined || !Number.isFinite(priceNum) || priceNum <= 0) newErrors.precio = 'Ingresa un precio válido (entero mayor a 0).';
     return newErrors;
@@ -1022,14 +1028,14 @@ export default function ProductEditor() {
               className="text-base font-bold truncate"
               style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}
             >
-              {isEditingFlow ? 'Editar producto' : 'Nuevo producto'}
+              {editorTitle}
             </h1>
           )}
           subtitle={(
             <nav aria-label="Breadcrumb" className="hidden sm:flex items-center gap-1 mt-0.5">
               <button onClick={() => navigate('/dashboard')} className="text-xs hover:underline" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Dashboard</button>
               <Icon name="ChevronRight" size={11} color="var(--color-muted-foreground)" />
-              <button onClick={() => navigate('/product-management')} className="text-xs hover:underline" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Productos</button>
+              <button onClick={() => navigate('/product-management')} className="text-xs hover:underline" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>{collectionLabel}</button>
               <Icon name="ChevronRight" size={11} color="var(--color-muted-foreground)" />
               <span className="text-xs" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>{isEditingFlow ? 'Editar' : 'Nuevo'}</span>
             </nav>
@@ -1141,7 +1147,7 @@ export default function ProductEditor() {
                   />
                 </div>
 
-                {/* Video del producto */}
+                {/* Video */}
                 <div
                   className="p-5 md:p-6 rounded-xl border"
                   style={{ backgroundColor: 'var(--color-card)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-sm)' }}
@@ -1150,13 +1156,14 @@ export default function ProductEditor() {
                     <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(124,58,237,0.08)' }}>
                       <Icon name="Video" size={15} color="var(--color-primary)" />
                     </div>
-                    <h2 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>Video del producto</h2>
+                    <h2 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>{isRestaurant ? 'Video del plato' : 'Video del producto'}</h2>
                   </div>
                   <VideoUploadSection
                     productId={effectiveProductId}
                     businessId={business?.id}
                     video={video}
                     onVideoChange={setVideo}
+                    isRestaurant={isRestaurant}
                   />
                 </div>
 
@@ -1169,7 +1176,7 @@ export default function ProductEditor() {
                     <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(124,58,237,0.08)' }}>
                       <Icon name="FileText" size={15} color="var(--color-primary)" />
                     </div>
-                    <h2 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>Información básica</h2>
+                    <h2 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>{isRestaurant ? 'Información del plato' : 'Información básica'}</h2>
                   </div>
                   <ProductFormFields
                     formData={formData}
@@ -1184,6 +1191,7 @@ export default function ProductEditor() {
                     isImprovingDescription={isImprovingDescription}
                     publicCode={isEditingFlow ? publicCode : ''}
                     businessId={business?.id}
+                    isRestaurant={isRestaurant}
                     onCategoryCreated={(cat) => {
                       setBusinessCategories((prev) => [...prev, cat]);
                       toast.success(`Categoría «${cat.name}» creada`);
@@ -1275,13 +1283,14 @@ export default function ProductEditor() {
                     <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(37,211,102,0.08)' }}>
                       <Icon name="ListChecks" size={15} color="#16a34a" />
                     </div>
-                    <h2 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>Opciones del producto</h2>
+                    <h2 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>{isRestaurant ? 'Opciones del plato' : 'Opciones del producto'}</h2>
                   </div>
                   <ProductOptionsSection
                     hasOptions={formData?.hasOptions}
                     optionsDescription={formData?.optionsDescription}
                     onHasOptionsChange={(val) => handleFieldChange('hasOptions', val)}
                     onOptionsDescriptionChange={(val) => handleFieldChange('optionsDescription', val)}
+                    isRestaurant={isRestaurant}
                   />
                 </div>
 
@@ -1882,6 +1891,7 @@ export default function ProductEditor() {
                     onSale={formData?.onSale}
                     images={images}
                     mainImageOverrideUrl={imagePreviewUrl}
+                    isRestaurant={isRestaurant}
                   />
                 </div>
               </div>
@@ -1897,6 +1907,7 @@ export default function ProductEditor() {
           onSave={() => handleSave(false)}
           onSaveAndNew={() => handleSave(true)}
           onCancel={handleCancel}
+          itemSingular={itemSingularCapitalized}
         />
     </DashboardAppShell>
   );
