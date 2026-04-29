@@ -1802,167 +1802,219 @@ export function ProductModal({ product, business, slug, formatPrice, whatsAppUrl
     return () => { document.body.style.overflow = ''; };
   }, []);
 
+  const modalDiscount = getDiscountPercent(product?.price, product?.compareAtPrice);
+  const trackWaClick = () => {
+    const path = typeof window !== 'undefined' ? window.location?.pathname || getPublicCatalogRelativePath(slug) : getPublicCatalogRelativePath(slug);
+    recordCatalogWhatsAppClick(slug, path, 'product_modal').catch(() => {});
+  };
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
       style={{ backgroundColor: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)' }}
       onClick={handleBackdrop}
     >
+      {/* flex flex-col so the sticky bar stays pinned at the bottom of the sheet */}
       <div
-        className="bg-white w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl overflow-hidden shadow-2xl"
-        style={{ maxHeight: '92vh', overflowY: 'auto' }}
+        className="bg-white w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl overflow-hidden shadow-2xl flex flex-col"
+        style={{ maxHeight: '92vh' }}
       >
-        <div className="relative">
-          <div
-            className="aspect-square w-full bg-gray-100 overflow-hidden relative select-none touch-pan-y flex items-center justify-center"
-            onTouchStart={handleTouchStart}
-            onTouchMove={handleTouchMove}
-            onTouchEnd={handleTouchEnd}
-          >
-            {mainUrl && !imageLoadError ? (
-              <>
-                {!imageLoaded && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
-                    <div className="w-8 h-8 border-2 border-gray-300 border-t-gray-500 rounded-full animate-spin" />
-                  </div>
-                )}
-                <img
-                  src={useMainDirect && mainUrl ? mainUrl : mainUrlOptimized}
-                  alt={product?.name ?? 'Producto'}
-                  className="w-full h-full object-contain"
-                  style={{ opacity: imageLoaded ? 1 : 0, transition: 'opacity 0.2s ease-out' }}
-                  draggable={false}
-                  decoding="async"
-                  onLoad={() => setImageLoaded(true)}
-                  onError={() => {
-                    if (!useMainDirect && mainUrl && isCfTransformableUrl(mainUrl)) {
-                      setUseMainDirect(true);
-                      setImageLoaded(false);
-                    } else {
-                      setImageLoadError(true);
-                    }
-                  }}
-                />
-              </>
-            ) : (
-              <div className="w-full h-full flex items-center justify-center">
-                <Icon name="ImageOff" size={48} color="#D1D5DB" />
-              </div>
-            )}
-            {/* Navegación anterior/siguiente cuando hay más de una imagen */}
-            {productImages.length > 1 && (
-              <>
-                <button
-                  type="button"
-                  onClick={goPrev}
-                  className="absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center transition-all hover:bg-black/60 active:scale-90 text-white"
-                  aria-label="Imagen anterior"
-                >
-                  <Icon name="ChevronLeft" size={20} color="#FFFFFF" />
-                </button>
-                <button
-                  type="button"
-                  onClick={goNext}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center transition-all hover:bg-black/60 active:scale-90 text-white"
-                  aria-label="Siguiente imagen"
-                >
-                  <Icon name="ChevronRight" size={20} color="#FFFFFF" />
-                </button>
-                <div
-                  className="absolute bottom-2 left-1/2 -translate-x-1/2 px-2 py-1 rounded-full text-[11px] font-semibold text-white"
-                  style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
-                >
-                  {selectedIndex + 1} / {productImages.length}
-                </div>
-              </>
-            )}
-          </div>
-          <button
-            onClick={onClose}
-            className="absolute top-3 right-3 w-9 h-9 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center transition-all hover:bg-black/60 active:scale-90 z-10"
-            aria-label="Cerrar"
-          >
-            <Icon name="X" size={18} color="#FFFFFF" />
-          </button>
-          {/* Miniaturas debajo de la imagen principal */}
-          {productImages.length > 1 && (
-            <div className="flex gap-1.5 p-2 overflow-x-auto bg-gray-50 border-b" style={{ borderColor: 'var(--color-border)' }}>
-              {productImages.map((url, i) => (
-                <ThumbnailButton
-                  key={url + i}
-                  url={url}
-                  productName={product?.name}
-                  index={i}
-                  isSelected={selectedIndex === i}
-                  primaryColor={primaryColor}
-                  onSelect={() => setSelectedIndex(i)}
-                />
-              ))}
-            </div>
-          )}
-        </div>
+        {/* ── Scrollable content ───────────────────────────────────────── */}
+        <div className="overflow-y-auto flex-1 min-h-0">
 
-        <div className="px-5 pb-6 pt-5 sm:px-6">
-          <div className="mb-4 flex items-center gap-1.5">
-            <div className="w-5 h-5 rounded-md flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${primaryColor}, ${primaryColorDark})` }}>
-              <Icon name="Store" size={11} color="#FFFFFF" />
-            </div>
-            <span className="text-xs text-gray-400 font-medium">{business?.name}</span>
-            {useCategories && product?.category && (
-              <span className="ml-auto text-[10px] font-semibold rounded-md px-1.5 py-0.5" style={{ color: primaryColorDark, backgroundColor: primaryRgba(0.12) }}>{product?.category}</span>
-            )}
-          </div>
-
-          <h2 className="mb-3 text-2xl font-bold leading-tight tracking-tight text-gray-900">
-            {product?.name}
-          </h2>
-
-          {showDescription && product?.description && (
-            <p className="mb-5 text-[15px] font-normal leading-[1.65] text-gray-600 sm:text-base">
-              {product?.description}
-            </p>
-          )}
-
-          {product?.longDescription && (
-            <div className="mb-5">
-              {showDescription && product?.description && (
-                <div className="my-3 border-t border-gray-100" />
-              )}
-              <p className="whitespace-pre-line break-words text-[13.5px] font-normal leading-relaxed text-gray-500 sm:text-sm">
-                {product.longDescription}
-              </p>
-            </div>
-          )}
-
-          {product?.videoUrl && (
-            <div className="mb-5">
-              <video
-                src={withMediaVersion(product.videoUrl, product.updatedAt)}
-                poster={withMediaVersion(product.videoThumbnailUrl, product.updatedAt) || undefined}
-                controls
-                playsInline
-                className="w-full rounded-2xl bg-black"
-                style={{ maxHeight: 300 }}
-              />
-            </div>
-          )}
-
-          {product?.hasOptions && product?.optionsDescription && (
+          {/* Image section */}
+          <div className="relative">
             <div
-              className="mb-5 flex items-start gap-2.5 rounded-xl p-3"
-              style={{ backgroundColor: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.3)' }}
+              className={`${isRestaurant ? 'aspect-[4/3]' : 'aspect-square'} w-full bg-gray-100 overflow-hidden relative select-none touch-pan-y flex items-center justify-center`}
+              onTouchStart={handleTouchStart}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}
             >
-              <Icon name="ListChecks" size={15} color="#92400e" className="flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="text-xs font-bold text-amber-800 mb-0.5">Opciones:</p>
-                <p className="text-xs text-amber-700 leading-relaxed">{product?.optionsDescription}</p>
-              </div>
+              {mainUrl && !imageLoadError ? (
+                <>
+                  {!imageLoaded && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
+                      <div className="w-8 h-8 border-2 border-gray-300 border-t-gray-500 rounded-full animate-spin" />
+                    </div>
+                  )}
+                  <img
+                    src={useMainDirect && mainUrl ? mainUrl : mainUrlOptimized}
+                    alt={product?.name ?? 'Producto'}
+                    className="w-full h-full object-cover"
+                    style={{ opacity: imageLoaded ? 1 : 0, transition: 'opacity 0.2s ease-out' }}
+                    draggable={false}
+                    decoding="async"
+                    onLoad={() => setImageLoaded(true)}
+                    onError={() => {
+                      if (!useMainDirect && mainUrl && isCfTransformableUrl(mainUrl)) {
+                        setUseMainDirect(true);
+                        setImageLoaded(false);
+                      } else {
+                        setImageLoadError(true);
+                      }
+                    }}
+                  />
+                </>
+              ) : (
+                <div className="w-full h-full flex items-center justify-center">
+                  <Icon name="ImageOff" size={48} color="#D1D5DB" />
+                </div>
+              )}
+              {productImages.length > 1 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={goPrev}
+                    className="absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center transition-all hover:bg-black/60 active:scale-90 text-white"
+                    aria-label="Imagen anterior"
+                  >
+                    <Icon name="ChevronLeft" size={20} color="#FFFFFF" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={goNext}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center transition-all hover:bg-black/60 active:scale-90 text-white"
+                    aria-label="Siguiente imagen"
+                  >
+                    <Icon name="ChevronRight" size={20} color="#FFFFFF" />
+                  </button>
+                  <div
+                    className="absolute bottom-2 left-1/2 -translate-x-1/2 px-2 py-1 rounded-full text-[11px] font-semibold text-white"
+                    style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
+                  >
+                    {selectedIndex + 1} / {productImages.length}
+                  </div>
+                </>
+              )}
             </div>
-          )}
+            <button
+              onClick={onClose}
+              className="absolute top-3 right-3 w-9 h-9 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center transition-all hover:bg-black/60 active:scale-90 z-10"
+              aria-label="Cerrar"
+            >
+              <Icon name="X" size={18} color="#FFFFFF" />
+            </button>
+            {productImages.length > 1 && (
+              <div className="flex gap-1.5 p-2 overflow-x-auto bg-gray-50 border-b" style={{ borderColor: 'var(--color-border)' }}>
+                {productImages.map((url, i) => (
+                  <ThumbnailButton
+                    key={url + i}
+                    url={url}
+                    productName={product?.name}
+                    index={i}
+                    isSelected={selectedIndex === i}
+                    primaryColor={primaryColor}
+                    onSelect={() => setSelectedIndex(i)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
 
-          {showPrice && (() => {
-            const modalDiscount = getDiscountPercent(product?.price, product?.compareAtPrice);
-            return (
+          {/* ── Content ──────────────────────────────────────────────── */}
+          <div className={`px-5 pt-5 sm:px-6 ${isRestaurant ? 'pb-4 sm:pb-6' : 'pb-6'}`}>
+
+            {/* Business + category breadcrumb */}
+            <div className="mb-3 flex items-center gap-1.5">
+              <div className="w-5 h-5 rounded-md flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${primaryColor}, ${primaryColorDark})` }}>
+                <Icon name={isRestaurant ? 'UtensilsCrossed' : 'Store'} size={11} color="#FFFFFF" />
+              </div>
+              <span className="text-xs text-gray-400 font-medium">{business?.name}</span>
+              {useCategories && product?.category && (
+                <span className="ml-auto text-[10px] font-semibold rounded-md px-1.5 py-0.5" style={{ color: primaryColorDark, backgroundColor: primaryRgba(0.12) }}>{product?.category}</span>
+              )}
+            </div>
+
+            {/* Title + optional featured badge */}
+            <div className="flex items-start gap-2 mb-1">
+              <h2 className="text-2xl font-bold leading-tight tracking-tight text-gray-900 flex-1">
+                {product?.name}
+              </h2>
+              {isRestaurant && product?.featured && (
+                <span
+                  className="flex-shrink-0 mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold"
+                  style={{ background: 'rgba(234,88,12,0.1)', color: '#C2410C' }}
+                >
+                  ⭐ Recomendado
+                </span>
+              )}
+            </div>
+
+            {/* Restaurant: short sub-copy from description */}
+            {isRestaurant && showDescription && product?.description && (
+              <p className="mb-3 text-sm font-normal leading-relaxed text-gray-500 line-clamp-2">
+                {product.description.length > 80 ? product.description.slice(0, 80) + '…' : product.description}
+              </p>
+            )}
+
+            {/* Restaurant: price right after title (prominent) */}
+            {isRestaurant && showPrice && (
+              <div className="mb-4 flex items-baseline gap-2 flex-wrap">
+                <span className="text-3xl font-extrabold tracking-tight text-gray-900 tabular-nums">{formatPrice(product?.price)}</span>
+                {modalDiscount !== null && (
+                  <span className="rounded-md px-2 py-0.5 text-sm font-black text-white" style={{ backgroundColor: '#dc2626' }}>
+                    -{modalDiscount}% OFF
+                  </span>
+                )}
+                {modalDiscount !== null && (
+                  <span className="text-sm text-gray-400 line-through">{formatPrice(product?.compareAtPrice)}</span>
+                )}
+              </div>
+            )}
+
+            {/* Store: full description (original position) */}
+            {!isRestaurant && showDescription && product?.description && (
+              <p className="mb-5 text-[15px] font-normal leading-[1.65] text-gray-600 sm:text-base">
+                {product?.description}
+              </p>
+            )}
+
+            {/* Restaurant: full description (shown when longer than sub-copy) */}
+            {isRestaurant && showDescription && product?.description && product.description.length > 80 && (
+              <p className="mb-4 text-[13.5px] font-normal leading-relaxed text-gray-500">
+                {product.description}
+              </p>
+            )}
+
+            {product?.longDescription && (
+              <div className="mb-5">
+                {showDescription && product?.description && (
+                  <div className="my-3 border-t border-gray-100" />
+                )}
+                <p className="whitespace-pre-line break-words text-[13.5px] font-normal leading-relaxed text-gray-500 sm:text-sm">
+                  {product.longDescription}
+                </p>
+              </div>
+            )}
+
+            {product?.videoUrl && (
+              <div className="mb-5">
+                <video
+                  src={withMediaVersion(product.videoUrl, product.updatedAt)}
+                  poster={withMediaVersion(product.videoThumbnailUrl, product.updatedAt) || undefined}
+                  controls
+                  playsInline
+                  className="w-full rounded-2xl bg-black"
+                  style={{ maxHeight: 300 }}
+                />
+              </div>
+            )}
+
+            {product?.hasOptions && product?.optionsDescription && (
+              <div
+                className="mb-5 flex items-start gap-2.5 rounded-xl p-3"
+                style={{ backgroundColor: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.3)' }}
+              >
+                <Icon name="ListChecks" size={15} color="#92400e" className="flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs font-bold text-amber-800 mb-0.5">Opciones:</p>
+                  <p className="text-xs text-amber-700 leading-relaxed">{product?.optionsDescription}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Store: price in original position */}
+            {!isRestaurant && showPrice && (
               <div className="mb-6">
                 <div className="flex items-baseline gap-2 flex-wrap">
                   <span className="text-3xl font-extrabold tracking-tight text-gray-900 tabular-nums">{formatPrice(product?.price)}</span>
@@ -1976,50 +2028,130 @@ export function ProductModal({ product, business, slug, formatPrice, whatsAppUrl
                   <p className="mt-0.5 text-sm text-gray-400 line-through">{formatPrice(product?.compareAtPrice)}</p>
                 )}
               </div>
-            );
-          })()}
-          {!showPrice && <div className="mb-6" />}
+            )}
+            {!isRestaurant && !showPrice && <div className="mb-6" />}
 
-          {/* Add to cart button */}
-          <button
-            onClick={() => { addItem(product); onClose(); }}
-            className="mb-3 flex w-full items-center justify-center gap-3 rounded-2xl py-4 text-base font-bold text-white transition-all duration-150 hover:opacity-90 active:scale-[0.98]"
-            style={{ background: `linear-gradient(135deg, ${primaryColor} 0%, ${primaryColorDark} 100%)`, boxShadow: `0 8px 24px ${primaryRgba(0.35)}` }}
-          >
-            <Icon name="ShoppingCart" size={20} color="#FFFFFF" />
-            {qty > 0
-              ? (isRestaurant ? `Pedir otro (${qty} en pedido)` : `Agregar otro (${qty} en pedido)`)
-              : (isRestaurant ? 'Agregar al pedido' : 'Agregar al pedido')}
-          </button>
-
-          {/* Direct WhatsApp for single product */}
-          <a
-            href={whatsAppUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={() => {
-              const path = typeof window !== 'undefined' ? window.location?.pathname || getPublicCatalogRelativePath(slug) : getPublicCatalogRelativePath(slug);
-              recordCatalogWhatsAppClick(slug, path, 'product_modal').catch(() => {});
-            }}
-            className="flex items-center justify-center gap-2 w-full py-3 rounded-2xl text-sm font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50 transition-all"
-          >
-            <Icon name="MessageCircle" size={16} color="#6B7280" />
-            {isRestaurant ? 'Pedir solo esto por WhatsApp' : 'Solo este producto por WhatsApp'}
-          </a>
-          <button
-            type="button"
-            onClick={() => {
-              if (!whatsAppMessage) return;
-              navigator.clipboard?.writeText(whatsAppMessage)?.catch(() => {});
-              setCopiedProductMessage(true);
-              setTimeout(() => setCopiedProductMessage(false), 1800);
-            }}
-            className="mt-2 flex items-center justify-center gap-2 w-full py-2.5 rounded-2xl text-xs font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50 transition-all"
-          >
-            <Icon name={copiedProductMessage ? 'Check' : 'Copy'} size={14} color="#6B7280" />
-            {copiedProductMessage ? 'Texto copiado' : 'Copiar texto del producto'}
-          </button>
+            {/* ── CTAs ─────────────────────────────────────────────────── */}
+            {isRestaurant ? (
+              <>
+                {/* Primary: Pedir por WhatsApp */}
+                <a
+                  href={whatsAppUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={trackWaClick}
+                  className="mb-2 flex w-full items-center justify-center gap-3 rounded-2xl py-4 text-base font-bold text-white transition-all duration-150 hover:opacity-90 active:scale-[0.98]"
+                  style={{
+                    background: 'linear-gradient(135deg, #25D366 0%, #128C7E 100%)',
+                    boxShadow: '0 8px 24px rgba(37,211,102,0.35)',
+                  }}
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="#FFFFFF" aria-hidden>
+                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                  </svg>
+                  Pedir por WhatsApp
+                </a>
+                {/* Friction copy */}
+                <p className="mb-3 text-center text-xs text-gray-400">
+                  Te respondemos por WhatsApp en minutos
+                </p>
+                {/* Secondary: Agregar al pedido */}
+                <button
+                  onClick={() => { addItem(product); onClose(); }}
+                  className="mb-3 flex w-full items-center justify-center gap-2 rounded-2xl py-3 text-sm font-semibold border transition-all duration-150 hover:bg-gray-50 active:scale-[0.98]"
+                  style={{ borderColor: primaryColor, color: primaryColorDark }}
+                >
+                  <Icon name="ShoppingCart" size={16} color={primaryColorDark} />
+                  {qty > 0 ? `Agregar otro (${qty} en pedido)` : 'Agregar al pedido'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!whatsAppMessage) return;
+                    navigator.clipboard?.writeText(whatsAppMessage)?.catch(() => {});
+                    setCopiedProductMessage(true);
+                    setTimeout(() => setCopiedProductMessage(false), 1800);
+                  }}
+                  className="flex items-center justify-center gap-2 w-full py-2.5 rounded-2xl text-xs font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50 transition-all"
+                >
+                  <Icon name={copiedProductMessage ? 'Check' : 'Copy'} size={14} color="#6B7280" />
+                  {copiedProductMessage ? 'Texto copiado' : 'Copiar texto del producto'}
+                </button>
+              </>
+            ) : (
+              <>
+                {/* Store: original CTA order */}
+                <button
+                  onClick={() => { addItem(product); onClose(); }}
+                  className="mb-3 flex w-full items-center justify-center gap-3 rounded-2xl py-4 text-base font-bold text-white transition-all duration-150 hover:opacity-90 active:scale-[0.98]"
+                  style={{ background: `linear-gradient(135deg, ${primaryColor} 0%, ${primaryColorDark} 100%)`, boxShadow: `0 8px 24px ${primaryRgba(0.35)}` }}
+                >
+                  <Icon name="ShoppingCart" size={20} color="#FFFFFF" />
+                  {qty > 0 ? `Agregar otro (${qty} en pedido)` : 'Agregar al pedido'}
+                </button>
+                <a
+                  href={whatsAppUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={trackWaClick}
+                  className="flex items-center justify-center gap-2 w-full py-3 rounded-2xl text-sm font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50 transition-all"
+                >
+                  <Icon name="MessageCircle" size={16} color="#6B7280" />
+                  Solo este producto por WhatsApp
+                </a>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!whatsAppMessage) return;
+                    navigator.clipboard?.writeText(whatsAppMessage)?.catch(() => {});
+                    setCopiedProductMessage(true);
+                    setTimeout(() => setCopiedProductMessage(false), 1800);
+                  }}
+                  className="mt-2 flex items-center justify-center gap-2 w-full py-2.5 rounded-2xl text-xs font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50 transition-all"
+                >
+                  <Icon name={copiedProductMessage ? 'Check' : 'Copy'} size={14} color="#6B7280" />
+                  {copiedProductMessage ? 'Texto copiado' : 'Copiar texto del producto'}
+                </button>
+              </>
+            )}
+          </div>
         </div>
+
+        {/* ── Sticky bottom bar: restaurant + mobile only ───────────────── */}
+        {isRestaurant && (
+          <div
+            className="sm:hidden flex-shrink-0 border-t border-gray-100 bg-white px-4 py-3"
+            style={{ paddingBottom: 'calc(12px + var(--safe-area-bottom, 0px))' }}
+          >
+            <div className="flex items-center gap-3">
+              {showPrice && (
+                <div className="flex-shrink-0 min-w-0">
+                  <span className="text-lg font-extrabold tracking-tight text-gray-900 tabular-nums">
+                    {formatPrice(product?.price)}
+                  </span>
+                  {modalDiscount !== null && (
+                    <span className="ml-1.5 rounded px-1.5 py-0.5 text-[10px] font-black text-white" style={{ backgroundColor: '#dc2626' }}>
+                      -{modalDiscount}%
+                    </span>
+                  )}
+                </div>
+              )}
+              <a
+                href={whatsAppUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={trackWaClick}
+                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-bold text-white transition-all active:scale-[0.98]"
+                style={{ background: 'linear-gradient(135deg, #25D366 0%, #128C7E 100%)' }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="#FFFFFF" aria-hidden>
+                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                </svg>
+                Pedir por WhatsApp
+              </a>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
