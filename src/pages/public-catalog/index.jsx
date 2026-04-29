@@ -1742,17 +1742,7 @@ function ThumbnailButton({ url, productName, index, isSelected, primaryColor, on
 }
 
 // ─── Restaurant add-ons ──────────────────────────────────────────────────────
-// Activar cuando product.addOns exista en base de datos.
-// Mientras tanto: UI lista, datos mock, bloque oculto.
-const ENABLE_RESTAURANT_ADDONS = false;
-
-// Estructura futura: product.addOns = [{ id, label, price }]
-// Reemplazar RESTAURANT_ADDON_MOCK por product?.addOns cuando la migración esté lista.
-const RESTAURANT_ADDON_MOCK = [
-  { id: 'papas',  label: '🍟 Papas fritas', price: 1500 },
-  { id: 'bebida', label: '🥤 Bebida',        price: 1000 },
-  { id: 'queso',  label: '🧀 Extra queso',   price: 800  },
-];
+const ENABLE_RESTAURANT_ADDONS = true;
 
 // ─── Product Modal ────────────────────────────────────────────────────────────
 export function ProductModal({ product, business, slug, formatPrice, whatsAppUrl, whatsAppMessage, onClose, theme, cardSettings, useCategories = false }) {
@@ -1825,9 +1815,9 @@ export function ProductModal({ product, business, slug, formatPrice, whatsAppUrl
   const [selectedAddons, setSelectedAddons] = useState([]);
   useEffect(() => { setSelectedAddons([]); }, [product?.id]);
 
-  // Lista resuelta: [] si el flag está apagado o no es restaurant
-  const resolvedAddons = isRestaurant && ENABLE_RESTAURANT_ADDONS
-    ? (product?.addOns ?? RESTAURANT_ADDON_MOCK).slice(0, 3)
+  // Lista resuelta: add-ons activos del producto (vacío si flag apagado o no es restaurant)
+  const resolvedAddons = (isRestaurant && ENABLE_RESTAURANT_ADDONS)
+    ? (Array.isArray(product?.addOns) ? product.addOns.filter(a => a?.active !== false && a?.label) : [])
     : [];
 
   const addonsTotal = selectedAddons.reduce((sum, a) => sum + a.price, 0);

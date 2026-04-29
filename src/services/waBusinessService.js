@@ -399,6 +399,7 @@ const mapProductFromDb = (row) => {
     videoThumbnailUrl: row?.video_thumbnail_url || null,
     videoPath: row?.video_path || null,
     videoThumbnailPath: row?.video_thumbnail_path || null,
+    addOns: Array.isArray(row?.add_ons) ? row.add_ons : [],
     createdAt: row?.created_at,
     updatedAt: row?.updated_at,
   };
@@ -851,6 +852,7 @@ export const createProduct = async (businessId, productData) => {
     on_sale: productData?.onSale === true,
     compare_at_price: productData?.compareAtPrice ?? null,
     is_draft: productData?.isDraft === true,
+    add_ons: Array.isArray(productData?.addOns) ? productData.addOns : [],
   })?.select()?.single();
   if (error) return { data: null, error };
   return { data: mapProductFromDb(data), error: null };
@@ -921,6 +923,7 @@ export const updateProduct = async (productId, productData) => {
   if (productData?.videoThumbnailUrl !== undefined)  dbUpdates.video_thumbnail_url = productData.videoThumbnailUrl;
   if (productData?.videoPath !== undefined)          dbUpdates.video_path = productData.videoPath;
   if (productData?.videoThumbnailPath !== undefined) dbUpdates.video_thumbnail_path = productData.videoThumbnailPath;
+  if (productData?.addOns !== undefined) dbUpdates.add_ons = Array.isArray(productData.addOns) ? productData.addOns : [];
   const { data, error } = await supabase?.from('wa_products')?.update(dbUpdates)?.eq('id', productId)?.select()?.single();
   if (error) return { data: null, error };
   return { data: mapProductFromDb(data), error: null };

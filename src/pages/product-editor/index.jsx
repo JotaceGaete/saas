@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import Icon from 'components/AppIcon';
+import { isRestaurantBusiness } from '../../utils/businessType';
 import DashboardAppShell from 'components/ui/DashboardAppShell';
 import DashboardLayoutContent from 'components/ui/DashboardLayoutContent';
 import PanelHeader from 'components/ui/PanelHeader';
@@ -46,6 +47,7 @@ const EMPTY_FORM = {
   compareAtPrice: '',
   hasOptions: false,
   optionsDescription: '',
+  addOns: [],
 };
 
 export default function ProductEditor() {
@@ -113,6 +115,7 @@ export default function ProductEditor() {
           compareAtPrice: data?.compareAtPrice != null ? Number(data.compareAtPrice) : '',
           hasOptions: data?.hasOptions || false,
           optionsDescription: data?.optionsDescription || '',
+          addOns: Array.isArray(data?.addOns) ? data.addOns : [],
         });
         const loadedImages = Array.isArray(data?.images) && data.images.length > 0
           ? data.images.map((url, i) => ({
@@ -562,6 +565,7 @@ export default function ProductEditor() {
         optionsDescription: formData?.hasOptions ? (formData?.optionsDescription || null) : null,
         longDescription: formData?.longDescription?.trim() || null,
         category: formData?.categoria?.trim() || null,
+        addOns: formData?.addOns ?? [],
       };
       const result = currentProductId
         ? await updateProduct(currentProductId, productData)
@@ -831,7 +835,93 @@ export default function ProductEditor() {
                   />
                 </div>
 
-                {/* Feature temporarily hidden until end-to-end implementation (UI + persistence + catalog/cart/order flow). */}
+                {/* Add-ons — visible solo para negocios restaurant */}
+                {isRestaurantBusiness(business) && (
+                  <div
+                    className="p-5 md:p-6 rounded-xl border"
+                    style={{ backgroundColor: 'var(--color-card)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-sm)' }}
+                  >
+                    <div className="flex items-center gap-2 mb-4">
+                      <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(234,88,12,0.08)' }}>
+                        <Icon name="UtensilsCrossed" size={15} color="#ea580c" />
+                      </div>
+                      <h2 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>Add-ons / Complementos</h2>
+                      <span className="ml-auto text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: 'rgba(234,88,12,0.08)', color: '#ea580c', fontFamily: 'var(--font-caption)' }}>Restaurante</span>
+                    </div>
+                    <p className="text-xs mb-4" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                      Extras que el cliente puede elegir al pedir (ej: papas fritas, bebida, salsa extra).
+                    </p>
+
+                    <div className="space-y-2 mb-3">
+                      {(formData?.addOns || []).map((addon, idx) => (
+                        <div key={addon.id || idx} className="flex items-center gap-2 p-3 rounded-lg border" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-background)' }}>
+                          <input
+                            type="text"
+                            value={addon.emoji || ''}
+                            onChange={(e) => { const v = e.target.value; setFormData(prev => ({ ...prev, addOns: prev.addOns.map((a, i) => i === idx ? { ...a, emoji: v } : a) })); }}
+                            placeholder="🍟"
+                            className="w-10 text-center text-base bg-transparent border rounded-md p-1 focus:outline-none"
+                            style={{ borderColor: 'var(--color-border)' }}
+                            maxLength={2}
+                          />
+                          <input
+                            type="text"
+                            value={addon.label || ''}
+                            onChange={(e) => { const v = e.target.value; setFormData(prev => ({ ...prev, addOns: prev.addOns.map((a, i) => i === idx ? { ...a, label: v } : a) })); }}
+                            placeholder="Nombre del extra"
+                            className="flex-1 text-sm bg-transparent border rounded-md px-2 py-1 focus:outline-none"
+                            style={{ borderColor: 'var(--color-border)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
+                          />
+                          <div className="flex items-center gap-1">
+                            <span className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>+</span>
+                            <input
+                              type="number"
+                              value={addon.price ?? ''}
+                              onChange={(e) => { const v = e.target.value === '' ? 0 : Number(e.target.value); setFormData(prev => ({ ...prev, addOns: prev.addOns.map((a, i) => i === idx ? { ...a, price: v } : a) })); }}
+                              placeholder="0"
+                              className="w-20 text-sm bg-transparent border rounded-md px-2 py-1 focus:outline-none text-right"
+                              style={{ borderColor: 'var(--color-border)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
+                              min={0}
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setFormData(prev => ({ ...prev, addOns: prev.addOns.map((a, i) => i === idx ? { ...a, active: !(a.active !== false) } : a) }))}
+                            className="p-1.5 rounded-md transition-colors"
+                            style={{ color: addon.active !== false ? '#059669' : 'var(--color-muted-foreground)' }}
+                            title={addon.active !== false ? 'Visible' : 'Oculto'}
+                          >
+                            <Icon name={addon.active !== false ? 'Eye' : 'EyeOff'} size={14} color="currentColor" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setFormData(prev => ({ ...prev, addOns: prev.addOns.filter((_, i) => i !== idx) }))}
+                            className="p-1.5 rounded-md transition-colors hover:text-red-500"
+                            style={{ color: 'var(--color-muted-foreground)' }}
+                            title="Eliminar"
+                          >
+                            <Icon name="Trash2" size={14} color="currentColor" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+
+                    {(formData?.addOns || []).length < 8 && (
+                      <button
+                        type="button"
+                        onClick={() => setFormData(prev => ({
+                          ...prev,
+                          addOns: [...(prev.addOns || []), { id: `addon-${Date.now()}`, label: '', price: 0, emoji: '', active: true }],
+                        }))}
+                        className="flex items-center gap-2 text-sm font-medium px-3 py-2 rounded-lg border border-dashed transition-colors hover:border-orange-400"
+                        style={{ borderColor: 'var(--color-border)', color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}
+                      >
+                        <Icon name="Plus" size={14} color="currentColor" />
+                        Agregar extra
+                      </button>
+                    )}
+                  </div>
+                )}
 
                 {/* Bottom spacer for SaveBar */}
                 <div className="h-4" />
