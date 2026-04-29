@@ -1741,6 +1741,19 @@ function ThumbnailButton({ url, productName, index, isSelected, primaryColor, on
   );
 }
 
+// ─── Restaurant add-ons ──────────────────────────────────────────────────────
+// Activar cuando product.addOns exista en base de datos.
+// Mientras tanto: UI lista, datos mock, bloque oculto.
+const ENABLE_RESTAURANT_ADDONS = false;
+
+// Estructura futura: product.addOns = [{ id, label, price }]
+// Reemplazar RESTAURANT_ADDON_MOCK por product?.addOns cuando la migración esté lista.
+const RESTAURANT_ADDON_MOCK = [
+  { id: 'papas',  label: '🍟 Papas fritas', price: 1500 },
+  { id: 'bebida', label: '🥤 Bebida',        price: 1000 },
+  { id: 'queso',  label: '🧀 Extra queso',   price: 800  },
+];
+
 // ─── Product Modal ────────────────────────────────────────────────────────────
 export function ProductModal({ product, business, slug, formatPrice, whatsAppUrl, whatsAppMessage, onClose, theme, cardSettings, useCategories = false }) {
   const primaryColor = theme?.primaryColor || '#25D366';
@@ -1807,6 +1820,29 @@ export function ProductModal({ product, business, slug, formatPrice, whatsAppUrl
     const path = typeof window !== 'undefined' ? window.location?.pathname || getPublicCatalogRelativePath(slug) : getPublicCatalogRelativePath(slug);
     recordCatalogWhatsAppClick(slug, path, 'product_modal').catch(() => {});
   };
+
+  // Add-ons state (restaurant only; vacío cuando ENABLE_RESTAURANT_ADDONS = false)
+  const [selectedAddons, setSelectedAddons] = useState([]);
+  useEffect(() => { setSelectedAddons([]); }, [product?.id]);
+
+  // Lista resuelta: [] si el flag está apagado o no es restaurant
+  const resolvedAddons = isRestaurant && ENABLE_RESTAURANT_ADDONS
+    ? (product?.addOns ?? RESTAURANT_ADDON_MOCK).slice(0, 3)
+    : [];
+
+  const addonsTotal = selectedAddons.reduce((sum, a) => sum + a.price, 0);
+  const estimatedTotal = (product?.price || 0) + addonsTotal;
+
+  // URL de WhatsApp con add-ons inyectados cuando el usuario selecciona alguno
+  const effectiveWaUrl = (() => {
+    if (!selectedAddons.length) return whatsAppUrl;
+    const phone = business?.whatsapp?.replace(/\D/g, '');
+    if (!phone) return whatsAppUrl;
+    const addonLines = selectedAddons.map(a => `  • ${a.label}  +${formatPrice(a.price)}`).join('\n');
+    const base = whatsAppMessage || `Hola! Quiero pedir:\n\n*${product?.name}*\nPrecio: ${formatPrice(product?.price)}`;
+    const msg = `${base}\n\nAgregados:\n${addonLines}\n\nTotal estimado: ${formatPrice(estimatedTotal)}`;
+    return `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
+  })();
 
   return (
     <div
@@ -2031,12 +2067,65 @@ export function ProductModal({ product, business, slug, formatPrice, whatsAppUrl
             )}
             {!isRestaurant && !showPrice && <div className="mb-6" />}
 
+            {/* ── Add-ons: upsell restaurant ───────────────────────────── */}
+            {isRestaurant && resolvedAddons.length > 0 && (
+              <div className="mb-4">
+                <p className="mb-2 text-sm font-bold text-gray-800">Completa tu pedido</p>
+                <div className="flex flex-col gap-2">
+                  {resolvedAddons.map((addon) => {
+                    const checked = selectedAddons.some(a => a.id === addon.id);
+                    return (
+                      <button
+                        key={addon.id}
+                        type="button"
+                        onClick={() => setSelectedAddons(prev =>
+                          prev.some(a => a.id === addon.id)
+                            ? prev.filter(a => a.id !== addon.id)
+                            : [...prev, addon]
+                        )}
+                        className="flex items-center justify-between rounded-xl border-2 px-3 py-2.5 text-sm transition-all active:scale-[0.98]"
+                        style={{
+                          borderColor: checked ? primaryColor : '#E5E7EB',
+                          backgroundColor: checked ? primaryRgba(0.06) : '#ffffff',
+                        }}
+                      >
+                        <span className="font-medium text-gray-800">{addon.label}</span>
+                        <div className="flex items-center gap-2.5 flex-shrink-0">
+                          <span className="text-xs font-semibold text-gray-500">+{formatPrice(addon.price)}</span>
+                          <div
+                            className="flex h-5 w-5 items-center justify-center rounded-full border-2 transition-all"
+                            style={{
+                              borderColor: checked ? primaryColor : '#D1D5DB',
+                              backgroundColor: checked ? primaryColor : 'transparent',
+                            }}
+                          >
+                            {checked && <Icon name="Check" size={10} color="#FFFFFF" strokeWidth={3} />}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                {selectedAddons.length > 0 && (
+                  <div
+                    className="mt-3 flex items-center justify-between rounded-xl px-3 py-2.5"
+                    style={{ backgroundColor: primaryRgba(0.08) }}
+                  >
+                    <span className="text-sm font-medium text-gray-700">Total estimado</span>
+                    <span className="text-base font-extrabold tabular-nums" style={{ color: primaryColorDark }}>
+                      {formatPrice(estimatedTotal)}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* ── CTAs ─────────────────────────────────────────────────── */}
             {isRestaurant ? (
               <>
                 {/* Primary: Pedir por WhatsApp */}
                 <a
-                  href={whatsAppUrl}
+                  href={effectiveWaUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={trackWaClick}
@@ -2127,17 +2216,20 @@ export function ProductModal({ product, business, slug, formatPrice, whatsAppUrl
               {showPrice && (
                 <div className="flex-shrink-0 min-w-0">
                   <span className="text-lg font-extrabold tracking-tight text-gray-900 tabular-nums">
-                    {formatPrice(product?.price)}
+                    {formatPrice(selectedAddons.length ? estimatedTotal : product?.price)}
                   </span>
-                  {modalDiscount !== null && (
+                  {!selectedAddons.length && modalDiscount !== null && (
                     <span className="ml-1.5 rounded px-1.5 py-0.5 text-[10px] font-black text-white" style={{ backgroundColor: '#dc2626' }}>
                       -{modalDiscount}%
                     </span>
                   )}
+                  {selectedAddons.length > 0 && (
+                    <span className="ml-1 text-[10px] font-medium text-gray-400">est.</span>
+                  )}
                 </div>
               )}
               <a
-                href={whatsAppUrl}
+                href={effectiveWaUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={trackWaClick}
