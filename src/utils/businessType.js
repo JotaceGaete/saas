@@ -9,9 +9,13 @@ function normalize(value) {
 
 /**
  * Detecta si el negocio pertenece al rubro restaurant.
- * Acepta distintas fuentes para no acoplarse a una sola columna.
+ * Prioridad: 1) businessMode (columna explícita), 2) rubroSlug/rubroName legacy.
  */
 export function isRestaurantBusiness(business) {
+  // Fuente canónica: columna business_mode persistida por el dueño del negocio.
+  if (business?.businessMode === 'restaurant') return true;
+
+  // Fallback legacy: inferencia desde rubro (catálogos anteriores al campo business_mode).
   const candidates = [
     business?.category,
     business?.businessType,

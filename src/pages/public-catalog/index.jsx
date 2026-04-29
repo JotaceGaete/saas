@@ -479,6 +479,7 @@ function CatalogInner({ slug }) {
       : {};
 
   const storeName = business?.name || 'Catálogo';
+  const isRestaurant = isRestaurantBusiness(business);
   const baseUrl = getPublicCatalogBaseUrl();
   const host =
     typeof window !== 'undefined' && window?.location?.host ? window.location.host : '';
@@ -593,7 +594,7 @@ function CatalogInner({ slug }) {
                 type="text"
                 value={searchQuery}
                 onChange={e => setSearchQuery(e?.target?.value)}
-                placeholder="Buscar productos..."
+                placeholder={isRestaurant ? 'Buscar en el menú...' : 'Buscar productos...'}
                 className="w-full pl-9 pr-9 py-2.5 rounded-2xl border text-sm focus:outline-none focus:ring-2 focus:border-transparent transition-all"
                 style={{
                   '--tw-ring-color': primaryColor,
@@ -684,7 +685,7 @@ function CatalogInner({ slug }) {
                           : { background: catalogTheme.sectionBg, borderColor: catalogTheme.borderColor, color: catalogTheme.chipText }
                       }
                     >
-                      Todos
+                      {isRestaurant ? 'Todo el menú' : 'Todos'}
                     </button>
                   )}
                   {visibleCategories.map((cat) => (
@@ -812,6 +813,7 @@ function CatalogInner({ slug }) {
                 cardSettings={cardSettings}
                 useCategories={useCategories}
                 compact={useCompactCard}
+                isRestaurant={isRestaurant}
               />
             ))}
           </div>
@@ -852,7 +854,9 @@ function CatalogInner({ slug }) {
                     color: catalogTheme.isDark ? 'rgba(255,255,255,0.62)' : '#374151',
                   }}
                 >
-                  Contacta por WhatsApp para consultar disponibilidad, precios y detalles del catalogo.
+                  {isRestaurant
+                    ? 'Haz tu pedido por WhatsApp y te atendemos al instante.'
+                    : 'Contacta por WhatsApp para consultar disponibilidad, precios y detalles del catalogo.'}
                 </p>
               </div>
             </section>
@@ -1486,6 +1490,7 @@ export function ProductCard({
   readOnly = false,
   ctaLabel = 'Ver producto',
   onCtaClick,
+  isRestaurant = false,
 }) {
   const primaryColor = theme?.primaryColor || '#25D366';
   const primaryColorDark = theme?.primaryColorDark || '#128C7E';
@@ -1672,7 +1677,7 @@ export function ProductCard({
               <span className={`inline-flex items-center justify-center rounded-full bg-white/20 text-white ${compact ? 'h-5 w-5' : 'h-6 w-6'}`}>
                 <Icon name="Plus" size={compact ? 11 : 13} color="#FFFFFF" strokeWidth={2.5} />
               </span>
-              Agregar
+              {isRestaurant ? 'Pedir' : 'Agregar'}
             </button>
           ) : (
             <div
@@ -1742,6 +1747,7 @@ export function ProductModal({ product, business, slug, formatPrice, whatsAppUrl
   const primaryColorDark = theme?.primaryColorDark || '#128C7E';
   const primaryRgba = theme?.primaryRgba || (() => 'rgba(37,211,102,0.35)');
   const showPrice = cardSettings?.showPrice !== false;
+  const isRestaurant = isRestaurantBusiness(business);
   const showDescription = cardSettings?.showDescription !== false;
   const { addItem, items } = useCart();
   const cartItem = items?.find(i => i?.id === product?.id);
@@ -1981,7 +1987,9 @@ export function ProductModal({ product, business, slug, formatPrice, whatsAppUrl
             style={{ background: `linear-gradient(135deg, ${primaryColor} 0%, ${primaryColorDark} 100%)`, boxShadow: `0 8px 24px ${primaryRgba(0.35)}` }}
           >
             <Icon name="ShoppingCart" size={20} color="#FFFFFF" />
-            {qty > 0 ? `Agregar otro (${qty} en pedido)` : 'Agregar al pedido'}
+            {qty > 0
+              ? (isRestaurant ? `Pedir otro (${qty} en pedido)` : `Agregar otro (${qty} en pedido)`)
+              : (isRestaurant ? 'Agregar al pedido' : 'Agregar al pedido')}
           </button>
 
           {/* Direct WhatsApp for single product */}
@@ -1996,7 +2004,7 @@ export function ProductModal({ product, business, slug, formatPrice, whatsAppUrl
             className="flex items-center justify-center gap-2 w-full py-3 rounded-2xl text-sm font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50 transition-all"
           >
             <Icon name="MessageCircle" size={16} color="#6B7280" />
-            Solo este producto por WhatsApp
+            {isRestaurant ? 'Pedir solo esto por WhatsApp' : 'Solo este producto por WhatsApp'}
           </a>
           <button
             type="button"

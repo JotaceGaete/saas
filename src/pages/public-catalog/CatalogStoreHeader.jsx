@@ -21,6 +21,7 @@ import { useResponsiveCfImageProfile } from '../../hooks/useResponsiveCfImagePro
 import { recordCatalogWhatsAppClick } from '../../services/waBusinessService';
 import { getPublicCatalogRelativePath } from '../../config/appUrl';
 import { normalizeTikTokUrl } from '../../utils/socialLinks';
+import { isRestaurantBusiness } from '../../utils/businessType';
 
 // ─── Bloques de info reutilizados en acordeón mobile y barra desktop ──────────
 
@@ -199,6 +200,7 @@ export default function CatalogStoreHeader({
   const primaryRgba      = theme?.primaryRgba      || (() => 'rgba(37,211,102,0.35)');
 
   const storeHeader = { showStoreName: true, showDescription: true, showWhatsAppButton: true, ...design?.storeHeader };
+  const isRestaurant = isRestaurantBusiness(business);
 
   const headerTemplate = (() => {
     const t = design?.headerTemplate;
@@ -311,6 +313,15 @@ export default function CatalogStoreHeader({
                   <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: primaryColor }} />
                   {badgeLabel}
                 </span>
+                {isRestaurant && (
+                  <span
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold flex-shrink-0"
+                    style={{ background: 'rgba(234,88,12,0.1)', color: '#C2410C' }}
+                  >
+                    <Icon name="UtensilsCrossed" size={10} color="#C2410C" />
+                    Menú
+                  </span>
+                )}
                 {business?.city && (
                   <span className="flex items-center gap-1 text-xs flex-shrink-0" style={{ color: theme?.isDark ? 'rgba(255,255,255,0.45)' : '#9CA3AF' }}>
                     <Icon name="MapPin" size={11} color={theme?.isDark ? 'rgba(255,255,255,0.35)' : '#9CA3AF'} />
@@ -473,6 +484,15 @@ export default function CatalogStoreHeader({
                       <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: primaryColor }} />
                       {badgeLabel}
                     </span>
+                    {isRestaurant && (
+                      <span
+                        className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold flex-shrink-0"
+                        style={{ background: 'rgba(234,88,12,0.1)', color: '#C2410C' }}
+                      >
+                        <Icon name="UtensilsCrossed" size={10} color="#C2410C" />
+                        Menú
+                      </span>
+                    )}
                   </div>
                   {business?.city && (
                     <div className="hidden md:flex items-center gap-1 mb-1">
