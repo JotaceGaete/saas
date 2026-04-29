@@ -1349,7 +1349,7 @@ export default function ProductEditor() {
                             }}
                           >
                             <Icon name="CopyPlus" size={14} color="currentColor" />
-                            Usar grupo existente
+                            Reutilizar opciones de otro producto
                           </button>
                         </div>
 
@@ -1357,14 +1357,23 @@ export default function ProductEditor() {
                           <div className="rounded-xl border p-4 space-y-3" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-background)' }}>
                             {reusableComboProducts.length === 0 ? (
                               <p className="text-sm" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-                                Aún no tienes grupos guardados en otros productos.
+                                Aún no tienes opciones guardadas en otros productos. Crea primero un combo en un producto y luego podrás reutilizarlo aquí.
                               </p>
                             ) : (
                               <>
+                                <div className="space-y-1">
+                                  <p className="text-sm font-semibold" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>
+                                    Reutiliza opciones ya creadas
+                                  </p>
+                                  <p className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                                    Si ya configuraste acompañamientos, bebidas o tamaños en otro producto, puedes traerlos aquí sin volver a escribirlos.
+                                  </p>
+                                </div>
+
                                 <div className="grid gap-3 sm:grid-cols-2">
                                   <div className="space-y-2">
                                     <label className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-                                      Producto
+                                      Producto con opciones guardadas
                                     </label>
                                     <select
                                       value={selectedReusableProductId}
@@ -1382,7 +1391,7 @@ export default function ProductEditor() {
                                   </div>
                                   <div className="space-y-2">
                                     <label className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-                                      Grupo
+                                      Opciones que quieres reutilizar
                                     </label>
                                     <select
                                       value={selectedReusableGroupId}
@@ -1403,6 +1412,9 @@ export default function ProductEditor() {
 
                                 {selectedReusableGroup && (
                                   <div className="rounded-lg border p-3" style={{ borderColor: 'var(--color-border)' }}>
+                                    <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                                      Esto se agregará a este producto:
+                                    </p>
                                     <p className="text-sm font-semibold mb-1" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>
                                       {selectedReusableGroup.label}
                                     </p>
@@ -1425,7 +1437,7 @@ export default function ProductEditor() {
                                     style={{ backgroundColor: '#0284c7', fontFamily: 'var(--font-caption)' }}
                                   >
                                     <Icon name="Download" size={14} color="#FFFFFF" />
-                                    Copiar grupo
+                                    Agregar estas opciones
                                   </button>
                                   <button
                                     type="button"
