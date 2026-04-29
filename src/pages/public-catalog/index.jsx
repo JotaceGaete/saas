@@ -1678,7 +1678,7 @@ export function ProductCard({
         <div className={`relative w-full ${imgAspect} min-h-0`}>
           {imgs[0] ? (
             <img
-              src={cfImageUrl(imgs[0], 'thumbnail')}
+              src={cfImageUrl(imgs[0], 'card')}
               alt={product?.name}
               className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
               onError={buildCfImageErrorHandler(imgs[0])}

@@ -8,10 +8,11 @@
  * Opcional: VITE_CF_IMAGE_ORIGIN=https://ventalink.app (o el host que tengáis configurado).
  */
 
-/** @type {Record<'mobile'|'desktop'|'thumbnail', string>} */
+/** @type {Record<'mobile'|'desktop'|'card'|'thumbnail', string>} */
 export const CF_IMAGE_PROFILES = {
   mobile: 'width=600,quality=65,format=auto',
   desktop: 'width=1200,quality=80,format=auto',
+  card: 'width=600,quality=75,format=auto',
   thumbnail: 'width=300,quality=60,format=auto',
 };
 
