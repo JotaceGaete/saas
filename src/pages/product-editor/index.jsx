@@ -126,6 +126,33 @@ const normalizeComboConfig = (config) => {
   };
 };
 
+const isReusableComboGroup = (group) => {
+  if (!group || typeof group !== 'object') return false;
+  const label = String(group?.label || '').trim();
+  if (!label) return false;
+  const items = Array.isArray(group?.items) ? group.items : [];
+  return items.some((item) => String(item?.label || '').trim());
+};
+
+const cloneComboGroup = (group, { labelSuffix = '' } = {}) => {
+  const normalizedGroup = normalizeComboGroup(group);
+  if (!normalizedGroup || !isReusableComboGroup(normalizedGroup)) return null;
+  const nextLabel = normalizedGroup.label?.trim() || 'Grupo';
+  return {
+    id: buildComboId('combo-group'),
+    label: labelSuffix ? `${nextLabel}${labelSuffix}` : nextLabel,
+    required: normalizedGroup.required === true,
+    maxSelections: Math.max(1, Number(normalizedGroup.maxSelections) || 1),
+    items: normalizedGroup.items
+      .filter((item) => String(item?.label || '').trim())
+      .map((item) => ({
+        id: buildComboId('combo-item'),
+        label: item.label,
+        price: Math.max(0, Number(item.price) || 0),
+      })),
+  };
+};
+
 export default function ProductEditor() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -150,6 +177,9 @@ export default function ProductEditor() {
   const [rubroCategories, setRubroCategories] = useState([]);
   const [businessCategories, setBusinessCategories] = useState([]);
   const [businessProducts, setBusinessProducts] = useState([]);
+  const [comboImportOpen, setComboImportOpen] = useState(false);
+  const [selectedReusableProductId, setSelectedReusableProductId] = useState('');
+  const [selectedReusableGroupId, setSelectedReusableGroupId] = useState('');
   const [addonCreationMode, setAddonCreationMode] = useState(null);
   const [addonSearchQuery, setAddonSearchQuery] = useState('');
   const [manualAddonDraft, setManualAddonDraft] = useState({ emoji: '', label: '', price: '' });
@@ -172,6 +202,28 @@ export default function ProductEditor() {
     : [];
   const normalizedComboConfig = normalizeComboConfig(formData?.comboConfig);
   const comboGroups = normalizedComboConfig.groups;
+  const reusableComboProducts = businessProducts.reduce((acc, candidate) => {
+    if (!candidate?.id || candidate.id === effectiveProductId) return acc;
+    const candidateComboConfig = normalizeComboConfig(candidate?.comboConfig);
+    if (!candidateComboConfig?.enabled) return acc;
+    const validGroups = candidateComboConfig.groups
+      .filter((group) => isReusableComboGroup(group))
+      .map((group) => ({
+        ...group,
+        sourceProductId: candidate.id,
+        sourceProductName: candidate?.name || 'Producto sin nombre',
+      }));
+    if (validGroups.length === 0) return acc;
+    acc.push({
+      id: candidate.id,
+      name: candidate?.name || 'Producto sin nombre',
+      category: candidate?.category || '',
+      groups: validGroups,
+    });
+    return acc;
+  }, []);
+  const selectedReusableProduct = reusableComboProducts.find((product) => product.id === selectedReusableProductId) || null;
+  const selectedReusableGroup = selectedReusableProduct?.groups.find((group) => group.id === selectedReusableGroupId) || null;
   const productAddonIds = new Set(
     normalizedAddOns
       .filter((addon) => addon?.type === 'product' && addon?.productId)
@@ -354,6 +406,10 @@ export default function ProductEditor() {
     };
   }, [business?.id, isRestaurant]);
 
+  useEffect(() => {
+    setSelectedReusableGroupId('');
+  }, [selectedReusableProductId]);
+
   const handleFieldChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
     if (errors?.[field]) setErrors(prev => { const e = { ...prev }; delete e?.[field]; return e; });
@@ -480,6 +536,31 @@ export default function ProductEditor() {
       )),
     }));
   }, [updateComboConfig]);
+
+  const duplicateComboGroup = React.useCallback((groupId) => {
+    updateComboConfig((current) => {
+      const sourceGroup = current.groups.find((group) => group?.id === groupId);
+      const clonedGroup = cloneComboGroup(sourceGroup, { labelSuffix: ' (copia)' });
+      if (!clonedGroup) return current;
+      return {
+        ...current,
+        groups: [...current.groups, clonedGroup],
+      };
+    });
+  }, [updateComboConfig]);
+
+  const importReusableComboGroup = React.useCallback(() => {
+    const clonedGroup = cloneComboGroup(selectedReusableGroup);
+    if (!clonedGroup) return;
+    updateComboConfig((current) => ({
+      ...current,
+      enabled: true,
+      groups: [...current.groups, clonedGroup],
+    }));
+    setComboImportOpen(false);
+    setSelectedReusableProductId('');
+    setSelectedReusableGroupId('');
+  }, [selectedReusableGroup, updateComboConfig]);
 
   const addProductAddon = React.useCallback((candidate) => {
     if (!candidate?.id) return;
@@ -1247,6 +1328,122 @@ export default function ProductEditor() {
 
                     {normalizedComboConfig.enabled && (
                       <div className="space-y-4">
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={addComboGroup}
+                            className="inline-flex items-center gap-2 rounded-lg border border-dashed px-4 py-2.5 text-sm font-medium transition-colors hover:border-sky-400"
+                            style={{ borderColor: 'var(--color-border)', color: '#0284c7', fontFamily: 'var(--font-caption)' }}
+                          >
+                            <Icon name="Plus" size={14} color="currentColor" />
+                            Agregar grupo
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setComboImportOpen((prev) => !prev)}
+                            className="inline-flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors hover:border-sky-400"
+                            style={{
+                              borderColor: comboImportOpen ? '#0284c7' : 'var(--color-border)',
+                              color: comboImportOpen ? '#0284c7' : 'var(--color-foreground)',
+                              fontFamily: 'var(--font-caption)',
+                            }}
+                          >
+                            <Icon name="CopyPlus" size={14} color="currentColor" />
+                            Usar grupo existente
+                          </button>
+                        </div>
+
+                        {comboImportOpen && (
+                          <div className="rounded-xl border p-4 space-y-3" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-background)' }}>
+                            {reusableComboProducts.length === 0 ? (
+                              <p className="text-sm" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                                Aún no tienes grupos guardados en otros productos.
+                              </p>
+                            ) : (
+                              <>
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                  <div className="space-y-2">
+                                    <label className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                                      Producto
+                                    </label>
+                                    <select
+                                      value={selectedReusableProductId}
+                                      onChange={(e) => setSelectedReusableProductId(e.target.value)}
+                                      className="w-full text-sm bg-transparent border rounded-md px-3 py-2 focus:outline-none"
+                                      style={{ borderColor: 'var(--color-border)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
+                                    >
+                                      <option value="">Selecciona un producto</option>
+                                      {reusableComboProducts.map((candidate) => (
+                                        <option key={candidate.id} value={candidate.id}>
+                                          {candidate.name}{candidate.category ? ` · ${candidate.category}` : ''}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                  <div className="space-y-2">
+                                    <label className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                                      Grupo
+                                    </label>
+                                    <select
+                                      value={selectedReusableGroupId}
+                                      onChange={(e) => setSelectedReusableGroupId(e.target.value)}
+                                      disabled={!selectedReusableProduct}
+                                      className="w-full text-sm bg-transparent border rounded-md px-3 py-2 focus:outline-none disabled:opacity-60"
+                                      style={{ borderColor: 'var(--color-border)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
+                                    >
+                                      <option value="">Selecciona un grupo</option>
+                                      {(selectedReusableProduct?.groups || []).map((group) => (
+                                        <option key={group.id} value={group.id}>
+                                          {group.label}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                </div>
+
+                                {selectedReusableGroup && (
+                                  <div className="rounded-lg border p-3" style={{ borderColor: 'var(--color-border)' }}>
+                                    <p className="text-sm font-semibold mb-1" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>
+                                      {selectedReusableGroup.label}
+                                    </p>
+                                    <p className="text-xs mb-2" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                                      {selectedReusableGroup.required ? 'Obligatorio' : 'Opcional'}
+                                      {selectedReusableGroup.maxSelections > 1 ? ` · Hasta ${selectedReusableGroup.maxSelections} selecciones` : ' · Una selección'}
+                                    </p>
+                                    <p className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                                      {selectedReusableGroup.items.map((item) => `${item.label} (${formatAddonPrice(item.price)})`).join(' · ')}
+                                    </p>
+                                  </div>
+                                )}
+
+                                <div className="flex flex-wrap gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={importReusableComboGroup}
+                                    disabled={!selectedReusableGroup}
+                                    className="inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium text-white transition-opacity disabled:opacity-50"
+                                    style={{ backgroundColor: '#0284c7', fontFamily: 'var(--font-caption)' }}
+                                  >
+                                    <Icon name="Download" size={14} color="#FFFFFF" />
+                                    Copiar grupo
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setComboImportOpen(false);
+                                      setSelectedReusableProductId('');
+                                      setSelectedReusableGroupId('');
+                                    }}
+                                    className="inline-flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors"
+                                    style={{ borderColor: 'var(--color-border)', color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}
+                                  >
+                                    Cancelar
+                                  </button>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        )}
                         {comboGroups.length === 0 && (
                           <div className="rounded-xl border border-dashed p-4 text-sm" style={{ borderColor: 'var(--color-border)', color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
                             Todavía no agregaste grupos. Crea uno para empezar tu combo.
@@ -1292,6 +1489,18 @@ export default function ProductEditor() {
                                 title="Quitar grupo"
                               >
                                 <Icon name="Trash2" size={16} color="currentColor" />
+                              </button>
+                            </div>
+
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={() => duplicateComboGroup(group.id)}
+                                className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors hover:border-sky-400"
+                                style={{ borderColor: 'var(--color-border)', color: '#0284c7', fontFamily: 'var(--font-caption)' }}
+                              >
+                                <Icon name="Copy" size={14} color="currentColor" />
+                                Duplicar grupo
                               </button>
                             </div>
 
@@ -1348,16 +1557,6 @@ export default function ProductEditor() {
                             </button>
                           </div>
                         ))}
-
-                        <button
-                          type="button"
-                          onClick={addComboGroup}
-                          className="inline-flex items-center gap-2 rounded-lg border border-dashed px-4 py-2.5 text-sm font-medium transition-colors hover:border-sky-400"
-                          style={{ borderColor: 'var(--color-border)', color: '#0284c7', fontFamily: 'var(--font-caption)' }}
-                        >
-                          <Icon name="Plus" size={14} color="currentColor" />
-                          Agregar grupo
-                        </button>
                       </div>
                     )}
                   </div>
