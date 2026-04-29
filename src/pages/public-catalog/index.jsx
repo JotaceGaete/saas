@@ -1651,20 +1651,8 @@ export function ProductCard({
   const imgAspect = compact ? 'aspect-square' : 'aspect-[4/5]';
   const roundTop = 'rounded-t-2xl';
   const stateBadge = productState === 'sold_out'
-    ? {
-        label: 'Agotado',
-        style: {
-          color: '#9A3412',
-          backgroundColor: 'rgba(251,146,60,0.18)',
-        },
-      }
-    : {
-        label: 'Disponible',
-        style: {
-          color: '#166534',
-          backgroundColor: 'rgba(34,197,94,0.16)',
-        },
-      };
+    ? { label: 'Agotado', style: { color: '#9A3412', backgroundColor: 'rgba(251,146,60,0.18)' } }
+    : null;
   const qtyTopClass =
     qty > 0 && trustBadge ? (compact ? 'top-7' : 'top-[1.85rem]') : 'top-1';
   // Sombra levemente más intensa para productos en oferta — señal visual sin romper diseño
@@ -1707,12 +1695,14 @@ export function ProductCard({
               {trustBadge.label}
             </span>
           )}
-          <span
-            className={`absolute right-1 z-[1] rounded-full px-2 py-1 text-[9px] font-bold shadow-sm sm:text-[10px] ${compact ? 'top-1' : 'top-1.5'}`}
-            style={stateBadge.style}
-          >
-            {stateBadge.label}
-          </span>
+          {stateBadge && (
+            <span
+              className={`absolute right-1 z-[1] rounded-full px-2 py-1 text-[9px] font-bold shadow-sm sm:text-[10px] ${compact ? 'top-1' : 'top-1.5'}`}
+              style={stateBadge.style}
+            >
+              {stateBadge.label}
+            </span>
+          )}
           {extraImages > 0 && (
             <div
               className={`absolute right-1 flex items-center gap-0.5 rounded px-1 py-0.5 text-[9px] font-semibold text-white shadow ${compact ? 'top-7' : 'top-[1.85rem]'}`}
@@ -2012,20 +2002,8 @@ export function ProductModal({ product, products = [], business, slug, formatPri
 
   const modalDiscount = getDiscountPercent(product?.price, product?.compareAtPrice);
   const stateBadge = productState === 'sold_out'
-    ? {
-        label: 'Agotado',
-        style: {
-          color: '#9A3412',
-          backgroundColor: 'rgba(251,146,60,0.18)',
-        },
-      }
-    : {
-        label: 'Disponible',
-        style: {
-          color: '#166534',
-          backgroundColor: 'rgba(34,197,94,0.16)',
-        },
-      };
+    ? { label: 'Agotado', style: { color: '#9A3412', backgroundColor: 'rgba(251,146,60,0.18)' } }
+    : null;
   const trackWaClick = () => {
     const path = typeof window !== 'undefined' ? window.location?.pathname || getPublicCatalogRelativePath(slug) : getPublicCatalogRelativePath(slug);
     recordCatalogWhatsAppClick(slug, path, 'product_modal').catch(() => {});
@@ -2287,14 +2265,16 @@ export function ProductModal({ product, products = [], business, slug, formatPri
               )}
             </div>
 
-            <div className="mb-3">
-              <span
-                className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-bold"
-                style={stateBadge.style}
-              >
-                {stateBadge.label}
-              </span>
-            </div>
+            {stateBadge && (
+              <div className="mb-3">
+                <span
+                  className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-bold"
+                  style={stateBadge.style}
+                >
+                  {stateBadge.label}
+                </span>
+              </div>
+            )}
 
             {/* Title + optional featured badge */}
             <div className="flex items-start gap-2 mb-1">
