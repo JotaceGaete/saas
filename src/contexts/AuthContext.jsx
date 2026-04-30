@@ -4,6 +4,7 @@ import { createBusinessForUser, getMyBusiness, updateBusiness } from '../service
 import { getAppBaseUrl, getAuthRedirectUrl, getResetPasswordRedirectUrl } from '../config/appUrl';
 
 const AuthContext = createContext({})
+let handlingCorruptSession = false
 
 export const useAuth = () => {
   const context = useContext(AuthContext)
@@ -12,6 +13,18 @@ export const useAuth = () => {
 }
 
 const SESSION_EXPIRED_MESSAGE = 'Tu sesión expiró. Vuelve a iniciar sesión.'
+
+const CORRUPT_REFRESH_TOKEN_MESSAGES = [
+  'Refresh Token Not Found',
+  'Invalid Refresh Token',
+  'refresh_token_not_found',
+  'invalid refresh token',
+]
+
+function isCorruptRefreshTokenError(errorLike) {
+  const raw = String(errorLike?.message || errorLike || '').toLowerCase()
+  return CORRUPT_REFRESH_TOKEN_MESSAGES.some((fragment) => raw.includes(fragment.toLowerCase()))
+}
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null)
@@ -64,8 +77,33 @@ export const AuthProvider = ({ children }) => {
 
   const clearSessionExpiredMessage = () => setSessionExpiredMessage(null)
 
+  const handleCorruptSession = async (reason) => {
+    if (handlingCorruptSession) return
+    handlingCorruptSession = true
+    try {
+      if (typeof window !== 'undefined' && window.__AUTH_DEBUG__) {
+        console.warn('[Auth] clearing corrupt session', { reason: String(reason || 'unknown') })
+      }
+      await supabase?.auth?.signOut?.({ scope: 'local' })
+      setUser(null)
+      setImpersonatedBusiness(null)
+      businessOperations?.clear()
+      setSessionReady(true)
+      setSessionExpiredMessage(SESSION_EXPIRED_MESSAGE)
+
+      if (typeof window !== 'undefined' && !window.location.pathname?.startsWith('/login')) {
+        const nextPath = `${window.location.pathname || ''}${window.location.search || ''}${window.location.hash || ''}` || '/dashboard'
+        window.location.replace(`/login?reason=session-expired&next=${encodeURIComponent(nextPath)}`)
+      }
+    } catch (err) {
+      console.warn('[Auth] failed to clear corrupt session', { message: err?.message || String(err || '') })
+    } finally {
+      handlingCorruptSession = false
+    }
+  }
+
   const authStateHandlers = {
-    onChange: (event, session) => {
+    onChange: async (event, session) => {
       if (typeof window !== 'undefined') {
         const safeTokenPreview = (t) => {
           if (!t || typeof t !== 'string') return null
@@ -81,6 +119,10 @@ export const AuthProvider = ({ children }) => {
               hasRefreshToken: !!session?.refresh_token,
             }
           : 'no session')
+      }
+      if (event === 'TOKEN_REFRESH_FAILED' || isCorruptRefreshTokenError(session)) {
+        await handleCorruptSession(event || session)
+        return
       }
       if (event === 'SIGNED_OUT') {
         if (typeof window !== 'undefined') {
@@ -115,16 +157,9 @@ export const AuthProvider = ({ children }) => {
       if (session?.user) {
         const { data: { user: freshUser }, error } = await supabase?.auth?.getUser() ?? {}
         if (cancelled) return
-        if (error) {
-          const msg = error?.message ?? ''
-          if (msg.includes('Refresh Token') || msg.includes('refresh_token') || msg.includes('JWT')) {
-            if (typeof window !== 'undefined' && window.__AUTH_DEBUG__) {
-              console.warn('[Auth] invalid/expired session, clearing', msg)
-            }
-            await supabase?.auth?.signOut({ scope: 'local' })
-            authStateHandlers?.onChange('SIGNED_OUT', null)
-            return
-          }
+        if (error && isCorruptRefreshTokenError(error)) {
+          await handleCorruptSession(error?.message ?? error)
+          return
         }
         if (freshUser) {
           authStateHandlers?.onChange(null, session)

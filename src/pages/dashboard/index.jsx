@@ -56,6 +56,8 @@ import { generateInsights } from "../../utils/dashboardInsights";
 const FIRST_SHARE_TOAST =
   '¡Tu tienda ya está en el mundo! 🌍 Link copiado y listo para enviar.';
 
+const AI_INSIGHT_RETRY_COOLDOWN_MS = 5 * 60 * 1000;
+
 export default function Dashboard() {
   const navigate = useNavigate();
   const toast = useToast();
@@ -95,6 +97,7 @@ export default function Dashboard() {
   const [newOrderIds, setNewOrderIds] = useState(new Set());
   const channelRef = useRef(null);
   const [dismissedExpiredBanner, setDismissedExpiredBanner] = useState(false);
+  const aiInsightRetryAfterRef = useRef(0);
 
   const catalogUrl = getPublicCatalogUrl(business?.slug ?? '');
   const offersUrl = getPublicOffersUrl(business?.slug ?? '');
@@ -187,7 +190,8 @@ export default function Dashboard() {
   }, [business?.id, funnelRange]);
 
   const loadDailyAiInsight = useCallback(async () => {
-    if (!business?.id) return;
+    if (!business?.id || !user?.id || !sessionReady) return;
+    if (Date.now() < aiInsightRetryAfterRef.current) return;
     setAiInsightLoading(true);
     try {
       let finalInsight = null;
@@ -198,17 +202,22 @@ export default function Dashboard() {
           break;
         }
         if (!insightRes?.pending) {
+          if (insightRes?.error) {
+            aiInsightRetryAfterRef.current = Date.now() + AI_INSIGHT_RETRY_COOLDOWN_MS;
+            console.warn('[Dashboard] AI insights unavailable', { code: insightRes?.error?.code || 'unknown' });
+          }
           break;
         }
         await new Promise((resolve) => setTimeout(resolve, 900));
       }
       setAiInsights(finalInsight);
     } catch (err) {
-      console.error('[Dashboard] insight load error:', err);
+      aiInsightRetryAfterRef.current = Date.now() + AI_INSIGHT_RETRY_COOLDOWN_MS;
+      console.warn('[Dashboard] insight load skipped');
     } finally {
       setAiInsightLoading(false);
     }
-  }, [business?.id]);
+  }, [business?.id, sessionReady, user?.id]);
 
   const loadPlanUsage = useCallback(async () => {
     if (!business?.id) return;
@@ -236,9 +245,9 @@ export default function Dashboard() {
   // Guard with sessionReady: on mobile OAuth, business?.id can become truthy before
   // Supabase has finished exchanging the auth code, causing a 401 on the Edge Function.
   useEffect(() => {
-    if (!business?.id || !sessionReady) return;
+    if (!business?.id || !user?.id || !sessionReady) return;
     loadDailyAiInsight();
-  }, [business?.id, sessionReady, loadDailyAiInsight]);
+  }, [business?.id, sessionReady, loadDailyAiInsight, user?.id]);
 
   useEffect(() => {
     if (!business?.id) { setPlanUsageLoading(false); return; }
@@ -270,12 +279,12 @@ export default function Dashboard() {
         loadAnalytics();
         // Reload AI insight on visibility restore — token may have expired while
         // the app was backgrounded (common on mobile after OAuth login).
-        loadDailyAiInsight();
+        if (sessionReady && user?.id) loadDailyAiInsight();
       }
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
-  }, [business?.id, loadDashboardData, loadAnalytics, loadDailyAiInsight]);
+  }, [business?.id, loadDashboardData, loadAnalytics, loadDailyAiInsight, sessionReady, user?.id]);
 
   // Supabase Realtime subscription
   useEffect(() => {

@@ -8,6 +8,30 @@ import { getCountryConfig, COUNTRY_CODES } from '../config/countryConfig';
 import { normalizeSocialUrl as normalizeSharedSocialUrl, normalizeTikTokUrl } from '../utils/socialLinks';
 import { uploadToMediaService } from './mediaUploadService';
 
+const TRACKING_AUTH_FAILURE_COOLDOWN_MS = 10 * 60 * 1000;
+const trackingAuthFailureCache = new Map();
+const trackingInflight = new Set();
+const serviceWarningCache = new Map();
+
+function logServiceWarningOnce(key, message, extra = undefined) {
+  if (serviceWarningCache.get(key)) return;
+  serviceWarningCache.set(key, true);
+  if (extra !== undefined) {
+    console.warn(message, extra);
+    return;
+  }
+  console.warn(message);
+}
+
+function shouldSkipTrackingByRecentAuthFailure(key) {
+  const until = trackingAuthFailureCache.get(key) ?? 0;
+  return until > Date.now();
+}
+
+function markTrackingAuthFailure(key) {
+  trackingAuthFailureCache.set(key, Date.now() + TRACKING_AUTH_FAILURE_COOLDOWN_MS);
+}
+
 // Helpers
 
 /** Normaliza teléfono a solo dígitos para comparación (conflict-safe en wa_customers). */
@@ -1680,6 +1704,11 @@ export const getDashboardAiInsights = async (businessId) => {
   }
   if (!businessId) return { data: null, error: { message: 'businessId required' } };
 
+  const { data: { session } = { session: null } } = await supabase.auth.getSession().catch(() => ({ data: { session: null } }));
+  if (!session?.access_token) {
+    return { data: null, error: { message: 'No active session', code: 'NO_ACTIVE_SESSION' }, pending: false };
+  }
+
   const token = await getValidToken();
   if (!token) return { data: null, error: { message: 'No auth token' } };
 
@@ -1702,9 +1731,17 @@ export const getDashboardAiInsights = async (businessId) => {
         message: body?.message || 'Insight en generación',
       };
     }
-    if (!res.ok) return { data: null, error: { message: 'AI provider error', code: body?.code || 'AI_PROVIDER_ERROR' }, pending: false };
+    if (!res.ok) {
+      logServiceWarningOnce(
+        `dashboard-ai-insights-${res.status}-${body?.code || 'unknown'}`,
+        '[dashboard-ai-insights] request failed',
+        { status: res.status, code: body?.code || 'AI_PROVIDER_ERROR' },
+      );
+      return { data: null, error: { message: 'AI provider error', code: body?.code || 'AI_PROVIDER_ERROR' }, pending: false };
+    }
     return { data: body?.insight || null, error: null, pending: false };
   } catch (err) {
+    logServiceWarningOnce('dashboard-ai-insights-network-error', '[dashboard-ai-insights] network error');
     return { data: null, error: { message: 'Network error' }, pending: false };
   }
 };
@@ -1937,12 +1974,17 @@ function markSiteVisitDone(path) {
 export async function recordSiteVisit({ path, hostname, attribution = {} } = {}) {
   const normalizedPath = (path || '/').trim();
   if (shouldThrottleSiteVisit(normalizedPath)) return { recorded: false, throttled: true };
+  if (shouldSkipTrackingByRecentAuthFailure(`site:${normalizedPath}`)) {
+    return { recorded: false, throttled: true, skipped: 'recent-auth-failure' };
+  }
 
   const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
   const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
   if (!supabaseUrl || !anonKey) return { recorded: false, error: { message: 'Missing Supabase config' } };
+  if (trackingInflight.has(`site:${normalizedPath}`)) return { recorded: false, throttled: true, skipped: 'inflight' };
 
   const visitorId = getOrCreateVisitorId();
+  const { data: { session } = { session: null } } = await supabase.auth.getSession().catch(() => ({ data: { session: null } }));
   const body = {
     path: normalizedPath,
     hostname: hostname || (typeof window !== 'undefined' ? window.location.hostname : null),
@@ -1956,18 +1998,31 @@ export async function recordSiteVisit({ path, hostname, attribution = {} } = {})
 
   const url = `${supabaseUrl}/functions/v1/record-site-visit`;
   try {
+    trackingInflight.add(`site:${normalizedPath}`);
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', apikey: anonKey },
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: anonKey,
+        ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+      },
       keepalive: true,
       body: JSON.stringify(body),
     });
     const data = await res.json().catch(() => ({}));
+    if (res.status === 401 || res.status === 403) {
+      markTrackingAuthFailure(`site:${normalizedPath}`);
+      markSiteVisitDone(normalizedPath);
+      logServiceWarningOnce(`record-site-visit-auth-${normalizedPath}`, '[record-site-visit] skipped after auth failure', { status: res.status });
+      return { recorded: false, error: null, skipped: 'auth-required' };
+    }
     if (res.ok && data?.recorded) markSiteVisitDone(normalizedPath);
     return { recorded: !!data?.recorded, error: res.ok ? null : (data?.error || { message: res.statusText }) };
   } catch (err) {
-    console.error('[record-site-visit] fetch failed', err?.message);
+    logServiceWarningOnce(`record-site-visit-network-${normalizedPath}`, '[record-site-visit] fetch failed');
     return { recorded: false, error: { message: err?.message || 'Network error' } };
+  } finally {
+    trackingInflight.delete(`site:${normalizedPath}`);
   }
 }
 
