@@ -144,7 +144,7 @@ html {
   padding: 0;
   scroll-behavior: smooth;
   scroll-padding-top: calc(60px + var(--safe-area-top));
-  overflow-x: visible;
+  overflow-x: hidden;
   width: 100%;
   max-width: 100%;
 }
@@ -160,7 +160,7 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
-  overflow-x: visible;
+  overflow-x: hidden;
   width: 100%;
   max-width: 100%;
 }
@@ -168,7 +168,7 @@ body {
 #root,
 .dhiwise-code,
 .app-shell {
-  overflow-x: visible;
+  overflow-x: hidden;
   width: 100%;
   max-width: 100%;
   min-width: 0;
@@ -186,7 +186,7 @@ body {
   width: 100%;
   max-width: 100%;
   min-width: 0;
-  overflow-x: visible;
+  overflow-x: hidden;
 }
 
 @media (max-width: 1023px) {
@@ -548,8 +548,6 @@ p {
     padding-right: 0;
   }
   .panel-main {
-    padding-left: 12px;
-    padding-right: 12px;
     padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
     min-height: 100vh;
     min-height: 100dvh;
@@ -563,6 +561,10 @@ p {
   bottom: 0;
   left: 0;
   right: 0;
+  width: 100%;
+  max-width: 480px;
+  margin-left: auto;
+  margin-right: auto;
   z-index: var(--z-navigation);
   background: rgba(255, 255, 255, 0.92);
   backdrop-filter: blur(12px);

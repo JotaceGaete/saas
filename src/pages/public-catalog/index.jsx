@@ -603,7 +603,7 @@ function CatalogInner({ slug }) {
       />
 
       {mainFeaturedProduct && (
-        <div className="max-w-5xl mx-auto px-4 pt-4">
+        <div className="w-full px-4 pt-4 lg:max-w-5xl lg:mx-auto">
           <section
             className="overflow-hidden rounded-[28px] border shadow-sm"
             style={{
@@ -715,7 +715,7 @@ function CatalogInner({ slug }) {
           borderBottom: `1px solid ${catalogTheme.borderColor}`,
         }}
       >
-        <div className="max-w-5xl mx-auto px-4 py-3 space-y-3">
+        <div className="w-full px-4 py-3 space-y-3 lg:max-w-5xl lg:mx-auto">
           <div className="max-w-3xl mx-auto w-full">
             <div className="relative">
               <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
@@ -891,7 +891,7 @@ function CatalogInner({ slug }) {
 
       {/* ── Products: espacio extra abajo para botón flotante y safe area ── */}
       <div
-        className="max-w-7xl mx-auto px-4 py-3"
+        className="w-full max-w-full overflow-x-hidden px-4 py-3 lg:max-w-7xl lg:mx-auto"
         style={{
           paddingBottom: 'calc(8rem + var(--safe-area-bottom))',
           boxShadow: `inset 0 4px 12px ${catalogTheme.isDark ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.04)'}`,
@@ -951,9 +951,9 @@ function CatalogInner({ slug }) {
         )}
 
         {!loading && !notFound && business && catalogSeoContent?.visibleDescription && (
-          <div className="mt-10 md:mt-14 w-full flex justify-center px-0 sm:px-1">
+          <div className="mt-10 md:mt-14 flex w-full justify-center overflow-x-hidden px-0 sm:px-1">
             <section
-              className="w-full max-w-[min(100%,1200px)] rounded-2xl px-6 py-8 sm:px-10 sm:py-10 text-left"
+              className="w-full max-w-full rounded-2xl px-6 py-8 text-left sm:px-10 sm:py-10 lg:max-w-[min(100%,1200px)]"
               style={{
                 background: catalogTheme.sectionBg,
                 border: `1px solid ${catalogTheme.borderColor}`,
@@ -1674,8 +1674,8 @@ export function ProductCard({
 
   return (
     <div
-      className="group flex h-full min-h-0 flex-col rounded-2xl bg-white text-left overflow-hidden will-change-transform transition-[transform,box-shadow] duration-200 ease-out md:hover:-translate-y-1 md:hover:scale-[1.01] md:hover:shadow-lg active:scale-[0.98]"
-      style={{ boxShadow: cardShadow }}
+      className="group flex h-full min-h-0 w-full flex-col overflow-hidden rounded-2xl border bg-white text-left will-change-transform transition-[transform,box-shadow] duration-200 ease-out md:hover:-translate-y-1 md:hover:scale-[1.01] md:hover:shadow-lg active:scale-[0.98]"
+      style={{ boxShadow: cardShadow, borderColor: theme?.borderColor || '#E5E7EB' }}
     >
       {/* Imagen: aspect-ratio + overflow aquí (no en la card entera) para no recortar el botón */}
       <button
@@ -1758,7 +1758,7 @@ export function ProductCard({
 
       {/* Bloque inferior: min-h-0 permite encoger en grid; título en caja de altura FIJA (2 líneas máx. reales) */}
       <div
-        className={`flex min-h-0 flex-1 flex-col justify-between bg-white ${compact ? 'gap-1 rounded-b-2xl px-1.5 pb-1.5 pt-1.5' : 'gap-1.5 rounded-b-2xl px-2.5 pb-2.5 pt-2'}`}
+        className={`flex min-h-0 flex-1 flex-col justify-between bg-white ${compact ? 'gap-2 rounded-b-2xl p-3' : 'gap-3 rounded-b-2xl p-4'}`}
       >
         {/* Top: category badge + name — only these grow/shrink */}
         <div className="flex min-h-0 w-full flex-col gap-1">

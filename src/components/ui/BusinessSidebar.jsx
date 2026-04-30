@@ -542,7 +542,7 @@ Motivo (opcional):`;
         className="lg:hidden fixed z-navigation w-11 h-11 flex items-center justify-center rounded-2xl bg-white/95 backdrop-blur-md border-0 text-foreground hover:bg-muted transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring shadow-[0_4px_20px_rgba(0,0,0,0.08)] ring-1 ring-slate-200/70"
         style={{
           top: 'calc(var(--safe-area-top) + 10px)',
-          left: 'calc(var(--safe-area-left) + 16px)',
+          left: 'max(calc((100vw - min(100vw, 480px)) / 2 + 16px), calc(var(--safe-area-left) + 16px))',
         }}
         aria-label="Abrir menú de navegación"
         aria-expanded={mobileOpen}
@@ -566,6 +566,7 @@ Motivo (opcional):`;
           className="lg:hidden fixed top-0 left-0 h-full z-modal border-r"
           style={{
             width: 'var(--sidebar-width)',
+            left: 'max(calc((100vw - min(100vw, 480px)) / 2), var(--safe-area-left))',
             backgroundColor: '#FFFFFF',
             borderColor: 'var(--color-border)',
             boxShadow: 'var(--shadow-xl)',
