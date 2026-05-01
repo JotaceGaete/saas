@@ -16,7 +16,8 @@
  */
 import React, { useState, useEffect } from 'react';
 import Icon from '../../components/AppIcon';
-import { buildCfImageErrorHandler, cfImageUrl } from '../../utils/cloudflareImage';
+import CatalogImage from '../../components/CatalogImage';
+import { cfImageUrl } from '../../utils/cloudflareImage';
 import { useResponsiveCfImageProfile } from '../../hooks/useResponsiveCfImageProfile';
 import { recordCatalogWhatsAppClick } from '../../services/waBusinessService';
 import { getPublicCatalogRelativePath } from '../../config/appUrl';
@@ -262,11 +263,15 @@ export default function CatalogStoreHeader({
           )}
           <div className="flex-1 min-w-0 flex items-center gap-2.5">
             {business?.logoUrl ? (
-              <img
+              <CatalogImage
                 src={cfImageUrl(business.logoUrl, 'thumbnail')}
+                originalSrc={business.logoUrl}
                 alt=""
-                className="w-8 h-8 rounded-full object-cover flex-shrink-0"
-                onError={buildCfImageErrorHandler(business.logoUrl)}
+                className="w-8 h-8 rounded-full flex-shrink-0"
+                imgClassName="w-full h-full rounded-full object-cover"
+                variant="logo"
+                loading="eager"
+                fetchPriority="high"
               />
             ) : (
               <div
@@ -290,11 +295,15 @@ export default function CatalogStoreHeader({
             <div className="max-w-5xl mx-auto px-6 py-3.5 flex items-center gap-4">
               <div className="w-1 h-9 rounded-full flex-shrink-0" style={{ backgroundColor: primaryColor }} />
               {business?.logoUrl ? (
-                <img
+                <CatalogImage
                   src={cfImageUrl(business.logoUrl, 'thumbnail')}
+                  originalSrc={business.logoUrl}
                   alt={business?.name}
-                  className="w-10 h-10 rounded-full object-cover flex-shrink-0"
-                  onError={buildCfImageErrorHandler(business.logoUrl)}
+                  className="w-10 h-10 rounded-full flex-shrink-0"
+                  imgClassName="w-full h-full rounded-full object-cover"
+                  variant="logo"
+                  loading="eager"
+                  fetchPriority="high"
                 />
               ) : (
                 <div
@@ -355,11 +364,15 @@ export default function CatalogStoreHeader({
             >
               <div className="flex items-center gap-4 mb-3">
                 {business?.logoUrl ? (
-                  <img
+                  <CatalogImage
                     src={cfImageUrl(business.logoUrl, 'thumbnail')}
+                    originalSrc={business.logoUrl}
                     alt={business?.name}
-                    className="w-14 h-14 rounded-full object-cover border-2 border-white/30 flex-shrink-0"
-                    onError={buildCfImageErrorHandler(business.logoUrl)}
+                    className="w-14 h-14 rounded-full border-2 border-white/30 flex-shrink-0"
+                    imgClassName="w-full h-full rounded-full object-cover"
+                    variant="logo"
+                    loading="eager"
+                    fetchPriority="high"
                   />
                 ) : (
                   <div className="w-14 h-14 rounded-full flex items-center justify-center border-2 border-white/30 bg-white/20 flex-shrink-0">
@@ -396,13 +409,17 @@ export default function CatalogStoreHeader({
             </div>
             <div className="w-[42%] flex-shrink-0 relative overflow-hidden">
               {business?.coverImageUrl ? (
-                <img
+                <CatalogImage
                   src={cfImageUrl(business.coverImageUrl, cfCoverProfile)}
+                  originalSrc={business.coverImageUrl}
                   alt=""
                   role="presentation"
                   className="absolute inset-0 w-full h-full"
-                  style={{ objectFit: 'cover', objectPosition: coverObjectPosition }}
-                  onError={buildCfImageErrorHandler(business.coverImageUrl)}
+                  imgClassName="absolute inset-0 w-full h-full"
+                  imgStyle={{ objectFit: 'cover', objectPosition: coverObjectPosition }}
+                  variant="cover"
+                  loading="eager"
+                  fetchPriority="high"
                 />
               ) : (
                 <div
@@ -429,20 +446,30 @@ export default function CatalogStoreHeader({
         >
           {business?.coverImageUrl && (
             <>
-              <img
+              <CatalogImage
                 src={cfImageUrl(business.coverImageUrl, cfCoverProfile)}
-                aria-hidden="true"
+                originalSrc={business.coverImageUrl}
                 className="absolute inset-0 h-full w-full"
-                style={{ objectFit: 'cover', objectPosition: coverObjectPosition, filter: 'blur(14px)', transform: 'scale(1.15)', opacity: 0.75 }}
-                onError={buildCfImageErrorHandler(business.coverImageUrl)}
+                imgClassName="absolute inset-0 h-full w-full"
+                imgStyle={{ objectFit: 'cover', objectPosition: coverObjectPosition, filter: 'blur(14px)', transform: 'scale(1.15)' }}
+                variant="cover"
+                loading="eager"
+                fetchPriority="high"
+                ariaHidden="true"
+                showFallbackIcon={false}
+                loadedOpacity={0.75}
               />
-              <img
+              <CatalogImage
                 src={cfImageUrl(business.coverImageUrl, cfCoverProfile)}
+                originalSrc={business.coverImageUrl}
                 alt=""
                 role="presentation"
                 className="absolute inset-0 h-full w-full"
-                style={{ objectFit: 'cover', objectPosition: coverObjectPosition }}
-                onError={buildCfImageErrorHandler(business.coverImageUrl)}
+                imgClassName="absolute inset-0 h-full w-full"
+                imgStyle={{ objectFit: 'cover', objectPosition: coverObjectPosition }}
+                variant="cover"
+                loading="eager"
+                fetchPriority="high"
               />
             </>
           )}
@@ -455,11 +482,15 @@ export default function CatalogStoreHeader({
               <div className="flex flex-col sm:flex-row sm:items-start gap-3 min-w-0 flex-1">
                 <div className="flex-shrink-0">
                   {business?.logoUrl ? (
-                    <img
+                    <CatalogImage
                       src={cfImageUrl(business.logoUrl, 'thumbnail')}
+                      originalSrc={business.logoUrl}
                       alt={business?.name}
-                      className="w-14 h-14 sm:w-16 sm:h-16 rounded-full object-cover border-2 border-gray-100"
-                      onError={buildCfImageErrorHandler(business.logoUrl)}
+                      className="w-14 h-14 sm:w-16 sm:h-16 rounded-full border-2 border-gray-100"
+                      imgClassName="w-full h-full rounded-full object-cover"
+                      variant="logo"
+                      loading="eager"
+                      fetchPriority="high"
                     />
                   ) : (
                     <div

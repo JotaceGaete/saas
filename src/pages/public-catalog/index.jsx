@@ -17,10 +17,11 @@ import {
   getWhatsAppOrderCatalogUrl,
 } from '../../config/appUrl';
 import BrandingFooter from '../../components/BrandingFooter';
+import CatalogImage from '../../components/CatalogImage';
 import { hasViralBranding, getOrderMessageBrandingSuffix } from '../../utils/branding';
 import { isRestaurantBusiness } from '../../utils/businessType';
 import { normalizeOptionalCustomerPhone } from '../../utils/customerPhone';
-import { buildCfImageErrorHandler, cfImageUrl, isCfTransformableUrl } from '../../utils/cloudflareImage';
+import { cfImageUrl, isCfTransformableUrl } from '../../utils/cloudflareImage';
 import { useResponsiveCfImageProfile } from '../../hooks/useResponsiveCfImageProfile';
 import CheckoutPhoneOptional from '../../components/checkout/CheckoutPhoneOptional';
 import { getCountryLabels, DELIVERY_ADDRESS_FIELD_HINT } from '../../config/country';
@@ -801,14 +802,14 @@ function CatalogInner({ slug }) {
                 style={{ ['--tw-ring-color']: primaryColor }}
               >
                 {activeFeaturedImage ? (
-                  <img
+                  <CatalogImage
                     key={`${activeFeaturedProduct?.id || activeFeaturedProduct?.name || 'featured'}-${activeFeaturedIndex}`}
                     src={cfImageUrl(activeFeaturedImage, isDesktop ? 'card' : 'thumbnail')}
+                    originalSrc={activeFeaturedImage}
                     alt={activeFeaturedProduct?.name || 'Producto destacado'}
-                    className="h-full w-full object-cover transition-transform duration-300 md:hover:scale-105"
-                    onError={buildCfImageErrorHandler(activeFeaturedImage)}
-                    loading="eager"
-                    fetchPriority="high"
+                    className="h-full w-full"
+                    imgClassName="h-full w-full object-cover transition-transform duration-300 md:hover:scale-105"
+                    variant="product"
                   />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center">
@@ -1620,11 +1621,14 @@ function OrderPanel({ business, slug, formatPrice, onClose, theme }) {
                   {/* Image */}
                   <div className="w-12 h-12 rounded-xl overflow-hidden bg-gray-100 flex-shrink-0">
                     {item?.imageUrl ? (
-                      <img
+                      <CatalogImage
                         src={cfImageUrl(item.imageUrl, 'thumbnail')}
+                        originalSrc={item.imageUrl}
                         alt={item?.name}
-                        className="w-full h-full object-cover"
-                        onError={buildCfImageErrorHandler(item.imageUrl)}
+                        className="w-full h-full"
+                        imgClassName="w-full h-full object-cover"
+                        variant="product"
+                        loading="lazy"
                       />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
@@ -1920,11 +1924,14 @@ export function ProductCard({
       >
         <div className={`relative w-full ${imgAspect} min-h-0`}>
           {imgs[0] ? (
-            <img
+            <CatalogImage
               src={cfImageUrl(imgs[0], 'card')}
+              originalSrc={imgs[0]}
               alt={product?.name}
-              className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-              onError={buildCfImageErrorHandler(imgs[0])}
+              className="h-full w-full"
+              imgClassName="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+              variant="product"
+              loading="lazy"
             />
           ) : (
             <div className={`flex h-full w-full items-center justify-center bg-gray-100 ${compact ? 'min-h-[72px]' : ''}`}>
@@ -2118,12 +2125,14 @@ function ThumbnailButton({ url, productName, index, isSelected, primaryColor, on
       {error ? (
         <Icon name="ImageOff" size={20} color="#D1D5DB" />
       ) : (
-        <img
+        <CatalogImage
           src={useDirect ? url : cfImageUrl(url, 'thumbnail')}
+          originalSrc={url}
           alt={`${productName ?? 'Producto'} ${index + 1}`}
-          className="w-full h-full object-cover"
+          className="w-full h-full"
+          imgClassName="w-full h-full object-cover"
           loading="lazy"
-          decoding="async"
+          variant="product"
           onError={() => {
             if (!useDirect && isCfTransformableUrl(url)) setUseDirect(true);
             else setError(true);
@@ -2411,13 +2420,15 @@ export function ProductModal({ product, products = [], business, slug, formatPri
                       <div className="w-8 h-8 border-2 border-gray-300 border-t-gray-500 rounded-full animate-spin" />
                     </div>
                   )}
-                  <img
+                  <CatalogImage
                     src={useMainDirect && mainUrl ? mainUrl : mainUrlOptimized}
+                    originalSrc={mainUrl}
                     alt={product?.name ?? 'Producto'}
-                    className="w-full h-full object-cover transition-transform duration-300 ease-in-out sm:hover:scale-[1.2] sm:cursor-zoom-in"
-                    style={{ opacity: imageLoaded ? 1 : 0, transition: 'opacity 0.2s ease-out, transform 0.3s ease-in-out' }}
+                    className="w-full h-full"
+                    imgClassName="w-full h-full object-cover transition-transform duration-300 ease-in-out sm:hover:scale-[1.2] sm:cursor-zoom-in"
+                    imgStyle={{ transition: 'opacity 0.2s ease-out, transform 0.3s ease-in-out' }}
                     draggable={false}
-                    decoding="async"
+                    variant="product"
                     onLoad={() => setImageLoaded(true)}
                     onError={() => {
                       if (!useMainDirect && mainUrl && isCfTransformableUrl(mainUrl)) {
