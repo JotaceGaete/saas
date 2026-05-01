@@ -55,6 +55,9 @@ export default function OrderDetailDrawer({
     statusOptions.find((option) => option?.key === currentOrderStatus)?.label || 'Pedido';
   const currentPaymentStatusLabel =
     paymentStatusOptions.find((option) => option?.key === currentPaymentStatus)?.label || 'Pendiente';
+  const printLegend = String(
+    business?.print_legend ?? business?.printLegend ?? 'Gracias por tu pedido 🙌',
+  ).trim() || 'Gracias por tu pedido 🙌';
   const printableItems = Array.isArray(order?.items) ? order.items : [];
   const handlePrint = () => {
     window.print();
@@ -128,14 +131,35 @@ export default function OrderDetailDrawer({
             position: absolute !important;
             left: 0 !important;
             top: 0 !important;
-            width: 80mm !important;
+            width: 320px !important;
             min-height: auto !important;
             padding: 0 !important;
             margin: 0 auto !important;
             background: #fff !important;
             color: #000 !important;
-            font-family: "Courier New", Courier, monospace !important;
+            font-family: monospace !important;
             font-size: 12px !important;
+            line-height: 1.4 !important;
+            page-break-inside: avoid !important;
+          }
+
+          .order-print-sheet .receipt,
+          .order-print-sheet .receipt *,
+          .order-print-sheet .receipt-item,
+          .order-print-sheet .receipt-item * {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+          }
+
+          .order-print-sheet .receipt-price {
+            text-align: right !important;
+          }
+
+          .order-print-sheet .receipt-legend {
+            text-align: center !important;
+            font-size: 11px !important;
+            font-style: italic !important;
+            line-height: 1.4 !important;
           }
         }
       `}</style>
@@ -347,7 +371,7 @@ export default function OrderDetailDrawer({
         style={{ display: 'none' }}
         aria-hidden="true"
       >
-        <div className="receipt" style={{ width: '78mm', padding: '6mm 5mm' }}>
+        <div className="receipt" style={{ width: '320px', padding: '16px 14px', fontFamily: 'monospace', fontSize: '12px', lineHeight: 1.4 }}>
           <div style={{ textAlign: 'center', borderBottom: '1px dashed #000', paddingBottom: '8px', marginBottom: '10px' }}>
             <div style={{ fontSize: '18px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
               {businessName || business?.name || 'Mi negocio'}
@@ -358,35 +382,35 @@ export default function OrderDetailDrawer({
           <div style={{ marginBottom: '10px', lineHeight: 1.45 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
               <span>ID</span>
-              <strong>#{orderShortId(order?.id)}</strong>
+              <strong className="receipt-price">#{orderShortId(order?.id)}</strong>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
               <span>Fecha</span>
-              <strong style={{ textAlign: 'right' }}>{formattedOrderDate}</strong>
+              <strong className="receipt-price" style={{ textAlign: 'right' }}>{formattedOrderDate}</strong>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
               <span>Cliente</span>
-              <strong style={{ textAlign: 'right' }}>{order?.customerName || '—'}</strong>
+              <strong className="receipt-price" style={{ textAlign: 'right' }}>{order?.customerName || '—'}</strong>
             </div>
             {order?.customerPhone && (
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
                 <span>WhatsApp</span>
-                <strong style={{ textAlign: 'right' }}>{order.customerPhone}</strong>
+                <strong className="receipt-price" style={{ textAlign: 'right' }}>{order.customerPhone}</strong>
               </div>
             )}
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
               <span>Estado</span>
-              <strong style={{ textAlign: 'right' }}>{currentOrderStatusLabel}</strong>
+              <strong className="receipt-price" style={{ textAlign: 'right' }}>{currentOrderStatusLabel}</strong>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
               <span>Pago</span>
-              <strong style={{ textAlign: 'right' }}>{currentPaymentStatusLabel}</strong>
+              <strong className="receipt-price" style={{ textAlign: 'right' }}>{currentPaymentStatusLabel}</strong>
             </div>
           </div>
 
           <div style={{ borderTop: '1px dashed #000', borderBottom: '1px dashed #000', padding: '8px 0', marginBottom: '10px' }}>
             {printableItems.length > 0 ? printableItems.map((item, index) => (
-              <div key={item?.id || `${item?.productName || 'item'}-${index}`} style={{ marginBottom: index === printableItems.length - 1 ? 0 : '8px' }}>
+              <div className="receipt-item" key={item?.id || `${item?.productName || 'item'}-${index}`} style={{ marginBottom: index === printableItems.length - 1 ? 0 : '8px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', alignItems: 'flex-start' }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 'bold', wordBreak: 'break-word' }}>{item?.productName || 'Producto'}</div>
@@ -394,7 +418,7 @@ export default function OrderDetailDrawer({
                       {item?.quantity ?? 0} x {formatCLP(item?.productPrice)}
                     </div>
                   </div>
-                  <div style={{ fontWeight: 'bold', whiteSpace: 'nowrap' }}>
+                  <div className="receipt-price" style={{ fontWeight: 'bold', whiteSpace: 'nowrap', textAlign: 'right' }}>
                     {formatCLP(item?.subtotal)}
                   </div>
                 </div>
@@ -414,8 +438,15 @@ export default function OrderDetailDrawer({
           <div style={{ borderTop: '2px solid #000', paddingTop: '8px', marginTop: '8px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', fontSize: '16px', fontWeight: 'bold' }}>
               <span>Total</span>
-              <span>{formatCLP(order?.totalAmount)}</span>
+              <span className="receipt-price" style={{ textAlign: 'right' }}>{formatCLP(order?.totalAmount)}</span>
             </div>
+          </div>
+
+          <div
+            className="receipt-legend"
+            style={{ borderTop: '1px dashed #000', marginTop: '10px', paddingTop: '10px', textAlign: 'center', fontSize: '11px', fontStyle: 'italic' }}
+          >
+            {printLegend}
           </div>
         </div>
       </div>
