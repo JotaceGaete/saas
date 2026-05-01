@@ -379,6 +379,7 @@ function buildFallbackSvg(storeName) {
     Walinka
   </text>
 </svg>`;
+}
 
 function svgToPng(svg) {
   const resvg = new Resvg(svg, {
@@ -508,6 +509,20 @@ export async function GET(request) {
 
     svgFallbackName = row.name || 'Catálogo';
     const ds = parseDesignSettings(row.design_settings);
+
+    // Diagnóstico temporal: loggear todos los campos de imagen para debug.
+    logOgCatalog('db_row', {
+      slug,
+      businessId: row.id,
+      og_image_url: row.og_image_url ?? '(not in row)',
+      cover_image_url: row.cover_image_url ?? null,
+      logo_url: row.logo_url ?? null,
+      design_settings_keys: Object.keys(ds),
+      ds_shareImageUrl: ds?.shareImageUrl ?? null,
+      ds_coverImageUrl: ds?.coverImageUrl ?? null,
+      ds_headerImageUrl: ds?.headerImageUrl ?? null,
+      ds_logoUrl: ds?.logoUrl ?? null,
+    });
 
     // Prioridad 1: imagen de vista previa de WhatsApp cargada explícitamente.
     // Si existe, se devuelve como redirect 302 en lugar de generar el SVG.
