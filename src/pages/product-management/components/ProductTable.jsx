@@ -78,8 +78,8 @@ export default function ProductTable({
 
   return (
     <>
-      {/* Desktop Table: reserved for xl+ so square/intermediate layouts switch to cards earlier. */}
-      <div className="hidden xl:block w-full max-w-full min-w-0 rounded-xl border overflow-hidden" style={{ backgroundColor: '#FFFFFF', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-sm)' }}>
+      {/* Desktop Table: reserved for truly wide screens only. */}
+      <div className="hidden 2xl:block w-full max-w-full min-w-0 rounded-xl border overflow-hidden" style={{ backgroundColor: '#FFFFFF', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-sm)' }}>
         <div className="min-w-0 overflow-x-auto overscroll-x-contain">
           <table className="w-full min-w-[1120px]">
             <thead>
@@ -215,7 +215,7 @@ export default function ProductTable({
         </div>
       </div>
       {/* Card Layout for mobile, tablets and intermediate widths */}
-      <div className="xl:hidden space-y-3">
+      <div className="2xl:hidden space-y-3">
         {products?.map((product) => {
           const commercialState = getCommercialState(product);
           const isStatusMenuOpen = openStatusMenuId === product?.id;
@@ -247,41 +247,42 @@ export default function ProductTable({
                     height={64}
                   />
                 </div>
-                <div className="flex-1 min-w-0 flex items-start justify-between gap-2">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold text-foreground line-clamp-1" style={{ fontFamily: "var(--font-body)" }}>
-                      {product?.name}
-                    </p>
-                    {product?.publicCode ? (
-                      <p className="text-[11px] font-semibold tracking-wider mt-0.5" style={{ fontFamily: "var(--font-data)", color: "var(--color-muted-foreground)" }}>
-                        {product.publicCode}
+                <div className="flex-1 min-w-0">
+                  <div className="flex flex-col gap-3 min-w-0 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-foreground line-clamp-1" style={{ fontFamily: "var(--font-body)" }}>
+                        {product?.name}
                       </p>
-                    ) : null}
-                    <p className="text-xs text-muted-foreground line-clamp-2 mt-1" style={{ fontFamily: "var(--font-caption)" }}>
-                      {product?.description}
-                    </p>
+                      {product?.publicCode ? (
+                        <p className="text-[11px] font-semibold tracking-wider mt-0.5" style={{ fontFamily: "var(--font-data)", color: "var(--color-muted-foreground)" }}>
+                          {product.publicCode}
+                        </p>
+                      ) : null}
+                      <p className="text-xs text-muted-foreground line-clamp-2 mt-1" style={{ fontFamily: "var(--font-caption)" }}>
+                        {product?.description}
+                      </p>
+                      {product?.category ? (
+                        <span
+                          className="mt-2 inline-flex w-fit items-center px-2.5 py-1 rounded-full text-xs"
+                          style={{ backgroundColor: "var(--color-muted)", color: "var(--color-muted-foreground)", fontFamily: "var(--font-caption)" }}
+                        >
+                          {product?.category}
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="flex shrink-0 flex-row items-center justify-between gap-3 sm:min-w-[150px] sm:flex-col sm:items-end sm:justify-start">
+                      <span className="text-xl font-bold leading-none whitespace-nowrap" style={{ fontFamily: "var(--font-data)", color: "var(--color-primary)" }}>
+                        {formatPrice(product?.price)}
+                      </span>
+                      <span
+                        className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold flex-shrink-0 whitespace-nowrap"
+                        style={{ backgroundColor: commercialState.bg, color: commercialState.color, fontFamily: 'var(--font-caption)' }}
+                      >
+                        {commercialState.label}
+                      </span>
+                    </div>
                   </div>
-                  <span
-                    className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold flex-shrink-0"
-                    style={{ backgroundColor: commercialState.bg, color: commercialState.color, fontFamily: 'var(--font-caption)' }}
-                  >
-                    {commercialState.label}
-                  </span>
                 </div>
-              </div>
-
-              <div className="flex flex-col gap-y-2 min-w-0">
-                <span className="text-xl font-bold leading-none" style={{ fontFamily: "var(--font-data)", color: "var(--color-primary)" }}>
-                  {formatPrice(product?.price)}
-                </span>
-                {product?.category ? (
-                  <span
-                    className="inline-flex w-fit items-center px-2.5 py-1 rounded-full text-xs"
-                    style={{ backgroundColor: "var(--color-muted)", color: "var(--color-muted-foreground)", fontFamily: "var(--font-caption)" }}
-                  >
-                    {product?.category}
-                  </span>
-                ) : null}
               </div>
 
               <div className="flex flex-col gap-y-3 min-w-0">
@@ -322,10 +323,10 @@ export default function ProductTable({
                   )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 min-w-0">
+                <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                   <button
                     onClick={() => onEdit(product?.id)}
-                    className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border px-3 text-sm font-semibold text-slate-700 transition-all hover:bg-slate-50 hover:text-slate-900"
+                    className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border px-3 text-sm font-semibold text-slate-700 transition-all hover:bg-slate-50 hover:text-slate-900 sm:min-w-[140px] sm:flex-1"
                     style={{ borderColor: 'var(--color-border)', fontFamily: 'var(--font-caption)' }}
                     aria-label={`Editar ${product?.name}`}
                   >
@@ -333,8 +334,17 @@ export default function ProductTable({
                     Editar
                   </button>
                   <button
+                    onClick={() => onDuplicate(product?.id)}
+                    className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border px-3 text-sm font-medium text-slate-600 transition-all hover:bg-slate-50 hover:text-slate-800 sm:min-w-[140px] sm:flex-1"
+                    style={{ borderColor: 'var(--color-border)', fontFamily: 'var(--font-caption)' }}
+                    aria-label={`Duplicar ${product?.name}`}
+                  >
+                    <Icon name="Copy" size={15} color="currentColor" />
+                    Duplicar
+                  </button>
+                  <button
                     onClick={() => onDeleteRequest(product?.id)}
-                    className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border px-3 text-sm font-semibold text-rose-600 transition-all hover:bg-rose-50 hover:text-rose-700"
+                    className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border px-3 text-sm font-semibold text-rose-600 transition-all hover:bg-rose-50 hover:text-rose-700 sm:min-w-[140px] sm:flex-1"
                     style={{ borderColor: 'rgba(244,63,94,0.24)', fontFamily: 'var(--font-caption)' }}
                     aria-label={`Eliminar ${product?.name}`}
                   >
@@ -342,16 +352,6 @@ export default function ProductTable({
                     Eliminar
                   </button>
                 </div>
-
-                <button
-                  onClick={() => onDuplicate(product?.id)}
-                  className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border px-3 text-sm font-medium text-slate-600 transition-all hover:bg-slate-50 hover:text-slate-800"
-                  style={{ borderColor: 'var(--color-border)', fontFamily: 'var(--font-caption)' }}
-                  aria-label={`Duplicar ${product?.name}`}
-                >
-                  <Icon name="Copy" size={15} color="currentColor" />
-                  Duplicar
-                </button>
               </div>
             </div>
           </div>

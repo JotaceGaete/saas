@@ -216,7 +216,7 @@ export default function ProductManagement() {
           title={<h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Gestión de Productos</h1>}
           subtitle={<p className="text-xs hidden sm:block" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>{loading ? 'Cargando...' : `${stats?.total} productos · ${stats?.available} disponibles · ${stats?.soldOut} agotados · ${stats?.hidden} ocultos`}</p>}
         >
-          <div className="hidden xl:flex items-center gap-2 flex-shrink-0">
+          <div className="hidden 2xl:flex items-center gap-2 flex-shrink-0">
             <AddProductButton className="px-4 py-2.5" />
           </div>
         </PanelHeader>
@@ -254,8 +254,8 @@ export default function ProductManagement() {
                   }}
                 />
               </div>
-              <div className="xl:hidden flex w-full">
-                <AddProductButton className="w-full px-4 py-3 sm:ml-auto sm:w-auto sm:px-5" />
+              <div className="2xl:hidden flex w-full">
+                <AddProductButton className="w-full px-4 py-3" />
               </div>
               {selectedIds?.length > 0 && (<div><BulkActionBar selectedCount={selectedIds?.length} onDelete={handleBulkDelete} onDeselect={() => setSelectedIds([])} /></div>)}
               <ProductTable products={filteredProducts} selectedIds={selectedIds} onSelectAll={handleSelectAll} onSelectOne={handleSelectOne} onChangeStatus={handleChangeStatus} onEdit={handleEdit} onDuplicate={handleDuplicate} onDeleteRequest={handleDeleteRequest} sortField={sortField} sortDir={sortDir} onSort={handleSort} formatPrice={formatProductPrice} />
