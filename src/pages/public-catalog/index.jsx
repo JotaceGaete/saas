@@ -468,12 +468,23 @@ function CatalogInner({ slug }) {
       ),
     ];
     const seen = new Set();
-    return prioritized.filter((product) => {
+    const explicitFeatured = prioritized.filter((product) => {
       const key = product?.id || product?.publicCode || product?.name;
       if (!key || seen.has(key)) return false;
       seen.add(key);
       return true;
     }).slice(0, 3);
+    if (explicitFeatured.length > 0) return explicitFeatured;
+    return [...visibleProducts]
+      .sort((a, b) => {
+        const priceA = Number(a?.price) || 0;
+        const priceB = Number(b?.price) || 0;
+        if (priceA !== priceB) return priceB - priceA;
+        const dateA = new Date(a?.createdAt || 0).getTime();
+        const dateB = new Date(b?.createdAt || 0).getTime();
+        return dateB - dateA;
+      })
+      .slice(0, 3);
   }, [products]);
 
   useEffect(() => {
