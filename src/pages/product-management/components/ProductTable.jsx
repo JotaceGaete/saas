@@ -229,26 +229,26 @@ export default function ProductTable({
             }`}
             style={{ backgroundColor: "var(--color-card)", boxShadow: "var(--shadow-sm)" }}
           >
-            <div className="flex items-start gap-3">
-              <input
-                type="checkbox"
-                checked={selectedIds?.includes(product?.id)}
-                onChange={(e) => onSelectOne(product?.id, e?.target?.checked)}
-                className="w-4 h-4 mt-1 rounded border-border accent-primary cursor-pointer flex-shrink-0"
-                aria-label={`Seleccionar ${product?.name}`}
-              />
-              <div className="w-16 h-16 rounded-xl overflow-hidden border border-slate-100 flex-shrink-0 shadow-sm shadow-slate-200/30">
-                <Image
-                  src={product?.image}
-                  alt={product?.imageAlt}
-                  className="w-full h-full object-cover"
-                  width={64}
-                  height={64}
+            <div className="flex flex-col gap-y-3 min-w-0">
+              <div className="flex items-start gap-3 min-w-0">
+                <input
+                  type="checkbox"
+                  checked={selectedIds?.includes(product?.id)}
+                  onChange={(e) => onSelectOne(product?.id, e?.target?.checked)}
+                  className="w-4 h-4 mt-1 rounded border-border accent-primary cursor-pointer flex-shrink-0"
+                  aria-label={`Seleccionar ${product?.name}`}
                 />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
+                <div className="w-16 h-16 rounded-xl overflow-hidden border border-slate-100 flex-shrink-0 shadow-sm shadow-slate-200/30">
+                  <Image
+                    src={product?.image}
+                    alt={product?.imageAlt}
+                    className="w-full h-full object-cover"
+                    width={64}
+                    height={64}
+                  />
+                </div>
+                <div className="flex-1 min-w-0 flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold text-foreground line-clamp-1" style={{ fontFamily: "var(--font-body)" }}>
                       {product?.name}
                     </p>
@@ -257,89 +257,101 @@ export default function ProductTable({
                         {product.publicCode}
                       </p>
                     ) : null}
-                    <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5" style={{ fontFamily: "var(--font-caption)" }}>
+                    <p className="text-xs text-muted-foreground line-clamp-2 mt-1" style={{ fontFamily: "var(--font-caption)" }}>
                       {product?.description}
                     </p>
                   </div>
                   <span
-                    className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold"
+                    className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold flex-shrink-0"
                     style={{ backgroundColor: commercialState.bg, color: commercialState.color, fontFamily: 'var(--font-caption)' }}
                   >
                     {commercialState.label}
                   </span>
                 </div>
-                <div className="flex items-center justify-between mt-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg font-semibold text-foreground" style={{ fontFamily: "var(--font-data)", color: "var(--color-primary)" }}>
-                      {formatPrice(product?.price)}
-                    </span>
-                    <span
-                      className="inline-flex items-center px-2 py-0.5 rounded-full text-xs"
-                      style={{ backgroundColor: "var(--color-muted)", color: "var(--color-muted-foreground)", fontFamily: "var(--font-caption)" }}
+              </div>
+
+              <div className="flex flex-col gap-y-2 min-w-0">
+                <span className="text-xl font-bold leading-none" style={{ fontFamily: "var(--font-data)", color: "var(--color-primary)" }}>
+                  {formatPrice(product?.price)}
+                </span>
+                {product?.category ? (
+                  <span
+                    className="inline-flex w-fit items-center px-2.5 py-1 rounded-full text-xs"
+                    style={{ backgroundColor: "var(--color-muted)", color: "var(--color-muted-foreground)", fontFamily: "var(--font-caption)" }}
+                  >
+                    {product?.category}
+                  </span>
+                ) : null}
+              </div>
+
+              <div className="flex flex-col gap-y-3 min-w-0">
+                <div className="relative min-w-0">
+                  <button
+                    onClick={() => setOpenStatusMenuId((prev) => prev === product?.id ? null : product?.id)}
+                    className="flex w-full min-w-0 items-center justify-between gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors hover:bg-slate-50 h-10"
+                    style={{ borderColor: 'var(--color-border)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
+                    aria-label={`Cambiar estado de ${product?.name}`}
+                  >
+                    <span className="truncate">Cambiar estado</span>
+                    <Icon name="ChevronDown" size={13} color="currentColor" />
+                  </button>
+                  {isStatusMenuOpen && (
+                    <div
+                      className="absolute left-0 right-0 top-full z-20 mt-2 rounded-xl border bg-white p-1.5 shadow-lg"
+                      style={{ borderColor: 'var(--color-border)', boxShadow: '0 18px 40px rgba(15,23,42,0.14)' }}
                     >
-                      {product?.category}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="relative">
-                      <button
-                        onClick={() => setOpenStatusMenuId((prev) => prev === product?.id ? null : product?.id)}
-                        className="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors hover:bg-slate-50"
-                        style={{ borderColor: 'var(--color-border)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
-                        aria-label={`Cambiar estado de ${product?.name}`}
-                      >
-                        Cambiar estado
-                        <Icon name="ChevronDown" size={13} color="currentColor" />
-                      </button>
-                      {isStatusMenuOpen && (
-                        <div
-                          className="absolute right-0 top-full z-20 mt-2 w-48 rounded-xl border bg-white p-1.5 shadow-lg"
-                          style={{ borderColor: 'var(--color-border)', boxShadow: '0 18px 40px rgba(15,23,42,0.14)' }}
+                      {[
+                        { key: 'available', label: 'Marcar disponible' },
+                        { key: 'sold_out', label: 'Marcar agotado' },
+                        { key: 'hidden', label: 'Ocultar del catálogo' },
+                      ].map((option) => (
+                        <button
+                          key={option.key}
+                          type="button"
+                          onClick={() => {
+                            setOpenStatusMenuId(null);
+                            onChangeStatus(product?.id, option.key);
+                          }}
+                          className="flex min-h-10 w-full items-center rounded-lg px-3 py-2 text-left text-xs font-medium transition-colors hover:bg-slate-50"
+                          style={{ color: commercialState.key === option.key ? 'var(--color-primary)' : 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
                         >
-                          {[
-                            { key: 'available', label: 'Marcar disponible' },
-                            { key: 'sold_out', label: 'Marcar agotado' },
-                            { key: 'hidden', label: 'Ocultar del catálogo' },
-                          ].map((option) => (
-                            <button
-                              key={option.key}
-                              type="button"
-                              onClick={() => {
-                                setOpenStatusMenuId(null);
-                                onChangeStatus(product?.id, option.key);
-                              }}
-                              className="flex w-full items-center rounded-lg px-3 py-2 text-left text-xs font-medium transition-colors hover:bg-slate-50"
-                              style={{ color: commercialState.key === option.key ? 'var(--color-primary)' : 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
-                            >
-                              {option.label}
-                            </button>
-                          ))}
-                        </div>
-                      )}
+                          {option.label}
+                        </button>
+                      ))}
                     </div>
-                    <button
-                      onClick={() => onEdit(product?.id)}
-                      className="w-9 h-9 flex items-center justify-center rounded-lg text-slate-500 transition-all hover:bg-slate-100 hover:text-slate-800"
-                      aria-label={`Editar ${product?.name}`}
-                    >
-                      <Icon name="Pencil" size={15} color="currentColor" />
-                    </button>
-                    <button
-                      onClick={() => onDuplicate(product?.id)}
-                      className="w-9 h-9 flex items-center justify-center rounded-lg text-slate-500 transition-all hover:bg-slate-100 hover:text-slate-800"
-                      aria-label={`Duplicar ${product?.name}`}
-                    >
-                      <Icon name="Copy" size={15} color="currentColor" />
-                    </button>
-                    <button
-                      onClick={() => onDeleteRequest(product?.id)}
-                      className="w-9 h-9 flex items-center justify-center rounded-lg text-rose-500 transition-all hover:bg-rose-50 hover:text-rose-600"
-                      aria-label={`Eliminar ${product?.name}`}
-                    >
-                      <Icon name="Trash2" size={15} color="currentColor" />
-                    </button>
-                  </div>
+                  )}
                 </div>
+
+                <div className="grid grid-cols-2 gap-3 min-w-0">
+                  <button
+                    onClick={() => onEdit(product?.id)}
+                    className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border px-3 text-sm font-semibold text-slate-700 transition-all hover:bg-slate-50 hover:text-slate-900"
+                    style={{ borderColor: 'var(--color-border)', fontFamily: 'var(--font-caption)' }}
+                    aria-label={`Editar ${product?.name}`}
+                  >
+                    <Icon name="Pencil" size={15} color="currentColor" />
+                    Editar
+                  </button>
+                  <button
+                    onClick={() => onDeleteRequest(product?.id)}
+                    className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border px-3 text-sm font-semibold text-rose-600 transition-all hover:bg-rose-50 hover:text-rose-700"
+                    style={{ borderColor: 'rgba(244,63,94,0.24)', fontFamily: 'var(--font-caption)' }}
+                    aria-label={`Eliminar ${product?.name}`}
+                  >
+                    <Icon name="Trash2" size={15} color="currentColor" />
+                    Eliminar
+                  </button>
+                </div>
+
+                <button
+                  onClick={() => onDuplicate(product?.id)}
+                  className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border px-3 text-sm font-medium text-slate-600 transition-all hover:bg-slate-50 hover:text-slate-800"
+                  style={{ borderColor: 'var(--color-border)', fontFamily: 'var(--font-caption)' }}
+                  aria-label={`Duplicar ${product?.name}`}
+                >
+                  <Icon name="Copy" size={15} color="currentColor" />
+                  Duplicar
+                </button>
               </div>
             </div>
           </div>
