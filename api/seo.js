@@ -8,7 +8,7 @@ import {
   detectCatalogRegion,
   getCatalogShareDescription,
   getCatalogShareDocumentTitle,
-  resolveCatalogOgImageUrl,
+  getOgCatalogShareImageUrl,
   stringifyJsonLd,
 } from '../src/utils/catalogSeo.js';
 import { resolveCatalogSeoContent } from '../src/utils/catalogDynamicSeo.js';
@@ -149,9 +149,13 @@ async function handleCatalogHtml(request) {
   const metaDescription = getCatalogShareDescription(row);
   const ogDescription = resolveCatalogSeoContent({ business: row }).ogDescription || metaDescription;
   const ri = detectCatalogRegion(seoInput);
-  const ogImageHttps = resolveCatalogOgImageUrl(row, origin, {
-    cacheBust: row.updated_at ?? null,
-  });
+  // og:image apunta siempre a /api/og-catalog, que internamente aplica la
+  // prioridad: og_image_url (WhatsApp preview) → portada → logo → fallback diseño.
+  const ogImageHttps = getOgCatalogShareImageUrl(
+    row.slug,
+    row.updated_at ?? null,
+    CATALOG_ORIGIN,
+  );
   // URL pública oficial única para OG, Twitter y canonical.
   // `origin` se conserva para resolver imágenes relativas (og:image, portadas, etc.).
   const catalogUrl = getOfficialCatalogUrl(slug);

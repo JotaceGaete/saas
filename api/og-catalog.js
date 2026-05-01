@@ -121,6 +121,21 @@ function pickLogoUrl(row, ds) {
 }
 
 /**
+ * Imagen de vista previa de WhatsApp cargada explícitamente por el negocio.
+ * Prioridad 1: campo og_image_url en wa_businesses.
+ * Prioridad 2: design_settings.shareImageUrl (campo transitorio antes de og_image_url).
+ * Solo acepta URLs https absolutas — evita redirecciones a URLs relativas o http.
+ * @returns {string | null}
+ */
+function pickOgPreviewUrl(row, ds) {
+  const fromField = typeof row?.og_image_url === 'string' ? row.og_image_url.trim() : '';
+  if (fromField && /^https:\/\//i.test(fromField)) return fromField;
+  const fromDs = typeof ds?.shareImageUrl === 'string' ? ds.shareImageUrl.trim() : '';
+  if (fromDs && /^https:\/\//i.test(fromDs)) return fromDs;
+  return null;
+}
+
+/**
  * Carga una imagen remota de forma validada. Sin esto, resvg puede fallar o rasterizar mal con bytes corruptos.
  * @returns {{ ok: boolean, dataUri: string | null, reason?: string }}
  */
@@ -464,7 +479,7 @@ export async function GET(request) {
     const supabase = createClient(supabaseUrl, serviceKey);
     const { data: row, error } = await supabase
       .from('wa_businesses')
-      .select('id, name, slug, logo_url, cover_image_url, design_settings, updated_at')
+      .select('id, name, slug, logo_url, cover_image_url, og_image_url, design_settings, updated_at')
       .eq('slug', slug)
       .eq('is_active', true)
       .maybeSingle();
@@ -493,6 +508,34 @@ export async function GET(request) {
 
     svgFallbackName = row.name || 'Catálogo';
     const ds = parseDesignSettings(row.design_settings);
+
+    // Prioridad 1: imagen de vista previa de WhatsApp cargada explícitamente.
+    // Si existe, se devuelve como redirect 302 en lugar de generar el SVG.
+    const ogPreviewUrl = pickOgPreviewUrl(row, ds);
+    if (ogPreviewUrl) {
+      logOgCatalog('render', {
+        slug,
+        businessId: row.id,
+        storeName: row.name,
+        renderMode: 'og_preview_redirect',
+        ogPreviewUrl,
+        coverUrl: null,
+        logoUrl: null,
+        coverOk: false,
+        logoOk: false,
+        coverReason: null,
+        logoReason: null,
+      });
+      return new Response(null, {
+        status: 302,
+        headers: {
+          Location: ogPreviewUrl,
+          'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=3600',
+          'X-OG-Source': 'og_image_url',
+        },
+      });
+    }
+
     const storeName = String(row.name || 'Tu tienda');
     const coverUrl = pickCoverUrl(row, ds);
     const logoUrl = pickLogoUrl(row, ds);
