@@ -198,18 +198,26 @@ export default function ProductManagement() {
   }, [deleteDialog, selectedIds, toast]);
 
   const handleCancelDelete = useCallback(() => { setDeleteDialog({ open: false, isBulk: false, targetId: null }); }, []);
+
+  const AddProductButton = ({ className = '' }) => (
+    <button
+      type="button"
+      onClick={() => navigate('/product-editor')}
+      className={`flex items-center justify-center gap-2 rounded-xl text-sm font-semibold text-white transition-all duration-150 hover:opacity-90 active:scale-[0.98] ${className}`}
+      style={{ backgroundColor: 'var(--color-primary)', fontFamily: 'var(--font-caption)', boxShadow: '0 4px 14px rgba(124,58,237,0.35)' }}
+    >
+      <Icon name="Plus" size={18} color="#FFFFFF" />
+      <span>Agregar producto</span>
+    </button>
+  );
   return (
     <DashboardAppShell backgroundColor="var(--color-background)">
         <PanelHeader
           title={<h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Gestión de Productos</h1>}
           subtitle={<p className="text-xs hidden sm:block" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>{loading ? 'Cargando...' : `${stats?.total} productos · ${stats?.available} disponibles · ${stats?.soldOut} agotados · ${stats?.hidden} ocultos`}</p>}
         >
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <button onClick={() => navigate("/product-editor")} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white transition-all duration-150 hover:bg-[#6D28D9] active:scale-[0.98]" style={{ backgroundColor: 'var(--color-primary)', fontFamily: 'var(--font-caption)', boxShadow: 'var(--shadow-violet)' }}>
-              <Icon name="Plus" size={15} color="#FFFFFF" />
-              <span className="hidden sm:inline">Agregar producto</span>
-              <span className="sm:hidden">Agregar</span>
-            </button>
+          <div className="hidden xl:flex items-center gap-2 flex-shrink-0">
+            <AddProductButton className="px-4 py-2.5" />
           </div>
         </PanelHeader>
 
@@ -230,17 +238,8 @@ export default function ProductManagement() {
             </div>
           ) : (
             <>
-              <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
                 <ProductStatsBar stats={stats} />
-                <button
-                  type="button"
-                  onClick={() => navigate('/product-editor')}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-all duration-150 hover:opacity-90 active:scale-[0.98]"
-                  style={{ backgroundColor: 'var(--color-primary)', fontFamily: 'var(--font-caption)', boxShadow: '0 4px 14px rgba(124,58,237,0.35)' }}
-                >
-                  <Icon name="Plus" size={18} color="#FFFFFF" />
-                  Agregar producto
-                </button>
               </div>
               <div>
                 <ProductFilters
@@ -254,6 +253,9 @@ export default function ProductManagement() {
                     setStatusFilter("all");
                   }}
                 />
+              </div>
+              <div className="xl:hidden flex w-full">
+                <AddProductButton className="w-full px-4 py-3 sm:ml-auto sm:w-auto sm:px-5" />
               </div>
               {selectedIds?.length > 0 && (<div><BulkActionBar selectedCount={selectedIds?.length} onDelete={handleBulkDelete} onDeselect={() => setSelectedIds([])} /></div>)}
               <ProductTable products={filteredProducts} selectedIds={selectedIds} onSelectAll={handleSelectAll} onSelectOne={handleSelectOne} onChangeStatus={handleChangeStatus} onEdit={handleEdit} onDuplicate={handleDuplicate} onDeleteRequest={handleDeleteRequest} sortField={sortField} sortDir={sortDir} onSort={handleSort} formatPrice={formatProductPrice} />

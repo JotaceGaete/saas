@@ -78,10 +78,10 @@ export default function ProductTable({
 
   return (
     <>
-      {/* Desktop Table: outer wrapper constrains width so overflow-x-auto scrolls inside, avoiding page overflow on mobile/tablet */}
-      <div className="hidden md:block w-full max-w-full min-w-0 rounded-xl border overflow-hidden" style={{ backgroundColor: '#FFFFFF', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-sm)' }}>
-        <div className="overflow-x-auto min-w-0 overflow-x-touch">
-          <table className="w-full min-w-[780px]">
+      {/* Desktop Table: reserved for xl+ so square/intermediate layouts switch to cards earlier. */}
+      <div className="hidden xl:block w-full max-w-full min-w-0 rounded-xl border overflow-hidden" style={{ backgroundColor: '#FFFFFF', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-sm)' }}>
+        <div className="min-w-0 overflow-x-auto overscroll-x-contain">
+          <table className="w-full min-w-[1120px]">
             <thead>
               <tr className="border-b" style={{ backgroundColor: 'var(--color-muted)', borderColor: 'var(--color-border)' }}>
                 <th className="w-10 px-4 py-4">
@@ -93,7 +93,7 @@ export default function ProductTable({
                 <th className="px-4 py-4 text-left"><ThBtn field="category">Categoría</ThBtn></th>
                 <th className="px-4 py-4 text-right"><ThBtn field="price">Precio</ThBtn></th>
                 <th className="px-4 py-4 text-center"><ThBtn field="status">Estado de venta</ThBtn></th>
-                <th className="px-4 py-4 text-right"><span className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Acciones</span></th>
+                <th className="w-[280px] px-4 py-4 text-right"><span className="text-xs font-semibold uppercase tracking-wide whitespace-nowrap" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Acciones</span></th>
               </tr>
             </thead>
             <tbody>
@@ -143,7 +143,7 @@ export default function ProductTable({
                     </span>
                   </td>
                   <td className="px-4 py-4">
-                    <div className="flex items-center justify-end gap-3 pl-2 relative">
+                    <div className="relative flex items-center justify-end gap-3 pl-2 whitespace-nowrap">
                       <div className="relative">
                         <button
                           onClick={() => setOpenStatusMenuId((prev) => prev === product?.id ? null : product?.id)}
@@ -214,8 +214,8 @@ export default function ProductTable({
           </table>
         </div>
       </div>
-      {/* Mobile Card Layout */}
-      <div className="md:hidden space-y-3">
+      {/* Card Layout for mobile, tablets and intermediate widths */}
+      <div className="xl:hidden space-y-3">
         {products?.map((product) => {
           const commercialState = getCommercialState(product);
           const isStatusMenuOpen = openStatusMenuId === product?.id;
