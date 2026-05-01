@@ -2182,8 +2182,8 @@ export function ProductModal({ product, products = [], business, slug, formatPri
                   <img
                     src={useMainDirect && mainUrl ? mainUrl : mainUrlOptimized}
                     alt={product?.name ?? 'Producto'}
-                    className="w-full h-full object-cover"
-                    style={{ opacity: imageLoaded ? 1 : 0, transition: 'opacity 0.2s ease-out' }}
+                    className="w-full h-full object-cover transition-transform duration-300 ease-in-out sm:hover:scale-[1.2] sm:cursor-zoom-in"
+                    style={{ opacity: imageLoaded ? 1 : 0, transition: 'opacity 0.2s ease-out, transform 0.3s ease-in-out' }}
                     draggable={false}
                     decoding="async"
                     onLoad={() => setImageLoaded(true)}
