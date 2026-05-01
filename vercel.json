@@ -181,7 +181,12 @@
     },
     {
       "source": "/catalogo/:slug",
-      "destination": "/api/seo?slug=:slug&publicPath=catalogo"
+      "has": [{ "type": "host", "value": "miralatienda.de" }],
+      "destination": "/api/catalog-html?slug=:slug&publicPath=catalogo"
+    },
+    {
+      "source": "/catalogo/:slug",
+      "destination": "/api/catalog-html?slug=:slug&publicPath=catalogo"
     },
     {
       "source": "/catalog/:slug",
