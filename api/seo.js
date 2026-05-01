@@ -545,7 +545,7 @@ ${blocks}
 
 // --- Router (mode= en rewrites; slug= para catálogo) ---
 
-export async function GET(request) {
+async function routeSeoRequest(request) {
   const url = new URL(request.url);
   const path = url.pathname;
   const slug = url.searchParams.get('slug')?.trim();
@@ -570,4 +570,16 @@ export async function GET(request) {
     return handleSitemap(request);
   }
   return new Response('Not found', { status: 404 });
+}
+
+export async function GET(request) {
+  return routeSeoRequest(request);
+}
+
+export async function HEAD(request) {
+  const response = await routeSeoRequest(request);
+  return new Response(null, {
+    status: response.status,
+    headers: response.headers,
+  });
 }
