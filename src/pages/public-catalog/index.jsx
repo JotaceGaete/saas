@@ -108,11 +108,16 @@ function CatalogInner({ slug }) {
   const [maxPrice, setMaxPrice] = useState(0);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [activeFeaturedIndex, setActiveFeaturedIndex] = useState(0);
+  const [isFeaturedHovered, setIsFeaturedHovered] = useState(false);
+  const [isFeaturedAutoplayPaused, setIsFeaturedAutoplayPaused] = useState(false);
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
   /** Desktop: si el carril de categorías puede seguir scrolleando a izquierda/derecha (para flechas). */
   const [categoryScrollMore, setCategoryScrollMore] = useState({ left: false, right: false });
   const featuredTouchStartX = useRef(0);
   const featuredTouchEndX = useRef(0);
   const featuredSwipeTriggeredRef = useRef(false);
+  const featuredTouchInteractionRef = useRef(false);
+  const featuredAutoplayResumeTimeoutRef = useRef(null);
 
   const { itemCount } = useCart();
   const isDesktop = useIsDesktop();
@@ -125,6 +130,19 @@ function CatalogInner({ slug }) {
     if (!slug) return;
     loadCatalog();
   }, [slug]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
+    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const updatePreference = () => setPrefersReducedMotion(mediaQuery.matches);
+    updatePreference();
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', updatePreference);
+      return () => mediaQuery.removeEventListener('change', updatePreference);
+    }
+    mediaQuery.addListener(updatePreference);
+    return () => mediaQuery.removeListener(updatePreference);
+  }, []);
 
   const loadCatalog = async () => {
     setLoading(true);
@@ -454,26 +472,39 @@ function CatalogInner({ slug }) {
     }
     openProduct(product);
   };
+  const clearFeaturedAutoplayResumeTimeout = useCallback(() => {
+    if (featuredAutoplayResumeTimeoutRef.current) {
+      window.clearTimeout(featuredAutoplayResumeTimeoutRef.current);
+      featuredAutoplayResumeTimeoutRef.current = null;
+    }
+  }, []);
+
+  const pauseFeaturedAutoplay = useCallback((options = {}) => {
+    const { resumeDelayMs = 6000, fromTouch = false } = options;
+    setIsFeaturedAutoplayPaused(true);
+    if (fromTouch) featuredTouchInteractionRef.current = true;
+    clearFeaturedAutoplayResumeTimeout();
+    if (resumeDelayMs <= 0) return;
+    featuredAutoplayResumeTimeoutRef.current = window.setTimeout(() => {
+      featuredTouchInteractionRef.current = false;
+      setIsFeaturedAutoplayPaused(false);
+      featuredAutoplayResumeTimeoutRef.current = null;
+    }, resumeDelayMs);
+  }, [clearFeaturedAutoplayResumeTimeout]);
 
   const featuredProducts = useMemo(() => {
     const visibleProducts = Array.isArray(products)
       ? products.filter((product) => getProductCommercialState(product) !== 'hidden')
       : [];
-    const prioritized = [
-      ...visibleProducts.filter((product) => product?.isMainFeatured === true || product?.is_main_featured === true),
-      ...visibleProducts.filter((product) =>
-        product?.isMainFeatured !== true &&
-        product?.is_main_featured !== true &&
-        (product?.isFeatured === true || product?.is_featured === true || product?.featured === true)
-      ),
-    ];
-    const seen = new Set();
-    const explicitFeatured = prioritized.filter((product) => {
-      const key = product?.id || product?.publicCode || product?.name;
-      if (!key || seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    }).slice(0, 3);
+    const explicitFeatured = visibleProducts
+      .filter((product) =>
+        product?.isMainFeatured ||
+        product?.is_main_featured ||
+        product?.isFeatured ||
+        product?.is_featured ||
+        product?.featured
+      )
+      .slice(0, 3);
     if (explicitFeatured.length > 0) return explicitFeatured;
     return [...visibleProducts]
       .sort((a, b) => {
@@ -494,6 +525,25 @@ function CatalogInner({ slug }) {
     }
     setActiveFeaturedIndex((current) => Math.min(current, featuredProducts.length - 1));
   }, [featuredProducts.length]);
+
+  useEffect(() => {
+    if (!isFeaturedHovered && !featuredTouchInteractionRef.current) {
+      setIsFeaturedAutoplayPaused(false);
+    }
+  }, [isFeaturedHovered, featuredProducts.length]);
+
+  useEffect(() => {
+    if (featuredProducts.length <= 1 || prefersReducedMotion || isFeaturedAutoplayPaused || isFeaturedHovered) {
+      return undefined;
+    }
+    const intervalId = window.setInterval(() => {
+      setActiveFeaturedIndex((current) => {
+        if (featuredProducts.length <= 0) return 0;
+        return current >= featuredProducts.length - 1 ? 0 : current + 1;
+      });
+    }, 6000);
+    return () => window.clearInterval(intervalId);
+  }, [featuredProducts.length, isFeaturedAutoplayPaused, isFeaturedHovered, prefersReducedMotion]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || featuredProducts.length <= 1) return undefined;
@@ -529,9 +579,10 @@ function CatalogInner({ slug }) {
 
   const handleFeaturedTouchStart = useCallback((e) => {
     featuredSwipeTriggeredRef.current = false;
+    pauseFeaturedAutoplay({ resumeDelayMs: 8000, fromTouch: true });
     featuredTouchStartX.current = e?.touches?.[0]?.clientX ?? 0;
     featuredTouchEndX.current = featuredTouchStartX.current;
-  }, []);
+  }, [pauseFeaturedAutoplay]);
 
   const handleFeaturedTouchMove = useCallback((e) => {
     featuredTouchEndX.current = e?.touches?.[0]?.clientX ?? 0;
@@ -545,6 +596,10 @@ function CatalogInner({ slug }) {
     if (diff > 0) goNextFeatured();
     else goPrevFeatured();
   }, [featuredProducts.length, goNextFeatured, goPrevFeatured]);
+
+  useEffect(() => () => {
+    clearFeaturedAutoplayResumeTimeout();
+  }, [clearFeaturedAutoplayResumeTimeout]);
 
   if (loading) {
     return (
@@ -597,9 +652,9 @@ function CatalogInner({ slug }) {
   const activeFeaturedTitle = isRestaurant && (activeFeaturedProduct?.isMainFeatured === true || activeFeaturedProduct?.is_main_featured === true)
     ? '🍽️ Menú del día'
     : '🔥 Destacado';
-  const mainFeaturedPrimaryCta = isRestaurant ? 'Pedir por WhatsApp' : 'Ver producto';
-  const mainFeaturedSecondaryCta = isRestaurant ? 'Ver producto' : 'Consultar por WhatsApp';
-  const hasMainFeaturedWhatsApp = !!business?.whatsapp?.replace(/\D/g, '');
+  const featuredPrimaryCta = isRestaurant ? 'Pedir por WhatsApp' : 'Ver producto';
+  const featuredSecondaryCta = isRestaurant ? 'Ver producto' : 'Consultar por WhatsApp';
+  const hasFeaturedWhatsApp = !!business?.whatsapp?.replace(/\D/g, '');
   const activeFeaturedDescription = (() => {
     const raw = String(activeFeaturedProduct?.description || '').trim();
     if (!raw) return '';
@@ -645,7 +700,7 @@ function CatalogInner({ slug }) {
           host,
         })
       : null;
-  const openMainFeaturedWhatsApp = (product) => {
+  const openFeaturedWhatsApp = (product) => {
     if (!product) return;
     const url = buildSingleWhatsAppUrl(product);
     if (url) openWhatsAppUrl(url);
@@ -710,6 +765,17 @@ function CatalogInner({ slug }) {
         <div className="w-full px-4 pt-4 lg:max-w-5xl lg:mx-auto">
           <section
             className="overflow-hidden rounded-[28px] border shadow-sm"
+            onMouseEnter={() => {
+              clearFeaturedAutoplayResumeTimeout();
+              setIsFeaturedHovered(true);
+              setIsFeaturedAutoplayPaused(true);
+            }}
+            onMouseLeave={() => {
+              setIsFeaturedHovered(false);
+              if (!featuredTouchInteractionRef.current) {
+                setIsFeaturedAutoplayPaused(false);
+              }
+            }}
             style={{
               background: catalogTheme.sectionBg,
               borderColor: catalogTheme.borderColor,
@@ -727,7 +793,7 @@ function CatalogInner({ slug }) {
                     handleFeaturedOpen(activeFeaturedProduct);
                   }
                 }}
-                className="relative block w-full min-h-[240px] overflow-hidden bg-gray-100 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+                className="relative block h-[260px] w-full overflow-hidden bg-gray-100 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 md:h-[320px] lg:h-[360px]"
                 aria-label={`Ver ${activeFeaturedProduct?.name || 'producto destacado'}`}
                 onTouchStart={handleFeaturedTouchStart}
                 onTouchMove={handleFeaturedTouchMove}
@@ -745,7 +811,7 @@ function CatalogInner({ slug }) {
                     fetchPriority="high"
                   />
                 ) : (
-                  <div className="flex h-full min-h-[240px] items-center justify-center">
+                  <div className="flex h-full w-full items-center justify-center">
                     <Icon name={isRestaurant ? 'UtensilsCrossed' : 'Sparkles'} size={44} color="#9CA3AF" />
                   </div>
                 )}
@@ -755,6 +821,7 @@ function CatalogInner({ slug }) {
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
+                        pauseFeaturedAutoplay({ resumeDelayMs: 8000 });
                         goPrevFeatured();
                       }}
                       className="absolute left-3 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur-sm transition-all hover:bg-black/60 active:scale-95"
@@ -766,6 +833,7 @@ function CatalogInner({ slug }) {
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
+                        pauseFeaturedAutoplay({ resumeDelayMs: 8000 });
                         goNextFeatured();
                       }}
                       className="absolute right-3 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur-sm transition-all hover:bg-black/60 active:scale-95"
@@ -780,6 +848,7 @@ function CatalogInner({ slug }) {
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
+                            pauseFeaturedAutoplay({ resumeDelayMs: 8000 });
                             goToFeatured(index);
                           }}
                           className="h-2.5 w-2.5 rounded-full transition-all"
@@ -840,18 +909,18 @@ function CatalogInner({ slug }) {
                 <div className="mt-5 flex flex-col sm:flex-row gap-3">
                   <button
                     type="button"
-                    onClick={() => ((isRestaurant && hasMainFeaturedWhatsApp) ? openMainFeaturedWhatsApp(activeFeaturedProduct) : openProduct(activeFeaturedProduct))}
+                    onClick={() => ((isRestaurant && hasFeaturedWhatsApp) ? openFeaturedWhatsApp(activeFeaturedProduct) : openProduct(activeFeaturedProduct))}
                     className="inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-3 text-sm font-bold text-white transition-all active:scale-[0.98]"
                     style={{ background: `linear-gradient(135deg, ${primaryColor}, ${primaryColorDark})` }}
                   >
-                    <Icon name={(isRestaurant && hasMainFeaturedWhatsApp) ? 'MessageCircle' : 'Eye'} size={16} color="#FFFFFF" />
-                    {(isRestaurant && hasMainFeaturedWhatsApp) ? mainFeaturedPrimaryCta : 'Ver producto'}
+                    <Icon name={(isRestaurant && hasFeaturedWhatsApp) ? 'MessageCircle' : 'Eye'} size={16} color="#FFFFFF" />
+                    {(isRestaurant && hasFeaturedWhatsApp) ? featuredPrimaryCta : 'Ver producto'}
                   </button>
 
-                  {(!isRestaurant || hasMainFeaturedWhatsApp) && (
+                  {(!isRestaurant || hasFeaturedWhatsApp) && (
                     <button
                       type="button"
-                      onClick={() => (isRestaurant ? openProduct(activeFeaturedProduct) : openMainFeaturedWhatsApp(activeFeaturedProduct))}
+                      onClick={() => (isRestaurant ? openProduct(activeFeaturedProduct) : openFeaturedWhatsApp(activeFeaturedProduct))}
                       className="inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-3 text-sm font-bold transition-all active:scale-[0.98]"
                       style={{
                         background: catalogTheme.cardBg,
@@ -860,7 +929,7 @@ function CatalogInner({ slug }) {
                       }}
                     >
                       <Icon name={isRestaurant ? 'Eye' : 'MessageCircle'} size={16} color="currentColor" />
-                      {mainFeaturedSecondaryCta}
+                      {featuredSecondaryCta}
                     </button>
                   )}
                 </div>
