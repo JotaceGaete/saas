@@ -103,16 +103,46 @@ async function handleCatalogHtml(request) {
   }
 
   const supabase = createClient(supabaseUrl, supabaseAnonKey);
-  const { data: row, error } = await supabase
+
+  // Selección completa — incluye columnas que pueden no estar en las TypeScript types
+  // (og_image_url, country_code, region, seo_family_key, seo_content_override, seo_content_ai).
+  // Si el SELECT falla por columna inexistente, reintentamos con columnas mínimas garantizadas.
+  const FULL_SELECT =
+    'id, name, description, slug, logo_url, cover_image_url, design_settings, og_image_url, city, region, country, country_code, currency, whatsapp, updated_at, rubro_id, seo_family_key, seo_content_override, seo_content_ai, wa_rubros(name, slug)';
+  const SAFE_SELECT =
+    'id, name, description, slug, logo_url, cover_image_url, design_settings, city, country, currency, whatsapp, updated_at, rubro_id';
+
+  let { data: row, error } = await supabase
     .from('wa_businesses')
-    .select(
-      'id, name, description, slug, logo_url, cover_image_url, design_settings, og_image_url, city, region, country, country_code, currency, whatsapp, updated_at, rubro_id, seo_family_key, seo_content_override, seo_content_ai, wa_rubros(name, slug)'
-    )
+    .select(FULL_SELECT)
     .eq('slug', slug)
     .eq('is_active', true)
     .maybeSingle();
 
-  if (error || !row) {
+  if (error) {
+    console.error('[seo] full-select error — retrying with safe columns', {
+      slug,
+      code: error.code,
+      message: error.message,
+    });
+    const retry = await supabase
+      .from('wa_businesses')
+      .select(SAFE_SELECT)
+      .eq('slug', slug)
+      .eq('is_active', true)
+      .maybeSingle();
+    row = retry.data;
+    if (retry.error) {
+      console.error('[seo] safe-select also failed', {
+        slug,
+        code: retry.error.code,
+        message: retry.error.message,
+      });
+    }
+  }
+
+  if (!row) {
+    console.log('[seo] no row found for slug:', slug, '— serving index.html');
     // Siempre servimos index.html con 200 explícito para evitar que Vercel haga
     // fall-through al catch-all /((?!api/).*) → index.html. Un cuerpo vacío con
     // 404 provoca ese fall-through y el usuario ve la SPA sin OG tags.
@@ -257,6 +287,7 @@ async function handleCatalogHtml(request) {
       'Content-Type': 'text/html; charset=utf-8',
       'Cache-Control': 'public, s-maxage=120, stale-while-revalidate=600',
       'X-Catalog-Og-Source': 'seo-handler-v2',
+      'X-Catalog-Slug': slug,
     },
   });
 }
