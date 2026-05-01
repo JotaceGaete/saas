@@ -136,6 +136,47 @@ function pickOgPreviewUrl(row, ds) {
 }
 
 /**
+ * Descarga una imagen remota y la devuelve como Buffer con su Content-Type.
+ * Usado para servir og_image_url directamente (sin 302) — WhatsApp no sigue redirects.
+ * @returns {{ ok: boolean, buffer: Buffer|null, contentType: string|null, reason: string }}
+ */
+async function proxyImageAsBuffer(url) {
+  if (!url || !/^https?:\/\//i.test(url)) {
+    return { ok: false, buffer: null, contentType: null, reason: 'invalid_or_missing_url' };
+  }
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), REMOTE_IMAGE_FETCH_MS);
+  try {
+    const res = await fetch(url, {
+      redirect: 'follow',
+      signal: controller.signal,
+      headers: { Accept: 'image/jpeg,image/png,image/webp,image/gif,*/*;q=0.8' },
+    });
+    if (!res.ok) return { ok: false, buffer: null, contentType: null, reason: `http_${res.status}` };
+    const len = res.headers.get('content-length');
+    if (len && Number(len) > MAX_IMAGE_BYTES) {
+      return { ok: false, buffer: null, contentType: null, reason: 'content_length_too_large' };
+    }
+    const ab = await res.arrayBuffer();
+    if (ab.byteLength === 0 || ab.byteLength > MAX_IMAGE_BYTES) {
+      return { ok: false, buffer: null, contentType: null, reason: 'body_size_invalid' };
+    }
+    if (!isSupportedRasterBuffer(ab)) {
+      return { ok: false, buffer: null, contentType: null, reason: 'unsupported_or_corrupt_image_magic' };
+    }
+    const ct = (res.headers.get('content-type') || 'image/jpeg').split(';')[0].trim().toLowerCase();
+    if (!ct.startsWith('image/')) {
+      return { ok: false, buffer: null, contentType: null, reason: 'not_image_content_type' };
+    }
+    return { ok: true, buffer: Buffer.from(ab), contentType: ct, reason: 'ok' };
+  } catch (e) {
+    return { ok: false, buffer: null, contentType: null, reason: e?.name === 'AbortError' ? 'timeout' : 'fetch_error' };
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+/**
  * Carga una imagen remota de forma validada. Sin esto, resvg puede fallar o rasterizar mal con bytes corruptos.
  * @returns {{ ok: boolean, dataUri: string | null, reason?: string }}
  */
@@ -525,30 +566,40 @@ export async function GET(request) {
     });
 
     // Prioridad 1: imagen de vista previa de WhatsApp cargada explícitamente.
-    // Si existe, se devuelve como redirect 302 en lugar de generar el SVG.
+    // Se sirve como PROXY (bytes directos, no 302) — WhatsApp no sigue redirects
+    // desde og:image y mostraría tarjeta pequeña si se devuelve un Location header.
+    // Si el proxy falla (timeout, imagen corrupta, etc.) cae al pipeline SVG→PNG.
     const ogPreviewUrl = pickOgPreviewUrl(row, ds);
     if (ogPreviewUrl) {
-      logOgCatalog('render', {
+      const proxy = await proxyImageAsBuffer(ogPreviewUrl);
+      if (proxy.ok) {
+        logOgCatalog('render', {
+          slug,
+          businessId: row.id,
+          storeName: row.name,
+          renderMode: 'og_preview_proxy',
+          ogPreviewUrl,
+          contentType: proxy.contentType,
+          bytes: proxy.buffer.length,
+          coverOk: false,
+          logoOk: false,
+        });
+        return new Response(proxy.buffer, {
+          status: 200,
+          headers: {
+            'Content-Type': proxy.contentType,
+            'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=86400',
+            'X-OG-Source': 'og_image_url_proxy',
+          },
+        });
+      }
+      logOgCatalog('og_preview_proxy_failed', {
         slug,
         businessId: row.id,
-        storeName: row.name,
-        renderMode: 'og_preview_redirect',
         ogPreviewUrl,
-        coverUrl: null,
-        logoUrl: null,
-        coverOk: false,
-        logoOk: false,
-        coverReason: null,
-        logoReason: null,
+        reason: proxy.reason,
       });
-      return new Response(null, {
-        status: 302,
-        headers: {
-          Location: ogPreviewUrl,
-          'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=3600',
-          'X-OG-Source': 'og_image_url',
-        },
-      });
+      // Proxy falló: continuar con pipeline SVG→PNG usando portada/logo.
     }
 
     const storeName = String(row.name || 'Tu tienda');

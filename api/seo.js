@@ -247,6 +247,7 @@ async function handleCatalogHtml(request) {
     `<meta property="og:description" content="${metaOgDesc}" />`,
     `<meta property="og:image" content="${escapeHtmlCatalog(ogImageHttps)}" />`,
     ogImageSecure,
+    `<meta property="og:image:type" content="image/png" />`,
     `<meta property="og:image:width" content="1200" />`,
     `<meta property="og:image:height" content="630" />`,
     `<meta property="og:locale" content="${metaOgLocale}" />`,
