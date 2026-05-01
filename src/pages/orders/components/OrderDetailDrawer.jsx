@@ -55,9 +55,7 @@ export default function OrderDetailDrawer({
     statusOptions.find((option) => option?.key === currentOrderStatus)?.label || 'Pedido';
   const currentPaymentStatusLabel =
     paymentStatusOptions.find((option) => option?.key === currentPaymentStatus)?.label || 'Pendiente';
-  const printLegend = String(
-    business?.print_legend ?? business?.printLegend ?? 'Gracias por tu pedido 🙌',
-  ).trim() || 'Gracias por tu pedido 🙌';
+  const printLegend = business?.print_legend || 'Gracias por tu pedido 🙌';
   const printableItems = Array.isArray(order?.items) ? order.items : [];
   const handlePrint = () => {
     window.print();
@@ -158,8 +156,9 @@ export default function OrderDetailDrawer({
           .order-print-sheet .receipt-legend {
             text-align: center !important;
             font-size: 11px !important;
-            font-style: italic !important;
             line-height: 1.4 !important;
+            white-space: pre-wrap !important;
+            word-break: break-word !important;
           }
         }
       `}</style>
@@ -444,7 +443,7 @@ export default function OrderDetailDrawer({
 
           <div
             className="receipt-legend"
-            style={{ borderTop: '1px dashed #000', marginTop: '10px', paddingTop: '10px', textAlign: 'center', fontSize: '11px', fontStyle: 'italic' }}
+            style={{ borderTop: '1px dashed #000', marginTop: '10px', paddingTop: '10px', textAlign: 'center', fontSize: '11px', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
           >
             {printLegend}
           </div>

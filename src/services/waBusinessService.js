@@ -383,6 +383,8 @@ const mapBusinessFromDb = (row) => {
   instagramUrl: row?.instagram_url || null,
   tiktokUrl: normalizeTikTokUrl(row?.tiktok_url),
   facebookUrl: row?.facebook_url || null,
+  printLegend: row?.print_legend || null,
+  print_legend: row?.print_legend || null,
   designSettings,
   orderMessageTemplate: row?.order_message_template || null,
   planSlug: row?.plan_slug || 'starter',
@@ -728,6 +730,11 @@ export async function updateBusiness(businessId, updates) {
   if (updates?.tiktokUrl    !== undefined) dbUpdates.tiktok_url    = normalizeTikTokUrl(updates.tiktokUrl);
   if (updates?.facebookUrl  !== undefined) dbUpdates.facebook_url  = normalizeSharedSocialUrl(updates.facebookUrl,  'https://facebook.com');
   if (updates?.businessMode !== undefined)     dbUpdates.business_mode = updates?.businessMode;
+  if (updates?.printLegend !== undefined || updates?.print_legend !== undefined) {
+    const rawPrintLegend = updates?.printLegend !== undefined ? updates?.printLegend : updates?.print_legend;
+    const normalizedPrintLegend = String(rawPrintLegend ?? '').trim();
+    dbUpdates.print_legend = normalizedPrintLegend || null;
+  }
   if (updates?.planSlug !== undefined)         dbUpdates.plan_slug = updates?.planSlug;
   if (updates?.planExpiresAt !== undefined)    dbUpdates.plan_expires_at = updates?.planExpiresAt ?? null;
   if (updates?.trialExpiresAt !== undefined)   dbUpdates.trial_expires_at = updates?.trialExpiresAt ?? null;

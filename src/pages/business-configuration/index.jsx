@@ -31,6 +31,7 @@ import BusinessCategoriesManager from './components/BusinessCategoriesManager';
 import { BUSINESS_MODES, getRecommendedBusinessModeFromRubro } from '../../lib/business-mode';
 
 const BUSINESS_DESCRIPTION_MAX = 280;
+const PRINT_LEGEND_MAX = 180;
 
 /** Línea base para detectar cambios sin depender del ciclo de setState. */
 function buildSavedConfigSnapshotFromBusiness(business) {
@@ -80,6 +81,7 @@ function buildSavedConfigSnapshotFromBusiness(business) {
       name: business?.name || '',
       slug: business?.slug || '',
       description: business?.description || '',
+      printLegend: business?.printLegend || business?.print_legend || '',
       whatsapp: business?.whatsapp || '',
       email: business?.email || '',
       address: business?.address || '',
@@ -249,6 +251,7 @@ export default function BusinessConfiguration() {
     name: '',
     slug: '',
     description: '',
+    printLegend: '',
     whatsapp: '',
     email: '',
     address: '',
@@ -468,6 +471,7 @@ export default function BusinessConfiguration() {
         name: business?.name || '',
         slug: business?.slug || '',
         description: business?.description || '',
+        printLegend: business?.printLegend || business?.print_legend || '',
         whatsapp: business?.whatsapp || '',
         email: business?.email || '',
         address: business?.address || '',
@@ -670,6 +674,7 @@ export default function BusinessConfiguration() {
       name: form?.name?.trim() || business?.name,
       slug: nextSlug || business?.slug,
       description: form?.description,
+      printLegend: form?.printLegend?.trim() || null,
       whatsapp: form?.whatsapp,
       email: form?.email,
       address: parsedAddr.address,
@@ -748,6 +753,7 @@ export default function BusinessConfiguration() {
       name: business?.name || '',
       slug: business?.slug || '',
       description: business?.description || '',
+      printLegend: business?.printLegend || business?.print_legend || '',
       whatsapp: business?.whatsapp || '',
       email: business?.email || '',
       address: business?.address || '',
@@ -1308,6 +1314,26 @@ export default function BusinessConfiguration() {
                         />
                         <p className="text-right text-[11px] text-slate-400 tabular-nums mt-1.5 font-[family-name:var(--font-caption)]">
                           {(form?.description ?? '').length}/{BUSINESS_DESCRIPTION_MAX}
+                        </p>
+                      </div>
+                    </SettingsField>
+
+                    <SettingsField
+                      label="Leyenda del ticket (opcional)"
+                      hint="Se imprime al final del ticket. Ideal para 2 o 3 líneas cortas."
+                    >
+                      <div className="relative">
+                        <textarea
+                          rows={3}
+                          maxLength={PRINT_LEGEND_MAX}
+                          className={inputClass}
+                          style={{ ...inputStyle, whiteSpace: 'pre-wrap' }}
+                          placeholder="Gracias por tu pedido 🙌"
+                          value={form?.printLegend ?? ''}
+                          onChange={e => handleFormChange('printLegend', e?.target?.value)}
+                        />
+                        <p className="text-right text-[11px] text-slate-400 tabular-nums mt-1.5 font-[family-name:var(--font-caption)]">
+                          {(form?.printLegend ?? '').length}/{PRINT_LEGEND_MAX}
                         </p>
                       </div>
                     </SettingsField>
