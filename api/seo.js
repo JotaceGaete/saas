@@ -113,26 +113,26 @@ async function handleCatalogHtml(request) {
     .maybeSingle();
 
   if (error || !row) {
-    // /:slug puede coincidir con una ruta de app que escapó al catch-all de
-    // Vercel. Servimos index.html para que React Router lo maneje en cliente.
-    if (publicPath === 'short') {
-      try {
-        const indexUrl = `${origin}/index.html`;
-        const res = await fetch(indexUrl, { headers: { Accept: 'text/html' } });
-        if (!res.ok) throw new Error(`index.html ${res.status}`);
-        const html = await res.text();
-        return new Response(html, {
-          status: 200,
-          headers: {
-            'Content-Type': 'text/html; charset=utf-8',
-            'Cache-Control': 'no-store, no-cache',
-          },
-        });
-      } catch (_) {
-        return new Response(null, { status: 404 });
-      }
+    // Siempre servimos index.html con 200 explícito para evitar que Vercel haga
+    // fall-through al catch-all /((?!api/).*) → index.html. Un cuerpo vacío con
+    // 404 provoca ese fall-through y el usuario ve la SPA sin OG tags.
+    // React Router maneja el caso "catálogo no encontrado" en cliente.
+    try {
+      const indexUrl = `${origin}/index.html`;
+      const res = await fetch(indexUrl, { headers: { Accept: 'text/html' } });
+      if (!res.ok) throw new Error(`index.html ${res.status}`);
+      const html = await res.text();
+      return new Response(html, {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'no-store, no-cache',
+          'X-Catalog-Og-Source': 'seo-handler-fallback',
+        },
+      });
+    } catch (_) {
+      return new Response('Not found', { status: 404 });
     }
-    return new Response(null, { status: 404 });
   }
 
   const seoInput = {

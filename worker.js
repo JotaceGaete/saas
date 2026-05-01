@@ -125,7 +125,7 @@ export default {
     const supabaseUrl = (env?.SUPABASE_URL || '').replace(/\/$/, '');
     const supabaseKey = env?.SUPABASE_ANON_KEY || '';
     const origin = url.origin;
-    const canonicalUrl = `${CATALOG_ORIGIN}/${slug}`;
+    const canonicalUrl = `${CATALOG_ORIGIN}/catalogo/${slug}`;
 
     const seoInput = {
       storeName: 'Catálogo',
