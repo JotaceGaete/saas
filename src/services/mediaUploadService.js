@@ -1,4 +1,5 @@
 import { getValidToken } from '../lib/auth/getValidToken';
+import { compressImageForUpload } from '../utils/imageUploadUtils';
 
 const DEFAULT_UPLOAD_TIMEOUT_MS = 30000;
 const DEFAULT_PRODUCT_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
@@ -91,6 +92,14 @@ export async function uploadToMediaService(file, {
   }
 
   const uploadType = normalizeImageUploadType(type);
+  let fileToUpload = file;
+  if (uploadType === 'product') {
+    try {
+      fileToUpload = await compressImageForUpload(file, 'product');
+    } catch {
+      fileToUpload = file;
+    }
+  }
   const token = await getValidToken();
   if (!token) {
     throw new Error('Tu sesion vencio. Vuelve a iniciar sesion para subir imagenes.');
@@ -106,8 +115,8 @@ export async function uploadToMediaService(file, {
       businessId,
       productId: productId !== undefined && productId !== null && productId !== '' ? productId : undefined,
       index: index !== undefined && index !== null && index !== '' ? Number(index) : undefined,
-      fileName: typeof file?.name === 'string' && file.name.trim() ? file.name.trim() : `upload-${Date.now()}.jpg`,
-      contentType: String(file?.type || 'image/jpeg').trim() || 'image/jpeg',
+      fileName: typeof fileToUpload?.name === 'string' && fileToUpload.name.trim() ? fileToUpload.name.trim() : `upload-${Date.now()}.jpg`,
+      contentType: String(fileToUpload?.type || 'image/jpeg').trim() || 'image/jpeg',
     };
 
     const signedUrlResponse = await fetch(getSupabaseFunctionUrl('upload-image-r2'), {
@@ -149,7 +158,7 @@ export async function uploadToMediaService(file, {
       headers: {
         'Content-Type': requestBody.contentType,
       },
-      body: file,
+      body: fileToUpload,
       signal: controller.signal,
     });
 
@@ -163,7 +172,7 @@ export async function uploadToMediaService(file, {
       url: signedUrlPayload.publicUrl.trim(),
       key: typeof signedUrlPayload?.key === 'string' ? signedUrlPayload.key.trim() : '',
       contentType: requestBody.contentType,
-      size: Number.isFinite(Number(file?.size)) ? Number(file.size) : null,
+      size: Number.isFinite(Number(fileToUpload?.size)) ? Number(fileToUpload.size) : null,
     };
   } catch (error) {
     throw normalizeMediaUploadError(error, 'No se pudo subir la imagen a R2.');

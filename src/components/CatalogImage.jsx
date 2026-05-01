@@ -102,6 +102,7 @@ export default function CatalogImage({
           style={{
             ...imgStyle,
             opacity: loaded ? loadedOpacity : 0,
+            visibility: loaded ? 'visible' : 'hidden',
             transition: 'opacity 220ms ease-out, transform 300ms ease-out',
           }}
           loading={loading}

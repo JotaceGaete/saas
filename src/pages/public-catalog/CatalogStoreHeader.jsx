@@ -18,7 +18,6 @@ import React, { useState, useEffect } from 'react';
 import Icon from '../../components/AppIcon';
 import CatalogImage from '../../components/CatalogImage';
 import { cfImageUrl } from '../../utils/cloudflareImage';
-import { useResponsiveCfImageProfile } from '../../hooks/useResponsiveCfImageProfile';
 import { recordCatalogWhatsAppClick } from '../../services/waBusinessService';
 import { getPublicCatalogRelativePath } from '../../config/appUrl';
 import { normalizeTikTokUrl } from '../../utils/socialLinks';
@@ -190,8 +189,6 @@ export default function CatalogStoreHeader({
 }) {
   const [mobileStoreInfoOpen, setMobileStoreInfoOpen] = useState(false);
   const [desktopInfoOpen, setDesktopInfoOpen] = useState(false);
-  const cfCoverProfile = useResponsiveCfImageProfile();
-
   // Reset accordion when slug changes
   useEffect(() => { setMobileStoreInfoOpen(false); }, [slug]);
 
@@ -410,7 +407,7 @@ export default function CatalogStoreHeader({
             <div className="w-[42%] flex-shrink-0 relative overflow-hidden">
               {business?.coverImageUrl ? (
                 <CatalogImage
-                  src={cfImageUrl(business.coverImageUrl, cfCoverProfile)}
+                  src={cfImageUrl(business.coverImageUrl, 'cover')}
                   originalSrc={business.coverImageUrl}
                   alt=""
                   role="presentation"
@@ -447,7 +444,7 @@ export default function CatalogStoreHeader({
           {business?.coverImageUrl && (
             <>
               <CatalogImage
-                src={cfImageUrl(business.coverImageUrl, cfCoverProfile)}
+                src={cfImageUrl(business.coverImageUrl, 'cover')}
                 originalSrc={business.coverImageUrl}
                 className="absolute inset-0 h-full w-full"
                 imgClassName="absolute inset-0 h-full w-full"
@@ -460,7 +457,7 @@ export default function CatalogStoreHeader({
                 loadedOpacity={0.75}
               />
               <CatalogImage
-                src={cfImageUrl(business.coverImageUrl, cfCoverProfile)}
+                src={cfImageUrl(business.coverImageUrl, 'cover')}
                 originalSrc={business.coverImageUrl}
                 alt=""
                 role="presentation"

@@ -22,7 +22,6 @@ import { hasViralBranding, getOrderMessageBrandingSuffix } from '../../utils/bra
 import { isRestaurantBusiness } from '../../utils/businessType';
 import { normalizeOptionalCustomerPhone } from '../../utils/customerPhone';
 import { cfImageUrl, isCfTransformableUrl } from '../../utils/cloudflareImage';
-import { useResponsiveCfImageProfile } from '../../hooks/useResponsiveCfImageProfile';
 import CheckoutPhoneOptional from '../../components/checkout/CheckoutPhoneOptional';
 import { getCountryLabels, DELIVERY_ADDRESS_FIELD_HINT } from '../../config/country';
 import { resolveCatalogSeoContent } from '../../utils/catalogDynamicSeo';
@@ -76,6 +75,37 @@ function getProductCommercialState(product) {
   if (product?.isActive === false) return 'hidden';
   if (product?.isSoldOut === true) return 'sold_out';
   return 'available';
+}
+
+function logCfCacheStatusIfPossible(url) {
+  if (!import.meta.env.DEV) return;
+  if (typeof window === 'undefined' || !url || typeof fetch !== 'function') return;
+
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 1800);
+
+  fetch(url, {
+    method: 'HEAD',
+    cache: 'force-cache',
+    signal: controller.signal,
+  })
+    .then((response) => {
+      const cacheStatus = response.headers.get('cf-cache-status');
+      console.debug('[CatalogImageDebug] cf-cache-status', {
+        optimizedUrl: url,
+        cacheStatus: cacheStatus || 'unavailable',
+        status: response.status,
+      });
+    })
+    .catch((error) => {
+      console.debug('[CatalogImageDebug] cf-cache-status unavailable', {
+        optimizedUrl: url,
+        reason: error?.name || error?.message || 'unknown',
+      });
+    })
+    .finally(() => {
+      window.clearTimeout(timeoutId);
+    });
 }
 
 
@@ -254,6 +284,41 @@ function CatalogInner({ slug }) {
       return dateB - dateA;
     });
   }, [filteredProducts]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || sortedProducts.length <= 0) return undefined;
+
+    const preloadUrls = sortedProducts
+      .slice(0, isDesktop ? 6 : 4)
+      .map((product) => getProductImages(product)?.[0] || null)
+      .filter(Boolean)
+      .map((imageUrl) => cfImageUrl(imageUrl, 'card'));
+
+    if (preloadUrls.length <= 0) return undefined;
+    const isDev = import.meta.env.DEV;
+
+    const preloaders = preloadUrls.map((optimizedUrl, index) => {
+      if (isDev) {
+        console.debug('[CatalogImageDebug] preload optimizedUrl', { optimizedUrl, index });
+      }
+      const img = new window.Image();
+      img.decoding = 'async';
+      img.src = optimizedUrl;
+      return img;
+    });
+
+    if (isDev) {
+      preloadUrls.slice(0, 2).forEach((optimizedUrl) => {
+        logCfCacheStatusIfPossible(optimizedUrl);
+      });
+    }
+
+    return () => {
+      preloaders.forEach((img) => {
+        img.src = '';
+      });
+    };
+  }, [isDesktop, sortedProducts]);
 
   const hasActiveFilters = searchQuery?.trim() || (useCategories && selectedCategory !== 'all') || priceRange?.[0] > 0 || priceRange?.[1] < maxPrice;
 
@@ -2204,8 +2269,6 @@ export function ProductModal({ product, products = [], business, slug, formatPri
   const qty = cartItem?.quantity || 0;
   const isSoldOut = productState === 'sold_out';
   const [copiedProductMessage, setCopiedProductMessage] = useState(false);
-  const cfMainProfile = useResponsiveCfImageProfile();
-
   const productImages = getProductImages(product);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [imageLoadError, setImageLoadError] = useState(false);
@@ -2215,7 +2278,7 @@ export function ProductModal({ product, products = [], business, slug, formatPri
 
   useEffect(() => { setSelectedIndex(0); }, [product?.id]);
   const mainUrl = productImages[selectedIndex];
-  const mainUrlOptimized = mainUrl ? cfImageUrl(mainUrl, cfMainProfile) : null;
+  const mainUrlOptimized = mainUrl ? cfImageUrl(mainUrl, 'modal') : null;
   const [useMainDirect, setUseMainDirect] = useState(false);
 
   // Reset error/loaded al cambiar de imagen o de producto
@@ -2223,7 +2286,7 @@ export function ProductModal({ product, products = [], business, slug, formatPri
     setImageLoadError(false);
     setImageLoaded(false);
     setUseMainDirect(false);
-  }, [mainUrl, product?.id, cfMainProfile]);
+  }, [mainUrl, product?.id]);
 
   const goPrev = (e) => { e?.stopPropagation(); setSelectedIndex(i => (i <= 0 ? productImages.length - 1 : i - 1)); };
   const goNext = (e) => { e?.stopPropagation(); setSelectedIndex(i => (i >= productImages.length - 1 ? 0 : i + 1)); };
