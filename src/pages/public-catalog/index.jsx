@@ -107,8 +107,12 @@ function CatalogInner({ slug }) {
   const [priceRange, setPriceRange] = useState([0, 0]);
   const [maxPrice, setMaxPrice] = useState(0);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [activeFeaturedIndex, setActiveFeaturedIndex] = useState(0);
   /** Desktop: si el carril de categorías puede seguir scrolleando a izquierda/derecha (para flechas). */
   const [categoryScrollMore, setCategoryScrollMore] = useState({ left: false, right: false });
+  const featuredTouchStartX = useRef(0);
+  const featuredTouchEndX = useRef(0);
+  const featuredSwipeTriggeredRef = useRef(false);
 
   const { itemCount } = useCart();
   const isDesktop = useIsDesktop();
@@ -443,6 +447,93 @@ function CatalogInner({ slug }) {
     setSelectedProduct(product);
   };
   const closeProduct = () => setSelectedProduct(null);
+  const handleFeaturedOpen = (product) => {
+    if (featuredSwipeTriggeredRef.current) {
+      featuredSwipeTriggeredRef.current = false;
+      return;
+    }
+    openProduct(product);
+  };
+
+  const featuredProducts = useMemo(() => {
+    const visibleProducts = Array.isArray(products)
+      ? products.filter((product) => getProductCommercialState(product) !== 'hidden')
+      : [];
+    const prioritized = [
+      ...visibleProducts.filter((product) => product?.isMainFeatured === true || product?.is_main_featured === true),
+      ...visibleProducts.filter((product) =>
+        product?.isMainFeatured !== true &&
+        product?.is_main_featured !== true &&
+        (product?.isFeatured === true || product?.is_featured === true || product?.featured === true)
+      ),
+    ];
+    const seen = new Set();
+    return prioritized.filter((product) => {
+      const key = product?.id || product?.publicCode || product?.name;
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }).slice(0, 3);
+  }, [products]);
+
+  useEffect(() => {
+    if (featuredProducts.length <= 0) {
+      setActiveFeaturedIndex(0);
+      return;
+    }
+    setActiveFeaturedIndex((current) => Math.min(current, featuredProducts.length - 1));
+  }, [featuredProducts.length]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || featuredProducts.length <= 1) return undefined;
+    const imagesToPreload = featuredProducts
+      .map((product, index) => {
+        if (index === activeFeaturedIndex) return null;
+        const imageUrl = getProductImages(product)?.[0];
+        if (!imageUrl) return null;
+        return cfImageUrl(imageUrl, isDesktop ? 'card' : 'thumbnail');
+      })
+      .filter(Boolean);
+    imagesToPreload.forEach((src) => {
+      const img = new window.Image();
+      img.src = src;
+    });
+    return undefined;
+  }, [activeFeaturedIndex, featuredProducts, isDesktop]);
+
+  const goToFeatured = useCallback((nextIndex) => {
+    setActiveFeaturedIndex(() => {
+      if (featuredProducts.length <= 0) return 0;
+      return ((nextIndex % featuredProducts.length) + featuredProducts.length) % featuredProducts.length;
+    });
+  }, [featuredProducts.length]);
+
+  const goPrevFeatured = useCallback(() => {
+    goToFeatured(activeFeaturedIndex - 1);
+  }, [activeFeaturedIndex, goToFeatured]);
+
+  const goNextFeatured = useCallback(() => {
+    goToFeatured(activeFeaturedIndex + 1);
+  }, [activeFeaturedIndex, goToFeatured]);
+
+  const handleFeaturedTouchStart = useCallback((e) => {
+    featuredSwipeTriggeredRef.current = false;
+    featuredTouchStartX.current = e?.touches?.[0]?.clientX ?? 0;
+    featuredTouchEndX.current = featuredTouchStartX.current;
+  }, []);
+
+  const handleFeaturedTouchMove = useCallback((e) => {
+    featuredTouchEndX.current = e?.touches?.[0]?.clientX ?? 0;
+  }, []);
+
+  const handleFeaturedTouchEnd = useCallback(() => {
+    if (featuredProducts.length <= 1) return;
+    const diff = featuredTouchStartX.current - featuredTouchEndX.current;
+    if (Math.abs(diff) < 50) return;
+    featuredSwipeTriggeredRef.current = true;
+    if (diff > 0) goNextFeatured();
+    else goPrevFeatured();
+  }, [featuredProducts.length, goNextFeatured, goPrevFeatured]);
 
   if (loading) {
     return (
@@ -490,14 +581,16 @@ function CatalogInner({ slug }) {
 
   const storeName = business?.name || 'Catálogo';
   const isRestaurant = isRestaurantBusiness(business);
-  const mainFeaturedProduct = products.find((p) => p?.isMainFeatured && getProductCommercialState(p) !== 'hidden');
-  const mainFeaturedImage = mainFeaturedProduct ? getProductImages(mainFeaturedProduct)?.[0] || null : null;
-  const mainFeaturedTitle = isRestaurant ? '🍽️ Menú del día' : '🔥 Producto destacado';
+  const activeFeaturedProduct = featuredProducts[activeFeaturedIndex] || null;
+  const activeFeaturedImage = activeFeaturedProduct ? getProductImages(activeFeaturedProduct)?.[0] || null : null;
+  const activeFeaturedTitle = isRestaurant && (activeFeaturedProduct?.isMainFeatured === true || activeFeaturedProduct?.is_main_featured === true)
+    ? '🍽️ Menú del día'
+    : '🔥 Destacado';
   const mainFeaturedPrimaryCta = isRestaurant ? 'Pedir por WhatsApp' : 'Ver producto';
   const mainFeaturedSecondaryCta = isRestaurant ? 'Ver producto' : 'Consultar por WhatsApp';
   const hasMainFeaturedWhatsApp = !!business?.whatsapp?.replace(/\D/g, '');
-  const mainFeaturedDescription = (() => {
-    const raw = String(mainFeaturedProduct?.description || '').trim();
+  const activeFeaturedDescription = (() => {
+    const raw = String(activeFeaturedProduct?.description || '').trim();
     if (!raw) return '';
     return raw.length > 140 ? `${raw.slice(0, 137).trim()}...` : raw;
   })();
@@ -541,9 +634,9 @@ function CatalogInner({ slug }) {
           host,
         })
       : null;
-  const openMainFeaturedWhatsApp = () => {
-    if (!mainFeaturedProduct) return;
-    const url = buildSingleWhatsAppUrl(mainFeaturedProduct);
+  const openMainFeaturedWhatsApp = (product) => {
+    if (!product) return;
+    const url = buildSingleWhatsAppUrl(product);
     if (url) openWhatsAppUrl(url);
   };
 
@@ -602,7 +695,7 @@ function CatalogInner({ slug }) {
         onBack={isOwner ? () => navigate('/dashboard') : null}
       />
 
-      {mainFeaturedProduct && (
+      {activeFeaturedProduct && (
         <div className="w-full px-4 pt-4 lg:max-w-5xl lg:mx-auto">
           <section
             className="overflow-hidden rounded-[28px] border shadow-sm"
@@ -613,25 +706,84 @@ function CatalogInner({ slug }) {
             }}
           >
             <div className="grid gap-0 md:grid-cols-[1.1fr_1fr]">
-              <button
-                type="button"
-                onClick={() => openProduct(mainFeaturedProduct)}
-                className="relative block w-full min-h-[240px] bg-gray-100 overflow-hidden text-left"
-                aria-label={`Ver ${mainFeaturedProduct?.name || 'producto destacado'}`}
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => handleFeaturedOpen(activeFeaturedProduct)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    handleFeaturedOpen(activeFeaturedProduct);
+                  }
+                }}
+                className="relative block w-full min-h-[240px] overflow-hidden bg-gray-100 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+                aria-label={`Ver ${activeFeaturedProduct?.name || 'producto destacado'}`}
+                onTouchStart={handleFeaturedTouchStart}
+                onTouchMove={handleFeaturedTouchMove}
+                onTouchEnd={handleFeaturedTouchEnd}
+                style={{ ['--tw-ring-color']: primaryColor }}
               >
-                {mainFeaturedImage ? (
+                {activeFeaturedImage ? (
                   <img
-                    src={cfImageUrl(mainFeaturedImage, isDesktop ? 'card' : 'thumbnail')}
-                    alt={mainFeaturedProduct?.name || 'Producto destacado'}
-                    className="h-full w-full object-cover transition-transform duration-300 hover:scale-105"
-                    onError={buildCfImageErrorHandler(mainFeaturedImage)}
+                    key={`${activeFeaturedProduct?.id || activeFeaturedProduct?.name || 'featured'}-${activeFeaturedIndex}`}
+                    src={cfImageUrl(activeFeaturedImage, isDesktop ? 'card' : 'thumbnail')}
+                    alt={activeFeaturedProduct?.name || 'Producto destacado'}
+                    className="h-full w-full object-cover transition-transform duration-300 md:hover:scale-105"
+                    onError={buildCfImageErrorHandler(activeFeaturedImage)}
+                    loading="eager"
+                    fetchPriority="high"
                   />
                 ) : (
                   <div className="flex h-full min-h-[240px] items-center justify-center">
                     <Icon name={isRestaurant ? 'UtensilsCrossed' : 'Sparkles'} size={44} color="#9CA3AF" />
                   </div>
                 )}
-              </button>
+                {featuredProducts.length > 1 && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        goPrevFeatured();
+                      }}
+                      className="absolute left-3 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur-sm transition-all hover:bg-black/60 active:scale-95"
+                      aria-label="Producto destacado anterior"
+                    >
+                      <Icon name="ChevronLeft" size={20} color="#FFFFFF" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        goNextFeatured();
+                      }}
+                      className="absolute right-3 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur-sm transition-all hover:bg-black/60 active:scale-95"
+                      aria-label="Siguiente producto destacado"
+                    >
+                      <Icon name="ChevronRight" size={20} color="#FFFFFF" />
+                    </button>
+                    <div className="absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-2 rounded-full bg-black/35 px-3 py-1.5 backdrop-blur-sm">
+                      {featuredProducts.map((product, index) => (
+                        <button
+                          key={product?.id || product?.publicCode || `featured-dot-${index}`}
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            goToFeatured(index);
+                          }}
+                          className="h-2.5 w-2.5 rounded-full transition-all"
+                          style={{
+                            backgroundColor: index === activeFeaturedIndex ? '#FFFFFF' : 'rgba(255,255,255,0.45)',
+                            transform: index === activeFeaturedIndex ? 'scale(1.1)' : 'scale(1)',
+                          }}
+                          aria-label={`Ver destacado ${index + 1}: ${product?.name || 'Producto'}`}
+                          aria-pressed={index === activeFeaturedIndex}
+                        />
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
 
               <div className="p-5 sm:p-6 md:p-7 flex flex-col justify-center">
                 <span
@@ -641,43 +793,43 @@ function CatalogInner({ slug }) {
                     color: isRestaurant ? '#C2410C' : '#B45309',
                   }}
                 >
-                  {mainFeaturedTitle}
+                  {activeFeaturedTitle}
                 </span>
 
                 <button
                   type="button"
-                  onClick={() => openProduct(mainFeaturedProduct)}
+                  onClick={() => openProduct(activeFeaturedProduct)}
                   className="mt-4 text-left hover:underline decoration-2 underline-offset-2 focus-visible:outline-none"
                 >
                   <h2 className="text-2xl sm:text-[2rem] font-black tracking-tight" style={{ color: textColor }}>
-                    {mainFeaturedProduct?.name}
+                    {activeFeaturedProduct?.name}
                   </h2>
                 </button>
 
                 <div className="mt-3 flex items-center gap-3 flex-wrap">
                   <span className="text-xl font-black tabular-nums" style={{ color: primaryColorDark }}>
-                    {formatPrice(mainFeaturedProduct?.price)}
+                    {formatPrice(activeFeaturedProduct?.price)}
                   </span>
-                  {mainFeaturedProduct?.category?.trim() && (
+                  {activeFeaturedProduct?.category?.trim() && (
                     <span
                       className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold"
                       style={{ background: catalogTheme.cardBg, color: catalogTheme.chipText, border: `1px solid ${catalogTheme.borderColor}` }}
                     >
-                      {mainFeaturedProduct.category}
+                      {activeFeaturedProduct.category}
                     </span>
                   )}
                 </div>
 
-                {mainFeaturedDescription && (
+                {activeFeaturedDescription && (
                   <p className="mt-3 text-sm sm:text-[15px] leading-6" style={{ color: catalogTheme.isDark ? 'rgba(255,255,255,0.72)' : '#4B5563' }}>
-                    {mainFeaturedDescription}
+                    {activeFeaturedDescription}
                   </p>
                 )}
 
                 <div className="mt-5 flex flex-col sm:flex-row gap-3">
                   <button
                     type="button"
-                    onClick={() => ((isRestaurant && hasMainFeaturedWhatsApp) ? openMainFeaturedWhatsApp() : openProduct(mainFeaturedProduct))}
+                    onClick={() => ((isRestaurant && hasMainFeaturedWhatsApp) ? openMainFeaturedWhatsApp(activeFeaturedProduct) : openProduct(activeFeaturedProduct))}
                     className="inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-3 text-sm font-bold text-white transition-all active:scale-[0.98]"
                     style={{ background: `linear-gradient(135deg, ${primaryColor}, ${primaryColorDark})` }}
                   >
@@ -688,7 +840,7 @@ function CatalogInner({ slug }) {
                   {(!isRestaurant || hasMainFeaturedWhatsApp) && (
                     <button
                       type="button"
-                      onClick={() => (isRestaurant ? openProduct(mainFeaturedProduct) : openMainFeaturedWhatsApp())}
+                      onClick={() => (isRestaurant ? openProduct(activeFeaturedProduct) : openMainFeaturedWhatsApp(activeFeaturedProduct))}
                       className="inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-3 text-sm font-bold transition-all active:scale-[0.98]"
                       style={{
                         background: catalogTheme.cardBg,
