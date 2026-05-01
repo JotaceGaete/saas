@@ -24,9 +24,16 @@ import {
 // Dominio público canónico para catálogos. Debe coincidir con CATALOG_ORIGIN en appUrl.js.
 // Override via env var CATALOG_ORIGIN si se requiere (staging, etc.).
 // Se normaliza: sin trailing slash, sin www (ej. https://www.miralatienda.de → https://miralatienda.de).
-const CATALOG_ORIGIN = (process.env.CATALOG_ORIGIN || 'https://miralatienda.de')
-  .replace(/\/$/, '')
-  .replace(/^(https?:\/\/)www\./, '$1');
+function normalizeUrlOrigin(value) {
+  return String(value || '')
+    .trim()
+    .replace(/\/$/, '')
+    .replace(/^(https?:\/\/)www\./i, '$1');
+}
+
+const CATALOG_ORIGIN = normalizeUrlOrigin(
+  process.env.VITE_PUBLIC_CATALOG_URL || process.env.CATALOG_ORIGIN || 'https://miralatienda.de',
+);
 
 // --- Catálogo (antes catalog-html.js) ---
 
@@ -452,7 +459,7 @@ async function handleSitemap(request) {
     .map((r) => {
       const slug = (r.slug || '').trim();
       if (!slug) return null;
-      const loc = `${CATALOG_ORIGIN}/${slug}`;
+      const loc = `${CATALOG_ORIGIN}/catalogo/${slug}`;
       let lastmod = '';
       if (r.updated_at) {
         try {

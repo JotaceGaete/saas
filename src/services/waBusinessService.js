@@ -1985,6 +1985,7 @@ export async function recordSiteVisit({ path, hostname, attribution = {} } = {})
 
   const visitorId = getOrCreateVisitorId();
   const { data: { session } = { session: null } } = await supabase.auth.getSession().catch(() => ({ data: { session: null } }));
+  if (!session) return { recorded: false, skipped: 'no-session' };
   const body = {
     path: normalizedPath,
     hostname: hostname || (typeof window !== 'undefined' ? window.location.hostname : null),
