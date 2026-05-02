@@ -71,6 +71,10 @@ export function getProductImages(product) {
   return result;
 }
 
+export function getProductCardImage(product) {
+  return product?.cardImageUrl || product?.thumbnailUrl || getProductImages(product)?.[0] || null;
+}
+
 function getProductCommercialState(product) {
   if (product?.isActive === false) return 'hidden';
   if (product?.isSoldOut === true) return 'sold_out';
@@ -290,9 +294,12 @@ function CatalogInner({ slug }) {
 
     const preloadUrls = sortedProducts
       .slice(0, isDesktop ? 6 : 4)
-      .map((product) => getProductImages(product)?.[0] || null)
-      .filter(Boolean)
-      .map((imageUrl) => cfImageUrl(imageUrl, 'card'));
+      .map((product) => {
+        const cardImage = getProductCardImage(product);
+        if (!cardImage) return null;
+        return product?.thumbnailUrl || product?.cardImageUrl ? cardImage : cfImageUrl(cardImage, 'card');
+      })
+      .filter(Boolean);
 
     if (preloadUrls.length <= 0) return undefined;
     const isDev = import.meta.env.DEV;
@@ -558,31 +565,20 @@ function CatalogInner({ slug }) {
     }, resumeDelayMs);
   }, [clearFeaturedAutoplayResumeTimeout]);
 
-  const featuredProducts = useMemo(() => {
-    const visibleProducts = Array.isArray(products)
-      ? products.filter((product) => getProductCommercialState(product) !== 'hidden')
-      : [];
-    const explicitFeatured = visibleProducts
-      .filter((product) =>
-        product?.isMainFeatured ||
-        product?.is_main_featured ||
-        product?.isFeatured ||
-        product?.is_featured ||
-        product?.featured
+  const mainFeaturedProduct = useMemo(() => {
+    if (!Array.isArray(products)) return null;
+    return products.find((product) =>
+      getProductCommercialState(product) !== 'hidden' && (
+        product?.isMainFeatured === true ||
+        product?.is_main_featured === true
       )
-      .slice(0, 3);
-    if (explicitFeatured.length > 0) return explicitFeatured;
-    return [...visibleProducts]
-      .sort((a, b) => {
-        const priceA = Number(a?.price) || 0;
-        const priceB = Number(b?.price) || 0;
-        if (priceA !== priceB) return priceB - priceA;
-        const dateA = new Date(a?.createdAt || 0).getTime();
-        const dateB = new Date(b?.createdAt || 0).getTime();
-        return dateB - dateA;
-      })
-      .slice(0, 3);
+    ) || null;
   }, [products]);
+
+  const featuredProducts = useMemo(
+    () => (mainFeaturedProduct ? [mainFeaturedProduct] : []),
+    [mainFeaturedProduct]
+  );
 
   useEffect(() => {
     if (featuredProducts.length <= 0) {
@@ -667,6 +663,20 @@ function CatalogInner({ slug }) {
     clearFeaturedAutoplayResumeTimeout();
   }, [clearFeaturedAutoplayResumeTimeout]);
 
+  const gridProducts = useMemo(() => {
+    if (!sortedProducts?.length) return [];
+    if (!mainFeaturedProduct?.id) return sortedProducts;
+    return sortedProducts.filter((product) => product?.id !== mainFeaturedProduct.id);
+  }, [mainFeaturedProduct?.id, sortedProducts]);
+
+  const totalGridProducts = useMemo(() => {
+    if (!Array.isArray(products)) return 0;
+    return products.filter((product) =>
+      getProductCommercialState(product) !== 'hidden' &&
+      (!mainFeaturedProduct?.id || product?.id !== mainFeaturedProduct.id)
+    ).length;
+  }, [mainFeaturedProduct?.id, products]);
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 font-catalog antialiased">
@@ -717,7 +727,7 @@ function CatalogInner({ slug }) {
   const activeFeaturedImage = activeFeaturedProduct ? getProductImages(activeFeaturedProduct)?.[0] || null : null;
   const activeFeaturedTitle = isRestaurant && (activeFeaturedProduct?.isMainFeatured === true || activeFeaturedProduct?.is_main_featured === true)
     ? '🍽️ Menú del día'
-    : '🔥 Destacado';
+    : '🔥 Producto destacado';
   const featuredPrimaryCta = isRestaurant ? 'Pedir por WhatsApp' : 'Ver producto';
   const featuredSecondaryCta = isRestaurant ? 'Ver producto' : 'Consultar por WhatsApp';
   const hasFeaturedWhatsApp = !!business?.whatsapp?.replace(/\D/g, '');
@@ -751,6 +761,7 @@ function CatalogInner({ slug }) {
   const ogRegion = detectCatalogRegion(seoInput);
   const canonicalUrl = getPublicCatalogUrl(slug);
   const ogImage = getCatalogOgImageUrl(business, baseUrl);
+  const showGridEmptyState = gridProducts.length === 0 && (!mainFeaturedProduct || hasActiveFilters);
   const jsonLd =
     business && canonicalUrl
       ? buildLocalBusinessJsonLd({
@@ -1196,14 +1207,16 @@ function CatalogInner({ slug }) {
         }}
       >
         {/* Product count */}
-        <p className="text-xs font-medium mb-3" style={{ color: catalogTheme.isDark ? 'rgba(255,255,255,0.4)' : '#9CA3AF' }}>
-          {sortedProducts?.length} {sortedProducts?.length === 1 ? 'producto' : 'productos'}
-          {hasActiveFilters && products?.length !== sortedProducts?.length && (
-            <span> de {products?.length}</span>
-          )}
-        </p>
+        {(gridProducts.length > 0 || showGridEmptyState) && (
+          <p className="text-xs font-medium mb-3" style={{ color: catalogTheme.isDark ? 'rgba(255,255,255,0.4)' : '#9CA3AF' }}>
+            {gridProducts.length} {gridProducts.length === 1 ? 'producto' : 'productos'}
+            {hasActiveFilters && totalGridProducts !== gridProducts.length && (
+              <span> de {totalGridProducts}</span>
+            )}
+          </p>
+        )}
 
-        {sortedProducts?.length === 0 ? (
+        {showGridEmptyState ? (
           <div className="text-center py-20">
             <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ background: catalogTheme.sectionBg }}>
               {hasActiveFilters ? (
@@ -1229,10 +1242,10 @@ function CatalogInner({ slug }) {
               </button>
             )}
           </div>
-        ) : (
+        ) : gridProducts.length > 0 ? (
           /* Una sola grilla continua (vista Todos o categoría seleccionada) */
           <div className={gridClass} style={gridStyle}>
-            {sortedProducts.map((product) => (
+            {gridProducts.map((product) => (
               <ProductCard
                 key={product?.id}
                 product={product}
@@ -1246,7 +1259,7 @@ function CatalogInner({ slug }) {
               />
             ))}
           </div>
-        )}
+        ) : null}
 
         {!loading && !notFound && business && catalogSeoContent?.visibleDescription && (
           <div className="mt-10 md:mt-14 flex w-full justify-center overflow-x-hidden px-0 sm:px-1">
@@ -1957,6 +1970,7 @@ export function ProductCard({
   };
 
   const imgs = getProductImages(product);
+  const cardImage = getProductCardImage(product);
   const extraImages = imgs.length > 1 ? imgs.length - 1 : 0;
   const trustBadge = getProductCardTrustBadge(product);
   // discount viene del badge para no recalcular; null cuando no hay descuento real
@@ -1988,10 +2002,10 @@ export function ProductCard({
         className={`relative block w-full shrink-0 overflow-hidden bg-gray-50 text-left ${roundTop}`}
       >
         <div className={`relative w-full ${imgAspect} min-h-0`}>
-          {imgs[0] ? (
+          {cardImage ? (
             <CatalogImage
-              src={cfImageUrl(imgs[0], 'card')}
-              originalSrc={imgs[0]}
+              src={cardImage === product?.thumbnailUrl || cardImage === product?.cardImageUrl ? cardImage : cfImageUrl(cardImage, 'card')}
+              originalSrc={cardImage}
               alt={product?.name}
               className="h-full w-full"
               imgClassName="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
