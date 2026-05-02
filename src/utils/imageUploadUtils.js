@@ -67,6 +67,61 @@ export function compressImageForUpload(file, type) {
 }
 
 /**
+ * Genera miniatura de card: máx 420px, WebP quality 0.70 (JPEG fallback).
+ * Nunca escala hacia arriba. Retorna null si canvas no disponible o imagen inválida.
+ * @param {File|Blob} file
+ * @returns {Promise<File|null>}
+ */
+export function generateCardThumbnail(file) {
+  const MAX_PX = 420;
+  const QUALITY = 0.70;
+  if (!file || !(file instanceof Blob)) return Promise.resolve(null);
+
+  return new Promise((resolve) => {
+    const objectUrl = URL.createObjectURL(file);
+    const img = new Image();
+
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      const { naturalWidth: w0, naturalHeight: h0 } = img;
+      if (!w0 || !h0) { resolve(null); return; }
+
+      const ratio = Math.min(MAX_PX / w0, MAX_PX / h0, 1);
+      const w = Math.max(1, Math.round(w0 * ratio));
+      const h = Math.max(1, Math.round(h0 * ratio));
+
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { resolve(null); return; }
+
+      ctx.drawImage(img, 0, 0, w, h);
+
+      canvas.toBlob(
+        (blob) => {
+          if (blob && blob.size > 100) {
+            resolve(new File([blob], 'thumb.webp', { type: 'image/webp' }));
+            return;
+          }
+          // Fallback a JPEG si WebP no está soportado
+          canvas.toBlob(
+            (jBlob) => resolve(jBlob ? new File([jBlob], 'thumb.jpg', { type: 'image/jpeg' }) : null),
+            'image/jpeg',
+            QUALITY
+          );
+        },
+        'image/webp',
+        QUALITY
+      );
+    };
+
+    img.onerror = () => { URL.revokeObjectURL(objectUrl); resolve(null); };
+    img.src = objectUrl;
+  });
+}
+
+/**
  * Convierte imágenes AVIF (y opcionalmente WebP) a JPEG para subida a storage
  * que no acepta esos formatos (ej. Supabase Storage).
  * @param {File} file

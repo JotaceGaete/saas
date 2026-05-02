@@ -8,11 +8,12 @@
  * Opcional: VITE_CF_IMAGE_ORIGIN=https://ventalink.app (o el host que tengáis configurado).
  */
 
-/** @type {Record<'mobile'|'desktop'|'thumbnail', string>} */
+/** @type {Record<'mobile'|'desktop'|'thumbnail'|'cardMobile', string>} */
 export const CF_IMAGE_PROFILES = {
   mobile: 'width=600,quality=65,format=auto',
   desktop: 'width=1200,quality=80,format=auto',
   thumbnail: 'width=300,quality=60,format=auto',
+  cardMobile: 'width=380,quality=72,format=auto',
 };
 
 const MEDIA_HOST = 'media.gong.cl';

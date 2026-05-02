@@ -101,6 +101,10 @@ function CatalogInner({ slug }) {
   const [priceRange, setPriceRange] = useState([0, 0]);
   const [maxPrice, setMaxPrice] = useState(0);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(() => {
+    if (typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches) return 16;
+    return 8;
+  });
   /** Desktop: si el carril de categorías puede seguir scrolleando a izquierda/derecha (para flechas). */
   const [categoryScrollMore, setCategoryScrollMore] = useState({ left: false, right: false });
 
@@ -225,7 +229,14 @@ function CatalogInner({ slug }) {
     });
   }, [filteredProducts]);
 
+  const visibleProducts = useMemo(() => sortedProducts.slice(0, visibleCount), [sortedProducts, visibleCount]);
+  const hasMoreProducts = sortedProducts.length > visibleCount;
+
   const hasActiveFilters = searchQuery?.trim() || (useCategories && selectedCategory !== 'all') || priceRange?.[0] > 0 || priceRange?.[1] < maxPrice;
+
+  useEffect(() => {
+    setVisibleCount(isDesktop ? 16 : 8);
+  }, [searchQuery, selectedCategory, priceRange, isDesktop]);
 
   const clearFilters = () => {
     setSearchQuery('');
@@ -801,20 +812,40 @@ function CatalogInner({ slug }) {
           </div>
         ) : (
           /* Una sola grilla continua (vista Todos o categoría seleccionada) */
-          <div className={gridClass} style={gridStyle}>
-            {sortedProducts.map((product) => (
-              <ProductCard
-                key={product?.id}
-                product={product}
-                formatPrice={formatPrice}
-                onOpen={openProduct}
-                theme={theme}
-                cardSettings={cardSettings}
-                useCategories={useCategories}
-                compact={useCompactCard}
-              />
-            ))}
-          </div>
+          <>
+            <div className={gridClass} style={gridStyle}>
+              {visibleProducts.map((product, idx) => (
+                <ProductCard
+                  key={product?.id}
+                  product={product}
+                  formatPrice={formatPrice}
+                  onOpen={openProduct}
+                  theme={theme}
+                  cardSettings={cardSettings}
+                  useCategories={useCategories}
+                  compact={useCompactCard}
+                  imageIndex={idx}
+                  isDesktop={isDesktop}
+                />
+              ))}
+            </div>
+            {hasMoreProducts && (
+              <div className="flex justify-center mt-6 mb-2">
+                <button
+                  type="button"
+                  onClick={() => setVisibleCount(c => c + (isDesktop ? 12 : 8))}
+                  className="px-6 py-3 rounded-2xl text-sm font-bold border transition-all hover:opacity-80 active:scale-[0.98]"
+                  style={{
+                    borderColor: primaryColor,
+                    color: primaryColorDark,
+                    backgroundColor: theme.primaryRgba(0.08),
+                  }}
+                >
+                  Ver más productos ({sortedProducts.length - visibleCount} restantes)
+                </button>
+              </div>
+            )}
+          </>
         )}
 
         {!loading && !notFound && business && catalogSeoContent?.visibleDescription && (
@@ -1486,6 +1517,8 @@ export function ProductCard({
   readOnly = false,
   ctaLabel = 'Ver producto',
   onCtaClick,
+  imageIndex = 0,
+  isDesktop = false,
 }) {
   const primaryColor = theme?.primaryColor || '#25D366';
   const primaryColorDark = theme?.primaryColorDark || '#128C7E';
@@ -1494,6 +1527,9 @@ export function ProductCard({
   const cartItem = items?.find(i => i?.id === product?.id);
   const qty = cartItem?.quantity || 0;
   const [bump, setBump] = useState(false);
+  const isEager = imageIndex < 4;
+  const imgProfile = isDesktop ? 'thumbnail' : 'cardMobile';
+  const [imgLoaded, setImgLoaded] = useState(false);
 
   const handleAdd = (e) => {
     e?.stopPropagation();
@@ -1544,12 +1580,24 @@ export function ProductCard({
       >
         <div className={`relative w-full ${imgAspect} min-h-0`}>
           {imgs[0] ? (
-            <img
-              src={cfImageUrl(imgs[0], 'thumbnail')}
-              alt={product?.name}
-              className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-              onError={buildCfImageErrorHandler(imgs[0])}
-            />
+            <>
+              {!imgLoaded && (
+                <div className="absolute inset-0 bg-gray-200 animate-pulse rounded-t-2xl" aria-hidden />
+              )}
+              <img
+                src={product?.cardImageUrl || cfImageUrl(imgs[0], imgProfile)}
+                alt={product?.name}
+                className={`h-full w-full object-cover transition-transform duration-300 group-hover:scale-105 ${imgLoaded ? '' : 'opacity-0'}`}
+                loading={isEager ? 'eager' : 'lazy'}
+                fetchPriority={isEager ? 'high' : 'low'}
+                decoding="async"
+                onLoad={() => setImgLoaded(true)}
+                onError={(e) => {
+                  buildCfImageErrorHandler(imgs[0])(e);
+                  if (e.currentTarget?.getAttribute('data-cf-fallback') === '1') setImgLoaded(true);
+                }}
+              />
+            </>
           ) : (
             <div className={`flex h-full w-full items-center justify-center bg-gray-100 ${compact ? 'min-h-[72px]' : ''}`}>
               <Icon name="ImageOff" size={compact ? 20 : 32} color="#D1D5DB" />

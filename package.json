@@ -48,6 +48,7 @@
     "test:plan-preview": "vitest run supabase/functions/plan-change-preview/lib.test.ts",
     "migrate:images-r2": "node scripts/migrate-images-to-r2.mjs",
     "backfill:og-images": "node scripts/backfill-og-images.mjs",
+    "backfill:thumbnails": "node scripts/backfill-product-thumbnails.mjs",
     "pwa:icons": "node scripts/generate-pwa-icons.mjs",
     "paypal:auth": "node ./scripts/paypal-auth-diagnostic.js",
     "paypal:bootstrap": "node ./scripts/paypal-catalog-bootstrap.js",

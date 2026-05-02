@@ -25,13 +25,13 @@ import {
   getBusinessCategories,
   getEffectivePlanSlug,
 } from '../../services/waBusinessService';
-import { convertUnsupportedImageToJpeg } from '../../utils/imageUploadUtils';
+import { convertUnsupportedImageToJpeg, generateCardThumbnail } from '../../utils/imageUploadUtils';
 import { useToast } from '../../components/ui/Toast';
 import { useConfirmedEmailGuard } from '../../hooks/useConfirmedEmailGuard';
 import { supabase } from '../../lib/supabase';
 import { getBusinessLocale } from '../../lib/locale/businessLocale';
 import { resolveVentaAiProductDescriptionEndpoint } from '../../lib/ai/resolveVentaAiProductDescriptionUrl.js';
-import { appendCacheBust } from '../../services/mediaUploadService';
+import { appendCacheBust, uploadToMediaService } from '../../services/mediaUploadService';
 
 const EMPTY_FORM = {
   nombre: '',
@@ -73,6 +73,7 @@ export default function ProductEditor() {
   const [businessCategories, setBusinessCategories] = useState([]);
   const [isImprovingDescription, setIsImprovingDescription] = useState(false);
   const [publicCode, setPublicCode] = useState('');
+  const [cardImageUrl, setCardImageUrl] = useState(null);
   const toast = useToast();
   const effectiveProductId = currentProductId || productId || null;
   const isEditingFlow = !!effectiveProductId;
@@ -146,6 +147,7 @@ export default function ProductEditor() {
           });
         }
         setPublicCode(data?.publicCode || '');
+        setCardImageUrl(data?.cardImageUrl || null);
       } catch (e) { navigate('/product-management'); }
       finally { setPageLoading(false); }
     };
@@ -440,6 +442,18 @@ export default function ProductEditor() {
         persistedUrl = uploaded.url;
         renderUrl = appendCacheBust(uploaded.url, nextVersion);
         setImagePreviewUrl(renderUrl);
+        // Genera y sube thumbnail de card en segundo plano (no bloquea el flujo principal)
+        generateCardThumbnail(fileToUpload)
+          .then(async (thumbFile) => {
+            if (!thumbFile) return;
+            const thumbUploaded = await uploadToMediaService(thumbFile, {
+              type: 'product-main',
+              businessId: business.id,
+              productId: ensuredProductId,
+            });
+            setCardImageUrl(thumbUploaded.url);
+          })
+          .catch((e) => console.warn('[ProductEditor] Thumbnail no-fatal:', e?.message));
       } else {
         const ensureResult = currentProductId
           ? { productId: currentProductId, createdDraft: false }
@@ -562,6 +576,7 @@ export default function ProductEditor() {
         optionsDescription: formData?.hasOptions ? (formData?.optionsDescription || null) : null,
         longDescription: formData?.longDescription?.trim() || null,
         category: formData?.categoria?.trim() || null,
+        cardImageUrl: cardImageUrl || null,
       };
       const result = currentProductId
         ? await updateProduct(currentProductId, productData)
@@ -581,6 +596,7 @@ export default function ProductEditor() {
         setImageUploadError('');
         setVideo(null);
         setPublicCode('');
+        setCardImageUrl(null);
         setErrors({});
         setSaveSuccess(false);
         window.scrollTo({ top: 0, behavior: 'smooth' });
