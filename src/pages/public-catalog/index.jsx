@@ -45,6 +45,28 @@ function isWhatsAppWebView() {
   return ua.includes('WhatsApp');
 }
 
+const SLOW_TYPES = new Set(['slow-2g', '2g', '3g']);
+
+function getNavConnection() {
+  if (typeof navigator === 'undefined') return null;
+  return navigator.connection || navigator.mozConnection || navigator.webkitConnection || null;
+}
+
+function useSlowConnection() {
+  const [isSlow, setIsSlow] = useState(() => {
+    const conn = getNavConnection();
+    return conn ? SLOW_TYPES.has(conn.effectiveType) : false;
+  });
+  useEffect(() => {
+    const conn = getNavConnection();
+    if (!conn) return;
+    const handler = () => setIsSlow(SLOW_TYPES.has(conn.effectiveType));
+    conn.addEventListener('change', handler);
+    return () => conn.removeEventListener('change', handler);
+  }, []);
+  return isSlow;
+}
+
 // Normalizar imágenes del producto: la primera es siempre imageUrl (misma que la tarjeta);
 // el resto viene de product.images para galería. Así el modal usa la misma URL que la tarjeta.
 function withMediaVersion(url, version) {
@@ -103,6 +125,8 @@ function CatalogInner({ slug }) {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [visibleCount, setVisibleCount] = useState(() => {
     if (typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches) return 16;
+    const conn = getNavConnection();
+    if (conn && SLOW_TYPES.has(conn.effectiveType)) return 4;
     return 8;
   });
   /** Desktop: si el carril de categorías puede seguir scrolleando a izquierda/derecha (para flechas). */
@@ -110,6 +134,8 @@ function CatalogInner({ slug }) {
 
   const { itemCount } = useCart();
   const isDesktop = useIsDesktop();
+  const isSlowConnection = useSlowConnection();
+  const isFastMode = !isDesktop && isSlowConnection;
   const isOwner = !!(user && business && authBusiness && business.id === authBusiness.id);
   if (typeof window !== 'undefined' && window.__AUTH_DEBUG__ && business) {
     console.log('[PublicCatalog] viewMode:', isOwner ? 'owner' : 'public', { hasUser: !!user, catalogBizId: business?.id, authBizId: authBusiness?.id });
@@ -235,8 +261,10 @@ function CatalogInner({ slug }) {
   const hasActiveFilters = searchQuery?.trim() || (useCategories && selectedCategory !== 'all') || priceRange?.[0] > 0 || priceRange?.[1] < maxPrice;
 
   useEffect(() => {
-    setVisibleCount(isDesktop ? 16 : 8);
-  }, [searchQuery, selectedCategory, priceRange, isDesktop]);
+    if (isDesktop) setVisibleCount(16);
+    else if (isSlowConnection) setVisibleCount(4);
+    else setVisibleCount(8);
+  }, [searchQuery, selectedCategory, priceRange, isDesktop, isSlowConnection]);
 
   const clearFilters = () => {
     setSearchQuery('');
@@ -472,6 +500,7 @@ function CatalogInner({ slug }) {
 
   const catalogTheme = resolveCatalogTheme(design);
   const { primaryColor, primaryColorDark, primaryRgba, bgColor, textColor } = catalogTheme;
+  const cardImageProfile = isDesktop ? 'thumbnail' : isFastMode ? 'cardFastMobile' : 'cardMobile';
   const theme = { primaryColor, primaryColorDark, primaryRgba };
   const cardSettings = { showPrice: true, showDescription: true, showStock: false, showWhatsApp: true, ...design?.cardSettings };
   const catalogViewMode = design?.catalogViewMode === 'compact' ? 'compact' : 'featured';
@@ -776,6 +805,13 @@ function CatalogInner({ slug }) {
           boxShadow: `inset 0 4px 12px ${catalogTheme.isDark ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.04)'}`,
         }}
       >
+        {/* Aviso de modo rápido (conexión lenta) */}
+        {isFastMode && (
+          <p className="text-[11px] mb-2 flex items-center gap-1" style={{ color: catalogTheme.isDark ? 'rgba(255,255,255,0.32)' : '#BBBBBB' }}>
+            <Icon name="Wifi" size={11} color="currentColor" />
+            Versión liviana para conexión lenta
+          </p>
+        )}
         {/* Product count */}
         <p className="text-xs font-medium mb-3" style={{ color: catalogTheme.isDark ? 'rgba(255,255,255,0.4)' : '#9CA3AF' }}>
           {sortedProducts?.length} {sortedProducts?.length === 1 ? 'producto' : 'productos'}
@@ -826,6 +862,7 @@ function CatalogInner({ slug }) {
                   compact={useCompactCard}
                   imageIndex={idx}
                   isDesktop={isDesktop}
+                  imageProfile={cardImageProfile}
                 />
               ))}
             </div>
@@ -833,7 +870,7 @@ function CatalogInner({ slug }) {
               <div className="flex justify-center mt-6 mb-2">
                 <button
                   type="button"
-                  onClick={() => setVisibleCount(c => c + (isDesktop ? 12 : 8))}
+                  onClick={() => setVisibleCount(c => c + (isDesktop ? 12 : isFastMode ? 4 : 8))}
                   className="px-6 py-3 rounded-2xl text-sm font-bold border transition-all hover:opacity-80 active:scale-[0.98]"
                   style={{
                     borderColor: primaryColor,
@@ -1519,6 +1556,7 @@ export function ProductCard({
   onCtaClick,
   imageIndex = 0,
   isDesktop = false,
+  imageProfile,
 }) {
   const primaryColor = theme?.primaryColor || '#25D366';
   const primaryColorDark = theme?.primaryColorDark || '#128C7E';
@@ -1528,7 +1566,7 @@ export function ProductCard({
   const qty = cartItem?.quantity || 0;
   const [bump, setBump] = useState(false);
   const isEager = imageIndex < 4;
-  const imgProfile = isDesktop ? 'thumbnail' : 'cardMobile';
+  const imgProfile = imageProfile ?? (isDesktop ? 'thumbnail' : 'cardMobile');
   const [imgLoaded, setImgLoaded] = useState(false);
 
   const handleAdd = (e) => {
