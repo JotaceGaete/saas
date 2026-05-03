@@ -76,6 +76,8 @@ export async function uploadToMediaService(file, {
   businessId,
   productId,
   index,
+  skipClientCompression = false,
+  variant,
   timeoutMs = DEFAULT_UPLOAD_TIMEOUT_MS,
 } = {}) {
   if (!(file instanceof Blob)) {
@@ -93,7 +95,7 @@ export async function uploadToMediaService(file, {
 
   const uploadType = normalizeImageUploadType(type);
   let fileToUpload = file;
-  if (uploadType === 'product') {
+  if (uploadType === 'product' && skipClientCompression !== true) {
     try {
       fileToUpload = await compressImageForUpload(file, 'product');
     } catch {
@@ -115,6 +117,7 @@ export async function uploadToMediaService(file, {
       businessId,
       productId: productId !== undefined && productId !== null && productId !== '' ? productId : undefined,
       index: index !== undefined && index !== null && index !== '' ? Number(index) : undefined,
+      variant: typeof variant === 'string' && variant.trim() ? variant.trim() : undefined,
       fileName: typeof fileToUpload?.name === 'string' && fileToUpload.name.trim() ? fileToUpload.name.trim() : `upload-${Date.now()}.jpg`,
       contentType: String(fileToUpload?.type || 'image/jpeg').trim() || 'image/jpeg',
     };

@@ -6,14 +6,15 @@ import { CartProvider, useCart } from '../../contexts/CartContext';
 import { formatPrice as formatPriceUtil, resolveCatalogCurrency } from '../../utils/formatPrice';
 import { getBusinessLocale } from '../../lib/locale/businessLocale';
 import { resolveCatalogTheme } from '../../utils/catalogTheme';
-import { cfImageUrl, buildCfImageErrorHandler } from '../../utils/cloudflareImage';
+import { cfImageUrl } from '../../utils/cloudflareImage';
 import { getPublicCatalogUrl, getPublicOffersUrl } from '../../config/appUrl';
 import { openWhatsAppUrl } from '../../utils/openWhatsAppUrl';
 import CatalogLayout from '../public-catalog/CatalogLayout';
-import { ProductCard, ProductModal } from '../public-catalog';
+import { ProductCard, ProductModal, getProductCardImage } from '../public-catalog';
 import CatalogStoreHeader from '../public-catalog/CatalogStoreHeader';
 import BrandingFooter from '../../components/BrandingFooter';
 import Icon from '../../components/AppIcon';
+import CatalogImage from '../../components/CatalogImage';
 import { useIsDesktop } from '../../hooks/useMediaQuery';
 import { getDiscountPercent } from '../../utils/offerHelpers';
 
@@ -58,12 +59,15 @@ function OfferCard({ product, formatPrice, theme, onOpen }) {
         aria-label={`Ver detalles de ${product?.name || 'producto'}`}
       >
         <div className="relative w-full aspect-[4/5] min-h-0">
-          {product?.imageUrl ? (
-            <img
-              src={cfImageUrl(product.imageUrl, 'thumbnail')}
+          {getProductCardImage(product) ? (
+            <CatalogImage
+              src={product?.thumbnailUrl || product?.cardImageUrl ? getProductCardImage(product) : cfImageUrl(getProductCardImage(product), 'card')}
+              originalSrc={getProductCardImage(product)}
               alt={product?.name}
-              className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-              onError={buildCfImageErrorHandler(product.imageUrl)}
+              className="h-full w-full"
+              imgClassName="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+              variant="product"
+              loading="lazy"
             />
           ) : (
             <div className="flex h-full w-full items-center justify-center bg-gray-100">

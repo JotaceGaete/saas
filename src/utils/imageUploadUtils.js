@@ -8,6 +8,75 @@ function canvasToBlob(canvas, mimeType, quality) {
   });
 }
 
+function loadImageFromFile(file) {
+  return new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file);
+    const img = new Image();
+
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(img);
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error('No se pudo procesar la imagen'));
+    };
+
+    img.src = objectUrl;
+  });
+}
+
+async function renderVariantFromImage(file, img, variant, { force = false } = {}) {
+  const keepOriginalPng = variant.keepPng === true && file.type === 'image/png';
+  const preferredMime = keepOriginalPng ? 'image/png' : variant.outputMime;
+  const preferredExtension = keepOriginalPng ? 'png' : variant.extension;
+
+  const originalWidth = img.naturalWidth || 0;
+  const originalHeight = img.naturalHeight || 0;
+  if (!originalWidth || !originalHeight) return file;
+
+  const longSide = Math.max(originalWidth, originalHeight);
+  const ratio = longSide > variant.maxLongSide ? variant.maxLongSide / longSide : 1;
+  const width = Math.max(1, Math.round(originalWidth * ratio));
+  const height = Math.max(1, Math.round(originalHeight * ratio));
+
+  const shouldReencode =
+    force ||
+    width !== originalWidth ||
+    height !== originalHeight ||
+    String(file.type || '').toLowerCase() !== preferredMime;
+
+  if (!shouldReencode) return file;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d', { alpha: keepOriginalPng });
+  if (!ctx) return file;
+
+  if (!keepOriginalPng) {
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, width, height);
+  }
+  ctx.drawImage(img, 0, 0, width, height);
+
+  let blob = await canvasToBlob(canvas, preferredMime, variant.quality);
+  let outputMime = preferredMime;
+  let outputExtension = preferredExtension;
+
+  if (!blob && preferredMime === 'image/webp') {
+    blob = await canvasToBlob(canvas, 'image/jpeg', variant.quality);
+    outputMime = 'image/jpeg';
+    outputExtension = 'jpg';
+  }
+
+  if (!blob) return file;
+
+  const nextFile = new File([blob], `${getFileBaseName(file.name)}.${outputExtension}`, { type: outputMime });
+  return !force && nextFile.size >= file.size ? file : nextFile;
+}
+
 const IMAGE_UPLOAD_VARIANTS = {
   cover: {
     maxLongSide: 1200,
@@ -32,6 +101,22 @@ const IMAGE_UPLOAD_VARIANTS = {
   },
 };
 
+export const PRODUCT_MAIN_IMAGE_VARIANT = {
+  maxLongSide: 1200,
+  quality: 0.8,
+  outputMime: 'image/webp',
+  extension: 'webp',
+  keepPng: false,
+};
+
+export const PRODUCT_CARD_THUMBNAIL_VARIANT = {
+  maxLongSide: 420,
+  quality: 0.7,
+  outputMime: 'image/webp',
+  extension: 'webp',
+  keepPng: false,
+};
+
 /**
  * Redimensiona y comprime una imagen antes de subirla a R2.
  *
@@ -45,83 +130,34 @@ const IMAGE_UPLOAD_VARIANTS = {
  * @param {'logo'|'cover'|'product'} type
  * @returns {Promise<File>}
  */
-export function compressImageForUpload(file, type) {
-  if (!(file instanceof File) && !(file instanceof Blob)) return Promise.resolve(file);
-
+export async function compressImageForUpload(file, type) {
+  if (!(file instanceof File) && !(file instanceof Blob)) return file;
+  const img = await loadImageFromFile(file);
   const variant = IMAGE_UPLOAD_VARIANTS[type] ?? IMAGE_UPLOAD_VARIANTS.product;
-  const keepOriginalPng = variant.keepPng === true && file.type === 'image/png';
-  const preferredMime = keepOriginalPng ? 'image/png' : variant.outputMime;
-  const preferredExtension = keepOriginalPng ? 'png' : variant.extension;
+  return renderVariantFromImage(file, img, variant);
+}
 
-  return new Promise((resolve) => {
-    const objectUrl = URL.createObjectURL(file);
-    const img = new Image();
+/**
+ * Genera los dos assets persistidos del producto:
+ * - main: para modal/detalle
+ * - thumbnail: para cards/listados mobile
+ *
+ * @param {File} file
+ * @returns {Promise<{mainFile: File, thumbnailFile: File}>}
+ */
+export async function generateProductImageUploadSet(file) {
+  if (!(file instanceof File) && !(file instanceof Blob)) {
+    throw new Error('Selecciona una imagen valida antes de subir.');
+  }
 
-    img.onload = async () => {
-      URL.revokeObjectURL(objectUrl);
+  const img = await loadImageFromFile(file);
+  const mainFile = await renderVariantFromImage(file, img, PRODUCT_MAIN_IMAGE_VARIANT, { force: true });
+  const thumbnailFile = await renderVariantFromImage(file, img, PRODUCT_CARD_THUMBNAIL_VARIANT, { force: true });
 
-      const originalWidth = img.naturalWidth || 0;
-      const originalHeight = img.naturalHeight || 0;
-      if (!originalWidth || !originalHeight) {
-        resolve(file);
-        return;
-      }
-
-      const longSide = Math.max(originalWidth, originalHeight);
-      const ratio = longSide > variant.maxLongSide ? variant.maxLongSide / longSide : 1;
-      const width = Math.max(1, Math.round(originalWidth * ratio));
-      const height = Math.max(1, Math.round(originalHeight * ratio));
-
-      const shouldReencode =
-        width !== originalWidth ||
-        height !== originalHeight ||
-        String(file.type || '').toLowerCase() !== preferredMime;
-
-      if (!shouldReencode) {
-        resolve(file);
-        return;
-      }
-
-      const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d', { alpha: keepOriginalPng });
-      if (!ctx) {
-        resolve(file);
-        return;
-      }
-
-      if (!keepOriginalPng) {
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, width, height);
-      }
-      ctx.drawImage(img, 0, 0, width, height);
-
-      let blob = await canvasToBlob(canvas, preferredMime, variant.quality);
-      let outputMime = preferredMime;
-      let outputExtension = preferredExtension;
-
-      if (!blob && preferredMime === 'image/webp') {
-        blob = await canvasToBlob(canvas, 'image/jpeg', variant.quality);
-        outputMime = 'image/jpeg';
-        outputExtension = 'jpg';
-      }
-
-      if (!blob) {
-        resolve(file);
-        return;
-      }
-
-      const nextFile = new File([blob], `${getFileBaseName(file.name)}.${outputExtension}`, { type: outputMime });
-      resolve(nextFile.size < file.size ? nextFile : file);
-    };
-
-    img.onerror = () => {
-      URL.revokeObjectURL(objectUrl);
-      resolve(file);
-    };
-    img.src = objectUrl;
-  });
+  return {
+    mainFile,
+    thumbnailFile,
+  };
 }
 
 /**

@@ -52,16 +52,18 @@ function jsonResponse(body: Record<string, unknown>, status: number, corsHeaders
 }
 
 type UploadType = 'logo' | 'cover' | 'product';
+type ProductVariant = 'main' | 'thumb' | 'gallery';
 
 // Rutas R2: businesses/{business_id}/logo|cover|products/{product_id}/...
-function buildKey(type: UploadType, businessId: string, fileName: string, productId?: string): string {
+function buildKey(type: UploadType, businessId: string, fileName: string, productId?: string, variant?: ProductVariant): string {
   const ext = fileName?.split('.')?.pop()?.toLowerCase() || 'jpg';
   const safeExt = /^[a-z0-9]+$/.test(ext) ? ext : 'jpg';
   const ts = Date.now();
   if (type === 'logo') return `businesses/${businessId}/logo/${ts}.${safeExt}`;
   if (type === 'cover') return `businesses/${businessId}/cover/${ts}.${safeExt}`;
   const unique = productId ? `${productId}-${ts}-${Math.random().toString(36).slice(2, 9)}` : `${ts}-${Math.random().toString(36).slice(2, 9)}`;
-  return `businesses/${businessId}/products/${productId || 'draft'}/${unique}.${safeExt}`;
+  const safeVariant: ProductVariant = variant === 'main' || variant === 'thumb' || variant === 'gallery' ? variant : 'gallery';
+  return `businesses/${businessId}/products/${productId || 'draft'}/${safeVariant}-${unique}.${safeExt}`;
 }
 
 Deno.serve(async (req) => {
@@ -97,7 +99,7 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: 'User not authenticated' }, 401, corsHeaders);
     }
 
-    let body: { type?: string; businessId?: string; productId?: string; fileName?: string; contentType?: string };
+    let body: { type?: string; businessId?: string; productId?: string; fileName?: string; contentType?: string; variant?: string };
     try {
       body = (await req.json().catch(() => ({}))) as typeof body;
     } catch {
@@ -113,6 +115,7 @@ Deno.serve(async (req) => {
     const fileName = typeof body?.fileName === 'string' ? body.fileName.trim() : `upload.${type === 'product' ? 'jpg' : 'png'}`;
     const contentType = typeof body?.contentType === 'string' ? body.contentType.trim() : 'image/jpeg';
     const productId = typeof body?.productId === 'string' ? body.productId.trim() || undefined : undefined;
+    const variant = typeof body?.variant === 'string' ? body.variant.trim().toLowerCase() as ProductVariant : undefined;
 
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
     if (!serviceRoleKey) {
@@ -146,7 +149,7 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: 'Storage not configured', missing: missingR2 }, 500, corsHeaders);
     }
 
-    const key = buildKey(type, businessId, fileName, productId);
+    const key = buildKey(type, businessId, fileName, productId, variant);
 
     const endpoint = `https://${accountId}.r2.cloudflarestorage.com`;
     const s3 = new S3Client({

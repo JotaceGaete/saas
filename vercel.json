@@ -110,7 +110,7 @@
     },
     {
       "path": "/api/cron/process-admin-alert-queue",
-      "schedule": "0 8 * * *"
+      "schedule": "10 8 * * *"
     }
   ],
   "rewrites": [

@@ -299,6 +299,8 @@ export default function ProductEditor() {
               id: `loaded-${i}-${url}`,
               url,
               persistedUrl: url,
+              thumbnailUrl: i === 0 ? (data?.thumbnailUrl || data?.cardImageUrl || null) : null,
+              thumbnailPath: i === 0 ? (data?.thumbnailPath || null) : null,
               alt: data?.name,
               name: `product-image-${i}`,
               status: 'uploaded',
@@ -308,6 +310,8 @@ export default function ProductEditor() {
                   id: 1,
                   url: data.imageUrl,
                   persistedUrl: data.imageUrl,
+                  thumbnailUrl: data?.thumbnailUrl || data?.cardImageUrl || null,
+                  thumbnailPath: data?.thumbnailPath || null,
                   alt: data?.name,
                   name: 'product-image',
                   status: 'uploaded',
@@ -811,6 +815,7 @@ export default function ProductEditor() {
     try {
       let persistedUrl = null;
       let renderUrl = null;
+      let mainImageMeta = null;
 
       if (isMainImage) {
         const ensureResult = await ensureProductIdForMainImageUpload();
@@ -827,6 +832,10 @@ export default function ProductEditor() {
         const nextVersion = Date.now();
         persistedUrl = uploaded.url;
         renderUrl = appendCacheBust(uploaded.url, nextVersion);
+        mainImageMeta = {
+          thumbnailUrl: uploaded.thumbnailUrl || null,
+          thumbnailPath: uploaded.thumbnailPath || null,
+        };
         setImagePreviewUrl(renderUrl);
       } else {
         const ensureResult = currentProductId
@@ -853,6 +862,7 @@ export default function ProductEditor() {
           ...img,
           url: renderUrl,
           persistedUrl,
+          ...(isMainImage ? mainImageMeta : null),
           status: 'uploaded',
           file: undefined,
           error: undefined,
@@ -933,6 +943,7 @@ export default function ProductEditor() {
         ?.map(i => i?.persistedUrl || i?.url?.split?.('?')?.[0] || i?.url)
         ?.filter(Boolean) ?? [];
       const finalImageUrl = persistedImages?.[0] || null;
+      const mainImageMeta = images?.[0] || null;
       const rawCompareAt = formData?.compareAtPrice;
       const compareAtNum = rawCompareAt !== '' && rawCompareAt != null ? Number(rawCompareAt) : NaN;
       const productData = {
@@ -940,6 +951,8 @@ export default function ProductEditor() {
         description: formData?.descripcion || null,
         price: Math.round(Number(formData?.precio)),
         imageUrl: finalImageUrl,
+        thumbnailUrl: mainImageMeta?.thumbnailUrl || null,
+        thumbnailPath: mainImageMeta?.thumbnailPath || null,
         images: persistedImages?.length ? persistedImages : (finalImageUrl ? [finalImageUrl] : []),
         isDraft: false,
         isActive: formData?.activo,
@@ -1963,4 +1976,3 @@ export default function ProductEditor() {
     </DashboardAppShell>
   );
 }
-

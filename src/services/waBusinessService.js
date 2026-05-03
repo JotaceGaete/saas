@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import { compressImageForUpload } from '../utils/imageUploadUtils';
+import { compressImageForUpload, generateProductImageUploadSet } from '../utils/imageUploadUtils';
 import { getValidToken } from '../lib/auth/getValidToken';
 import { getPlanLimits } from '../constants/plans';
 import { getTrialEndDateFrom } from '../constants/trial';
@@ -409,6 +409,9 @@ const mapProductFromDb = (row) => {
     description: row?.description,
     price: parseFloat(row?.price),
     imageUrl: row?.image_url || imagesArray?.[0] || null,
+    thumbnailUrl: row?.thumbnail_url || null,
+    thumbnailPath: row?.thumbnail_path || null,
+    cardImageUrl: row?.thumbnail_url || null,
     images: imagesArray,
     isActive: row?.is_active ?? (status === 'active'),
     isDraft: row?.is_draft === true,
@@ -885,6 +888,8 @@ export const createProduct = async (businessId, productData) => {
   }
   const imagesArr = Array.isArray(productData?.images) ? productData.images : [];
   const imageUrl = productData?.imageUrl ?? imagesArr?.[0] ?? null;
+  const thumbnailUrl = productData?.thumbnailUrl ?? productData?.cardImageUrl ?? null;
+  const thumbnailPath = productData?.thumbnailPath ?? null;
   const wantsMainFeatured = productData?.isMainFeatured === true;
   const status = ['active', 'inactive', 'archived'].includes(productData?.status)
     ? productData.status
@@ -899,6 +904,8 @@ export const createProduct = async (businessId, productData) => {
     description: productData?.description || null,
     price: productData?.price,
     image_url: imageUrl,
+    thumbnail_url: thumbnailUrl,
+    thumbnail_path: thumbnailPath,
     images: imagesArr?.length > 0 ? imagesArr : (imageUrl ? [imageUrl] : []),
     status,
     is_active: status === 'active',
@@ -975,6 +982,10 @@ export const updateProduct = async (productId, productData) => {
   if (productData?.description !== undefined) dbUpdates.description = productData?.description;
   if (productData?.price !== undefined)       dbUpdates.price = productData?.price;
   if (productData?.imageUrl !== undefined)    dbUpdates.image_url = productData?.imageUrl;
+  if (productData?.thumbnailUrl !== undefined || productData?.cardImageUrl !== undefined) {
+    dbUpdates.thumbnail_url = productData?.thumbnailUrl ?? productData?.cardImageUrl ?? null;
+  }
+  if (productData?.thumbnailPath !== undefined) dbUpdates.thumbnail_path = productData?.thumbnailPath ?? null;
   if (productData?.status !== undefined && ['active', 'inactive', 'archived'].includes(productData.status)) {
     dbUpdates.status = productData.status;
   } else if (productData?.isActive !== undefined) {
@@ -1067,16 +1078,30 @@ export const uploadProductMainImage = async ({ file, businessId, productId }) =>
     throw new Error('No se encontro el producto para subir la imagen.');
   }
 
-  const uploaded = await uploadToMediaService(file, {
+  const { mainFile, thumbnailFile } = await generateProductImageUploadSet(file);
+
+  const uploaded = await uploadToMediaService(mainFile, {
     type: 'product-main',
     businessId,
     productId,
+    variant: 'main',
+    skipClientCompression: true,
+  });
+
+  const uploadedThumbnail = await uploadToMediaService(thumbnailFile, {
+    type: 'product-main',
+    businessId,
+    productId,
+    variant: 'thumb',
+    skipClientCompression: true,
   });
 
   return {
     ok: true,
     url: uploaded.url,
     key: uploaded.key,
+    thumbnailUrl: uploadedThumbnail.url,
+    thumbnailPath: uploadedThumbnail.key,
     contentType: uploaded.contentType,
     size: uploaded.size,
   };
