@@ -17,7 +17,7 @@
 import React, { useState, useEffect } from 'react';
 import Icon from '../../components/AppIcon';
 import CatalogImage from '../../components/CatalogImage';
-import { cfImageUrl } from '../../utils/cloudflareImage';
+import { buildCfImageErrorHandler, cfImageUrl, unwrapCfImageUrl } from '../../utils/cloudflareImage';
 import { recordCatalogWhatsAppClick } from '../../services/waBusinessService';
 import { getPublicCatalogRelativePath } from '../../config/appUrl';
 import { normalizeTikTokUrl } from '../../utils/socialLinks';
@@ -189,6 +189,7 @@ export default function CatalogStoreHeader({
 }) {
   const [mobileStoreInfoOpen, setMobileStoreInfoOpen] = useState(false);
   const [desktopInfoOpen, setDesktopInfoOpen] = useState(false);
+  const coverImageProfile = isDesktop ? 'coverDesktop' : 'coverMobile';
   // Reset accordion when slug changes
   useEffect(() => { setMobileStoreInfoOpen(false); }, [slug]);
 
@@ -210,6 +211,10 @@ export default function CatalogStoreHeader({
 
   const coverPositionY = design?.coverPositionY ?? 50;
   const coverObjectPosition = `50% ${coverPositionY}%`;
+  const coverUrlOriginal = business?.coverImageUrl || null;
+  const coverUrlNormalized = unwrapCfImageUrl(coverUrlOriginal);
+  const coverUrlTransformed = coverUrlNormalized ? cfImageUrl(coverUrlNormalized, coverImageProfile) : null;
+  const coverImageErrorHandler = coverUrlNormalized ? buildCfImageErrorHandler(coverUrlNormalized) : undefined;
 
   const whatsappPhone = business?.whatsapp?.replace(/\D/g, '');
   const storeWhatsAppUrl = whatsappPhone
@@ -236,6 +241,57 @@ export default function CatalogStoreHeader({
       : getPublicCatalogRelativePath(slug);
     recordCatalogWhatsAppClick(slug, path, 'store_header').catch(() => {});
   };
+
+  const renderCoverImage = (surface) => (
+    <img
+      src={coverUrlTransformed || coverUrlNormalized || ''}
+      alt=""
+      role="presentation"
+      className="absolute inset-0 h-full w-full object-cover"
+      style={{ objectPosition: coverObjectPosition }}
+      loading="eager"
+      fetchPriority="high"
+      decoding="async"
+      data-catalog-cover-image="true"
+      data-cover-layer="primary"
+      data-cover-surface={surface}
+      data-cover-preset={coverImageProfile}
+      onError={coverImageErrorHandler}
+    />
+  );
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const hostname = String(window.location.hostname || '').toLowerCase();
+    const isPreviewHost =
+      hostname.includes('vercel.app') ||
+      hostname.includes('preview') ||
+      hostname.includes('localhost') ||
+      hostname.endsWith('.ventalink.app');
+    if (!import.meta.env.DEV && !isPreviewHost) return;
+
+    const coverNodes = Array.from(document.querySelectorAll('[data-catalog-cover-image="true"]'));
+    const visibleCoverNodes = coverNodes.filter((node) => {
+      const style = window.getComputedStyle(node);
+      const rect = node.getBoundingClientRect();
+      return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
+    });
+
+    console.log('[CatalogStoreHeader] cover runtime', {
+      coverUrlOriginal,
+      coverUrlNormalized,
+      coverUrlTransformed,
+      preset: coverImageProfile,
+      isDesktop,
+      headerTemplate,
+      domCoverImages: coverNodes.length,
+      visibleCoverImages: visibleCoverNodes.length,
+      visibleLayers: visibleCoverNodes.map((node) => ({
+        layer: node.getAttribute('data-cover-layer') || 'unknown',
+        surface: node.getAttribute('data-cover-surface') || 'unknown',
+      })),
+    });
+  }, [coverImageProfile, coverUrlOriginal, coverUrlNormalized, coverUrlTransformed, headerTemplate, isDesktop]);
 
   return (
     <>
@@ -406,18 +462,7 @@ export default function CatalogStoreHeader({
             </div>
             <div className="w-[42%] flex-shrink-0 relative overflow-hidden">
               {business?.coverImageUrl ? (
-                <CatalogImage
-                  src={cfImageUrl(business.coverImageUrl, 'cover')}
-                  originalSrc={business.coverImageUrl}
-                  alt=""
-                  role="presentation"
-                  className="absolute inset-0 w-full h-full"
-                  imgClassName="absolute inset-0 w-full h-full"
-                  imgStyle={{ objectFit: 'cover', objectPosition: coverObjectPosition }}
-                  variant="cover"
-                  loading="eager"
-                  fetchPriority="high"
-                />
+                renderCoverImage('desktop')
               ) : (
                 <div
                   className="absolute inset-0"
@@ -443,30 +488,11 @@ export default function CatalogStoreHeader({
         >
           {business?.coverImageUrl && (
             <>
-              <CatalogImage
-                src={cfImageUrl(business.coverImageUrl, 'cover')}
-                originalSrc={business.coverImageUrl}
-                className="absolute inset-0 h-full w-full"
-                imgClassName="absolute inset-0 h-full w-full"
-                imgStyle={{ objectFit: 'cover', objectPosition: coverObjectPosition, filter: 'blur(14px)', transform: 'scale(1.15)' }}
-                variant="cover"
-                loading="eager"
-                fetchPriority="high"
-                ariaHidden="true"
-                showFallbackIcon={false}
-                loadedOpacity={0.75}
-              />
-              <CatalogImage
-                src={cfImageUrl(business.coverImageUrl, 'cover')}
-                originalSrc={business.coverImageUrl}
-                alt=""
-                role="presentation"
-                className="absolute inset-0 h-full w-full"
-                imgClassName="absolute inset-0 h-full w-full"
-                imgStyle={{ objectFit: 'cover', objectPosition: coverObjectPosition }}
-                variant="cover"
-                loading="eager"
-                fetchPriority="high"
+              {renderCoverImage('mobile')}
+              <div
+                className="pointer-events-none absolute inset-0"
+                style={{ background: `linear-gradient(180deg, ${primaryColorDark}12 0%, transparent 42%, ${primaryColorDark}22 100%)` }}
+                aria-hidden="true"
               />
             </>
           )}

@@ -8,15 +8,19 @@
  * Opcional: VITE_CF_IMAGE_ORIGIN=https://ventalink.app (o el host que tengáis configurado).
  */
 
-/** @type {Record<'mobile'|'desktop'|'card'|'thumbnail'|'cover'|'modal', string>} */
+/** @type {Record<'mobile'|'desktop'|'card'|'thumbnail'|'cover'|'coverMobile'|'coverDesktop'|'modal', string>} */
 export const CF_IMAGE_PROFILES = {
   mobile: 'width=500,quality=75,format=auto',
   desktop: 'width=900,quality=80,format=auto',
   card: 'width=500,quality=75,format=auto',
   thumbnail: 'width=300,quality=60,format=auto',
-  cover: 'width=900,quality=80,format=auto',
+  cover: 'width=1800,quality=88,format=auto',
+  coverMobile: 'width=900,quality=82,format=auto',
+  coverDesktop: 'width=1800,quality=88,format=auto',
   modal: 'width=1000,quality=80,format=auto',
 };
+
+const CF_IMAGE_PATH_MARKER = '/cdn-cgi/image/';
 
 const MEDIA_HOST = 'media.gong.cl';
 
@@ -60,14 +64,35 @@ export function isCfTransformableUrl(url) {
 }
 
 /**
+ * Si la URL ya viene transformada por Cloudflare (/cdn-cgi/image/...),
+ * recupera la URL origen para poder re-aplicar un preset más apropiado.
+ * @param {string} [url]
+ * @returns {string | null}
+ */
+export function unwrapCfImageUrl(url) {
+  if (!url || typeof url !== 'string') return null;
+  const trimmed = url.trim();
+  const markerIndex = trimmed.indexOf(CF_IMAGE_PATH_MARKER);
+  if (markerIndex === -1) return trimmed;
+
+  const tail = trimmed.slice(markerIndex + CF_IMAGE_PATH_MARKER.length);
+  const firstSlash = tail.indexOf('/');
+  if (firstSlash === -1) return trimmed;
+
+  const originalUrl = tail.slice(firstSlash + 1);
+  return /^https?:\/\//i.test(originalUrl) ? originalUrl : trimmed;
+}
+
+/**
  * @param {string} originalUrl
- * @param {'mobile'|'desktop'|'card'|'thumbnail'|'cover'|'modal'} [profile='thumbnail']
+ * @param {'mobile'|'desktop'|'card'|'thumbnail'|'cover'|'coverMobile'|'coverDesktop'|'modal'} [profile='thumbnail']
  * @returns {string}
  */
 export function cfImageUrl(originalUrl, profile = 'thumbnail') {
-  if (!isCfTransformableUrl(originalUrl)) return originalUrl;
+  const sourceUrl = unwrapCfImageUrl(originalUrl) || originalUrl;
+  if (!isCfTransformableUrl(sourceUrl)) return sourceUrl;
   const opts = CF_IMAGE_PROFILES[profile] || CF_IMAGE_PROFILES.thumbnail;
-  return `${getCfImageOrigin()}/cdn-cgi/image/${opts}/${originalUrl}`;
+  return `${getCfImageOrigin()}/cdn-cgi/image/${opts}/${sourceUrl}`;
 }
 
 /**
