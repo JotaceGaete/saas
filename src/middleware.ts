@@ -1,13 +1,5 @@
-import { NextResponse } from 'next/server'
-import type { NextRequest } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { NextRequest, NextResponse } from 'next/server'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
-
-// Tus dominios propios de Walinka — no los proceses como custom domain
 const WALINKA_DOMAINS = [
   'ventalink.app',
   'cl.ventalink.app',
@@ -17,35 +9,50 @@ const WALINKA_DOMAINS = [
 ]
 
 export async function middleware(req: NextRequest) {
+  const { pathname } = req.nextUrl
   const host = req.headers.get('host') ?? ''
-  const hostname = host.split(':')[0] // quitar el puerto en desarrollo
+  const hostname = host.split(':')[0]
 
-  // Si es un dominio propio de Walinka, no hacer nada
-  const isWalinka = WALINKA_DOMAINS.some(d => hostname === d || hostname.endsWith(`.${d}`))
+  // ── Admin guard ────────────────────────────────────────────
+  if (pathname.startsWith('/admin')) {
+    if (pathname.startsWith('/admin/login')) return NextResponse.next()
+    const token = req.cookies.get('admin_token')?.value
+    if (token !== process.env.ADMIN_SECRET) {
+      return NextResponse.redirect(new URL('/admin/login', req.url))
+    }
+    return NextResponse.next()
+  }
+
+  // ── Custom domain mapping ──────────────────────────────────
+  const isWalinka = WALINKA_DOMAINS.some(
+    d => hostname === d || hostname.endsWith(`.${d}`)
+  )
   if (isWalinka) return NextResponse.next()
 
-  // Buscar en Supabase qué slug corresponde a este dominio
-  const { data } = await supabase
-    .from('custom_domains')
-    .select('business_slug, verified')
-    .eq('domain', hostname)
-    .single()
+  // Llamar a una API route interna que sí puede usar Supabase
+  const lookupUrl = new URL('/api/domain-lookup', req.url)
+  lookupUrl.searchParams.set('domain', hostname)
 
-  if (!data || !data.verified) {
-    // Dominio no registrado o no verificado
+  const res = await fetch(lookupUrl.toString())
+
+  if (!res.ok) {
     return NextResponse.redirect(new URL('https://miralatienda.de'))
   }
 
-  // Reescribir la URL internamente al catálogo correcto
-  const url = req.nextUrl.clone()
-  url.pathname = `/catalogo/${data.business_slug}`
+  const { slug } = await res.json()
 
+  if (!slug) {
+    return NextResponse.redirect(new URL('https://miralatienda.de'))
+  }
+
+  const url = req.nextUrl.clone()
+  url.pathname = `/catalogo/${slug}`
   return NextResponse.rewrite(url)
 }
 
 export const config = {
   matcher: [
-    // Aplica a todas las rutas excepto archivos estáticos y API
+    '/admin/:path*',
     '/((?!_next/static|_next/image|favicon.ico|api/).*)',
   ],
 }
