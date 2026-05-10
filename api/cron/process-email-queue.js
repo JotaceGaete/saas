@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { Resend } from 'resend'
+import { emailAutomationDisabledPayload, isEmailAutomationEnabled } from '../../src/emails/automation.mjs'
 import { newOrderEmail } from '../../src/emails/templates/new-order.js'
 import { welcomeEmail } from '../../src/emails/templates/welcome.js'
 
@@ -7,13 +8,6 @@ const MAX_RETRIES = 3
 const DEFAULT_BATCH_SIZE = 5
 const MAX_BATCH_SIZE = 20
 const RETRY_DELAY_MINUTES = [15, 30, 60]
-
-const supabase = createClient(
-  process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-)
-
-const resend = new Resend(process.env.RESEND_API_KEY)
 
 const templates = {
   new_order: newOrderEmail,
@@ -46,10 +40,22 @@ export default async function handler(req, res) {
       return res.status(405).json({ ok: false, error: 'Method not allowed' })
     }
 
+    if (!isEmailAutomationEnabled(process.env)) {
+      const payload = emailAutomationDisabledPayload()
+      log('info', { status: 'skipped', reason: payload.reason })
+      return res.status(200).json(payload)
+    }
+
     const cronSecret = getCronSecret()
     if (!cronSecret || req.headers['x-cron-secret'] !== cronSecret) {
       return res.status(401).json({ ok: false, error: 'Unauthorized' })
     }
+
+    const supabase = createClient(
+      process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_ROLE_KEY
+    )
+    const resend = new Resend(process.env.RESEND_API_KEY)
 
     const batchSize = getBatchSize()
     const { data: emails, error: fetchError } = await supabase

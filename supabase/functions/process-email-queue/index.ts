@@ -25,6 +25,11 @@ function jsonResponse(body: Record<string, unknown>, status = 200) {
 }
 
 const MAX_RETRIES = 3;
+const EMAIL_AUTOMATION_DISABLED_REASON = 'EMAIL_AUTOMATION_DISABLED';
+
+function isEmailAutomationEnabled() {
+  return Deno.env.get('EMAIL_AUTOMATION_ENABLED') === 'true';
+}
 
 interface QueueRow {
   id: string;
@@ -52,6 +57,11 @@ Deno.serve(async (req) => {
   }
   if (req.method !== 'POST') {
     return jsonResponse({ error: 'Method not allowed' }, 405);
+  }
+
+  if (!isEmailAutomationEnabled()) {
+    console.log('[process-email-queue] skipped: EMAIL_AUTOMATION_DISABLED');
+    return jsonResponse({ skipped: true, reason: EMAIL_AUTOMATION_DISABLED_REASON }, 200);
   }
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
