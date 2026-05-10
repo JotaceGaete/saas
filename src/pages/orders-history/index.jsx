@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import DashboardAppShell from 'components/ui/DashboardAppShell';
 import DashboardLayoutContent from 'components/ui/DashboardLayoutContent';
+import PremiumLoader from 'components/ui/PremiumLoader';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
 import { useConfirmedEmailGuard } from '../../hooks/useConfirmedEmailGuard';
@@ -215,17 +216,7 @@ export default function OrdersHistoryPage() {
   );
 
   if (businessLoading) {
-    return (
-      <div
-        className="min-h-screen flex items-center justify-center"
-        style={{ backgroundColor: 'var(--color-background)' }}
-      >
-        <div
-          className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin"
-          style={{ borderColor: 'var(--color-primary)', borderTopColor: 'transparent' }}
-        />
-      </div>
-    );
+    return <PremiumLoader fullScreen business={business} />;
   }
 
   return (
@@ -372,15 +363,7 @@ export default function OrdersHistoryPage() {
         </div>
 
         {loading ? (
-          <div
-            className="rounded-xl border p-12 text-center mt-6"
-            style={{ borderColor: 'var(--color-border)' }}
-          >
-            <div
-              className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin mx-auto"
-              style={{ borderColor: 'var(--color-primary)' }}
-            />
-          </div>
+          <PremiumLoader business={business} text="Preparando historial..." />
         ) : filteredOrders.length === 0 ? (
           <div
             className="rounded-xl border p-12 text-center mt-6"

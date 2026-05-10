@@ -5,6 +5,7 @@ import { isRestaurantBusiness } from '../../utils/businessType';
 import DashboardAppShell from 'components/ui/DashboardAppShell';
 import DashboardLayoutContent from 'components/ui/DashboardLayoutContent';
 import PanelHeader from 'components/ui/PanelHeader';
+import PremiumLoader from 'components/ui/PremiumLoader';
 import ImageUploadSection from './components/ImageUploadSection';
 import ProductFormFields from './components/ProductFormFields';
 import ProductToggles from './components/ProductToggles';
@@ -1016,14 +1017,7 @@ export default function ProductEditor() {
 
   const handleCancel = () => navigate('/product-management');
   if (pageLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--color-background)' }}>
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: 'var(--color-primary)', borderTopColor: 'transparent' }} />
-          <p className="text-sm" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Cargando producto...</p>
-        </div>
-      </div>
-    );
+    return <PremiumLoader fullScreen business={business} context="products" />;
   }
 
   return (

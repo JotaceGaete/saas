@@ -5,6 +5,7 @@ import LoginBrandPanel from './components/LoginBrandPanel';
 import LoginForm from './components/LoginForm';
 import { collectVisitAttribution } from '../../utils/analytics';
 import { recordSiteVisit } from '../../services/waBusinessService';
+import PremiumLoader from 'components/ui/PremiumLoader';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -113,14 +114,7 @@ export default function Login() {
 
   // Show nothing while checking auth state
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--color-background)' }}>
-        <svg className="animate-spin" width={32} height={32} viewBox="0 0 24 24" fill="none">
-          <circle cx="12" cy="12" r="10" stroke="rgba(124,58,237,0.2)" strokeWidth="3" />
-          <path d="M12 2a10 10 0 0 1 10 10" stroke="#7C3AED" strokeWidth="3" strokeLinecap="round" />
-        </svg>
-      </div>
-    );
+    return <PremiumLoader fullScreen text="Preparando tu acceso..." />;
   }
 
   return (

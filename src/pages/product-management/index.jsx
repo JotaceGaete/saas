@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import PanelHeader from "components/ui/PanelHeader";
 import DashboardAppShell from "components/ui/DashboardAppShell";
 import DashboardLayoutContent from "components/ui/DashboardLayoutContent";
+import PremiumLoader from "components/ui/PremiumLoader";
 import ProductFilters from "./components/ProductFilters";
 import ProductTable from "./components/ProductTable";
 import BulkActionBar from "./components/BulkActionBar";
@@ -230,12 +231,7 @@ export default function ProductManagement() {
             </div>
           )}
           {loading ? (
-            <div className="flex items-center justify-center py-16">
-              <div className="flex flex-col items-center gap-3">
-                <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: 'var(--color-primary)', borderTopColor: 'transparent' }} />
-                <p className="text-sm" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Cargando productos...</p>
-              </div>
-            </div>
+            <PremiumLoader business={business} context="products" />
           ) : (
             <>
               <div className="flex flex-wrap items-start justify-between gap-3">

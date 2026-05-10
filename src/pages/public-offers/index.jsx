@@ -12,6 +12,7 @@ import { openWhatsAppUrl } from '../../utils/openWhatsAppUrl';
 import CatalogLayout from '../public-catalog/CatalogLayout';
 import { ProductCard, ProductModal, getProductCardImage } from '../public-catalog';
 import CatalogStoreHeader from '../public-catalog/CatalogStoreHeader';
+import PremiumLoader from '../../components/ui/PremiumLoader';
 import BrandingFooter from '../../components/BrandingFooter';
 import Icon from '../../components/AppIcon';
 import CatalogImage from '../../components/CatalogImage';
@@ -358,13 +359,7 @@ function PublicOffersContent() {
       <main className="pb-28">
         <section className="mx-auto max-w-7xl px-4 py-2">
           {status === 'loading' && (
-            <div className="flex flex-col items-center justify-center gap-3 py-24">
-              <svg className="animate-spin" width={32} height={32} viewBox="0 0 24 24" fill="none" aria-hidden>
-                <circle cx="12" cy="12" r="10" stroke="rgba(0,0,0,0.1)" strokeWidth="3" />
-                <path d="M12 2a10 10 0 0 1 10 10" stroke={theme?.primaryColor || '#25D366'} strokeWidth="3" strokeLinecap="round" />
-              </svg>
-              <p className="text-sm text-gray-400">Cargando ofertas...</p>
-            </div>
+            <PremiumLoader business={business} context="catalog" text="Preparando ofertas..." />
           )}
 
           {status === 'not-found' && (

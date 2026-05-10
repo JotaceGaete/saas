@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import PanelHeader from 'components/ui/PanelHeader';
 import DashboardAppShell from 'components/ui/DashboardAppShell';
 import DashboardLayoutContent from 'components/ui/DashboardLayoutContent';
+import PremiumLoader from 'components/ui/PremiumLoader';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
 import { updateBusiness, getMyBusiness, getRubros, getEffectivePlanSlug } from '../../services/waBusinessService';
@@ -283,6 +284,9 @@ export default function BusinessConfiguration() {
     () => getRecommendedBusinessModeFromRubro(currentRubro),
     [currentRubro],
   );
+  const visibleBusinessKind = (form?.businessMode || business?.businessMode || BUSINESS_MODES.STORE) === BUSINESS_MODES.RESTAURANT
+    ? 'restaurante'
+    : 'tienda';
 
   // Design settings state (valores por defecto; se rellenan desde business.designSettings al cargar)
   const [design, setDesign] = useState({
@@ -830,32 +834,13 @@ export default function BusinessConfiguration() {
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--color-background)' }}>
-        <svg className="animate-spin" width={32} height={32} viewBox="0 0 24 24" fill="none">
-          <circle cx="12" cy="12" r="10" stroke="rgba(124,58,237,0.2)" strokeWidth="3" />
-          <path d="M12 2a10 10 0 0 1 10 10" stroke="#7C3AED" strokeWidth="3" strokeLinecap="round" />
-        </svg>
-      </div>
-    );
+    return <PremiumLoader fullScreen business={business} />;
   }
 
   if (!user) return null;
 
   if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--color-background)' }}>
-        <div className="flex flex-col items-center gap-3">
-          <svg className="animate-spin" width={32} height={32} viewBox="0 0 24 24" fill="none">
-            <circle cx="12" cy="12" r="10" stroke="rgba(124,58,237,0.2)" strokeWidth="3" />
-            <path d="M12 2a10 10 0 0 1 10 10" stroke="#7C3AED" strokeWidth="3" strokeLinecap="round" />
-          </svg>
-          <p className="text-sm" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-            Verificando tu negocio...
-          </p>
-        </div>
-      </div>
-    );
+    return <PremiumLoader fullScreen business={business} />;
   }
 
   if (!business?.id) {
@@ -894,13 +879,7 @@ export default function BusinessConfiguration() {
           }
         >
           {isLoading ? (
-            <div className="flex items-center justify-center py-20">
-              <svg className="animate-spin" width="28" height="28" viewBox="0 0 24 24" fill="none">
-                <circle cx="12" cy="12" r="10" stroke="rgba(139,92,246,0.2)" strokeWidth="3" />
-                <path d="M12 2a10 10 0 0 1 10 10" stroke="var(--color-primary)" strokeWidth="3" strokeLinecap="round" />
-              </svg>
-              <span className="ml-3 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Cargando...</span>
-            </div>
+            <PremiumLoader business={business} />
           ) : !business?.id ? (
             <StoreCreationStep user={user} businessLoading={isLoading} />
           ) : (
@@ -1087,7 +1066,7 @@ export default function BusinessConfiguration() {
                   <Icon name="Building2" size={18} color="var(--color-primary)" />
                 </div>
                 <div>
-                  <h2 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-text-primary)' }}>Datos del negocio</h2>
+                  <h2 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-text-primary)' }}>Datos de tu {visibleBusinessKind}</h2>
                   <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Visible en tu catálogo público</p>
                 </div>
               </div>

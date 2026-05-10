@@ -10,6 +10,7 @@ import { formatPrice as formatPriceUtil, resolveCatalogCurrency } from '../../ut
 import { getBusinessLocale } from '../../lib/locale/businessLocale';
 import { useIsDesktop } from '../../hooks/useMediaQuery';
 import { useAuth } from '../../contexts/AuthContext';
+import PremiumLoader from '../../components/ui/PremiumLoader';
 import {
   getPublicCatalogBaseUrl,
   getPublicCatalogRelativePath,
@@ -678,14 +679,7 @@ function CatalogInner({ slug }) {
   }, [mainFeaturedProduct?.id, products]);
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 font-catalog antialiased">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-10 h-10 border-[3px] border-t-transparent rounded-full animate-spin" style={{ borderColor: '#25D366', borderTopColor: 'transparent' }} />
-          <p className="text-sm text-gray-500 font-medium">Cargando catálogo...</p>
-        </div>
-      </div>
-    );
+    return <PremiumLoader fullScreen business={business} context="catalog" />;
   }
 
   if (notFound) {

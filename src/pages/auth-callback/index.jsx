@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { getMyBusiness } from '../../services/waBusinessService';
 import { APP_ORIGIN, isCanonicalAppHostname } from '../../config/appUrl';
+import PremiumLoader from 'components/ui/PremiumLoader';
 
 function isLocalhostHost(hostname) {
   const host = String(hostname || '').trim().toLowerCase();
@@ -95,8 +96,6 @@ export default function AuthCallback() {
   }, [navigate]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6" style={{ backgroundColor: 'var(--color-background)' }}>
-      <p className="text-sm" style={{ color: 'var(--color-muted-foreground)' }}>Cargando...</p>
-    </div>
+    <PremiumLoader fullScreen text="Preparando tu acceso..." />
   );
 }

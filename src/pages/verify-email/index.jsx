@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import Icon from 'components/AppIcon';
+import PremiumLoader from 'components/ui/PremiumLoader';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 
@@ -96,14 +97,7 @@ export default function VerifyEmailPage() {
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-6" style={{ backgroundColor: 'var(--color-background)' }}>
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: 'var(--color-primary)', borderTopColor: 'transparent' }} />
-          <p className="text-sm" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Cargando…</p>
-        </div>
-      </div>
-    );
+    return <PremiumLoader fullScreen text="Preparando tu acceso..." />;
   }
 
   if (!user) {

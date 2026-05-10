@@ -46,6 +46,7 @@ import PrivacyPage from './pages/legal/PrivacyPage';
 import RefundsPage from './pages/legal/RefundsPage';
 import DLocalReturnPage from './pages/billing-dlocal-return';
 import { useAuth } from './contexts/AuthContext';
+import PremiumLoader from './components/ui/PremiumLoader';
 
 /**
  * Raíz `/` en go.ventalink.app: sesión → dashboard; sin sesión → login (nunca apex/www).
@@ -58,15 +59,7 @@ function GoRootEntry() {
   const { user, loading } = useAuth();
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-white" style={{ fontFamily: 'var(--font-body)' }}>
-        <svg className="animate-spin mb-3" width={36} height={36} viewBox="0 0 24 24" fill="none" aria-hidden>
-          <circle cx="12" cy="12" r="10" stroke="rgba(124,58,237,0.2)" strokeWidth="3" />
-          <path d="M12 2a10 10 0 0 1 10 10" stroke="#7C3AED" strokeWidth="3" strokeLinecap="round" />
-        </svg>
-        <p className="text-sm text-slate-500">Cargando…</p>
-      </div>
-    );
+    return <PremiumLoader fullScreen />;
   }
 
   if (!isGo) {

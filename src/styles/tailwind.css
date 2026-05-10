@@ -372,6 +372,17 @@ p {
   animation: page-enter 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
 
+@keyframes premium-loader-scan {
+  0% { transform: translateX(-120%); opacity: 0.2; }
+  30% { opacity: 1; }
+  100% { transform: translateX(220%); opacity: 0.2; }
+}
+
+.premium-loader-line {
+  background: #111827;
+  animation: premium-loader-scan 1.35s ease-in-out infinite;
+}
+
 /* Sidebar styles */
 .sidebar-header {
   display: flex;

@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import Icon from 'components/AppIcon';
+import PremiumLoader from 'components/ui/PremiumLoader';
 import { getCustomer, getCustomerOrders } from '../../services/waBusinessService';
 import { formatCLP } from '../../utils/formatCLP';
 
@@ -58,14 +59,7 @@ export default function CustomerPage() {
 
   // ─── Render ────────────────────────────────────────────────────────────────
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <svg className="animate-spin" width={32} height={32} viewBox="0 0 24 24" fill="none" aria-hidden>
-          <circle cx="12" cy="12" r="10" stroke="rgba(124,58,237,0.2)" strokeWidth="3" />
-          <path d="M12 2a10 10 0 0 1 10 10" stroke="#7C3AED" strokeWidth="3" strokeLinecap="round" />
-        </svg>
-      </div>
-    );
+    return <PremiumLoader fullScreen text="Preparando cliente..." />;
   }
 
   if (error) {

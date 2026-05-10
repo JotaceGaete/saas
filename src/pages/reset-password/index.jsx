@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import Icon from 'components/AppIcon';
+import PremiumLoader from 'components/ui/PremiumLoader';
 
 /**
  * Captura URL en el primer render (antes de que el cliente pueda limpiar el hash).
@@ -138,19 +139,7 @@ export default function ResetPassword() {
   };
 
   if (phase === 'checking') {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-6" style={{ backgroundColor: 'var(--color-background)' }}>
-        <div className="flex flex-col items-center gap-3">
-          <svg className="animate-spin" width={36} height={36} viewBox="0 0 24 24" fill="none" aria-hidden>
-            <circle cx="12" cy="12" r="10" stroke="rgba(124,58,237,0.2)" strokeWidth="3" />
-            <path d="M12 2a10 10 0 0 1 10 10" stroke="#7C3AED" strokeWidth="3" strokeLinecap="round" />
-          </svg>
-          <p className="text-sm text-center max-w-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-            Validando enlace de recuperación...
-          </p>
-        </div>
-      </div>
-    );
+    return <PremiumLoader fullScreen text="Validando enlace de recuperación..." />;
   }
 
   if (phase === 'invalid') {

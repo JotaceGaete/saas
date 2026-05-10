@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import PanelHeader from 'components/ui/PanelHeader';
 import DashboardAppShell from 'components/ui/DashboardAppShell';
 import DashboardLayoutContent from 'components/ui/DashboardLayoutContent';
+import PremiumLoader from 'components/ui/PremiumLoader';
 import Icon from 'components/AppIcon';
 import DesignCustomization from '../business-configuration/components/DesignCustomization';
 import MobilePreviewPanel from '../business-configuration/components/MobilePreviewPanel';
@@ -165,14 +166,7 @@ export default function DesignPage() {
   if (!user) return null;
 
   if (loading && !business) {
-    return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--color-background)' }}>
-        <svg className="animate-spin" width={32} height={32} viewBox="0 0 24 24" fill="none">
-          <circle cx="12" cy="12" r="10" stroke="rgba(124,58,237,0.2)" strokeWidth="3" />
-          <path d="M12 2a10 10 0 0 1 10 10" stroke="#7C3AED" strokeWidth="3" strokeLinecap="round" />
-        </svg>
-      </div>
-    );
+    return <PremiumLoader fullScreen business={business} />;
   }
 
   if (!business?.id) {
