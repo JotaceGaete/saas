@@ -47,15 +47,15 @@ export default function MetricCard({ title, value, subtitle, iconName, trend, tr
     <Tag
       onClick={onClick}
       className={[
-        'dashboard-premium-card rounded-2xl border-0 p-5 flex flex-col gap-3 w-full text-left',
-        variant === 'warning' ? 'dashboard-premium-card--warning ring-2 ring-amber-300/50' : '',
+        'dashboard-premium-card rounded-xl p-4 flex flex-col gap-4 w-full text-left',
+        variant === 'warning' ? 'dashboard-premium-card--warning ring-1 ring-amber-200/70' : '',
         onClick ? 'cursor-pointer' : 'cursor-default',
       ].join(' ')}
     >
-      <div className="flex items-start justify-between gap-2">
+      <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-2 min-w-0">
           <p
-            className="text-sm font-medium leading-tight truncate"
+            className="text-[13px] font-semibold leading-tight truncate"
             style={{ color: variant === 'warning' ? '#92400E' : 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}
           >
             {title}
@@ -66,24 +66,21 @@ export default function MetricCard({ title, value, subtitle, iconName, trend, tr
             </span>
           )}
         </div>
-        <div
-          className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-          style={{ backgroundColor: v.iconBg }}
-        >
+        <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: v.iconBg }}>
           <Icon name={iconName} size={17} color={v.iconColor} />
         </div>
       </div>
 
       <div>
         <p
-          className="text-3xl sm:text-4xl font-black tabular-nums tracking-tight leading-none"
-          style={{ fontFamily: 'var(--font-stat)', color: variant === 'warning' ? '#92400E' : 'var(--color-foreground)', letterSpacing: '-0.04em' }}
+          className="text-3xl sm:text-[2.15rem] font-black tabular-nums leading-none"
+          style={{ fontFamily: 'var(--font-stat)', color: variant === 'warning' ? '#92400E' : 'var(--color-foreground)', letterSpacing: 0 }}
         >
           {value}
         </p>
         {subtitle && (
           <p
-            className="text-xs mt-1.5"
+            className="text-xs mt-2"
             style={{ color: variant === 'warning' ? '#B45309' : 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}
           >
             {subtitle}
@@ -92,7 +89,7 @@ export default function MetricCard({ title, value, subtitle, iconName, trend, tr
       </div>
 
       {(trend || onClick) && (
-        <div className="flex items-center justify-between gap-1.5 pt-1 border-t" style={{ borderColor: variant === 'warning' ? 'rgba(245,158,11,0.2)' : 'var(--color-border)' }}>
+        <div className="flex items-center justify-between gap-1.5 pt-1">
           {trend && (
             <div
               className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold"

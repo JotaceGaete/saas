@@ -10,18 +10,12 @@ export default function DailyMessageCard({ message }) {
 
   return (
     <section aria-label="Consejo del día" className="mb-5">
-      <div
-        className="flex items-start gap-3 px-4 py-4 rounded-2xl border"
-        style={{
-          borderColor: 'rgba(124,58,237,0.18)',
-          background: 'linear-gradient(135deg, rgba(124,58,237,0.06) 0%, rgba(167,139,250,0.04) 100%)',
-        }}
-      >
+      <div className="flex items-start gap-3 rounded-2xl px-4 py-4" style={{ backgroundColor: 'rgba(255,255,255,0.68)', border: '1px solid rgba(17,24,39,0.07)' }}>
         <div
           className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5"
-          style={{ backgroundColor: 'rgba(124,58,237,0.12)' }}
+          style={{ backgroundColor: '#111827' }}
         >
-          <Icon name="Lightbulb" size={16} color="var(--color-primary)" />
+          <Icon name="Lightbulb" size={16} color="#FFFFFF" />
         </div>
         <div className="min-w-0">
           <p

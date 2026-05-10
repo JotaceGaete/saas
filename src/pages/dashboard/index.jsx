@@ -564,6 +564,20 @@ export default function Dashboard() {
   ];
 
   const metricsToShow = isStarterPlan ? METRICS.filter((m) => m.title === 'Total productos') : METRICS;
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Buenos dias' : hour < 19 ? 'Buenas tardes' : 'Buenas noches';
+  const visitBaseline = Math.max(0, Math.round((visits7d - visitsToday) / 6));
+  const visitDelta = visitBaseline > 0 ? Math.round(((visitsToday - visitBaseline) / visitBaseline) * 100) : null;
+  const heroMetricLabel = analyticsLoading
+    ? 'Actualizando actividad del catalogo'
+    : hasAnyVisits
+      ? `Tu catalogo recibio ${visitsToday} visita${visitsToday !== 1 ? 's' : ''} hoy`
+      : 'Tu catalogo esta listo para recibir visitas';
+  const heroMetricDetail = analyticsLoading
+    ? 'Estamos sincronizando las senales del dia.'
+    : visitDelta !== null
+      ? `${visitDelta >= 0 ? '+' : ''}${visitDelta}% respecto al ritmo reciente`
+      : `${visits7d} visita${visits7d !== 1 ? 's' : ''} en los ultimos 7 dias`;
 
   const notifyFirstCatalogShare = useCallback(() => {
     if (!business?.id) return;
@@ -609,7 +623,7 @@ export default function Dashboard() {
         <PanelHeader
           title={(
             <div className="flex items-center gap-2">
-              <h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Dashboard</h1>
+              <h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Inicio</h1>
               {realtimeStatus === 'connected' && (
                 <span className="hidden sm:inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: 'rgba(16,185,129,0.08)', color: '#059669', fontFamily: 'var(--font-caption)' }}>
                   <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
@@ -633,13 +647,13 @@ export default function Dashboard() {
             <button onClick={() => navigate('/business-configuration')} className="w-9 h-9 flex items-center justify-center rounded-lg transition-all duration-150 hover:bg-muted" style={{ color: 'var(--color-muted-foreground)' }} aria-label="Configuración">
               <Icon name="Settings" size={17} color="currentColor" />
             </button>
-            <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 ml-1" style={{ background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)' }}>
+            <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ml-1" style={{ backgroundColor: '#111827', color: '#FFFFFF' }}>
               {business?.name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0)?.toUpperCase() || 'U'}
             </div>
           </div>
         </PanelHeader>
 
-        <DashboardLayoutContent className="page-enter">
+        <DashboardLayoutContent className="page-enter" innerClassName="gap-6 md:gap-7">
 
           {/* Banner: negocio sin configurar */}
           {!business && !businessLoading && (
@@ -683,6 +697,37 @@ export default function Dashboard() {
               <button onClick={() => navigate('/planes')} className="text-xs font-medium px-2 py-1 rounded-lg" style={{ color: 'var(--color-primary)', fontFamily: 'var(--font-caption)' }}>Ver planes</button>
             </div>
           )}
+
+          <section aria-label="Resumen principal">
+            <div className="dashboard-hero-panel relative overflow-hidden px-5 py-6 sm:px-7 sm:py-7 md:px-8">
+              <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold uppercase" style={{ color: '#9CA3AF', fontFamily: 'var(--font-caption)' }}>
+                    {greeting}
+                  </p>
+                  <h2 className="mt-2 max-w-3xl text-[2rem] font-black leading-[1.05] tracking-normal sm:text-5xl" style={{ color: '#FFFFFF', fontFamily: 'var(--font-heading)' }}>
+                    {heroMetricLabel}
+                  </h2>
+                  <p className="mt-3 max-w-2xl text-sm sm:text-base" style={{ color: '#CBD5E1', fontFamily: 'var(--font-body)', lineHeight: 1.55 }}>
+                    {heroMetricDetail}. {pendingOrdersCount > 0 ? `${pendingOrdersCount} pedido${pendingOrdersCount !== 1 ? 's' : ''} espera${pendingOrdersCount !== 1 ? 'n' : ''} respuesta.` : 'Pedidos y catalogo se ven bajo control.'}
+                  </p>
+                </div>
+                <div className="grid grid-cols-3 gap-3 lg:min-w-[360px]">
+                  {[
+                    { label: 'Hoy', value: analyticsLoading ? '...' : visitsToday, muted: 'visitas' },
+                    { label: 'Pendientes', value: dataLoading ? '...' : pendingOrdersCount, muted: 'pedidos' },
+                    { label: 'Activos', value: dataLoading ? '...' : activeProducts, muted: 'productos' },
+                  ].map((item) => (
+                    <div key={item.label} className="rounded-xl px-3 py-3" style={{ backgroundColor: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                      <p className="text-[11px] font-medium" style={{ color: '#9CA3AF', fontFamily: 'var(--font-caption)' }}>{item.label}</p>
+                      <p className="mt-2 text-2xl font-black tabular-nums" style={{ color: '#FFFFFF', fontFamily: 'var(--font-stat)' }}>{item.value}</p>
+                      <p className="text-[11px]" style={{ color: '#9CA3AF', fontFamily: 'var(--font-caption)' }}>{item.muted}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </section>
 
           {/* Hero CTA: visible only when the catalog has no products yet */}
           {!dataLoading && products?.length === 0 && (
