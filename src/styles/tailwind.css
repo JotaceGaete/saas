@@ -8,9 +8,9 @@
 @tailwind utilities;
 
 :root {
-  /* Core Colors - Production SaaS Violet */
-  --color-background: #F8FAFC;
-  --color-foreground: #0F172A;
+  /* Core Colors - Walinka operating console */
+  --color-background: #F6F7FB;
+  --color-foreground: #111827;
 
   --color-card: #FFFFFF;
   --color-card-foreground: #0F172A;
@@ -28,8 +28,8 @@
   --color-accent: #8B5CF6;
   --color-accent-foreground: #FFFFFF;
 
-  --color-muted: #F1F5F9;
-  --color-muted-foreground: #64748B;
+  --color-muted: #ECEFF4;
+  --color-muted-foreground: #667085;
 
   --color-destructive: #EF4444;
   --color-destructive-foreground: #FFFFFF;
@@ -43,14 +43,14 @@
   --color-error: #EF4444;
   --color-error-foreground: #FFFFFF;
 
-  --color-border: #E2E8F0;
-  --color-border-strong: #CBD5E1;
+  --color-border: #E5E7EB;
+  --color-border-strong: #D0D5DD;
   --color-input: #E2E8F0;
   --color-ring: #7C3AED;
 
   /* Surface colors */
   --color-surface: #FFFFFF;
-  --color-surface-subtle: #F8FAFC;
+  --color-surface-subtle: #F6F7FB;
   --color-surface-raised: #FFFFFF;
 
   /* Text hierarchy */
@@ -69,12 +69,12 @@
 
   /* Tarjetas dashboard: sombra en capas + radio */
   --dashboard-card-shadow:
-    0 10px 15px -3px rgba(0, 0, 0, 0.1),
-    0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    0 1px 1px rgba(17, 24, 39, 0.03),
+    0 12px 30px rgba(17, 24, 39, 0.055);
   --dashboard-card-shadow-hover:
-    0 18px 22px -6px rgba(0, 0, 0, 0.12),
-    0 8px 8px -4px rgba(0, 0, 0, 0.06);
-  --dashboard-card-radius: 16px;
+    0 1px 1px rgba(17, 24, 39, 0.035),
+    0 16px 34px rgba(17, 24, 39, 0.07);
+  --dashboard-card-radius: 14px;
 
   /* Shadows - refined elevation system */
   --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.04);
@@ -123,7 +123,7 @@
   --z-toast: 300;
 
   /* Sidebar */
-  --sidebar-width: 240px;
+  --sidebar-width: 232px;
   --sidebar-collapsed-width: 64px;
 
   /* iOS safe areas (iPhone notch, Dynamic Island, etc.) */
@@ -377,8 +377,8 @@ p {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 18px 16px;
-  border-bottom: 1px solid var(--color-border);
+  padding: 18px 14px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .sidebar-logo {
@@ -388,10 +388,10 @@ p {
   width: 32px;
   height: 32px;
   min-width: 32px;
-  background: linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%);
-  border-radius: var(--radius-md);
+  background: #ffffff;
+  border-radius: 9px;
   transition: all var(--transition-base);
-  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.3);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.18);
 }
 
 .sidebar-logo:hover {
@@ -481,13 +481,13 @@ p {
 .nav-item.active::before {
   content: '';
   position: absolute;
-  left: 0;
+  left: 7px;
   top: 50%;
   transform: translateY(-50%);
   width: 3px;
-  height: 60%;
-  background: var(--color-primary);
-  border-radius: 0 2px 2px 0;
+  height: 18px;
+  background: #ffffff;
+  border-radius: 99px;
 }
 
 /* Divider with label */
@@ -580,21 +580,22 @@ p {
    * Tarjetas dashboard: relieve (gradiente + sombra en capas) y elevación en hover / active (touch).
    */
   .dashboard-premium-card {
-    background: linear-gradient(135deg, #ffffff 0%, #f9faff 100%);
+    background: rgba(255, 255, 255, 0.92);
     box-shadow: var(--dashboard-card-shadow);
     border-radius: var(--dashboard-card-radius);
+    border: 1px solid rgba(255, 255, 255, 0.78);
     transition:
       transform 0.28s cubic-bezier(0.4, 0, 0.2, 1),
       box-shadow 0.28s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   .dashboard-premium-card:hover {
-    transform: translateY(-4px);
+    transform: translateY(-2px);
     box-shadow: var(--dashboard-card-shadow-hover);
   }
 
   .dashboard-premium-card:active {
-    transform: translateY(-4px);
+    transform: translateY(-1px);
     transition-duration: 0.2s;
   }
 
@@ -604,25 +605,37 @@ p {
   }
 
   .dashboard-premium-card--warning {
-    background: linear-gradient(135deg, #fffbeb 0%, #fff7ed 100%);
+    background: #fffaf0;
   }
 
   .dashboard-premium-card--success {
-    background: linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%);
+    background: #f1fbf6;
   }
 
   /** Insight IA: mismo relieve con capa vítrea */
   .dashboard-premium-card--glass {
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.88) 0%, rgba(249, 250, 255, 0.94) 100%);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
+    background: #111827;
+    border-color: rgba(255, 255, 255, 0.08);
   }
 
   /** Mini-bloques dentro del embudo (sin elevación al hover) */
   .dashboard-premium-card--embed {
-    background: linear-gradient(135deg, #ffffff 0%, #f9faff 100%);
-    box-shadow: 0 4px 6px -2px rgba(0, 0, 0, 0.06), 0 2px 4px -2px rgba(0, 0, 0, 0.04);
+    background: rgba(246, 247, 251, 0.86);
+    box-shadow: none;
     border-radius: 12px;
+  }
+
+  .dashboard-hero-panel {
+    background: #111827;
+    color: #ffffff;
+    border-radius: 18px;
+    box-shadow: 0 22px 55px rgba(17, 24, 39, 0.18);
+  }
+
+  .dashboard-command-bar {
+    background: rgba(255, 255, 255, 0.82);
+    border: 1px solid rgba(17, 24, 39, 0.08);
+    box-shadow: 0 8px 24px rgba(17, 24, 39, 0.06);
   }
 
   @media (prefers-reduced-motion: reduce) {

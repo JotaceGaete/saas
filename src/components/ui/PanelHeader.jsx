@@ -24,9 +24,10 @@ export default function PanelHeader({
     <div
       className={`sticky top-0 z-50 flex-shrink-0 border-b flex flex-col ${className}`}
       style={{
-        backgroundColor: '#FFFFFF',
-        borderColor: 'var(--color-border)',
-        boxShadow: 'var(--shadow-xs)',
+        backgroundColor: 'rgba(246, 247, 251, 0.92)',
+        borderColor: 'rgba(17,24,39,0.07)',
+        boxShadow: 'none',
+        backdropFilter: 'blur(14px)',
         paddingTop: 'var(--safe-area-top)',
         minHeight: `calc(${HEADER_BAR_HEIGHT}px + var(--safe-area-top))`,
         ...style,
