@@ -11,6 +11,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { getMyBusiness, updateBusiness, getProducts } from '../../services/waBusinessService';
 import { getCountryLabels } from '../../config/country';
 import { getBusinessLocale } from '../../lib/locale/businessLocale';
+import { isRestaurantBusiness } from '../../utils/businessType';
 
 const defaultDesign = {
   theme: 'minimal',
@@ -66,6 +67,12 @@ export default function DesignPage() {
   const locale = getBusinessLocale(business, {
     preferredCountryCode: user?.user_metadata?.country_code ?? null,
   });
+  const isRestaurant = isRestaurantBusiness(business);
+  const designTitle = isRestaurant ? 'Diseño del menú' : 'Diseño del catálogo';
+  const designSubtitle = isRestaurant
+    ? 'Cuida cómo se verá tu carta cuando tus clientes la abran.'
+    : 'Ajusta cómo se verá tu tienda cuando tus clientes la abran.';
+  const previewTitle = isRestaurant ? 'Vista del menú' : 'Vista del catálogo';
 
   const loading = businessLoading && !ctxBusiness;
 
@@ -175,18 +182,29 @@ export default function DesignPage() {
   }
 
   return (
-    <DashboardAppShell backgroundColor="#f7f7f9">
+    <DashboardAppShell backgroundColor="#f6f7fb">
         <PanelHeader
-          title={<h1 className="text-lg font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>Diseño</h1>}
-          subtitle={<p className="text-xs hidden sm:block" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Apariencia, categorías, layout y encabezado del catálogo.</p>}
+          title={<h1 className="text-lg font-semibold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Diseño</h1>}
+          subtitle={<p className="text-xs hidden sm:block" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Identidad visual, portada y experiencia de catálogo.</p>}
         />
 
         <DashboardLayoutContent
           className="flex flex-1 flex-col min-h-0 w-full"
-          innerClassName="flex flex-col flex-1 min-h-0 min-h-[calc(100vh-88px)] space-y-6"
+          innerClassName="flex flex-col flex-1 min-h-0 min-h-[calc(100vh-88px)] space-y-7"
         >
+          <section className="border-b pb-6" style={{ borderColor: 'rgba(17,24,39,0.08)' }}>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+              Identidad visual
+            </p>
+            <h2 className="mt-2 text-3xl font-semibold leading-tight sm:text-4xl" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-heading)', letterSpacing: '-0.03em' }}>
+              {designTitle}
+            </h2>
+            <p className="mt-3 max-w-2xl text-sm leading-6 sm:text-base" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-body)' }}>
+              {designSubtitle}
+            </p>
+          </section>
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start w-full min-w-0 flex-1 min-h-0">
-            <div className="min-w-0 w-full lg:col-span-8 py-6 lg:py-0">
+            <div className="min-w-0 w-full lg:col-span-8">
               <DesignCustomization
                 design={draftDesign}
                 onChange={setDraftDesign}
@@ -199,29 +217,44 @@ export default function DesignPage() {
                 isDirty={isDirty}
                 showSaved={showSaved}
                 onReset={handleReset}
+                isRestaurant={isRestaurant}
               />
             </div>
             <div
               ref={previewAnchorRef}
               id="design-preview"
-              className="flex flex-col items-center justify-start w-full min-w-0 max-w-[380px] mx-auto py-6 lg:mx-0 lg:max-w-none lg:w-full lg:py-0 lg:col-span-4 lg:sticky lg:top-[calc(var(--safe-area-top)+60px+1.5rem)] lg:z-[5] lg:self-start rounded-2xl shadow-md lg:shadow-lg scroll-mt-24"
-              style={{ backgroundColor: '#f7f7f9' }}
+              className="w-full min-w-0 max-w-[360px] mx-auto scroll-mt-24 lg:mx-0 lg:max-w-none lg:col-span-4 lg:sticky lg:top-[calc(var(--safe-area-top)+60px+1.5rem)] lg:z-[5] lg:self-start"
             >
-              <p className="text-xs font-semibold mb-3 flex-shrink-0" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-                Vista previa
-              </p>
-              <MobilePreviewPanel
-                storeName={business?.name || 'Mi Tienda'}
-                storeSlug={business?.slug || ''}
-                logoUrl={draftDesign?.logoUrl || business?.logoUrl}
-                coverImageUrl={draftDesign?.headerImageUrl || business?.coverImageUrl}
-                products={products}
-                currency={business?.currency || locale.currencyCode}
-                locale={locale.locale}
-                countryCode={locale.countryCode}
-                design={draftDesign}
-                hideCurrencySymbol={draftDesign?.showCatalogCurrencySymbol === false}
-              />
+              <div
+                className="rounded-[24px] border p-4 shadow-[0_18px_42px_rgba(17,24,39,0.08)]"
+                style={{ backgroundColor: 'rgba(255,255,255,0.72)', borderColor: 'rgba(17,24,39,0.08)' }}
+              >
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                      En vivo
+                    </p>
+                    <p className="mt-1 text-sm font-semibold" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-heading)' }}>
+                      {previewTitle}
+                    </p>
+                  </div>
+                  <span className="rounded-full px-2.5 py-1 text-[11px] font-semibold" style={{ backgroundColor: 'rgba(17,24,39,0.06)', color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                    Mobile
+                  </span>
+                </div>
+                <MobilePreviewPanel
+                  storeName={business?.name || (isRestaurant ? 'Mi restaurante' : 'Mi tienda')}
+                  storeSlug={business?.slug || ''}
+                  logoUrl={draftDesign?.logoUrl || business?.logoUrl}
+                  coverImageUrl={draftDesign?.headerImageUrl || business?.coverImageUrl}
+                  products={products}
+                  currency={business?.currency || locale.currencyCode}
+                  locale={locale.locale}
+                  countryCode={locale.countryCode}
+                  design={draftDesign}
+                  hideCurrencySymbol={draftDesign?.showCatalogCurrencySymbol === false}
+                />
+              </div>
             </div>
           </div>
         </DashboardLayoutContent>
@@ -229,12 +262,12 @@ export default function DesignPage() {
         {/* Móvil: acceso rápido a la vista previa (al final del flujo o scroll al ancla) */}
         <button
           type="button"
-          className="fixed bottom-6 right-4 z-40 flex items-center gap-2 rounded-full px-4 py-3 shadow-lg md:hidden transition-transform duration-300 hover:scale-105 active:scale-95"
+          className="fixed bottom-6 right-4 z-40 flex items-center gap-2 rounded-full px-4 py-3 shadow-lg md:hidden transition-transform duration-300 hover:-translate-y-0.5 active:scale-95"
           style={{
-            background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)',
+            background: '#111827',
             color: '#fff',
             fontFamily: 'var(--font-caption)',
-            boxShadow: '0 8px 32px rgba(124, 58, 237, 0.35)',
+            boxShadow: '0 12px 30px rgba(17,24,39,0.22)',
           }}
           onClick={() => previewAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
           aria-label="Ir a vista previa"
