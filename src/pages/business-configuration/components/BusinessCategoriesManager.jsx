@@ -101,18 +101,18 @@ export default function BusinessCategoriesManager({ business }) {
           Aún no tienes categorías propias. Agrégalas abajo.
         </p>
       ) : (
-        <ul className="mb-3 space-y-1.5">
+        <ul className="mb-4 flex flex-wrap gap-2">
           {categories.map((cat) => (
             <li
               key={cat.id}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg border"
-              style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-muted)' }}
+              className="flex items-center gap-2 rounded-full border px-3 py-1.5 transition-colors hover:bg-white"
+              style={{ borderColor: 'rgba(203,213,225,0.9)', backgroundColor: 'rgba(248,250,252,0.72)' }}
             >
               {editingId === cat.id ? (
                 <>
                   <input
                     autoFocus
-                    className="flex-1 text-sm px-2 py-1 rounded border"
+                    className="min-w-[11rem] flex-1 rounded-lg border px-2 py-1 text-sm"
                     style={{ borderColor: editError ? 'var(--color-error)' : 'var(--color-border)', fontFamily: 'var(--font-caption)' }}
                     value={editName}
                     maxLength={NAME_MAX}
@@ -147,13 +147,13 @@ export default function BusinessCategoriesManager({ business }) {
                 </>
               ) : (
                 <>
-                  <span className="flex-1 text-sm truncate" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}>
+                  <span className="max-w-[14rem] truncate text-sm font-medium" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}>
                     {cat.name}
                   </span>
                   <button
                     type="button"
                     onClick={() => startEdit(cat)}
-                    className="p-1.5 rounded-lg hover:bg-white transition-colors"
+                    className="rounded-full p-1.5 transition-colors hover:bg-slate-100"
                     style={{ color: 'var(--color-muted-foreground)' }}
                     aria-label={`Editar ${cat.name}`}
                   >
@@ -162,7 +162,7 @@ export default function BusinessCategoriesManager({ business }) {
                   <button
                     type="button"
                     onClick={() => handleDeleteRequest(cat)}
-                    className="p-1.5 rounded-lg hover:bg-white transition-colors"
+                    className="rounded-full p-1.5 transition-colors hover:bg-slate-100"
                     style={{ color: 'var(--color-muted-foreground)' }}
                     aria-label={`Eliminar ${cat.name}`}
                   >
@@ -177,7 +177,7 @@ export default function BusinessCategoriesManager({ business }) {
 
       {/* Input para agregar */}
       {!atLimit && (
-        <div className="flex gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row">
           <input
             type="text"
             value={newName}
@@ -185,7 +185,7 @@ export default function BusinessCategoriesManager({ business }) {
             onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); }}
             placeholder="Ej: Tortas personalizadas"
             maxLength={NAME_MAX}
-            className="flex-1 text-sm px-3 py-2 rounded-lg border"
+            className="flex-1 rounded-lg border border-slate-200/80 bg-white/85 px-3 py-2 text-sm outline-none transition-all placeholder:text-slate-400 focus:border-slate-900 focus:ring-2 focus:ring-slate-900/5"
             style={{
               borderColor: addError ? 'var(--color-error)' : 'var(--color-border)',
               fontFamily: 'var(--font-caption)',
@@ -195,8 +195,8 @@ export default function BusinessCategoriesManager({ business }) {
             type="button"
             onClick={handleAdd}
             disabled={adding || !newName.trim()}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-50 transition-opacity"
-            style={{ backgroundColor: 'var(--color-primary)', fontFamily: 'var(--font-caption)' }}
+            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-slate-950 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:opacity-50"
+            style={{ fontFamily: 'var(--font-caption)' }}
           >
             <Icon name="Plus" size={15} color="#fff" />
             Agregar

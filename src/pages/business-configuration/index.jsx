@@ -134,11 +134,11 @@ function Toast({ message, type, onClose }) {
 function SettingsField({ label, children, hint }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <label className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-caption)' }}>
+      <label className="text-[13px] font-semibold" style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-caption)' }}>
         {label}
       </label>
+      {hint && <p className="text-xs leading-relaxed" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>{hint}</p>}
       {children}
-      {hint && <p className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>{hint}</p>}
     </div>
   );
 }
@@ -287,6 +287,7 @@ export default function BusinessConfiguration() {
   const visibleBusinessKind = (form?.businessMode || business?.businessMode || BUSINESS_MODES.STORE) === BUSINESS_MODES.RESTAURANT
     ? 'restaurante'
     : 'tienda';
+  const visibleCatalogSurface = visibleBusinessKind === 'restaurante' ? 'menu' : 'catalogo';
 
   // Design settings state (valores por defecto; se rellenan desde business.designSettings al cargar)
   const [design, setDesign] = useState({
@@ -803,19 +804,40 @@ export default function BusinessConfiguration() {
   const isLoading = businessLoading || businessFetchLoading;
 
   const inputClass = [
-    'w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-sm text-slate-900',
+    'w-full rounded-lg border border-slate-200/80 bg-white/85 px-3 py-2 text-sm text-slate-900',
     'outline-none transition-all font-[family-name:var(--font-caption)]',
-    'focus:ring-4 focus:ring-violet-500/10 focus:border-violet-500',
+    'placeholder:text-slate-400 hover:border-slate-300 focus:border-slate-900 focus:ring-2 focus:ring-slate-900/5',
   ].join(' ');
   const inputStyle = {
     fontFamily: 'var(--font-caption)',
   };
 
   const cardClass =
-    'rounded-xl bg-white p-6 sm:p-7 shadow-sm shadow-slate-200/40 border border-slate-100/70';
+    'rounded-[18px] border border-white/70 bg-white/72 p-5 shadow-[0_12px_34px_rgba(17,24,39,0.055)] sm:p-6';
 
   const sectionHeadingClass =
-    'text-[11px] font-semibold uppercase tracking-wide text-slate-500 font-[family-name:var(--font-caption)] mb-3';
+    'mb-3 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500 font-[family-name:var(--font-caption)]';
+
+  const settingsTabs = [
+    {
+      id: 'identity',
+      label: 'Identidad',
+      description: `Nombre, rubro y presentacion de tu ${visibleBusinessKind}`,
+      Icon: Building2,
+    },
+    {
+      id: 'design',
+      label: 'Diseno',
+      description: `Aspecto publico de tu ${visibleCatalogSurface}`,
+      Icon: Palette,
+    },
+    {
+      id: 'payments',
+      label: 'Pedidos',
+      description: 'Envios, retiro y mensaje de WhatsApp',
+      Icon: CreditCard,
+    },
+  ];
 
   const unlockSlugForEdit = () => {
     if (
@@ -885,6 +907,20 @@ export default function BusinessConfiguration() {
           ) : (
           <>
             <div className="w-full min-w-0">
+            <section className="mb-7">
+              <div className="max-w-3xl">
+                <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500 font-[family-name:var(--font-caption)]">
+                  Editor comercial
+                </p>
+                <h2 className="text-[2rem] font-black leading-[1.05] text-slate-950 sm:text-5xl" style={{ fontFamily: 'var(--font-heading)', letterSpacing: 0 }}>
+                  Configuracion de tu {visibleBusinessKind}
+                </h2>
+                <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 sm:text-base" style={{ fontFamily: 'var(--font-body)' }}>
+                  Personaliza como los clientes ven y compran en tu {visibleCatalogSurface}. Mantén la identidad clara, el pedido simple y la informacion publica al dia.
+                </p>
+              </div>
+            </section>
+
             {onboardingMissingFields.length > 0 && (
               <OnboardingIncompleteBanner missingFields={onboardingMissingFields} />
             )}
@@ -894,8 +930,8 @@ export default function BusinessConfiguration() {
                 className="rounded-xl border border-slate-100/80 p-5 lg:p-6 mb-8 shadow-sm shadow-slate-200/30"
                 style={{
                   borderColor: 'rgba(124, 58, 237, 0.35)',
-                  background: 'linear-gradient(145deg, rgba(124, 58, 237, 0.09) 0%, #ffffff 55%)',
-                  boxShadow: '0 2px 12px rgba(124, 58, 237, 0.08)',
+                  background: 'rgba(255,255,255,0.72)',
+                  boxShadow: '0 12px 34px rgba(17,24,39,0.055)',
                   ...onboardingFieldStyle('country'),
                 }}
               >
@@ -914,9 +950,9 @@ export default function BusinessConfiguration() {
                         onClick={() => handleCountrySelection(suggestedCountryCode)}
                         className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold text-white transition-all hover:opacity-90 disabled:opacity-60"
                         style={{
-                          background: 'linear-gradient(135deg, var(--color-primary) 0%, #7c3aed 100%)',
+                          background: '#111827',
                           fontFamily: 'var(--font-caption)',
-                          boxShadow: '0 2px 8px rgba(139,92,246,0.35)',
+                          boxShadow: '0 10px 24px rgba(17,24,39,0.16)',
                         }}
                       >
                         Usar {suggestedCfg.name}
@@ -1022,16 +1058,16 @@ export default function BusinessConfiguration() {
               </div>
             )}
 
+            <div className="grid gap-6 lg:grid-cols-[220px_minmax(0,1fr)] lg:items-start">
+              <div
+                className="sticky top-20 z-[1] rounded-2xl border border-white/70 bg-white/46 p-2"
+              >
             <div
-              className="flex flex-wrap gap-2 mb-8"
+              className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-2 lg:mx-0 lg:flex-col lg:overflow-visible lg:pb-0"
               role="tablist"
               aria-label="Secciones de configuración"
             >
-              {[
-                { id: 'identity', label: 'Identidad', Icon: Building2 },
-                { id: 'design', label: 'Diseño', Icon: Palette },
-                { id: 'payments', label: 'Pagos y envíos', Icon: CreditCard },
-              ].map((tab) => {
+              {settingsTabs.map((tab) => {
                 const active = settingsTab === tab.id;
                 const TabIcon = tab.Icon;
                 return (
@@ -1042,23 +1078,37 @@ export default function BusinessConfiguration() {
                     aria-selected={active}
                     onClick={() => setSettingsTab(tab.id)}
                     className={[
-                      'inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all border',
+                      'group flex min-w-[10.5rem] items-start gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-semibold transition-all lg:min-w-0',
                       'font-[family-name:var(--font-caption)]',
                       active
-                        ? 'border-violet-500 bg-violet-50 text-violet-700 shadow-sm shadow-violet-200/40'
-                        : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50/80',
+                        ? 'bg-slate-950 text-white shadow-[0_10px_24px_rgba(15,23,42,0.16)]'
+                        : 'text-slate-600 hover:bg-white/75 hover:text-slate-950',
                     ].join(' ')}
                   >
-                    <TabIcon className="w-4 h-4 shrink-0" strokeWidth={2} aria-hidden />
-                    {tab.label}
+                    <TabIcon className="mt-0.5 h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
+                    <span className="min-w-0">
+                      <span className="block leading-tight">{tab.label}</span>
+                      <span className={['mt-1 hidden text-[11px] font-normal leading-snug lg:block', active ? 'text-slate-300' : 'text-slate-500'].join(' ')}>
+                        {tab.description}
+                      </span>
+                    </span>
                   </button>
                 );
               })}
             </div>
+              </div>
 
+              <div className="min-w-0">
             {settingsTab === 'identity' && (
             <div className={`${cardClass} mb-8`}>
-              <div className="flex items-center gap-3 mb-6">
+              <div className="mb-6 max-w-2xl">
+                <p className={sectionHeadingClass}>Identidad</p>
+                <h2 className="text-2xl font-black leading-tight text-slate-950" style={{ fontFamily: 'var(--font-heading)', letterSpacing: 0 }}>La presencia publica de tu {visibleBusinessKind}</h2>
+                <p className="mt-2 text-sm leading-6 text-slate-600" style={{ fontFamily: 'var(--font-body)' }}>
+                  Estos datos construyen la primera impresion de tu {visibleCatalogSurface}: nombre, rubro, descripcion y canales de contacto.
+                </p>
+              </div>
+              <div className="hidden">
                 <div
                   className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
                   style={{ backgroundColor: 'rgba(139,92,246,0.1)' }}
@@ -1156,7 +1206,8 @@ export default function BusinessConfiguration() {
                       label="Tipo de negocio"
                       hint="Walinka adaptará la experiencia pública según lo que vendes."
                     >
-                      <div className="flex flex-col sm:flex-row gap-3">
+                      <div className="rounded-2xl border border-slate-200/70 bg-slate-50/55 p-3">
+                      <div className="grid gap-2 sm:grid-cols-2">
                         {[
                           {
                             value: BUSINESS_MODES.STORE,
@@ -1177,23 +1228,24 @@ export default function BusinessConfiguration() {
                               key={opt.value}
                               type="button"
                               onClick={() => handleFormChange('businessMode', opt.value)}
-                              className="flex-1 text-left rounded-xl border-2 p-4 transition-all duration-150 hover:border-violet-400"
+                              className="text-left rounded-xl border p-4 transition-all duration-150 hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white"
                               style={{
-                                borderColor: selected ? 'var(--color-primary)' : 'var(--color-border)',
-                                backgroundColor: selected ? 'rgba(124,58,237,0.05)' : '#ffffff',
+                                borderColor: selected ? '#111827' : 'rgba(226,232,240,0.9)',
+                                backgroundColor: selected ? '#ffffff' : 'rgba(255,255,255,0.58)',
+                                boxShadow: selected ? '0 10px 24px rgba(17,24,39,0.08)' : 'none',
                               }}
                             >
                               <div className="flex items-center gap-2 mb-1">
                                 <Icon
                                   name={opt.icon}
                                   size={16}
-                                  color={selected ? 'var(--color-primary)' : 'var(--color-muted-foreground)'}
+                                  color={selected ? '#111827' : 'var(--color-muted-foreground)'}
                                 />
                                 <span
                                   className="text-sm font-semibold"
                                   style={{
                                     fontFamily: 'var(--font-heading)',
-                                    color: selected ? 'var(--color-primary)' : 'var(--color-foreground)',
+                                    color: selected ? '#111827' : 'var(--color-foreground)',
                                   }}
                                 >
                                   {opt.label}
@@ -1208,6 +1260,8 @@ export default function BusinessConfiguration() {
                             </button>
                           );
                         })}
+                      </div>
+
                       </div>
 
                       {/* Aviso de recomendación según rubro */}
@@ -1240,17 +1294,20 @@ export default function BusinessConfiguration() {
                     </SettingsField>
 
                     {business?.designSettings?.useCategories && business?.id && (
-                      <div className={`${cardClass} mb-2`}>
-                        <div className="flex items-center gap-3 mb-5">
-                          <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(139,92,246,0.1)' }}>
+                      <div className="border-t border-slate-200/70 pt-6">
+                        <div className="mb-4 flex items-start gap-3">
+                          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg" style={{ backgroundColor: 'rgba(15,23,42,0.06)' }}>
                             <Icon name="Tags" size={18} color="var(--color-primary)" />
                           </div>
                           <div>
-                            <h2 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-text-primary)' }}>
-                              Mis categorías
+                            <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500 font-[family-name:var(--font-caption)]">
+                              Organizacion del catalogo
+                            </p>
+                            <h2 className="mt-1 text-lg font-black text-slate-950" style={{ fontFamily: 'var(--font-heading)', letterSpacing: 0 }}>
+                              Estructura de la tienda
                             </h2>
-                            <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-                              Categorías propias de tu negocio — aparecen primero en el catálogo y en el editor de productos
+                            <p className="mt-1 text-sm leading-6" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-body)' }}>
+                              Agrupa productos como una vitrina: colecciones, lineas, momentos de compra o secciones del menu.
                             </p>
                           </div>
                         </div>
@@ -1259,10 +1316,10 @@ export default function BusinessConfiguration() {
                     )}
 
                     <SettingsField
-                      label="Descripción del negocio"
-                      hint="Cabecera del catálogo. Máximo 280 caracteres; la IA respeta el límite."
+                      label="Presentacion publica"
+                      hint="Una bio breve para explicar que vendes, que te hace distinto y por que conviene pedirte. Maximo 280 caracteres."
                     >
-                      <div className="relative">
+                      <div className="relative rounded-2xl border border-slate-200/70 bg-slate-50/45 p-3">
                         {canUseAiDescription && (
                           <button
                             type="button"
@@ -1285,7 +1342,7 @@ export default function BusinessConfiguration() {
                         <textarea
                           rows={4}
                           maxLength={BUSINESS_DESCRIPTION_MAX}
-                          className={`${inputClass} pr-[9.5rem] pt-2.5`}
+                          className={`${inputClass} min-h-[112px] border-white/90 bg-white pr-[9.5rem] pt-2.5 leading-relaxed`}
                           style={inputStyle}
                           placeholder="Ej: Tienda de ropa y accesorios para toda la familia..."
                           value={form?.description}
@@ -1524,6 +1581,9 @@ export default function BusinessConfiguration() {
               </div>
             )}
 
+              </div>
+            </div>
+
             <InstallAppBlock />
             </div>
           </>
@@ -1561,7 +1621,7 @@ export default function BusinessConfiguration() {
               type="button"
               onClick={handleSaveSettings}
               disabled={isSaving}
-              className="inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-60 transition-all bg-gradient-to-r from-violet-600 via-violet-600 to-violet-500 hover:from-violet-500 hover:to-violet-600 shadow-lg shadow-violet-500/20 font-[family-name:var(--font-caption)]"
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-950 px-6 py-2.5 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(15,23,42,0.16)] transition-colors hover:bg-slate-800 disabled:opacity-60 font-[family-name:var(--font-caption)]"
             >
               {isSaving ? (
                 <>
