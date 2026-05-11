@@ -52,10 +52,9 @@ export default function QuickAccessWidget({ catalogUrl, businessPlanSlug, onCata
 
   return (
     <>
-      <div className="dashboard-command-bar rounded-2xl p-3">
-        <div className="flex items-center justify-between gap-3 px-1 pb-2">
-          <h2 className="text-xs font-bold uppercase" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-muted-foreground)' }}>Acciones</h2>
-          <span className="text-[11px]" style={{ color: 'var(--color-text-muted)', fontFamily: 'var(--font-caption)' }}>Command bar</span>
+      <div className="dashboard-command-bar rounded-2xl p-2">
+        <div className="flex items-center justify-between gap-3 px-2 pb-1.5">
+          <h2 className="text-[11px] font-bold uppercase tracking-[0.12em]" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-muted-foreground)' }}>Herramientas</h2>
         </div>
         <div className="grid grid-cols-2 gap-1 sm:grid-cols-5 lg:grid-cols-1">
           {QUICK_LINKS.map((link) => (
@@ -63,14 +62,14 @@ export default function QuickAccessWidget({ catalogUrl, businessPlanSlug, onCata
               key={link.label}
               onClick={link.action ?? (() => navigate(link.path))}
               disabled={link.action === null && !link.path}
-              className="group flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left transition-all duration-150 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40"
+              className="group flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-left transition-all duration-150 hover:bg-white/80 hover:shadow-[0_6px_18px_rgba(17,24,39,0.05)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40"
               aria-label={link.label}
             >
-              <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg" style={{ backgroundColor: '#F3F4F6' }}>
-                <Icon name={link.iconName} size={14} color="#111827" />
+              <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md transition-colors group-hover:bg-slate-100" style={{ backgroundColor: 'transparent' }}>
+                <Icon name={link.iconName} size={13} color="#374151" />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-[13px] font-semibold" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}>{link.label}</p>
+                <p className="truncate text-[13px] font-bold" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}>{link.label}</p>
                 <p className="truncate text-[11px]" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-body)' }}>{link.desc}</p>
               </div>
               <Icon name="ArrowUpRight" size={13} color="var(--color-muted-foreground)" className="hidden flex-shrink-0 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 sm:block" />

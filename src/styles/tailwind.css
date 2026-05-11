@@ -492,12 +492,12 @@ p {
 .nav-item.active::before {
   content: '';
   position: absolute;
-  left: 7px;
+  left: 6px;
   top: 50%;
   transform: translateY(-50%);
-  width: 3px;
-  height: 18px;
-  background: #ffffff;
+  width: 2px;
+  height: 14px;
+  background: rgba(255, 255, 255, 0.78);
   border-radius: 99px;
 }
 
@@ -538,8 +538,8 @@ p {
 /* Stagger animation for lists */
 .stagger-item {
   opacity: 0;
-  transform: translateY(8px);
-  animation: page-enter 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  transform: translateY(4px);
+  animation: page-enter 0.26s cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
 
 .stagger-item:nth-child(1) { animation-delay: 0ms; }
@@ -591,18 +591,18 @@ p {
    * Tarjetas dashboard: relieve (gradiente + sombra en capas) y elevación en hover / active (touch).
    */
   .dashboard-premium-card {
-    background: rgba(255, 255, 255, 0.92);
-    box-shadow: var(--dashboard-card-shadow);
+    background: rgba(255, 255, 255, 0.88);
+    box-shadow: 0 10px 28px rgba(17, 24, 39, 0.055);
     border-radius: var(--dashboard-card-radius);
-    border: 1px solid rgba(255, 255, 255, 0.78);
+    border: 1px solid rgba(255, 255, 255, 0.62);
     transition:
       transform 0.28s cubic-bezier(0.4, 0, 0.2, 1),
       box-shadow 0.28s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   .dashboard-premium-card:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--dashboard-card-shadow-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 16px 36px rgba(17, 24, 39, 0.075);
   }
 
   .dashboard-premium-card:active {
@@ -627,6 +627,7 @@ p {
   .dashboard-premium-card--glass {
     background: #111827;
     border-color: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 18px 42px rgba(17, 24, 39, 0.16);
   }
 
   /** Mini-bloques dentro del embudo (sin elevación al hover) */
@@ -639,14 +640,14 @@ p {
   .dashboard-hero-panel {
     background: #111827;
     color: #ffffff;
-    border-radius: 18px;
-    box-shadow: 0 22px 55px rgba(17, 24, 39, 0.18);
+    border-radius: 20px;
+    box-shadow: 0 20px 48px rgba(17, 24, 39, 0.16);
   }
 
   .dashboard-command-bar {
-    background: rgba(255, 255, 255, 0.82);
-    border: 1px solid rgba(17, 24, 39, 0.08);
-    box-shadow: 0 8px 24px rgba(17, 24, 39, 0.06);
+    background: rgba(255, 255, 255, 0.58);
+    border: 1px solid rgba(17, 24, 39, 0.055);
+    box-shadow: none;
   }
 
   @media (prefers-reduced-motion: reduce) {

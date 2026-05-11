@@ -21,16 +21,16 @@ export default function AiInsightsCard({ data, loading }) {
     : 'Actualizado hoy';
 
   return (
-    <div className="dashboard-premium-card dashboard-premium-card--glass relative overflow-hidden rounded-[18px] p-5 sm:p-6">
+    <div className="dashboard-premium-card dashboard-premium-card--glass relative overflow-hidden rounded-2xl p-5 sm:p-6">
       <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0 flex-1">
-          <div className="mb-4 flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ backgroundColor: 'rgba(255,255,255,0.09)' }}>
-              <Icon name="Sparkles" size={15} color="#FFFFFF" />
+          <div className="mb-4 flex items-center gap-2.5">
+            <div className="flex h-7 w-7 items-center justify-center rounded-md" style={{ backgroundColor: 'rgba(255,255,255,0.08)' }}>
+              <Icon name="Sparkles" size={14} color="#FFFFFF" />
             </div>
             <div>
-              <p className="text-xs font-semibold uppercase" style={{ color: '#9CA3AF', fontFamily: 'var(--font-caption)' }}>Copilot</p>
-              <h3 className="text-base font-bold" style={{ color: '#FFFFFF', fontFamily: 'var(--font-heading)' }}>Recomendacion IA</h3>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: '#9CA3AF', fontFamily: 'var(--font-caption)' }}>Copilot</p>
+              <h3 className="text-[15px] font-bold" style={{ color: '#FFFFFF', fontFamily: 'var(--font-heading)' }}>Recomendacion IA</h3>
             </div>
           </div>
 
@@ -40,12 +40,12 @@ export default function AiInsightsCard({ data, loading }) {
             </p>
           ) : (
             <div>
-              <p className="max-w-3xl text-xl font-bold leading-snug sm:text-2xl" style={{ color: '#FFFFFF', fontFamily: 'var(--font-heading)' }}>
+              <p className="max-w-3xl text-lg font-bold leading-snug sm:text-[1.45rem]" style={{ color: '#FFFFFF', fontFamily: 'var(--font-heading)' }}>
                 {hallazgo}
               </p>
-              <div className="mt-5 rounded-2xl p-4" style={{ backgroundColor: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.08)' }}>
-                <p className="text-xs font-semibold uppercase" style={{ color: '#9CA3AF', fontFamily: 'var(--font-caption)' }}>Siguiente accion</p>
-                <p className="mt-1 text-sm leading-relaxed" style={{ color: '#E5E7EB', fontFamily: 'var(--font-body)' }}>{accion}</p>
+              <div className="mt-5 pl-4" style={{ borderLeft: '2px solid rgba(255,255,255,0.28)' }}>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: '#9CA3AF', fontFamily: 'var(--font-caption)' }}>Siguiente accion sugerida</p>
+                <p className="mt-1.5 max-w-2xl text-sm leading-relaxed" style={{ color: '#E5E7EB', fontFamily: 'var(--font-body)' }}>{accion}</p>
               </div>
               {data?.alerta && (
                 <p className="mt-3 text-sm" style={{ color: '#D1D5DB', fontFamily: 'var(--font-caption)' }}>{data.alerta}</p>
@@ -55,7 +55,7 @@ export default function AiInsightsCard({ data, loading }) {
         </div>
 
         <div className="flex items-center gap-2 md:flex-col md:items-end">
-          <span className="rounded-full px-2.5 py-1 text-xs font-bold" style={{ backgroundColor: '#FFFFFF', color: '#111827', fontFamily: 'var(--font-caption)' }}>
+          <span className="rounded-full px-2.5 py-1 text-[11px] font-bold" style={{ backgroundColor: 'rgba(255,255,255,0.1)', color: '#F9FAFB', fontFamily: 'var(--font-caption)' }}>
             {priorityLabel}
           </span>
           <span className="text-xs" style={{ color: '#9CA3AF', fontFamily: 'var(--font-caption)' }}>{updatedLabel}</span>

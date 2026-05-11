@@ -119,7 +119,7 @@ Motivo (opcional):`;
   };
 
   const SidebarContent = () => (
-    <div className="flex flex-col h-full" style={{ backgroundColor: '#111827', color: '#D1D5DB' }}>
+    <div className="flex flex-col h-full" style={{ backgroundColor: '#0F1720', color: '#D1D5DB' }}>
       {/* Logo */}
       <div className={`sidebar-header ${collapsed ? 'justify-center' : ''}`}>
         {collapsed ? (
@@ -129,7 +129,7 @@ Motivo (opcional):`;
         ) : (
           <div className="min-w-0 flex-1 overflow-hidden">
             <VentalinkLogo variant="light" height={26} className="max-w-full [&_svg]:max-w-full" />
-            <span className="block text-[11px] mt-1 truncate" style={{ color: '#9CA3AF', fontFamily: 'var(--font-caption)' }}>
+            <span className="mt-1 block truncate text-[10px] uppercase tracking-[0.12em]" style={{ color: '#6B7280', fontFamily: 'var(--font-caption)' }}>
               Operating panel
             </span>
           </div>
@@ -137,7 +137,7 @@ Motivo (opcional):`;
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto overflow-x-hidden py-3 px-2" aria-label="Navegación principal">
+      <nav className="flex-1 overflow-y-auto overflow-x-hidden px-2 py-2.5" aria-label="Navegación principal">
         <ul className="space-y-0.5" role="list">
           {NAV_ITEMS?.map((item) => {
             const active = isParentActive(item);
@@ -150,8 +150,8 @@ Motivo (opcional):`;
                   aria-expanded={item?.subItems ? expanded : undefined}
                   title={collapsed ? item?.label : undefined}
                   className={[
-                    'nav-item w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-medium',
-                    'min-h-[38px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 transition-all duration-150',
+                    'nav-item w-full flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-[12.5px] font-medium',
+                    'min-h-[34px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 transition-all duration-150',
                     active
                       ? 'font-semibold text-white' : 'text-slate-400 hover:text-white hover:bg-white/[0.06]',
                     active ? 'active' : '',
@@ -159,12 +159,12 @@ Motivo (opcional):`;
                   ]?.join(' ')}
                   style={{
                     fontFamily: 'var(--font-caption)',
-                    backgroundColor: active ? 'rgba(255, 255, 255, 0.095)' : undefined,
+                    backgroundColor: active ? 'rgba(255, 255, 255, 0.075)' : undefined,
                   }}
                 >
                   <Icon
                     name={item?.icon}
-                    size={17}
+                    size={16}
                     color="currentColor"
                     className="flex-shrink-0"
                   />
@@ -208,7 +208,7 @@ Motivo (opcional):`;
               {/* ── OPERACIÓN ── */}
               <li role="listitem" className="pt-3 mt-3 border-t" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
                 {!collapsed && (
-                  <span className="block px-3 pb-1 text-[10px] font-bold uppercase tracking-widest" style={{ color: '#FCA5A5', fontFamily: 'var(--font-caption)', opacity: 0.7 }}>
+                  <span className="block px-3 pb-1 text-[10px] font-bold uppercase tracking-[0.14em]" style={{ color: '#64748B', fontFamily: 'var(--font-caption)', opacity: 0.82 }}>
                     Operación
                   </span>
                 )}
@@ -225,15 +225,15 @@ Motivo (opcional):`;
                       onClick={() => navigate(item.path)}
                       aria-current={active ? 'page' : undefined}
                       className={[
-                        'nav-item w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-medium',
-                        'min-h-[38px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 transition-all duration-150',
+                        'nav-item w-full flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-[12.5px] font-medium',
+                        'min-h-[34px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 transition-all duration-150',
                         active ? 'text-white font-semibold' : 'text-slate-400 hover:text-white hover:bg-white/[0.06]',
                         collapsed ? 'justify-center' : '',
                       ].join(' ')}
-                      style={{ fontFamily: 'var(--font-caption)', backgroundColor: active ? 'rgba(255,255,255,0.095)' : undefined }}
+                      style={{ fontFamily: 'var(--font-caption)', backgroundColor: active ? 'rgba(255,255,255,0.075)' : undefined }}
                       title={collapsed ? item.label : undefined}
                     >
-                      <Icon name={item.icon} size={17} color="currentColor" className="flex-shrink-0" />
+                      <Icon name={item.icon} size={16} color="currentColor" className="flex-shrink-0" />
                       {!collapsed && <span className="flex-1 text-left truncate">{item.label}</span>}
                     </button>
                   </li>
@@ -243,7 +243,7 @@ Motivo (opcional):`;
               {/* ── CONFIGURACIÓN ── */}
               <li role="listitem" className="pt-2 mt-1">
                 {!collapsed && (
-                  <span className="block px-3 pb-1 text-[10px] font-bold uppercase tracking-widest" style={{ color: '#FCA5A5', fontFamily: 'var(--font-caption)', opacity: 0.7 }}>
+                  <span className="block px-3 pb-1 text-[10px] font-bold uppercase tracking-[0.14em]" style={{ color: '#64748B', fontFamily: 'var(--font-caption)', opacity: 0.82 }}>
                     Configuración
                   </span>
                 )}
@@ -258,15 +258,15 @@ Motivo (opcional):`;
                       onClick={() => navigate(item.path)}
                       aria-current={active ? 'page' : undefined}
                       className={[
-                        'nav-item w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-medium',
-                        'min-h-[38px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 transition-all duration-150',
+                        'nav-item w-full flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-[12.5px] font-medium',
+                        'min-h-[34px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 transition-all duration-150',
                         active ? 'text-white font-semibold' : 'text-slate-400 hover:text-white hover:bg-white/[0.06]',
                         collapsed ? 'justify-center' : '',
                       ].join(' ')}
-                      style={{ fontFamily: 'var(--font-caption)', backgroundColor: active ? 'rgba(255,255,255,0.095)' : undefined }}
+                      style={{ fontFamily: 'var(--font-caption)', backgroundColor: active ? 'rgba(255,255,255,0.075)' : undefined }}
                       title={collapsed ? item.label : undefined}
                     >
-                      <Icon name={item.icon} size={17} color="currentColor" className="flex-shrink-0" />
+                      <Icon name={item.icon} size={16} color="currentColor" className="flex-shrink-0" />
                       {!collapsed && <span className="flex-1 text-left truncate">{item.label}</span>}
                     </button>
                   </li>
@@ -276,7 +276,7 @@ Motivo (opcional):`;
               {/* ── ANALYTICS ── */}
               <li role="listitem" className="pt-2 mt-1">
                 {!collapsed && (
-                  <span className="block px-3 pb-1 text-[10px] font-bold uppercase tracking-widest" style={{ color: '#FCA5A5', fontFamily: 'var(--font-caption)', opacity: 0.7 }}>
+                  <span className="block px-3 pb-1 text-[10px] font-bold uppercase tracking-[0.14em]" style={{ color: '#64748B', fontFamily: 'var(--font-caption)', opacity: 0.82 }}>
                     Analytics
                   </span>
                 )}
@@ -292,15 +292,15 @@ Motivo (opcional):`;
                       onClick={() => navigate(item.path)}
                       aria-current={active ? 'page' : undefined}
                       className={[
-                        'nav-item w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-medium',
-                        'min-h-[38px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 transition-all duration-150',
+                        'nav-item w-full flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-[12.5px] font-medium',
+                        'min-h-[34px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 transition-all duration-150',
                         active ? 'text-white font-semibold' : 'text-slate-400 hover:text-white hover:bg-white/[0.06]',
                         collapsed ? 'justify-center' : '',
                       ].join(' ')}
-                      style={{ fontFamily: 'var(--font-caption)', backgroundColor: active ? 'rgba(255,255,255,0.095)' : undefined }}
+                      style={{ fontFamily: 'var(--font-caption)', backgroundColor: active ? 'rgba(255,255,255,0.075)' : undefined }}
                       title={collapsed ? item.label : undefined}
                     >
-                      <Icon name={item.icon} size={17} color="currentColor" className="flex-shrink-0" />
+                      <Icon name={item.icon} size={16} color="currentColor" className="flex-shrink-0" />
                       {!collapsed && <span className="flex-1 text-left truncate">{item.label}</span>}
                     </button>
                   </li>
@@ -389,21 +389,21 @@ Motivo (opcional):`;
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); setUserMenuOpen((prev) => !prev); }}
-              className="flex items-center gap-3 px-3 py-2.5 rounded-lg w-full hover:opacity-90 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              style={{ backgroundColor: 'rgba(255,255,255,0.075)' }}
+              className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 transition-colors hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
+              style={{ backgroundColor: 'rgba(255,255,255,0.045)' }}
               aria-expanded={userMenuOpen}
               aria-haspopup="true"
               aria-label="Menú de usuario"
             >
               <div
-                className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold text-white"
+                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
                 style={{ backgroundColor: '#F9FAFB', color: '#111827' }}
               >
                 {userInitial}
               </div>
               <div className="flex-1 overflow-hidden text-left">
-                <p className="text-xs font-semibold truncate" style={{ fontFamily: 'var(--font-caption)', color: '#F9FAFB' }}>{userLabel}</p>
-                <p className="text-xs truncate" style={{ color: '#9CA3AF', fontFamily: 'var(--font-caption)' }}>{getPlanLabel(business?.planSlug)}</p>
+                <p className="truncate text-xs font-semibold" style={{ fontFamily: 'var(--font-caption)', color: '#F9FAFB' }}>{userLabel}</p>
+                <p className="truncate text-[11px]" style={{ color: '#8B95A1', fontFamily: 'var(--font-caption)' }}>{getPlanLabel(business?.planSlug)}</p>
               </div>
               <Icon name={userMenuOpen ? 'ChevronUp' : 'ChevronDown'} size={13} color="#9CA3AF" className="flex-shrink-0" />
             </button>

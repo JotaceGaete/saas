@@ -47,6 +47,7 @@ import { getCatalogShareMessage } from "../../utils/branding";
 import { openWhatsAppUrl } from "../../utils/openWhatsAppUrl";
 import { getCountryLabels } from "../../config/country";
 import { getBusinessLocale } from "../../lib/locale/businessLocale";
+import { isRestaurantBusiness } from "../../utils/businessType";
 import { getTrialDaysLeft } from "../../constants/trial";
 import { getCurrentSubscription } from "../../lib/billing/subscriptionService";
 import { useToast } from "../../components/ui/Toast";
@@ -567,18 +568,26 @@ export default function Dashboard() {
   const metricsToShow = isStarterPlan ? METRICS.filter((m) => m.title === 'Total productos') : METRICS;
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Buenos dias' : hour < 19 ? 'Buenas tardes' : 'Buenas noches';
+  const isRestaurant = isRestaurantBusiness(business);
+  const publicSurfaceLabel = isRestaurant ? 'menu' : 'catalogo';
+  const readySurfaceMessage = isRestaurant
+    ? 'Tu restaurante esta listo para recibir clientes.'
+    : 'Tu tienda esta lista para recibir clientes.';
+  const activeItemLabel = isRestaurant ? 'items' : 'productos';
   const visitBaseline = Math.max(0, Math.round((visits7d - visitsToday) / 6));
   const visitDelta = visitBaseline > 0 ? Math.round(((visitsToday - visitBaseline) / visitBaseline) * 100) : null;
   const heroMetricLabel = analyticsLoading
-    ? 'Actualizando actividad del catalogo'
-    : hasAnyVisits
-      ? `Tu catalogo recibio ${visitsToday} visita${visitsToday !== 1 ? 's' : ''} hoy`
-      : 'Tu catalogo esta listo para recibir visitas';
+    ? `Actualizando actividad de tu ${publicSurfaceLabel}`
+    : visitsToday > 0
+      ? `Tu ${publicSurfaceLabel} recibio ${visitsToday} visita${visitsToday !== 1 ? 's' : ''} hoy.`
+      : readySurfaceMessage;
   const heroMetricDetail = analyticsLoading
     ? 'Estamos sincronizando las senales del dia.'
-    : visitDelta !== null
-      ? `${visitDelta >= 0 ? '+' : ''}${visitDelta}% respecto al ritmo reciente`
-      : `${visits7d} visita${visits7d !== 1 ? 's' : ''} en los ultimos 7 dias`;
+    : visitsToday === 0
+      ? `Comparte tu ${publicSurfaceLabel} para comenzar a generar visitas.`
+      : visitDelta !== null
+      ? `${visitDelta >= 0 ? '+' : ''}${visitDelta}% respecto al ritmo reciente.`
+      : `${visits7d} visita${visits7d !== 1 ? 's' : ''} en los ultimos 7 dias.`;
 
   const notifyFirstCatalogShare = useCallback(() => {
     if (!business?.id) return;
@@ -654,7 +663,7 @@ export default function Dashboard() {
             <div className="flex items-start gap-3 p-4 rounded-xl border slide-up" style={{ backgroundColor: 'rgba(124,58,237,0.05)', borderColor: 'rgba(124,58,237,0.2)' }}>
               <Icon name="AlertCircle" size={18} color="var(--color-primary)" />
               <div>
-                <p className="text-sm font-semibold" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>Configura tu negocio</p>
+                <p className="text-sm font-semibold" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>Configura tu tienda</p>
                 <p className="text-xs mt-0.5" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Completa la configuración para empezar a recibir pedidos.</p>
               </div>
               <button onClick={() => navigate('/business-configuration')} className="ml-auto text-xs font-medium px-3 py-1.5 rounded-lg" style={{ backgroundColor: 'var(--color-primary)', color: '#fff', fontFamily: 'var(--font-caption)' }}>Configurar</button>
@@ -703,14 +712,14 @@ export default function Dashboard() {
                     {heroMetricLabel}
                   </h2>
                   <p className="mt-3 max-w-2xl text-sm sm:text-base" style={{ color: '#CBD5E1', fontFamily: 'var(--font-body)', lineHeight: 1.55 }}>
-                    {heroMetricDetail}. {pendingOrdersCount > 0 ? `${pendingOrdersCount} pedido${pendingOrdersCount !== 1 ? 's' : ''} espera${pendingOrdersCount !== 1 ? 'n' : ''} respuesta.` : 'Pedidos y catalogo se ven bajo control.'}
+                    {heroMetricDetail} {pendingOrdersCount > 0 ? `${pendingOrdersCount} pedido${pendingOrdersCount !== 1 ? 's' : ''} espera${pendingOrdersCount !== 1 ? 'n' : ''} respuesta.` : `Pedidos y ${publicSurfaceLabel} se ven bajo control.`}
                   </p>
                 </div>
                 <div className="grid grid-cols-3 gap-3 lg:min-w-[360px]">
                   {[
                     { label: 'Hoy', value: analyticsLoading ? '...' : visitsToday, muted: 'visitas' },
                     { label: 'Pendientes', value: dataLoading ? '...' : pendingOrdersCount, muted: 'pedidos' },
-                    { label: 'Activos', value: dataLoading ? '...' : activeProducts, muted: 'productos' },
+                    { label: 'Activos', value: dataLoading ? '...' : activeProducts, muted: activeItemLabel },
                   ].map((item) => (
                     <div key={item.label} className="rounded-xl px-3 py-3" style={{ backgroundColor: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.08)' }}>
                       <p className="text-[11px] font-medium" style={{ color: '#9CA3AF', fontFamily: 'var(--font-caption)' }}>{item.label}</p>
@@ -744,17 +753,17 @@ export default function Dashboard() {
                 {alerts.map(alert => (
                   <div
                     key={alert.id}
-                    className="flex items-center gap-3 px-4 py-3 rounded-xl border"
-                    style={{ backgroundColor: alert.bg, borderColor: alert.border }}
+                    className="flex items-center gap-3 rounded-xl px-4 py-3"
+                    style={{ backgroundColor: 'rgba(255,255,255,0.62)', borderLeft: `2px solid ${alert.color}` }}
                   >
                     <Icon name={alert.icon} size={15} color={alert.color} />
-                    <p className="flex-1 text-sm font-medium" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>
+                    <p className="flex-1 text-sm" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>
                       {alert.text}
                     </p>
                     <button
                       onClick={alert.onAction}
-                      className="text-xs font-bold px-3 py-1.5 rounded-lg flex-shrink-0 transition-all hover:opacity-80 active:scale-95"
-                      style={{ backgroundColor: alert.color, color: '#fff', fontFamily: 'var(--font-caption)' }}
+                      className="flex-shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors hover:bg-black/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      style={{ color: alert.color, fontFamily: 'var(--font-caption)' }}
                     >
                       {alert.action}
                     </button>
@@ -776,7 +785,7 @@ export default function Dashboard() {
           )}
 
           {/* ── Métricas principales (Starter solo ve Total productos) ── */}
-          <section aria-label="Métricas del negocio">
+          <section aria-label="Metricas principales">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5">
               {metricsToShow?.map((metric, idx) => (
                 <div key={metric.title} className="stagger-item min-w-0" style={metricsToShow.length === 1 ? { maxWidth: '320px' } : undefined}>
