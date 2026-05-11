@@ -30,28 +30,29 @@ import {
   ordersDoubleFlickerLog,
   startOrdersDoubleFlickerSession,
 } from './ordersDoubleFlickerLog';
+import { isRestaurantBusiness } from '../../utils/businessType';
 
 /** Ventana única: skip realtime UPDATE mientras el optimistic + API cubren el mismo cambio. */
 const LOCAL_UPDATE_REALTIME_SKIP_MS = 3000;
 
 const ORDER_STATUSES = [
-  { key: 'pedido', label: 'Pedido', color: '#6366F1', bg: '#EEF2FF', icon: 'ShoppingBag' },
+  { key: 'pedido', label: 'Pedido', color: '#4F46E5', bg: '#F5F7FF', icon: 'ShoppingBag' },
   { key: 'en_preparacion', label: 'En preparación', color: '#F59E0B', bg: '#FEF3C7', icon: 'ChefHat' },
-  { key: 'enviado', label: 'Enviado', color: '#0EA5E9', bg: '#E0F2FE', icon: 'Truck' },
-  { key: 'entregado', label: 'Entregado', color: '#10B981', bg: '#D1FAE5', icon: 'PackageCheck' },
-  { key: 'cancelado', label: 'Cancelado', color: '#6B7280', bg: '#F3F4F6', icon: 'XCircle' },
+  { key: 'enviado', label: 'Enviado', color: '#0369A1', bg: '#F0F9FF', icon: 'Truck' },
+  { key: 'entregado', label: 'Entregado', color: '#047857', bg: '#F0FDF4', icon: 'PackageCheck' },
+  { key: 'cancelado', label: 'Cancelado', color: '#64748B', bg: '#F8FAFC', icon: 'XCircle' },
 ];
 
 const PAYMENT_STATUSES = [
   { key: 'pendiente', label: 'Pendiente', color: '#F59E0B', bg: '#FEF3C7', icon: 'Clock' },
-  { key: 'pagado', label: 'Pagado', color: '#10B981', bg: '#D1FAE5', icon: 'DollarSign' },
-  { key: 'anulado', label: 'Anulado', color: '#6B7280', bg: '#F3F4F6', icon: 'XCircle' },
+  { key: 'pagado', label: 'Pagado', color: '#047857', bg: '#F0FDF4', icon: 'DollarSign' },
+  { key: 'anulado', label: 'Anulado', color: '#64748B', bg: '#F8FAFC', icon: 'XCircle' },
 ];
 
 const STATUS_MAP = Object.fromEntries(ORDER_STATUSES?.map(s => [s?.key, s]));
 const PAYMENT_STATUS_MAP = Object.fromEntries(PAYMENT_STATUSES?.map(s => [s?.key, s]));
 
-const PRIMARY_HEX = '#7c3aed';
+const PRIMARY_HEX = '#111827';
 
 /**
  * Merge incremental desde fila realtime (sin join de items en UPDATE típico).
@@ -130,8 +131,8 @@ function StatusBadge({ status }) {
   const s = STATUS_MAP?.[status] || STATUS_MAP?.pedido;
   return (
     <span
-      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold"
-      style={{ color: s?.color, backgroundColor: s?.bg }}
+      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-semibold"
+      style={{ color: s?.color, backgroundColor: s?.bg, borderColor: `${s?.color}22` }}
     >
       <Icon name={s?.icon} size={11} />
       {s?.label}
@@ -143,8 +144,8 @@ function PaymentStatusBadge({ paymentStatus }) {
   const s = PAYMENT_STATUS_MAP?.[paymentStatus] || PAYMENT_STATUS_MAP?.pendiente;
   return (
     <span
-      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold"
-      style={{ color: s?.color, backgroundColor: s?.bg }}
+      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-semibold"
+      style={{ color: s?.color, backgroundColor: s?.bg, borderColor: `${s?.color}22` }}
     >
       <Icon name={s?.icon} size={11} />
       {s?.label}
@@ -195,6 +196,14 @@ export default function OrdersPage() {
   const updatingUntilRef = useRef(0);
   const businessIdRef = useRef(null);
   const pendingRealtimeSkipsRef = useRef(new Map());
+  const isRestaurant = isRestaurantBusiness(business);
+  const ordersTitle = isRestaurant ? 'Pedidos del restaurante' : 'Pedidos';
+  const ordersSubtitle = isRestaurant
+    ? 'Organiza lo que llega desde tu menu y manten cada pedido bajo control.'
+    : 'Gestiona las compras que llegan desde tu catalogo.';
+  const emptyDescription = isRestaurant
+    ? 'Cuando tus clientes pidan desde el menu, los veras aqui.'
+    : 'Cuando tus clientes compren desde el catalogo, los veras aqui.';
   const setDetailOrderTracked = useCallback((nextOrUpdater, source = 'unknown') => {
     setDetailOrder((prev) => {
       const next = typeof nextOrUpdater === 'function' ? nextOrUpdater(prev) : nextOrUpdater;
@@ -925,8 +934,24 @@ export default function OrdersPage() {
   return (
     <DashboardAppShell backgroundColor="var(--color-background)">
       <DashboardLayoutContent>
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div className="flex items-start gap-3 min-w-0">
+        <section className="mb-1 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          <div className="min-w-0 max-w-3xl">
+            <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500 font-[family-name:var(--font-caption)]">
+              Centro operativo
+            </p>
+            <h1 className="text-[2rem] font-black leading-[1.05] text-slate-950 sm:text-5xl" style={{ fontFamily: 'var(--font-heading)', letterSpacing: 0 }}>
+              {ordersTitle}
+            </h1>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 sm:text-base" style={{ fontFamily: 'var(--font-body)' }}>
+              {ordersSubtitle}
+            </p>
+            <p className="mt-2 hidden text-xs leading-snug text-slate-500 sm:block" style={{ fontFamily: 'var(--font-caption)' }}>
+              {visibleBoardOrders?.length ?? 0} pedido{(visibleBoardOrders?.length ?? 0) !== 1 ? 's' : ''} en el tablero activo. Entregados recientes: ultimos {ACTIVE_DELIVERED_VISIBILITY_MINUTES} min.
+            </p>
+          </div>
+        </section>
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-end">
+          <div className="hidden">
             <div
               className="w-9 h-9 shrink-0 rounded-xl flex items-center justify-center"
               style={{ background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)' }}
@@ -948,8 +973,8 @@ export default function OrdersPage() {
             <Link
               to="/orders/historial"
               title="Entregados y cancelados (consulta histórica)"
-              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-medium transition-colors hover:bg-muted min-h-[44px]"
-              style={{ borderColor: 'var(--color-border)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)', backgroundColor: '#fff' }}
+              className="flex min-h-[42px] items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-colors hover:bg-white"
+              style={{ borderColor: 'rgba(203,213,225,0.85)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)', backgroundColor: 'rgba(255,255,255,0.68)' }}
             >
               <Icon name="History" size={14} />
               Pedidos anteriores
@@ -958,8 +983,8 @@ export default function OrdersPage() {
               type="button"
               onClick={() => loadOrders({ reason: 'manual_refresh', silent: false })}
               disabled={loading}
-              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-medium transition-colors hover:bg-muted disabled:opacity-60 min-h-[44px]"
-              style={{ borderColor: 'var(--color-border)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)', backgroundColor: '#fff' }}
+              className="flex min-h-[42px] items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-colors hover:bg-white disabled:opacity-60"
+              style={{ borderColor: 'rgba(203,213,225,0.85)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)', backgroundColor: 'rgba(255,255,255,0.68)' }}
             >
               <Icon name="RefreshCw" size={14} className={loading ? 'animate-spin' : ''} />
               Refrescar
@@ -967,7 +992,7 @@ export default function OrdersPage() {
           </div>
         </div>
 
-        <div className="flex lg:grid gap-3 lg:gap-3 mb-6 overflow-x-auto lg:overflow-visible pb-2 -mx-1 px-1 lg:mx-0 lg:px-0 lg:grid-cols-6 snap-x snap-mandatory lg:snap-none scroll-smooth [-webkit-overflow-scrolling:touch]">
+        <div className="flex lg:grid gap-2.5 lg:gap-3 mb-5 overflow-x-auto lg:overflow-visible pb-2 -mx-1 px-1 lg:mx-0 lg:px-0 lg:grid-cols-6 snap-x snap-mandatory lg:snap-none scroll-smooth [-webkit-overflow-scrolling:touch]">
           <button
             type="button"
             onClick={() => setFilterStatus('all')}
@@ -977,21 +1002,20 @@ export default function OrdersPage() {
             style={{
               boxShadow:
                 filterStatus === 'all'
-                  ? '0 12px 40px -12px rgba(124, 58, 237, 0.28), 0 4px 6px -1px rgba(15, 23, 42, 0.06)'
+                  ? '0 12px 30px rgba(17,24,39,0.09)'
                   : undefined,
             }}
           >
             <div
               className="absolute left-0 right-0 top-0 h-1.5 rounded-t-2xl"
-              style={{ background: `linear-gradient(90deg, ${PRIMARY_HEX}, #a78bfa)` }}
+              style={{ backgroundColor: PRIMARY_HEX }}
               aria-hidden
             />
             <div className="flex items-center justify-between gap-2 pt-1">
               <div
                 className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-transform duration-300 group-hover:scale-105"
                 style={{
-                  backgroundColor: 'rgba(124, 58, 237, 0.12)',
-                  boxShadow: `0 0 22px -2px ${PRIMARY_HEX}aa, 0 4px 12px -4px rgba(124, 58, 237, 0.35)`,
+                  backgroundColor: 'rgba(17,24,39,0.06)',
                 }}
               >
                 <Icon name="LayoutGrid" size={18} color={PRIMARY_HEX} />
@@ -1074,14 +1098,14 @@ export default function OrdersPage() {
               type="text"
               value={searchQuery}
               onChange={e => setSearchQuery(e?.target?.value)}
-              placeholder="Buscar por cliente, teléfono o producto..."
-              className="w-full h-10 pl-9 pr-4 rounded-xl border text-sm focus:outline-none focus:ring-2 transition-all"
+              placeholder="Buscar pedido, cliente o producto..."
+              className="w-full h-10 pl-9 pr-4 rounded-xl border text-sm focus:outline-none focus:ring-2 transition-all hover:border-slate-300"
               style={{
-                borderColor: 'var(--color-border)',
+                borderColor: 'rgba(203,213,225,0.85)',
                 fontFamily: 'var(--font-caption)',
                 color: 'var(--color-foreground)',
-                backgroundColor: '#fff',
-                '--tw-ring-color': 'var(--color-primary)',
+                backgroundColor: 'rgba(255,255,255,0.78)',
+                '--tw-ring-color': 'rgba(17,24,39,0.12)',
               }}
             />
           </div>
@@ -1089,8 +1113,8 @@ export default function OrdersPage() {
             <button
               type="button"
               onClick={() => setFilterStatus('all')}
-              className="flex items-center gap-1.5 h-10 px-4 rounded-xl border text-sm font-medium transition-colors hover:bg-muted"
-              style={{ borderColor: 'var(--color-border)', color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)', backgroundColor: '#fff' }}
+              className="flex items-center gap-1.5 h-10 px-4 rounded-xl border text-sm font-semibold transition-colors hover:bg-white"
+              style={{ borderColor: 'rgba(203,213,225,0.85)', color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)', backgroundColor: 'rgba(255,255,255,0.68)' }}
             >
               <Icon name="X" size={13} />
               Limpiar filtro
@@ -1111,7 +1135,7 @@ export default function OrdersPage() {
             ))}
           </div>
         ) : filteredOrders?.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-center">
+          <div className="flex flex-col items-center justify-center rounded-2xl border border-white/70 bg-white/58 py-20 text-center shadow-[0_10px_28px_rgba(17,24,39,0.04)]">
             <div
               className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4"
               style={{ backgroundColor: 'var(--color-muted)' }}
@@ -1119,19 +1143,19 @@ export default function OrdersPage() {
               <Icon name="ShoppingCart" size={28} color="var(--color-muted-foreground)" />
             </div>
             <h3 className="text-base font-semibold mb-1" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>
-              {searchQuery || filterStatus !== 'all' ? 'Sin resultados' : 'No hay pedidos aún'}
+              {searchQuery || filterStatus !== 'all' ? 'Sin resultados' : 'Todavia no tienes pedidos'}
             </h3>
             <p className="text-sm max-w-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
               {searchQuery || filterStatus !== 'all'
                 ? 'No hay coincidencias con el filtro o la búsqueda. Prueba otras opciones.'
-                : 'Cuando tus clientes realicen pedidos desde tu catálogo, aparecerán aquí.'}
+                : emptyDescription}
             </p>
             {(searchQuery || filterStatus !== 'all') && (
               <button
                 type="button"
                 onClick={() => { setSearchQuery(''); setFilterStatus('all'); }}
-                className="mt-4 px-4 py-2 rounded-xl text-sm font-medium transition-colors hover:opacity-90"
-                style={{ backgroundColor: 'var(--color-primary)', color: '#fff', fontFamily: 'var(--font-caption)' }}
+                className="mt-4 px-4 py-2 rounded-xl bg-slate-950 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
+                style={{ fontFamily: 'var(--font-caption)' }}
               >
                 Ver todos los pedidos
               </button>

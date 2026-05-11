@@ -165,15 +165,15 @@ export default function OrderDetailDrawer({
 
       <div
         className="fixed inset-0 z-50 flex justify-end order-print-hide"
-        style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}
+        style={{ backgroundColor: 'rgba(15,23,42,0.42)' }}
         onClick={onClose}
       >
         <div
-          className="w-full max-w-md h-full overflow-y-auto bg-white shadow-xl"
+          className="h-full w-full max-w-md overflow-y-auto bg-[#f6f7fb] shadow-xl"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-3 border-b bg-white" style={{ borderColor: 'var(--color-border)' }}>
-          <h2 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>
+          <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-white/86 px-4 py-3 backdrop-blur" style={{ borderColor: 'rgba(226,232,240,0.8)' }}>
+          <h2 className="text-base font-black" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>
             Pedido #{orderShortId(order?.id)}
           </h2>
           <button type="button" onClick={onClose} className="p-2 rounded-lg hover:bg-muted" aria-label="Cerrar">
@@ -182,7 +182,7 @@ export default function OrderDetailDrawer({
           </div>
 
           <div className="p-4 space-y-5">
-          <div className="rounded-xl border p-3 space-y-3" style={{ borderColor: 'var(--color-border)', backgroundColor: 'rgba(124,58,237,0.04)' }}>
+          <div className="rounded-2xl border border-white/70 bg-white/70 p-3.5 shadow-[0_10px_26px_rgba(17,24,39,0.05)] space-y-3">
             <div>
               <p className="text-xs font-semibold mb-1" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Pedido</p>
               <p className="text-sm tabular-nums font-medium" style={{ fontFamily: 'var(--font-caption)' }}>{formattedOrderDate}</p>
