@@ -15,7 +15,7 @@ import { useToast } from '../../components/ui/Toast';
 import { useConfirmedEmailGuard } from '../../hooks/useConfirmedEmailGuard';
 import { getProducts, updateProduct, deleteProduct, deleteProducts, createProduct } from '../../services/waBusinessService';
 import { getBusinessLocale } from '../../lib/locale/businessLocale';
-import { formatCurrency } from '../../utils/formatCLP';
+import { formatBusinessCurrency } from '../../utils/formatPrice';
 import { isRestaurantBusiness } from '../../utils/businessType';
 
 
@@ -111,12 +111,8 @@ export default function ProductManagement() {
     ? 'Agrega tu primer plato para comenzar a recibir pedidos.'
     : 'Agrega tu primer producto para empezar a vender por WhatsApp.';
   const formatProductPrice = useCallback(
-    (n) => formatCurrency(
-      n,
-      String(business?.currency || bizLocale.currencyCode || 'USD').trim().toUpperCase(),
-      bizLocale.locale,
-    ),
-    [business?.currency, bizLocale],
+    (n) => formatBusinessCurrency(n, business, bizLocale),
+    [business, bizLocale],
   );
 
   const handleSort = useCallback((field) => {

@@ -1,7 +1,7 @@
 import React from "react";
 import Icon from "components/AppIcon";
 import { SkeletonCard } from "../../../components/ui/Skeleton";
-import { formatCurrency } from "../../../utils/formatCLP";
+import { formatPriceCatalog } from "../../../utils/formatPrice";
 import ChartEmptyWave from "./ChartEmptyWave";
 
 const RANGE_OPTIONS = [
@@ -21,7 +21,7 @@ export default function ConversionFunnelCard({
   range = "7d",
   onRangeChange,
   currency = "USD",
-  numberLocale = "en-US",
+  countryCode = null,
 }) {
   if (loading) return <SkeletonCard />;
 
@@ -117,7 +117,7 @@ export default function ConversionFunnelCard({
       <div className="flex items-center gap-2 pt-1 border-t relative z-[1]" style={{ borderColor: "var(--color-border)" }}>
         <Icon name="Receipt" size={13} color="var(--color-muted-foreground)" />
         <p className="text-xs" style={{ color: "var(--color-text-secondary)", fontFamily: "var(--font-caption)" }}>
-          Ticket promedio pagado: <strong>{formatCurrency(avgTicket, currency, numberLocale)}</strong>
+          Ticket promedio pagado: <strong>{formatPriceCatalog(avgTicket, currency, countryCode)}</strong>
         </p>
         <span
           className="text-xs px-2 py-1 rounded-full ml-auto"
@@ -127,7 +127,7 @@ export default function ConversionFunnelCard({
             fontFamily: 'var(--font-caption)',
           }}
         >
-          Ingresos {deltaPaidRevenueUp ? '+' : '-'}{formatCurrency(Math.abs(deltaPaidRevenueAmount), currency, numberLocale)} ({deltaPaidRevenueUp ? '+' : ''}{deltaPaidRevenue.toFixed(1)}%) {deltaLabel}
+          Ingresos {deltaPaidRevenueUp ? '+' : '-'}{formatPriceCatalog(Math.abs(deltaPaidRevenueAmount), currency, countryCode)} ({deltaPaidRevenueUp ? '+' : ''}{deltaPaidRevenue.toFixed(1)}%) {deltaLabel}
         </span>
       </div>
     </div>

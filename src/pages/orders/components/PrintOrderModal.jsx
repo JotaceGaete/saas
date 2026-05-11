@@ -2,12 +2,13 @@ import React, { useRef } from 'react';
 import Icon from 'components/AppIcon';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { formatCLP } from 'utils/formatCLP';
+import { formatPriceCatalog } from 'utils/formatPrice';
 import { formatDeliveryDurationLabel } from 'utils/orderDates';
 
-export default function PrintOrderModal({ order, businessName, onClose }) {
+export default function PrintOrderModal({ order, businessName, onClose, formatMoney }) {
   const printRef = useRef(null);
   const currency = order?.currency || 'CLP';
+  const money = (amount) => formatMoney?.(amount) ?? formatPriceCatalog(amount, currency);
 
   const formattedDate = order?.createdAt
     ? format(new Date(order.createdAt), "d 'de' MMMM yyyy, HH:mm", { locale: es })
@@ -183,7 +184,7 @@ export default function PrintOrderModal({ order, businessName, onClose }) {
                             {item?.quantity}
                           </td>
                           <td style={{ padding: '5px 0', fontSize: '12px', textAlign: 'right', fontWeight: 'bold', whiteSpace: 'nowrap', verticalAlign: 'top', borderBottom: '1px dotted #ccc' }}>
-                            {currency} {item?.subtotal?.toLocaleString('es', { minimumFractionDigits: 0 })}
+                            {money(item?.subtotal)}
                           </td>
                         </tr>
                       )) : (
@@ -197,7 +198,7 @@ export default function PrintOrderModal({ order, businessName, onClose }) {
                 <div className="total-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderTop: '2px solid #000', marginTop: '8px' }}>
                   <span className="total-label" style={{ fontSize: '14px', fontWeight: 'bold', textTransform: 'uppercase' }}>TOTAL</span>
                   <span className="total-amount" style={{ fontSize: '20px', fontWeight: 'bold' }}>
-                    {formatCLP(order?.totalAmount)}
+                    {money(order?.totalAmount)}
                   </span>
                 </div>
 

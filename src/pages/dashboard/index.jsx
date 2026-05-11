@@ -54,6 +54,7 @@ import { useToast } from "../../components/ui/Toast";
 import { tryCelebrateFirstCatalogShare } from "../../utils/catalogShareCelebration";
 import { getSourceLabel, getSourceColors } from "../../utils/analytics";
 import { generateInsights } from "../../utils/dashboardInsights";
+import { formatPriceCatalog, resolveBusinessCurrency } from "../../utils/formatPrice";
 
 const FIRST_SHARE_TOAST =
   '¡Tu tienda ya está en el mundo! 🌍 Link copiado y listo para enviar.';
@@ -67,8 +68,14 @@ export default function Dashboard() {
   const locale = getBusinessLocale(business, {
     preferredCountryCode: user?.user_metadata?.country_code ?? null,
   });
-  const displayCurrency = String(business?.currency || locale.currencyCode || '—').toUpperCase();
+  const displayCurrency = resolveBusinessCurrency(business, locale);
   const displayLocale = locale.locale || 'en-US';
+  const displayCountryCode = locale.countryCode
+    ?? business?.countryCodeDb
+    ?? business?.country_code
+    ?? business?.countryCode
+    ?? business?.routingCountryCode
+    ?? null;
   const dashboardRefreshAttempted = useRef(false);
   const [copyToast, setCopyToast] = useState(false);
   const [products, setProducts] = useState([]);
@@ -905,12 +912,14 @@ export default function Dashboard() {
                     loading={analyticsLoading}
                     currency={displayCurrency}
                     numberLocale={displayLocale}
+                    countryCode={displayCountryCode}
                   />
                   <DailyRevenueCard
                     data={monthlyRevenue}
                     loading={analyticsLoading}
                     currency={displayCurrency}
                     numberLocale={displayLocale}
+                    countryCode={displayCountryCode}
                   />
                 </div>
               </div>
@@ -922,6 +931,7 @@ export default function Dashboard() {
                   onRangeChange={setFunnelRange}
                   currency={displayCurrency}
                   numberLocale={displayLocale}
+                  countryCode={displayCountryCode}
                 />
               </div>
               {/* Origen de visitas */}
@@ -1020,6 +1030,7 @@ export default function Dashboard() {
                 newOrderIds={newOrderIds}
                 defaultCurrency={displayCurrency}
                 numberLocale={displayLocale}
+                countryCode={displayCountryCode}
               />
               {/* Productos recientes (solo en desktop debajo del feed; en móvil después de widgets) */}
               <section aria-label="Productos recientes" className="mt-5 lg:mt-6">
@@ -1065,7 +1076,7 @@ export default function Dashboard() {
                             <div className="min-w-0 flex-1">
                               <p className="text-sm font-medium truncate" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}>{p?.name || 'Sin nombre'}</p>
                               <p className="text-xs truncate" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-                                {p?.isActive ? 'Activo' : 'Inactivo'} · {p?.price != null ? `${business?.currency || locale.currencyCode} ${Number(p.price).toLocaleString()}` : ''}
+                                {p?.isActive ? 'Activo' : 'Inactivo'} · {p?.price != null ? formatPriceCatalog(p.price, displayCurrency, displayCountryCode) : ''}
                               </p>
                             </div>
                             <Icon name="ChevronRight" size={14} color="var(--color-muted-foreground)" />

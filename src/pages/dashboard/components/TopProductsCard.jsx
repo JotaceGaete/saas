@@ -3,8 +3,6 @@ import Icon from "components/AppIcon";
 import { SkeletonCard } from "../../../components/ui/Skeleton";
 import ChartEmptyWave from "./ChartEmptyWave";
 
-const formatCLP = (n) => `$${Math.round(n)?.toLocaleString('es-CL')}`;
-
 export default function TopProductsCard({ data, loading }) {
   if (loading) return <SkeletonCard />;
 

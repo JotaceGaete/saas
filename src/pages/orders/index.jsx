@@ -17,7 +17,8 @@ import { useToast } from '../../components/ui/Toast';
 import { supabase } from '../../lib/supabase';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { formatCLP } from '../../utils/formatCLP';
+import { getBusinessLocale } from '../../lib/locale/businessLocale';
+import { formatBusinessCurrency } from '../../utils/formatPrice';
 import OrderDetailDrawer from './components/OrderDetailDrawer';
 import OrdersKanban from './components/OrdersKanban';
 import {
@@ -197,6 +198,11 @@ export default function OrdersPage() {
   const businessIdRef = useRef(null);
   const pendingRealtimeSkipsRef = useRef(new Map());
   const isRestaurant = isRestaurantBusiness(business);
+  const businessLocale = useMemo(() => getBusinessLocale(business), [business]);
+  const formatOrderMoney = useCallback(
+    (amount) => formatBusinessCurrency(amount, business, businessLocale),
+    [business, businessLocale],
+  );
   const ordersTitle = isRestaurant ? 'Pedidos del restaurante' : 'Pedidos';
   const ordersSubtitle = isRestaurant
     ? 'Organiza lo que llega desde tu menu y manten cada pedido bajo control.'
@@ -1167,7 +1173,7 @@ export default function OrdersPage() {
               <CompactOrderCardStatic
                 key={order.id}
                 order={order}
-                formatCLP={formatCLP}
+                formatCLP={formatOrderMoney}
                 onOpenDetail={(o) => setDetailOrderTracked(o, 'CompactOrderCardStatic:open')}
                 shortIdFn={orderShortId}
               />
@@ -1179,7 +1185,7 @@ export default function OrdersPage() {
               orders={boardOrders}
               onUpdate={handleUpdate}
               onOpenDetail={(o) => setDetailOrderTracked(o, 'OrdersKanban:openDetail')}
-              formatCLP={formatCLP}
+              formatCLP={formatOrderMoney}
               orderShortId={orderShortId}
             />
             {cancelledFiltered.length > 0 && filterStatus === 'all' && (
@@ -1206,7 +1212,7 @@ export default function OrdersPage() {
                       <CompactOrderCardStatic
                         key={order.id}
                         order={order}
-                        formatCLP={formatCLP}
+                        formatCLP={formatOrderMoney}
                         onOpenDetail={(o) => setDetailOrderTracked(o, 'CancelledSection:openDetail')}
                         shortIdFn={orderShortId}
                       />
@@ -1229,7 +1235,7 @@ export default function OrdersPage() {
             paymentStatusOptions={PAYMENT_STATUSES}
             StatusBadge={StatusBadge}
             PaymentStatusBadge={PaymentStatusBadge}
-            formatCLP={formatCLP}
+            formatCLP={formatOrderMoney}
             orderShortId={orderShortId}
           />
         )}

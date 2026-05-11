@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Icon from 'components/AppIcon';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { formatCurrency } from '../../../utils/formatCLP';
+import { formatPriceCatalog } from '../../../utils/formatPrice';
 
 const STATUS_CONFIG = {
   pedido:         { label: 'Pendiente',      color: '#D97706', bg: 'rgba(245,158,11,0.1)',   icon: 'Clock' },
@@ -28,7 +28,7 @@ export default function ActivityFeed({
   loading = false,
   newOrderIds = new Set(),
   defaultCurrency = 'USD',
-  numberLocale = 'en-US',
+  countryCode = null,
 }) {
   const navigate = useNavigate();
   const recentOrders = orders?.slice(0, 10) ?? [];
@@ -108,11 +108,7 @@ export default function ActivityFeed({
                       {clientName}
                     </p>
                     <span className="text-sm font-bold flex-shrink-0" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-heading)' }}>
-                      {formatCurrency(
-                        order?.totalAmount,
-                        order?.currency || defaultCurrency,
-                        numberLocale,
-                      )}
+                      {formatPriceCatalog(order?.totalAmount, defaultCurrency, countryCode)}
                     </span>
                   </div>
                   <div className="flex items-center gap-2 mt-0.5">
