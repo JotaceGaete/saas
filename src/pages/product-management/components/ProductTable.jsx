@@ -25,15 +25,19 @@ export default function ProductTable({
   onSort,
   loading,
   formatPrice,
+  hasProducts = true,
+  emptyTitle = "Todavia no tienes productos",
+  emptyDescription = "Agrega tu primer producto para empezar a vender.",
+  filteredEmptyDescription = "No encontramos productos con los filtros actuales. Intenta ajustar tu busqueda.",
 }) {
   const allSelected = products?.length > 0 && products?.every((p) => selectedIds?.includes(p?.id));
   const someSelected = products?.some((p) => selectedIds?.includes(p?.id)) && !allSelected;
   const [openStatusMenuId, setOpenStatusMenuId] = useState(null);
 
   const getCommercialState = (product) => {
-    if (product?.active === false) return { key: 'hidden', label: 'Oculto', bg: '#F1F5F9', color: '#64748B' };
-    if (product?.isSoldOut === true) return { key: 'sold_out', label: 'Agotado', bg: '#FFF7ED', color: '#C2410C' };
-    return { key: 'available', label: 'Disponible', bg: '#ECFDF5', color: '#059669' };
+    if (product?.active === false) return { key: 'hidden', label: 'Oculto', bg: '#F8FAFC', color: '#64748B', border: 'rgba(100,116,139,0.18)' };
+    if (product?.isSoldOut === true) return { key: 'sold_out', label: 'Agotado', bg: '#FFFBEB', color: '#B45309', border: 'rgba(180,83,9,0.18)' };
+    return { key: 'available', label: 'Disponible', bg: '#F0FDF4', color: '#047857', border: 'rgba(4,120,87,0.16)' };
   };
 
   const SortIcon = ({ field }) => {
@@ -66,11 +70,11 @@ export default function ProductTable({
 
   if (products?.length === 0) {
     return (
-      <div className="rounded-xl border" style={{ backgroundColor: '#FFFFFF', borderColor: 'var(--color-border)' }}>
+      <div className="rounded-2xl border border-white/70 bg-white/62 shadow-[0_10px_28px_rgba(17,24,39,0.04)]">
         <EmptyState
-          illustration="search"
-          title="Sin resultados"
-          description="No encontramos productos con los filtros actuales. Intenta ajustar tu búsqueda."
+          illustration={hasProducts ? "search" : "package"}
+          title={hasProducts ? "Sin resultados" : emptyTitle}
+          description={hasProducts ? filteredEmptyDescription : emptyDescription}
         />
       </div>
     );
@@ -79,11 +83,11 @@ export default function ProductTable({
   return (
     <>
       {/* Desktop Table: reserved for truly wide screens only. */}
-      <div className="hidden 2xl:block w-full max-w-full min-w-0 rounded-xl border overflow-hidden" style={{ backgroundColor: '#FFFFFF', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-sm)' }}>
+      <div className="hidden 2xl:block w-full max-w-full min-w-0 overflow-hidden rounded-2xl border border-white/70 bg-white/72 shadow-[0_12px_34px_rgba(17,24,39,0.055)]">
         <div className="min-w-0 overflow-x-auto overscroll-x-contain">
           <table className="w-full min-w-[1120px]">
             <thead>
-              <tr className="border-b" style={{ backgroundColor: 'var(--color-muted)', borderColor: 'var(--color-border)' }}>
+              <tr className="border-b" style={{ backgroundColor: 'rgba(248,250,252,0.8)', borderColor: 'rgba(226,232,240,0.7)' }}>
                 <th className="w-10 px-4 py-4">
                   <input type="checkbox" checked={allSelected} ref={(el) => { if (el) el.indeterminate = someSelected; }} onChange={(e) => onSelectAll(e?.target?.checked)} className="w-4 h-4 rounded border-input accent-primary cursor-pointer" aria-label="Seleccionar todos" />
                 </th>
@@ -136,8 +140,8 @@ export default function ProductTable({
                   </td>
                   <td className="px-4 py-3 text-center">
                     <span
-                      className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold"
-                      style={{ backgroundColor: commercialState.bg, color: commercialState.color, fontFamily: 'var(--font-caption)' }}
+                      className="inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold"
+                      style={{ backgroundColor: commercialState.bg, color: commercialState.color, borderColor: commercialState.border, fontFamily: 'var(--font-caption)' }}
                     >
                       {commercialState.label}
                     </span>
@@ -222,12 +226,12 @@ export default function ProductTable({
           return (
           <div
             key={product?.id}
-            className={`rounded-xl border p-4 transition-all ${
+            className={`rounded-2xl border p-3.5 transition-all duration-150 sm:p-4 ${
               selectedIds?.includes(product?.id)
-                ? "border-primary/40 bg-primary/5"
-                : "border-slate-200/90 hover:bg-slate-50/50"
+                ? "border-slate-950/30 bg-white"
+                : "border-white/70 hover:-translate-y-0.5 hover:bg-white/80"
             }`}
-            style={{ backgroundColor: "var(--color-card)", boxShadow: "var(--shadow-sm)" }}
+            style={{ backgroundColor: "rgba(255,255,255,0.68)", boxShadow: "0 10px 26px rgba(17,24,39,0.045)" }}
           >
             <div className="flex flex-col gap-y-3 min-w-0">
               <div className="flex items-start gap-3 min-w-0">
@@ -238,7 +242,7 @@ export default function ProductTable({
                   className="w-4 h-4 mt-1 rounded border-border accent-primary cursor-pointer flex-shrink-0"
                   aria-label={`Seleccionar ${product?.name}`}
                 />
-                <div className="w-16 h-16 rounded-xl overflow-hidden border border-slate-100 flex-shrink-0 shadow-sm shadow-slate-200/30">
+                <div className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-xl border border-white bg-slate-100 shadow-sm shadow-slate-200/40">
                   <Image
                     src={product?.image}
                     alt={product?.imageAlt}
@@ -250,7 +254,7 @@ export default function ProductTable({
                 <div className="flex-1 min-w-0">
                   <div className="flex flex-col gap-3 min-w-0 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold text-foreground line-clamp-1" style={{ fontFamily: "var(--font-body)" }}>
+                      <p className="text-[15px] font-bold text-slate-950 line-clamp-1" style={{ fontFamily: "var(--font-heading)" }}>
                         {product?.name}
                       </p>
                       {product?.publicCode ? (
@@ -271,12 +275,12 @@ export default function ProductTable({
                       ) : null}
                     </div>
                     <div className="flex shrink-0 flex-row items-center justify-between gap-3 sm:min-w-[150px] sm:flex-col sm:items-end sm:justify-start">
-                      <span className="text-xl font-bold leading-none whitespace-nowrap" style={{ fontFamily: "var(--font-data)", color: "var(--color-primary)" }}>
+                      <span className="text-xl font-black leading-none whitespace-nowrap text-slate-950" style={{ fontFamily: "var(--font-data)" }}>
                         {formatPrice(product?.price)}
                       </span>
                       <span
-                        className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold flex-shrink-0 whitespace-nowrap"
-                        style={{ backgroundColor: commercialState.bg, color: commercialState.color, fontFamily: 'var(--font-caption)' }}
+                        className="inline-flex flex-shrink-0 items-center whitespace-nowrap rounded-full border px-2.5 py-1 text-[11px] font-semibold"
+                        style={{ backgroundColor: commercialState.bg, color: commercialState.color, borderColor: commercialState.border, fontFamily: 'var(--font-caption)' }}
                       >
                         {commercialState.label}
                       </span>
@@ -289,8 +293,8 @@ export default function ProductTable({
                 <div className="relative min-w-0">
                   <button
                     onClick={() => setOpenStatusMenuId((prev) => prev === product?.id ? null : product?.id)}
-                    className="flex w-full min-w-0 items-center justify-between gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors hover:bg-slate-50 h-10"
-                    style={{ borderColor: 'var(--color-border)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
+                    className="flex h-10 w-full min-w-0 items-center justify-between gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors hover:bg-white"
+                    style={{ borderColor: 'rgba(203,213,225,0.85)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
                     aria-label={`Cambiar estado de ${product?.name}`}
                   >
                     <span className="truncate">Cambiar estado</span>
@@ -326,8 +330,8 @@ export default function ProductTable({
                 <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                   <button
                     onClick={() => onEdit(product?.id)}
-                    className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border px-3 text-sm font-semibold text-slate-700 transition-all hover:bg-slate-50 hover:text-slate-900 sm:min-w-[140px] sm:flex-1"
-                    style={{ borderColor: 'var(--color-border)', fontFamily: 'var(--font-caption)' }}
+                    className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border px-3 text-sm font-semibold text-slate-800 transition-all hover:bg-white hover:text-slate-950 sm:min-w-[140px] sm:flex-1"
+                    style={{ borderColor: 'rgba(203,213,225,0.85)', fontFamily: 'var(--font-caption)' }}
                     aria-label={`Editar ${product?.name}`}
                   >
                     <Icon name="Pencil" size={15} color="currentColor" />
@@ -335,8 +339,8 @@ export default function ProductTable({
                   </button>
                   <button
                     onClick={() => onDuplicate(product?.id)}
-                    className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border px-3 text-sm font-medium text-slate-600 transition-all hover:bg-slate-50 hover:text-slate-800 sm:min-w-[140px] sm:flex-1"
-                    style={{ borderColor: 'var(--color-border)', fontFamily: 'var(--font-caption)' }}
+                    className="flex h-10 w-full items-center justify-center gap-2 rounded-lg px-3 text-sm font-medium text-slate-600 transition-all hover:bg-white hover:text-slate-800 sm:min-w-[140px] sm:flex-1"
+                    style={{ fontFamily: 'var(--font-caption)' }}
                     aria-label={`Duplicar ${product?.name}`}
                   >
                     <Icon name="Copy" size={15} color="currentColor" />

@@ -16,6 +16,7 @@ import { useConfirmedEmailGuard } from '../../hooks/useConfirmedEmailGuard';
 import { getProducts, updateProduct, deleteProduct, deleteProducts, createProduct } from '../../services/waBusinessService';
 import { getBusinessLocale } from '../../lib/locale/businessLocale';
 import { formatCurrency } from '../../utils/formatCLP';
+import { isRestaurantBusiness } from '../../utils/businessType';
 
 
 export default function ProductManagement() {
@@ -98,6 +99,17 @@ export default function ProductManagement() {
   }), [products]);
 
   const bizLocale = useMemo(() => getBusinessLocale(business), [business]);
+  const isRestaurant = isRestaurantBusiness(business);
+  const productNoun = isRestaurant ? 'plato' : 'producto';
+  const productNounPlural = isRestaurant ? 'platos' : 'productos';
+  const screenTitle = isRestaurant ? 'Menu del restaurante' : 'Catalogo de productos';
+  const screenSubtitle = isRestaurant
+    ? 'Gestiona platos, combos y secciones de tu carta.'
+    : 'Organiza lo que tus clientes ven y compran en tu tienda.';
+  const emptyTitle = isRestaurant ? 'Todavia no tienes platos en tu menu' : 'Todavia no tienes productos';
+  const emptyDescription = isRestaurant
+    ? 'Agrega tu primer plato para comenzar a recibir pedidos.'
+    : 'Agrega tu primer producto para empezar a vender por WhatsApp.';
   const formatProductPrice = useCallback(
     (n) => formatCurrency(
       n,
@@ -204,18 +216,18 @@ export default function ProductManagement() {
     <button
       type="button"
       onClick={() => navigate('/product-editor')}
-      className={`flex items-center justify-center gap-2 rounded-xl text-sm font-semibold text-white transition-all duration-150 hover:opacity-90 active:scale-[0.98] ${className}`}
-      style={{ backgroundColor: 'var(--color-primary)', fontFamily: 'var(--font-caption)', boxShadow: '0 4px 14px rgba(124,58,237,0.35)' }}
+      className={`flex items-center justify-center gap-2 rounded-xl bg-slate-950 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(15,23,42,0.16)] transition-colors duration-150 hover:bg-slate-800 active:scale-[0.99] ${className}`}
+      style={{ fontFamily: 'var(--font-caption)' }}
     >
       <Icon name="Plus" size={18} color="#FFFFFF" />
-      <span>Agregar producto</span>
+      <span>Agregar {productNoun}</span>
     </button>
   );
   return (
     <DashboardAppShell backgroundColor="var(--color-background)">
         <PanelHeader
-          title={<h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Gestión de Productos</h1>}
-          subtitle={<p className="text-xs hidden sm:block" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>{loading ? 'Cargando...' : `${stats?.total} productos · ${stats?.available} disponibles · ${stats?.soldOut} agotados · ${stats?.hidden} ocultos`}</p>}
+          title={<h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Catalogo</h1>}
+          subtitle={<p className="text-xs hidden sm:block" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>{loading ? 'Cargando...' : `${stats?.total} ${productNounPlural} · ${stats?.available} disponibles · ${stats?.soldOut} agotados · ${stats?.hidden} ocultos`}</p>}
         >
           <div className="hidden 2xl:flex items-center gap-2 flex-shrink-0">
             <AddProductButton className="px-4 py-2.5" />
@@ -234,10 +246,28 @@ export default function ProductManagement() {
             <PremiumLoader business={business} context="products" />
           ) : (
             <>
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <ProductStatsBar stats={stats} />
-              </div>
-              <div>
+              <section className="mb-2">
+                <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+                  <div className="max-w-3xl">
+                    <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500 font-[family-name:var(--font-caption)]">
+                      Merchandising
+                    </p>
+                    <h2 className="text-[2rem] font-black leading-[1.05] text-slate-950 sm:text-5xl" style={{ fontFamily: 'var(--font-heading)', letterSpacing: 0 }}>
+                      {screenTitle}
+                    </h2>
+                    <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 sm:text-base" style={{ fontFamily: 'var(--font-body)' }}>
+                      {screenSubtitle}
+                    </p>
+                  </div>
+                  <div className="hidden shrink-0 md:block 2xl:hidden">
+                    <AddProductButton className="px-4 py-2.5" />
+                  </div>
+                </div>
+              </section>
+
+              <ProductStatsBar stats={stats} productNounPlural={productNounPlural} />
+
+              <div className="rounded-2xl border border-white/70 bg-white/58 p-3 shadow-[0_10px_28px_rgba(17,24,39,0.04)] sm:p-4">
                 <ProductFilters
                   searchQuery={searchQuery}
                   onSearchChange={setSearchQuery}
@@ -250,11 +280,11 @@ export default function ProductManagement() {
                   }}
                 />
               </div>
-              <div className="2xl:hidden flex w-full">
+              <div className="flex w-full md:hidden">
                 <AddProductButton className="w-full px-4 py-3" />
               </div>
               {selectedIds?.length > 0 && (<div><BulkActionBar selectedCount={selectedIds?.length} onDelete={handleBulkDelete} onDeselect={() => setSelectedIds([])} /></div>)}
-              <ProductTable products={filteredProducts} selectedIds={selectedIds} onSelectAll={handleSelectAll} onSelectOne={handleSelectOne} onChangeStatus={handleChangeStatus} onEdit={handleEdit} onDuplicate={handleDuplicate} onDeleteRequest={handleDeleteRequest} sortField={sortField} sortDir={sortDir} onSort={handleSort} formatPrice={formatProductPrice} />
+              <ProductTable products={filteredProducts} selectedIds={selectedIds} onSelectAll={handleSelectAll} onSelectOne={handleSelectOne} onChangeStatus={handleChangeStatus} onEdit={handleEdit} onDuplicate={handleDuplicate} onDeleteRequest={handleDeleteRequest} sortField={sortField} sortDir={sortDir} onSort={handleSort} formatPrice={formatProductPrice} hasProducts={products?.length > 0} emptyTitle={emptyTitle} emptyDescription={emptyDescription} filteredEmptyDescription="No encontramos items con estos filtros. Ajusta la busqueda o vuelve a ver todo el catalogo." />
             </>
           )}
         </DashboardLayoutContent>
