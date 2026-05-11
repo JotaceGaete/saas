@@ -184,6 +184,114 @@ function DesignUnifiedHeading({ title, subtitle, isFirst }) {
   );
 }
 
+function PersistentSaveActions({ isDirty, isSaving, onSave, onReset }) {
+  if (!isDirty && !isSaving) return null;
+
+  const ctaContent = isSaving ? (
+    <>
+      <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,0.3)" strokeWidth="3" />
+        <path d="M12 2a10 10 0 0 1 10 10" stroke="#fff" strokeWidth="3" strokeLinecap="round" />
+      </svg>
+      Guardando...
+    </>
+  ) : (
+    <>
+      <Icon name="Save" size={14} color="#fff" />
+      Guardar cambios
+    </>
+  );
+
+  const barStyle = {
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderColor: 'rgba(17,24,39,0.08)',
+    boxShadow: '0 18px 42px rgba(17,24,39,0.10)',
+  };
+
+  return (
+    <>
+      <div
+        className="sticky top-0 z-20 hidden items-center justify-between gap-4 rounded-2xl border px-4 py-3 backdrop-blur md:flex"
+        style={barStyle}
+      >
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl" style={{ backgroundColor: 'rgba(245,158,11,0.10)' }}>
+            <Icon name="CircleAlert" size={15} color="#B45309" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-heading)', letterSpacing: '-0.01em' }}>
+              Cambios sin guardar
+            </p>
+            <p className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+              Guarda para publicar esta identidad visual.
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-shrink-0 items-center gap-2">
+          {onReset && (
+            <button
+              type="button"
+              onClick={onReset}
+              disabled={isSaving}
+              className="rounded-xl border px-3 py-2 text-xs font-semibold transition-all hover:-translate-y-px disabled:opacity-50"
+              style={{ borderColor: 'rgba(17,24,39,0.10)', backgroundColor: 'rgba(255,255,255,0.70)', color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}
+            >
+              Descartar
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={isSaving}
+            className="flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold text-white transition-all hover:-translate-y-px disabled:opacity-60"
+            style={{ backgroundColor: '#111827', boxShadow: '0 8px 18px rgba(17,24,39,0.18)', fontFamily: 'var(--font-caption)' }}
+          >
+            {ctaContent}
+          </button>
+        </div>
+      </div>
+
+      <div className="fixed inset-x-0 bottom-0 z-50 px-3 pb-[calc(env(safe-area-inset-bottom)+12px)] md:hidden">
+        <div
+          className="rounded-2xl border p-3 backdrop-blur"
+          style={barStyle}
+        >
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-heading)' }}>
+                Cambios sin guardar
+              </p>
+              <p className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                Guarda antes de salir.
+              </p>
+            </div>
+            {onReset && (
+              <button
+                type="button"
+                onClick={onReset}
+                disabled={isSaving}
+                className="rounded-xl px-3 py-2 text-xs font-semibold transition-all disabled:opacity-50"
+                style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}
+              >
+                Descartar
+              </button>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={isSaving}
+            className="flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold text-white transition-all active:scale-[0.99] disabled:opacity-60"
+            style={{ backgroundColor: '#111827', fontFamily: 'var(--font-caption)' }}
+          >
+            {ctaContent}
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
 export default function DesignCustomization({
   design,
   onChange,
@@ -331,11 +439,19 @@ export default function DesignCustomization({
   const statusColor = isSaving ? 'var(--color-text-tertiary)' : showSaved ? '#059669' : '#f59e0b';
 
   return (
-    <div className="flex w-full min-w-0 flex-col gap-6">
+    <div className={`flex w-full min-w-0 flex-col gap-6 ${(isDirty || isSaving) ? 'pb-28 md:pb-0' : ''}`}>
+      {!hideSaveButton && (
+        <PersistentSaveActions
+          isDirty={isDirty}
+          isSaving={isSaving}
+          onSave={onSave}
+          onReset={onReset}
+        />
+      )}
 
       {/* ── Sticky header: título + botón guardar ── */}
       <div
-        className="sticky top-0 z-10 flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 backdrop-blur"
+        className="hidden"
         style={{
           backgroundColor: 'rgba(255,255,255,0.86)',
           borderColor: 'rgba(17,24,39,0.08)',
@@ -1043,7 +1159,7 @@ export default function DesignCustomization({
         </div>
       </SectionCard>
 
-      {!hideSaveButton && (
+      {false && (
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-4 border-t" style={{ borderColor: 'rgba(17,24,39,0.08)' }}>
         <div className="flex items-center gap-3 order-2 sm:order-1">
           <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
@@ -1105,7 +1221,7 @@ export default function DesignCustomization({
       <input ref={coverInputRef} type="file" accept="image/*" className="hidden" onChange={handleCoverUpload} />
 
       {/* ── Botón flotante mobile (solo cuando hay cambios o se está guardando) ── */}
-      {(isDirty || isSaving || showSaved) && (
+      {false && (
         <button
           type="button"
           onClick={onSave}
