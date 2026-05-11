@@ -205,6 +205,20 @@ export default function ProductEditor() {
   const editorTitle = isEditingFlow
     ? (isRestaurant ? 'Editar plato' : 'Editar producto')
     : (isRestaurant ? 'Agregar plato' : 'Nuevo producto');
+  const editorHeroTitle = isRestaurant ? 'Ficha del plato' : 'Ficha del producto';
+  const editorHeroSubtitle = isRestaurant
+    ? 'Presenta este plato de forma clara y atractiva para tus clientes.'
+    : 'Cuida como se vera este producto en tu catalogo.';
+  const sectionSurfaceStyle = {
+    backgroundColor: 'rgba(255,255,255,0.78)',
+    borderColor: 'rgba(17,24,39,0.08)',
+    boxShadow: '0 14px 34px rgba(17,24,39,0.055)',
+  };
+  const softSectionSurfaceStyle = {
+    backgroundColor: 'rgba(255,255,255,0.58)',
+    borderColor: 'rgba(17,24,39,0.07)',
+    boxShadow: '0 10px 24px rgba(17,24,39,0.04)',
+  };
   const normalizedAddOns = Array.isArray(formData?.addOns)
     ? formData.addOns.map((addon, index) => normalizeAddon(addon, index)).filter(Boolean)
     : [];
@@ -1098,6 +1112,45 @@ export default function ProductEditor() {
 
         {/* Main content */}
         <DashboardLayoutContent className="page-enter lg:pb-0">
+            <section className="mb-7 sm:mb-9">
+              <div className="flex flex-col gap-5 border-b pb-6 sm:flex-row sm:items-end sm:justify-between" style={{ borderColor: 'rgba(17,24,39,0.08)' }}>
+                <div className="max-w-2xl">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                    {isEditingFlow ? 'Editar ficha comercial' : 'Nueva ficha comercial'}
+                  </p>
+                  <h2 className="mt-2 text-3xl font-semibold leading-tight sm:text-4xl" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-heading)', letterSpacing: '-0.03em' }}>
+                    {editorHeroTitle}
+                  </h2>
+                  <p className="mt-3 max-w-xl text-sm leading-6 sm:text-base" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-body)' }}>
+                    {editorHeroSubtitle}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold"
+                    style={{
+                      backgroundColor: !formData?.activo ? 'rgba(107,107,107,0.10)' : formData?.soldOut ? 'rgba(234,88,12,0.10)' : 'rgba(5,150,105,0.10)',
+                      color: !formData?.activo ? 'var(--color-muted-foreground)' : formData?.soldOut ? '#ea580c' : '#047857',
+                      fontFamily: 'var(--font-caption)',
+                    }}
+                  >
+                    <Icon
+                      name={!formData?.activo ? 'EyeOff' : formData?.soldOut ? 'PackageX' : 'Eye'}
+                      size={12}
+                      color="currentColor"
+                    />
+                    {!formData?.activo ? 'Oculto' : formData?.soldOut ? 'Agotado' : 'Visible'}
+                  </span>
+                  {formData?.featured && (
+                    <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold" style={{ backgroundColor: 'rgba(217,119,6,0.10)', color: '#B45309', fontFamily: 'var(--font-caption)' }}>
+                      <Icon name="Star" size={12} color="currentColor" />
+                      Destacado
+                    </span>
+                  )}
+                </div>
+              </div>
+            </section>
+
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
 
               {/* ── LEFT COLUMN: Form ── */}
@@ -1138,14 +1191,14 @@ export default function ProductEditor() {
 
                 {/* Image gallery */}
                 <div
-                  className="p-5 md:p-6 rounded-xl border"
-                  style={{ backgroundColor: 'var(--color-card)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-sm)' }}
+                  className="rounded-2xl border p-5 transition-shadow duration-200 md:p-6"
+                  style={sectionSurfaceStyle}
                 >
-                  <div className="flex items-center gap-2 mb-4">
-                    <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(124,58,237,0.08)' }}>
-                      <Icon name="Images" size={15} color="var(--color-primary)" />
+                  <div className="mb-4 flex items-start gap-3">
+                    <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-xl" style={{ backgroundColor: 'rgba(17,24,39,0.06)' }}>
+                      <Icon name="Images" size={15} color="var(--color-foreground)" />
                     </div>
-                    <h2 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>Galería de imágenes</h2>
+                    <h2 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>Imagen y presentacion</h2>
                     <span className="ml-auto text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
                       {images?.length}/5
                     </span>
@@ -1163,8 +1216,8 @@ export default function ProductEditor() {
 
                 {/* Video */}
                 <div
-                  className="p-5 md:p-6 rounded-xl border"
-                  style={{ backgroundColor: 'var(--color-card)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-sm)' }}
+                  className="rounded-2xl border p-5 md:p-6"
+                  style={softSectionSurfaceStyle}
                 >
                   <div className="flex items-center gap-2 mb-4">
                     <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(124,58,237,0.08)' }}>
@@ -1183,14 +1236,14 @@ export default function ProductEditor() {
 
                 {/* Basic info */}
                 <div
-                  className="p-5 md:p-6 rounded-xl border"
-                  style={{ backgroundColor: 'var(--color-card)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-sm)' }}
+                  className="rounded-2xl border p-5 md:p-6"
+                  style={sectionSurfaceStyle}
                 >
                   <div className="flex items-center gap-2 mb-5">
                     <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(124,58,237,0.08)' }}>
                       <Icon name="FileText" size={15} color="var(--color-primary)" />
                     </div>
-                    <h2 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>{isRestaurant ? 'Información del plato' : 'Información básica'}</h2>
+                    <h2 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>Informacion principal</h2>
                   </div>
                   <ProductFormFields
                     formData={formData}
@@ -1215,16 +1268,16 @@ export default function ProductEditor() {
 
                 {/* Estado de venta */}
                 <div
-                  className="p-5 md:p-6 rounded-xl border"
-                  style={{ backgroundColor: 'var(--color-card)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-sm)' }}
+                  className="rounded-2xl border p-5 md:p-6"
+                  style={sectionSurfaceStyle}
                 >
                   <div className="flex items-center gap-2 mb-4">
                     <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(124,58,237,0.08)' }}>
                       <Icon name="ShoppingBag" size={15} color="var(--color-primary)" />
                     </div>
-                    <h2 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>Estado de venta</h2>
+                    <h2 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>Precio y disponibilidad</h2>
                   </div>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                     {[
                       { key: 'available', label: 'Disponible', icon: 'Eye',      color: '#059669', bg: 'rgba(5,150,105,0.08)',  border: 'rgba(5,150,105,0.3)',  desc: 'Visible y se puede pedir' },
                       { key: 'sold_out',  label: 'Agotado',    icon: 'PackageX', color: '#ea580c', bg: 'rgba(234,88,12,0.08)', border: 'rgba(234,88,12,0.3)', desc: 'Visible, no se puede pedir' },
@@ -1241,10 +1294,10 @@ export default function ProductEditor() {
                             else if (key === 'sold_out') { handleFieldChange('activo', true); handleFieldChange('soldOut', true); }
                             else { handleFieldChange('activo', false); handleFieldChange('soldOut', false); }
                           }}
-                          className="flex flex-col items-center gap-1.5 p-3 rounded-xl border transition-all text-center"
+                          className="flex flex-row items-center gap-3 rounded-xl border px-3 py-3 text-left transition-all duration-200 hover:-translate-y-0.5 sm:flex-col sm:gap-1.5 sm:text-center"
                           style={{
-                            borderColor: selected ? border : 'var(--color-border)',
-                            backgroundColor: selected ? bg : 'transparent',
+                            borderColor: selected ? border : 'rgba(17,24,39,0.08)',
+                            backgroundColor: selected ? bg : 'rgba(255,255,255,0.42)',
                           }}
                         >
                           <Icon name={icon} size={16} color={selected ? color : 'var(--color-muted-foreground)'} />
@@ -1258,8 +1311,8 @@ export default function ProductEditor() {
 
                 {/* Featured toggles */}
                 <div
-                  className="p-5 md:p-6 rounded-xl border"
-                  style={{ backgroundColor: 'var(--color-card)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-sm)' }}
+                  className="rounded-2xl border p-5 md:p-6"
+                  style={softSectionSurfaceStyle}
                 >
                   <div className="flex items-center gap-2 mb-4">
                     <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(124,58,237,0.08)' }}>
@@ -1280,8 +1333,8 @@ export default function ProductEditor() {
                 </div>
 
                 <div
-                  className="p-5 md:p-6 rounded-xl border"
-                  style={{ backgroundColor: 'var(--color-card)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-sm)' }}
+                  className="rounded-2xl border p-5 md:p-6"
+                  style={softSectionSurfaceStyle}
                 >
                   <div className="flex items-center gap-2 mb-4">
                     <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(217,119,6,0.08)' }}>
@@ -1334,8 +1387,8 @@ export default function ProductEditor() {
 
                 {/* Product Options */}
                 <div
-                  className="p-5 md:p-6 rounded-xl border"
-                  style={{ backgroundColor: 'var(--color-card)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-sm)' }}
+                  className="rounded-2xl border p-5 md:p-6"
+                  style={softSectionSurfaceStyle}
                 >
                   <div className="flex items-center gap-2 mb-4">
                     <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(37,211,102,0.08)' }}>
@@ -1354,8 +1407,8 @@ export default function ProductEditor() {
 
                 {isRestaurant && (
                   <div
-                    className="p-5 md:p-6 rounded-xl border"
-                    style={{ backgroundColor: 'var(--color-card)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-sm)' }}
+                    className="rounded-2xl border p-5 md:p-6"
+                    style={sectionSurfaceStyle}
                   >
                     <div className="flex items-start gap-3 mb-4">
                       <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(14,165,233,0.10)' }}>
@@ -1644,8 +1697,8 @@ export default function ProductEditor() {
                 {/* Add-ons - visible solo para negocios restaurant */}
                 {isRestaurant && (
                   <div
-                    className="p-5 md:p-6 rounded-xl border"
-                    style={{ backgroundColor: 'var(--color-card)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-sm)' }}
+                    className="rounded-2xl border p-5 md:p-6"
+                    style={sectionSurfaceStyle}
                   >
                     <div className="flex items-center gap-2 mb-4">
                       <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(234,88,12,0.08)' }}>
@@ -1935,8 +1988,8 @@ export default function ProductEditor() {
               {/* ── RIGHT COLUMN: Live Preview ── */}
               <div className="lg:col-span-1">
                 <div
-                  className="sticky top-20 p-5 rounded-xl border"
-                  style={{ backgroundColor: 'var(--color-card)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-sm)' }}
+                  className="sticky top-20 rounded-2xl border p-4 md:p-5"
+                  style={sectionSurfaceStyle}
                 >
                   <ProductPreview
                     nombre={formData?.nombre}

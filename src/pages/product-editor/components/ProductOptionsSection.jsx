@@ -14,16 +14,16 @@ export default function ProductOptionsSection({ hasOptions, optionsDescription, 
     <div className="space-y-4">
       {/* Toggle row */}
       <div
-        className="flex items-center justify-between p-4 rounded-xl border transition-all duration-200"
+        className="flex items-center justify-between rounded-xl border px-3.5 py-3 transition-all duration-200 hover:-translate-y-0.5"
         style={{
-          borderColor: hasOptions ? 'rgba(37,211,102,0.4)' : 'var(--color-border)',
-          backgroundColor: hasOptions ? 'rgba(37,211,102,0.05)' : 'transparent',
+          borderColor: hasOptions ? 'rgba(22,163,74,0.26)' : 'rgba(17,24,39,0.08)',
+          backgroundColor: hasOptions ? 'rgba(22,163,74,0.06)' : 'rgba(255,255,255,0.46)',
         }}
       >
         <div className="flex items-center gap-3">
           <div
-            className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-            style={{ backgroundColor: hasOptions ? 'rgba(37,211,102,0.15)' : 'rgba(107,107,107,0.08)' }}
+            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl"
+            style={{ backgroundColor: hasOptions ? 'rgba(22,163,74,0.12)' : 'rgba(17,24,39,0.05)' }}
           >
             <Icon name="ListChecks" size={17} color={hasOptions ? '#16a34a' : 'var(--color-muted-foreground)'} />
           </div>
@@ -70,10 +70,10 @@ export default function ProductOptionsSection({ hasOptions, optionsDescription, 
             onChange={(e) => onOptionsDescriptionChange(e?.target?.value)}
             placeholder={OPTION_EXAMPLES?.[0]}
             rows={3}
-            className="w-full px-3 py-2 text-sm rounded-md border resize-none focus:outline-none focus:ring-2 focus:ring-ring transition-all"
+            className="w-full resize-none rounded-xl border px-3.5 py-3 text-sm leading-6 transition-all focus:outline-none focus:ring-2 focus:ring-ring"
             style={{
               borderColor: 'var(--color-input)',
-              backgroundColor: 'var(--color-card)',
+              backgroundColor: 'rgba(255,255,255,0.72)',
               color: 'var(--color-foreground)',
               fontFamily: 'var(--font-body)',
               borderRadius: 'var(--radius-sm)',

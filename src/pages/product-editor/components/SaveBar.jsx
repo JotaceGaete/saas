@@ -6,11 +6,11 @@ export default function SaveBar({ isEditing, isSaving, saveSuccess, saveDisabled
   const itemSingularLower = itemSingular.toLowerCase();
   return (
     <div
-      className="sticky bottom-0 z-10 border-t px-4 md:px-6 lg:pl-4 lg:pr-8"
+      className="sticky bottom-0 z-10 border-t px-4 backdrop-blur md:px-6 lg:pl-4 lg:pr-8"
       style={{
-        backgroundColor: 'var(--color-card)',
-        borderColor: 'var(--color-border)',
-        boxShadow: '0 -4px 20px rgba(15,23,42,0.07)',
+        backgroundColor: 'rgba(255,255,255,0.88)',
+        borderColor: 'rgba(17,24,39,0.08)',
+        boxShadow: '0 -10px 30px rgba(15,23,42,0.08)',
         height: '68px',
         display: 'flex',
         alignItems: 'center',
@@ -64,11 +64,11 @@ export default function SaveBar({ isEditing, isSaving, saveSuccess, saveDisabled
             <button
               onClick={onSaveAndNew}
               disabled={saveButtonDisabled}
-              className="hidden sm:flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-semibold border transition-all duration-150 hover:bg-muted hover:-translate-y-px active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed"
+              className="hidden sm:flex items-center gap-1.5 rounded-lg border px-3.5 py-2 text-sm font-semibold transition-all duration-150 hover:-translate-y-px active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40"
               style={{
-                borderColor: 'var(--color-border)',
+                borderColor: 'rgba(17,24,39,0.10)',
                 color: 'var(--color-foreground)',
-                backgroundColor: 'var(--color-card)',
+                backgroundColor: 'rgba(255,255,255,0.72)',
                 fontFamily: 'var(--font-caption)',
               }}
             >
@@ -82,11 +82,11 @@ export default function SaveBar({ isEditing, isSaving, saveSuccess, saveDisabled
             disabled={saveButtonDisabled}
             className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white transition-all duration-150 hover:-translate-y-px active:scale-[0.97] disabled:opacity-60 disabled:cursor-not-allowed"
             style={{
-              backgroundColor: saveSuccess ? '#059669' : 'var(--color-primary)',
+              backgroundColor: saveSuccess ? '#059669' : '#111827',
               fontFamily: 'var(--font-caption)',
               boxShadow: saveSuccess
-                ? '0 4px 14px rgba(5,150,105,0.35)'
-                : '0 4px 14px rgba(124,58,237,0.35)',
+                ? '0 8px 20px rgba(5,150,105,0.22)'
+                : '0 8px 20px rgba(17,24,39,0.18)',
               transition: 'background-color 300ms ease, box-shadow 300ms ease, transform 150ms ease, opacity 150ms ease',
               minWidth: '140px',
               justifyContent: 'center',
