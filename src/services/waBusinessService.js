@@ -405,6 +405,7 @@ const mapProductFromDb = (row) => {
     id: row?.id,
     businessId: row?.business_id,
     name: row?.name,
+    slug: row?.slug || null,
     publicCode: row?.public_code ?? null,
     description: row?.description,
     price: parseFloat(row?.price),
@@ -1334,6 +1335,19 @@ export async function getPublicProducts(businessId) {
     ?.order('sort_order', { ascending: true });
   if (error) return { data: null, error };
   return { data: (data || [])?.map(mapProductFromDb), error: null };
+}
+
+export async function getPublicProductBySlug(businessId, productSlug) {
+  if (!businessId || !productSlug) return { data: null, error: { message: 'Missing business or product slug' } };
+  const { data, error } = await supabase
+    ?.from('wa_products')
+    ?.select('*')
+    ?.eq('business_id', businessId)
+    ?.eq('slug', productSlug)
+    ?.eq('is_active', true)
+    ?.maybeSingle();
+  if (error) return { data: null, error };
+  return { data: data ? mapProductFromDb(data) : null, error: null };
 }
 
 export async function getPublicOfferProducts(businessId) {

@@ -119,6 +119,18 @@ export function getPublicOffersUrl(slug) {
 }
 
 /**
+ * @param {string} businessSlug
+ * @param {string} productSlug
+ * @returns {string} p. ej. `https://miralatienda.de/catalogo/tienda/producto/producto-1`
+ */
+export function getPublicProductUrl(businessSlug, productSlug) {
+  const b = String(businessSlug || '').trim();
+  const p = String(productSlug || '').trim();
+  if (!b || !p) return '';
+  return `${CATALOG_ORIGIN}/catalogo/${b}/producto/${p}`;
+}
+
+/**
  * Enlace del catálogo para WhatsApp: URL totalmente canónica, sin query params
  * (el crawler de WhatsApp debe ver siempre la misma URL para OG / portada).
  * @param {string} slug

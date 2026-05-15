@@ -19,6 +19,7 @@ import DesignPage from './pages/design';
 import HelpPage from './pages/help';
 import PublicCatalog from './pages/public-catalog';
 import PublicOffers from './pages/public-offers';
+import PublicProductPage from './pages/public-product';
 import OrderConfirmation from './pages/order-confirmation';
 import Orders from './pages/orders';
 import OrdersHistory from './pages/orders-history';
@@ -116,6 +117,7 @@ const Routes = () => {
             <Route path="/catalog/:slug" element={<PublicCatalog />} />
             <Route path="/catalog/:slug/checkout" element={<OrderConfirmation />} />
             <Route path="/catalogo/:slug/ofertas" element={<PublicOffers />} />
+            <Route path="/catalogo/:businessSlug/producto/:productSlug" element={<PublicProductPage />} />
             <Route path="/catalogo/:slug" element={<PublicCatalog />} />
             <Route path="/catalogo/:slug/checkout" element={<OrderConfirmation />} />
             <Route path="/admin" element={<Navigate to="/admin/businesses" replace />} />
