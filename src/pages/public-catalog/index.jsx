@@ -718,10 +718,7 @@ function CatalogInner({ slug }) {
 
   const storeName = business?.name || 'Catálogo';
   const isRestaurant = isRestaurantBusiness(business);
-  const catalogFooterText = useMemo(
-    () => resolveCatalogFooterText({ business, products }),
-    [business, products],
-  );
+  const catalogFooterText = resolveCatalogFooterText({ business, products });
   const activeFeaturedProduct = featuredProducts[activeFeaturedIndex] || null;
   const activeFeaturedImage = activeFeaturedProduct ? getProductImages(activeFeaturedProduct)?.[0] || null : null;
   const activeFeaturedTitle = isRestaurant && (activeFeaturedProduct?.isMainFeatured === true || activeFeaturedProduct?.is_main_featured === true)
