@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import Icon from './AppIcon';
-import { isCfTransformableUrl } from '../utils/cloudflareImage';
+import { unwrapCfImageUrl } from '../utils/cloudflareImage';
 
 const PLACEHOLDER_STYLES = {
   cover: {
@@ -42,6 +42,7 @@ export default function CatalogImage({
   showFallbackIcon = true,
   onLoad,
   onError,
+  debugContext = null,
   ...props
 }) {
   const [currentSrc, setCurrentSrc] = useState(src || null);
@@ -62,17 +63,31 @@ export default function CatalogImage({
   };
 
   const handleError = (event) => {
-    const canFallbackToOriginal =
-      !!originalSrc &&
-      currentSrc !== originalSrc &&
-      isCfTransformableUrl(originalSrc);
+    const fallbackSrc = unwrapCfImageUrl(originalSrc) || originalSrc;
+    const canFallbackToOriginal = !!fallbackSrc && currentSrc !== fallbackSrc;
 
     if (canFallbackToOriginal) {
-      setCurrentSrc(originalSrc);
+      if (import.meta.env.DEV && debugContext) {
+        console.debug('[CatalogImage] fallback to original image', {
+          ...debugContext,
+          originalSrc,
+          transformedSrc: currentSrc,
+          fallbackSrc,
+        });
+      }
+      setCurrentSrc(fallbackSrc);
       setLoaded(false);
       return;
     }
 
+    if (import.meta.env.DEV && debugContext) {
+      console.warn('[CatalogImage] image failed', {
+        ...debugContext,
+        originalSrc,
+        transformedSrc: currentSrc,
+        fallbackSrc: null,
+      });
+    }
     setFailed(true);
     onError?.(event);
   };

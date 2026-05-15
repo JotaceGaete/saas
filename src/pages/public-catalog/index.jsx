@@ -718,10 +718,7 @@ function CatalogInner({ slug }) {
 
   const storeName = business?.name || 'Catálogo';
   const isRestaurant = isRestaurantBusiness(business);
-  const catalogFooterText = useMemo(
-    () => resolveCatalogFooterText({ business, products }),
-    [business, products],
-  );
+  const catalogFooterText = resolveCatalogFooterText({ business, products });
   const activeFeaturedProduct = featuredProducts[activeFeaturedIndex] || null;
   const activeFeaturedImage = activeFeaturedProduct ? getProductImages(activeFeaturedProduct)?.[0] || null : null;
   const activeFeaturedTitle = isRestaurant && (activeFeaturedProduct?.isMainFeatured === true || activeFeaturedProduct?.is_main_featured === true)
@@ -2013,6 +2010,12 @@ export function ProductCard({
               imgClassName="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
               variant="product"
               loading="lazy"
+              debugContext={{
+                productId: product?.id,
+                productName: product?.name,
+                imageUrl: product?.imageUrl,
+                originalImageUrl: cardImage,
+              }}
             />
           ) : (
             <div className={`flex h-full w-full items-center justify-center bg-gray-100 ${compact ? 'min-h-[72px]' : ''}`}>
@@ -2189,7 +2192,7 @@ export function ProductCard({
 }
 
 // Miniatura del modal con fallback si la imagen falla al cargar
-function ThumbnailButton({ url, productName, index, isSelected, primaryColor, onSelect }) {
+function ThumbnailButton({ url, productId, productName, index, isSelected, primaryColor, onSelect }) {
   const [error, setError] = useState(false);
   const [useDirect, setUseDirect] = useState(false);
   if (!url) return null;
@@ -2214,6 +2217,12 @@ function ThumbnailButton({ url, productName, index, isSelected, primaryColor, on
           imgClassName="w-full h-full object-cover"
           loading="lazy"
           variant="product"
+          debugContext={{
+            productId,
+            productName,
+            imageIndex: index,
+            originalImageUrl: url,
+          }}
           onError={() => {
             if (!useDirect && isCfTransformableUrl(url)) setUseDirect(true);
             else setError(true);
@@ -2508,6 +2517,13 @@ export function ProductModal({ product, products = [], business, slug, formatPri
                     imgStyle={{ transition: 'opacity 0.2s ease-out, transform 0.3s ease-in-out' }}
                     draggable={false}
                     variant="product"
+                    debugContext={{
+                      productId: product?.id,
+                      productName: product?.name,
+                      imageUrl: product?.imageUrl,
+                      originalImageUrl: mainUrl,
+                      imageIndex: selectedIndex,
+                    }}
                     onLoad={() => setImageLoaded(true)}
                     onError={() => {
                       if (!useMainDirect && mainUrl && isCfTransformableUrl(mainUrl)) {
@@ -2574,6 +2590,7 @@ export function ProductModal({ product, products = [], business, slug, formatPri
                   <ThumbnailButton
                     key={url + i}
                     url={url}
+                    productId={product?.id}
                     productName={product?.name}
                     index={i}
                     isSelected={selectedIndex === i}

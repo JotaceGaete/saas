@@ -51,7 +51,7 @@ function getCfImageOrigin() {
  */
 export function isCfTransformableUrl(url) {
   if (!url || typeof url !== 'string') return false;
-  const t = url.trim();
+  const t = unwrapCfImageUrl(url) || url.trim();
   if (t.startsWith('blob:') || t.startsWith('data:')) return false;
   if (t.startsWith('/')) return false;
   try {
@@ -71,16 +71,29 @@ export function isCfTransformableUrl(url) {
  */
 export function unwrapCfImageUrl(url) {
   if (!url || typeof url !== 'string') return null;
-  const trimmed = url.trim();
-  const markerIndex = trimmed.indexOf(CF_IMAGE_PATH_MARKER);
-  if (markerIndex === -1) return trimmed;
+  let current = url.trim();
 
-  const tail = trimmed.slice(markerIndex + CF_IMAGE_PATH_MARKER.length);
-  const firstSlash = tail.indexOf('/');
-  if (firstSlash === -1) return trimmed;
+  for (let i = 0; i < 4; i += 1) {
+    const markerIndex = current.indexOf(CF_IMAGE_PATH_MARKER);
+    if (markerIndex === -1) return current;
 
-  const originalUrl = tail.slice(firstSlash + 1);
-  return /^https?:\/\//i.test(originalUrl) ? originalUrl : trimmed;
+    const tail = current.slice(markerIndex + CF_IMAGE_PATH_MARKER.length);
+    const firstSlash = tail.indexOf('/');
+    if (firstSlash === -1) return current;
+
+    let originalUrl = tail.slice(firstSlash + 1);
+    try {
+      originalUrl = decodeURIComponent(originalUrl);
+    } catch {
+      // Keep the raw URL if it is not percent-encoded correctly.
+    }
+    if (originalUrl.startsWith('//')) originalUrl = `https:${originalUrl}`;
+    if (!/^https?:\/\//i.test(originalUrl)) return current;
+    if (originalUrl === current) return current;
+    current = originalUrl;
+  }
+
+  return current;
 }
 
 /**
@@ -105,9 +118,10 @@ export function buildCfImageErrorHandler(originalUrl) {
     const el = e?.currentTarget;
     if (!el || !originalUrl || typeof originalUrl !== 'string') return;
     if (el.getAttribute('data-cf-fallback') === '1') return;
-    if (!isCfTransformableUrl(originalUrl)) return;
+    const fallbackUrl = unwrapCfImageUrl(originalUrl) || originalUrl;
+    if (!isCfTransformableUrl(fallbackUrl)) return;
     el.setAttribute('data-cf-fallback', '1');
     el.onerror = null;
-    el.src = originalUrl;
+    el.src = fallbackUrl;
   };
 }

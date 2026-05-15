@@ -398,8 +398,56 @@ const mapBusinessFromDb = (row) => {
 };
 };
 
+function parseLegacyMediaList(value) {
+  if (!value) return [];
+  const rawList = (() => {
+    if (Array.isArray(value)) return value;
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (!trimmed) return [];
+      try {
+        const parsed = JSON.parse(trimmed);
+        return Array.isArray(parsed) ? parsed : [trimmed];
+      } catch {
+        return [trimmed];
+      }
+    }
+    return [value];
+  })();
+
+  return rawList
+    .map((item) => {
+      if (typeof item === 'string') return item.trim();
+      if (!item || typeof item !== 'object') return '';
+      return String(
+        item.url ||
+        item.imageUrl ||
+        item.image_url ||
+        item.publicUrl ||
+        item.public_url ||
+        ''
+      ).trim();
+    })
+    .filter(Boolean);
+}
+
+function uniqueMediaUrls(urls) {
+  const seen = new Set();
+  return urls.filter((url) => {
+    const key = String(url || '').trim();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 const mapProductFromDb = (row) => {
-  const imagesArray = Array.isArray(row?.images) ? row.images : (row?.image_url ? [row.image_url] : []);
+  const imagesArray = uniqueMediaUrls([
+    ...parseLegacyMediaList(row?.images),
+    ...parseLegacyMediaList(row?.gallery),
+    ...parseLegacyMediaList(row?.product_media),
+    ...(row?.image_url ? [row.image_url] : []),
+  ]);
   const status = row?.status ?? (row?.is_active ? 'active' : 'inactive');
   return {
     id: row?.id,
