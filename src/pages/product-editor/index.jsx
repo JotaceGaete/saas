@@ -27,6 +27,7 @@ import {
   getCategoriesByRubroId,
   getBusinessCategories,
   getEffectivePlanSlug,
+  slugifyProductName,
 } from '../../services/waBusinessService';
 import { convertUnsupportedImageToJpeg } from '../../utils/imageUploadUtils';
 import { useToast } from '../../components/ui/Toast';
@@ -35,6 +36,7 @@ import { supabase } from '../../lib/supabase';
 import { getBusinessLocale } from '../../lib/locale/businessLocale';
 import { resolveVentaAiProductDescriptionEndpoint } from '../../lib/ai/resolveVentaAiProductDescriptionUrl.js';
 import { appendCacheBust } from '../../services/mediaUploadService';
+import { getPublicProductUrl } from '../../config/appUrl';
 
 const EMPTY_FORM = {
   nombre: '',
@@ -187,6 +189,7 @@ export default function ProductEditor() {
   const [manualAddonDraft, setManualAddonDraft] = useState({ emoji: '', label: '', price: '' });
   const [isImprovingDescription, setIsImprovingDescription] = useState(false);
   const [publicCode, setPublicCode] = useState('');
+  const [productSlug, setProductSlug] = useState('');
   const toast = useToast();
   const effectiveProductId = currentProductId || productId || null;
   const isEditingFlow = !!effectiveProductId;
@@ -202,6 +205,16 @@ export default function ProductEditor() {
   const itemSingular = isRestaurant ? 'plato' : 'producto';
   const itemSingularCapitalized = isRestaurant ? 'Plato' : 'Producto';
   const collectionLabel = isRestaurant ? 'Menú' : 'Productos';
+  const resolvedProductSlug = productSlug || (isEditingFlow && formData?.nombre ? slugifyProductName(formData.nombre) : '');
+  const publicProductUrl = business?.slug && resolvedProductSlug
+    ? getPublicProductUrl(business.slug, resolvedProductSlug)
+    : '';
+  const publicProductShareText = publicProductUrl
+    ? `Mira este producto: ${publicProductUrl}`
+    : '';
+  const publicProductWhatsAppShareUrl = publicProductShareText
+    ? `https://wa.me/?text=${encodeURIComponent(publicProductShareText)}`
+    : '';
   const editorTitle = isEditingFlow
     ? (isRestaurant ? 'Editar plato' : 'Editar producto')
     : (isRestaurant ? 'Agregar plato' : 'Nuevo producto');
@@ -345,6 +358,7 @@ export default function ProductEditor() {
           });
         }
         setPublicCode(data?.publicCode || '');
+        setProductSlug(data?.slug || '');
       } catch (e) { navigate('/product-management'); }
       finally { setPageLoading(false); }
     };
@@ -735,9 +749,10 @@ export default function ProductEditor() {
     }
 
     setCurrentProductId(data.id);
+    setProductSlug(data?.slug || slugifyProductName(data?.name || formData?.nombre));
     initialActivoRef.current = data?.isActive !== undefined ? data.isActive : false;
     return { productId: data.id, createdDraft: true };
-  }, [business?.id, buildDraftPayload, currentProductId]);
+  }, [business?.id, buildDraftPayload, currentProductId, formData?.nombre]);
 
   const handleUploadRequested = React.useCallback(async (imageId, file) => {
     console.log('[ProductEditor] handleUploadRequested', { imageId, hasFile: !!file, businessId: business?.id ?? null, productId: productId ?? null });
@@ -1005,6 +1020,7 @@ export default function ProductEditor() {
       if (!currentProductId && result?.data?.id) {
         setCurrentProductId(result.data.id);
       }
+      setProductSlug(result?.data?.slug || slugifyProductName(result?.data?.name || formData?.nombre));
       setIsSaving(false);
       setSaveSuccess(true);
       if (andNew) {
@@ -1016,6 +1032,7 @@ export default function ProductEditor() {
         setImageUploadError('');
         setVideo(null);
         setPublicCode('');
+        setProductSlug('');
         setAddonCreationMode(null);
         setAddonSearchQuery('');
         setManualAddonDraft({ emoji: '', label: '', price: '' });
@@ -1330,6 +1347,69 @@ export default function ProductEditor() {
                     onOnSaleChange={(val) => handleFieldChange('onSale', val)}
                     hideActive
                   />
+                </div>
+
+                <div
+                  className="rounded-2xl border p-5 md:p-6"
+                  style={softSectionSurfaceStyle}
+                >
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(37,211,102,0.10)' }}>
+                      <Icon name="Share2" size={15} color="#128C7E" />
+                    </div>
+                    <h2 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>Compartir producto</h2>
+                  </div>
+                  <p className="text-xs mb-4" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                    {publicProductUrl
+                      ? 'Usa este enlace para compartir la ficha individual del producto.'
+                      : `Guarda este ${itemSingular} para generar su enlace publico.`}
+                  </p>
+                  {publicProductUrl ? (
+                    <div className="space-y-3">
+                      <div className="flex min-h-11 items-center gap-2 rounded-xl border bg-white/70 px-3" style={{ borderColor: 'rgba(17,24,39,0.08)' }}>
+                        <Icon name="Link" size={14} color="var(--color-muted-foreground)" />
+                        <span className="min-w-0 flex-1 truncate text-xs font-medium" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>
+                          {publicProductUrl}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard?.writeText(publicProductUrl)?.then(
+                              () => toast.success('Link del producto copiado'),
+                              () => toast.error('No se pudo copiar el link'),
+                            );
+                          }}
+                          className="inline-flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-xs font-bold transition-colors hover:bg-white"
+                          style={{ borderColor: 'rgba(17,24,39,0.08)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
+                        >
+                          <Icon name="Copy" size={15} />
+                          Copiar enlace
+                        </button>
+                        <a
+                          href={publicProductUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-xs font-bold transition-colors hover:bg-white"
+                          style={{ borderColor: 'rgba(17,24,39,0.08)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
+                        >
+                          <Icon name="ExternalLink" size={15} />
+                          Abrir pagina
+                        </a>
+                        <a
+                          href={publicProductWhatsAppShareUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-xs font-bold transition-colors hover:bg-white"
+                          style={{ borderColor: 'rgba(18,140,126,0.22)', color: '#128C7E', fontFamily: 'var(--font-caption)' }}
+                        >
+                          <Icon name="MessageCircle" size={15} />
+                          WhatsApp
+                        </a>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
 
                 <div

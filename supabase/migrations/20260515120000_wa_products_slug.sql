@@ -1,6 +1,7 @@
 -- Public product slugs for shareable catalog product pages.
 -- Slugs are unique per business and generated from product name when omitted.
 
+CREATE SCHEMA IF NOT EXISTS extensions;
 CREATE EXTENSION IF NOT EXISTS unaccent WITH SCHEMA extensions;
 
 ALTER TABLE public.wa_products

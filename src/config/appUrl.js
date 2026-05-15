@@ -121,13 +121,13 @@ export function getPublicOffersUrl(slug) {
 /**
  * @param {string} businessSlug
  * @param {string} productSlug
- * @returns {string} p. ej. `https://miralatienda.de/catalogo/tienda/producto/producto-1`
+ * @returns {string} p. ej. `https://miralatienda.de/p/tienda/producto-1`
  */
 export function getPublicProductUrl(businessSlug, productSlug) {
   const b = String(businessSlug || '').trim();
   const p = String(productSlug || '').trim();
   if (!b || !p) return '';
-  return `${CATALOG_ORIGIN}/catalogo/${b}/producto/${p}`;
+  return `${CATALOG_ORIGIN}/p/${b}/${p}`;
 }
 
 /**

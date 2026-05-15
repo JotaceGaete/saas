@@ -441,6 +441,33 @@ const mapProductFromDb = (row) => {
   };
 };
 
+export function slugifyProductName(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    || 'producto';
+}
+
+function assignFallbackProductSlugs(products = []) {
+  const used = new Map();
+  return (Array.isArray(products) ? products : []).map((product) => {
+    const persistedSlug = String(product?.slug || '').trim();
+    if (persistedSlug) {
+      used.set(persistedSlug, Math.max(used.get(persistedSlug) || 0, 1));
+      return product;
+    }
+
+    const baseSlug = slugifyProductName(product?.name);
+    const nextCount = (used.get(baseSlug) || 0) + 1;
+    used.set(baseSlug, nextCount);
+    const fallbackSlug = nextCount === 1 ? baseSlug : `${baseSlug}-${nextCount}`;
+    return { ...product, slug: fallbackSlug };
+  });
+}
+
 async function clearMainFeaturedForBusiness(businessId, excludeProductId = null) {
   if (!businessId) return { error: null };
 
@@ -1334,20 +1361,51 @@ export async function getPublicProducts(businessId) {
     ?.eq('is_active', true)
     ?.order('sort_order', { ascending: true });
   if (error) return { data: null, error };
-  return { data: (data || [])?.map(mapProductFromDb), error: null };
+  return { data: assignFallbackProductSlugs((data || [])?.map(mapProductFromDb)), error: null };
 }
 
-export async function getPublicProductBySlug(businessId, productSlug) {
-  if (!businessId || !productSlug) return { data: null, error: { message: 'Missing business or product slug' } };
-  const { data, error } = await supabase
+export async function getPublicProductBySlug(businessSlug, productSlug) {
+  const requestedSlug = String(productSlug || '').trim();
+  if (!businessSlug || !requestedSlug) {
+    return { data: null, error: { message: 'Missing business or product slug' } };
+  }
+
+  const { data: business, error: businessError } = await getBusinessBySlug(businessSlug);
+  if (businessError) return { data: null, error: businessError };
+  if (!business?.id || business?.isActive === false) return { data: null, error: null };
+
+  let selectedProduct = null;
+  const direct = await supabase
     ?.from('wa_products')
     ?.select('*')
-    ?.eq('business_id', businessId)
-    ?.eq('slug', productSlug)
+    ?.eq('business_id', business.id)
+    ?.eq('slug', requestedSlug)
     ?.eq('is_active', true)
     ?.maybeSingle();
-  if (error) return { data: null, error };
-  return { data: data ? mapProductFromDb(data) : null, error: null };
+
+  if (!direct?.error && direct?.data) {
+    selectedProduct = mapProductFromDb(direct.data);
+  }
+
+  const productsResult = await getPublicProducts(business.id);
+  if (productsResult?.error) return { data: null, error: productsResult.error };
+  const products = Array.isArray(productsResult?.data) ? productsResult.data : [];
+
+  if (!selectedProduct) {
+    selectedProduct = products.find((product) => {
+      const persistedSlug = String(product?.slug || '').trim();
+      if (persistedSlug === requestedSlug) return true;
+      return slugifyProductName(product?.name) === requestedSlug;
+    }) || null;
+  } else {
+    selectedProduct = products.find((product) => product?.id === selectedProduct?.id) || selectedProduct;
+  }
+
+  if (!selectedProduct || selectedProduct?.isActive === false) {
+    return { data: { business, product: null, products }, error: null };
+  }
+
+  return { data: { business, product: selectedProduct, products }, error: null };
 }
 
 export async function getPublicOfferProducts(businessId) {

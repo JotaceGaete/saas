@@ -117,6 +117,7 @@ const Routes = () => {
             <Route path="/catalog/:slug" element={<PublicCatalog />} />
             <Route path="/catalog/:slug/checkout" element={<OrderConfirmation />} />
             <Route path="/catalogo/:slug/ofertas" element={<PublicOffers />} />
+            <Route path="/p/:businessSlug/:productSlug" element={<PublicProductPage />} />
             <Route path="/catalogo/:businessSlug/producto/:productSlug" element={<PublicProductPage />} />
             <Route path="/catalogo/:slug" element={<PublicCatalog />} />
             <Route path="/catalogo/:slug/checkout" element={<OrderConfirmation />} />
