@@ -73,6 +73,7 @@ function buildSavedConfigSnapshotFromBusiness(business) {
     },
     showAddress: dsSnap?.showAddress === true,
     businessHours: dsSnap?.businessHours ?? '',
+    footerText: dsSnap?.footerText ?? '',
     shippingMethods: dsSnap?.shippingMethods ?? '',
     shippingCost: dsSnap?.shippingCost ?? '',
     retiroEnTienda: dsSnap?.retiroEnTienda === true,
@@ -317,6 +318,7 @@ export default function BusinessConfiguration() {
     },
     showAddress: false,
     businessHours: '',
+    footerText: '',
     shippingMethods: '',
     shippingCost: '',
     retiroEnTienda: false,
@@ -502,6 +504,7 @@ export default function BusinessConfiguration() {
           cardSettings: { ...prev.cardSettings, ...(ds.cardSettings || {}) },
           showAddress: ds?.showAddress === true,
           businessHours: ds?.businessHours ?? '',
+          footerText: ds?.footerText ?? '',
           shippingMethods: ds?.shippingMethods ?? '',
           shippingCost: ds?.shippingCost ?? '',
           retiroEnTienda: ds?.retiroEnTienda === true,
@@ -793,6 +796,7 @@ export default function BusinessConfiguration() {
         cardSettings: { ...prev.cardSettings, ...(ds.cardSettings || {}) },
         showAddress: ds?.showAddress === true,
         businessHours: ds?.businessHours ?? '',
+        footerText: ds?.footerText ?? '',
         shippingMethods: ds?.shippingMethods ?? '',
         shippingCost: ds?.shippingCost ?? '',
         retiroEnTienda: ds?.retiroEnTienda === true,
@@ -1497,6 +1501,19 @@ export default function BusinessConfiguration() {
                         placeholder="Opcional"
                         value={design?.businessHours ?? ''}
                         onChange={e => setDesign(prev => ({ ...prev, businessHours: e?.target?.value ?? '' }))}
+                      />
+                    </SettingsField>
+                    <SettingsField
+                      label="Texto del pie de página del catálogo"
+                      hint="Mensaje breve que se muestra al final del catálogo público. Si lo dejas vacío, se usa el texto automático."
+                    >
+                      <textarea
+                        rows={3}
+                        className={inputClass}
+                        style={{ ...inputStyle, whiteSpace: 'pre-wrap' }}
+                        placeholder="Productos naturales de campo, elaborados con dedicación y pensados para llevar sabor auténtico a tu mesa. Consulta disponibilidad y pedidos por WhatsApp."
+                        value={design?.footerText ?? ''}
+                        onChange={e => setDesign(prev => ({ ...prev, footerText: e?.target?.value ?? '' }))}
                       />
                     </SettingsField>
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-3">

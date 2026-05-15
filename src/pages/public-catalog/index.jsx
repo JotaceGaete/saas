@@ -32,6 +32,7 @@ import {
   getCatalogOgImageUrl,
   getCatalogShareDescription,
   getCatalogShareDocumentTitle,
+  resolveCatalogFooterText,
   stringifyJsonLd,
 } from '../../utils/catalogSeo';
 import { getProductCardTrustBadge } from '../../utils/productCardBadge';
@@ -717,6 +718,10 @@ function CatalogInner({ slug }) {
 
   const storeName = business?.name || 'Catálogo';
   const isRestaurant = isRestaurantBusiness(business);
+  const catalogFooterText = useMemo(
+    () => resolveCatalogFooterText({ business, products }),
+    [business, products],
+  );
   const activeFeaturedProduct = featuredProducts[activeFeaturedIndex] || null;
   const activeFeaturedImage = activeFeaturedProduct ? getProductImages(activeFeaturedProduct)?.[0] || null : null;
   const activeFeaturedTitle = isRestaurant && (activeFeaturedProduct?.isMainFeatured === true || activeFeaturedProduct?.is_main_featured === true)
@@ -1283,20 +1288,23 @@ function CatalogInner({ slug }) {
                 <p className="m-0 max-w-none text-pretty leading-[1.85] sm:leading-[1.9]">
                   {catalogSeoContent.visibleDescription}
                 </p>
-                <p
-                  className="m-0 max-w-none pt-6 text-pretty leading-[1.85] sm:leading-[1.9]"
-                  style={{
-                    borderTop: `1px solid ${catalogTheme.borderColor}`,
-                    color: catalogTheme.isDark ? 'rgba(255,255,255,0.62)' : '#374151',
-                  }}
-                >
-                  {isRestaurant
-                    ? 'Haz tu pedido por WhatsApp y te atendemos al instante.'
-                    : 'Contacta por WhatsApp para consultar disponibilidad, precios y detalles del catalogo.'}
-                </p>
               </div>
             </section>
           </div>
+        )}
+
+        {!loading && !notFound && business && catalogFooterText && (
+          <footer
+            className="mx-auto mt-10 w-full max-w-3xl px-3 text-center sm:mt-12"
+            aria-label="Texto del pie de página del catálogo"
+          >
+            <p
+              className="m-0 text-pretty text-sm font-medium leading-7 sm:text-[15px] sm:leading-8"
+              style={{ color: catalogTheme.isDark ? 'rgba(255,255,255,0.68)' : '#4B5563' }}
+            >
+              {catalogFooterText}
+            </p>
+          </footer>
         )}
 
         <BrandingFooter business={business} />
