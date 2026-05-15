@@ -457,15 +457,20 @@ function assignFallbackProductSlugs(products = []) {
     const persistedSlug = String(product?.slug || '').trim();
     if (persistedSlug) {
       used.set(persistedSlug, Math.max(used.get(persistedSlug) || 0, 1));
-      return product;
+      return { ...product, _slugSource: 'persisted', _generatedSlug: slugifyProductName(product?.name) };
     }
 
     const baseSlug = slugifyProductName(product?.name);
     const nextCount = (used.get(baseSlug) || 0) + 1;
     used.set(baseSlug, nextCount);
     const fallbackSlug = nextCount === 1 ? baseSlug : `${baseSlug}-${nextCount}`;
-    return { ...product, slug: fallbackSlug };
+    return { ...product, slug: fallbackSlug, _slugSource: 'generated', _generatedSlug: fallbackSlug };
   });
+}
+
+function logPublicProductSlugDebug(step, payload = {}) {
+  if (!import.meta.env?.DEV) return;
+  console.debug(`[public-product-slug] ${step}`, payload);
 }
 
 async function clearMainFeaturedForBusiness(businessId, excludeProductId = null) {
@@ -1366,11 +1371,23 @@ export async function getPublicProducts(businessId) {
 
 export async function getPublicProductBySlug(businessSlug, productSlug) {
   const requestedSlug = String(productSlug || '').trim();
+  logPublicProductSlugDebug('input', {
+    businessSlug,
+    productSlug,
+    requestedSlug,
+  });
   if (!businessSlug || !requestedSlug) {
     return { data: null, error: { message: 'Missing business or product slug' } };
   }
 
   const { data: business, error: businessError } = await getBusinessBySlug(businessSlug);
+  logPublicProductSlugDebug('business_lookup', {
+    businessSlug,
+    found: !!business?.id,
+    businessId: business?.id || null,
+    isActive: business?.isActive ?? null,
+    error: businessError?.message || null,
+  });
   if (businessError) return { data: null, error: businessError };
   if (!business?.id || business?.isActive === false) return { data: null, error: null };
 
@@ -1383,6 +1400,13 @@ export async function getPublicProductBySlug(businessSlug, productSlug) {
     ?.eq('is_active', true)
     ?.maybeSingle();
 
+  logPublicProductSlugDebug('direct_slug_lookup', {
+    businessId: business.id,
+    requestedSlug,
+    found: !!direct?.data,
+    error: direct?.error?.message || null,
+  });
+
   if (!direct?.error && direct?.data) {
     selectedProduct = mapProductFromDb(direct.data);
   }
@@ -1390,6 +1414,19 @@ export async function getPublicProductBySlug(businessSlug, productSlug) {
   const productsResult = await getPublicProducts(business.id);
   if (productsResult?.error) return { data: null, error: productsResult.error };
   const products = Array.isArray(productsResult?.data) ? productsResult.data : [];
+  logPublicProductSlugDebug('candidate_products', {
+    businessId: business.id,
+    count: products.length,
+    candidates: products.slice(0, 20).map((product) => ({
+      id: product?.id,
+      name: product?.name,
+      persistedSlug: product?._slugSource === 'persisted' ? product?.slug || null : null,
+      generatedSlug: product?._generatedSlug || slugifyProductName(product?.name),
+      resolvedSlug: product?.slug || null,
+      slugSource: product?._slugSource || 'unknown',
+      isActive: product?.isActive,
+    })),
+  });
 
   if (!selectedProduct) {
     selectedProduct = products.find((product) => {
@@ -1402,8 +1439,24 @@ export async function getPublicProductBySlug(businessSlug, productSlug) {
   }
 
   if (!selectedProduct || selectedProduct?.isActive === false) {
+    logPublicProductSlugDebug('resolved_product', {
+      requestedSlug,
+      found: false,
+      reason: selectedProduct?.isActive === false ? 'inactive' : 'not_found',
+    });
     return { data: { business, product: null, products }, error: null };
   }
+
+  logPublicProductSlugDebug('resolved_product', {
+    requestedSlug,
+    found: true,
+    id: selectedProduct?.id,
+    name: selectedProduct?.name,
+    persistedSlug: selectedProduct?._slugSource === 'persisted' ? selectedProduct?.slug || null : null,
+    generatedSlug: selectedProduct?._generatedSlug || slugifyProductName(selectedProduct?.name),
+    resolvedSlug: selectedProduct?.slug || null,
+    slugSource: selectedProduct?._slugSource || 'unknown',
+  });
 
   return { data: { business, product: selectedProduct, products }, error: null };
 }

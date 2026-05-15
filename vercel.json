@@ -23,6 +23,12 @@
       ]
     },
     {
+      "source": "/p/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate, proxy-revalidate" }
+      ]
+    },
+    {
       "source": "/dashboard",
       "headers": [
         { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate, proxy-revalidate" }
@@ -187,6 +193,10 @@
     {
       "source": "/catalog/:slug",
       "destination": "/api/seo?slug=:slug&publicPath=catalog"
+    },
+    {
+      "source": "/p/:businessSlug/:productSlug",
+      "destination": "/index.html"
     },
     {
       "source": "/:slug",
