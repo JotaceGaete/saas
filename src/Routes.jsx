@@ -44,6 +44,7 @@ import TermsPage from './pages/legal/TermsPage';
 import PrivacyPage from './pages/legal/PrivacyPage';
 import RefundsPage from './pages/legal/RefundsPage';
 import DLocalReturnPage from './pages/billing-dlocal-return';
+import PublicProductPage from './pages/public-product';
 import { useAuth } from './contexts/AuthContext';
 
 /**
@@ -134,6 +135,8 @@ const Routes = () => {
             <Route path="/admin/config/categories" element={<RequireAdmin><AdminConfigRubrosPage /></RequireAdmin>} />
             <Route path="/admin/audit-log" element={<RequireAdmin><AdminAuditLogPage /></RequireAdmin>} />
             <Route path="/admin/emails" element={<RequireAdmin><AdminEmailsPage /></RequireAdmin>} />
+            {/* Página pública de producto individual. Debe ir antes de /:slug. */}
+            <Route path="/p/:businessSlug/:productSlug" element={<PublicProductPage />} />
             {/* URL corta del catálogo: /:slug → PublicCatalog.
                 React Router v6 prioriza estáticos sobre dinámicos,
                 por lo que /dashboard, /login, /planes, etc. nunca caen aquí. */}

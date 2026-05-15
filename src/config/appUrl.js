@@ -149,4 +149,18 @@ export function getResetPasswordRedirectUrl() {
   return `${APP_ORIGIN}/auth/reset-password`;
 }
 
+/**
+ * URL compartible de la página pública de un producto específico.
+ * Formato: `https://miralatienda.de/p/:businessSlug/:productSlug`
+ * @param {string} businessSlug
+ * @param {string} productSlug  slug derivado del nombre del producto
+ * @returns {string}
+ */
+export function getPublicProductUrl(businessSlug, productSlug) {
+  const b = String(businessSlug || '').trim();
+  const p = String(productSlug || '').trim();
+  if (!b || !p) return '';
+  return `${CATALOG_ORIGIN}/p/${b}/${p}`;
+}
+
 export default getAppBaseUrl;

@@ -1168,6 +1168,42 @@ export const deleteProducts = async (productIds) => {
   return { error: null };
 };
 
+/** Convierte texto a slug URL-safe (sin tildes, sin espacios). */
+function toProductSlug(text) {
+  return String(text || '')
+    .toLowerCase()
+    .trim()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+/**
+ * Busca un producto público por businessSlug + productSlug.
+ * El productSlug se compara contra el slug derivado del nombre del producto
+ * (sin columna slug en BD: fallback por nombre).
+ * @returns {{ data: { product, business } | null, error }}
+ */
+export async function getPublicProductBySlug(businessSlug, productSlug) {
+  const { data: business, error: bizError } = await getBusinessBySlug(businessSlug);
+  if (bizError || !business) {
+    return { data: null, error: bizError || { message: 'Negocio no encontrado' } };
+  }
+  const { data, error } = await supabase
+    ?.from('wa_products')
+    ?.select('*')
+    ?.eq('business_id', business.id)
+    ?.eq('is_active', true)
+    ?.neq('is_draft', true)
+    ?.order('sort_order', { ascending: true });
+  if (error) return { data: null, error };
+  const products = (data || []).map(mapProductFromDb);
+  const product = products.find((p) => toProductSlug(p.name) === productSlug);
+  if (!product) return { data: null, error: { message: 'Producto no encontrado' } };
+  return { data: { product, business }, error: null };
+}
+
 export async function getPublicProducts(businessId) {
   const { data, error } = await supabase
     ?.from('wa_products')
