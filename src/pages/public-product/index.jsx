@@ -42,6 +42,24 @@ function hasAdvancedOrder(product) {
   return false;
 }
 
+function shouldLogPublicProductPageDebug() {
+  if (import.meta.env?.DEV) return true;
+  if (typeof window === 'undefined') return false;
+  const host = String(window.location?.hostname || '').toLowerCase();
+  if (host === 'localhost' || host === '127.0.0.1' || host === '::1') return true;
+  if (host.endsWith('.localhost') || host.endsWith('.vercel.app')) return true;
+  try {
+    return window.localStorage?.getItem('wa_public_product_debug') === '1';
+  } catch {
+    return false;
+  }
+}
+
+function logPublicProductPageDebug(step, payload = {}) {
+  if (!shouldLogPublicProductPageDebug()) return;
+  console.debug(`[public-product-page] ${step}`, payload);
+}
+
 function ProductNotFound({ onBack }) {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4 font-catalog antialiased">
@@ -83,6 +101,11 @@ function PublicProductInner() {
     async function loadProductPage() {
       setLoading(true);
       setNotFound(false);
+      logPublicProductPageDebug('params', {
+        businessSlug,
+        productSlug,
+        pathname: typeof window !== 'undefined' ? window.location?.pathname : null,
+      });
 
       const { data, error } = await getPublicProductBySlug(businessSlug, productSlug);
       if (cancelled) return;
@@ -90,8 +113,28 @@ function PublicProductInner() {
       const nextBusiness = data?.business || null;
       const nextProduct = data?.product || null;
       const nextProducts = Array.isArray(data?.products) ? data.products : [];
+      logPublicProductPageDebug('service_result', {
+        hasError: !!error,
+        errorMessage: error?.message || null,
+        errorCode: error?.code || null,
+        businessFound: !!nextBusiness?.id,
+        businessId: nextBusiness?.id || null,
+        businessSlug: nextBusiness?.slug || null,
+        productFound: !!nextProduct?.id,
+        productId: nextProduct?.id || null,
+        productName: nextProduct?.name || null,
+        productPersistedSlug: nextProduct?._slugSource === 'persisted' ? nextProduct?.slug || null : null,
+        productGeneratedSlug: nextProduct?._generatedSlug || slugifyProductName(nextProduct?.name),
+        productResolvedSlug: nextProduct?.slug || null,
+        productSlugSource: nextProduct?._slugSource || null,
+        productIsActive: nextProduct?.isActive ?? null,
+        candidateCount: nextProducts.length,
+      });
 
       if (error || !nextBusiness || !nextProduct || getProductCommercialState(nextProduct) === 'hidden') {
+        logPublicProductPageDebug('show_not_found', {
+          reason: error ? 'supabase_error' : !nextBusiness ? 'business_not_found' : !nextProduct ? 'product_not_found' : 'hidden_product',
+        });
         setBusiness(nextBusiness);
         setProduct(null);
         setProducts(nextProducts);

@@ -468,8 +468,21 @@ function assignFallbackProductSlugs(products = []) {
   });
 }
 
+function shouldLogPublicProductSlugDebug() {
+  if (import.meta.env?.DEV) return true;
+  if (typeof window === 'undefined') return false;
+  const host = String(window.location?.hostname || '').toLowerCase();
+  if (host === 'localhost' || host === '127.0.0.1' || host === '::1') return true;
+  if (host.endsWith('.localhost') || host.endsWith('.vercel.app')) return true;
+  try {
+    return window.localStorage?.getItem('wa_public_product_debug') === '1';
+  } catch {
+    return false;
+  }
+}
+
 function logPublicProductSlugDebug(step, payload = {}) {
-  if (!import.meta.env?.DEV) return;
+  if (!shouldLogPublicProductSlugDebug()) return;
   console.debug(`[public-product-slug] ${step}`, payload);
 }
 
@@ -1365,8 +1378,22 @@ export async function getPublicProducts(businessId) {
     ?.eq('business_id', businessId)
     ?.eq('is_active', true)
     ?.order('sort_order', { ascending: true });
-  if (error) return { data: null, error };
-  return { data: assignFallbackProductSlugs((data || [])?.map(mapProductFromDb)), error: null };
+  if (error) {
+    logPublicProductSlugDebug('active_products_lookup_error', {
+      businessId,
+      message: error?.message || null,
+      code: error?.code || null,
+      details: error?.details || null,
+      hint: error?.hint || null,
+    });
+    return { data: null, error };
+  }
+  const mapped = assignFallbackProductSlugs((data || [])?.map(mapProductFromDb));
+  logPublicProductSlugDebug('active_products_lookup', {
+    businessId,
+    count: mapped.length,
+  });
+  return { data: mapped, error: null };
 }
 
 export async function getPublicProductBySlug(businessSlug, productSlug) {
@@ -1386,7 +1413,11 @@ export async function getPublicProductBySlug(businessSlug, productSlug) {
     found: !!business?.id,
     businessId: business?.id || null,
     isActive: business?.isActive ?? null,
+    rawSlug: business?.slug || null,
     error: businessError?.message || null,
+    errorCode: businessError?.code || null,
+    errorDetails: businessError?.details || null,
+    errorHint: businessError?.hint || null,
   });
   if (businessError) return { data: null, error: businessError };
   if (!business?.id || business?.isActive === false) return { data: null, error: null };
@@ -1405,6 +1436,10 @@ export async function getPublicProductBySlug(businessSlug, productSlug) {
     requestedSlug,
     found: !!direct?.data,
     error: direct?.error?.message || null,
+    errorCode: direct?.error?.code || null,
+    errorDetails: direct?.error?.details || null,
+    errorHint: direct?.error?.hint || null,
+    note: direct?.error ? 'If this mentions wa_products.slug, the slug migration is not applied; fallback by product name should continue.' : null,
   });
 
   if (!direct?.error && direct?.data) {
