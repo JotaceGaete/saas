@@ -195,6 +195,10 @@
       "destination": "/api/seo?slug=:slug&publicPath=catalog"
     },
     {
+      "source": "/(dashboard|elegir-pais|business-registration|register|complete-business-setup|business-configuration|product-management|product-editor|orders|design|ayuda|login|verify-email|auth|reset-password|planes|plan-y-facturacion|billing|admin|landing-page|plans|terms|privacy|refunds)(.*)",
+      "destination": "/index.html"
+    },
+    {
       "source": "/p/:businessSlug/:productSlug",
       "destination": "/index.html"
     },
@@ -203,7 +207,7 @@
       "destination": "/api/seo?slug=:slug&publicPath=short"
     },
     {
-      "source": "/((?!api/).*)",
+      "source": "/(.*)",
       "destination": "/index.html"
     }
   ]
