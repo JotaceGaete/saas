@@ -40,35 +40,6 @@ function buildLocationLabel(city, region, country) {
   return cleanSentence(country);
 }
 
-const COUNTRY_CODE_LABELS = {
-  AR: 'Argentina',
-  BO: 'Bolivia',
-  BR: 'Brasil',
-  CL: 'Chile',
-  CO: 'Colombia',
-  CR: 'Costa Rica',
-  EC: 'Ecuador',
-  GT: 'Guatemala',
-  MX: 'Mexico',
-  PA: 'Panama',
-  PE: 'Peru',
-  PY: 'Paraguay',
-  UY: 'Uruguay',
-  US: 'Estados Unidos',
-};
-
-function getCountryLabel(business = {}) {
-  const explicit = cleanSentence(business?.country);
-  if (explicit) return explicit;
-  const code = String(
-    business?.countryCode ||
-    business?.country_code ||
-    business?.routingCountryCode ||
-    ''
-  ).trim().toUpperCase();
-  return COUNTRY_CODE_LABELS[code] || '';
-}
-
 function isRestaurantCatalog(business = {}) {
   const mode = normalizeText(business?.businessMode || business?.business_mode);
   return mode === 'restaurant' || mode === 'restaurante';
@@ -81,8 +52,7 @@ function buildNeutralVisibleDescription(business = {}) {
   if (isRestaurantCatalog(business)) {
     return `${name} ofrece un menu online con pedidos y consultas por WhatsApp.`;
   }
-  const country = getCountryLabel(business);
-  return `${name} ofrece un catalogo online${country ? ` en ${country}` : ''} con pedidos y consultas por WhatsApp.`;
+  return `${name} ofrece un catalogo online con pedidos y consultas por WhatsApp.`;
 }
 
 function buildNeutralMetaDescription(business = {}) {
