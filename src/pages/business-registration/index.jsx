@@ -5,6 +5,7 @@ import { useCountry } from '../../contexts/CountryContext';
 import { resolveCountryState, resolveBillingSetup, logCountryStateDebug } from '../../lib/country/state-model';
 import { collectVisitAttribution } from '../../utils/analytics';
 import { recordSiteVisit } from '../../services/waBusinessService';
+import { trackLoopsEvent } from '../../services/loopsClient';
 import AuthStep from './components/AuthStep';
 import ConfirmEmailStep from './components/ConfirmEmailStep';
 import StoreCreationStep from './components/StoreCreationStep';
@@ -148,6 +149,13 @@ export default function BusinessRegistration() {
           }
           setPendingConfirmation({ email: data.user?.email || email });
         }
+        trackLoopsEvent('user_registered', {
+          email: data?.user?.email || email,
+          firstName: businessName || data?.user?.user_metadata?.name || '',
+          businessName: businessName || 'Mi Negocio',
+          country: '',
+          plan: 'starter',
+        }).catch(() => {});
         // Si hay sesión, onAuthStateChange actualizará `user` y pasaremos al PASO 2.
       } catch {
         setAuthError('Error inesperado. Por favor intenta de nuevo.');
