@@ -77,6 +77,99 @@ function getOfficialCatalogUrl(slug) {
   return `${CATALOG_ORIGIN}/catalogo/${safeSlug}`;
 }
 
+function getOfficialProductUrl(businessSlug, productSlug) {
+  const safeBusinessSlug = encodeURIComponent(String(businessSlug || '').trim());
+  const safeProductSlug = encodeURIComponent(String(productSlug || '').trim());
+  return `${CATALOG_ORIGIN}/p/${safeBusinessSlug}/${safeProductSlug}`;
+}
+
+function slugifyProductName(value) {
+  return (
+    String(value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'producto'
+  );
+}
+
+function parseDesignSettings(value) {
+  if (!value) return {};
+  if (typeof value === 'object' && !Array.isArray(value)) return value;
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
+function getBusinessLogoUrl(row) {
+  const ds = parseDesignSettings(row?.design_settings);
+  return row?.logo_url || ds?.logoUrl || null;
+}
+
+function getBusinessCoverUrl(row) {
+  const ds = parseDesignSettings(row?.design_settings);
+  return ds?.headerImageUrl || ds?.coverImageUrl || row?.cover_image_url || null;
+}
+
+function getProductImages(row) {
+  const images = Array.isArray(row?.images) ? row.images : [];
+  return [row?.image_url, ...images].filter((value, index, arr) => {
+    const str = typeof value === 'string' ? value.trim() : '';
+    return str && arr.findIndex((item) => String(item || '').trim() === str) === index;
+  });
+}
+
+function toAbsoluteUrl(value, origin) {
+  const str = String(value || '').trim();
+  if (!str) return '';
+  if (/^https?:\/\//i.test(str)) return str;
+  if (str.startsWith('//')) return `https:${str}`;
+  if (str.startsWith('/')) return `${origin}${str}`;
+  return str;
+}
+
+function assignFallbackProductSlugs(products = []) {
+  const used = new Map();
+  return (Array.isArray(products) ? products : []).map((product) => {
+    const persistedSlug = String(product?.slug || '').trim();
+    if (persistedSlug) {
+      used.set(persistedSlug, Math.max(used.get(persistedSlug) || 0, 1));
+      return { ...product, _slugSource: 'persisted', _generatedSlug: slugifyProductName(product?.name) };
+    }
+
+    const baseSlug = slugifyProductName(product?.name);
+    const nextCount = (used.get(baseSlug) || 0) + 1;
+    used.set(baseSlug, nextCount);
+    const fallbackSlug = nextCount === 1 ? baseSlug : `${baseSlug}-${nextCount}`;
+    return { ...product, slug: fallbackSlug, _slugSource: 'generated', _generatedSlug: fallbackSlug };
+  });
+}
+
+async function loadIndexHtml(request) {
+  const origin = getOriginCatalog(request);
+  if (!origin) throw new Error('Origin unknown');
+  const res = await fetch(`${origin}/index.html`, { headers: { Accept: 'text/html' } });
+  if (!res.ok) throw new Error(`index.html ${res.status}`);
+  return res.text();
+}
+
+function injectSeoIntoHtml(html, { title, metaTags }) {
+  const metaTitle = metaPlainTextAttr(title);
+  let injected = html.replace(/<title>[^<]*<\/title>/i, `<title>${metaTitle}</title>`);
+  const injectBefore = '</head>';
+  const insertIndex = injected.indexOf(injectBefore);
+  return insertIndex !== -1
+    ? injected.slice(0, insertIndex) + '\n  ' + metaTags + '\n  ' + injected.slice(insertIndex)
+    : injected;
+}
+
 async function handleCatalogHtml(request) {
   const url = new URL(request.url);
   const slug = url.searchParams.get('slug')?.trim();
@@ -289,6 +382,158 @@ async function handleCatalogHtml(request) {
       'Cache-Control': 'public, s-maxage=120, stale-while-revalidate=600',
       'X-Catalog-Og-Source': 'seo-handler-v2',
       'X-Catalog-Slug': slug,
+    },
+  });
+}
+
+async function handleProductHtml(request) {
+  const url = new URL(request.url);
+  const businessSlug = url.searchParams.get('businessSlug')?.trim();
+  const productSlug = url.searchParams.get('productSlug')?.trim();
+
+  if (!businessSlug || !productSlug) {
+    return new Response('Business and product slug required', { status: 400 });
+  }
+
+  const supabaseUrl = (process.env.VITE_SUPABASE_URL || '').replace(/\/$/, '');
+  const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return new Response('Missing Supabase config', { status: 500 });
+  }
+
+  const origin = getOriginCatalog(request);
+  if (!origin) {
+    return new Response('Origin unknown', { status: 500 });
+  }
+
+  const supabase = createClient(supabaseUrl, supabaseAnonKey);
+  const businessSelect =
+    'id, name, description, slug, logo_url, cover_image_url, design_settings, og_image_url, city, region, country, country_code, currency, whatsapp, updated_at, is_active';
+
+  const { data: business, error: businessError } = await supabase
+    .from('wa_businesses')
+    .select(businessSelect)
+    .eq('slug', businessSlug)
+    .eq('is_active', true)
+    .maybeSingle();
+
+  if (businessError) {
+    console.error('[seo-product] business lookup failed', {
+      businessSlug,
+      code: businessError.code,
+      message: businessError.message,
+    });
+  }
+
+  let products = [];
+  let product = null;
+  if (business?.id) {
+    const { data: productRows, error: productsError } = await supabase
+      .from('wa_products')
+      .select('*')
+      .eq('business_id', business.id)
+      .eq('is_active', true)
+      .order('sort_order', { ascending: true });
+
+    if (productsError) {
+      console.error('[seo-product] products lookup failed', {
+        businessSlug,
+        productSlug,
+        businessId: business.id,
+        code: productsError.code,
+        message: productsError.message,
+      });
+    } else {
+      products = assignFallbackProductSlugs(productRows || []);
+      product =
+        products.find((item) => {
+          const persistedSlug = String(item?.slug || '').trim();
+          if (persistedSlug === productSlug) return true;
+          return slugifyProductName(item?.name) === productSlug;
+        }) || null;
+    }
+  }
+
+  const productName = product?.name || 'Producto';
+  const businessName = business?.name || 'Catalogo';
+  const pageTitle = product ? `${productName} | ${businessName}` : `${businessName} | Producto`;
+  const descriptionSource =
+    product?.long_description ||
+    product?.description ||
+    business?.description ||
+    'Consulta este producto y pide por WhatsApp.';
+  const metaDescription = normalizeMetaPlainText(descriptionSource).slice(0, 160);
+  const resolvedProductSlug = product?.slug || productSlug;
+  const productUrl = getOfficialProductUrl(businessSlug, resolvedProductSlug);
+  const businessFallbackImage =
+    business?.og_image_url ||
+    getBusinessCoverUrl(business) ||
+    getBusinessLogoUrl(business) ||
+    (business?.slug ? getOgCatalogShareImageUrl(business.slug, business.updated_at ?? null, CATALOG_ORIGIN) : '');
+  const selectedImage = product
+    ? getProductImages(product)[0] || businessFallbackImage
+    : businessFallbackImage;
+  const ogImage = toAbsoluteUrl(selectedImage, origin);
+  const metaTitle = metaPlainTextAttr(pageTitle);
+  const metaDesc = metaPlainTextAttr(metaDescription);
+  const ogImageMeta = ogImage
+    ? [
+        `<meta property="og:image" content="${escapeHtmlCatalog(ogImage)}" />`,
+        ogImage.startsWith('https://')
+          ? `<meta property="og:image:secure_url" content="${escapeHtmlCatalog(ogImage)}" />`
+          : '',
+        `<meta name="twitter:image" content="${escapeHtmlCatalog(ogImage)}" />`,
+      ]
+        .filter(Boolean)
+        .join('\n  ')
+    : '';
+
+  const metaTags = [
+    `<meta name="robots" content="index, follow" />`,
+    `<meta property="og:type" content="product" />`,
+    `<meta property="og:url" content="${escapeHtmlCatalog(productUrl)}" />`,
+    `<meta property="og:title" content="${metaTitle}" />`,
+    `<meta property="og:description" content="${metaDesc}" />`,
+    ogImageMeta,
+    `<meta name="twitter:card" content="summary_large_image" />`,
+    `<meta name="twitter:url" content="${escapeHtmlCatalog(productUrl)}" />`,
+    `<meta name="twitter:title" content="${metaTitle}" />`,
+    `<meta name="twitter:description" content="${metaDesc}" />`,
+    `<meta name="description" content="${metaDesc}" />`,
+    `<link rel="canonical" href="${escapeHtmlCatalog(productUrl)}" />`,
+  ]
+    .filter(Boolean)
+    .join('\n  ');
+
+  console.log(
+    '[seo-product]',
+    JSON.stringify({
+      businessSlug,
+      productSlug,
+      businessFound: !!business?.id,
+      productFound: !!product?.id,
+      canonical: productUrl,
+      selectedImage: ogImage || null,
+    }),
+  );
+
+  let html;
+  try {
+    html = await loadIndexHtml(request);
+  } catch (e) {
+    return new Response(`Failed to load template: ${e.message}`, { status: 502 });
+  }
+
+  const injected = injectSeoIntoHtml(html, { title: pageTitle, metaTags });
+
+  return new Response(injected, {
+    status: 200,
+    headers: {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'public, s-maxage=120, stale-while-revalidate=600',
+      'X-Catalog-Og-Source': 'seo-product-handler-v1',
+      'X-Catalog-Slug': businessSlug,
+      'X-Product-Slug': productSlug,
     },
   });
 }
@@ -550,7 +795,11 @@ async function routeSeoRequest(request) {
   const path = url.pathname;
   const slug = url.searchParams.get('slug')?.trim();
   const mode = url.searchParams.get('mode');
+  const publicPath = url.searchParams.get('publicPath');
 
+  if (publicPath === 'product') {
+    return handleProductHtml(request);
+  }
   if (slug) {
     return handleCatalogHtml(request);
   }
