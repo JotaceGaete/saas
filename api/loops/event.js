@@ -81,13 +81,9 @@ function buildLoopsPayload(eventName, effectiveEmail, payload) {
   };
 }
 
-function shouldSendToLoops({ originalEmail, env }) {
-  if (env.LOOPS_ENABLED !== 'true') {
-    return { allowed: false, skippedReason: 'loops_disabled' };
-  }
-
+function shouldSendToLoops({ deliveredEmail, env, mode }) {
   const allowlist = parseAllowlist(env.LOOPS_ALLOWLIST);
-  const isAllowlisted = allowlist.size > 0 && allowlist.has(originalEmail);
+  const isAllowlisted = allowlist.size > 0 && allowlist.has(deliveredEmail);
   if (allowlist.size > 0 && !isAllowlisted) {
     return { allowed: false, skippedReason: 'email_not_allowlisted' };
   }
@@ -96,11 +92,15 @@ function shouldSendToLoops({ originalEmail, env }) {
     return { allowed: true, isAllowlisted };
   }
 
+  if (mode === 'test') {
+    return { allowed: true, isAllowlisted: false };
+  }
+
   const rolloutPercent = parseRolloutPercent(env.LOOPS_ROLLOUT_PERCENT);
   if (rolloutPercent <= 0) {
     return { allowed: false, skippedReason: 'rollout_disabled' };
   }
-  if (hashEmailToBucket(originalEmail) >= rolloutPercent) {
+  if (hashEmailToBucket(deliveredEmail) >= rolloutPercent) {
     return { allowed: false, skippedReason: 'outside_rollout' };
   }
 
@@ -128,7 +128,29 @@ export async function POST(request) {
   const env = process.env || {};
   const mode = getMode(env);
   const emailHash = getEmailHash(originalEmail);
-  const gate = shouldSendToLoops({ originalEmail, env });
+  const testMode = env.LOOPS_TEST_MODE === 'true';
+  const testEmail = normalizeEmail(env.LOOPS_TEST_EMAIL);
+  if (env.LOOPS_ENABLED !== 'true') {
+    safeLog('info', '[loops] event skipped', {
+      eventName,
+      mode,
+      skippedReason: 'loops_disabled',
+      emailHash,
+    });
+    return jsonResponse({ ok: true, sent: false, mode, skippedReason: 'loops_disabled' });
+  }
+  if (testMode && !testEmail) {
+    safeLog('warn', '[loops] event skipped', {
+      eventName,
+      mode,
+      skippedReason: 'missing_test_email',
+      emailHash,
+    });
+    return jsonResponse({ ok: true, sent: false, mode, skippedReason: 'missing_test_email' });
+  }
+
+  const deliveredEmail = testMode ? testEmail : originalEmail;
+  const gate = shouldSendToLoops({ deliveredEmail, env, mode });
   if (!gate.allowed) {
     safeLog('info', '[loops] event skipped', {
       eventName,
@@ -136,7 +158,7 @@ export async function POST(request) {
       skippedReason: gate.skippedReason,
       emailHash,
     });
-    return jsonResponse({ ok: true, sent: false, skippedReason: gate.skippedReason });
+    return jsonResponse({ ok: true, sent: false, mode, skippedReason: gate.skippedReason });
   }
 
   const apiKey = String(env.LOOPS_API_KEY || '').trim();
@@ -147,23 +169,10 @@ export async function POST(request) {
       skippedReason: 'missing_api_key',
       emailHash,
     });
-    return jsonResponse({ ok: true, sent: false, skippedReason: 'missing_api_key' });
+    return jsonResponse({ ok: true, sent: false, mode, skippedReason: 'missing_api_key' });
   }
 
-  const testMode = env.LOOPS_TEST_MODE === 'true';
-  const testEmail = normalizeEmail(env.LOOPS_TEST_EMAIL);
-  if (testMode && !testEmail) {
-    safeLog('warn', '[loops] event skipped', {
-      eventName,
-      mode,
-      skippedReason: 'missing_test_email',
-      emailHash,
-    });
-    return jsonResponse({ ok: true, sent: false, skippedReason: 'missing_test_email' });
-  }
-
-  const effectiveEmail = testMode ? testEmail : originalEmail;
-  const loopsPayload = buildLoopsPayload(eventName, effectiveEmail, payload);
+  const loopsPayload = buildLoopsPayload(eventName, deliveredEmail, payload);
 
   try {
     const response = await fetch(LOOPS_SEND_EVENT_URL, {
@@ -183,7 +192,7 @@ export async function POST(request) {
         emailHash,
         status: response.status,
       });
-      return jsonResponse({ ok: true, sent: false, skippedReason: 'loops_error' });
+      return jsonResponse({ ok: true, sent: false, mode, skippedReason: 'loops_error' });
     }
 
     safeLog('info', '[loops] event sent', {
@@ -191,7 +200,7 @@ export async function POST(request) {
       mode,
       emailHash,
     });
-    return jsonResponse({ ok: true, sent: true, testMode });
+    return jsonResponse({ ok: true, sent: true, mode });
   } catch (error) {
     safeLog('warn', '[loops] send exception', {
       eventName,
@@ -199,7 +208,7 @@ export async function POST(request) {
       skippedReason: 'loops_error',
       emailHash,
     });
-    return jsonResponse({ ok: true, sent: false, skippedReason: 'loops_error' });
+    return jsonResponse({ ok: true, sent: false, mode, skippedReason: 'loops_error' });
   }
 }
 
