@@ -21,6 +21,16 @@ function getEmailHash(email) {
   return createHash('sha256').update(normalizeEmail(email)).digest('hex').slice(0, 16);
 }
 
+function buildTestDeliveredEmail(testEmail, originalEmail) {
+  const normalizedTestEmail = normalizeEmail(testEmail);
+  const match = normalizedTestEmail.match(/^([^@+]+)(?:\+[^@]*)?@(gmail\.com|googlemail\.com)$/i);
+  if (!match) return normalizedTestEmail;
+  const localPart = match[1];
+  const domain = match[2].toLowerCase();
+  const hash = getEmailHash(originalEmail).slice(0, 10);
+  return `${localPart}+walinka-test-${hash}@${domain}`;
+}
+
 function getMode(env) {
   if (env.LOOPS_ENABLED !== 'true') return 'disabled';
   if (env.LOOPS_TEST_MODE === 'true') return 'test';
@@ -81,9 +91,11 @@ function buildLoopsPayload(eventName, effectiveEmail, payload) {
   };
 }
 
-function shouldSendToLoops({ deliveredEmail, env, mode }) {
+function shouldSendToLoops({ deliveredEmail, allowlistEmail, env, mode }) {
   const allowlist = parseAllowlist(env.LOOPS_ALLOWLIST);
-  const isAllowlisted = allowlist.size > 0 && allowlist.has(deliveredEmail);
+  const isAllowlisted =
+    allowlist.size > 0 &&
+    (allowlist.has(deliveredEmail) || (allowlistEmail && allowlist.has(allowlistEmail)));
   if (allowlist.size > 0 && !isAllowlisted) {
     return { allowed: false, skippedReason: 'email_not_allowlisted' };
   }
@@ -149,8 +161,13 @@ export async function POST(request) {
     return jsonResponse({ ok: true, sent: false, mode, skippedReason: 'missing_test_email' });
   }
 
-  const deliveredEmail = testMode ? testEmail : originalEmail;
-  const gate = shouldSendToLoops({ deliveredEmail, env, mode });
+  const deliveredEmail = testMode ? buildTestDeliveredEmail(testEmail, originalEmail) : originalEmail;
+  const gate = shouldSendToLoops({
+    deliveredEmail,
+    allowlistEmail: testMode ? testEmail : originalEmail,
+    env,
+    mode,
+  });
   if (!gate.allowed) {
     safeLog('info', '[loops] event skipped', {
       eventName,
