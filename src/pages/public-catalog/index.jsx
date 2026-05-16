@@ -1352,6 +1352,11 @@ function CatalogInner({ slug }) {
                 <p className="m-0 max-w-none text-pretty leading-[1.85] sm:leading-[1.9]">
                   {catalogSeoContent.visibleDescription}
                 </p>
+                {catalogSeoContent.visibleSecondaryDescription && (
+                  <p className="m-0 max-w-none text-pretty leading-[1.85] sm:leading-[1.9]">
+                    {catalogSeoContent.visibleSecondaryDescription}
+                  </p>
+                )}
               </div>
             </section>
           </div>

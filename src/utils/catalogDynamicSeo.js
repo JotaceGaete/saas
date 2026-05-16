@@ -18,28 +18,10 @@ function truncateText(value, maxLength) {
   return `${safe}...`;
 }
 
-function parseJsonObject(value) {
-  if (!value) return null;
-  if (typeof value === 'object' && !Array.isArray(value)) return value;
-  if (typeof value !== 'string') return null;
-  try {
-    const parsed = JSON.parse(value);
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
 function getRelatedRubro(business) {
   const rubro = business?.wa_rubros;
   if (Array.isArray(rubro)) return rubro[0] || null;
   return rubro || null;
-}
-
-function pickText(payload, key) {
-  const raw = payload?.[key];
-  if (typeof raw !== 'string') return '';
-  return cleanSentence(raw);
 }
 
 function buildCategorySnippet(categories = []) {
@@ -58,121 +40,74 @@ function buildLocationLabel(city, region, country) {
   return cleanSentence(country);
 }
 
+const COUNTRY_CODE_LABELS = {
+  AR: 'Argentina',
+  BO: 'Bolivia',
+  BR: 'Brasil',
+  CL: 'Chile',
+  CO: 'Colombia',
+  CR: 'Costa Rica',
+  EC: 'Ecuador',
+  GT: 'Guatemala',
+  MX: 'Mexico',
+  PA: 'Panama',
+  PE: 'Peru',
+  PY: 'Paraguay',
+  UY: 'Uruguay',
+  US: 'Estados Unidos',
+};
+
+function getCountryLabel(business = {}) {
+  const explicit = cleanSentence(business?.country);
+  if (explicit) return explicit;
+  const code = String(
+    business?.countryCode ||
+    business?.country_code ||
+    business?.routingCountryCode ||
+    ''
+  ).trim().toUpperCase();
+  return COUNTRY_CODE_LABELS[code] || '';
+}
+
+function isRestaurantCatalog(business = {}) {
+  const mode = normalizeText(business?.businessMode || business?.business_mode);
+  return mode === 'restaurant' || mode === 'restaurante';
+}
+
+function buildNeutralVisibleDescription(business = {}) {
+  const name = cleanSentence(business?.name) || 'Este negocio';
+  const realDescription = cleanSentence(business?.description);
+  if (realDescription) return realDescription;
+  if (isRestaurantCatalog(business)) {
+    return `${name} ofrece un menu online con pedidos y consultas por WhatsApp.`;
+  }
+  const country = getCountryLabel(business);
+  return `${name} ofrece un catalogo online${country ? ` en ${country}` : ''} con pedidos y consultas por WhatsApp.`;
+}
+
+function buildNeutralMetaDescription(business = {}) {
+  return truncateText(buildNeutralVisibleDescription(business), 160);
+}
+
+function buildNeutralOgDescription(business = {}) {
+  return truncateText(buildNeutralVisibleDescription(business), 200);
+}
+
 function toKeywordSet(values) {
   return values.map(normalizeText);
 }
 
 export const CATALOG_SEO_FAMILIES = {
-  moda: {
-    label: 'Moda y vestuario',
-    templates: {
-      visible: ({ name, location, categorySnippet }) =>
-        `${name} ofrece un catalogo online de moda${location ? ` en ${location}` : ''} para revisar prendas, calzado y accesorios con compra directa por WhatsApp${categorySnippet ? `. Explora opciones como ${categorySnippet}` : ''}.`,
-      meta: ({ name, location, categorySnippet }) =>
-        `Descubre el catalogo de ${name}${location ? ` en ${location}` : ''} con prendas, calzado y accesorios${categorySnippet ? ` como ${categorySnippet}` : ''}. Compra por WhatsApp de forma rapida.`,
-      og: ({ name, location }) =>
-        `Explora el catalogo de ${name}${location ? ` en ${location}` : ''} y pide moda, calzado y accesorios por WhatsApp.`,
-    },
-  },
-  gastronomia: {
-    label: 'Gastronomia y alimentos',
-    templates: {
-      visible: ({ name, location, categorySnippet }) =>
-        `${name} comparte su catalogo online${location ? ` en ${location}` : ''} para ver menu, especialidades y productos listos para pedir por WhatsApp${categorySnippet ? `. Encuentra ${categorySnippet}` : ''}.`,
-      meta: ({ name, location, categorySnippet }) =>
-        `Mira el catalogo de ${name}${location ? ` en ${location}` : ''} con menu, bebidas y opciones para pedir por WhatsApp${categorySnippet ? `, incluyendo ${categorySnippet}` : ''}.`,
-      og: ({ name, location }) =>
-        `Revisa el menu y los productos de ${name}${location ? ` en ${location}` : ''} y haz tu pedido por WhatsApp.`,
-    },
-  },
-  belleza: {
-    label: 'Belleza y cuidado personal',
-    templates: {
-      visible: ({ name, location, categorySnippet }) =>
-        `${name} presenta un catalogo online${location ? ` en ${location}` : ''} con productos y servicios de belleza para consultar por WhatsApp${categorySnippet ? `. Puedes explorar ${categorySnippet}` : ''}.`,
-      meta: ({ name, location, categorySnippet }) =>
-        `Conoce el catalogo de ${name}${location ? ` en ${location}` : ''} con opciones de belleza y cuidado personal${categorySnippet ? ` como ${categorySnippet}` : ''}. Reserva o consulta por WhatsApp.`,
-      og: ({ name, location }) =>
-        `Descubre el catalogo de belleza de ${name}${location ? ` en ${location}` : ''} y consulta por WhatsApp.`,
-    },
-  },
-  salud: {
-    label: 'Salud y bienestar',
-    templates: {
-      visible: ({ name, location, categorySnippet }) =>
-        `${name} tiene un catalogo online${location ? ` en ${location}` : ''} para conocer servicios, productos o atenciones de salud y bienestar${categorySnippet ? `, incluyendo ${categorySnippet}` : ''}, con contacto directo por WhatsApp.`,
-      meta: ({ name, location, categorySnippet }) =>
-        `Revisa el catalogo de ${name}${location ? ` en ${location}` : ''} con servicios y productos de salud${categorySnippet ? ` como ${categorySnippet}` : ''}. Contacto rapido por WhatsApp.`,
-      og: ({ name, location }) =>
-        `Consulta el catalogo de ${name}${location ? ` en ${location}` : ''} y solicita informacion por WhatsApp.`,
-    },
-  },
-  tecnologia: {
-    label: 'Tecnologia y electronica',
-    templates: {
-      visible: ({ name, location, categorySnippet }) =>
-        `${name} publica su catalogo online${location ? ` en ${location}` : ''} para mostrar equipos, accesorios y soluciones tecnologicas con atencion por WhatsApp${categorySnippet ? `. Revisa ${categorySnippet}` : ''}.`,
-      meta: ({ name, location, categorySnippet }) =>
-        `Explora el catalogo de ${name}${location ? ` en ${location}` : ''} con productos de tecnologia y electronica${categorySnippet ? ` como ${categorySnippet}` : ''}. Compra o consulta por WhatsApp.`,
-      og: ({ name, location }) =>
-        `Mira el catalogo de tecnologia de ${name}${location ? ` en ${location}` : ''} y consulta por WhatsApp.`,
-    },
-  },
-  hogar: {
-    label: 'Hogar, ferreteria y construccion',
-    templates: {
-      visible: ({ name, location, categorySnippet }) =>
-        `${name} ofrece un catalogo online${location ? ` en ${location}` : ''} con productos para hogar, mejoras y construccion${categorySnippet ? `, incluyendo ${categorySnippet}` : ''}, con pedidos y consultas por WhatsApp.`,
-      meta: ({ name, location, categorySnippet }) =>
-        `Conoce el catalogo de ${name}${location ? ` en ${location}` : ''} con soluciones para hogar y construccion${categorySnippet ? ` como ${categorySnippet}` : ''}. Compra por WhatsApp.`,
-      og: ({ name, location }) =>
-        `Explora el catalogo de ${name}${location ? ` en ${location}` : ''} para hogar y construccion por WhatsApp.`,
-    },
-  },
-  mascotas: {
-    label: 'Mascotas',
-    templates: {
-      visible: ({ name, location, categorySnippet }) =>
-        `${name} comparte un catalogo online${location ? ` en ${location}` : ''} con productos y servicios para mascotas${categorySnippet ? ` como ${categorySnippet}` : ''}, listo para consultas y pedidos por WhatsApp.`,
-      meta: ({ name, location, categorySnippet }) =>
-        `Visita el catalogo de ${name}${location ? ` en ${location}` : ''} con alimentos, accesorios y servicios para mascotas${categorySnippet ? ` como ${categorySnippet}` : ''}.`,
-      og: ({ name, location }) =>
-        `Revisa el catalogo de ${name}${location ? ` en ${location}` : ''} para mascotas y pide por WhatsApp.`,
-    },
-  },
-  joyeria: {
-    label: 'Joyeria y accesorios',
-    templates: {
-      visible: ({ name, location, categorySnippet }) =>
-        `${name} muestra su catalogo online${location ? ` en ${location}` : ''} con joyas y accesorios para consultar disponibilidad, detalles y pedidos por WhatsApp${categorySnippet ? `. Descubre ${categorySnippet}` : ''}.`,
-      meta: ({ name, location, categorySnippet }) =>
-        `Descubre el catalogo de ${name}${location ? ` en ${location}` : ''} con joyas y accesorios${categorySnippet ? ` como ${categorySnippet}` : ''}. Consulta por WhatsApp.`,
-      og: ({ name, location }) =>
-        `Explora el catalogo de joyeria y accesorios de ${name}${location ? ` en ${location}` : ''}.`,
-    },
-  },
-  servicios: {
-    label: 'Servicios',
-    templates: {
-      visible: ({ name, location, categorySnippet }) =>
-        `${name} presenta un catalogo online${location ? ` en ${location}` : ''} para conocer servicios, soluciones y formas de contacto${categorySnippet ? ` como ${categorySnippet}` : ''}, todo con atencion por WhatsApp.`,
-      meta: ({ name, location, categorySnippet }) =>
-        `Conoce el catalogo de ${name}${location ? ` en ${location}` : ''} con servicios y atencion personalizada${categorySnippet ? ` como ${categorySnippet}` : ''}.`,
-      og: ({ name, location }) =>
-        `Consulta los servicios de ${name}${location ? ` en ${location}` : ''} desde su catalogo online.`,
-    },
-  },
-  general: {
-    label: 'General',
-    templates: {
-      visible: ({ name, location, categorySnippet }) =>
-        `${name} tiene un catalogo online${location ? ` en ${location}` : ''} para ver productos o servicios disponibles y consultar por WhatsApp${categorySnippet ? `. Tambien puedes explorar ${categorySnippet}` : ''}.`,
-      meta: ({ name, location, categorySnippet }) =>
-        `Mira el catalogo de ${name}${location ? ` en ${location}` : ''} con productos y servicios disponibles${categorySnippet ? `, incluyendo ${categorySnippet}` : ''}. Contacto por WhatsApp.`,
-      og: ({ name, location }) =>
-        `Explora el catalogo online de ${name}${location ? ` en ${location}` : ''} y contacta por WhatsApp.`,
-    },
-  },
+  moda: { label: 'Moda y vestuario' },
+  gastronomia: { label: 'Gastronomia y alimentos' },
+  belleza: { label: 'Belleza y cuidado personal' },
+  salud: { label: 'Salud y bienestar' },
+  tecnologia: { label: 'Tecnologia y electronica' },
+  hogar: { label: 'Hogar, ferreteria y construccion' },
+  mascotas: { label: 'Mascotas' },
+  joyeria: { label: 'Joyeria y accesorios' },
+  servicios: { label: 'Servicios' },
+  general: { label: 'General' },
 };
 
 const RUBRO_TO_FAMILY_MAP = {
@@ -291,83 +226,31 @@ function buildTemplatePayload({ business, products = [], businessCategories = []
   return { name, location, categorySnippet };
 }
 
-function buildTemplateSeoContent(input, familyKey) {
-  const safeFamilyKey = CATALOG_SEO_FAMILIES[familyKey] ? familyKey : 'general';
-  const payload = buildTemplatePayload(input);
-  const templates = CATALOG_SEO_FAMILIES[safeFamilyKey].templates;
+export function resolveCatalogSeoContent({ business, products = [], businessCategories = [] } = {}) {
+  const familyResolution = resolveCatalogSeoFamily({ business, products, businessCategories });
+  const safeFamilyKey = CATALOG_SEO_FAMILIES[familyResolution.familyKey] ? familyResolution.familyKey : 'general';
+
+  const realDescription = cleanSentence(business?.description);
+  const visibleDescription = buildNeutralVisibleDescription(business);
+  const metaDescription = buildNeutralMetaDescription(business);
+  const ogDescription = buildNeutralOgDescription(business);
+  const descriptionSource = realDescription
+    ? 'business_description'
+    : isRestaurantCatalog(business)
+      ? 'restaurant_neutral'
+      : 'neutral';
 
   return {
     familyKey: safeFamilyKey,
-    visibleDescription: cleanSentence(templates.visible(payload)),
-    metaDescription: truncateText(templates.meta(payload), 160),
-    ogDescription: truncateText(templates.og(payload), 200),
-  };
-}
-
-export function resolveCatalogSeoContent({ business, products = [], businessCategories = [] } = {}) {
-  const familyResolution = resolveCatalogSeoFamily({ business, products, businessCategories });
-  const templateContent = buildTemplateSeoContent(
-    { business, products, businessCategories },
-    familyResolution.familyKey
-  );
-
-  const manual = parseJsonObject(business?.seoContentOverride || business?.seo_content_override);
-  const ai = parseJsonObject(business?.seoContentAi || business?.seo_content_ai);
-
-  const visibleDescription =
-    pickText(manual, 'visibleDescription') ||
-    pickText(manual, 'about') ||
-    pickText(ai, 'visibleDescription') ||
-    pickText(ai, 'about') ||
-    templateContent.visibleDescription;
-
-  const metaDescription =
-    pickText(manual, 'metaDescription') ||
-    pickText(ai, 'metaDescription') ||
-    templateContent.metaDescription;
-
-  const ogDescription =
-    pickText(manual, 'ogDescription') ||
-    pickText(ai, 'ogDescription') ||
-    templateContent.ogDescription;
-
-  const visibleSource =
-    pickText(manual, 'visibleDescription') || pickText(manual, 'about')
-      ? 'manual'
-      : pickText(ai, 'visibleDescription') || pickText(ai, 'about')
-        ? 'ai'
-        : familyResolution.matchedBy === 'fallback'
-          ? 'fallback'
-          : 'template';
-
-  const metaSource =
-    pickText(manual, 'metaDescription')
-      ? 'manual'
-      : pickText(ai, 'metaDescription')
-        ? 'ai'
-        : familyResolution.matchedBy === 'fallback'
-          ? 'fallback'
-          : 'template';
-
-  const ogSource =
-    pickText(manual, 'ogDescription')
-      ? 'manual'
-      : pickText(ai, 'ogDescription')
-        ? 'ai'
-        : familyResolution.matchedBy === 'fallback'
-          ? 'fallback'
-          : 'template';
-
-  return {
-    familyKey: templateContent.familyKey,
-    familyLabel: CATALOG_SEO_FAMILIES[templateContent.familyKey]?.label || CATALOG_SEO_FAMILIES.general.label,
+    familyLabel: CATALOG_SEO_FAMILIES[safeFamilyKey]?.label || CATALOG_SEO_FAMILIES.general.label,
     visibleDescription,
+    visibleSecondaryDescription: 'Contacta por WhatsApp para consultar disponibilidad, precios y detalles.',
     metaDescription: truncateText(metaDescription, 160),
     ogDescription: truncateText(ogDescription, 200),
     source: {
-      visibleDescription: visibleSource,
-      metaDescription: metaSource,
-      ogDescription: ogSource,
+      visibleDescription: descriptionSource,
+      metaDescription: descriptionSource,
+      ogDescription: descriptionSource,
     },
     debug: {
       familyMatch: familyResolution.matchedBy,
