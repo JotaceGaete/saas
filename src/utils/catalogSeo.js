@@ -198,214 +198,29 @@ export function getCatalogOgSocialTitle(storeName) {
   return `Catálogo de ${name} - Walinka`;
 }
 
-function normalizeCatalogFooterSignal(value) {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
-}
-
-function includesAnyCatalogFooterKeyword(haystack, keywords) {
-  return keywords.some((keyword) => {
-    const normalizedKeyword = normalizeCatalogFooterSignal(keyword);
-    if (!normalizedKeyword) return false;
-    if (normalizedKeyword.includes(' ')) return haystack.includes(normalizedKeyword);
-    const escapedKeyword = normalizedKeyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    return new RegExp(`(^|[^a-z0-9])${escapedKeyword}([^a-z0-9]|$)`).test(haystack);
-  });
-}
-
-function buildCatalogFooterHaystack(business, products = []) {
-  const rubro = Array.isArray(business?.rubro || business?.wa_rubros)
-    ? (business?.rubro || business?.wa_rubros)?.[0]
-    : business?.rubro || business?.wa_rubros;
-  const productSignals = (Array.isArray(products) ? products : []).flatMap((product) => [
-    product?.name,
-    product?.category,
-    product?.description,
-    product?.longDescription,
-    product?.optionsDescription,
-  ]);
-  return normalizeCatalogFooterSignal([
-    business?.businessMode,
-    rubro?.name,
-    rubro?.slug,
-    business?.rubroName,
-    business?.rubroSlug,
-    business?.category,
-    business?.description,
-    ...(Array.isArray(business?.designSettings?.categories) ? business.designSettings.categories : []),
-    ...productSignals,
-  ].filter(Boolean).join(' '));
-}
-
-const CATALOG_FOOTER_KEYWORDS = {
-  restaurant: [
-    'restaurant',
-    'restaurante',
-    'menu',
-    'menú',
-    'mesa',
-    'delivery',
-    'retiro',
-    'carta',
-    'plato',
-    'sandwich',
-    'hamburguesa',
-    'pizza',
-    'sushi',
-    'cafeteria',
-    'cafetería',
-  ],
-  naturalFood: [
-    'miel',
-    'queso',
-    'huevos',
-    'mermelada',
-    'dulce',
-    'campo',
-    'natural',
-    'artesanal',
-    'organico',
-    'orgánico',
-    'casero',
-    'huerta',
-    'granja',
-    'conserva',
-    'frutos secos',
-    'aceite',
-    'pan',
-    'masa madre',
-  ],
-  food: [
-    'comida',
-    'alimento',
-    'alimentos',
-    'bebida',
-    'bebidas',
-    'panaderia',
-    'panadería',
-    'pasteleria',
-    'pastelería',
-    'reposteria',
-    'repostería',
-    'cafe',
-    'café',
-    'torta',
-    'empanada',
-  ],
-  fashion: [
-    'ropa',
-    'moda',
-    'indumentaria',
-    'calzado',
-    'vestido',
-    'polera',
-    'pantalon',
-    'pantalón',
-    'jeans',
-    'boutique',
-    'accesorio',
-    'accesorios',
-    'cartera',
-  ],
-  beauty: [
-    'belleza',
-    'cosmetica',
-    'cosmética',
-    'maquillaje',
-    'perfume',
-    'skincare',
-    'cuidado personal',
-    'peluqueria',
-    'peluquería',
-    'barberia',
-    'barbería',
-    'spa',
-    'uñas',
-    'unas',
-  ],
-  services: [
-    'servicio',
-    'servicios',
-    'asesoria',
-    'asesoría',
-    'consultoria',
-    'consultoría',
-    'reparacion',
-    'reparación',
-    'instalacion',
-    'instalación',
-    'mantenimiento',
-    'clases',
-    'agenda',
-    'reserva',
-  ],
-};
-
 const CATALOG_FOOTER_TEXTS = {
   restaurant: 'Revisa el menú, elige tus favoritos y haz tu pedido directo por WhatsApp.',
-  naturalFood: 'Sabores auténticos del campo, productos naturales y atención directa por WhatsApp.',
-  food: 'Productos frescos, sabores preparados con dedicación y pedidos directos por WhatsApp.',
-  fashion: 'Encuentra prendas y accesorios seleccionados con atención personalizada por WhatsApp.',
-  beauty: 'Opciones de belleza y cuidado personal con asesoría directa por WhatsApp.',
-  services: 'Servicios y soluciones a tu medida, con atención rápida y cercana por WhatsApp.',
-  general: 'Explora productos seleccionados y consulta disponibilidad directamente por WhatsApp.',
+  general: 'Explora el catálogo y realiza consultas o pedidos por WhatsApp.',
 };
 
 /**
  * Resuelve el texto visual del footer del catálogo.
  * Se mantiene centralizado para reutilizarlo luego en SEO/OG si hace falta.
  *
- * Prioridad:
- * 1. designSettings.footerText manual
- * 2. restaurante
- * 3. alimentos naturales / campo / artesanal
- * 4. comida general
- * 5. ropa / moda
- * 6. belleza
- * 7. servicios
- * 8. tienda genérica
+ * Regla: solo businessMode === 'restaurant' puede usar copy de menú.
+ * No inferir restaurante desde rubro, categoría, productos ni descripción.
  *
- * @param {{ business?: object|null, products?: object[] }} input
+ * @param {{ business?: object|null }} input
  * @returns {string}
  */
-export function resolveCatalogFooterText({ business, products = [] } = {}) {
+export function resolveCatalogFooterText({ business } = {}) {
   const manualFooter = business?.designSettings?.footerText;
   if (typeof manualFooter === 'string' && manualFooter.trim()) {
     return manualFooter.trim();
   }
 
-  const haystack = buildCatalogFooterHaystack(business, products);
-  const businessMode = normalizeCatalogFooterSignal(business?.businessMode);
-
-  if (
-    businessMode === 'restaurant' ||
-    businessMode === 'restaurante' ||
-    includesAnyCatalogFooterKeyword(haystack, CATALOG_FOOTER_KEYWORDS.restaurant)
-  ) {
+  if (business?.businessMode === 'restaurant') {
     return CATALOG_FOOTER_TEXTS.restaurant;
-  }
-
-  if (includesAnyCatalogFooterKeyword(haystack, CATALOG_FOOTER_KEYWORDS.naturalFood)) {
-    return CATALOG_FOOTER_TEXTS.naturalFood;
-  }
-
-  if (includesAnyCatalogFooterKeyword(haystack, CATALOG_FOOTER_KEYWORDS.food)) {
-    return CATALOG_FOOTER_TEXTS.food;
-  }
-
-  if (includesAnyCatalogFooterKeyword(haystack, CATALOG_FOOTER_KEYWORDS.fashion)) {
-    return CATALOG_FOOTER_TEXTS.fashion;
-  }
-
-  if (includesAnyCatalogFooterKeyword(haystack, CATALOG_FOOTER_KEYWORDS.beauty)) {
-    return CATALOG_FOOTER_TEXTS.beauty;
-  }
-
-  if (includesAnyCatalogFooterKeyword(haystack, CATALOG_FOOTER_KEYWORDS.services)) {
-    return CATALOG_FOOTER_TEXTS.services;
   }
 
   return CATALOG_FOOTER_TEXTS.general;
