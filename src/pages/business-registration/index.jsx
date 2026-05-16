@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCountry } from '../../contexts/CountryContext';
@@ -73,6 +73,7 @@ export default function BusinessRegistration() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pendingConfirmation, setPendingConfirmation] = useState(null); // { email } cuando signUp OK pero sin sesión
   const [signupCooldownUntil, setSignupCooldownUntil] = useState(0);
+  const registerInFlightRef = useRef(false);
 
   const cooldownRemainingMs = Math.max(0, (signupCooldownUntil || 0) - Date.now());
   const signupCooldownActive = cooldownRemainingMs > 0;
@@ -124,10 +125,11 @@ export default function BusinessRegistration() {
   // ── PASO 1: No autenticado → pantalla de login/registro ─────────────────────
   if (!user) {
     const handleRegister = async ({ email, password, businessName }) => {
-      if (signupCooldownActive) {
+      if (registerInFlightRef.current || signupCooldownActive) {
         setAuthError('Espera un minuto antes de intentarlo de nuevo.');
         return;
       }
+      registerInFlightRef.current = true;
       setIsSubmitting(true);
       setAuthError(null);
       setPendingConfirmation(null);
@@ -160,6 +162,7 @@ export default function BusinessRegistration() {
       } catch {
         setAuthError('Error inesperado. Por favor intenta de nuevo.');
       } finally {
+        registerInFlightRef.current = false;
         setIsSubmitting(false);
       }
     };

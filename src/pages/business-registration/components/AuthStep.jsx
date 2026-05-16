@@ -274,6 +274,7 @@ export default function AuthStep({ onRegister, onLogin, onGoogleLogin, isLoading
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (isLoading) return;
     const errs = validate();
     if (Object.keys(errs).length > 0) { setErrors(errs); return; }
     if (mode === 'register') {
