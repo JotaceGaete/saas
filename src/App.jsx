@@ -12,7 +12,7 @@ bootstrapManualMarketChoiceFromUrl();
 
 function App() {
   return (
-    <div className="app-shell min-w-0" style={{ width: '100%', maxWidth: '100%', overflowX: 'visible', minHeight: '100vh' }}>
+    <div className="app-shell min-w-0" style={{ width: '100%', maxWidth: '100%', overflowX: 'hidden', minHeight: '100vh' }}>
       <AuthProvider>
         <CountryProvider>
           <SupportModeBanner />

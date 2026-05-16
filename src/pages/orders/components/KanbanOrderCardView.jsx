@@ -90,8 +90,8 @@ function KanbanOrderCardView({
   return (
     <div
       ref={cardRef}
-      className="rounded-2xl bg-white shadow-sm transition-shadow hover:shadow-md"
-      style={{ ...cardStyle, boxShadow: '0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04)' }}
+      className="rounded-2xl border border-white/80 bg-white/78 transition-all duration-150 hover:-translate-y-0.5 hover:bg-white"
+      style={{ ...cardStyle, boxShadow: '0 10px 24px rgba(17,24,39,0.055)' }}
     >
       <div className="flex gap-2 p-2.5 sm:p-3 sm:gap-2">
         {showDragHandle ? (
@@ -165,12 +165,12 @@ function KanbanOrderCardView({
           {next ? (
             <button
               type="button"
-              className="inline-flex items-center justify-center gap-1 rounded-xl px-3 py-2 min-h-[40px] sm:min-h-[38px] text-left text-[10px] sm:text-[11px] font-semibold leading-tight flex-1 min-w-0 sm:min-w-[140px] transition-colors duration-150 hover:opacity-95"
+              className="inline-flex items-center justify-center gap-1 rounded-xl px-3 py-2 min-h-[40px] sm:min-h-[38px] text-left text-[10px] sm:text-[11px] font-semibold leading-tight flex-1 min-w-0 sm:min-w-[140px] transition-colors duration-150 hover:bg-slate-800"
               style={{
                 fontFamily: 'var(--font-caption)',
-                backgroundColor: 'var(--color-primary)',
+                backgroundColor: '#111827',
                 color: '#fff',
-                boxShadow: '0 1px 2px rgba(124, 58, 237, 0.25)',
+                boxShadow: '0 8px 18px rgba(17,24,39,0.14)',
               }}
               aria-label={next.label}
               onClick={(e) => {

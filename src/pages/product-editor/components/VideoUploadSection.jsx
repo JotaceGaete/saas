@@ -16,7 +16,7 @@ function withMediaVersion(url, version) {
 const MAX_VIDEO_BYTES = getProductVideoMaxBytes();
 const MAX_VIDEO_MB = Math.max(1, Math.round(MAX_VIDEO_BYTES / (1024 * 1024)));
 
-export default function VideoUploadSection({ productId, businessId, video, onVideoChange }) {
+export default function VideoUploadSection({ productId, businessId, video, onVideoChange, isRestaurant = false }) {
   const fileInputRef = useRef(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -79,7 +79,9 @@ export default function VideoUploadSection({ productId, businessId, video, onVid
       >
         <Icon name="Info" size={16} color="#d97706" className="flex-shrink-0" />
         <p className="text-sm" style={{ color: '#d97706', fontFamily: 'var(--font-caption)' }}>
-          Guarda el producto primero para poder subir un video.
+          {isRestaurant
+            ? 'Guarda el plato para agregar un video, como preparación o presentación.'
+            : 'Guarda el producto primero para poder subir un video.'}
         </p>
       </div>
     );

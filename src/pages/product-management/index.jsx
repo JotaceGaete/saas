@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import PanelHeader from "components/ui/PanelHeader";
 import DashboardAppShell from "components/ui/DashboardAppShell";
 import DashboardLayoutContent from "components/ui/DashboardLayoutContent";
+import PremiumLoader from "components/ui/PremiumLoader";
 import ProductFilters from "./components/ProductFilters";
 import ProductTable from "./components/ProductTable";
 import BulkActionBar from "./components/BulkActionBar";
@@ -14,7 +15,8 @@ import { useToast } from '../../components/ui/Toast';
 import { useConfirmedEmailGuard } from '../../hooks/useConfirmedEmailGuard';
 import { getProducts, updateProduct, deleteProduct, deleteProducts, createProduct } from '../../services/waBusinessService';
 import { getBusinessLocale } from '../../lib/locale/businessLocale';
-import { formatCurrency } from '../../utils/formatCLP';
+import { formatBusinessCurrency } from '../../utils/formatPrice';
+import { isRestaurantBusiness } from '../../utils/businessType';
 
 
 export default function ProductManagement() {
@@ -59,7 +61,10 @@ export default function ProductManagement() {
   const tableProducts = useMemo(() => products?.map(p => ({
     id: p?.id, name: p?.name, description: p?.description || '', price: p?.price,
     category: (p?.category && String(p.category).trim()) || 'General',
-    active: p?.isActive, image: p?.imageUrl || '', imageAlt: p?.name,
+    active: p?.isActive,
+    isSoldOut: p?.isSoldOut === true,
+    commercialState: p?.isActive === false ? 'hidden' : (p?.isSoldOut === true ? 'sold_out' : 'available'),
+    image: p?.imageUrl || '', imageAlt: p?.name,
     publicCode: p?.publicCode || '',
   })), [products]);
 
@@ -74,11 +79,11 @@ export default function ProductManagement() {
         || (p?.publicCode && String(p.publicCode).toUpperCase().includes(qCode)),
       );
     }
-    if (statusFilter !== "all") result = result?.filter(p => statusFilter === "active" ? p?.active : !p?.active);
+    if (statusFilter !== "all") result = result?.filter(p => p?.commercialState === statusFilter);
     result?.sort((a, b) => {
       let aVal = a?.name?.toLowerCase(), bVal = b?.name?.toLowerCase();
       if (sortField === "price") { aVal = a?.price; bVal = b?.price; }
-      else if (sortField === "status") { aVal = a?.active ? 1 : 0; bVal = b?.active ? 1 : 0; }
+      else if (sortField === "status") { aVal = a?.commercialState || ''; bVal = b?.commercialState || ''; }
       if (aVal < bVal) return sortDir === "asc" ? -1 : 1;
       if (aVal > bVal) return sortDir === "asc" ? 1 : -1;
       return 0;
@@ -88,18 +93,26 @@ export default function ProductManagement() {
 
   const stats = useMemo(() => ({
     total: products?.length,
-    active: products?.filter(p => p?.isActive)?.length,
-    inactive: products?.filter(p => !p?.isActive)?.length,
+    available: products?.filter(p => p?.isActive !== false && p?.isSoldOut !== true)?.length,
+    soldOut: products?.filter(p => p?.isActive !== false && p?.isSoldOut === true)?.length,
+    hidden: products?.filter(p => p?.isActive === false)?.length,
   }), [products]);
 
   const bizLocale = useMemo(() => getBusinessLocale(business), [business]);
+  const isRestaurant = isRestaurantBusiness(business);
+  const productNoun = isRestaurant ? 'plato' : 'producto';
+  const productNounPlural = isRestaurant ? 'platos' : 'productos';
+  const screenTitle = isRestaurant ? 'Menu del restaurante' : 'Catalogo de productos';
+  const screenSubtitle = isRestaurant
+    ? 'Gestiona platos, combos y secciones de tu carta.'
+    : 'Organiza lo que tus clientes ven y compran en tu tienda.';
+  const emptyTitle = isRestaurant ? 'Todavia no tienes platos en tu menu' : 'Todavia no tienes productos';
+  const emptyDescription = isRestaurant
+    ? 'Agrega tu primer plato para comenzar a recibir pedidos.'
+    : 'Agrega tu primer producto para empezar a vender por WhatsApp.';
   const formatProductPrice = useCallback(
-    (n) => formatCurrency(
-      n,
-      String(business?.currency || bizLocale.currencyCode || 'USD').trim().toUpperCase(),
-      bizLocale.locale,
-    ),
-    [business?.currency, bizLocale],
+    (n) => formatBusinessCurrency(n, business, bizLocale),
+    [business, bizLocale],
   );
 
   const handleSort = useCallback((field) => {
@@ -109,27 +122,41 @@ export default function ProductManagement() {
   const handleSelectAll = useCallback((checked) => { setSelectedIds(checked ? filteredProducts?.map(p => p?.id) : []); }, [filteredProducts]);
   const handleSelectOne = useCallback((id, checked) => { setSelectedIds(prev => checked ? [...prev, id] : prev?.filter(x => x !== id)); }, []);
 
-  const handleToggleStatus = useCallback(async (id) => {
+  const handleChangeStatus = useCallback(async (id, nextState) => {
     const product = products?.find(p => p?.id === id);
     if (!product) return;
-    const activating = !product?.isActive;
-    if (activating) {
+
+    const payload = nextState === 'available'
+      ? { isActive: true, isSoldOut: false }
+      : nextState === 'sold_out'
+        ? { isActive: true, isSoldOut: true }
+        : { isActive: false, isSoldOut: false };
+
+    const applyLocalState = () => {
+      setProducts(prev => prev?.map(p => (
+        p?.id === id
+          ? { ...p, isActive: payload.isActive, isSoldOut: payload.isSoldOut }
+          : p
+      )));
+    };
+
+    if (nextState === 'available') {
       guard.runIfConfirmed(async () => {
-        const { error: err } = await updateProduct(id, { isActive: true });
+        const { error: err } = await updateProduct(id, payload);
         if (err) {
           toast?.error(err?.message || 'No se pudo actualizar.');
           return;
         }
-        setProducts(prev => prev?.map(p => p?.id === id ? { ...p, isActive: true } : p));
+        applyLocalState();
       });
       return;
     }
-    const { error: err } = await updateProduct(id, { isActive: false });
+    const { error: err } = await updateProduct(id, payload);
     if (err) {
       toast?.error(err?.message || 'No se pudo actualizar.');
       return;
     }
-    setProducts(prev => prev?.map(p => p?.id === id ? { ...p, isActive: false } : p));
+    applyLocalState();
   }, [products, toast, guard]);
 
   const handleEdit = useCallback((id) => { navigate(`/product-editor?id=${id}`); }, [navigate]);
@@ -180,18 +207,26 @@ export default function ProductManagement() {
   }, [deleteDialog, selectedIds, toast]);
 
   const handleCancelDelete = useCallback(() => { setDeleteDialog({ open: false, isBulk: false, targetId: null }); }, []);
+
+  const AddProductButton = ({ className = '' }) => (
+    <button
+      type="button"
+      onClick={() => navigate('/product-editor')}
+      className={`flex items-center justify-center gap-2 rounded-xl bg-slate-950 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(15,23,42,0.16)] transition-colors duration-150 hover:bg-slate-800 active:scale-[0.99] ${className}`}
+      style={{ fontFamily: 'var(--font-caption)' }}
+    >
+      <Icon name="Plus" size={18} color="#FFFFFF" />
+      <span>Agregar {productNoun}</span>
+    </button>
+  );
   return (
     <DashboardAppShell backgroundColor="var(--color-background)">
         <PanelHeader
-          title={<h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Gestión de Productos</h1>}
-          subtitle={<p className="text-xs hidden sm:block" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>{loading ? 'Cargando...' : `${stats?.total} productos · ${stats?.active} activos · ${stats?.inactive} inactivos`}</p>}
+          title={<h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Catalogo</h1>}
+          subtitle={<p className="text-xs hidden sm:block" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>{loading ? 'Cargando...' : `${stats?.total} ${productNounPlural} · ${stats?.available} disponibles · ${stats?.soldOut} agotados · ${stats?.hidden} ocultos`}</p>}
         >
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <button onClick={() => navigate("/product-editor")} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white transition-all duration-150 hover:bg-[#6D28D9] active:scale-[0.98]" style={{ backgroundColor: 'var(--color-primary)', fontFamily: 'var(--font-caption)', boxShadow: 'var(--shadow-violet)' }}>
-              <Icon name="Plus" size={15} color="#FFFFFF" />
-              <span className="hidden sm:inline">Agregar producto</span>
-              <span className="sm:hidden">Agregar</span>
-            </button>
+          <div className="hidden 2xl:flex items-center gap-2 flex-shrink-0">
+            <AddProductButton className="px-4 py-2.5" />
           </div>
         </PanelHeader>
 
@@ -204,27 +239,31 @@ export default function ProductManagement() {
             </div>
           )}
           {loading ? (
-            <div className="flex items-center justify-center py-16">
-              <div className="flex flex-col items-center gap-3">
-                <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: 'var(--color-primary)', borderTopColor: 'transparent' }} />
-                <p className="text-sm" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Cargando productos...</p>
-              </div>
-            </div>
+            <PremiumLoader business={business} context="products" />
           ) : (
             <>
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <ProductStatsBar stats={stats} />
-                <button
-                  type="button"
-                  onClick={() => navigate('/product-editor')}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-all duration-150 hover:opacity-90 active:scale-[0.98]"
-                  style={{ backgroundColor: 'var(--color-primary)', fontFamily: 'var(--font-caption)', boxShadow: '0 4px 14px rgba(124,58,237,0.35)' }}
-                >
-                  <Icon name="Plus" size={18} color="#FFFFFF" />
-                  Agregar producto
-                </button>
-              </div>
-              <div>
+              <section className="mb-2">
+                <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+                  <div className="max-w-3xl">
+                    <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500 font-[family-name:var(--font-caption)]">
+                      Merchandising
+                    </p>
+                    <h2 className="text-[2rem] font-black leading-[1.05] text-slate-950 sm:text-5xl" style={{ fontFamily: 'var(--font-heading)', letterSpacing: 0 }}>
+                      {screenTitle}
+                    </h2>
+                    <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 sm:text-base" style={{ fontFamily: 'var(--font-body)' }}>
+                      {screenSubtitle}
+                    </p>
+                  </div>
+                  <div className="hidden shrink-0 md:block 2xl:hidden">
+                    <AddProductButton className="px-4 py-2.5" />
+                  </div>
+                </div>
+              </section>
+
+              <ProductStatsBar stats={stats} productNounPlural={productNounPlural} />
+
+              <div className="rounded-2xl border border-white/70 bg-white/58 p-3 shadow-[0_10px_28px_rgba(17,24,39,0.04)] sm:p-4">
                 <ProductFilters
                   searchQuery={searchQuery}
                   onSearchChange={setSearchQuery}
@@ -237,8 +276,11 @@ export default function ProductManagement() {
                   }}
                 />
               </div>
+              <div className="flex w-full md:hidden">
+                <AddProductButton className="w-full px-4 py-3" />
+              </div>
               {selectedIds?.length > 0 && (<div><BulkActionBar selectedCount={selectedIds?.length} onDelete={handleBulkDelete} onDeselect={() => setSelectedIds([])} /></div>)}
-              <ProductTable products={filteredProducts} selectedIds={selectedIds} onSelectAll={handleSelectAll} onSelectOne={handleSelectOne} onToggleStatus={handleToggleStatus} onEdit={handleEdit} onDuplicate={handleDuplicate} onDeleteRequest={handleDeleteRequest} sortField={sortField} sortDir={sortDir} onSort={handleSort} formatPrice={formatProductPrice} />
+              <ProductTable products={filteredProducts} selectedIds={selectedIds} onSelectAll={handleSelectAll} onSelectOne={handleSelectOne} onChangeStatus={handleChangeStatus} onEdit={handleEdit} onDuplicate={handleDuplicate} onDeleteRequest={handleDeleteRequest} sortField={sortField} sortDir={sortDir} onSort={handleSort} formatPrice={formatProductPrice} hasProducts={products?.length > 0} emptyTitle={emptyTitle} emptyDescription={emptyDescription} filteredEmptyDescription="No encontramos items con estos filtros. Ajusta la busqueda o vuelve a ver todo el catalogo." />
             </>
           )}
         </DashboardLayoutContent>

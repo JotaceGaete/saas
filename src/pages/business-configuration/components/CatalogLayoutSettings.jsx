@@ -15,23 +15,23 @@ const CATALOG_VIEW_MODES = [
 function SectionCard({ icon, title, subtitle, children }) {
   return (
     <div
-      className="rounded-2xl border p-6"
+      className="rounded-2xl border p-5 sm:p-6"
       style={{
-        backgroundColor: '#ffffff',
-        borderColor: 'var(--color-border)',
-        boxShadow: '0 1px 4px rgba(0,0,0,0.05)',
+        backgroundColor: 'rgba(255,255,255,0.70)',
+        borderColor: 'rgba(17,24,39,0.08)',
+        boxShadow: '0 12px 30px rgba(17,24,39,0.045)',
       }}
     >
-      <div className="flex items-center gap-3 mb-5">
-        <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(139,92,246,0.1)' }}>
-          <Icon name={icon} size={18} color="var(--color-primary)" />
+      <div className="flex items-start gap-3 mb-5">
+        <div className="mt-0.5 w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(17,24,39,0.06)' }}>
+          <Icon name={icon} size={16} color="var(--color-foreground)" />
         </div>
         <div>
-          <h3 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-text-primary)' }}>{title}</h3>
-          {subtitle && <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>{subtitle}</p>}
+          <h3 className="text-base font-semibold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-text-primary)', letterSpacing: '-0.015em' }}>{title}</h3>
+          {subtitle && <p className="mt-1 text-xs leading-5" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>{subtitle}</p>}
         </div>
       </div>
-      <div className="border-t pt-5" style={{ borderColor: 'var(--color-border)' }}>{children}</div>
+      <div className="border-t pt-5" style={{ borderColor: 'rgba(17,24,39,0.08)' }}>{children}</div>
     </div>
   );
 }
@@ -40,10 +40,12 @@ function SectionCard({ icon, title, subtitle, children }) {
  * Ajustes de layout del catálogo (JSONB `design_settings`).
  * Montado desde la pantalla principal **Diseño** (`/design`) vía `DesignCustomization`.
  */
-export default function CatalogLayoutSettings({ design, onChange }) {
+export default function CatalogLayoutSettings({ design, onChange, isRestaurant = false }) {
   const primaryColor = design?.primaryColor || '#7C3AED';
   const storeHeader = design?.storeHeader ?? { showStoreName: true, showDescription: true, showWhatsAppButton: true, descriptionColor: '' };
   const cardSettings = design?.cardSettings ?? { showPrice: true, showDescription: true, showStock: false, showWhatsApp: true };
+  const catalogLabel = isRestaurant ? 'menú' : 'catálogo';
+  const storeLabel = isRestaurant ? 'restaurante' : 'tienda';
 
   const handleStoreHeaderToggle = (key) => {
     onChange?.({ ...design, storeHeader: { ...storeHeader, [key]: !storeHeader?.[key] } });
@@ -54,12 +56,12 @@ export default function CatalogLayoutSettings({ design, onChange }) {
 
   return (
     <div className="flex flex-col gap-5">
-      <SectionCard icon="Tags" title="Categorías en el catálogo" subtitle="Activa filtros por categoría. El rubro principal está en la pestaña Identidad.">
+      <SectionCard icon="Tags" title={`Categorías en el ${catalogLabel}`} subtitle="Activa filtros para ordenar la experiencia de compra.">
         <label
           className="flex items-center justify-between px-4 py-3 rounded-xl border cursor-pointer transition-all"
           style={{
-            borderColor: design?.useCategories ? primaryColor : 'var(--color-border)',
-            backgroundColor: design?.useCategories ? `${primaryColor}08` : '#fafafa',
+            borderColor: design?.useCategories ? `${primaryColor}66` : 'rgba(17,24,39,0.08)',
+            backgroundColor: design?.useCategories ? `${primaryColor}08` : 'rgba(255,255,255,0.58)',
           }}
         >
           <div className="flex items-center gap-3">
@@ -79,7 +81,7 @@ export default function CatalogLayoutSettings({ design, onChange }) {
         <p className="mt-2 text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
           Las categorías sugeridas dependen del <strong>rubro principal</strong> (Identidad). Si cambias de rubro, revisa tus categorías de producto.
         </p>
-        <div className="mt-4 pt-4 border-t" style={{ borderColor: 'var(--color-border)' }}>
+        <div className="mt-4 pt-4 border-t" style={{ borderColor: 'rgba(17,24,39,0.08)' }}>
           <p className="text-xs" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)', lineHeight: '1.6' }}>
             ¿Necesitas categorías que no están en tu rubro?{' '}
             <a
@@ -93,17 +95,17 @@ export default function CatalogLayoutSettings({ design, onChange }) {
         </div>
       </SectionCard>
 
-      <SectionCard icon="Smartphone" title="Vista del catálogo en móvil" subtitle="Cómo se muestran los productos en celulares">
+      <SectionCard icon="Smartphone" title={`Vista del ${catalogLabel} en móvil`} subtitle="Define la densidad de productos en celulares.">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {CATALOG_VIEW_MODES?.map(mode => (
             <button
               key={mode?.id}
               type="button"
               onClick={() => onChange?.({ ...design, catalogViewMode: mode?.id })}
-              className="relative flex flex-col gap-2 p-4 rounded-xl border-2 transition-all text-left"
+              className="relative flex flex-col gap-2 p-4 rounded-xl border transition-all duration-200 text-left hover:-translate-y-0.5"
               style={{
-                borderColor: (design?.catalogViewMode || 'featured') === mode?.id ? primaryColor : 'var(--color-border)',
-                backgroundColor: (design?.catalogViewMode || 'featured') === mode?.id ? `${primaryColor}08` : '#fafafa',
+                borderColor: (design?.catalogViewMode || 'featured') === mode?.id ? `${primaryColor}66` : 'rgba(17,24,39,0.08)',
+                backgroundColor: (design?.catalogViewMode || 'featured') === mode?.id ? `${primaryColor}08` : 'rgba(255,255,255,0.58)',
               }}
             >
               {(design?.catalogViewMode || 'featured') === mode?.id && (
@@ -123,17 +125,17 @@ export default function CatalogLayoutSettings({ design, onChange }) {
         </div>
       </SectionCard>
 
-      <SectionCard icon="LayoutGrid" title="Diseño del catálogo" subtitle="Lista, cuadrícula o tarjetas grandes">
+      <SectionCard icon="LayoutGrid" title={`Layout del ${catalogLabel}`} subtitle="Elige la estructura que mejor muestra tus productos.">
         <div className="grid grid-cols-3 gap-3">
           {CATALOG_LAYOUTS?.map(layout => (
             <button
               key={layout?.id}
               type="button"
               onClick={() => onChange?.({ ...design, catalogLayout: layout?.id })}
-              className="flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all"
+              className="flex flex-col items-center gap-2 p-3 rounded-xl border transition-all duration-200 hover:-translate-y-0.5"
               style={{
-                borderColor: (design?.catalogLayout || 'list') === layout?.id ? primaryColor : 'var(--color-border)',
-                backgroundColor: (design?.catalogLayout || 'list') === layout?.id ? `${primaryColor}08` : '#fafafa',
+                borderColor: (design?.catalogLayout || 'list') === layout?.id ? `${primaryColor}66` : 'rgba(17,24,39,0.08)',
+                backgroundColor: (design?.catalogLayout || 'list') === layout?.id ? `${primaryColor}08` : 'rgba(255,255,255,0.58)',
               }}
             >
               <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: (design?.catalogLayout || 'list') === layout?.id ? `${primaryColor}15` : '#f0f0f8' }}>
@@ -153,7 +155,7 @@ export default function CatalogLayoutSettings({ design, onChange }) {
         </div>
       </SectionCard>
 
-      <SectionCard icon="Type" title="Encabezado de la tienda" subtitle="Qué mostrar en la cabecera del catálogo">
+      <SectionCard icon="Type" title={`Encabezado de la ${storeLabel}`} subtitle={`Define qué aparece al inicio del ${catalogLabel}.`}>
         <div className="flex flex-col gap-2">
           {[
             { key: 'showStoreName', label: 'Mostrar nombre de la tienda', icon: 'Type' },
@@ -164,8 +166,8 @@ export default function CatalogLayoutSettings({ design, onChange }) {
               key={item?.key}
               className="flex items-center justify-between px-4 py-3 rounded-xl border cursor-pointer transition-all"
               style={{
-                borderColor: storeHeader?.[item?.key] ? primaryColor : 'var(--color-border)',
-                backgroundColor: storeHeader?.[item?.key] ? `${primaryColor}08` : '#fafafa',
+                borderColor: storeHeader?.[item?.key] ? `${primaryColor}66` : 'rgba(17,24,39,0.08)',
+                backgroundColor: storeHeader?.[item?.key] ? `${primaryColor}08` : 'rgba(255,255,255,0.58)',
               }}
             >
               <div className="flex items-center gap-3">
@@ -200,8 +202,8 @@ export default function CatalogLayoutSettings({ design, onChange }) {
                 key={value || 'default'}
                 type="button"
                 onClick={() => onChange?.({ ...design, storeHeader: { ...storeHeader, descriptionColor: value } })}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg border-2 transition-all"
-                style={{ borderColor: isSelected ? primaryColor : 'var(--color-border)', backgroundColor: isSelected ? `${primaryColor}08` : '#fafafa' }}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg border transition-all duration-200 hover:-translate-y-0.5"
+                style={{ borderColor: isSelected ? `${primaryColor}66` : 'rgba(17,24,39,0.08)', backgroundColor: isSelected ? `${primaryColor}08` : 'rgba(255,255,255,0.58)' }}
                 title={label}
               >
                 {value ? <span className="w-5 h-5 rounded-full border border-gray-200" style={{ backgroundColor: value }} /> : <span className="w-5 h-5 rounded-full border border-gray-300 bg-white" />}
@@ -224,8 +226,8 @@ export default function CatalogLayoutSettings({ design, onChange }) {
               key={item?.key}
               className="flex items-center justify-between px-4 py-3 rounded-xl border transition-all"
               style={{
-                borderColor: cardSettings?.[item?.key] ? `${primaryColor}40` : 'var(--color-border)',
-                backgroundColor: cardSettings?.[item?.key] ? `${primaryColor}05` : '#fafafa',
+                borderColor: cardSettings?.[item?.key] ? `${primaryColor}40` : 'rgba(17,24,39,0.08)',
+                backgroundColor: cardSettings?.[item?.key] ? `${primaryColor}05` : 'rgba(255,255,255,0.58)',
               }}
             >
               <div className="flex items-center gap-3">

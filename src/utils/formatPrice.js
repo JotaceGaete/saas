@@ -50,6 +50,15 @@ export function formatPrice(amount, currency, countryCode) {
     return `${symbol} ${numStr}`;
   }
 
+  if (cur === 'USD') {
+    const numStr = new Intl.NumberFormat('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+      useGrouping: true,
+    }).format(value);
+    return `US$ ${numStr}`;
+  }
+
   // Non-LATAM: standard Intl currency formatting.
   const locale = COUNTRY_CONFIG[code]?.locale;
   return formatCurrency(value, cur, locale);
@@ -95,5 +104,38 @@ export function resolveCatalogCurrency(business, catalogMoney) {
  * @returns {string}
  */
 export function formatPriceCatalog(amount, currency, countryCode) {
+  return formatPrice(amount, currency, countryCode);
+}
+
+/**
+ * Moneda visible para pantallas administrativas del negocio.
+ * Mantiene la misma regla del catalogo publico: si el pais persistido es CL/AR,
+ * el pais manda sobre un fallback historico en USD.
+ *
+ * @param {object|null|undefined} business
+ * @param {{ currencyCode?: string|null }|null|undefined} businessLocale
+ * @returns {string}
+ */
+export function resolveBusinessCurrency(business, businessLocale) {
+  return resolveCatalogCurrency(business, businessLocale);
+}
+
+/**
+ * Formato visual de montos para dashboard y pantallas administrativas.
+ * No modifica importes; solo normaliza simbolo, separadores y decimales.
+ *
+ * @param {number|string} amount
+ * @param {object|null|undefined} business
+ * @param {{ currencyCode?: string|null, countryCode?: string|null }|null|undefined} businessLocale
+ * @returns {string}
+ */
+export function formatBusinessCurrency(amount, business, businessLocale) {
+  const currency = resolveBusinessCurrency(business, businessLocale);
+  const countryCode = businessLocale?.countryCode
+    ?? business?.countryCodeDb
+    ?? business?.country_code
+    ?? business?.countryCode
+    ?? business?.routingCountryCode
+    ?? null;
   return formatPrice(amount, currency, countryCode);
 }

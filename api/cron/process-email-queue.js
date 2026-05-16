@@ -1,14 +1,13 @@
 import { createClient } from '@supabase/supabase-js'
 import { Resend } from 'resend'
+import { emailAutomationDisabledPayload, isEmailAutomationEnabled } from '../../src/emails/automation.mjs'
 import { newOrderEmail } from '../../src/emails/templates/new-order.js'
 import { welcomeEmail } from '../../src/emails/templates/welcome.js'
 
-const supabase = createClient(
-  process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-)
-
-const resend = new Resend(process.env.RESEND_API_KEY)
+const MAX_RETRIES = 3
+const DEFAULT_BATCH_SIZE = 5
+const MAX_BATCH_SIZE = 20
+const RETRY_DELAY_MINUTES = [15, 30, 60]
 
 const templates = {
   new_order: newOrderEmail,
@@ -21,24 +20,55 @@ function log(level, data) {
   )
 }
 
+function getBatchSize() {
+  const raw = Number.parseInt(process.env.EMAIL_QUEUE_BATCH_SIZE || '', 10)
+  if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_BATCH_SIZE
+  return Math.min(raw, MAX_BATCH_SIZE)
+}
+
+function getCronSecret() {
+  return process.env.EMAIL_CRON_SECRET || process.env.CRON_SECRET || null
+}
+
+function getRetryDelayMinutes(nextRetry) {
+  return RETRY_DELAY_MINUTES[Math.max(0, nextRetry - 1)] || RETRY_DELAY_MINUTES[RETRY_DELAY_MINUTES.length - 1]
+}
+
 export default async function handler(req, res) {
   try {
-    if (req.headers['x-cron-secret'] !== process.env.EMAIL_CRON_SECRET) {
+    if (req.method !== 'GET') {
+      return res.status(405).json({ ok: false, error: 'Method not allowed' })
+    }
+
+    if (!isEmailAutomationEnabled(process.env)) {
+      const payload = emailAutomationDisabledPayload()
+      log('info', { status: 'skipped', reason: payload.reason })
+      return res.status(200).json(payload)
+    }
+
+    const cronSecret = getCronSecret()
+    if (!cronSecret || req.headers['x-cron-secret'] !== cronSecret) {
       return res.status(401).json({ ok: false, error: 'Unauthorized' })
     }
 
+    const supabase = createClient(
+      process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_ROLE_KEY
+    )
+    const resend = new Resend(process.env.RESEND_API_KEY)
+
+    const batchSize = getBatchSize()
     const { data: emails, error: fetchError } = await supabase
       .from('email_queue')
-      .select('*')
+      .select('id, template, payload, to_email, subject, retry_count')
       .in('status', ['pending', 'failed'])
       .lte('next_attempt_at', new Date().toISOString())
-      .lt('retry_count', 3)
+      .lt('retry_count', MAX_RETRIES)
       .order('created_at', { ascending: true })
-      .limit(10)
+      .limit(batchSize)
 
     if (fetchError) throw fetchError
 
-    const results = []
     let sent = 0
     let failed = 0
 
@@ -50,7 +80,8 @@ export default async function handler(req, res) {
           .from('email_queue')
           .update({
             status: 'failed',
-            retry_count: 3,
+            retry_count: MAX_RETRIES,
+            next_attempt_at: null,
             last_error: `Unknown template: ${email.template}. Available: ${Object.keys(templates).join(', ')}`,
           })
           .eq('id', email.id)
@@ -62,7 +93,6 @@ export default async function handler(req, res) {
           error_code: 'UNKNOWN_TEMPLATE',
         })
 
-        results.push({ id: email.id, ok: false, error: `unknown_template:${email.template}` })
         failed++
         continue
       }
@@ -90,25 +120,24 @@ export default async function handler(req, res) {
             sent_at: new Date().toISOString(),
             provider_message_id,
             last_error: null,
+            next_attempt_at: null,
           })
           .eq('id', email.id)
 
-        log('info', {
-          queue_id: email.id,
-          template: email.template,
-          status: 'sent',
-          provider_message_id,
-        })
-
-        results.push({ id: email.id, ok: true })
         sent++
       } catch (err) {
+        const nextRetry = email.retry_count + 1
+        const exhausted = nextRetry >= MAX_RETRIES
+        const nextAttemptAt = exhausted
+          ? null
+          : new Date(Date.now() + getRetryDelayMinutes(nextRetry) * 60 * 1000).toISOString()
+
         await supabase
           .from('email_queue')
           .update({
             status: 'failed',
-            retry_count: email.retry_count + 1,
-            next_attempt_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+            retry_count: nextRetry,
+            next_attempt_at: nextAttemptAt,
             last_error: err.message,
           })
           .eq('id', email.id)
@@ -119,20 +148,28 @@ export default async function handler(req, res) {
           status: 'failed',
           error_code: err.code || 'SEND_ERROR',
           error_message: err.message?.slice(0, 200),
-          retry_count: email.retry_count + 1,
+          retry_count: nextRetry,
+          exhausted,
         })
 
-        results.push({ id: email.id, ok: false, error: err.message })
         failed++
       }
     }
 
-    return res.json({
-      ok: true,
-      processed: results.length,
+    log('info', {
+      status: 'completed',
+      batch_size: batchSize,
+      fetched: emails?.length || 0,
       sent,
       failed,
-      results,
+    })
+
+    return res.json({
+      ok: true,
+      processed: (emails || []).length,
+      batchSize,
+      sent,
+      failed,
     })
   } catch (err) {
     log('error', {

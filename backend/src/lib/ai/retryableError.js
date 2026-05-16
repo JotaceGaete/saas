@@ -54,6 +54,19 @@ export function shouldAttemptFallbackFromPrimaryError(err) {
   if (msg.includes('Provider timeout')) return true;
   if (http === 429 || http === 502 || http === 503 || http === 504) return true;
 
+  // 403 de proveedor (ej. Gemini PERMISSION_DENIED: proyecto bloqueado, cuota, acceso denegado).
+  // No confundir con HttpError(403) de plan no permitido, que se atrapa antes con isHttpError().
+  if (
+    lower.includes('permission_denied')
+    || lower.includes('permission denied')
+    || lower.includes('your project has been denied')
+    || lower.includes('access denied')
+    || lower.includes('forbidden')
+  ) {
+    return true;
+  }
+  if (http === 403) return true;
+
   if (
     lower.includes('rate limit')
     || lower.includes('quota')

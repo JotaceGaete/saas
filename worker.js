@@ -125,7 +125,7 @@ export default {
     const supabaseUrl = (env?.SUPABASE_URL || '').replace(/\/$/, '');
     const supabaseKey = env?.SUPABASE_ANON_KEY || '';
     const origin = url.origin;
-    const canonicalUrl = `${CATALOG_ORIGIN}/${slug}`;
+    const canonicalUrl = `${CATALOG_ORIGIN}/catalogo/${slug}`;
 
     const seoInput = {
       storeName: 'Catálogo',
@@ -140,8 +140,18 @@ export default {
 
     try {
       if (supabaseUrl && supabaseKey) {
+        // Columnas garantizadas en el schema más las extendidas que pueden existir.
+        // Si og_image_url/country_code/region no existen, el REST retorna !ok y
+        // se usa el fallback silencioso (seoInput defaults + getCatalogShareDescription(null)).
+        const workerSelect = [
+          'id','name','description','slug',
+          'logo_url','cover_image_url','design_settings',
+          'city','country','currency','updated_at',
+          // columnas extendidas: si no existen la request falla y cae al fallback
+          'og_image_url','region','country_code',
+        ].join(',');
         const res = await fetch(
-          `${supabaseUrl}/rest/v1/wa_businesses?slug=eq.${encodeURIComponent(slug)}&is_active=eq.true&select=id,name,description,slug,og_image_url,logo_url,cover_image_url,design_settings,city,region,country,country_code,currency,updated_at`,
+          `${supabaseUrl}/rest/v1/wa_businesses?slug=eq.${encodeURIComponent(slug)}&is_active=eq.true&select=${workerSelect}`,
           {
             headers: {
               Accept: 'application/json',

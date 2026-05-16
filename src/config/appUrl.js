@@ -8,7 +8,16 @@ export const APP_ORIGIN = 'https://go.ventalink.app';
  * Dominio público de catálogos: enlaces compartibles, QR, WhatsApp, og:url, canonical.
  * Fuente de verdad única para URLs de catálogo. Cambiar aquí propaga a toda la app.
  */
-export const CATALOG_ORIGIN = 'https://miralatienda.de';
+function normalizeUrlOrigin(value) {
+  return String(value || '')
+    .trim()
+    .replace(/\/$/, '')
+    .replace(/^(https?:\/\/)www\./i, '$1');
+}
+
+export const CATALOG_ORIGIN = normalizeUrlOrigin(
+  import.meta.env?.VITE_PUBLIC_CATALOG_URL || 'https://miralatienda.de',
+);
 
 const BASE_URL = import.meta.env?.VITE_APP_URL?.trim() || '';
 
@@ -107,6 +116,18 @@ export function getPublicOffersUrl(slug) {
   const s = String(slug || '').trim();
   if (!s) return '';
   return `${CATALOG_ORIGIN}/catalogo/${s}/ofertas`;
+}
+
+/**
+ * @param {string} businessSlug
+ * @param {string} productSlug
+ * @returns {string} p. ej. `https://miralatienda.de/p/tienda/producto-1`
+ */
+export function getPublicProductUrl(businessSlug, productSlug) {
+  const b = String(businessSlug || '').trim();
+  const p = String(productSlug || '').trim();
+  if (!b || !p) return '';
+  return `${CATALOG_ORIGIN}/p/${b}/${p}`;
 }
 
 /**

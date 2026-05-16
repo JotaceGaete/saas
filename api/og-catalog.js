@@ -121,6 +121,62 @@ function pickLogoUrl(row, ds) {
 }
 
 /**
+ * Imagen de vista previa de WhatsApp cargada explícitamente por el negocio.
+ * Prioridad 1: campo og_image_url en wa_businesses.
+ * Prioridad 2: design_settings.shareImageUrl (campo transitorio antes de og_image_url).
+ * Solo acepta URLs https absolutas — evita redirecciones a URLs relativas o http.
+ * @returns {string | null}
+ */
+function pickOgPreviewUrl(row, ds) {
+  const fromField = typeof row?.og_image_url === 'string' ? row.og_image_url.trim() : '';
+  if (fromField && /^https:\/\//i.test(fromField)) return fromField;
+  const fromDs = typeof ds?.shareImageUrl === 'string' ? ds.shareImageUrl.trim() : '';
+  if (fromDs && /^https:\/\//i.test(fromDs)) return fromDs;
+  return null;
+}
+
+/**
+ * Descarga una imagen remota y la devuelve como Buffer con su Content-Type.
+ * Usado para servir og_image_url directamente (sin 302) — WhatsApp no sigue redirects.
+ * @returns {{ ok: boolean, buffer: Buffer|null, contentType: string|null, reason: string }}
+ */
+async function proxyImageAsBuffer(url) {
+  if (!url || !/^https?:\/\//i.test(url)) {
+    return { ok: false, buffer: null, contentType: null, reason: 'invalid_or_missing_url' };
+  }
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), REMOTE_IMAGE_FETCH_MS);
+  try {
+    const res = await fetch(url, {
+      redirect: 'follow',
+      signal: controller.signal,
+      headers: { Accept: 'image/jpeg,image/png,image/webp,image/gif,*/*;q=0.8' },
+    });
+    if (!res.ok) return { ok: false, buffer: null, contentType: null, reason: `http_${res.status}` };
+    const len = res.headers.get('content-length');
+    if (len && Number(len) > MAX_IMAGE_BYTES) {
+      return { ok: false, buffer: null, contentType: null, reason: 'content_length_too_large' };
+    }
+    const ab = await res.arrayBuffer();
+    if (ab.byteLength === 0 || ab.byteLength > MAX_IMAGE_BYTES) {
+      return { ok: false, buffer: null, contentType: null, reason: 'body_size_invalid' };
+    }
+    if (!isSupportedRasterBuffer(ab)) {
+      return { ok: false, buffer: null, contentType: null, reason: 'unsupported_or_corrupt_image_magic' };
+    }
+    const ct = (res.headers.get('content-type') || 'image/jpeg').split(';')[0].trim().toLowerCase();
+    if (!ct.startsWith('image/')) {
+      return { ok: false, buffer: null, contentType: null, reason: 'not_image_content_type' };
+    }
+    return { ok: true, buffer: Buffer.from(ab), contentType: ct, reason: 'ok' };
+  } catch (e) {
+    return { ok: false, buffer: null, contentType: null, reason: e?.name === 'AbortError' ? 'timeout' : 'fetch_error' };
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+/**
  * Carga una imagen remota de forma validada. Sin esto, resvg puede fallar o rasterizar mal con bytes corruptos.
  * @returns {{ ok: boolean, dataUri: string | null, reason?: string }}
  */
@@ -164,127 +220,205 @@ async function loadImageDataUriValidated(url) {
   }
 }
 
-/** Isotipo V-Check (misma geometría que `src/components/branding/VCheckIsotype.jsx`) cuando no hay logo del negocio. */
+/**
+ * V-Check gradient def reusable por id.
+ * Geometría idéntica a `src/components/branding/VCheckIsotype.jsx`.
+ */
 function ogVcheckGradientDef(gradId = 'ogVcheckGrad') {
-  return `
-    <linearGradient id="${gradId}" x1="0" y1="0" x2="1" y2="1">
+  return `<linearGradient id="${gradId}" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0%" stop-color="#7C3AED" />
       <stop offset="100%" stop-color="#6D28D9" />
     </linearGradient>`;
 }
 
-function ogDefaultLogoBlockCover(gradId = 'ogVcheckGrad') {
-  return `
-    <g>
-      <rect x="1000" y="36" width="164" height="164" rx="22" fill="rgba(255,255,255,0.12)" stroke="rgba(255,255,255,0.2)" stroke-width="1" />
-      <g transform="translate(1012,48) scale(2.1875)">
-        <rect width="64" height="64" rx="14" fill="url(#${gradId})" />
-        <path d="M18 34 L28 44 L46 22" fill="none" stroke="rgba(255,255,255,0.82)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" />
-        <path d="M26 34 L36 44 L54 22" fill="none" stroke="#FFFFFF" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" />
-      </g>
+/** Icono V-Check a una posición y escala dadas. */
+function ogVcheckIcon({ x, y, size, gradId = 'ogVcheckGrad' }) {
+  const scale = size / 64;
+  return `<g transform="translate(${x},${y}) scale(${scale})">
+      <rect width="64" height="64" rx="14" fill="url(#${gradId})" />
+      <path d="M18 34 L28 44 L46 22" fill="none" stroke="rgba(255,255,255,0.80)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" />
+      <path d="M26 34 L36 44 L54 22" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" />
     </g>`;
 }
 
-function ogDefaultLogoBlockPlain(gradId = 'ogVcheckGrad') {
-  return `
-    <g>
-      <rect x="860" y="160" width="220" height="220" rx="28" fill="rgba(255,255,255,0.96)" />
-      <g transform="translate(886,186) scale(2.625)">
-        <rect width="64" height="64" rx="14" fill="url(#${gradId})" />
-        <path d="M18 34 L28 44 L46 22" fill="none" stroke="rgba(255,255,255,0.82)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" />
-        <path d="M26 34 L36 44 L54 22" fill="none" stroke="#FFFFFF" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" />
-      </g>
-    </g>`;
-}
-
+/**
+ * Genera el SVG 1200×630 con dos variantes:
+ *
+ * CON PORTADA  → imagen full-bleed (xMidYMid slice) + degradado izquierda→derecha
+ *               → texto sobre el área izquierda oscura
+ *               → logo/icono en esquina superior derecha
+ *
+ * SIN PORTADA  → fondo degradado violeta
+ *               → logo grande en círculo centrado a la derecha
+ *               → V-Check si no hay logo
+ */
 function buildCatalogOgSvg({ storeName, logoDataUri, coverDataUri }) {
-  const lines = wrapStoreName(storeName, 26, 2);
+  const lines = wrapStoreName(storeName, 20, 2);
   const line1 = escapeXml(lines[0] ?? 'Tu tienda');
   const line2 = lines[1] ? escapeXml(lines[1]) : null;
 
-  const logoBlock = logoDataUri
-    ? `
-    <g>
-      <rect x="1000" y="36" width="164" height="164" rx="22" fill="rgba(255,255,255,0.12)" stroke="rgba(255,255,255,0.2)" stroke-width="1" />
-      <clipPath id="ogLogoClip"><rect x="1012" y="48" width="140" height="140" rx="18" /></clipPath>
-      <image href="${logoDataUri}" x="1012" y="48" width="140" height="140" preserveAspectRatio="xMidYMid meet" clip-path="url(#ogLogoClip)" />
-    </g>`
-    : ogDefaultLogoBlockCover();
+  /* Posiciones verticales del texto según número de líneas */
+  const titleY1 = line2 ? 228 : 288;
+  const titleY2 = 324;   /* titleY1 + 96 px (80 px font * 1.2 line-height) */
+  const subtitleY = line2 ? 414 : 374;
 
+  /* ── VARIANTE CON PORTADA ─────────────────────────────────────────────── */
   if (coverDataUri) {
-    const yTitle1 = line2 ? 498 : 532;
-    const yTitle2 = line2 ? 562 : null;
-    const ySub = line2 ? 612 : 578;
-    return `
-<svg width="${OG_W}" height="${OG_H}" viewBox="0 0 ${OG_W} ${OG_H}" xmlns="http://www.w3.org/2000/svg">
+    const hasLogo = Boolean(logoDataUri);
+    const logoDefs = hasLogo
+      ? `<clipPath id="ogLogoClip"><circle cx="1096" cy="84" r="60" /></clipPath>`
+      : ogVcheckGradientDef('ogVG');
+
+    const logoEl = hasLogo
+      ? `<circle cx="1096" cy="84" r="68" fill="rgba(255,255,255,0.13)" stroke="rgba(255,255,255,0.24)" stroke-width="1.5" />
+    <image href="${logoDataUri}" x="1036" y="24" width="120" height="120"
+           preserveAspectRatio="xMidYMid meet" clip-path="url(#ogLogoClip)" />`
+      : `<circle cx="1096" cy="84" r="68" fill="rgba(255,255,255,0.10)" stroke="rgba(255,255,255,0.20)" stroke-width="1.5" />
+    ${ogVcheckIcon({ x: 1064, y: 52, size: 64, gradId: 'ogVG' })}`;
+
+    return `<svg width="${OG_W}" height="${OG_H}" viewBox="0 0 ${OG_W} ${OG_H}" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="ogBottomFade" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="rgba(15,23,42,0)" />
-      <stop offset="55%" stop-color="rgba(15,23,42,0.55)" />
-      <stop offset="100%" stop-color="rgba(15,23,42,0.97)" />
+    <!-- Degradado horizontal: oscuro a la izquierda para legibilidad del texto -->
+    <linearGradient id="ogLeftDark" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%"   stop-color="rgba(0,0,0,0.86)" />
+      <stop offset="52%"  stop-color="rgba(0,0,0,0.46)" />
+      <stop offset="100%" stop-color="rgba(0,0,0,0.10)" />
     </linearGradient>
-    ${logoDataUri ? '' : ogVcheckGradientDef()}
+    <!-- Vignette inferior para branding -->
+    <linearGradient id="ogBottomDark" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="rgba(0,0,0,0.00)" />
+      <stop offset="100%" stop-color="rgba(0,0,0,0.62)" />
+    </linearGradient>
+    <clipPath id="ogImgClip"><rect width="${OG_W}" height="${OG_H}" /></clipPath>
+    ${logoDefs}
   </defs>
+
+  <!-- Fondo oscuro de seguridad (si la imagen falla) -->
   <rect width="${OG_W}" height="${OG_H}" fill="#0f172a" />
-  <rect x="36" y="36" width="1128" height="468" rx="20" fill="#1e293b" />
-  <image href="${coverDataUri}" x="44" y="44" width="1112" height="452" preserveAspectRatio="xMidYMid meet" />
-  <rect x="0" y="280" width="${OG_W}" height="350" fill="url(#ogBottomFade)" />
-  <text x="56" y="${yTitle1}" fill="#f8fafc" font-size="52" font-family="Inter, Segoe UI, Arial, sans-serif" font-weight="800" letter-spacing="-0.5">
-    ${line1}
+
+  <!-- Portada full-bleed: recorta para llenar 1200×630 sin barras negras -->
+  <image href="${coverDataUri}" x="0" y="0" width="${OG_W}" height="${OG_H}"
+         preserveAspectRatio="xMidYMid slice" clip-path="url(#ogImgClip)" />
+
+  <!-- Overlay izquierda→derecha para zona de texto -->
+  <rect width="${OG_W}" height="${OG_H}" fill="url(#ogLeftDark)" />
+
+  <!-- Vignette inferior -->
+  <rect y="400" width="${OG_W}" height="230" fill="url(#ogBottomDark)" />
+
+  <!-- Nombre del negocio -->
+  <text x="72" y="${titleY1}" fill="#ffffff"
+        font-size="80" font-family="Inter, Segoe UI, Arial, sans-serif"
+        font-weight="800" letter-spacing="-1.2">${line1}</text>
+  ${line2 ? `<text x="72" y="${titleY2}" fill="#ffffff"
+        font-size="80" font-family="Inter, Segoe UI, Arial, sans-serif"
+        font-weight="800" letter-spacing="-1.2">${line2}</text>` : ''}
+
+  <!-- Subtítulo -->
+  <text x="72" y="${subtitleY}" fill="rgba(255,255,255,0.78)"
+        font-size="32" font-family="Inter, Segoe UI, Arial, sans-serif" font-weight="500">
+    Catálogo por WhatsApp
   </text>
-  ${line2 && yTitle2 ? `<text x="56" y="${yTitle2}" fill="#f8fafc" font-size="52" font-family="Inter, Segoe UI, Arial, sans-serif" font-weight="800" letter-spacing="-0.5">${line2}</text>` : ''}
-  <text x="56" y="${ySub}" fill="#94a3b8" font-size="26" font-family="Inter, Segoe UI, Arial, sans-serif" font-weight="500">
-    Catálogo por WhatsApp · Walinka
+
+  <!-- Branding inferior -->
+  <text x="72" y="596" fill="rgba(255,255,255,0.50)"
+        font-size="24" font-family="Inter, Segoe UI, Arial, sans-serif" font-weight="500">
+    Walinka
   </text>
-  ${logoBlock}
+
+  <!-- Logo / V-Check (esquina superior derecha) -->
+  ${logoEl}
 </svg>`;
   }
 
-  return `
-<svg width="${OG_W}" height="${OG_H}" viewBox="0 0 ${OG_W} ${OG_H}" xmlns="http://www.w3.org/2000/svg">
+  /* ── VARIANTE SIN PORTADA (fondo degradado) ───────────────────────────── */
+  const hasLogo = Boolean(logoDataUri);
+
+  /* Logo grande centrado a la derecha, o V-Check si no hay logo */
+  const rightEl = hasLogo
+    ? `<clipPath id="ogLogoClip"><circle cx="952" cy="315" r="166" /></clipPath>
+  <circle cx="952" cy="315" r="192" fill="rgba(255,255,255,0.07)" />
+  <circle cx="952" cy="315" r="178" fill="rgba(255,255,255,0.92)" />
+  <image href="${logoDataUri}" x="786" y="149" width="332" height="332"
+         preserveAspectRatio="xMidYMid meet" clip-path="url(#ogLogoClip)" />`
+    : `${ogVcheckGradientDef('ogVG')}
+  <circle cx="952" cy="315" r="192" fill="rgba(255,255,255,0.07)" />
+  <circle cx="952" cy="315" r="166" fill="rgba(255,255,255,0.10)" />
+  ${ogVcheckIcon({ x: 884, y: 247, size: 136, gradId: 'ogVG' })}`;
+
+  const logoDefs2 = hasLogo
+    ? `<clipPath id="ogLogoClip"><circle cx="952" cy="315" r="166" /></clipPath>`
+    : '';
+
+  return `<svg width="${OG_W}" height="${OG_H}" viewBox="0 0 ${OG_W} ${OG_H}" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#5B21B6" />
-      <stop offset="45%" stop-color="#7C3AED" />
-      <stop offset="100%" stop-color="#A78BFA" />
+    <linearGradient id="ogBg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%"   stop-color="#3B0764" />
+      <stop offset="50%"  stop-color="#6D28D9" />
+      <stop offset="100%" stop-color="#8B5CF6" />
     </linearGradient>
-    <linearGradient id="overlay" x1="0" y1="0" x2="0.9" y2="0.9">
-      <stop offset="0%" stop-color="rgba(15,10,35,0.50)" />
-      <stop offset="100%" stop-color="rgba(15,10,35,0.25)" />
+    <linearGradient id="ogShine" x1="0" y1="0" x2="0.4" y2="1">
+      <stop offset="0%"   stop-color="rgba(255,255,255,0.07)" />
+      <stop offset="100%" stop-color="rgba(0,0,0,0.00)" />
     </linearGradient>
-    <linearGradient id="cardShadow" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="rgba(255,255,255,0.02)" />
-      <stop offset="100%" stop-color="rgba(30,20,60,0.08)" />
-    </linearGradient>
-    ${logoDataUri ? '' : ogVcheckGradientDef()}
+    ${logoDefs2}
   </defs>
-  <rect width="${OG_W}" height="${OG_H}" fill="url(#bg)" />
-  <rect x="0" y="0" width="${OG_W}" height="${OG_H}" fill="url(#overlay)" />
-  <text x="96" y="255" fill="#F8FAFC" font-size="72" font-family="Inter, Segoe UI, Arial, sans-serif" font-weight="800" letter-spacing="-1.2">${line1}</text>
-  ${line2 ? `<text x="96" y="338" fill="#F8FAFC" font-size="72" font-family="Inter, Segoe UI, Arial, sans-serif" font-weight="800" letter-spacing="-1.2">${line2}</text>` : ''}
-  <text x="96" y="430" fill="#EDE9FE" font-size="38" font-family="Inter, Segoe UI, Arial, sans-serif" font-weight="600">Catálogo por WhatsApp</text>
-  <text x="96" y="560" fill="rgba(248,250,252,0.78)" font-size="24" font-family="Inter, Segoe UI, Arial, sans-serif" font-weight="500">Creado con Walinka</text>
-  ${
-    logoDataUri
-      ? `<g>
-      <rect x="860" y="160" width="220" height="220" rx="28" fill="rgba(255,255,255,0.96)" />
-      <clipPath id="logoClip"><rect x="886" y="186" width="168" height="168" rx="20" /></clipPath>
-      <rect x="886" y="186" width="168" height="168" rx="20" fill="#ffffff" />
-      <image href="${logoDataUri}" x="886" y="186" width="168" height="168" preserveAspectRatio="xMidYMid meet" clip-path="url(#logoClip)" />
-    </g>`
-      : ogDefaultLogoBlockPlain()
-  }
+
+  <!-- Fondo degradado violeta -->
+  <rect width="${OG_W}" height="${OG_H}" fill="url(#ogBg)" />
+  <rect width="${OG_W}" height="${OG_H}" fill="url(#ogShine)" />
+
+  <!-- Decoración geométrica sutil (derecha) -->
+  <circle cx="1080" cy="-40" r="280" fill="rgba(255,255,255,0.04)" />
+  <circle cx="1060" cy="700" r="320" fill="rgba(255,255,255,0.03)" />
+
+  <!-- Nombre del negocio -->
+  <text x="72" y="${titleY1}" fill="#ffffff"
+        font-size="80" font-family="Inter, Segoe UI, Arial, sans-serif"
+        font-weight="800" letter-spacing="-1.2">${line1}</text>
+  ${line2 ? `<text x="72" y="${titleY2}" fill="#ffffff"
+        font-size="80" font-family="Inter, Segoe UI, Arial, sans-serif"
+        font-weight="800" letter-spacing="-1.2">${line2}</text>` : ''}
+
+  <!-- Subtítulo -->
+  <text x="72" y="${subtitleY}" fill="rgba(255,255,255,0.78)"
+        font-size="32" font-family="Inter, Segoe UI, Arial, sans-serif" font-weight="500">
+    Catálogo por WhatsApp
+  </text>
+
+  <!-- Branding inferior -->
+  <text x="72" y="596" fill="rgba(255,255,255,0.50)"
+        font-size="24" font-family="Inter, Segoe UI, Arial, sans-serif" font-weight="500">
+    Walinka
+  </text>
+
+  <!-- Logo / V-Check (derecha centrado) -->
+  ${rightEl}
 </svg>`;
 }
 
-/** Mínimo válido: fondo sólido + nombre (siempre 200). */
+/** Mínimo válido: fondo sólido + nombre. Siempre retorna 200. */
 function buildFallbackSvg(storeName) {
-  const line1 = escapeXml(wrapStoreName(storeName, 32, 1)[0] || 'Catálogo');
-  return `
-<svg width="${OG_W}" height="${OG_H}" viewBox="0 0 ${OG_W} ${OG_H}" xmlns="http://www.w3.org/2000/svg">
-  <rect width="${OG_W}" height="${OG_H}" fill="#1e1b4b" />
-  <text x="80" y="340" fill="#f8fafc" font-size="64" font-family="Inter, Segoe UI, Arial, sans-serif" font-weight="800">${line1}</text>
-  <text x="80" y="420" fill="#94a3b8" font-size="28" font-family="Inter, Segoe UI, Arial, sans-serif">Walinka</text>
+  const line1 = escapeXml(wrapStoreName(storeName, 26, 1)[0] || 'Catálogo');
+  return `<svg width="${OG_W}" height="${OG_H}" viewBox="0 0 ${OG_W} ${OG_H}" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="ogFbBg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%"   stop-color="#1e1b4b" />
+      <stop offset="100%" stop-color="#3730a3" />
+    </linearGradient>
+  </defs>
+  <rect width="${OG_W}" height="${OG_H}" fill="url(#ogFbBg)" />
+  <text x="80" y="330" fill="#f8fafc"
+        font-size="72" font-family="Inter, Segoe UI, Arial, sans-serif" font-weight="800"
+        letter-spacing="-1">${line1}</text>
+  <text x="80" y="420" fill="rgba(255,255,255,0.60)"
+        font-size="32" font-family="Inter, Segoe UI, Arial, sans-serif" font-weight="500">
+    Catálogo por WhatsApp
+  </text>
+  <text x="80" y="590" fill="rgba(255,255,255,0.40)"
+        font-size="24" font-family="Inter, Segoe UI, Arial, sans-serif">
+    Walinka
+  </text>
 </svg>`;
 }
 
@@ -387,7 +521,7 @@ export async function GET(request) {
     const supabase = createClient(supabaseUrl, serviceKey);
     const { data: row, error } = await supabase
       .from('wa_businesses')
-      .select('id, name, slug, logo_url, cover_image_url, design_settings, updated_at')
+      .select('id, name, slug, logo_url, cover_image_url, og_image_url, design_settings, updated_at')
       .eq('slug', slug)
       .eq('is_active', true)
       .maybeSingle();
@@ -416,6 +550,58 @@ export async function GET(request) {
 
     svgFallbackName = row.name || 'Catálogo';
     const ds = parseDesignSettings(row.design_settings);
+
+    // Diagnóstico temporal: loggear todos los campos de imagen para debug.
+    logOgCatalog('db_row', {
+      slug,
+      businessId: row.id,
+      og_image_url: row.og_image_url ?? '(not in row)',
+      cover_image_url: row.cover_image_url ?? null,
+      logo_url: row.logo_url ?? null,
+      design_settings_keys: Object.keys(ds),
+      ds_shareImageUrl: ds?.shareImageUrl ?? null,
+      ds_coverImageUrl: ds?.coverImageUrl ?? null,
+      ds_headerImageUrl: ds?.headerImageUrl ?? null,
+      ds_logoUrl: ds?.logoUrl ?? null,
+    });
+
+    // Prioridad 1: imagen de vista previa de WhatsApp cargada explícitamente.
+    // Se sirve como PROXY (bytes directos, no 302) — WhatsApp no sigue redirects
+    // desde og:image y mostraría tarjeta pequeña si se devuelve un Location header.
+    // Si el proxy falla (timeout, imagen corrupta, etc.) cae al pipeline SVG→PNG.
+    const ogPreviewUrl = pickOgPreviewUrl(row, ds);
+    if (ogPreviewUrl) {
+      const proxy = await proxyImageAsBuffer(ogPreviewUrl);
+      if (proxy.ok) {
+        logOgCatalog('render', {
+          slug,
+          businessId: row.id,
+          storeName: row.name,
+          renderMode: 'og_preview_proxy',
+          ogPreviewUrl,
+          contentType: proxy.contentType,
+          bytes: proxy.buffer.length,
+          coverOk: false,
+          logoOk: false,
+        });
+        return new Response(proxy.buffer, {
+          status: 200,
+          headers: {
+            'Content-Type': proxy.contentType,
+            'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=86400',
+            'X-OG-Source': 'og_image_url_proxy',
+          },
+        });
+      }
+      logOgCatalog('og_preview_proxy_failed', {
+        slug,
+        businessId: row.id,
+        ogPreviewUrl,
+        reason: proxy.reason,
+      });
+      // Proxy falló: continuar con pipeline SVG→PNG usando portada/logo.
+    }
+
     const storeName = String(row.name || 'Tu tienda');
     const coverUrl = pickCoverUrl(row, ds);
     const logoUrl = pickLogoUrl(row, ds);

@@ -16,11 +16,12 @@
  */
 import React, { useState, useEffect } from 'react';
 import Icon from '../../components/AppIcon';
-import { buildCfImageErrorHandler, cfImageUrl } from '../../utils/cloudflareImage';
-import { useResponsiveCfImageProfile } from '../../hooks/useResponsiveCfImageProfile';
+import CatalogImage from '../../components/CatalogImage';
+import { buildCfImageErrorHandler, cfImageUrl, unwrapCfImageUrl } from '../../utils/cloudflareImage';
 import { recordCatalogWhatsAppClick } from '../../services/waBusinessService';
 import { getPublicCatalogRelativePath } from '../../config/appUrl';
 import { normalizeTikTokUrl } from '../../utils/socialLinks';
+import { isRestaurantBusiness } from '../../utils/businessType';
 
 // ─── Bloques de info reutilizados en acordeón mobile y barra desktop ──────────
 
@@ -188,8 +189,7 @@ export default function CatalogStoreHeader({
 }) {
   const [mobileStoreInfoOpen, setMobileStoreInfoOpen] = useState(false);
   const [desktopInfoOpen, setDesktopInfoOpen] = useState(false);
-  const cfCoverProfile = useResponsiveCfImageProfile();
-
+  const coverImageProfile = isDesktop ? 'coverDesktop' : 'coverMobile';
   // Reset accordion when slug changes
   useEffect(() => { setMobileStoreInfoOpen(false); }, [slug]);
 
@@ -199,6 +199,7 @@ export default function CatalogStoreHeader({
   const primaryRgba      = theme?.primaryRgba      || (() => 'rgba(37,211,102,0.35)');
 
   const storeHeader = { showStoreName: true, showDescription: true, showWhatsAppButton: true, ...design?.storeHeader };
+  const isRestaurant = isRestaurantBusiness(business);
 
   const headerTemplate = (() => {
     const t = design?.headerTemplate;
@@ -210,6 +211,10 @@ export default function CatalogStoreHeader({
 
   const coverPositionY = design?.coverPositionY ?? 50;
   const coverObjectPosition = `50% ${coverPositionY}%`;
+  const coverUrlOriginal = business?.coverImageUrl || null;
+  const coverUrlNormalized = unwrapCfImageUrl(coverUrlOriginal);
+  const coverUrlTransformed = coverUrlNormalized ? cfImageUrl(coverUrlNormalized, coverImageProfile) : null;
+  const coverImageErrorHandler = coverUrlNormalized ? buildCfImageErrorHandler(coverUrlNormalized) : undefined;
 
   const whatsappPhone = business?.whatsapp?.replace(/\D/g, '');
   const storeWhatsAppUrl = whatsappPhone
@@ -237,6 +242,57 @@ export default function CatalogStoreHeader({
     recordCatalogWhatsAppClick(slug, path, 'store_header').catch(() => {});
   };
 
+  const renderCoverImage = (surface) => (
+    <img
+      src={coverUrlTransformed || coverUrlNormalized || ''}
+      alt=""
+      role="presentation"
+      className="absolute inset-0 h-full w-full object-cover"
+      style={{ objectPosition: coverObjectPosition }}
+      loading="eager"
+      fetchPriority="high"
+      decoding="async"
+      data-catalog-cover-image="true"
+      data-cover-layer="primary"
+      data-cover-surface={surface}
+      data-cover-preset={coverImageProfile}
+      onError={coverImageErrorHandler}
+    />
+  );
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const hostname = String(window.location.hostname || '').toLowerCase();
+    const isPreviewHost =
+      hostname.includes('vercel.app') ||
+      hostname.includes('preview') ||
+      hostname.includes('localhost') ||
+      hostname.endsWith('.ventalink.app');
+    if (!import.meta.env.DEV && !isPreviewHost) return;
+
+    const coverNodes = Array.from(document.querySelectorAll('[data-catalog-cover-image="true"]'));
+    const visibleCoverNodes = coverNodes.filter((node) => {
+      const style = window.getComputedStyle(node);
+      const rect = node.getBoundingClientRect();
+      return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
+    });
+
+    console.log('[CatalogStoreHeader] cover runtime', {
+      coverUrlOriginal,
+      coverUrlNormalized,
+      coverUrlTransformed,
+      preset: coverImageProfile,
+      isDesktop,
+      headerTemplate,
+      domCoverImages: coverNodes.length,
+      visibleCoverImages: visibleCoverNodes.length,
+      visibleLayers: visibleCoverNodes.map((node) => ({
+        layer: node.getAttribute('data-cover-layer') || 'unknown',
+        surface: node.getAttribute('data-cover-surface') || 'unknown',
+      })),
+    });
+  }, [coverImageProfile, coverUrlOriginal, coverUrlNormalized, coverUrlTransformed, headerTemplate, isDesktop]);
+
   return (
     <>
       {/* ── Cabecera fija móvil ── */}
@@ -260,11 +316,15 @@ export default function CatalogStoreHeader({
           )}
           <div className="flex-1 min-w-0 flex items-center gap-2.5">
             {business?.logoUrl ? (
-              <img
+              <CatalogImage
                 src={cfImageUrl(business.logoUrl, 'thumbnail')}
+                originalSrc={business.logoUrl}
                 alt=""
-                className="w-8 h-8 rounded-full object-cover flex-shrink-0"
-                onError={buildCfImageErrorHandler(business.logoUrl)}
+                className="w-8 h-8 rounded-full flex-shrink-0"
+                imgClassName="w-full h-full rounded-full object-cover"
+                variant="logo"
+                loading="eager"
+                fetchPriority="high"
               />
             ) : (
               <div
@@ -288,11 +348,15 @@ export default function CatalogStoreHeader({
             <div className="max-w-5xl mx-auto px-6 py-3.5 flex items-center gap-4">
               <div className="w-1 h-9 rounded-full flex-shrink-0" style={{ backgroundColor: primaryColor }} />
               {business?.logoUrl ? (
-                <img
+                <CatalogImage
                   src={cfImageUrl(business.logoUrl, 'thumbnail')}
+                  originalSrc={business.logoUrl}
                   alt={business?.name}
-                  className="w-10 h-10 rounded-full object-cover flex-shrink-0"
-                  onError={buildCfImageErrorHandler(business.logoUrl)}
+                  className="w-10 h-10 rounded-full flex-shrink-0"
+                  imgClassName="w-full h-full rounded-full object-cover"
+                  variant="logo"
+                  loading="eager"
+                  fetchPriority="high"
                 />
               ) : (
                 <div
@@ -311,6 +375,15 @@ export default function CatalogStoreHeader({
                   <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: primaryColor }} />
                   {badgeLabel}
                 </span>
+                {isRestaurant && (
+                  <span
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold flex-shrink-0"
+                    style={{ background: 'rgba(234,88,12,0.1)', color: '#C2410C' }}
+                  >
+                    <Icon name="UtensilsCrossed" size={10} color="#C2410C" />
+                    Menú
+                  </span>
+                )}
                 {business?.city && (
                   <span className="flex items-center gap-1 text-xs flex-shrink-0" style={{ color: theme?.isDark ? 'rgba(255,255,255,0.45)' : '#9CA3AF' }}>
                     <Icon name="MapPin" size={11} color={theme?.isDark ? 'rgba(255,255,255,0.35)' : '#9CA3AF'} />
@@ -344,11 +417,15 @@ export default function CatalogStoreHeader({
             >
               <div className="flex items-center gap-4 mb-3">
                 {business?.logoUrl ? (
-                  <img
+                  <CatalogImage
                     src={cfImageUrl(business.logoUrl, 'thumbnail')}
+                    originalSrc={business.logoUrl}
                     alt={business?.name}
-                    className="w-14 h-14 rounded-full object-cover border-2 border-white/30 flex-shrink-0"
-                    onError={buildCfImageErrorHandler(business.logoUrl)}
+                    className="w-14 h-14 rounded-full border-2 border-white/30 flex-shrink-0"
+                    imgClassName="w-full h-full rounded-full object-cover"
+                    variant="logo"
+                    loading="eager"
+                    fetchPriority="high"
                   />
                 ) : (
                   <div className="w-14 h-14 rounded-full flex items-center justify-center border-2 border-white/30 bg-white/20 flex-shrink-0">
@@ -385,14 +462,7 @@ export default function CatalogStoreHeader({
             </div>
             <div className="w-[42%] flex-shrink-0 relative overflow-hidden">
               {business?.coverImageUrl ? (
-                <img
-                  src={cfImageUrl(business.coverImageUrl, cfCoverProfile)}
-                  alt=""
-                  role="presentation"
-                  className="absolute inset-0 w-full h-full"
-                  style={{ objectFit: 'cover', objectPosition: coverObjectPosition }}
-                  onError={buildCfImageErrorHandler(business.coverImageUrl)}
-                />
+                renderCoverImage('desktop')
               ) : (
                 <div
                   className="absolute inset-0"
@@ -418,20 +488,11 @@ export default function CatalogStoreHeader({
         >
           {business?.coverImageUrl && (
             <>
-              <img
-                src={cfImageUrl(business.coverImageUrl, cfCoverProfile)}
+              {renderCoverImage('mobile')}
+              <div
+                className="pointer-events-none absolute inset-0"
+                style={{ background: `linear-gradient(180deg, ${primaryColorDark}12 0%, transparent 42%, ${primaryColorDark}22 100%)` }}
                 aria-hidden="true"
-                className="absolute inset-0 h-full w-full"
-                style={{ objectFit: 'cover', objectPosition: coverObjectPosition, filter: 'blur(14px)', transform: 'scale(1.15)', opacity: 0.75 }}
-                onError={buildCfImageErrorHandler(business.coverImageUrl)}
-              />
-              <img
-                src={cfImageUrl(business.coverImageUrl, cfCoverProfile)}
-                alt=""
-                role="presentation"
-                className="absolute inset-0 h-full w-full"
-                style={{ objectFit: 'cover', objectPosition: coverObjectPosition }}
-                onError={buildCfImageErrorHandler(business.coverImageUrl)}
               />
             </>
           )}
@@ -444,11 +505,15 @@ export default function CatalogStoreHeader({
               <div className="flex flex-col sm:flex-row sm:items-start gap-3 min-w-0 flex-1">
                 <div className="flex-shrink-0">
                   {business?.logoUrl ? (
-                    <img
+                    <CatalogImage
                       src={cfImageUrl(business.logoUrl, 'thumbnail')}
+                      originalSrc={business.logoUrl}
                       alt={business?.name}
-                      className="w-14 h-14 sm:w-16 sm:h-16 rounded-full object-cover border-2 border-gray-100"
-                      onError={buildCfImageErrorHandler(business.logoUrl)}
+                      className="w-14 h-14 sm:w-16 sm:h-16 rounded-full border-2 border-gray-100"
+                      imgClassName="w-full h-full rounded-full object-cover"
+                      variant="logo"
+                      loading="eager"
+                      fetchPriority="high"
                     />
                   ) : (
                     <div
@@ -473,6 +538,15 @@ export default function CatalogStoreHeader({
                       <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: primaryColor }} />
                       {badgeLabel}
                     </span>
+                    {isRestaurant && (
+                      <span
+                        className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold flex-shrink-0"
+                        style={{ background: 'rgba(234,88,12,0.1)', color: '#C2410C' }}
+                      >
+                        <Icon name="UtensilsCrossed" size={10} color="#C2410C" />
+                        Menú
+                      </span>
+                    )}
                   </div>
                   {business?.city && (
                     <div className="hidden md:flex items-center gap-1 mb-1">

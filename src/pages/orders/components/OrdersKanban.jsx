@@ -111,24 +111,24 @@ function KanbanColumnFrame({
   return (
     <div
       ref={droppable ? dropRef : undefined}
-      className="flex flex-col min-h-[min(420px,52vh)] min-w-0 flex-1 rounded-2xl transition-all duration-200 shadow-sm"
+    className="flex flex-col min-h-[min(420px,52vh)] min-w-0 flex-1 rounded-2xl border border-white/70 transition-all duration-200"
       style={{
-        backgroundColor: 'var(--color-card)',
+        backgroundColor: 'rgba(255,255,255,0.62)',
         boxShadow: isOver
           ? `0 8px 30px -8px ${accent}33, 0 0 0 1px ${accent}22`
-          : '0 1px 2px rgba(15, 23, 42, 0.05)',
+          : '0 10px 26px rgba(17,24,39,0.045)',
       }}
     >
       <div
         className="px-3.5 py-3 rounded-t-2xl shrink-0"
-        style={{ backgroundColor: headerTint }}
+        style={{ backgroundColor: 'rgba(255,255,255,0.5)' }}
       >
         <div className="flex items-center justify-between gap-2">
           <div className="min-w-0">
-            <p className="text-sm font-bold truncate tracking-tight" style={{ color: accent, fontFamily: 'var(--font-heading)' }}>
+            <p className="text-sm font-black truncate tracking-tight" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-heading)' }}>
               {title}
             </p>
-            <p className="text-[10px] font-medium truncate mt-0.5" style={{ color: accent, opacity: 0.75, fontFamily: 'var(--font-caption)' }}>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.08em] truncate mt-0.5" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
               {subtitle}
             </p>
           </div>

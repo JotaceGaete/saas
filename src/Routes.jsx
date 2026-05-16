@@ -19,9 +19,11 @@ import DesignPage from './pages/design';
 import HelpPage from './pages/help';
 import PublicCatalog from './pages/public-catalog';
 import PublicOffers from './pages/public-offers';
+import PublicProductPage from './pages/public-product';
 import OrderConfirmation from './pages/order-confirmation';
 import Orders from './pages/orders';
 import OrdersHistory from './pages/orders-history';
+import CustomerPage from './pages/customers';
 import Login from './pages/login';
 import AuthCallback from './pages/auth-callback';
 import ResetPassword from './pages/reset-password';
@@ -45,6 +47,7 @@ import PrivacyPage from './pages/legal/PrivacyPage';
 import RefundsPage from './pages/legal/RefundsPage';
 import DLocalReturnPage from './pages/billing-dlocal-return';
 import { useAuth } from './contexts/AuthContext';
+import PremiumLoader from './components/ui/PremiumLoader';
 
 /**
  * Raíz `/` en go.ventalink.app: sesión → dashboard; sin sesión → login (nunca apex/www).
@@ -57,15 +60,7 @@ function GoRootEntry() {
   const { user, loading } = useAuth();
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-white" style={{ fontFamily: 'var(--font-body)' }}>
-        <svg className="animate-spin mb-3" width={36} height={36} viewBox="0 0 24 24" fill="none" aria-hidden>
-          <circle cx="12" cy="12" r="10" stroke="rgba(124,58,237,0.2)" strokeWidth="3" />
-          <path d="M12 2a10 10 0 0 1 10 10" stroke="#7C3AED" strokeWidth="3" strokeLinecap="round" />
-        </svg>
-        <p className="text-sm text-slate-500">Cargando…</p>
-      </div>
-    );
+    return <PremiumLoader fullScreen />;
   }
 
   if (!isGo) {
@@ -100,6 +95,7 @@ const Routes = () => {
             <Route path="/product-editor" element={<RequireAuth><ProductEditor /></RequireAuth>} />
             <Route path="/orders/historial" element={<RequireAuth><OrdersHistory /></RequireAuth>} />
             <Route path="/orders" element={<RequireAuth><Orders /></RequireAuth>} />
+            <Route path="/customers/:customerId" element={<RequireAuth><CustomerPage /></RequireAuth>} />
             <Route path="/design" element={<RequireAuth><DesignPage /></RequireAuth>} />
             <Route path="/ayuda" element={<RequireAuth><HelpPage /></RequireAuth>} />
             <Route path="/login" element={<Login />} />
@@ -121,6 +117,8 @@ const Routes = () => {
             <Route path="/catalog/:slug" element={<PublicCatalog />} />
             <Route path="/catalog/:slug/checkout" element={<OrderConfirmation />} />
             <Route path="/catalogo/:slug/ofertas" element={<PublicOffers />} />
+            <Route path="/p/:businessSlug/:productSlug" element={<PublicProductPage />} />
+            <Route path="/catalogo/:businessSlug/producto/:productSlug" element={<PublicProductPage />} />
             <Route path="/catalogo/:slug" element={<PublicCatalog />} />
             <Route path="/catalogo/:slug/checkout" element={<OrderConfirmation />} />
             <Route path="/admin" element={<Navigate to="/admin/businesses" replace />} />

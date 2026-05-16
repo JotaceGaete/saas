@@ -6,6 +6,11 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const RESEND_API_URL = 'https://api.resend.com/emails';
+const EMAIL_AUTOMATION_DISABLED_REASON = 'EMAIL_AUTOMATION_DISABLED';
+
+function isEmailAutomationEnabled() {
+  return Deno.env.get('EMAIL_AUTOMATION_ENABLED') === 'true';
+}
 const FROM_EMAIL = 'Walinka <hola@mail.ventalink.app>';
 
 const ADMIN_PREVIEW_TYPES = new Set([
@@ -668,6 +673,14 @@ Deno.serve(async (req) => {
 
   const emailType = typeof body?.type === 'string' ? body.type.trim() : '';
   const data = buildTemplateDataFromBody(body);
+
+  if (!isEmailAutomationEnabled()) {
+    console.log('[send-email] skipped: EMAIL_AUTOMATION_DISABLED', {
+      type: emailType || 'custom',
+      source: typeof body?.source === 'string' ? body.source.trim() || null : null,
+    });
+    return jsonResponse({ skipped: true, reason: EMAIL_AUTOMATION_DISABLED_REASON }, 200);
+  }
 
   console.log('[send-email] Request received:', { to, type: emailType, hasData: Object.keys(data).length > 0 });
 

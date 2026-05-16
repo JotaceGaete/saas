@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import PanelHeader from 'components/ui/PanelHeader';
 import DashboardAppShell from 'components/ui/DashboardAppShell';
 import DashboardLayoutContent from 'components/ui/DashboardLayoutContent';
+import PremiumLoader from 'components/ui/PremiumLoader';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
 import { useConfirmedEmailGuard } from '../../hooks/useConfirmedEmailGuard';
@@ -34,6 +35,7 @@ import { useBillingSubscriptionDisplayRow } from '../../hooks/useBillingSubscrip
 import { resolveCountryState, resolveBillingSetup, logCountryStateDebug } from '../../lib/country/state-model';
 import UnifiedSubscriptionCard from './components/UnifiedSubscriptionCard';
 import { useToast } from '../../components/ui/Toast';
+import { isRestaurantBusiness } from '../../utils/businessType';
 
 const PAYMENT_DEBUG_PREFIX = '[plans-payment-debug]';
 
@@ -355,6 +357,11 @@ export default function PlansPage() {
   }, [business?.id, unifiedSubscriptionViewModel]);
   /** "Suscripción programada" solo si hay downgrade/cambio futuro confirmado en BD, no solo por estar en trial. */
   const showStarterScheduledSubscriptionLabel = isTrialWithSubscription && Boolean(business?.scheduledPlanSlug);
+  const isRestaurant = isRestaurantBusiness(business);
+  const billingHeroSubtitle = isRestaurant
+    ? 'Gestiona el plan de tu restaurante y las herramientas disponibles para tu menú.'
+    : 'Administra tu suscripción y el crecimiento de tu tienda.';
+  const planNoun = isRestaurant ? 'menú' : 'catálogo';
   /** Obtiene access_token válido para Edge Functions que validan JWT internamente. */
   const getValidAccessToken = async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -968,20 +975,28 @@ export default function PlansPage() {
   };
 
   if (businessLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--color-background)' }}>
-        <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: 'var(--color-primary)', borderTopColor: 'transparent' }} />
-      </div>
-    );
+    return <PremiumLoader fullScreen business={business} />;
   }
 
   return (
-    <DashboardAppShell backgroundColor="var(--color-background)">
+    <DashboardAppShell backgroundColor="#f6f7fb">
         <PanelHeader
           title={<h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Plan y facturación</h1>}
           subtitle={<p className="text-xs hidden sm:block mt-0.5" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>{isManualBillingMode ? 'Gestiona tu plan, límites y renovación manual' : 'Gestiona tu plan, límites y renovación'}</p>}
         />
-        <DashboardLayoutContent>
+        <DashboardLayoutContent className="page-enter">
+
+          <section className="mb-7 border-b pb-6" style={{ borderColor: 'rgba(17,24,39,0.08)' }}>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+              Suscripción
+            </p>
+            <h2 className="mt-2 text-3xl font-semibold leading-tight sm:text-4xl" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-heading)', letterSpacing: '-0.03em' }}>
+              Plan y facturación
+            </h2>
+            <p className="mt-3 max-w-2xl text-sm leading-6 sm:text-base" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-body)' }}>
+              {billingHeroSubtitle}
+            </p>
+          </section>
 
           {business?.id && (
             <UnifiedSubscriptionCard
@@ -990,6 +1005,15 @@ export default function PlansPage() {
               onScrollToPlans={() => document.getElementById('planes-grid')?.scrollIntoView({ behavior: 'smooth' })}
             />
           )}
+
+          <div className="mb-4 mt-8 flex flex-col gap-1">
+            <h3 className="text-xl font-semibold" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}>
+              Elige cómo quieres crecer
+            </h3>
+            <p className="text-sm leading-6" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-body)' }}>
+              Planes pensados para operar tu {planNoun} sin ruido técnico.
+            </p>
+          </div>
 
           <div id="planes-grid" className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-5">
             {PLAN_SLUGS.map((slug) => {
@@ -1008,29 +1032,30 @@ export default function PlansPage() {
                 <div
                   key={slug}
                   className={[
-                    'relative rounded-2xl border p-5 flex flex-col transition-all',
-                    isProRecommended ? 'ring-2 ring-violet-500/20 border-violet-200/90 shadow-md shadow-violet-500/10' : '',
+                    'relative rounded-2xl border p-5 flex flex-col transition-all duration-200 hover:-translate-y-0.5',
+                    isProRecommended ? 'shadow-[0_18px_40px_rgba(17,24,39,0.08)]' : '',
                   ].filter(Boolean).join(' ')}
                   style={{
-                    backgroundColor: isCurrent ? 'rgba(124,58,237,0.06)' : '#ffffff',
-                    borderColor: isCurrent ? 'var(--color-primary)' : 'var(--color-border)',
-                    boxShadow: isCurrent ? '0 0 0 2px rgba(124,58,237,0.2)' : '0 1px 4px rgba(0,0,0,0.05)',
+                    backgroundColor: isCurrent ? 'rgba(255,255,255,0.86)' : 'rgba(255,255,255,0.72)',
+                    borderColor: isCurrent ? 'rgba(17,24,39,0.22)' : 'rgba(17,24,39,0.08)',
+                    boxShadow: isCurrent ? '0 0 0 1px rgba(17,24,39,0.14), 0 18px 42px rgba(17,24,39,0.08)' : '0 12px 30px rgba(17,24,39,0.045)',
                   }}
                 >
                   {isProRecommended && (
                     <span
-                      className="absolute -top-2.5 left-1/2 -translate-x-1/2 rounded-full bg-violet-600 px-3 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white shadow-sm font-[family-name:var(--font-caption)]"
+                      className="absolute -top-2.5 left-1/2 -translate-x-1/2 rounded-full px-3 py-0.5 text-[10px] font-semibold uppercase tracking-wide shadow-sm font-[family-name:var(--font-caption)]"
+                      style={{ backgroundColor: '#111827', color: '#fff' }}
                       aria-hidden
                     >
                       Popular
                     </span>
                   )}
                   <div className="flex items-center justify-between mb-4 pt-1">
-                    <h2 className="text-lg font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>
+                    <h2 className="text-lg font-semibold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.015em' }}>
                       {getPlanLabel(slug)}
                     </h2>
                     {isCurrent && (
-                      <span className="text-xs font-semibold px-2 py-1 rounded-full" style={{ backgroundColor: 'var(--color-primary)', color: '#fff' }}>
+                      <span className="text-xs font-semibold px-2 py-1 rounded-full" style={{ backgroundColor: 'rgba(17,24,39,0.08)', color: '#111827' }}>
                         Actual
                       </span>
                     )}
@@ -1044,7 +1069,7 @@ export default function PlansPage() {
                       <p
                         className={
                           planBillingDisplayCurrency === 'CLP'
-                            ? 'text-3xl font-extrabold text-violet-900 tracking-tight'
+                            ? 'text-3xl font-semibold text-slate-950 tracking-tight'
                             : 'text-2xl font-bold text-slate-900'
                         }
                         style={{ fontFamily: 'var(--font-heading)' }}
@@ -1058,7 +1083,7 @@ export default function PlansPage() {
                   </div>
                   <ul className="space-y-2 mb-6 flex-1">
                     <li className="flex items-center gap-2.5 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
-                      <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600" aria-hidden>
+                        <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-slate-600" style={{ backgroundColor: 'rgba(17,24,39,0.06)' }} aria-hidden>
                         <Icon name="Package" size={16} color="currentColor" />
                       </span>
                       <span>
@@ -1068,7 +1093,7 @@ export default function PlansPage() {
                       </span>
                     </li>
                     <li className="flex items-center gap-2.5 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
-                      <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600" aria-hidden>
+                        <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-slate-600" style={{ backgroundColor: 'rgba(17,24,39,0.06)' }} aria-hidden>
                         <Icon name="ShoppingCart" size={16} color="currentColor" />
                       </span>
                       <span>
@@ -1101,7 +1126,7 @@ export default function PlansPage() {
                       </>
                     )}
                   </ul>
-                  <div className="pt-4 border-t" style={{ borderColor: 'var(--color-border)' }}>
+                  <div className="pt-4 border-t" style={{ borderColor: 'rgba(17,24,39,0.08)' }}>
                     {isCurrent ? (
                       <span className="text-sm font-medium" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
                         Tu plan actual
@@ -1111,8 +1136,8 @@ export default function PlansPage() {
                         <button
                           type="button"
                           disabled
-                          className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium opacity-60"
-                          style={{ color: 'var(--color-muted-foreground)', border: '1px solid var(--color-border)' }}
+                          className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium opacity-60"
+                          style={{ color: 'var(--color-muted-foreground)', border: '1px solid rgba(17,24,39,0.10)', backgroundColor: 'rgba(255,255,255,0.54)' }}
                         >
                           {!isAuthenticated
                             ? 'Inicia sesión para contratar'
@@ -1128,7 +1153,7 @@ export default function PlansPage() {
                             type="button"
                             disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !isPurchasable || isAutomaticCheckoutBlocked}
                             onClick={() => handlePayWithMercadoPago(slug)}
-                            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+                            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:-translate-y-px disabled:opacity-60"
                             style={{ backgroundColor: '#009EE3' }}
                           >
                             {loadingPlanSlug === slug ? (
@@ -1148,7 +1173,7 @@ export default function PlansPage() {
                             type="button"
                             disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !isPurchasable || isAutomaticCheckoutBlocked || !isProviderReadyForCheckout(PAYMENT_PROVIDERS.PAYPAL)}
                             onClick={() => handlePayWithPaypal(slug)}
-                            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+                            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:-translate-y-px disabled:opacity-60"
                             style={{ backgroundColor: '#0070ba' }}
                           >
                             {loadingPlanSlug === slug ? (
@@ -1168,7 +1193,7 @@ export default function PlansPage() {
                             type="button"
                             disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !isPurchasable}
                             onClick={() => handleOpenIntlPlanPreview(slug)}
-                            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+                            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:-translate-y-px disabled:opacity-60"
                             style={{ backgroundColor: '#25D366' }}
                           >
                             {loadingPlanSlug === slug ? (
@@ -1199,8 +1224,8 @@ export default function PlansPage() {
           </div>
 
           {preview && previewPlanSlug && (
-            <div className="rounded-xl border p-5 mt-6" style={{ backgroundColor: 'var(--color-muted)', borderColor: 'var(--color-primary)' }}>
-              <h3 className="text-sm font-semibold mb-3" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>Resumen antes de pagar</h3>
+            <div className="rounded-2xl border p-5 mt-6" style={{ backgroundColor: 'rgba(255,255,255,0.78)', borderColor: 'rgba(17,24,39,0.10)', boxShadow: '0 16px 40px rgba(17,24,39,0.06)' }}>
+              <h3 className="text-base font-semibold mb-3" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.015em' }}>Resumen antes de pagar</h3>
               <ul className="space-y-1.5 text-sm mb-4" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
                 <li>Plan actual: <strong>{getPlanLabel(preview.currentPlanSlug)}</strong></li>
                 <li>Plan destino: <strong>{getPlanLabel(preview.targetPlanSlug)}</strong></li>
@@ -1212,7 +1237,7 @@ export default function PlansPage() {
                 {preview.effectiveAt && (
                   <li>Vigente desde: <strong>{new Date(preview.effectiveAt).toLocaleDateString(planBillingDisplayLocale, { dateStyle: 'medium' })}</strong></li>
                 )}
-                <li className="pt-2 border-t" style={{ borderColor: 'var(--color-border)' }}>
+                <li className="pt-2 border-t" style={{ borderColor: 'rgba(17,24,39,0.08)' }}>
                   Total a pagar: <strong className="text-base" style={{ color: 'var(--color-foreground)' }}>
                     {preview.changeType === 'downgrade' || preview.finalAmount === 0
                       ? 'Sin cargo (crédito aplicado)'

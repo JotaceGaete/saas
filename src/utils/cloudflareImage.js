@@ -1,24 +1,27 @@
 /**
- * URLs optimizadas vía Cloudflare Image Resizing (/cdn-cgi/image).
- * Solo transforma orígenes en media.gong.cl; el resto se devuelve igual (blobs, data:, relativas, otros hosts).
+ * URLs optimizadas via Cloudflare Image Resizing (/cdn-cgi/image).
+ * Solo transforma origenes en media.gong.cl; el resto se devuelve igual (blobs, data:, relativas, otros hosts).
  *
- * El proxy DEBE apuntar a un hostname donde Image Resizing esté habilitado en el dashboard de Cloudflare.
- * No usar window.location.origin: subdominios de preview (p. ej. c1.ventalink.app) suelen devolver 403 en /cdn-cgi/image.
- *
- * Opcional: VITE_CF_IMAGE_ORIGIN=https://ventalink.app (o el host que tengáis configurado).
+ * El proxy debe apuntar a un hostname donde Image Resizing este habilitado.
+ * Opcional: VITE_CF_IMAGE_ORIGIN=https://ventalink.app
  */
 
-/** @type {Record<'mobile'|'desktop'|'thumbnail'|'cardMobile'|'cardFastMobile', string>} */
+/** @type {Record<'mobile'|'desktop'|'card'|'thumbnail'|'cover'|'coverMobile'|'coverDesktop'|'modal'|'cardMobile'|'cardFastMobile', string>} */
 export const CF_IMAGE_PROFILES = {
-  mobile: 'width=600,quality=65,format=auto',
-  desktop: 'width=1200,quality=80,format=auto',
+  mobile: 'width=500,quality=75,format=auto',
+  desktop: 'width=900,quality=80,format=auto',
+  card: 'width=500,quality=75,format=auto',
   thumbnail: 'width=300,quality=60,format=auto',
+  cover: 'width=1800,quality=88,format=auto',
+  coverMobile: 'width=900,quality=82,format=auto',
+  coverDesktop: 'width=1800,quality=88,format=auto',
+  modal: 'width=1000,quality=80,format=auto',
   cardMobile: 'width=380,quality=72,format=auto',
   cardFastMobile: 'width=320,quality=60,format=auto',
 };
 
+const CF_IMAGE_PATH_MARKER = '/cdn-cgi/image/';
 const MEDIA_HOST = 'media.gong.cl';
-
 const DEFAULT_CF_IMAGE_ORIGIN = 'https://walinka.com';
 
 const PRODUCTION_CF_HOSTS = new Set([
@@ -59,14 +62,35 @@ export function isCfTransformableUrl(url) {
 }
 
 /**
+ * Si la URL ya viene transformada por Cloudflare (/cdn-cgi/image/...),
+ * recupera la URL origen para poder re-aplicar un preset mas apropiado.
+ * @param {string} [url]
+ * @returns {string | null}
+ */
+export function unwrapCfImageUrl(url) {
+  if (!url || typeof url !== 'string') return null;
+  const trimmed = url.trim();
+  const markerIndex = trimmed.indexOf(CF_IMAGE_PATH_MARKER);
+  if (markerIndex === -1) return trimmed;
+
+  const tail = trimmed.slice(markerIndex + CF_IMAGE_PATH_MARKER.length);
+  const firstSlash = tail.indexOf('/');
+  if (firstSlash === -1) return trimmed;
+
+  const originalUrl = tail.slice(firstSlash + 1);
+  return /^https?:\/\//i.test(originalUrl) ? originalUrl : trimmed;
+}
+
+/**
  * @param {string} originalUrl
- * @param {'mobile'|'desktop'|'thumbnail'} [profile='thumbnail']
+ * @param {'mobile'|'desktop'|'card'|'thumbnail'|'cover'|'coverMobile'|'coverDesktop'|'modal'|'cardMobile'|'cardFastMobile'} [profile='thumbnail']
  * @returns {string}
  */
 export function cfImageUrl(originalUrl, profile = 'thumbnail') {
-  if (!isCfTransformableUrl(originalUrl)) return originalUrl;
+  const sourceUrl = unwrapCfImageUrl(originalUrl) || originalUrl;
+  if (!isCfTransformableUrl(sourceUrl)) return sourceUrl;
   const opts = CF_IMAGE_PROFILES[profile] || CF_IMAGE_PROFILES.thumbnail;
-  return `${getCfImageOrigin()}/cdn-cgi/image/${opts}/${originalUrl}`;
+  return `${getCfImageOrigin()}/cdn-cgi/image/${opts}/${sourceUrl}`;
 }
 
 /**
@@ -77,11 +101,12 @@ export function cfImageUrl(originalUrl, profile = 'thumbnail') {
 export function buildCfImageErrorHandler(originalUrl) {
   return function handleCfImageError(e) {
     const el = e?.currentTarget;
-    if (!el || !originalUrl || typeof originalUrl !== 'string') return;
+    const sourceUrl = unwrapCfImageUrl(originalUrl) || originalUrl;
+    if (!el || !sourceUrl || typeof sourceUrl !== 'string') return;
     if (el.getAttribute('data-cf-fallback') === '1') return;
-    if (!isCfTransformableUrl(originalUrl)) return;
+    if (!isCfTransformableUrl(sourceUrl)) return;
     el.setAttribute('data-cf-fallback', '1');
     el.onerror = null;
-    el.src = originalUrl;
+    el.src = sourceUrl;
   };
 }

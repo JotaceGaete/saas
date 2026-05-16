@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+﻿import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import CatalogLayout from './CatalogLayout';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
@@ -10,6 +10,7 @@ import { formatPrice as formatPriceUtil, resolveCatalogCurrency } from '../../ut
 import { getBusinessLocale } from '../../lib/locale/businessLocale';
 import { useIsDesktop } from '../../hooks/useMediaQuery';
 import { useAuth } from '../../contexts/AuthContext';
+import PremiumLoader from '../../components/ui/PremiumLoader';
 import {
   getPublicCatalogBaseUrl,
   getPublicCatalogRelativePath,
@@ -17,11 +18,11 @@ import {
   getWhatsAppOrderCatalogUrl,
 } from '../../config/appUrl';
 import BrandingFooter from '../../components/BrandingFooter';
+import CatalogImage from '../../components/CatalogImage';
 import { hasViralBranding, getOrderMessageBrandingSuffix } from '../../utils/branding';
 import { isRestaurantBusiness } from '../../utils/businessType';
 import { normalizeOptionalCustomerPhone } from '../../utils/customerPhone';
-import { buildCfImageErrorHandler, cfImageUrl, isCfTransformableUrl } from '../../utils/cloudflareImage';
-import { useResponsiveCfImageProfile } from '../../hooks/useResponsiveCfImageProfile';
+import { cfImageUrl, isCfTransformableUrl } from '../../utils/cloudflareImage';
 import CheckoutPhoneOptional from '../../components/checkout/CheckoutPhoneOptional';
 import { getCountryLabels, DELIVERY_ADDRESS_FIELD_HINT } from '../../config/country';
 import { resolveCatalogSeoContent } from '../../utils/catalogDynamicSeo';
@@ -31,6 +32,7 @@ import {
   getCatalogOgImageUrl,
   getCatalogShareDescription,
   getCatalogShareDocumentTitle,
+  resolveCatalogFooterText,
   stringifyJsonLd,
 } from '../../utils/catalogSeo';
 import { getProductCardTrustBadge } from '../../utils/productCardBadge';
@@ -93,6 +95,47 @@ export function getProductImages(product) {
   return result;
 }
 
+export function getProductCardImage(product) {
+  return product?.cardImageUrl || product?.thumbnailUrl || getProductImages(product)?.[0] || null;
+}
+
+function getProductCommercialState(product) {
+  if (product?.isActive === false) return 'hidden';
+  if (product?.isSoldOut === true) return 'sold_out';
+  return 'available';
+}
+
+function logCfCacheStatusIfPossible(url) {
+  if (!import.meta.env.DEV) return;
+  if (typeof window === 'undefined' || !url || typeof fetch !== 'function') return;
+
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 1800);
+
+  fetch(url, {
+    method: 'HEAD',
+    cache: 'force-cache',
+    signal: controller.signal,
+  })
+    .then((response) => {
+      const cacheStatus = response.headers.get('cf-cache-status');
+      console.debug('[CatalogImageDebug] cf-cache-status', {
+        optimizedUrl: url,
+        cacheStatus: cacheStatus || 'unavailable',
+        status: response.status,
+      });
+    })
+    .catch((error) => {
+      console.debug('[CatalogImageDebug] cf-cache-status unavailable', {
+        optimizedUrl: url,
+        reason: error?.name || error?.message || 'unknown',
+      });
+    })
+    .finally(() => {
+      window.clearTimeout(timeoutId);
+    });
+}
+
 
 // SocialLinks, CatalogInfoBlock, CatalogInfoGrid → moved to CatalogStoreHeader.jsx
 
@@ -129,8 +172,17 @@ function CatalogInner({ slug }) {
     if (conn && SLOW_TYPES.has(conn.effectiveType)) return 4;
     return 8;
   });
+  const [activeFeaturedIndex, setActiveFeaturedIndex] = useState(0);
+  const [isFeaturedHovered, setIsFeaturedHovered] = useState(false);
+  const [isFeaturedAutoplayPaused, setIsFeaturedAutoplayPaused] = useState(false);
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
   /** Desktop: si el carril de categorías puede seguir scrolleando a izquierda/derecha (para flechas). */
   const [categoryScrollMore, setCategoryScrollMore] = useState({ left: false, right: false });
+  const featuredTouchStartX = useRef(0);
+  const featuredTouchEndX = useRef(0);
+  const featuredSwipeTriggeredRef = useRef(false);
+  const featuredTouchInteractionRef = useRef(false);
+  const featuredAutoplayResumeTimeoutRef = useRef(null);
 
   const { itemCount } = useCart();
   const isDesktop = useIsDesktop();
@@ -145,6 +197,19 @@ function CatalogInner({ slug }) {
     if (!slug) return;
     loadCatalog();
   }, [slug]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
+    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const updatePreference = () => setPrefersReducedMotion(mediaQuery.matches);
+    updatePreference();
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', updatePreference);
+      return () => mediaQuery.removeEventListener('change', updatePreference);
+    }
+    mediaQuery.addListener(updatePreference);
+    return () => mediaQuery.removeListener(updatePreference);
+  }, []);
 
   const loadCatalog = async () => {
     setLoading(true);
@@ -211,9 +276,9 @@ function CatalogInner({ slug }) {
   const visibleCategories = useMemo(() => {
     if (!useCategories || !products?.length) return [];
     const withProducts = categoryNames.filter((name) =>
-      products.some((p) => (p?.category || '').trim() === name)
+      products.some((p) => getProductCommercialState(p) !== 'hidden' && (p?.category || '').trim() === name)
     );
-    const hasOtros = products.some((p) => !(p?.category || '').trim());
+    const hasOtros = products.some((p) => getProductCommercialState(p) !== 'hidden' && !(p?.category || '').trim());
     return [...withProducts, ...(hasOtros ? ['Otros'] : [])];
   }, [useCategories, categoryNames, products]);
 
@@ -223,6 +288,7 @@ function CatalogInner({ slug }) {
   // Filtered products (por búsqueda, categoría seleccionada y precio)
   const filteredProducts = useMemo(() => {
     return products?.filter(p => {
+      if (getProductCommercialState(p) === 'hidden') return false;
       const matchesSearch = !searchQuery?.trim() ||
         p?.name?.toLowerCase()?.includes(searchQuery?.toLowerCase()) ||
         p?.description?.toLowerCase()?.includes(searchQuery?.toLowerCase());
@@ -255,8 +321,43 @@ function CatalogInner({ slug }) {
     });
   }, [filteredProducts]);
 
-  const visibleProducts = useMemo(() => sortedProducts.slice(0, visibleCount), [sortedProducts, visibleCount]);
-  const hasMoreProducts = sortedProducts.length > visibleCount;
+  useEffect(() => {
+    if (typeof window === 'undefined' || sortedProducts.length <= 0) return undefined;
+
+    const preloadUrls = sortedProducts
+      .slice(0, isDesktop ? 6 : 4)
+      .map((product) => {
+        const cardImage = getProductCardImage(product);
+        if (!cardImage) return null;
+        return product?.thumbnailUrl || product?.cardImageUrl ? cardImage : cfImageUrl(cardImage, 'card');
+      })
+      .filter(Boolean);
+
+    if (preloadUrls.length <= 0) return undefined;
+    const isDev = import.meta.env.DEV;
+
+    const preloaders = preloadUrls.map((optimizedUrl, index) => {
+      if (isDev) {
+        console.debug('[CatalogImageDebug] preload optimizedUrl', { optimizedUrl, index });
+      }
+      const img = new window.Image();
+      img.decoding = 'async';
+      img.src = optimizedUrl;
+      return img;
+    });
+
+    if (isDev) {
+      preloadUrls.slice(0, 2).forEach((optimizedUrl) => {
+        logCfCacheStatusIfPossible(optimizedUrl);
+      });
+    }
+
+    return () => {
+      preloaders.forEach((img) => {
+        img.src = '';
+      });
+    };
+  }, [isDesktop, sortedProducts]);
 
   const hasActiveFilters = searchQuery?.trim() || (useCategories && selectedCategory !== 'all') || priceRange?.[0] > 0 || priceRange?.[1] < maxPrice;
 
@@ -470,18 +571,154 @@ function CatalogInner({ slug }) {
     return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
   };
 
-  const openProduct = (product) => setSelectedProduct(product);
+  const openProduct = (product) => {
+    if (getProductCommercialState(product) === 'hidden') return;
+    setSelectedProduct(product);
+  };
   const closeProduct = () => setSelectedProduct(null);
+  const handleFeaturedOpen = (product) => {
+    if (featuredSwipeTriggeredRef.current) {
+      featuredSwipeTriggeredRef.current = false;
+      return;
+    }
+    openProduct(product);
+  };
+  const clearFeaturedAutoplayResumeTimeout = useCallback(() => {
+    if (featuredAutoplayResumeTimeoutRef.current) {
+      window.clearTimeout(featuredAutoplayResumeTimeoutRef.current);
+      featuredAutoplayResumeTimeoutRef.current = null;
+    }
+  }, []);
+
+  const pauseFeaturedAutoplay = useCallback((options = {}) => {
+    const { resumeDelayMs = 6000, fromTouch = false } = options;
+    setIsFeaturedAutoplayPaused(true);
+    if (fromTouch) featuredTouchInteractionRef.current = true;
+    clearFeaturedAutoplayResumeTimeout();
+    if (resumeDelayMs <= 0) return;
+    featuredAutoplayResumeTimeoutRef.current = window.setTimeout(() => {
+      featuredTouchInteractionRef.current = false;
+      setIsFeaturedAutoplayPaused(false);
+      featuredAutoplayResumeTimeoutRef.current = null;
+    }, resumeDelayMs);
+  }, [clearFeaturedAutoplayResumeTimeout]);
+
+  const mainFeaturedProduct = useMemo(() => {
+    if (!Array.isArray(products)) return null;
+    return products.find((product) =>
+      getProductCommercialState(product) !== 'hidden' && (
+        product?.isMainFeatured === true ||
+        product?.is_main_featured === true
+      )
+    ) || null;
+  }, [products]);
+
+  const featuredProducts = useMemo(
+    () => (mainFeaturedProduct ? [mainFeaturedProduct] : []),
+    [mainFeaturedProduct]
+  );
+
+  useEffect(() => {
+    if (featuredProducts.length <= 0) {
+      setActiveFeaturedIndex(0);
+      return;
+    }
+    setActiveFeaturedIndex((current) => Math.min(current, featuredProducts.length - 1));
+  }, [featuredProducts.length]);
+
+  useEffect(() => {
+    if (!isFeaturedHovered && !featuredTouchInteractionRef.current) {
+      setIsFeaturedAutoplayPaused(false);
+    }
+  }, [isFeaturedHovered, featuredProducts.length]);
+
+  useEffect(() => {
+    if (featuredProducts.length <= 1 || prefersReducedMotion || isFeaturedAutoplayPaused || isFeaturedHovered) {
+      return undefined;
+    }
+    const intervalId = window.setInterval(() => {
+      setActiveFeaturedIndex((current) => {
+        if (featuredProducts.length <= 0) return 0;
+        return current >= featuredProducts.length - 1 ? 0 : current + 1;
+      });
+    }, 6000);
+    return () => window.clearInterval(intervalId);
+  }, [featuredProducts.length, isFeaturedAutoplayPaused, isFeaturedHovered, prefersReducedMotion]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || featuredProducts.length <= 1) return undefined;
+    const imagesToPreload = featuredProducts
+      .map((product, index) => {
+        if (index === activeFeaturedIndex) return null;
+        const imageUrl = getProductImages(product)?.[0];
+        if (!imageUrl) return null;
+        return cfImageUrl(imageUrl, isDesktop ? 'card' : 'thumbnail');
+      })
+      .filter(Boolean);
+    imagesToPreload.forEach((src) => {
+      const img = new window.Image();
+      img.src = src;
+    });
+    return undefined;
+  }, [activeFeaturedIndex, featuredProducts, isDesktop]);
+
+  const goToFeatured = useCallback((nextIndex) => {
+    setActiveFeaturedIndex(() => {
+      if (featuredProducts.length <= 0) return 0;
+      return ((nextIndex % featuredProducts.length) + featuredProducts.length) % featuredProducts.length;
+    });
+  }, [featuredProducts.length]);
+
+  const goPrevFeatured = useCallback(() => {
+    goToFeatured(activeFeaturedIndex - 1);
+  }, [activeFeaturedIndex, goToFeatured]);
+
+  const goNextFeatured = useCallback(() => {
+    goToFeatured(activeFeaturedIndex + 1);
+  }, [activeFeaturedIndex, goToFeatured]);
+
+  const handleFeaturedTouchStart = useCallback((e) => {
+    featuredSwipeTriggeredRef.current = false;
+    pauseFeaturedAutoplay({ resumeDelayMs: 8000, fromTouch: true });
+    featuredTouchStartX.current = e?.touches?.[0]?.clientX ?? 0;
+    featuredTouchEndX.current = featuredTouchStartX.current;
+  }, [pauseFeaturedAutoplay]);
+
+  const handleFeaturedTouchMove = useCallback((e) => {
+    featuredTouchEndX.current = e?.touches?.[0]?.clientX ?? 0;
+  }, []);
+
+  const handleFeaturedTouchEnd = useCallback(() => {
+    if (featuredProducts.length <= 1) return;
+    const diff = featuredTouchStartX.current - featuredTouchEndX.current;
+    if (Math.abs(diff) < 50) return;
+    featuredSwipeTriggeredRef.current = true;
+    if (diff > 0) goNextFeatured();
+    else goPrevFeatured();
+  }, [featuredProducts.length, goNextFeatured, goPrevFeatured]);
+
+  useEffect(() => () => {
+    clearFeaturedAutoplayResumeTimeout();
+  }, [clearFeaturedAutoplayResumeTimeout]);
+
+  const gridProducts = useMemo(() => {
+    if (!sortedProducts?.length) return [];
+    if (!mainFeaturedProduct?.id) return sortedProducts;
+    return sortedProducts.filter((product) => product?.id !== mainFeaturedProduct.id);
+  }, [mainFeaturedProduct?.id, sortedProducts]);
+  const visibleProducts = useMemo(() => gridProducts.slice(0, visibleCount), [gridProducts, visibleCount]);
+  const hasMoreProducts = gridProducts.length > visibleCount;
+
+  const totalGridProducts = useMemo(() => {
+    if (!Array.isArray(products)) return 0;
+    return products.filter((product) =>
+      getProductCommercialState(product) !== 'hidden' &&
+      (!mainFeaturedProduct?.id || product?.id !== mainFeaturedProduct.id)
+    ).length;
+  }, [mainFeaturedProduct?.id, products]);
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 font-catalog antialiased">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-10 h-10 border-[3px] border-t-transparent rounded-full animate-spin" style={{ borderColor: '#25D366', borderTopColor: 'transparent' }} />
-          <p className="text-sm text-gray-500 font-medium">Cargando catálogo...</p>
-        </div>
-      </div>
-    );
+    return <PremiumLoader fullScreen business={business} context="catalog" />;
   }
 
   if (notFound) {
@@ -519,6 +756,21 @@ function CatalogInner({ slug }) {
       : {};
 
   const storeName = business?.name || 'Catálogo';
+  const isRestaurant = isRestaurantBusiness(business);
+  const catalogFooterText = resolveCatalogFooterText({ business, products });
+  const activeFeaturedProduct = featuredProducts[activeFeaturedIndex] || null;
+  const activeFeaturedImage = activeFeaturedProduct ? getProductImages(activeFeaturedProduct)?.[0] || null : null;
+  const activeFeaturedTitle = isRestaurant && (activeFeaturedProduct?.isMainFeatured === true || activeFeaturedProduct?.is_main_featured === true)
+    ? '🍽️ Menú del día'
+    : '🔥 Producto destacado';
+  const featuredPrimaryCta = isRestaurant ? 'Pedir por WhatsApp' : 'Ver producto';
+  const featuredSecondaryCta = isRestaurant ? 'Ver producto' : 'Consultar por WhatsApp';
+  const hasFeaturedWhatsApp = !!business?.whatsapp?.replace(/\D/g, '');
+  const activeFeaturedDescription = (() => {
+    const raw = String(activeFeaturedProduct?.description || '').trim();
+    if (!raw) return '';
+    return raw.length > 140 ? `${raw.slice(0, 137).trim()}...` : raw;
+  })();
   const baseUrl = getPublicCatalogBaseUrl();
   const host =
     typeof window !== 'undefined' && window?.location?.host ? window.location.host : '';
@@ -544,6 +796,7 @@ function CatalogInner({ slug }) {
   const ogRegion = detectCatalogRegion(seoInput);
   const canonicalUrl = getPublicCatalogUrl(slug);
   const ogImage = getCatalogOgImageUrl(business, baseUrl);
+  const showGridEmptyState = gridProducts.length === 0 && (!mainFeaturedProduct || hasActiveFilters);
   const jsonLd =
     business && canonicalUrl
       ? buildLocalBusinessJsonLd({
@@ -559,6 +812,11 @@ function CatalogInner({ slug }) {
           host,
         })
       : null;
+  const openFeaturedWhatsApp = (product) => {
+    if (!product) return;
+    const url = buildSingleWhatsAppUrl(product);
+    if (url) openWhatsAppUrl(url);
+  };
 
   return (
     <CatalogLayout
@@ -615,6 +873,184 @@ function CatalogInner({ slug }) {
         onBack={isOwner ? () => navigate('/dashboard') : null}
       />
 
+      {activeFeaturedProduct && (
+        <div className="w-full px-4 pt-4 lg:max-w-5xl lg:mx-auto">
+          <section
+            className="overflow-hidden rounded-[28px] border shadow-sm"
+            onMouseEnter={() => {
+              clearFeaturedAutoplayResumeTimeout();
+              setIsFeaturedHovered(true);
+              setIsFeaturedAutoplayPaused(true);
+            }}
+            onMouseLeave={() => {
+              setIsFeaturedHovered(false);
+              if (!featuredTouchInteractionRef.current) {
+                setIsFeaturedAutoplayPaused(false);
+              }
+            }}
+            style={{
+              background: catalogTheme.sectionBg,
+              borderColor: catalogTheme.borderColor,
+              boxShadow: catalogTheme.isDark ? '0 10px 30px rgba(0,0,0,0.24)' : '0 12px 30px rgba(15,23,42,0.08)',
+            }}
+          >
+            <div className="grid gap-0 md:grid-cols-[1.1fr_1fr]">
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => handleFeaturedOpen(activeFeaturedProduct)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    handleFeaturedOpen(activeFeaturedProduct);
+                  }
+                }}
+                className="relative block h-[260px] w-full overflow-hidden bg-gray-100 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 md:h-[320px] lg:h-[360px]"
+                aria-label={`Ver ${activeFeaturedProduct?.name || 'producto destacado'}`}
+                onTouchStart={handleFeaturedTouchStart}
+                onTouchMove={handleFeaturedTouchMove}
+                onTouchEnd={handleFeaturedTouchEnd}
+                style={{ ['--tw-ring-color']: primaryColor }}
+              >
+                {activeFeaturedImage ? (
+                  <CatalogImage
+                    key={`${activeFeaturedProduct?.id || activeFeaturedProduct?.name || 'featured'}-${activeFeaturedIndex}`}
+                    src={cfImageUrl(activeFeaturedImage, isDesktop ? 'card' : 'thumbnail')}
+                    originalSrc={activeFeaturedImage}
+                    alt={activeFeaturedProduct?.name || 'Producto destacado'}
+                    className="h-full w-full"
+                    imgClassName="h-full w-full object-cover transition-transform duration-300 md:hover:scale-105"
+                    variant="product"
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center">
+                    <Icon name={isRestaurant ? 'UtensilsCrossed' : 'Sparkles'} size={44} color="#9CA3AF" />
+                  </div>
+                )}
+                {featuredProducts.length > 1 && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        pauseFeaturedAutoplay({ resumeDelayMs: 8000 });
+                        goPrevFeatured();
+                      }}
+                      className="absolute left-3 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur-sm transition-all hover:bg-black/60 active:scale-95"
+                      aria-label="Producto destacado anterior"
+                    >
+                      <Icon name="ChevronLeft" size={20} color="#FFFFFF" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        pauseFeaturedAutoplay({ resumeDelayMs: 8000 });
+                        goNextFeatured();
+                      }}
+                      className="absolute right-3 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur-sm transition-all hover:bg-black/60 active:scale-95"
+                      aria-label="Siguiente producto destacado"
+                    >
+                      <Icon name="ChevronRight" size={20} color="#FFFFFF" />
+                    </button>
+                    <div className="absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-2 rounded-full bg-black/35 px-3 py-1.5 backdrop-blur-sm">
+                      {featuredProducts.map((product, index) => (
+                        <button
+                          key={product?.id || product?.publicCode || `featured-dot-${index}`}
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            pauseFeaturedAutoplay({ resumeDelayMs: 8000 });
+                            goToFeatured(index);
+                          }}
+                          className="h-2.5 w-2.5 rounded-full transition-all"
+                          style={{
+                            backgroundColor: index === activeFeaturedIndex ? '#FFFFFF' : 'rgba(255,255,255,0.45)',
+                            transform: index === activeFeaturedIndex ? 'scale(1.1)' : 'scale(1)',
+                          }}
+                          aria-label={`Ver destacado ${index + 1}: ${product?.name || 'Producto'}`}
+                          aria-pressed={index === activeFeaturedIndex}
+                        />
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <div className="p-5 sm:p-6 md:p-7 flex flex-col justify-center">
+                <span
+                  className="inline-flex w-fit items-center gap-2 rounded-full px-3 py-1 text-xs font-black tracking-[0.04em]"
+                  style={{
+                    background: isRestaurant ? 'rgba(234,88,12,0.12)' : 'rgba(217,119,6,0.12)',
+                    color: isRestaurant ? '#C2410C' : '#B45309',
+                  }}
+                >
+                  {activeFeaturedTitle}
+                </span>
+
+                <button
+                  type="button"
+                  onClick={() => openProduct(activeFeaturedProduct)}
+                  className="mt-4 text-left hover:underline decoration-2 underline-offset-2 focus-visible:outline-none"
+                >
+                  <h2 className="text-2xl sm:text-[2rem] font-black tracking-tight" style={{ color: textColor }}>
+                    {activeFeaturedProduct?.name}
+                  </h2>
+                </button>
+
+                <div className="mt-3 flex items-center gap-3 flex-wrap">
+                  <span className="text-xl font-black tabular-nums" style={{ color: primaryColorDark }}>
+                    {formatPrice(activeFeaturedProduct?.price)}
+                  </span>
+                  {activeFeaturedProduct?.category?.trim() && (
+                    <span
+                      className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold"
+                      style={{ background: catalogTheme.cardBg, color: catalogTheme.chipText, border: `1px solid ${catalogTheme.borderColor}` }}
+                    >
+                      {activeFeaturedProduct.category}
+                    </span>
+                  )}
+                </div>
+
+                {activeFeaturedDescription && (
+                  <p className="mt-3 text-sm sm:text-[15px] leading-6" style={{ color: catalogTheme.isDark ? 'rgba(255,255,255,0.72)' : '#4B5563' }}>
+                    {activeFeaturedDescription}
+                  </p>
+                )}
+
+                <div className="mt-5 flex flex-col sm:flex-row gap-3">
+                  <button
+                    type="button"
+                    onClick={() => ((isRestaurant && hasFeaturedWhatsApp) ? openFeaturedWhatsApp(activeFeaturedProduct) : openProduct(activeFeaturedProduct))}
+                    className="inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-3 text-sm font-bold text-white transition-all active:scale-[0.98]"
+                    style={{ background: `linear-gradient(135deg, ${primaryColor}, ${primaryColorDark})` }}
+                  >
+                    <Icon name={(isRestaurant && hasFeaturedWhatsApp) ? 'MessageCircle' : 'Eye'} size={16} color="#FFFFFF" />
+                    {(isRestaurant && hasFeaturedWhatsApp) ? featuredPrimaryCta : 'Ver producto'}
+                  </button>
+
+                  {(!isRestaurant || hasFeaturedWhatsApp) && (
+                    <button
+                      type="button"
+                      onClick={() => (isRestaurant ? openProduct(activeFeaturedProduct) : openFeaturedWhatsApp(activeFeaturedProduct))}
+                      className="inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-3 text-sm font-bold transition-all active:scale-[0.98]"
+                      style={{
+                        background: catalogTheme.cardBg,
+                        color: textColor,
+                        border: `1px solid ${catalogTheme.borderColor}`,
+                      }}
+                    >
+                      <Icon name={isRestaurant ? 'Eye' : 'MessageCircle'} size={16} color="currentColor" />
+                      {featuredSecondaryCta}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
+
       {/* ── Buscador + categorías + precio (sticky): siempre accesibles al hacer scroll ── */}
       <div
         className="sticky z-30 backdrop-blur-md shadow-sm top-[calc(56px+var(--safe-area-top))] md:top-0"
@@ -623,7 +1059,7 @@ function CatalogInner({ slug }) {
           borderBottom: `1px solid ${catalogTheme.borderColor}`,
         }}
       >
-        <div className="max-w-5xl mx-auto px-4 py-3 space-y-3">
+        <div className="w-full px-4 py-3 space-y-3 lg:max-w-5xl lg:mx-auto">
           <div className="max-w-3xl mx-auto w-full">
             <div className="relative">
               <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
@@ -633,7 +1069,7 @@ function CatalogInner({ slug }) {
                 type="text"
                 value={searchQuery}
                 onChange={e => setSearchQuery(e?.target?.value)}
-                placeholder="Buscar productos..."
+                placeholder={isRestaurant ? 'Buscar en el menú...' : 'Buscar productos...'}
                 className="w-full pl-9 pr-9 py-2.5 rounded-2xl border text-sm focus:outline-none focus:ring-2 focus:border-transparent transition-all"
                 style={{
                   '--tw-ring-color': primaryColor,
@@ -724,7 +1160,7 @@ function CatalogInner({ slug }) {
                           : { background: catalogTheme.sectionBg, borderColor: catalogTheme.borderColor, color: catalogTheme.chipText }
                       }
                     >
-                      Todos
+                      {isRestaurant ? 'Todo el menú' : 'Todos'}
                     </button>
                   )}
                   {visibleCategories.map((cat) => (
@@ -799,7 +1235,7 @@ function CatalogInner({ slug }) {
 
       {/* ── Products: espacio extra abajo para botón flotante y safe area ── */}
       <div
-        className="max-w-7xl mx-auto px-4 py-3"
+        className="w-full max-w-full overflow-x-hidden px-4 py-3 lg:max-w-7xl lg:mx-auto"
         style={{
           paddingBottom: 'calc(8rem + var(--safe-area-bottom))',
           boxShadow: `inset 0 4px 12px ${catalogTheme.isDark ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.04)'}`,
@@ -813,14 +1249,16 @@ function CatalogInner({ slug }) {
           </p>
         )}
         {/* Product count */}
-        <p className="text-xs font-medium mb-3" style={{ color: catalogTheme.isDark ? 'rgba(255,255,255,0.4)' : '#9CA3AF' }}>
-          {sortedProducts?.length} {sortedProducts?.length === 1 ? 'producto' : 'productos'}
-          {hasActiveFilters && products?.length !== sortedProducts?.length && (
-            <span> de {products?.length}</span>
-          )}
-        </p>
+        {(gridProducts.length > 0 || showGridEmptyState) && (
+          <p className="text-xs font-medium mb-3" style={{ color: catalogTheme.isDark ? 'rgba(255,255,255,0.4)' : '#9CA3AF' }}>
+            {gridProducts.length} {gridProducts.length === 1 ? 'producto' : 'productos'}
+            {hasActiveFilters && totalGridProducts !== gridProducts.length && (
+              <span> de {totalGridProducts}</span>
+            )}
+          </p>
+        )}
 
-        {sortedProducts?.length === 0 ? (
+        {showGridEmptyState ? (
           <div className="text-center py-20">
             <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ background: catalogTheme.sectionBg }}>
               {hasActiveFilters ? (
@@ -846,7 +1284,7 @@ function CatalogInner({ slug }) {
               </button>
             )}
           </div>
-        ) : (
+        ) : gridProducts.length > 0 ? (
           /* Una sola grilla continua (vista Todos o categoría seleccionada) */
           <>
             <div className={gridClass} style={gridStyle}>
@@ -863,6 +1301,7 @@ function CatalogInner({ slug }) {
                   imageIndex={idx}
                   isDesktop={isDesktop}
                   imageProfile={cardImageProfile}
+                  isRestaurant={isRestaurant}
                 />
               ))}
             </div>
@@ -878,17 +1317,17 @@ function CatalogInner({ slug }) {
                     backgroundColor: theme.primaryRgba(0.08),
                   }}
                 >
-                  Ver más productos ({sortedProducts.length - visibleCount} restantes)
+                  Ver más productos ({gridProducts.length - visibleCount} restantes)
                 </button>
               </div>
             )}
           </>
-        )}
+        ) : null}
 
         {!loading && !notFound && business && catalogSeoContent?.visibleDescription && (
-          <div className="mt-10 md:mt-14 w-full flex justify-center px-0 sm:px-1">
+          <div className="mt-10 md:mt-14 flex w-full justify-center overflow-x-hidden px-0 sm:px-1">
             <section
-              className="w-full max-w-[min(100%,1200px)] rounded-2xl px-6 py-8 sm:px-10 sm:py-10 text-left"
+              className="w-full max-w-full rounded-2xl px-6 py-8 text-left sm:px-10 sm:py-10 lg:max-w-[min(100%,1200px)]"
               style={{
                 background: catalogTheme.sectionBg,
                 border: `1px solid ${catalogTheme.borderColor}`,
@@ -913,18 +1352,23 @@ function CatalogInner({ slug }) {
                 <p className="m-0 max-w-none text-pretty leading-[1.85] sm:leading-[1.9]">
                   {catalogSeoContent.visibleDescription}
                 </p>
-                <p
-                  className="m-0 max-w-none pt-6 text-pretty leading-[1.85] sm:leading-[1.9]"
-                  style={{
-                    borderTop: `1px solid ${catalogTheme.borderColor}`,
-                    color: catalogTheme.isDark ? 'rgba(255,255,255,0.62)' : '#374151',
-                  }}
-                >
-                  Contacta por WhatsApp para consultar disponibilidad, precios y detalles del catalogo.
-                </p>
               </div>
             </section>
           </div>
+        )}
+
+        {!loading && !notFound && business && catalogFooterText && (
+          <footer
+            className="mx-auto mt-10 w-full max-w-3xl px-3 text-center sm:mt-12"
+            aria-label="Texto del pie de página del catálogo"
+          >
+            <p
+              className="m-0 text-pretty text-sm font-medium leading-7 sm:text-[15px] sm:leading-8"
+              style={{ color: catalogTheme.isDark ? 'rgba(255,255,255,0.68)' : '#4B5563' }}
+            >
+              {catalogFooterText}
+            </p>
+          </footer>
         )}
 
         <BrandingFooter business={business} />
@@ -948,6 +1392,7 @@ function CatalogInner({ slug }) {
       {selectedProduct && (
         <ProductModal
           product={selectedProduct}
+          products={products}
           business={business}
           slug={slug}
           formatPrice={formatPrice}
@@ -1104,6 +1549,7 @@ function OrderPanel({ business, slug, formatPrice, onClose, theme }) {
     business?.countryCode ||
     business?.country ||
     null;
+  const countryLabels = getCountryLabels(checkoutUxCountry);
   const primaryColor = theme?.primaryColor || '#25D366';
   const primaryColorDark = theme?.primaryColorDark || '#128C7E';
   const primaryRgba = theme?.primaryRgba || (() => 'rgba(37,211,102,0.35)');
@@ -1319,11 +1765,14 @@ function OrderPanel({ business, slug, formatPrice, onClose, theme }) {
                   {/* Image */}
                   <div className="w-12 h-12 rounded-xl overflow-hidden bg-gray-100 flex-shrink-0">
                     {item?.imageUrl ? (
-                      <img
+                      <CatalogImage
                         src={cfImageUrl(item.imageUrl, 'thumbnail')}
+                        originalSrc={item.imageUrl}
                         alt={item?.name}
-                        className="w-full h-full object-cover"
-                        onError={buildCfImageErrorHandler(item.imageUrl)}
+                        className="w-full h-full"
+                        imgClassName="w-full h-full object-cover"
+                        variant="product"
+                        loading="lazy"
                       />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
@@ -1557,17 +2006,20 @@ export function ProductCard({
   imageIndex = 0,
   isDesktop = false,
   imageProfile,
+  isRestaurant = false,
 }) {
   const primaryColor = theme?.primaryColor || '#25D366';
   const primaryColorDark = theme?.primaryColorDark || '#128C7E';
   const showPrice = cardSettings?.showPrice !== false;
+  const productState = getProductCommercialState(product);
   const { addItem, updateQuantity, items } = useCart();
   const cartItem = items?.find(i => i?.id === product?.id);
   const qty = cartItem?.quantity || 0;
   const [bump, setBump] = useState(false);
   const isEager = imageIndex < 4;
   const imgProfile = imageProfile ?? (isDesktop ? 'thumbnail' : 'cardMobile');
-  const [imgLoaded, setImgLoaded] = useState(false);
+
+  if (productState === 'hidden') return null;
 
   const handleAdd = (e) => {
     e?.stopPropagation();
@@ -1589,12 +2041,16 @@ export function ProductCard({
   };
 
   const imgs = getProductImages(product);
+  const cardImage = getProductCardImage(product);
   const extraImages = imgs.length > 1 ? imgs.length - 1 : 0;
   const trustBadge = getProductCardTrustBadge(product);
   // discount viene del badge para no recalcular; null cuando no hay descuento real
   const discount = trustBadge?.discount ?? null;
   const imgAspect = compact ? 'aspect-square' : 'aspect-[4/5]';
   const roundTop = 'rounded-t-2xl';
+  const stateBadge = productState === 'sold_out'
+    ? { label: 'Agotado', style: { color: '#9A3412', backgroundColor: 'rgba(251,146,60,0.18)' } }
+    : null;
   const qtyTopClass =
     qty > 0 && trustBadge ? (compact ? 'top-7' : 'top-[1.85rem]') : 'top-1';
   // Sombra levemente más intensa para productos en oferta — señal visual sin romper diseño
@@ -1604,8 +2060,8 @@ export function ProductCard({
 
   return (
     <div
-      className="group flex h-full min-h-0 flex-col rounded-2xl bg-white text-left overflow-hidden will-change-transform transition-[transform,box-shadow] duration-200 ease-out md:hover:-translate-y-1 md:hover:scale-[1.01] md:hover:shadow-lg active:scale-[0.98]"
-      style={{ boxShadow: cardShadow }}
+      className="group flex h-full min-h-0 w-full flex-col overflow-hidden rounded-2xl border bg-white text-left will-change-transform transition-[transform,box-shadow] duration-200 ease-out md:hover:-translate-y-1 md:hover:scale-[1.01] md:hover:shadow-lg active:scale-[0.98]"
+      style={{ boxShadow: cardShadow, borderColor: theme?.borderColor || '#E5E7EB' }}
     >
       {/* Imagen: aspect-ratio + overflow aquí (no en la card entera) para no recortar el botón */}
       <button
@@ -1617,25 +2073,16 @@ export function ProductCard({
         className={`relative block w-full shrink-0 overflow-hidden bg-gray-50 text-left ${roundTop}`}
       >
         <div className={`relative w-full ${imgAspect} min-h-0`}>
-          {imgs[0] ? (
-            <>
-              {!imgLoaded && (
-                <div className="absolute inset-0 bg-gray-200 animate-pulse rounded-t-2xl" aria-hidden />
-              )}
-              <img
-                src={product?.cardImageUrl || cfImageUrl(imgs[0], imgProfile)}
-                alt={product?.name}
-                className={`h-full w-full object-cover transition-transform duration-300 group-hover:scale-105 ${imgLoaded ? '' : 'opacity-0'}`}
-                loading={isEager ? 'eager' : 'lazy'}
-                fetchPriority={isEager ? 'high' : 'low'}
-                decoding="async"
-                onLoad={() => setImgLoaded(true)}
-                onError={(e) => {
-                  buildCfImageErrorHandler(imgs[0])(e);
-                  if (e.currentTarget?.getAttribute('data-cf-fallback') === '1') setImgLoaded(true);
-                }}
-              />
-            </>
+          {cardImage ? (
+            <CatalogImage
+              src={cardImage === product?.thumbnailUrl || cardImage === product?.cardImageUrl ? cardImage : cfImageUrl(cardImage, imgProfile)}
+              originalSrc={cardImage}
+              alt={product?.name}
+              className="h-full w-full"
+              imgClassName="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+              variant="product"
+              loading={isEager ? 'eager' : 'lazy'}
+            />
           ) : (
             <div className={`flex h-full w-full items-center justify-center bg-gray-100 ${compact ? 'min-h-[72px]' : ''}`}>
               <Icon name="ImageOff" size={compact ? 20 : 32} color="#D1D5DB" />
@@ -1649,9 +2096,17 @@ export function ProductCard({
               {trustBadge.label}
             </span>
           )}
+          {stateBadge && (
+            <span
+              className={`absolute right-1 z-[1] rounded-full px-2 py-1 text-[9px] font-bold shadow-sm sm:text-[10px] ${compact ? 'top-1' : 'top-1.5'}`}
+              style={stateBadge.style}
+            >
+              {stateBadge.label}
+            </span>
+          )}
           {extraImages > 0 && (
             <div
-              className="absolute right-1 top-1 flex items-center gap-0.5 rounded px-1 py-0.5 text-[9px] font-semibold text-white shadow"
+              className={`absolute right-1 flex items-center gap-0.5 rounded px-1 py-0.5 text-[9px] font-semibold text-white shadow ${compact ? 'top-7' : 'top-[1.85rem]'}`}
               style={{ backgroundColor: 'rgba(0,0,0,0.55)' }}
             >
               <Icon name="Images" size={8} color="#fff" />
@@ -1666,7 +2121,10 @@ export function ProductCard({
               {qty}
             </div>
           )}
-          {product?.hasOptions && (
+          {productState === 'sold_out' && (
+            <div className="absolute inset-0 pointer-events-none" style={{ backgroundColor: 'rgba(0,0,0,0.32)' }} />
+          )}
+          {productState === 'available' && product?.hasOptions && (
             <div
               className="absolute bottom-1 left-1 flex items-center gap-0.5 rounded px-1 py-0.5 text-[9px] font-semibold"
               style={{ backgroundColor: 'rgba(234,179,8,0.9)', color: '#713f12' }}
@@ -1689,7 +2147,7 @@ export function ProductCard({
 
       {/* Bloque inferior: min-h-0 permite encoger en grid; título en caja de altura FIJA (2 líneas máx. reales) */}
       <div
-        className={`flex min-h-0 flex-1 flex-col justify-between bg-white ${compact ? 'gap-1 rounded-b-2xl px-1.5 pb-1.5 pt-1.5' : 'gap-1.5 rounded-b-2xl px-2.5 pb-2.5 pt-2'}`}
+        className={`flex min-h-0 flex-1 flex-col justify-between bg-white ${compact ? 'gap-2 rounded-b-2xl p-3' : 'gap-3 rounded-b-2xl p-4'}`}
       >
         {/* Top: category badge + name — only these grow/shrink */}
         <div className="flex min-h-0 w-full flex-col gap-1">
@@ -1730,7 +2188,18 @@ export function ProductCard({
               )}
             </div>
           )}
-          {readOnly ? (
+          {productState === 'sold_out' ? (
+            <button
+              type="button"
+              disabled
+              className={`flex w-full items-center justify-center gap-1.5 rounded-xl border text-center cursor-not-allowed ${
+                compact ? 'rounded-lg py-1.5 text-[11px] font-bold' : 'py-2.5 text-xs font-bold sm:py-3'
+              }`}
+              style={{ borderColor: 'rgba(107,107,107,0.2)', color: '#9CA3AF', backgroundColor: 'rgba(107,107,107,0.05)' }}
+            >
+              Agotado
+            </button>
+          ) : readOnly ? (
             <button
               type="button"
               onClick={() => onCtaClick?.(product)}
@@ -1758,7 +2227,7 @@ export function ProductCard({
               <span className={`inline-flex items-center justify-center rounded-full bg-white/20 text-white ${compact ? 'h-5 w-5' : 'h-6 w-6'}`}>
                 <Icon name="Plus" size={compact ? 11 : 13} color="#FFFFFF" strokeWidth={2.5} />
               </span>
-              Agregar
+              {isRestaurant ? 'Pedir' : 'Agregar'}
             </button>
           ) : (
             <div
@@ -1806,12 +2275,14 @@ function ThumbnailButton({ url, productName, index, isSelected, primaryColor, on
       {error ? (
         <Icon name="ImageOff" size={20} color="#D1D5DB" />
       ) : (
-        <img
+        <CatalogImage
           src={useDirect ? url : cfImageUrl(url, 'thumbnail')}
+          originalSrc={url}
           alt={`${productName ?? 'Producto'} ${index + 1}`}
-          className="w-full h-full object-cover"
+          className="w-full h-full"
+          imgClassName="w-full h-full object-cover"
           loading="lazy"
-          decoding="async"
+          variant="product"
           onError={() => {
             if (!useDirect && isCfTransformableUrl(url)) setUseDirect(true);
             else setError(true);
@@ -1822,19 +2293,67 @@ function ThumbnailButton({ url, productName, index, isSelected, primaryColor, on
   );
 }
 
+// ─── Restaurant add-ons ──────────────────────────────────────────────────────
+const ENABLE_RESTAURANT_ADDONS = true;
+const ENABLE_RESTAURANT_COMBOS = true;
+
+const normalizeComboItem = (item, index = 0) => {
+  if (!item || typeof item !== 'object') return null;
+  const priceValue = Number(item?.price);
+  const label = String(item?.label || '').trim();
+  if (!label) return null;
+  return {
+    id: item?.id || `combo-item-${index}`,
+    label,
+    price: Number.isFinite(priceValue) && priceValue >= 0 ? Math.round(priceValue) : 0,
+    _key: item?.id || `${label}-${index}`,
+  };
+};
+
+const normalizeComboGroup = (group, index = 0) => {
+  if (!group || typeof group !== 'object') return null;
+  const label = String(group?.label || '').trim();
+  const maxValue = Number(group?.maxSelections);
+  const items = Array.isArray(group?.items)
+    ? group.items.map((item, itemIndex) => normalizeComboItem(item, itemIndex)).filter(Boolean)
+    : [];
+  if (!label || items.length === 0) return null;
+  return {
+    id: group?.id || `combo-group-${index}`,
+    label,
+    required: group?.required === true,
+    maxSelections: Number.isFinite(maxValue) && maxValue > 0 ? Math.round(maxValue) : 1,
+    items,
+  };
+};
+
+const normalizeComboConfig = (comboConfig) => {
+  if (!comboConfig || typeof comboConfig !== 'object' || Array.isArray(comboConfig) || comboConfig?.enabled !== true) {
+    return null;
+  }
+  const groups = Array.isArray(comboConfig?.groups)
+    ? comboConfig.groups.map((group, index) => normalizeComboGroup(group, index)).filter(Boolean)
+    : [];
+  return {
+    enabled: true,
+    groups,
+  };
+};
+
 // ─── Product Modal ────────────────────────────────────────────────────────────
-export function ProductModal({ product, business, slug, formatPrice, whatsAppUrl, whatsAppMessage, onClose, theme, cardSettings, useCategories = false }) {
+export function ProductModal({ product, products = [], business, slug, formatPrice, whatsAppUrl, whatsAppMessage, onClose, theme, cardSettings, useCategories = false }) {
   const primaryColor = theme?.primaryColor || '#25D366';
   const primaryColorDark = theme?.primaryColorDark || '#128C7E';
   const primaryRgba = theme?.primaryRgba || (() => 'rgba(37,211,102,0.35)');
   const showPrice = cardSettings?.showPrice !== false;
+  const productState = getProductCommercialState(product);
+  const isRestaurant = isRestaurantBusiness(business);
   const showDescription = cardSettings?.showDescription !== false;
   const { addItem, items } = useCart();
   const cartItem = items?.find(i => i?.id === product?.id);
   const qty = cartItem?.quantity || 0;
+  const isSoldOut = productState === 'sold_out';
   const [copiedProductMessage, setCopiedProductMessage] = useState(false);
-  const cfMainProfile = useResponsiveCfImageProfile();
-
   const productImages = getProductImages(product);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [imageLoadError, setImageLoadError] = useState(false);
@@ -1844,7 +2363,7 @@ export function ProductModal({ product, business, slug, formatPrice, whatsAppUrl
 
   useEffect(() => { setSelectedIndex(0); }, [product?.id]);
   const mainUrl = productImages[selectedIndex];
-  const mainUrlOptimized = mainUrl ? cfImageUrl(mainUrl, cfMainProfile) : null;
+  const mainUrlOptimized = mainUrl ? cfImageUrl(mainUrl, 'modal') : null;
   const [useMainDirect, setUseMainDirect] = useState(false);
 
   // Reset error/loaded al cambiar de imagen o de producto
@@ -1852,7 +2371,7 @@ export function ProductModal({ product, business, slug, formatPrice, whatsAppUrl
     setImageLoadError(false);
     setImageLoaded(false);
     setUseMainDirect(false);
-  }, [mainUrl, product?.id, cfMainProfile]);
+  }, [mainUrl, product?.id]);
 
   const goPrev = (e) => { e?.stopPropagation(); setSelectedIndex(i => (i <= 0 ? productImages.length - 1 : i - 1)); };
   const goNext = (e) => { e?.stopPropagation(); setSelectedIndex(i => (i >= productImages.length - 1 ? 0 : i + 1)); };
@@ -1882,167 +2401,374 @@ export function ProductModal({ product, business, slug, formatPrice, whatsAppUrl
     return () => { document.body.style.overflow = ''; };
   }, []);
 
+  const modalDiscount = getDiscountPercent(product?.price, product?.compareAtPrice);
+  const stateBadge = productState === 'sold_out'
+    ? { label: 'Agotado', style: { color: '#9A3412', backgroundColor: 'rgba(251,146,60,0.18)' } }
+    : null;
+  const trackWaClick = () => {
+    const path = typeof window !== 'undefined' ? window.location?.pathname || getPublicCatalogRelativePath(slug) : getPublicCatalogRelativePath(slug);
+    recordCatalogWhatsAppClick(slug, path, 'product_modal').catch(() => {});
+  };
+
+  const resolvedComboConfig = (isRestaurant && ENABLE_RESTAURANT_COMBOS)
+    ? normalizeComboConfig(product?.comboConfig)
+    : null;
+  const comboGroups = resolvedComboConfig?.groups || [];
+
+  const [selectedAddons, setSelectedAddons] = useState([]);
+  useEffect(() => { setSelectedAddons([]); }, [product?.id]);
+  const [selectedComboItems, setSelectedComboItems] = useState({});
+  useEffect(() => { setSelectedComboItems({}); }, [product?.id]);
+
+  const resolvedAddons = (isRestaurant && ENABLE_RESTAURANT_ADDONS)
+    ? (Array.isArray(product?.addOns)
+      ? product.addOns.reduce((acc, addon) => {
+          if (!addon || addon?.active === false) return acc;
+
+          if (addon?.type === 'product') {
+            const relatedProduct = Array.isArray(products)
+              ? products.find((candidate) => candidate?.id === addon?.productId && candidate?.isActive !== false)
+              : null;
+
+            if (!relatedProduct || relatedProduct?.id === product?.id) return acc;
+
+            const relatedPrice = Number(relatedProduct?.price);
+            acc.push({
+              id: addon?.id || `addon-product-${relatedProduct.id}`,
+              type: 'product',
+              productId: relatedProduct.id,
+              label: relatedProduct?.name || 'Complemento',
+              price: Number.isFinite(relatedPrice) ? Math.round(relatedPrice) : 0,
+              category: relatedProduct?.category || null,
+              _key: addon?.id || `addon-product-${relatedProduct.id}`,
+            });
+            return acc;
+          }
+
+          if (!addon?.label) return acc;
+          const manualPrice = Number(addon?.price);
+          acc.push({
+            ...addon,
+            type: 'manual',
+            price: Number.isFinite(manualPrice) && manualPrice >= 0 ? Math.round(manualPrice) : 0,
+            _key: addon?.id || `${addon?.label}-${addon?.price ?? 0}`,
+          });
+          return acc;
+        }, [])
+      : [])
+    : [];
+
+  const selectedComboDetails = comboGroups.reduce((acc, group) => {
+    const selectedKeys = Array.isArray(selectedComboItems?.[group.id]) ? selectedComboItems[group.id] : [];
+    const selectedItems = group.items.filter((item) => selectedKeys.includes(item._key));
+    if (selectedItems.length > 0) {
+      acc.push({
+        groupId: group.id,
+        groupLabel: group.label,
+        items: selectedItems,
+      });
+    }
+    return acc;
+  }, []);
+
+  const comboSelectionsTotal = selectedComboDetails.reduce(
+    (sum, group) => sum + group.items.reduce((groupSum, item) => groupSum + item.price, 0),
+    0,
+  );
+  const addonsTotal = selectedAddons.reduce((sum, addon) => sum + addon.price, 0);
+  const estimatedTotal = (product?.price || 0) + addonsTotal + comboSelectionsTotal;
+  const hasRequiredComboMissing = comboGroups.some((group) => {
+    if (!group?.required) return false;
+    const selectedKeys = Array.isArray(selectedComboItems?.[group.id]) ? selectedComboItems[group.id] : [];
+    return selectedKeys.length === 0;
+  });
+  const hasSelectionAdjustments = selectedAddons.length > 0 || selectedComboDetails.length > 0;
+
+  const toggleComboItem = (group, item) => {
+    if (!group?.id || !item?._key) return;
+    setSelectedComboItems((prev) => {
+      const current = Array.isArray(prev?.[group.id]) ? prev[group.id] : [];
+      const alreadySelected = current.includes(item._key);
+      if (alreadySelected) {
+        return {
+          ...prev,
+          [group.id]: current.filter((key) => key !== item._key),
+        };
+      }
+      if (current.length >= group.maxSelections) {
+        if (group.maxSelections === 1) {
+          return {
+            ...prev,
+            [group.id]: [item._key],
+          };
+        }
+        return prev;
+      }
+      return {
+        ...prev,
+        [group.id]: [...current, item._key],
+      };
+    });
+  };
+
+  const effectiveWaMessage = (() => {
+    const base = whatsAppMessage || `Hola! Quiero pedir:\n\n*${product?.name}*\nPrecio: ${formatPrice(product?.price)}`;
+    if (!isRestaurant) return base;
+
+    const comboLines = selectedComboDetails
+      .map((group) => `${group.groupLabel}:\n${group.items.map((item) => `  • ${item.label} +${formatPrice(item.price)}`).join('\n')}`)
+      .join('\n');
+    const addonLines = selectedAddons.map((addon) => `  • ${addon.label} +${formatPrice(addon.price)}`).join('\n');
+
+    if (!comboLines && !addonLines) return base;
+
+    const sections = [base];
+    if (comboLines) sections.push(`Combo:\n${comboLines}`);
+    if (addonLines) sections.push(`Complementos:\n${addonLines}`);
+    sections.push(`Total estimado: ${formatPrice(estimatedTotal)}`);
+    return sections.join('\n\n');
+  })();
+
+  const effectiveWaUrl = (() => {
+    if (!isRestaurant) return whatsAppUrl;
+    if (!hasSelectionAdjustments) return whatsAppUrl;
+    const phone = business?.whatsapp?.replace(/\D/g, '');
+    if (!phone) return whatsAppUrl;
+    return `https://wa.me/${phone}?text=${encodeURIComponent(effectiveWaMessage)}`;
+  })();
+
+  if (productState === 'hidden') return null;
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
       style={{ backgroundColor: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)' }}
       onClick={handleBackdrop}
     >
+      {/* flex flex-col so the sticky bar stays pinned at the bottom of the sheet */}
       <div
-        className="bg-white w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl overflow-hidden shadow-2xl"
-        style={{ maxHeight: '92vh', overflowY: 'auto' }}
+        className="bg-white w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl overflow-hidden shadow-2xl flex flex-col"
+        style={{ maxHeight: '92vh' }}
       >
-        <div className="relative">
-          <div
-            className="aspect-square w-full bg-gray-100 overflow-hidden relative select-none touch-pan-y flex items-center justify-center"
-            onTouchStart={handleTouchStart}
-            onTouchMove={handleTouchMove}
-            onTouchEnd={handleTouchEnd}
-          >
-            {mainUrl && !imageLoadError ? (
-              <>
-                {!imageLoaded && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
-                    <div className="w-8 h-8 border-2 border-gray-300 border-t-gray-500 rounded-full animate-spin" />
-                  </div>
-                )}
-                <img
-                  src={useMainDirect && mainUrl ? mainUrl : mainUrlOptimized}
-                  alt={product?.name ?? 'Producto'}
-                  className="w-full h-full object-contain"
-                  style={{ opacity: imageLoaded ? 1 : 0, transition: 'opacity 0.2s ease-out' }}
-                  draggable={false}
-                  decoding="async"
-                  onLoad={() => setImageLoaded(true)}
-                  onError={() => {
-                    if (!useMainDirect && mainUrl && isCfTransformableUrl(mainUrl)) {
-                      setUseMainDirect(true);
-                      setImageLoaded(false);
-                    } else {
-                      setImageLoadError(true);
-                    }
-                  }}
-                />
-              </>
-            ) : (
-              <div className="w-full h-full flex items-center justify-center">
-                <Icon name="ImageOff" size={48} color="#D1D5DB" />
-              </div>
-            )}
-            {/* Navegación anterior/siguiente cuando hay más de una imagen */}
-            {productImages.length > 1 && (
-              <>
-                <button
-                  type="button"
-                  onClick={goPrev}
-                  className="absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center transition-all hover:bg-black/60 active:scale-90 text-white"
-                  aria-label="Imagen anterior"
-                >
-                  <Icon name="ChevronLeft" size={20} color="#FFFFFF" />
-                </button>
-                <button
-                  type="button"
-                  onClick={goNext}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center transition-all hover:bg-black/60 active:scale-90 text-white"
-                  aria-label="Siguiente imagen"
-                >
-                  <Icon name="ChevronRight" size={20} color="#FFFFFF" />
-                </button>
-                <div
-                  className="absolute bottom-2 left-1/2 -translate-x-1/2 px-2 py-1 rounded-full text-[11px] font-semibold text-white"
-                  style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
-                >
-                  {selectedIndex + 1} / {productImages.length}
-                </div>
-              </>
-            )}
-          </div>
-          <button
-            onClick={onClose}
-            className="absolute top-3 right-3 w-9 h-9 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center transition-all hover:bg-black/60 active:scale-90 z-10"
-            aria-label="Cerrar"
-          >
-            <Icon name="X" size={18} color="#FFFFFF" />
-          </button>
-          {/* Miniaturas debajo de la imagen principal */}
-          {productImages.length > 1 && (
-            <div className="flex gap-1.5 p-2 overflow-x-auto bg-gray-50 border-b" style={{ borderColor: 'var(--color-border)' }}>
-              {productImages.map((url, i) => (
-                <ThumbnailButton
-                  key={url + i}
-                  url={url}
-                  productName={product?.name}
-                  index={i}
-                  isSelected={selectedIndex === i}
-                  primaryColor={primaryColor}
-                  onSelect={() => setSelectedIndex(i)}
-                />
-              ))}
-            </div>
-          )}
-        </div>
+        {/* ── Scrollable content ───────────────────────────────────────── */}
+        <div className="overflow-y-auto flex-1 min-h-0">
 
-        <div className="px-5 pb-6 pt-5 sm:px-6">
-          <div className="mb-4 flex items-center gap-1.5">
-            <div className="w-5 h-5 rounded-md flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${primaryColor}, ${primaryColorDark})` }}>
-              <Icon name="Store" size={11} color="#FFFFFF" />
-            </div>
-            <span className="text-xs text-gray-400 font-medium">{business?.name}</span>
-            {useCategories && product?.category && (
-              <span className="ml-auto text-[10px] font-semibold rounded-md px-1.5 py-0.5" style={{ color: primaryColorDark, backgroundColor: primaryRgba(0.12) }}>{product?.category}</span>
-            )}
-          </div>
-
-          <h2 className="mb-3 text-2xl font-bold leading-tight tracking-tight text-gray-900">
-            {product?.name}
-          </h2>
-
-          {showDescription && product?.description && (
-            <p className="mb-5 text-[15px] font-normal leading-[1.65] text-gray-600 sm:text-base">
-              {product?.description}
-            </p>
-          )}
-
-          {product?.longDescription && (
-            <div className="mb-5">
-              {showDescription && product?.description && (
-                <div className="my-3 border-t border-gray-100" />
-              )}
-              <p className="whitespace-pre-line break-words text-[13.5px] font-normal leading-relaxed text-gray-500 sm:text-sm">
-                {product.longDescription}
-              </p>
-            </div>
-          )}
-
-          {product?.videoUrl && (
-            <div className="mb-5">
-              <video
-                src={withMediaVersion(product.videoUrl, product.updatedAt)}
-                poster={withMediaVersion(product.videoThumbnailUrl, product.updatedAt) || undefined}
-                controls
-                playsInline
-                className="w-full rounded-2xl bg-black"
-                style={{ maxHeight: 300 }}
-              />
-            </div>
-          )}
-
-          {product?.hasOptions && product?.optionsDescription && (
+          {/* Image section */}
+          <div className="relative">
             <div
-              className="mb-5 flex items-start gap-2.5 rounded-xl p-3"
-              style={{ backgroundColor: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.3)' }}
+              className={`${isRestaurant ? 'aspect-[4/3]' : 'aspect-square'} w-full bg-gray-100 overflow-hidden relative select-none touch-pan-y flex items-center justify-center`}
+              onTouchStart={handleTouchStart}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}
             >
-              <Icon name="ListChecks" size={15} color="#92400e" className="flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="text-xs font-bold text-amber-800 mb-0.5">Opciones:</p>
-                <p className="text-xs text-amber-700 leading-relaxed">{product?.optionsDescription}</p>
-              </div>
+              {mainUrl && !imageLoadError ? (
+                <>
+                  {!imageLoaded && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
+                      <div className="w-8 h-8 border-2 border-gray-300 border-t-gray-500 rounded-full animate-spin" />
+                    </div>
+                  )}
+                  <CatalogImage
+                    src={useMainDirect && mainUrl ? mainUrl : mainUrlOptimized}
+                    originalSrc={mainUrl}
+                    alt={product?.name ?? 'Producto'}
+                    className="w-full h-full"
+                    imgClassName="w-full h-full object-cover transition-transform duration-300 ease-in-out sm:hover:scale-[1.2] sm:cursor-zoom-in"
+                    imgStyle={{ transition: 'opacity 0.2s ease-out, transform 0.3s ease-in-out' }}
+                    draggable={false}
+                    variant="product"
+                    onLoad={() => setImageLoaded(true)}
+                    onError={() => {
+                      if (!useMainDirect && mainUrl && isCfTransformableUrl(mainUrl)) {
+                        setUseMainDirect(true);
+                        setImageLoaded(false);
+                      } else {
+                        setImageLoadError(true);
+                      }
+                    }}
+                  />
+                </>
+              ) : (
+                <div className="w-full h-full flex items-center justify-center">
+                  <Icon name="ImageOff" size={48} color="#D1D5DB" />
+                </div>
+              )}
+              {productState === 'sold_out' && (
+                <div
+                  className="absolute inset-0 flex items-center justify-center"
+                  style={{ backgroundColor: 'rgba(0,0,0,0.32)' }}
+                >
+                  <span className="rounded-full px-3 py-1.5 text-xs font-black text-white shadow" style={{ backgroundColor: 'rgba(0,0,0,0.65)' }}>
+                    Agotado
+                  </span>
+                </div>
+              )}
+              {productImages.length > 1 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={goPrev}
+                    className="absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center transition-all hover:bg-black/60 active:scale-90 text-white"
+                    aria-label="Imagen anterior"
+                  >
+                    <Icon name="ChevronLeft" size={20} color="#FFFFFF" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={goNext}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center transition-all hover:bg-black/60 active:scale-90 text-white"
+                    aria-label="Siguiente imagen"
+                  >
+                    <Icon name="ChevronRight" size={20} color="#FFFFFF" />
+                  </button>
+                  <div
+                    className="absolute bottom-2 left-1/2 -translate-x-1/2 px-2 py-1 rounded-full text-[11px] font-semibold text-white"
+                    style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
+                  >
+                    {selectedIndex + 1} / {productImages.length}
+                  </div>
+                </>
+              )}
             </div>
-          )}
+            <button
+              onClick={onClose}
+              className="absolute top-3 right-3 w-9 h-9 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center transition-all hover:bg-black/60 active:scale-90 z-10"
+              aria-label="Cerrar"
+            >
+              <Icon name="X" size={18} color="#FFFFFF" />
+            </button>
+            {productImages.length > 1 && (
+              <div className="flex gap-1.5 p-2 overflow-x-auto bg-gray-50 border-b" style={{ borderColor: 'var(--color-border)' }}>
+                {productImages.map((url, i) => (
+                  <ThumbnailButton
+                    key={url + i}
+                    url={url}
+                    productName={product?.name}
+                    index={i}
+                    isSelected={selectedIndex === i}
+                    primaryColor={primaryColor}
+                    onSelect={() => setSelectedIndex(i)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
 
-          {showPrice && (() => {
-            const modalDiscount = getDiscountPercent(product?.price, product?.compareAtPrice);
-            return (
+          {/* ── Content ──────────────────────────────────────────────── */}
+          <div className={`px-5 pt-5 sm:px-6 ${isRestaurant ? 'pb-4 sm:pb-6' : 'pb-6'}`}>
+
+            {/* Business + category breadcrumb */}
+            <div className="mb-3 flex items-center gap-1.5">
+              <div className="w-5 h-5 rounded-md flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${primaryColor}, ${primaryColorDark})` }}>
+                <Icon name={isRestaurant ? 'UtensilsCrossed' : 'Store'} size={11} color="#FFFFFF" />
+              </div>
+              <span className="text-xs text-gray-400 font-medium">{business?.name}</span>
+              {useCategories && product?.category && (
+                <span className="ml-auto text-[10px] font-semibold rounded-md px-1.5 py-0.5" style={{ color: primaryColorDark, backgroundColor: primaryRgba(0.12) }}>{product?.category}</span>
+              )}
+            </div>
+
+            {stateBadge && (
+              <div className="mb-3">
+                <span
+                  className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-bold"
+                  style={stateBadge.style}
+                >
+                  {stateBadge.label}
+                </span>
+              </div>
+            )}
+
+            {/* Title + optional featured badge */}
+            <div className="flex items-start gap-2 mb-1">
+              <h2 className="text-2xl font-bold leading-tight tracking-tight text-gray-900 flex-1">
+                {product?.name}
+              </h2>
+              {isRestaurant && product?.featured && (
+                <span
+                  className="flex-shrink-0 mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold"
+                  style={{ background: 'rgba(234,88,12,0.1)', color: '#C2410C' }}
+                >
+                  ⭐ Recomendado
+                </span>
+              )}
+            </div>
+
+            {/* Restaurant: short sub-copy from description */}
+            {isRestaurant && showDescription && product?.description && (
+              <p className="mb-3 text-sm font-normal leading-relaxed text-gray-500 line-clamp-2">
+                {product.description.length > 80 ? product.description.slice(0, 80) + '…' : product.description}
+              </p>
+            )}
+
+            {/* Restaurant: price right after title (prominent) */}
+            {isRestaurant && showPrice && (
+              <div className="mb-4 flex items-baseline gap-2 flex-wrap">
+                <span className="text-3xl font-extrabold tracking-tight text-gray-900 tabular-nums">{formatPrice(product?.price)}</span>
+                {modalDiscount !== null && (
+                  <span className="rounded-md px-2 py-0.5 text-sm font-black text-white" style={{ backgroundColor: '#dc2626' }}>
+                    -{modalDiscount}% OFF
+                  </span>
+                )}
+                {modalDiscount !== null && (
+                  <span className="text-sm text-gray-400 line-through">{formatPrice(product?.compareAtPrice)}</span>
+                )}
+              </div>
+            )}
+
+            {/* Store: full description (original position) */}
+            {!isRestaurant && showDescription && product?.description && (
+              <p className="mb-5 text-[15px] font-normal leading-[1.65] text-gray-600 sm:text-base">
+                {product?.description}
+              </p>
+            )}
+
+            {/* Restaurant: full description (shown when longer than sub-copy) */}
+            {isRestaurant && showDescription && product?.description && product.description.length > 80 && (
+              <p className="mb-4 text-[13.5px] font-normal leading-relaxed text-gray-500">
+                {product.description}
+              </p>
+            )}
+
+            {product?.longDescription && (
+              <div className="mb-5">
+                {showDescription && product?.description && (
+                  <div className="my-3 border-t border-gray-100" />
+                )}
+                <p className="whitespace-pre-line break-words text-[13.5px] font-normal leading-relaxed text-gray-500 sm:text-sm">
+                  {product.longDescription}
+                </p>
+              </div>
+            )}
+
+            {product?.videoUrl && (
+              <div className="mb-5">
+                <video
+                  src={withMediaVersion(product.videoUrl, product.updatedAt)}
+                  poster={withMediaVersion(product.videoThumbnailUrl, product.updatedAt) || undefined}
+                  controls
+                  playsInline
+                  className="w-full rounded-2xl bg-black"
+                  style={{ maxHeight: 300 }}
+                />
+              </div>
+            )}
+
+            {product?.hasOptions && product?.optionsDescription && (
+              <div
+                className="mb-5 flex items-start gap-2.5 rounded-xl p-3"
+                style={{ backgroundColor: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.3)' }}
+              >
+                <Icon name="ListChecks" size={15} color="#92400e" className="flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs font-bold text-amber-800 mb-0.5">Opciones:</p>
+                  <p className="text-xs text-amber-700 leading-relaxed">{product?.optionsDescription}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Store: price in original position */}
+            {!isRestaurant && showPrice && (
               <div className="mb-6">
                 <div className="flex items-baseline gap-2 flex-wrap">
                   <span className="text-3xl font-extrabold tracking-tight text-gray-900 tabular-nums">{formatPrice(product?.price)}</span>
@@ -2056,48 +2782,290 @@ export function ProductModal({ product, business, slug, formatPrice, whatsAppUrl
                   <p className="mt-0.5 text-sm text-gray-400 line-through">{formatPrice(product?.compareAtPrice)}</p>
                 )}
               </div>
-            );
-          })()}
-          {!showPrice && <div className="mb-6" />}
+            )}
+            {!isRestaurant && !showPrice && <div className="mb-6" />}
 
-          {/* Add to cart button */}
-          <button
-            onClick={() => { addItem(product); onClose(); }}
-            className="mb-3 flex w-full items-center justify-center gap-3 rounded-2xl py-4 text-base font-bold text-white transition-all duration-150 hover:opacity-90 active:scale-[0.98]"
-            style={{ background: `linear-gradient(135deg, ${primaryColor} 0%, ${primaryColorDark} 100%)`, boxShadow: `0 8px 24px ${primaryRgba(0.35)}` }}
-          >
-            <Icon name="ShoppingCart" size={20} color="#FFFFFF" />
-            {qty > 0 ? `Agregar otro (${qty} en pedido)` : 'Agregar al pedido'}
-          </button>
+            {isRestaurant && comboGroups.length > 0 && (
+              <div className="mb-5">
+                <p className="mb-2 text-sm font-bold text-gray-800">Arma tu combo</p>
+                <div className="space-y-3">
+                  {comboGroups.map((group) => {
+                    const selectedKeys = Array.isArray(selectedComboItems?.[group.id]) ? selectedComboItems[group.id] : [];
+                    return (
+                      <div key={group.id} className="rounded-2xl border border-gray-200 p-3">
+                        <div className="mb-2 flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-gray-900">{group.label}</p>
+                            <p className="text-xs text-gray-500">
+                              {group.required ? 'Obligatorio' : 'Opcional'}
+                              {group.maxSelections > 1 ? ` · Elige hasta ${group.maxSelections}` : ' · Elige 1'}
+                            </p>
+                          </div>
+                          {group.required && selectedKeys.length === 0 && (
+                            <span className="rounded-full bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700">
+                              Falta elegir
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex flex-col gap-2">
+                          {group.items.map((item) => {
+                            const checked = selectedKeys.includes(item._key);
+                            const groupAtMax = selectedKeys.length >= group.maxSelections;
+                            const disabled = !checked && groupAtMax && group.maxSelections > 1;
+                            return (
+                              <button
+                                key={item._key}
+                                type="button"
+                                onClick={() => toggleComboItem(group, item)}
+                                disabled={disabled}
+                                className="flex items-center justify-between rounded-xl border-2 px-3 py-2.5 text-sm transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+                                style={{
+                                  borderColor: checked ? primaryColor : '#E5E7EB',
+                                  backgroundColor: checked ? primaryRgba(0.06) : '#ffffff',
+                                }}
+                              >
+                                <span className="font-medium text-gray-800">{item.label}</span>
+                                <div className="flex items-center gap-2.5 flex-shrink-0">
+                                  <span className="text-xs font-semibold text-gray-500">+{formatPrice(item.price)}</span>
+                                  <div
+                                    className="flex h-5 w-5 items-center justify-center rounded-full border-2 transition-all"
+                                    style={{
+                                      borderColor: checked ? primaryColor : '#D1D5DB',
+                                      backgroundColor: checked ? primaryColor : 'transparent',
+                                    }}
+                                  >
+                                    {checked && <Icon name="Check" size={10} color="#FFFFFF" strokeWidth={3} />}
+                                  </div>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
-          {/* Direct WhatsApp for single product */}
-          <a
-            href={whatsAppUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={() => {
-              const path = typeof window !== 'undefined' ? window.location?.pathname || getPublicCatalogRelativePath(slug) : getPublicCatalogRelativePath(slug);
-              recordCatalogWhatsAppClick(slug, path, 'product_modal').catch(() => {});
-            }}
-            className="flex items-center justify-center gap-2 w-full py-3 rounded-2xl text-sm font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50 transition-all"
-          >
-            <Icon name="MessageCircle" size={16} color="#6B7280" />
-            Solo este producto por WhatsApp
-          </a>
-          <button
-            type="button"
-            onClick={() => {
-              if (!whatsAppMessage) return;
-              navigator.clipboard?.writeText(whatsAppMessage)?.catch(() => {});
-              setCopiedProductMessage(true);
-              setTimeout(() => setCopiedProductMessage(false), 1800);
-            }}
-            className="mt-2 flex items-center justify-center gap-2 w-full py-2.5 rounded-2xl text-xs font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50 transition-all"
-          >
-            <Icon name={copiedProductMessage ? 'Check' : 'Copy'} size={14} color="#6B7280" />
-            {copiedProductMessage ? 'Texto copiado' : 'Copiar texto del producto'}
-          </button>
+            {isRestaurant && resolvedAddons.length > 0 && (
+              <div className="mb-4">
+                <p className="mb-2 text-sm font-bold text-gray-800">Completa tu pedido</p>
+                <div className="flex flex-col gap-2">
+                  {resolvedAddons.map((addon) => {
+                    const addonKey = addon._key;
+                    const checked = selectedAddons.some((a) => a?._key === addonKey);
+                    return (
+                      <button
+                        key={addonKey}
+                        type="button"
+                        onClick={() => setSelectedAddons(prev =>
+                          prev.some((a) => a?._key === addonKey)
+                            ? prev.filter((a) => a?._key !== addonKey)
+                            : [...prev, addon]
+                        )}
+                        className="flex items-center justify-between rounded-xl border-2 px-3 py-2.5 text-sm transition-all active:scale-[0.98]"
+                        style={{
+                          borderColor: checked ? primaryColor : '#E5E7EB',
+                          backgroundColor: checked ? primaryRgba(0.06) : '#ffffff',
+                        }}
+                      >
+                        <span className="font-medium text-gray-800">{addon.label}</span>
+                        <div className="flex items-center gap-2.5 flex-shrink-0">
+                          <span className="text-xs font-semibold text-gray-500">+{formatPrice(addon.price)}</span>
+                          <div
+                            className="flex h-5 w-5 items-center justify-center rounded-full border-2 transition-all"
+                            style={{
+                              borderColor: checked ? primaryColor : '#D1D5DB',
+                              backgroundColor: checked ? primaryColor : 'transparent',
+                            }}
+                          >
+                            {checked && <Icon name="Check" size={10} color="#FFFFFF" strokeWidth={3} />}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {isRestaurant && hasSelectionAdjustments && (
+              <div
+                className="mb-4 flex items-center justify-between rounded-xl px-3 py-2.5"
+                style={{ backgroundColor: primaryRgba(0.08) }}
+              >
+                <span className="text-sm font-medium text-gray-700">Total estimado</span>
+                <span className="text-base font-extrabold tabular-nums" style={{ color: primaryColorDark }}>
+                  {formatPrice(estimatedTotal)}
+                </span>
+              </div>
+            )}
+
+            {/* ── CTAs ─────────────────────────────────────────────────── */}
+            {isSoldOut ? (
+              <div className="flex flex-col items-center gap-3 py-2">
+                <button
+                  type="button"
+                  disabled
+                  className="flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-4 text-base font-bold text-gray-400"
+                >
+                  <Icon name="PackageX" size={18} color="#9CA3AF" />
+                  Agotado
+                </button>
+                <div className="flex items-center gap-2 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 w-full justify-center">
+                  <Icon name="Info" size={18} color="#9CA3AF" />
+                  <span className="text-sm font-semibold text-gray-500">Este producto está agotado por ahora.</span>
+                </div>
+              </div>
+            ) : isRestaurant ? (
+              <>
+                {hasRequiredComboMissing && comboGroups.length > 0 && (
+                  <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+                    Selecciona las opciones obligatorias del combo para continuar.
+                  </div>
+                )}
+                {/* Primary: Pedir por WhatsApp */}
+                <a
+                  href={effectiveWaUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-disabled={hasRequiredComboMissing}
+                  onClick={(e) => {
+                    if (hasRequiredComboMissing) {
+                      e.preventDefault();
+                      return;
+                    }
+                    trackWaClick();
+                  }}
+                  className="mb-2 flex w-full items-center justify-center gap-3 rounded-2xl py-4 text-base font-bold text-white transition-all duration-150 hover:opacity-90 active:scale-[0.98]"
+                  style={{
+                    background: 'linear-gradient(135deg, #25D366 0%, #128C7E 100%)',
+                    boxShadow: '0 8px 24px rgba(37,211,102,0.35)',
+                    opacity: hasRequiredComboMissing ? 0.6 : 1,
+                    pointerEvents: hasRequiredComboMissing ? 'none' : 'auto',
+                  }}
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="#FFFFFF" aria-hidden>
+                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                  </svg>
+                  Pedir por WhatsApp
+                </a>
+                {/* Friction copy */}
+                <p className="mb-3 text-center text-xs text-gray-400">
+                  Te respondemos por WhatsApp en minutos
+                </p>
+                {/* Secondary: Agregar al pedido */}
+                <button
+                  onClick={() => { addItem(product); onClose(); }}
+                  className="mb-3 flex w-full items-center justify-center gap-2 rounded-2xl py-3 text-sm font-semibold border transition-all duration-150 hover:bg-gray-50 active:scale-[0.98]"
+                  style={{ borderColor: primaryColor, color: primaryColorDark }}
+                >
+                  <Icon name="ShoppingCart" size={16} color={primaryColorDark} />
+                  {qty > 0 ? `Agregar otro (${qty} en pedido)` : 'Agregar al pedido'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!effectiveWaMessage) return;
+                    navigator.clipboard?.writeText(effectiveWaMessage)?.catch(() => {});
+                    setCopiedProductMessage(true);
+                    setTimeout(() => setCopiedProductMessage(false), 1800);
+                  }}
+                  className="flex items-center justify-center gap-2 w-full py-2.5 rounded-2xl text-xs font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50 transition-all"
+                >
+                  <Icon name={copiedProductMessage ? 'Check' : 'Copy'} size={14} color="#6B7280" />
+                  {copiedProductMessage ? 'Texto copiado' : 'Copiar texto del producto'}
+                </button>
+              </>
+            ) : (
+              <>
+                {/* Store: original CTA order */}
+                <button
+                  onClick={() => { addItem(product); onClose(); }}
+                  className="mb-3 flex w-full items-center justify-center gap-3 rounded-2xl py-4 text-base font-bold text-white transition-all duration-150 hover:opacity-90 active:scale-[0.98]"
+                  style={{ background: `linear-gradient(135deg, ${primaryColor} 0%, ${primaryColorDark} 100%)`, boxShadow: `0 8px 24px ${primaryRgba(0.35)}` }}
+                >
+                  <Icon name="ShoppingCart" size={20} color="#FFFFFF" />
+                  {qty > 0 ? `Agregar otro (${qty} en pedido)` : 'Agregar al pedido'}
+                </button>
+                <a
+                  href={whatsAppUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={trackWaClick}
+                  className="flex items-center justify-center gap-2 w-full py-3 rounded-2xl text-sm font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50 transition-all"
+                >
+                  <Icon name="MessageCircle" size={16} color="#6B7280" />
+                  Solo este producto por WhatsApp
+                </a>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!whatsAppMessage) return;
+                    navigator.clipboard?.writeText(whatsAppMessage)?.catch(() => {});
+                    setCopiedProductMessage(true);
+                    setTimeout(() => setCopiedProductMessage(false), 1800);
+                  }}
+                  className="mt-2 flex items-center justify-center gap-2 w-full py-2.5 rounded-2xl text-xs font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50 transition-all"
+                >
+                  <Icon name={copiedProductMessage ? 'Check' : 'Copy'} size={14} color="#6B7280" />
+                  {copiedProductMessage ? 'Texto copiado' : 'Copiar texto del producto'}
+                </button>
+              </>
+            )}
+          </div>
         </div>
+
+        {/* ── Sticky bottom bar: restaurant + mobile only ───────────────── */}
+        {isRestaurant && productState === 'available' && (
+          <div
+            className="sm:hidden flex-shrink-0 border-t border-gray-100 bg-white px-4 py-3"
+            style={{ paddingBottom: 'calc(12px + var(--safe-area-bottom, 0px))' }}
+          >
+            <div className="flex items-center gap-3">
+              {showPrice && (
+                <div className="flex-shrink-0 min-w-0">
+                  <span className="text-lg font-extrabold tracking-tight text-gray-900 tabular-nums">
+                    {formatPrice(hasSelectionAdjustments ? estimatedTotal : product?.price)}
+                  </span>
+                  {!hasSelectionAdjustments && modalDiscount !== null && (
+                    <span className="ml-1.5 rounded px-1.5 py-0.5 text-[10px] font-black text-white" style={{ backgroundColor: '#dc2626' }}>
+                      -{modalDiscount}%
+                    </span>
+                  )}
+                  {hasSelectionAdjustments && (
+                    <span className="ml-1 text-[10px] font-medium text-gray-400">est.</span>
+                  )}
+                </div>
+              )}
+              <a
+                href={effectiveWaUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-disabled={hasRequiredComboMissing}
+                onClick={(e) => {
+                  if (hasRequiredComboMissing) {
+                    e.preventDefault();
+                    return;
+                  }
+                  trackWaClick();
+                }}
+                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-bold text-white transition-all active:scale-[0.98]"
+                style={{
+                  background: 'linear-gradient(135deg, #25D366 0%, #128C7E 100%)',
+                  opacity: hasRequiredComboMissing ? 0.6 : 1,
+                  pointerEvents: hasRequiredComboMissing ? 'none' : 'auto',
+                }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="#FFFFFF" aria-hidden>
+                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                </svg>
+                Pedir por WhatsApp
+              </a>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -2,10 +2,9 @@ html,
 body {
   margin: 0;
   padding: 0;
-  /* visible: overflow-x hidden en ancestros rompe position:sticky (p. ej. vista previa Diseño) */
-  overflow-x: visible;
-  width: 100%;
+  overflow-x: hidden;
   max-width: 100%;
+  width: 100%;
 }
 
 body {

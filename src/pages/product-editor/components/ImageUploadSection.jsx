@@ -118,15 +118,14 @@ export default function ImageUploadSection({
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onClick={() => { if (!disabled) fileInputRef?.current?.click(); }}
-          className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all duration-200 ${
+          className={`cursor-pointer rounded-2xl border border-dashed p-6 text-center transition-all duration-200 sm:p-7 ${
             isDragging
-              ? 'scale-[1.01]'
-              : 'hover:border-primary/50'
+              ? 'scale-[1.005]'
+              : 'hover:-translate-y-0.5'
           }`}
           style={{
-            borderColor: isDragging ? 'var(--color-primary)' : 'var(--color-border)',
-            backgroundColor: isDragging ? 'rgba(124,58,237,0.04)' : 'var(--color-muted)',
-            borderRadius: 'var(--radius-md)',
+            borderColor: isDragging ? 'rgba(17,24,39,0.36)' : 'rgba(17,24,39,0.12)',
+            backgroundColor: isDragging ? 'rgba(17,24,39,0.04)' : 'rgba(255,255,255,0.54)',
             opacity: disabled ? 0.7 : 1,
             pointerEvents: disabled ? 'none' : 'auto',
           }}
@@ -137,17 +136,17 @@ export default function ImageUploadSection({
         >
           <div className="flex flex-col items-center gap-2.5">
             <div
-              className="w-11 h-11 rounded-xl flex items-center justify-center"
-              style={{ backgroundColor: 'rgba(124,58,237,0.1)' }}
+              className="flex h-11 w-11 items-center justify-center rounded-2xl"
+              style={{ backgroundColor: 'rgba(17,24,39,0.06)' }}
             >
-              <Icon name={isDragging ? 'Download' : 'ImagePlus'} size={20} color="var(--color-primary)" />
+              <Icon name={isDragging ? 'Download' : 'ImagePlus'} size={20} color="var(--color-foreground)" />
             </div>
             <div>
               <p className="text-sm font-semibold" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>
-                {isDragging ? 'Suelta aquí para agregar' : 'Arrastra imágenes o haz clic'}
+                {isDragging ? 'Suelta aqui la imagen' : 'Agrega fotos para la ficha'}
               </p>
               <p className="text-xs mt-0.5" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-                PNG, JPG, WEBP · hasta 10 MB · máx. {5 - (images?.length || 0)} más
+                PNG, JPG, WEBP - hasta 10 MB - max. {5 - (images?.length || 0)} mas
               </p>
             </div>
           </div>

@@ -70,32 +70,32 @@ const FONT_PREVIEW_LINES = { sample: 'Aa Bb Cc 123', body: 'Texto del catálogo'
 function SectionCard({ icon, title, subtitle, children, accent }) {
   return (
     <div
-      className="rounded-2xl border p-6"
+      className="rounded-2xl border p-5 transition-shadow duration-200 sm:p-6"
       style={{
-        backgroundColor: '#ffffff',
-        borderColor: accent ? `${accent}30` : 'var(--color-border)',
-        boxShadow: accent ? `0 1px 4px ${accent}15` : '0 1px 4px rgba(0,0,0,0.05)',
+        backgroundColor: 'rgba(255,255,255,0.76)',
+        borderColor: accent ? `${accent}24` : 'rgba(17,24,39,0.08)',
+        boxShadow: '0 12px 30px rgba(17,24,39,0.045)',
       }}
     >
-      <div className="flex items-center gap-3 mb-5">
+      <div className="flex items-start gap-3 mb-5">
         <div
-          className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-          style={{ backgroundColor: accent ? `${accent}15` : 'rgba(139,92,246,0.1)' }}
+          className="mt-0.5 w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
+          style={{ backgroundColor: 'rgba(17,24,39,0.06)' }}
         >
-          <Icon name={icon} size={18} color={accent || 'var(--color-primary)'} />
+          <Icon name={icon} size={16} color="var(--color-foreground)" />
         </div>
         <div>
-          <h3 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-text-primary)' }}>
+          <h3 className="text-base font-semibold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-text-primary)', letterSpacing: '-0.015em' }}>
             {title}
           </h3>
           {subtitle && (
-            <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+            <p className="mt-1 text-xs leading-5" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
               {subtitle}
             </p>
           )}
         </div>
       </div>
-      <div className="border-t pt-5" style={{ borderColor: 'var(--color-border)' }}>
+      <div className="border-t pt-5" style={{ borderColor: 'rgba(17,24,39,0.08)' }}>
         {children}
       </div>
     </div>
@@ -173,13 +173,122 @@ function ThemeMiniPreview({ theme, primaryColor }) {
 function DesignUnifiedHeading({ title, subtitle, isFirst }) {
   return (
     <div
-      className={`flex flex-col gap-1 ${isFirst ? 'pt-0' : 'border-t border-slate-100 pt-8'}`}
+      className={`flex flex-col gap-1 ${isFirst ? 'pt-0' : 'border-t pt-8'}`}
+      style={{ borderColor: 'rgba(17,24,39,0.08)' }}
     >
-      <h2 className="text-lg font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-text-primary)' }}>{title}</h2>
+      <h2 className="text-xl font-semibold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-text-primary)', letterSpacing: '-0.02em' }}>{title}</h2>
       {subtitle ? (
-        <p className="text-xs pb-1" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>{subtitle}</p>
+        <p className="text-sm leading-6" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-body)' }}>{subtitle}</p>
       ) : null}
     </div>
+  );
+}
+
+function PersistentSaveActions({ isDirty, isSaving, onSave, onReset }) {
+  if (!isDirty && !isSaving) return null;
+
+  const ctaContent = isSaving ? (
+    <>
+      <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,0.3)" strokeWidth="3" />
+        <path d="M12 2a10 10 0 0 1 10 10" stroke="#fff" strokeWidth="3" strokeLinecap="round" />
+      </svg>
+      Guardando...
+    </>
+  ) : (
+    <>
+      <Icon name="Save" size={14} color="#fff" />
+      Guardar cambios
+    </>
+  );
+
+  const barStyle = {
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderColor: 'rgba(17,24,39,0.08)',
+    boxShadow: '0 18px 42px rgba(17,24,39,0.10)',
+  };
+
+  return (
+    <>
+      <div
+        className="sticky top-0 z-20 hidden items-center justify-between gap-4 rounded-2xl border px-4 py-3 backdrop-blur md:flex"
+        style={barStyle}
+      >
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl" style={{ backgroundColor: 'rgba(245,158,11,0.10)' }}>
+            <Icon name="CircleAlert" size={15} color="#B45309" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-heading)', letterSpacing: '-0.01em' }}>
+              Cambios sin guardar
+            </p>
+            <p className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+              Guarda para publicar esta identidad visual.
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-shrink-0 items-center gap-2">
+          {onReset && (
+            <button
+              type="button"
+              onClick={onReset}
+              disabled={isSaving}
+              className="rounded-xl border px-3 py-2 text-xs font-semibold transition-all hover:-translate-y-px disabled:opacity-50"
+              style={{ borderColor: 'rgba(17,24,39,0.10)', backgroundColor: 'rgba(255,255,255,0.70)', color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}
+            >
+              Descartar
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={isSaving}
+            className="flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold text-white transition-all hover:-translate-y-px disabled:opacity-60"
+            style={{ backgroundColor: '#111827', boxShadow: '0 8px 18px rgba(17,24,39,0.18)', fontFamily: 'var(--font-caption)' }}
+          >
+            {ctaContent}
+          </button>
+        </div>
+      </div>
+
+      <div className="fixed inset-x-0 bottom-0 z-50 px-3 pb-[calc(env(safe-area-inset-bottom)+12px)] md:hidden">
+        <div
+          className="rounded-2xl border p-3 backdrop-blur"
+          style={barStyle}
+        >
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-heading)' }}>
+                Cambios sin guardar
+              </p>
+              <p className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                Guarda antes de salir.
+              </p>
+            </div>
+            {onReset && (
+              <button
+                type="button"
+                onClick={onReset}
+                disabled={isSaving}
+                className="rounded-xl px-3 py-2 text-xs font-semibold transition-all disabled:opacity-50"
+                style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}
+              >
+                Descartar
+              </button>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={isSaving}
+            className="flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold text-white transition-all active:scale-[0.99] disabled:opacity-60"
+            style={{ backgroundColor: '#111827', fontFamily: 'var(--font-caption)' }}
+          >
+            {ctaContent}
+          </button>
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -196,6 +305,7 @@ export default function DesignCustomization({
   isDirty = false,
   showSaved = false,
   onReset,
+  isRestaurant = false,
 }) {
   const logoInputRef = useRef(null);
   const coverInputRef = useRef(null);
@@ -320,28 +430,42 @@ export default function DesignCustomization({
   const selectedTemplate = design?.template || 'light';
   const customBgColor = design?.backgroundColor || '';
   const selectedFont = design?.font || 'Inter';
+  const catalogLabel = isRestaurant ? 'menú' : 'catálogo';
+  const storeLabel = isRestaurant ? 'restaurante' : 'tienda';
+  const headerLabel = isRestaurant ? 'carta' : 'catálogo';
 
   const saveLabel = isSaving ? 'Guardando...' : showSaved ? 'Guardado ✓' : 'Guardar cambios';
   const statusLabel = isSaving ? 'Guardando...' : showSaved ? 'Guardado ✓' : isDirty ? 'Cambios sin guardar' : null;
   const statusColor = isSaving ? 'var(--color-text-tertiary)' : showSaved ? '#059669' : '#f59e0b';
 
   return (
-    <div className="flex w-full min-w-0 flex-col gap-6">
+    <div className={`flex w-full min-w-0 flex-col gap-6 ${(isDirty || isSaving) ? 'pb-28 md:pb-0' : ''}`}>
+      {!hideSaveButton && (
+        <PersistentSaveActions
+          isDirty={isDirty}
+          isSaving={isSaving}
+          onSave={onSave}
+          onReset={onReset}
+        />
+      )}
 
       {/* ── Sticky header: título + botón guardar ── */}
       <div
-        className="sticky top-0 z-10 flex items-center justify-between gap-3 rounded-2xl border px-4 py-3"
+        className="hidden"
         style={{
-          backgroundColor: 'rgba(255,255,255,0.92)',
-          backdropFilter: 'blur(8px)',
-          WebkitBackdropFilter: 'blur(8px)',
-          borderColor: 'var(--color-border)',
-          boxShadow: '0 1px 8px rgba(0,0,0,0.06)',
+          backgroundColor: 'rgba(255,255,255,0.86)',
+          borderColor: 'rgba(17,24,39,0.08)',
+          boxShadow: '0 10px 30px rgba(17,24,39,0.07)',
         }}
       >
-        <span className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-text-primary)' }}>
-          Diseño
-        </span>
+        <div>
+          <span className="text-sm font-semibold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-text-primary)', letterSpacing: '-0.01em' }}>
+            Identidad del {catalogLabel}
+          </span>
+          <p className="hidden text-[11px] sm:block" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+            Ajustes visibles para clientes
+          </p>
+        </div>
         <div className="flex items-center gap-3">
           {statusLabel && (
             <span className="hidden sm:block text-xs font-medium" style={{ color: statusColor, fontFamily: 'var(--font-caption)' }}>
@@ -356,7 +480,8 @@ export default function DesignCustomization({
               className="hidden sm:flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-medium transition-all disabled:opacity-50"
               style={{
                 color: 'var(--color-text-tertiary)',
-                border: '1px solid var(--color-border)',
+                border: '1px solid rgba(17,24,39,0.10)',
+                backgroundColor: 'rgba(255,255,255,0.62)',
                 fontFamily: 'var(--font-caption)',
               }}
             >
@@ -370,11 +495,9 @@ export default function DesignCustomization({
             disabled={isSaving || (!isDirty && !showSaved)}
             className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-white transition-all disabled:opacity-50"
             style={{
-              background: showSaved
-                ? 'linear-gradient(135deg, #059669 0%, #047857 100%)'
-                : `linear-gradient(135deg, ${primaryColor} 0%, #7c3aed 100%)`,
+              background: showSaved ? '#059669' : '#111827',
               fontFamily: 'var(--font-caption)',
-              boxShadow: isDirty ? `0 2px 8px ${primaryColor}55` : 'none',
+              boxShadow: isDirty ? '0 8px 18px rgba(17,24,39,0.18)' : 'none',
             }}
           >
             {isSaving ? (
@@ -400,21 +523,21 @@ export default function DesignCustomization({
         </div>
       </div>
 
-      <DesignUnifiedHeading isFirst title="Apariencia" subtitle="Color, portada y logo" />
+      <DesignUnifiedHeading isFirst title="Base visual" subtitle={`Color, fondo, portada y logo del ${catalogLabel}.`} />
 
       {/* 1. Primary Color */}
-      <SectionCard icon="Droplets" title="Color principal" subtitle="Se aplica a botones, badges y acentos de tu catálogo" accent={primaryColor}>
+      <SectionCard icon="Droplets" title="Color principal" subtitle={`Define los acentos que guian las acciones del ${catalogLabel}.`} accent={primaryColor}>
         <div className="flex flex-wrap items-center gap-4">
           {COLORS?.map(color => (
             <button
               key={color?.value}
               onClick={() => handleChange({ ...design, primaryColor: color?.value })}
               title={color?.label}
-              className="relative w-8 h-8 rounded-full transition-all flex-shrink-0 flex items-center justify-center"
+              className="relative w-8 h-8 rounded-full transition-all duration-200 flex-shrink-0 flex items-center justify-center hover:-translate-y-0.5"
               style={{
                 backgroundColor: color?.value,
-                boxShadow: primaryColor === color?.value ? `0 0 0 3px #ffffff, 0 0 0 5px ${color?.value}` : '0 1px 3px rgba(0,0,0,0.2)',
-                transform: primaryColor === color?.value ? 'scale(1.15)' : 'scale(1)',
+                boxShadow: primaryColor === color?.value ? `0 0 0 3px #ffffff, 0 0 0 5px ${color?.value}55` : '0 1px 3px rgba(17,24,39,0.18)',
+                transform: primaryColor === color?.value ? 'scale(1.08)' : 'scale(1)',
               }}
             >
               {primaryColor === color?.value && <Icon name="Check" size={13} color="#fff" />}
@@ -458,7 +581,7 @@ export default function DesignCustomization({
           </div>
           <div
             className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-white shadow-sm"
-            style={{ background: `linear-gradient(135deg, ${primaryColor} 0%, #6D28D9 100%)`, fontFamily: 'var(--font-caption)' }}
+            style={{ backgroundColor: '#111827', fontFamily: 'var(--font-caption)' }}
           >
             <Icon name="ShoppingCart" size={11} color="#fff" />
             Ver pedido
@@ -470,7 +593,7 @@ export default function DesignCustomization({
       </SectionCard>
 
       {/* 1b. Background Template + Color */}
-      <SectionCard icon="PaintBucket" title="Fondo del catálogo" subtitle="Define el color de fondo y el estilo base. El color del texto se ajusta automáticamente." accent={primaryColor}>
+      <SectionCard icon="PaintBucket" title={`Fondo del ${catalogLabel}`} subtitle="Elige una base visual legible para que productos y texto respiren." accent={primaryColor}>
         {/* Template chips */}
         <div className="flex flex-wrap gap-2 mb-5">
           {Object.values(CATALOG_TEMPLATES).map((tpl) => {
@@ -481,10 +604,10 @@ export default function DesignCustomization({
                 key={tpl.id}
                 type="button"
                 onClick={() => handleChange({ ...design, template: tpl.id, backgroundColor: '' })}
-                className="flex flex-col items-start gap-2 p-3 rounded-xl border-2 transition-all text-left min-w-[90px]"
+                className="flex flex-col items-start gap-2 p-3 rounded-xl border transition-all duration-200 text-left min-w-[90px] hover:-translate-y-0.5"
                 style={{
-                  borderColor: isSelected ? primaryColor : 'var(--color-border)',
-                  backgroundColor: isSelected ? `${primaryColor}08` : '#fafafa',
+                  borderColor: isSelected ? `${primaryColor}66` : 'rgba(17,24,39,0.08)',
+                  backgroundColor: isSelected ? `${primaryColor}08` : 'rgba(255,255,255,0.58)',
                   position: 'relative',
                 }}
               >
@@ -514,7 +637,7 @@ export default function DesignCustomization({
         </div>
 
         {/* Custom background color override */}
-        <div className="border-t pt-4" style={{ borderColor: 'var(--color-border)' }}>
+        <div className="border-t pt-4" style={{ borderColor: 'rgba(17,24,39,0.08)' }}>
           <p className="text-xs font-medium mb-3" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
             Color personalizado <span style={{ color: 'var(--color-text-tertiary)' }}>(opcional — reemplaza el fondo del template)</span>
           </p>
@@ -590,13 +713,13 @@ export default function DesignCustomization({
       </SectionCard>
 
       {/* 2. Cover Image */}
-      <SectionCard icon="Image" title="Imagen de portada" subtitle="Banner que aparece en la parte superior de tu catálogo público">
+      <SectionCard icon="Image" title="Portada" subtitle={`La imagen principal que abre la experiencia del ${headerLabel}.`}>
         <div className="flex flex-col gap-3">
           <div
-            className="relative rounded-xl overflow-hidden border-2 flex items-center justify-center group cursor-pointer transition-all hover:border-violet-400"
+            className="relative rounded-2xl overflow-hidden border flex items-center justify-center group cursor-pointer transition-all duration-200 hover:-translate-y-0.5"
             style={{
-              borderColor: design?.headerImageUrl ? primaryColor : 'var(--color-border)',
-              backgroundColor: '#f0f0f8',
+              borderColor: design?.headerImageUrl ? `${primaryColor}66` : 'rgba(17,24,39,0.10)',
+              backgroundColor: 'rgba(255,255,255,0.54)',
               aspectRatio: '16/5',
               minHeight: '80px',
             }}
@@ -646,9 +769,9 @@ export default function DesignCustomization({
                   <Icon name="ImagePlus" size={24} color="#a0a0b8" />
                 )}
                 <span className="text-xs" style={{ color: '#a0a0b8', fontFamily: 'var(--font-caption)' }}>
-                  {uploadingCover ? 'Subiendo...' : 'Haz clic para subir una imagen de portada'}
+                  {uploadingCover ? 'Subiendo...' : 'Agrega una portada para tu catálogo'}
                 </span>
-                <span className="text-xs" style={{ color: '#c0c0d0', fontFamily: 'var(--font-caption)' }}>Recomendado: 1200×630px</span>
+                <span className="text-xs" style={{ color: '#9ca3af', fontFamily: 'var(--font-caption)' }}>Recomendado: 1200x630 px</span>
               </div>
             )}
           </div>
@@ -657,7 +780,7 @@ export default function DesignCustomization({
               onClick={() => coverInputRef?.current?.click()}
               disabled={uploadingCover}
               className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium transition-all hover:opacity-80 disabled:opacity-50"
-              style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)', backgroundColor: '#ffffff', fontFamily: 'var(--font-caption)' }}
+              style={{ border: '1px solid rgba(17,24,39,0.10)', color: 'var(--color-text-secondary)', backgroundColor: 'rgba(255,255,255,0.72)', fontFamily: 'var(--font-caption)' }}
             >
               <Icon name="Upload" size={12} color="var(--color-text-secondary)" />
               {uploadingCover ? 'Subiendo...' : design?.headerImageUrl ? 'Cambiar portada' : 'Subir portada'}
@@ -854,15 +977,15 @@ export default function DesignCustomization({
       })()}
 
       {/* 4. Store Logo */}
-      <SectionCard icon="CircleUser" title="Logo de la tienda" subtitle="Aparece centrado en el encabezado, sobre el nombre de la tienda">
-        <div className="flex items-center gap-6">
+      <SectionCard icon="CircleUser" title={`Logo de la ${storeLabel}`} subtitle={`Acompaña el nombre de tu ${storeLabel} en el encabezado.`}>
+        <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:gap-6">
           {/* Logo preview */}
           <div
-            className="relative w-24 h-24 rounded-full overflow-hidden border-2 flex items-center justify-center group cursor-pointer flex-shrink-0 transition-all"
+            className="relative w-24 h-24 rounded-full overflow-hidden border flex items-center justify-center group cursor-pointer flex-shrink-0 transition-all duration-200 hover:-translate-y-0.5"
             style={{
-              borderColor: design?.logoUrl ? primaryColor : 'var(--color-border)',
-              backgroundColor: '#f0f0f8',
-              boxShadow: design?.logoUrl ? `0 0 0 3px ${primaryColor}20` : 'none',
+              borderColor: design?.logoUrl ? `${primaryColor}66` : 'rgba(17,24,39,0.10)',
+              backgroundColor: 'rgba(255,255,255,0.58)',
+              boxShadow: design?.logoUrl ? `0 0 0 4px ${primaryColor}12` : 'none',
             }}
             onClick={() => logoInputRef?.current?.click()}
           >
@@ -894,7 +1017,7 @@ export default function DesignCustomization({
           {/* Logo actions */}
           <div className="flex flex-col gap-2">
             <p className="text-xs" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
-              El logo aparece en un contenedor circular centrado sobre el nombre de la tienda.
+              El logo aparece en un contenedor circular junto a la identidad pública.
             </p>
             <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
               Si no hay logo, se muestra el ícono predeterminado.
@@ -904,7 +1027,7 @@ export default function DesignCustomization({
                 onClick={() => logoInputRef?.current?.click()}
                 disabled={uploadingLogo}
                 className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium transition-all hover:opacity-80 disabled:opacity-50"
-                style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)', backgroundColor: '#ffffff', fontFamily: 'var(--font-caption)' }}
+              style={{ border: '1px solid rgba(17,24,39,0.10)', color: 'var(--color-text-secondary)', backgroundColor: 'rgba(255,255,255,0.72)', fontFamily: 'var(--font-caption)' }}
               >
                 <Icon name="Upload" size={12} color="var(--color-text-secondary)" />
                 {uploadingLogo ? 'Subiendo...' : design?.logoUrl ? 'Cambiar logo' : 'Subir logo'}
@@ -924,19 +1047,19 @@ export default function DesignCustomization({
         </div>
       </SectionCard>
 
-      <DesignUnifiedHeading title="Estilo del catálogo" subtitle="Sombra y espaciado de las tarjetas de producto" />
+      <DesignUnifiedHeading title={`Composición del ${catalogLabel}`} subtitle="Define ritmo, densidad y presentación de productos." />
 
       {/* 4. Catalog Style Selector */}
-      <SectionCard icon="Layers" title="Estilo de tarjetas" subtitle="Ajusta la presentación visual de las tarjetas de producto">
-        <div className="grid grid-cols-3 gap-3">
+      <SectionCard icon="Layers" title="Estilo de tarjetas" subtitle="Ajusta cómo se sienten las tarjetas en la vista pública.">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           {CATALOG_STYLES?.map(style => (
             <button
               key={style?.id}
               onClick={() => handleChange({ ...design, catalogStyle: style?.id })}
-              className="relative flex flex-col gap-2 p-3 rounded-xl border-2 transition-all text-left"
+              className="relative flex flex-col gap-2 p-3 rounded-xl border transition-all duration-200 text-left hover:-translate-y-0.5"
               style={{
-                borderColor: selectedStyle === style?.id ? primaryColor : 'var(--color-border)',
-                backgroundColor: selectedStyle === style?.id ? `${primaryColor}08` : '#fafafa',
+                borderColor: selectedStyle === style?.id ? `${primaryColor}66` : 'rgba(17,24,39,0.08)',
+                backgroundColor: selectedStyle === style?.id ? `${primaryColor}08` : 'rgba(255,255,255,0.58)',
               }}
             >
               {selectedStyle === style?.id && (
@@ -967,24 +1090,25 @@ export default function DesignCustomization({
       <CatalogLayoutSettings
         design={design}
         onChange={handleChange}
+        isRestaurant={isRestaurant}
       />
 
-      <DesignUnifiedHeading title="Opciones avanzadas" subtitle="Tema y tipografía" />
+      <DesignUnifiedHeading title="Detalles de marca" subtitle="Tema y tipografía para terminar de ajustar la identidad." />
 
       <SectionCard icon="Settings2" title="Tema y tipografía" subtitle="Tema de color global y fuente del catálogo">
         <div className="flex flex-col gap-5">
           <div>
             <p className="text-xs font-bold mb-3" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Tema de color</p>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               {THEMES?.map(theme => (
                 <button
                   key={theme?.id}
                   type="button"
                   onClick={() => handleChange({ ...design, theme: theme?.id })}
-                  className="relative flex flex-col gap-2 p-3 rounded-xl border-2 transition-all text-left"
+                  className="relative flex flex-col gap-2 p-3 rounded-xl border transition-all duration-200 text-left hover:-translate-y-0.5"
                   style={{
-                    borderColor: selectedTheme === theme?.id ? primaryColor : 'var(--color-border)',
-                    backgroundColor: selectedTheme === theme?.id ? `${primaryColor}08` : '#fafafa',
+                    borderColor: selectedTheme === theme?.id ? `${primaryColor}66` : 'rgba(17,24,39,0.08)',
+                    backgroundColor: selectedTheme === theme?.id ? `${primaryColor}08` : 'rgba(255,255,255,0.58)',
                   }}
                 >
                   {selectedTheme === theme?.id && (
@@ -1010,10 +1134,10 @@ export default function DesignCustomization({
                   key={font?.id}
                   type="button"
                   onClick={() => handleChange({ ...design, font: font?.id })}
-                  className="flex items-center justify-between px-4 py-3 rounded-xl border-2 transition-all text-left"
+                  className="flex items-center justify-between px-4 py-3 rounded-xl border transition-all duration-200 text-left hover:-translate-y-0.5"
                   style={{
-                    borderColor: selectedFont === font?.id ? primaryColor : 'var(--color-border)',
-                    backgroundColor: selectedFont === font?.id ? `${primaryColor}08` : '#fafafa',
+                    borderColor: selectedFont === font?.id ? `${primaryColor}66` : 'rgba(17,24,39,0.08)',
+                    backgroundColor: selectedFont === font?.id ? `${primaryColor}08` : 'rgba(255,255,255,0.58)',
                   }}
                 >
                   <div className="flex flex-col gap-1 min-w-0 flex-1">
@@ -1035,8 +1159,8 @@ export default function DesignCustomization({
         </div>
       </SectionCard>
 
-      {!hideSaveButton && (
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-4 border-t" style={{ borderColor: 'var(--color-border)' }}>
+      {false && (
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-4 border-t" style={{ borderColor: 'rgba(17,24,39,0.08)' }}>
         <div className="flex items-center gap-3 order-2 sm:order-1">
           <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
             {showSaved
@@ -1064,11 +1188,9 @@ export default function DesignCustomization({
           disabled={isSaving || (!isDirty && !showSaved)}
           className="order-1 sm:order-2 flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:opacity-90 disabled:opacity-60"
           style={{
-            background: showSaved
-              ? 'linear-gradient(135deg, #059669 0%, #047857 100%)'
-              : `linear-gradient(135deg, ${primaryColor} 0%, #7c3aed 100%)`,
+            background: showSaved ? '#059669' : '#111827',
             fontFamily: 'var(--font-caption)',
-            boxShadow: isDirty ? `0 2px 8px ${primaryColor}55` : 'none',
+            boxShadow: isDirty ? '0 8px 18px rgba(17,24,39,0.18)' : 'none',
           }}
         >
           {isSaving ? (
@@ -1099,7 +1221,7 @@ export default function DesignCustomization({
       <input ref={coverInputRef} type="file" accept="image/*" className="hidden" onChange={handleCoverUpload} />
 
       {/* ── Botón flotante mobile (solo cuando hay cambios o se está guardando) ── */}
-      {(isDirty || isSaving || showSaved) && (
+      {false && (
         <button
           type="button"
           onClick={onSave}
@@ -1107,13 +1229,11 @@ export default function DesignCustomization({
           aria-label={saveLabel}
           className="fixed bottom-20 right-4 z-50 flex md:hidden items-center gap-2 px-5 py-3 rounded-2xl text-sm font-semibold text-white shadow-xl transition-all active:scale-95 disabled:opacity-60"
           style={{
-            background: showSaved
-              ? 'linear-gradient(135deg, #059669 0%, #047857 100%)'
-              : `linear-gradient(135deg, ${primaryColor} 0%, #7c3aed 100%)`,
+            background: showSaved ? '#059669' : '#111827',
             fontFamily: 'var(--font-caption)',
             boxShadow: showSaved
-              ? '0 4px 20px rgba(5,150,105,0.45)'
-              : `0 4px 20px ${primaryColor}60`,
+              ? '0 10px 24px rgba(5,150,105,0.22)'
+              : '0 10px 24px rgba(17,24,39,0.22)',
           }}
         >
           {isSaving ? (

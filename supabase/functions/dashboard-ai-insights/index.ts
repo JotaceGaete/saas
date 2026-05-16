@@ -459,15 +459,17 @@ ${JSON.stringify(metrics)}`;
 
       const aiText = await aiRes.text();
       if (!aiRes.ok) {
+        // Log en servidor — nunca enviar el cuerpo crudo del proveedor al cliente.
         console.error("[dashboard-ai-insights] OpenAI error", {
+          provider_attempted: "openai",
+          provider_failed: true,
+          final_status: "error",
           status: aiRes.status,
           bodyPreview: aiText.slice(0, 400),
         });
         return jsonResponse({
-          error: "AI provider error",
-          code: "OPENAI_HTTP_ERROR",
-          status: aiRes.status,
-          details: aiText.slice(0, 300),
+          error: "No pudimos generar el insight en este momento. Intenta nuevamente en unos minutos.",
+          code: "AI_PROVIDER_ERROR",
         }, 500);
       }
 

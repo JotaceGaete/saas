@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Icon from 'components/AppIcon';
+import PremiumLoader from 'components/ui/PremiumLoader';
 import { useAuth } from '../../../contexts/AuthContext';
 import { createBusiness } from '../../../services/waBusinessService';
 import WhatsAppField from './WhatsAppField';
@@ -70,19 +71,7 @@ export default function StoreCreationStep({ user, businessLoading }) {
   };
 
   if (businessLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--color-background)' }}>
-        <div className="flex flex-col items-center gap-3">
-          <svg className="animate-spin" width={32} height={32} viewBox="0 0 24 24" fill="none">
-            <circle cx="12" cy="12" r="10" stroke="rgba(124,58,237,0.2)" strokeWidth="3" />
-            <path d="M12 2a10 10 0 0 1 10 10" stroke="#7C3AED" strokeWidth="3" strokeLinecap="round" />
-          </svg>
-          <p className="text-sm" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-            Verificando tu cuenta...
-          </p>
-        </div>
-      </div>
-    );
+    return <PremiumLoader fullScreen text="Verificando tu cuenta..." />;
   }
 
   return (

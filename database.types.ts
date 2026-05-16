@@ -1299,6 +1299,7 @@ export type Database = {
           order_message_template: string | null
           plan_expires_at: string | null
           plan_slug: string
+          print_legend: string | null
           rubro_id: string | null
           scheduled_change_at: string | null
           scheduled_plan_slug: string | null
@@ -1330,6 +1331,7 @@ export type Database = {
           order_message_template?: string | null
           plan_expires_at?: string | null
           plan_slug?: string
+          print_legend?: string | null
           rubro_id?: string | null
           scheduled_change_at?: string | null
           scheduled_plan_slug?: string | null
@@ -1361,6 +1363,7 @@ export type Database = {
           order_message_template?: string | null
           plan_expires_at?: string | null
           plan_slug?: string
+          print_legend?: string | null
           rubro_id?: string | null
           scheduled_change_at?: string | null
           scheduled_plan_slug?: string | null

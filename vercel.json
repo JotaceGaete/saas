@@ -23,6 +23,12 @@
       ]
     },
     {
+      "source": "/p/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate, proxy-revalidate" }
+      ]
+    },
+    {
       "source": "/dashboard",
       "headers": [
         { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate, proxy-revalidate" }
@@ -105,12 +111,8 @@
   ],
   "crons": [
     {
-      "path": "/api/cron/process-email-queue",
-      "schedule": "0 8 * * *"
-    },
-    {
       "path": "/api/cron/process-admin-alert-queue",
-      "schedule": "0 8 * * *"
+      "schedule": "10 8 * * *"
     }
   ],
   "rewrites": [
@@ -181,6 +183,11 @@
     },
     {
       "source": "/catalogo/:slug",
+      "has": [{ "type": "host", "value": "miralatienda.de" }],
+      "destination": "/api/seo?slug=:slug&publicPath=catalogo"
+    },
+    {
+      "source": "/catalogo/:slug",
       "destination": "/api/seo?slug=:slug&publicPath=catalogo"
     },
     {
@@ -188,11 +195,23 @@
       "destination": "/api/seo?slug=:slug&publicPath=catalog"
     },
     {
+      "source": "/p/:businessSlug/:productSlug",
+      "destination": "/api/seo?publicPath=product&businessSlug=:businessSlug&productSlug=:productSlug"
+    },
+    {
+      "source": "/(dashboard|elegir-pais|business-registration|register|complete-business-setup|business-configuration|product-management|product-editor|orders|design|ayuda|login|verify-email|auth|reset-password|planes|plan-y-facturacion|billing|admin|landing-page|plans|terms|privacy|refunds)(.*)",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/p/:businessSlug/:productSlug",
+      "destination": "/index.html"
+    },
+    {
       "source": "/:slug",
       "destination": "/api/seo?slug=:slug&publicPath=short"
     },
     {
-      "source": "/((?!api/).*)",
+      "source": "/(.*)",
       "destination": "/index.html"
     }
   ]

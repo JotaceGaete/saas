@@ -5,16 +5,16 @@ import { getPublicOffersUrl } from '../../../config/appUrl';
 function ToggleRow({ icon, iconColor, iconBg, title, description, checked, onChange, accentColor }) {
   return (
     <div
-      className="flex items-center justify-between p-4 rounded-xl border transition-all duration-200"
+      className="flex items-center justify-between rounded-xl border px-3.5 py-3 transition-all duration-200 hover:-translate-y-0.5"
       style={{
-        borderColor: checked ? accentColor + '40' : 'var(--color-border)',
-        backgroundColor: checked ? accentColor + '08' : 'transparent',
+        borderColor: checked ? accentColor + '33' : 'rgba(17,24,39,0.08)',
+        backgroundColor: checked ? accentColor + '08' : 'rgba(255,255,255,0.46)',
       }}
     >
       <div className="flex items-center gap-3">
         <div
-          className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-          style={{ backgroundColor: checked ? accentColor + '18' : 'rgba(107,107,107,0.08)' }}
+          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl"
+          style={{ backgroundColor: checked ? accentColor + '14' : 'rgba(17,24,39,0.05)' }}
         >
           <Icon name={icon} size={17} color={checked ? iconColor : 'var(--color-muted-foreground)'} />
         </div>
@@ -50,21 +50,23 @@ function ToggleRow({ icon, iconColor, iconBg, title, description, checked, onCha
   );
 }
 
-export default function ProductToggles({ activo, featured, onSale, slug = '', onActiveChange, onFeaturedChange, onOnSaleChange }) {
+export default function ProductToggles({ activo, featured, onSale, slug = '', onActiveChange, onFeaturedChange, onOnSaleChange, hideActive = false }) {
   const offersUrl = slug ? getPublicOffersUrl(slug) : '';
 
   return (
     <div className="space-y-3">
-      <ToggleRow
-        icon={activo ? 'Eye' : 'EyeOff'}
-        iconColor="#059669"
-        iconBg="rgba(5,150,105,0.1)"
-        accentColor="#059669"
-        title="Visible en el catálogo"
-        description={activo ? 'Los clientes pueden ver y comprar este producto' : 'El producto está oculto del catálogo público'}
-        checked={activo}
-        onChange={onActiveChange}
-      />
+      {!hideActive && (
+        <ToggleRow
+          icon={activo ? 'Eye' : 'EyeOff'}
+          iconColor="#059669"
+          iconBg="rgba(5,150,105,0.1)"
+          accentColor="#059669"
+          title="Visible en el catálogo"
+          description={activo ? 'Los clientes pueden ver y comprar este producto' : 'El producto está oculto del catálogo público'}
+          checked={activo}
+          onChange={onActiveChange}
+        />
+      )}
 
       <div>
         <ToggleRow

@@ -11,10 +11,12 @@ export default function DashboardAppShell({ children, backgroundColor = 'var(--c
     <div className="panel-root min-h-screen" style={{ backgroundColor }}>
       <BusinessSidebar isCollapsed={sidebarCollapsed} onCollapsedChange={setSidebarCollapsed} />
       <main
-        className="panel-main flex min-h-screen flex-col w-full max-w-full min-w-0 overflow-x-visible overflow-y-visible transition-all duration-200 max-lg:bg-gradient-to-b max-lg:from-[#F8FAFC] max-lg:to-[#EFF1F5]"
+        className="panel-main flex min-h-screen w-full min-w-0 flex-1 max-w-full justify-center overflow-x-hidden overflow-y-visible transition-all duration-200"
         style={{ marginLeft: isDesktop ? sidebarWidth : 0, transition: 'margin-left var(--transition-base)' }}
       >
-        {children}
+        <div className="mx-auto w-full min-w-0 max-w-[480px] overflow-x-hidden md:max-w-none lg:overflow-visible">
+          {children}
+        </div>
       </main>
     </div>
   );

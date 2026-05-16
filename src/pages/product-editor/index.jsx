@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import Icon from 'components/AppIcon';
+import { isRestaurantBusiness } from '../../utils/businessType';
 import DashboardAppShell from 'components/ui/DashboardAppShell';
 import DashboardLayoutContent from 'components/ui/DashboardLayoutContent';
 import PanelHeader from 'components/ui/PanelHeader';
+import PremiumLoader from 'components/ui/PremiumLoader';
 import ImageUploadSection from './components/ImageUploadSection';
 import ProductFormFields from './components/ProductFormFields';
 import ProductToggles from './components/ProductToggles';
@@ -20,10 +22,12 @@ import {
   updateProduct,
   uploadProductImage,
   uploadProductMainImage,
+  getProducts,
   getMyBusiness,
   getCategoriesByRubroId,
   getBusinessCategories,
   getEffectivePlanSlug,
+  slugifyProductName,
 } from '../../services/waBusinessService';
 import { convertUnsupportedImageToJpeg, generateCardThumbnail } from '../../utils/imageUploadUtils';
 import { useToast } from '../../components/ui/Toast';
@@ -32,6 +36,7 @@ import { supabase } from '../../lib/supabase';
 import { getBusinessLocale } from '../../lib/locale/businessLocale';
 import { resolveVentaAiProductDescriptionEndpoint } from '../../lib/ai/resolveVentaAiProductDescriptionUrl.js';
 import { appendCacheBust, uploadToMediaService } from '../../services/mediaUploadService';
+import { getPublicProductUrl } from '../../config/appUrl';
 
 const EMPTY_FORM = {
   nombre: '',
@@ -41,11 +46,115 @@ const EMPTY_FORM = {
   categoria: '',
   stock: '',
   activo: true,
+  soldOut: false,
   featured: false,
+  isMainFeatured: false,
   onSale: false,
   compareAtPrice: '',
   hasOptions: false,
   optionsDescription: '',
+  addOns: [],
+  comboConfig: {
+    enabled: false,
+    groups: [],
+  },
+};
+
+const ADDON_LIMIT = 5;
+const ADDON_SEARCH_MIN = 2;
+const ADDON_SEARCH_MAX_RESULTS = 10;
+
+const buildAddonId = () => `addon-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+const buildComboId = (prefix = 'combo') => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+const normalizeAddon = (addon, index = 0) => {
+  if (!addon || typeof addon !== 'object') return null;
+
+  if (addon?.type === 'product') {
+    return {
+      id: addon?.id || `addon-product-${addon?.productId || index}`,
+      type: 'product',
+      productId: addon?.productId || null,
+      active: addon?.active !== false,
+    };
+  }
+
+  const priceValue = Number(addon?.price);
+  return {
+    id: addon?.id || `addon-manual-${index}`,
+    type: 'manual',
+    emoji: addon?.emoji || '',
+    label: addon?.label || '',
+    price: Number.isFinite(priceValue) && priceValue >= 0 ? Math.round(priceValue) : 0,
+    active: addon?.active !== false,
+  };
+};
+
+const normalizeComboItem = (item, index = 0) => {
+  if (!item || typeof item !== 'object') return null;
+  const priceValue = Number(item?.price);
+  return {
+    id: item?.id || `combo-item-${index}`,
+    label: item?.label || '',
+    price: Number.isFinite(priceValue) && priceValue >= 0 ? Math.round(priceValue) : 0,
+  };
+};
+
+const normalizeComboGroup = (group, index = 0) => {
+  if (!group || typeof group !== 'object') return null;
+  const maxValue = Number(group?.maxSelections);
+  return {
+    id: group?.id || `combo-group-${index}`,
+    label: group?.label || '',
+    required: group?.required === true,
+    maxSelections: Number.isFinite(maxValue) && maxValue > 0 ? Math.round(maxValue) : 1,
+    items: Array.isArray(group?.items)
+      ? group.items.map((item, itemIndex) => normalizeComboItem(item, itemIndex)).filter(Boolean)
+      : [],
+  };
+};
+
+const normalizeComboConfig = (config) => {
+  if (!config || typeof config !== 'object' || Array.isArray(config)) {
+    return {
+      enabled: false,
+      groups: [],
+    };
+  }
+
+  return {
+    enabled: config?.enabled === true,
+    groups: Array.isArray(config?.groups)
+      ? config.groups.map((group, index) => normalizeComboGroup(group, index)).filter(Boolean)
+      : [],
+  };
+};
+
+const isReusableComboGroup = (group) => {
+  if (!group || typeof group !== 'object') return false;
+  const label = String(group?.label || '').trim();
+  if (!label) return false;
+  const items = Array.isArray(group?.items) ? group.items : [];
+  return items.some((item) => String(item?.label || '').trim());
+};
+
+const cloneComboGroup = (group, { labelSuffix = '' } = {}) => {
+  const normalizedGroup = normalizeComboGroup(group);
+  if (!normalizedGroup || !isReusableComboGroup(normalizedGroup)) return null;
+  const nextLabel = normalizedGroup.label?.trim() || 'Grupo';
+  return {
+    id: buildComboId('combo-group'),
+    label: labelSuffix ? `${nextLabel}${labelSuffix}` : nextLabel,
+    required: normalizedGroup.required === true,
+    maxSelections: Math.max(1, Number(normalizedGroup.maxSelections) || 1),
+    items: normalizedGroup.items
+      .filter((item) => String(item?.label || '').trim())
+      .map((item) => ({
+        id: buildComboId('combo-item'),
+        label: item.label,
+        price: Math.max(0, Number(item.price) || 0),
+      })),
+  };
 };
 
 export default function ProductEditor() {
@@ -71,9 +180,17 @@ export default function ProductEditor() {
   const [pageLoading, setPageLoading] = useState(isEditing);
   const [rubroCategories, setRubroCategories] = useState([]);
   const [businessCategories, setBusinessCategories] = useState([]);
+  const [businessProducts, setBusinessProducts] = useState([]);
+  const [comboImportOpen, setComboImportOpen] = useState(false);
+  const [selectedReusableProductId, setSelectedReusableProductId] = useState('');
+  const [selectedReusableGroupId, setSelectedReusableGroupId] = useState('');
+  const [addonCreationMode, setAddonCreationMode] = useState(null);
+  const [addonSearchQuery, setAddonSearchQuery] = useState('');
+  const [manualAddonDraft, setManualAddonDraft] = useState({ emoji: '', label: '', price: '' });
   const [isImprovingDescription, setIsImprovingDescription] = useState(false);
   const [publicCode, setPublicCode] = useState('');
   const [cardImageUrl, setCardImageUrl] = useState(null);
+  const [productSlug, setProductSlug] = useState('');
   const toast = useToast();
   const effectiveProductId = currentProductId || productId || null;
   const isEditingFlow = !!effectiveProductId;
@@ -85,6 +202,93 @@ export default function ProductEditor() {
     preferredCountryCode: user?.user_metadata?.country_code ?? null,
   });
   const initialActivoRef = React.useRef(null);
+  const isRestaurant = isRestaurantBusiness(business);
+  const itemSingular = isRestaurant ? 'plato' : 'producto';
+  const itemSingularCapitalized = isRestaurant ? 'Plato' : 'Producto';
+  const collectionLabel = isRestaurant ? 'Menú' : 'Productos';
+  const resolvedProductSlug = productSlug || (isEditingFlow && formData?.nombre ? slugifyProductName(formData.nombre) : '');
+  const publicProductUrl = business?.slug && resolvedProductSlug
+    ? getPublicProductUrl(business.slug, resolvedProductSlug)
+    : '';
+  const publicProductShareText = publicProductUrl
+    ? `Mira este producto: ${publicProductUrl}`
+    : '';
+  const publicProductWhatsAppShareUrl = publicProductShareText
+    ? `https://wa.me/?text=${encodeURIComponent(publicProductShareText)}`
+    : '';
+  const editorTitle = isEditingFlow
+    ? (isRestaurant ? 'Editar plato' : 'Editar producto')
+    : (isRestaurant ? 'Agregar plato' : 'Nuevo producto');
+  const editorHeroTitle = isRestaurant ? 'Ficha del plato' : 'Ficha del producto';
+  const editorHeroSubtitle = isRestaurant
+    ? 'Presenta este plato de forma clara y atractiva para tus clientes.'
+    : 'Cuida como se vera este producto en tu catalogo.';
+  const sectionSurfaceStyle = {
+    backgroundColor: 'rgba(255,255,255,0.78)',
+    borderColor: 'rgba(17,24,39,0.08)',
+    boxShadow: '0 14px 34px rgba(17,24,39,0.055)',
+  };
+  const softSectionSurfaceStyle = {
+    backgroundColor: 'rgba(255,255,255,0.58)',
+    borderColor: 'rgba(17,24,39,0.07)',
+    boxShadow: '0 10px 24px rgba(17,24,39,0.04)',
+  };
+  const normalizedAddOns = Array.isArray(formData?.addOns)
+    ? formData.addOns.map((addon, index) => normalizeAddon(addon, index)).filter(Boolean)
+    : [];
+  const normalizedComboConfig = normalizeComboConfig(formData?.comboConfig);
+  const comboGroups = normalizedComboConfig.groups;
+  const reusableComboProducts = businessProducts.reduce((acc, candidate) => {
+    if (!candidate?.id || candidate.id === effectiveProductId) return acc;
+    const candidateComboConfig = normalizeComboConfig(candidate?.comboConfig);
+    if (!candidateComboConfig?.enabled) return acc;
+    const validGroups = candidateComboConfig.groups
+      .filter((group) => isReusableComboGroup(group))
+      .map((group) => ({
+        ...group,
+        sourceProductId: candidate.id,
+        sourceProductName: candidate?.name || 'Producto sin nombre',
+      }));
+    if (validGroups.length === 0) return acc;
+    acc.push({
+      id: candidate.id,
+      name: candidate?.name || 'Producto sin nombre',
+      category: candidate?.category || '',
+      groups: validGroups,
+    });
+    return acc;
+  }, []);
+  const selectedReusableProduct = reusableComboProducts.find((product) => product.id === selectedReusableProductId) || null;
+  const selectedReusableGroup = selectedReusableProduct?.groups.find((group) => group.id === selectedReusableGroupId) || null;
+  const productAddonIds = new Set(
+    normalizedAddOns
+      .filter((addon) => addon?.type === 'product' && addon?.productId)
+      .map((addon) => addon.productId),
+  );
+  const addonSearchTerm = addonSearchQuery.trim().toLowerCase();
+  const availableAddonResults = addonSearchTerm.length >= ADDON_SEARCH_MIN
+    ? businessProducts
+        .filter((candidate) => {
+          if (!candidate?.id || candidate.id === effectiveProductId) return false;
+          if (productAddonIds.has(candidate.id)) return false;
+          const haystack = [candidate?.name, candidate?.category].filter(Boolean).join(' ').toLowerCase();
+          return haystack.includes(addonSearchTerm);
+        })
+        .slice(0, ADDON_SEARCH_MAX_RESULTS)
+    : [];
+  const formatAddonPrice = (value) => {
+    const amount = Number(value);
+    if (!Number.isFinite(amount)) return 'Precio no disponible';
+    try {
+      return new Intl.NumberFormat(locale?.locale || 'es-CL', {
+        style: 'currency',
+        currency: locale?.currencyCode || 'CLP',
+        maximumFractionDigits: 0,
+      }).format(amount);
+    } catch {
+      return amount.toLocaleString(locale?.locale || 'es-CL');
+    }
+  };
 
   const revokeBlobUrl = React.useCallback((url) => {
     if (typeof url === 'string' && url.startsWith('blob:')) {
@@ -109,17 +313,23 @@ export default function ProductEditor() {
           categoria: data?.category ?? '',
           stock: '',
           activo: data?.isActive !== undefined ? data?.isActive : true,
+          soldOut: data?.isSoldOut === true,
           featured: data?.featured || false,
+          isMainFeatured: data?.isMainFeatured === true,
           onSale: data?.onSale || false,
           compareAtPrice: data?.compareAtPrice != null ? Number(data.compareAtPrice) : '',
           hasOptions: data?.hasOptions || false,
           optionsDescription: data?.optionsDescription || '',
+          addOns: Array.isArray(data?.addOns) ? data.addOns : [],
+          comboConfig: normalizeComboConfig(data?.comboConfig),
         });
         const loadedImages = Array.isArray(data?.images) && data.images.length > 0
           ? data.images.map((url, i) => ({
               id: `loaded-${i}-${url}`,
               url,
               persistedUrl: url,
+              thumbnailUrl: i === 0 ? (data?.thumbnailUrl || data?.cardImageUrl || null) : null,
+              thumbnailPath: i === 0 ? (data?.thumbnailPath || null) : null,
               alt: data?.name,
               name: `product-image-${i}`,
               status: 'uploaded',
@@ -129,6 +339,8 @@ export default function ProductEditor() {
                   id: 1,
                   url: data.imageUrl,
                   persistedUrl: data.imageUrl,
+                  thumbnailUrl: data?.thumbnailUrl || data?.cardImageUrl || null,
+                  thumbnailPath: data?.thumbnailPath || null,
                   alt: data?.name,
                   name: 'product-image',
                   status: 'uploaded',
@@ -147,7 +359,8 @@ export default function ProductEditor() {
           });
         }
         setPublicCode(data?.publicCode || '');
-        setCardImageUrl(data?.cardImageUrl || null);
+        setCardImageUrl(data?.cardImageUrl || data?.thumbnailUrl || null);
+        setProductSlug(data?.slug || '');
       } catch (e) { navigate('/product-management'); }
       finally { setPageLoading(false); }
     };
@@ -218,10 +431,218 @@ export default function ProductEditor() {
     }
   }, [business?.id, business?.rubroId, business?.designSettings?.useCategories]);
 
+  useEffect(() => {
+    if (!business?.id || !isRestaurant) {
+      setBusinessProducts([]);
+      return;
+    }
+
+    let cancelled = false;
+    getProducts(business.id).then(({ data }) => {
+      if (!cancelled) {
+        setBusinessProducts(Array.isArray(data) ? data : []);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [business?.id, isRestaurant]);
+
+  useEffect(() => {
+    setSelectedReusableGroupId('');
+  }, [selectedReusableProductId]);
+
   const handleFieldChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
     if (errors?.[field]) setErrors(prev => { const e = { ...prev }; delete e?.[field]; return e; });
   };
+
+  const updateAddOns = React.useCallback((updater) => {
+    setFormData((prev) => {
+      const nextAddOns = typeof updater === 'function' ? updater(Array.isArray(prev?.addOns) ? prev.addOns : []) : updater;
+      return { ...prev, addOns: nextAddOns };
+    });
+  }, []);
+
+  const updateComboConfig = React.useCallback((updater) => {
+    setFormData((prev) => {
+      const current = normalizeComboConfig(prev?.comboConfig);
+      const nextComboConfig = typeof updater === 'function' ? updater(current) : updater;
+      return {
+        ...prev,
+        comboConfig: normalizeComboConfig(nextComboConfig),
+      };
+    });
+  }, []);
+
+  const addComboGroup = React.useCallback(() => {
+    updateComboConfig((current) => ({
+      ...current,
+      enabled: true,
+      groups: [
+        ...current.groups,
+        {
+          id: buildComboId('combo-group'),
+          label: '',
+          required: false,
+          maxSelections: 1,
+          items: [
+            {
+              id: buildComboId('combo-item'),
+              label: '',
+              price: 0,
+            },
+          ],
+        },
+      ],
+    }));
+  }, [updateComboConfig]);
+
+  const updateComboGroup = React.useCallback((groupId, updates) => {
+    updateComboConfig((current) => ({
+      ...current,
+      groups: current.groups.map((group) => (
+        group?.id === groupId
+          ? {
+              ...group,
+              ...updates,
+              maxSelections: updates?.maxSelections !== undefined
+                ? Math.max(1, Number(updates.maxSelections) || 1)
+                : group.maxSelections,
+            }
+          : group
+      )),
+    }));
+  }, [updateComboConfig]);
+
+  const removeComboGroup = React.useCallback((groupId) => {
+    updateComboConfig((current) => ({
+      ...current,
+      groups: current.groups.filter((group) => group?.id !== groupId),
+    }));
+  }, [updateComboConfig]);
+
+  const addComboItem = React.useCallback((groupId) => {
+    updateComboConfig((current) => ({
+      ...current,
+      groups: current.groups.map((group) => (
+        group?.id === groupId
+          ? {
+              ...group,
+              items: [
+                ...group.items,
+                {
+                  id: buildComboId('combo-item'),
+                  label: '',
+                  price: 0,
+                },
+              ],
+            }
+          : group
+      )),
+    }));
+  }, [updateComboConfig]);
+
+  const updateComboItem = React.useCallback((groupId, itemId, updates) => {
+    updateComboConfig((current) => ({
+      ...current,
+      groups: current.groups.map((group) => (
+        group?.id === groupId
+          ? {
+              ...group,
+              items: group.items.map((item) => (
+                item?.id === itemId
+                  ? {
+                      ...item,
+                      ...updates,
+                      price: updates?.price !== undefined ? Math.max(0, Number(updates.price) || 0) : item.price,
+                    }
+                  : item
+              )),
+            }
+          : group
+      )),
+    }));
+  }, [updateComboConfig]);
+
+  const removeComboItem = React.useCallback((groupId, itemId) => {
+    updateComboConfig((current) => ({
+      ...current,
+      groups: current.groups.map((group) => (
+        group?.id === groupId
+          ? {
+              ...group,
+              items: group.items.filter((item) => item?.id !== itemId),
+            }
+          : group
+      )),
+    }));
+  }, [updateComboConfig]);
+
+  const duplicateComboGroup = React.useCallback((groupId) => {
+    updateComboConfig((current) => {
+      const sourceGroup = current.groups.find((group) => group?.id === groupId);
+      const clonedGroup = cloneComboGroup(sourceGroup, { labelSuffix: ' (copia)' });
+      if (!clonedGroup) return current;
+      return {
+        ...current,
+        groups: [...current.groups, clonedGroup],
+      };
+    });
+  }, [updateComboConfig]);
+
+  const importReusableComboGroup = React.useCallback(() => {
+    const clonedGroup = cloneComboGroup(selectedReusableGroup);
+    if (!clonedGroup) return;
+    updateComboConfig((current) => ({
+      ...current,
+      enabled: true,
+      groups: [...current.groups, clonedGroup],
+    }));
+    setComboImportOpen(false);
+    setSelectedReusableProductId('');
+    setSelectedReusableGroupId('');
+  }, [selectedReusableGroup, updateComboConfig]);
+
+  const addProductAddon = React.useCallback((candidate) => {
+    if (!candidate?.id) return;
+    updateAddOns((current) => {
+      const normalizedCurrent = Array.isArray(current) ? current.map((addon, index) => normalizeAddon(addon, index)).filter(Boolean) : [];
+      if (normalizedCurrent.length >= ADDON_LIMIT) return current;
+      if (candidate.id === effectiveProductId) return current;
+      if (normalizedCurrent.some((addon) => addon?.type === 'product' && addon?.productId === candidate.id)) return current;
+      return [
+        ...normalizedCurrent,
+        { id: buildAddonId(), type: 'product', productId: candidate.id, active: true },
+      ];
+    });
+    setAddonSearchQuery('');
+    setAddonCreationMode(null);
+  }, [effectiveProductId, updateAddOns]);
+
+  const addManualAddon = React.useCallback(() => {
+    const label = manualAddonDraft?.label?.trim() || '';
+    if (!label) return;
+    updateAddOns((current) => {
+      const normalizedCurrent = Array.isArray(current) ? current.map((addon, index) => normalizeAddon(addon, index)).filter(Boolean) : [];
+      if (normalizedCurrent.length >= ADDON_LIMIT) return current;
+      const parsedPrice = manualAddonDraft?.price === '' ? 0 : Number(manualAddonDraft.price);
+      return [
+        ...normalizedCurrent,
+        {
+          id: buildAddonId(),
+          type: 'manual',
+          emoji: manualAddonDraft?.emoji || '',
+          label,
+          price: Number.isFinite(parsedPrice) && parsedPrice >= 0 ? Math.round(parsedPrice) : 0,
+          active: true,
+        },
+      ];
+    });
+    setManualAddonDraft({ emoji: '', label: '', price: '' });
+    setAddonCreationMode(null);
+  }, [manualAddonDraft, updateAddOns]);
 
   const handleImproveWithAi = React.useCallback(async (text, productName) => {
     setIsImprovingDescription(true);
@@ -267,13 +688,13 @@ export default function ProductEditor() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data?.ok === false) {
-        console.error('[Mejorar con IA] Error API:', res.status, res.statusText, data);
+        console.error('[Mejorar con IA] Error API:', res.status, data?.code);
         if (res.status === 429) {
-          toast.error(data?.error ?? 'Demasiadas solicitudes. Espera un momento e intenta de nuevo.');
+          toast.error('Demasiadas solicitudes. Espera un momento e intenta de nuevo.');
         } else if (res.status === 504) {
           toast.error('El servicio de IA tardó demasiado. Intenta de nuevo.');
         } else {
-          toast.error(data?.error ?? data?.message ?? 'No se pudo mejorar la descripción');
+          toast.error('No pudimos generar la respuesta en este momento. Intenta nuevamente en unos segundos.');
         }
         return;
       }
@@ -310,11 +731,11 @@ export default function ProductEditor() {
   }, [toast, business?.id, effectiveProductId]);
 
   const buildDraftPayload = React.useCallback(() => ({
-    name: formData?.nombre?.trim() || 'Producto en edicion',
+    name: formData?.nombre?.trim() || (isRestaurant ? 'Plato en edicion' : 'Producto en edicion'),
     price: formData?.precio,
     description: formData?.descripcion?.trim() || null,
     category: formData?.categoria?.trim() || null,
-  }), [formData]);
+  }), [formData, isRestaurant]);
 
   const ensureProductIdForMainImageUpload = React.useCallback(async () => {
     if (currentProductId) {
@@ -326,13 +747,14 @@ export default function ProductEditor() {
 
     const { data, error } = await createProductDraft(business.id, buildDraftPayload());
     if (error || !data?.id) {
-      throw new Error(error?.message || 'No se pudo crear el borrador del producto para subir la imagen.');
+      throw new Error(error?.message || `No se pudo crear el borrador del ${itemSingular} para subir la imagen.`);
     }
 
     setCurrentProductId(data.id);
+    setProductSlug(data?.slug || slugifyProductName(data?.name || formData?.nombre));
     initialActivoRef.current = data?.isActive !== undefined ? data.isActive : false;
     return { productId: data.id, createdDraft: true };
-  }, [business?.id, buildDraftPayload, currentProductId]);
+  }, [business?.id, buildDraftPayload, currentProductId, formData?.nombre]);
 
   const handleUploadRequested = React.useCallback(async (imageId, file) => {
     console.log('[ProductEditor] handleUploadRequested', { imageId, hasFile: !!file, businessId: business?.id ?? null, productId: productId ?? null });
@@ -425,6 +847,7 @@ export default function ProductEditor() {
     try {
       let persistedUrl = null;
       let renderUrl = null;
+      let mainImageMeta = null;
 
       if (isMainImage) {
         const ensureResult = await ensureProductIdForMainImageUpload();
@@ -441,6 +864,10 @@ export default function ProductEditor() {
         const nextVersion = Date.now();
         persistedUrl = uploaded.url;
         renderUrl = appendCacheBust(uploaded.url, nextVersion);
+        mainImageMeta = {
+          thumbnailUrl: uploaded.thumbnailUrl || null,
+          thumbnailPath: uploaded.thumbnailPath || null,
+        };
         setImagePreviewUrl(renderUrl);
         // Genera y sube thumbnail de card en segundo plano (no bloquea el flujo principal)
         generateCardThumbnail(fileToUpload)
@@ -479,6 +906,7 @@ export default function ProductEditor() {
           ...img,
           url: renderUrl,
           persistedUrl,
+          ...(isMainImage ? mainImageMeta : null),
           status: 'uploaded',
           file: undefined,
           error: undefined,
@@ -516,7 +944,7 @@ export default function ProductEditor() {
 
   const validate = () => {
     const newErrors = {};
-    if (!formData?.nombre?.trim()) newErrors.nombre = 'El nombre del producto es obligatorio.';
+    if (!formData?.nombre?.trim()) newErrors.nombre = `El nombre del ${itemSingular} es obligatorio.`;
     const priceNum = Number(formData?.precio);
     if (formData?.precio === '' || formData?.precio === null || formData?.precio === undefined || !Number.isFinite(priceNum) || priceNum <= 0) newErrors.precio = 'Ingresa un precio válido (entero mayor a 0).';
     return newErrors;
@@ -559,6 +987,7 @@ export default function ProductEditor() {
         ?.map(i => i?.persistedUrl || i?.url?.split?.('?')?.[0] || i?.url)
         ?.filter(Boolean) ?? [];
       const finalImageUrl = persistedImages?.[0] || null;
+      const mainImageMeta = images?.[0] || null;
       const rawCompareAt = formData?.compareAtPrice;
       const compareAtNum = rawCompareAt !== '' && rawCompareAt != null ? Number(rawCompareAt) : NaN;
       const productData = {
@@ -566,10 +995,14 @@ export default function ProductEditor() {
         description: formData?.descripcion || null,
         price: Math.round(Number(formData?.precio)),
         imageUrl: finalImageUrl,
+        thumbnailUrl: mainImageMeta?.thumbnailUrl || null,
+        thumbnailPath: mainImageMeta?.thumbnailPath || null,
         images: persistedImages?.length ? persistedImages : (finalImageUrl ? [finalImageUrl] : []),
         isDraft: false,
         isActive: formData?.activo,
+        isSoldOut: formData?.soldOut === true,
         featured: formData?.featured,
+        isMainFeatured: formData?.isMainFeatured === true,
         onSale: formData?.onSale,
         compareAtPrice: !isNaN(compareAtNum) ? Math.round(compareAtNum) : null,
         hasOptions: formData?.hasOptions,
@@ -577,6 +1010,23 @@ export default function ProductEditor() {
         longDescription: formData?.longDescription?.trim() || null,
         category: formData?.categoria?.trim() || null,
         cardImageUrl: cardImageUrl || null,
+        addOns: normalizedAddOns,
+        comboConfig: isRestaurant && normalizedComboConfig.enabled
+          ? {
+              enabled: true,
+              groups: comboGroups.map((group) => ({
+                id: group.id,
+                label: group.label?.trim() || '',
+                required: group.required === true,
+                maxSelections: Math.max(1, Number(group.maxSelections) || 1),
+                items: group.items.map((item) => ({
+                  id: item.id,
+                  label: item.label?.trim() || '',
+                  price: Math.max(0, Number(item.price) || 0),
+                })),
+              })),
+          }
+          : null,
       };
       const result = currentProductId
         ? await updateProduct(currentProductId, productData)
@@ -585,6 +1035,7 @@ export default function ProductEditor() {
       if (!currentProductId && result?.data?.id) {
         setCurrentProductId(result.data.id);
       }
+      setProductSlug(result?.data?.slug || slugifyProductName(result?.data?.name || formData?.nombre));
       setIsSaving(false);
       setSaveSuccess(true);
       if (andNew) {
@@ -597,6 +1048,10 @@ export default function ProductEditor() {
         setVideo(null);
         setPublicCode('');
         setCardImageUrl(null);
+        setProductSlug('');
+        setAddonCreationMode(null);
+        setAddonSearchQuery('');
+        setManualAddonDraft({ emoji: '', label: '', price: '' });
         setErrors({});
         setSaveSuccess(false);
         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -609,14 +1064,7 @@ export default function ProductEditor() {
 
   const handleCancel = () => navigate('/product-management');
   if (pageLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--color-background)' }}>
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: 'var(--color-primary)', borderTopColor: 'transparent' }} />
-          <p className="text-sm" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Cargando producto...</p>
-        </div>
-      </div>
-    );
+    return <PremiumLoader fullScreen business={business} context="products" />;
   }
 
   return (
@@ -637,14 +1085,14 @@ export default function ProductEditor() {
               className="text-base font-bold truncate"
               style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}
             >
-              {isEditingFlow ? 'Editar producto' : 'Nuevo producto'}
+              {editorTitle}
             </h1>
           )}
           subtitle={(
             <nav aria-label="Breadcrumb" className="hidden sm:flex items-center gap-1 mt-0.5">
               <button onClick={() => navigate('/dashboard')} className="text-xs hover:underline" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Dashboard</button>
               <Icon name="ChevronRight" size={11} color="var(--color-muted-foreground)" />
-              <button onClick={() => navigate('/product-management')} className="text-xs hover:underline" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Productos</button>
+              <button onClick={() => navigate('/product-management')} className="text-xs hover:underline" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>{collectionLabel}</button>
               <Icon name="ChevronRight" size={11} color="var(--color-muted-foreground)" />
               <span className="text-xs" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>{isEditingFlow ? 'Editar' : 'Nuevo'}</span>
             </nav>
@@ -654,13 +1102,17 @@ export default function ProductEditor() {
             <span
               className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium"
               style={{
-                backgroundColor: formData?.activo ? 'rgba(5,150,105,0.1)' : 'rgba(107,107,107,0.1)',
-                color: formData?.activo ? '#059669' : 'var(--color-muted-foreground)',
+                backgroundColor: !formData?.activo ? 'rgba(107,107,107,0.1)' : formData?.soldOut ? 'rgba(234,88,12,0.1)' : 'rgba(5,150,105,0.1)',
+                color: !formData?.activo ? 'var(--color-muted-foreground)' : formData?.soldOut ? '#ea580c' : '#059669',
                 fontFamily: 'var(--font-caption)',
               }}
             >
-              <Icon name={formData?.activo ? 'Eye' : 'EyeOff'} size={11} color={formData?.activo ? '#059669' : 'var(--color-muted-foreground)'} />
-              {formData?.activo ? 'Visible' : 'Oculto'}
+              <Icon
+                name={!formData?.activo ? 'EyeOff' : formData?.soldOut ? 'PackageX' : 'Eye'}
+                size={11}
+                color={!formData?.activo ? 'var(--color-muted-foreground)' : formData?.soldOut ? '#ea580c' : '#059669'}
+              />
+              {!formData?.activo ? 'Oculto' : formData?.soldOut ? 'Agotado' : 'Visible'}
             </span>
             {formData?.onSale && (
               <span
@@ -693,6 +1145,45 @@ export default function ProductEditor() {
 
         {/* Main content */}
         <DashboardLayoutContent className="page-enter lg:pb-0">
+            <section className="mb-7 sm:mb-9">
+              <div className="flex flex-col gap-5 border-b pb-6 sm:flex-row sm:items-end sm:justify-between" style={{ borderColor: 'rgba(17,24,39,0.08)' }}>
+                <div className="max-w-2xl">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                    {isEditingFlow ? 'Editar ficha comercial' : 'Nueva ficha comercial'}
+                  </p>
+                  <h2 className="mt-2 text-3xl font-semibold leading-tight sm:text-4xl" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-heading)', letterSpacing: '-0.03em' }}>
+                    {editorHeroTitle}
+                  </h2>
+                  <p className="mt-3 max-w-xl text-sm leading-6 sm:text-base" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-body)' }}>
+                    {editorHeroSubtitle}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold"
+                    style={{
+                      backgroundColor: !formData?.activo ? 'rgba(107,107,107,0.10)' : formData?.soldOut ? 'rgba(234,88,12,0.10)' : 'rgba(5,150,105,0.10)',
+                      color: !formData?.activo ? 'var(--color-muted-foreground)' : formData?.soldOut ? '#ea580c' : '#047857',
+                      fontFamily: 'var(--font-caption)',
+                    }}
+                  >
+                    <Icon
+                      name={!formData?.activo ? 'EyeOff' : formData?.soldOut ? 'PackageX' : 'Eye'}
+                      size={12}
+                      color="currentColor"
+                    />
+                    {!formData?.activo ? 'Oculto' : formData?.soldOut ? 'Agotado' : 'Visible'}
+                  </span>
+                  {formData?.featured && (
+                    <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold" style={{ backgroundColor: 'rgba(217,119,6,0.10)', color: '#B45309', fontFamily: 'var(--font-caption)' }}>
+                      <Icon name="Star" size={12} color="currentColor" />
+                      Destacado
+                    </span>
+                  )}
+                </div>
+              </div>
+            </section>
+
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
 
               {/* ── LEFT COLUMN: Form ── */}
@@ -733,14 +1224,14 @@ export default function ProductEditor() {
 
                 {/* Image gallery */}
                 <div
-                  className="p-5 md:p-6 rounded-xl border"
-                  style={{ backgroundColor: 'var(--color-card)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-sm)' }}
+                  className="rounded-2xl border p-5 transition-shadow duration-200 md:p-6"
+                  style={sectionSurfaceStyle}
                 >
-                  <div className="flex items-center gap-2 mb-4">
-                    <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(124,58,237,0.08)' }}>
-                      <Icon name="Images" size={15} color="var(--color-primary)" />
+                  <div className="mb-4 flex items-start gap-3">
+                    <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-xl" style={{ backgroundColor: 'rgba(17,24,39,0.06)' }}>
+                      <Icon name="Images" size={15} color="var(--color-foreground)" />
                     </div>
-                    <h2 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>Galería de imágenes</h2>
+                    <h2 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>Imagen y presentacion</h2>
                     <span className="ml-auto text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
                       {images?.length}/5
                     </span>
@@ -756,35 +1247,36 @@ export default function ProductEditor() {
                   />
                 </div>
 
-                {/* Video del producto */}
+                {/* Video */}
                 <div
-                  className="p-5 md:p-6 rounded-xl border"
-                  style={{ backgroundColor: 'var(--color-card)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-sm)' }}
+                  className="rounded-2xl border p-5 md:p-6"
+                  style={softSectionSurfaceStyle}
                 >
                   <div className="flex items-center gap-2 mb-4">
                     <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(124,58,237,0.08)' }}>
                       <Icon name="Video" size={15} color="var(--color-primary)" />
                     </div>
-                    <h2 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>Video del producto</h2>
+                    <h2 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>{isRestaurant ? 'Video del plato' : 'Video del producto'}</h2>
                   </div>
                   <VideoUploadSection
                     productId={effectiveProductId}
                     businessId={business?.id}
                     video={video}
                     onVideoChange={setVideo}
+                    isRestaurant={isRestaurant}
                   />
                 </div>
 
                 {/* Basic info */}
                 <div
-                  className="p-5 md:p-6 rounded-xl border"
-                  style={{ backgroundColor: 'var(--color-card)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-sm)' }}
+                  className="rounded-2xl border p-5 md:p-6"
+                  style={sectionSurfaceStyle}
                 >
                   <div className="flex items-center gap-2 mb-5">
                     <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(124,58,237,0.08)' }}>
                       <Icon name="FileText" size={15} color="var(--color-primary)" />
                     </div>
-                    <h2 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>Información básica</h2>
+                    <h2 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>Informacion principal</h2>
                   </div>
                   <ProductFormFields
                     formData={formData}
@@ -799,6 +1291,7 @@ export default function ProductEditor() {
                     isImprovingDescription={isImprovingDescription}
                     publicCode={isEditingFlow ? publicCode : ''}
                     businessId={business?.id}
+                    isRestaurant={isRestaurant}
                     onCategoryCreated={(cat) => {
                       setBusinessCategories((prev) => [...prev, cat]);
                       toast.success(`Categoría «${cat.name}» creada`);
@@ -806,10 +1299,53 @@ export default function ProductEditor() {
                   />
                 </div>
 
-                {/* Visibility & Featured toggles */}
+                {/* Estado de venta */}
                 <div
-                  className="p-5 md:p-6 rounded-xl border"
-                  style={{ backgroundColor: 'var(--color-card)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-sm)' }}
+                  className="rounded-2xl border p-5 md:p-6"
+                  style={sectionSurfaceStyle}
+                >
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(124,58,237,0.08)' }}>
+                      <Icon name="ShoppingBag" size={15} color="var(--color-primary)" />
+                    </div>
+                    <h2 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>Precio y disponibilidad</h2>
+                  </div>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    {[
+                      { key: 'available', label: 'Disponible', icon: 'Eye',      color: '#059669', bg: 'rgba(5,150,105,0.08)',  border: 'rgba(5,150,105,0.3)',  desc: 'Visible y se puede pedir' },
+                      { key: 'sold_out',  label: 'Agotado',    icon: 'PackageX', color: '#ea580c', bg: 'rgba(234,88,12,0.08)', border: 'rgba(234,88,12,0.3)', desc: 'Visible, no se puede pedir' },
+                      { key: 'hidden',    label: 'Oculto',     icon: 'EyeOff',   color: '#6B7280', bg: 'rgba(107,107,107,0.06)', border: 'rgba(107,107,107,0.2)', desc: 'No aparece en el catálogo' },
+                    ].map(({ key, label, icon, color, bg, border, desc }) => {
+                      const current = !formData?.activo ? 'hidden' : formData?.soldOut ? 'sold_out' : 'available';
+                      const selected = current === key;
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => {
+                            if (key === 'available') { handleFieldChange('activo', true); handleFieldChange('soldOut', false); }
+                            else if (key === 'sold_out') { handleFieldChange('activo', true); handleFieldChange('soldOut', true); }
+                            else { handleFieldChange('activo', false); handleFieldChange('soldOut', false); }
+                          }}
+                          className="flex flex-row items-center gap-3 rounded-xl border px-3 py-3 text-left transition-all duration-200 hover:-translate-y-0.5 sm:flex-col sm:gap-1.5 sm:text-center"
+                          style={{
+                            borderColor: selected ? border : 'rgba(17,24,39,0.08)',
+                            backgroundColor: selected ? bg : 'rgba(255,255,255,0.42)',
+                          }}
+                        >
+                          <Icon name={icon} size={16} color={selected ? color : 'var(--color-muted-foreground)'} />
+                          <span className="text-xs font-semibold leading-none" style={{ color: selected ? color : 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>{label}</span>
+                          <span className="text-[10px] leading-tight" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>{desc}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Featured toggles */}
+                <div
+                  className="rounded-2xl border p-5 md:p-6"
+                  style={softSectionSurfaceStyle}
                 >
                   <div className="flex items-center gap-2 mb-4">
                     <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(124,58,237,0.08)' }}>
@@ -825,30 +1361,722 @@ export default function ProductEditor() {
                     onActiveChange={(val) => handleFieldChange('activo', val)}
                     onFeaturedChange={(val) => handleFieldChange('featured', val)}
                     onOnSaleChange={(val) => handleFieldChange('onSale', val)}
+                    hideActive
                   />
+                </div>
+
+                <div
+                  className="rounded-2xl border p-5 md:p-6"
+                  style={softSectionSurfaceStyle}
+                >
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(37,211,102,0.10)' }}>
+                      <Icon name="Share2" size={15} color="#128C7E" />
+                    </div>
+                    <h2 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>Compartir producto</h2>
+                  </div>
+                  <p className="text-xs mb-4" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                    {publicProductUrl
+                      ? 'Usa este enlace para compartir la ficha individual del producto.'
+                      : `Guarda este ${itemSingular} para generar su enlace publico.`}
+                  </p>
+                  {publicProductUrl ? (
+                    <div className="space-y-3">
+                      <div className="flex min-h-11 items-center gap-2 rounded-xl border bg-white/70 px-3" style={{ borderColor: 'rgba(17,24,39,0.08)' }}>
+                        <Icon name="Link" size={14} color="var(--color-muted-foreground)" />
+                        <span className="min-w-0 flex-1 truncate text-xs font-medium" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>
+                          {publicProductUrl}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard?.writeText(publicProductUrl)?.then(
+                              () => toast.success('Link del producto copiado'),
+                              () => toast.error('No se pudo copiar el link'),
+                            );
+                          }}
+                          className="inline-flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-xs font-bold transition-colors hover:bg-white"
+                          style={{ borderColor: 'rgba(17,24,39,0.08)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
+                        >
+                          <Icon name="Copy" size={15} />
+                          Copiar enlace
+                        </button>
+                        <a
+                          href={publicProductUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-xs font-bold transition-colors hover:bg-white"
+                          style={{ borderColor: 'rgba(17,24,39,0.08)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
+                        >
+                          <Icon name="ExternalLink" size={15} />
+                          Abrir pagina
+                        </a>
+                        <a
+                          href={publicProductWhatsAppShareUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-xs font-bold transition-colors hover:bg-white"
+                          style={{ borderColor: 'rgba(18,140,126,0.22)', color: '#128C7E', fontFamily: 'var(--font-caption)' }}
+                        >
+                          <Icon name="MessageCircle" size={15} />
+                          WhatsApp
+                        </a>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+
+                <div
+                  className="rounded-2xl border p-5 md:p-6"
+                  style={softSectionSurfaceStyle}
+                >
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(217,119,6,0.08)' }}>
+                      <Icon name="Sparkles" size={15} color="#D97706" />
+                    </div>
+                    <h2 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>Destacado principal</h2>
+                  </div>
+                  <p className="text-xs mb-4" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                    Muéstralo arriba de tu catálogo como el producto más importante.
+                  </p>
+
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={formData?.isMainFeatured === true}
+                    onClick={() => handleFieldChange('isMainFeatured', !(formData?.isMainFeatured === true))}
+                    className="w-full flex items-center justify-between p-4 rounded-xl border transition-all duration-200"
+                    style={{
+                      borderColor: formData?.isMainFeatured ? 'rgba(217,119,6,0.25)' : 'var(--color-border)',
+                      backgroundColor: formData?.isMainFeatured ? 'rgba(217,119,6,0.06)' : 'transparent',
+                    }}
+                  >
+                    <div className="text-left pr-4">
+                      <p className="text-sm font-semibold" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}>
+                        Destacar este producto arriba del catálogo
+                      </p>
+                      <p className="text-xs mt-0.5" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-muted-foreground)' }}>
+                        {isRestaurant
+                          ? 'En modo restaurante se verá como Menú del día.'
+                          : 'En tienda se verá como Producto destacado.'}
+                      </p>
+                    </div>
+                    <span
+                      className="relative inline-flex items-center w-12 h-6 rounded-full flex-shrink-0"
+                      style={{
+                        backgroundColor: formData?.isMainFeatured ? '#D97706' : 'var(--color-muted-foreground)',
+                        transition: 'background-color 0.2s ease',
+                      }}
+                    >
+                      <span
+                        className="inline-block w-5 h-5 bg-white rounded-full shadow-sm"
+                        style={{
+                          transform: formData?.isMainFeatured ? 'translateX(26px)' : 'translateX(2px)',
+                          transition: 'transform 0.2s cubic-bezier(0.34,1.56,0.64,1)',
+                        }}
+                      />
+                    </span>
+                  </button>
                 </div>
 
                 {/* Product Options */}
                 <div
-                  className="p-5 md:p-6 rounded-xl border"
-                  style={{ backgroundColor: 'var(--color-card)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-sm)' }}
+                  className="rounded-2xl border p-5 md:p-6"
+                  style={softSectionSurfaceStyle}
                 >
                   <div className="flex items-center gap-2 mb-4">
                     <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(37,211,102,0.08)' }}>
                       <Icon name="ListChecks" size={15} color="#16a34a" />
                     </div>
-                    <h2 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>Opciones del producto</h2>
+                    <h2 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>{isRestaurant ? 'Opciones del plato' : 'Opciones del producto'}</h2>
                   </div>
                   <ProductOptionsSection
                     hasOptions={formData?.hasOptions}
                     optionsDescription={formData?.optionsDescription}
                     onHasOptionsChange={(val) => handleFieldChange('hasOptions', val)}
                     onOptionsDescriptionChange={(val) => handleFieldChange('optionsDescription', val)}
+                    isRestaurant={isRestaurant}
                   />
                 </div>
 
-                {/* Feature temporarily hidden until end-to-end implementation (UI + persistence + catalog/cart/order flow). */}
+                {isRestaurant && (
+                  <div
+                    className="rounded-2xl border p-5 md:p-6"
+                    style={sectionSurfaceStyle}
+                  >
+                    <div className="flex items-start gap-3 mb-4">
+                      <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(14,165,233,0.10)' }}>
+                        <Icon name="ChefHat" size={18} color="#0284c7" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h2 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>Arma tu combo</h2>
+                          <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: 'rgba(14,165,233,0.10)', color: '#0284c7', fontFamily: 'var(--font-caption)' }}>Restaurant</span>
+                        </div>
+                        <p className="text-xs mt-1" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                          Crea pasos de selección para que el cliente arme su pedido antes de escribir por WhatsApp.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => updateComboConfig((current) => ({ ...current, enabled: !current.enabled }))}
+                        className="relative inline-flex h-8 w-14 items-center rounded-full transition-colors"
+                        style={{ backgroundColor: normalizedComboConfig.enabled ? '#0284c7' : 'rgba(148,163,184,0.45)' }}
+                        aria-pressed={normalizedComboConfig.enabled}
+                      >
+                        <span
+                          className="h-7 w-7 rounded-full bg-white shadow-sm"
+                          style={{
+                            transform: normalizedComboConfig.enabled ? 'translateX(27px)' : 'translateX(2px)',
+                            transition: 'transform 0.2s cubic-bezier(0.34,1.56,0.64,1)',
+                          }}
+                        />
+                      </button>
+                    </div>
 
+                    <p className="text-xs mb-4" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                      {normalizedComboConfig.enabled
+                        ? 'Activa grupos obligatorios u opcionales, define el máximo de elecciones y suma extras al total.'
+                        : 'Actívalo si este producto necesita pasos como elegir acompañamiento, bebida o tamaño.'}
+                    </p>
+
+                    {normalizedComboConfig.enabled && (
+                      <div className="space-y-4">
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={addComboGroup}
+                            className="inline-flex items-center gap-2 rounded-lg border border-dashed px-4 py-2.5 text-sm font-medium transition-colors hover:border-sky-400"
+                            style={{ borderColor: 'var(--color-border)', color: '#0284c7', fontFamily: 'var(--font-caption)' }}
+                          >
+                            <Icon name="Plus" size={14} color="currentColor" />
+                            Agregar grupo
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setComboImportOpen((prev) => !prev)}
+                            className="inline-flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors hover:border-sky-400"
+                            style={{
+                              borderColor: comboImportOpen ? '#0284c7' : 'var(--color-border)',
+                              color: comboImportOpen ? '#0284c7' : 'var(--color-foreground)',
+                              fontFamily: 'var(--font-caption)',
+                            }}
+                          >
+                            <Icon name="CopyPlus" size={14} color="currentColor" />
+                            Reutilizar opciones de otro producto
+                          </button>
+                        </div>
+
+                        {comboImportOpen && (
+                          <div className="rounded-xl border p-4 space-y-3" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-background)' }}>
+                            {reusableComboProducts.length === 0 ? (
+                              <p className="text-sm" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                                Aún no tienes opciones guardadas en otros productos. Crea primero un combo en un producto y luego podrás reutilizarlo aquí.
+                              </p>
+                            ) : (
+                              <>
+                                <div className="space-y-1">
+                                  <p className="text-sm font-semibold" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>
+                                    Reutiliza opciones ya creadas
+                                  </p>
+                                  <p className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                                    Si ya configuraste acompañamientos, bebidas o tamaños en otro producto, puedes traerlos aquí sin volver a escribirlos.
+                                  </p>
+                                </div>
+
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                  <div className="space-y-2">
+                                    <label className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                                      Producto con opciones guardadas
+                                    </label>
+                                    <select
+                                      value={selectedReusableProductId}
+                                      onChange={(e) => setSelectedReusableProductId(e.target.value)}
+                                      className="w-full text-sm bg-transparent border rounded-md px-3 py-2 focus:outline-none"
+                                      style={{ borderColor: 'var(--color-border)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
+                                    >
+                                      <option value="">Selecciona un producto</option>
+                                      {reusableComboProducts.map((candidate) => (
+                                        <option key={candidate.id} value={candidate.id}>
+                                          {candidate.name}{candidate.category ? ` · ${candidate.category}` : ''}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                  <div className="space-y-2">
+                                    <label className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                                      Opciones que quieres reutilizar
+                                    </label>
+                                    <select
+                                      value={selectedReusableGroupId}
+                                      onChange={(e) => setSelectedReusableGroupId(e.target.value)}
+                                      disabled={!selectedReusableProduct}
+                                      className="w-full text-sm bg-transparent border rounded-md px-3 py-2 focus:outline-none disabled:opacity-60"
+                                      style={{ borderColor: 'var(--color-border)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
+                                    >
+                                      <option value="">Selecciona un grupo</option>
+                                      {(selectedReusableProduct?.groups || []).map((group) => (
+                                        <option key={group.id} value={group.id}>
+                                          {group.label}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                </div>
+
+                                {selectedReusableGroup && (
+                                  <div className="rounded-lg border p-3" style={{ borderColor: 'var(--color-border)' }}>
+                                    <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                                      Esto se agregará a este producto:
+                                    </p>
+                                    <p className="text-sm font-semibold mb-1" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>
+                                      {selectedReusableGroup.label}
+                                    </p>
+                                    <p className="text-xs mb-2" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                                      {selectedReusableGroup.required ? 'Obligatorio' : 'Opcional'}
+                                      {selectedReusableGroup.maxSelections > 1 ? ` · Hasta ${selectedReusableGroup.maxSelections} selecciones` : ' · Una selección'}
+                                    </p>
+                                    <p className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                                      {selectedReusableGroup.items.map((item) => `${item.label} (${formatAddonPrice(item.price)})`).join(' · ')}
+                                    </p>
+                                  </div>
+                                )}
+
+                                <div className="flex flex-wrap gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={importReusableComboGroup}
+                                    disabled={!selectedReusableGroup}
+                                    className="inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium text-white transition-opacity disabled:opacity-50"
+                                    style={{ backgroundColor: '#0284c7', fontFamily: 'var(--font-caption)' }}
+                                  >
+                                    <Icon name="Download" size={14} color="#FFFFFF" />
+                                    Agregar estas opciones
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setComboImportOpen(false);
+                                      setSelectedReusableProductId('');
+                                      setSelectedReusableGroupId('');
+                                    }}
+                                    className="inline-flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors"
+                                    style={{ borderColor: 'var(--color-border)', color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}
+                                  >
+                                    Cancelar
+                                  </button>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        )}
+                        {comboGroups.length === 0 && (
+                          <div className="rounded-xl border border-dashed p-4 text-sm" style={{ borderColor: 'var(--color-border)', color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                            Todavía no agregaste grupos. Crea uno para empezar tu combo.
+                          </div>
+                        )}
+
+                        {comboGroups.map((group, groupIndex) => (
+                          <div key={group.id} className="rounded-xl border p-4 space-y-3" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-background)' }}>
+                            <div className="flex items-start gap-3">
+                              <div className="flex-1 grid gap-3 sm:grid-cols-[minmax(0,1fr)_120px]">
+                                <div className="space-y-2">
+                                  <label className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                                    Grupo {groupIndex + 1}
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={group.label}
+                                    onChange={(e) => updateComboGroup(group.id, { label: e.target.value })}
+                                    placeholder="Ej: Elige tu acompañamiento"
+                                    className="w-full text-sm bg-transparent border rounded-md px-3 py-2 focus:outline-none"
+                                    style={{ borderColor: 'var(--color-border)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <label className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                                    Máx. selecciones
+                                  </label>
+                                  <input
+                                    type="number"
+                                    value={group.maxSelections}
+                                    onChange={(e) => updateComboGroup(group.id, { maxSelections: e.target.value })}
+                                    min={1}
+                                    className="w-full text-sm bg-transparent border rounded-md px-3 py-2 focus:outline-none"
+                                    style={{ borderColor: 'var(--color-border)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
+                                  />
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => removeComboGroup(group.id)}
+                                className="p-2 rounded-lg transition-colors hover:text-red-500"
+                                style={{ color: 'var(--color-muted-foreground)' }}
+                                title="Quitar grupo"
+                              >
+                                <Icon name="Trash2" size={16} color="currentColor" />
+                              </button>
+                            </div>
+
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={() => duplicateComboGroup(group.id)}
+                                className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors hover:border-sky-400"
+                                style={{ borderColor: 'var(--color-border)', color: '#0284c7', fontFamily: 'var(--font-caption)' }}
+                              >
+                                <Icon name="Copy" size={14} color="currentColor" />
+                                Duplicar grupo
+                              </button>
+                            </div>
+
+                            <label className="inline-flex items-center gap-2 text-sm" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>
+                              <input
+                                type="checkbox"
+                                checked={group.required === true}
+                                onChange={(e) => updateComboGroup(group.id, { required: e.target.checked })}
+                                className="rounded border-gray-300"
+                              />
+                              Selección obligatoria
+                            </label>
+
+                            <div className="space-y-2">
+                              {group.items.map((item) => (
+                                <div key={item.id} className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center" style={{ borderColor: 'var(--color-border)' }}>
+                                  <input
+                                    type="text"
+                                    value={item.label}
+                                    onChange={(e) => updateComboItem(group.id, item.id, { label: e.target.value })}
+                                    placeholder="Nombre de la opción"
+                                    className="flex-1 text-sm bg-transparent border rounded-md px-3 py-2 focus:outline-none"
+                                    style={{ borderColor: 'var(--color-border)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
+                                  />
+                                  <input
+                                    type="number"
+                                    value={item.price}
+                                    onChange={(e) => updateComboItem(group.id, item.id, { price: e.target.value })}
+                                    min={0}
+                                    placeholder="0"
+                                    className="w-full sm:w-28 text-sm bg-transparent border rounded-md px-3 py-2 focus:outline-none text-right"
+                                    style={{ borderColor: 'var(--color-border)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => removeComboItem(group.id, item.id)}
+                                    className="inline-flex items-center justify-center rounded-lg border px-3 py-2 text-sm transition-colors hover:text-red-500"
+                                    style={{ borderColor: 'var(--color-border)', color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}
+                                  >
+                                    Quitar
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => addComboItem(group.id)}
+                              className="inline-flex items-center gap-2 rounded-lg border border-dashed px-3 py-2 text-sm font-medium transition-colors hover:border-sky-400"
+                              style={{ borderColor: 'var(--color-border)', color: '#0284c7', fontFamily: 'var(--font-caption)' }}
+                            >
+                              <Icon name="Plus" size={14} color="currentColor" />
+                              Agregar opción
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Add-ons - visible solo para negocios restaurant */}
+                {isRestaurant && (
+                  <div
+                    className="rounded-2xl border p-5 md:p-6"
+                    style={sectionSurfaceStyle}
+                  >
+                    <div className="flex items-center gap-2 mb-4">
+                      <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(234,88,12,0.08)' }}>
+                        <Icon name="UtensilsCrossed" size={15} color="#ea580c" />
+                      </div>
+                      <h2 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>Complementos sugeridos</h2>
+                      <span className="ml-auto text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: 'rgba(234,88,12,0.08)', color: '#ea580c', fontFamily: 'var(--font-caption)' }}>Restaurante</span>
+                    </div>
+                    <p className="text-xs mb-4" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                      Agrega productos del catálogo o extras manuales para aumentar el pedido.
+                    </p>
+
+                    <div className="space-y-2 mb-3">
+                      {normalizedAddOns.map((addon) => {
+                        const relatedProduct = addon?.type === 'product'
+                          ? businessProducts.find((candidate) => candidate?.id === addon?.productId)
+                          : null;
+
+                        return (
+                          <div key={addon.id} className="rounded-lg border p-3" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-background)' }}>
+                            <div className="flex items-start gap-3">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="text-sm font-semibold" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>
+                                    {addon?.type === 'product' ? (relatedProduct?.name || 'Producto no disponible') : (addon?.label || 'Complemento manual')}
+                                  </span>
+                                  <span className="text-[11px] px-2 py-0.5 rounded-full font-medium uppercase" style={{ backgroundColor: addon?.type === 'product' ? 'rgba(59,130,246,0.10)' : 'rgba(234,88,12,0.10)', color: addon?.type === 'product' ? '#2563eb' : '#ea580c', fontFamily: 'var(--font-caption)' }}>
+                                    {addon?.type === 'product' ? 'producto' : 'manual'}
+                                  </span>
+                                </div>
+
+                                {addon?.type === 'product' ? (
+                                  <div className="space-y-1">
+                                    <p className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                                      {relatedProduct?.category?.trim()
+                                        ? `${relatedProduct.category} · ${formatAddonPrice(relatedProduct?.price)}`
+                                        : formatAddonPrice(relatedProduct?.price)}
+                                    </p>
+                                    {!relatedProduct && (
+                                      <p className="text-xs" style={{ color: '#b45309', fontFamily: 'var(--font-caption)' }}>
+                                        El producto relacionado ya no está disponible. Puedes quitar este complemento.
+                                      </p>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                                    <input
+                                      type="text"
+                                      value={addon?.emoji || ''}
+                                      onChange={(e) => {
+                                        const value = e.target.value;
+                                        updateAddOns((current) => current.map((item, index) => {
+                                          const normalized = normalizeAddon(item, index);
+                                          return normalized?.id === addon.id ? { ...normalized, emoji: value } : normalized;
+                                        }));
+                                      }}
+                                      placeholder="Em"
+                                      className="w-12 text-center text-base bg-transparent border rounded-md p-1 focus:outline-none"
+                                      style={{ borderColor: 'var(--color-border)' }}
+                                      maxLength={2}
+                                    />
+                                    <input
+                                      type="text"
+                                      value={addon?.label || ''}
+                                      onChange={(e) => {
+                                        const value = e.target.value;
+                                        updateAddOns((current) => current.map((item, index) => {
+                                          const normalized = normalizeAddon(item, index);
+                                          return normalized?.id === addon.id ? { ...normalized, label: value } : normalized;
+                                        }));
+                                      }}
+                                      placeholder="Nombre del extra"
+                                      className="flex-1 text-sm bg-transparent border rounded-md px-2 py-1 focus:outline-none"
+                                      style={{ borderColor: 'var(--color-border)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
+                                    />
+                                    <input
+                                      type="number"
+                                      value={addon?.price ?? ''}
+                                      onChange={(e) => {
+                                        const value = e.target.value;
+                                        updateAddOns((current) => current.map((item, index) => {
+                                          const normalized = normalizeAddon(item, index);
+                                          return normalized?.id === addon.id
+                                            ? { ...normalized, price: value === '' ? 0 : Math.max(0, Number(value)) }
+                                            : normalized;
+                                        }));
+                                      }}
+                                      placeholder="0"
+                                      className="w-full sm:w-28 text-sm bg-transparent border rounded-md px-2 py-1 focus:outline-none text-right"
+                                      style={{ borderColor: 'var(--color-border)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
+                                      min={0}
+                                    />
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => updateAddOns((current) => current.map((item, index) => {
+                                    const normalized = normalizeAddon(item, index);
+                                    return normalized?.id === addon.id ? { ...normalized, active: !normalized.active } : normalized;
+                                  }))}
+                                  className="p-1.5 rounded-md transition-colors"
+                                  style={{ color: addon.active ? '#059669' : 'var(--color-muted-foreground)' }}
+                                  title={addon.active ? 'Visible' : 'Oculto'}
+                                >
+                                  <Icon name={addon.active ? 'Eye' : 'EyeOff'} size={14} color="currentColor" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => updateAddOns((current) => current.filter((item, index) => normalizeAddon(item, index)?.id !== addon.id))}
+                                  className="p-1.5 rounded-md transition-colors hover:text-red-500"
+                                  style={{ color: 'var(--color-muted-foreground)' }}
+                                  title="Eliminar"
+                                >
+                                  <Icon name="Trash2" size={14} color="currentColor" />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                      <p className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                        {normalizedAddOns.length}/{ADDON_LIMIT} complementos
+                      </p>
+                      {normalizedAddOns.length < ADDON_LIMIT && (
+                        <button
+                          type="button"
+                          onClick={() => setAddonCreationMode((prev) => prev ? null : 'chooser')}
+                          className="flex items-center gap-2 text-sm font-medium px-3 py-2 rounded-lg border border-dashed transition-colors hover:border-orange-400"
+                          style={{ borderColor: 'var(--color-border)', color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}
+                        >
+                          <Icon name="Plus" size={14} color="currentColor" />
+                          + Agregar complemento
+                        </button>
+                      )}
+                    </div>
+
+                    {normalizedAddOns.length >= ADDON_LIMIT && (
+                      <p className="text-xs mb-3" style={{ color: '#b45309', fontFamily: 'var(--font-caption)' }}>
+                        Llegaste al máximo de 5 complementos por producto.
+                      </p>
+                    )}
+
+                    {addonCreationMode && normalizedAddOns.length < ADDON_LIMIT && (
+                      <div className="rounded-lg border p-3 space-y-3" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-background)' }}>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setAddonCreationMode('product')}
+                            className="px-3 py-2 rounded-lg text-sm font-medium border transition-colors"
+                            style={{
+                              borderColor: addonCreationMode === 'product' ? '#2563eb' : 'var(--color-border)',
+                              color: addonCreationMode === 'product' ? '#2563eb' : 'var(--color-foreground)',
+                              fontFamily: 'var(--font-caption)',
+                            }}
+                          >
+                            Buscar producto existente
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setAddonCreationMode('manual')}
+                            className="px-3 py-2 rounded-lg text-sm font-medium border transition-colors"
+                            style={{
+                              borderColor: addonCreationMode === 'manual' ? '#ea580c' : 'var(--color-border)',
+                              color: addonCreationMode === 'manual' ? '#ea580c' : 'var(--color-foreground)',
+                              fontFamily: 'var(--font-caption)',
+                            }}
+                          >
+                            Crear complemento manual
+                          </button>
+                        </div>
+
+                        {addonCreationMode === 'product' && (
+                          <div className="space-y-3">
+                            <input
+                              type="text"
+                              value={addonSearchQuery}
+                              onChange={(e) => setAddonSearchQuery(e.target.value)}
+                              placeholder="Busca por nombre o categoría"
+                              className="w-full text-sm bg-transparent border rounded-md px-3 py-2 focus:outline-none"
+                              style={{ borderColor: 'var(--color-border)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
+                            />
+                            {addonSearchTerm.length < ADDON_SEARCH_MIN ? (
+                              <p className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                                Escribe al menos 2 caracteres para buscar productos del catálogo.
+                              </p>
+                            ) : availableAddonResults.length === 0 ? (
+                              <p className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                                No encontramos productos disponibles para agregar.
+                              </p>
+                            ) : (
+                              <div className="space-y-2">
+                                {availableAddonResults.map((candidate) => (
+                                  <div key={candidate.id} className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2" style={{ borderColor: 'var(--color-border)' }}>
+                                    <div className="min-w-0">
+                                      <p className="text-sm font-medium truncate" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>
+                                        {candidate?.name || 'Producto sin nombre'}
+                                      </p>
+                                      <p className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                                        {candidate?.category?.trim()
+                                          ? `${candidate.category} · ${formatAddonPrice(candidate?.price)}`
+                                          : formatAddonPrice(candidate?.price)}
+                                      </p>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => addProductAddon(candidate)}
+                                      className="px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors"
+                                      style={{ borderColor: '#2563eb', color: '#2563eb', fontFamily: 'var(--font-caption)' }}
+                                    >
+                                      Agregar
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {addonCreationMode === 'manual' && (
+                          <div className="space-y-3">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                              <input
+                                type="text"
+                                value={manualAddonDraft.emoji}
+                                onChange={(e) => setManualAddonDraft((prev) => ({ ...prev, emoji: e.target.value }))}
+                                placeholder="Em"
+                                className="w-14 text-center text-base bg-transparent border rounded-md p-2 focus:outline-none"
+                                style={{ borderColor: 'var(--color-border)' }}
+                                maxLength={2}
+                              />
+                              <input
+                                type="text"
+                                value={manualAddonDraft.label}
+                                onChange={(e) => setManualAddonDraft((prev) => ({ ...prev, label: e.target.value }))}
+                                placeholder="Nombre del extra"
+                                className="flex-1 text-sm bg-transparent border rounded-md px-3 py-2 focus:outline-none"
+                                style={{ borderColor: 'var(--color-border)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
+                              />
+                              <input
+                                type="number"
+                                value={manualAddonDraft.price}
+                                onChange={(e) => setManualAddonDraft((prev) => ({ ...prev, price: e.target.value }))}
+                                placeholder="0"
+                                className="w-full sm:w-28 text-sm bg-transparent border rounded-md px-3 py-2 focus:outline-none text-right"
+                                style={{ borderColor: 'var(--color-border)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
+                                min={0}
+                              />
+                            </div>
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setManualAddonDraft({ emoji: '', label: '', price: '' });
+                                  setAddonCreationMode(null);
+                                }}
+                                className="px-3 py-2 rounded-lg text-sm font-medium border"
+                                style={{ borderColor: 'var(--color-border)', color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}
+                              >
+                                Cancelar
+                              </button>
+                              <button
+                                type="button"
+                                onClick={addManualAddon}
+                                disabled={!manualAddonDraft?.label?.trim()}
+                                className="px-3 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-50"
+                                style={{ backgroundColor: '#ea580c', fontFamily: 'var(--font-caption)' }}
+                              >
+                                Agregar
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
                 {/* Bottom spacer for SaveBar */}
                 <div className="h-4" />
               </div>
@@ -856,8 +2084,8 @@ export default function ProductEditor() {
               {/* ── RIGHT COLUMN: Live Preview ── */}
               <div className="lg:col-span-1">
                 <div
-                  className="sticky top-20 p-5 rounded-xl border"
-                  style={{ backgroundColor: 'var(--color-card)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-sm)' }}
+                  className="sticky top-20 rounded-2xl border p-4 md:p-5"
+                  style={sectionSurfaceStyle}
                 >
                   <ProductPreview
                     nombre={formData?.nombre}
@@ -870,6 +2098,7 @@ export default function ProductEditor() {
                     onSale={formData?.onSale}
                     images={images}
                     mainImageOverrideUrl={imagePreviewUrl}
+                    isRestaurant={isRestaurant}
                   />
                 </div>
               </div>
@@ -885,6 +2114,7 @@ export default function ProductEditor() {
           onSave={() => handleSave(false)}
           onSaveAndNew={() => handleSave(true)}
           onCancel={handleCancel}
+          itemSingular={itemSingularCapitalized}
         />
     </DashboardAppShell>
   );

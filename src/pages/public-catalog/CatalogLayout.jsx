@@ -32,7 +32,11 @@ export default function CatalogLayout({ theme, isDesktop, className, style, chil
 
   return (
     <div className={className} style={{ background, ...style }}>
-      {children}
+      <div className="w-full min-h-screen overflow-x-hidden">
+        <div className="w-full max-w-[480px] mx-auto min-h-screen bg-white overflow-x-hidden lg:max-w-full lg:bg-transparent lg:overflow-visible">
+          {children}
+        </div>
+      </div>
     </div>
   );
 }

@@ -14,6 +14,7 @@ export default function ProductPreview({
   mainImageOverrideUrl = null,
   currencyCode = 'USD',
   locale = 'en-US',
+  isRestaurant = false,
 }) {
   const imageList = images?.length ? images : [];
   const [activeIdx, setActiveIdx] = useState(0);
@@ -35,14 +36,14 @@ export default function ProductPreview({
   return (
     <div>
       {/* Header */}
-      <div className="flex items-center gap-2 mb-3">
+      <div className="mb-4 flex items-center gap-2">
         <div
-          className="w-7 h-7 rounded-lg flex items-center justify-center"
-          style={{ backgroundColor: 'rgba(124,58,237,0.1)' }}
+          className="flex h-8 w-8 items-center justify-center rounded-xl"
+          style={{ backgroundColor: 'rgba(17,24,39,0.06)' }}
         >
-          <Icon name="Smartphone" size={14} color="var(--color-primary)" />
+          <Icon name="Smartphone" size={14} color="var(--color-foreground)" />
         </div>
-        <h3 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>
+        <h3 className="text-base font-semibold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.015em' }}>
           Vista previa
         </h3>
         <span
@@ -58,13 +59,13 @@ export default function ProductPreview({
       </div>
 
       {/* Phone mockup */}
-      <div className="mx-auto" style={{ maxWidth: '240px' }}>
+      <div className="mx-auto" style={{ maxWidth: '252px' }}>
         <div
-          className="rounded-3xl border-2 overflow-hidden shadow-xl"
+          className="overflow-hidden rounded-[28px] border"
           style={{
-            borderColor: 'var(--color-border)',
+            borderColor: 'rgba(17,24,39,0.10)',
             backgroundColor: '#f8f8f8',
-            boxShadow: '0 20px 40px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.04)',
+            boxShadow: '0 18px 42px rgba(17,24,39,0.14), 0 0 0 1px rgba(255,255,255,0.70)',
           }}
         >
           {/* Phone notch */}
@@ -80,7 +81,7 @@ export default function ProductPreview({
             className="flex items-center justify-between px-3 py-1"
             style={{ backgroundColor: '#fff', borderBottom: '1px solid #f0f0f0' }}
           >
-            <span style={{ fontSize: '0.6rem', color: '#666', fontFamily: 'var(--font-caption)' }}>Mi Tienda</span>
+            <span style={{ fontSize: '0.6rem', color: '#666', fontFamily: 'var(--font-caption)' }}>{isRestaurant ? 'Mi restaurante' : 'Mi tienda'}</span>
             <div className="flex items-center gap-1">
               <Icon name="Wifi" size={9} color="#666" />
               <Icon name="Battery" size={9} color="#666" />
@@ -232,12 +233,14 @@ export default function ProductPreview({
 
       {/* Tip */}
       <div
-        className="mt-4 p-3 rounded-xl flex items-start gap-2"
-        style={{ backgroundColor: 'rgba(232,184,109,0.1)', borderRadius: 'var(--radius-md)' }}
+        className="mt-4 flex items-start gap-2 rounded-xl border p-3"
+        style={{ backgroundColor: 'rgba(255,255,255,0.50)', borderColor: 'rgba(17,24,39,0.08)' }}
       >
-        <Icon name="Lightbulb" size={13} color="var(--color-accent)" className="flex-shrink-0 mt-0.5" />
+        <Icon name="Sparkles" size={13} color="var(--color-foreground)" className="flex-shrink-0 mt-0.5" />
         <p className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)', lineHeight: '1.5' }}>
-          Productos con imagen y descripción completa reciben hasta 3× más pedidos.
+          {isRestaurant
+            ? 'Los platos con imagen, descripción clara y precio visible reciben más pedidos.'
+            : 'Productos con imagen y descripción completa reciben hasta 3× más pedidos.'}
         </p>
       </div>
     </div>

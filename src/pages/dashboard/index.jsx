@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import PanelHeader from "components/ui/PanelHeader";
 import DashboardAppShell from "components/ui/DashboardAppShell";
 import DashboardLayoutContent from "components/ui/DashboardLayoutContent";
+import PremiumLoader from "components/ui/PremiumLoader";
 import Icon from "components/AppIcon";
 import MetricCard from "./components/MetricCard";
 import ActivityFeed from "./components/ActivityFeed";
@@ -46,15 +47,19 @@ import { getCatalogShareMessage } from "../../utils/branding";
 import { openWhatsAppUrl } from "../../utils/openWhatsAppUrl";
 import { getCountryLabels } from "../../config/country";
 import { getBusinessLocale } from "../../lib/locale/businessLocale";
+import { isRestaurantBusiness } from "../../utils/businessType";
 import { getTrialDaysLeft } from "../../constants/trial";
 import { getCurrentSubscription } from "../../lib/billing/subscriptionService";
 import { useToast } from "../../components/ui/Toast";
 import { tryCelebrateFirstCatalogShare } from "../../utils/catalogShareCelebration";
 import { getSourceLabel, getSourceColors } from "../../utils/analytics";
 import { generateInsights } from "../../utils/dashboardInsights";
+import { formatPriceCatalog, resolveBusinessCurrency } from "../../utils/formatPrice";
 
 const FIRST_SHARE_TOAST =
   '¡Tu tienda ya está en el mundo! 🌍 Link copiado y listo para enviar.';
+
+const AI_INSIGHT_RETRY_COOLDOWN_MS = 5 * 60 * 1000;
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -63,8 +68,14 @@ export default function Dashboard() {
   const locale = getBusinessLocale(business, {
     preferredCountryCode: user?.user_metadata?.country_code ?? null,
   });
-  const displayCurrency = String(business?.currency || locale.currencyCode || '—').toUpperCase();
+  const displayCurrency = resolveBusinessCurrency(business, locale);
   const displayLocale = locale.locale || 'en-US';
+  const displayCountryCode = locale.countryCode
+    ?? business?.countryCodeDb
+    ?? business?.country_code
+    ?? business?.countryCode
+    ?? business?.routingCountryCode
+    ?? null;
   const dashboardRefreshAttempted = useRef(false);
   const [copyToast, setCopyToast] = useState(false);
   const [products, setProducts] = useState([]);
@@ -95,6 +106,7 @@ export default function Dashboard() {
   const [newOrderIds, setNewOrderIds] = useState(new Set());
   const channelRef = useRef(null);
   const [dismissedExpiredBanner, setDismissedExpiredBanner] = useState(false);
+  const aiInsightRetryAfterRef = useRef(0);
 
   const catalogUrl = getPublicCatalogUrl(business?.slug ?? '');
   const offersUrl = getPublicOffersUrl(business?.slug ?? '');
@@ -187,7 +199,8 @@ export default function Dashboard() {
   }, [business?.id, funnelRange]);
 
   const loadDailyAiInsight = useCallback(async () => {
-    if (!business?.id) return;
+    if (!business?.id || !user?.id || !sessionReady) return;
+    if (Date.now() < aiInsightRetryAfterRef.current) return;
     setAiInsightLoading(true);
     try {
       let finalInsight = null;
@@ -198,17 +211,22 @@ export default function Dashboard() {
           break;
         }
         if (!insightRes?.pending) {
+          if (insightRes?.error) {
+            aiInsightRetryAfterRef.current = Date.now() + AI_INSIGHT_RETRY_COOLDOWN_MS;
+            console.warn('[Dashboard] AI insights unavailable', { code: insightRes?.error?.code || 'unknown' });
+          }
           break;
         }
         await new Promise((resolve) => setTimeout(resolve, 900));
       }
       setAiInsights(finalInsight);
     } catch (err) {
-      console.error('[Dashboard] insight load error:', err);
+      aiInsightRetryAfterRef.current = Date.now() + AI_INSIGHT_RETRY_COOLDOWN_MS;
+      console.warn('[Dashboard] insight load skipped');
     } finally {
       setAiInsightLoading(false);
     }
-  }, [business?.id]);
+  }, [business?.id, sessionReady, user?.id]);
 
   const loadPlanUsage = useCallback(async () => {
     if (!business?.id) return;
@@ -236,9 +254,9 @@ export default function Dashboard() {
   // Guard with sessionReady: on mobile OAuth, business?.id can become truthy before
   // Supabase has finished exchanging the auth code, causing a 401 on the Edge Function.
   useEffect(() => {
-    if (!business?.id || !sessionReady) return;
+    if (!business?.id || !user?.id || !sessionReady) return;
     loadDailyAiInsight();
-  }, [business?.id, sessionReady, loadDailyAiInsight]);
+  }, [business?.id, sessionReady, loadDailyAiInsight, user?.id]);
 
   useEffect(() => {
     if (!business?.id) { setPlanUsageLoading(false); return; }
@@ -270,12 +288,12 @@ export default function Dashboard() {
         loadAnalytics();
         // Reload AI insight on visibility restore — token may have expired while
         // the app was backgrounded (common on mobile after OAuth login).
-        loadDailyAiInsight();
+        if (sessionReady && user?.id) loadDailyAiInsight();
       }
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
-  }, [business?.id, loadDashboardData, loadAnalytics, loadDailyAiInsight]);
+  }, [business?.id, loadDashboardData, loadAnalytics, loadDailyAiInsight, sessionReady, user?.id]);
 
   // Supabase Realtime subscription
   useEffect(() => {
@@ -555,6 +573,54 @@ export default function Dashboard() {
   ];
 
   const metricsToShow = isStarterPlan ? METRICS.filter((m) => m.title === 'Total productos') : METRICS;
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Buenos dias' : hour < 19 ? 'Buenas tardes' : 'Buenas noches';
+  const isRestaurant = isRestaurantBusiness(business);
+  const publicSurfaceLabel = isRestaurant ? 'menu' : 'catalogo';
+  const publicSurfaceTitle = isRestaurant ? 'menu' : 'catalogo';
+  const businessSurfaceLabel = isRestaurant ? 'restaurante' : 'tienda';
+  const itemActionLabel = isRestaurant ? 'plato' : 'producto';
+  const readySurfaceMessage = isRestaurant
+    ? 'Tu restaurante esta listo para recibir clientes.'
+    : 'Tu tienda esta lista para recibir clientes.';
+  const whatsappClicks = Number(conversionFunnel?.clicksWhatsapp ?? 0);
+  const pulsePeriodLabel = funnelRange === 'today' ? 'hoy' : funnelRange === '30d' ? 'este mes' : 'esta semana';
+  const pulseHeadline = analyticsLoading
+    ? `Leyendo el pulso de tu ${businessSurfaceLabel}`
+    : visits7d === 0
+      ? readySurfaceMessage
+      : whatsappClicks > 0
+        ? `Tu ${publicSurfaceTitle} esta generando interes.`
+        : `Tu ${businessSurfaceLabel} tuvo ${visits7d} visita${visits7d !== 1 ? 's' : ''} esta semana.`;
+  const pulseContext = analyticsLoading
+    ? 'Estamos ordenando visitas, pedidos y senales de contacto.'
+    : visits7d === 0
+      ? `Comparte tu ${publicSurfaceLabel} para empezar a generar visitas.`
+      : whatsappClicks > 0
+        ? `${whatsappClicks} persona${whatsappClicks !== 1 ? 's' : ''} hizo${whatsappClicks !== 1 ? 'n' : ''} clic en WhatsApp ${pulsePeriodLabel}.`
+        : isRestaurant
+          ? 'Todavia no hay pedidos desde WhatsApp. Comparte el menu o revisa tus platos destacados.'
+          : 'Todavia no hay clics a WhatsApp. Comparte el catalogo o mejora la visibilidad del boton.';
+  const pulsePriority = dataLoading
+    ? 'Actualizando prioridad'
+    : pendingOrdersCount > 0
+      ? `Responder ${pendingOrdersCount} pedido${pendingOrdersCount !== 1 ? 's' : ''} pendiente${pendingOrdersCount !== 1 ? 's' : ''}`
+      : activeProducts === 0
+        ? `Agregar tu primer ${itemActionLabel}`
+        : visits7d === 0
+          ? `Compartir tu ${publicSurfaceLabel}`
+          : whatsappClicks === 0
+            ? 'Convertir visitas en conversaciones'
+            : `Mantener tu ${publicSurfaceLabel} actualizado`;
+  const pulseStatusLabel = analyticsLoading
+    ? 'Sincronizando'
+    : pendingOrdersCount > 0
+      ? 'Atencion'
+      : visits7d === 0
+        ? 'Listo'
+        : whatsappClicks > 0
+          ? 'Interes activo'
+          : 'Oportunidad';
 
   const notifyFirstCatalogShare = useCallback(() => {
     if (!business?.id) return;
@@ -583,15 +649,33 @@ export default function Dashboard() {
     notifyFirstCatalogShare();
   };
 
+  const pulseActions = pendingOrdersCount > 0
+    ? [
+        { label: 'Ver pedidos', icon: 'ShoppingBag', onClick: () => navigate('/orders'), primary: true },
+        { label: `Compartir ${publicSurfaceLabel}`, icon: 'Send', onClick: handleShare },
+      ]
+    : activeProducts === 0
+      ? [
+          { label: `Agregar ${itemActionLabel}`, icon: 'Plus', onClick: () => navigate('/product-editor'), primary: true },
+          { label: `Ver ${publicSurfaceLabel}`, icon: 'ExternalLink', onClick: () => window.open(catalogUrl, '_blank', 'noopener,noreferrer'), disabled: !catalogUrl },
+        ]
+      : visits7d === 0
+        ? [
+            { label: `Compartir ${publicSurfaceLabel}`, icon: 'Send', onClick: handleShare, primary: true },
+            { label: `Ver ${publicSurfaceLabel}`, icon: 'ExternalLink', onClick: () => window.open(catalogUrl, '_blank', 'noopener,noreferrer'), disabled: !catalogUrl },
+          ]
+        : whatsappClicks === 0
+          ? [
+              { label: `Ver ${publicSurfaceLabel}`, icon: 'ExternalLink', onClick: () => window.open(catalogUrl, '_blank', 'noopener,noreferrer'), primary: true, disabled: !catalogUrl },
+              { label: `Compartir ${publicSurfaceLabel}`, icon: 'Send', onClick: handleShare },
+            ]
+          : [
+              { label: 'Ver pedidos', icon: 'ShoppingBag', onClick: () => navigate('/orders'), primary: true },
+              { label: `Agregar ${itemActionLabel}`, icon: 'Plus', onClick: () => navigate('/product-editor') },
+            ];
+
   if (businessLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--color-background)' }}>
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: 'var(--color-primary)', borderTopColor: 'transparent' }} />
-          <p className="text-sm" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Cargando tu negocio...</p>
-        </div>
-      </div>
-    );
+    return <PremiumLoader fullScreen business={business} />;
   }
 
   return (
@@ -600,7 +684,7 @@ export default function Dashboard() {
         <PanelHeader
           title={(
             <div className="flex items-center gap-2">
-              <h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Dashboard</h1>
+              <h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Inicio</h1>
               {realtimeStatus === 'connected' && (
                 <span className="hidden sm:inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: 'rgba(16,185,129,0.08)', color: '#059669', fontFamily: 'var(--font-caption)' }}>
                   <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
@@ -624,20 +708,20 @@ export default function Dashboard() {
             <button onClick={() => navigate('/business-configuration')} className="w-9 h-9 flex items-center justify-center rounded-lg transition-all duration-150 hover:bg-muted" style={{ color: 'var(--color-muted-foreground)' }} aria-label="Configuración">
               <Icon name="Settings" size={17} color="currentColor" />
             </button>
-            <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 ml-1" style={{ background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)' }}>
+            <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ml-1" style={{ backgroundColor: '#111827', color: '#FFFFFF' }}>
               {business?.name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0)?.toUpperCase() || 'U'}
             </div>
           </div>
         </PanelHeader>
 
-        <DashboardLayoutContent className="page-enter">
+        <DashboardLayoutContent className="page-enter" innerClassName="gap-6 md:gap-7">
 
           {/* Banner: negocio sin configurar */}
           {!business && !businessLoading && (
             <div className="flex items-start gap-3 p-4 rounded-xl border slide-up" style={{ backgroundColor: 'rgba(124,58,237,0.05)', borderColor: 'rgba(124,58,237,0.2)' }}>
               <Icon name="AlertCircle" size={18} color="var(--color-primary)" />
               <div>
-                <p className="text-sm font-semibold" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>Configura tu negocio</p>
+                <p className="text-sm font-semibold" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>Configura tu tienda</p>
                 <p className="text-xs mt-0.5" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Completa la configuración para empezar a recibir pedidos.</p>
               </div>
               <button onClick={() => navigate('/business-configuration')} className="ml-auto text-xs font-medium px-3 py-1.5 rounded-lg" style={{ backgroundColor: 'var(--color-primary)', color: '#fff', fontFamily: 'var(--font-caption)' }}>Configurar</button>
@@ -675,6 +759,74 @@ export default function Dashboard() {
             </div>
           )}
 
+          <section aria-label="Resumen principal">
+            <div className="dashboard-hero-panel relative overflow-hidden px-5 py-5 sm:px-7 sm:py-7 md:px-8">
+              <div className="flex flex-col gap-6 xl:flex-row xl:items-stretch xl:justify-between">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em]" style={{ color: '#9CA3AF', fontFamily: 'var(--font-caption)' }}>
+                      {greeting} · Pulso de la {businessSurfaceLabel}
+                    </p>
+                    <span className="rounded-full px-2.5 py-1 text-[11px] font-semibold" style={{ backgroundColor: 'rgba(255,255,255,0.08)', color: '#E5E7EB', fontFamily: 'var(--font-caption)' }}>
+                      {pulseStatusLabel}
+                    </span>
+                  </div>
+                  <h2 className="mt-3 max-w-4xl text-[2rem] font-black leading-[1.05] tracking-normal sm:text-5xl" style={{ color: '#FFFFFF', fontFamily: 'var(--font-heading)' }}>
+                    {pulseHeadline}
+                  </h2>
+                  <p className="mt-3 max-w-2xl text-sm sm:text-base" style={{ color: '#CBD5E1', fontFamily: 'var(--font-body)', lineHeight: 1.6 }}>
+                    {pulseContext}
+                  </p>
+
+                  <div className="mt-6 flex flex-col gap-3 rounded-2xl p-3 sm:flex-row sm:items-center sm:justify-between" style={{ backgroundColor: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: '#9CA3AF', fontFamily: 'var(--font-caption)' }}>
+                        Prioridad de hoy
+                      </p>
+                      <p className="mt-1 text-sm font-bold sm:text-base" style={{ color: '#FFFFFF', fontFamily: 'var(--font-heading)' }}>
+                        {pulsePriority}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {pulseActions.map((action) => (
+                        <button
+                          key={action.label}
+                          type="button"
+                          onClick={action.onClick}
+                          disabled={action.disabled}
+                          className="inline-flex items-center justify-center gap-2 rounded-xl px-3.5 py-2 text-sm font-semibold transition-all duration-150 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/45 disabled:cursor-not-allowed disabled:opacity-45"
+                          style={{
+                            backgroundColor: action.primary ? '#FFFFFF' : 'rgba(255,255,255,0.08)',
+                            color: action.primary ? '#111827' : '#F9FAFB',
+                            fontFamily: 'var(--font-caption)',
+                            border: action.primary ? '1px solid rgba(255,255,255,0.9)' : '1px solid rgba(255,255,255,0.1)',
+                          }}
+                        >
+                          <Icon name={action.icon} size={15} color="currentColor" />
+                          {action.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2.5 xl:w-[360px] xl:self-end">
+                  {[
+                    { label: '7 dias', value: analyticsLoading ? '...' : visits7d, muted: 'visitas' },
+                    { label: 'WhatsApp', value: analyticsLoading ? '...' : whatsappClicks, muted: pulsePeriodLabel },
+                    { label: 'Pendientes', value: dataLoading ? '...' : pendingOrdersCount, muted: 'pedidos' },
+                  ].map((item) => (
+                    <div key={item.label} className="rounded-xl px-3 py-3" style={{ backgroundColor: 'rgba(255,255,255,0.055)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                      <p className="text-[11px] font-medium" style={{ color: '#9CA3AF', fontFamily: 'var(--font-caption)' }}>{item.label}</p>
+                      <p className="mt-2 text-2xl font-black tabular-nums" style={{ color: '#FFFFFF', fontFamily: 'var(--font-stat)' }}>{item.value}</p>
+                      <p className="text-[11px]" style={{ color: '#9CA3AF', fontFamily: 'var(--font-caption)' }}>{item.muted}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </section>
+
           {/* Hero CTA: visible only when the catalog has no products yet */}
           {!dataLoading && products?.length === 0 && (
             <AddProductHero />
@@ -696,17 +848,17 @@ export default function Dashboard() {
                 {alerts.map(alert => (
                   <div
                     key={alert.id}
-                    className="flex items-center gap-3 px-4 py-3 rounded-xl border"
-                    style={{ backgroundColor: alert.bg, borderColor: alert.border }}
+                    className="flex items-center gap-3 rounded-xl px-4 py-3"
+                    style={{ backgroundColor: 'rgba(255,255,255,0.62)', borderLeft: `2px solid ${alert.color}` }}
                   >
                     <Icon name={alert.icon} size={15} color={alert.color} />
-                    <p className="flex-1 text-sm font-medium" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>
+                    <p className="flex-1 text-sm" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>
                       {alert.text}
                     </p>
                     <button
                       onClick={alert.onAction}
-                      className="text-xs font-bold px-3 py-1.5 rounded-lg flex-shrink-0 transition-all hover:opacity-80 active:scale-95"
-                      style={{ backgroundColor: alert.color, color: '#fff', fontFamily: 'var(--font-caption)' }}
+                      className="flex-shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors hover:bg-black/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      style={{ color: alert.color, fontFamily: 'var(--font-caption)' }}
                     >
                       {alert.action}
                     </button>
@@ -728,7 +880,7 @@ export default function Dashboard() {
           )}
 
           {/* ── Métricas principales (Starter solo ve Total productos) ── */}
-          <section aria-label="Métricas del negocio">
+          <section aria-label="Metricas principales">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5">
               {metricsToShow?.map((metric, idx) => (
                 <div key={metric.title} className="stagger-item min-w-0" style={metricsToShow.length === 1 ? { maxWidth: '320px' } : undefined}>
@@ -760,12 +912,14 @@ export default function Dashboard() {
                     loading={analyticsLoading}
                     currency={displayCurrency}
                     numberLocale={displayLocale}
+                    countryCode={displayCountryCode}
                   />
                   <DailyRevenueCard
                     data={monthlyRevenue}
                     loading={analyticsLoading}
                     currency={displayCurrency}
                     numberLocale={displayLocale}
+                    countryCode={displayCountryCode}
                   />
                 </div>
               </div>
@@ -777,6 +931,7 @@ export default function Dashboard() {
                   onRangeChange={setFunnelRange}
                   currency={displayCurrency}
                   numberLocale={displayLocale}
+                  countryCode={displayCountryCode}
                 />
               </div>
               {/* Origen de visitas */}
@@ -875,6 +1030,7 @@ export default function Dashboard() {
                 newOrderIds={newOrderIds}
                 defaultCurrency={displayCurrency}
                 numberLocale={displayLocale}
+                countryCode={displayCountryCode}
               />
               {/* Productos recientes (solo en desktop debajo del feed; en móvil después de widgets) */}
               <section aria-label="Productos recientes" className="mt-5 lg:mt-6">
@@ -920,7 +1076,7 @@ export default function Dashboard() {
                             <div className="min-w-0 flex-1">
                               <p className="text-sm font-medium truncate" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}>{p?.name || 'Sin nombre'}</p>
                               <p className="text-xs truncate" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-                                {p?.isActive ? 'Activo' : 'Inactivo'} · {p?.price != null ? `${business?.currency || locale.currencyCode} ${Number(p.price).toLocaleString()}` : ''}
+                                {p?.isActive ? 'Activo' : 'Inactivo'} · {p?.price != null ? formatPriceCatalog(p.price, displayCurrency, displayCountryCode) : ''}
                               </p>
                             </div>
                             <Icon name="ChevronRight" size={14} color="var(--color-muted-foreground)" />
@@ -973,6 +1129,8 @@ export default function Dashboard() {
           </div>
         ))}
       </div>
+
+      {/* Botón flotante Ver demo — sin negocio o con onboarding pendiente */}
     </DashboardAppShell>
   );
 }

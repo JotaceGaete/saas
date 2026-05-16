@@ -23,7 +23,7 @@ export default function MobileBottomNav() {
 
   return (
     <nav
-      className="mobile-bottom-nav lg:hidden"
+      className="mobile-bottom-nav fixed bottom-0 left-0 right-0 mx-auto w-full max-w-[480px] lg:hidden"
       aria-label="Navegación inferior"
       style={{
         paddingBottom: 'max(env(safe-area-inset-bottom), 8px)',

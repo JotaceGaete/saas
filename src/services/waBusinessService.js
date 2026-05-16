@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import { compressImageForUpload } from '../utils/imageUploadUtils';
+import { compressImageForUpload, generateProductImageUploadSet } from '../utils/imageUploadUtils';
 import { getValidToken } from '../lib/auth/getValidToken';
 import { getPlanLimits } from '../constants/plans';
 import { getTrialEndDateFrom } from '../constants/trial';
@@ -8,7 +8,38 @@ import { getCountryConfig, COUNTRY_CODES } from '../config/countryConfig';
 import { normalizeSocialUrl as normalizeSharedSocialUrl, normalizeTikTokUrl } from '../utils/socialLinks';
 import { uploadToMediaService } from './mediaUploadService';
 
+const TRACKING_AUTH_FAILURE_COOLDOWN_MS = 10 * 60 * 1000;
+const trackingAuthFailureCache = new Map();
+const trackingInflight = new Set();
+const serviceWarningCache = new Map();
+
+function logServiceWarningOnce(key, message, extra = undefined) {
+  if (serviceWarningCache.get(key)) return;
+  serviceWarningCache.set(key, true);
+  if (extra !== undefined) {
+    console.warn(message, extra);
+    return;
+  }
+  console.warn(message);
+}
+
+function shouldSkipTrackingByRecentAuthFailure(key) {
+  const until = trackingAuthFailureCache.get(key) ?? 0;
+  return until > Date.now();
+}
+
+function markTrackingAuthFailure(key) {
+  trackingAuthFailureCache.set(key, Date.now() + TRACKING_AUTH_FAILURE_COOLDOWN_MS);
+}
+
 // Helpers
+
+/** Normaliza teléfono a solo dígitos para comparación (conflict-safe en wa_customers). */
+const normalizePhone = (phone) => {
+  if (!phone) return null;
+  const digits = String(phone).replace(/\D/g, '');
+  return digits || null;
+};
 
 /** E.164: solo dígitos tras + (evita espacios y separadores locales). */
 /**
@@ -352,6 +383,8 @@ const mapBusinessFromDb = (row) => {
   instagramUrl: row?.instagram_url || null,
   tiktokUrl: normalizeTikTokUrl(row?.tiktok_url),
   facebookUrl: row?.facebook_url || null,
+  printLegend: row?.print_legend || null,
+  print_legend: row?.print_legend || null,
   designSettings,
   orderMessageTemplate: row?.order_message_template || null,
   planSlug: row?.plan_slug || 'starter',
@@ -359,6 +392,7 @@ const mapBusinessFromDb = (row) => {
   trialExpiresAt: row?.trial_expires_at ?? null,
   scheduledPlanSlug: row?.scheduled_plan_slug ?? null,
   scheduledChangeAt: row?.scheduled_change_at ?? null,
+  businessMode: row?.business_mode ?? 'store',
   createdAt: row?.created_at,
   updatedAt: row?.updated_at,
 };
@@ -371,10 +405,13 @@ const mapProductFromDb = (row) => {
     id: row?.id,
     businessId: row?.business_id,
     name: row?.name,
+    slug: row?.slug || null,
     publicCode: row?.public_code ?? null,
     description: row?.description,
     price: parseFloat(row?.price),
     imageUrl: row?.image_url || imagesArray?.[0] || null,
+    thumbnailUrl: row?.thumbnail_url || null,
+    thumbnailPath: row?.thumbnail_path || null,
     images: imagesArray,
     isActive: row?.is_active ?? (status === 'active'),
     isDraft: row?.is_draft === true,
@@ -385,18 +422,87 @@ const mapProductFromDb = (row) => {
     optionsDescription: row?.options_description || null,
     longDescription: row?.long_description || null,
     featured: row?.featured ?? false,
+    isMainFeatured: row?.is_main_featured ?? false,
     onSale: row?.on_sale ?? false,
     compareAtPrice: (() => { const v = parseFloat(row?.compare_at_price); return (row?.compare_at_price != null && !isNaN(v)) ? v : null; })(),
     videoUrl: row?.video_url || null,
     videoThumbnailUrl: row?.video_thumbnail_url || null,
     videoPath: row?.video_path || null,
     videoThumbnailPath: row?.video_thumbnail_path || null,
-    cardImageUrl: row?.card_image_url || null,
-    cardImagePath: row?.card_image_path || null,
+    cardImageUrl: row?.thumbnail_url || row?.card_image_url || null,
+    cardImagePath: row?.thumbnail_path || row?.card_image_path || null,
+    addOns: Array.isArray(row?.add_ons) ? row.add_ons : [],
+    isSoldOut: row?.is_sold_out === true,
+    comboConfig:
+      row?.combo_config && typeof row.combo_config === 'object' && !Array.isArray(row.combo_config)
+        ? row.combo_config
+        : null,
     createdAt: row?.created_at,
     updatedAt: row?.updated_at,
   };
 };
+
+export function slugifyProductName(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    || 'producto';
+}
+
+function assignFallbackProductSlugs(products = []) {
+  const used = new Map();
+  return (Array.isArray(products) ? products : []).map((product) => {
+    const persistedSlug = String(product?.slug || '').trim();
+    if (persistedSlug) {
+      used.set(persistedSlug, Math.max(used.get(persistedSlug) || 0, 1));
+      return { ...product, _slugSource: 'persisted', _generatedSlug: slugifyProductName(product?.name) };
+    }
+
+    const baseSlug = slugifyProductName(product?.name);
+    const nextCount = (used.get(baseSlug) || 0) + 1;
+    used.set(baseSlug, nextCount);
+    const fallbackSlug = nextCount === 1 ? baseSlug : `${baseSlug}-${nextCount}`;
+    return { ...product, slug: fallbackSlug, _slugSource: 'generated', _generatedSlug: fallbackSlug };
+  });
+}
+
+function shouldLogPublicProductSlugDebug() {
+  if (import.meta.env?.DEV) return true;
+  if (typeof window === 'undefined') return false;
+  const host = String(window.location?.hostname || '').toLowerCase();
+  if (host === 'localhost' || host === '127.0.0.1' || host === '::1') return true;
+  if (host.endsWith('.localhost') || host.endsWith('.vercel.app')) return true;
+  try {
+    return window.localStorage?.getItem('wa_public_product_debug') === '1';
+  } catch {
+    return false;
+  }
+}
+
+function logPublicProductSlugDebug(step, payload = {}) {
+  if (!shouldLogPublicProductSlugDebug()) return;
+  console.debug(`[public-product-slug] ${step}`, payload);
+}
+
+async function clearMainFeaturedForBusiness(businessId, excludeProductId = null) {
+  if (!businessId) return { error: null };
+
+  let query = supabase
+    ?.from('wa_products')
+    ?.update({ is_main_featured: false })
+    ?.eq('business_id', businessId)
+    ?.eq('is_main_featured', true);
+
+  if (excludeProductId) {
+    query = query?.neq('id', excludeProductId);
+  }
+
+  const { error } = await query;
+  return { error: error || null };
+}
 
 const ORDER_STATUS_VALID = ['pedido', 'en_preparacion', 'enviado', 'entregado', 'cancelado'];
 const PAYMENT_STATUS_VALID = ['pendiente', 'pagado', 'anulado'];
@@ -454,6 +560,7 @@ export const mapOrderFromDb = (row) => ({
   sentAt: row?.sent_at ?? null,
   /** Cobro efectivo (BD, trigger). Es la única fecha válida para métricas de ingreso; el cliente no la escribe. */
   paidAt: row?.paid_at ?? null,
+  customerId: row?.customer_id ?? null,
   notes: row?.notes,
   internalNotes: row?.internal_notes,
   items: (row?.wa_order_items || [])?.map(item => ({
@@ -480,9 +587,24 @@ export const getMyBusiness = async () => {
     return { data: null, error: { message: 'Usuario no autenticado' } };
   }
   console.log('[waBusinessService] getMyBusiness: fetching for user_id =', user?.id);
-  const { data, error } = await supabase?.from('wa_businesses')?.select('*')?.eq('user_id', user?.id)?.maybeSingle();
+
+  // Orden + limit defensivo: si el usuario tiene filas duplicadas en wa_businesses
+  // (PGRST116 con .maybeSingle()), esta consulta devuelve la más antigua sin explotar.
+  // Diagnóstico de duplicados: supabase/diagnostics/wa_businesses_duplicates.sql
+  const { data, error } = await supabase
+    ?.from('wa_businesses')
+    ?.select('*')
+    ?.eq('user_id', user?.id)
+    ?.order('created_at', { ascending: true })
+    ?.limit(1)
+    ?.maybeSingle();
+
   if (error) {
-    console.error('[waBusinessService] getMyBusiness error:', error);
+    if (error?.code === 'PGRST116') {
+      console.warn('[waBusinessService] getMyBusiness: PGRST116 — posibles duplicados en wa_businesses para user_id', user?.id);
+    } else {
+      console.error('[waBusinessService] getMyBusiness error:', error);
+    }
     return { data: null, error };
   }
   console.log('[waBusinessService] getMyBusiness result:', data ? `found id=${data?.id}` : 'not found');
@@ -657,6 +779,12 @@ export async function updateBusiness(businessId, updates) {
   if (updates?.instagramUrl !== undefined) dbUpdates.instagram_url = normalizeSharedSocialUrl(updates.instagramUrl, 'https://instagram.com');
   if (updates?.tiktokUrl    !== undefined) dbUpdates.tiktok_url    = normalizeTikTokUrl(updates.tiktokUrl);
   if (updates?.facebookUrl  !== undefined) dbUpdates.facebook_url  = normalizeSharedSocialUrl(updates.facebookUrl,  'https://facebook.com');
+  if (updates?.businessMode !== undefined)     dbUpdates.business_mode = updates?.businessMode;
+  if (updates?.printLegend !== undefined || updates?.print_legend !== undefined) {
+    const rawPrintLegend = updates?.printLegend !== undefined ? updates?.printLegend : updates?.print_legend;
+    const normalizedPrintLegend = String(rawPrintLegend ?? '').trim();
+    dbUpdates.print_legend = normalizedPrintLegend || null;
+  }
   if (updates?.planSlug !== undefined)         dbUpdates.plan_slug = updates?.planSlug;
   if (updates?.planExpiresAt !== undefined)    dbUpdates.plan_expires_at = updates?.planExpiresAt ?? null;
   if (updates?.trialExpiresAt !== undefined)   dbUpdates.trial_expires_at = updates?.trialExpiresAt ?? null;
@@ -807,15 +935,24 @@ export const createProduct = async (businessId, productData) => {
   }
   const imagesArr = Array.isArray(productData?.images) ? productData.images : [];
   const imageUrl = productData?.imageUrl ?? imagesArr?.[0] ?? null;
+  const thumbnailUrl = productData?.thumbnailUrl ?? productData?.cardImageUrl ?? null;
+  const thumbnailPath = productData?.thumbnailPath ?? productData?.cardImagePath ?? null;
+  const wantsMainFeatured = productData?.isMainFeatured === true;
   const status = ['active', 'inactive', 'archived'].includes(productData?.status)
     ? productData.status
     : (productData?.isActive !== false ? 'active' : 'inactive');
+  if (wantsMainFeatured) {
+    const { error: clearError } = await clearMainFeaturedForBusiness(businessId);
+    if (clearError) return { data: null, error: clearError };
+  }
   const { data, error } = await supabase?.from('wa_products')?.insert({
     business_id: businessId,
     name: productData?.name,
     description: productData?.description || null,
     price: productData?.price,
     image_url: imageUrl,
+    thumbnail_url: thumbnailUrl,
+    thumbnail_path: thumbnailPath,
     images: imagesArr?.length > 0 ? imagesArr : (imageUrl ? [imageUrl] : []),
     status,
     is_active: status === 'active',
@@ -825,11 +962,18 @@ export const createProduct = async (businessId, productData) => {
     options_description: productData?.optionsDescription || null,
     long_description: productData?.longDescription || null,
     featured: productData?.featured === true,
+    is_main_featured: wantsMainFeatured,
     on_sale: productData?.onSale === true,
     compare_at_price: productData?.compareAtPrice ?? null,
     is_draft: productData?.isDraft === true,
     card_image_url: productData?.cardImageUrl ?? null,
     card_image_path: productData?.cardImagePath ?? null,
+    is_sold_out: productData?.isSoldOut === true,
+    add_ons: Array.isArray(productData?.addOns) ? productData.addOns : [],
+    combo_config:
+      productData?.comboConfig && typeof productData.comboConfig === 'object' && !Array.isArray(productData.comboConfig)
+        ? productData.comboConfig
+        : null,
   })?.select()?.single();
   if (error) return { data: null, error };
   return { data: mapProductFromDb(data), error: null };
@@ -858,8 +1002,10 @@ export const createProductDraft = async (businessId, draftData = {}) => {
 };
 
 export const updateProduct = async (productId, productData) => {
+  let currentProduct = null;
   if (productData?.isActive === true) {
-    const { data: product } = await supabase?.from('wa_products')?.select('business_id, is_active')?.eq('id', productId)?.single();
+    const { data: product } = await supabase?.from('wa_products')?.select('business_id, is_active, is_main_featured')?.eq('id', productId)?.single();
+    currentProduct = product || null;
     if (product?.business_id) {
       const { data: biz } = await supabase
         ?.from('wa_businesses')
@@ -876,11 +1022,21 @@ export const updateProduct = async (productId, productData) => {
       }
     }
   }
+  if (!currentProduct && productData?.isMainFeatured !== undefined) {
+    const { data: product } = await supabase?.from('wa_products')?.select('business_id, is_active, is_main_featured')?.eq('id', productId)?.single();
+    currentProduct = product || null;
+  }
   const dbUpdates = {};
   if (productData?.name !== undefined)        dbUpdates.name = productData?.name;
   if (productData?.description !== undefined) dbUpdates.description = productData?.description;
   if (productData?.price !== undefined)       dbUpdates.price = productData?.price;
   if (productData?.imageUrl !== undefined)    dbUpdates.image_url = productData?.imageUrl;
+  if (productData?.thumbnailUrl !== undefined || productData?.cardImageUrl !== undefined) {
+    dbUpdates.thumbnail_url = productData?.thumbnailUrl ?? productData?.cardImageUrl ?? null;
+  }
+  if (productData?.thumbnailPath !== undefined || productData?.cardImagePath !== undefined) {
+    dbUpdates.thumbnail_path = productData?.thumbnailPath ?? productData?.cardImagePath ?? null;
+  }
   if (productData?.status !== undefined && ['active', 'inactive', 'archived'].includes(productData.status)) {
     dbUpdates.status = productData.status;
   } else if (productData?.isActive !== undefined) {
@@ -892,6 +1048,7 @@ export const updateProduct = async (productId, productData) => {
   if (productData?.longDescription !== undefined) dbUpdates.long_description = productData?.longDescription || null;
   if (productData?.category !== undefined) dbUpdates.category = productData?.category || null;
   if (productData?.featured !== undefined) dbUpdates.featured = !!productData.featured;
+  if (productData?.isMainFeatured !== undefined) dbUpdates.is_main_featured = productData.isMainFeatured === true;
   if (productData?.onSale !== undefined) dbUpdates.on_sale = !!productData.onSale;
   if (productData?.compareAtPrice !== undefined) dbUpdates.compare_at_price = productData.compareAtPrice ?? null;
   if (productData?.images !== undefined) dbUpdates.images = Array.isArray(productData.images) ? productData.images : (productData?.imageUrl ? [productData.imageUrl] : []);
@@ -902,6 +1059,22 @@ export const updateProduct = async (productId, productData) => {
   if (productData?.videoThumbnailPath !== undefined) dbUpdates.video_thumbnail_path = productData.videoThumbnailPath;
   if (productData?.cardImageUrl !== undefined)       dbUpdates.card_image_url = productData.cardImageUrl;
   if (productData?.cardImagePath !== undefined)      dbUpdates.card_image_path = productData.cardImagePath;
+  if (productData?.addOns !== undefined) dbUpdates.add_ons = Array.isArray(productData.addOns) ? productData.addOns : [];
+  if (productData?.isSoldOut !== undefined) dbUpdates.is_sold_out = productData.isSoldOut === true;
+  if (productData?.comboConfig !== undefined) {
+    dbUpdates.combo_config =
+      productData?.comboConfig && typeof productData.comboConfig === 'object' && !Array.isArray(productData.comboConfig)
+        ? productData.comboConfig
+        : null;
+  }
+  if (productData?.isMainFeatured === true) {
+    const businessId = currentProduct?.business_id;
+    if (!businessId) {
+      return { data: null, error: { message: 'No se pudo resolver el negocio del producto.' } };
+    }
+    const { error: clearError } = await clearMainFeaturedForBusiness(businessId, productId);
+    if (clearError) return { data: null, error: clearError };
+  }
   const { data, error } = await supabase?.from('wa_products')?.update(dbUpdates)?.eq('id', productId)?.select()?.single();
   if (error) return { data: null, error };
   return { data: mapProductFromDb(data), error: null };
@@ -958,16 +1131,30 @@ export const uploadProductMainImage = async ({ file, businessId, productId }) =>
     throw new Error('No se encontro el producto para subir la imagen.');
   }
 
-  const uploaded = await uploadToMediaService(file, {
+  const { mainFile, thumbnailFile } = await generateProductImageUploadSet(file);
+
+  const uploaded = await uploadToMediaService(mainFile, {
     type: 'product-main',
     businessId,
     productId,
+    variant: 'main',
+    skipClientCompression: true,
+  });
+
+  const uploadedThumbnail = await uploadToMediaService(thumbnailFile, {
+    type: 'product-main',
+    businessId,
+    productId,
+    variant: 'thumb',
+    skipClientCompression: true,
   });
 
   return {
     ok: true,
     url: uploaded.url,
     key: uploaded.key,
+    thumbnailUrl: uploadedThumbnail.url,
+    thumbnailPath: uploadedThumbnail.key,
     contentType: uploaded.contentType,
     size: uploaded.size,
   };
@@ -1101,6 +1288,7 @@ export const createOrder = async (businessId, orderData, items) => {
     ? crypto.randomUUID()
     : `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 
+  // customer_id lo rellena automáticamente el trigger wa_orders_link_customer (SECURITY DEFINER).
   const { error: orderError } = await supabase?.from('wa_orders')?.insert({
       id: orderId,
       business_id: businessId,
@@ -1161,6 +1349,28 @@ export const createOrder = async (businessId, orderData, items) => {
   };
 };
 
+// ─── Clientes ─────────────────────────────────────────────────────────────────
+
+export const getCustomer = async (customerId) => {
+  const { data, error } = await supabase
+    ?.from('wa_customers')
+    ?.select('*')
+    ?.eq('id', customerId)
+    ?.single();
+  if (error) return { data: null, error };
+  return { data, error: null };
+};
+
+export const getCustomerOrders = async (customerId) => {
+  const { data, error } = await supabase
+    ?.from('wa_orders')
+    ?.select('*, wa_order_items(*)')
+    ?.eq('customer_id', customerId)
+    ?.order('created_at', { ascending: false });
+  if (error) return { data: null, error };
+  return { data: (data || []).map(mapOrderFromDb), error: null };
+};
+
 export const deleteProducts = async (productIds) => {
   if (!productIds?.length) return { error: null };
   const { error } = await supabase?.from('wa_products')?.delete()?.in('id', productIds);
@@ -1175,8 +1385,122 @@ export async function getPublicProducts(businessId) {
     ?.eq('business_id', businessId)
     ?.eq('is_active', true)
     ?.order('sort_order', { ascending: true });
-  if (error) return { data: null, error };
-  return { data: (data || [])?.map(mapProductFromDb), error: null };
+  if (error) {
+    logPublicProductSlugDebug('active_products_lookup_error', {
+      businessId,
+      message: error?.message || null,
+      code: error?.code || null,
+      details: error?.details || null,
+      hint: error?.hint || null,
+    });
+    return { data: null, error };
+  }
+  const mapped = assignFallbackProductSlugs((data || [])?.map(mapProductFromDb));
+  logPublicProductSlugDebug('active_products_lookup', {
+    businessId,
+    count: mapped.length,
+  });
+  return { data: mapped, error: null };
+}
+
+export async function getPublicProductBySlug(businessSlug, productSlug) {
+  const requestedSlug = String(productSlug || '').trim();
+  logPublicProductSlugDebug('input', {
+    businessSlug,
+    productSlug,
+    requestedSlug,
+  });
+  if (!businessSlug || !requestedSlug) {
+    return { data: null, error: { message: 'Missing business or product slug' } };
+  }
+
+  const { data: business, error: businessError } = await getBusinessBySlug(businessSlug);
+  logPublicProductSlugDebug('business_lookup', {
+    businessSlug,
+    found: !!business?.id,
+    businessId: business?.id || null,
+    isActive: business?.isActive ?? null,
+    rawSlug: business?.slug || null,
+    error: businessError?.message || null,
+    errorCode: businessError?.code || null,
+    errorDetails: businessError?.details || null,
+    errorHint: businessError?.hint || null,
+  });
+  if (businessError) return { data: null, error: businessError };
+  if (!business?.id || business?.isActive === false) return { data: null, error: null };
+
+  let selectedProduct = null;
+  const direct = await supabase
+    ?.from('wa_products')
+    ?.select('*')
+    ?.eq('business_id', business.id)
+    ?.eq('slug', requestedSlug)
+    ?.eq('is_active', true)
+    ?.maybeSingle();
+
+  logPublicProductSlugDebug('direct_slug_lookup', {
+    businessId: business.id,
+    requestedSlug,
+    found: !!direct?.data,
+    error: direct?.error?.message || null,
+    errorCode: direct?.error?.code || null,
+    errorDetails: direct?.error?.details || null,
+    errorHint: direct?.error?.hint || null,
+    note: direct?.error ? 'If this mentions wa_products.slug, the slug migration is not applied; fallback by product name should continue.' : null,
+  });
+
+  if (!direct?.error && direct?.data) {
+    selectedProduct = mapProductFromDb(direct.data);
+  }
+
+  const productsResult = await getPublicProducts(business.id);
+  if (productsResult?.error) return { data: null, error: productsResult.error };
+  const products = Array.isArray(productsResult?.data) ? productsResult.data : [];
+  logPublicProductSlugDebug('candidate_products', {
+    businessId: business.id,
+    count: products.length,
+    candidates: products.slice(0, 20).map((product) => ({
+      id: product?.id,
+      name: product?.name,
+      persistedSlug: product?._slugSource === 'persisted' ? product?.slug || null : null,
+      generatedSlug: product?._generatedSlug || slugifyProductName(product?.name),
+      resolvedSlug: product?.slug || null,
+      slugSource: product?._slugSource || 'unknown',
+      isActive: product?.isActive,
+    })),
+  });
+
+  if (!selectedProduct) {
+    selectedProduct = products.find((product) => {
+      const persistedSlug = String(product?.slug || '').trim();
+      if (persistedSlug === requestedSlug) return true;
+      return slugifyProductName(product?.name) === requestedSlug;
+    }) || null;
+  } else {
+    selectedProduct = products.find((product) => product?.id === selectedProduct?.id) || selectedProduct;
+  }
+
+  if (!selectedProduct || selectedProduct?.isActive === false) {
+    logPublicProductSlugDebug('resolved_product', {
+      requestedSlug,
+      found: false,
+      reason: selectedProduct?.isActive === false ? 'inactive' : 'not_found',
+    });
+    return { data: { business, product: null, products }, error: null };
+  }
+
+  logPublicProductSlugDebug('resolved_product', {
+    requestedSlug,
+    found: true,
+    id: selectedProduct?.id,
+    name: selectedProduct?.name,
+    persistedSlug: selectedProduct?._slugSource === 'persisted' ? selectedProduct?.slug || null : null,
+    generatedSlug: selectedProduct?._generatedSlug || slugifyProductName(selectedProduct?.name),
+    resolvedSlug: selectedProduct?.slug || null,
+    slugSource: selectedProduct?._slugSource || 'unknown',
+  });
+
+  return { data: { business, product: selectedProduct, products }, error: null };
 }
 
 export async function getPublicOfferProducts(businessId) {
@@ -1579,6 +1903,11 @@ export const getDashboardAiInsights = async (businessId) => {
   }
   if (!businessId) return { data: null, error: { message: 'businessId required' } };
 
+  const { data: { session } = { session: null } } = await supabase.auth.getSession().catch(() => ({ data: { session: null } }));
+  if (!session?.access_token) {
+    return { data: null, error: { message: 'No active session', code: 'NO_ACTIVE_SESSION' }, pending: false };
+  }
+
   const token = await getValidToken();
   if (!token) return { data: null, error: { message: 'No auth token' } };
 
@@ -1601,10 +1930,18 @@ export const getDashboardAiInsights = async (businessId) => {
         message: body?.message || 'Insight en generación',
       };
     }
-    if (!res.ok) return { data: null, error: body?.error || { message: res.statusText }, pending: false };
+    if (!res.ok) {
+      logServiceWarningOnce(
+        `dashboard-ai-insights-${res.status}-${body?.code || 'unknown'}`,
+        '[dashboard-ai-insights] request failed',
+        { status: res.status, code: body?.code || 'AI_PROVIDER_ERROR' },
+      );
+      return { data: null, error: { message: 'AI provider error', code: body?.code || 'AI_PROVIDER_ERROR' }, pending: false };
+    }
     return { data: body?.insight || null, error: null, pending: false };
   } catch (err) {
-    return { data: null, error: { message: err?.message || 'Network error' }, pending: false };
+    logServiceWarningOnce('dashboard-ai-insights-network-error', '[dashboard-ai-insights] network error');
+    return { data: null, error: { message: 'Network error' }, pending: false };
   }
 };
 
@@ -1836,12 +2173,18 @@ function markSiteVisitDone(path) {
 export async function recordSiteVisit({ path, hostname, attribution = {} } = {}) {
   const normalizedPath = (path || '/').trim();
   if (shouldThrottleSiteVisit(normalizedPath)) return { recorded: false, throttled: true };
+  if (shouldSkipTrackingByRecentAuthFailure(`site:${normalizedPath}`)) {
+    return { recorded: false, throttled: true, skipped: 'recent-auth-failure' };
+  }
 
   const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
   const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
   if (!supabaseUrl || !anonKey) return { recorded: false, error: { message: 'Missing Supabase config' } };
+  if (trackingInflight.has(`site:${normalizedPath}`)) return { recorded: false, throttled: true, skipped: 'inflight' };
 
   const visitorId = getOrCreateVisitorId();
+  const { data: { session } = { session: null } } = await supabase.auth.getSession().catch(() => ({ data: { session: null } }));
+  if (!session) return { recorded: false, skipped: 'no-session' };
   const body = {
     path: normalizedPath,
     hostname: hostname || (typeof window !== 'undefined' ? window.location.hostname : null),
@@ -1855,18 +2198,31 @@ export async function recordSiteVisit({ path, hostname, attribution = {} } = {})
 
   const url = `${supabaseUrl}/functions/v1/record-site-visit`;
   try {
+    trackingInflight.add(`site:${normalizedPath}`);
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', apikey: anonKey },
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: anonKey,
+        ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+      },
       keepalive: true,
       body: JSON.stringify(body),
     });
     const data = await res.json().catch(() => ({}));
+    if (res.status === 401 || res.status === 403) {
+      markTrackingAuthFailure(`site:${normalizedPath}`);
+      markSiteVisitDone(normalizedPath);
+      logServiceWarningOnce(`record-site-visit-auth-${normalizedPath}`, '[record-site-visit] skipped after auth failure', { status: res.status });
+      return { recorded: false, error: null, skipped: 'auth-required' };
+    }
     if (res.ok && data?.recorded) markSiteVisitDone(normalizedPath);
     return { recorded: !!data?.recorded, error: res.ok ? null : (data?.error || { message: res.statusText }) };
   } catch (err) {
-    console.error('[record-site-visit] fetch failed', err?.message);
+    logServiceWarningOnce(`record-site-visit-network-${normalizedPath}`, '[record-site-visit] fetch failed');
     return { recorded: false, error: { message: err?.message || 'Network error' } };
+  } finally {
+    trackingInflight.delete(`site:${normalizedPath}`);
   }
 }
 

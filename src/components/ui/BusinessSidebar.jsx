@@ -119,7 +119,7 @@ Motivo (opcional):`;
   };
 
   const SidebarContent = () => (
-    <div className="flex flex-col h-full bg-white">
+    <div className="flex flex-col h-full" style={{ backgroundColor: '#0F1720', color: '#D1D5DB' }}>
       {/* Logo */}
       <div className={`sidebar-header ${collapsed ? 'justify-center' : ''}`}>
         {collapsed ? (
@@ -128,16 +128,16 @@ Motivo (opcional):`;
           </div>
         ) : (
           <div className="min-w-0 flex-1 overflow-hidden">
-            <VentalinkLogo variant="default" height={28} className="max-w-full [&_svg]:max-w-full" />
-            <span className="block text-xs mt-1 truncate" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-              Panel de Negocios
+            <VentalinkLogo variant="light" height={26} className="max-w-full [&_svg]:max-w-full" />
+            <span className="mt-1 block truncate text-[10px] uppercase tracking-[0.12em]" style={{ color: '#6B7280', fontFamily: 'var(--font-caption)' }}>
+              Operating panel
             </span>
           </div>
         )}
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto overflow-x-hidden py-3 px-2" aria-label="Navegación principal">
+      <nav className="flex-1 overflow-y-auto overflow-x-hidden px-2 py-2.5" aria-label="Navegación principal">
         <ul className="space-y-0.5" role="list">
           {NAV_ITEMS?.map((item) => {
             const active = isParentActive(item);
@@ -150,22 +150,22 @@ Motivo (opcional):`;
                   aria-expanded={item?.subItems ? expanded : undefined}
                   title={collapsed ? item?.label : undefined}
                   className={[
-                    'nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium',
-                    'min-h-[42px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-all duration-150',
+                    'nav-item w-full flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-[12.5px] font-medium',
+                    'min-h-[34px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 transition-all duration-150',
                     active
-                      ? 'text-primary font-semibold' :'text-muted-foreground hover:text-foreground hover:bg-muted',
+                      ? 'font-semibold text-white' : 'text-slate-400 hover:text-white hover:bg-white/[0.06]',
                     active ? 'active' : '',
                     collapsed ? 'justify-center' : '',
                   ]?.join(' ')}
                   style={{
                     fontFamily: 'var(--font-caption)',
-                    backgroundColor: active ? 'rgba(124, 58, 237, 0.07)' : undefined,
+                    backgroundColor: active ? 'rgba(255, 255, 255, 0.075)' : undefined,
                   }}
                 >
                   <Icon
                     name={item?.icon}
-                    size={17}
-                    color={active ? 'var(--color-primary)' : 'currentColor'}
+                    size={16}
+                    color="currentColor"
                     className="flex-shrink-0"
                   />
                   {!collapsed && (
@@ -189,7 +189,7 @@ Motivo (opcional):`;
                             className={[
                               'w-full text-left px-3 py-2 rounded-md text-xs transition-all duration-150',
                               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                              subActive ? 'text-primary font-semibold bg-violet-50' : 'text-muted-foreground hover:text-foreground hover:bg-muted',
+                              subActive ? 'text-white font-semibold bg-white/[0.09]' : 'text-slate-400 hover:text-white hover:bg-white/[0.06]',
                             ]?.join(' ')}
                             style={{ fontFamily: 'var(--font-caption)' }}
                           >
@@ -206,9 +206,9 @@ Motivo (opcional):`;
           {isAdmin && (
             <>
               {/* ── OPERACIÓN ── */}
-              <li role="listitem" className="pt-2 mt-2 border-t" style={{ borderColor: 'var(--color-border)' }}>
+              <li role="listitem" className="pt-3 mt-3 border-t" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
                 {!collapsed && (
-                  <span className="block px-3 pb-1 text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--color-error)', fontFamily: 'var(--font-caption)', opacity: 0.7 }}>
+                  <span className="block px-3 pb-1 text-[10px] font-bold uppercase tracking-[0.14em]" style={{ color: '#64748B', fontFamily: 'var(--font-caption)', opacity: 0.82 }}>
                     Operación
                   </span>
                 )}
@@ -225,15 +225,15 @@ Motivo (opcional):`;
                       onClick={() => navigate(item.path)}
                       aria-current={active ? 'page' : undefined}
                       className={[
-                        'nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium',
-                        'min-h-[42px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-all duration-150',
-                        active ? 'text-primary font-semibold' : 'text-muted-foreground hover:text-foreground hover:bg-muted',
+                        'nav-item w-full flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-[12.5px] font-medium',
+                        'min-h-[34px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 transition-all duration-150',
+                        active ? 'text-white font-semibold' : 'text-slate-400 hover:text-white hover:bg-white/[0.06]',
                         collapsed ? 'justify-center' : '',
                       ].join(' ')}
-                      style={{ fontFamily: 'var(--font-caption)', backgroundColor: active ? 'rgba(239,68,68,0.07)' : undefined }}
+                      style={{ fontFamily: 'var(--font-caption)', backgroundColor: active ? 'rgba(255,255,255,0.075)' : undefined }}
                       title={collapsed ? item.label : undefined}
                     >
-                      <Icon name={item.icon} size={17} color={active ? 'var(--color-error)' : 'currentColor'} className="flex-shrink-0" />
+                      <Icon name={item.icon} size={16} color="currentColor" className="flex-shrink-0" />
                       {!collapsed && <span className="flex-1 text-left truncate">{item.label}</span>}
                     </button>
                   </li>
@@ -243,7 +243,7 @@ Motivo (opcional):`;
               {/* ── CONFIGURACIÓN ── */}
               <li role="listitem" className="pt-2 mt-1">
                 {!collapsed && (
-                  <span className="block px-3 pb-1 text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--color-error)', fontFamily: 'var(--font-caption)', opacity: 0.7 }}>
+                  <span className="block px-3 pb-1 text-[10px] font-bold uppercase tracking-[0.14em]" style={{ color: '#64748B', fontFamily: 'var(--font-caption)', opacity: 0.82 }}>
                     Configuración
                   </span>
                 )}
@@ -258,15 +258,15 @@ Motivo (opcional):`;
                       onClick={() => navigate(item.path)}
                       aria-current={active ? 'page' : undefined}
                       className={[
-                        'nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium',
-                        'min-h-[42px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-all duration-150',
-                        active ? 'text-primary font-semibold' : 'text-muted-foreground hover:text-foreground hover:bg-muted',
+                        'nav-item w-full flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-[12.5px] font-medium',
+                        'min-h-[34px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 transition-all duration-150',
+                        active ? 'text-white font-semibold' : 'text-slate-400 hover:text-white hover:bg-white/[0.06]',
                         collapsed ? 'justify-center' : '',
                       ].join(' ')}
-                      style={{ fontFamily: 'var(--font-caption)', backgroundColor: active ? 'rgba(239,68,68,0.07)' : undefined }}
+                      style={{ fontFamily: 'var(--font-caption)', backgroundColor: active ? 'rgba(255,255,255,0.075)' : undefined }}
                       title={collapsed ? item.label : undefined}
                     >
-                      <Icon name={item.icon} size={17} color={active ? 'var(--color-error)' : 'currentColor'} className="flex-shrink-0" />
+                      <Icon name={item.icon} size={16} color="currentColor" className="flex-shrink-0" />
                       {!collapsed && <span className="flex-1 text-left truncate">{item.label}</span>}
                     </button>
                   </li>
@@ -276,7 +276,7 @@ Motivo (opcional):`;
               {/* ── ANALYTICS ── */}
               <li role="listitem" className="pt-2 mt-1">
                 {!collapsed && (
-                  <span className="block px-3 pb-1 text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--color-error)', fontFamily: 'var(--font-caption)', opacity: 0.7 }}>
+                  <span className="block px-3 pb-1 text-[10px] font-bold uppercase tracking-[0.14em]" style={{ color: '#64748B', fontFamily: 'var(--font-caption)', opacity: 0.82 }}>
                     Analytics
                   </span>
                 )}
@@ -292,15 +292,15 @@ Motivo (opcional):`;
                       onClick={() => navigate(item.path)}
                       aria-current={active ? 'page' : undefined}
                       className={[
-                        'nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium',
-                        'min-h-[42px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-all duration-150',
-                        active ? 'text-primary font-semibold' : 'text-muted-foreground hover:text-foreground hover:bg-muted',
+                        'nav-item w-full flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-[12.5px] font-medium',
+                        'min-h-[34px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 transition-all duration-150',
+                        active ? 'text-white font-semibold' : 'text-slate-400 hover:text-white hover:bg-white/[0.06]',
                         collapsed ? 'justify-center' : '',
                       ].join(' ')}
-                      style={{ fontFamily: 'var(--font-caption)', backgroundColor: active ? 'rgba(239,68,68,0.07)' : undefined }}
+                      style={{ fontFamily: 'var(--font-caption)', backgroundColor: active ? 'rgba(255,255,255,0.075)' : undefined }}
                       title={collapsed ? item.label : undefined}
                     >
-                      <Icon name={item.icon} size={17} color={active ? 'var(--color-error)' : 'currentColor'} className="flex-shrink-0" />
+                      <Icon name={item.icon} size={16} color="currentColor" className="flex-shrink-0" />
                       {!collapsed && <span className="flex-1 text-left truncate">{item.label}</span>}
                     </button>
                   </li>
@@ -312,7 +312,7 @@ Motivo (opcional):`;
       </nav>
 
       {/* Footer — menú de usuario */}
-      <div className="p-2 border-t" style={{ borderColor: 'var(--color-border)' }} ref={userMenuRef}>
+      <div className="p-2 border-t" style={{ borderColor: 'rgba(255,255,255,0.08)' }} ref={userMenuRef}>
         {!collapsed ? (
           <div className="relative">
             {userMenuOpen && (
@@ -389,23 +389,23 @@ Motivo (opcional):`;
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); setUserMenuOpen((prev) => !prev); }}
-              className="flex items-center gap-3 px-3 py-2.5 rounded-lg w-full hover:opacity-90 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              style={{ backgroundColor: 'var(--color-muted)' }}
+              className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 transition-colors hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
+              style={{ backgroundColor: 'rgba(255,255,255,0.045)' }}
               aria-expanded={userMenuOpen}
               aria-haspopup="true"
               aria-label="Menú de usuario"
             >
               <div
-                className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold text-white"
-                style={{ background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)' }}
+                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
+                style={{ backgroundColor: '#F9FAFB', color: '#111827' }}
               >
                 {userInitial}
               </div>
               <div className="flex-1 overflow-hidden text-left">
-                <p className="text-xs font-semibold text-foreground truncate" style={{ fontFamily: 'var(--font-caption)' }}>{userLabel}</p>
-                <p className="text-xs truncate" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>{getPlanLabel(business?.planSlug)}</p>
+                <p className="truncate text-xs font-semibold" style={{ fontFamily: 'var(--font-caption)', color: '#F9FAFB' }}>{userLabel}</p>
+                <p className="truncate text-[11px]" style={{ color: '#8B95A1', fontFamily: 'var(--font-caption)' }}>{getPlanLabel(business?.planSlug)}</p>
               </div>
-              <Icon name={userMenuOpen ? 'ChevronUp' : 'ChevronDown'} size={13} color="var(--color-muted-foreground)" className="flex-shrink-0" />
+              <Icon name={userMenuOpen ? 'ChevronUp' : 'ChevronDown'} size={13} color="#9CA3AF" className="flex-shrink-0" />
             </button>
           </div>
         ) : (
@@ -473,8 +473,8 @@ Motivo (opcional):`;
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); setUserMenuOpen((prev) => !prev); }}
-              className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              style={{ background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)' }}
+              className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              style={{ backgroundColor: '#F9FAFB', color: '#111827' }}
               title={userLabel}
               aria-expanded={userMenuOpen}
               aria-haspopup="true"
@@ -486,7 +486,7 @@ Motivo (opcional):`;
         )}
         <button
           onClick={handleCollapse}
-          className="hidden lg:flex w-full items-center justify-center mt-1.5 p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="hidden lg:flex w-full items-center justify-center mt-1.5 p-2 rounded-lg text-slate-500 hover:text-white hover:bg-white/[0.06] transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
           title={collapsed ? 'Expandir menú' : 'Colapsar menú'}
           aria-label={collapsed ? 'Expandir menú lateral' : 'Colapsar menú lateral'}
         >
@@ -542,7 +542,7 @@ Motivo (opcional):`;
         className="lg:hidden fixed z-navigation w-11 h-11 flex items-center justify-center rounded-2xl bg-white/95 backdrop-blur-md border-0 text-foreground hover:bg-muted transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring shadow-[0_4px_20px_rgba(0,0,0,0.08)] ring-1 ring-slate-200/70"
         style={{
           top: 'calc(var(--safe-area-top) + 10px)',
-          left: 'calc(var(--safe-area-left) + 16px)',
+          left: 'max(calc((100vw - min(100vw, 480px)) / 2 + 16px), calc(var(--safe-area-left) + 16px))',
         }}
         aria-label="Abrir menú de navegación"
         aria-expanded={mobileOpen}
@@ -566,8 +566,9 @@ Motivo (opcional):`;
           className="lg:hidden fixed top-0 left-0 h-full z-modal border-r"
           style={{
             width: 'var(--sidebar-width)',
-            backgroundColor: '#FFFFFF',
-            borderColor: 'var(--color-border)',
+            left: 'max(calc((100vw - min(100vw, 480px)) / 2), var(--safe-area-left))',
+            backgroundColor: '#111827',
+            borderColor: 'rgba(255,255,255,0.08)',
             boxShadow: 'var(--shadow-xl)',
             paddingTop: 'var(--safe-area-top)',
           }}
@@ -582,7 +583,7 @@ Motivo (opcional):`;
               className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-muted transition-colors"
               aria-label="Cerrar menú"
             >
-              <Icon name="X" size={16} color="var(--color-foreground)" />
+              <Icon name="X" size={16} color="#F9FAFB" />
             </button>
           </div>
           <SidebarContent />
@@ -594,9 +595,9 @@ Motivo (opcional):`;
         className="sidebar-desktop hidden lg:flex flex-col fixed top-0 left-0 h-full z-navigation border-r"
         style={{
           width: collapsed ? 'var(--sidebar-collapsed-width)' : 'var(--sidebar-width)',
-          backgroundColor: '#FFFFFF',
-          borderColor: 'var(--color-border)',
-          boxShadow: 'var(--shadow-xs)',
+          backgroundColor: '#111827',
+          borderColor: 'rgba(255,255,255,0.08)',
+          boxShadow: '8px 0 30px rgba(17,24,39,0.18)',
           transition: 'width var(--transition-base)',
         }}
         aria-label="Navegación lateral"

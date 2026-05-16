@@ -48,8 +48,5 @@ export function getProductCardTrustBadge(product) {
   if (product.onSale !== true && product.featured !== true && isRecent(product.createdAt)) {
     return { key: 'new', label: 'Nuevo', style: { backgroundColor: '#2563eb', color: '#ffffff' }, discount: null };
   }
-  if (product.isActive !== false) {
-    return { key: 'available', label: 'Disponible', style: { backgroundColor: '#15803d', color: '#ffffff' }, discount: null };
-  }
   return null;
 }

@@ -106,13 +106,13 @@ export default function RubroPrincipalSelector({ rubros = [], value, onChange, h
     return (
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center gap-2">
-          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-violet-50 border border-violet-200 text-sm font-medium text-violet-800 font-[family-name:var(--font-caption)]">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-900 shadow-sm shadow-slate-200/40 font-[family-name:var(--font-caption)]">
             {selectedRubro.name}
             <button
               type="button"
               onClick={handleClear}
               aria-label="Quitar rubro"
-              className="ml-0.5 -mr-0.5 rounded-full p-0.5 hover:bg-violet-200 transition-colors text-violet-500 hover:text-violet-700"
+              className="ml-0.5 -mr-0.5 rounded-full p-0.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
             >
               <Icon name="X" size={12} color="currentColor" />
             </button>
@@ -150,7 +150,7 @@ export default function RubroPrincipalSelector({ rubros = [], value, onChange, h
             }}
             onFocus={() => setOpen(true)}
             onBlur={() => setTimeout(() => setOpen(false), 150)}
-            className={`w-full px-3 py-2.5 pl-9 rounded-xl border bg-white text-sm text-slate-900 outline-none transition-all font-[family-name:var(--font-caption)] focus:ring-4 focus:ring-violet-500/10 focus:border-violet-500 ${hasError ? 'border-red-400 focus:ring-red-500/10 focus:border-red-500' : 'border-slate-200'}`}
+            className={`w-full rounded-lg border bg-white/85 px-3 py-2 pl-9 text-sm text-slate-900 outline-none transition-all font-[family-name:var(--font-caption)] placeholder:text-slate-400 focus:border-slate-900 focus:ring-2 focus:ring-slate-900/5 ${hasError ? 'border-red-400 focus:ring-red-500/10 focus:border-red-500' : 'border-slate-200/80'}`}
             style={{ fontFamily: 'var(--font-caption)' }}
             aria-label="Buscar rubro"
             aria-invalid={hasError}
@@ -159,7 +159,7 @@ export default function RubroPrincipalSelector({ rubros = [], value, onChange, h
 
         {/* Dropdown de sugerencias */}
         {showSuggestions && !noResults && (
-          <ul className="absolute z-20 mt-1.5 w-full rounded-xl border border-slate-200 bg-white shadow-lg overflow-hidden">
+          <ul className="absolute z-20 mt-1.5 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_16px_34px_rgba(15,23,42,0.12)]">
             {suggestions.map(({ rubro: r, score, keywords }) => {
               // Mostrar hasta 3 keywords que hicieron match, solo cuando el match vino por keyword (score >= 2)
               const q = normalizeText(query);
