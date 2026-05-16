@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 
 const LOOPS_SEND_EVENT_URL = 'https://app.loops.so/api/v1/events/send';
-const SUPPORTED_EVENTS = new Set(['user_registered']);
+const SUPPORTED_EVENTS = new Set(['user_registered', 'first_product_created']);
 
 function jsonResponse(body, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -85,6 +85,10 @@ function buildLoopsPayload(eventName, effectiveEmail, payload) {
     eventProperties: {
       firstName: pickString(payload?.firstName),
       businessName: pickString(payload?.businessName),
+      businessId: pickString(payload?.businessId, 80),
+      productsCount: Number.isFinite(Number(payload?.productsCount)) ? Number(payload.productsCount) : undefined,
+      ordersCount: Number.isFinite(Number(payload?.ordersCount)) ? Number(payload.ordersCount) : undefined,
+      businessMode: pickString(payload?.businessMode, 80),
       country: pickString(payload?.country, 80),
       plan: pickString(payload?.plan || 'starter', 80),
     },

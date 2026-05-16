@@ -7,11 +7,13 @@ import { getMarketCodeByCountry } from '../lib/market/routing';
 import { getCountryConfig, COUNTRY_CODES } from '../config/countryConfig';
 import { normalizeSocialUrl as normalizeSharedSocialUrl, normalizeTikTokUrl } from '../utils/socialLinks';
 import { uploadToMediaService } from './mediaUploadService';
+import { trackLoopsEvent } from './loopsClient';
 
 const TRACKING_AUTH_FAILURE_COOLDOWN_MS = 10 * 60 * 1000;
 const trackingAuthFailureCache = new Map();
 const trackingInflight = new Set();
 const serviceWarningCache = new Map();
+const FIRST_PRODUCT_EVENT_PREFIX = 'walinka:first_product_created:';
 
 function logServiceWarningOnce(key, message, extra = undefined) {
   if (serviceWarningCache.get(key)) return;
@@ -865,10 +867,75 @@ export const getActiveProductCount = async (businessId) => {
     ?.from('wa_products')
     ?.select('id', { count: 'exact', head: true })
     ?.eq('business_id', businessId)
-    ?.eq('status', 'active');
+    ?.eq('status', 'active')
+    ?.neq('is_draft', true);
   if (error) return 0;
   return count ?? 0;
 };
+
+function getFirstProductEventStorageKey(businessId) {
+  return `${FIRST_PRODUCT_EVENT_PREFIX}${businessId}`;
+}
+
+function wasFirstProductEventTracked(businessId) {
+  if (!businessId || typeof window === 'undefined') return false;
+  try {
+    return window.localStorage?.getItem(getFirstProductEventStorageKey(businessId)) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function markFirstProductEventTracked(businessId) {
+  if (!businessId || typeof window === 'undefined') return;
+  try {
+    window.localStorage?.setItem(getFirstProductEventStorageKey(businessId), '1');
+  } catch {
+    // Storage can be unavailable in private contexts; the count transition still protects normal flows.
+  }
+}
+
+function sendFirstProductCreatedEventIfNeeded({ businessId, activeBefore, activeAfter }) {
+  if (!businessId || activeBefore !== 0 || activeAfter !== 1) return;
+  if (wasFirstProductEventTracked(businessId)) return;
+  markFirstProductEventTracked(businessId);
+
+  (async () => {
+    try {
+      const [{ data: business }, { data: userData }, { count: ordersCount }] = await Promise.all([
+        supabase
+          ?.from('wa_businesses')
+          ?.select('id, name, country, country_code, plan_slug, business_mode')
+          ?.eq('id', businessId)
+          ?.maybeSingle(),
+        supabase?.auth?.getUser(),
+        supabase
+          ?.from('wa_orders')
+          ?.select('id', { count: 'exact', head: true })
+          ?.eq('business_id', businessId),
+      ]);
+
+      const email = userData?.user?.email || '';
+      if (!email) return;
+
+      await trackLoopsEvent('first_product_created', {
+        email,
+        businessName: business?.name || '',
+        businessId,
+        productsCount: activeAfter,
+        ordersCount: ordersCount ?? 0,
+        businessMode: business?.business_mode || 'store',
+        country: business?.country_code || business?.country || '',
+        plan: business?.plan_slug || 'starter',
+      });
+    } catch (error) {
+      console.warn('[waBusinessService] first_product_created tracking skipped', {
+        businessId,
+        message: error?.message || 'unknown_error',
+      });
+    }
+  })();
+}
 
 /**
  * Verifica si el negocio puede crear más productos u órdenes según su plan.
@@ -926,10 +993,13 @@ export const createProduct = async (businessId, productData) => {
     ?.single();
   const activePlan = getActivePlan(biz || {});
   const maxProducts = getProductLimitByPlan(activePlan);
+  const status = ['active', 'inactive', 'archived'].includes(productData?.status)
+    ? productData.status
+    : (productData?.isActive !== false ? 'active' : 'inactive');
+  const activeBefore = await getActiveProductCount(businessId);
   if (maxProducts != null) {
-    const activeCount = await getActiveProductCount(businessId);
-    const willBeActive = productData?.isActive !== false;
-    if (willBeActive && activeCount >= maxProducts) {
+    const willBeActive = status === 'active' && productData?.isDraft !== true;
+    if (willBeActive && activeBefore >= maxProducts) {
       return { data: null, error: { message: `🚀 Llegaste al límite de productos del plan gratis. Actualiza a Pro para seguir agregando más.`, code: 'PLAN_LIMIT_EXCEEDED' } };
     }
   }
@@ -938,9 +1008,6 @@ export const createProduct = async (businessId, productData) => {
   const thumbnailUrl = productData?.thumbnailUrl ?? productData?.cardImageUrl ?? null;
   const thumbnailPath = productData?.thumbnailPath ?? productData?.cardImagePath ?? null;
   const wantsMainFeatured = productData?.isMainFeatured === true;
-  const status = ['active', 'inactive', 'archived'].includes(productData?.status)
-    ? productData.status
-    : (productData?.isActive !== false ? 'active' : 'inactive');
   if (wantsMainFeatured) {
     const { error: clearError } = await clearMainFeaturedForBusiness(businessId);
     if (clearError) return { data: null, error: clearError };
@@ -976,7 +1043,13 @@ export const createProduct = async (businessId, productData) => {
         : null,
   })?.select()?.single();
   if (error) return { data: null, error };
-  return { data: mapProductFromDb(data), error: null };
+  const mappedProduct = mapProductFromDb(data);
+  if (status === 'active' && productData?.isDraft !== true) {
+    getActiveProductCount(businessId)
+      .then((activeAfter) => sendFirstProductCreatedEventIfNeeded({ businessId, activeBefore, activeAfter }))
+      .catch(() => {});
+  }
+  return { data: mappedProduct, error: null };
 };
 
 export const createProductDraft = async (businessId, draftData = {}) => {
@@ -1003,8 +1076,13 @@ export const createProductDraft = async (businessId, draftData = {}) => {
 
 export const updateProduct = async (productId, productData) => {
   let currentProduct = null;
-  if (productData?.isActive === true) {
-    const { data: product } = await supabase?.from('wa_products')?.select('business_id, is_active, is_main_featured')?.eq('id', productId)?.single();
+  let activeBeforeForFirstProduct = null;
+  const nextStatus = productData?.status !== undefined && ['active', 'inactive', 'archived'].includes(productData.status)
+    ? productData.status
+    : (productData?.isActive !== undefined ? (productData.isActive ? 'active' : 'inactive') : undefined);
+  const willBeActive = nextStatus === 'active' && productData?.isDraft !== true;
+  if (willBeActive) {
+    const { data: product } = await supabase?.from('wa_products')?.select('business_id, is_active, status, is_draft, is_main_featured')?.eq('id', productId)?.single();
     currentProduct = product || null;
     if (product?.business_id) {
       const { data: biz } = await supabase
@@ -1014,16 +1092,18 @@ export const updateProduct = async (productId, productData) => {
         ?.single();
       const activePlan = getActivePlan(biz || {});
       const maxProducts = getProductLimitByPlan(activePlan);
-      if (maxProducts != null && !product?.is_active) {
+      const productWasVisible = product?.status === 'active' && product?.is_draft !== true;
+      if (!productWasVisible) {
         const activeCount = await getActiveProductCount(product.business_id);
-        if (activeCount >= maxProducts) {
+        activeBeforeForFirstProduct = activeCount;
+        if (maxProducts != null && activeCount >= maxProducts) {
           return { data: null, error: { message: `🚀 Llegaste al límite de productos del plan gratis. Desactiva uno existente o actualiza a Pro para continuar.`, code: 'PLAN_LIMIT_EXCEEDED' } };
         }
       }
     }
   }
   if (!currentProduct && productData?.isMainFeatured !== undefined) {
-    const { data: product } = await supabase?.from('wa_products')?.select('business_id, is_active, is_main_featured')?.eq('id', productId)?.single();
+    const { data: product } = await supabase?.from('wa_products')?.select('business_id, is_active, status, is_draft, is_main_featured')?.eq('id', productId)?.single();
     currentProduct = product || null;
   }
   const dbUpdates = {};
@@ -1077,7 +1157,17 @@ export const updateProduct = async (productId, productData) => {
   }
   const { data, error } = await supabase?.from('wa_products')?.update(dbUpdates)?.eq('id', productId)?.select()?.single();
   if (error) return { data: null, error };
-  return { data: mapProductFromDb(data), error: null };
+  const mappedProduct = mapProductFromDb(data);
+  if (currentProduct?.business_id && activeBeforeForFirstProduct === 0 && mappedProduct?.isActive === true && mappedProduct?.isDraft !== true) {
+    getActiveProductCount(currentProduct.business_id)
+      .then((activeAfter) => sendFirstProductCreatedEventIfNeeded({
+        businessId: currentProduct.business_id,
+        activeBefore: activeBeforeForFirstProduct,
+        activeAfter,
+      }))
+      .catch(() => {});
+  }
+  return { data: mappedProduct, error: null };
 };
 
 export const deleteProduct = async (productId) => {

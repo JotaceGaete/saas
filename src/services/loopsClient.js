@@ -1,4 +1,4 @@
-const SUPPORTED_LOOPS_EVENTS = new Set(['user_registered']);
+const SUPPORTED_LOOPS_EVENTS = new Set(['user_registered', 'first_product_created']);
 
 function pickString(value, maxLength = 200) {
   const text = String(value || '').trim();
@@ -10,8 +10,8 @@ function pickString(value, maxLength = 200) {
  * Sends an internal event signal to the serverless Loops bridge.
  * This client never talks to Loops directly and never has access to LOOPS_API_KEY.
  *
- * @param {'user_registered'} eventName
- * @param {{ email?: string, firstName?: string, businessName?: string, country?: string, plan?: string }} payload
+ * @param {'user_registered'|'first_product_created'} eventName
+ * @param {{ email?: string, firstName?: string, businessName?: string, businessId?: string, productsCount?: number, ordersCount?: number, businessMode?: string, country?: string, plan?: string }} payload
  * @returns {Promise<{ ok: boolean, skipped?: boolean }>}
  */
 export async function trackLoopsEvent(eventName, payload = {}) {
@@ -30,6 +30,10 @@ export async function trackLoopsEvent(eventName, payload = {}) {
         email: pickString(payload.email, 320),
         firstName: pickString(payload.firstName),
         businessName: pickString(payload.businessName),
+        businessId: pickString(payload.businessId, 80),
+        productsCount: Number.isFinite(Number(payload.productsCount)) ? Number(payload.productsCount) : undefined,
+        ordersCount: Number.isFinite(Number(payload.ordersCount)) ? Number(payload.ordersCount) : undefined,
+        businessMode: pickString(payload.businessMode, 80),
         country: pickString(payload.country, 80),
         plan: pickString(payload.plan || 'starter', 80),
       }),
