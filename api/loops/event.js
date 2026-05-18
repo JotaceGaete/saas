@@ -31,21 +31,6 @@ function buildTestDeliveredEmail(testEmail, originalEmail) {
   return `${localPart}+walinka-test-${hash}@${domain}`;
 }
 
-function isProductionRuntime(env) {
-  const explicitEnv = String(env.VERCEL_ENV || env.APP_ENV || env.NODE_ENV || '').trim().toLowerCase();
-  return explicitEnv === 'production';
-}
-
-function isExplicitNonProductionRuntime(env) {
-  const candidates = [
-    env.VERCEL_ENV,
-    env.APP_ENV,
-    env.NODE_ENV,
-    env.RUNTIME_ENV,
-  ].map((value) => String(value || '').trim().toLowerCase());
-  return candidates.some((value) => ['development', 'dev', 'preview', 'staging', 'stage', 'test', 'local'].includes(value));
-}
-
 function getRuntimeLabel(env) {
   return {
     vercelEnv: String(env.VERCEL_ENV || '').trim() || null,
@@ -57,13 +42,15 @@ function getRuntimeLabel(env) {
 }
 
 function isLoopsTestModeEnabled(env) {
-  return env.LOOPS_TEST_MODE === 'true' && !isProductionRuntime(env) && isExplicitNonProductionRuntime(env);
+  return String(env.LOOPS_TEST_MODE || '')
+    .trim()
+    .toLowerCase() === 'true';
 }
 
 function getMode(env) {
   if (env.LOOPS_ENABLED !== 'true') return 'disabled';
   if (isLoopsTestModeEnabled(env)) return 'test';
-  return 'live';
+  return 'production';
 }
 
 function maskEmail(email) {
@@ -193,6 +180,11 @@ export async function POST(request) {
   const testMode = isLoopsTestModeEnabled(env);
   const testEmail = normalizeEmail(env.LOOPS_TEST_EMAIL);
   const runtime = getRuntimeLabel(env);
+  console.log('[loops] envCheck', {
+    LOOPS_TEST_MODE: env.LOOPS_TEST_MODE,
+    computedTestMode: testMode,
+    mode,
+  });
   if (env.LOOPS_ENABLED !== 'true') {
     safeLog('info', '[loops] event skipped', {
       eventName,
