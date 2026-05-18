@@ -42,14 +42,16 @@ function getRuntimeLabel(env) {
 }
 
 function isLoopsTestModeEnabled(env) {
-  if (String(env.LOOPS_TEST_MODE || '').trim().toLowerCase() !== 'true') return false;
-  // VERCEL_ENV is set automatically by Vercel — never allow test mode in a production deployment
-  if (String(env.VERCEL_ENV || '').trim().toLowerCase() === 'production') return false;
-  return true;
+  const vercelEnv = String(env.VERCEL_ENV || '').trim().toLowerCase();
+  // Production must never redirect real user emails to the test inbox.
+  if (vercelEnv === 'production') return false;
+
+  return String(env.LOOPS_TEST_MODE || '')
+    .trim()
+    .toLowerCase() === 'true';
 }
 
 function getMode(env) {
-  if (env.LOOPS_ENABLED !== 'true') return 'disabled';
   if (isLoopsTestModeEnabled(env)) return 'test';
   return 'production';
 }
