@@ -10,6 +10,17 @@ function normalizeEmail(value) {
   return String(value || '').trim().toLowerCase();
 }
 
+function maskEmail(email) {
+  const normalized = normalizeEmail(email);
+  const [localPart, domain] = normalized.split('@');
+  if (!localPart || !domain) return null;
+  const visibleLocal = localPart.length <= 2 ? `${localPart[0] || ''}*` : `${localPart.slice(0, 2)}***${localPart.slice(-1)}`;
+  const [domainName, ...domainRest] = domain.split('.');
+  const visibleDomain =
+    domainName.length <= 2 ? `${domainName[0] || ''}*` : `${domainName.slice(0, 2)}***${domainName.slice(-1)}`;
+  return `${visibleLocal}@${visibleDomain}${domainRest.length ? `.${domainRest.join('.')}` : ''}`;
+}
+
 function getLoopsApiKey() {
   return String(process.env.LOOPS_API_KEY || '').trim();
 }
@@ -73,6 +84,17 @@ export function getDashboardUrl() {
 function safeLog(level, message, context = {}) {
   const logger = level === 'warn' ? console.warn : console.info;
   logger(message, {
+    source: 'backend/src/services/loops/subscriptionReceiptEmail.js',
+    eventName: 'subscription_receipt_transactional',
+    originalEmail: maskEmail(context.originalEmail),
+    finalEmail: maskEmail(context.finalEmail),
+    testMode: false,
+    runtime: {
+      nodeEnv: String(process.env.NODE_ENV || '').trim() || null,
+      appEnv: String(process.env.APP_ENV || '').trim() || null,
+      vercelEnv: String(process.env.VERCEL_ENV || '').trim() || null,
+    },
+    timestamp: new Date().toISOString(),
     paymentProvider: context.paymentProvider || null,
     paymentId: context.paymentId || null,
     subscriptionStatus: context.subscriptionStatus || null,
@@ -104,11 +126,11 @@ export async function sendSubscriptionReceiptEmail({
   const apiKey = getLoopsApiKey();
   const transactionalId = getReceiptTransactionalId();
   if (!apiKey) {
-    safeLog('warn', '[loops-receipt] skipped', { paymentProvider, paymentId, subscriptionStatus, skippedReason: 'missing_api_key' });
+    safeLog('warn', '[loops-receipt] skipped', { originalEmail: normalizedEmail, finalEmail: normalizedEmail, paymentProvider, paymentId, subscriptionStatus, skippedReason: 'missing_api_key' });
     return { ok: true, sent: false, skippedReason: 'missing_api_key' };
   }
   if (!transactionalId) {
-    safeLog('warn', '[loops-receipt] skipped', { paymentProvider, paymentId, subscriptionStatus, skippedReason: 'missing_transactional_id' });
+    safeLog('warn', '[loops-receipt] skipped', { originalEmail: normalizedEmail, finalEmail: normalizedEmail, paymentProvider, paymentId, subscriptionStatus, skippedReason: 'missing_transactional_id' });
     return { ok: true, sent: false, skippedReason: 'missing_transactional_id' };
   }
 
@@ -143,6 +165,8 @@ export async function sendSubscriptionReceiptEmail({
 
     if (!response.ok) {
       safeLog('warn', '[loops-receipt] send failed', {
+        originalEmail: normalizedEmail,
+        finalEmail: normalizedEmail,
         paymentProvider,
         paymentId,
         subscriptionStatus,
@@ -152,10 +176,12 @@ export async function sendSubscriptionReceiptEmail({
       return { ok: true, sent: false, skippedReason: 'loops_error', status: response.status };
     }
 
-    safeLog('info', '[loops-receipt] sent', { paymentProvider, paymentId, subscriptionStatus });
+    safeLog('info', '[loops-receipt] sent', { originalEmail: normalizedEmail, finalEmail: normalizedEmail, paymentProvider, paymentId, subscriptionStatus });
     return { ok: true, sent: true };
   } catch (error) {
     safeLog('warn', '[loops-receipt] send failed', {
+      originalEmail: normalizedEmail,
+      finalEmail: normalizedEmail,
       paymentProvider,
       paymentId,
       subscriptionStatus,

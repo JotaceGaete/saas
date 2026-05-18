@@ -31,8 +31,33 @@ function buildTestDeliveredEmail(testEmail, originalEmail) {
   return `${localPart}+walinka-test-${hash}@${domain}`;
 }
 
+function isProductionRuntime(env) {
+  const explicitEnv = String(env.VERCEL_ENV || env.APP_ENV || env.NODE_ENV || '').trim().toLowerCase();
+  return explicitEnv === 'production';
+}
+
+function isExplicitNonProductionRuntime(env) {
+  const candidates = [
+    env.VERCEL_ENV,
+    env.APP_ENV,
+    env.NODE_ENV,
+    env.RUNTIME_ENV,
+  ].map((value) => String(value || '').trim().toLowerCase());
+  return candidates.some((value) => ['development', 'dev', 'preview', 'staging', 'stage', 'test', 'local'].includes(value));
+}
+
+function getRuntimeLabel(env) {
+  return {
+    vercelEnv: String(env.VERCEL_ENV || '').trim() || null,
+    appEnv: String(env.APP_ENV || '').trim() || null,
+    nodeEnv: String(env.NODE_ENV || '').trim() || null,
+    runtimeEnv: String(env.RUNTIME_ENV || '').trim() || null,
+    loopsTestModeEnv: String(env.LOOPS_TEST_MODE || '').trim() || null,
+  };
+}
+
 function isLoopsTestModeEnabled(env) {
-  return String(env.LOOPS_TEST_MODE || '').trim().toLowerCase() === 'true';
+  return env.LOOPS_TEST_MODE === 'true' && !isProductionRuntime(env) && isExplicitNonProductionRuntime(env);
 }
 
 function getMode(env) {
@@ -52,9 +77,10 @@ function maskEmail(email) {
   return `${visibleLocal}@${visibleDomain}${domainRest.length ? `.${domainRest.join('.')}` : ''}`;
 }
 
-function safeLog(level, message, { eventName, mode, skippedReason, emailHash, originalEmail, finalEmail, testMode, status } = {}) {
+function safeLog(level, message, { eventName, mode, skippedReason, emailHash, originalEmail, finalEmail, testMode, runtime, status } = {}) {
   const logger = level === 'warn' ? console.warn : console.log;
   logger(message, {
+    source: 'api/loops/event.js',
     eventName: eventName || null,
     mode: mode || null,
     skippedReason: skippedReason || null,
@@ -62,6 +88,8 @@ function safeLog(level, message, { eventName, mode, skippedReason, emailHash, or
     originalEmail: maskEmail(originalEmail),
     finalEmail: maskEmail(finalEmail),
     testMode: Boolean(testMode),
+    runtime: runtime || null,
+    timestamp: new Date().toISOString(),
     status: status || null,
   });
 }
@@ -164,14 +192,7 @@ export async function POST(request) {
   const emailHash = getEmailHash(originalEmail);
   const testMode = isLoopsTestModeEnabled(env);
   const testEmail = normalizeEmail(env.LOOPS_TEST_EMAIL);
-
-  console.log('[loops] loopsConfig', {
-    enabled: env.LOOPS_ENABLED === 'true',
-    testMode,
-    hasTestEmail: Boolean(testEmail),
-    hasAllowlist: Boolean(String(env.LOOPS_ALLOWLIST || '').trim()),
-    rolloutPercent: parseRolloutPercent(env.LOOPS_ROLLOUT_PERCENT),
-  });
+  const runtime = getRuntimeLabel(env);
   if (env.LOOPS_ENABLED !== 'true') {
     safeLog('info', '[loops] event skipped', {
       eventName,
@@ -181,6 +202,7 @@ export async function POST(request) {
       originalEmail,
       finalEmail: originalEmail,
       testMode,
+      runtime,
     });
     return jsonResponse({ ok: true, sent: false, mode, skippedReason: 'loops_disabled' });
   }
@@ -193,6 +215,7 @@ export async function POST(request) {
       originalEmail,
       finalEmail: originalEmail,
       testMode,
+      runtime,
     });
     return jsonResponse({ ok: true, sent: false, mode, skippedReason: 'missing_test_email' });
   }
@@ -213,6 +236,7 @@ export async function POST(request) {
       originalEmail,
       finalEmail: deliveredEmail,
       testMode,
+      runtime,
     });
     return jsonResponse({ ok: true, sent: false, mode, skippedReason: gate.skippedReason });
   }
@@ -227,6 +251,7 @@ export async function POST(request) {
       originalEmail,
       finalEmail: deliveredEmail,
       testMode,
+      runtime,
     });
     return jsonResponse({ ok: true, sent: false, mode, skippedReason: 'missing_api_key' });
   }
@@ -252,6 +277,7 @@ export async function POST(request) {
         originalEmail,
         finalEmail: deliveredEmail,
         testMode,
+        runtime,
         status: response.status,
       });
       return jsonResponse({ ok: true, sent: false, mode, skippedReason: 'loops_error' });
@@ -264,6 +290,7 @@ export async function POST(request) {
       originalEmail,
       finalEmail: deliveredEmail,
       testMode,
+      runtime,
     });
     return jsonResponse({ ok: true, sent: true, mode });
   } catch (error) {
@@ -275,6 +302,7 @@ export async function POST(request) {
       originalEmail,
       finalEmail: deliveredEmail,
       testMode,
+      runtime,
     });
     return jsonResponse({ ok: true, sent: false, mode, skippedReason: 'loops_error' });
   }

@@ -26,6 +26,17 @@ function isCorruptRefreshTokenError(errorLike) {
   return CORRUPT_REFRESH_TOKEN_MESSAGES.some((fragment) => raw.includes(fragment.toLowerCase()))
 }
 
+function maskEmailForLog(email) {
+  const normalized = String(email || '').trim().toLowerCase()
+  const [localPart, domain] = normalized.split('@')
+  if (!localPart || !domain) return null
+  const visibleLocal = localPart.length <= 2 ? `${localPart[0] || ''}*` : `${localPart.slice(0, 2)}***${localPart.slice(-1)}`
+  const [domainName, ...domainRest] = domain.split('.')
+  const visibleDomain =
+    domainName.length <= 2 ? `${domainName[0] || ''}*` : `${domainName.slice(0, 2)}***${domainName.slice(-1)}`
+  return `${visibleLocal}@${visibleDomain}${domainRest.length ? `.${domainRest.join('.')}` : ''}`
+}
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null)
   const [business, setBusiness] = useState(null)
@@ -250,6 +261,26 @@ export const AuthProvider = ({ children }) => {
       // Notify welcome webhook on successful registration
       const WELCOME_WEBHOOK_URL = import.meta.env.VITE_WELCOME_WEBHOOK_URL;
       if (data?.user?.email && WELCOME_WEBHOOK_URL) {
+        console.info('[welcome-webhook] dispatch', {
+          source: 'src/contexts/AuthContext.jsx',
+          eventName: 'welcome_webhook',
+          originalEmail: maskEmailForLog(data.user.email),
+          finalEmail: maskEmailForLog(data.user.email),
+          testMode: false,
+          runtime: {
+            mode: import.meta.env?.MODE || null,
+            dev: Boolean(import.meta.env?.DEV),
+            prod: Boolean(import.meta.env?.PROD),
+            targetHost: (() => {
+              try {
+                return new URL(WELCOME_WEBHOOK_URL).host
+              } catch {
+                return null
+              }
+            })(),
+          },
+          timestamp: new Date().toISOString(),
+        })
         fetch(WELCOME_WEBHOOK_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json" },

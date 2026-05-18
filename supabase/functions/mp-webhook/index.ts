@@ -77,13 +77,48 @@ function getDashboardUrl() {
   return origin ? `${origin}/dashboard` : 'https://go.ventalink.app/dashboard';
 }
 
+function maskEmail(email: string | undefined | null) {
+  const normalized = String(email || '').trim().toLowerCase();
+  const [localPart, domain] = normalized.split('@');
+  if (!localPart || !domain) return null;
+  const visibleLocal = localPart.length <= 2 ? `${localPart[0] || ''}*` : `${localPart.slice(0, 2)}***${localPart.slice(-1)}`;
+  const [domainName, ...domainRest] = domain.split('.');
+  const visibleDomain =
+    domainName.length <= 2 ? `${domainName[0] || ''}*` : `${domainName.slice(0, 2)}***${domainName.slice(-1)}`;
+  return `${visibleLocal}@${visibleDomain}${domainRest.length ? `.${domainRest.join('.')}` : ''}`;
+}
+
+function logLoopsReceiptDispatch(message: string, context: Record<string, unknown>) {
+  console.log(message, {
+    source: 'supabase/functions/mp-webhook/index.ts',
+    eventName: 'subscription_receipt_transactional',
+    originalEmail: maskEmail(context.originalEmail as string),
+    finalEmail: maskEmail(context.finalEmail as string),
+    testMode: false,
+    runtime: {
+      deno: Deno.version?.deno || null,
+      appEnv: Deno.env.get('APP_ENV')?.trim() || null,
+      supabaseRegion: Deno.env.get('SB_REGION')?.trim() || null,
+    },
+    timestamp: new Date().toISOString(),
+    skippedReason: context.skippedReason || null,
+    status: context.status || null,
+  });
+}
+
 async function sendLoopsSubscriptionReceiptEmail(dataVariables: Record<string, string>) {
   const apiKey = Deno.env.get('LOOPS_API_KEY')?.trim() || '';
   const transactionalId = Deno.env.get('LOOPS_SUBSCRIPTION_RECEIPT_TRANSACTIONAL_ID')?.trim() || '';
-  if (!apiKey) return { sent: false, skippedReason: 'missing_api_key' };
-  if (!transactionalId) return { sent: false, skippedReason: 'missing_transactional_id' };
-
   const { email, ...loopsDataVariables } = dataVariables;
+  if (!apiKey) {
+    logLoopsReceiptDispatch('[mp-webhook] loops receipt skipped', { originalEmail: email, finalEmail: email, skippedReason: 'missing_api_key' });
+    return { sent: false, skippedReason: 'missing_api_key' };
+  }
+  if (!transactionalId) {
+    logLoopsReceiptDispatch('[mp-webhook] loops receipt skipped', { originalEmail: email, finalEmail: email, skippedReason: 'missing_transactional_id' });
+    return { sent: false, skippedReason: 'missing_transactional_id' };
+  }
+  logLoopsReceiptDispatch('[mp-webhook] loops receipt dispatch', { originalEmail: email, finalEmail: email });
   const response = await fetch(LOOPS_TRANSACTIONAL_URL, {
     method: 'POST',
     headers: {
@@ -96,7 +131,11 @@ async function sendLoopsSubscriptionReceiptEmail(dataVariables: Record<string, s
       dataVariables: loopsDataVariables,
     }),
   });
-  if (!response.ok) return { sent: false, skippedReason: 'loops_error', status: response.status };
+  if (!response.ok) {
+    logLoopsReceiptDispatch('[mp-webhook] loops receipt failed', { originalEmail: email, finalEmail: email, skippedReason: 'loops_error', status: response.status });
+    return { sent: false, skippedReason: 'loops_error', status: response.status };
+  }
+  logLoopsReceiptDispatch('[mp-webhook] loops receipt sent', { originalEmail: email, finalEmail: email });
   return { sent: true };
 }
 
