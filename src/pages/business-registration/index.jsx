@@ -73,7 +73,6 @@ export default function BusinessRegistration() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pendingConfirmation, setPendingConfirmation] = useState(null); // { email } cuando signUp OK pero sin sesión
   const [signupCooldownUntil, setSignupCooldownUntil] = useState(0);
-  const [createdBusiness, setCreatedBusiness] = useState(null);
   const registerInFlightRef = useRef(false);
 
   const cooldownRemainingMs = Math.max(0, (signupCooldownUntil || 0) - Date.now());
@@ -109,10 +108,10 @@ export default function BusinessRegistration() {
 
   // Si ya tiene negocio → dashboard
   useEffect(() => {
-    if (!loading && !businessLoading && user && business && !createdBusiness) {
+    if (!loading && !businessLoading && user && business) {
       navigate('/dashboard', { replace: true });
     }
-  }, [loading, businessLoading, user, business, createdBusiness, navigate]);
+  }, [loading, businessLoading, user, business, navigate]);
 
   // ── Pantalla de carga inicial ────────────────────────────────────────────────
   if (loading) {
@@ -121,10 +120,6 @@ export default function BusinessRegistration() {
 
   if (user && !isEmailConfirmed) {
     return <Navigate to="/verify-email" replace />;
-  }
-
-  if (user && business && !createdBusiness) {
-    return <PremiumLoader fullScreen />;
   }
 
   // ── PASO 1: No autenticado → pantalla de login/registro ─────────────────────
@@ -229,9 +224,7 @@ export default function BusinessRegistration() {
   return (
     <StoreCreationStep
       user={user}
-      business={createdBusiness || business}
       businessLoading={businessLoading}
-      onBusinessCreated={setCreatedBusiness}
     />
   );
 }
