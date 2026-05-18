@@ -42,9 +42,10 @@ function getRuntimeLabel(env) {
 }
 
 function isLoopsTestModeEnabled(env) {
-  return String(env.LOOPS_TEST_MODE || '')
-    .trim()
-    .toLowerCase() === 'true';
+  if (String(env.LOOPS_TEST_MODE || '').trim().toLowerCase() !== 'true') return false;
+  // VERCEL_ENV is set automatically by Vercel — never allow test mode in a production deployment
+  if (String(env.VERCEL_ENV || '').trim().toLowerCase() === 'production') return false;
+  return true;
 }
 
 function getMode(env) {
