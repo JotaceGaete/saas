@@ -157,16 +157,6 @@ function shouldSendToLoops({ deliveredEmail, allowlistEmail, env, mode }) {
 }
 
 export async function POST(request) {
-  return jsonResponse({
-    debug: true,
-    env: {
-      LOOPS_TEST_MODE: process.env.LOOPS_TEST_MODE,
-      VERCEL_ENV: process.env.VERCEL_ENV,
-      NODE_ENV: process.env.NODE_ENV,
-    },
-    computedTestMode: isLoopsTestModeEnabled(process.env),
-  });
-
   let payload;
   try {
     payload = await request.json();
