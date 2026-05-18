@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { maybeSendSubscriptionReceiptForPayment } from '../backend/src/services/billing/subscriptionReceiptService.js';
 
 // Inicialización fuera del handler para reutilizar conexión
 const supabase = createClient(
@@ -35,7 +36,7 @@ export default async function handler(req, res) {
         updated_at: new Date().toISOString() 
       })
       .eq('provider_payment_id', paymentId)
-      .select('business_id')
+      .select('id, business_id')
       .single();
 
     // 4. Si el pago es exitoso, activar el plan
@@ -52,6 +53,21 @@ export default async function handler(req, res) {
             last_payment_date: new Date().toISOString()
           })
           .eq('business_id', finalBusinessId);
+
+        maybeSendSubscriptionReceiptForPayment({
+          admin: supabase,
+          paymentId: payment?.id || null,
+          provider: 'dlocal',
+          providerPaymentId: paymentId,
+          subscriptionStatus: 'active',
+          paidAt: new Date().toISOString(),
+        }).catch((error) => {
+          console.warn('[dLocal Webhook] receipt email skipped', {
+            paymentId,
+            businessId: finalBusinessId,
+            message: error?.message || 'unknown_error',
+          });
+        });
           
         console.log(`[dLocal Webhook] Plan PRO activado para: ${finalBusinessId}`);
       }

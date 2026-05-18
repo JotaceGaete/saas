@@ -2,6 +2,7 @@ import { HttpError } from '../../lib/http/HttpError.js';
 import { createClient } from '@supabase/supabase-js';
 import { getBillingSubscriptionByBusinessId, upsertBillingSubscriptionByBusiness } from '../../repositories/billingSubscriptionRepository.js';
 import { mapProviderStatus } from './billingStatusMapper.js';
+import { maybeSendSubscriptionReceiptForPayment, maybeSendSubscriptionReceiptForSubscription } from './subscriptionReceiptService.js';
 
 function getWebhookSecret() {
   return String(process.env.DLOCAL_WEBHOOK_SECRET || '').trim();
@@ -241,7 +242,7 @@ async function syncBusinessPlanAfterApprovedPayment({ businessId, planSlug, peri
 }
 
 async function syncPaymentRecord({ businessId: _businessId, orderId, paymentId, providerStatus, payload, status }) {
-  if (!orderId && !paymentId) return;
+  if (!orderId && !paymentId) return null;
   const admin = getAdminClient();
 
   // Normalizamos el estado para la DB
@@ -267,21 +268,28 @@ async function syncPaymentRecord({ businessId: _businessId, orderId, paymentId, 
 
   // INTENTO 1: Buscar por el ID de dLocal (DP-XXXX)
   if (paymentId) {
-    const { error: err1 } = await admin
+    const { data: updatedByProvider, error: err1 } = await admin
       .from('wa_payments')
       .update(updatePayload)
-      .eq('provider_payment_id', paymentId);
+      .eq('provider_payment_id', paymentId)
+      .select('id')
+      .maybeSingle();
     if (err1) console.error('[DLOCAL_ERROR]', err1.message);
+    if (updatedByProvider?.id) return updatedByProvider.id;
   }
 
   // INTENTO 2: Respaldo por referencia externa (order_id)
   if (orderId) {
-    const { error: err2 } = await admin
+    const { data: updatedByOrder, error: err2 } = await admin
       .from('wa_payments')
       .update(updatePayload)
-      .eq('external_reference', orderId);
+      .eq('external_reference', orderId)
+      .select('id')
+      .maybeSingle();
     if (err2) console.error('[DLOCAL_ERROR]', err2.message);
+    if (updatedByOrder?.id) return updatedByOrder.id;
   }
+  return null;
 }
 
 export async function processDlocalWebhook({ headers, payload }) {
@@ -385,7 +393,7 @@ export async function processDlocalWebhook({ headers, payload }) {
   });
 
   const orderId = context.orderId || updated?.metadata_json?.order_id || null;
-  await syncPaymentRecord({
+  const updatedPaymentId = await syncPaymentRecord({
     businessId,
     orderId,
     paymentId: context.paymentId || null,
@@ -399,6 +407,39 @@ export async function processDlocalWebhook({ headers, payload }) {
       planSlug: updated?.plan_slug || context.planSlug,
       periodEndIso,
     });
+    if (updatedPaymentId) {
+      maybeSendSubscriptionReceiptForPayment({
+        admin: getAdminClient(),
+        paymentId: updatedPaymentId,
+        provider: 'dlocal',
+        providerPaymentId: context.paymentId || orderId,
+        subscriptionStatus: updated?.status || status,
+        paidAt: new Date().toISOString(),
+        nextRenewalDate: periodEndIso,
+      }).catch((error) => {
+        console.warn('[DLOCAL_RECEIPT_EMAIL_SKIPPED]', {
+          businessId,
+          paymentId: context.paymentId || null,
+          message: error?.message || 'unknown_error',
+        });
+      });
+    } else {
+      maybeSendSubscriptionReceiptForSubscription({
+        admin: getAdminClient(),
+        subscription: updated,
+        providerPaymentId: context.paymentId || orderId || updated?.provider_subscription_id,
+        amount: payload?.amount ?? updated?.amount,
+        currency: payload?.currency || updated?.currency_code,
+        paidAt: new Date().toISOString(),
+        nextRenewalDate: periodEndIso,
+      }).catch((error) => {
+        console.warn('[DLOCAL_RECEIPT_EMAIL_SKIPPED]', {
+          businessId,
+          paymentId: context.paymentId || null,
+          message: error?.message || 'unknown_error',
+        });
+      });
+    }
   }
 
   return {

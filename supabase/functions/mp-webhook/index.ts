@@ -9,6 +9,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const ALLOWED_PLANS = ['control', 'starter', 'pro', 'business'];
 const PLAN_DURATION_DAYS = 30;
+const LOOPS_TRANSACTIONAL_URL = 'https://app.loops.so/api/v1/transactional';
 
 // Jerarquía de planes: mayor número = plan más alto.
 // 'control' y 'starter' son equivalentes (plan base).
@@ -35,6 +36,165 @@ function jsonResponse(body: Record<string, unknown>, status: number) {
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
+}
+
+function formatReceiptAmount(amount: unknown, currency: string) {
+  const code = String(currency || 'CLP').trim().toUpperCase();
+  const value = Number(amount);
+  if (!Number.isFinite(value)) return '';
+  const noDecimals = code === 'CLP' || code === 'ARS';
+  return new Intl.NumberFormat('es-CL', {
+    style: 'currency',
+    currency: code,
+    minimumFractionDigits: noDecimals ? 0 : 2,
+    maximumFractionDigits: noDecimals ? 0 : 2,
+  }).format(value);
+}
+
+function formatReceiptDate(value: unknown) {
+  if (!value) return '';
+  const date = new Date(String(value));
+  if (!Number.isFinite(date.getTime())) return '';
+  return new Intl.DateTimeFormat('es-CL', {
+    dateStyle: 'long',
+    timeZone: 'America/Santiago',
+  }).format(date);
+}
+
+function getPlanName(planSlug: string) {
+  if (planSlug === 'business') return 'Business';
+  if (planSlug === 'pro') return 'Pro';
+  if (planSlug === 'control') return 'Control';
+  return 'Starter';
+}
+
+function getDashboardUrl() {
+  const explicit = Deno.env.get('WALINKA_DASHBOARD_URL')?.trim() || '';
+  if (explicit) return explicit.replace(/\/$/, '');
+  const origin = (Deno.env.get('VENTALINK_PUBLIC_ORIGIN')
+    || Deno.env.get('APP_PUBLIC_ORIGIN')
+    || '').trim().replace(/\/$/, '');
+  return origin ? `${origin}/dashboard` : 'https://go.ventalink.app/dashboard';
+}
+
+async function sendLoopsSubscriptionReceiptEmail(dataVariables: Record<string, string>) {
+  const apiKey = Deno.env.get('LOOPS_API_KEY')?.trim() || '';
+  const transactionalId = Deno.env.get('LOOPS_SUBSCRIPTION_RECEIPT_TRANSACTIONAL_ID')?.trim() || '';
+  if (!apiKey) return { sent: false, skippedReason: 'missing_api_key' };
+  if (!transactionalId) return { sent: false, skippedReason: 'missing_transactional_id' };
+
+  const { email, ...loopsDataVariables } = dataVariables;
+  const response = await fetch(LOOPS_TRANSACTIONAL_URL, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      transactionalId,
+      email,
+      dataVariables: loopsDataVariables,
+    }),
+  });
+  if (!response.ok) return { sent: false, skippedReason: 'loops_error', status: response.status };
+  return { sent: true };
+}
+
+async function maybeSendMercadoPagoReceiptEmail({
+  db,
+  paymentId,
+  providerPaymentId,
+  subscriptionStatus,
+  paidAt,
+  nextRenewalDate,
+}: {
+  db: ReturnType<typeof createClient>;
+  paymentId: string | null;
+  providerPaymentId: string;
+  subscriptionStatus: string;
+  paidAt: string;
+  nextRenewalDate: string;
+}) {
+  if (!paymentId) return;
+  try {
+    const { data: paymentRow, error: paymentReadError } = await db
+      .from('wa_payments')
+      .select('id, business_id, user_id, plan_slug, amount, currency, metadata')
+      .eq('id', paymentId)
+      .maybeSingle();
+    if (paymentReadError || !paymentRow) {
+      console.warn('[mp-webhook] receipt skipped', { paymentId, reason: 'payment_not_found' });
+      return;
+    }
+    const metadata = paymentRow.metadata && typeof paymentRow.metadata === 'object'
+      ? paymentRow.metadata as Record<string, unknown>
+      : {};
+    if (metadata.receipt_email_sent_at || metadata.subscription_receipt_email_sent_at) {
+      console.log('[mp-webhook] receipt skipped', { paymentId, reason: 'receipt_already_sent' });
+      return;
+    }
+
+    const { data: businessRow } = await db
+      .from('wa_businesses')
+      .select('name, email')
+      .eq('id', paymentRow.business_id)
+      .maybeSingle();
+    const { data: userResult } = await db.auth.admin.getUserById(paymentRow.user_id);
+    const email = String(userResult?.user?.email || businessRow?.email || '').trim().toLowerCase();
+    if (!email) {
+      console.warn('[mp-webhook] receipt skipped', { paymentId, reason: 'missing_email' });
+      return;
+    }
+
+    const result = await sendLoopsSubscriptionReceiptEmail({
+      email,
+      customerName: String(userResult?.user?.user_metadata?.name || userResult?.user?.user_metadata?.full_name || businessRow?.name || 'Cliente'),
+      businessName: String(businessRow?.name || 'Walinka'),
+      planName: getPlanName(String(paymentRow.plan_slug || 'starter')),
+      planPeriod: 'Mensual',
+      amountFormatted: formatReceiptAmount(paymentRow.amount, String(paymentRow.currency || 'CLP')),
+      currency: String(paymentRow.currency || 'CLP').toUpperCase(),
+      paymentProvider: 'Mercado Pago',
+      paymentId: providerPaymentId,
+      subscriptionStatus,
+      paidAtFormatted: formatReceiptDate(paidAt),
+      nextRenewalDateFormatted: formatReceiptDate(nextRenewalDate),
+      dashboardUrl: getDashboardUrl(),
+    });
+
+    const nowIso = new Date().toISOString();
+    const nextMetadata = {
+      ...metadata,
+      receipt_email_provider: 'loops',
+      receipt_email_payment_provider: 'mercado_pago',
+      receipt_email_error: result.sent ? null : result.skippedReason || 'send_failed',
+      ...(result.sent ? { receipt_email_sent_at: nowIso } : {}),
+    };
+    const fullPatch: Record<string, unknown> = {
+      metadata: nextMetadata,
+      receipt_email_provider: 'loops',
+      receipt_email_error: result.sent ? null : result.skippedReason || 'send_failed',
+      ...(result.sent ? { receipt_email_sent_at: nowIso } : {}),
+    };
+    const { error: receiptUpdateError } = await db.from('wa_payments').update(fullPatch).eq('id', paymentId);
+    if (receiptUpdateError) {
+      await db.from('wa_payments').update({ metadata: nextMetadata }).eq('id', paymentId);
+    }
+    if (!result.sent) {
+      console.warn('[mp-webhook] receipt send skipped', {
+        paymentId,
+        provider_payment_id: providerPaymentId,
+        reason: result.skippedReason || 'send_failed',
+        status: result.status || null,
+      });
+    }
+  } catch (error) {
+    console.warn('[mp-webhook] receipt send failed', {
+      paymentId,
+      provider_payment_id: providerPaymentId,
+      message: (error as Error)?.message || 'unknown_error',
+    });
+  }
 }
 
 Deno.serve(async (req) => {
@@ -353,6 +513,7 @@ Deno.serve(async (req) => {
     plan_expires_at:     planExpiresAtIso,
     raw_mp_response:     payment as Record<string, unknown>,
   };
+  let receiptPaymentId: string | null = paymentId;
 
   if (paymentId) {
     // Ruta normal: actualizamos por id (UUID de wa_payments en external_reference)
@@ -375,6 +536,7 @@ Deno.serve(async (req) => {
       .order('created_at', { ascending: false })
       .limit(1);
     const fallbackId = pendingRows?.[0]?.id ?? null;
+    receiptPaymentId = fallbackId;
     console.log('[mp-webhook] paymentId null — fallback wa_payments:', { fallbackId, businessId, planSlug });
     if (fallbackId) {
       const { error: payErr } = await db.from('wa_payments')
@@ -468,6 +630,21 @@ Deno.serve(async (req) => {
       wasDuringTrial:      bizIsActiveTrial,
       scheduled_change_at: activePeriodEnd,
     });
+  }
+
+  const receiptEmailPromise = maybeSendMercadoPagoReceiptEmail({
+    db,
+    paymentId: receiptPaymentId,
+    providerPaymentId: dataId,
+    subscriptionStatus: 'active',
+    paidAt: planActivatedAtIso,
+    nextRenewalDate: planExpiresAtIso,
+  });
+  const waitUntil = (globalThis as unknown as { EdgeRuntime?: { waitUntil?: (promise: Promise<void>) => void } })?.EdgeRuntime?.waitUntil;
+  if (waitUntil) {
+    waitUntil(receiptEmailPromise);
+  } else {
+    receiptEmailPromise.catch(() => {});
   }
 
   return jsonResponse({ ok: true }, 200);

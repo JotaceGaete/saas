@@ -9,8 +9,12 @@ import {
   mapPaypalStatusToInternal,
   normalizePaypalEventType,
 } from './paypalStateMapper.js';
-import { upsertBillingSubscriptionByBusiness } from '../../repositories/billingSubscriptionRepository.js';
+import {
+  getBillingSubscriptionByBusinessId,
+  upsertBillingSubscriptionByBusiness,
+} from '../../repositories/billingSubscriptionRepository.js';
 import { mapProviderStatus } from '../billing/billingStatusMapper.js';
+import { maybeSendSubscriptionReceiptForSubscription } from '../billing/subscriptionReceiptService.js';
 
 function normalizeStatus(rawStatus) {
   const value = String(rawStatus || '').trim().toUpperCase();
@@ -61,6 +65,7 @@ async function mirrorToBillingSubscription({
 }) {
   const business = String(businessId || '').trim();
   if (!business) return null;
+  const existing = await getBillingSubscriptionByBusinessId(business).catch(() => null);
   const normalizedProviderStatus = String(providerStatus || '').trim().toUpperCase() || null;
   const status = mapProviderStatus('paypal', normalizedProviderStatus);
   return upsertBillingSubscriptionByBusiness({
@@ -79,6 +84,7 @@ async function mirrorToBillingSubscription({
     cancel_at_period_end: cancelAtPeriodEnd === true,
     cancelled_at: cancelledAt || null,
     metadata_json: {
+      ...(existing?.metadata_json || {}),
       ...(metadata || {}),
       subscriber_email: subscriberEmail || null,
     },
@@ -169,6 +175,24 @@ export async function applyRemoteSnapshot(paypalSubscriptionBody) {
     cancelAtPeriodEnd: body?.status === 'CANCELLED',
     cancelledAt: body?.status === 'CANCELLED' ? new Date().toISOString() : null,
     metadata: { source: 'applyRemoteSnapshot' },
+  }).then((subscription) => {
+    if (subscription?.status === 'active') {
+      const lastPayment = body?.billing_info?.last_payment || {};
+      maybeSendSubscriptionReceiptForSubscription({
+        subscription,
+        providerPaymentId: lastPayment?.transaction_id || paypalSubscriptionId,
+        amount: lastPayment?.amount?.value ?? subscription.amount,
+        currency: lastPayment?.amount?.currency_code || subscription.currency_code || 'USD',
+        paidAt: lastPayment?.time || subscription.current_period_starts_at || new Date().toISOString(),
+        nextRenewalDate: body?.billing_info?.next_billing_time || subscription.current_period_ends_at || null,
+      }).catch((error) => {
+        console.warn('[PAYPAL_RECEIPT_EMAIL_SKIPPED]', {
+          subscriptionId: paypalSubscriptionId,
+          businessId: subscription.business_id || null,
+          message: error?.message || 'unknown_error',
+        });
+      });
+    }
   });
   return saved;
 }
