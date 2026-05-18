@@ -3,15 +3,16 @@ import { useNavigate } from 'react-router-dom';
 import Icon from 'components/AppIcon';
 import PremiumLoader from 'components/ui/PremiumLoader';
 import { useAuth } from '../../../contexts/AuthContext';
-import { createBusiness } from '../../../services/waBusinessService';
+import { createBusiness, updateBusiness } from '../../../services/waBusinessService';
+import { getPublicCatalogRelativePath, getPublicCatalogUrl } from '../../../config/appUrl';
 import WhatsAppField from './WhatsAppField';
 
 /**
  * Creación inicial de tienda: sin país ni moneda (se definen en Configuración).
  */
-export default function StoreCreationStep({ user, businessLoading }) {
+export default function StoreCreationStep({ user, business, businessLoading, onBusinessCreated }) {
   const navigate = useNavigate();
-  const { refreshBusiness } = useAuth();
+  const { refreshBusiness, patchBusiness } = useAuth();
 
   const [formData, setFormData] = useState({
     businessName: user?.user_metadata?.name || '',
@@ -21,6 +22,17 @@ export default function StoreCreationStep({ user, businessLoading }) {
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
+  const [createdBusiness, setCreatedBusiness] = useState(null);
+  const [copied, setCopied] = useState(false);
+  const [editingSlug, setEditingSlug] = useState(false);
+  const [slugDraft, setSlugDraft] = useState('');
+  const [slugSaving, setSlugSaving] = useState(false);
+  const [slugError, setSlugError] = useState(null);
+
+  const readyBusiness = createdBusiness || business;
+  const publicSlug = String(readyBusiness?.slug || '').trim();
+  const publicUrl = publicSlug ? getPublicCatalogUrl(publicSlug) : '';
+  const catalogPath = publicSlug ? getPublicCatalogRelativePath(publicSlug) : '';
 
   const update = (field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -60,8 +72,10 @@ export default function StoreCreationStep({ user, businessLoading }) {
         return;
       }
       if (data) {
+        setCreatedBusiness(data);
+        setSlugDraft(data.slug || '');
+        onBusinessCreated?.(data);
         await refreshBusiness();
-        navigate('/dashboard', { replace: true });
       }
     } catch {
       setSaveError('Error inesperado. Por favor intenta de nuevo.');
@@ -72,6 +86,218 @@ export default function StoreCreationStep({ user, businessLoading }) {
 
   if (businessLoading) {
     return <PremiumLoader fullScreen text="Verificando tu cuenta..." />;
+  }
+
+  if (readyBusiness) {
+    const copyLink = async () => {
+      if (!publicUrl) return;
+      try {
+        await navigator.clipboard?.writeText(publicUrl);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1800);
+      } catch {
+        setSlugError('No pudimos copiar el link. Puedes seleccionarlo y copiarlo manualmente.');
+      }
+    };
+
+    const openCatalog = () => {
+      if (!catalogPath) return;
+      window.open(catalogPath, '_blank', 'noopener,noreferrer');
+    };
+
+    const handleEditSlug = () => {
+      setSlugDraft(publicSlug);
+      setSlugError(null);
+      setEditingSlug(true);
+    };
+
+    const handleSaveSlug = async () => {
+      const nextSlug = String(slugDraft || '').trim().toLowerCase();
+      setSlugError(null);
+      if (!nextSlug) {
+        setSlugError('Escribe un link para tu catálogo.');
+        return;
+      }
+      if (!/^[a-z0-9-]+$/.test(nextSlug)) {
+        setSlugError('Usa solo minúsculas, números y guiones.');
+        return;
+      }
+      if (nextSlug.startsWith('-') || nextSlug.endsWith('-') || nextSlug.includes('--')) {
+        setSlugError('Evita guiones al inicio, al final o repetidos.');
+        return;
+      }
+      if (nextSlug === publicSlug) {
+        setEditingSlug(false);
+        return;
+      }
+
+      setSlugSaving(true);
+      const { data, error } = await updateBusiness(readyBusiness.id, { slug: nextSlug });
+      setSlugSaving(false);
+      if (error) {
+        const message = String(error?.message || '').toLowerCase();
+        if (error?.code === '23505' || message.includes('duplicate') || message.includes('unique')) {
+          setSlugError('Ese link ya está en uso. Prueba con otro nombre.');
+        } else {
+          setSlugError(error?.message || 'No pudimos guardar el link. Intenta de nuevo.');
+        }
+        return;
+      }
+
+      const updated = data || { ...readyBusiness, slug: nextSlug };
+      setCreatedBusiness(updated);
+      onBusinessCreated?.(updated);
+      patchBusiness?.(updated);
+      setEditingSlug(false);
+    };
+
+    return (
+      <div className="min-h-screen flex items-center justify-center p-5" style={{ backgroundColor: 'var(--color-background)' }}>
+        <div className="w-full max-w-md">
+          <div className="mb-6">
+            <img
+              src="/walinka.svg"
+              alt="Walinka"
+              className="w-full max-w-[240px] h-auto object-contain mx-auto"
+            />
+          </div>
+
+          <div className="flex items-center gap-2 mb-8">
+            <Step num={1} label="Cuenta" done />
+            <div className="flex-1 h-px" style={{ backgroundColor: 'var(--color-primary)' }} />
+            <Step num={2} label="Tu tienda" done />
+            <div className="flex-1 h-px" style={{ backgroundColor: 'var(--color-primary)' }} />
+            <Step num={3} label="Catálogo" active />
+          </div>
+
+          <div className="rounded-2xl border p-5 sm:p-6" style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
+            <div className="w-12 h-12 rounded-xl flex items-center justify-center mb-4" style={{ backgroundColor: 'var(--color-primary)' }}>
+              <Icon name="PartyPopper" size={24} color="#fff" />
+            </div>
+
+            <h1 className="text-2xl font-bold mb-2" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>
+              Tu catálogo está listo 🎉
+            </h1>
+            <p className="text-sm mb-5" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+              Ya tienes un link para compartir tu negocio.
+            </p>
+
+            <div className="rounded-xl border p-3 mb-3" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-background)' }}>
+              {publicUrl ? (
+                <p className="text-sm break-all font-medium" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-body)' }}>
+                  {publicUrl}
+                </p>
+              ) : (
+                <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                  <svg className="animate-spin" width={16} height={16} viewBox="0 0 24 24" fill="none">
+                    <circle cx="12" cy="12" r="10" stroke="rgba(124,58,237,0.25)" strokeWidth="3" />
+                    <path d="M12 2a10 10 0 0 1 10 10" stroke="var(--color-primary)" strokeWidth="3" strokeLinecap="round" />
+                  </svg>
+                  Preparando tu link...
+                </div>
+              )}
+            </div>
+
+            {!editingSlug ? (
+              <button
+                type="button"
+                onClick={handleEditSlug}
+                disabled={!publicSlug}
+                className="text-sm font-semibold mb-5 disabled:opacity-50"
+                style={{ color: 'var(--color-primary)', fontFamily: 'var(--font-caption)' }}
+              >
+                Editar link
+              </button>
+            ) : (
+              <div className="mb-5">
+                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>
+                  Link del catálogo
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={slugDraft}
+                    onChange={(e) => setSlugDraft(e.target.value.toLowerCase())}
+                    className="min-w-0 flex-1 h-11 px-3 rounded-lg border text-sm outline-none"
+                    style={{
+                      borderColor: slugError ? 'var(--color-error)' : 'var(--color-border)',
+                      backgroundColor: 'var(--color-background)',
+                      color: 'var(--color-foreground)',
+                      fontFamily: 'var(--font-body)',
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSaveSlug}
+                    disabled={slugSaving}
+                    className="h-11 px-4 rounded-lg text-sm font-semibold disabled:opacity-70"
+                    style={{ backgroundColor: 'var(--color-primary)', color: '#fff', fontFamily: 'var(--font-caption)' }}
+                  >
+                    {slugSaving ? 'Guardando...' : 'Guardar'}
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingSlug(false);
+                    setSlugError(null);
+                  }}
+                  className="text-xs mt-2"
+                  style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}
+                >
+                  Cancelar
+                </button>
+              </div>
+            )}
+
+            {slugError && (
+              <div className="mb-4 flex items-start gap-2 p-3 rounded-lg border" style={{ backgroundColor: 'rgba(239,68,68,0.05)', borderColor: 'rgba(239,68,68,0.2)' }}>
+                <Icon name="AlertCircle" size={15} color="var(--color-error)" className="mt-0.5 flex-shrink-0" />
+                <span className="text-sm" style={{ color: 'var(--color-error)', fontFamily: 'var(--font-caption)' }}>{slugError}</span>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+              <button
+                type="button"
+                onClick={openCatalog}
+                disabled={!publicSlug}
+                className="h-11 rounded-lg border font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-50"
+                style={{ borderColor: 'var(--color-border)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
+              >
+                <Icon name="ExternalLink" size={16} />
+                Ver mi catálogo
+              </button>
+              <button
+                type="button"
+                onClick={copyLink}
+                disabled={!publicUrl}
+                className="h-11 rounded-lg border font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-50"
+                style={{ borderColor: 'var(--color-border)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
+              >
+                <Icon name={copied ? 'Check' : 'Copy'} size={16} />
+                {copied ? 'Copiado' : 'Copiar link'}
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => navigate('/dashboard', { replace: true })}
+              className="w-full h-12 rounded-lg font-semibold text-sm flex items-center justify-center gap-2"
+              style={{
+                backgroundColor: 'var(--color-primary)',
+                color: '#fff',
+                fontFamily: 'var(--font-caption)',
+                boxShadow: '0 4px 14px rgba(124,58,237,0.35)',
+              }}
+            >
+              <Icon name="LayoutDashboard" size={16} color="#fff" />
+              Ir al dashboard
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
