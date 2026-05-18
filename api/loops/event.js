@@ -31,13 +31,8 @@ function buildTestDeliveredEmail(testEmail, originalEmail) {
   return `${localPart}+walinka-test-${hash}@${domain}`;
 }
 
-function isProductionRuntime(env) {
-  const explicitEnv = String(env.VERCEL_ENV || env.APP_ENV || env.NODE_ENV || '').trim().toLowerCase();
-  return explicitEnv === 'production';
-}
-
 function isLoopsTestModeEnabled(env) {
-  return env.LOOPS_TEST_MODE === 'true' && !isProductionRuntime(env);
+  return String(env.LOOPS_TEST_MODE || '').trim().toLowerCase() === 'true';
 }
 
 function getMode(env) {
@@ -169,6 +164,14 @@ export async function POST(request) {
   const emailHash = getEmailHash(originalEmail);
   const testMode = isLoopsTestModeEnabled(env);
   const testEmail = normalizeEmail(env.LOOPS_TEST_EMAIL);
+
+  console.log('[loops] loopsConfig', {
+    enabled: env.LOOPS_ENABLED === 'true',
+    testMode,
+    hasTestEmail: Boolean(testEmail),
+    hasAllowlist: Boolean(String(env.LOOPS_ALLOWLIST || '').trim()),
+    rolloutPercent: parseRolloutPercent(env.LOOPS_ROLLOUT_PERCENT),
+  });
   if (env.LOOPS_ENABLED !== 'true') {
     safeLog('info', '[loops] event skipped', {
       eventName,
