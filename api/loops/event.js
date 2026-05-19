@@ -275,5 +275,13 @@ export async function POST(request) {
 }
 
 export async function GET() {
-  return jsonResponse({ ok: false, error: 'method_not_allowed' }, 405);
+  return jsonResponse({
+    ok: true,
+    method: 'GET',
+    loopsTestMode: process.env.LOOPS_TEST_MODE ?? null,
+    loopsEnabled: process.env.LOOPS_ENABLED ?? null,
+    rollout: process.env.LOOPS_ROLLOUT_PERCENT ?? null,
+    vercelEnv: process.env.VERCEL_ENV ?? null,
+    commit: process.env.VERCEL_GIT_COMMIT_SHA ?? null,
+  });
 }
