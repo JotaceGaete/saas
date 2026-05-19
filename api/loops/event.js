@@ -1,11 +1,13 @@
-const LOOPS_SEND_EVENT_URL = 'https://app.loops.so/api/v1/events/send';
-const ENDPOINT_VERSION = 'loops-hard-reset';
+import { createHash } from 'node:crypto';
+
+const N8N_LOOPS_WEBHOOK_URL = 'https://n8n.jotace.uk/webhook/loops-event';
+const ENDPOINT_VERSION = 'n8n-bridge-v1';
+const SUPPORTED_EVENTS = new Set(['user_registered', 'first_product_created']);
 
 function jsonResponse(body, status = 200) {
   return new Response(JSON.stringify({
     ...body,
     endpointVersion: ENDPOINT_VERSION,
-    mode: 'production',
   }), {
     status,
     headers: {
@@ -29,6 +31,20 @@ function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
+function getEmailHash(email) {
+  return createHash('sha256').update(normalizeEmail(email)).digest('hex');
+}
+
+function buildTestDeliveredEmail(testEmail, originalEmail) {
+  const normalizedTestEmail = normalizeEmail(testEmail);
+  const match = normalizedTestEmail.match(/^([^@+]+)(?:\+[^@]*)?@(gmail\.com|googlemail\.com)$/i);
+  if (!match) return normalizedTestEmail;
+  const localPart = match[1];
+  const domain = match[2].toLowerCase();
+  const hash = getEmailHash(originalEmail).slice(0, 10);
+  return `${localPart}+walinka-test-${hash}@${domain}`;
+}
+
 export async function POST(request) {
   let payload;
   try {
@@ -38,52 +54,44 @@ export async function POST(request) {
   }
 
   const eventName = pickString(payload?.eventName, 80);
-  if (!eventName) {
-    return jsonResponse({ ok: false, sent: false, error: 'missing_event_name' }, 400);
+  if (!eventName || !SUPPORTED_EVENTS.has(eventName)) {
+    return jsonResponse({ ok: false, sent: false, error: 'unsupported_event' }, 400);
   }
 
-  const email = normalizeEmail(payload?.email);
-  if (!email || !isValidEmail(email)) {
+  const originalEmail = normalizeEmail(payload?.email);
+  if (!originalEmail || !isValidEmail(originalEmail)) {
     return jsonResponse({ ok: false, sent: false, error: 'invalid_email' }, 400);
   }
 
-  if (process.env.LOOPS_ENABLED !== 'true') {
-    return jsonResponse({ ok: true, sent: false, skippedReason: 'loops_disabled' });
-  }
+  const testMode = process.env.LOOPS_TEST_MODE === 'true';
+  const testEmail = normalizeEmail(process.env.LOOPS_TEST_EMAIL || '');
 
-  const apiKey = String(process.env.LOOPS_API_KEY || '').trim();
-  if (!apiKey) {
-    return jsonResponse({ ok: true, sent: false, skippedReason: 'missing_api_key' });
-  }
+  const deliveredEmail =
+    testMode && testEmail ? buildTestDeliveredEmail(testEmail, originalEmail) : originalEmail;
 
-  const loopsPayload = {
-    email,
+  const n8nPayload = {
     eventName,
-    eventProperties: {
-      firstName: pickString(payload?.firstName),
-      businessName: pickString(payload?.businessName),
-      country: pickString(payload?.country, 80),
-      plan: pickString(payload?.plan || 'starter', 80),
-    },
+    email: deliveredEmail,
+    firstName: pickString(payload?.firstName),
+    businessName: pickString(payload?.businessName),
+    country: pickString(payload?.country, 80),
+    plan: pickString(payload?.plan || 'starter', 80),
   };
 
   try {
-    const response = await fetch(LOOPS_SEND_EVENT_URL, {
+    const response = await fetch(N8N_LOOPS_WEBHOOK_URL, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(loopsPayload),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(n8nPayload),
     });
 
     if (!response.ok) {
-      return jsonResponse({ ok: true, sent: false, skippedReason: 'loops_error' });
+      return jsonResponse({ ok: true, sent: false, skippedReason: 'n8n_error' });
     }
 
     return jsonResponse({ ok: true, sent: true });
   } catch {
-    return jsonResponse({ ok: true, sent: false, skippedReason: 'loops_error' });
+    return jsonResponse({ ok: true, sent: false, skippedReason: 'n8n_error' });
   }
 }
 
