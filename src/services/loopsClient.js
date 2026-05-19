@@ -1,4 +1,5 @@
 const SUPPORTED_LOOPS_EVENTS = new Set(['user_registered', 'first_product_created']);
+const LOOPS_N8N_WEBHOOK_URL = 'https://n8n.jotace.uk/webhook/loops-event';
 
 function pickString(value, maxLength = 200) {
   const text = String(value || '').trim();
@@ -18,8 +19,7 @@ function maskEmail(email) {
 }
 
 /**
- * Sends an internal event signal to the serverless Loops bridge.
- * This client never talks to Loops directly and never has access to LOOPS_API_KEY.
+ * Sends an event signal to the n8n Loops workflow.
  *
  * @param {'user_registered'|'first_product_created'} eventName
  * @param {{ email?: string, firstName?: string, businessName?: string, businessId?: string, productsCount?: number, ordersCount?: number, businessMode?: string, country?: string, plan?: string }} payload
@@ -44,20 +44,16 @@ export async function trackLoopsEvent(eventName, payload = {}) {
       },
       timestamp: new Date().toISOString(),
     });
-    const response = await fetch('/api/loops/event', {
+    const response = await fetch(LOOPS_N8N_WEBHOOK_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'same-origin',
+      credentials: 'omit',
       keepalive: true,
       body: JSON.stringify({
         eventName,
         email: pickString(payload.email, 320),
         firstName: pickString(payload.firstName),
         businessName: pickString(payload.businessName),
-        businessId: pickString(payload.businessId, 80),
-        productsCount: Number.isFinite(Number(payload.productsCount)) ? Number(payload.productsCount) : undefined,
-        ordersCount: Number.isFinite(Number(payload.ordersCount)) ? Number(payload.ordersCount) : undefined,
-        businessMode: pickString(payload.businessMode, 80),
         country: pickString(payload.country, 80),
         plan: pickString(payload.plan || 'starter', 80),
       }),
