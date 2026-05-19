@@ -2,9 +2,13 @@ import { createHash } from 'node:crypto';
 
 const LOOPS_SEND_EVENT_URL = 'https://app.loops.so/api/v1/events/send';
 const SUPPORTED_EVENTS = new Set(['user_registered', 'first_product_created']);
+const LOOPS_ENDPOINT_VERSION = 'loops-event-clean-20260519-a';
 
 function jsonResponse(body, status = 200) {
-  return new Response(JSON.stringify(body), {
+  return new Response(JSON.stringify({
+    ...body,
+    endpointVersion: LOOPS_ENDPOINT_VERSION,
+  }), {
     status,
     headers: {
       'Content-Type': 'application/json',
@@ -19,26 +23,6 @@ function normalizeEmail(value) {
 
 function getEmailHash(email) {
   return createHash('sha256').update(normalizeEmail(email)).digest('hex').slice(0, 16);
-}
-
-function buildTestDeliveredEmail(testEmail, originalEmail) {
-  const normalizedTestEmail = normalizeEmail(testEmail);
-  const match = normalizedTestEmail.match(/^([^@+]+)(?:\+[^@]*)?@(gmail\.com|googlemail\.com)$/i);
-  if (!match) return normalizedTestEmail;
-  const localPart = match[1];
-  const domain = match[2].toLowerCase();
-  const hash = getEmailHash(originalEmail).slice(0, 10);
-  return `${localPart}+walinka-test-${hash}@${domain}`;
-}
-
-function isLoopsTestModeEnabled(env) {
-  return String(env.LOOPS_TEST_MODE || '')
-    .trim()
-    .toLowerCase() === 'true';
-}
-
-function getMode(env) {
-  return isLoopsTestModeEnabled(env) ? 'test' : 'production';
 }
 
 function maskEmail(email) {
@@ -115,7 +99,7 @@ function buildLoopsPayload(eventName, effectiveEmail, payload) {
   };
 }
 
-function shouldSendToLoops({ deliveredEmail, allowlistEmail, env, mode }) {
+function shouldSendToLoops({ deliveredEmail, allowlistEmail, env }) {
   const allowlist = parseAllowlist(env.LOOPS_ALLOWLIST);
   const isAllowlisted =
     allowlist.size > 0 &&
@@ -126,10 +110,6 @@ function shouldSendToLoops({ deliveredEmail, allowlistEmail, env, mode }) {
 
   if (isAllowlisted) {
     return { allowed: true, isAllowlisted };
-  }
-
-  if (mode === 'test') {
-    return { allowed: true, isAllowlisted: false };
   }
 
   const rolloutPercent = parseRolloutPercent(env.LOOPS_ROLLOUT_PERCENT);
@@ -162,10 +142,9 @@ export async function POST(request) {
   }
 
   const env = process.env || {};
-  const mode = getMode(env);
+  const mode = 'production';
   const emailHash = getEmailHash(originalEmail);
-  const testMode = isLoopsTestModeEnabled(env);
-  const testEmail = normalizeEmail(env.LOOPS_TEST_EMAIL);
+  const testMode = false;
   if (env.LOOPS_ENABLED !== 'true') {
     safeLog('info', '[loops] event skipped', {
       eventName,
@@ -178,25 +157,11 @@ export async function POST(request) {
     });
     return jsonResponse({ ok: true, sent: false, mode, skippedReason: 'loops_disabled' });
   }
-  if (testMode && !testEmail) {
-    safeLog('warn', '[loops] event skipped', {
-      eventName,
-      mode,
-      skippedReason: 'missing_test_email',
-      emailHash,
-      originalEmail,
-      finalEmail: originalEmail,
-      testMode,
-    });
-    return jsonResponse({ ok: true, sent: false, mode, skippedReason: 'missing_test_email' });
-  }
-
-  const deliveredEmail = testMode ? buildTestDeliveredEmail(testEmail, originalEmail) : originalEmail;
+  const deliveredEmail = originalEmail;
   const gate = shouldSendToLoops({
     deliveredEmail,
-    allowlistEmail: testMode ? testEmail : originalEmail,
+    allowlistEmail: originalEmail,
     env,
-    mode,
   });
   if (!gate.allowed) {
     safeLog('info', '[loops] event skipped', {
@@ -278,7 +243,6 @@ export async function GET() {
   return jsonResponse({
     ok: true,
     method: 'GET',
-    loopsTestMode: process.env.LOOPS_TEST_MODE ?? null,
     loopsEnabled: process.env.LOOPS_ENABLED ?? null,
     rollout: process.env.LOOPS_ROLLOUT_PERCENT ?? null,
     vercelEnv: process.env.VERCEL_ENV ?? null,
