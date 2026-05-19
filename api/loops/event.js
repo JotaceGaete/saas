@@ -1,13 +1,11 @@
-import { createHash } from 'node:crypto';
-
 const LOOPS_SEND_EVENT_URL = 'https://app.loops.so/api/v1/events/send';
-const SUPPORTED_EVENTS = new Set(['user_registered', 'first_product_created']);
-const LOOPS_ENDPOINT_VERSION = 'loops-event-clean-20260519-a';
+const ENDPOINT_VERSION = 'loops-hard-reset';
 
 function jsonResponse(body, status = 200) {
   return new Response(JSON.stringify({
     ...body,
-    endpointVersion: LOOPS_ENDPOINT_VERSION,
+    endpointVersion: ENDPOINT_VERSION,
+    mode: 'production',
   }), {
     status,
     headers: {
@@ -17,110 +15,18 @@ function jsonResponse(body, status = 200) {
   });
 }
 
-function normalizeEmail(value) {
-  return String(value || '').trim().toLowerCase();
-}
-
-function getEmailHash(email) {
-  return createHash('sha256').update(normalizeEmail(email)).digest('hex').slice(0, 16);
-}
-
-function maskEmail(email) {
-  const normalized = normalizeEmail(email);
-  const [localPart, domain] = normalized.split('@');
-  if (!localPart || !domain) return null;
-  const visibleLocal = localPart.length <= 2 ? `${localPart[0] || ''}*` : `${localPart.slice(0, 2)}***${localPart.slice(-1)}`;
-  const [domainName, ...domainRest] = domain.split('.');
-  const visibleDomain =
-    domainName.length <= 2 ? `${domainName[0] || ''}*` : `${domainName.slice(0, 2)}***${domainName.slice(-1)}`;
-  return `${visibleLocal}@${visibleDomain}${domainRest.length ? `.${domainRest.join('.')}` : ''}`;
-}
-
-function safeLog(level, message, { eventName, mode, skippedReason, emailHash, originalEmail, finalEmail, testMode, status } = {}) {
-  const logger = level === 'warn' ? console.warn : console.log;
-  logger(message, {
-    source: 'api/loops/event.js',
-    eventName: eventName || null,
-    mode: mode || null,
-    skippedReason: skippedReason || null,
-    emailHash: emailHash || null,
-    originalEmail: maskEmail(originalEmail),
-    finalEmail: maskEmail(finalEmail),
-    testMode: Boolean(testMode),
-    timestamp: new Date().toISOString(),
-    status: status || null,
-  });
-}
-
-function parseAllowlist(value) {
-  return new Set(
-    String(value || '')
-      .split(',')
-      .map((item) => normalizeEmail(item))
-      .filter(Boolean),
-  );
-}
-
-function parseRolloutPercent(value) {
-  if (value == null || String(value).trim() === '') return 100;
-  const n = Number(value);
-  if (!Number.isFinite(n)) return 0;
-  return Math.max(0, Math.min(100, Math.floor(n)));
-}
-
-function hashEmailToBucket(email) {
-  let hash = 0;
-  for (let i = 0; i < email.length; i += 1) {
-    hash = ((hash << 5) - hash + email.charCodeAt(i)) | 0;
-  }
-  return Math.abs(hash) % 100;
-}
-
 function pickString(value, maxLength = 200) {
   const text = String(value || '').trim();
   if (!text) return '';
   return text.length > maxLength ? text.slice(0, maxLength) : text;
 }
 
-function buildLoopsPayload(eventName, effectiveEmail, payload) {
-  return {
-    email: effectiveEmail,
-    eventName,
-    eventProperties: {
-      firstName: pickString(payload?.firstName),
-      businessName: pickString(payload?.businessName),
-      businessId: pickString(payload?.businessId, 80),
-      productsCount: Number.isFinite(Number(payload?.productsCount)) ? Number(payload.productsCount) : undefined,
-      ordersCount: Number.isFinite(Number(payload?.ordersCount)) ? Number(payload.ordersCount) : undefined,
-      businessMode: pickString(payload?.businessMode, 80),
-      country: pickString(payload?.country, 80),
-      plan: pickString(payload?.plan || 'starter', 80),
-    },
-  };
+function normalizeEmail(value) {
+  return String(value || '').trim().toLowerCase();
 }
 
-function shouldSendToLoops({ deliveredEmail, allowlistEmail, env }) {
-  const allowlist = parseAllowlist(env.LOOPS_ALLOWLIST);
-  const isAllowlisted =
-    allowlist.size > 0 &&
-    (allowlist.has(deliveredEmail) || (allowlistEmail && allowlist.has(allowlistEmail)));
-  if (allowlist.size > 0 && !isAllowlisted) {
-    return { allowed: false, skippedReason: 'email_not_allowlisted' };
-  }
-
-  if (isAllowlisted) {
-    return { allowed: true, isAllowlisted };
-  }
-
-  const rolloutPercent = parseRolloutPercent(env.LOOPS_ROLLOUT_PERCENT);
-  if (rolloutPercent <= 0) {
-    return { allowed: false, skippedReason: 'rollout_disabled' };
-  }
-  if (hashEmailToBucket(deliveredEmail) >= rolloutPercent) {
-    return { allowed: false, skippedReason: 'outside_rollout' };
-  }
-
-  return { allowed: true, isAllowlisted: false };
+function isValidEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
 export async function POST(request) {
@@ -128,69 +34,38 @@ export async function POST(request) {
   try {
     payload = await request.json();
   } catch {
-    return jsonResponse({ ok: false, error: 'invalid_json' }, 400);
+    return jsonResponse({ ok: false, sent: false, error: 'invalid_json' }, 400);
   }
 
   const eventName = pickString(payload?.eventName, 80);
-  if (!SUPPORTED_EVENTS.has(eventName)) {
-    return jsonResponse({ ok: false, error: 'unsupported_event' }, 400);
+  if (!eventName) {
+    return jsonResponse({ ok: false, sent: false, error: 'missing_event_name' }, 400);
   }
 
-  const originalEmail = normalizeEmail(payload?.email);
-  if (!originalEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(originalEmail)) {
-    return jsonResponse({ ok: false, error: 'invalid_email' }, 400);
+  const email = normalizeEmail(payload?.email);
+  if (!email || !isValidEmail(email)) {
+    return jsonResponse({ ok: false, sent: false, error: 'invalid_email' }, 400);
   }
 
-  const env = process.env || {};
-  const mode = 'production';
-  const emailHash = getEmailHash(originalEmail);
-  const testMode = false;
-  if (env.LOOPS_ENABLED !== 'true') {
-    safeLog('info', '[loops] event skipped', {
-      eventName,
-      mode,
-      skippedReason: 'loops_disabled',
-      emailHash,
-      originalEmail,
-      finalEmail: originalEmail,
-      testMode,
-    });
-    return jsonResponse({ ok: true, sent: false, mode, skippedReason: 'loops_disabled' });
-  }
-  const deliveredEmail = originalEmail;
-  const gate = shouldSendToLoops({
-    deliveredEmail,
-    allowlistEmail: originalEmail,
-    env,
-  });
-  if (!gate.allowed) {
-    safeLog('info', '[loops] event skipped', {
-      eventName,
-      mode,
-      skippedReason: gate.skippedReason,
-      emailHash,
-      originalEmail,
-      finalEmail: deliveredEmail,
-      testMode,
-    });
-    return jsonResponse({ ok: true, sent: false, mode, skippedReason: gate.skippedReason });
+  if (process.env.LOOPS_ENABLED !== 'true') {
+    return jsonResponse({ ok: true, sent: false, skippedReason: 'loops_disabled' });
   }
 
-  const apiKey = String(env.LOOPS_API_KEY || '').trim();
+  const apiKey = String(process.env.LOOPS_API_KEY || '').trim();
   if (!apiKey) {
-    safeLog('warn', '[loops] event skipped', {
-      eventName,
-      mode,
-      skippedReason: 'missing_api_key',
-      emailHash,
-      originalEmail,
-      finalEmail: deliveredEmail,
-      testMode,
-    });
-    return jsonResponse({ ok: true, sent: false, mode, skippedReason: 'missing_api_key' });
+    return jsonResponse({ ok: true, sent: false, skippedReason: 'missing_api_key' });
   }
 
-  const loopsPayload = buildLoopsPayload(eventName, deliveredEmail, payload);
+  const loopsPayload = {
+    email,
+    eventName,
+    eventProperties: {
+      firstName: pickString(payload?.firstName),
+      businessName: pickString(payload?.businessName),
+      country: pickString(payload?.country, 80),
+      plan: pickString(payload?.plan || 'starter', 80),
+    },
+  };
 
   try {
     const response = await fetch(LOOPS_SEND_EVENT_URL, {
@@ -203,49 +78,15 @@ export async function POST(request) {
     });
 
     if (!response.ok) {
-      safeLog('warn', '[loops] send failed', {
-        eventName,
-        mode,
-        skippedReason: 'loops_error',
-        emailHash,
-        originalEmail,
-        finalEmail: deliveredEmail,
-        testMode,
-        status: response.status,
-      });
-      return jsonResponse({ ok: true, sent: false, mode, skippedReason: 'loops_error' });
+      return jsonResponse({ ok: true, sent: false, skippedReason: 'loops_error' });
     }
 
-    safeLog('info', '[loops] event sent', {
-      eventName,
-      mode,
-      emailHash,
-      originalEmail,
-      finalEmail: deliveredEmail,
-      testMode,
-    });
-    return jsonResponse({ ok: true, sent: true, mode });
-  } catch (error) {
-    safeLog('warn', '[loops] send exception', {
-      eventName,
-      mode,
-      skippedReason: 'loops_error',
-      emailHash,
-      originalEmail,
-      finalEmail: deliveredEmail,
-      testMode,
-    });
-    return jsonResponse({ ok: true, sent: false, mode, skippedReason: 'loops_error' });
+    return jsonResponse({ ok: true, sent: true });
+  } catch {
+    return jsonResponse({ ok: true, sent: false, skippedReason: 'loops_error' });
   }
 }
 
 export async function GET() {
-  return jsonResponse({
-    ok: true,
-    method: 'GET',
-    loopsEnabled: process.env.LOOPS_ENABLED ?? null,
-    rollout: process.env.LOOPS_ROLLOUT_PERCENT ?? null,
-    vercelEnv: process.env.VERCEL_ENV ?? null,
-    commit: process.env.VERCEL_GIT_COMMIT_SHA ?? null,
-  });
+  return jsonResponse({ ok: true });
 }
