@@ -430,22 +430,6 @@ export default function ProductFormFields({ formData, errors, onChange, currency
           </div>
         </div>
       )}
-      {/* Inventario */}
-      <div>
-        <label className="block text-sm font-medium mb-1" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}>
-          Stock disponible
-          <span className="ml-1 text-xs font-normal" style={{ color: 'var(--color-muted-foreground)' }}>(opcional)</span>
-        </label>
-        <Input
-          type="number"
-          placeholder="Ej: 50"
-          value={formData?.stock}
-          onChange={(e) => handleChange('stock', e?.target?.value)}
-        />
-        <p className="mt-1 text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-          Deja vacío si no deseas controlar el inventario
-        </p>
-      </div>
     </div>
   );
 }
