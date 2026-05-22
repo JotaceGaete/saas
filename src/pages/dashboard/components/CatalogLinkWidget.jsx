@@ -9,6 +9,7 @@ import OgShareGuardModal from "./OgShareGuardModal";
 
 export default function CatalogLinkWidget({
   catalogUrl,
+  catalogViewUrl,
   offersUrl = '',
   businessName,
   businessPlanSlug,
@@ -21,6 +22,7 @@ export default function CatalogLinkWidget({
   const [copiedOffers, setCopiedOffers] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const qrRef = useRef(null);
+  const viewUrl = catalogViewUrl || catalogUrl;
   const shareMessage = getCatalogShareMessage({
     businessName,
     catalogUrl,
@@ -173,7 +175,7 @@ export default function CatalogLinkWidget({
           {copied ? '¡Copiado!' : 'Copiar'}
         </button>
         <a
-          href={catalogUrl}
+          href={viewUrl}
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-sm font-medium transition-all duration-200 hover:opacity-90"

@@ -10,13 +10,14 @@ Mira nuestros productos y haz tu pedido directo por WhatsApp:
 
 {catalog_url}`;
 
-export default function QuickAccessWidget({ catalogUrl, businessPlanSlug, onCatalogShare }) {
+export default function QuickAccessWidget({ catalogUrl, catalogViewUrl, businessPlanSlug, onCatalogShare }) {
   const navigate = useNavigate();
   const [showStatusModal, setShowStatusModal] = useState(false);
 
   const statusMessage = catalogUrl
     ? appendBranding(STATUS_MESSAGE_TEMPLATE.replace('{catalog_url}', catalogUrl), businessPlanSlug)
     : '';
+  const viewUrl = catalogViewUrl || catalogUrl;
 
   const handleCopyStatusMessage = () => {
     if (!statusMessage) return;
@@ -36,7 +37,7 @@ export default function QuickAccessWidget({ catalogUrl, businessPlanSlug, onCata
     { label: "Producto", path: "/product-editor", iconName: "Plus", desc: "Nuevo item" },
     {
       label: "Compartir",
-      action: catalogUrl ? () => window.open(catalogUrl, '_blank', 'noopener,noreferrer') : null,
+      action: viewUrl ? () => window.open(viewUrl, '_blank', 'noopener,noreferrer') : null,
       iconName: "ExternalLink",
       desc: "Abrir catálogo",
     },

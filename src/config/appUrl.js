@@ -108,6 +108,22 @@ export function getPublicCatalogUrl(slug) {
 }
 
 /**
+ * URL para abrir la vista pública desde el dashboard.
+ * En desarrollo local usa el mismo origin para que React Router resuelva /catalogo/:slug.
+ * En producción conserva el dominio público configurado.
+ * @param {string} slug
+ * @returns {string}
+ */
+export function getPublicCatalogViewUrl(slug) {
+  const s = String(slug || '').trim();
+  if (!s) return '';
+  if (typeof window !== 'undefined' && isLocalhostHostname(window.location?.hostname)) {
+    return `${String(window.location.origin || '').replace(/\/$/, '')}/catalogo/${s}`;
+  }
+  return getPublicCatalogUrl(s);
+}
+
+/**
  * Enlace compartible de la vista de ofertas del catálogo.
  * @param {string} slug
  * @returns {string}

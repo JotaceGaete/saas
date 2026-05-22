@@ -30,7 +30,7 @@ import {
   getDailyMessage,
 } from "../../services/waBusinessService";
 import { supabase } from "../../lib/supabase";
-import { getPublicCatalogUrl, getPublicOffersUrl } from "../../config/appUrl";
+import { getPublicCatalogUrl, getPublicCatalogViewUrl, getPublicOffersUrl } from "../../config/appUrl";
 import { buildCfImageErrorHandler, cfImageUrl } from "../../utils/cloudflareImage";
 import OrdersByDayCard from "./components/OrdersByDayCard";
 import TopProductsCard from "./components/TopProductsCard";
@@ -109,6 +109,7 @@ export default function Dashboard() {
   const aiInsightRetryAfterRef = useRef(0);
 
   const catalogUrl = getPublicCatalogUrl(business?.slug ?? '');
+  const catalogViewUrl = getPublicCatalogViewUrl(business?.slug ?? '');
   const offersUrl = getPublicOffersUrl(business?.slug ?? '');
 
   const planExpiresAt = business?.planExpiresAt ?? null;
@@ -658,16 +659,16 @@ export default function Dashboard() {
     : activeProducts === 0
       ? [
           { label: `Agregar ${itemActionLabel}`, icon: 'Plus', onClick: () => navigate('/product-editor'), primary: true },
-          { label: `Ver ${publicSurfaceLabel}`, icon: 'ExternalLink', onClick: () => window.open(catalogUrl, '_blank', 'noopener,noreferrer'), disabled: !catalogUrl },
+          { label: `Ver ${publicSurfaceLabel}`, icon: 'ExternalLink', onClick: () => window.open(catalogViewUrl, '_blank', 'noopener,noreferrer'), disabled: !catalogViewUrl },
         ]
       : visits7d === 0
         ? [
             { label: `Compartir ${publicSurfaceLabel}`, icon: 'Send', onClick: handleShare, primary: true },
-            { label: `Ver ${publicSurfaceLabel}`, icon: 'ExternalLink', onClick: () => window.open(catalogUrl, '_blank', 'noopener,noreferrer'), disabled: !catalogUrl },
+            { label: `Ver ${publicSurfaceLabel}`, icon: 'ExternalLink', onClick: () => window.open(catalogViewUrl, '_blank', 'noopener,noreferrer'), disabled: !catalogViewUrl },
           ]
         : whatsappClicks === 0
           ? [
-              { label: `Ver ${publicSurfaceLabel}`, icon: 'ExternalLink', onClick: () => window.open(catalogUrl, '_blank', 'noopener,noreferrer'), primary: true, disabled: !catalogUrl },
+              { label: `Ver ${publicSurfaceLabel}`, icon: 'ExternalLink', onClick: () => window.open(catalogViewUrl, '_blank', 'noopener,noreferrer'), primary: true, disabled: !catalogViewUrl },
               { label: `Compartir ${publicSurfaceLabel}`, icon: 'Send', onClick: handleShare },
             ]
           : [
@@ -1096,6 +1097,7 @@ export default function Dashboard() {
               <section aria-label="Enlace del catálogo">
                 <CatalogLinkWidget
                   catalogUrl={catalogUrl}
+                  catalogViewUrl={catalogViewUrl}
                   offersUrl={offersUrl}
                   businessName={business?.name || ''}
                   businessPlanSlug={activePlanSlug}
@@ -1106,6 +1108,7 @@ export default function Dashboard() {
               <section aria-label="Acceso rápido">
                 <QuickAccessWidget
                   catalogUrl={catalogUrl}
+                  catalogViewUrl={catalogViewUrl}
                   businessName={business?.name || ''}
                   businessPlanSlug={activePlanSlug}
                   onCatalogShare={notifyFirstCatalogShare}

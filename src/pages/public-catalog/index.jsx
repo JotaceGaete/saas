@@ -49,6 +49,135 @@ function isWhatsAppWebView() {
 
 const SLOW_TYPES = new Set(['slow-2g', '2g', '3g']);
 
+function buildCatalogMapsUrl(business, fullAddress) {
+  const lat = business?.lat ?? business?.latitude;
+  const lng = business?.lng ?? business?.longitude;
+  const hasCoords = lat != null && lng != null && String(lat).trim() !== '' && String(lng).trim() !== '';
+  const query = hasCoords ? `${lat},${lng}` : fullAddress;
+  return query ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}` : '';
+}
+
+function PublicCatalogLocationCard({
+  business,
+  isRestaurant,
+  fullAddress,
+  mapsUrl,
+  whatsappUrl,
+  onWhatsAppClick,
+  theme,
+}) {
+  if (!fullAddress || !mapsUrl) return null;
+
+  const cityLine = [business?.city, business?.region].filter(Boolean).join(', ');
+  const primaryColor = theme?.primaryColor || '#25D366';
+  const primaryColorDark = theme?.primaryColorDark || '#128C7E';
+  const primaryRgba = theme?.primaryRgba || (() => 'rgba(37,211,102,0.14)');
+  const textColor = theme?.textColor || '#111827';
+  const borderColor = theme?.borderColor || '#E5E7EB';
+  const isDark = theme?.isDark;
+  const supportCopy = isRestaurant
+    ? 'Ven a retirar tu pedido o escríbenos por WhatsApp.'
+    : 'Visítanos o consulta disponibilidad por WhatsApp.';
+  const mapBg = isDark
+    ? 'linear-gradient(135deg, rgba(15,23,42,0.96), rgba(51,65,85,0.78))'
+    : 'linear-gradient(135deg, #ECFDF5 0%, #F8FAFC 48%, #FFF7ED 100%)';
+
+  return (
+    <section className="mx-auto w-full max-w-5xl px-4 pt-4" aria-label="Ubicación del negocio">
+      <div
+        className="overflow-hidden rounded-[26px] border shadow-sm"
+        style={{
+          background: theme?.sectionBg ?? (isDark ? 'rgba(255,255,255,0.06)' : '#FFFFFF'),
+          borderColor,
+          boxShadow: isDark ? '0 12px 34px rgba(0,0,0,0.24)' : '0 14px 32px rgba(15,23,42,0.08)',
+        }}
+      >
+        <div className="grid gap-0 md:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]">
+          <a
+            href={mapsUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group relative block min-h-[168px] overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset"
+            style={{ background: mapBg, '--tw-ring-color': primaryColor }}
+            aria-label="Ver ubicación en Google Maps"
+          >
+            <div className="absolute inset-0 opacity-75">
+              <div className="absolute left-[-18%] top-[22%] h-px w-[140%] rotate-[-12deg] bg-white/80" />
+              <div className="absolute left-[-14%] top-[62%] h-px w-[130%] rotate-[10deg] bg-white/80" />
+              <div className="absolute left-[18%] top-[-22%] h-[150%] w-px rotate-[17deg] bg-white/80" />
+              <div className="absolute right-[23%] top-[-18%] h-[145%] w-px rotate-[-21deg] bg-white/80" />
+            </div>
+            <div className="absolute left-4 top-4 rounded-full px-3 py-1 text-[11px] font-black shadow-sm" style={{ background: 'rgba(255,255,255,0.92)', color: primaryColorDark }}>
+              Ver en mapa
+            </div>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <span className="relative flex h-16 w-16 items-center justify-center rounded-full text-white shadow-xl ring-4 ring-white/80" style={{ background: `linear-gradient(135deg, ${primaryColor}, ${primaryColorDark})` }}>
+                <span className="absolute inset-0 rounded-full opacity-25 blur-md" style={{ background: primaryColor, transform: 'scale(1.65)' }} />
+                <Icon name="MapPin" size={30} color="#FFFFFF" className="relative" />
+              </span>
+            </div>
+          </a>
+
+          <div className="flex min-w-0 flex-col gap-4 p-4 sm:p-5">
+            <div className="flex items-start gap-3">
+              <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl" style={{ background: primaryRgba(0.13) }}>
+                <Icon name="MapPin" size={20} color={primaryColorDark} />
+              </span>
+              <div className="min-w-0">
+                <p className="text-[11px] font-black uppercase tracking-[0.14em]" style={{ color: primaryColorDark }}>
+                  Ubicación
+                </p>
+                <h2 className="mt-1 text-xl font-black leading-tight" style={{ color: textColor }}>
+                  Encuéntranos aquí
+                </h2>
+              </div>
+            </div>
+
+            <div className="rounded-2xl px-3.5 py-3" style={{ background: isDark ? 'rgba(255,255,255,0.055)' : 'rgba(15,23,42,0.035)' }}>
+              <p className="text-sm font-bold leading-snug" style={{ color: textColor }}>{fullAddress}</p>
+              {cityLine && (
+                <p className="mt-1 text-xs" style={{ color: isDark ? 'rgba(255,255,255,0.62)' : '#64748B' }}>
+                  {cityLine}
+                </p>
+              )}
+            </div>
+
+            <p className="text-sm leading-6" style={{ color: isDark ? 'rgba(255,255,255,0.72)' : '#4B5563' }}>
+              {supportCopy}
+            </p>
+
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <a
+                href={mapsUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center gap-2 rounded-2xl border px-4 py-3 text-sm font-black transition-all hover:-translate-y-0.5 active:scale-[0.98]"
+                style={{ borderColor, color: textColor }}
+              >
+                <Icon name="Navigation" size={16} color="currentColor" />
+                Cómo llegar
+              </a>
+              {whatsappUrl && (
+                <a
+                  href={whatsappUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={onWhatsAppClick}
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-black text-white transition-all hover:-translate-y-0.5 active:scale-[0.98]"
+                  style={{ background: `linear-gradient(135deg, ${primaryColor}, ${primaryColorDark})` }}
+                >
+                  <Icon name="MessageCircle" size={16} color="#FFFFFF" />
+                  WhatsApp
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function getNavConnection() {
   if (typeof navigator === 'undefined') return null;
   return navigator.connection || navigator.mozConnection || navigator.webkitConnection || null;
@@ -757,6 +886,19 @@ function CatalogInner({ slug }) {
 
   const storeName = business?.name || 'Catálogo';
   const isRestaurant = isRestaurantBusiness(business);
+  const fullBusinessAddress = [business?.address, business?.city, business?.region, business?.country].filter(Boolean).join(', ');
+  const showLocationCard = design?.showAddress === true && !!fullBusinessAddress;
+  const mapsSearchUrl = showLocationCard ? buildCatalogMapsUrl(business, fullBusinessAddress) : '';
+  const businessWhatsAppPhone = business?.whatsapp?.replace(/\D/g, '');
+  const locationWhatsAppUrl = businessWhatsAppPhone
+    ? `https://wa.me/${businessWhatsAppPhone}?text=${encodeURIComponent(isRestaurant ? 'Hola! Quiero hacer un pedido por WhatsApp.' : 'Hola! Vi tu catálogo y quiero consultar disponibilidad.')}`
+    : '';
+  const handleLocationWhatsAppClick = () => {
+    const path = typeof window !== 'undefined'
+      ? window.location?.pathname || getPublicCatalogRelativePath(slug)
+      : getPublicCatalogRelativePath(slug);
+    recordCatalogWhatsAppClick(slug, path, 'location_card').catch(() => {});
+  };
   const catalogFooterText = resolveCatalogFooterText({ business });
   const activeFeaturedProduct = featuredProducts[activeFeaturedIndex] || null;
   const activeFeaturedImage = activeFeaturedProduct ? getProductImages(activeFeaturedProduct)?.[0] || null : null;
@@ -872,6 +1014,18 @@ function CatalogInner({ slug }) {
         isDesktop={isDesktop}
         onBack={isOwner ? () => navigate('/dashboard') : null}
       />
+
+      {showLocationCard && (
+        <PublicCatalogLocationCard
+          business={business}
+          isRestaurant={isRestaurant}
+          fullAddress={fullBusinessAddress}
+          mapsUrl={mapsSearchUrl}
+          whatsappUrl={locationWhatsAppUrl}
+          onWhatsAppClick={handleLocationWhatsAppClick}
+          theme={catalogTheme}
+        />
+      )}
 
       {activeFeaturedProduct && (
         <div className="w-full px-4 pt-4 lg:max-w-5xl lg:mx-auto">
