@@ -45,44 +45,6 @@ function CatalogInfoBlock({ icon, title, children, sectionBg, borderColor, textC
   );
 }
 
-function CatalogInfoGrid({
-  design,
-  theme,
-}) {
-  const blockProps = {
-    sectionBg: theme?.sectionBg,
-    borderColor: theme?.borderColor,
-    textColor: theme?.textColor,
-    isDark: theme?.isDark,
-  };
-  return (
-    <>
-      {(design?.businessHours ?? '').trim() !== '' && (
-        <CatalogInfoBlock icon="Clock" title="Horario" {...blockProps}>
-          <span className="whitespace-pre-line">{design.businessHours.trim()}</span>
-        </CatalogInfoBlock>
-      )}
-      {(design?.shippingMethods ?? '').trim() !== '' && (
-        <CatalogInfoBlock icon="Truck" title="Envíos" {...blockProps}>
-          {design.shippingMethods.trim()}
-        </CatalogInfoBlock>
-      )}
-      {(design?.shippingCost ?? '').trim() !== '' && (
-        <CatalogInfoBlock icon="Package" title="Costo de envío" {...blockProps}>
-          {design.shippingCost.trim()}
-        </CatalogInfoBlock>
-      )}
-      {design?.retiroEnTienda === true && (
-        <div className="sm:col-span-2">
-          <CatalogInfoBlock icon="Store" title="Retiro en tienda" {...blockProps}>
-            Disponible
-          </CatalogInfoBlock>
-        </div>
-      )}
-    </>
-  );
-}
-
 function SocialLinks({ business, primaryColor, theme }) {
   const normalizedTikTokUrl = normalizeTikTokUrl(business?.tiktokUrl);
   const links = [
@@ -210,17 +172,9 @@ export default function CatalogStoreHeader({
     ? `https://wa.me/${whatsappPhone}?text=${encodeURIComponent(isRestaurant ? 'Hola! Quiero hacer un pedido por WhatsApp.' : 'Hola! Vi tu catálogo en línea.')}`
     : null;
 
-  const fullAddress = [business?.address, business?.city, business?.region, business?.country].filter(Boolean).join(', ');
-  const showAddressInCatalog = design?.showAddress === true && fullAddress;
-
-  const hasCatalogInfo =
-    (design?.businessHours ?? '').trim() !== '' ||
-    (design?.shippingMethods ?? '').trim() !== '' ||
-    (design?.shippingCost ?? '').trim() !== '' ||
-    design?.retiroEnTienda === true;
-
   const hasBusinessDescription = storeHeader?.showDescription !== false && !!displayDescription;
-  const hasMobileStoreInfoAccordion = hasBusinessDescription || hasCatalogInfo || !!business?.city;
+  const hasMobileStoreInfoAccordion = false;
+  const hasCatalogInfo = false;
 
   const handleWaClick = () => {
     const path = typeof window !== 'undefined'

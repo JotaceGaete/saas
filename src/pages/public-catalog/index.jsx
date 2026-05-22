@@ -57,18 +57,64 @@ function buildCatalogMapsUrl(business, fullAddress) {
   return query ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}` : '';
 }
 
-function PublicCatalogLocationCard({
+function buildGoogleMapsEmbedUrl(business, fullAddress) {
+  const key = import.meta.env?.VITE_GOOGLE_MAPS_EMBED_API_KEY;
+  if (!key) return '';
+  const lat = business?.lat ?? business?.latitude;
+  const lng = business?.lng ?? business?.longitude;
+  const hasCoords = lat != null && lng != null && String(lat).trim() !== '' && String(lng).trim() !== '';
+  const query = hasCoords ? `${lat},${lng}` : fullAddress;
+  return query ? `https://www.google.com/maps/embed/v1/place?key=${encodeURIComponent(key)}&q=${encodeURIComponent(query)}` : '';
+}
+
+function CommerceInfoButton({ onClick, theme }) {
+  const primaryColor = theme?.primaryColor || '#25D366';
+  const primaryColorDark = theme?.primaryColorDark || '#128C7E';
+  const isDark = theme?.isDark;
+
+  return (
+    <div className="mx-auto w-full max-w-5xl px-4 pt-3">
+      <button
+        type="button"
+        onClick={onClick}
+        className="inline-flex max-w-full items-center gap-2 rounded-2xl border px-3.5 py-2.5 text-sm font-black shadow-sm transition-all hover:-translate-y-0.5 active:scale-[0.98]"
+        style={{
+          background: isDark ? 'rgba(255,255,255,0.07)' : '#FFFFFF',
+          borderColor: theme?.borderColor || 'rgba(15,23,42,0.1)',
+          color: isDark ? '#F8FAFC' : '#111827',
+        }}
+      >
+        <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl" style={{ background: theme?.primaryRgba?.(0.13) || 'rgba(37,211,102,0.13)' }}>
+          <Icon name="MapPin" size={16} color={primaryColorDark || primaryColor} />
+        </span>
+        <span className="truncate">Ver datos del comercio</span>
+        <Icon name="ChevronUp" size={15} color={primaryColor} className="rotate-90" />
+      </button>
+    </div>
+  );
+}
+
+function CommerceInfoModal({
   business,
   isRestaurant,
   fullAddress,
   mapsUrl,
+  embedUrl,
   whatsappUrl,
   onWhatsAppClick,
+  open,
+  onClose,
   theme,
 }) {
-  if (!fullAddress || !mapsUrl) return null;
+  if (!open) return null;
 
   const cityLine = [business?.city, business?.region].filter(Boolean).join(', ');
+  const design = business?.designSettings || {};
+  const hasAddress = Boolean(fullAddress && mapsUrl);
+  const hasHours = (design?.businessHours ?? '').trim() !== '';
+  const hasDelivery = (design?.shippingMethods ?? '').trim() !== '';
+  const hasShippingCost = (design?.shippingCost ?? '').trim() !== '';
+  const hasPickup = design?.retiroEnTienda === true;
   const primaryColor = theme?.primaryColor || '#25D366';
   const primaryColorDark = theme?.primaryColorDark || '#128C7E';
   const primaryRgba = theme?.primaryRgba || (() => 'rgba(37,211,102,0.14)');
@@ -83,80 +129,128 @@ function PublicCatalogLocationCard({
     : 'linear-gradient(135deg, #ECFDF5 0%, #F8FAFC 48%, #FFF7ED 100%)';
 
   return (
-    <section className="mx-auto w-full max-w-5xl px-4 pt-4" aria-label="Ubicación del negocio">
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 p-0 backdrop-blur-[2px] md:items-center md:p-5"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="commerce-info-title"
+      onClick={onClose}
+    >
       <div
-        className="overflow-hidden rounded-[26px] border shadow-sm"
+        className="max-h-[88vh] w-full overflow-hidden rounded-t-[28px] border shadow-2xl md:max-w-2xl md:rounded-[28px]"
         style={{
           background: theme?.sectionBg ?? (isDark ? 'rgba(255,255,255,0.06)' : '#FFFFFF'),
           borderColor,
-          boxShadow: isDark ? '0 12px 34px rgba(0,0,0,0.24)' : '0 14px 32px rgba(15,23,42,0.08)',
         }}
+        onClick={(e) => e.stopPropagation()}
       >
-        <div className="grid gap-0 md:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]">
-          <a
-            href={mapsUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="group relative block min-h-[168px] overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset"
-            style={{ background: mapBg, '--tw-ring-color': primaryColor }}
-            aria-label="Ver ubicación en Google Maps"
+        <div className="flex items-center justify-between gap-3 border-b px-4 py-4 md:px-5" style={{ borderColor }}>
+          <div className="min-w-0">
+            <p className="text-[11px] font-black uppercase tracking-[0.14em]" style={{ color: primaryColorDark }}>
+              Comercio
+            </p>
+            <h2 id="commerce-info-title" className="text-xl font-black leading-tight" style={{ color: textColor }}>
+              Datos del comercio
+            </h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full transition-colors hover:bg-black/5"
+            aria-label="Cerrar datos del comercio"
+            style={{ color: textColor }}
           >
-            <div className="absolute inset-0 opacity-75">
-              <div className="absolute left-[-18%] top-[22%] h-px w-[140%] rotate-[-12deg] bg-white/80" />
-              <div className="absolute left-[-14%] top-[62%] h-px w-[130%] rotate-[10deg] bg-white/80" />
-              <div className="absolute left-[18%] top-[-22%] h-[150%] w-px rotate-[17deg] bg-white/80" />
-              <div className="absolute right-[23%] top-[-18%] h-[145%] w-px rotate-[-21deg] bg-white/80" />
-            </div>
-            <div className="absolute left-4 top-4 rounded-full px-3 py-1 text-[11px] font-black shadow-sm" style={{ background: 'rgba(255,255,255,0.92)', color: primaryColorDark }}>
-              Ver en mapa
-            </div>
-            <div className="absolute inset-0 flex items-center justify-center">
-              <span className="relative flex h-16 w-16 items-center justify-center rounded-full text-white shadow-xl ring-4 ring-white/80" style={{ background: `linear-gradient(135deg, ${primaryColor}, ${primaryColorDark})` }}>
-                <span className="absolute inset-0 rounded-full opacity-25 blur-md" style={{ background: primaryColor, transform: 'scale(1.65)' }} />
-                <Icon name="MapPin" size={30} color="#FFFFFF" className="relative" />
-              </span>
-            </div>
-          </a>
+            <Icon name="X" size={20} color="currentColor" />
+          </button>
+        </div>
 
-          <div className="flex min-w-0 flex-col gap-4 p-4 sm:p-5">
-            <div className="flex items-start gap-3">
-              <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl" style={{ background: primaryRgba(0.13) }}>
-                <Icon name="MapPin" size={20} color={primaryColorDark} />
-              </span>
-              <div className="min-w-0">
-                <p className="text-[11px] font-black uppercase tracking-[0.14em]" style={{ color: primaryColorDark }}>
-                  Ubicación
-                </p>
-                <h2 className="mt-1 text-xl font-black leading-tight" style={{ color: textColor }}>
-                  Encuéntranos aquí
-                </h2>
+        <div className="max-h-[calc(88vh-76px)] overflow-y-auto px-4 py-4 md:px-5">
+          <div className="space-y-4">
+            {hasAddress && (
+              <div className="overflow-hidden rounded-3xl border" style={{ borderColor }}>
+                {embedUrl ? (
+                  <iframe
+                    title="Mapa del comercio"
+                    src={embedUrl}
+                    className="h-56 w-full border-0"
+                    loading="lazy"
+                    referrerPolicy="no-referrer-when-downgrade"
+                    allowFullScreen
+                  />
+                ) : (
+                  <div className="relative h-48 overflow-hidden" style={{ background: mapBg }}>
+                    <div className="absolute inset-0 opacity-75">
+                      <div className="absolute left-[-18%] top-[22%] h-px w-[140%] rotate-[-12deg] bg-white/80" />
+                      <div className="absolute left-[-14%] top-[62%] h-px w-[130%] rotate-[10deg] bg-white/80" />
+                      <div className="absolute left-[18%] top-[-22%] h-[150%] w-px rotate-[17deg] bg-white/80" />
+                      <div className="absolute right-[23%] top-[-18%] h-[145%] w-px rotate-[-21deg] bg-white/80" />
+                    </div>
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <span className="relative flex h-16 w-16 items-center justify-center rounded-full text-white shadow-xl ring-4 ring-white/80" style={{ background: `linear-gradient(135deg, ${primaryColor}, ${primaryColorDark})` }}>
+                        <span className="absolute inset-0 rounded-full opacity-25 blur-md" style={{ background: primaryColor, transform: 'scale(1.65)' }} />
+                        <Icon name="MapPin" size={30} color="#FFFFFF" className="relative" />
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
+            )}
 
-            <div className="rounded-2xl px-3.5 py-3" style={{ background: isDark ? 'rgba(255,255,255,0.055)' : 'rgba(15,23,42,0.035)' }}>
-              <p className="text-sm font-bold leading-snug" style={{ color: textColor }}>{fullAddress}</p>
-              {cityLine && (
-                <p className="mt-1 text-xs" style={{ color: isDark ? 'rgba(255,255,255,0.62)' : '#64748B' }}>
-                  {cityLine}
-                </p>
+            {hasAddress && (
+              <div className="rounded-2xl border p-4" style={{ borderColor, background: isDark ? 'rgba(255,255,255,0.055)' : 'rgba(15,23,42,0.035)' }}>
+                <div className="flex items-start gap-3">
+                  <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl" style={{ background: primaryRgba(0.13) }}>
+                    <Icon name="MapPin" size={18} color={primaryColorDark} />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-sm font-black" style={{ color: textColor }}>Dirección</p>
+                    <p className="mt-1 text-sm leading-6" style={{ color: textColor }}>{fullAddress}</p>
+                    {cityLine && <p className="mt-0.5 text-xs" style={{ color: isDark ? 'rgba(255,255,255,0.62)' : '#64748B' }}>{cityLine}</p>}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <p className="text-sm leading-6" style={{ color: isDark ? 'rgba(255,255,255,0.72)' : '#4B5563' }}>
+              {hasAddress ? supportCopy : 'Contáctanos por WhatsApp para confirmar disponibilidad y detalles antes de visitar.'}
+            </p>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {hasHours && (
+                <InfoTile icon="Clock" title="Horario" theme={theme}>
+                  <span className="whitespace-pre-line">{design.businessHours.trim()}</span>
+                </InfoTile>
+              )}
+              {hasDelivery && (
+                <InfoTile icon="Truck" title="Delivery / envíos" theme={theme}>
+                  {design.shippingMethods.trim()}
+                </InfoTile>
+              )}
+              {hasShippingCost && (
+                <InfoTile icon="Package" title="Costo de envío" theme={theme}>
+                  {design.shippingCost.trim()}
+                </InfoTile>
+              )}
+              {hasPickup && (
+                <InfoTile icon="Store" title="Retiro" theme={theme}>
+                  Disponible
+                </InfoTile>
               )}
             </div>
 
-            <p className="text-sm leading-6" style={{ color: isDark ? 'rgba(255,255,255,0.72)' : '#4B5563' }}>
-              {supportCopy}
-            </p>
-
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <a
-                href={mapsUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center justify-center gap-2 rounded-2xl border px-4 py-3 text-sm font-black transition-all hover:-translate-y-0.5 active:scale-[0.98]"
-                style={{ borderColor, color: textColor }}
-              >
-                <Icon name="Navigation" size={16} color="currentColor" />
-                Cómo llegar
-              </a>
+              {hasAddress && (
+                <a
+                  href={mapsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl border px-4 py-3 text-sm font-black transition-all hover:-translate-y-0.5 active:scale-[0.98]"
+                  style={{ borderColor, color: textColor }}
+                >
+                  <Icon name="Navigation" size={16} color="currentColor" />
+                  Cómo llegar
+                </a>
+              )}
               {whatsappUrl && (
                 <a
                   href={whatsappUrl}
@@ -174,7 +268,19 @@ function PublicCatalogLocationCard({
           </div>
         </div>
       </div>
-    </section>
+    </div>
+  );
+}
+
+function InfoTile({ icon, title, children, theme }) {
+  return (
+    <div className="rounded-2xl border p-3.5" style={{ borderColor: theme?.borderColor || '#E5E7EB', background: theme?.isDark ? 'rgba(255,255,255,0.045)' : '#FFFFFF' }}>
+      <div className="mb-2 flex items-center gap-2">
+        <Icon name={icon} size={15} color={theme?.primaryColorDark || theme?.primaryColor || '#128C7E'} />
+        <p className="text-xs font-black uppercase tracking-[0.1em]" style={{ color: theme?.isDark ? 'rgba(255,255,255,0.62)' : '#64748B' }}>{title}</p>
+      </div>
+      <div className="text-sm leading-6" style={{ color: theme?.textColor || '#111827' }}>{children}</div>
+    </div>
   );
 }
 
@@ -304,6 +410,7 @@ function CatalogInner({ slug }) {
   const [activeFeaturedIndex, setActiveFeaturedIndex] = useState(0);
   const [isFeaturedHovered, setIsFeaturedHovered] = useState(false);
   const [isFeaturedAutoplayPaused, setIsFeaturedAutoplayPaused] = useState(false);
+  const [commerceInfoOpen, setCommerceInfoOpen] = useState(false);
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
   /** Desktop: si el carril de categorías puede seguir scrolleando a izquierda/derecha (para flechas). */
   const [categoryScrollMore, setCategoryScrollMore] = useState({ left: false, right: false });
@@ -889,6 +996,14 @@ function CatalogInner({ slug }) {
   const fullBusinessAddress = [business?.address, business?.city, business?.region, business?.country].filter(Boolean).join(', ');
   const showLocationCard = design?.showAddress === true && !!fullBusinessAddress;
   const mapsSearchUrl = showLocationCard ? buildCatalogMapsUrl(business, fullBusinessAddress) : '';
+  const mapsEmbedUrl = commerceInfoOpen && showLocationCard ? buildGoogleMapsEmbedUrl(business, fullBusinessAddress) : '';
+  const hasCommerceInfo =
+    showLocationCard ||
+    (design?.businessHours ?? '').trim() !== '' ||
+    (design?.shippingMethods ?? '').trim() !== '' ||
+    (design?.shippingCost ?? '').trim() !== '' ||
+    design?.retiroEnTienda === true ||
+    !!business?.whatsapp?.replace(/\D/g, '');
   const businessWhatsAppPhone = business?.whatsapp?.replace(/\D/g, '');
   const locationWhatsAppUrl = businessWhatsAppPhone
     ? `https://wa.me/${businessWhatsAppPhone}?text=${encodeURIComponent(isRestaurant ? 'Hola! Quiero hacer un pedido por WhatsApp.' : 'Hola! Vi tu catálogo y quiero consultar disponibilidad.')}`
@@ -1015,17 +1130,25 @@ function CatalogInner({ slug }) {
         onBack={isOwner ? () => navigate('/dashboard') : null}
       />
 
-      {showLocationCard && (
-        <PublicCatalogLocationCard
-          business={business}
-          isRestaurant={isRestaurant}
-          fullAddress={fullBusinessAddress}
-          mapsUrl={mapsSearchUrl}
-          whatsappUrl={locationWhatsAppUrl}
-          onWhatsAppClick={handleLocationWhatsAppClick}
+      {hasCommerceInfo && (
+        <CommerceInfoButton
+          onClick={() => setCommerceInfoOpen(true)}
           theme={catalogTheme}
         />
       )}
+
+      <CommerceInfoModal
+        open={commerceInfoOpen}
+        onClose={() => setCommerceInfoOpen(false)}
+        business={business}
+        isRestaurant={isRestaurant}
+        fullAddress={fullBusinessAddress}
+        mapsUrl={mapsSearchUrl}
+        embedUrl={mapsEmbedUrl}
+        whatsappUrl={locationWhatsAppUrl}
+        onWhatsAppClick={handleLocationWhatsAppClick}
+        theme={catalogTheme}
+      />
 
       {activeFeaturedProduct && (
         <div className="w-full px-4 pt-4 lg:max-w-5xl lg:mx-auto">
