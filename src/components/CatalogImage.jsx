@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Icon from './AppIcon';
 import { isCfTransformableUrl } from '../utils/cloudflareImage';
 
@@ -47,12 +47,21 @@ export default function CatalogImage({
   const [currentSrc, setCurrentSrc] = useState(src || null);
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(!src);
+  const imgRef = useRef(null);
 
   useEffect(() => {
     setCurrentSrc(src || null);
     setLoaded(false);
     setFailed(!src);
   }, [src, originalSrc]);
+
+  useEffect(() => {
+    const img = imgRef.current;
+    if (!img || !currentSrc || failed) return;
+    if (img.complete && img.naturalWidth > 0) {
+      setLoaded(true);
+    }
+  }, [currentSrc, failed]);
 
   const placeholder = PLACEHOLDER_STYLES[variant] || PLACEHOLDER_STYLES.product;
 
@@ -96,6 +105,7 @@ export default function CatalogImage({
 
       {currentSrc && !failed ? (
         <img
+          ref={imgRef}
           src={currentSrc}
           alt={alt}
           className={imgClassName}
@@ -106,7 +116,7 @@ export default function CatalogImage({
             transition: 'opacity 220ms ease-out, transform 300ms ease-out',
           }}
           loading={loading}
-          fetchPriority={fetchPriority}
+          fetchpriority={fetchPriority}
           decoding={decoding}
           draggable={draggable}
           role={role}

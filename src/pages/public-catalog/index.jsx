@@ -130,7 +130,7 @@ function CommerceInfoModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 p-0 backdrop-blur-[2px] md:items-center md:p-5"
+      className="fixed inset-0 z-[70] flex items-end justify-center bg-black/45 p-0 backdrop-blur-[2px] md:items-center md:p-5"
       role="dialog"
       aria-modal="true"
       aria-labelledby="commerce-info-title"
@@ -139,7 +139,7 @@ function CommerceInfoModal({
       <div
         className="max-h-[88vh] w-full overflow-hidden rounded-t-[28px] border shadow-2xl md:max-w-2xl md:rounded-[28px]"
         style={{
-          background: theme?.sectionBg ?? (isDark ? 'rgba(255,255,255,0.06)' : '#FFFFFF'),
+          background: isDark ? '#111827' : '#FFFFFF',
           borderColor,
         }}
         onClick={(e) => e.stopPropagation()}
@@ -2298,7 +2298,8 @@ export function ProductCard({
   const cartItem = items?.find(i => i?.id === product?.id);
   const qty = cartItem?.quantity || 0;
   const [bump, setBump] = useState(false);
-  const isEager = imageIndex < 4;
+  const eagerImageCount = isDesktop ? 8 : 6;
+  const isEager = imageIndex < eagerImageCount;
   const imgProfile = imageProfile ?? (isDesktop ? 'thumbnail' : 'cardMobile');
 
   if (productState === 'hidden') return null;
@@ -2364,6 +2365,7 @@ export function ProductCard({
               imgClassName="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
               variant="product"
               loading={isEager ? 'eager' : 'lazy'}
+              fetchPriority={imageIndex < 2 ? 'high' : undefined}
             />
           ) : (
             <div className={`flex h-full w-full items-center justify-center bg-gray-100 ${compact ? 'min-h-[72px]' : ''}`}>
