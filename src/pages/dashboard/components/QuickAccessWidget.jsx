@@ -4,7 +4,7 @@ import Icon from "components/AppIcon";
 import { appendBranding } from "../../../utils/branding";
 import { openWhatsAppUrl } from "../../../utils/openWhatsAppUrl";
 
-const STATUS_MESSAGE_TEMPLATE = `Nuevo catalogo disponible
+const STATUS_MESSAGE_TEMPLATE = `Nuevo catálogo disponible
 
 Mira nuestros productos y haz tu pedido directo por WhatsApp:
 
@@ -38,7 +38,7 @@ export default function QuickAccessWidget({ catalogUrl, businessPlanSlug, onCata
       label: "Compartir",
       action: catalogUrl ? () => window.open(catalogUrl, '_blank', 'noopener,noreferrer') : null,
       iconName: "ExternalLink",
-      desc: "Abrir catalogo",
+      desc: "Abrir catálogo",
     },
     {
       label: "Estado",
@@ -102,7 +102,7 @@ export default function QuickAccessWidget({ catalogUrl, businessPlanSlug, onCata
             </div>
             <div className="space-y-4 p-4">
               <p className="text-sm" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-                Copia el mensaje o abrelo en WhatsApp para publicarlo en tu estado.
+                Copia el mensaje o ábrelo en WhatsApp para publicarlo en tu estado.
               </p>
               <div
                 className="whitespace-pre-wrap rounded-xl border p-3 text-sm"

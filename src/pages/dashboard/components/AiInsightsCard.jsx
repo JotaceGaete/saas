@@ -36,7 +36,7 @@ export default function AiInsightsCard({ data, loading }) {
 
           {loading ? (
             <p className="text-sm" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-              Leyendo la actividad del dia...
+              Leyendo la actividad del día...
             </p>
           ) : (
             <div>

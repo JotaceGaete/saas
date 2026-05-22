@@ -45,7 +45,160 @@ function CatalogInfoBlock({ icon, title, children, sectionBg, borderColor, textC
   );
 }
 
-function CatalogInfoGrid({ design, primaryColor, fullAddress, mapsSearchUrl, showAddressInCatalog, theme }) {
+function buildMapsSearchUrl({ business, fullAddress }) {
+  const lat = business?.lat ?? business?.latitude;
+  const lng = business?.lng ?? business?.longitude;
+  const hasCoords = lat != null && lng != null && String(lat).trim() !== '' && String(lng).trim() !== '';
+  const query = hasCoords ? `${lat},${lng}` : fullAddress;
+  return query ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}` : '';
+}
+
+function CatalogLocationCard({
+  business,
+  design,
+  fullAddress,
+  mapsSearchUrl,
+  storeWhatsAppUrl,
+  onWhatsAppClick,
+  isRestaurant,
+  primaryColor,
+  primaryColorDark,
+  primaryRgba,
+  theme,
+}) {
+  const cityLine = [business?.city, business?.region].filter(Boolean).join(', ');
+  const hasPickup = design?.retiroEnTienda === true;
+  const hasDelivery = (design?.shippingMethods ?? '').trim() !== '';
+  const shippingCost = (design?.shippingCost ?? '').trim();
+  const mutedColor = theme?.isDark ? 'rgba(255,255,255,0.62)' : '#64748B';
+  const cardBg = theme?.isDark ? 'rgba(255,255,255,0.06)' : '#FFFFFF';
+  const mapBg = theme?.isDark
+    ? 'linear-gradient(135deg, rgba(15,23,42,0.9), rgba(51,65,85,0.7))'
+    : 'linear-gradient(135deg, #ECFDF5 0%, #F8FAFC 52%, #FFF7ED 100%)';
+
+  return (
+    <div
+      className="overflow-hidden rounded-2xl shadow-sm sm:col-span-2"
+      style={{ background: cardBg, border: `1px solid ${theme?.borderColor ?? '#e5e7eb'}` }}
+    >
+      <div className="grid gap-0 sm:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+        <a
+          href={mapsSearchUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="group relative min-h-[150px] overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset"
+          style={{ background: mapBg, '--tw-ring-color': primaryColor }}
+          aria-label="Ver mapa de ubicación"
+        >
+          <div className="absolute inset-0 opacity-70">
+            <div className="absolute left-[-12%] top-[18%] h-px w-[125%] rotate-[-12deg] bg-white/80" />
+            <div className="absolute left-[-16%] top-[56%] h-px w-[135%] rotate-[9deg] bg-white/80" />
+            <div className="absolute left-[15%] top-[-18%] h-[150%] w-px rotate-[18deg] bg-white/80" />
+            <div className="absolute right-[22%] top-[-16%] h-[140%] w-px rotate-[-22deg] bg-white/80" />
+          </div>
+          <div className="absolute left-4 top-4 rounded-full px-2.5 py-1 text-[11px] font-bold shadow-sm" style={{ background: 'rgba(255,255,255,0.9)', color: primaryColorDark }}>
+            Ver mapa
+          </div>
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="relative">
+              <span className="absolute inset-0 rounded-full opacity-25 blur-md" style={{ background: primaryColor, transform: 'scale(1.9)' }} />
+              <span className="relative flex h-14 w-14 items-center justify-center rounded-full text-white shadow-xl ring-4 ring-white/80" style={{ background: `linear-gradient(135deg, ${primaryColor}, ${primaryColorDark})` }}>
+                <Icon name="MapPin" size={26} color="#FFFFFF" />
+              </span>
+            </div>
+          </div>
+          <div className="absolute bottom-3 left-3 right-3 rounded-xl bg-white/88 px-3 py-2 shadow-sm backdrop-blur-sm transition-transform group-hover:-translate-y-0.5">
+            <p className="truncate text-xs font-bold text-slate-900">{business?.name || 'Restaurante'}</p>
+            <p className="truncate text-[11px] text-slate-600">{cityLine || fullAddress}</p>
+          </div>
+        </a>
+
+        <div className="flex min-w-0 flex-col gap-3 p-4">
+          <div>
+            <p className="text-[11px] font-black uppercase tracking-[0.14em]" style={{ color: primaryColorDark }}>
+              {isRestaurant ? 'Ubicación y entrega' : 'Ubicación y compra'}
+            </p>
+            <h2 className="mt-1 text-lg font-black leading-tight" style={{ color: theme?.textColor ?? '#111827' }}>
+              Dónde estamos
+            </h2>
+          </div>
+
+          <div className="flex items-start gap-2.5">
+            <span className="mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl" style={{ background: primaryRgba(0.12) }}>
+              <Icon name="MapPin" size={16} color={primaryColorDark} />
+            </span>
+            <div className="min-w-0">
+              <p className="text-sm font-bold leading-snug" style={{ color: theme?.textColor ?? '#111827' }}>{fullAddress}</p>
+              {cityLine && <p className="mt-0.5 text-xs" style={{ color: mutedColor }}>{cityLine}</p>}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {hasPickup && (
+              <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold" style={{ background: primaryRgba(0.12), color: primaryColorDark }}>
+                <Icon name="Store" size={12} color={primaryColorDark} />
+                Retiro disponible
+              </span>
+            )}
+            {hasDelivery && (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-orange-50 px-2.5 py-1 text-xs font-bold text-orange-700">
+                <Icon name="Bike" size={12} color="#C2410C" />
+                Delivery
+              </span>
+            )}
+            {shippingCost && (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700">
+                <Icon name="Package" size={12} color="#475569" />
+                Envío: {shippingCost}
+              </span>
+            )}
+          </div>
+
+          <div className="mt-auto grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <a
+              href={mapsSearchUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center gap-2 rounded-xl border px-3.5 py-2.5 text-sm font-bold transition-all hover:-translate-y-0.5 active:scale-[0.98]"
+              style={{ borderColor: theme?.borderColor ?? '#e5e7eb', color: theme?.textColor ?? '#111827' }}
+            >
+              <Icon name="Navigation" size={15} color="currentColor" />
+              Cómo llegar
+            </a>
+            {storeWhatsAppUrl && (
+              <a
+                href={storeWhatsAppUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={onWhatsAppClick}
+                className="inline-flex items-center justify-center gap-2 rounded-xl px-3.5 py-2.5 text-sm font-bold text-white transition-all hover:-translate-y-0.5 active:scale-[0.98]"
+                style={{ background: `linear-gradient(135deg, ${primaryColor}, ${primaryColorDark})` }}
+              >
+                <Icon name="MessageCircle" size={15} color="#FFFFFF" />
+                {isRestaurant ? 'Pedir por WhatsApp' : 'Contactar'}
+              </a>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CatalogInfoGrid({
+  business,
+  design,
+  primaryColor,
+  primaryColorDark,
+  primaryRgba,
+  fullAddress,
+  mapsSearchUrl,
+  showAddressInCatalog,
+  storeWhatsAppUrl,
+  onWhatsAppClick,
+  isRestaurant,
+  theme,
+}) {
   const blockProps = {
     sectionBg: theme?.sectionBg,
     borderColor: theme?.borderColor,
@@ -60,34 +213,31 @@ function CatalogInfoGrid({ design, primaryColor, fullAddress, mapsSearchUrl, sho
         </CatalogInfoBlock>
       )}
       {showAddressInCatalog && (
-        <CatalogInfoBlock icon="MapPin" title="Dirección" {...blockProps}>
-          {mapsSearchUrl ? (
-            <>
-              <a href={mapsSearchUrl} target="_blank" rel="noopener noreferrer" className="hover:underline focus:outline-none focus:underline" style={{ color: primaryColor }}>
-                {fullAddress}
-              </a>
-              <span className="block mt-1.5">
-                <a href={mapsSearchUrl} target="_blank" rel="noopener noreferrer" className="text-xs font-medium hover:underline" style={{ color: primaryColor }}>
-                  Ver en mapa
-                </a>
-              </span>
-            </>
-          ) : (
-            <span>{fullAddress}</span>
-          )}
-        </CatalogInfoBlock>
+        <CatalogLocationCard
+          business={business}
+          design={design}
+          fullAddress={fullAddress}
+          mapsSearchUrl={mapsSearchUrl}
+          storeWhatsAppUrl={storeWhatsAppUrl}
+          onWhatsAppClick={onWhatsAppClick}
+          isRestaurant={isRestaurant}
+          primaryColor={primaryColor}
+          primaryColorDark={primaryColorDark}
+          primaryRgba={primaryRgba}
+          theme={theme}
+        />
       )}
-      {(design?.shippingMethods ?? '').trim() !== '' && (
+      {(design?.shippingMethods ?? '').trim() !== '' && !showAddressInCatalog && (
         <CatalogInfoBlock icon="Truck" title="Envíos" {...blockProps}>
           {design.shippingMethods.trim()}
         </CatalogInfoBlock>
       )}
-      {(design?.shippingCost ?? '').trim() !== '' && (
+      {(design?.shippingCost ?? '').trim() !== '' && !showAddressInCatalog && (
         <CatalogInfoBlock icon="Package" title="Costo de envío" {...blockProps}>
           {design.shippingCost.trim()}
         </CatalogInfoBlock>
       )}
-      {design?.retiroEnTienda === true && (
+      {design?.retiroEnTienda === true && !showAddressInCatalog && (
         <div className="sm:col-span-2">
           <CatalogInfoBlock icon="Store" title="Retiro en tienda" {...blockProps}>
             Disponible
@@ -200,12 +350,16 @@ export default function CatalogStoreHeader({
 
   const storeHeader = { showStoreName: true, showDescription: true, showWhatsAppButton: true, ...design?.storeHeader };
   const isRestaurant = isRestaurantBusiness(business);
+  const restaurantHeroCopy = 'Platos frescos, sabores irresistibles y pedidos directos por WhatsApp.';
+  const displayDescription = business?.description?.trim() || (isRestaurant ? restaurantHeroCopy : '');
+  const storeCtaLabel = isRestaurant ? 'Pedir por WhatsApp' : 'Contactar';
+  const storeCtaLongLabel = isRestaurant ? 'Pedir por WhatsApp' : 'Contactar por WhatsApp';
 
   const headerTemplate = (() => {
     const t = design?.headerTemplate;
     if (t === 'cover' || t === 'split' || t === 'compact') return t;
     if (business?.coverImageUrl) return 'cover';
-    if (business?.description?.trim()) return 'split';
+    if (displayDescription) return 'split';
     return 'compact';
   })();
 
@@ -218,11 +372,11 @@ export default function CatalogStoreHeader({
 
   const whatsappPhone = business?.whatsapp?.replace(/\D/g, '');
   const storeWhatsAppUrl = whatsappPhone
-    ? `https://wa.me/${whatsappPhone}?text=${encodeURIComponent('Hola! Vi tu catálogo en línea.')}`
+    ? `https://wa.me/${whatsappPhone}?text=${encodeURIComponent(isRestaurant ? 'Hola! Quiero hacer un pedido por WhatsApp.' : 'Hola! Vi tu catálogo en línea.')}`
     : null;
 
   const fullAddress = [business?.address, business?.city, business?.region, business?.country].filter(Boolean).join(', ');
-  const mapsSearchUrl = fullAddress ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(fullAddress)}` : '';
+  const mapsSearchUrl = buildMapsSearchUrl({ business, fullAddress });
   const showAddressInCatalog = design?.showAddress === true && fullAddress;
 
   const hasCatalogInfo =
@@ -232,7 +386,7 @@ export default function CatalogStoreHeader({
     (design?.shippingCost ?? '').trim() !== '' ||
     design?.retiroEnTienda === true;
 
-  const hasBusinessDescription = storeHeader?.showDescription !== false && !!business?.description?.trim();
+  const hasBusinessDescription = storeHeader?.showDescription !== false && !!displayDescription;
   const hasMobileStoreInfoAccordion = hasBusinessDescription || hasCatalogInfo || !!business?.city;
 
   const handleWaClick = () => {
@@ -401,7 +555,7 @@ export default function CatalogStoreHeader({
                   style={{ background: `linear-gradient(135deg, ${primaryColor}, ${primaryColorDark})` }}
                 >
                   <Icon name="MessageCircle" size={15} color="#ffffff" />
-                  Contactar
+                  {storeCtaLabel}
                 </a>
               )}
             </div>
@@ -442,9 +596,9 @@ export default function CatalogStoreHeader({
                   )}
                 </div>
               </div>
-              {business?.description?.trim() && (
+              {displayDescription && (
                 <p className="text-sm leading-relaxed line-clamp-3 mb-5" style={{ color: 'rgba(255,255,255,0.82)' }}>
-                  {business.description.trim()}
+                  {displayDescription}
                 </p>
               )}
               {storeHeader?.showWhatsAppButton !== false && storeWhatsAppUrl && (
@@ -456,7 +610,7 @@ export default function CatalogStoreHeader({
                   className="self-start flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-white bg-white/20 hover:bg-white/30 transition-colors border border-white/25 active:scale-[0.98]"
                 >
                   <Icon name="MessageCircle" size={15} color="#ffffff" />
-                  Contactar por WhatsApp
+                  {storeCtaLongLabel}
                 </a>
               )}
             </div>
@@ -554,12 +708,12 @@ export default function CatalogStoreHeader({
                       <span className="text-xs text-gray-500">{business?.city}</span>
                     </div>
                   )}
-                  {storeHeader?.showDescription !== false && business?.description && (
+                  {storeHeader?.showDescription !== false && displayDescription && (
                     <p
                       className="hidden md:block text-[15px] sm:text-base font-normal leading-relaxed line-clamp-5 mt-1 text-pretty"
                       style={{ color: storeHeader?.descriptionColor || '#374151' }}
                     >
-                      {business?.description}
+                      {displayDescription}
                     </p>
                   )}
                 </div>
@@ -581,7 +735,7 @@ export default function CatalogStoreHeader({
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="#FFFFFF" aria-hidden="true">
                       <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
                     </svg>
-                    Contactar
+                    {storeCtaLabel}
                   </a>
                 </div>
               )}
@@ -625,7 +779,7 @@ export default function CatalogStoreHeader({
                                 className="text-gray-800 leading-relaxed text-[15px] font-normal text-pretty"
                                 style={{ color: storeHeader?.descriptionColor || '#374151' }}
                               >
-                                {business?.description}
+                                {displayDescription}
                               </p>
                             </div>
                           </div>
@@ -640,11 +794,17 @@ export default function CatalogStoreHeader({
                           </div>
                         )}
                         <CatalogInfoGrid
+                          business={business}
                           design={design}
                           primaryColor={primaryColor}
+                          primaryColorDark={primaryColorDark}
+                          primaryRgba={primaryRgba}
                           fullAddress={fullAddress}
                           mapsSearchUrl={mapsSearchUrl}
                           showAddressInCatalog={showAddressInCatalog}
+                          storeWhatsAppUrl={storeWhatsAppUrl}
+                          onWhatsAppClick={handleWaClick}
+                          isRestaurant={isRestaurant}
                           theme={theme}
                         />
                       </div>
@@ -721,11 +881,17 @@ export default function CatalogStoreHeader({
                   <div className="px-4 pb-4 pt-4" style={{ borderTop: `1px solid ${theme?.borderColor ?? '#e5e7eb'}` }}>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                       <CatalogInfoGrid
+                        business={business}
                         design={design}
                         primaryColor={primaryColor}
+                        primaryColorDark={primaryColorDark}
+                        primaryRgba={primaryRgba}
                         fullAddress={fullAddress}
                         mapsSearchUrl={mapsSearchUrl}
                         showAddressInCatalog={showAddressInCatalog}
+                        storeWhatsAppUrl={storeWhatsAppUrl}
+                        onWhatsAppClick={handleWaClick}
+                        isRestaurant={isRestaurant}
                         theme={theme}
                       />
                     </div>

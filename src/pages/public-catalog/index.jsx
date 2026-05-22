@@ -822,7 +822,7 @@ function CatalogInner({ slug }) {
     <CatalogLayout
       theme={catalogTheme}
       isDesktop={isDesktop}
-      className="min-h-screen font-catalog antialiased"
+      className="min-h-screen pb-28 font-catalog antialiased md:pb-24"
       style={{
         '--cat-bg':      bgColor,
         '--cat-text':    textColor,

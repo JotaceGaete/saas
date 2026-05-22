@@ -205,11 +205,11 @@ export default function OrdersPage() {
   );
   const ordersTitle = isRestaurant ? 'Pedidos del restaurante' : 'Pedidos';
   const ordersSubtitle = isRestaurant
-    ? 'Organiza lo que llega desde tu menu y manten cada pedido bajo control.'
-    : 'Gestiona las compras que llegan desde tu catalogo.';
+    ? 'Organiza lo que llega desde tu menú y mantén cada pedido bajo control.'
+    : 'Gestiona las compras que llegan desde tu catálogo.';
   const emptyDescription = isRestaurant
-    ? 'Cuando tus clientes pidan desde el menu, los veras aqui.'
-    : 'Cuando tus clientes compren desde el catalogo, los veras aqui.';
+    ? 'Cuando tus clientes pidan desde el menú, los verás aquí.'
+    : 'Cuando tus clientes compren desde el catálogo, los verás aquí.';
   const setDetailOrderTracked = useCallback((nextOrUpdater, source = 'unknown') => {
     setDetailOrder((prev) => {
       const next = typeof nextOrUpdater === 'function' ? nextOrUpdater(prev) : nextOrUpdater;
@@ -1149,7 +1149,7 @@ export default function OrdersPage() {
               <Icon name="ShoppingCart" size={28} color="var(--color-muted-foreground)" />
             </div>
             <h3 className="text-base font-semibold mb-1" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>
-              {searchQuery || filterStatus !== 'all' ? 'Sin resultados' : 'Todavia no tienes pedidos'}
+              {searchQuery || filterStatus !== 'all' ? 'Sin resultados' : 'Todavía no tienes pedidos'}
             </h3>
             <p className="text-sm max-w-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
               {searchQuery || filterStatus !== 'all'

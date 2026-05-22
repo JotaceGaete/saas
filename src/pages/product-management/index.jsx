@@ -102,11 +102,11 @@ export default function ProductManagement() {
   const isRestaurant = isRestaurantBusiness(business);
   const productNoun = isRestaurant ? 'plato' : 'producto';
   const productNounPlural = isRestaurant ? 'platos' : 'productos';
-  const screenTitle = isRestaurant ? 'Menu del restaurante' : 'Catalogo de productos';
+  const screenTitle = isRestaurant ? 'Menú del restaurante' : 'Catálogo de productos';
   const screenSubtitle = isRestaurant
     ? 'Gestiona platos, combos y secciones de tu carta.'
     : 'Organiza lo que tus clientes ven y compran en tu tienda.';
-  const emptyTitle = isRestaurant ? 'Todavia no tienes platos en tu menu' : 'Todavia no tienes productos';
+  const emptyTitle = isRestaurant ? 'Todavía no tienes platos en tu menú' : 'Todavía no tienes productos';
   const emptyDescription = isRestaurant
     ? 'Agrega tu primer plato para comenzar a recibir pedidos.'
     : 'Agrega tu primer producto para empezar a vender por WhatsApp.';
@@ -222,7 +222,7 @@ export default function ProductManagement() {
   return (
     <DashboardAppShell backgroundColor="var(--color-background)">
         <PanelHeader
-          title={<h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Catalogo</h1>}
+          title={<h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Catálogo</h1>}
           subtitle={<p className="text-xs hidden sm:block" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>{loading ? 'Cargando...' : `${stats?.total} ${productNounPlural} · ${stats?.available} disponibles · ${stats?.soldOut} agotados · ${stats?.hidden} ocultos`}</p>}
         >
           <div className="hidden 2xl:flex items-center gap-2 flex-shrink-0">
@@ -280,7 +280,7 @@ export default function ProductManagement() {
                 <AddProductButton className="w-full px-4 py-3" />
               </div>
               {selectedIds?.length > 0 && (<div><BulkActionBar selectedCount={selectedIds?.length} onDelete={handleBulkDelete} onDeselect={() => setSelectedIds([])} /></div>)}
-              <ProductTable products={filteredProducts} selectedIds={selectedIds} onSelectAll={handleSelectAll} onSelectOne={handleSelectOne} onChangeStatus={handleChangeStatus} onEdit={handleEdit} onDuplicate={handleDuplicate} onDeleteRequest={handleDeleteRequest} sortField={sortField} sortDir={sortDir} onSort={handleSort} formatPrice={formatProductPrice} hasProducts={products?.length > 0} emptyTitle={emptyTitle} emptyDescription={emptyDescription} filteredEmptyDescription="No encontramos items con estos filtros. Ajusta la busqueda o vuelve a ver todo el catalogo." />
+              <ProductTable products={filteredProducts} selectedIds={selectedIds} onSelectAll={handleSelectAll} onSelectOne={handleSelectOne} onChangeStatus={handleChangeStatus} onEdit={handleEdit} onDuplicate={handleDuplicate} onDeleteRequest={handleDeleteRequest} sortField={sortField} sortDir={sortDir} onSort={handleSort} formatPrice={formatProductPrice} hasProducts={products?.length > 0} emptyTitle={emptyTitle} emptyDescription={emptyDescription} filteredEmptyDescription="No encontramos ítems con estos filtros. Ajusta la búsqueda o vuelve a ver todo el catálogo." />
             </>
           )}
         </DashboardLayoutContent>

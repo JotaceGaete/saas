@@ -574,15 +574,16 @@ export default function Dashboard() {
 
   const metricsToShow = isStarterPlan ? METRICS.filter((m) => m.title === 'Total productos') : METRICS;
   const hour = new Date().getHours();
-  const greeting = hour < 12 ? 'Buenos dias' : hour < 19 ? 'Buenas tardes' : 'Buenas noches';
+  const greeting = hour < 12 ? 'Buenos días' : hour < 19 ? 'Buenas tardes' : 'Buenas noches';
   const isRestaurant = isRestaurantBusiness(business);
-  const publicSurfaceLabel = isRestaurant ? 'menu' : 'catalogo';
-  const publicSurfaceTitle = isRestaurant ? 'menu' : 'catalogo';
+  const publicSurfaceLabel = isRestaurant ? 'menú' : 'catálogo';
+  const publicSurfaceTitle = isRestaurant ? 'menú' : 'catálogo';
   const businessSurfaceLabel = isRestaurant ? 'restaurante' : 'tienda';
+  const businessSurfacePulseLabel = isRestaurant ? 'del restaurante' : 'de la tienda';
   const itemActionLabel = isRestaurant ? 'plato' : 'producto';
   const readySurfaceMessage = isRestaurant
-    ? 'Tu restaurante esta listo para recibir clientes.'
-    : 'Tu tienda esta lista para recibir clientes.';
+    ? 'Tu restaurante está listo para recibir clientes.'
+    : 'Tu tienda está lista para recibir clientes.';
   const whatsappClicks = Number(conversionFunnel?.clicksWhatsapp ?? 0);
   const pulsePeriodLabel = funnelRange === 'today' ? 'hoy' : funnelRange === '30d' ? 'este mes' : 'esta semana';
   const pulseHeadline = analyticsLoading
@@ -590,17 +591,17 @@ export default function Dashboard() {
     : visits7d === 0
       ? readySurfaceMessage
       : whatsappClicks > 0
-        ? `Tu ${publicSurfaceTitle} esta generando interes.`
+        ? `Tu ${publicSurfaceTitle} está generando interés.`
         : `Tu ${businessSurfaceLabel} tuvo ${visits7d} visita${visits7d !== 1 ? 's' : ''} esta semana.`;
   const pulseContext = analyticsLoading
-    ? 'Estamos ordenando visitas, pedidos y senales de contacto.'
+    ? 'Estamos ordenando visitas, pedidos y señales de contacto.'
     : visits7d === 0
       ? `Comparte tu ${publicSurfaceLabel} para empezar a generar visitas.`
       : whatsappClicks > 0
         ? `${whatsappClicks} persona${whatsappClicks !== 1 ? 's' : ''} hizo${whatsappClicks !== 1 ? 'n' : ''} clic en WhatsApp ${pulsePeriodLabel}.`
         : isRestaurant
-          ? 'Todavia no hay pedidos desde WhatsApp. Comparte el menu o revisa tus platos destacados.'
-          : 'Todavia no hay clics a WhatsApp. Comparte el catalogo o mejora la visibilidad del boton.';
+          ? 'Todavía no hay pedidos desde WhatsApp. Comparte el menú o revisa tus platos destacados.'
+          : 'Todavía no hay clics a WhatsApp. Comparte el catálogo o mejora la visibilidad del botón.';
   const pulsePriority = dataLoading
     ? 'Actualizando prioridad'
     : pendingOrdersCount > 0
@@ -615,11 +616,11 @@ export default function Dashboard() {
   const pulseStatusLabel = analyticsLoading
     ? 'Sincronizando'
     : pendingOrdersCount > 0
-      ? 'Atencion'
+      ? 'Atención'
       : visits7d === 0
         ? 'Listo'
         : whatsappClicks > 0
-          ? 'Interes activo'
+          ? 'Interés activo'
           : 'Oportunidad';
 
   const notifyFirstCatalogShare = useCallback(() => {
@@ -765,7 +766,7 @@ export default function Dashboard() {
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2.5">
                     <p className="text-[11px] font-semibold uppercase tracking-[0.14em]" style={{ color: '#9CA3AF', fontFamily: 'var(--font-caption)' }}>
-                      {greeting} · Pulso de la {businessSurfaceLabel}
+                      {greeting} · Pulso {businessSurfacePulseLabel}
                     </p>
                     <span className="rounded-full px-2.5 py-1 text-[11px] font-semibold" style={{ backgroundColor: 'rgba(255,255,255,0.08)', color: '#E5E7EB', fontFamily: 'var(--font-caption)' }}>
                       {pulseStatusLabel}
@@ -812,7 +813,7 @@ export default function Dashboard() {
 
                 <div className="grid grid-cols-3 gap-2.5 xl:w-[360px] xl:self-end">
                   {[
-                    { label: '7 dias', value: analyticsLoading ? '...' : visits7d, muted: 'visitas' },
+                    { label: '7 días', value: analyticsLoading ? '...' : visits7d, muted: 'visitas' },
                     { label: 'WhatsApp', value: analyticsLoading ? '...' : whatsappClicks, muted: pulsePeriodLabel },
                     { label: 'Pendientes', value: dataLoading ? '...' : pendingOrdersCount, muted: 'pedidos' },
                   ].map((item) => (
@@ -880,7 +881,7 @@ export default function Dashboard() {
           )}
 
           {/* ── Métricas principales (Starter solo ve Total productos) ── */}
-          <section aria-label="Metricas principales">
+          <section aria-label="Métricas principales">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5">
               {metricsToShow?.map((metric, idx) => (
                 <div key={metric.title} className="stagger-item min-w-0" style={metricsToShow.length === 1 ? { maxWidth: '320px' } : undefined}>

@@ -526,7 +526,7 @@ export default function DesignCustomization({
       <DesignUnifiedHeading isFirst title="Base visual" subtitle={`Color, fondo, portada y logo del ${catalogLabel}.`} />
 
       {/* 1. Primary Color */}
-      <SectionCard icon="Droplets" title="Color principal" subtitle={`Define los acentos que guian las acciones del ${catalogLabel}.`} accent={primaryColor}>
+      <SectionCard icon="Droplets" title="Color principal" subtitle={`Define los acentos que guían las acciones del ${catalogLabel}.`} accent={primaryColor}>
         <div className="flex flex-wrap items-center gap-4">
           {COLORS?.map(color => (
             <button

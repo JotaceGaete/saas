@@ -26,9 +26,9 @@ export default function ProductTable({
   loading,
   formatPrice,
   hasProducts = true,
-  emptyTitle = "Todavia no tienes productos",
+  emptyTitle = "Todavía no tienes productos",
   emptyDescription = "Agrega tu primer producto para empezar a vender.",
-  filteredEmptyDescription = "No encontramos productos con los filtros actuales. Intenta ajustar tu busqueda.",
+  filteredEmptyDescription = "No encontramos productos con los filtros actuales. Intenta ajustar tu búsqueda.",
 }) {
   const allSelected = products?.length > 0 && products?.every((p) => selectedIds?.includes(p?.id));
   const someSelected = products?.some((p) => selectedIds?.includes(p?.id)) && !allSelected;

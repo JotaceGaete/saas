@@ -288,7 +288,7 @@ export default function BusinessConfiguration() {
   const visibleBusinessKind = (form?.businessMode || business?.businessMode || BUSINESS_MODES.STORE) === BUSINESS_MODES.RESTAURANT
     ? 'restaurante'
     : 'tienda';
-  const visibleCatalogSurface = visibleBusinessKind === 'restaurante' ? 'menu' : 'catalogo';
+  const visibleCatalogSurface = visibleBusinessKind === 'restaurante' ? 'menú' : 'catálogo';
 
   // Design settings state (valores por defecto; se rellenan desde business.designSettings al cargar)
   const [design, setDesign] = useState({
@@ -832,7 +832,7 @@ export default function BusinessConfiguration() {
     {
       id: 'design',
       label: 'Diseno',
-      description: `Aspecto publico de tu ${visibleCatalogSurface}`,
+      description: `Aspecto público de tu ${visibleCatalogSurface}`,
       Icon: Palette,
     },
     {
@@ -920,7 +920,7 @@ export default function BusinessConfiguration() {
                   Configuracion de tu {visibleBusinessKind}
                 </h2>
                 <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 sm:text-base" style={{ fontFamily: 'var(--font-body)' }}>
-                  Personaliza como los clientes ven y compran en tu {visibleCatalogSurface}. Mantén la identidad clara, el pedido simple y la informacion publica al dia.
+                  Personaliza cómo los clientes ven y compran en tu {visibleCatalogSurface}. Mantén la identidad clara, el pedido simple y la información pública al día.
                 </p>
               </div>
             </section>
@@ -1107,9 +1107,9 @@ export default function BusinessConfiguration() {
             <div className={`${cardClass} mb-8`}>
               <div className="mb-6 max-w-2xl">
                 <p className={sectionHeadingClass}>Identidad</p>
-                <h2 className="text-2xl font-black leading-tight text-slate-950" style={{ fontFamily: 'var(--font-heading)', letterSpacing: 0 }}>La presencia publica de tu {visibleBusinessKind}</h2>
+                <h2 className="text-2xl font-black leading-tight text-slate-950" style={{ fontFamily: 'var(--font-heading)', letterSpacing: 0 }}>La presencia pública de tu {visibleBusinessKind}</h2>
                 <p className="mt-2 text-sm leading-6 text-slate-600" style={{ fontFamily: 'var(--font-body)' }}>
-                  Estos datos construyen la primera impresion de tu {visibleCatalogSurface}: nombre, rubro, descripcion y canales de contacto.
+                  Estos datos construyen la primera impresión de tu {visibleCatalogSurface}: nombre, rubro, descripción y canales de contacto.
                 </p>
               </div>
               <div className="hidden">
@@ -1305,13 +1305,13 @@ export default function BusinessConfiguration() {
                           </div>
                           <div>
                             <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500 font-[family-name:var(--font-caption)]">
-                              Organizacion del catalogo
+                              Organización del catálogo
                             </p>
                             <h2 className="mt-1 text-lg font-black text-slate-950" style={{ fontFamily: 'var(--font-heading)', letterSpacing: 0 }}>
                               Estructura de la tienda
                             </h2>
                             <p className="mt-1 text-sm leading-6" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-body)' }}>
-                              Agrupa productos como una vitrina: colecciones, lineas, momentos de compra o secciones del menu.
+                              Agrupa productos como una vitrina: colecciones, líneas, momentos de compra o secciones del menú.
                             </p>
                           </div>
                         </div>
@@ -1320,8 +1320,8 @@ export default function BusinessConfiguration() {
                     )}
 
                     <SettingsField
-                      label="Presentacion publica"
-                      hint="Una bio breve para explicar que vendes, que te hace distinto y por que conviene pedirte. Maximo 280 caracteres."
+                      label="Presentación pública"
+                      hint="Una bio breve para explicar qué vendes, qué te hace distinto y por qué conviene pedirte. Máximo 280 caracteres."
                     >
                       <div className="relative rounded-2xl border border-slate-200/70 bg-slate-50/45 p-3">
                         {canUseAiDescription && (
