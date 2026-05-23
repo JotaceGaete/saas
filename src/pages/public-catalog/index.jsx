@@ -25,6 +25,7 @@ import { normalizeOptionalCustomerPhone } from '../../utils/customerPhone';
 import { cfImageUrl, isCfTransformableUrl } from '../../utils/cloudflareImage';
 import CheckoutPhoneOptional from '../../components/checkout/CheckoutPhoneOptional';
 import { getCountryLabels, DELIVERY_ADDRESS_FIELD_HINT } from '../../config/country';
+import { getCountryConfig } from '../../config/countryConfig';
 import { resolveCatalogSeoContent } from '../../utils/catalogDynamicSeo';
 import {
   buildLocalBusinessJsonLd,
@@ -49,21 +50,104 @@ function isWhatsAppWebView() {
 
 const SLOW_TYPES = new Set(['slow-2g', '2g', '3g']);
 
-function buildCatalogMapsUrl(business, fullAddress) {
+function normalizeAddressPart(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function addressPartKey(value) {
+  return normalizeAddressPart(value)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+}
+
+function resolveBusinessCountryLabel(business) {
+  const rawCode =
+    business?.countryCode ||
+    business?.countryCodeDb ||
+    business?.routingCountryCode ||
+    business?.country_code;
+  const code = normalizeAddressPart(rawCode).toUpperCase();
+  if (code === 'CL') return 'Chile';
+  if (code === 'AR') return 'Argentina';
+
+  const configuredName = getCountryConfig(code)?.name;
+  if (configuredName && configuredName !== 'Global') return configuredName;
+
+  const rawCountry = normalizeAddressPart(business?.country);
+  const countryKey = addressPartKey(rawCountry);
+  if (countryKey === 'cl' || countryKey === 'chile') return 'Chile';
+  if (countryKey === 'ar' || countryKey === 'argentina') return 'Argentina';
+  return rawCountry;
+}
+
+function buildBusinessAddressParts(business) {
+  const streetLine = normalizeAddressPart(
+    business?.address ||
+    business?.streetAddress ||
+    business?.street ||
+    business?.direccion,
+  );
+  const city = normalizeAddressPart(
+    business?.city ||
+    business?.commune ||
+    business?.comuna ||
+    business?.locality,
+  );
+  const region = normalizeAddressPart(
+    business?.region ||
+    business?.province ||
+    business?.provincia ||
+    business?.state,
+  );
+  const country = resolveBusinessCountryLabel(business);
+  const ordered = [streetLine, city, region, country].filter(Boolean);
+  const seen = new Set();
+  const deduped = [];
+
+  for (const part of ordered) {
+    const key = addressPartKey(part);
+    if (!key || seen.has(key)) continue;
+    if (deduped.some((existing) => addressPartKey(existing).includes(key) || key.includes(addressPartKey(existing)))) {
+      continue;
+    }
+    seen.add(key);
+    deduped.push(part);
+  }
+
+  const detailParts = deduped.filter((part) => part !== streetLine);
+  return {
+    line1: streetLine || deduped[0] || '',
+    line2: streetLine ? detailParts.join(', ') : deduped.slice(1).join(', '),
+    full: deduped.join(', '),
+    hasStreetLine: Boolean(streetLine),
+  };
+}
+
+function hasBusinessCoordinates(business) {
   const lat = business?.lat ?? business?.latitude;
   const lng = business?.lng ?? business?.longitude;
-  const hasCoords = lat != null && lng != null && String(lat).trim() !== '' && String(lng).trim() !== '';
-  const query = hasCoords ? `${lat},${lng}` : fullAddress;
+  return lat != null && lng != null && String(lat).trim() !== '' && String(lng).trim() !== '';
+}
+
+function buildMapsQuery(business, fullAddress) {
+  if (hasBusinessCoordinates(business)) {
+    return `${business?.lat ?? business?.latitude},${business?.lng ?? business?.longitude}`;
+  }
+  return fullAddress;
+}
+
+function buildCatalogMapsUrl(business, fullAddress) {
+  const query = buildMapsQuery(business, fullAddress);
   return query ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}` : '';
 }
 
 function buildGoogleMapsEmbedUrl(business, fullAddress) {
   const key = import.meta.env?.VITE_GOOGLE_MAPS_EMBED_API_KEY;
   if (!key) return '';
-  const lat = business?.lat ?? business?.latitude;
-  const lng = business?.lng ?? business?.longitude;
-  const hasCoords = lat != null && lng != null && String(lat).trim() !== '' && String(lng).trim() !== '';
-  const query = hasCoords ? `${lat},${lng}` : fullAddress;
+  const query = buildMapsQuery(business, fullAddress);
   return query ? `https://www.google.com/maps/embed/v1/place?key=${encodeURIComponent(key)}&q=${encodeURIComponent(query)}` : '';
 }
 
@@ -97,7 +181,7 @@ function CommerceInfoButton({ onClick, theme }) {
 function CommerceInfoModal({
   business,
   isRestaurant,
-  fullAddress,
+  addressParts,
   mapsUrl,
   embedUrl,
   whatsappUrl,
@@ -108,8 +192,8 @@ function CommerceInfoModal({
 }) {
   if (!open) return null;
 
-  const cityLine = [business?.city, business?.region].filter(Boolean).join(', ');
   const design = business?.designSettings || {};
+  const fullAddress = addressParts?.full || '';
   const hasAddress = Boolean(fullAddress && mapsUrl);
   const hasHours = (design?.businessHours ?? '').trim() !== '';
   const hasDelivery = (design?.shippingMethods ?? '').trim() !== '';
@@ -204,8 +288,12 @@ function CommerceInfoModal({
                   </span>
                   <div className="min-w-0">
                     <p className="text-sm font-black" style={{ color: textColor }}>Dirección</p>
-                    <p className="mt-1 text-sm leading-6" style={{ color: textColor }}>{fullAddress}</p>
-                    {cityLine && <p className="mt-0.5 text-xs" style={{ color: isDark ? 'rgba(255,255,255,0.62)' : '#64748B' }}>{cityLine}</p>}
+                    <p className="mt-1 text-sm leading-6" style={{ color: textColor }}>{addressParts?.line1 || fullAddress}</p>
+                    {addressParts?.line2 && (
+                      <p className="mt-0.5 text-xs" style={{ color: isDark ? 'rgba(255,255,255,0.62)' : '#64748B' }}>
+                        {addressParts.line2}
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -993,8 +1081,9 @@ function CatalogInner({ slug }) {
 
   const storeName = business?.name || 'Catálogo';
   const isRestaurant = isRestaurantBusiness(business);
-  const fullBusinessAddress = [business?.address, business?.city, business?.region, business?.country].filter(Boolean).join(', ');
-  const showLocationCard = design?.showAddress === true && !!fullBusinessAddress;
+  const businessAddressParts = buildBusinessAddressParts(business);
+  const fullBusinessAddress = businessAddressParts.full;
+  const showLocationCard = design?.showAddress === true && businessAddressParts.hasStreetLine && !!fullBusinessAddress;
   const mapsSearchUrl = showLocationCard ? buildCatalogMapsUrl(business, fullBusinessAddress) : '';
   const mapsEmbedUrl = commerceInfoOpen && showLocationCard ? buildGoogleMapsEmbedUrl(business, fullBusinessAddress) : '';
   const hasCommerceInfo =
@@ -1142,7 +1231,7 @@ function CatalogInner({ slug }) {
         onClose={() => setCommerceInfoOpen(false)}
         business={business}
         isRestaurant={isRestaurant}
-        fullAddress={fullBusinessAddress}
+        addressParts={businessAddressParts}
         mapsUrl={mapsSearchUrl}
         embedUrl={mapsEmbedUrl}
         whatsappUrl={locationWhatsAppUrl}

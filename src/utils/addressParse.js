@@ -34,6 +34,36 @@ export function parseAddressByCountry(full, countryCode) {
   return { address: raw, city: '', region: '' };
 }
 
-export function buildFullAddressLine({ address, city, region }) {
-  return [address, city, region].map((s) => String(s ?? '').trim()).filter(Boolean).join(', ');
+export function normalizeAddressPart(value) {
+  return String(value ?? '').replace(/\s+/g, ' ').trim();
+}
+
+function addressPartKey(value) {
+  return normalizeAddressPart(value)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+}
+
+export function buildFullAddressLine({ address, city, region, country }) {
+  const ordered = [address, city, region, country].map(normalizeAddressPart).filter(Boolean);
+  const deduped = [];
+  const seen = new Set();
+
+  for (const part of ordered) {
+    const key = addressPartKey(part);
+    if (!key || seen.has(key)) continue;
+    if (deduped.some((existing) => {
+      const existingKey = addressPartKey(existing);
+      return existingKey.includes(key) || key.includes(existingKey);
+    })) {
+      continue;
+    }
+    seen.add(key);
+    deduped.push(part);
+  }
+
+  return deduped.join(', ');
 }

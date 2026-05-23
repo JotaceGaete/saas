@@ -24,7 +24,7 @@ import { resolveCountryState, resolveBillingSetup } from '../../lib/country/stat
 import { suggestCountryCodeHint } from '../../lib/country/suggest-country-hint';
 import { getCountryConfig, COUNTRY_CODES } from '../../config/countryConfig';
 import BusinessConfigContextBanner from 'components/business/BusinessConfigContextBanner';
-import { parseAddressByCountry, buildFullAddressLine } from '../../utils/addressParse';
+import { parseAddressByCountry, buildFullAddressLine, normalizeAddressPart } from '../../utils/addressParse';
 import { resolveVentaAiProductDescriptionEndpoint } from '../../lib/ai/resolveVentaAiProductDescriptionUrl.js';
 import DesignSettings from './components/DesignSettings';
 import RubroPrincipalSelector from './components/RubroPrincipalSelector';
@@ -42,6 +42,17 @@ function buildSavedConfigSnapshotFromBusiness(business) {
       ? String(business.countryCodeDb).trim().toUpperCase()
       : null,
   );
+  const snapshotCountry =
+    business.countryCodeDb != null && String(business.countryCodeDb).trim() !== ''
+      ? String(business.countryCodeDb).trim().toUpperCase()
+      : null;
+  const storedAddress = business?.address || '';
+  const storedCity = business?.city || '';
+  const storedRegion = business?.region || '';
+  const snapshotAddress =
+    storedAddress && !storedCity && !storedRegion
+      ? parseAddressByCountry(storedAddress, snapshotCountry)
+      : { address: storedAddress, city: storedCity, region: storedRegion };
   const dsSnap = business.designSettings || {};
   const designSnap = {
     ...dsSnap,
@@ -86,9 +97,9 @@ function buildSavedConfigSnapshotFromBusiness(business) {
       printLegend: business?.printLegend || business?.print_legend || '',
       whatsapp: business?.whatsapp || '',
       email: business?.email || '',
-      address: business?.address || '',
-      city: business?.city || '',
-      region: business?.region || '',
+      address: snapshotAddress.address || '',
+      city: snapshotAddress.city || '',
+      region: snapshotAddress.region || '',
       country: labels.countryName,
       currency: business?.currency || labels.currency,
       rubroId: business?.rubroId || '',
@@ -97,9 +108,9 @@ function buildSavedConfigSnapshotFromBusiness(business) {
     design: designSnap,
     orderMessageTemplate: business?.orderMessageTemplate || '',
     fullAddressInput: buildFullAddressLine({
-      address: business?.address,
-      city: business?.city,
-      region: business?.region,
+      address: snapshotAddress.address,
+      city: snapshotAddress.city,
+      region: snapshotAddress.region,
     }),
     uxCountry:
       business?.countryCodeDb != null && String(business.countryCodeDb).trim() !== ''
@@ -142,6 +153,22 @@ function SettingsField({ label, children, hint }) {
       {children}
     </div>
   );
+}
+
+function resolveLocationCountryLabel(countryCode, fallbackLabel = '') {
+  const code = normalizeAddressPart(countryCode).toUpperCase();
+  if (code === 'CL') return 'Chile';
+  if (code === 'AR') return 'Argentina';
+  const configuredName = getCountryConfig(code)?.name;
+  if (configuredName && configuredName !== 'Global') return configuredName;
+  return normalizeAddressPart(fallbackLabel);
+}
+
+function buildGoogleMapsSearchUrl(query) {
+  const normalized = normalizeAddressPart(query);
+  return normalized
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(normalized)}`
+    : '';
 }
 
 const ONBOARDING_FIELD_LABELS = {
@@ -269,6 +296,7 @@ export default function BusinessConfiguration() {
   });
   const [rubros, setRubros] = useState([]);
   const [fullAddressInput, setFullAddressInput] = useState('');
+  const [locationTouched, setLocationTouched] = useState(false);
   const [slugEditUnlocked, setSlugEditUnlocked] = useState(false);
   const [settingsTab, setSettingsTab] = useState('identity');
 
@@ -338,6 +366,27 @@ export default function BusinessConfiguration() {
       }),
     [form, design, orderMessageTemplate, fullAddressInput, uxCountry],
   );
+
+  const locationCountryLabel = useMemo(
+    () => resolveLocationCountryLabel(uiCountryCode, form?.country || countryLabels.countryName),
+    [uiCountryCode, form?.country, countryLabels.countryName],
+  );
+  const googleMapsAddressPreview = useMemo(
+    () =>
+      buildFullAddressLine({
+        address: form?.address,
+        city: form?.city,
+        region: form?.region,
+        country: locationCountryLabel,
+      }),
+    [form?.address, form?.city, form?.region, locationCountryLabel],
+  );
+  const googleMapsPreviewUrl = useMemo(
+    () => buildGoogleMapsSearchUrl(googleMapsAddressPreview),
+    [googleMapsAddressPreview],
+  );
+  const hasStreetAddress = Boolean(normalizeAddressPart(form?.address));
+  const canTestLocationInMaps = hasStreetAddress && Boolean(googleMapsPreviewUrl);
 
   const isDirty = Boolean(business?.id && savedConfigSnapshot && currentConfigSnapshot !== savedConfigSnapshot);
   const hasUnsavedCountryChange = (uxCountry ?? null) !== (businessCountry ?? null);
@@ -474,6 +523,13 @@ export default function BusinessConfiguration() {
 
   useEffect(() => {
     if (business) {
+      const storedAddress = business?.address || '';
+      const storedCity = business?.city || '';
+      const storedRegion = business?.region || '';
+      const parsedLegacyAddress =
+        storedAddress && !storedCity && !storedRegion
+          ? parseAddressByCountry(storedAddress, businessCountry)
+          : { address: storedAddress, city: storedCity, region: storedRegion };
       setForm({
         name: business?.name || '',
         slug: business?.slug || '',
@@ -481,9 +537,9 @@ export default function BusinessConfiguration() {
         printLegend: business?.printLegend || business?.print_legend || '',
         whatsapp: business?.whatsapp || '',
         email: business?.email || '',
-        address: business?.address || '',
-        city: business?.city || '',
-        region: business?.region || '',
+        address: parsedLegacyAddress.address || '',
+        city: parsedLegacyAddress.city || '',
+        region: parsedLegacyAddress.region || '',
         country: countryLabels.countryName,
         currency: business?.currency || countryLabels.currency,
         rubroId: business?.rubroId || '',
@@ -513,15 +569,16 @@ export default function BusinessConfiguration() {
       setOrderMessageTemplate(business?.orderMessageTemplate || '');
       setFullAddressInput(
         buildFullAddressLine({
-          address: business?.address,
-          city: business?.city,
-          region: business?.region,
+          address: parsedLegacyAddress.address,
+          city: parsedLegacyAddress.city,
+          region: parsedLegacyAddress.region,
         }),
       );
+      setLocationTouched(false);
       setSlugEditUnlocked(false);
       setSavedConfigSnapshot(buildSavedConfigSnapshotFromBusiness(business));
     }
-  }, [business?.id, business?.updatedAt]);
+  }, [business?.id, business?.updatedAt, businessCountry]);
 
   useEffect(() => {
     getRubros().then(({ data }) => setRubros(data || []));
@@ -535,6 +592,20 @@ export default function BusinessConfiguration() {
 
   const handleFormChange = (field, value) => {
     setForm(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleLocationFieldChange = (field, value) => {
+    const nextValue = value ?? '';
+    setLocationTouched(true);
+    const next = { ...form, [field]: nextValue };
+    setForm(next);
+    setFullAddressInput(
+      buildFullAddressLine({
+        address: next.address,
+        city: next.city,
+        region: next.region,
+      }),
+    );
   };
 
   const handleRubroChange = (nextRaw) => {
@@ -672,7 +743,18 @@ export default function BusinessConfiguration() {
     setIsSaving(true);
 
     const countryToPersist = uxCountry ?? businessCountry;
-    const parsedAddr = parseAddressByCountry(fullAddressInput, countryToPersist);
+    const currentAddress = {
+      address: business?.address || '',
+      city: business?.city || '',
+      region: business?.region || '',
+    };
+    const nextAddress = locationTouched
+      ? {
+          address: normalizeAddressPart(form?.address),
+          city: normalizeAddressPart(form?.city),
+          region: normalizeAddressPart(form?.region),
+        }
+      : currentAddress;
     const slugClean = (s) => (String(s || '').trim() || '').replace(/\s+/g, '-').toLowerCase();
     const nextSlug = slugEditUnlocked
       ? slugClean(form?.slug) || slugClean(business?.slug)
@@ -685,9 +767,9 @@ export default function BusinessConfiguration() {
       printLegend: form?.printLegend?.trim() || null,
       whatsapp: form?.whatsapp,
       email: form?.email,
-      address: parsedAddr.address,
-      city: parsedAddr.city,
-      region: parsedAddr.region,
+      address: nextAddress.address,
+      city: nextAddress.city,
+      region: nextAddress.region,
       rubroId: form?.rubroId || null,
       businessMode: form?.businessMode || BUSINESS_MODES.STORE,
       instagramUrl: form?.instagramUrl || null,
@@ -723,20 +805,22 @@ export default function BusinessConfiguration() {
       }
       const formAfterAddr = {
         ...form,
-        address: parsedAddr.address,
-        city: parsedAddr.city,
-        region: parsedAddr.region,
+        address: nextAddress.address,
+        city: nextAddress.city,
+        region: nextAddress.region,
         slug: nextSlug || form?.slug,
       };
       setForm(formAfterAddr);
-      setFullAddressInput(buildFullAddressLine(parsedAddr));
+      const nextFullAddressInput = buildFullAddressLine(nextAddress);
+      setFullAddressInput(nextFullAddressInput);
+      setLocationTouched(false);
       setSlugEditUnlocked(false);
       setSavedConfigSnapshot(
         JSON.stringify({
           form: formAfterAddr,
           design,
           orderMessageTemplate,
-          fullAddressInput: buildFullAddressLine(parsedAddr),
+          fullAddressInput: nextFullAddressInput,
           uxCountry: countryToPersist,
         }),
       );
@@ -757,6 +841,13 @@ export default function BusinessConfiguration() {
         : null;
     setUxCountry(code);
     const revertedLabels = getCountryLabels(code);
+    const storedAddress = business?.address || '';
+    const storedCity = business?.city || '';
+    const storedRegion = business?.region || '';
+    const parsedLegacyAddress =
+      storedAddress && !storedCity && !storedRegion
+        ? parseAddressByCountry(storedAddress, code)
+        : { address: storedAddress, city: storedCity, region: storedRegion };
     setForm({
       name: business?.name || '',
       slug: business?.slug || '',
@@ -764,9 +855,9 @@ export default function BusinessConfiguration() {
       printLegend: business?.printLegend || business?.print_legend || '',
       whatsapp: business?.whatsapp || '',
       email: business?.email || '',
-      address: business?.address || '',
-      city: business?.city || '',
-      region: business?.region || '',
+      address: parsedLegacyAddress.address || '',
+      city: parsedLegacyAddress.city || '',
+      region: parsedLegacyAddress.region || '',
       country: revertedLabels.countryName,
       currency: business?.currency || revertedLabels.currency,
       rubroId: business?.rubroId || '',
@@ -778,11 +869,12 @@ export default function BusinessConfiguration() {
     setOrderMessageTemplate(business?.orderMessageTemplate || '');
     setFullAddressInput(
       buildFullAddressLine({
-        address: business?.address,
-        city: business?.city,
-        region: business?.region,
+        address: parsedLegacyAddress.address,
+        city: parsedLegacyAddress.city,
+        region: parsedLegacyAddress.region,
       }),
     );
+    setLocationTouched(false);
     setSlugEditUnlocked(false);
     if (business?.designSettings) {
       const ds = business.designSettings;
@@ -1471,26 +1563,103 @@ export default function BusinessConfiguration() {
                 </div>
 
                 <div>
-                  <p className={sectionHeadingClass}>Ubicación simplificada</p>
-                  <SettingsField
-                    label="Dirección completa"
-                    hint="Incluye tu dirección y ciudad para que tus clientes te encuentren fácilmente. Un solo campo: calle, ciudad y referencias de ubicación."
-                  >
-                    <textarea
-                      rows={3}
-                      className={inputClass}
-                      style={inputStyle}
-                      placeholder="Ej: Calle 123, Ciudad"
-                      value={fullAddressInput}
-                      onChange={e => setFullAddressInput(e?.target?.value ?? '')}
-                    />
-                  </SettingsField>
+                  <p className={sectionHeadingClass}>Ubicación del negocio</p>
+                  <p className="text-sm leading-relaxed mb-4" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
+                    Ingresa la dirección de tu local para que tus clientes puedan encontrarte en el catálogo.
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <SettingsField label="Calle y número" hint="Ej: Av. Providencia 2216">
+                      <input
+                        type="text"
+                        className={inputClass}
+                        style={inputStyle}
+                        placeholder="Calle y número"
+                        value={form?.address ?? ''}
+                        onChange={e => handleLocationFieldChange('address', e?.target?.value ?? '')}
+                      />
+                    </SettingsField>
+                    <SettingsField label="Comuna / Ciudad" hint="Ej: Providencia">
+                      <input
+                        type="text"
+                        className={inputClass}
+                        style={inputStyle}
+                        placeholder="Comuna o ciudad"
+                        value={form?.city ?? ''}
+                        onChange={e => handleLocationFieldChange('city', e?.target?.value ?? '')}
+                      />
+                    </SettingsField>
+                    <SettingsField label="Región / Provincia" hint="Ej: Región Metropolitana">
+                      <input
+                        type="text"
+                        className={inputClass}
+                        style={inputStyle}
+                        placeholder="Región o provincia"
+                        value={form?.region ?? ''}
+                        onChange={e => handleLocationFieldChange('region', e?.target?.value ?? '')}
+                      />
+                    </SettingsField>
+                    <SettingsField label="País" hint="Se usa el país configurado para tu negocio">
+                      <input
+                        type="text"
+                        className={inputClass}
+                        style={{ ...inputStyle, background: '#f8fafc', color: '#475569' }}
+                        value={locationCountryLabel || 'Sin país configurado'}
+                        readOnly
+                      />
+                    </SettingsField>
+                  </div>
+
+                  <div className="mt-4 rounded-xl border border-slate-100 bg-slate-50/70 px-4 py-3">
+                    <p className="text-xs font-bold uppercase tracking-wide text-slate-500 font-[family-name:var(--font-caption)]">
+                      Así se usará en Google Maps:
+                    </p>
+                    <p className="mt-1 text-sm font-semibold leading-6 text-slate-800 font-[family-name:var(--font-caption)]">
+                      {googleMapsAddressPreview || 'Completa la dirección para ver la vista previa.'}
+                    </p>
+                    {!hasStreetAddress && (
+                      <p className="mt-1 text-xs text-amber-700 font-[family-name:var(--font-caption)]">
+                        Agrega calle y número para que Google Maps encuentre mejor tu ubicación.
+                      </p>
+                    )}
+                    <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <button
+                        type="button"
+                        disabled={!canTestLocationInMaps}
+                        onClick={() => {
+                          if (!canTestLocationInMaps) return;
+                          window.open(googleMapsPreviewUrl, '_blank', 'noopener,noreferrer');
+                        }}
+                        className="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-all disabled:cursor-not-allowed disabled:opacity-50"
+                        style={{
+                          background: canTestLocationInMaps ? 'var(--color-primary)' : '#cbd5e1',
+                          color: '#fff',
+                          fontFamily: 'var(--font-caption)',
+                        }}
+                      >
+                        <Icon name="MapPin" size={16} color="#fff" />
+                        Probar en Google Maps
+                      </button>
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-slate-800 font-[family-name:var(--font-caption)]">
+                            Mostrar ubicación en mi catálogo
+                          </p>
+                          <p className="text-xs text-slate-500 mt-0.5">Activa el botón de datos del comercio con mapa y cómo llegar.</p>
+                        </div>
+                        <SettingsSwitch
+                          checked={design?.showAddress === true}
+                          onCheckedChange={(v) => setDesign(prev => ({ ...prev, showAddress: v }))}
+                          label="Mostrar ubicación en mi catálogo"
+                        />
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="mt-2 pt-6 border-t border-slate-100">
                   <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Información de tienda</p>
                   <p className="text-xs mb-4" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-                    Horario y si mostrar tu dirección en el catálogo (la dirección la cargás arriba).
+                    Horario y mensajes visibles para tus clientes en el catálogo.
                   </p>
                   <div className="flex flex-col gap-4">
                     <SettingsField label="Horario de atención" hint="Ej: Lun–Vie 9:00–18:00, Sáb 10:00–14:00">
@@ -1516,19 +1685,6 @@ export default function BusinessConfiguration() {
                         onChange={e => setDesign(prev => ({ ...prev, footerText: e?.target?.value ?? '' }))}
                       />
                     </SettingsField>
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-3">
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-slate-800 font-[family-name:var(--font-caption)]">
-                          Mostrar dirección en el catálogo
-                        </p>
-                        <p className="text-xs text-slate-500 mt-0.5">Si está activado, se muestra la dirección y un enlace al mapa</p>
-                      </div>
-                      <SettingsSwitch
-                        checked={design?.showAddress === true}
-                        onCheckedChange={(v) => setDesign(prev => ({ ...prev, showAddress: v }))}
-                        label="Mostrar dirección en el catálogo"
-                      />
-                    </div>
                   </div>
                 </div>
               </div>
