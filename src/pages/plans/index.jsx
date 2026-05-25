@@ -1114,7 +1114,7 @@ export default function PlansPage() {
   }
 
   return (
-    <DashboardAppShell backgroundColor="linear-gradient(180deg, #f7f8fc 0%, #f3f6fb 48%, #f8fafc 100%)">
+    <DashboardAppShell backgroundColor="#f7f8fc">
         <PanelHeader
           title={<h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Plan y facturación</h1>}
           subtitle={<p className="text-xs hidden sm:block mt-0.5" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>{isManualBillingMode ? 'Gestiona tu plan, límites y renovación manual' : 'Gestiona tu plan, límites y renovación'}</p>}
@@ -1202,13 +1202,15 @@ export default function PlansPage() {
             </div>
           )}
 
-          <div id="planes-grid" className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-5">
+          <div id="planes-grid" className="grid grid-cols-1 gap-5 md:grid-cols-3 md:items-stretch lg:gap-6">
             {PLAN_SLUGS.map((slug) => {
               const limits = getPlanLimits(slug);
               const isProTrialCard = slug === 'pro' && isProTrialActive;
               const isCurrent = currentPlan === slug && !isProTrialCard;
               const actionLabel = `Elegir plan ${getPlanLabel(slug)}`;
               const isProRecommended = slug === 'pro';
+              const isFullPlan = slug === 'business';
+              const visual = PLAN_CARD_VISUALS[slug] || PLAN_CARD_VISUALS.starter;
               const displayPrice = getDisplayPlanPrice(slug);
               const annualSavings = getAnnualSavings(slug);
               const marketPlan = getPlanConfig({
@@ -1221,37 +1223,61 @@ export default function PlansPage() {
                 <div
                   key={slug}
                   className={[
-                    'relative rounded-2xl border p-5 flex flex-col transition-all duration-200 hover:-translate-y-0.5',
-                    isProRecommended ? 'shadow-[0_18px_40px_rgba(17,24,39,0.08)]' : '',
+                    'relative flex min-h-full flex-col overflow-hidden rounded-3xl border p-6 transition-all duration-200 hover:-translate-y-1 focus-within:ring-2 focus-within:ring-offset-2 sm:p-7',
+                    isProRecommended ? 'md:-mt-2 md:pb-8' : '',
                   ].filter(Boolean).join(' ')}
                   style={{
-                    backgroundColor: isCurrent ? 'rgba(255,255,255,0.86)' : 'rgba(255,255,255,0.72)',
-                    borderColor: isCurrent ? 'rgba(17,24,39,0.22)' : 'rgba(17,24,39,0.08)',
-                    boxShadow: isCurrent ? '0 0 0 1px rgba(17,24,39,0.14), 0 18px 42px rgba(17,24,39,0.08)' : '0 12px 30px rgba(17,24,39,0.045)',
+                    background: isProRecommended
+                      ? 'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(239,249,255,0.96) 100%)'
+                      : isFullPlan
+                        ? 'linear-gradient(180deg, rgba(255,255,255,0.96) 0%, rgba(245,243,255,0.90) 100%)'
+                        : 'linear-gradient(180deg, rgba(255,255,255,0.96) 0%, rgba(240,253,244,0.74) 100%)',
+                    borderColor: isCurrent ? 'rgba(17,24,39,0.24)' : visual.accentBorder,
+                    boxShadow: isProRecommended
+                      ? '0 24px 58px rgba(0,158,227,0.16), 0 1px 0 rgba(255,255,255,0.9) inset'
+                      : isCurrent
+                        ? '0 0 0 1px rgba(17,24,39,0.12), 0 20px 48px rgba(17,24,39,0.10)'
+                        : '0 18px 44px rgba(17,24,39,0.07)',
+                    '--tw-ring-color': visual.accent,
                   }}
                 >
                   {isProRecommended && (
                     <span
-                      className="absolute -top-2.5 left-1/2 -translate-x-1/2 rounded-full px-3 py-0.5 text-[10px] font-semibold uppercase tracking-wide shadow-sm font-[family-name:var(--font-caption)]"
-                      style={{ backgroundColor: '#111827', color: '#fff' }}
+                      className="absolute left-1/2 top-0 -translate-x-1/2 rounded-b-2xl px-4 py-1.5 text-[11px] font-bold uppercase tracking-[0.16em] shadow-sm font-[family-name:var(--font-caption)]"
+                      style={{ background: 'linear-gradient(135deg, #0f172a 0%, #009EE3 100%)', color: '#fff' }}
                       aria-hidden
                     >
                       Popular
                     </span>
                   )}
-                  <div className="flex items-center justify-between mb-4 pt-1">
-                    <h2 className="text-lg font-semibold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.015em' }}>
-                      {getPlanLabel(slug)}
-                    </h2>
+                  <div className="flex items-start justify-between gap-4 pt-2">
+                    <div className="flex items-center gap-3">
+                      <span
+                        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl"
+                        style={{ backgroundColor: visual.accentSoft, color: visual.accent }}
+                        aria-hidden
+                      >
+                        <Icon name={visual.icon} size={21} color="currentColor" strokeWidth={2.2} />
+                      </span>
+                      <div>
+                        <h2 className="text-xl font-semibold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.015em' }}>
+                          {getPlanLabel(slug)}
+                        </h2>
+                        <p className="mt-1 text-sm leading-snug" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+                          {visual.tagline}
+                        </p>
+                      </div>
+                    </div>
                     {isCurrent && (
-                      <span className="text-xs font-semibold px-2 py-1 rounded-full" style={{ backgroundColor: 'rgba(17,24,39,0.08)', color: '#111827' }}>
+                      <span className="inline-flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold" style={{ backgroundColor: 'rgba(255,255,255,0.78)', borderColor: 'rgba(17,24,39,0.10)', color: '#111827' }}>
+                        <Icon name="CheckCircle2" size={13} color="currentColor" aria-hidden />
                         Actual
                       </span>
                     )}
                   </div>
-                  <div className="mb-4">
+                  <div className="mt-7 mb-5">
                     {displayPrice === 0 ? (
-                      <p className="text-2xl font-bold text-slate-900" style={{ fontFamily: 'var(--font-heading)' }}>
+                      <p className="text-3xl font-semibold text-slate-950 tracking-tight" style={{ fontFamily: 'var(--font-heading)' }}>
                         Gratis
                       </p>
                     ) : (
@@ -1266,18 +1292,18 @@ export default function PlansPage() {
                         {formatSubscriptionPlanPrice(displayPrice, planBillingDisplayCurrency, planBillingDisplayLocale)}
                       </p>
                     )}
-                    <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+                    <p className="text-sm mt-1" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
                       {displayPrice === 0 ? '' : `${isAnnualBilling ? 'por año' : 'por mes'} · ${planBillingDisplayCurrency}`}
                     </p>
                     {isAnnualBilling && annualSavings > 0 && (
-                      <p className="text-xs mt-1" style={{ color: '#047857', fontFamily: 'var(--font-caption)' }}>
+                      <p className="mt-2 inline-flex rounded-full px-2.5 py-1 text-xs font-semibold" style={{ backgroundColor: 'rgba(4,120,87,0.10)', color: '#047857', fontFamily: 'var(--font-caption)' }}>
                         Ahorra {formatSubscriptionPlanPrice(annualSavings, planBillingDisplayCurrency, planBillingDisplayLocale)} al año
                       </p>
                     )}
                   </div>
-                  <ul className="space-y-2 mb-6 flex-1">
-                    <li className="flex items-center gap-2.5 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
-                        <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-slate-600" style={{ backgroundColor: 'rgba(17,24,39,0.06)' }} aria-hidden>
+                  <ul className="space-y-3 mb-7 flex-1">
+                    <li className="flex items-center gap-3 rounded-2xl border px-4 py-3 text-sm" style={{ backgroundColor: 'rgba(255,255,255,0.70)', borderColor: 'rgba(17,24,39,0.08)', color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
+                        <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl" style={{ backgroundColor: visual.accentSoft, color: visual.accent }} aria-hidden>
                         <Icon name="Package" size={16} color="currentColor" />
                       </span>
                       <span>
@@ -1286,8 +1312,8 @@ export default function PlansPage() {
                         {limits.maxProducts == null ? 'Ilimitados' : limits.maxProducts}
                       </span>
                     </li>
-                    <li className="flex items-center gap-2.5 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
-                        <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-slate-600" style={{ backgroundColor: 'rgba(17,24,39,0.06)' }} aria-hidden>
+                    <li className="flex items-center gap-3 rounded-2xl border px-4 py-3 text-sm" style={{ backgroundColor: 'rgba(255,255,255,0.70)', borderColor: 'rgba(17,24,39,0.08)', color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
+                        <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl" style={{ backgroundColor: visual.accentSoft, color: visual.accent }} aria-hidden>
                         <Icon name="ShoppingCart" size={16} color="currentColor" />
                       </span>
                       <span>
@@ -1296,7 +1322,13 @@ export default function PlansPage() {
                         {limits.maxOrdersPerMonth == null ? 'Ilimitados' : limits.maxOrdersPerMonth}
                       </span>
                     </li>
-                    {slug === 'starter' && (
+                    {(PLAN_SECONDARY_BENEFITS[slug] || []).map((benefit) => (
+                      <li key={benefit} className="flex items-start gap-2.5 text-sm leading-5" style={{ color: slug === 'starter' ? 'var(--color-text-tertiary)' : 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
+                        <Icon name="CheckCircle2" size={16} className="mt-0.5 shrink-0" color={visual.accent} aria-hidden />
+                        <span>{benefit}</span>
+                      </li>
+                    ))}
+                    {false && slug === 'starter' && (
                       <>
                         <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Sin estadísticas ni ingresos del mes</li>
                         <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Sin productos más vendidos</li>
@@ -1304,14 +1336,14 @@ export default function PlansPage() {
                         <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Incluye branding de Walinka en mensajes y links compartidos</li>
                       </>
                     )}
-                    {slug === 'pro' && (
+                    {false && slug === 'pro' && (
                       <>
                         <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Panel completo y estadísticas</li>
                         <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Asistencia de IA para descripciones</li>
                         <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Branding discreto: Powered by Walinka</li>
                       </>
                     )}
-                    {slug === 'business' && (
+                    {false && slug === 'business' && (
                       <>
                         <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Panel completo</li>
                         <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Estadísticas completas</li>
@@ -1320,9 +1352,10 @@ export default function PlansPage() {
                       </>
                     )}
                   </ul>
-                  <div className="pt-4 border-t" style={{ borderColor: 'rgba(17,24,39,0.08)' }}>
+                  <div className="pt-5 border-t" style={{ borderColor: 'rgba(17,24,39,0.08)' }}>
                     {isCurrent ? (
-                      <span className="text-sm font-medium" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                      <span className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border px-4 py-3 text-sm font-semibold" style={{ backgroundColor: 'rgba(255,255,255,0.72)', borderColor: 'rgba(17,24,39,0.10)', color: '#111827', fontFamily: 'var(--font-caption)' }}>
+                        <Icon name="CheckCircle2" size={16} color={visual.accent} aria-hidden />
                         Tu plan actual
                       </span>
                     ) : displayPrice > 0 ? (
@@ -1330,7 +1363,7 @@ export default function PlansPage() {
                         <button
                           type="button"
                           disabled
-                          className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium opacity-60"
+                          className="w-full inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-medium opacity-60"
                           style={{ color: 'var(--color-muted-foreground)', border: '1px solid rgba(17,24,39,0.10)', backgroundColor: 'rgba(255,255,255,0.54)' }}
                         >
                           {!isAuthenticated
@@ -1347,8 +1380,8 @@ export default function PlansPage() {
                             type="button"
                             disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !isPurchasable || isAutomaticCheckoutBlocked || isAnnualCheckoutBlocked}
                             onClick={() => handlePayWithMercadoPago(slug)}
-                            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:-translate-y-px disabled:opacity-60"
-                            style={{ backgroundColor: '#009EE3' }}
+                            className="w-full inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:-translate-y-px hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-60"
+                            style={{ background: isProRecommended ? 'linear-gradient(135deg, #009EE3 0%, #0284c7 100%)' : '#009EE3', '--tw-ring-color': '#009EE3' }}
                           >
                             {loadingPlanSlug === slug ? (
                               <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -1367,8 +1400,8 @@ export default function PlansPage() {
                             type="button"
                             disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !isPurchasable || isAutomaticCheckoutBlocked || isAnnualBilling || !isProviderReadyForCheckout(PAYMENT_PROVIDERS.PAYPAL)}
                             onClick={() => handlePayWithPaypal(slug)}
-                            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:-translate-y-px disabled:opacity-60"
-                            style={{ backgroundColor: '#0070ba' }}
+                            className="w-full inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:-translate-y-px hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-60"
+                            style={{ backgroundColor: '#0070ba', '--tw-ring-color': '#0070ba' }}
                           >
                             {loadingPlanSlug === slug ? (
                               <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -1387,8 +1420,8 @@ export default function PlansPage() {
                             type="button"
                             disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !isPurchasable || isAnnualBilling}
                             onClick={() => handleOpenIntlPlanPreview(slug)}
-                            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:-translate-y-px disabled:opacity-60"
-                            style={{ backgroundColor: '#25D366' }}
+                            className="w-full inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:-translate-y-px hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-60"
+                            style={{ backgroundColor: '#25D366', '--tw-ring-color': '#25D366' }}
                           >
                             {loadingPlanSlug === slug ? (
                               <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -1407,7 +1440,7 @@ export default function PlansPage() {
                         </span>
                       )
                     ) : (
-                      <span className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+                      <span className="inline-flex w-full items-center justify-center rounded-2xl border px-4 py-3 text-sm font-medium" style={{ backgroundColor: 'rgba(255,255,255,0.66)', borderColor: 'rgba(17,24,39,0.08)', color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
                         Plan gratuito
                       </span>
                     )}
@@ -1415,6 +1448,17 @@ export default function PlansPage() {
                 </div>
               );
             })}
+          </div>
+
+          <div className="mt-6 grid grid-cols-1 gap-3 rounded-3xl border p-3 sm:grid-cols-2 lg:grid-cols-4" style={{ backgroundColor: 'rgba(255,255,255,0.72)', borderColor: 'rgba(17,24,39,0.08)', boxShadow: '0 14px 34px rgba(17,24,39,0.045)' }}>
+            {TRUST_BENEFITS.map(([iconName, label]) => (
+              <div key={label} className="flex items-center gap-3 rounded-2xl px-3 py-3" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl" style={{ backgroundColor: 'rgba(0,158,227,0.09)', color: '#009EE3' }} aria-hidden>
+                  <Icon name={iconName} size={17} color="currentColor" />
+                </span>
+                <span className="text-sm font-medium">{label}</span>
+              </div>
+            ))}
           </div>
 
           {preview && previewPlanSlug && (
