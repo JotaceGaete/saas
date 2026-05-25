@@ -8,12 +8,25 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const ALLOWED_PLANS = ['control', 'starter', 'pro', 'business'];
-const PLAN_DURATION_DAYS = 30;
+const MONTHLY_PLAN_DURATION_DAYS = 30;
+const ANNUAL_PLAN_DURATION_DAYS = 365;
 const LOOPS_TRANSACTIONAL_URL = 'https://app.loops.so/api/v1/transactional';
 
 // Jerarquía de planes: mayor número = plan más alto.
 // 'control' y 'starter' son equivalentes (plan base).
 const PLAN_ORDER: Record<string, number> = { starter: 0, control: 0, pro: 1, business: 2 };
+
+function normalizeBillingPeriod(value: unknown): 'monthly' | 'annual' {
+  return String(value || '').trim().toLowerCase() === 'annual' ? 'annual' : 'monthly';
+}
+
+function resolveDurationDays(metadata: Record<string, unknown>): number {
+  const n = Number(metadata.durationDays);
+  if (Number.isFinite(n) && n > 0) return Math.round(n);
+  return normalizeBillingPeriod(metadata.billingPeriod) === 'annual'
+    ? ANNUAL_PLAN_DURATION_DAYS
+    : MONTHLY_PLAN_DURATION_DAYS;
+}
 
 function resolveMpAccessToken(countryCode: string): string {
   if (countryCode === 'AR') {
@@ -146,6 +159,7 @@ async function maybeSendMercadoPagoReceiptEmail({
   subscriptionStatus,
   paidAt,
   nextRenewalDate,
+  billingPeriod,
 }: {
   db: ReturnType<typeof createClient>;
   paymentId: string | null;
@@ -153,6 +167,7 @@ async function maybeSendMercadoPagoReceiptEmail({
   subscriptionStatus: string;
   paidAt: string;
   nextRenewalDate: string;
+  billingPeriod?: string;
 }) {
   if (!paymentId) return;
   try {
@@ -190,7 +205,7 @@ async function maybeSendMercadoPagoReceiptEmail({
       customerName: String(userResult?.user?.user_metadata?.name || userResult?.user?.user_metadata?.full_name || businessRow?.name || 'Cliente'),
       businessName: String(businessRow?.name || 'Walinka'),
       planName: getPlanName(String(paymentRow.plan_slug || 'starter')),
-      planPeriod: 'Mensual',
+      planPeriod: normalizeBillingPeriod(billingPeriod || metadata.billingPeriod) === 'annual' ? 'Anual' : 'Mensual',
       amountFormatted: formatReceiptAmount(paymentRow.amount, String(paymentRow.currency || 'CLP')),
       currency: String(paymentRow.currency || 'CLP').toUpperCase(),
       paymentProvider: 'Mercado Pago',
@@ -484,6 +499,24 @@ Deno.serve(async (req) => {
 
   console.log('[mp-webhook] pago APROBADO', { mp_payment_id: dataId, businessId, planSlug, paymentId });
 
+  let paymentMetadata: Record<string, unknown> = {};
+  if (paymentId) {
+    const { data: paymentMetaRow, error: paymentMetaError } = await db
+      .from('wa_payments')
+      .select('metadata')
+      .eq('id', paymentId)
+      .maybeSingle();
+    if (paymentMetaError) {
+      console.warn('[mp-webhook] payment metadata read failed:', paymentMetaError.message);
+    }
+    paymentMetadata = paymentMetaRow?.metadata && typeof paymentMetaRow.metadata === 'object'
+      ? paymentMetaRow.metadata as Record<string, unknown>
+      : {};
+  }
+  const billingPeriod = normalizeBillingPeriod(paymentMetadata.billingPeriod);
+  const durationDays = resolveDurationDays(paymentMetadata);
+  const intervalUnit = billingPeriod === 'annual' ? 'year' : 'month';
+
   // ── 8. Verificar negocio y determinar estado de trial (fuente de verdad) ────
   // Se hace ANTES de calcular fechas para que bizIsActiveTrial guíe todo lo demás.
   const { data: bizRow, error: bizCheckError } = await db
@@ -530,12 +563,12 @@ Deno.serve(async (req) => {
   if (bizIsActiveTrial && bizTrialExpiresAt) {
     planActivatedAtIso = bizTrialExpiresAt;
     const endOfPeriod  = new Date(bizTrialExpiresAt);
-    endOfPeriod.setDate(endOfPeriod.getDate() + PLAN_DURATION_DAYS);
+    endOfPeriod.setDate(endOfPeriod.getDate() + durationDays);
     planExpiresAtIso   = endOfPeriod.toISOString();
   } else {
     planActivatedAtIso = now.toISOString();
     const planExpiresAt = new Date(now);
-    planExpiresAt.setDate(planExpiresAt.getDate() + PLAN_DURATION_DAYS);
+    planExpiresAt.setDate(planExpiresAt.getDate() + durationDays);
     planExpiresAtIso    = planExpiresAt.toISOString();
   }
 
@@ -641,9 +674,11 @@ Deno.serve(async (req) => {
         plan_slug:                planSlug,
         status:                   'active',
         provider:                 'mercado_pago',
+        interval_unit:            intervalUnit,
         trial_ends_at:            null,
         current_period_starts_at: now.toISOString(),
         current_period_ends_at:   planExpiresAtIso,
+        next_billing_date:        planExpiresAtIso,
       })
       .eq('business_id', businessId);
     if (subSyncError) {
@@ -678,6 +713,7 @@ Deno.serve(async (req) => {
     subscriptionStatus: 'active',
     paidAt: planActivatedAtIso,
     nextRenewalDate: planExpiresAtIso,
+    billingPeriod,
   });
   const waitUntil = (globalThis as unknown as { EdgeRuntime?: { waitUntil?: (promise: Promise<void>) => void } })?.EdgeRuntime?.waitUntil;
   if (waitUntil) {

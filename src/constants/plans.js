@@ -1,4 +1,4 @@
-import { getPlanPriceForCountry } from '../config/countryPricing';
+import { getPlanPriceForCountry, getPlanPriceForCountryAndPeriod } from '../config/countryPricing';
 
 /**
  * Planes del producto: nombres, límites numéricos y helpers.
@@ -38,6 +38,12 @@ export const PLAN_PRICES_CLP = Object.freeze({
   business: 9990,
 });
 
+export const PLAN_PRICES_CLP_ANNUAL = Object.freeze({
+  starter:  0,
+  pro:      59900,
+  business: 99900,
+});
+
 /** Precios en ARS (Argentina). */
 export const PLAN_PRICES_ARS = Object.freeze({
   starter:  0,
@@ -45,11 +51,23 @@ export const PLAN_PRICES_ARS = Object.freeze({
   business: 13990,
 });
 
+export const PLAN_PRICES_ARS_ANNUAL = Object.freeze({
+  starter:  0,
+  pro:      89900,
+  business: 139900,
+});
+
 /** Precios en USD (referencia internacional, fuera de Chile). Pro=6 USD, Full=10 USD. */
 export const PLAN_PRICES_USD = Object.freeze({
   starter:  0,
   pro:      6,
   business: 10,
+});
+
+export const PLAN_PRICES_USD_ANNUAL = Object.freeze({
+  starter:  0,
+  pro:      60,
+  business: 100,
 });
 
 /**
@@ -120,6 +138,17 @@ export function getPlanPrice(planSlug) {
  */
 export function getPlanPriceByCountry(planSlug, countryCode, _paymentProvider) {
   return getPlanPriceForCountry(countryCode, planSlug);
+}
+
+/**
+ * Precio del plan según país y ciclo de facturación.
+ * @param {string} planSlug
+ * @param {string} [countryCode]
+ * @param {'monthly'|'annual'|string|null} [billingPeriod]
+ * @returns {number}
+ */
+export function getPlanPriceByCountryAndPeriod(planSlug, countryCode, billingPeriod = 'monthly') {
+  return getPlanPriceForCountryAndPeriod(countryCode, planSlug, billingPeriod);
 }
 
 /**

@@ -46,6 +46,7 @@ const BILLING_SUBSCRIPTION_COLUMNS = new Set([
   'starts_at',
   'current_period_starts_at',
   'current_period_ends_at',
+  'next_billing_date',
   'cancel_at_period_end',
   'cancelled_at',
   'metadata_json',
@@ -92,6 +93,7 @@ function enrichSubscriptionRow(row) {
     currency_code: row.currency_code ?? null,
     interval_unit: row.interval_unit ?? null,
     current_period_ends_at: row.current_period_ends_at ?? null,
+    next_billing_date: row.next_billing_date ?? null,
     provider_status: row.provider_status ?? null,
   };
 }

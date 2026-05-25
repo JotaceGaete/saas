@@ -190,6 +190,7 @@ export default function PlansPage() {
   const [manualPaymentModalOpen, setManualPaymentModalOpen] = useState(false);
   const [manualPaymentPlanSlug, setManualPaymentPlanSlug] = useState(null);
   const [subscriptionState, setSubscriptionState] = useState(null);
+  const [billingPeriod, setBillingPeriod] = useState('monthly');
 
   const openManualPaymentModal = useCallback((planSlug) => {
     setManualPaymentPlanSlug(planSlug ?? null);
@@ -313,8 +314,18 @@ export default function PlansPage() {
     ),
     [subscriptionState?.billingProvider?.alternatives, subscriptionState?.billingProvider],
   );
-  const getDisplayPlanPrice = (slug) =>
-    getPlanPrice({ countryCode: businessCountryCode, planSlug: slug }) ?? 0;
+  const isMercadoPagoAnnualMarket = ['CL', 'AR'].includes(String(countryState.billingCountry || businessCountryCode || '').toUpperCase());
+  const isAnnualBilling = billingPeriod === 'annual';
+  const annualUnavailableMessage = 'Pago anual disponible por ahora con Mercado Pago en Chile y Argentina.';
+  const isAnnualCheckoutBlocked =
+    isAnnualBilling && (checkoutProvider !== PAYMENT_PROVIDERS.MERCADO_PAGO || !isMercadoPagoAnnualMarket);
+  const getDisplayPlanPrice = (slug, period = billingPeriod) =>
+    getPlanPrice({ countryCode: businessCountryCode, planSlug: slug, billingPeriod: period }) ?? 0;
+  const getAnnualSavings = (slug) => {
+    const monthlyTotal = getDisplayPlanPrice(slug, 'monthly') * 12;
+    const annualPrice = getDisplayPlanPrice(slug, 'annual');
+    return Math.max(0, monthlyTotal - annualPrice);
+  };
   const planExpiryMs = useMemo(() => {
     const iso = billingSubscriptionRow?.next_billing_date || business?.planExpiresAt;
     return iso ? new Date(iso).getTime() : null;
@@ -405,7 +416,13 @@ export default function PlansPage() {
     countryState.businessCountry,
     countryState.billingCountry,
     businessCountryCode,
+    billingPeriod,
   ]);
+
+  useEffect(() => {
+    setPreview(null);
+    setPreviewPlanSlug(null);
+  }, [billingPeriod]);
 
   useEffect(() => {
     const payment = searchParams.get('payment');
@@ -547,7 +564,7 @@ export default function PlansPage() {
     if (!token) return null;
     const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
     const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
-    const body = { targetPlanSlug, provider: checkoutProvider };
+    const body = { targetPlanSlug, provider: checkoutProvider, billingPeriod };
     const res = await fetch(`${supabaseUrl}/functions/v1/plan-change-preview`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, apikey: anonKey },
@@ -565,6 +582,10 @@ export default function PlansPage() {
     }
     console.info(PAYMENT_DEBUG_PREFIX, { event: 'click_plan_button', handler: 'handleOpenIntlPlanPreview', planSlug, resolvedCountryCode: countryCode });
     if (getDisplayPlanPrice(planSlug) <= 0) return;
+    if (isAnnualBilling) {
+      toast.info(annualUnavailableMessage);
+      return;
+    }
     setLoadingPlanSlug(planSlug);
 
     setPreview(null);
@@ -616,6 +637,10 @@ export default function PlansPage() {
       resolvedProvider: checkoutProvider,
     });
     if (getDisplayPlanPrice(planSlug) <= 0) return;
+    if (isAnnualCheckoutBlocked) {
+      toast.info(annualUnavailableMessage);
+      return;
+    }
     if (isAutomaticCheckoutBlocked) {
       toast.info(automaticCheckoutBlockedMessage);
       return;
@@ -679,6 +704,10 @@ export default function PlansPage() {
       resolvedProvider: checkoutProvider,
     });
     if (getDisplayPlanPrice(planSlug) <= 0) return;
+    if (isAnnualBilling) {
+      toast.info(annualUnavailableMessage);
+      return;
+    }
     console.info(`[billing-cta] provider=paypal plan=${planSlug} action=start`);
     if (isAutomaticCheckoutBlocked) {
       toast.info(automaticCheckoutBlockedMessage);
@@ -749,8 +778,13 @@ export default function PlansPage() {
       handler: 'confirmPayWithMercadoPago',
       planSlug: previewPlanSlug,
       resolvedCountryCode: countryCode,
+      billingPeriod,
     });
     if (!previewPlanSlug) return;
+    if (isAnnualCheckoutBlocked) {
+      toast.info(annualUnavailableMessage);
+      return;
+    }
     if (isAutomaticCheckoutBlocked) {
       toast.info(automaticCheckoutBlockedMessage);
       return;
@@ -791,6 +825,7 @@ export default function PlansPage() {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, apikey: anonKey },
         body: JSON.stringify({
           planSlug: previewPlanSlug,
+          billingPeriod,
           success_url: `${returnBaseUrl}/planes?payment=success`,
           failure_url: `${returnBaseUrl}/planes?payment=failure`,
           pending_url: `${returnBaseUrl}/planes?payment=pending`,
@@ -837,6 +872,10 @@ export default function PlansPage() {
     }
     const targetPlanSlug = String(options?.planSlugOverride || previewPlanSlug || '').trim().toLowerCase();
     if (!targetPlanSlug) return;
+    if (isAnnualBilling && normalizeBillingProvider(provider) !== PAYMENT_PROVIDERS.MERCADO_PAGO) {
+      toast.info(annualUnavailableMessage);
+      return;
+    }
     if (isAutomaticCheckoutBlocked) {
       toast.info(automaticCheckoutBlockedMessage);
       return;
@@ -935,6 +974,10 @@ export default function PlansPage() {
   };
 
   const handleConfirmPrimaryPayment = () => {
+    if (isAnnualBilling && checkoutProvider !== PAYMENT_PROVIDERS.MERCADO_PAGO) {
+      toast.info(annualUnavailableMessage);
+      return undefined;
+    }
     if (checkoutProvider === PAYMENT_PROVIDERS.PAYPAL) return confirmPayWithProvider(PAYMENT_PROVIDERS.PAYPAL);
     if (checkoutProvider === PAYMENT_PROVIDERS.MERCADO_PAGO) return confirmPayWithMercadoPago();
     if (checkoutProvider === PAYMENT_PROVIDERS.MANUAL) return confirmActivationViaWhatsApp();
@@ -957,6 +1000,14 @@ export default function PlansPage() {
       return providerCatalogAmount;
     }
     return reported;
+  };
+
+  const handleBillingPeriodChange = (nextPeriod) => {
+    const normalized = nextPeriod === 'annual' ? 'annual' : 'monthly';
+    if (normalized === 'annual' && checkoutProvider && checkoutProvider !== PAYMENT_PROVIDERS.MERCADO_PAGO) {
+      toast.info(annualUnavailableMessage);
+    }
+    setBillingPeriod(normalized);
   };
 
   const isProviderReadyForCheckout = (provider) => {
@@ -1015,6 +1066,58 @@ export default function PlansPage() {
             </p>
           </div>
 
+          <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="inline-flex w-fit rounded-xl border p-1" style={{ backgroundColor: 'rgba(255,255,255,0.72)', borderColor: 'rgba(17,24,39,0.10)' }}>
+              {[
+                ['monthly', 'Mensual'],
+                ['annual', 'Anual'],
+              ].map(([period, label]) => (
+                <button
+                  key={period}
+                  type="button"
+                  onClick={() => handleBillingPeriodChange(period)}
+                  className="rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
+                  style={{
+                    backgroundColor: billingPeriod === period ? '#111827' : 'transparent',
+                    color: billingPeriod === period ? '#fff' : 'var(--color-text-secondary)',
+                    fontFamily: 'var(--font-caption)',
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {isAnnualBilling && isAnnualCheckoutBlocked && (
+              <p className="text-xs leading-snug" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+                {annualUnavailableMessage}
+              </p>
+            )}
+          </div>
+
+          {isAnnualBilling && (
+            <div className="mb-5 grid gap-2 sm:grid-cols-3">
+              {[
+                ['BadgePercent', 'Ahorra hasta 2 meses'],
+                ['Sparkles', 'Acceso anticipado a nuevas funciones'],
+                ['Crown', 'Beneficios exclusivos para miembros anuales'],
+              ].map(([iconName, label]) => (
+                <div
+                  key={label}
+                  className="flex items-center gap-2 rounded-xl border px-3 py-2 text-sm"
+                  style={{
+                    backgroundColor: 'rgba(255,255,255,0.72)',
+                    borderColor: 'rgba(17,24,39,0.10)',
+                    color: 'var(--color-text-secondary)',
+                    fontFamily: 'var(--font-caption)',
+                  }}
+                >
+                  <Icon name={iconName} size={15} className="shrink-0 text-emerald-700" aria-hidden />
+                  <span>{label}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
           <div id="planes-grid" className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-5">
             {PLAN_SLUGS.map((slug) => {
               const limits = getPlanLimits(slug);
@@ -1022,6 +1125,8 @@ export default function PlansPage() {
               const isCurrent = currentPlan === slug && !isProTrialCard;
               const actionLabel = `Elegir plan ${getPlanLabel(slug)}`;
               const isProRecommended = slug === 'pro';
+              const displayPrice = getDisplayPlanPrice(slug);
+              const annualSavings = getAnnualSavings(slug);
               const marketPlan = getPlanConfig({
                 marketCode,
                 planSlug: slug,
@@ -1061,7 +1166,7 @@ export default function PlansPage() {
                     )}
                   </div>
                   <div className="mb-4">
-                    {getDisplayPlanPrice(slug) === 0 ? (
+                    {displayPrice === 0 ? (
                       <p className="text-2xl font-bold text-slate-900" style={{ fontFamily: 'var(--font-heading)' }}>
                         Gratis
                       </p>
@@ -1074,12 +1179,17 @@ export default function PlansPage() {
                         }
                         style={{ fontFamily: 'var(--font-heading)' }}
                       >
-                        {formatSubscriptionPlanPrice(getDisplayPlanPrice(slug), planBillingDisplayCurrency, planBillingDisplayLocale)}
+                        {formatSubscriptionPlanPrice(displayPrice, planBillingDisplayCurrency, planBillingDisplayLocale)}
                       </p>
                     )}
                     <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-                      {getDisplayPlanPrice(slug) === 0 ? '' : `por mes · ${planBillingDisplayCurrency}`}
+                      {displayPrice === 0 ? '' : `${isAnnualBilling ? 'por año' : 'por mes'} · ${planBillingDisplayCurrency}`}
                     </p>
+                    {isAnnualBilling && annualSavings > 0 && (
+                      <p className="text-xs mt-1" style={{ color: '#047857', fontFamily: 'var(--font-caption)' }}>
+                        Ahorra {formatSubscriptionPlanPrice(annualSavings, planBillingDisplayCurrency, planBillingDisplayLocale)} al año
+                      </p>
+                    )}
                   </div>
                   <ul className="space-y-2 mb-6 flex-1">
                     <li className="flex items-center gap-2.5 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
@@ -1131,7 +1241,7 @@ export default function PlansPage() {
                       <span className="text-sm font-medium" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
                         Tu plan actual
                       </span>
-                    ) : getDisplayPlanPrice(slug) > 0 ? (
+                    ) : displayPrice > 0 ? (
                       !billingReady || !checkoutProvider || !hasServerSelectedProvider ? (
                         <button
                           type="button"
@@ -1151,7 +1261,7 @@ export default function PlansPage() {
                         <div className="w-full flex flex-col gap-1">
                           <button
                             type="button"
-                            disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !isPurchasable || isAutomaticCheckoutBlocked}
+                            disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !isPurchasable || isAutomaticCheckoutBlocked || isAnnualCheckoutBlocked}
                             onClick={() => handlePayWithMercadoPago(slug)}
                             className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:-translate-y-px disabled:opacity-60"
                             style={{ backgroundColor: '#009EE3' }}
@@ -1171,7 +1281,7 @@ export default function PlansPage() {
                         <div className="w-full flex flex-col gap-2">
                           <button
                             type="button"
-                            disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !isPurchasable || isAutomaticCheckoutBlocked || !isProviderReadyForCheckout(PAYMENT_PROVIDERS.PAYPAL)}
+                            disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !isPurchasable || isAutomaticCheckoutBlocked || isAnnualBilling || !isProviderReadyForCheckout(PAYMENT_PROVIDERS.PAYPAL)}
                             onClick={() => handlePayWithPaypal(slug)}
                             className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:-translate-y-px disabled:opacity-60"
                             style={{ backgroundColor: '#0070ba' }}
@@ -1191,7 +1301,7 @@ export default function PlansPage() {
                         <div className="w-full flex flex-col gap-1">
                           <button
                             type="button"
-                            disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !isPurchasable}
+                            disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !isPurchasable || isAnnualBilling}
                             onClick={() => handleOpenIntlPlanPreview(slug)}
                             className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:-translate-y-px disabled:opacity-60"
                             style={{ backgroundColor: '#25D366' }}
@@ -1291,7 +1401,7 @@ export default function PlansPage() {
                   <button
                     type="button"
                     onClick={() => confirmPayWithProvider(PAYMENT_PROVIDERS.PAYPAL)}
-                    disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !billingReady || !isProviderReadyForCheckout(PAYMENT_PROVIDERS.PAYPAL) || isAutomaticCheckoutBlocked}
+                  disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !billingReady || isAnnualBilling || !isProviderReadyForCheckout(PAYMENT_PROVIDERS.PAYPAL) || isAutomaticCheckoutBlocked}
                     className="inline-flex flex-col items-center justify-center gap-0.5 px-4 py-2.5 rounded-lg text-sm font-medium transition-opacity hover:opacity-90 disabled:opacity-60 min-w-[9rem]"
                     style={{ color: '#0070ba', border: '1px solid #0070ba' }}
                   >
@@ -1303,7 +1413,7 @@ export default function PlansPage() {
                   <button
                     type="button"
                     onClick={confirmPayWithMercadoPago}
-                    disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !billingReady || !isProviderReadyForCheckout(PAYMENT_PROVIDERS.MERCADO_PAGO) || isAutomaticCheckoutBlocked}
+                    disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !billingReady || !isProviderReadyForCheckout(PAYMENT_PROVIDERS.MERCADO_PAGO) || isAutomaticCheckoutBlocked || isAnnualCheckoutBlocked}
                     className="inline-flex flex-col items-center justify-center gap-0.5 px-4 py-2.5 rounded-lg text-sm font-medium transition-opacity hover:opacity-90 disabled:opacity-60 min-w-[9rem]"
                     style={{ color: '#009EE3', border: '1px solid #009EE3' }}
                   >

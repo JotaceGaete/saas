@@ -28,6 +28,12 @@ const USD_DISPLAY_PRICES = Object.freeze({
   business: 10,
 });
 
+const USD_DISPLAY_ANNUAL_PRICES = Object.freeze({
+  starter: 0,
+  pro: 60,
+  business: 100,
+});
+
 /**
  * Overrides: marketStatus, proveedor, y precios solo donde aplica moneda local (CL, AR).
  * El resto hereda precios USD de referencia.
@@ -37,11 +43,13 @@ const COUNTRY_PRICING_OVERRIDES = Object.freeze({
     marketStatus: PRICING_MARKET_STATUS.ACTIVE,
     defaultProvider: /** @type {BillingProviderKey} */ ('mercado_pago'),
     localPrices: { starter: 0, pro: 5990, business: 9990 },
+    localAnnualPrices: { starter: 0, pro: 59900, business: 99900 },
   },
   AR: {
     marketStatus: PRICING_MARKET_STATUS.ACTIVE,
     defaultProvider: 'mercado_pago',
     localPrices: { starter: 0, pro: 8990, business: 13990 },
+    localAnnualPrices: { starter: 0, pro: 89900, business: 139900 },
   },
   BO: { marketStatus: PRICING_MARKET_STATUS.BETA, defaultProvider: 'paypal' },
   PE: { marketStatus: PRICING_MARKET_STATUS.BETA, defaultProvider: 'paypal' },
@@ -58,6 +66,10 @@ function normalizeCountryCode(value) {
   const code = String(value || '').trim().toUpperCase();
   if (!code) return null;
   return COUNTRY_CODES.includes(code) ? code : null;
+}
+
+export function normalizeBillingPeriod(value) {
+  return String(value || '').trim().toLowerCase() === 'annual' ? 'annual' : 'monthly';
 }
 
 /** Solo CL y AR: precios de planes en moneda local en pantalla. */
@@ -87,6 +99,7 @@ export function getLegacyBillingMarketCode(countryCode) {
  *   locale: string,
  *   defaultProvider: BillingProviderKey,
  *   prices: { starter: number, pro: number, business: number },
+ *   annualPrices: { starter: number, pro: number, business: number },
  *   legacyMarketCode: string,
  *   showDlocalLocalChargeNotice: boolean,
  * }}
@@ -104,6 +117,9 @@ export function getCountryPricingRow(countryCode) {
   const prices = localDisplay && overrides.localPrices
     ? { ...overrides.localPrices }
     : { ...USD_DISPLAY_PRICES };
+  const annualPrices = localDisplay && overrides.localAnnualPrices
+    ? { ...overrides.localAnnualPrices }
+    : { ...USD_DISPLAY_ANNUAL_PRICES };
 
   const currency = localDisplay ? settlementCurrency : 'USD';
   const locale = localDisplay ? (cfg?.locale || 'en-US') : 'en-US';
@@ -118,6 +134,7 @@ export function getCountryPricingRow(countryCode) {
     locale,
     defaultProvider,
     prices,
+    annualPrices,
     legacyMarketCode: getLegacyBillingMarketCode(normalized),
     showDlocalLocalChargeNotice,
   };
@@ -139,9 +156,21 @@ export function getDlocalLocalChargeDisclaimer(countryCode) {
  * @returns {number}
  */
 export function getPlanPriceForCountry(countryCode, planSlug) {
+  return getPlanPriceForCountryAndPeriod(countryCode, planSlug, 'monthly');
+}
+
+/**
+ * @param {string|null|undefined} countryCode
+ * @param {string} planSlug
+ * @param {'monthly'|'annual'|string|null|undefined} billingPeriod
+ * @returns {number}
+ */
+export function getPlanPriceForCountryAndPeriod(countryCode, planSlug, billingPeriod = 'monthly') {
   const row = getCountryPricingRow(countryCode);
   const slug = String(planSlug || '').trim().toLowerCase();
-  const n = row.prices[slug];
+  const period = normalizeBillingPeriod(billingPeriod);
+  const source = period === 'annual' ? row.annualPrices : row.prices;
+  const n = source[slug];
   return Number.isFinite(Number(n)) ? Number(n) : 0;
 }
 

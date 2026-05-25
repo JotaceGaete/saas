@@ -17,10 +17,22 @@ export const PLAN_CATALOG_CL: PlanCatalog = {
   business: { displayName: 'Plan Full', price: 9990,  durationDays: 30 },
 };
 
+export const PLAN_CATALOG_CL_ANNUAL: PlanCatalog = {
+  starter:  { displayName: 'Starter',   price: 0,     durationDays: 365 },
+  pro:      { displayName: 'Plan Pro',  price: 59900, durationDays: 365 },
+  business: { displayName: 'Plan Full', price: 99900, durationDays: 365 },
+};
+
 export const PLAN_CATALOG_AR: PlanCatalog = {
   starter:  { displayName: 'Starter',       price: 0,     durationDays: 30 },
   pro:      { displayName: 'Plan Pro',      price: 8990,  durationDays: 30 },
   business: { displayName: 'Plan Business', price: 13990, durationDays: 30 },
+};
+
+export const PLAN_CATALOG_AR_ANNUAL: PlanCatalog = {
+  starter:  { displayName: 'Starter',       price: 0,      durationDays: 365 },
+  pro:      { displayName: 'Plan Pro',      price: 89900,  durationDays: 365 },
+  business: { displayName: 'Plan Business', price: 139900, durationDays: 365 },
 };
 
 export const INTL_USD_PRICES: Record<string, number> = { starter: 0, pro: 6, business: 10 };
@@ -39,10 +51,16 @@ export function parseSafeDate(value: string | null | undefined): number | null {
   return Number.isFinite(ms) ? ms : null;
 }
 
-export function getPlanCatalog(country: string | undefined, provider?: string): PlanCatalog | null {
+export function normalizeBillingPeriod(value: string | undefined): 'monthly' | 'annual' {
+  return String(value || '').trim().toLowerCase() === 'annual' ? 'annual' : 'monthly';
+}
+
+export function getPlanCatalog(country: string | undefined, provider?: string, billingPeriod?: string): PlanCatalog | null {
   if (provider === 'manual' || provider === 'lemonsqueezy') return null;
   if (country && country !== 'CL' && country !== 'AR') return null;
-  return country === 'AR' ? PLAN_CATALOG_AR : PLAN_CATALOG_CL;
+  const period = normalizeBillingPeriod(billingPeriod);
+  if (country === 'AR') return period === 'annual' ? PLAN_CATALOG_AR_ANNUAL : PLAN_CATALOG_AR;
+  return period === 'annual' ? PLAN_CATALOG_CL_ANNUAL : PLAN_CATALOG_CL;
 }
 
 export function normalizeCountryCode(value: string | undefined): string {
@@ -84,6 +102,8 @@ export interface PlanChangeResult {
   effectiveAt?: string;
   scheduledChange?: { targetPlanSlug: string; effectiveAt: string };
   prorationFormulaVersion: string;
+  billingPeriod?: 'monthly' | 'annual';
+  durationDays?: number;
 }
 
 export function computePlanChange(
@@ -91,6 +111,7 @@ export function computePlanChange(
   planExpiresAt: string | null,
   targetPlanSlug: string,
   catalog: PlanCatalog,
+  billingPeriod: 'monthly' | 'annual' = 'monthly',
 ): PlanChangeResult {
   // FIX-3: normalizar slug legacy 'control' a 'starter' de forma explícita.
   // Evita cálculo silencioso con catalog['control'] = undefined → price = 0.
@@ -124,7 +145,10 @@ export function computePlanChange(
   }
 
   let finalAmount: number;
-  if (changeType === 'upgrade') {
+  if (billingPeriod === 'annual' && changeType !== 'downgrade') {
+    finalAmount = targetPlanPrice;
+    creditAmount = 0;
+  } else if (changeType === 'upgrade') {
     finalAmount = Math.max(0, Math.floor(targetPlanPrice - creditAmount));
   } else if (changeType === 'renewal') {
     finalAmount = targetPlanPrice;
@@ -161,7 +185,9 @@ export function computePlanChange(
     message,
     effectiveAt,
     scheduledChange,
-    prorationFormulaVersion: PRORATION_FORMULA_VERSION,
+    prorationFormulaVersion: billingPeriod === 'annual' ? 'annual-no-proration' : PRORATION_FORMULA_VERSION,
+    billingPeriod,
+    durationDays: catalog[targetPlanSlug]?.durationDays ?? (billingPeriod === 'annual' ? 365 : 30),
   };
 }
 

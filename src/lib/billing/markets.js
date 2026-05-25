@@ -2,6 +2,7 @@ import { TRIAL_DURATION_DAYS } from '../../constants/trial';
 import {
   getCountryPricingRow,
   getPlanPriceForCountry,
+  getPlanPriceForCountryAndPeriod,
   getLegacyBillingMarketCode,
 } from '../../config/countryPricing';
 import { PAYMENT_PROVIDERS } from './providers';
@@ -87,9 +88,9 @@ export function getPlanConfig({ marketCode, planSlug, countryCode }) {
   return block.plans?.[slug] || block.plans.starter;
 }
 
-export function getPlanPrice({ marketCode, planSlug, countryCode }) {
+export function getPlanPrice({ marketCode, planSlug, countryCode, billingPeriod = 'monthly' }) {
   if (countryCode != null && String(countryCode).trim() !== '') {
-    return getPlanPriceForCountry(countryCode, planSlug);
+    return getPlanPriceForCountryAndPeriod(countryCode, planSlug, billingPeriod);
   }
   const plan = getPlanConfig({ marketCode, planSlug });
   return Number.isFinite(Number(plan?.amount)) ? Number(plan.amount) : null;

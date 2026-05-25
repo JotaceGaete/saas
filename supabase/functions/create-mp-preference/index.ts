@@ -8,11 +8,18 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 const VALID_PLAN_SLUGS = ['starter', 'pro', 'business'];
 const PLAN_ORDER: Record<string, number> = { starter: 0, control: 0, pro: 1, business: 2 };
 type PlanCatalog = Record<string, { displayName: string; price: number; durationDays: number }>;
+type BillingPeriod = 'monthly' | 'annual';
 
 const PLAN_CATALOG_CL: PlanCatalog = {
   starter:  { displayName: 'Starter',  price: 0,     durationDays: 30 },
   pro:      { displayName: 'Plan Pro', price: 5990,  durationDays: 30 },
   business: { displayName: 'Plan Full', price: 9990, durationDays: 30 },
+};
+
+const PLAN_CATALOG_CL_ANNUAL: PlanCatalog = {
+  starter:  { displayName: 'Starter',  price: 0,     durationDays: 365 },
+  pro:      { displayName: 'Plan Pro', price: 59900, durationDays: 365 },
+  business: { displayName: 'Plan Full', price: 99900, durationDays: 365 },
 };
 
 const PLAN_CATALOG_AR: PlanCatalog = {
@@ -21,8 +28,19 @@ const PLAN_CATALOG_AR: PlanCatalog = {
   business: { displayName: 'Plan Business', price: 13990, durationDays: 30 },
 };
 
-function getPlanCatalog(country: string | undefined): PlanCatalog {
-  return country === 'AR' ? PLAN_CATALOG_AR : PLAN_CATALOG_CL;
+const PLAN_CATALOG_AR_ANNUAL: PlanCatalog = {
+  starter:  { displayName: 'Starter',       price: 0,      durationDays: 365 },
+  pro:      { displayName: 'Plan Pro',      price: 89900,  durationDays: 365 },
+  business: { displayName: 'Plan Business', price: 139900, durationDays: 365 },
+};
+
+function normalizeBillingPeriod(value: string | undefined): BillingPeriod {
+  return (value ?? '').toLowerCase().trim() === 'annual' ? 'annual' : 'monthly';
+}
+
+function getPlanCatalog(country: string | undefined, billingPeriod: BillingPeriod = 'monthly'): PlanCatalog {
+  if (country === 'AR') return billingPeriod === 'annual' ? PLAN_CATALOG_AR_ANNUAL : PLAN_CATALOG_AR;
+  return billingPeriod === 'annual' ? PLAN_CATALOG_CL_ANNUAL : PLAN_CATALOG_CL;
 }
 
 function normalizeCountryCode(value: string | undefined): string {
@@ -78,6 +96,7 @@ function computePlanChange(
   planExpiresAt: string | null,
   targetPlanSlug: string,
   catalog: PlanCatalog = PLAN_CATALOG_CL,
+  billingPeriod: BillingPeriod = 'monthly',
 ): {
   changeType: ChangeType;
   finalAmount: number;
@@ -88,6 +107,8 @@ function computePlanChange(
   effectiveAt?: string;
   scheduledChange?: { targetPlanSlug: string; effectiveAt: string };
   prorationFormulaVersion: string;
+  billingPeriod: BillingPeriod;
+  durationDays: number;
 } {
   const now = Date.now();
   const currentOrder = PLAN_ORDER[currentPlanSlug] ?? 0;
@@ -118,7 +139,10 @@ function computePlanChange(
   }
 
   let finalAmount = targetPlanPrice;
-  if (changeType === 'upgrade') {
+  if (billingPeriod === 'annual' && changeType !== 'downgrade') {
+    finalAmount = targetPlanPrice;
+    creditAmount = 0;
+  } else if (changeType === 'upgrade') {
     finalAmount = Math.max(0, Math.floor(targetPlanPrice - creditAmount));
   } else if (changeType === 'downgrade') finalAmount = 0;
 
@@ -145,7 +169,9 @@ function computePlanChange(
     targetPlanPrice,
     effectiveAt,
     scheduledChange,
-    prorationFormulaVersion: PRORATION_FORMULA_VERSION,
+    prorationFormulaVersion: billingPeriod === 'annual' ? 'annual-no-proration' : PRORATION_FORMULA_VERSION,
+    billingPeriod,
+    durationDays: catalog[targetPlanSlug]?.durationDays ?? (billingPeriod === 'annual' ? 365 : 30),
   };
 }
 
@@ -219,8 +245,9 @@ Deno.serve(async (req) => {
   }
 
   const planSlug = body?.planSlug as string | undefined;
+  const billingPeriod = normalizeBillingPeriod(body?.billingPeriod as string | undefined);
   const fallbackCountry = normalizeCountryCode((body?.country as string | undefined) ?? 'CL');
-  const fallbackCatalog = getPlanCatalog(fallbackCountry);
+  const fallbackCatalog = getPlanCatalog(fallbackCountry, billingPeriod);
   const fallbackCurrencyId = fallbackCountry === 'AR' ? 'ARS' : 'CLP';
   const price    = planSlug ? fallbackCatalog[planSlug]?.price : undefined;
   console.log('[create-mp-preference] planSlug:', planSlug ?? '(none)', '| fallbackCountry:', fallbackCountry, '| fallbackCurrency:', fallbackCurrencyId, '| price:', price ?? '(inválido)');
@@ -282,7 +309,7 @@ Deno.serve(async (req) => {
     console.error(`[create-mp-preference] MP_ACCESS_TOKEN_${countryCode} no configurado`);
     return jsonResponse({ error: 'Server configuration error', reason: `mp_token_missing_${countryCode.toLowerCase()}` }, 500);
   }
-  const catalog = getPlanCatalog(countryCode);
+  const catalog = getPlanCatalog(countryCode, billingPeriod);
   const currencyId = countryCode === 'AR' ? 'ARS' : 'CLP';
 
   // ── 4. Calcular tipo de cambio y monto final (prorrateo en upgrades) ───────
@@ -291,7 +318,7 @@ Deno.serve(async (req) => {
   const planExpiresAt   = (business as { plan_expires_at?: string | null }).plan_expires_at ?? null;
   const trialExpiresAt  = (business as { trial_expires_at?: string | null }).trial_expires_at ?? null;
   const scheduledPlanSlug = (business as { scheduled_plan_slug?: string | null }).scheduled_plan_slug ?? null;
-  let planChange = computePlanChange(currentPlanSlug, planExpiresAt, planSlug, catalog);
+  let planChange = computePlanChange(currentPlanSlug, planExpiresAt, planSlug, catalog, billingPeriod);
 
   // Si hay trial vigente: precio completo, sin crédito/prorrateo, plan programado al fin del trial.
   // Aplica a cualquier plan destino (pro, business), no solo pro→pro.
@@ -353,6 +380,8 @@ Deno.serve(async (req) => {
     prorationFormulaVersion: planChange.prorationFormulaVersion,
     effectiveAt:      planChange.effectiveAt ?? null,
     scheduledChange:  planChange.scheduledChange ?? null,
+    billingPeriod,
+    durationDays:     planChange.durationDays,
   };
   if (isScheduledTrialConversion && trialExpiresAt) {
     metadata.isScheduledTrialConversion = true;
@@ -363,7 +392,7 @@ Deno.serve(async (req) => {
   // ── Upgrade con finalAmount === 0: aplicar cambio interno, no crear preferencia MP ──
   if (finalAmount === 0) {
     const effectiveAtMs = planChange.effectiveAt ? new Date(planChange.effectiveAt).getTime() : Date.now();
-    const newExpiresAt = new Date(effectiveAtMs + 30 * MS_PER_DAY).toISOString();
+    const newExpiresAt = new Date(effectiveAtMs + planChange.durationDays * MS_PER_DAY).toISOString();
     const { error: bizUpdateErr } = await adminClient
       .from('wa_businesses')
       .update({ plan_slug: planSlug, plan_expires_at: newExpiresAt })

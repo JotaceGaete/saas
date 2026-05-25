@@ -11,6 +11,7 @@ import {
   computePlanChange,
   buildIntlUsdPreview,
   applyTrialOverride,
+  normalizeBillingPeriod,
   type PlanChangeResult,
 } from './lib.ts';
 
@@ -52,15 +53,18 @@ Deno.serve(async (req) => {
 
   let targetPlanSlug: string | undefined;
   let providerHint: string | undefined;
+  let billingPeriod: 'monthly' | 'annual' = 'monthly';
   if (req.method === 'GET') {
     const url = new URL(req.url);
     targetPlanSlug = url.searchParams.get('targetPlanSlug') ?? undefined;
     providerHint = url.searchParams.get('provider') ?? undefined;
+    billingPeriod = normalizeBillingPeriod(url.searchParams.get('billingPeriod') ?? undefined);
   } else {
     try {
       const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
       targetPlanSlug = body?.targetPlanSlug as string | undefined;
       providerHint = body?.provider as string | undefined;
+      billingPeriod = normalizeBillingPeriod(body?.billingPeriod as string | undefined);
     } catch {
       targetPlanSlug = undefined;
     }
@@ -107,14 +111,21 @@ Deno.serve(async (req) => {
     (countryCode && countryCode !== 'CL' && countryCode !== 'AR');
   let preview: PlanChangeResult;
 
+  if (billingPeriod === 'annual' && useIntlUsd) {
+    return jsonResponse({
+      error: 'Pago anual disponible por ahora con Mercado Pago en Chile y Argentina.',
+      billingPeriod,
+    }, 400);
+  }
+
   if (useIntlUsd) {
     preview = buildIntlUsdPreview(currentPlanSlug, targetPlanSlug, planExpiresAt, trialExpiresAt, scheduledPlanSlug);
   } else {
-    const catalog = getPlanCatalog(countryCode, providerHint);
+    const catalog = getPlanCatalog(countryCode, providerHint, billingPeriod);
     if (!catalog) {
       preview = buildIntlUsdPreview(currentPlanSlug, targetPlanSlug, planExpiresAt, trialExpiresAt, scheduledPlanSlug);
     } else {
-      preview = computePlanChange(currentPlanSlug, planExpiresAt, targetPlanSlug, catalog);
+      preview = computePlanChange(currentPlanSlug, planExpiresAt, targetPlanSlug, catalog, billingPeriod);
     }
   }
 
@@ -126,6 +137,7 @@ Deno.serve(async (req) => {
     targetPlanSlug,
     changeType: preview.changeType,
     useIntlUsd,
+    billingPeriod,
     finalAmount: preview.finalAmount,
   });
 
