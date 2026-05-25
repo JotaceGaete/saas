@@ -51,6 +51,15 @@ export function parseSafeDate(value: string | null | undefined): number | null {
   return Number.isFinite(ms) ? ms : null;
 }
 
+export function buildActiveDowngradeBlockedMessage(activeUntil: string | null | undefined): string {
+  const activeUntilMs = parseSafeDate(activeUntil);
+  if (activeUntilMs !== null) {
+    const formattedDate = new Intl.DateTimeFormat('es-CL', { dateStyle: 'long' }).format(new Date(activeUntilMs));
+    return `Tu plan actual sigue activo hasta el ${formattedDate}. Cuando finalice, podrás elegir un plan inferior o renovar el que prefieras.`;
+  }
+  return 'Tu plan actual sigue activo. Cuando finalice, podrás elegir un plan inferior o renovar el que prefieras.';
+}
+
 export function normalizeBillingPeriod(value: string | undefined): 'monthly' | 'annual' {
   return String(value || '').trim().toLowerCase() === 'annual' ? 'annual' : 'monthly';
 }
@@ -99,6 +108,8 @@ export interface PlanChangeResult {
   finalAmount: number;
   changeType: ChangeType;
   message?: string;
+  blocked?: boolean;
+  blockReason?: string;
   effectiveAt?: string;
   scheduledChange?: { targetPlanSlug: string; effectiveAt: string };
   prorationFormulaVersion: string;
@@ -115,9 +126,12 @@ export function computePlanChange(
 ): PlanChangeResult {
   // FIX-3: normalizar slug legacy 'control' a 'starter' de forma explícita.
   // Evita cálculo silencioso con catalog['control'] = undefined → price = 0.
-  const currentPlanSlug = currentPlanSlugRaw === 'control' ? 'starter' : currentPlanSlugRaw;
-
   const now = Date.now();
+  const expMs = parseSafeDate(planExpiresAt);
+  const rawCurrentPlanSlug = currentPlanSlugRaw === 'control' ? 'starter' : currentPlanSlugRaw;
+  const isPaidCurrentPlan = rawCurrentPlanSlug === 'pro' || rawCurrentPlanSlug === 'business';
+  const hasExpiredPaidPlan = isPaidCurrentPlan && expMs !== null && expMs <= now;
+  const currentPlanSlug = hasExpiredPaidPlan ? 'starter' : rawCurrentPlanSlug;
   const currentOrder = PLAN_ORDER[currentPlanSlug] ?? 0;
   const targetOrder = PLAN_ORDER[targetPlanSlug] ?? 0;
   const currentPlanPrice = catalog[currentPlanSlug]?.price ?? 0;
@@ -128,7 +142,6 @@ export function computePlanChange(
   else if (targetOrder < currentOrder) changeType = 'downgrade';
 
   // FIX-1: parseSafeDate blinda contra fechas inválidas → null en vez de NaN.
-  const expMs = parseSafeDate(planExpiresAt);
   const remainingMs = expMs !== null ? Math.max(0, expMs - now) : 0;
 
   const msPerPeriod = (catalog[currentPlanSlug]?.durationDays ?? 30) * MS_PER_DAY;
@@ -158,18 +171,18 @@ export function computePlanChange(
 
   let effectiveAt: string | undefined;
   let scheduledChange: { targetPlanSlug: string; effectiveAt: string } | undefined;
+  const isActiveDowngrade = changeType === 'downgrade' && isPaidCurrentPlan && !hasExpiredPaidPlan;
 
-  if (changeType === 'downgrade' && expMs !== null) {
+  if (isActiveDowngrade && expMs !== null) {
     effectiveAt = new Date(expMs).toISOString();
-    scheduledChange = { targetPlanSlug, effectiveAt };
   } else if (changeType === 'renewal' || changeType === 'upgrade') {
     effectiveAt = (expMs !== null && expMs > now)
       ? new Date(expMs).toISOString()
       : new Date(now).toISOString();
   }
 
-  const message = changeType === 'downgrade'
-    ? 'El cambio a un plan inferior se aplicará al vencer tu plan actual. No se realiza ningún cargo.'
+  const message = isActiveDowngrade
+    ? buildActiveDowngradeBlockedMessage(planExpiresAt)
     : undefined;
 
   return {
@@ -183,6 +196,8 @@ export function computePlanChange(
     finalAmount,
     changeType,
     message,
+    blocked: isActiveDowngrade || undefined,
+    blockReason: isActiveDowngrade ? 'active_downgrade_blocked' : undefined,
     effectiveAt,
     scheduledChange,
     prorationFormulaVersion: billingPeriod === 'annual' ? 'annual-no-proration' : PRORATION_FORMULA_VERSION,
@@ -192,12 +207,18 @@ export function computePlanChange(
 }
 
 export function buildIntlUsdPreview(
-  currentPlanSlug: string,
+  currentPlanSlugRaw: string,
   targetPlanSlug: string,
   planExpiresAt: string | null,
   _trialExpiresAt: string | null, // FIX-2: trial override unificado en applyTrialOverride (handler)
   _scheduledPlanSlug: string | null,
 ): PlanChangeResult {
+  const now = Date.now();
+  const expMs = parseSafeDate(planExpiresAt);
+  const rawCurrentPlanSlug = currentPlanSlugRaw === 'control' ? 'starter' : currentPlanSlugRaw;
+  const isPaidCurrentPlan = rawCurrentPlanSlug === 'pro' || rawCurrentPlanSlug === 'business';
+  const hasExpiredPaidPlan = isPaidCurrentPlan && expMs !== null && expMs <= now;
+  const currentPlanSlug = hasExpiredPaidPlan ? 'starter' : rawCurrentPlanSlug;
   const targetPrice = INTL_USD_PRICES[targetPlanSlug] ?? 0;
   const currentPrice = INTL_USD_PRICES[currentPlanSlug] ?? 0;
   const currentOrder = PLAN_ORDER[currentPlanSlug] ?? 0;
@@ -206,19 +227,16 @@ export function buildIntlUsdPreview(
   if (targetOrder > currentOrder) changeType = 'upgrade';
   else if (targetOrder < currentOrder) changeType = 'downgrade';
 
-  const now = Date.now();
-  // FIX-1: parseSafeDate blinda contra fechas inválidas.
-  const expMs = parseSafeDate(planExpiresAt);
   let daysRemaining = 0;
   let effectiveAt: string | undefined;
   let scheduledChange: { targetPlanSlug: string; effectiveAt: string } | undefined;
+  const isActiveDowngrade = changeType === 'downgrade' && isPaidCurrentPlan && !hasExpiredPaidPlan;
 
   if (expMs !== null) {
     const remainingMs = Math.max(0, expMs - now);
     daysRemaining = Math.floor(remainingMs / MS_PER_DAY);
-    if (changeType === 'downgrade') {
+    if (isActiveDowngrade) {
       effectiveAt = new Date(expMs).toISOString();
-      scheduledChange = { targetPlanSlug, effectiveAt };
     } else {
       effectiveAt = expMs > now ? new Date(expMs).toISOString() : new Date(now).toISOString();
     }
@@ -229,8 +247,8 @@ export function buildIntlUsdPreview(
   // FIX-2: el patch parcial isActiveProTrial (solo pro→pro) fue eliminado.
   // applyTrialOverride() en el handler cubre todos los casos de trial uniformemente.
 
-  const message = changeType === 'downgrade'
-    ? 'El cambio a un plan inferior se aplicará al vencer tu plan actual. No se realiza ningún cargo.'
+  const message = isActiveDowngrade
+    ? buildActiveDowngradeBlockedMessage(planExpiresAt)
     : undefined;
 
   return {
@@ -244,6 +262,8 @@ export function buildIntlUsdPreview(
     finalAmount: changeType === 'downgrade' ? 0 : targetPrice,
     changeType,
     message,
+    blocked: isActiveDowngrade || undefined,
+    blockReason: isActiveDowngrade ? 'active_downgrade_blocked' : undefined,
     effectiveAt,
     scheduledChange,
     prorationFormulaVersion: 'intl-static-usd',
@@ -274,6 +294,7 @@ export function applyTrialOverride(
   const trialExpMs = parseSafeDate(trialExpiresAt);
   const isActiveTrial = trialExpMs !== null && trialExpMs > now;
   if (!isActiveTrial) return preview;
+  if (preview.blocked) return preview;
 
   // El plan pago comienza al terminar el trial, no de forma inmediata.
   const effectiveAt = trialExpiresAt ?? new Date(now).toISOString();

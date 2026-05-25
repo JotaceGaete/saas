@@ -95,7 +95,7 @@ export function buildSubscriptionCardModel({
       variant: bs === 'trial_with_subscription' ? 'trial_scheduled' : 'trial',
       title,
       subtitle,
-      detail,
+      detail: null,
       showTrialBar: true,
       trialProgressPercent: pct,
     };
@@ -119,16 +119,6 @@ export function buildSubscriptionCardModel({
       month: 'long',
       year: 'numeric',
     });
-    let detail = null;
-    if (scheduledPlanSlug && scheduledChangeAt) {
-      const d = new Date(scheduledChangeAt);
-      const fd = !Number.isNaN(d.getTime())
-        ? d.toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })
-        : '';
-      if (fd) {
-        detail = `Cambio programado a ${getPlanLabel(scheduledPlanSlug)} el ${fd}.`;
-      }
-    }
     return {
       variant: 'paid',
       title: `Plan ${planLabel} activo`,

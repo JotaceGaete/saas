@@ -10,7 +10,7 @@ import { useConfirmedEmailGuard } from '../../hooks/useConfirmedEmailGuard';
 import { supabase } from '../../lib/supabase';
 import { getAppBaseUrl } from '../../config/appUrl';
 import { formatSubscriptionPlanPrice } from '../../utils/formatCLP';
-import { PLAN_SLUGS, getPlanLimits, getPlanLabel } from '../../constants/plans';
+import { PLAN_ORDER, PLAN_SLUGS, getPlanLimits, getPlanLabel } from '../../constants/plans';
 import {
   normalizeBillingProvider,
   PAYMENT_PROVIDERS,
@@ -38,6 +38,56 @@ import { useToast } from '../../components/ui/Toast';
 import { isRestaurantBusiness } from '../../utils/businessType';
 
 const PAYMENT_DEBUG_PREFIX = '[plans-payment-debug]';
+
+const PLAN_CARD_VISUALS = {
+  starter: {
+    icon: 'Sprout',
+    tagline: 'Ideal para comenzar.',
+    accent: '#16a34a',
+    accentSoft: 'rgba(22,163,74,0.10)',
+    accentBorder: 'rgba(22,163,74,0.20)',
+  },
+  pro: {
+    icon: 'Rocket',
+    tagline: 'Para negocios que quieren crecer.',
+    accent: '#009EE3',
+    accentSoft: 'rgba(0,158,227,0.11)',
+    accentBorder: 'rgba(0,158,227,0.26)',
+  },
+  business: {
+    icon: 'Crown',
+    tagline: 'Todo lo que necesitas, sin límites.',
+    accent: '#6366f1',
+    accentSoft: 'rgba(99,102,241,0.11)',
+    accentBorder: 'rgba(99,102,241,0.24)',
+  },
+};
+
+const PLAN_SECONDARY_BENEFITS = {
+  starter: [
+    'Catálogo básico para validar tu oferta',
+    'Links y mensajes compartidos',
+    'Branding de Walinka incluido',
+  ],
+  pro: [
+    'Panel completo y estadísticas',
+    'Asistencia de IA para descripciones',
+    'Branding discreto: Powered by Walinka',
+  ],
+  business: [
+    'Panel completo',
+    'Estadísticas completas',
+    'IA ilimitada',
+    'Sin branding de Walinka en catálogo o mensajes',
+  ],
+};
+
+const TRUST_BENEFITS = [
+  ['FileText', 'Sin contratos'],
+  ['ShieldCheck', 'Pago seguro'],
+  ['Zap', 'Activación inmediata'],
+  ['LifeBuoy', 'Soporte y ayuda'],
+];
 
 /** Copy y alternativa manual bajo el CTA PayPal (sin tocar backend). */
 function PayPalCheckoutHelper({ planSlug, onOpenManualPayment }) {
@@ -337,6 +387,34 @@ export default function PlansPage() {
   const hasFuturePlanExpiry = Number.isFinite(planExpiryMs) && planExpiryMs > Date.now();
   const hasFutureTrialExpiry = Number.isFinite(trialExpiryMs) && trialExpiryMs > Date.now();
   const isPaidPlanSlug = (s) => s === 'pro' || s === 'business';
+  const activePlanUntilIso = hasFutureTrialExpiry
+    ? (billingSubscriptionRow?.trial_ends_at || business?.trialExpiresAt)
+    : hasFuturePlanExpiry
+      ? (billingSubscriptionRow?.next_billing_date || business?.planExpiresAt)
+      : null;
+  const hasKnownExpiredPlan = Number.isFinite(planExpiryMs) && planExpiryMs <= Date.now() && !hasFutureTrialExpiry;
+  const hasActiveBillingStatus = ['active', 'trial_with_subscription', 'trial_without_subscription'].includes(subscriptionState?.billing_status);
+  const hasActivePaidPlan = isPaidPlanSlug(currentPlan) && (
+    hasFuturePlanExpiry ||
+    hasFutureTrialExpiry ||
+    (!hasKnownExpiredPlan && hasActiveBillingStatus)
+  );
+  const buildActiveDowngradeMessage = () => {
+    if (!activePlanUntilIso) {
+      return 'Tu plan actual sigue activo. Cuando finalice, podrás elegir un plan inferior o renovar el que prefieras.';
+    }
+    const formattedDate = new Date(activePlanUntilIso).toLocaleDateString(planBillingDisplayLocale, { dateStyle: 'long' });
+    return `Tu plan actual sigue activo hasta el ${formattedDate}. Cuando finalice, podrás elegir un plan inferior o renovar el que prefieras.`;
+  };
+  const isActiveDowngradeSelection = (targetPlanSlug) =>
+    hasActivePaidPlan && (PLAN_ORDER[targetPlanSlug] ?? 0) < (PLAN_ORDER[currentPlan] ?? 0);
+  const showActiveDowngradeBlockedToast = (targetPlanSlug, fallbackMessage) => {
+    if (!isActiveDowngradeSelection(targetPlanSlug) && !fallbackMessage) return false;
+    toast.info(fallbackMessage || buildActiveDowngradeMessage());
+    setPreview(null);
+    setPreviewPlanSlug(null);
+    return true;
+  };
   /** Trial en plan de pago (Pro o Full): prueba vigente o estado de facturación en trial. */
   const isProTrialActive = useMemo(() => {
     const slug = business?.planSlug || 'starter';
@@ -345,7 +423,6 @@ export default function PlansPage() {
     const bs = subscriptionState?.billing_status;
     return bs === 'trial_with_subscription' || bs === 'trial_without_subscription';
   }, [business?.planSlug, hasFutureTrialExpiry, subscriptionState?.billing_status]);
-  const isTrialWithSubscription = subscriptionState?.billing_status === 'trial_with_subscription';
 
   const unifiedSubscriptionViewModel = useMemo(
     () =>
@@ -366,8 +443,6 @@ export default function PlansPage() {
       `[billing-ui-debug] businessId=${business.id} displayState=${displayState} showActivateCta=${showActivateCta} billingMode=${billingMode}`,
     );
   }, [business?.id, unifiedSubscriptionViewModel]);
-  /** "Suscripción programada" solo si hay downgrade/cambio futuro confirmado en BD, no solo por estar en trial. */
-  const showStarterScheduledSubscriptionLabel = isTrialWithSubscription && Boolean(business?.scheduledPlanSlug);
   const isRestaurant = isRestaurantBusiness(business);
   const billingHeroSubtitle = isRestaurant
     ? 'Gestiona el plan de tu restaurante y las herramientas disponibles para tu menú.'
@@ -570,8 +645,13 @@ export default function PlansPage() {
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, apikey: anonKey },
       body: JSON.stringify(body),
     });
-    if (!res.ok) return null;
-    return res.json().catch(() => null);
+    const data = await res.json().catch(() => null);
+    if (!res.ok) {
+      return data?.code === 'ACTIVE_DOWNGRADE_BLOCKED' || data?.blockReason === 'active_downgrade_blocked'
+        ? data
+        : null;
+    }
+    return data;
   };
 
   /** Planes internacionales: abre resumen (preview) y luego activación por WhatsApp. */
@@ -581,6 +661,7 @@ export default function PlansPage() {
       return;
     }
     console.info(PAYMENT_DEBUG_PREFIX, { event: 'click_plan_button', handler: 'handleOpenIntlPlanPreview', planSlug, resolvedCountryCode: countryCode });
+    if (showActiveDowngradeBlockedToast(planSlug)) return;
     if (getDisplayPlanPrice(planSlug) <= 0) return;
     if (isAnnualBilling) {
       toast.info(annualUnavailableMessage);
@@ -611,8 +692,8 @@ export default function PlansPage() {
         toast.error('No se pudo obtener el resumen del cambio de plan.');
         return;
       }
-      if (previewData.changeType === 'downgrade') {
-        toast.info(previewData.message || 'El cambio se aplicará al vencer tu plan actual. No se realiza ningún cargo.');
+      if (previewData.blocked || previewData.blockReason === 'active_downgrade_blocked' || previewData.changeType === 'downgrade') {
+        showActiveDowngradeBlockedToast(planSlug, previewData.message || buildActiveDowngradeMessage());
         return;
       }
       setPreview(previewData);
@@ -636,6 +717,7 @@ export default function PlansPage() {
       resolvedCountryCode: countryCode,
       resolvedProvider: checkoutProvider,
     });
+    if (showActiveDowngradeBlockedToast(planSlug)) return;
     if (getDisplayPlanPrice(planSlug) <= 0) return;
     if (isAnnualCheckoutBlocked) {
       toast.info(annualUnavailableMessage);
@@ -677,8 +759,8 @@ export default function PlansPage() {
         return;
       }
 
-      if (previewData.changeType === 'downgrade') {
-        toast.info(previewData.message || 'El cambio se aplicará al vencer tu plan actual. No se realiza ningún cargo.');
+      if (previewData.blocked || previewData.blockReason === 'active_downgrade_blocked' || previewData.changeType === 'downgrade') {
+        showActiveDowngradeBlockedToast(planSlug, previewData.message || buildActiveDowngradeMessage());
         return;
       }
 
@@ -703,6 +785,7 @@ export default function PlansPage() {
       resolvedCountryCode: countryCode,
       resolvedProvider: checkoutProvider,
     });
+    if (showActiveDowngradeBlockedToast(planSlug)) return;
     if (getDisplayPlanPrice(planSlug) <= 0) return;
     if (isAnnualBilling) {
       toast.info(annualUnavailableMessage);
@@ -739,8 +822,8 @@ export default function PlansPage() {
         toast.error('No se pudo obtener el resumen del cambio de plan.');
         return;
       }
-      if (previewData.changeType === 'downgrade') {
-        toast.info(previewData.message || 'El cambio se aplicará al vencer tu plan actual. No se realiza ningún cargo.');
+      if (previewData.blocked || previewData.blockReason === 'active_downgrade_blocked' || previewData.changeType === 'downgrade') {
+        showActiveDowngradeBlockedToast(planSlug, previewData.message || buildActiveDowngradeMessage());
         return;
       }
       // Internacional (PayPal): iniciar checkout directo para evitar CTA sin acción visible.
@@ -781,6 +864,7 @@ export default function PlansPage() {
       billingPeriod,
     });
     if (!previewPlanSlug) return;
+    if (showActiveDowngradeBlockedToast(previewPlanSlug)) return;
     if (isAnnualCheckoutBlocked) {
       toast.info(annualUnavailableMessage);
       return;
@@ -834,8 +918,8 @@ export default function PlansPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        if (data?.changeType === 'downgrade') {
-          toast.info(data?.message || 'El cambio se aplicará al vencer tu plan actual.');
+        if (data?.code === 'ACTIVE_DOWNGRADE_BLOCKED' || data?.blockReason === 'active_downgrade_blocked' || data?.changeType === 'downgrade') {
+          showActiveDowngradeBlockedToast(previewPlanSlug, data?.message || buildActiveDowngradeMessage());
           setPreview(null);
           setPreviewPlanSlug(null);
           return;
@@ -1030,7 +1114,7 @@ export default function PlansPage() {
   }
 
   return (
-    <DashboardAppShell backgroundColor="#f6f7fb">
+    <DashboardAppShell backgroundColor="linear-gradient(180deg, #f7f8fc 0%, #f3f6fb 48%, #f8fafc 100%)">
         <PanelHeader
           title={<h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Plan y facturación</h1>}
           subtitle={<p className="text-xs hidden sm:block mt-0.5" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>{isManualBillingMode ? 'Gestiona tu plan, límites y renovación manual' : 'Gestiona tu plan, límites y renovación'}</p>}
@@ -1324,7 +1408,7 @@ export default function PlansPage() {
                       )
                     ) : (
                       <span className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-                        {showStarterScheduledSubscriptionLabel ? 'Suscripción programada' : 'Plan gratuito'}
+                        Plan gratuito
                       </span>
                     )}
                   </div>

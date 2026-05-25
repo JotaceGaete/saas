@@ -625,7 +625,7 @@ Deno.serve(async (req) => {
   // ── 11. Actualizar plan en wa_businesses ──────────────────────────────────
   // Regla única basada en PLAN_ORDER, independiente del estado de trial:
   // - upgrade/renovación (newOrder >= currentOrder) → aplicar inmediatamente, cerrar trial.
-  // - downgrade (newOrder < currentOrder) con período activo → programar al vencimiento.
+  // - downgrade (newOrder < currentOrder) con período activo → bloquear, sin cambios automáticos.
   // - downgrade sin período activo → aplicar inmediatamente.
   //
   // "Período activo" cubre trial vigente Y plan pagado vigente.
@@ -685,25 +685,16 @@ Deno.serve(async (req) => {
       console.error('[mp-webhook] billing_subscriptions sync failed (non-blocking):', subSyncError.message);
     }
   } else {
-    // DOWNGRADE con período activo → programar al vencimiento (trial o plan pagado).
-    const { error: bizUpdateError } = await db.from('wa_businesses').update({
-      scheduled_plan_slug: planSlug,
-      scheduled_change_at: activePeriodEnd,
-    }).eq('id', businessId);
-
-    if (bizUpdateError) {
-      console.error('[mp-webhook] error actualizando wa_businesses (downgrade scheduled):', bizUpdateError.message, bizUpdateError.code);
-      return jsonResponse({ ok: false, error: 'Database update failed' }, 500);
-    }
-    console.log('[mp-webhook] payment_approved_downgrade_scheduled', {
+    console.warn('[mp-webhook] payment_approved_active_downgrade_blocked', {
       mp_payment_id:       dataId,
       paymentId,
       businessId,
       currentPlan,
       newPlan:             planSlug,
       wasDuringTrial:      bizIsActiveTrial,
-      scheduled_change_at: activePeriodEnd,
+      activePeriodEnd,
     });
+    return jsonResponse({ ok: true, ignored: true, reason: 'active_downgrade_blocked' }, 200);
   }
 
   const receiptEmailPromise = maybeSendMercadoPagoReceiptEmail({

@@ -99,6 +99,11 @@ Deno.serve(async (req) => {
   const planExpiresAt = (biz as { plan_expires_at?: string | null }).plan_expires_at ?? null;
   const trialExpiresAt = (biz as { trial_expires_at?: string | null }).trial_expires_at ?? null;
   const scheduledPlanSlug = (biz as { scheduled_plan_slug?: string | null }).scheduled_plan_slug ?? null;
+  const now = Date.now();
+  const trialExpiresMs = trialExpiresAt ? new Date(trialExpiresAt).getTime() : NaN;
+  const activePeriodEnd = Number.isFinite(trialExpiresMs) && trialExpiresMs > now
+    ? trialExpiresAt
+    : planExpiresAt;
   const countryCode = resolveBusinessCountryCode(
     biz as { country_code?: string | null; country?: string | null; currency?: string | null },
   );
@@ -119,18 +124,26 @@ Deno.serve(async (req) => {
   }
 
   if (useIntlUsd) {
-    preview = buildIntlUsdPreview(currentPlanSlug, targetPlanSlug, planExpiresAt, trialExpiresAt, scheduledPlanSlug);
+    preview = buildIntlUsdPreview(currentPlanSlug, targetPlanSlug, activePeriodEnd, trialExpiresAt, scheduledPlanSlug);
   } else {
     const catalog = getPlanCatalog(countryCode, providerHint, billingPeriod);
     if (!catalog) {
-      preview = buildIntlUsdPreview(currentPlanSlug, targetPlanSlug, planExpiresAt, trialExpiresAt, scheduledPlanSlug);
+      preview = buildIntlUsdPreview(currentPlanSlug, targetPlanSlug, activePeriodEnd, trialExpiresAt, scheduledPlanSlug);
     } else {
-      preview = computePlanChange(currentPlanSlug, planExpiresAt, targetPlanSlug, catalog, billingPeriod);
+      preview = computePlanChange(currentPlanSlug, activePeriodEnd, targetPlanSlug, catalog, billingPeriod);
     }
   }
 
   // FIX-2: trial override unificado — aplica para CL, AR e INTL en un solo lugar.
   preview = applyTrialOverride(preview, trialExpiresAt);
+
+  if (preview.blocked || preview.blockReason === 'active_downgrade_blocked') {
+    return jsonResponse({
+      ...preview,
+      ok: false,
+      code: 'ACTIVE_DOWNGRADE_BLOCKED',
+    }, 409);
+  }
 
   console.log('[plan-change-preview]', {
     currentPlanSlug,
