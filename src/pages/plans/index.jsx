@@ -986,14 +986,8 @@ export default function PlansPage() {
         />
         <DashboardLayoutContent className="page-enter">
 
-          <section className="mb-7 border-b pb-6" style={{ borderColor: 'rgba(17,24,39,0.08)' }}>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-              Suscripción
-            </p>
-            <h2 className="mt-2 text-3xl font-semibold leading-tight sm:text-4xl" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-heading)', letterSpacing: '-0.03em' }}>
-              Plan y facturación
-            </h2>
-            <p className="mt-3 max-w-2xl text-sm leading-6 sm:text-base" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-body)' }}>
+          <section className="mb-4 pb-4 border-b" style={{ borderColor: 'rgba(17,24,39,0.08)' }}>
+            <p className="text-sm" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-body)' }}>
               {billingHeroSubtitle}
             </p>
           </section>
@@ -1006,21 +1000,21 @@ export default function PlansPage() {
             />
           )}
 
-          <div className="mb-4 mt-8 flex flex-col gap-1">
-            <h3 className="text-xl font-semibold" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}>
-              Elige cómo quieres crecer
+          <div className="mb-4 mt-5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+            <h3 className="text-sm font-semibold" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-heading)', letterSpacing: '-0.01em' }}>
+              Elige tu plan
             </h3>
-            <p className="text-sm leading-6" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-body)' }}>
-              Planes pensados para operar tu {planNoun} sin ruido técnico.
-            </p>
+            <span className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-body)' }}>
+              Pensado para operar tu {planNoun} sin ruido técnico.
+            </span>
           </div>
 
-          <div id="planes-grid" className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-5">
+          <div id="planes-grid" className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-5 md:items-start">
             {PLAN_SLUGS.map((slug) => {
               const limits = getPlanLimits(slug);
               const isProTrialCard = slug === 'pro' && isProTrialActive;
               const isCurrent = currentPlan === slug && !isProTrialCard;
-              const actionLabel = `Elegir plan ${getPlanLabel(slug)}`;
+              const actionLabel = `Elegir ${getPlanLabel(slug)}`;
               const isProRecommended = slug === 'pro';
               const marketPlan = getPlanConfig({
                 marketCode,
@@ -1032,191 +1026,251 @@ export default function PlansPage() {
                 <div
                   key={slug}
                   className={[
-                    'relative rounded-2xl border p-5 flex flex-col transition-all duration-200 hover:-translate-y-0.5',
-                    isProRecommended ? 'shadow-[0_18px_40px_rgba(17,24,39,0.08)]' : '',
+                    'relative rounded-2xl border flex flex-col transition-all duration-300',
+                    isProRecommended
+                      ? 'md:-translate-y-2 md:z-10'
+                      : 'hover:-translate-y-0.5',
                   ].filter(Boolean).join(' ')}
                   style={{
-                    backgroundColor: isCurrent ? 'rgba(255,255,255,0.86)' : 'rgba(255,255,255,0.72)',
-                    borderColor: isCurrent ? 'rgba(17,24,39,0.22)' : 'rgba(17,24,39,0.08)',
-                    boxShadow: isCurrent ? '0 0 0 1px rgba(17,24,39,0.14), 0 18px 42px rgba(17,24,39,0.08)' : '0 12px 30px rgba(17,24,39,0.045)',
+                    backgroundColor: '#fff',
+                    borderColor: isProRecommended
+                      ? 'rgba(99,102,241,0.40)'
+                      : isCurrent
+                        ? 'rgba(17,24,39,0.20)'
+                        : 'rgba(17,24,39,0.09)',
+                    boxShadow: isProRecommended
+                      ? '0 28px 60px rgba(17,24,39,0.14), 0 0 0 1px rgba(99,102,241,0.12)'
+                      : isCurrent
+                        ? '0 12px 28px rgba(17,24,39,0.07)'
+                        : '0 6px 18px rgba(17,24,39,0.04)',
                   }}
                 >
                   {isProRecommended && (
                     <span
-                      className="absolute -top-2.5 left-1/2 -translate-x-1/2 rounded-full px-3 py-0.5 text-[10px] font-semibold uppercase tracking-wide shadow-sm font-[family-name:var(--font-caption)]"
-                      style={{ backgroundColor: '#111827', color: '#fff' }}
+                      className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full px-3.5 py-1 text-[10px] font-bold uppercase tracking-wider shadow-sm font-[family-name:var(--font-caption)] whitespace-nowrap"
+                      style={{ backgroundColor: '#6366f1', color: '#fff' }}
                       aria-hidden
                     >
-                      Popular
+                      Más popular
                     </span>
                   )}
-                  <div className="flex items-center justify-between mb-4 pt-1">
-                    <h2 className="text-lg font-semibold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.015em' }}>
-                      {getPlanLabel(slug)}
-                    </h2>
-                    {isCurrent && (
-                      <span className="text-xs font-semibold px-2 py-1 rounded-full" style={{ backgroundColor: 'rgba(17,24,39,0.08)', color: '#111827' }}>
-                        Actual
-                      </span>
-                    )}
-                  </div>
-                  <div className="mb-4">
-                    {getDisplayPlanPrice(slug) === 0 ? (
-                      <p className="text-2xl font-bold text-slate-900" style={{ fontFamily: 'var(--font-heading)' }}>
-                        Gratis
-                      </p>
-                    ) : (
-                      <p
-                        className={
-                          planBillingDisplayCurrency === 'CLP'
-                            ? 'text-3xl font-semibold text-slate-950 tracking-tight'
-                            : 'text-2xl font-bold text-slate-900'
-                        }
-                        style={{ fontFamily: 'var(--font-heading)' }}
+                  <div className="p-5 flex flex-col flex-1">
+                    <div className="flex items-start justify-between mb-4 pt-1">
+                      <h2
+                        className={`font-bold leading-tight ${isProRecommended ? 'text-xl' : 'text-lg'}`}
+                        style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}
                       >
-                        {formatSubscriptionPlanPrice(getDisplayPlanPrice(slug), planBillingDisplayCurrency, planBillingDisplayLocale)}
-                      </p>
-                    )}
-                    <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-                      {getDisplayPlanPrice(slug) === 0 ? '' : `por mes · ${planBillingDisplayCurrency}`}
-                    </p>
-                  </div>
-                  <ul className="space-y-2 mb-6 flex-1">
-                    <li className="flex items-center gap-2.5 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
-                        <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-slate-600" style={{ backgroundColor: 'rgba(17,24,39,0.06)' }} aria-hidden>
-                        <Icon name="Package" size={16} color="currentColor" />
-                      </span>
-                      <span>
-                        <span className="font-semibold text-slate-800">Productos</span>
-                        {' · '}
-                        {limits.maxProducts == null ? 'Ilimitados' : limits.maxProducts}
-                      </span>
-                    </li>
-                    <li className="flex items-center gap-2.5 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
-                        <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-slate-600" style={{ backgroundColor: 'rgba(17,24,39,0.06)' }} aria-hidden>
-                        <Icon name="ShoppingCart" size={16} color="currentColor" />
-                      </span>
-                      <span>
-                        <span className="font-semibold text-slate-800">Pedidos/mes</span>
-                        {' · '}
-                        {limits.maxOrdersPerMonth == null ? 'Ilimitados' : limits.maxOrdersPerMonth}
-                      </span>
-                    </li>
-                    {slug === 'starter' && (
-                      <>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Sin estadísticas ni ingresos del mes</li>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Sin productos más vendidos</li>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Sin asistencia de IA</li>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Incluye branding de Walinka en mensajes y links compartidos</li>
-                      </>
-                    )}
-                    {slug === 'pro' && (
-                      <>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Panel completo y estadísticas</li>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Asistencia de IA para descripciones</li>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Branding discreto: Powered by Walinka</li>
-                      </>
-                    )}
-                    {slug === 'business' && (
-                      <>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Panel completo</li>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Estadísticas completas</li>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>IA ilimitada</li>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Sin branding de Walinka en catálogo o mensajes</li>
-                      </>
-                    )}
-                  </ul>
-                  <div className="pt-4 border-t" style={{ borderColor: 'rgba(17,24,39,0.08)' }}>
-                    {isCurrent ? (
-                      <span className="text-sm font-medium" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-                        Tu plan actual
-                      </span>
-                    ) : getDisplayPlanPrice(slug) > 0 ? (
-                      !billingReady || !checkoutProvider || !hasServerSelectedProvider ? (
-                        <button
-                          type="button"
-                          disabled
-                          className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium opacity-60"
-                          style={{ color: 'var(--color-muted-foreground)', border: '1px solid rgba(17,24,39,0.10)', backgroundColor: 'rgba(255,255,255,0.54)' }}
-                        >
-                          {!isAuthenticated
-                            ? 'Inicia sesión para contratar'
-                            : billingRemoteError
-                              ? 'Facturación no disponible'
-                              : billingReady && !checkoutProvider
-                                ? 'Método de pago no disponible'
-                                : 'Cargando facturación…'}
-                        </button>
-                      ) : checkoutProvider === PAYMENT_PROVIDERS.MERCADO_PAGO ? (
-                        <div className="w-full flex flex-col gap-1">
-                          <button
-                            type="button"
-                            disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !isPurchasable || isAutomaticCheckoutBlocked}
-                            onClick={() => handlePayWithMercadoPago(slug)}
-                            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:-translate-y-px disabled:opacity-60"
-                            style={{ backgroundColor: '#009EE3' }}
-                          >
-                            {loadingPlanSlug === slug ? (
-                              <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                            ) : (
-                              <>
-                                <Icon name="Wallet" size={16} color="#fff" />
-                                {actionLabel}
-                              </>
-                            )}
-                          </button>
-                          <PlanPrimaryTrustBadge provider={checkoutProvider} billingCountryCode={billingCountryForUi} />
-                        </div>
-                      ) : checkoutProvider === PAYMENT_PROVIDERS.PAYPAL ? (
-                        <div className="w-full flex flex-col gap-2">
-                          <button
-                            type="button"
-                            disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !isPurchasable || isAutomaticCheckoutBlocked || !isProviderReadyForCheckout(PAYMENT_PROVIDERS.PAYPAL)}
-                            onClick={() => handlePayWithPaypal(slug)}
-                            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:-translate-y-px disabled:opacity-60"
-                            style={{ backgroundColor: '#0070ba' }}
-                          >
-                            {loadingPlanSlug === slug ? (
-                              <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                            ) : (
-                              <>
-                                <Icon name="CreditCard" size={16} color="#fff" />
-                                {actionLabel}
-                              </>
-                            )}
-                          </button>
-                          <PayPalCheckoutHelper planSlug={slug} onOpenManualPayment={() => openManualPaymentModal(slug)} />
-                        </div>
-                      ) : checkoutProvider === PAYMENT_PROVIDERS.MANUAL ? (
-                        <div className="w-full flex flex-col gap-1">
-                          <button
-                            type="button"
-                            disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !isPurchasable}
-                            onClick={() => handleOpenIntlPlanPreview(slug)}
-                            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:-translate-y-px disabled:opacity-60"
-                            style={{ backgroundColor: '#25D366' }}
-                          >
-                            {loadingPlanSlug === slug ? (
-                              <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                            ) : (
-                              <>
-                                <Icon name="MessageCircle" size={16} color="#fff" />
-                                {actionLabel}
-                              </>
-                            )}
-                          </button>
-                          <PlanPrimaryTrustBadge provider={checkoutProvider} billingCountryCode={billingCountryForUi} />
-                        </div>
-                      ) : (
-                        <span className="text-sm font-medium" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-                          {getPlanUnavailableCopy()}
+                        {getPlanLabel(slug)}
+                      </h2>
+                      {isCurrent && (
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full mt-0.5 shrink-0" style={{ backgroundColor: 'rgba(17,24,39,0.08)', color: '#374151' }}>
+                          Actual
                         </span>
-                      )
-                    ) : (
-                      <span className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-                        {showStarterScheduledSubscriptionLabel ? 'Suscripción programada' : 'Plan gratuito'}
-                      </span>
-                    )}
+                      )}
+                    </div>
+                    <div className="mb-5">
+                      {getDisplayPlanPrice(slug) === 0 ? (
+                        <>
+                          <p className="text-3xl font-bold text-slate-900 leading-none" style={{ fontFamily: 'var(--font-heading)' }}>
+                            Gratis
+                          </p>
+                          <p className="text-xs mt-1.5" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+                            Sin costo mensual
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <p
+                            className={`leading-none font-bold text-slate-950 tracking-tight ${
+                              planBillingDisplayCurrency === 'CLP' ? 'text-[1.75rem]' : 'text-3xl'
+                            }`}
+                            style={{ fontFamily: 'var(--font-heading)' }}
+                          >
+                            {formatSubscriptionPlanPrice(getDisplayPlanPrice(slug), planBillingDisplayCurrency, planBillingDisplayLocale)}
+                          </p>
+                          <p className="text-xs mt-1.5" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+                            por mes · {planBillingDisplayCurrency}
+                          </p>
+                        </>
+                      )}
+                    </div>
+                    <div className="border-t mb-4" style={{ borderColor: 'rgba(17,24,39,0.06)' }} />
+                    <ul className="space-y-2 mb-5 flex-1">
+                      <li className="flex items-center gap-2 text-sm" style={{ fontFamily: 'var(--font-caption)' }}>
+                        <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: 'rgba(16,185,129,0.12)' }} aria-hidden>
+                          <Icon name="Check" size={10} color="#059669" />
+                        </span>
+                        <span className="font-semibold" style={{ color: 'var(--color-foreground)' }}>
+                          {limits.maxProducts == null ? 'Productos ilimitados' : `${limits.maxProducts} productos`}
+                        </span>
+                      </li>
+                      <li className="flex items-center gap-2 text-sm" style={{ fontFamily: 'var(--font-caption)' }}>
+                        <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: 'rgba(16,185,129,0.12)' }} aria-hidden>
+                          <Icon name="Check" size={10} color="#059669" />
+                        </span>
+                        <span className="font-semibold" style={{ color: 'var(--color-foreground)' }}>
+                          {limits.maxOrdersPerMonth == null ? 'Pedidos ilimitados' : `${limits.maxOrdersPerMonth} pedidos/mes`}
+                        </span>
+                      </li>
+                      {slug === 'starter' && (
+                        <>
+                          <li className="flex items-center gap-2 text-sm" style={{ fontFamily: 'var(--font-caption)' }}>
+                            <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: 'rgba(17,24,39,0.04)' }} aria-hidden>
+                              <Icon name="Minus" size={10} color="#9CA3AF" />
+                            </span>
+                            <span style={{ color: 'var(--color-text-tertiary)' }}>Sin estadísticas ni ingresos del mes</span>
+                          </li>
+                          <li className="flex items-center gap-2 text-sm" style={{ fontFamily: 'var(--font-caption)' }}>
+                            <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: 'rgba(17,24,39,0.04)' }} aria-hidden>
+                              <Icon name="Minus" size={10} color="#9CA3AF" />
+                            </span>
+                            <span style={{ color: 'var(--color-text-tertiary)' }}>Sin asistencia de IA</span>
+                          </li>
+                          <li className="flex items-center gap-2 text-sm" style={{ fontFamily: 'var(--font-caption)' }}>
+                            <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: 'rgba(245,158,11,0.08)' }} aria-hidden>
+                              <Icon name="AlertCircle" size={10} color="#D97706" />
+                            </span>
+                            <span style={{ color: 'var(--color-text-tertiary)' }}>Incluye branding de Walinka en mensajes y links compartidos</span>
+                          </li>
+                        </>
+                      )}
+                      {slug === 'pro' && (
+                        <>
+                          <li className="flex items-center gap-2 text-sm" style={{ fontFamily: 'var(--font-caption)' }}>
+                            <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: 'rgba(16,185,129,0.12)' }} aria-hidden>
+                              <Icon name="Check" size={10} color="#059669" />
+                            </span>
+                            <span style={{ color: 'var(--color-text-secondary)' }}>Panel completo y estadísticas</span>
+                          </li>
+                          <li className="flex items-center gap-2 text-sm" style={{ fontFamily: 'var(--font-caption)' }}>
+                            <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: 'rgba(16,185,129,0.12)' }} aria-hidden>
+                              <Icon name="Check" size={10} color="#059669" />
+                            </span>
+                            <span style={{ color: 'var(--color-text-secondary)' }}>Asistencia de IA para descripciones</span>
+                          </li>
+                          <li className="flex items-center gap-2 text-sm" style={{ fontFamily: 'var(--font-caption)' }}>
+                            <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: 'rgba(17,24,39,0.04)' }} aria-hidden>
+                              <Icon name="Minus" size={10} color="#9CA3AF" />
+                            </span>
+                            <span style={{ color: 'var(--color-text-tertiary)' }}>Branding discreto: Powered by Walinka</span>
+                          </li>
+                        </>
+                      )}
+                      {slug === 'business' && (
+                        <>
+                          <li className="flex items-center gap-2 text-sm" style={{ fontFamily: 'var(--font-caption)' }}>
+                            <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: 'rgba(16,185,129,0.12)' }} aria-hidden>
+                              <Icon name="Check" size={10} color="#059669" />
+                            </span>
+                            <span style={{ color: 'var(--color-text-secondary)' }}>Panel completo y estadísticas</span>
+                          </li>
+                          <li className="flex items-center gap-2 text-sm" style={{ fontFamily: 'var(--font-caption)' }}>
+                            <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: 'rgba(16,185,129,0.12)' }} aria-hidden>
+                              <Icon name="Check" size={10} color="#059669" />
+                            </span>
+                            <span style={{ color: 'var(--color-text-secondary)' }}>IA ilimitada</span>
+                          </li>
+                          <li className="flex items-center gap-2 text-sm" style={{ fontFamily: 'var(--font-caption)' }}>
+                            <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: 'rgba(16,185,129,0.12)' }} aria-hidden>
+                              <Icon name="Check" size={10} color="#059669" />
+                            </span>
+                            <span style={{ color: 'var(--color-text-secondary)' }}>Sin branding de Walinka en catálogo o mensajes</span>
+                          </li>
+                        </>
+                      )}
+                    </ul>
+                    <div>
+                      {isCurrent ? (
+                        <div className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-medium" style={{ backgroundColor: 'rgba(17,24,39,0.05)', color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                          Tu plan actual
+                        </div>
+                      ) : getDisplayPlanPrice(slug) > 0 ? (
+                        !billingReady || !checkoutProvider || !hasServerSelectedProvider ? (
+                          <button
+                            type="button"
+                            disabled
+                            className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-medium opacity-60"
+                            style={{ color: 'var(--color-muted-foreground)', border: '1px solid rgba(17,24,39,0.10)', backgroundColor: 'rgba(255,255,255,0.54)' }}
+                          >
+                            {!isAuthenticated
+                              ? 'Inicia sesión para contratar'
+                              : billingRemoteError
+                                ? 'Facturación no disponible'
+                                : billingReady && !checkoutProvider
+                                  ? 'Método de pago no disponible'
+                                  : 'Cargando facturación…'}
+                          </button>
+                        ) : checkoutProvider === PAYMENT_PROVIDERS.MERCADO_PAGO ? (
+                          <div className="w-full flex flex-col gap-1.5">
+                            <button
+                              type="button"
+                              disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !isPurchasable || isAutomaticCheckoutBlocked}
+                              onClick={() => handlePayWithMercadoPago(slug)}
+                              className={`w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold text-white transition-all hover:-translate-y-px hover:opacity-95 active:translate-y-0 disabled:opacity-60${isProRecommended ? ' shadow-md' : ''}`}
+                              style={{ backgroundColor: '#009EE3' }}
+                            >
+                              {loadingPlanSlug === slug ? (
+                                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                              ) : (
+                                <>
+                                  <Icon name="Wallet" size={16} color="#fff" />
+                                  {actionLabel}
+                                </>
+                              )}
+                            </button>
+                            <PlanPrimaryTrustBadge provider={checkoutProvider} billingCountryCode={billingCountryForUi} />
+                          </div>
+                        ) : checkoutProvider === PAYMENT_PROVIDERS.PAYPAL ? (
+                          <div className="w-full flex flex-col gap-2">
+                            <button
+                              type="button"
+                              disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !isPurchasable || isAutomaticCheckoutBlocked || !isProviderReadyForCheckout(PAYMENT_PROVIDERS.PAYPAL)}
+                              onClick={() => handlePayWithPaypal(slug)}
+                              className={`w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold text-white transition-all hover:-translate-y-px hover:opacity-95 active:translate-y-0 disabled:opacity-60${isProRecommended ? ' shadow-md' : ''}`}
+                              style={{ backgroundColor: '#0070ba' }}
+                            >
+                              {loadingPlanSlug === slug ? (
+                                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                              ) : (
+                                <>
+                                  <Icon name="CreditCard" size={16} color="#fff" />
+                                  {actionLabel}
+                                </>
+                              )}
+                            </button>
+                            <PayPalCheckoutHelper planSlug={slug} onOpenManualPayment={() => openManualPaymentModal(slug)} />
+                          </div>
+                        ) : checkoutProvider === PAYMENT_PROVIDERS.MANUAL ? (
+                          <div className="w-full flex flex-col gap-1.5">
+                            <button
+                              type="button"
+                              disabled={!!loadingPlanSlug || authLoading || !isAuthenticated || !isPurchasable}
+                              onClick={() => handleOpenIntlPlanPreview(slug)}
+                              className={`w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold text-white transition-all hover:-translate-y-px hover:opacity-95 active:translate-y-0 disabled:opacity-60${isProRecommended ? ' shadow-md' : ''}`}
+                              style={{ backgroundColor: '#25D366' }}
+                            >
+                              {loadingPlanSlug === slug ? (
+                                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                              ) : (
+                                <>
+                                  <Icon name="MessageCircle" size={16} color="#fff" />
+                                  {actionLabel}
+                                </>
+                              )}
+                            </button>
+                            <PlanPrimaryTrustBadge provider={checkoutProvider} billingCountryCode={billingCountryForUi} />
+                          </div>
+                        ) : (
+                          <span className="text-sm font-medium" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                            {getPlanUnavailableCopy()}
+                          </span>
+                        )
+                      ) : (
+                        <span className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+                          {showStarterScheduledSubscriptionLabel ? 'Suscripción programada' : 'Plan gratuito'}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               );
