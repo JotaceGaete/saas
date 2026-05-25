@@ -1016,12 +1016,24 @@ export default function PlansPage() {
               const isCurrent = currentPlan === slug && !isProTrialCard;
               const actionLabel = `Elegir ${getPlanLabel(slug)}`;
               const isProRecommended = slug === 'pro';
+              const isBusinessPlan = slug === 'business';
               const marketPlan = getPlanConfig({
                 marketCode,
                 planSlug: slug,
                 countryCode: billingCountryForUi,
               });
               const isPurchasable = marketPlan?.enabled !== false && marketPlan?.purchasable !== false;
+
+              const planTagline =
+                slug === 'starter' ? 'Ideal para comenzar' :
+                slug === 'pro' ? 'El más elegido' :
+                'Para negocios con más ventas';
+
+              const taglineColor =
+                slug === 'pro' ? '#6366f1' :
+                isBusinessPlan ? '#374151' :
+                '#6B7280';
+
               return (
                 <div
                   key={slug}
@@ -1035,14 +1047,18 @@ export default function PlansPage() {
                     backgroundColor: '#fff',
                     borderColor: isProRecommended
                       ? 'rgba(99,102,241,0.40)'
-                      : isCurrent
-                        ? 'rgba(17,24,39,0.20)'
-                        : 'rgba(17,24,39,0.09)',
+                      : isBusinessPlan
+                        ? 'rgba(15,23,42,0.22)'
+                        : isCurrent
+                          ? 'rgba(17,24,39,0.20)'
+                          : 'rgba(17,24,39,0.09)',
                     boxShadow: isProRecommended
                       ? '0 28px 60px rgba(17,24,39,0.14), 0 0 0 1px rgba(99,102,241,0.12)'
-                      : isCurrent
-                        ? '0 12px 28px rgba(17,24,39,0.07)'
-                        : '0 6px 18px rgba(17,24,39,0.04)',
+                      : isBusinessPlan
+                        ? '0 16px 40px rgba(15,23,42,0.10), 0 0 0 1px rgba(15,23,42,0.06)'
+                        : isCurrent
+                          ? '0 12px 28px rgba(17,24,39,0.07)'
+                          : '0 6px 18px rgba(17,24,39,0.04)',
                   }}
                 >
                   {isProRecommended && (
@@ -1055,7 +1071,8 @@ export default function PlansPage() {
                     </span>
                   )}
                   <div className="p-5 flex flex-col flex-1">
-                    <div className="flex items-start justify-between mb-4 pt-1">
+                    {/* Plan name + current badge */}
+                    <div className="flex items-start justify-between mb-1 pt-1">
                       <h2
                         className={`font-bold leading-tight ${isProRecommended ? 'text-xl' : 'text-lg'}`}
                         style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}
@@ -1068,6 +1085,15 @@ export default function PlansPage() {
                         </span>
                       )}
                     </div>
+                    {/* Microcopy tagline */}
+                    <p
+                      className="text-[11px] mb-4 leading-none"
+                      style={{ color: taglineColor, fontFamily: 'var(--font-caption)', fontWeight: slug === 'pro' ? 600 : 400 }}
+                    >
+                      {planTagline}
+                    </p>
+
+                    {/* Price */}
                     <div className="mb-5">
                       {getDisplayPlanPrice(slug) === 0 ? (
                         <>
@@ -1094,91 +1120,126 @@ export default function PlansPage() {
                         </>
                       )}
                     </div>
+
                     <div className="border-t mb-4" style={{ borderColor: 'rgba(17,24,39,0.06)' }} />
+
+                    {/* Features — ordered by value priority */}
                     <ul className="space-y-2 mb-5 flex-1">
-                      <li className="flex items-center gap-2 text-sm" style={{ fontFamily: 'var(--font-caption)' }}>
-                        <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: 'rgba(16,185,129,0.12)' }} aria-hidden>
-                          <Icon name="Check" size={10} color="#059669" />
-                        </span>
-                        <span className="font-semibold" style={{ color: 'var(--color-foreground)' }}>
-                          {limits.maxProducts == null ? 'Productos ilimitados' : `${limits.maxProducts} productos`}
-                        </span>
-                      </li>
-                      <li className="flex items-center gap-2 text-sm" style={{ fontFamily: 'var(--font-caption)' }}>
-                        <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: 'rgba(16,185,129,0.12)' }} aria-hidden>
-                          <Icon name="Check" size={10} color="#059669" />
-                        </span>
-                        <span className="font-semibold" style={{ color: 'var(--color-foreground)' }}>
-                          {limits.maxOrdersPerMonth == null ? 'Pedidos ilimitados' : `${limits.maxOrdersPerMonth} pedidos/mes`}
-                        </span>
-                      </li>
                       {slug === 'starter' && (
                         <>
                           <li className="flex items-center gap-2 text-sm" style={{ fontFamily: 'var(--font-caption)' }}>
+                            <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: 'rgba(16,185,129,0.12)' }} aria-hidden>
+                              <Icon name="Check" size={10} color="#059669" />
+                            </span>
+                            <span className="font-semibold" style={{ color: 'var(--color-foreground)' }}>
+                              {limits.maxProducts == null ? 'Productos ilimitados' : `${limits.maxProducts} productos`}
+                            </span>
+                          </li>
+                          <li className="flex items-center gap-2 text-sm" style={{ fontFamily: 'var(--font-caption)' }}>
+                            <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: 'rgba(16,185,129,0.12)' }} aria-hidden>
+                              <Icon name="Check" size={10} color="#059669" />
+                            </span>
+                            <span className="font-semibold" style={{ color: 'var(--color-foreground)' }}>
+                              {limits.maxOrdersPerMonth == null ? 'Pedidos ilimitados' : `${limits.maxOrdersPerMonth} pedidos/mes`}
+                            </span>
+                          </li>
+                          <li className="flex items-center gap-2" style={{ fontFamily: 'var(--font-caption)' }}>
                             <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: 'rgba(17,24,39,0.04)' }} aria-hidden>
                               <Icon name="Minus" size={10} color="#9CA3AF" />
                             </span>
-                            <span style={{ color: 'var(--color-text-tertiary)' }}>Sin estadísticas ni ingresos del mes</span>
+                            <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>Sin estadísticas ni ingresos del mes</span>
                           </li>
-                          <li className="flex items-center gap-2 text-sm" style={{ fontFamily: 'var(--font-caption)' }}>
+                          <li className="flex items-center gap-2" style={{ fontFamily: 'var(--font-caption)' }}>
                             <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: 'rgba(17,24,39,0.04)' }} aria-hidden>
                               <Icon name="Minus" size={10} color="#9CA3AF" />
                             </span>
-                            <span style={{ color: 'var(--color-text-tertiary)' }}>Sin asistencia de IA</span>
+                            <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>Sin asistencia de IA</span>
                           </li>
-                          <li className="flex items-center gap-2 text-sm" style={{ fontFamily: 'var(--font-caption)' }}>
-                            <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: 'rgba(245,158,11,0.08)' }} aria-hidden>
+                          <li className="flex items-start gap-2" style={{ fontFamily: 'var(--font-caption)' }}>
+                            <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full mt-0.5" style={{ backgroundColor: 'rgba(245,158,11,0.07)' }} aria-hidden>
                               <Icon name="AlertCircle" size={10} color="#D97706" />
                             </span>
-                            <span style={{ color: 'var(--color-text-tertiary)' }}>Incluye branding de Walinka en mensajes y links compartidos</span>
+                            <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>Incluye branding de Walinka en mensajes y links compartidos</span>
                           </li>
                         </>
                       )}
                       {slug === 'pro' && (
                         <>
+                          {/* Key value props first */}
+                          <li className="flex items-center gap-2 text-sm" style={{ fontFamily: 'var(--font-caption)' }}>
+                            <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: 'rgba(99,102,241,0.12)' }} aria-hidden>
+                              <Icon name="Check" size={10} color="#6366f1" />
+                            </span>
+                            <span className="font-semibold" style={{ color: 'var(--color-foreground)' }}>Estadísticas y panel completo</span>
+                          </li>
+                          <li className="flex items-center gap-2 text-sm" style={{ fontFamily: 'var(--font-caption)' }}>
+                            <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: 'rgba(99,102,241,0.12)' }} aria-hidden>
+                              <Icon name="Check" size={10} color="#6366f1" />
+                            </span>
+                            <span className="font-semibold" style={{ color: 'var(--color-foreground)' }}>Asistencia de IA para descripciones</span>
+                          </li>
+                          {/* Limits */}
                           <li className="flex items-center gap-2 text-sm" style={{ fontFamily: 'var(--font-caption)' }}>
                             <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: 'rgba(16,185,129,0.12)' }} aria-hidden>
                               <Icon name="Check" size={10} color="#059669" />
                             </span>
-                            <span style={{ color: 'var(--color-text-secondary)' }}>Panel completo y estadísticas</span>
+                            <span style={{ color: 'var(--color-text-secondary)' }}>
+                              {limits.maxProducts == null ? 'Productos ilimitados' : `${limits.maxProducts} productos`}
+                            </span>
                           </li>
                           <li className="flex items-center gap-2 text-sm" style={{ fontFamily: 'var(--font-caption)' }}>
                             <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: 'rgba(16,185,129,0.12)' }} aria-hidden>
                               <Icon name="Check" size={10} color="#059669" />
                             </span>
-                            <span style={{ color: 'var(--color-text-secondary)' }}>Asistencia de IA para descripciones</span>
+                            <span style={{ color: 'var(--color-text-secondary)' }}>
+                              {limits.maxOrdersPerMonth == null ? 'Pedidos ilimitados' : `${limits.maxOrdersPerMonth} pedidos/mes`}
+                            </span>
                           </li>
-                          <li className="flex items-center gap-2 text-sm" style={{ fontFamily: 'var(--font-caption)' }}>
-                            <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: 'rgba(17,24,39,0.04)' }} aria-hidden>
+                          {/* Minor restriction last */}
+                          <li className="flex items-start gap-2" style={{ fontFamily: 'var(--font-caption)' }}>
+                            <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full mt-0.5" style={{ backgroundColor: 'rgba(17,24,39,0.04)' }} aria-hidden>
                               <Icon name="Minus" size={10} color="#9CA3AF" />
                             </span>
-                            <span style={{ color: 'var(--color-text-tertiary)' }}>Branding discreto: Powered by Walinka</span>
+                            <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>Branding discreto: Powered by Walinka</span>
                           </li>
                         </>
                       )}
                       {slug === 'business' && (
                         <>
+                          {/* Lead with unlimited + no branding — the two key differentiators */}
                           <li className="flex items-center gap-2 text-sm" style={{ fontFamily: 'var(--font-caption)' }}>
-                            <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: 'rgba(16,185,129,0.12)' }} aria-hidden>
-                              <Icon name="Check" size={10} color="#059669" />
+                            <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: 'rgba(15,23,42,0.08)' }} aria-hidden>
+                              <Icon name="Check" size={10} color="#111827" />
                             </span>
-                            <span style={{ color: 'var(--color-text-secondary)' }}>Panel completo y estadísticas</span>
+                            <span style={{ color: 'var(--color-foreground)' }}>
+                              <span className="font-bold">{limits.maxProducts == null ? 'Productos ilimitados' : `${limits.maxProducts} productos`}</span>
+                            </span>
                           </li>
                           <li className="flex items-center gap-2 text-sm" style={{ fontFamily: 'var(--font-caption)' }}>
-                            <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: 'rgba(16,185,129,0.12)' }} aria-hidden>
-                              <Icon name="Check" size={10} color="#059669" />
+                            <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: 'rgba(15,23,42,0.08)' }} aria-hidden>
+                              <Icon name="Check" size={10} color="#111827" />
                             </span>
-                            <span style={{ color: 'var(--color-text-secondary)' }}>IA ilimitada</span>
+                            <span style={{ color: 'var(--color-foreground)' }}>
+                              <span className="font-bold">{limits.maxOrdersPerMonth == null ? 'Pedidos ilimitados' : `${limits.maxOrdersPerMonth} pedidos/mes`}</span>
+                            </span>
                           </li>
                           <li className="flex items-center gap-2 text-sm" style={{ fontFamily: 'var(--font-caption)' }}>
-                            <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: 'rgba(16,185,129,0.12)' }} aria-hidden>
-                              <Icon name="Check" size={10} color="#059669" />
+                            <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: 'rgba(15,23,42,0.08)' }} aria-hidden>
+                              <Icon name="Check" size={10} color="#111827" />
                             </span>
-                            <span style={{ color: 'var(--color-text-secondary)' }}>Sin branding de Walinka en catálogo o mensajes</span>
+                            <span className="font-semibold" style={{ color: 'var(--color-foreground)' }}>Estadísticas completas · IA ilimitada</span>
+                          </li>
+                          <li className="flex items-center gap-2 text-sm" style={{ fontFamily: 'var(--font-caption)' }}>
+                            <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: 'rgba(15,23,42,0.08)' }} aria-hidden>
+                              <Icon name="Check" size={10} color="#111827" />
+                            </span>
+                            <span className="font-semibold" style={{ color: 'var(--color-foreground)' }}>Sin branding de Walinka en catálogo o mensajes</span>
                           </li>
                         </>
                       )}
                     </ul>
+
+                    {/* CTA — logic completely unchanged */}
                     <div>
                       {isCurrent ? (
                         <div className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-medium" style={{ backgroundColor: 'rgba(17,24,39,0.05)', color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
