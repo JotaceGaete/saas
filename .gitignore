@@ -9,6 +9,8 @@ vite.config.*s.*
 .env
 .env.local
 .env.*.local
+backup.sql
+api/.data/paypal-*.json
 
 # Claude Code linked worktrees (same repo); tracking as gitlink breaks root commits when dirty
 .claude/worktrees/dist/ 
