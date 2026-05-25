@@ -1121,14 +1121,14 @@ export default function PlansPage() {
         />
         <DashboardLayoutContent className="page-enter">
 
-          <section className="mb-7 border-b pb-6" style={{ borderColor: 'rgba(17,24,39,0.08)' }}>
+          <section className="mb-4 border-b pb-4" style={{ borderColor: 'rgba(17,24,39,0.08)' }}>
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
               Suscripción
             </p>
-            <h2 className="mt-2 text-3xl font-semibold leading-tight sm:text-4xl" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-heading)', letterSpacing: '-0.03em' }}>
+            <h2 className="mt-1.5 text-2xl font-semibold leading-tight sm:text-3xl" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-heading)', letterSpacing: '-0.03em' }}>
               Plan y facturación
             </h2>
-            <p className="mt-3 max-w-2xl text-sm leading-6 sm:text-base" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-body)' }}>
+            <p className="mt-2 max-w-2xl text-sm leading-5" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-body)' }}>
               {billingHeroSubtitle}
             </p>
           </section>
@@ -1141,16 +1141,16 @@ export default function PlansPage() {
             />
           )}
 
-          <div className="mb-4 mt-8 flex flex-col gap-1">
-            <h3 className="text-xl font-semibold" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}>
+          <div className="mb-3 mt-3 flex flex-col gap-1">
+            <h3 className="text-2xl font-semibold sm:text-3xl" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-heading)', letterSpacing: '-0.025em' }}>
               Elige cómo quieres crecer
             </h3>
-            <p className="text-sm leading-6" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-body)' }}>
+            <p className="text-sm leading-5" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-body)' }}>
               Planes pensados para operar tu {planNoun} sin ruido técnico.
             </p>
           </div>
 
-          <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div className="inline-flex w-fit rounded-xl border p-1" style={{ backgroundColor: 'rgba(255,255,255,0.72)', borderColor: 'rgba(17,24,39,0.10)' }}>
               {[
                 ['monthly', 'Mensual'],

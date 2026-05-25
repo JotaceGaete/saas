@@ -13,10 +13,11 @@ export default function UnifiedSubscriptionCard({ viewModel, onScrollToPlans, su
 
   const { layout, normalizedStatus, rawStatus } = viewModel;
   const dataSubscription = subscription != null && subscription !== '' ? String(subscription) : undefined;
-  const cardClass = 'mb-8 overflow-hidden rounded-2xl border shadow-[0_16px_40px_rgba(17,24,39,0.06)]';
-  const cardStyle = { backgroundColor: 'rgba(255,255,255,0.78)', borderColor: 'rgba(17,24,39,0.08)' };
-  const iconWrapClass = 'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl';
-  const primaryButtonClass = 'flex items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 py-3 font-semibold text-white transition-all hover:-translate-y-px hover:bg-slate-800 shrink-0 font-[family-name:var(--font-caption)]';
+  const cardClass = 'mb-3 overflow-hidden rounded-2xl border shadow-[0_8px_22px_rgba(17,24,39,0.04)]';
+  const cardStyle = { backgroundColor: 'rgba(255,255,255,0.64)', borderColor: 'rgba(17,24,39,0.07)' };
+  const iconWrapClass = 'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg';
+  const primaryButtonClass = 'flex items-center justify-center gap-1.5 rounded-lg border bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition-all hover:-translate-y-px hover:bg-slate-50 shrink-0 font-[family-name:var(--font-caption)]';
+  const primaryButtonStyle = { borderColor: 'rgba(17,24,39,0.10)' };
 
   if (layout === 'pending') {
     return (
@@ -26,13 +27,13 @@ export default function UnifiedSubscriptionCard({ viewModel, onScrollToPlans, su
         data-billing-status={rawStatus ?? normalizedStatus ?? ''}
         data-subscription={dataSubscription}
       >
-        <div className="p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-700 font-[family-name:var(--font-caption)]">
               Estado del plan
             </h3>
-            <p className="text-lg font-semibold text-gray-950 mt-1 font-[family-name:var(--font-heading)]">{viewModel.title}</p>
-            <p className="text-sm text-gray-600 mt-2 font-[family-name:var(--font-caption)]">{viewModel.subtitle}</p>
+            <p className="text-base font-semibold text-gray-950 mt-1 font-[family-name:var(--font-heading)]">{viewModel.title}</p>
+            <p className="text-sm text-gray-600 mt-1 font-[family-name:var(--font-caption)]">{viewModel.subtitle}</p>
           </div>
         </div>
       </div>
@@ -76,24 +77,24 @@ export default function UnifiedSubscriptionCard({ viewModel, onScrollToPlans, su
           data-billing-status={rawStatus ?? normalizedStatus ?? ''}
           data-subscription={dataSubscription}
         >
-          <div className="p-6 flex flex-col lg:flex-row lg:items-start justify-between gap-6">
-            <div className="flex items-start gap-4 min-w-0 flex-1">
+          <div className="p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div className="flex items-start gap-3 min-w-0 flex-1">
               <div className={iconWrapClass} style={{ backgroundColor: 'rgba(5,150,105,0.10)' }}>
-                <CheckCircle2 className="text-emerald-700 w-6 h-6" aria-hidden />
+                <CheckCircle2 className="text-emerald-700 w-4 h-4" aria-hidden />
               </div>
-              <div className="min-w-0 space-y-3">
+              <div className="min-w-0 space-y-2">
                 {statusBadgeText ? (
                   <span className="inline-flex items-center rounded-full border text-xs font-semibold px-3 py-1 font-[family-name:var(--font-caption)]" style={{ backgroundColor: 'rgba(5,150,105,0.08)', borderColor: 'rgba(5,150,105,0.18)', color: '#047857' }}>
                     {statusBadgeText}
                   </span>
                 ) : null}
                 {trialCurrentPlanTitle ? (
-                  <p className="text-lg font-semibold text-gray-950 font-[family-name:var(--font-heading)]">
+                  <p className="text-base font-semibold text-gray-950 font-[family-name:var(--font-heading)]">
                     {trialCurrentPlanTitle}
                   </p>
                 ) : null}
                 {trialPaidMainBody ? (
-                  <p className="text-sm text-gray-700 leading-relaxed font-[family-name:var(--font-caption)]">
+                  <p className="text-sm text-gray-700 leading-snug font-[family-name:var(--font-caption)]">
                     {trialPaidMainBody}
                   </p>
                 ) : null}
@@ -129,14 +130,14 @@ export default function UnifiedSubscriptionCard({ viewModel, onScrollToPlans, su
             </div>
 
             {trialSidePanelCopy ? (
-              <div className="shrink-0 w-full lg:w-auto rounded-xl border px-4 py-3 text-sm font-[family-name:var(--font-caption)] text-center lg:text-left max-w-sm" style={{ backgroundColor: 'rgba(5,150,105,0.08)', borderColor: 'rgba(5,150,105,0.18)', color: '#047857' }}>
+              <div className="shrink-0 w-full lg:w-auto rounded-xl border px-3 py-2 text-sm font-[family-name:var(--font-caption)] text-center lg:text-left max-w-sm" style={{ backgroundColor: 'rgba(5,150,105,0.08)', borderColor: 'rgba(5,150,105,0.18)', color: '#047857' }}>
                 {trialSidePanelCopy}
               </div>
             ) : null}
           </div>
 
           {footerCopy ? (
-            <div className="px-6 py-3 border-t" style={{ backgroundColor: 'rgba(248,250,252,0.72)', borderColor: 'rgba(17,24,39,0.08)' }}>
+            <div className="px-4 py-2 border-t" style={{ backgroundColor: 'rgba(248,250,252,0.56)', borderColor: 'rgba(17,24,39,0.08)' }}>
               <p className="text-xs text-gray-600 text-center md:text-left font-[family-name:var(--font-caption)]">
                 {footerCopy}
               </p>
@@ -153,17 +154,17 @@ export default function UnifiedSubscriptionCard({ viewModel, onScrollToPlans, su
         data-billing-status={rawStatus ?? normalizedStatus ?? ''}
         data-subscription={dataSubscription}
       >
-        <div className="p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-          <div className="flex items-start gap-4 min-w-0">
+        <div className="p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="flex items-start gap-3 min-w-0">
             <div className={iconWrapClass} style={{ backgroundColor: 'rgba(17,24,39,0.06)' }}>
-              <CheckCircle2 className="text-purple-600 w-6 h-6" aria-hidden />
+              <CheckCircle2 className="text-purple-600 w-4 h-4" aria-hidden />
             </div>
             <div className="min-w-0">
               <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-[0.16em] font-[family-name:var(--font-caption)]">
                 Plan actual
               </h3>
               <div className="flex flex-wrap items-center gap-2 mt-1">
-                <span className="text-2xl font-semibold text-gray-950 font-[family-name:var(--font-heading)]">
+                <span className="text-lg font-semibold text-gray-950 font-[family-name:var(--font-heading)]">
                   Plan {planLabel}
                 </span>
                 {showTrialBadge && (
@@ -179,7 +180,7 @@ export default function UnifiedSubscriptionCard({ viewModel, onScrollToPlans, su
             </div>
           </div>
 
-          <div className="flex-1 max-w-md w-full">
+          <div className="flex-1 max-w-sm w-full">
             <div className="flex justify-between text-sm mb-2">
               <span className="text-gray-600 font-medium font-[family-name:var(--font-caption)]">Días de prueba restantes</span>
               <span className="text-purple-700 font-bold tabular-nums font-[family-name:var(--font-caption)]">
@@ -205,12 +206,13 @@ export default function UnifiedSubscriptionCard({ viewModel, onScrollToPlans, su
               type="button"
               onClick={onScrollToPlans}
               className={`${primaryButtonClass} w-full lg:w-auto`}
+              style={primaryButtonStyle}
             >
-              <CreditCard size={18} aria-hidden />
+              <CreditCard size={15} aria-hidden />
               {ctaLabel || 'Activar suscripción ahora'}
             </button>
           ) : (
-            <div className="shrink-0 w-full lg:w-auto rounded-xl border px-4 py-2 text-sm font-[family-name:var(--font-caption)]" style={{ backgroundColor: 'rgba(5,150,105,0.08)', borderColor: 'rgba(5,150,105,0.18)', color: '#047857' }}>
+            <div className="shrink-0 w-full lg:w-auto rounded-xl border px-3 py-2 text-sm font-[family-name:var(--font-caption)]" style={{ backgroundColor: 'rgba(5,150,105,0.08)', borderColor: 'rgba(5,150,105,0.18)', color: '#047857' }}>
               {trialWithSubscription
                 ? (billingMode === 'manual' ? 'Pago del plan confirmado' : 'Suscripción pagada confirmada')
                 : 'Estado sincronizado'}
@@ -218,7 +220,7 @@ export default function UnifiedSubscriptionCard({ viewModel, onScrollToPlans, su
           )}
         </div>
 
-        <div className="px-6 py-3 border-t" style={{ backgroundColor: 'rgba(248,250,252,0.72)', borderColor: 'rgba(17,24,39,0.08)' }}>
+        <div className="px-4 py-2 border-t" style={{ backgroundColor: 'rgba(248,250,252,0.56)', borderColor: 'rgba(17,24,39,0.08)' }}>
           <p className="text-xs text-gray-500 text-center md:text-left font-[family-name:var(--font-caption)]">
             {footerCopy ? (
               footerCopy
@@ -242,18 +244,18 @@ export default function UnifiedSubscriptionCard({ viewModel, onScrollToPlans, su
         data-billing-status={rawStatus ?? normalizedStatus ?? ''}
         data-subscription={dataSubscription}
       >
-        <div className="p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-start gap-4">
+        <div className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="flex items-start gap-3">
             <div className={iconWrapClass} style={{ backgroundColor: 'rgba(17,24,39,0.06)' }}>
-              <CheckCircle2 className="text-purple-600 w-6 h-6" aria-hidden />
+              <CheckCircle2 className="text-purple-600 w-4 h-4" aria-hidden />
             </div>
             <div>
               <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-[0.16em] font-[family-name:var(--font-caption)]">
                 Plan actual
               </h3>
-              <p className="text-2xl font-semibold text-gray-950 mt-1 font-[family-name:var(--font-heading)]">{viewModel.title}</p>
+              <p className="text-lg font-semibold text-gray-950 mt-0.5 font-[family-name:var(--font-heading)]">{viewModel.title}</p>
               {viewModel.subtitle && (
-                <p className="text-sm text-gray-600 mt-1 font-[family-name:var(--font-caption)]">{viewModel.subtitle}</p>
+                <p className="text-sm text-gray-600 mt-0.5 font-[family-name:var(--font-caption)]">{viewModel.subtitle}</p>
               )}
               {viewModel.date_hint && (
                 <p className="text-xs text-gray-500 mt-1.5 flex items-center gap-1.5 font-[family-name:var(--font-caption)]">
@@ -261,15 +263,16 @@ export default function UnifiedSubscriptionCard({ viewModel, onScrollToPlans, su
                   {viewModel.date_hint}
                 </p>
               )}
-              <p className="text-sm text-gray-500 mt-2 font-[family-name:var(--font-caption)]">{viewModel.limitsLine}</p>
+              <p className="text-xs text-gray-500 mt-1.5 font-[family-name:var(--font-caption)]">{viewModel.limitsLine}</p>
             </div>
           </div>
           <button
             type="button"
             onClick={onScrollToPlans}
             className={primaryButtonClass}
+            style={primaryButtonStyle}
           >
-            <CreditCard size={18} aria-hidden />
+            <CreditCard size={15} aria-hidden />
             Ver planes
           </button>
         </div>
@@ -285,26 +288,27 @@ export default function UnifiedSubscriptionCard({ viewModel, onScrollToPlans, su
         data-billing-status={rawStatus ?? normalizedStatus ?? ''}
         data-subscription={dataSubscription}
       >
-        <div className="p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-start gap-4">
+        <div className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="flex items-start gap-3">
             <div className={iconWrapClass} style={{ backgroundColor: 'rgba(17,24,39,0.06)' }}>
-              <CheckCircle2 className="text-slate-600 w-6 h-6" aria-hidden />
+              <CheckCircle2 className="text-slate-600 w-4 h-4" aria-hidden />
             </div>
             <div>
               <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-[0.16em] font-[family-name:var(--font-caption)]">
                 Plan actual
               </h3>
-              <p className="text-xl font-semibold text-gray-950 mt-1 font-[family-name:var(--font-heading)]">{viewModel.title}</p>
-              <p className="text-sm text-gray-500 mt-1 font-[family-name:var(--font-caption)]">{viewModel.subtitle}</p>
-              <p className="text-sm text-gray-500 mt-2 font-[family-name:var(--font-caption)]">{viewModel.limitsLine}</p>
+              <p className="text-lg font-semibold text-gray-950 mt-0.5 font-[family-name:var(--font-heading)]">{viewModel.title}</p>
+              <p className="text-sm text-gray-500 mt-0.5 font-[family-name:var(--font-caption)]">{viewModel.subtitle}</p>
+              <p className="text-xs text-gray-500 mt-1.5 font-[family-name:var(--font-caption)]">{viewModel.limitsLine}</p>
             </div>
           </div>
           <button
             type="button"
             onClick={onScrollToPlans}
             className={primaryButtonClass}
+            style={primaryButtonStyle}
           >
-            <CreditCard size={18} aria-hidden />
+            <CreditCard size={15} aria-hidden />
             Ver planes
           </button>
         </div>
