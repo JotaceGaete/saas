@@ -272,15 +272,28 @@ export default function AuthStep({ onRegister, onLogin, onGoogleLogin, isLoading
     return e;
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (isLoading) return;
+    console.info('[BusinessRegistration/AuthStep] submit received', { mode, isLoading });
+    if (isLoading) {
+      console.info('[BusinessRegistration/AuthStep] submit ignored because form is loading');
+      return;
+    }
+    console.info('[BusinessRegistration/AuthStep] before validation');
     const errs = validate();
-    if (Object.keys(errs).length > 0) { setErrors(errs); return; }
-    if (mode === 'register') {
-      onRegister({ email: formData.email, password: formData.password, businessName: formData.businessName });
-    } else {
-      onLogin({ email: formData.email, password: formData.password });
+    if (Object.keys(errs).length > 0) {
+      console.info('[BusinessRegistration/AuthStep] validation blocked submit', { fields: Object.keys(errs) });
+      setErrors(errs);
+      return;
+    }
+    try {
+      if (mode === 'register') {
+        await onRegister({ email: formData.email, password: formData.password, businessName: formData.businessName });
+      } else {
+        await onLogin({ email: formData.email, password: formData.password });
+      }
+    } catch (error) {
+      console.error('[BusinessRegistration/AuthStep] submit handler failed', error);
     }
   };
 
