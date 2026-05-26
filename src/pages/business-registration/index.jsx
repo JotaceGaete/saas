@@ -123,12 +123,7 @@ export default function BusinessRegistration() {
   // ── PASO 1: No autenticado → pantalla de login/registro ─────────────────────
   if (!user) {
     const handleRegister = async ({ email, password, businessName }) => {
-      console.info('[BusinessRegistration] handleRegister called', { email, hasBusinessName: !!businessName });
       if (registerInFlightRef.current || signupCooldownActive) {
-        console.info('[BusinessRegistration] register blocked by in-flight/cooldown', {
-          inFlight: registerInFlightRef.current,
-          signupCooldownActive,
-        });
         setAuthError('Espera un minuto antes de intentarlo de nuevo.');
         return;
       }
@@ -136,14 +131,8 @@ export default function BusinessRegistration() {
       setIsSubmitting(true);
       setAuthError(null);
       try {
-        console.info('[BusinessRegistration] before signUp', { email });
         const { data, error } = await signUp(email, password, {
           name: businessName || 'Mi Negocio',
-        });
-        console.info('[BusinessRegistration] after signUp', {
-          hasUser: !!data?.user,
-          hasSession: !!data?.session,
-          error: error?.message || null,
         });
         if (error) {
           setAuthError(normalizeAuthErrorMessage(error.message));
@@ -163,14 +152,12 @@ export default function BusinessRegistration() {
             plan: 'starter',
           }).catch(() => {});
           if (typeof window !== 'undefined') {
-            console.log('[BusinessRegistration] signUp: email confirmation required', { email: confirmationEmail });
             window.sessionStorage?.setItem('pendingSignupEmail', confirmationEmail);
           }
           navigate('/verify-email', { replace: true, state: { email: confirmationEmail } });
           return;
         }
         if (!data?.user) {
-          console.warn('[BusinessRegistration] signUp returned no user and no error', { data });
           setAuthError('No pudimos completar el registro. Intenta nuevamente en unos segundos.');
           return;
         }
@@ -183,7 +170,6 @@ export default function BusinessRegistration() {
         }).catch(() => {});
         // Si hay sesión, onAuthStateChange actualizará `user` y pasaremos al PASO 2.
       } catch (error) {
-        console.error('[BusinessRegistration] handleRegister catch', error);
         setAuthError(normalizeAuthErrorMessage(error?.message || 'Error inesperado. Por favor intenta de nuevo.'));
       } finally {
         registerInFlightRef.current = false;

@@ -274,15 +274,11 @@ export default function AuthStep({ onRegister, onLogin, onGoogleLogin, isLoading
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    console.info('[BusinessRegistration/AuthStep] submit received', { mode, isLoading });
     if (isLoading) {
-      console.info('[BusinessRegistration/AuthStep] submit ignored because form is loading');
       return;
     }
-    console.info('[BusinessRegistration/AuthStep] before validation');
     const errs = validate();
     if (Object.keys(errs).length > 0) {
-      console.info('[BusinessRegistration/AuthStep] validation blocked submit', { fields: Object.keys(errs) });
       setErrors(errs);
       return;
     }
@@ -293,7 +289,7 @@ export default function AuthStep({ onRegister, onLogin, onGoogleLogin, isLoading
         await onLogin({ email: formData.email, password: formData.password });
       }
     } catch (error) {
-      console.error('[BusinessRegistration/AuthStep] submit handler failed', error);
+      // The parent handler owns user-visible error state.
     }
   };
 
