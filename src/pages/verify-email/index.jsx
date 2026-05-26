@@ -1,5 +1,5 @@
-import React, { useState, useCallback } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
+import React, { useMemo, useState, useCallback } from 'react';
+import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import Icon from 'components/AppIcon';
 import PremiumLoader from 'components/ui/PremiumLoader';
 import { useAuth } from '../../contexts/AuthContext';
@@ -7,6 +7,7 @@ import { supabase } from '../../lib/supabase';
 
 export default function VerifyEmailPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const {
     user,
     loading,
@@ -23,9 +24,16 @@ export default function VerifyEmailPage() {
   const [newEmail, setNewEmail] = useState('');
   const [changeLoading, setChangeLoading] = useState(false);
   const [changeMsg, setChangeMsg] = useState(null);
+  const pendingEmail = useMemo(() => {
+    const stateEmail = location.state?.email;
+    if (stateEmail) return String(stateEmail).trim();
+    if (typeof window === 'undefined') return '';
+    return window.sessionStorage?.getItem('pendingSignupEmail')?.trim() || '';
+  }, [location.state?.email]);
+  const displayEmail = user?.email?.trim() || pendingEmail;
 
   const handleResend = useCallback(async () => {
-    const email = user?.email?.trim();
+    const email = displayEmail;
     if (!email) return;
     setResendMsg(null);
     setResendLoading(true);
@@ -41,9 +49,13 @@ export default function VerifyEmailPage() {
     } finally {
       setResendLoading(false);
     }
-  }, [user?.email, resendConfirmationEmail]);
+  }, [displayEmail, resendConfirmationEmail]);
 
   const handleRefresh = async () => {
+    if (!user) {
+      navigate('/login', { replace: true });
+      return;
+    }
     setResendMsg(null);
     setRefreshLoading(true);
     try {
@@ -53,6 +65,9 @@ export default function VerifyEmailPage() {
         return;
       }
       if (fresh?.email_confirmed_at) {
+        if (typeof window !== 'undefined') {
+          window.sessionStorage?.removeItem('pendingSignupEmail');
+        }
         navigate('/dashboard', { replace: true });
       } else {
         setResendMsg({ type: 'error', text: 'Aún no detectamos la confirmación. Abre el enlace del correo e intenta de nuevo.' });
@@ -92,7 +107,10 @@ export default function VerifyEmailPage() {
   };
 
   const handleSignOut = async () => {
-    await signOut();
+    if (typeof window !== 'undefined') {
+      window.sessionStorage?.removeItem('pendingSignupEmail');
+    }
+    if (user) await signOut();
     navigate('/login', { replace: true });
   };
 
@@ -100,11 +118,14 @@ export default function VerifyEmailPage() {
     return <PremiumLoader fullScreen text="Preparando tu acceso..." />;
   }
 
-  if (!user) {
+  if (!user && !pendingEmail) {
     return <Navigate to="/login" replace />;
   }
 
-  if (isEmailConfirmed) {
+  if (user && isEmailConfirmed) {
+    if (typeof window !== 'undefined') {
+      window.sessionStorage?.removeItem('pendingSignupEmail');
+    }
     return <Navigate to="/dashboard" replace />;
   }
 
@@ -118,14 +139,17 @@ export default function VerifyEmailPage() {
           <Icon name="Mail" size={28} color="var(--color-primary)" />
         </div>
         <h1 className="text-xl sm:text-2xl font-bold text-center mb-2" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>
-          Verifica tu correo
+          Te enviamos un correo de confirmación
         </h1>
         <p className="text-sm text-center mb-1" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)', lineHeight: 1.6 }}>
-          Te enviamos un correo de verificación. Confirma tu email para continuar.
+          Revisa tu bandeja de entrada y confirma tu cuenta para continuar.
         </p>
-        {user?.email && (
+        <p className="text-sm text-center mb-4" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)', lineHeight: 1.6 }}>
+          También revisa spam o promociones.
+        </p>
+        {displayEmail && (
           <p className="text-xs text-center mb-6 font-medium break-all" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>
-            {user.email}
+            {displayEmail}
           </p>
         )}
 
@@ -133,7 +157,7 @@ export default function VerifyEmailPage() {
           <button
             type="button"
             onClick={handleResend}
-            disabled={resendLoading || !user?.email}
+            disabled={resendLoading || !displayEmail}
             className="w-full py-3 rounded-xl text-sm font-semibold text-white transition-opacity disabled:opacity-50"
             style={{ backgroundColor: 'var(--color-primary)', fontFamily: 'var(--font-caption)' }}
           >
@@ -146,27 +170,29 @@ export default function VerifyEmailPage() {
             className="w-full py-3 rounded-xl text-sm font-semibold border transition-opacity disabled:opacity-50"
             style={{ borderColor: 'var(--color-border)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
           >
-            {refreshLoading ? 'Comprobando…' : 'Ya confirmé mi correo'}
+            {refreshLoading ? 'Comprobando…' : user ? 'Ya confirmé mi correo' : 'Ir a iniciar sesión'}
           </button>
-          <button
-            type="button"
-            onClick={() => { setShowChangeEmail((v) => !v); setChangeMsg(null); }}
-            className="w-full py-2.5 rounded-xl text-sm font-medium"
-            style={{ color: 'var(--color-primary)', fontFamily: 'var(--font-caption)' }}
-          >
-            {showChangeEmail ? 'Cancelar cambio de correo' : 'Cambiar correo'}
-          </button>
+          {user && (
+            <button
+              type="button"
+              onClick={() => { setShowChangeEmail((v) => !v); setChangeMsg(null); }}
+              className="w-full py-2.5 rounded-xl text-sm font-medium"
+              style={{ color: 'var(--color-primary)', fontFamily: 'var(--font-caption)' }}
+            >
+              {showChangeEmail ? 'Cancelar cambio de correo' : 'Cambiar correo'}
+            </button>
+          )}
           <button
             type="button"
             onClick={handleSignOut}
             className="w-full py-2.5 rounded-xl text-sm font-medium"
             style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}
           >
-            Cerrar sesión
+            {user ? 'Cerrar sesión' : 'Volver a iniciar sesión'}
           </button>
         </div>
 
-        {showChangeEmail && (
+        {user && showChangeEmail && (
           <form onSubmit={handleChangeEmail} className="mt-5 pt-5 border-t" style={{ borderColor: 'var(--color-border)' }}>
             <label className="block text-xs font-semibold mb-1.5" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}>
               Nuevo correo electrónico

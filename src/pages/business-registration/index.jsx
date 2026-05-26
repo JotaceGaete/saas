@@ -7,7 +7,6 @@ import { collectVisitAttribution } from '../../utils/analytics';
 import { recordSiteVisit } from '../../services/waBusinessService';
 import { trackLoopsEvent } from '../../services/loopsClient';
 import AuthStep from './components/AuthStep';
-import ConfirmEmailStep from './components/ConfirmEmailStep';
 import StoreCreationStep from './components/StoreCreationStep';
 import PremiumLoader from 'components/ui/PremiumLoader';
 
@@ -59,7 +58,7 @@ function normalizeAuthErrorMessage(raw) {
  */
 export default function BusinessRegistration() {
   const navigate = useNavigate();
-  const { user, business, loading, businessLoading, signUp, signIn, signInWithGoogle, resendConfirmationEmail, isEmailConfirmed } = useAuth();
+  const { user, business, loading, businessLoading, signUp, signIn, signInWithGoogle, isEmailConfirmed } = useAuth();
   const { countryCode } = useCountry();
   const countryState = resolveCountryState({
     businessCountryCode: business,
@@ -71,7 +70,6 @@ export default function BusinessRegistration() {
 
   const [authError, setAuthError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [pendingConfirmation, setPendingConfirmation] = useState(null); // { email } cuando signUp OK pero sin sesión
   const [signupCooldownUntil, setSignupCooldownUntil] = useState(0);
   const registerInFlightRef = useRef(false);
 
@@ -119,7 +117,7 @@ export default function BusinessRegistration() {
   }
 
   if (user && !isEmailConfirmed) {
-    return <Navigate to="/verify-email" replace />;
+    return <Navigate to="/verify-email" replace state={{ email: user.email || null }} />;
   }
 
   // ── PASO 1: No autenticado → pantalla de login/registro ─────────────────────
@@ -132,7 +130,6 @@ export default function BusinessRegistration() {
       registerInFlightRef.current = true;
       setIsSubmitting(true);
       setAuthError(null);
-      setPendingConfirmation(null);
       try {
         const { data, error } = await signUp(email, password, {
           name: businessName || 'Mi Negocio',
@@ -146,10 +143,20 @@ export default function BusinessRegistration() {
           return;
         }
         if (data?.user && !data?.session) {
+          const confirmationEmail = data.user?.email || email;
+          trackLoopsEvent('user_registered', {
+            email: confirmationEmail,
+            firstName: businessName || data?.user?.user_metadata?.name || '',
+            businessName: businessName || 'Mi Negocio',
+            country: '',
+            plan: 'starter',
+          }).catch(() => {});
           if (typeof window !== 'undefined') {
-            console.log('[BusinessRegistration] signUp: email confirmation required', { email: data.user?.email });
+            console.log('[BusinessRegistration] signUp: email confirmation required', { email: confirmationEmail });
+            window.sessionStorage?.setItem('pendingSignupEmail', confirmationEmail);
           }
-          setPendingConfirmation({ email: data.user?.email || email });
+          navigate('/verify-email', { replace: true, state: { email: confirmationEmail } });
+          return;
         }
         trackLoopsEvent('user_registered', {
           email: data?.user?.email || email,
@@ -189,22 +196,6 @@ export default function BusinessRegistration() {
       if (error) setAuthError(error?.message || 'Error al iniciar sesión con Google.');
       // Si no hay error, redirige a Google; al volver el callback redirige a dashboard/registro
     };
-
-    if (pendingConfirmation?.email) {
-      return (
-        <ConfirmEmailStep
-          email={pendingConfirmation.email}
-          onResend={async () => {
-            setAuthError(null);
-            const { error } = await resendConfirmationEmail(pendingConfirmation.email);
-            if (error) setAuthError(normalizeAuthErrorMessage(error.message));
-            return { error };
-          }}
-          authError={authError}
-          onClearError={() => setAuthError(null)}
-        />
-      );
-    }
 
     return (
       <AuthStep
