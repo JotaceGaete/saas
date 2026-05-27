@@ -73,6 +73,7 @@ export async function createBillingSubscriptionController(request) {
     const businessId = String(body?.businessId || '').trim();
     const planSlug = String(body?.planSlug || '').trim().toLowerCase();
     const provider = String(body?.provider || '').trim().toLowerCase() || null;
+    const billingCycle = String(body?.billingCycle || '').trim().toLowerCase() === 'annual' ? 'annual' : 'monthly';
     if (!businessId) throw new HttpError(400, 'businessId is required');
     if (!planSlug) throw new HttpError(400, 'planSlug is required');
 
@@ -88,6 +89,7 @@ export async function createBillingSubscriptionController(request) {
       business,
       authUser,
       planSlug,
+      billingCycle,
       provider,
       returnUrl,
       cancelUrl,

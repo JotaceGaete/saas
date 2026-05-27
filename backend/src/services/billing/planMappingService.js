@@ -3,7 +3,7 @@ import { getPaypalPlanMapping, getPaypalPlanMappingByPlanId } from '../../reposi
 import { HttpError } from '../../lib/http/HttpError.js';
 
 const INTERNAL_FREE_PLAN_ALIASES = new Set(['free', 'starter', 'control']);
-const INTERNAL_PAYWALLED_PLANS = new Set(['pro', 'full', 'business']);
+const INTERNAL_PAYWALLED_PLANS = new Set(['pro', 'full', 'business', 'pro_annual', 'full_annual']);
 
 function normalizeInternalPlanSlug(planSlug) {
   const raw = String(planSlug || '').trim().toLowerCase();
@@ -11,12 +11,15 @@ function normalizeInternalPlanSlug(planSlug) {
   if (INTERNAL_FREE_PLAN_ALIASES.has(raw)) return 'free';
   if (raw === 'pro') return 'pro';
   if (raw === 'full' || raw === 'business') return 'full';
+  if (raw === 'pro_annual') return 'pro_annual';
+  if (raw === 'full_annual' || raw === 'business_annual') return 'full_annual';
   return null;
 }
 
 /**
  * Fallback cuando no hay fila en `paypal_plan_mappings` (p. ej. producción sin migración aún).
  * Prioridad: PAYPAL_PLAN_ID_{PRO|FULL}_{LIVE|SANDBOX}, luego PAYPAL_PLAN_ID_{PRO|FULL}.
+ * Para planes anuales: PAYPAL_PLAN_ID_{PRO|FULL}_ANNUAL_{LIVE|SANDBOX}.
  */
 function getEnvFallbackPaypalPlanId(normalizedSlug, environment) {
   const env = String(environment || '').trim().toLowerCase();
@@ -29,6 +32,16 @@ function getEnvFallbackPaypalPlanId(normalizedSlug, environment) {
   if (normalizedSlug === 'full') {
     return String(
       process.env[`PAYPAL_PLAN_ID_FULL_${suffix}`] || process.env.PAYPAL_PLAN_ID_FULL || '',
+    ).trim();
+  }
+  if (normalizedSlug === 'pro_annual') {
+    return String(
+      process.env[`PAYPAL_PLAN_ID_PRO_ANNUAL_${suffix}`] || process.env.PAYPAL_PLAN_ID_PRO_ANNUAL || '',
+    ).trim();
+  }
+  if (normalizedSlug === 'full_annual') {
+    return String(
+      process.env[`PAYPAL_PLAN_ID_FULL_ANNUAL_${suffix}`] || process.env.PAYPAL_PLAN_ID_FULL_ANNUAL || '',
     ).trim();
   }
   return '';
@@ -52,7 +65,7 @@ export async function resolvePaypalPlanIdOrNull(planSlug) {
 }
 
 /**
- * Indica si el catálogo PayPal (pro + full) está cubierto para el entorno actual.
+ * Indica si el catálogo PayPal (pro + full mensual) está cubierto para el entorno actual.
  */
 export async function getPaypalPlanCatalogReadiness() {
   const environment = getPaypalMode();
@@ -72,8 +85,10 @@ export async function getPaypalPlanCatalogReadiness() {
 /**
  * Mapea plan interno a paypal_plan_id (por entorno actual).
  * free|starter|control => null (sin PayPal)
- * pro => planId pro
- * full|business => planId full
+ * pro => planId pro mensual
+ * full|business => planId full mensual
+ * pro_annual => planId pro anual (PAYPAL_PLAN_ID_PRO_ANNUAL_*)
+ * full_annual => planId full anual (PAYPAL_PLAN_ID_FULL_ANNUAL_*)
  */
 export async function getPaypalPlanIdForInternalPlan(planSlug) {
   const normalized = normalizeInternalPlanSlug(planSlug);
@@ -87,13 +102,14 @@ export async function getPaypalPlanIdForInternalPlan(planSlug) {
   const environment = getPaypalMode();
   const paypalPlanId = await resolvePaypalPlanIdOrNull(planSlug);
   if (!paypalPlanId) {
-    const hint =
-      'Añade filas en la tabla `paypal_plan_mappings` para este entorno, o define variables de entorno: '
-      + `PAYPAL_PLAN_ID_PRO_${environment === 'live' ? 'LIVE' : 'SANDBOX'} y `
-      + `PAYPAL_PLAN_ID_FULL_${environment === 'live' ? 'LIVE' : 'SANDBOX'} (valores = Plan ID de PayPal Billing).`;
+    const isAnnual = normalized === 'pro_annual' || normalized === 'full_annual';
+    const envSuffix = environment === 'live' ? 'LIVE' : 'SANDBOX';
+    const hint = isAnnual
+      ? `Define PAYPAL_PLAN_ID_PRO_ANNUAL_${envSuffix} y PAYPAL_PLAN_ID_FULL_ANNUAL_${envSuffix} en el servidor (Plan IDs de PayPal con ciclo anual).`
+      : `Añade filas en la tabla \`paypal_plan_mappings\` para este entorno, o define PAYPAL_PLAN_ID_PRO_${envSuffix} y PAYPAL_PLAN_ID_FULL_${envSuffix} en el servidor.`;
     throw new HttpError(
       503,
-      `[plan-mapping] Falta el Plan ID de PayPal para plan "${normalized}" en entorno "${environment}". Configura la tabla paypal_plan_mappings o las variables PAYPAL_PLAN_ID_* en el servidor.`,
+      `[plan-mapping] Falta el Plan ID de PayPal para plan "${normalized}" en entorno "${environment}". ${hint}`,
       {
         code: 'PAYPAL_PLAN_MAPPING_MISSING',
         details: {

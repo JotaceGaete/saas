@@ -21,8 +21,23 @@ const PLAN_CATALOG_AR: PlanCatalog = {
   business: { displayName: 'Plan Business', price: 13990, durationDays: 30 },
 };
 
-function getPlanCatalog(country: string | undefined): PlanCatalog {
-  return country === 'AR' ? PLAN_CATALOG_AR : PLAN_CATALOG_CL;
+// Catálogos anuales: precio = total anual (equiv_mensual × 12), duración = 365 días.
+const PLAN_CATALOG_CL_ANNUAL: PlanCatalog = {
+  starter:  { displayName: 'Starter',         price: 0,     durationDays: 365 },
+  pro:      { displayName: 'Plan Pro Anual',  price: 59880, durationDays: 365 }, // 4990 × 12
+  business: { displayName: 'Plan Full Anual', price: 99600, durationDays: 365 }, // 8300 × 12
+};
+
+const PLAN_CATALOG_AR_ANNUAL: PlanCatalog = {
+  starter:  { displayName: 'Starter',         price: 0,      durationDays: 365 },
+  pro:      { displayName: 'Plan Pro Anual',  price: 89880,  durationDays: 365 }, // 7490 × 12
+  business: { displayName: 'Plan Full Anual', price: 139800, durationDays: 365 }, // 11650 × 12
+};
+
+function getPlanCatalog(country: string | undefined, billingCycle?: string): PlanCatalog {
+  const isAnnual = billingCycle === 'annual';
+  if (country === 'AR') return isAnnual ? PLAN_CATALOG_AR_ANNUAL : PLAN_CATALOG_AR;
+  return isAnnual ? PLAN_CATALOG_CL_ANNUAL : PLAN_CATALOG_CL;
 }
 
 function normalizeCountryCode(value: string | undefined): string {
@@ -219,11 +234,12 @@ Deno.serve(async (req) => {
   }
 
   const planSlug = body?.planSlug as string | undefined;
+  const billingCycle = (body?.billingCycle as string | undefined) === 'annual' ? 'annual' : 'monthly';
   const fallbackCountry = normalizeCountryCode((body?.country as string | undefined) ?? 'CL');
-  const fallbackCatalog = getPlanCatalog(fallbackCountry);
+  const fallbackCatalog = getPlanCatalog(fallbackCountry, billingCycle);
   const fallbackCurrencyId = fallbackCountry === 'AR' ? 'ARS' : 'CLP';
   const price    = planSlug ? fallbackCatalog[planSlug]?.price : undefined;
-  console.log('[create-mp-preference] planSlug:', planSlug ?? '(none)', '| fallbackCountry:', fallbackCountry, '| fallbackCurrency:', fallbackCurrencyId, '| price:', price ?? '(inválido)');
+  console.log('[create-mp-preference] planSlug:', planSlug ?? '(none)', '| billingCycle:', billingCycle, '| fallbackCountry:', fallbackCountry, '| fallbackCurrency:', fallbackCurrencyId, '| price:', price ?? '(inválido)');
   if (!planSlug || !VALID_PLAN_SLUGS.includes(planSlug)) {
     return jsonResponse({ error: 'Plan no válido' }, 400);
   }
@@ -282,7 +298,7 @@ Deno.serve(async (req) => {
     console.error(`[create-mp-preference] MP_ACCESS_TOKEN_${countryCode} no configurado`);
     return jsonResponse({ error: 'Server configuration error', reason: `mp_token_missing_${countryCode.toLowerCase()}` }, 500);
   }
-  const catalog = getPlanCatalog(countryCode);
+  const catalog = getPlanCatalog(countryCode, billingCycle);
   const currencyId = countryCode === 'AR' ? 'ARS' : 'CLP';
 
   // ── 4. Calcular tipo de cambio y monto final (prorrateo en upgrades) ───────
@@ -353,6 +369,9 @@ Deno.serve(async (req) => {
     prorationFormulaVersion: planChange.prorationFormulaVersion,
     effectiveAt:      planChange.effectiveAt ?? null,
     scheduledChange:  planChange.scheduledChange ?? null,
+    billing_cycle:    billingCycle,
+    interval_unit:    billingCycle === 'annual' ? 'year' : 'month',
+    duration_days:    catalog[planSlug]?.durationDays ?? 30,
   };
   if (isScheduledTrialConversion && trialExpiresAt) {
     metadata.isScheduledTrialConversion = true;

@@ -24,10 +24,12 @@ export async function createBillingSubscription({
   business,
   authUser,
   planSlug,
+  billingCycle,
   provider: providerHint,
   returnUrl,
   cancelUrl,
 }) {
+  const isAnnualCycle = billingCycle === 'annual';
   const normalizedPlan = normalizePlanSlug(planSlug);
   const businessCountryCode = business?.country_code || business?.countryCode || null;
   const paymentOptions = getPaymentOptions({ countryCode: businessCountryCode });
@@ -100,8 +102,11 @@ export async function createBillingSubscription({
   }
 
   if (provider === 'paypal') {
+    const paypalInternalSlug = isAnnualCycle
+      ? `${toPaypalInternalPlanSlug(normalizedPlan)}_annual`
+      : toPaypalInternalPlanSlug(normalizedPlan);
     const paypal = await createPaypalSubscription({
-      internalPlanSlug: toPaypalInternalPlanSlug(normalizedPlan),
+      internalPlanSlug: paypalInternalSlug,
       userId: authUser.id,
       businessId: business.id,
       subscriberEmail: authUser?.email || null,
@@ -116,12 +121,13 @@ export async function createBillingSubscription({
       plan_slug: normalizedPlan,
       currency_code: 'USD',
       amount: null,
-      interval_unit: 'month',
+      interval_unit: isAnnualCycle ? 'year' : 'month',
       status,
       provider_status: paypal.status || 'APPROVAL_PENDING',
       metadata_json: {
         customId: paypal.customId || null,
         paypalPlanId: paypal.paypalPlanId || null,
+        billing_cycle: isAnnualCycle ? 'annual' : 'monthly',
       },
     });
     return {

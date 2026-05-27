@@ -522,20 +522,34 @@ Deno.serve(async (req) => {
   }
 
   // ── 9. Calcular fechas ─────────────────────────────────────────────────────
-  // Si hay trial activo: los 30 días pagos corren desde el fin del trial.
+  // Si hay trial activo: los días pagos corren desde el fin del trial.
   // Si no: activación inmediata.
+  // La duración real se lee del metadata del pago (duration_days); si no, 30 días.
+  let planDurationDays = PLAN_DURATION_DAYS;
+  if (paymentId) {
+    const { data: paymentMeta } = await db
+      .from('wa_payments')
+      .select('metadata')
+      .eq('id', paymentId)
+      .maybeSingle();
+    const metaDurationDays = (paymentMeta?.metadata as Record<string, unknown> | null)?.duration_days;
+    if (typeof metaDurationDays === 'number' && metaDurationDays > 0) {
+      planDurationDays = metaDurationDays;
+    }
+  }
+
   const now = new Date();
   let planActivatedAtIso: string;
   let planExpiresAtIso: string;
   if (bizIsActiveTrial && bizTrialExpiresAt) {
     planActivatedAtIso = bizTrialExpiresAt;
     const endOfPeriod  = new Date(bizTrialExpiresAt);
-    endOfPeriod.setDate(endOfPeriod.getDate() + PLAN_DURATION_DAYS);
+    endOfPeriod.setDate(endOfPeriod.getDate() + planDurationDays);
     planExpiresAtIso   = endOfPeriod.toISOString();
   } else {
     planActivatedAtIso = now.toISOString();
     const planExpiresAt = new Date(now);
-    planExpiresAt.setDate(planExpiresAt.getDate() + PLAN_DURATION_DAYS);
+    planExpiresAt.setDate(planExpiresAt.getDate() + planDurationDays);
     planExpiresAtIso    = planExpiresAt.toISOString();
   }
 

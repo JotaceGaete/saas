@@ -335,13 +335,19 @@ export default function PlansPage() {
     ),
     [subscriptionState?.billingProvider?.alternatives, subscriptionState?.billingProvider],
   );
+  /** Precio mensual equivalente al contratar el año (para la línea "Equivale a X/mes"). */
+  const getAnnualMonthlyEquiv = (slug) => {
+    if (planBillingDisplayCurrency === 'CLP') return PLAN_ANNUAL_PRICES_CLP[slug] ?? 0;
+    if (planBillingDisplayCurrency === 'ARS') return PLAN_ANNUAL_PRICES_ARS[slug] ?? 0;
+    return PLAN_ANNUAL_PRICES_USD[slug] ?? 0;
+  };
+
   const getDisplayPlanPrice = (slug) => {
     const monthlyPrice = getPlanPrice({ countryCode: businessCountryCode, planSlug: slug }) ?? 0;
     if (billingCycle === 'annual' && monthlyPrice > 0 && CURRENCIES_WITH_ANNUAL_PRICING.includes(planBillingDisplayCurrency)) {
-      // Precio mensual equivalente al contratar el año completo
-      if (planBillingDisplayCurrency === 'CLP') return PLAN_ANNUAL_PRICES_CLP[slug] ?? monthlyPrice;
-      if (planBillingDisplayCurrency === 'ARS') return PLAN_ANNUAL_PRICES_ARS[slug] ?? monthlyPrice;
-      return PLAN_ANNUAL_PRICES_USD[slug] ?? monthlyPrice;
+      // Total anual (equiv_mensual × 12)
+      const equiv = getAnnualMonthlyEquiv(slug);
+      return equiv > 0 ? equiv * 12 : monthlyPrice;
     }
     return monthlyPrice;
   };
@@ -642,6 +648,7 @@ export default function PlansPage() {
       event: 'click_plan_button',
       handler: 'handlePayWithMercadoPago',
       planSlug,
+      billingCycle,
       resolvedCountryCode: countryCode,
       resolvedProvider: checkoutProvider,
     });
@@ -650,8 +657,14 @@ export default function PlansPage() {
       toast.info(automaticCheckoutBlockedMessage);
       return;
     }
-    setLoadingPlanSlug(planSlug);
 
+    // Annual: skip preview panel, go direct to checkout (no proration for annual).
+    if (billingCycle === 'annual') {
+      await confirmPayWithMercadoPago(planSlug);
+      return;
+    }
+
+    setLoadingPlanSlug(planSlug);
     setPreview(null);
     setPreviewPlanSlug(null);
     try {
@@ -769,23 +782,25 @@ export default function PlansPage() {
     setPreviewPlanSlug(null);
   };
 
-  const confirmPayWithMercadoPago = async () => {
+  const confirmPayWithMercadoPago = async (planSlugArg = null) => {
     if (guard.isBlocked) {
       guard.runIfConfirmed(() => {});
       return;
     }
+    const targetPlanSlug = planSlugArg ?? previewPlanSlug;
     console.info(PAYMENT_DEBUG_PREFIX, {
       event: 'confirm_payment',
       handler: 'confirmPayWithMercadoPago',
-      planSlug: previewPlanSlug,
+      planSlug: targetPlanSlug,
+      billingCycle,
       resolvedCountryCode: countryCode,
     });
-    if (!previewPlanSlug) return;
+    if (!targetPlanSlug) return;
     if (isAutomaticCheckoutBlocked) {
       toast.info(automaticCheckoutBlockedMessage);
       return;
     }
-    setLoadingPlanSlug(previewPlanSlug);
+    setLoadingPlanSlug(targetPlanSlug);
 
     try {
       if (authLoading) {
@@ -810,6 +825,7 @@ export default function PlansPage() {
         authorizationLooksLikeJwt: token.includes('.'),
         tokenLength: token?.length ?? 0,
         hasApiKeyHeader: !!anonKey,
+        billingCycle,
       });
       // Conservar el host actual para no redirigir a otro país tras el pago
       const returnBaseUrl = (typeof window !== 'undefined' && window.location?.origin)
@@ -820,7 +836,8 @@ export default function PlansPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, apikey: anonKey },
         body: JSON.stringify({
-          planSlug: previewPlanSlug,
+          planSlug: targetPlanSlug,
+          billingCycle,
           success_url: `${returnBaseUrl}/planes?payment=success`,
           failure_url: `${returnBaseUrl}/planes?payment=failure`,
           pending_url: `${returnBaseUrl}/planes?payment=pending`,
@@ -919,6 +936,7 @@ export default function PlansPage() {
           provider: safeProvider,
           businessId: business.id,
           planSlug: targetPlanSlug,
+          billingCycle,
           returnUrl: safeProvider === PAYMENT_PROVIDERS.PAYPAL
             ? `${window.location.origin}/billing/paypal/success`
             : `${window.location.origin}/planes?payment=success`,
@@ -980,6 +998,8 @@ export default function PlansPage() {
   const getSafePreviewTotal = () => {
     if (!preview || !previewPlanSlug) return 0;
     const providerCatalogAmount = getDisplayPlanPrice(preview.targetPlanSlug);
+    // For annual, always use the annual total from our catalog (server preview uses monthly amounts).
+    if (billingCycle === 'annual') return providerCatalogAmount;
     const reported = Number(preview.finalAmount);
     if (!Number.isFinite(reported)) return providerCatalogAmount;
     // Guardrail: evita mostrar montos CLP como USD (ej. 5990 -> USD).
@@ -1089,7 +1109,8 @@ export default function PlansPage() {
               const limits = getPlanLimits(slug);
               const isProTrialCard = slug === 'pro' && isProTrialActive;
               const isCurrent = currentPlan === slug && !isProTrialCard;
-              const actionLabel = `Elegir plan ${getPlanLabel(slug)}`;
+              const isAnnual = billingCycle === 'annual';
+              const actionLabel = isAnnual ? 'Pagar plan anual' : `Elegir plan ${getPlanLabel(slug)}`;
               const isProRecommended = slug === 'pro';
               const marketPlan = getPlanConfig({
                 marketCode,
@@ -1097,7 +1118,6 @@ export default function PlansPage() {
                 countryCode: billingCountryForUi,
               });
               const isPurchasable = marketPlan?.enabled !== false && marketPlan?.purchasable !== false;
-              const isAnnual = billingCycle === 'annual';
               return (
                 <div
                   key={slug}
@@ -1137,30 +1157,45 @@ export default function PlansPage() {
                       </p>
                     ) : (
                       <>
-                        <p
-                          className={
-                            planBillingDisplayCurrency === 'CLP'
-                              ? 'text-3xl font-bold text-slate-950 tracking-tight'
-                              : 'text-2xl font-bold text-slate-900'
-                          }
-                          style={{ fontFamily: 'var(--font-heading)' }}
-                        >
-                          {formatSubscriptionPlanPrice(getDisplayPlanPrice(slug), planBillingDisplayCurrency, planBillingDisplayLocale)}
-                        </p>
-                        {isAnnual && (
-                          <p className="text-[11px] mt-0.5 line-through" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-                            {formatSubscriptionPlanPrice(getPlanPrice({ countryCode: businessCountryCode, planSlug: slug }) ?? 0, planBillingDisplayCurrency, planBillingDisplayLocale)}
+                        <div className="flex items-baseline gap-1">
+                          <p
+                            className={
+                              planBillingDisplayCurrency === 'CLP'
+                                ? 'text-3xl font-bold text-slate-950 tracking-tight'
+                                : 'text-2xl font-bold text-slate-900'
+                            }
+                            style={{ fontFamily: 'var(--font-heading)' }}
+                          >
+                            {formatSubscriptionPlanPrice(getDisplayPlanPrice(slug), planBillingDisplayCurrency, planBillingDisplayLocale)}
+                          </p>
+                          {isAnnual && (
+                            <span className="text-sm font-medium text-slate-500" style={{ fontFamily: 'var(--font-caption)' }}>/año</span>
+                          )}
+                        </div>
+                        {isAnnual ? (
+                          <>
+                            <p className="text-xs mt-1" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
+                              Equivale a {formatSubscriptionPlanPrice(getAnnualMonthlyEquiv(slug), planBillingDisplayCurrency, planBillingDisplayLocale)}/mes
+                            </p>
+                            {(() => {
+                              const monthlyPrice = getPlanPrice({ countryCode: businessCountryCode, planSlug: slug }) ?? 0;
+                              const savings = Math.max(0, monthlyPrice * 12 - getDisplayPlanPrice(slug));
+                              if (!savings) return null;
+                              const discountPct = monthlyPrice > 0 ? Math.round((savings / (monthlyPrice * 12)) * 100) : 0;
+                              return (
+                                <p className="text-xs mt-0.5" style={{ color: '#059669', fontFamily: 'var(--font-caption)' }}>
+                                  Ahorrás {formatSubscriptionPlanPrice(savings, planBillingDisplayCurrency, planBillingDisplayLocale)} al año ({discountPct}%)
+                                </p>
+                              );
+                            })()}
+                          </>
+                        ) : (
+                          <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+                            {`por mes · ${planBillingDisplayCurrency}`}
                           </p>
                         )}
                       </>
                     )}
-                    <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-                      {getDisplayPlanPrice(slug) === 0
-                        ? ''
-                        : isAnnual
-                          ? `por mes · facturado anualmente · ${planBillingDisplayCurrency}`
-                          : `por mes · ${planBillingDisplayCurrency}`}
-                    </p>
                   </div>
                   <ul className="space-y-2 mb-6 flex-1">
                     <li className="flex items-center gap-2.5 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
@@ -1245,23 +1280,6 @@ export default function PlansPage() {
                       <span className="text-sm font-medium" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
                         Tu plan actual
                       </span>
-                    ) : isAnnual && getDisplayPlanPrice(slug) > 0 ? (
-                      /* CTA plan anual — vía manual/contacto hasta que se active checkout anual */
-                      <div className="w-full flex flex-col gap-1">
-                        <button
-                          type="button"
-                          disabled={!!loadingPlanSlug || authLoading || !isAuthenticated}
-                          onClick={() => openManualPaymentModal(slug, true)}
-                          className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:-translate-y-px disabled:opacity-60"
-                          style={{ backgroundColor: 'var(--color-primary)' }}
-                        >
-                          <Icon name="Calendar" size={16} color="#fff" />
-                          Contratar plan anual
-                        </button>
-                        <p className="text-[11px] text-center mt-0.5 font-[family-name:var(--font-caption)]" style={{ color: 'var(--color-text-tertiary)' }}>
-                          Te contactaremos para coordinar el pago
-                        </p>
-                      </div>
                     ) : getDisplayPlanPrice(slug) > 0 ? (
                       !billingReady || !checkoutProvider || !hasServerSelectedProvider ? (
                         <button
