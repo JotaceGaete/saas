@@ -1058,12 +1058,12 @@ export default function PlansPage() {
             />
           )}
 
-          <div className="mt-8 mb-6 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+          <div className="mt-6 mb-4 sm:mt-8 sm:mb-6 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 sm:gap-4">
             <div className="flex flex-col gap-1">
               <h3 className="text-xl font-semibold" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}>
                 Elige cómo quieres crecer
               </h3>
-              <p className="text-sm leading-6" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-body)' }}>
+              <p className="hidden sm:block text-sm leading-6" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-body)' }}>
                 Planes pensados para operar tu {planNoun} sin ruido técnico.
               </p>
             </div>
@@ -1106,7 +1106,7 @@ export default function PlansPage() {
             </div>
           </div>
 
-          <div id="planes-grid" className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-5">
+          <div id="planes-grid" className="grid grid-cols-1 md:grid-cols-3 gap-3.5 sm:gap-4 md:gap-5 items-stretch">
             {PLAN_SLUGS.map((slug) => {
               const limits = getPlanLimits(slug);
               const isProTrialCard = slug === 'pro' && isProTrialActive;
@@ -1124,8 +1124,8 @@ export default function PlansPage() {
                 <div
                   key={slug}
                   className={[
-                    'relative rounded-2xl border p-5 flex flex-col transition-all duration-200 hover:-translate-y-0.5',
-                    isProRecommended ? 'ring-2 ring-violet-500/20 shadow-[0_18px_40px_rgba(124,58,237,0.10)]' : '',
+                    'relative h-full rounded-2xl border p-4 sm:p-5 flex flex-col transition-[transform,box-shadow,background-color,border-color] duration-300 ease-out hover:-translate-y-0.5 hover:shadow-[0_18px_42px_rgba(15,23,42,0.08)]',
+                    isProRecommended ? 'ring-2 ring-violet-500/20 shadow-[0_18px_40px_rgba(124,58,237,0.10)] hover:bg-violet-50/40 hover:shadow-[0_22px_48px_rgba(124,58,237,0.16)]' : '',
                   ].filter(Boolean).join(' ')}
                   style={{
                     backgroundColor: isCurrent ? 'rgba(124,58,237,0.04)' : '#ffffff',
@@ -1152,7 +1152,7 @@ export default function PlansPage() {
                       </span>
                     )}
                   </div>
-                  <div className="mb-4">
+                  <div className="mb-4 min-h-[4.9rem] sm:min-h-[5.4rem]">
                     {getDisplayPlanPrice(slug) === 0 ? (
                       <p className="text-2xl font-bold text-slate-900" style={{ fontFamily: 'var(--font-heading)' }}>
                         Gratis
@@ -1176,7 +1176,7 @@ export default function PlansPage() {
                         </div>
                         {isAnnual ? (
                           <>
-                            <p className="text-xs mt-1" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
+                            <p className="text-[11px] sm:text-xs mt-1 leading-snug" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
                               Equivale a {formatSubscriptionPlanPrice(getAnnualMonthlyEquiv(slug), planBillingDisplayCurrency, planBillingDisplayLocale)}/mes
                             </p>
                             {(() => {
@@ -1185,7 +1185,7 @@ export default function PlansPage() {
                               if (!savings) return null;
                               const discountPct = monthlyPrice > 0 ? Math.round((savings / (monthlyPrice * 12)) * 100) : 0;
                               return (
-                                <p className="text-xs mt-0.5" style={{ color: '#059669', fontFamily: 'var(--font-caption)' }}>
+                                <p className="text-[11px] mt-0.5 leading-snug" style={{ color: '#059669', fontFamily: 'var(--font-caption)' }}>
                                   Ahorrás {formatSubscriptionPlanPrice(savings, planBillingDisplayCurrency, planBillingDisplayLocale)} al año ({discountPct}%)
                                 </p>
                               );
@@ -1199,7 +1199,7 @@ export default function PlansPage() {
                       </>
                     )}
                   </div>
-                  <ul className="space-y-2 mb-6 flex-1">
+                  <ul className="space-y-1.5 sm:space-y-2 mb-4 sm:mb-6 flex-1">
                     <li className="flex items-center gap-2.5 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
                       <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg" style={{ backgroundColor: isProRecommended ? 'rgba(124,58,237,0.10)' : 'rgba(17,24,39,0.06)' }} aria-hidden>
                         <Icon name="Package" size={16} color={isProRecommended ? 'var(--color-primary)' : '#64748b'} />
@@ -1277,7 +1277,7 @@ export default function PlansPage() {
                       </>
                     )}
                   </ul>
-                  <div className="pt-4 border-t" style={{ borderColor: 'rgba(17,24,39,0.08)' }}>
+                  <div className="mt-auto pt-3 sm:pt-4 border-t" style={{ borderColor: 'rgba(17,24,39,0.08)' }}>
                     {isCurrent ? (
                       <span className="text-sm font-medium" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
                         Tu plan actual
