@@ -309,6 +309,29 @@ Deno.serve(async (req) => {
   const scheduledPlanSlug = (business as { scheduled_plan_slug?: string | null }).scheduled_plan_slug ?? null;
   let planChange = computePlanChange(currentPlanSlug, planExpiresAt, planSlug, catalog);
 
+  // Annual billing: skip month-to-month proration — always charge the full annual total.
+  // computePlanChange uses annual catalog prices as if the current plan is also annual, which
+  // produces wrong credit amounts for users actually on monthly plans.
+  if (billingCycle === 'annual') {
+    const annualTotalPrice = catalog[planSlug]?.price ?? 0;
+    const currentOrd = PLAN_ORDER[currentPlanSlug] ?? 0;
+    const targetOrd  = PLAN_ORDER[planSlug] ?? 0;
+    const annualChangeType: ChangeType =
+      targetOrd > currentOrd ? 'upgrade' : targetOrd < currentOrd ? 'downgrade' : 'renewal';
+    planChange = {
+      ...planChange,
+      changeType:      annualChangeType,
+      creditAmount:    0,
+      daysRemaining:   0,
+      targetPlanPrice: annualTotalPrice,
+      finalAmount:     annualChangeType === 'downgrade' ? 0 : annualTotalPrice,
+      effectiveAt:     new Date().toISOString(),
+      scheduledChange: annualChangeType === 'downgrade'
+        ? { targetPlanSlug: planSlug, effectiveAt: planExpiresAt ?? new Date().toISOString() }
+        : undefined,
+    };
+  }
+
   // Si hay trial vigente: precio completo, sin crédito/prorrateo, plan programado al fin del trial.
   // Aplica a cualquier plan destino (pro, business), no solo pro→pro.
   const now = Date.now();
