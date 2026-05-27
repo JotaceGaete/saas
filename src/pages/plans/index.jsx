@@ -832,17 +832,19 @@ export default function PlansPage() {
         ? window.location.origin.replace(/\/$/, '')
         : (getAppBaseUrl() || '');
       const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
+      const mpPayload = {
+        planSlug: targetPlanSlug,
+        billingCycle,
+        success_url: `${returnBaseUrl}/planes?payment=success`,
+        failure_url: `${returnBaseUrl}/planes?payment=failure`,
+        pending_url: `${returnBaseUrl}/planes?payment=pending`,
+        origin: returnBaseUrl,
+      };
+      console.log('[Plans] MP checkout payload', { planSlug: targetPlanSlug, billingCycle, currency: planBillingDisplayCurrency, countryCode });
       const res = await fetch(`${supabaseUrl}/functions/v1/create-mp-preference`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, apikey: anonKey },
-        body: JSON.stringify({
-          planSlug: targetPlanSlug,
-          billingCycle,
-          success_url: `${returnBaseUrl}/planes?payment=success`,
-          failure_url: `${returnBaseUrl}/planes?payment=failure`,
-          pending_url: `${returnBaseUrl}/planes?payment=pending`,
-          origin: returnBaseUrl,
-        }),
+        body: JSON.stringify(mpPayload),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {

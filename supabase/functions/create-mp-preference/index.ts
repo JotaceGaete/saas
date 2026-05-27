@@ -240,6 +240,7 @@ Deno.serve(async (req) => {
   const fallbackCurrencyId = fallbackCountry === 'AR' ? 'ARS' : 'CLP';
   const price    = planSlug ? fallbackCatalog[planSlug]?.price : undefined;
   console.log('[create-mp-preference] planSlug:', planSlug ?? '(none)', '| billingCycle:', billingCycle, '| fallbackCountry:', fallbackCountry, '| fallbackCurrency:', fallbackCurrencyId, '| price:', price ?? '(inválido)');
+  console.log('[create-mp-preference] received', { planSlug, billingCycle, rawBillingCycle: body?.billingCycle ?? '(not_sent)', fallbackCountry });
   if (!planSlug || !VALID_PLAN_SLUGS.includes(planSlug)) {
     return jsonResponse({ error: 'Plan no válido' }, 400);
   }
@@ -490,6 +491,15 @@ Deno.serve(async (req) => {
   const successUrl = (body?.success_url as string) || `${appBaseUrl}/plans?payment=success`;
   const failureUrl = (body?.failure_url as string) || `${appBaseUrl}/plans?payment=failure`;
   const pendingUrl = (body?.pending_url as string) || `${appBaseUrl}/plans?payment=pending`;
+
+  console.log('[create-mp-preference] MP amount', {
+    planSlug,
+    billingCycle,
+    countryCode,
+    currencyId,
+    catalogPrice: catalog[planSlug]?.price ?? null,
+    finalAmount,
+  });
 
   const preferencePayload = {
     items: [{
