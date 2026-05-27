@@ -10,7 +10,14 @@ import { useConfirmedEmailGuard } from '../../hooks/useConfirmedEmailGuard';
 import { supabase } from '../../lib/supabase';
 import { getAppBaseUrl } from '../../config/appUrl';
 import { formatSubscriptionPlanPrice } from '../../utils/formatCLP';
-import { PLAN_SLUGS, getPlanLimits, getPlanLabel } from '../../constants/plans';
+import {
+  PLAN_SLUGS,
+  getPlanLimits,
+  getPlanLabel,
+  PLAN_ANNUAL_PRICES_CLP,
+  PLAN_ANNUAL_PRICES_USD,
+  getAnnualDiscountPercent,
+} from '../../constants/plans';
 import {
   normalizeBillingProvider,
   PAYMENT_PROVIDERS,
@@ -184,6 +191,7 @@ export default function PlansPage() {
   const guard = useConfirmedEmailGuard();
   const toast = useToast();
   const [paymentReturnStatus, setPaymentReturnStatus] = useState(null); // 'success' | 'failure' | 'pending' al volver del checkout
+  const [billingCycle, setBillingCycle] = useState('monthly'); // 'monthly' | 'annual'
   const [loadingPlanSlug, setLoadingPlanSlug] = useState(null);
   const [preview, setPreview] = useState(null);
   const [previewPlanSlug, setPreviewPlanSlug] = useState(null);
@@ -313,8 +321,16 @@ export default function PlansPage() {
     ),
     [subscriptionState?.billingProvider?.alternatives, subscriptionState?.billingProvider],
   );
-  const getDisplayPlanPrice = (slug) =>
-    getPlanPrice({ countryCode: businessCountryCode, planSlug: slug }) ?? 0;
+  const getDisplayPlanPrice = (slug) => {
+    const monthlyPrice = getPlanPrice({ countryCode: businessCountryCode, planSlug: slug }) ?? 0;
+    if (billingCycle === 'annual' && monthlyPrice > 0) {
+      // Precio mensual equivalente al contratar el año completo
+      const isLocalCurrency = planBillingDisplayCurrency === 'CLP' || planBillingDisplayCurrency === 'ARS';
+      if (isLocalCurrency) return PLAN_ANNUAL_PRICES_CLP[slug] ?? monthlyPrice;
+      return PLAN_ANNUAL_PRICES_USD[slug] ?? monthlyPrice;
+    }
+    return monthlyPrice;
+  };
   const planExpiryMs = useMemo(() => {
     const iso = billingSubscriptionRow?.next_billing_date || business?.planExpiresAt;
     return iso ? new Date(iso).getTime() : null;
@@ -1006,13 +1022,52 @@ export default function PlansPage() {
             />
           )}
 
-          <div className="mb-4 mt-8 flex flex-col gap-1">
-            <h3 className="text-xl font-semibold" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}>
-              Elige cómo quieres crecer
-            </h3>
-            <p className="text-sm leading-6" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-body)' }}>
-              Planes pensados para operar tu {planNoun} sin ruido técnico.
-            </p>
+          <div className="mt-8 mb-6 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+            <div className="flex flex-col gap-1">
+              <h3 className="text-xl font-semibold" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}>
+                Elige cómo quieres crecer
+              </h3>
+              <p className="text-sm leading-6" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-body)' }}>
+                Planes pensados para operar tu {planNoun} sin ruido técnico.
+              </p>
+            </div>
+
+            {/* Toggle mensual / anual */}
+            <div
+              className="inline-flex items-center self-start sm:self-auto rounded-xl p-1 gap-0.5"
+              role="group"
+              aria-label="Ciclo de facturación"
+              style={{ backgroundColor: 'rgba(17,24,39,0.06)' }}
+            >
+              <button
+                type="button"
+                onClick={() => setBillingCycle('monthly')}
+                className="px-4 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 font-[family-name:var(--font-caption)]"
+                style={billingCycle === 'monthly'
+                  ? { backgroundColor: '#fff', color: '#111827', boxShadow: '0 1px 4px rgba(17,24,39,0.12)' }
+                  : { backgroundColor: 'transparent', color: 'var(--color-muted-foreground)' }}
+                aria-pressed={billingCycle === 'monthly'}
+              >
+                Mensual
+              </button>
+              <button
+                type="button"
+                onClick={() => setBillingCycle('annual')}
+                className="px-4 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 flex items-center gap-2 font-[family-name:var(--font-caption)]"
+                style={billingCycle === 'annual'
+                  ? { backgroundColor: '#fff', color: '#111827', boxShadow: '0 1px 4px rgba(17,24,39,0.12)' }
+                  : { backgroundColor: 'transparent', color: 'var(--color-muted-foreground)' }}
+                aria-pressed={billingCycle === 'annual'}
+              >
+                Anual
+                <span
+                  className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full font-[family-name:var(--font-caption)]"
+                  style={{ backgroundColor: billingCycle === 'annual' ? 'rgba(124,58,237,0.12)' : 'rgba(124,58,237,0.10)', color: 'var(--color-primary)' }}
+                >
+                  {getAnnualDiscountPercent('pro')}% off
+                </span>
+              </button>
+            </div>
           </div>
 
           <div id="planes-grid" className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-5">
@@ -1028,23 +1083,24 @@ export default function PlansPage() {
                 countryCode: billingCountryForUi,
               });
               const isPurchasable = marketPlan?.enabled !== false && marketPlan?.purchasable !== false;
+              const isAnnual = billingCycle === 'annual';
               return (
                 <div
                   key={slug}
                   className={[
                     'relative rounded-2xl border p-5 flex flex-col transition-all duration-200 hover:-translate-y-0.5',
-                    isProRecommended ? 'shadow-[0_18px_40px_rgba(17,24,39,0.08)]' : '',
+                    isProRecommended ? 'ring-2 ring-violet-500/20 shadow-[0_18px_40px_rgba(124,58,237,0.10)]' : '',
                   ].filter(Boolean).join(' ')}
                   style={{
-                    backgroundColor: isCurrent ? 'rgba(255,255,255,0.86)' : 'rgba(255,255,255,0.72)',
-                    borderColor: isCurrent ? 'rgba(17,24,39,0.22)' : 'rgba(17,24,39,0.08)',
-                    boxShadow: isCurrent ? '0 0 0 1px rgba(17,24,39,0.14), 0 18px 42px rgba(17,24,39,0.08)' : '0 12px 30px rgba(17,24,39,0.045)',
+                    backgroundColor: isCurrent ? 'rgba(124,58,237,0.04)' : '#ffffff',
+                    borderColor: isCurrent ? 'var(--color-primary)' : isProRecommended ? 'rgba(124,58,237,0.20)' : 'var(--color-border)',
+                    boxShadow: isCurrent ? '0 0 0 2px rgba(124,58,237,0.18), 0 18px 42px rgba(124,58,237,0.06)' : isProRecommended ? '' : '0 1px 4px rgba(0,0,0,0.05)',
                   }}
                 >
                   {isProRecommended && (
                     <span
                       className="absolute -top-2.5 left-1/2 -translate-x-1/2 rounded-full px-3 py-0.5 text-[10px] font-semibold uppercase tracking-wide shadow-sm font-[family-name:var(--font-caption)]"
-                      style={{ backgroundColor: '#111827', color: '#fff' }}
+                      style={{ backgroundColor: 'var(--color-primary)', color: '#fff' }}
                       aria-hidden
                     >
                       Popular
@@ -1055,7 +1111,7 @@ export default function PlansPage() {
                       {getPlanLabel(slug)}
                     </h2>
                     {isCurrent && (
-                      <span className="text-xs font-semibold px-2 py-1 rounded-full" style={{ backgroundColor: 'rgba(17,24,39,0.08)', color: '#111827' }}>
+                      <span className="text-xs font-semibold px-2 py-1 rounded-full" style={{ backgroundColor: 'var(--color-primary)', color: '#fff' }}>
                         Actual
                       </span>
                     )}
@@ -1066,25 +1122,36 @@ export default function PlansPage() {
                         Gratis
                       </p>
                     ) : (
-                      <p
-                        className={
-                          planBillingDisplayCurrency === 'CLP'
-                            ? 'text-3xl font-semibold text-slate-950 tracking-tight'
-                            : 'text-2xl font-bold text-slate-900'
-                        }
-                        style={{ fontFamily: 'var(--font-heading)' }}
-                      >
-                        {formatSubscriptionPlanPrice(getDisplayPlanPrice(slug), planBillingDisplayCurrency, planBillingDisplayLocale)}
-                      </p>
+                      <>
+                        <p
+                          className={
+                            planBillingDisplayCurrency === 'CLP'
+                              ? 'text-3xl font-bold text-slate-950 tracking-tight'
+                              : 'text-2xl font-bold text-slate-900'
+                          }
+                          style={{ fontFamily: 'var(--font-heading)' }}
+                        >
+                          {formatSubscriptionPlanPrice(getDisplayPlanPrice(slug), planBillingDisplayCurrency, planBillingDisplayLocale)}
+                        </p>
+                        {isAnnual && (
+                          <p className="text-[11px] mt-0.5 line-through" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+                            {formatSubscriptionPlanPrice(getPlanPrice({ countryCode: businessCountryCode, planSlug: slug }) ?? 0, planBillingDisplayCurrency, planBillingDisplayLocale)}
+                          </p>
+                        )}
+                      </>
                     )}
                     <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-                      {getDisplayPlanPrice(slug) === 0 ? '' : `por mes · ${planBillingDisplayCurrency}`}
+                      {getDisplayPlanPrice(slug) === 0
+                        ? ''
+                        : isAnnual
+                          ? `por mes · facturado anualmente · ${planBillingDisplayCurrency}`
+                          : `por mes · ${planBillingDisplayCurrency}`}
                     </p>
                   </div>
                   <ul className="space-y-2 mb-6 flex-1">
                     <li className="flex items-center gap-2.5 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
-                        <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-slate-600" style={{ backgroundColor: 'rgba(17,24,39,0.06)' }} aria-hidden>
-                        <Icon name="Package" size={16} color="currentColor" />
+                      <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg" style={{ backgroundColor: isProRecommended ? 'rgba(124,58,237,0.10)' : 'rgba(17,24,39,0.06)' }} aria-hidden>
+                        <Icon name="Package" size={16} color={isProRecommended ? 'var(--color-primary)' : '#64748b'} />
                       </span>
                       <span>
                         <span className="font-semibold text-slate-800">Productos</span>
@@ -1093,8 +1160,8 @@ export default function PlansPage() {
                       </span>
                     </li>
                     <li className="flex items-center gap-2.5 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
-                        <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-slate-600" style={{ backgroundColor: 'rgba(17,24,39,0.06)' }} aria-hidden>
-                        <Icon name="ShoppingCart" size={16} color="currentColor" />
+                      <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg" style={{ backgroundColor: isProRecommended ? 'rgba(124,58,237,0.10)' : 'rgba(17,24,39,0.06)' }} aria-hidden>
+                        <Icon name="ShoppingCart" size={16} color={isProRecommended ? 'var(--color-primary)' : '#64748b'} />
                       </span>
                       <span>
                         <span className="font-semibold text-slate-800">Pedidos/mes</span>
@@ -1104,25 +1171,58 @@ export default function PlansPage() {
                     </li>
                     {slug === 'starter' && (
                       <>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Sin estadísticas ni ingresos del mes</li>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Sin productos más vendidos</li>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Sin asistencia de IA</li>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Incluye branding de Walinka en mensajes y links compartidos</li>
+                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+                          <Icon name="X" size={13} color="var(--color-text-tertiary)" className="shrink-0" aria-hidden />
+                          Sin estadísticas ni ingresos del mes
+                        </li>
+                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+                          <Icon name="X" size={13} color="var(--color-text-tertiary)" className="shrink-0" aria-hidden />
+                          Sin productos más vendidos
+                        </li>
+                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+                          <Icon name="X" size={13} color="var(--color-text-tertiary)" className="shrink-0" aria-hidden />
+                          Sin asistencia de IA
+                        </li>
+                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+                          <Icon name="X" size={13} color="var(--color-text-tertiary)" className="shrink-0" aria-hidden />
+                          Incluye branding de Walinka
+                        </li>
                       </>
                     )}
                     {slug === 'pro' && (
                       <>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Panel completo y estadísticas</li>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Asistencia de IA para descripciones</li>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Branding discreto: Powered by Walinka</li>
+                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
+                          <Icon name="Check" size={13} color="var(--color-primary)" className="shrink-0" aria-hidden />
+                          Panel completo y estadísticas
+                        </li>
+                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
+                          <Icon name="Check" size={13} color="var(--color-primary)" className="shrink-0" aria-hidden />
+                          Asistencia de IA para descripciones
+                        </li>
+                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
+                          <Icon name="Check" size={13} color="var(--color-primary)" className="shrink-0" aria-hidden />
+                          Branding discreto: Powered by Walinka
+                        </li>
                       </>
                     )}
                     {slug === 'business' && (
                       <>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Panel completo</li>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Estadísticas completas</li>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>IA ilimitada</li>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Sin branding de Walinka en catálogo o mensajes</li>
+                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
+                          <Icon name="Check" size={13} color="#059669" className="shrink-0" aria-hidden />
+                          Panel completo
+                        </li>
+                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
+                          <Icon name="Check" size={13} color="#059669" className="shrink-0" aria-hidden />
+                          Estadísticas completas
+                        </li>
+                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
+                          <Icon name="Check" size={13} color="#059669" className="shrink-0" aria-hidden />
+                          IA ilimitada
+                        </li>
+                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
+                          <Icon name="Check" size={13} color="#059669" className="shrink-0" aria-hidden />
+                          Sin branding de Walinka
+                        </li>
                       </>
                     )}
                   </ul>
@@ -1131,6 +1231,23 @@ export default function PlansPage() {
                       <span className="text-sm font-medium" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
                         Tu plan actual
                       </span>
+                    ) : isAnnual && getDisplayPlanPrice(slug) > 0 ? (
+                      /* CTA plan anual — vía manual/contacto hasta que se active checkout anual */
+                      <div className="w-full flex flex-col gap-1">
+                        <button
+                          type="button"
+                          disabled={!!loadingPlanSlug || authLoading || !isAuthenticated}
+                          onClick={() => openManualPaymentModal(slug)}
+                          className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:-translate-y-px disabled:opacity-60"
+                          style={{ backgroundColor: 'var(--color-primary)' }}
+                        >
+                          <Icon name="Calendar" size={16} color="#fff" />
+                          Contratar plan anual
+                        </button>
+                        <p className="text-[11px] text-center mt-0.5 font-[family-name:var(--font-caption)]" style={{ color: 'var(--color-text-tertiary)' }}>
+                          Te contactaremos para coordinar el pago
+                        </p>
+                      </div>
                     ) : getDisplayPlanPrice(slug) > 0 ? (
                       !billingReady || !checkoutProvider || !hasServerSelectedProvider ? (
                         <button
