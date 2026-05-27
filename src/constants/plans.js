@@ -56,6 +56,17 @@ export const PLAN_PRICES_ARS = Object.freeze({
   business: 13990,
 });
 
+/**
+ * Precios anuales en ARS — equivalente mensual al contratar el año completo (~17% off).
+ * TODO: Confirmar montos finales con el equipo comercial antes de activar checkout anual real.
+ * Total anual: pro = 89.880 ARS (12 × 7.490), business = 139.800 ARS (12 × 11.650).
+ */
+export const PLAN_ANNUAL_PRICES_ARS = Object.freeze({
+  starter:  0,
+  pro:      7490,
+  business: 11650,
+});
+
 /** Precios en USD (referencia internacional, fuera de Chile). Pro=6 USD, Full=10 USD. */
 export const PLAN_PRICES_USD = Object.freeze({
   starter:  0,
@@ -75,11 +86,11 @@ export const PLAN_ANNUAL_PRICES_USD = Object.freeze({
 });
 
 /**
- * Monedas con precios anuales confirmados y habilitados en UI.
- * ARS excluida hasta que el equipo comercial defina valores en pesos argentinos.
- * TODO: Agregar 'ARS' cuando se confirmen PLAN_ANNUAL_PRICES_ARS.
+ * Monedas con precios anuales habilitados en UI.
+ * TODO: Montos en PLAN_ANNUAL_PRICES_* son aproximados (~17% off); confirmar con equipo
+ * comercial antes de activar checkout anual real para cada mercado.
  */
-export const CURRENCIES_WITH_ANNUAL_PRICING = Object.freeze(['CLP', 'USD']);
+export const CURRENCIES_WITH_ANNUAL_PRICING = Object.freeze(['CLP', 'ARS', 'USD']);
 
 /**
  * Límites por plan. null = ilimitado.

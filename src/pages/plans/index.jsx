@@ -15,6 +15,7 @@ import {
   getPlanLimits,
   getPlanLabel,
   PLAN_ANNUAL_PRICES_CLP,
+  PLAN_ANNUAL_PRICES_ARS,
   PLAN_ANNUAL_PRICES_USD,
   getAnnualDiscountPercent,
   CURRENCIES_WITH_ANNUAL_PRICING,
@@ -339,6 +340,7 @@ export default function PlansPage() {
     if (billingCycle === 'annual' && monthlyPrice > 0 && CURRENCIES_WITH_ANNUAL_PRICING.includes(planBillingDisplayCurrency)) {
       // Precio mensual equivalente al contratar el año completo
       if (planBillingDisplayCurrency === 'CLP') return PLAN_ANNUAL_PRICES_CLP[slug] ?? monthlyPrice;
+      if (planBillingDisplayCurrency === 'ARS') return PLAN_ANNUAL_PRICES_ARS[slug] ?? monthlyPrice;
       return PLAN_ANNUAL_PRICES_USD[slug] ?? monthlyPrice;
     }
     return monthlyPrice;
@@ -390,8 +392,6 @@ export default function PlansPage() {
     ? 'Gestiona el plan de tu restaurante y las herramientas disponibles para tu menú.'
     : 'Administra tu suscripción y el crecimiento de tu tienda.';
   const planNoun = isRestaurant ? 'menú' : 'catálogo';
-  /** Facturación anual disponible solo si la moneda del mercado tiene precios anuales confirmados. */
-  const annualBillingAvailable = CURRENCIES_WITH_ANNUAL_PRICING.includes(planBillingDisplayCurrency);
   /** Obtiene access_token válido para Edge Functions que validan JWT internamente. */
   const getValidAccessToken = async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -1066,24 +1066,20 @@ export default function PlansPage() {
               </button>
               <button
                 type="button"
-                onClick={() => annualBillingAvailable && setBillingCycle('annual')}
-                disabled={!annualBillingAvailable}
-                title={!annualBillingAvailable ? 'Plan anual próximamente para esta moneda' : undefined}
-                className="px-4 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 flex items-center gap-2 font-[family-name:var(--font-caption)] disabled:opacity-40 disabled:cursor-not-allowed"
+                onClick={() => setBillingCycle('annual')}
+                className="px-4 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 flex items-center gap-2 font-[family-name:var(--font-caption)]"
                 style={billingCycle === 'annual'
                   ? { backgroundColor: '#fff', color: '#111827', boxShadow: '0 1px 4px rgba(17,24,39,0.12)' }
                   : { backgroundColor: 'transparent', color: 'var(--color-muted-foreground)' }}
                 aria-pressed={billingCycle === 'annual'}
               >
                 Anual
-                {annualBillingAvailable && (
-                  <span
-                    className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full font-[family-name:var(--font-caption)]"
-                    style={{ backgroundColor: billingCycle === 'annual' ? 'rgba(124,58,237,0.12)' : 'rgba(124,58,237,0.10)', color: 'var(--color-primary)' }}
-                  >
-                    {getAnnualDiscountPercent('pro')}% off
-                  </span>
-                )}
+                <span
+                  className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full font-[family-name:var(--font-caption)]"
+                  style={{ backgroundColor: billingCycle === 'annual' ? 'rgba(124,58,237,0.12)' : 'rgba(124,58,237,0.10)', color: 'var(--color-primary)' }}
+                >
+                  {getAnnualDiscountPercent('pro')}% off
+                </span>
               </button>
             </div>
           </div>
