@@ -986,14 +986,14 @@ export default function PlansPage() {
         />
         <DashboardLayoutContent className="page-enter">
 
-          <section className="mb-7 border-b pb-6" style={{ borderColor: 'rgba(17,24,39,0.08)' }}>
+          <section className="mb-4 border-b pb-3" style={{ borderColor: 'rgba(17,24,39,0.08)' }}>
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
               Suscripción
             </p>
-            <h2 className="mt-2 text-3xl font-semibold leading-tight sm:text-4xl" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-heading)', letterSpacing: '-0.03em' }}>
+            <h2 className="mt-1 text-xl font-semibold leading-tight sm:text-2xl" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-heading)', letterSpacing: '-0.03em' }}>
               Plan y facturación
             </h2>
-            <p className="mt-3 max-w-2xl text-sm leading-6 sm:text-base" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-body)' }}>
+            <p className="mt-1 max-w-xl text-sm leading-5" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-body)' }}>
               {billingHeroSubtitle}
             </p>
           </section>
@@ -1006,12 +1006,12 @@ export default function PlansPage() {
             />
           )}
 
-          <div className="mb-4 mt-8 flex flex-col gap-1">
-            <h3 className="text-xl font-semibold" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}>
+          <div className="mb-3 mt-4 flex flex-col gap-0.5">
+            <h3 className="text-base font-semibold" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}>
               Elige cómo quieres crecer
             </h3>
-            <p className="text-sm leading-6" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-body)' }}>
-              Planes pensados para operar tu {planNoun} sin ruido técnico.
+            <p className="text-sm leading-5" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-body)' }}>
+              Planes pensados para tu {planNoun}.
             </p>
           </div>
 
@@ -1031,20 +1031,25 @@ export default function PlansPage() {
               return (
                 <div
                   key={slug}
-                  className={[
-                    'relative rounded-2xl border p-5 flex flex-col transition-all duration-200 hover:-translate-y-0.5',
-                    isProRecommended ? 'shadow-[0_18px_40px_rgba(17,24,39,0.08)]' : '',
-                  ].filter(Boolean).join(' ')}
+                  className="relative rounded-xl border p-5 flex flex-col transition-all duration-200 hover:-translate-y-0.5"
                   style={{
-                    backgroundColor: isCurrent ? 'rgba(255,255,255,0.86)' : 'rgba(255,255,255,0.72)',
-                    borderColor: isCurrent ? 'rgba(17,24,39,0.22)' : 'rgba(17,24,39,0.08)',
-                    boxShadow: isCurrent ? '0 0 0 1px rgba(17,24,39,0.14), 0 18px 42px rgba(17,24,39,0.08)' : '0 12px 30px rgba(17,24,39,0.045)',
+                    backgroundColor: isCurrent ? 'rgba(255,255,255,0.94)' : 'rgba(255,255,255,0.82)',
+                    borderColor: isProRecommended
+                      ? 'rgba(139,92,246,0.32)'
+                      : isCurrent
+                        ? 'rgba(17,24,39,0.18)'
+                        : 'rgba(17,24,39,0.08)',
+                    boxShadow: isProRecommended
+                      ? '0 0 0 1px rgba(139,92,246,0.16), 0 8px 28px rgba(109,40,217,0.10)'
+                      : isCurrent
+                        ? '0 0 0 1px rgba(17,24,39,0.10), 0 6px 20px rgba(17,24,39,0.06)'
+                        : '0 2px 10px rgba(17,24,39,0.05)',
                   }}
                 >
                   {isProRecommended && (
                     <span
                       className="absolute -top-2.5 left-1/2 -translate-x-1/2 rounded-full px-3 py-0.5 text-[10px] font-semibold uppercase tracking-wide shadow-sm font-[family-name:var(--font-caption)]"
-                      style={{ backgroundColor: '#111827', color: '#fff' }}
+                      style={{ background: 'linear-gradient(135deg,#7c3aed,#6d28d9)', color: '#fff' }}
                       aria-hidden
                     >
                       Popular
@@ -1062,24 +1067,22 @@ export default function PlansPage() {
                   </div>
                   <div className="mb-4">
                     {getDisplayPlanPrice(slug) === 0 ? (
-                      <p className="text-2xl font-bold text-slate-900" style={{ fontFamily: 'var(--font-heading)' }}>
+                      <p className="text-2xl font-bold" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-heading)' }}>
                         Gratis
                       </p>
                     ) : (
                       <p
-                        className={
-                          planBillingDisplayCurrency === 'CLP'
-                            ? 'text-3xl font-semibold text-slate-950 tracking-tight'
-                            : 'text-2xl font-bold text-slate-900'
-                        }
-                        style={{ fontFamily: 'var(--font-heading)' }}
+                        className="text-3xl font-bold tracking-tight"
+                        style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-heading)' }}
                       >
                         {formatSubscriptionPlanPrice(getDisplayPlanPrice(slug), planBillingDisplayCurrency, planBillingDisplayLocale)}
                       </p>
                     )}
-                    <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-                      {getDisplayPlanPrice(slug) === 0 ? '' : `por mes · ${planBillingDisplayCurrency}`}
-                    </p>
+                    {getDisplayPlanPrice(slug) > 0 && (
+                      <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+                        por mes · {planBillingDisplayCurrency}
+                      </p>
+                    )}
                   </div>
                   <ul className="space-y-2 mb-6 flex-1">
                     <li className="flex items-center gap-2.5 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
@@ -1104,25 +1107,58 @@ export default function PlansPage() {
                     </li>
                     {slug === 'starter' && (
                       <>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Sin estadísticas ni ingresos del mes</li>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Sin productos más vendidos</li>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Sin asistencia de IA</li>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Incluye branding de Walinka en mensajes y links compartidos</li>
+                        <li className="flex items-start gap-2 text-sm" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+                          <Icon name="X" size={13} className="shrink-0 mt-0.5 opacity-40" />
+                          Sin estadísticas ni ingresos del mes
+                        </li>
+                        <li className="flex items-start gap-2 text-sm" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+                          <Icon name="X" size={13} className="shrink-0 mt-0.5 opacity-40" />
+                          Sin productos más vendidos
+                        </li>
+                        <li className="flex items-start gap-2 text-sm" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+                          <Icon name="X" size={13} className="shrink-0 mt-0.5 opacity-40" />
+                          Sin asistencia de IA
+                        </li>
+                        <li className="flex items-start gap-2 text-sm" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+                          <Icon name="X" size={13} className="shrink-0 mt-0.5 opacity-40" />
+                          Branding de Walinka en mensajes y links
+                        </li>
                       </>
                     )}
                     {slug === 'pro' && (
                       <>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Panel completo y estadísticas</li>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Asistencia de IA para descripciones</li>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Branding discreto: Powered by Walinka</li>
+                        <li className="flex items-start gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
+                          <Icon name="Check" size={13} className="shrink-0 mt-0.5" style={{ color: '#7c3aed' }} />
+                          Panel completo y estadísticas
+                        </li>
+                        <li className="flex items-start gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
+                          <Icon name="Check" size={13} className="shrink-0 mt-0.5" style={{ color: '#7c3aed' }} />
+                          Asistencia de IA para descripciones
+                        </li>
+                        <li className="flex items-start gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
+                          <Icon name="Check" size={13} className="shrink-0 mt-0.5" style={{ color: '#7c3aed' }} />
+                          Branding discreto: Powered by Walinka
+                        </li>
                       </>
                     )}
                     {slug === 'business' && (
                       <>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Panel completo</li>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Estadísticas completas</li>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>IA ilimitada</li>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Sin branding de Walinka en catálogo o mensajes</li>
+                        <li className="flex items-start gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
+                          <Icon name="Check" size={13} className="shrink-0 mt-0.5" style={{ color: '#059669' }} />
+                          Panel completo
+                        </li>
+                        <li className="flex items-start gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
+                          <Icon name="Check" size={13} className="shrink-0 mt-0.5" style={{ color: '#059669' }} />
+                          Estadísticas completas
+                        </li>
+                        <li className="flex items-start gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
+                          <Icon name="Check" size={13} className="shrink-0 mt-0.5" style={{ color: '#059669' }} />
+                          IA ilimitada
+                        </li>
+                        <li className="flex items-start gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
+                          <Icon name="Check" size={13} className="shrink-0 mt-0.5" style={{ color: '#059669' }} />
+                          Sin branding de Walinka
+                        </li>
                       </>
                     )}
                   </ul>

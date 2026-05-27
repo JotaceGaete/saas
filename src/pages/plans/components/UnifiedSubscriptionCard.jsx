@@ -13,7 +13,7 @@ export default function UnifiedSubscriptionCard({ viewModel, onScrollToPlans, su
 
   const { layout, normalizedStatus, rawStatus } = viewModel;
   const dataSubscription = subscription != null && subscription !== '' ? String(subscription) : undefined;
-  const cardClass = 'mb-8 overflow-hidden rounded-2xl border shadow-[0_16px_40px_rgba(17,24,39,0.06)]';
+  const cardClass = 'mb-5 overflow-hidden rounded-xl border shadow-[0_4px_20px_rgba(17,24,39,0.07)]';
   const cardStyle = { backgroundColor: 'rgba(255,255,255,0.78)', borderColor: 'rgba(17,24,39,0.08)' };
   const iconWrapClass = 'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl';
   const primaryButtonClass = 'flex items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 py-3 font-semibold text-white transition-all hover:-translate-y-px hover:bg-slate-800 shrink-0 font-[family-name:var(--font-caption)]';
