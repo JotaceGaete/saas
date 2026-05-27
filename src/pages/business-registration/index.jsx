@@ -161,29 +161,19 @@ export default function BusinessRegistration() {
       setAuthError(null);
       try {
         console.info('[BusinessRegistration] before signUp', { email });
-        const { data, error } = await signUp(email, password, {
+        const response = await signUp(email, password, {
           name: businessName || 'Mi Negocio',
         });
+        console.log('[BusinessRegistration] signUp response', response);
+        const { data, error } = response || {};
         console.info('[BusinessRegistration] after signUp', {
           hasUser: !!data?.user,
           hasSession: !!data?.session,
           error: error?.message || null,
           userEmail: data?.user?.email || null,
         });
-        if (error) {
-          console.error('[BusinessRegistration] signUp full error', error);
-          setAuthError(formatSignUpDebugError(error));
-          const msgLower = String(error.message || '').toLowerCase();
-          if (msgLower.includes('rate limit') || msgLower.includes('too many requests')) {
-            setSignupCooldownUntil(Date.now() + 60_000);
-          }
-          return;
-        }
-        if (data?.user && !data?.session) {
+        if (data?.user) {
           const confirmationEmail = data.user?.email || email;
-          console.info('[BusinessRegistration] email confirmation pending, redirecting to /verify-email', {
-            email: confirmationEmail,
-          });
           trackLoopsEvent('user_registered', {
             email: confirmationEmail,
             firstName: businessName || data?.user?.user_metadata?.name || '',
@@ -191,10 +181,24 @@ export default function BusinessRegistration() {
             country: '',
             plan: 'starter',
           }).catch(() => {});
-          if (typeof window !== 'undefined') {
-            window.sessionStorage?.setItem('pendingSignupEmail', confirmationEmail);
+          if (!data?.session) {
+            console.info('[BusinessRegistration] email confirmation pending, redirecting to /verify-email', {
+              email: confirmationEmail,
+            });
+            if (typeof window !== 'undefined') {
+              window.sessionStorage?.setItem('pendingSignupEmail', confirmationEmail);
+            }
+            navigate('/verify-email', { replace: true, state: { email: confirmationEmail } });
           }
-          navigate('/verify-email', { replace: true, state: { email: confirmationEmail } });
+          return;
+        }
+        if (error) {
+          console.error('[BusinessRegistration] signUp full error', error);
+          setAuthError(formatSignUpDebugError(error));
+          const msgLower = String(error.message || '').toLowerCase();
+          if (msgLower.includes('rate limit') || msgLower.includes('too many requests')) {
+            setSignupCooldownUntil(Date.now() + 60_000);
+          }
           return;
         }
         if (!data?.user) {

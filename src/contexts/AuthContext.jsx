@@ -202,110 +202,21 @@ export const AuthProvider = ({ children }) => {
   }
 
   const signUp = async (email, password, businessData) => {
-    try {
-      const emailRedirectTo = getAuthRedirectUrl(); // confirmación redirige a auth/callback
-      if (typeof window !== 'undefined' && window.__AUTH_DEBUG__) {
-        console.log('[Auth] signUp emailRedirectTo:', emailRedirectTo);
-      }
-      const metadata = {
-        full_name: businessData?.name || email,
-        name: businessData?.name || email,
-      };
-      if (typeof window !== 'undefined' && window.__AUTH_DEBUG__) {
-        console.log('[Auth] signUp metadata (options.data):', metadata);
-      }
-      const { data, error } = await supabase?.auth?.signUp({
-        email,
-        password,
-        options: {
-          emailRedirectTo,
-          data: metadata,
-        },
-      })
-      if (typeof window !== 'undefined' && window.__AUTH_DEBUG__) {
-        console.log('[Auth] signUp result:', { hasUser: !!data?.user, hasSession: !!data?.session, error: error?.message });
-      }
-      if (error) return { data: null, error }
-
-      const userId = data?.user?.id
-      const hasSession = !!data?.session
-
-      // Email confirmation enabled: Supabase creates the user and sends the
-      // confirmation email, but intentionally returns no active session.
-      // Treat this as a completed sign-up and let the UI redirect to /verify-email.
-      if (userId && !hasSession) {
-        if (typeof window !== 'undefined') {
-          console.info('[Auth] signUp pending email confirmation', { userId, email: data?.user?.email });
-        }
-        return { data, error: null }
-      }
-
-      // If we have an active session, the trigger may not have fired yet
-      // (or email confirmation is disabled). Try to ensure business exists.
-      if (userId && hasSession && businessData) {
-        try {
-          // Check if trigger already created the business
-          const { data: existingBiz } = await getMyBusiness()
-          if (!existingBiz) {
-            // Trigger didn't create it yet — create manually
-            const { data: biz, error: bizErr } = await createBusinessForUser(userId, {
-              name: businessData?.name || 'Mi Negocio',
-              whatsapp: businessData?.whatsapp || '',
-              description: businessData?.description || '',
-            })
-            if (bizErr) {
-              console.error('Business creation error:', bizErr)
-              // Don't block registration — business can be created later
-            } else if (biz) {
-              setBusiness(biz)
-            }
-          } else {
-            setBusiness(existingBiz)
-          }
-        } catch (bizErr) {
-          console.error('Business creation exception:', bizErr)
-          // Don't block registration
-        }
-      }
-
-      // Notify welcome webhook on successful registration
-      const WELCOME_WEBHOOK_URL = import.meta.env.VITE_WELCOME_WEBHOOK_URL;
-      if (data?.user?.email && WELCOME_WEBHOOK_URL) {
-        console.info('[welcome-webhook] dispatch', {
-          source: 'src/contexts/AuthContext.jsx',
-          eventName: 'welcome_webhook',
-          originalEmail: maskEmailForLog(data.user.email),
-          finalEmail: maskEmailForLog(data.user.email),
-          testMode: false,
-          runtime: {
-            mode: import.meta.env?.MODE || null,
-            dev: Boolean(import.meta.env?.DEV),
-            prod: Boolean(import.meta.env?.PROD),
-            targetHost: (() => {
-              try {
-                return new URL(WELCOME_WEBHOOK_URL).host
-              } catch {
-                return null
-              }
-            })(),
-          },
-          timestamp: new Date().toISOString(),
-        })
-        fetch(WELCOME_WEBHOOK_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            email: data.user.email,
-            name: data.user.user_metadata?.name || "amigo",
-          }),
-        }).catch(() => {}); // fire-and-forget, no bloquea el flujo
-      }
-
-      // If no session (email confirmation pending), registration still succeeded
-      return { data, error: null }
-    } catch (error) {
-      return { error: { message: error?.message || 'Network error. Please try again.' } }
-    }
+    const emailRedirectTo = getAuthRedirectUrl(); // Email confirmation redirects to auth/callback.
+    const metadata = {
+      full_name: businessData?.name || email,
+      name: businessData?.name || email,
+    };
+    const response = await supabase?.auth?.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo,
+        data: metadata,
+      },
+    })
+    console.log('[AuthContext] raw signUp response', response)
+    return response
   }
 
   const resendConfirmationEmail = async (email) => {
