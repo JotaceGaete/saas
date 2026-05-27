@@ -7,7 +7,6 @@ import { collectVisitAttribution } from '../../utils/analytics';
 import { recordSiteVisit } from '../../services/waBusinessService';
 import { trackLoopsEvent } from '../../services/loopsClient';
 import AuthStep from './components/AuthStep';
-import ConfirmEmailStep from './components/ConfirmEmailStep';
 import StoreCreationStep from './components/StoreCreationStep';
 import PremiumLoader from 'components/ui/PremiumLoader';
 
@@ -59,7 +58,7 @@ function normalizeAuthErrorMessage(raw) {
  */
 export default function BusinessRegistration() {
   const navigate = useNavigate();
-  const { user, business, loading, businessLoading, signUp, signIn, signInWithGoogle, resendConfirmationEmail, isEmailConfirmed } = useAuth();
+  const { user, business, loading, businessLoading, signUp, signIn, signInWithGoogle, isEmailConfirmed } = useAuth();
   const { countryCode } = useCountry();
   const countryState = resolveCountryState({
     businessCountryCode: business,
@@ -71,7 +70,6 @@ export default function BusinessRegistration() {
 
   const [authError, setAuthError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [pendingConfirmation, setPendingConfirmation] = useState(null); // { email } cuando signUp OK pero sin sesión
   const [signupCooldownUntil, setSignupCooldownUntil] = useState(0);
   const registerInFlightRef = useRef(false);
 
@@ -132,7 +130,6 @@ export default function BusinessRegistration() {
       registerInFlightRef.current = true;
       setIsSubmitting(true);
       setAuthError(null);
-      setPendingConfirmation(null);
       try {
         const { data, error } = await signUp(email, password, {
           name: businessName || 'Mi Negocio',
@@ -145,12 +142,12 @@ export default function BusinessRegistration() {
           }
           return;
         }
-        if (data?.user && !data?.session) {
-          if (typeof window !== 'undefined') {
-            console.log('[BusinessRegistration] signUp: email confirmation required', { email: data.user?.email });
-          }
-          setPendingConfirmation({ email: data.user?.email || email });
+
+        // Log para diagnóstico temporal
+        if (typeof window !== 'undefined') {
+          console.log('[BusinessRegistration] signUp ok', { hasUser: !!data?.user, hasSession: !!data?.session, email });
         }
+
         trackLoopsEvent('user_registered', {
           email: data?.user?.email || email,
           firstName: businessName || data?.user?.user_metadata?.name || '',
@@ -158,7 +155,19 @@ export default function BusinessRegistration() {
           country: '',
           plan: 'starter',
         }).catch(() => {});
-        // Si hay sesión, onAuthStateChange actualizará `user` y pasaremos al PASO 2.
+
+        if (data?.session) {
+          // Con sesión activa → onAuthStateChange actualizará `user` y pasaremos al PASO 2.
+          return;
+        }
+
+        // Sin sesión (confirmación por email pendiente): guardar email y redirigir a verify-email.
+        // Funciona aunque data.user sea null, porque Supabase igual envió el correo.
+        const resolvedEmail = data?.user?.email || email;
+        if (typeof sessionStorage !== 'undefined') {
+          sessionStorage.setItem('pendingVerifyEmail', resolvedEmail);
+        }
+        navigate('/verify-email');
       } catch {
         setAuthError('Error inesperado. Por favor intenta de nuevo.');
       } finally {
@@ -189,22 +198,6 @@ export default function BusinessRegistration() {
       if (error) setAuthError(error?.message || 'Error al iniciar sesión con Google.');
       // Si no hay error, redirige a Google; al volver el callback redirige a dashboard/registro
     };
-
-    if (pendingConfirmation?.email) {
-      return (
-        <ConfirmEmailStep
-          email={pendingConfirmation.email}
-          onResend={async () => {
-            setAuthError(null);
-            const { error } = await resendConfirmationEmail(pendingConfirmation.email);
-            if (error) setAuthError(normalizeAuthErrorMessage(error.message));
-            return { error };
-          }}
-          authError={authError}
-          onClearError={() => setAuthError(null)}
-        />
-      );
-    }
 
     return (
       <AuthStep

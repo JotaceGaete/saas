@@ -222,6 +222,8 @@ export const AuthProvider = ({ children }) => {
           data: metadata,
         },
       })
+      // Temporary diagnostic log — always on so devtools shows the raw Supabase response
+      console.log('[AuthContext] raw signUp response', { hasUser: !!data?.user, hasSession: !!data?.session, userId: data?.user?.id ?? null, error: error?.message ?? null });
       if (typeof window !== 'undefined' && window.__AUTH_DEBUG__) {
         console.log('[Auth] signUp result:', { hasUser: !!data?.user, hasSession: !!data?.session, error: error?.message });
       }

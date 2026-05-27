@@ -16,6 +16,10 @@ export default function VerifyEmailPage() {
     refreshUser,
   } = useAuth();
 
+  // Email guardado temporalmente durante el registro cuando Supabase no devuelve sesión
+  const pendingEmail = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('pendingVerifyEmail') : null;
+  const displayEmail = user?.email || pendingEmail || null;
+
   const [resendLoading, setResendLoading] = useState(false);
   const [resendMsg, setResendMsg] = useState(null);
   const [refreshLoading, setRefreshLoading] = useState(false);
@@ -25,7 +29,7 @@ export default function VerifyEmailPage() {
   const [changeMsg, setChangeMsg] = useState(null);
 
   const handleResend = useCallback(async () => {
-    const email = user?.email?.trim();
+    const email = displayEmail?.trim();
     if (!email) return;
     setResendMsg(null);
     setResendLoading(true);
@@ -92,7 +96,8 @@ export default function VerifyEmailPage() {
   };
 
   const handleSignOut = async () => {
-    await signOut();
+    if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem('pendingVerifyEmail');
+    if (user) await signOut();
     navigate('/login', { replace: true });
   };
 
@@ -100,11 +105,13 @@ export default function VerifyEmailPage() {
     return <PremiumLoader fullScreen text="Preparando tu acceso..." />;
   }
 
-  if (!user) {
+  // Redirigir a login solo si no hay usuario autenticado Y tampoco hay email pendiente de registro
+  if (!user && !pendingEmail) {
     return <Navigate to="/login" replace />;
   }
 
   if (isEmailConfirmed) {
+    if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem('pendingVerifyEmail');
     return <Navigate to="/dashboard" replace />;
   }
 
@@ -123,9 +130,9 @@ export default function VerifyEmailPage() {
         <p className="text-sm text-center mb-1" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)', lineHeight: 1.6 }}>
           Te enviamos un correo de verificación. Confirma tu email para continuar.
         </p>
-        {user?.email && (
+        {displayEmail && (
           <p className="text-xs text-center mb-6 font-medium break-all" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>
-            {user.email}
+            {displayEmail}
           </p>
         )}
 
@@ -133,7 +140,7 @@ export default function VerifyEmailPage() {
           <button
             type="button"
             onClick={handleResend}
-            disabled={resendLoading || !user?.email}
+            disabled={resendLoading || !displayEmail}
             className="w-full py-3 rounded-xl text-sm font-semibold text-white transition-opacity disabled:opacity-50"
             style={{ backgroundColor: 'var(--color-primary)', fontFamily: 'var(--font-caption)' }}
           >
@@ -141,28 +148,30 @@ export default function VerifyEmailPage() {
           </button>
           <button
             type="button"
-            onClick={handleRefresh}
+            onClick={user ? handleRefresh : () => { sessionStorage.removeItem('pendingVerifyEmail'); navigate('/login'); }}
             disabled={refreshLoading}
             className="w-full py-3 rounded-xl text-sm font-semibold border transition-opacity disabled:opacity-50"
             style={{ borderColor: 'var(--color-border)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
           >
             {refreshLoading ? 'Comprobando…' : 'Ya confirmé mi correo'}
           </button>
-          <button
-            type="button"
-            onClick={() => { setShowChangeEmail((v) => !v); setChangeMsg(null); }}
-            className="w-full py-2.5 rounded-xl text-sm font-medium"
-            style={{ color: 'var(--color-primary)', fontFamily: 'var(--font-caption)' }}
-          >
-            {showChangeEmail ? 'Cancelar cambio de correo' : 'Cambiar correo'}
-          </button>
+          {user && (
+            <button
+              type="button"
+              onClick={() => { setShowChangeEmail((v) => !v); setChangeMsg(null); }}
+              className="w-full py-2.5 rounded-xl text-sm font-medium"
+              style={{ color: 'var(--color-primary)', fontFamily: 'var(--font-caption)' }}
+            >
+              {showChangeEmail ? 'Cancelar cambio de correo' : 'Cambiar correo'}
+            </button>
+          )}
           <button
             type="button"
             onClick={handleSignOut}
             className="w-full py-2.5 rounded-xl text-sm font-medium"
             style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}
           >
-            Cerrar sesión
+            {user ? 'Cerrar sesión' : 'Volver al inicio'}
           </button>
         </div>
 
