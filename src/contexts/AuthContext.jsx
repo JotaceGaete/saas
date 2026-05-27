@@ -230,6 +230,16 @@ export const AuthProvider = ({ children }) => {
       const userId = data?.user?.id
       const hasSession = !!data?.session
 
+      // Email confirmation enabled: Supabase creates the user and sends the
+      // confirmation email, but intentionally returns no active session.
+      // Treat this as a completed sign-up and let the UI redirect to /verify-email.
+      if (userId && !hasSession) {
+        if (typeof window !== 'undefined') {
+          console.info('[Auth] signUp pending email confirmation', { userId, email: data?.user?.email });
+        }
+        return { data, error: null }
+      }
+
       // If we have an active session, the trigger may not have fired yet
       // (or email confirmation is disabled). Try to ensure business exists.
       if (userId && hasSession && businessData) {

@@ -50,6 +50,35 @@ function normalizeAuthErrorMessage(raw) {
   return msg || 'Ocurrió un error. Por favor intenta de nuevo.';
 }
 
+function formatSignUpDebugError(error) {
+  const msg = String(error?.message || error || '').trim();
+  const m = msg.toLowerCase();
+  if (!msg) return 'Supabase no devolvió detalle del error de registro.';
+  if (m.includes('rate limit') || m.includes('too many requests')) {
+    return `${normalizeAuthErrorMessage(msg)} Detalle: ${msg}`;
+  }
+  if (
+    (m.includes('email') && m.includes('already') && (m.includes('registered') || m.includes('exists'))) ||
+    m.includes('user already registered') ||
+    m.includes('already registered')
+  ) {
+    return `${normalizeAuthErrorMessage(msg)} Detalle: ${msg}`;
+  }
+  if (m.includes('invalid') && m.includes('email')) {
+    return `${normalizeAuthErrorMessage(msg)} Detalle: ${msg}`;
+  }
+  if (m.includes('password') && (m.includes('weak') || m.includes('strength') || m.includes('short') || m.includes('at least'))) {
+    return `${normalizeAuthErrorMessage(msg)} Detalle: ${msg}`;
+  }
+  if (m.includes('domain') || m.includes('not allowed') || m.includes('not authorized') || m.includes('blocked')) {
+    return `${normalizeAuthErrorMessage(msg)} Detalle: ${msg}`;
+  }
+  if (m.includes('smtp') || m.includes('email provider') || m.includes('mail') || m.includes('confirmation') || m.includes('mailer')) {
+    return `No se pudo enviar el correo de confirmación. Detalle Supabase/Auth: ${msg}`;
+  }
+  return msg;
+}
+
 /**
  * Flujo de onboarding:
  *   1. Visitante no autenticado → AuthStep (login / registro con email)
@@ -131,11 +160,19 @@ export default function BusinessRegistration() {
       setIsSubmitting(true);
       setAuthError(null);
       try {
+        console.info('[BusinessRegistration] before signUp', { email });
         const { data, error } = await signUp(email, password, {
           name: businessName || 'Mi Negocio',
         });
+        console.info('[BusinessRegistration] after signUp', {
+          hasUser: !!data?.user,
+          hasSession: !!data?.session,
+          error: error?.message || null,
+          userEmail: data?.user?.email || null,
+        });
         if (error) {
-          setAuthError(normalizeAuthErrorMessage(error.message));
+          console.error('[BusinessRegistration] signUp full error', error);
+          setAuthError(formatSignUpDebugError(error));
           const msgLower = String(error.message || '').toLowerCase();
           if (msgLower.includes('rate limit') || msgLower.includes('too many requests')) {
             setSignupCooldownUntil(Date.now() + 60_000);
@@ -144,6 +181,9 @@ export default function BusinessRegistration() {
         }
         if (data?.user && !data?.session) {
           const confirmationEmail = data.user?.email || email;
+          console.info('[BusinessRegistration] email confirmation pending, redirecting to /verify-email', {
+            email: confirmationEmail,
+          });
           trackLoopsEvent('user_registered', {
             email: confirmationEmail,
             firstName: businessName || data?.user?.user_metadata?.name || '',
@@ -158,7 +198,8 @@ export default function BusinessRegistration() {
           return;
         }
         if (!data?.user) {
-          setAuthError('No pudimos completar el registro. Intenta nuevamente en unos segundos.');
+          console.error('[BusinessRegistration] signUp returned no user and no error', { data });
+          setAuthError('Supabase no devolvió usuario ni sesión después del registro. Revisa la consola para ver la respuesta completa.');
           return;
         }
         trackLoopsEvent('user_registered', {
