@@ -75,6 +75,13 @@ export const PLAN_ANNUAL_PRICES_USD = Object.freeze({
 });
 
 /**
+ * Monedas con precios anuales confirmados y habilitados en UI.
+ * ARS excluida hasta que el equipo comercial defina valores en pesos argentinos.
+ * TODO: Agregar 'ARS' cuando se confirmen PLAN_ANNUAL_PRICES_ARS.
+ */
+export const CURRENCIES_WITH_ANNUAL_PRICING = Object.freeze(['CLP', 'USD']);
+
+/**
  * Límites por plan. null = ilimitado.
  * maxBusinesses = cuántos negocios puede tener el usuario (por ahora 1 para todos).
  */

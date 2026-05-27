@@ -17,6 +17,7 @@ import {
   PLAN_ANNUAL_PRICES_CLP,
   PLAN_ANNUAL_PRICES_USD,
   getAnnualDiscountPercent,
+  CURRENCIES_WITH_ANNUAL_PRICING,
 } from '../../constants/plans';
 import {
   normalizeBillingProvider,
@@ -90,21 +91,28 @@ function PayPalCheckoutHelper({ planSlug, onOpenManualPayment }) {
   );
 }
 
-function ManualPaymentLinkModal({ open, onClose, planSlug, user, business }) {
+function ManualPaymentLinkModal({ open, onClose, planSlug, isAnnual = false, user, business }) {
   if (!open) return null;
-  const message = [
-    'Hola, quiero solicitar un link de pago con tarjeta para mi plan en Walinka (prefiero no usar PayPal).',
-    planSlug ? `Plan: ${planSlug}` : null,
-    `Email: ${user?.email || ''}`,
-    `Negocio: ${business?.name || ''}`,
-  ].filter(Boolean).join('\n\n');
+  const planLabel = planSlug === 'pro' ? 'Pro' : planSlug === 'business' ? 'Full' : planSlug || '';
+  const message = isAnnual
+    ? [
+        `Hola, quiero contratar el plan anual ${planLabel} en Walinka.`,
+        `Email: ${user?.email || ''}`,
+        `Negocio: ${business?.name || ''}`,
+      ].filter(Boolean).join('\n\n')
+    : [
+        'Hola, quiero solicitar un link de pago con tarjeta para mi plan en Walinka (prefiero no usar PayPal).',
+        planSlug ? `Plan: ${planSlug}` : null,
+        `Email: ${user?.email || ''}`,
+        `Negocio: ${business?.name || ''}`,
+      ].filter(Boolean).join('\n\n');
   const waUrl = buildWhatsAppUrl(message, SUPPORT_WHATSAPP_NUMBER);
 
   const handleWhatsApp = () => {
     const plan = String(planSlug || 'unknown').toLowerCase();
     trackEvent('manual_payment_whatsapp_continue', {
       plan,
-      provider: 'dlocal_manual',
+      provider: isAnnual ? 'annual_manual' : 'dlocal_manual',
     });
     if (waUrl) openWhatsAppUrl(waUrl);
     onClose();
@@ -125,10 +133,12 @@ function ManualPaymentLinkModal({ open, onClose, planSlug, user, business }) {
         aria-labelledby="manual-payment-title"
       >
         <h3 id="manual-payment-title" className="text-sm font-semibold mb-2" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>
-          Pago con tarjeta (link manual)
+          {isAnnual ? `Solicitud plan anual ${planLabel}` : 'Pago con tarjeta (link manual)'}
         </h3>
         <p className="text-sm leading-relaxed mb-4" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
-          Te enviaremos un enlace seguro para pagar con tarjeta por WhatsApp o email. No necesitas cuenta PayPal.
+          {isAnnual
+            ? `Te contactamos por WhatsApp para coordinar el pago anual del plan ${planLabel}. Sin tarjeta automática ni suscripción recurrente hasta que lo confirmes.`
+            : 'Te enviaremos un enlace seguro para pagar con tarjeta por WhatsApp o email. No necesitas cuenta PayPal.'}
         </p>
         <div className="flex flex-col sm:flex-row gap-2">
           <button
@@ -197,16 +207,19 @@ export default function PlansPage() {
   const [previewPlanSlug, setPreviewPlanSlug] = useState(null);
   const [manualPaymentModalOpen, setManualPaymentModalOpen] = useState(false);
   const [manualPaymentPlanSlug, setManualPaymentPlanSlug] = useState(null);
+  const [manualPaymentIsAnnual, setManualPaymentIsAnnual] = useState(false);
   const [subscriptionState, setSubscriptionState] = useState(null);
 
-  const openManualPaymentModal = useCallback((planSlug) => {
+  const openManualPaymentModal = useCallback((planSlug, isAnnual = false) => {
     setManualPaymentPlanSlug(planSlug ?? null);
+    setManualPaymentIsAnnual(Boolean(isAnnual));
     setManualPaymentModalOpen(true);
   }, []);
 
   const closeManualPaymentModal = useCallback(() => {
     setManualPaymentModalOpen(false);
     setManualPaymentPlanSlug(null);
+    setManualPaymentIsAnnual(false);
   }, []);
   const [billingReady, setBillingReady] = useState(false);
   const [billingRemoteError, setBillingRemoteError] = useState(null);
@@ -323,10 +336,9 @@ export default function PlansPage() {
   );
   const getDisplayPlanPrice = (slug) => {
     const monthlyPrice = getPlanPrice({ countryCode: businessCountryCode, planSlug: slug }) ?? 0;
-    if (billingCycle === 'annual' && monthlyPrice > 0) {
+    if (billingCycle === 'annual' && monthlyPrice > 0 && CURRENCIES_WITH_ANNUAL_PRICING.includes(planBillingDisplayCurrency)) {
       // Precio mensual equivalente al contratar el año completo
-      const isLocalCurrency = planBillingDisplayCurrency === 'CLP' || planBillingDisplayCurrency === 'ARS';
-      if (isLocalCurrency) return PLAN_ANNUAL_PRICES_CLP[slug] ?? monthlyPrice;
+      if (planBillingDisplayCurrency === 'CLP') return PLAN_ANNUAL_PRICES_CLP[slug] ?? monthlyPrice;
       return PLAN_ANNUAL_PRICES_USD[slug] ?? monthlyPrice;
     }
     return monthlyPrice;
@@ -378,6 +390,8 @@ export default function PlansPage() {
     ? 'Gestiona el plan de tu restaurante y las herramientas disponibles para tu menú.'
     : 'Administra tu suscripción y el crecimiento de tu tienda.';
   const planNoun = isRestaurant ? 'menú' : 'catálogo';
+  /** Facturación anual disponible solo si la moneda del mercado tiene precios anuales confirmados. */
+  const annualBillingAvailable = CURRENCIES_WITH_ANNUAL_PRICING.includes(planBillingDisplayCurrency);
   /** Obtiene access_token válido para Edge Functions que validan JWT internamente. */
   const getValidAccessToken = async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -1052,20 +1066,24 @@ export default function PlansPage() {
               </button>
               <button
                 type="button"
-                onClick={() => setBillingCycle('annual')}
-                className="px-4 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 flex items-center gap-2 font-[family-name:var(--font-caption)]"
+                onClick={() => annualBillingAvailable && setBillingCycle('annual')}
+                disabled={!annualBillingAvailable}
+                title={!annualBillingAvailable ? 'Plan anual próximamente para esta moneda' : undefined}
+                className="px-4 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 flex items-center gap-2 font-[family-name:var(--font-caption)] disabled:opacity-40 disabled:cursor-not-allowed"
                 style={billingCycle === 'annual'
                   ? { backgroundColor: '#fff', color: '#111827', boxShadow: '0 1px 4px rgba(17,24,39,0.12)' }
                   : { backgroundColor: 'transparent', color: 'var(--color-muted-foreground)' }}
                 aria-pressed={billingCycle === 'annual'}
               >
                 Anual
-                <span
-                  className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full font-[family-name:var(--font-caption)]"
-                  style={{ backgroundColor: billingCycle === 'annual' ? 'rgba(124,58,237,0.12)' : 'rgba(124,58,237,0.10)', color: 'var(--color-primary)' }}
-                >
-                  {getAnnualDiscountPercent('pro')}% off
-                </span>
+                {annualBillingAvailable && (
+                  <span
+                    className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full font-[family-name:var(--font-caption)]"
+                    style={{ backgroundColor: billingCycle === 'annual' ? 'rgba(124,58,237,0.12)' : 'rgba(124,58,237,0.10)', color: 'var(--color-primary)' }}
+                  >
+                    {getAnnualDiscountPercent('pro')}% off
+                  </span>
+                )}
               </button>
             </div>
           </div>
@@ -1237,7 +1255,7 @@ export default function PlansPage() {
                         <button
                           type="button"
                           disabled={!!loadingPlanSlug || authLoading || !isAuthenticated}
-                          onClick={() => openManualPaymentModal(slug)}
+                          onClick={() => openManualPaymentModal(slug, true)}
                           className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:-translate-y-px disabled:opacity-60"
                           style={{ backgroundColor: 'var(--color-primary)' }}
                         >
@@ -1439,6 +1457,7 @@ export default function PlansPage() {
           open={manualPaymentModalOpen}
           onClose={closeManualPaymentModal}
           planSlug={manualPaymentPlanSlug}
+          isAnnual={manualPaymentIsAnnual}
           user={user}
           business={business}
         />
