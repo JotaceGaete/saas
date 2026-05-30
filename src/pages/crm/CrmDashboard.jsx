@@ -7,36 +7,41 @@ import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
 import { getCrmDashboardStats, formatQuoteNumber, formatInvoiceNumber } from '../../services/crmService';
 
-function StatCard({ icon, label, value, color = 'text-blue-400', onClick }) {
+const STATUS_Q = { borrador: 'bg-gray-100 text-gray-600', enviado: 'bg-blue-100 text-blue-700', aceptado: 'bg-green-100 text-green-700', rechazado: 'bg-red-100 text-red-600' };
+const STATUS_I = { pendiente: 'bg-yellow-100 text-yellow-700', pagada: 'bg-green-100 text-green-700', anulada: 'bg-red-100 text-red-600' };
+
+function MetricCard({ icon, label, value, iconColor, onClick }) {
   return (
     <button
       onClick={onClick}
-      className="bg-[#1a2535] rounded-xl p-5 text-left w-full hover:bg-[#1f2d40] transition-colors"
+      className="bg-white border border-gray-200 rounded-xl p-5 text-left w-full hover:shadow-md transition-shadow"
     >
       <div className="flex items-center gap-3 mb-2">
-        <Icon name={icon} size={20} className={color} />
-        <span className="text-gray-400 text-sm">{label}</span>
+        <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${iconColor}`}>
+          <Icon name={icon} size={18} />
+        </div>
+        <span className="text-sm text-gray-500">{label}</span>
       </div>
-      <p className="text-2xl font-bold text-white">{value}</p>
+      <p className="text-2xl font-bold text-gray-900">{value}</p>
     </button>
   );
 }
 
-function RecentList({ title, items, icon, renderItem, onViewAll }) {
+function RecentTable({ title, icon, items, renderRow, onViewAll }) {
   return (
-    <div className="bg-[#1a2535] rounded-xl p-5">
-      <div className="flex justify-between items-center mb-4">
+    <div className="bg-white border border-gray-200 rounded-xl">
+      <div className="flex justify-between items-center px-5 py-4 border-b border-gray-100">
         <div className="flex items-center gap-2">
-          <Icon name={icon} size={18} className="text-blue-400" />
-          <h3 className="font-semibold text-white">{title}</h3>
+          <Icon name={icon} size={16} className="text-gray-400" />
+          <h3 className="font-semibold text-gray-800 text-sm">{title}</h3>
         </div>
-        <button onClick={onViewAll} className="text-xs text-blue-400 hover:underline">Ver todos</button>
+        <button onClick={onViewAll} className="text-xs text-blue-600 hover:underline font-medium">Ver todos →</button>
       </div>
       {items.length === 0 ? (
-        <p className="text-gray-500 text-sm">Sin registros aún.</p>
+        <p className="text-gray-400 text-sm text-center py-8">Sin registros.</p>
       ) : (
-        <ul className="space-y-2">
-          {items.map(renderItem)}
+        <ul className="divide-y divide-gray-100">
+          {items.map(renderRow)}
         </ul>
       )}
     </div>
@@ -58,35 +63,49 @@ export default function CrmDashboard() {
 
   return (
     <DashboardAppShell>
-      <DashboardLayoutContent>
-        <PanelHeader title="CRM" subtitle="Clientes, presupuestos y facturación interna" icon="BarChart2" />
+      <PanelHeader
+        title={<h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>CRM</h1>}
+        subtitle={<p className="text-xs" style={{ color: 'var(--color-muted-foreground)' }}>Panel interno — solo administradores</p>}
+      >
+        <div className="flex items-center gap-2">
+          <button onClick={() => navigate('/crm/presupuestos/nuevo')} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 text-xs font-medium">
+            <Icon name="FilePlus" size={14} />Presupuesto
+          </button>
+          <button onClick={() => navigate('/crm/facturas/nueva')} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium">
+            <Icon name="PlusCircle" size={14} />Factura
+          </button>
+        </div>
+      </PanelHeader>
 
+      <DashboardLayoutContent>
         {loading ? (
-          <div className="flex justify-center py-16"><Icon name="Loader2" size={32} className="animate-spin text-blue-400" /></div>
+          <div className="flex justify-center py-20">
+            <Icon name="Loader2" size={32} className="animate-spin text-blue-500" />
+          </div>
         ) : (
           <div className="space-y-6">
-            {/* Métricas del mes */}
+            {/* Métricas */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <StatCard icon="FileText" label="Presupuestado este mes" value={fmt(stats?.totalPresupuestadoMes)} color="text-purple-400" onClick={() => navigate('/crm/presupuestos')} />
-              <StatCard icon="Receipt" label="Facturado este mes" value={fmt(stats?.totalFacturadoMes)} color="text-green-400" onClick={() => navigate('/crm/facturas')} />
-              <StatCard icon="Users" label="Clientes recientes" value={stats?.recentCustomers?.length ?? 0} color="text-blue-400" onClick={() => navigate('/crm/clientes')} />
-              <StatCard icon="AlertTriangle" label="Stock bajo" value={stats?.stockBajo?.length ?? 0} color="text-yellow-400" onClick={() => navigate('/crm/stock')} />
+              <MetricCard icon="FileText" label="Presupuestado este mes" value={fmt(stats?.totalPresupuestadoMes)} iconColor="bg-purple-100 text-purple-600" onClick={() => navigate('/crm/presupuestos')} />
+              <MetricCard icon="Receipt" label="Facturado este mes" value={fmt(stats?.totalFacturadoMes)} iconColor="bg-green-100 text-green-600" onClick={() => navigate('/crm/facturas')} />
+              <MetricCard icon="Users" label="Clientes" value={stats?.recentCustomers?.length ?? 0} iconColor="bg-blue-100 text-blue-600" onClick={() => navigate('/crm/clientes')} />
+              <MetricCard icon="AlertTriangle" label="Stock bajo" value={stats?.stockBajo?.length ?? 0} iconColor="bg-yellow-100 text-yellow-600" onClick={() => navigate('/crm/stock')} />
             </div>
 
             {/* Accesos rápidos */}
             <div className="flex flex-wrap gap-3">
               {[
+                { label: 'Nuevo cliente', icon: 'UserPlus', path: '/crm/clientes' },
                 { label: 'Nuevo presupuesto', icon: 'FilePlus', path: '/crm/presupuestos/nuevo' },
                 { label: 'Nueva factura', icon: 'PlusCircle', path: '/crm/facturas/nueva' },
-                { label: 'Nuevo cliente', icon: 'UserPlus', path: '/crm/clientes/nuevo' },
-                { label: 'Stock', icon: 'Package', path: '/crm/stock' },
+                { label: 'Control de stock', icon: 'Package', path: '/crm/stock' },
               ].map(a => (
                 <button
                   key={a.path}
                   onClick={() => navigate(a.path)}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm transition-colors"
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 hover:border-blue-300 hover:shadow-sm text-gray-700 rounded-lg text-sm font-medium transition-all"
                 >
-                  <Icon name={a.icon} size={16} />
+                  <Icon name={a.icon} size={15} className="text-blue-500" />
                   {a.label}
                 </button>
               ))}
@@ -94,59 +113,50 @@ export default function CrmDashboard() {
 
             {/* Listas recientes */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              <RecentList
+              <RecentTable
                 title="Presupuestos recientes"
                 icon="FileText"
                 items={stats?.recentQuotes || []}
                 onViewAll={() => navigate('/crm/presupuestos')}
-                renderItem={q => (
-                  <li key={q.id} className="flex justify-between items-center py-1 border-b border-white/5 last:border-0">
+                renderRow={q => (
+                  <li key={q.id} className="flex items-center justify-between px-5 py-3 hover:bg-gray-50 cursor-pointer" onClick={() => navigate(`/crm/presupuestos/${q.id}`)}>
                     <div>
-                      <span className="text-sm text-white font-medium">{formatQuoteNumber(q.quote_number)}</span>
+                      <p className="text-sm font-semibold text-gray-900">{formatQuoteNumber(q.quote_number)}</p>
                       <p className="text-xs text-gray-400">{q.wa_customers?.name || 'Sin cliente'}</p>
                     </div>
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${
-                      q.status === 'aceptado' ? 'bg-green-900/50 text-green-400' :
-                      q.status === 'rechazado' ? 'bg-red-900/50 text-red-400' :
-                      q.status === 'enviado' ? 'bg-blue-900/50 text-blue-400' :
-                      'bg-gray-700 text-gray-400'
-                    }`}>{q.status}</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_Q[q.status] || 'bg-gray-100 text-gray-600'}`}>{q.status}</span>
                   </li>
                 )}
               />
 
-              <RecentList
+              <RecentTable
                 title="Facturas recientes"
                 icon="Receipt"
                 items={stats?.recentInvoices || []}
                 onViewAll={() => navigate('/crm/facturas')}
-                renderItem={inv => (
-                  <li key={inv.id} className="flex justify-between items-center py-1 border-b border-white/5 last:border-0">
+                renderRow={inv => (
+                  <li key={inv.id} className="flex items-center justify-between px-5 py-3 hover:bg-gray-50 cursor-pointer" onClick={() => navigate(`/crm/facturas/${inv.id}`)}>
                     <div>
-                      <span className="text-sm text-white font-medium">{formatInvoiceNumber(inv.invoice_number)}</span>
+                      <p className="text-sm font-semibold text-gray-900">{formatInvoiceNumber(inv.invoice_number)}</p>
                       <p className="text-xs text-gray-400">{inv.wa_customers?.name || 'Sin cliente'}</p>
                     </div>
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${
-                      inv.status === 'pagada' ? 'bg-green-900/50 text-green-400' :
-                      inv.status === 'anulada' ? 'bg-red-900/50 text-red-400' :
-                      'bg-yellow-900/50 text-yellow-400'
-                    }`}>{inv.status}</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_I[inv.status] || 'bg-gray-100 text-gray-600'}`}>{inv.status}</span>
                   </li>
                 )}
               />
 
-              <RecentList
+              <RecentTable
                 title="Clientes recientes"
                 icon="Users"
                 items={stats?.recentCustomers || []}
                 onViewAll={() => navigate('/crm/clientes')}
-                renderItem={c => (
-                  <li key={c.id} className="flex items-center gap-3 py-1 border-b border-white/5 last:border-0">
-                    <div className="w-7 h-7 rounded-full bg-blue-700 flex items-center justify-center text-xs font-bold text-white shrink-0">
+                renderRow={c => (
+                  <li key={c.id} className="flex items-center gap-3 px-5 py-3 hover:bg-gray-50" onClick={() => navigate('/crm/clientes')}>
+                    <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-xs font-bold text-white shrink-0">
                       {(c.name || '?')[0].toUpperCase()}
                     </div>
                     <div>
-                      <p className="text-sm text-white">{c.name || 'Sin nombre'}</p>
+                      <p className="text-sm font-medium text-gray-900">{c.name || 'Sin nombre'}</p>
                       {c.company && <p className="text-xs text-gray-400">{c.company}</p>}
                     </div>
                   </li>
@@ -156,16 +166,16 @@ export default function CrmDashboard() {
 
             {/* Stock bajo */}
             {(stats?.stockBajo?.length || 0) > 0 && (
-              <div className="bg-yellow-900/20 border border-yellow-700/30 rounded-xl p-5">
+              <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-5">
                 <div className="flex items-center gap-2 mb-3">
-                  <Icon name="AlertTriangle" size={18} className="text-yellow-400" />
-                  <h3 className="font-semibold text-yellow-300">Productos con stock bajo</h3>
+                  <Icon name="AlertTriangle" size={16} className="text-yellow-600" />
+                  <h3 className="font-semibold text-yellow-800 text-sm">Productos con stock bajo o agotado</h3>
                 </div>
-                <ul className="space-y-1">
+                <ul className="space-y-2">
                   {stats.stockBajo.map(p => (
                     <li key={p.id} className="flex justify-between text-sm">
-                      <span className="text-gray-300">{p.name}</span>
-                      <span className="text-yellow-400 font-medium">{p.stock_actual} / mín {p.stock_minimo}</span>
+                      <span className="text-gray-700">{p.name}</span>
+                      <span className="text-yellow-700 font-semibold">{p.stock_actual} / mín {p.stock_minimo}</span>
                     </li>
                   ))}
                 </ul>
