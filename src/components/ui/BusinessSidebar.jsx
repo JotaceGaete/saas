@@ -16,6 +16,13 @@ const NAV_ITEMS = [
   { label: 'Productos', path: '/product-management', icon: 'Package' },
   { label: 'Pedidos', path: '/orders', icon: 'ShoppingCart' },
   { label: 'Historial pedidos', path: '/orders/historial', icon: 'History' },
+  { label: '— CRM —', path: null, icon: null, section: true },
+  { label: 'CRM', path: '/crm', icon: 'BarChart2' },
+  { label: 'Clientes', path: '/crm/clientes', icon: 'Users' },
+  { label: 'Presupuestos', path: '/crm/presupuestos', icon: 'FileText' },
+  { label: 'Facturas internas', path: '/crm/facturas', icon: 'Receipt' },
+  { label: 'Stock', path: '/crm/stock', icon: 'Archive' },
+  { label: '—', path: null, icon: null, section: true },
   { label: 'Configuración', path: '/business-configuration', icon: 'Settings' },
   { label: 'Diseño', path: '/design', icon: 'Palette' },
   { label: 'Plan y facturación', path: '/planes', icon: 'CreditCard' },
@@ -139,7 +146,16 @@ Motivo (opcional):`;
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto overflow-x-hidden px-2 py-2.5" aria-label="Navegación principal">
         <ul className="space-y-0.5" role="list">
-          {NAV_ITEMS?.map((item) => {
+          {NAV_ITEMS?.map((item, idx) => {
+            if (item?.section) {
+              if (collapsed) return null;
+              return (
+                <li key={`section-${idx}`} role="separator" className="px-3 pt-3 pb-1">
+                  {item.label !== '—' && <span className="text-[10px] uppercase tracking-widest text-slate-600 font-semibold select-none">{item.label.replace(/—/g, '').trim()}</span>}
+                  {item.label === '—' && <div className="h-px bg-white/5" />}
+                </li>
+              );
+            }
             const active = isParentActive(item);
             const expanded = expandedItems?.[item?.path];
             return (

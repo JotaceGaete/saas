@@ -1,0 +1,429 @@
+import { supabase } from '../lib/supabase';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function formatQuoteNumber(n) {
+  return `PRES-${String(n).padStart(4, '0')}`;
+}
+
+export function formatInvoiceNumber(n) {
+  return `FAC-${String(n).padStart(4, '0')}`;
+}
+
+function calcItemSubtotal(unitPrice, quantity, discountPct) {
+  const base = unitPrice * quantity;
+  return +(base - (base * discountPct) / 100).toFixed(2);
+}
+
+function calcDocTotals(items) {
+  const subtotal = items.reduce((s, i) => s + i.subtotal, 0);
+  const discountAmount = items.reduce((s, i) => {
+    const base = i.unit_price * i.quantity;
+    return s + (base * i.discount_pct) / 100;
+  }, 0);
+  const total = subtotal;
+  return {
+    subtotal: +subtotal.toFixed(2),
+    discount_amount: +discountAmount.toFixed(2),
+    total: +total.toFixed(2),
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CLIENTES
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function getCrmCustomers(businessId) {
+  const { data, error } = await supabase
+    .from('wa_customers')
+    .select('*')
+    .eq('business_id', businessId)
+    .order('created_at', { ascending: false });
+  return { data: data || [], error };
+}
+
+export async function getCrmCustomer(id) {
+  const { data, error } = await supabase
+    .from('wa_customers')
+    .select('*')
+    .eq('id', id)
+    .single();
+  return { data, error };
+}
+
+export async function createCrmCustomer(businessId, fields) {
+  const { data, error } = await supabase
+    .from('wa_customers')
+    .insert({ business_id: businessId, ...fields })
+    .select()
+    .single();
+  return { data, error };
+}
+
+export async function updateCrmCustomer(id, fields) {
+  const { data, error } = await supabase
+    .from('wa_customers')
+    .update({ ...fields, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .select()
+    .single();
+  return { data, error };
+}
+
+export async function deleteCrmCustomer(id) {
+  const { error } = await supabase.from('wa_customers').delete().eq('id', id);
+  return { error };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PRESUPUESTOS
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function getCrmQuotes(businessId) {
+  const { data, error } = await supabase
+    .from('crm_quotes')
+    .select('*, wa_customers(id, name, company)')
+    .eq('business_id', businessId)
+    .order('created_at', { ascending: false });
+  return { data: data || [], error };
+}
+
+export async function getCrmQuote(id) {
+  const { data, error } = await supabase
+    .from('crm_quotes')
+    .select('*, wa_customers(id, name, company, phone, email, address, rut), crm_quote_items(*)')
+    .eq('id', id)
+    .single();
+  if (data?.crm_quote_items) {
+    data.crm_quote_items.sort((a, b) => a.sort_order - b.sort_order);
+  }
+  return { data, error };
+}
+
+export async function createCrmQuote(businessId, { customerId, validUntil, notes, items = [] }) {
+  const { data: nextNum, error: numErr } = await supabase
+    .rpc('crm_next_quote_number', { p_business_id: businessId });
+  if (numErr) return { data: null, error: numErr };
+
+  const mappedItems = items.map((it, idx) => ({
+    ...it,
+    subtotal: calcItemSubtotal(it.unit_price, it.quantity, it.discount_pct || 0),
+    sort_order: idx,
+  }));
+  const totals = calcDocTotals(mappedItems);
+
+  const { data: quote, error } = await supabase
+    .from('crm_quotes')
+    .insert({
+      business_id: businessId,
+      customer_id: customerId || null,
+      quote_number: nextNum,
+      valid_until: validUntil || null,
+      notes: notes || null,
+      ...totals,
+    })
+    .select()
+    .single();
+  if (error) return { data: null, error };
+
+  if (mappedItems.length > 0) {
+    const { error: itemsErr } = await supabase
+      .from('crm_quote_items')
+      .insert(mappedItems.map(it => ({ ...it, quote_id: quote.id })));
+    if (itemsErr) return { data: null, error: itemsErr };
+  }
+  return { data: quote, error: null };
+}
+
+export async function updateCrmQuote(quoteId, { customerId, validUntil, notes, status, items }) {
+  const updates = {};
+  if (customerId !== undefined) updates.customer_id = customerId;
+  if (validUntil !== undefined) updates.valid_until = validUntil;
+  if (notes !== undefined) updates.notes = notes;
+  if (status !== undefined) updates.status = status;
+
+  if (items !== undefined) {
+    const mappedItems = items.map((it, idx) => ({
+      ...it,
+      subtotal: calcItemSubtotal(it.unit_price, it.quantity, it.discount_pct || 0),
+      sort_order: idx,
+    }));
+    const totals = calcDocTotals(mappedItems);
+    Object.assign(updates, totals);
+
+    await supabase.from('crm_quote_items').delete().eq('quote_id', quoteId);
+    if (mappedItems.length > 0) {
+      await supabase.from('crm_quote_items')
+        .insert(mappedItems.map(it => ({ ...it, quote_id: quoteId })));
+    }
+  }
+
+  const { data, error } = await supabase
+    .from('crm_quotes')
+    .update(updates)
+    .eq('id', quoteId)
+    .select()
+    .single();
+  return { data, error };
+}
+
+export async function duplicateCrmQuote(quoteId) {
+  const { data: original, error } = await getCrmQuote(quoteId);
+  if (error || !original) return { data: null, error: error || new Error('Not found') };
+  return createCrmQuote(original.business_id, {
+    customerId: original.customer_id,
+    validUntil: original.valid_until,
+    notes: original.notes,
+    items: (original.crm_quote_items || []).map(it => ({
+      product_id: it.product_id,
+      name: it.name,
+      description: it.description,
+      unit_price: it.unit_price,
+      quantity: it.quantity,
+      discount_pct: it.discount_pct,
+    })),
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FACTURAS INTERNAS
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function getCrmInvoices(businessId) {
+  const { data, error } = await supabase
+    .from('crm_invoices')
+    .select('*, wa_customers(id, name, company)')
+    .eq('business_id', businessId)
+    .order('created_at', { ascending: false });
+  return { data: data || [], error };
+}
+
+export async function getCrmInvoice(id) {
+  const { data, error } = await supabase
+    .from('crm_invoices')
+    .select('*, wa_customers(id, name, company, phone, email, address, rut), crm_invoice_items(*)')
+    .eq('id', id)
+    .single();
+  if (data?.crm_invoice_items) {
+    data.crm_invoice_items.sort((a, b) => a.sort_order - b.sort_order);
+  }
+  return { data, error };
+}
+
+export async function createCrmInvoice(businessId, { customerId, issueDate, dueDate, notes, items = [], quoteId }) {
+  const { data: nextNum, error: numErr } = await supabase
+    .rpc('crm_next_invoice_number', { p_business_id: businessId });
+  if (numErr) return { data: null, error: numErr };
+
+  const mappedItems = items.map((it, idx) => ({
+    ...it,
+    subtotal: calcItemSubtotal(it.unit_price, it.quantity, it.discount_pct || 0),
+    sort_order: idx,
+  }));
+  const totals = calcDocTotals(mappedItems);
+
+  const { data: invoice, error } = await supabase
+    .from('crm_invoices')
+    .insert({
+      business_id: businessId,
+      customer_id: customerId || null,
+      invoice_number: nextNum,
+      issue_date: issueDate || new Date().toISOString().slice(0, 10),
+      due_date: dueDate || null,
+      notes: notes || null,
+      quote_id: quoteId || null,
+      ...totals,
+    })
+    .select()
+    .single();
+  if (error) return { data: null, error };
+
+  if (mappedItems.length > 0) {
+    const { error: itemsErr } = await supabase
+      .from('crm_invoice_items')
+      .insert(mappedItems.map(it => ({ ...it, invoice_id: invoice.id })));
+    if (itemsErr) return { data: null, error: itemsErr };
+  }
+  return { data: invoice, error: null };
+}
+
+export async function updateCrmInvoiceStatus(invoiceId, status) {
+  const updates = { status };
+  if (status === 'pagada') updates.paid_at = new Date().toISOString();
+  const { data, error } = await supabase
+    .from('crm_invoices')
+    .update(updates)
+    .eq('id', invoiceId)
+    .select()
+    .single();
+  return { data, error };
+}
+
+/** Convierte un presupuesto aceptado en factura interna */
+export async function convertQuoteToInvoice(quoteId) {
+  const { data: quote, error } = await getCrmQuote(quoteId);
+  if (error || !quote) return { data: null, error: error || new Error('Not found') };
+
+  const { data: invoice, error: invErr } = await createCrmInvoice(quote.business_id, {
+    customerId: quote.customer_id,
+    notes: quote.notes,
+    quoteId: quote.id,
+    items: (quote.crm_quote_items || []).map(it => ({
+      product_id: it.product_id,
+      name: it.name,
+      description: it.description,
+      unit_price: it.unit_price,
+      quantity: it.quantity,
+      discount_pct: it.discount_pct,
+    })),
+  });
+  if (invErr) return { data: null, error: invErr };
+
+  await supabase
+    .from('crm_quotes')
+    .update({ converted_to_invoice_id: invoice.id, status: 'aceptado' })
+    .eq('id', quoteId);
+
+  return { data: invoice, error: null };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STOCK
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function getCrmStockProducts(businessId) {
+  const { data, error } = await supabase
+    .from('wa_products')
+    .select('id, name, price, image_url, thumbnail_url, category, stock_actual, stock_minimo, is_active')
+    .eq('business_id', businessId)
+    .eq('is_active', true)
+    .order('name', { ascending: true });
+  return { data: data || [], error };
+}
+
+export async function getCrmStockMovements(businessId, productId) {
+  let q = supabase
+    .from('crm_stock_movements')
+    .select('*')
+    .eq('business_id', businessId)
+    .order('created_at', { ascending: false })
+    .limit(100);
+  if (productId) q = q.eq('product_id', productId);
+  const { data, error } = await q;
+  return { data: data || [], error };
+}
+
+export async function registerStockMovement(businessId, { productId, type, quantity, notes }) {
+  const { data: { user } } = await supabase.auth.getUser();
+
+  const { error: movErr } = await supabase
+    .from('crm_stock_movements')
+    .insert({
+      business_id: businessId,
+      product_id: productId,
+      type,
+      quantity,
+      notes: notes || null,
+      created_by: user?.id || null,
+    });
+  if (movErr) return { error: movErr };
+
+  // Actualizar stock_actual directamente
+  const delta = type === 'entrada' ? quantity : type === 'salida' ? -quantity : 0;
+  let updateData;
+  if (type === 'ajuste') {
+    updateData = { stock_actual: quantity };
+  } else {
+    // Sumar/restar al valor actual
+    const { data: prod } = await supabase
+      .from('wa_products')
+      .select('stock_actual')
+      .eq('id', productId)
+      .single();
+    const current = prod?.stock_actual ?? 0;
+    updateData = { stock_actual: Math.max(0, current + delta) };
+  }
+
+  const { error: updErr } = await supabase
+    .from('wa_products')
+    .update(updateData)
+    .eq('id', productId);
+
+  return { error: updErr || null };
+}
+
+export async function updateStockMinimo(productId, stockMinimo) {
+  const { error } = await supabase
+    .from('wa_products')
+    .update({ stock_minimo: stockMinimo })
+    .eq('id', productId);
+  return { error };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DASHBOARD CRM
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function getCrmDashboardStats(businessId) {
+  const now = new Date();
+  const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+
+  const [quotesRes, invoicesRes, customersRes, stockRes] = await Promise.all([
+    supabase
+      .from('crm_quotes')
+      .select('id, quote_number, status, total, created_at, wa_customers(name)')
+      .eq('business_id', businessId)
+      .order('created_at', { ascending: false })
+      .limit(5),
+    supabase
+      .from('crm_invoices')
+      .select('id, invoice_number, status, total, created_at, wa_customers(name)')
+      .eq('business_id', businessId)
+      .order('created_at', { ascending: false })
+      .limit(5),
+    supabase
+      .from('wa_customers')
+      .select('id, name, company, created_at')
+      .eq('business_id', businessId)
+      .order('created_at', { ascending: false })
+      .limit(5),
+    supabase
+      .from('wa_products')
+      .select('id, name, stock_actual, stock_minimo')
+      .eq('business_id', businessId)
+      .eq('is_active', true)
+      .not('stock_actual', 'is', null)
+      .not('stock_minimo', 'is', null),
+  ]);
+
+  // Totales del mes
+  const [monthQuotes, monthInvoices] = await Promise.all([
+    supabase
+      .from('crm_quotes')
+      .select('total')
+      .eq('business_id', businessId)
+      .in('status', ['enviado', 'aceptado'])
+      .gte('created_at', firstOfMonth),
+    supabase
+      .from('crm_invoices')
+      .select('total')
+      .eq('business_id', businessId)
+      .neq('status', 'anulada')
+      .gte('created_at', firstOfMonth),
+  ]);
+
+  const totalPresupuestadoMes = (monthQuotes.data || []).reduce((s, r) => s + (r.total || 0), 0);
+  const totalFacturadoMes = (monthInvoices.data || []).reduce((s, r) => s + (r.total || 0), 0);
+  const stockBajo = (stockRes.data || []).filter(p => (p.stock_actual ?? 0) < (p.stock_minimo ?? 0));
+
+  return {
+    recentQuotes: quotesRes.data || [],
+    recentInvoices: invoicesRes.data || [],
+    recentCustomers: customersRes.data || [],
+    stockBajo,
+    totalPresupuestadoMes,
+    totalFacturadoMes,
+  };
+}

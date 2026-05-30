@@ -24,6 +24,13 @@ import OrderConfirmation from './pages/order-confirmation';
 import Orders from './pages/orders';
 import OrdersHistory from './pages/orders-history';
 import CustomerPage from './pages/customers';
+import CrmDashboard from './pages/crm/CrmDashboard';
+import CrmCustomers from './pages/crm/CrmCustomers';
+import CrmQuotes from './pages/crm/CrmQuotes';
+import CrmQuoteEditor from './pages/crm/CrmQuoteEditor';
+import CrmInvoices from './pages/crm/CrmInvoices';
+import CrmInvoiceEditor from './pages/crm/CrmInvoiceEditor';
+import CrmStock from './pages/crm/CrmStock';
 import Login from './pages/login';
 import AuthCallback from './pages/auth-callback';
 import ResetPassword from './pages/reset-password';
@@ -89,6 +96,15 @@ const Routes = () => {
             <Route path="/register" element={<BusinessRegistration />} />
             <Route path="/landing-page" element={<LandingPage />} />
             <Route path="/complete-business-setup" element={<RequireAuth><CompleteBusinessSetupPage /></RequireAuth>} />
+            <Route path="/crm" element={<RequireAuth><CrmDashboard /></RequireAuth>} />
+            <Route path="/crm/clientes" element={<RequireAuth><CrmCustomers /></RequireAuth>} />
+            <Route path="/crm/presupuestos" element={<RequireAuth><CrmQuotes /></RequireAuth>} />
+            <Route path="/crm/presupuestos/nuevo" element={<RequireAuth><CrmQuoteEditor /></RequireAuth>} />
+            <Route path="/crm/presupuestos/:id" element={<RequireAuth><CrmQuoteEditor /></RequireAuth>} />
+            <Route path="/crm/facturas" element={<RequireAuth><CrmInvoices /></RequireAuth>} />
+            <Route path="/crm/facturas/nueva" element={<RequireAuth><CrmInvoiceEditor /></RequireAuth>} />
+            <Route path="/crm/facturas/:id" element={<RequireAuth><CrmInvoiceEditor /></RequireAuth>} />
+            <Route path="/crm/stock" element={<RequireAuth><CrmStock /></RequireAuth>} />
             <Route path="/business-configuration" element={<RequireAuth><BusinessConfiguration /></RequireAuth>} />
             <Route path="/product-management" element={<RequireAuth><ProductManagement /></RequireAuth>} />
             <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
