@@ -92,15 +92,11 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
-DECLARE
-  v_rec RECORD;
 BEGIN
   -- Enforcement amplio: vencidos por plan_expires_at o por billing_subscription
-  FOR v_rec IN
-    SELECT * FROM public.wa_enforce_expired_plans()
-  LOOP
-    RETURN NEXT ROW(v_rec.business_id, v_rec.previous_plan, v_rec.new_plan)::RECORD;
-  END LOOP;
+  RETURN QUERY
+  SELECT ep.business_id, ep.previous_plan, ep.new_plan
+  FROM public.wa_enforce_expired_plans() ep;
 
   -- Caso B: Trial terminó y tenían PRO programado (compraron PRO durante trial)
   RETURN QUERY
