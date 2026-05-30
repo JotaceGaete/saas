@@ -191,6 +191,12 @@ export default function CrmQuoteEditor() {
     );
   }
 
+  const getItemImage = (item) => {
+    if (!item.product_id) return null;
+    const p = products.find(pr => pr.id === item.product_id);
+    return p?.card_image_url || p?.image_url || null;
+  };
+
   // ─── Sección de ítems compartida ───────────────────────────────────────────
   const ItemsSection = (
     <div className="bg-white border border-gray-200 rounded-xl p-5">
@@ -228,6 +234,7 @@ export default function CrmQuoteEditor() {
                     idx={idx}
                     onChange={handleItemChange}
                     onRemove={handleItemRemove}
+                    imageUrl={getItemImage(item)}
                   />
                 ))}
               </tbody>
@@ -243,6 +250,7 @@ export default function CrmQuoteEditor() {
                 idx={idx}
                 onChange={handleItemChange}
                 onRemove={handleItemRemove}
+                imageUrl={getItemImage(item)}
               />
             ))}
           </div>
@@ -375,7 +383,7 @@ export default function CrmQuoteEditor() {
                   <option value="">Sin cliente asignado</option>
                   {customers.map((c) => (
                     <option key={c.id} value={c.id}>
-                      {c.name}{c.company?.trim() ? ` — ${c.company}` : ''}
+                      {c.name}{c.company?.trim() && c.company.trim().toLowerCase() !== 'sin empresa' ? ` — ${c.company}` : ''}
                     </option>
                   ))}
                 </select>
@@ -430,24 +438,22 @@ export default function CrmQuoteEditor() {
           {ItemsSection}
 
           {/* Totales */}
-          <div className="bg-white border border-gray-200 rounded-xl p-5">
-            <div className="flex flex-col gap-2 sm:max-w-xs sm:ml-auto">
-              {discountTotal > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Subtotal bruto</span>
-                  <span className="text-gray-700">{fmt(subtotal + discountTotal)}</span>
-                </div>
-              )}
-              {discountTotal > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Descuentos</span>
-                  <span className="text-green-600">−{fmt(discountTotal)}</span>
-                </div>
-              )}
-              <div className={`flex justify-between ${discountTotal > 0 ? 'border-t border-gray-200 pt-2' : ''}`}>
-                <span className="font-bold text-gray-900 text-base">Total</span>
-                <span className="font-bold text-gray-900 text-base">{fmt(subtotal)}</span>
+          <div className="rounded-xl overflow-hidden bg-gray-900">
+            {discountTotal > 0 && (
+              <div className="flex justify-between items-center px-5 py-3 border-b border-white/10">
+                <span className="text-sm text-gray-400">Subtotal bruto</span>
+                <span className="text-sm text-gray-300">{fmt(subtotal + discountTotal)}</span>
               </div>
+            )}
+            {discountTotal > 0 && (
+              <div className="flex justify-between items-center px-5 py-3 border-b border-white/10">
+                <span className="text-sm text-gray-400">Descuentos</span>
+                <span className="text-sm text-green-400">−{fmt(discountTotal)}</span>
+              </div>
+            )}
+            <div className="flex justify-between items-center px-5 py-4">
+              <span className="text-base font-semibold text-white">Total</span>
+              <span className="text-xl font-bold text-white">{fmt(subtotal)}</span>
             </div>
           </div>
 
@@ -456,20 +462,19 @@ export default function CrmQuoteEditor() {
               <Icon name="AlertCircle" size={16} />{saveError}
             </div>
           )}
-
-          <div className="flex flex-col sm:flex-row sm:justify-end gap-3 pb-6">
+          <div className="flex flex-col sm:flex-row sm:justify-end gap-3 pb-8">
             <button
               onClick={() => navigate('/crm/presupuestos')}
-              className="w-full sm:w-auto px-4 py-3 sm:py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm text-center"
+              className="w-full sm:w-auto px-5 py-3 sm:py-2.5 rounded-xl border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm font-medium text-center transition-colors"
             >
               Cancelar
             </button>
             <button
               onClick={handleSave}
               disabled={saving}
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 sm:py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium disabled:opacity-60"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 sm:py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold disabled:opacity-60 transition-colors"
             >
-              {saving ? <Icon name="Loader2" size={15} className="animate-spin" /> : <Icon name="Save" size={15} />}
+              {saving ? <Icon name="Loader2" size={15} className="animate-spin" /> : <Icon name="CheckCircle" size={15} />}
               {isNew ? 'Crear presupuesto' : 'Guardar cambios'}
             </button>
           </div>

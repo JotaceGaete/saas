@@ -25,16 +25,24 @@ export function fmtCLP(n) {
 }
 
 // ─── Vista de solo lectura (facturas ya guardadas) ──────────────────────────
-export function CrmLineItemReadOnly({ item }) {
+export function CrmLineItemReadOnly({ item, imageUrl }) {
   return (
-    <div className="flex justify-between items-center py-2.5 border-b border-gray-100 last:border-0">
-      <div className="min-w-0">
-        <p className="text-sm text-gray-900 font-medium">{item.name}</p>
-        {item.description && <p className="text-xs text-gray-500">{item.description}</p>}
-        <p className="text-xs text-gray-400 mt-0.5">
-          {item.quantity} × {fmtCLP(item.unit_price)}
-          {item.discount_pct > 0 ? ` (−${item.discount_pct}%)` : ''}
-        </p>
+    <div className="flex justify-between items-center py-2.5 border-b border-gray-100 last:border-0 gap-3">
+      <div className="flex items-start gap-3 min-w-0">
+        <div className="rounded-lg overflow-hidden bg-gray-100 flex-shrink-0 flex items-center justify-center w-10 h-10">
+          {imageUrl
+            ? <img src={imageUrl} alt={item.name} className="w-full h-full object-cover" />
+            : <Icon name="Package" size={16} color="#9ca3af" />
+          }
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm text-gray-900 font-medium">{item.name}</p>
+          {item.description && <p className="text-xs text-gray-500">{item.description}</p>}
+          <p className="text-xs text-gray-400 mt-0.5">
+            {item.quantity} × {fmtCLP(item.unit_price)}
+            {item.discount_pct > 0 ? ` (−${item.discount_pct}%)` : ''}
+          </p>
+        </div>
       </div>
       <p className="text-sm font-semibold text-gray-900 ml-4 shrink-0">{fmtCLP(item.subtotal)}</p>
     </div>
@@ -42,7 +50,7 @@ export function CrmLineItemReadOnly({ item }) {
 }
 
 // ─── Fila de tabla — desktop ────────────────────────────────────────────────
-export function CrmLineItemTableRow({ item, idx, onChange, onRemove }) {
+export function CrmLineItemTableRow({ item, idx, onChange, onRemove, imageUrl }) {
   const set = (key, val) => {
     const next = { ...item, [key]: val };
     next.subtotal = calcItemSubtotal(+next.unit_price, +next.quantity, +next.discount_pct);
@@ -55,20 +63,30 @@ export function CrmLineItemTableRow({ item, idx, onChange, onRemove }) {
     <tr className="border-b border-gray-100 last:border-0 group hover:bg-gray-50/40 transition-colors">
       {/* Producto / Descripción */}
       <td className="py-2 pl-0 pr-3 align-top">
-        <input
-          type="text"
-          value={item.name}
-          onChange={e => set('name', e.target.value)}
-          placeholder="Nombre del producto o servicio..."
-          className="w-full text-sm font-medium text-gray-900 placeholder-gray-300 bg-transparent border-0 border-b border-transparent hover:border-gray-200 focus:border-blue-400 focus:outline-none py-0.5 transition-colors"
-        />
-        <input
-          type="text"
-          value={item.description || ''}
-          onChange={e => set('description', e.target.value)}
-          placeholder="Descripción..."
-          className="w-full text-xs text-gray-400 placeholder-gray-300 bg-transparent border-0 border-b border-transparent hover:border-gray-200 focus:border-blue-300 focus:outline-none py-0.5 mt-0.5 transition-colors"
-        />
+        <div className="flex items-start gap-3">
+          <div className="rounded-lg overflow-hidden bg-gray-100 flex-shrink-0 flex items-center justify-center w-10 h-10">
+            {imageUrl
+              ? <img src={imageUrl} alt={item.name} className="w-full h-full object-cover" />
+              : <Icon name="Package" size={16} color="#9ca3af" />
+            }
+          </div>
+          <div className="flex-1 min-w-0">
+            <input
+              type="text"
+              value={item.name}
+              onChange={e => set('name', e.target.value)}
+              placeholder="Nombre del producto o servicio..."
+              className="w-full text-sm font-medium text-gray-900 placeholder-gray-300 bg-transparent border-0 border-b border-transparent hover:border-gray-200 focus:border-blue-400 focus:outline-none py-0.5 transition-colors"
+            />
+            <input
+              type="text"
+              value={item.description || ''}
+              onChange={e => set('description', e.target.value)}
+              placeholder="Descripción..."
+              className="w-full text-xs text-gray-400 placeholder-gray-300 bg-transparent border-0 border-b border-transparent hover:border-gray-200 focus:border-blue-300 focus:outline-none py-0.5 mt-0.5 transition-colors"
+            />
+          </div>
+        </div>
       </td>
 
       {/* Cantidad */}
@@ -137,7 +155,7 @@ export function CrmLineItemTableRow({ item, idx, onChange, onRemove }) {
 }
 
 // ─── Card — mobile ──────────────────────────────────────────────────────────
-export function CrmLineItemCard({ item, idx, onChange, onRemove }) {
+export function CrmLineItemCard({ item, idx, onChange, onRemove, imageUrl }) {
   const [showDiscount, setShowDiscount] = useState(item.discount_pct > 0);
 
   const set = (key, val) => {
@@ -151,42 +169,39 @@ export function CrmLineItemCard({ item, idx, onChange, onRemove }) {
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-4">
-      {/* Badge + eliminar */}
-      <div className="flex items-center justify-between mb-2">
-        {isCatalog ? (
-          <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600">
-            <Icon name="Package" size={10} />Catálogo
-          </span>
-        ) : (
-          <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">
-            <Icon name="Wrench" size={10} />Cargo
-          </span>
-        )}
+      {/* Thumbnail + nombre + eliminar */}
+      <div className="flex items-start gap-3 mb-3">
+        <div className="rounded-lg overflow-hidden bg-gray-100 flex-shrink-0 flex items-center justify-center w-12 h-12">
+          {imageUrl
+            ? <img src={imageUrl} alt={item.name} className="w-full h-full object-cover" />
+            : <Icon name="Package" size={18} color="#9ca3af" />
+          }
+        </div>
+        <div className="flex-1 min-w-0">
+          <input
+            type="text"
+            value={item.name}
+            onChange={e => set('name', e.target.value)}
+            placeholder="Nombre del producto o servicio..."
+            className="w-full text-sm font-semibold text-gray-900 placeholder-gray-300 bg-transparent border-0 border-b border-transparent hover:border-gray-200 focus:border-blue-400 focus:outline-none py-0.5 mb-1 transition-colors"
+          />
+          <input
+            type="text"
+            value={item.description || ''}
+            onChange={e => set('description', e.target.value)}
+            placeholder="Descripción opcional..."
+            className="w-full text-xs text-gray-500 placeholder-gray-300 bg-transparent border-0 border-b border-transparent hover:border-gray-200 focus:border-blue-400 focus:outline-none py-0.5 transition-colors"
+          />
+        </div>
         <button
           type="button"
           onClick={() => onRemove(idx)}
-          className="text-gray-300 hover:text-red-500 p-1 rounded hover:bg-red-50 transition-colors -mr-1"
+          className="text-gray-300 hover:text-red-500 p-1 rounded hover:bg-red-50 transition-colors -mr-1 flex-shrink-0"
           title="Eliminar ítem"
         >
           <Icon name="X" size={14} />
         </button>
       </div>
-
-      {/* Nombre */}
-      <input
-        type="text"
-        value={item.name}
-        onChange={e => set('name', e.target.value)}
-        placeholder="Nombre del producto o servicio..."
-        className="w-full text-sm font-semibold text-gray-900 placeholder-gray-300 bg-transparent border-0 border-b border-transparent hover:border-gray-200 focus:border-blue-400 focus:outline-none py-0.5 mb-1 transition-colors"
-      />
-      <input
-        type="text"
-        value={item.description || ''}
-        onChange={e => set('description', e.target.value)}
-        placeholder="Descripción opcional..."
-        className="w-full text-xs text-gray-500 placeholder-gray-300 bg-transparent border-0 border-b border-transparent hover:border-gray-200 focus:border-blue-400 focus:outline-none py-0.5 mb-3 transition-colors"
-      />
 
       {/* Cant. × Precio = Subtotal */}
       <div className="flex items-center gap-2 flex-wrap">
