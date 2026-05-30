@@ -75,57 +75,77 @@ export default function CrmInvoices() {
           </div>
         ) : (
           <div className="space-y-3">
-            {invoices.map(inv => (
-              <div key={inv.id} className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-sm transition-shadow">
-                <div className="flex items-start justify-between gap-3 min-w-0">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap mb-0.5">
-                      <span className="font-bold text-gray-900 text-sm whitespace-nowrap">{formatInvoiceNumber(inv.invoice_number)}</span>
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_STYLES[inv.status] || 'bg-gray-100 text-gray-600'}`}>
-                        {inv.status.charAt(0).toUpperCase() + inv.status.slice(1)}
-                      </span>
+            {invoices.map(inv => {
+              const pagado = (inv.crm_payments || []).reduce((s, p) => s + (p.amount || 0), 0);
+              const saldo  = (inv.total || 0) - pagado;
+              const fullPaid = saldo <= 0 && pagado > 0;
+              const partial  = saldo > 0 && pagado > 0;
+              return (
+                <div key={inv.id} className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-sm transition-shadow">
+                  <div className="flex items-start justify-between gap-3 min-w-0">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                        <span className="font-bold text-gray-900 text-sm whitespace-nowrap">{formatInvoiceNumber(inv.invoice_number)}</span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_STYLES[inv.status] || 'bg-gray-100 text-gray-600'}`}>
+                          {inv.status.charAt(0).toUpperCase() + inv.status.slice(1)}
+                        </span>
+                        {fullPaid && inv.status !== 'pagada' && (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">Completamente pagada</span>
+                        )}
+                        {partial && (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700 font-medium">Pago parcial</span>
+                        )}
+                      </div>
+                      <p className="text-sm text-gray-500 truncate">{inv.wa_customers?.name || <em className="text-gray-400">Sin cliente</em>}</p>
                     </div>
-                    <p className="text-sm text-gray-500 truncate">{inv.wa_customers?.name || <em className="text-gray-400">Sin cliente</em>}</p>
+                    <div className="text-right shrink-0">
+                      <p className="font-bold text-gray-900 text-sm">{fmt(inv.total)}</p>
+                      <p className="text-xs text-gray-400">{new Date(inv.issue_date).toLocaleDateString('es-CL')}</p>
+                    </div>
                   </div>
-                  <div className="text-right shrink-0">
-                    <p className="font-bold text-gray-900 text-sm">{fmt(inv.total)}</p>
-                    <p className="text-xs text-gray-400">{new Date(inv.issue_date).toLocaleDateString('es-CL')}</p>
-                  </div>
-                </div>
 
-                <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-gray-100">
-                  <button
-                    onClick={() => navigate(`/crm/facturas/${inv.id}`)}
-                    className="inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50"
-                  >
-                    <Icon name="Eye" size={13} />Ver / PDF
-                  </button>
-                  {inv.status === 'pendiente' && (
-                    <>
-                      <button
-                        onClick={() => handleStatus(inv.id, 'pagada')}
-                        disabled={!!busy}
-                        className="inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg bg-green-50 text-green-700 hover:bg-green-100 font-medium disabled:opacity-50"
-                      >
-                        <Icon name="CheckCircle2" size={13} />Marcar pagada
-                      </button>
-                      <button
-                        onClick={() => handleStatus(inv.id, 'anulada')}
-                        disabled={!!busy}
-                        className="inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-50"
-                      >
-                        <Icon name="XCircle" size={13} />Anular
-                      </button>
-                    </>
+                  {/* Desglose de pago */}
+                  {pagado > 0 && (
+                    <div className="flex gap-4 mt-2 text-xs text-gray-500">
+                      <span>Pagado: <span className="font-medium text-green-700">{fmt(pagado)}</span></span>
+                      {saldo > 0 && <span>Saldo: <span className="font-medium text-yellow-700">{fmt(saldo)}</span></span>}
+                    </div>
                   )}
-                  {inv.status === 'pagada' && (
-                    <span className="inline-flex items-center gap-1.5 text-xs px-3 py-2 text-green-600">
-                      <Icon name="CheckCircle2" size={13} />Pagada {inv.paid_at ? `el ${new Date(inv.paid_at).toLocaleDateString('es-CL')}` : ''}
-                    </span>
-                  )}
+
+                  <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-gray-100">
+                    <button
+                      onClick={() => navigate(`/crm/facturas/${inv.id}`)}
+                      className="inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50"
+                    >
+                      <Icon name="Eye" size={13} />Ver / PDF
+                    </button>
+                    {inv.status === 'pendiente' && (
+                      <>
+                        <button
+                          onClick={() => handleStatus(inv.id, 'pagada')}
+                          disabled={!!busy}
+                          className="inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg bg-green-50 text-green-700 hover:bg-green-100 font-medium disabled:opacity-50"
+                        >
+                          <Icon name="CheckCircle2" size={13} />Marcar pagada
+                        </button>
+                        <button
+                          onClick={() => handleStatus(inv.id, 'anulada')}
+                          disabled={!!busy}
+                          className="inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-50"
+                        >
+                          <Icon name="XCircle" size={13} />Anular
+                        </button>
+                      </>
+                    )}
+                    {inv.status === 'pagada' && (
+                      <span className="inline-flex items-center gap-1.5 text-xs px-3 py-2 text-green-600">
+                        <Icon name="CheckCircle2" size={13} />Pagada {inv.paid_at ? `el ${new Date(inv.paid_at).toLocaleDateString('es-CL')}` : ''}
+                      </span>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </DashboardLayoutContent>

@@ -10,6 +10,7 @@ import {
   createCrmInvoice,
   getCrmCustomers,
   formatInvoiceNumber,
+  updateCrmInvoiceStatus,
 } from '../../services/crmService';
 import { getProducts } from '../../services/waBusinessService';
 import { listPaymentsByInvoice, createPayment } from '../../services/crmPaymentsService';
@@ -73,6 +74,7 @@ export default function CrmInvoiceEditor() {
   });
   const [paymentSaving, setPaymentSaving] = useState(false);
   const [paymentError, setPaymentError] = useState('');
+  const [markingPaid, setMarkingPaid] = useState(false);
 
   const [customerId, setCustomerId] = useState('');
   const [issueDate, setIssueDate] = useState(new Date().toISOString().slice(0, 10));
@@ -156,6 +158,13 @@ export default function CrmInvoiceEditor() {
       currency: business?.currency || 'CLP',
       maximumFractionDigits: 0,
     }).format(n || 0);
+
+  const handleMarkPaid = async () => {
+    setMarkingPaid(true);
+    await updateCrmInvoiceStatus(id, 'pagada');
+    setSaved((prev) => ({ ...prev, status: 'pagada' }));
+    setMarkingPaid(false);
+  };
 
   const handlePaymentSave = async () => {
     setPaymentError('');
@@ -540,18 +549,48 @@ export default function CrmInvoiceEditor() {
           {!isNew && saved && (() => {
             const totalPagado = payments.reduce((s, p) => s + (p.amount || 0), 0);
             const saldo = subtotal - totalPagado;
+            const fullPaid = saldo <= 0 && payments.length > 0;
+            const partial  = saldo > 0 && totalPagado > 0;
             return (
               <div className="bg-white border border-gray-200 rounded-xl p-5">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-semibold text-gray-700">Pagos recibidos</h3>
-                  <button
-                    type="button"
-                    onClick={() => setShowPaymentModal(true)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium transition-colors"
-                  >
-                    <Icon name="Plus" size={13} />
-                    Registrar pago
-                  </button>
+                {/* Header */}
+                <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-semibold text-gray-700">Pagos recibidos</h3>
+                    {fullPaid && (
+                      <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">
+                        <Icon name="CheckCircle2" size={11} />
+                        Completamente pagada
+                      </span>
+                    )}
+                    {partial && (
+                      <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700 font-medium">
+                        <Icon name="Clock" size={11} />
+                        Pago parcial
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {fullPaid && saved.status !== 'pagada' && (
+                      <button
+                        type="button"
+                        onClick={handleMarkPaid}
+                        disabled={markingPaid}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-700 text-white text-xs font-medium transition-colors disabled:opacity-60"
+                      >
+                        {markingPaid ? <Icon name="Loader2" size={12} className="animate-spin" /> : <Icon name="CheckCircle2" size={12} />}
+                        Marcar como pagada
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setShowPaymentModal(true)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium transition-colors"
+                    >
+                      <Icon name="Plus" size={13} />
+                      Registrar pago
+                    </button>
+                  </div>
                 </div>
 
                 {/* Resumen */}
@@ -560,28 +599,28 @@ export default function CrmInvoiceEditor() {
                     <p className="text-xs text-gray-400 mb-0.5">Total factura</p>
                     <p className="text-sm font-bold text-gray-900">{fmt(subtotal)}</p>
                   </div>
-                  <div className="bg-green-50 rounded-lg px-3 py-2.5 text-center">
+                  <div className={`rounded-lg px-3 py-2.5 text-center ${totalPagado > 0 ? 'bg-green-50' : 'bg-gray-50'}`}>
                     <p className="text-xs text-gray-400 mb-0.5">Pagado</p>
-                    <p className="text-sm font-bold text-green-700">{fmt(totalPagado)}</p>
+                    <p className={`text-sm font-bold ${totalPagado > 0 ? 'text-green-700' : 'text-gray-400'}`}>{fmt(totalPagado)}</p>
                   </div>
-                  <div className={`rounded-lg px-3 py-2.5 text-center ${saldo > 0 ? 'bg-yellow-50' : 'bg-green-50'}`}>
-                    <p className="text-xs text-gray-400 mb-0.5">Saldo</p>
-                    <p className={`text-sm font-bold ${saldo > 0 ? 'text-yellow-700' : 'text-green-700'}`}>{fmt(saldo)}</p>
+                  <div className={`rounded-lg px-3 py-2.5 text-center ${fullPaid ? 'bg-green-50' : saldo > 0 ? 'bg-yellow-50' : 'bg-gray-50'}`}>
+                    <p className="text-xs text-gray-400 mb-0.5">Saldo pendiente</p>
+                    <p className={`text-sm font-bold ${fullPaid ? 'text-green-700' : saldo > 0 ? 'text-yellow-700' : 'text-gray-400'}`}>{fmt(Math.max(0, saldo))}</p>
                   </div>
                 </div>
 
-                {/* Lista */}
+                {/* Lista de pagos */}
                 {payments.length === 0 ? (
-                  <p className="text-sm text-gray-400 text-center py-4">Sin pagos registrados aún.</p>
+                  <p className="text-sm text-gray-400 text-center py-4">Sin pagos registrados.</p>
                 ) : (
                   <div className="divide-y divide-gray-100">
                     {payments.map((p) => (
                       <div key={p.id} className="flex items-center justify-between py-2.5 gap-3">
                         <div className="min-w-0">
-                          <p className="text-sm font-medium text-gray-900">{fmt(p.amount)}</p>
+                          <p className="text-sm font-semibold text-gray-900">{fmt(p.amount)}</p>
                           <p className="text-xs text-gray-400">
                             {p.payment_method}
-                            {p.reference ? ` · ${p.reference}` : ''}
+                            {p.reference ? ` · Ref: ${p.reference}` : ''}
                             {p.notes ? ` · ${p.notes}` : ''}
                           </p>
                         </div>
@@ -591,9 +630,7 @@ export default function CrmInvoiceEditor() {
                               ? new Date(p.payment_date + 'T12:00:00').toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' })
                               : '—'}
                           </p>
-                          {p.status && (
-                            <span className="text-xs text-gray-400">{p.status}</span>
-                          )}
+                          {p.status && <span className="text-xs text-gray-400">{p.status}</span>}
                         </div>
                       </div>
                     ))}

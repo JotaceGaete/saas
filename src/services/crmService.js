@@ -202,7 +202,7 @@ export async function duplicateCrmQuote(quoteId) {
 export async function getCrmInvoices(businessId) {
   const { data, error } = await supabase
     .from('crm_invoices')
-    .select('*, wa_customers(id, name, company)')
+    .select('*, wa_customers(id, name, company), crm_payments(amount)')
     .eq('business_id', businessId)
     .order('created_at', { ascending: false });
   return { data: data || [], error };
