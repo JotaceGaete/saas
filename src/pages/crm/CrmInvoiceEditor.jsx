@@ -13,8 +13,15 @@ import {
 } from '../../services/crmService';
 import { getProducts } from '../../services/waBusinessService';
 import CrmDocumentPdf from './CrmDocumentPdf';
-import { CrmLineItemRow, calcItemSubtotal, EMPTY_ITEM } from './components/CrmLineItemRow';
+import {
+  CrmLineItemCard,
+  CrmLineItemTableRow,
+  CrmLineItemReadOnly,
+  calcItemSubtotal,
+  EMPTY_ITEM,
+} from './components/CrmLineItemRow';
 import { CrmProductSearchModal } from './components/CrmProductSearchModal';
+import { ChileanDateInput } from './components/ChileanDateInput';
 
 const STATUS_STYLES = {
   pendiente: 'bg-yellow-100 text-yellow-700',
@@ -30,6 +37,11 @@ const MANUAL_CHARGES = [
   { name: 'Servicio técnico', icon: 'Settings' },
   { name: 'Otro', icon: 'Plus' },
 ];
+
+const fieldClass =
+  'w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500';
+const fieldClassDisabled =
+  'w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50';
 
 export default function CrmInvoiceEditor() {
   const { id } = useParams();
@@ -113,10 +125,7 @@ export default function CrmInvoiceEditor() {
   };
 
   const addManualCharge = (name) => {
-    setItems((prev) => [
-      ...prev,
-      { ...EMPTY_ITEM, name: name === 'Otro' ? '' : name },
-    ]);
+    setItems((prev) => [...prev, { ...EMPTY_ITEM, name: name === 'Otro' ? '' : name }]);
     setShowChargeMenu(false);
   };
 
@@ -181,6 +190,121 @@ export default function CrmInvoiceEditor() {
     );
   }
 
+  // ─── Sección de ítems editable ─────────────────────────────────────────────
+  const EditableItemsSection = (
+    <div className="bg-white border border-gray-200 rounded-xl p-5">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-sm font-semibold text-gray-700">Productos y servicios</h3>
+        {items.length > 0 && (
+          <span className="text-xs text-gray-400">{items.length} ítem{items.length !== 1 ? 's' : ''}</span>
+        )}
+      </div>
+
+      {items.length === 0 ? (
+        <p className="text-sm text-gray-400 text-center py-6">
+          Aún no hay ítems. Agregá un producto o un cargo manual.
+        </p>
+      ) : (
+        <>
+          {/* Desktop: tabla compacta */}
+          <div className="hidden sm:block overflow-x-auto mb-4">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-gray-200">
+                  <th className="text-left text-xs font-medium text-gray-400 uppercase tracking-wide pb-2 pr-3">Producto / Descripción</th>
+                  <th className="text-center text-xs font-medium text-gray-400 uppercase tracking-wide pb-2 px-2 w-20">Cant.</th>
+                  <th className="text-left text-xs font-medium text-gray-400 uppercase tracking-wide pb-2 px-2 w-32">Precio unit.</th>
+                  <th className="text-center text-xs font-medium text-gray-400 uppercase tracking-wide pb-2 px-2 w-20">Desc.</th>
+                  <th className="text-right text-xs font-medium text-gray-400 uppercase tracking-wide pb-2 px-2 w-28">Total</th>
+                  <th className="w-8 pb-2" />
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((item, idx) => (
+                  <CrmLineItemTableRow
+                    key={idx}
+                    item={item}
+                    idx={idx}
+                    onChange={handleItemChange}
+                    onRemove={handleItemRemove}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Mobile: cards apiladas */}
+          <div className="sm:hidden space-y-3 mb-4">
+            {items.map((item, idx) => (
+              <CrmLineItemCard
+                key={idx}
+                item={item}
+                idx={idx}
+                onChange={handleItemChange}
+                onRemove={handleItemRemove}
+              />
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Botones agregar */}
+      <div className="flex flex-col sm:flex-row gap-2 mt-2">
+        <button
+          type="button"
+          onClick={() => setShowProductModal(true)}
+          className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border-2 border-dashed border-blue-200 text-blue-600 hover:border-blue-400 hover:bg-blue-50 text-sm font-medium transition-colors"
+        >
+          <Icon name="Search" size={15} />
+          Producto del catálogo
+        </button>
+
+        <div className="relative flex-1" ref={chargeMenuRef}>
+          <button
+            type="button"
+            onClick={() => setShowChargeMenu((v) => !v)}
+            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border-2 border-dashed border-gray-200 text-gray-600 hover:border-gray-400 hover:bg-gray-50 text-sm font-medium transition-colors"
+          >
+            <Icon name="Plus" size={15} />
+            Cargo manual
+            <Icon name="ChevronDown" size={13} />
+          </button>
+
+          {showChargeMenu && (
+            <div className="absolute bottom-full mb-1 left-0 right-0 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden z-10">
+              {MANUAL_CHARGES.map((charge) => (
+                <button
+                  key={charge.name}
+                  type="button"
+                  onClick={() => addManualCharge(charge.name)}
+                  className="w-full flex items-center gap-2.5 px-4 py-2.5 hover:bg-gray-50 text-sm text-gray-700 transition-colors border-b border-gray-50 last:border-0"
+                >
+                  <Icon name={charge.icon} size={14} color="#9ca3af" />
+                  {charge.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
+  // ─── Sección de ítems solo lectura (facturas ya guardadas) ─────────────────
+  const ReadOnlyItemsSection = (
+    <div className="bg-white border border-gray-200 rounded-xl p-5">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-sm font-semibold text-gray-700">Productos y servicios</h3>
+        <span className="text-xs text-gray-400">{items.length} ítem{items.length !== 1 ? 's' : ''}</span>
+      </div>
+      <div>
+        {items.map((item, idx) => (
+          <CrmLineItemReadOnly key={idx} item={item} />
+        ))}
+      </div>
+    </div>
+  );
+
   return (
     <DashboardAppShell>
       <PanelHeader
@@ -233,8 +357,7 @@ export default function CrmInvoiceEditor() {
         <div className="max-w-3xl space-y-6">
           {saveError && (
             <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-              <Icon name="AlertCircle" size={16} />
-              {saveError}
+              <Icon name="AlertCircle" size={16} />{saveError}
             </div>
           )}
 
@@ -248,34 +371,32 @@ export default function CrmInvoiceEditor() {
                   disabled={!isNew}
                   value={customerId}
                   onChange={(e) => setCustomerId(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50"
+                  className={fieldClassDisabled}
                 >
                   <option value="">Sin cliente asignado</option>
                   {customers.map((c) => (
                     <option key={c.id} value={c.id}>
-                      {c.name}{c.company ? ` — ${c.company}` : ''}
+                      {c.name}{c.company?.trim() ? ` — ${c.company}` : ''}
                     </option>
                   ))}
                 </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Fecha de emisión</label>
-                <input
-                  type="date"
-                  disabled={!isNew}
+                <ChileanDateInput
                   value={issueDate}
-                  onChange={(e) => setIssueDate(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50"
+                  onChange={setIssueDate}
+                  disabled={!isNew}
+                  className={fieldClassDisabled}
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Fecha de vencimiento (opcional)</label>
-                <input
-                  type="date"
-                  disabled={!isNew}
+                <ChileanDateInput
                   value={dueDate}
-                  onChange={(e) => setDueDate(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50"
+                  onChange={setDueDate}
+                  disabled={!isNew}
+                  className={fieldClassDisabled}
                 />
               </div>
               <div className="sm:col-span-2">
@@ -286,7 +407,7 @@ export default function CrmInvoiceEditor() {
                   onChange={(e) => setNotes(e.target.value)}
                   rows={2}
                   placeholder="Observaciones generales…"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none disabled:bg-gray-50"
+                  className={`${fieldClassDisabled} resize-none`}
                 />
               </div>
             </div>
@@ -301,109 +422,24 @@ export default function CrmInvoiceEditor() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Forma de pago</label>
-                <input type="text" disabled={!isNew} value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} placeholder="Ej: 50% anticipo, 50% contra entrega" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50" />
+                <input type="text" disabled={!isNew} value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} placeholder="Ej: 50% anticipo, 50% contra entrega" className={fieldClassDisabled} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Plazo de entrega</label>
-                <input type="text" disabled={!isNew} value={deliveryDays} onChange={(e) => setDeliveryDays(e.target.value)} placeholder="Ej: 5 días hábiles" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50" />
+                <input type="text" disabled={!isNew} value={deliveryDays} onChange={(e) => setDeliveryDays(e.target.value)} placeholder="Ej: 5 días hábiles" className={fieldClassDisabled} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Método de entrega</label>
-                <input type="text" disabled={!isNew} value={deliveryMethod} onChange={(e) => setDeliveryMethod(e.target.value)} placeholder="Ej: Despacho a domicilio, Retiro en tienda" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50" />
+                <input type="text" disabled={!isNew} value={deliveryMethod} onChange={(e) => setDeliveryMethod(e.target.value)} placeholder="Ej: Despacho a domicilio, Retiro en tienda" className={fieldClassDisabled} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Observaciones comerciales</label>
-                <input type="text" disabled={!isNew} value={commercialNotes} onChange={(e) => setCommercialNotes(e.target.value)} placeholder="Ej: Precios no incluyen IVA" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50" />
+                <input type="text" disabled={!isNew} value={commercialNotes} onChange={(e) => setCommercialNotes(e.target.value)} placeholder="Ej: Precios no incluyen IVA" className={fieldClassDisabled} />
               </div>
             </div>
           </div>
 
-          {/* Líneas */}
-          <div className="bg-white border border-gray-200 rounded-xl p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-semibold text-gray-700">Productos y servicios</h3>
-              {items.length > 0 && (
-                <span className="text-xs text-gray-400">
-                  {items.length} ítem{items.length !== 1 ? 's' : ''}
-                </span>
-              )}
-            </div>
-
-            {isNew ? (
-              <>
-                {items.length === 0 ? (
-                  <p className="text-sm text-gray-400 text-center py-6">
-                    Aún no hay ítems. Agregá un producto o un cargo manual.
-                  </p>
-                ) : (
-                  <div className="space-y-3 mb-4">
-                    {items.map((item, idx) => (
-                      <CrmLineItemRow
-                        key={idx}
-                        item={item}
-                        idx={idx}
-                        onChange={handleItemChange}
-                        onRemove={handleItemRemove}
-                      />
-                    ))}
-                  </div>
-                )}
-
-                {/* Botones agregar */}
-                <div className="flex flex-col sm:flex-row gap-2 mt-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowProductModal(true)}
-                    className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border-2 border-dashed border-blue-200 text-blue-600 hover:border-blue-400 hover:bg-blue-50 text-sm font-medium transition-colors"
-                  >
-                    <Icon name="Search" size={15} />
-                    Producto del catálogo
-                  </button>
-
-                  <div className="relative flex-1" ref={chargeMenuRef}>
-                    <button
-                      type="button"
-                      onClick={() => setShowChargeMenu((v) => !v)}
-                      className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border-2 border-dashed border-gray-200 text-gray-600 hover:border-gray-400 hover:bg-gray-50 text-sm font-medium transition-colors"
-                    >
-                      <Icon name="Plus" size={15} />
-                      Cargo manual
-                      <Icon name="ChevronDown" size={13} />
-                    </button>
-
-                    {showChargeMenu && (
-                      <div className="absolute bottom-full mb-1 left-0 right-0 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden z-10">
-                        {MANUAL_CHARGES.map((charge) => (
-                          <button
-                            key={charge.name}
-                            type="button"
-                            onClick={() => addManualCharge(charge.name)}
-                            className="w-full flex items-center gap-2.5 px-4 py-2.5 hover:bg-gray-50 text-sm text-gray-700 transition-colors border-b border-gray-50 last:border-0"
-                          >
-                            <Icon name={charge.icon} size={14} color="#9ca3af" />
-                            {charge.name}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </>
-            ) : (
-              <div>
-                {items.map((item, idx) => (
-                  <CrmLineItemRow
-                    key={idx}
-                    item={item}
-                    idx={idx}
-                    onChange={() => {}}
-                    onRemove={() => {}}
-                    readOnly
-                  />
-                ))}
-              </div>
-            )}
-          </div>
+          {isNew ? EditableItemsSection : ReadOnlyItemsSection}
 
           {/* Totales */}
           <div className="bg-white border border-gray-200 rounded-xl p-5">
