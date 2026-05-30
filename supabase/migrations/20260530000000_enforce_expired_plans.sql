@@ -141,21 +141,20 @@ GRANT EXECUTE ON FUNCTION public.wa_apply_scheduled_plan_changes() TO service_ro
 -- 3. pg_cron: correr wa_enforce_expired_plans cada hora
 --    (requiere pg_cron habilitado en el proyecto Supabase)
 -- ─────────────────────────────────────────────────────────────────────────────
-DO $$
+DO $do$
 BEGIN
   IF EXISTS (
     SELECT 1 FROM pg_extension WHERE extname = 'pg_cron'
   ) THEN
     -- Borrar job anterior si existe con el mismo nombre
-    PERFORM cron.unschedule('enforce-expired-plans-hourly')
-    WHERE EXISTS (
-      SELECT 1 FROM cron.job WHERE jobname = 'enforce-expired-plans-hourly'
-    );
+    IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'enforce-expired-plans-hourly') THEN
+      PERFORM cron.unschedule('enforce-expired-plans-hourly');
+    END IF;
 
     PERFORM cron.schedule(
       'enforce-expired-plans-hourly',
       '0 * * * *',
-      $$SELECT public.wa_enforce_expired_plans()$$
+      'SELECT public.wa_enforce_expired_plans()'
     );
 
     RAISE NOTICE 'pg_cron job enforce-expired-plans-hourly configurado.';
@@ -163,4 +162,4 @@ BEGIN
     RAISE NOTICE 'pg_cron no está disponible. Llamar wa_enforce_expired_plans() manualmente o via edge function.';
   END IF;
 END
-$$;
+$do$;
