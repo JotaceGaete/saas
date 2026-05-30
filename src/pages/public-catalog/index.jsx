@@ -167,6 +167,7 @@ function CatalogInner({ slug }) {
   const [priceRange, setPriceRange] = useState([0, 0]);
   const [maxPrice, setMaxPrice] = useState(0);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [planProductLimit, setPlanProductLimit] = useState(null);
   const [visibleCount, setVisibleCount] = useState(() => {
     if (typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches) return 16;
     const conn = getNavConnection();
@@ -229,6 +230,9 @@ function CatalogInner({ slug }) {
       biz?.trialExpiresAt ?? null,
     );
     const { maxProducts } = getPlanLimits(effectivePlan);
+    setPlanProductLimit(maxProducts ?? null);
+    // Si el plan tiene límite, mostrar todos los productos permitidos sin paginación
+    if (maxProducts != null) setVisibleCount(maxProducts);
     const { data: prods } = await getPublicProducts(biz?.id, { maxProducts });
     const loadedProducts = prods || [];
     setProducts(loadedProducts);
@@ -715,7 +719,8 @@ function CatalogInner({ slug }) {
     return sortedProducts.filter((product) => product?.id !== mainFeaturedProduct.id);
   }, [mainFeaturedProduct?.id, sortedProducts]);
   const visibleProducts = useMemo(() => gridProducts.slice(0, visibleCount), [gridProducts, visibleCount]);
-  const hasMoreProducts = gridProducts.length > visibleCount;
+  // Si el plan tiene límite de productos, SQL ya entregó solo los permitidos — no hay "más" que mostrar
+  const hasMoreProducts = planProductLimit != null ? false : gridProducts.length > visibleCount;
 
   const totalGridProducts = useMemo(() => {
     if (!Array.isArray(products)) return 0;
