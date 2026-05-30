@@ -6,6 +6,7 @@ import PanelHeader from 'components/ui/PanelHeader';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
 import { getCrmInvoices, updateCrmInvoiceStatus, formatInvoiceNumber } from '../../services/crmService';
+import { FINANCIAL_BADGE_STYLES, getInvoiceFinancialState } from '../../services/crmPaymentsService';
 
 const STATUS_STYLES = {
   pendiente: 'bg-yellow-100 text-yellow-700',
@@ -96,10 +97,7 @@ export default function CrmInvoices() {
         ) : (
           <div className="space-y-3">
             {invoices.map(inv => {
-              const pagado = (inv.crm_payments || []).reduce((s, p) => s + (p.amount || 0), 0);
-              const saldo  = (inv.total || 0) - pagado;
-              const fullPaid = saldo <= 0 && pagado > 0;
-              const partial  = saldo > 0 && pagado > 0;
+              const financial = getInvoiceFinancialState(inv.total, inv.crm_payments || []);
               return (
                 <div key={inv.id} className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-sm transition-shadow">
                   <div className="flex items-start justify-between gap-3 min-w-0">
@@ -109,12 +107,9 @@ export default function CrmInvoices() {
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_STYLES[inv.status] || 'bg-gray-100 text-gray-600'}`}>
                           {inv.status.charAt(0).toUpperCase() + inv.status.slice(1)}
                         </span>
-                        {fullPaid && inv.status !== 'pagada' && (
-                          <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">Completamente pagada</span>
-                        )}
-                        {partial && (
-                          <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700 font-medium">Pago parcial</span>
-                        )}
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${FINANCIAL_BADGE_STYLES[financial.key]}`}>
+                          {financial.label}
+                        </span>
                       </div>
                       <p className="text-sm text-gray-500 truncate">{inv.wa_customers?.name || <em className="text-gray-400">Sin cliente</em>}</p>
                     </div>
@@ -124,13 +119,20 @@ export default function CrmInvoices() {
                     </div>
                   </div>
 
-                  {/* Desglose de pago */}
-                  {pagado > 0 && (
-                    <div className="flex gap-4 mt-2 text-xs text-gray-500">
-                      <span>Pagado: <span className="font-medium text-green-700">{fmt(pagado)}</span></span>
-                      {saldo > 0 && <span>Saldo: <span className="font-medium text-yellow-700">{fmt(saldo)}</span></span>}
+                  <div className="mt-3 grid grid-cols-1 gap-2 text-xs text-gray-500 sm:grid-cols-3">
+                    <div className="rounded-lg bg-gray-50 px-3 py-2">
+                      <span className="block text-gray-400">Total factura</span>
+                      <span className="font-semibold text-gray-900">{fmt(financial.invoiceTotal)}</span>
                     </div>
-                  )}
+                    <div className="rounded-lg bg-green-50 px-3 py-2">
+                      <span className="block text-gray-400">Pagado</span>
+                      <span className="font-semibold text-green-700">{fmt(financial.paidTotal)}</span>
+                    </div>
+                    <div className="rounded-lg bg-yellow-50 px-3 py-2">
+                      <span className="block text-gray-400">Saldo</span>
+                      <span className="font-semibold text-yellow-700">{fmt(financial.pendingBalance)}</span>
+                    </div>
+                  </div>
 
                   <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-gray-100">
                     <button

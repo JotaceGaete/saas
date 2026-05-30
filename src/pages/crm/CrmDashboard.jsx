@@ -6,6 +6,7 @@ import PanelHeader from 'components/ui/PanelHeader';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
 import { getCrmDashboardStats, formatQuoteNumber, formatInvoiceNumber } from '../../services/crmService';
+import { FINANCIAL_BADGE_STYLES, getInvoiceFinancialState } from '../../services/crmPaymentsService';
 
 const STATUS_Q = { borrador: 'bg-gray-100 text-gray-600', enviado: 'bg-blue-100 text-blue-700', aceptado: 'bg-green-100 text-green-700', rechazado: 'bg-red-100 text-red-600' };
 const STATUS_I = { pendiente: 'bg-yellow-100 text-yellow-700', pagada: 'bg-green-100 text-green-700', anulada: 'bg-red-100 text-red-600' };
@@ -98,6 +99,9 @@ export default function CrmDashboard() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <MetricCard icon="FileText" label="Presupuestado este mes" value={fmt(stats?.totalPresupuestadoMes)} iconColor="bg-purple-100 text-purple-600" onClick={() => navigate('/crm/presupuestos')} />
               <MetricCard icon="Receipt" label="Facturado este mes" value={fmt(stats?.totalFacturadoMes)} iconColor="bg-green-100 text-green-600" onClick={() => navigate('/crm/facturas')} />
+              <MetricCard icon="CircleDollarSign" label="Ingresos recibidos" value={fmt(stats?.ingresosRecibidosMes)} iconColor="bg-emerald-100 text-emerald-600" onClick={() => navigate('/crm/facturas')} />
+              <MetricCard icon="WalletCards" label="Saldo pendiente" value={fmt(stats?.saldoPendienteTotal)} iconColor="bg-yellow-100 text-yellow-600" onClick={() => navigate('/crm/facturas')} />
+              <MetricCard icon="Split" label="Pago parcial" value={stats?.facturasPagoParcial ?? 0} iconColor="bg-blue-100 text-blue-600" onClick={() => navigate('/crm/facturas')} />
               <MetricCard icon="Users" label="Clientes" value={stats?.recentCustomers?.length ?? 0} iconColor="bg-blue-100 text-blue-600" onClick={() => navigate('/crm/clientes')} />
               <MetricCard icon="AlertTriangle" label="Stock bajo" value={stats?.stockBajo?.length ?? 0} iconColor="bg-yellow-100 text-yellow-600" onClick={() => navigate('/crm/stock')} />
             </div>
@@ -144,15 +148,21 @@ export default function CrmDashboard() {
                 icon="Receipt"
                 items={stats?.recentInvoices || []}
                 onViewAll={() => navigate('/crm/facturas')}
-                renderRow={inv => (
-                  <li key={inv.id} className="flex items-center justify-between px-5 py-3 hover:bg-gray-50 cursor-pointer" onClick={() => navigate(`/crm/facturas/${inv.id}`)}>
-                    <div>
-                      <p className="text-sm font-semibold text-gray-900">{formatInvoiceNumber(inv.invoice_number)}</p>
-                      <p className="text-xs text-gray-400">{inv.wa_customers?.name || 'Sin cliente'}</p>
-                    </div>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_I[inv.status] || 'bg-gray-100 text-gray-600'}`}>{inv.status}</span>
-                  </li>
-                )}
+                renderRow={inv => {
+                  const financial = getInvoiceFinancialState(inv.total, inv.crm_payments || []);
+                  return (
+                    <li key={inv.id} className="flex items-center justify-between gap-3 px-5 py-3 hover:bg-gray-50 cursor-pointer" onClick={() => navigate(`/crm/facturas/${inv.id}`)}>
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-gray-900">{formatInvoiceNumber(inv.invoice_number)}</p>
+                        <p className="text-xs text-gray-400 truncate">{inv.wa_customers?.name || 'Sin cliente'}</p>
+                      </div>
+                      <div className="flex flex-col items-end gap-1">
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_I[inv.status] || 'bg-gray-100 text-gray-600'}`}>{inv.status}</span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${FINANCIAL_BADGE_STYLES[financial.key]}`}>{financial.label}</span>
+                      </div>
+                    </li>
+                  );
+                }}
               />
 
               <RecentTable

@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { getInvoiceFinancialState, sumReceivedPayments } from './crmPaymentsService';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -202,7 +203,7 @@ export async function duplicateCrmQuote(quoteId) {
 export async function getCrmInvoices(businessId) {
   const { data, error } = await supabase
     .from('crm_invoices')
-    .select('*, wa_customers(id, name, company), crm_payments(amount)')
+    .select('*, wa_customers(id, name, company), crm_payments(*)')
     .eq('business_id', businessId)
     .order('created_at', { ascending: false });
   return { data: data || [], error };
@@ -391,7 +392,7 @@ export async function getCrmDashboardStats(businessId) {
       .limit(5),
     supabase
       .from('crm_invoices')
-      .select('id, invoice_number, status, total, created_at, wa_customers(name)')
+      .select('id, invoice_number, status, total, created_at, wa_customers(name), crm_payments(*)')
       .eq('business_id', businessId)
       .order('created_at', { ascending: false })
       .limit(5),
@@ -411,7 +412,7 @@ export async function getCrmDashboardStats(businessId) {
   ]);
 
   // Totales del mes
-  const [monthQuotes, monthInvoices] = await Promise.all([
+  const [monthQuotes, monthInvoices, allInvoices, monthPayments] = await Promise.all([
     supabase
       .from('crm_quotes')
       .select('total')
@@ -424,10 +425,26 @@ export async function getCrmDashboardStats(businessId) {
       .eq('business_id', businessId)
       .neq('status', 'anulada')
       .gte('created_at', firstOfMonth),
+    supabase
+      .from('crm_invoices')
+      .select('id, total, status, crm_payments(*)')
+      .eq('business_id', businessId)
+      .neq('status', 'anulada'),
+    supabase
+      .from('crm_payments')
+      .select('*')
+      .eq('business_id', businessId)
+      .gte('created_at', firstOfMonth),
   ]);
 
   const totalPresupuestadoMes = (monthQuotes.data || []).reduce((s, r) => s + (r.total || 0), 0);
   const totalFacturadoMes = (monthInvoices.data || []).reduce((s, r) => s + (r.total || 0), 0);
+  const ingresosRecibidosMes = sumReceivedPayments(monthPayments.data || []);
+  const invoiceFinancials = (allInvoices.data || []).map((invoice) =>
+    getInvoiceFinancialState(invoice.total, invoice.crm_payments || [])
+  );
+  const saldoPendienteTotal = invoiceFinancials.reduce((sum, state) => sum + state.pendingBalance, 0);
+  const facturasPagoParcial = invoiceFinancials.filter((state) => state.key === 'partial').length;
   const stockBajo = (stockRes.data || []).filter(p => (p.stock_actual ?? 0) < (p.stock_minimo ?? 0));
 
   return {
@@ -437,5 +454,8 @@ export async function getCrmDashboardStats(businessId) {
     stockBajo,
     totalPresupuestadoMes,
     totalFacturadoMes,
+    ingresosRecibidosMes,
+    saldoPendienteTotal,
+    facturasPagoParcial,
   };
 }

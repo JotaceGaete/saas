@@ -10,10 +10,19 @@ import {
   createCrmInvoice,
   getCrmCustomers,
   formatInvoiceNumber,
-  updateCrmInvoiceStatus,
 } from '../../services/crmService';
 import { getProducts } from '../../services/waBusinessService';
-import { listPaymentsByInvoice, createPayment } from '../../services/crmPaymentsService';
+import {
+  CRM_PAYMENT_METHODS,
+  FINANCIAL_BADGE_STYLES,
+  createPayment,
+  deletePayment,
+  getInvoiceFinancialState,
+  getPaymentDate,
+  getPaymentMethodLabel,
+  getPaymentStatus,
+  listPaymentsByInvoice,
+} from '../../services/crmPaymentsService';
 import CrmDocumentPdf from './CrmDocumentPdf';
 import {
   CrmLineItemCard,
@@ -68,13 +77,13 @@ export default function CrmInvoiceEditor() {
   const [paymentForm, setPaymentForm] = useState({
     amount: '',
     payment_date: new Date().toISOString().slice(0, 10),
-    payment_method: 'Transferencia',
+    payment_method: 'bank_transfer',
     reference: '',
     notes: '',
   });
   const [paymentSaving, setPaymentSaving] = useState(false);
   const [paymentError, setPaymentError] = useState('');
-  const [markingPaid, setMarkingPaid] = useState(false);
+  const [deletingPayment, setDeletingPayment] = useState('');
 
   const [customerId, setCustomerId] = useState('');
   const [issueDate, setIssueDate] = useState(new Date().toISOString().slice(0, 10));
@@ -85,6 +94,12 @@ export default function CrmInvoiceEditor() {
   const [deliveryDays, setDeliveryDays] = useState('');
   const [deliveryMethod, setDeliveryMethod] = useState('');
   const [commercialNotes, setCommercialNotes] = useState('');
+
+  const refreshPayments = async (invoiceId = id) => {
+    if (!invoiceId || invoiceId === 'nueva') return;
+    const { data } = await listPaymentsByInvoice(invoiceId);
+    setPayments(data || []);
+  };
 
   useEffect(() => {
     if (!business?.id) return;
@@ -104,7 +119,7 @@ export default function CrmInvoiceEditor() {
         setDeliveryMethod(data.delivery_method || '');
         setCommercialNotes(data.commercial_notes || '');
         setPageLoading(false);
-        listPaymentsByInvoice(id).then((r) => setPayments(r.data || []));
+        refreshPayments(id);
       });
     }
   }, [business?.id, id, isNew]);
@@ -159,40 +174,42 @@ export default function CrmInvoiceEditor() {
       maximumFractionDigits: 0,
     }).format(n || 0);
 
-  const handleMarkPaid = async () => {
-    setMarkingPaid(true);
-    await updateCrmInvoiceStatus(id, 'pagada');
-    setSaved((prev) => ({ ...prev, status: 'pagada' }));
-    setMarkingPaid(false);
-  };
-
   const handlePaymentSave = async () => {
     setPaymentError('');
     const amount = parseFloat(paymentForm.amount);
     if (!amount || amount <= 0) { setPaymentError('Ingresa un monto válido.'); return; }
     if (!paymentForm.payment_date) { setPaymentError('Selecciona una fecha.'); return; }
     setPaymentSaving(true);
-    const { data, error } = await createPayment({
+    const { error } = await createPayment({
       business_id: business.id,
       customer_id: saved?.customer_id || null,
       invoice_id: id,
       amount,
       payment_method: paymentForm.payment_method,
+      payment_status: 'received',
       payment_date: paymentForm.payment_date,
       reference: paymentForm.reference || null,
       notes: paymentForm.notes || null,
     });
     setPaymentSaving(false);
     if (error) { setPaymentError(error.message || 'Error al registrar pago.'); return; }
-    setPayments((prev) => [data, ...prev]);
+    await refreshPayments(id);
     setShowPaymentModal(false);
     setPaymentForm({
       amount: '',
       payment_date: new Date().toISOString().slice(0, 10),
-      payment_method: 'Transferencia',
+      payment_method: 'bank_transfer',
       reference: '',
       notes: '',
     });
+  };
+
+  const handlePaymentDelete = async (paymentId) => {
+    if (!window.confirm('Eliminar este pago? Esta accion no se puede deshacer.')) return;
+    setDeletingPayment(paymentId);
+    const { error } = await deletePayment(paymentId);
+    if (!error) await refreshPayments(id);
+    setDeletingPayment('');
   };
 
   const handleSave = async () => {
@@ -547,41 +564,19 @@ export default function CrmInvoiceEditor() {
 
           {/* ── PAGOS RECIBIDOS (solo facturas guardadas) ── */}
           {!isNew && saved && (() => {
-            const totalPagado = payments.reduce((s, p) => s + (p.amount || 0), 0);
-            const saldo = subtotal - totalPagado;
-            const fullPaid = saldo <= 0 && payments.length > 0;
-            const partial  = saldo > 0 && totalPagado > 0;
+            const financial = getInvoiceFinancialState(saved.total ?? subtotal, payments);
             return (
               <div className="bg-white border border-gray-200 rounded-xl p-5">
                 {/* Header */}
                 <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
                   <div className="flex items-center gap-2">
                     <h3 className="text-sm font-semibold text-gray-700">Pagos recibidos</h3>
-                    {fullPaid && (
-                      <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">
-                        <Icon name="CheckCircle2" size={11} />
-                        Completamente pagada
-                      </span>
-                    )}
-                    {partial && (
-                      <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700 font-medium">
-                        <Icon name="Clock" size={11} />
-                        Pago parcial
-                      </span>
-                    )}
+                    <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium ${FINANCIAL_BADGE_STYLES[financial.key]}`}>
+                      <Icon name={financial.key === 'paid' ? 'CheckCircle2' : financial.key === 'partial' ? 'Clock' : 'AlertCircle'} size={11} />
+                      {financial.label}
+                    </span>
                   </div>
                   <div className="flex items-center gap-2">
-                    {fullPaid && saved.status !== 'pagada' && (
-                      <button
-                        type="button"
-                        onClick={handleMarkPaid}
-                        disabled={markingPaid}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-700 text-white text-xs font-medium transition-colors disabled:opacity-60"
-                      >
-                        {markingPaid ? <Icon name="Loader2" size={12} className="animate-spin" /> : <Icon name="CheckCircle2" size={12} />}
-                        Marcar como pagada
-                      </button>
-                    )}
                     <button
                       type="button"
                       onClick={() => setShowPaymentModal(true)}
@@ -594,18 +589,18 @@ export default function CrmInvoiceEditor() {
                 </div>
 
                 {/* Resumen */}
-                <div className="grid grid-cols-3 gap-3 mb-4">
+                <div className="grid grid-cols-1 gap-3 mb-4 sm:grid-cols-3">
                   <div className="bg-gray-50 rounded-lg px-3 py-2.5 text-center">
                     <p className="text-xs text-gray-400 mb-0.5">Total factura</p>
-                    <p className="text-sm font-bold text-gray-900">{fmt(subtotal)}</p>
+                    <p className="text-sm font-bold text-gray-900">{fmt(financial.invoiceTotal)}</p>
                   </div>
-                  <div className={`rounded-lg px-3 py-2.5 text-center ${totalPagado > 0 ? 'bg-green-50' : 'bg-gray-50'}`}>
+                  <div className={`rounded-lg px-3 py-2.5 text-center ${financial.paidTotal > 0 ? 'bg-green-50' : 'bg-gray-50'}`}>
                     <p className="text-xs text-gray-400 mb-0.5">Pagado</p>
-                    <p className={`text-sm font-bold ${totalPagado > 0 ? 'text-green-700' : 'text-gray-400'}`}>{fmt(totalPagado)}</p>
+                    <p className={`text-sm font-bold ${financial.paidTotal > 0 ? 'text-green-700' : 'text-gray-400'}`}>{fmt(financial.paidTotal)}</p>
                   </div>
-                  <div className={`rounded-lg px-3 py-2.5 text-center ${fullPaid ? 'bg-green-50' : saldo > 0 ? 'bg-yellow-50' : 'bg-gray-50'}`}>
+                  <div className={`rounded-lg px-3 py-2.5 text-center ${financial.key === 'paid' ? 'bg-green-50' : financial.pendingBalance > 0 ? 'bg-yellow-50' : 'bg-gray-50'}`}>
                     <p className="text-xs text-gray-400 mb-0.5">Saldo pendiente</p>
-                    <p className={`text-sm font-bold ${fullPaid ? 'text-green-700' : saldo > 0 ? 'text-yellow-700' : 'text-gray-400'}`}>{fmt(Math.max(0, saldo))}</p>
+                    <p className={`text-sm font-bold ${financial.key === 'paid' ? 'text-green-700' : financial.pendingBalance > 0 ? 'text-yellow-700' : 'text-gray-400'}`}>{fmt(financial.pendingBalance)}</p>
                   </div>
                 </div>
 
@@ -619,18 +614,29 @@ export default function CrmInvoiceEditor() {
                         <div className="min-w-0">
                           <p className="text-sm font-semibold text-gray-900">{fmt(p.amount)}</p>
                           <p className="text-xs text-gray-400">
-                            {p.payment_method}
-                            {p.reference ? ` · Ref: ${p.reference}` : ''}
+                            {getPaymentMethodLabel(p.payment_method)}
+                            {(p.reference || p.reference_number) ? ` · Ref: ${p.reference || p.reference_number}` : ''}
                             {p.notes ? ` · ${p.notes}` : ''}
                           </p>
                         </div>
-                        <div className="text-right shrink-0">
+                        <div className="flex shrink-0 items-center gap-2 text-right">
+                          <div>
                           <p className="text-xs text-gray-500">
-                            {p.payment_date
-                              ? new Date(p.payment_date + 'T12:00:00').toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                              {getPaymentDate(p)
+                                ? new Date(getPaymentDate(p) + 'T12:00:00').toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' })
                               : '—'}
                           </p>
-                          {p.status && <span className="text-xs text-gray-400">{p.status}</span>}
+                            <span className="text-xs text-gray-400">{getPaymentStatus(p)}</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handlePaymentDelete(p.id)}
+                            disabled={deletingPayment === p.id}
+                            className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                            title="Eliminar pago"
+                          >
+                            {deletingPayment === p.id ? <Icon name="Loader2" size={13} className="animate-spin" /> : <Icon name="Trash2" size={13} />}
+                          </button>
                         </div>
                       </div>
                     ))}
@@ -738,8 +744,8 @@ export default function CrmInvoiceEditor() {
                     onChange={(e) => setPaymentForm((f) => ({ ...f, payment_method: e.target.value }))}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    {['Contado', 'Transferencia', 'Tarjeta', 'Cheque', 'Otro'].map((m) => (
-                      <option key={m} value={m}>{m}</option>
+                    {CRM_PAYMENT_METHODS.map((method) => (
+                      <option key={method.value} value={method.value}>{method.label}</option>
                     ))}
                   </select>
                 </div>
