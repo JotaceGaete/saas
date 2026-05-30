@@ -12,6 +12,7 @@ import {
   formatInvoiceNumber,
 } from '../../services/crmService';
 import { getProducts } from '../../services/waBusinessService';
+import { listPaymentsByInvoice, createPayment } from '../../services/crmPaymentsService';
 import CrmDocumentPdf from './CrmDocumentPdf';
 import {
   CrmLineItemCard,
@@ -60,6 +61,19 @@ export default function CrmInvoiceEditor() {
   const [showProductModal, setShowProductModal] = useState(false);
   const [showChargeMenu, setShowChargeMenu] = useState(false);
 
+  // Pagos
+  const [payments, setPayments] = useState([]);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [paymentForm, setPaymentForm] = useState({
+    amount: '',
+    payment_date: new Date().toISOString().slice(0, 10),
+    payment_method: 'Transferencia',
+    reference: '',
+    notes: '',
+  });
+  const [paymentSaving, setPaymentSaving] = useState(false);
+  const [paymentError, setPaymentError] = useState('');
+
   const [customerId, setCustomerId] = useState('');
   const [issueDate, setIssueDate] = useState(new Date().toISOString().slice(0, 10));
   const [dueDate, setDueDate] = useState('');
@@ -88,6 +102,7 @@ export default function CrmInvoiceEditor() {
         setDeliveryMethod(data.delivery_method || '');
         setCommercialNotes(data.commercial_notes || '');
         setPageLoading(false);
+        listPaymentsByInvoice(id).then((r) => setPayments(r.data || []));
       });
     }
   }, [business?.id, id, isNew]);
@@ -141,6 +156,35 @@ export default function CrmInvoiceEditor() {
       currency: business?.currency || 'CLP',
       maximumFractionDigits: 0,
     }).format(n || 0);
+
+  const handlePaymentSave = async () => {
+    setPaymentError('');
+    const amount = parseFloat(paymentForm.amount);
+    if (!amount || amount <= 0) { setPaymentError('Ingresa un monto válido.'); return; }
+    if (!paymentForm.payment_date) { setPaymentError('Selecciona una fecha.'); return; }
+    setPaymentSaving(true);
+    const { data, error } = await createPayment({
+      business_id: business.id,
+      customer_id: saved?.customer_id || null,
+      invoice_id: id,
+      amount,
+      payment_method: paymentForm.payment_method,
+      payment_date: paymentForm.payment_date,
+      reference: paymentForm.reference || null,
+      notes: paymentForm.notes || null,
+    });
+    setPaymentSaving(false);
+    if (error) { setPaymentError(error.message || 'Error al registrar pago.'); return; }
+    setPayments((prev) => [data, ...prev]);
+    setShowPaymentModal(false);
+    setPaymentForm({
+      amount: '',
+      payment_date: new Date().toISOString().slice(0, 10),
+      payment_method: 'Transferencia',
+      reference: '',
+      notes: '',
+    });
+  };
 
   const handleSave = async () => {
     setSaveError('');
@@ -492,6 +536,73 @@ export default function CrmInvoiceEditor() {
             </div>
           </div>
 
+          {/* ── PAGOS RECIBIDOS (solo facturas guardadas) ── */}
+          {!isNew && saved && (() => {
+            const totalPagado = payments.reduce((s, p) => s + (p.amount || 0), 0);
+            const saldo = subtotal - totalPagado;
+            return (
+              <div className="bg-white border border-gray-200 rounded-xl p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-semibold text-gray-700">Pagos recibidos</h3>
+                  <button
+                    type="button"
+                    onClick={() => setShowPaymentModal(true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium transition-colors"
+                  >
+                    <Icon name="Plus" size={13} />
+                    Registrar pago
+                  </button>
+                </div>
+
+                {/* Resumen */}
+                <div className="grid grid-cols-3 gap-3 mb-4">
+                  <div className="bg-gray-50 rounded-lg px-3 py-2.5 text-center">
+                    <p className="text-xs text-gray-400 mb-0.5">Total factura</p>
+                    <p className="text-sm font-bold text-gray-900">{fmt(subtotal)}</p>
+                  </div>
+                  <div className="bg-green-50 rounded-lg px-3 py-2.5 text-center">
+                    <p className="text-xs text-gray-400 mb-0.5">Pagado</p>
+                    <p className="text-sm font-bold text-green-700">{fmt(totalPagado)}</p>
+                  </div>
+                  <div className={`rounded-lg px-3 py-2.5 text-center ${saldo > 0 ? 'bg-yellow-50' : 'bg-green-50'}`}>
+                    <p className="text-xs text-gray-400 mb-0.5">Saldo</p>
+                    <p className={`text-sm font-bold ${saldo > 0 ? 'text-yellow-700' : 'text-green-700'}`}>{fmt(saldo)}</p>
+                  </div>
+                </div>
+
+                {/* Lista */}
+                {payments.length === 0 ? (
+                  <p className="text-sm text-gray-400 text-center py-4">Sin pagos registrados aún.</p>
+                ) : (
+                  <div className="divide-y divide-gray-100">
+                    {payments.map((p) => (
+                      <div key={p.id} className="flex items-center justify-between py-2.5 gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-900">{fmt(p.amount)}</p>
+                          <p className="text-xs text-gray-400">
+                            {p.payment_method}
+                            {p.reference ? ` · ${p.reference}` : ''}
+                            {p.notes ? ` · ${p.notes}` : ''}
+                          </p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-xs text-gray-500">
+                            {p.payment_date
+                              ? new Date(p.payment_date + 'T12:00:00').toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                              : '—'}
+                          </p>
+                          {p.status && (
+                            <span className="text-xs text-gray-400">{p.status}</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           {saveError && (
             <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
               <Icon name="AlertCircle" size={16} />{saveError}
@@ -533,6 +644,111 @@ export default function CrmInvoiceEditor() {
           onSelect={addProductFromCatalog}
           onClose={() => setShowProductModal(false)}
         />
+      )}
+
+      {/* ── MODAL REGISTRAR PAGO ── */}
+      {showPaymentModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl shadow-xl">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <h2 className="text-base font-semibold text-gray-900">Registrar pago</h2>
+              <button
+                onClick={() => { setShowPaymentModal(false); setPaymentError(''); }}
+                className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400"
+              >
+                <Icon name="X" size={16} />
+              </button>
+            </div>
+
+            <div className="px-5 py-4 space-y-4">
+              {paymentError && (
+                <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                  {paymentError}
+                </p>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Monto *</label>
+                  <div className="flex items-center border border-gray-300 rounded-lg px-3 py-2 focus-within:ring-2 focus-within:ring-blue-500">
+                    <span className="text-sm text-gray-400 mr-1">$</span>
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={paymentForm.amount}
+                      onChange={(e) => setPaymentForm((f) => ({ ...f, amount: e.target.value }))}
+                      placeholder="0"
+                      className="w-full text-sm text-gray-900 border-0 focus:outline-none bg-transparent"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Fecha *</label>
+                  <input
+                    type="date"
+                    value={paymentForm.payment_date}
+                    onChange={(e) => setPaymentForm((f) => ({ ...f, payment_date: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Método</label>
+                  <select
+                    value={paymentForm.payment_method}
+                    onChange={(e) => setPaymentForm((f) => ({ ...f, payment_method: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {['Contado', 'Transferencia', 'Tarjeta', 'Cheque', 'Otro'].map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Referencia</label>
+                  <input
+                    type="text"
+                    value={paymentForm.reference}
+                    onChange={(e) => setPaymentForm((f) => ({ ...f, reference: e.target.value }))}
+                    placeholder="Ej: N° comprobante, código transacción…"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Notas</label>
+                  <input
+                    type="text"
+                    value={paymentForm.notes}
+                    onChange={(e) => setPaymentForm((f) => ({ ...f, notes: e.target.value }))}
+                    placeholder="Observaciones adicionales…"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-3 px-5 py-4 border-t border-gray-100">
+              <button
+                onClick={() => { setShowPaymentModal(false); setPaymentError(''); }}
+                className="flex-1 px-4 py-2.5 rounded-xl border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm font-medium transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handlePaymentSave}
+                disabled={paymentSaving}
+                className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold disabled:opacity-60 transition-colors"
+              >
+                {paymentSaving ? <Icon name="Loader2" size={14} className="animate-spin" /> : <Icon name="CheckCircle" size={14} />}
+                Guardar pago
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {showPdf && saved && (
