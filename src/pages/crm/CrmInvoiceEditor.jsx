@@ -109,6 +109,11 @@ export default function CrmInvoiceEditor() {
   const [dueDate, setDueDate] = useState('');
   const [notes, setNotes] = useState('');
   const [items, setItems] = useState([{ ...EMPTY_ITEM }]);
+  // Condiciones comerciales
+  const [paymentTerms, setPaymentTerms] = useState('');
+  const [deliveryDays, setDeliveryDays] = useState('');
+  const [deliveryMethod, setDeliveryMethod] = useState('');
+  const [commercialNotes, setCommercialNotes] = useState('');
 
   useEffect(() => {
     if (!business?.id) return;
@@ -123,6 +128,10 @@ export default function CrmInvoiceEditor() {
         setDueDate(data.due_date || '');
         setNotes(data.notes || '');
         setItems(data.crm_invoice_items?.length ? data.crm_invoice_items.map(it => ({ ...it })) : [{ ...EMPTY_ITEM }]);
+        setPaymentTerms(data.payment_terms || '');
+        setDeliveryDays(data.delivery_days || '');
+        setDeliveryMethod(data.delivery_method || '');
+        setCommercialNotes(data.commercial_notes || '');
         setPageLoading(false);
       });
     }
@@ -144,6 +153,10 @@ export default function CrmInvoiceEditor() {
     const { data, error } = await createCrmInvoice(business.id, {
       customerId: customerId || null,
       issueDate, dueDate: dueDate || null, notes: notes || null,
+      paymentTerms: paymentTerms || null,
+      deliveryDays: deliveryDays || null,
+      deliveryMethod: deliveryMethod || null,
+      commercialNotes: commercialNotes || null,
       items: validItems.map((i, idx) => ({
         product_id: i.product_id || null, name: i.name.trim(), description: i.description || null,
         unit_price: +(i.unit_price||0), quantity: +(i.quantity||1), discount_pct: +(i.discount_pct||0), sort_order: idx,
@@ -230,7 +243,30 @@ export default function CrmInvoiceEditor() {
               </div>
               <div className="sm:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Notas (visibles en el PDF)</label>
-                <textarea disabled={!isNew} value={notes} onChange={e => setNotes(e.target.value)} rows={2} placeholder="Condiciones de pago, observaciones…" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none disabled:bg-gray-50" />
+                <textarea disabled={!isNew} value={notes} onChange={e => setNotes(e.target.value)} rows={2} placeholder="Observaciones generales…" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none disabled:bg-gray-50" />
+              </div>
+            </div>
+          </div>
+
+          {/* Condiciones comerciales */}
+          <div className="bg-white border border-gray-200 rounded-xl p-5">
+            <h3 className="text-sm font-semibold text-gray-700 mb-4">Condiciones comerciales <span className="text-gray-400 font-normal">(opcionales)</span></h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Forma de pago</label>
+                <input type="text" disabled={!isNew} value={paymentTerms} onChange={e => setPaymentTerms(e.target.value)} placeholder="Ej: 50% anticipo, 50% contra entrega" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Plazo de entrega</label>
+                <input type="text" disabled={!isNew} value={deliveryDays} onChange={e => setDeliveryDays(e.target.value)} placeholder="Ej: 5 días hábiles" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Método de entrega</label>
+                <input type="text" disabled={!isNew} value={deliveryMethod} onChange={e => setDeliveryMethod(e.target.value)} placeholder="Ej: Despacho a domicilio, Retiro en tienda" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Observaciones comerciales</label>
+                <input type="text" disabled={!isNew} value={commercialNotes} onChange={e => setCommercialNotes(e.target.value)} placeholder="Ej: Precios no incluyen IVA" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50" />
               </div>
             </div>
           </div>
@@ -302,6 +338,7 @@ export default function CrmInvoiceEditor() {
           document={{ ...saved, crm_invoice_items: items }}
           business={business}
           customer={pdfCustomer}
+          extra={{ paymentTerms, deliveryDays, deliveryMethod, commercialNotes }}
           onClose={() => setShowPdf(false)}
         />
       )}

@@ -138,6 +138,11 @@ export default function CrmQuoteEditor() {
   const [validUntil, setValidUntil] = useState('');
   const [notes, setNotes] = useState('');
   const [items, setItems] = useState([{ ...EMPTY_ITEM }]);
+  // Condiciones comerciales
+  const [paymentTerms, setPaymentTerms] = useState('');
+  const [deliveryDays, setDeliveryDays] = useState('');
+  const [deliveryMethod, setDeliveryMethod] = useState('');
+  const [commercialNotes, setCommercialNotes] = useState('');
 
   useEffect(() => {
     if (!business?.id) return;
@@ -151,6 +156,10 @@ export default function CrmQuoteEditor() {
         setValidUntil(data.valid_until || '');
         setNotes(data.notes || '');
         setItems(data.crm_quote_items?.length ? data.crm_quote_items.map(it => ({ ...it })) : [{ ...EMPTY_ITEM }]);
+        setPaymentTerms(data.payment_terms || '');
+        setDeliveryDays(data.delivery_days || '');
+        setDeliveryMethod(data.delivery_method || '');
+        setCommercialNotes(data.commercial_notes || '');
         setPageLoading(false);
       });
     }
@@ -172,6 +181,10 @@ export default function CrmQuoteEditor() {
     customerId: customerId || null,
     validUntil: validUntil || null,
     notes: notes || null,
+    paymentTerms: paymentTerms || null,
+    deliveryDays: deliveryDays || null,
+    deliveryMethod: deliveryMethod || null,
+    commercialNotes: commercialNotes || null,
     items: items
       .filter(i => i.name?.trim())
       .map((i, idx) => ({
@@ -287,9 +300,32 @@ export default function CrmQuoteEditor() {
                   value={notes}
                   onChange={e => setNotes(e.target.value)}
                   rows={2}
-                  placeholder="Condiciones de pago, plazos de entrega, observaciones…"
+                  placeholder="Observaciones generales…"
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                 />
+              </div>
+            </div>
+          </div>
+
+          {/* Condiciones comerciales */}
+          <div className="bg-white border border-gray-200 rounded-xl p-5">
+            <h3 className="text-sm font-semibold text-gray-700 mb-4">Condiciones comerciales <span className="text-gray-400 font-normal">(opcionales)</span></h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Forma de pago</label>
+                <input type="text" value={paymentTerms} onChange={e => setPaymentTerms(e.target.value)} placeholder="Ej: 50% anticipo, 50% contra entrega" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Plazo de entrega</label>
+                <input type="text" value={deliveryDays} onChange={e => setDeliveryDays(e.target.value)} placeholder="Ej: 5 días hábiles" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Método de entrega</label>
+                <input type="text" value={deliveryMethod} onChange={e => setDeliveryMethod(e.target.value)} placeholder="Ej: Despacho a domicilio, Retiro en tienda" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Observaciones comerciales</label>
+                <input type="text" value={commercialNotes} onChange={e => setCommercialNotes(e.target.value)} placeholder="Ej: Precios no incluyen IVA" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
             </div>
           </div>
@@ -370,6 +406,7 @@ export default function CrmQuoteEditor() {
           document={{ ...saved, crm_quote_items: items }}
           business={business}
           customer={pdfCustomer}
+          extra={{ paymentTerms, deliveryDays, deliveryMethod, commercialNotes }}
           onClose={() => setShowPdf(false)}
         />
       )}

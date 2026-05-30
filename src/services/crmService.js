@@ -102,7 +102,7 @@ export async function getCrmQuote(id) {
   return { data, error };
 }
 
-export async function createCrmQuote(businessId, { customerId, validUntil, notes, items = [] }) {
+export async function createCrmQuote(businessId, { customerId, validUntil, notes, paymentTerms, deliveryDays, deliveryMethod, commercialNotes, items = [] }) {
   const { data: nextNum, error: numErr } = await supabase
     .rpc('crm_next_quote_number', { p_business_id: businessId });
   if (numErr) return { data: null, error: numErr };
@@ -122,6 +122,10 @@ export async function createCrmQuote(businessId, { customerId, validUntil, notes
       quote_number: nextNum,
       valid_until: validUntil || null,
       notes: notes || null,
+      payment_terms: paymentTerms || null,
+      delivery_days: deliveryDays || null,
+      delivery_method: deliveryMethod || null,
+      commercial_notes: commercialNotes || null,
       ...totals,
     })
     .select()
@@ -137,12 +141,16 @@ export async function createCrmQuote(businessId, { customerId, validUntil, notes
   return { data: quote, error: null };
 }
 
-export async function updateCrmQuote(quoteId, { customerId, validUntil, notes, status, items }) {
+export async function updateCrmQuote(quoteId, { customerId, validUntil, notes, paymentTerms, deliveryDays, deliveryMethod, commercialNotes, status, items }) {
   const updates = {};
   if (customerId !== undefined) updates.customer_id = customerId;
   if (validUntil !== undefined) updates.valid_until = validUntil;
   if (notes !== undefined) updates.notes = notes;
   if (status !== undefined) updates.status = status;
+  if (paymentTerms !== undefined) updates.payment_terms = paymentTerms;
+  if (deliveryDays !== undefined) updates.delivery_days = deliveryDays;
+  if (deliveryMethod !== undefined) updates.delivery_method = deliveryMethod;
+  if (commercialNotes !== undefined) updates.commercial_notes = commercialNotes;
 
   if (items !== undefined) {
     const mappedItems = items.map((it, idx) => ({
@@ -212,7 +220,7 @@ export async function getCrmInvoice(id) {
   return { data, error };
 }
 
-export async function createCrmInvoice(businessId, { customerId, issueDate, dueDate, notes, items = [], quoteId }) {
+export async function createCrmInvoice(businessId, { customerId, issueDate, dueDate, notes, paymentTerms, deliveryDays, deliveryMethod, commercialNotes, items = [], quoteId }) {
   const { data: nextNum, error: numErr } = await supabase
     .rpc('crm_next_invoice_number', { p_business_id: businessId });
   if (numErr) return { data: null, error: numErr };
@@ -233,6 +241,10 @@ export async function createCrmInvoice(businessId, { customerId, issueDate, dueD
       issue_date: issueDate || new Date().toISOString().slice(0, 10),
       due_date: dueDate || null,
       notes: notes || null,
+      payment_terms: paymentTerms || null,
+      delivery_days: deliveryDays || null,
+      delivery_method: deliveryMethod || null,
+      commercial_notes: commercialNotes || null,
       quote_id: quoteId || null,
       ...totals,
     })
