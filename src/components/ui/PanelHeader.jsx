@@ -56,14 +56,14 @@ export default function PanelHeader({
           </div>
         )}
         {children && mobileActions && (
-          <div className="hidden sm:flex flex-shrink-0 items-center gap-2">
+          <div className="hidden lg:flex flex-shrink-0 items-center gap-2">
             {children}
           </div>
         )}
       </div>
-      {/* Segunda fila solo en móvil */}
+      {/* Segunda fila en móvil y ancho medio (sin sidebar) */}
       {mobileActions && (
-        <div className="sm:hidden flex gap-2 px-4 pb-3">
+        <div className="lg:hidden flex gap-2 px-4 pb-3">
           {mobileActions}
         </div>
       )}
