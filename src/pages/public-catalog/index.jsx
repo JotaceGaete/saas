@@ -2,7 +2,8 @@
 import CatalogLayout from './CatalogLayout';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
-import { getBusinessBySlug, getPublicProducts, getCategoriesByRubroId, getBusinessCategories, recordCatalogVisit, recordCatalogWhatsAppClick, createOrder } from '../../services/waBusinessService';
+import { getBusinessBySlug, getPublicProducts, getCategoriesByRubroId, getBusinessCategories, recordCatalogVisit, recordCatalogWhatsAppClick, createOrder, getEffectivePlanSlug } from '../../services/waBusinessService';
+import { getPlanLimits } from '../../constants/plans';
 import { collectVisitAttribution } from '../../utils/analytics';
 import Icon from '../../components/AppIcon';
 import { CartProvider, useCart } from '../../contexts/CartContext';
@@ -221,7 +222,14 @@ function CatalogInner({ slug }) {
     recordCatalogVisit(slug, path, attribution)
       .then((r) => console.log('[public-catalog] recordCatalogVisit result', { slug, recorded: r?.recorded, throttled: r?.throttled, error: r?.error }))
       .catch((e) => console.error('[public-catalog] recordCatalogVisit error', slug, e));
-    const { data: prods } = await getPublicProducts(biz?.id);
+    // Calcular plan efectivo para limitar productos visibles (enforcement de plan vencido)
+    const effectivePlan = getEffectivePlanSlug(
+      biz?.planSlug,
+      biz?.planExpiresAt ?? null,
+      biz?.trialExpiresAt ?? null,
+    );
+    const { maxProducts } = getPlanLimits(effectivePlan);
+    const { data: prods } = await getPublicProducts(biz?.id, { maxProducts });
     const loadedProducts = prods || [];
     setProducts(loadedProducts);
     if (loadedProducts?.length > 0) {

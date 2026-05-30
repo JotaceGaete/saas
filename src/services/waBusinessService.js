@@ -1468,13 +1468,21 @@ export const deleteProducts = async (productIds) => {
   return { error: null };
 };
 
-export async function getPublicProducts(businessId) {
-  const { data, error } = await supabase
+export async function getPublicProducts(businessId, options = {}) {
+  const { maxProducts } = options;
+  let query = supabase
     ?.from('wa_products')
     ?.select('*')
     ?.eq('business_id', businessId)
     ?.eq('is_active', true)
     ?.order('sort_order', { ascending: true });
+
+  // Aplicar límite del plan si se especifica (enforcement de productos visible en catálogo)
+  if (maxProducts != null && maxProducts > 0) {
+    query = query?.limit(maxProducts);
+  }
+
+  const { data, error } = await query;
   if (error) {
     logPublicProductSlugDebug('active_products_lookup_error', {
       businessId,
