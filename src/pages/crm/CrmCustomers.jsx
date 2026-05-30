@@ -134,11 +134,19 @@ export default function CrmCustomers() {
       <PanelHeader
         title={<h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Clientes CRM</h1>}
         subtitle={<p className="text-xs" style={{ color: 'var(--color-muted-foreground)' }}>{loading ? 'Cargando…' : `${customers.length} cliente${customers.length !== 1 ? 's' : ''}`}</p>}
+        mobileActions={
+          <button
+            onClick={() => setModal('new')}
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+          >
+            <Icon name="UserPlus" size={16} />
+            Nuevo cliente
+          </button>
+        }
       >
         <button
           onClick={() => setModal('new')}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white"
-          style={{ backgroundColor: 'var(--color-primary, #2563eb)' }}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
         >
           <Icon name="UserPlus" size={16} />
           Nuevo cliente

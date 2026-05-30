@@ -66,6 +66,16 @@ export default function CrmDashboard() {
       <PanelHeader
         title={<h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>CRM</h1>}
         subtitle={<p className="text-xs" style={{ color: 'var(--color-muted-foreground)' }}>Panel interno — solo administradores</p>}
+        mobileActions={
+          <div className="flex gap-2 w-full">
+            <button onClick={() => navigate('/crm/presupuestos/nuevo')} className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 text-sm font-medium">
+              <Icon name="FilePlus" size={15} />Presupuesto
+            </button>
+            <button onClick={() => navigate('/crm/facturas/nueva')} className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium">
+              <Icon name="PlusCircle" size={15} />Factura
+            </button>
+          </div>
+        }
       >
         <div className="flex items-center gap-2">
           <button onClick={() => navigate('/crm/presupuestos/nuevo')} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 text-xs font-medium">

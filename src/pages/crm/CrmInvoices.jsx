@@ -47,6 +47,15 @@ export default function CrmInvoices() {
       <PanelHeader
         title={<h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Facturas internas</h1>}
         subtitle={<p className="text-xs" style={{ color: 'var(--color-muted-foreground)' }}>{loading ? 'Cargando…' : `${invoices.length} factura${invoices.length !== 1 ? 's' : ''}`}</p>}
+        mobileActions={
+          <button
+            onClick={() => navigate('/crm/facturas/nueva')}
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+          >
+            <Icon name="PlusCircle" size={16} />
+            Nueva factura
+          </button>
+        }
       >
         <button
           onClick={() => navigate('/crm/facturas/nueva')}

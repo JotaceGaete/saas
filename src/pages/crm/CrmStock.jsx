@@ -269,6 +269,15 @@ export default function CrmStock() {
       <PanelHeader
         title={<h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Control de stock</h1>}
         subtitle={<p className="text-xs" style={{ color: 'var(--color-muted-foreground)' }}>{loading ? 'Cargando…' : `${products.length} producto${products.length !== 1 ? 's' : ''}`}</p>}
+        mobileActions={
+          <button
+            onClick={() => setModal(true)}
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+          >
+            <Icon name="ArrowUpDown" size={16} />
+            Nuevo movimiento
+          </button>
+        }
       >
         <button
           onClick={() => setModal(true)}

@@ -65,6 +65,15 @@ export default function CrmQuotes() {
       <PanelHeader
         title={<h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Presupuestos</h1>}
         subtitle={<p className="text-xs" style={{ color: 'var(--color-muted-foreground)' }}>{loading ? 'Cargando…' : `${quotes.length} presupuesto${quotes.length !== 1 ? 's' : ''}`}</p>}
+        mobileActions={
+          <button
+            onClick={() => navigate('/crm/presupuestos/nuevo')}
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+          >
+            <Icon name="FilePlus" size={16} />
+            Nuevo presupuesto
+          </button>
+        }
       >
         <button
           onClick={() => navigate('/crm/presupuestos/nuevo')}
