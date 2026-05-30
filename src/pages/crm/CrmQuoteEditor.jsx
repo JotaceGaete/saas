@@ -194,7 +194,7 @@ export default function CrmQuoteEditor() {
   const getItemImage = (item) => {
     if (!item.product_id) return null;
     const p = products.find(pr => pr.id === item.product_id);
-    return p?.card_image_url || p?.image_url || null;
+    return p?.cardImageUrl || p?.imageUrl || null;
   };
 
   // ─── Sección de ítems compartida ───────────────────────────────────────────
@@ -469,6 +469,15 @@ export default function CrmQuoteEditor() {
             >
               Cancelar
             </button>
+            {!isNew && saved && (
+              <button
+                onClick={() => setShowPdf(true)}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 sm:py-2.5 rounded-xl border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm font-medium transition-colors"
+              >
+                <Icon name="FileDown" size={15} />
+                Descargar PDF
+              </button>
+            )}
             <button
               onClick={handleSave}
               disabled={saving}

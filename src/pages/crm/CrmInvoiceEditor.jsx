@@ -193,7 +193,7 @@ export default function CrmInvoiceEditor() {
   const getItemImage = (item) => {
     if (!item.product_id) return null;
     const p = products.find(pr => pr.id === item.product_id);
-    return p?.card_image_url || p?.image_url || null;
+    return p?.cardImageUrl || p?.imageUrl || null;
   };
 
   // ─── Sección de ítems editable ─────────────────────────────────────────────
@@ -492,31 +492,38 @@ export default function CrmInvoiceEditor() {
             </div>
           </div>
 
-          {isNew && (
-            <>
-              {saveError && (
-                <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-                  <Icon name="AlertCircle" size={16} />{saveError}
-                </div>
-              )}
-              <div className="flex flex-col sm:flex-row sm:justify-end gap-3 pb-8">
-                <button
-                  onClick={() => navigate('/crm/facturas')}
-                  className="w-full sm:w-auto px-5 py-3 sm:py-2.5 rounded-xl border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm font-medium text-center transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={handleSave}
-                  disabled={saving}
-                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 sm:py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold disabled:opacity-60 transition-colors"
-                >
-                  {saving ? <Icon name="Loader2" size={15} className="animate-spin" /> : <Icon name="CheckCircle" size={15} />}
-                  Crear factura
-                </button>
-              </div>
-            </>
+          {saveError && (
+            <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+              <Icon name="AlertCircle" size={16} />{saveError}
+            </div>
           )}
+          <div className="flex flex-col sm:flex-row sm:justify-end gap-3 pb-8">
+            <button
+              onClick={() => navigate('/crm/facturas')}
+              className="w-full sm:w-auto px-5 py-3 sm:py-2.5 rounded-xl border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm font-medium text-center transition-colors"
+            >
+              {isNew ? 'Cancelar' : 'Volver'}
+            </button>
+            {!isNew && saved && (
+              <button
+                onClick={() => setShowPdf(true)}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 sm:py-2.5 rounded-xl border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm font-medium transition-colors"
+              >
+                <Icon name="FileDown" size={15} />
+                Descargar PDF
+              </button>
+            )}
+            {isNew && (
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 sm:py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold disabled:opacity-60 transition-colors"
+              >
+                {saving ? <Icon name="Loader2" size={15} className="animate-spin" /> : <Icon name="CheckCircle" size={15} />}
+                Crear factura
+              </button>
+            )}
+          </div>
         </div>
       </DashboardLayoutContent>
 
