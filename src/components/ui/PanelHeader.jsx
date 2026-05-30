@@ -50,8 +50,13 @@ export default function PanelHeader({
           {subtitle}
         </div>
         {/* En desktop siempre visible. En móvil se oculta si hay mobileActions. */}
-        {children && (
-          <div className={`flex-shrink-0 flex items-center gap-2${mobileActions ? ' hidden sm:flex' : ''}`}>
+        {children && !mobileActions && (
+          <div className="flex flex-shrink-0 items-center gap-2">
+            {children}
+          </div>
+        )}
+        {children && mobileActions && (
+          <div className="hidden sm:flex flex-shrink-0 items-center gap-2">
             {children}
           </div>
         )}
