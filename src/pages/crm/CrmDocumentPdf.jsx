@@ -154,10 +154,6 @@ const S = StyleSheet.create({
   notesLabel:   { fontSize: 7, fontFamily: 'Helvetica-Bold', color: C.accent, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 },
   notesText:    { fontSize: 8.5, color: C.gray600, lineHeight: 1.5 },
 
-  // Disclaimer
-  disclaimer:   { marginTop: 18, backgroundColor: C.yellowSoft, borderRadius: 4, borderLeftWidth: 3, borderLeftColor: '#EAB308', borderLeftStyle: 'solid', padding: '6 10' },
-  disclaimerTx: { fontSize: 7.5, color: C.yellow },
-
   // Footer
   footer:       { position: 'absolute', bottom: 22, left: 44, right: 44, borderTopWidth: 1, borderTopColor: C.gray200, borderTopStyle: 'solid', paddingTop: 8, flexDirection: 'row', justifyContent: 'space-between' },
   footerText:   { fontSize: 7.5, color: C.gray400 },
@@ -168,7 +164,7 @@ function CrmPdfDocument({ type, document: doc, business, customer, extra = {} })
   const isQuote = type === 'quote';
   const items   = isQuote ? (doc.crm_quote_items || []) : (doc.crm_invoice_items || []);
   const docNum  = isQuote ? formatQuoteNumber(doc.quote_number) : formatInvoiceNumber(doc.invoice_number);
-  const docTitle = isQuote ? 'Presupuesto' : 'Factura Interna';
+  const docTitle = isQuote ? 'Presupuesto' : 'Nota de Venta';
   const currency  = business?.currency || 'CLP';
   const today     = new Date().toLocaleDateString('es-CL');
   const statusCfg = STATUS_COLORS[doc.status] || STATUS_COLORS.borrador;
@@ -234,7 +230,9 @@ function CrmPdfDocument({ type, document: doc, business, customer, extra = {} })
                 <Text style={S.sectionLabel}>Cliente</Text>
                 <View style={S.clientBox}>
                   <Text style={S.clientName}>{customer.name || 'Sin nombre'}</Text>
-                  {customer.company   && <Text style={S.clientDetail}>{customer.company}</Text>}
+                  {customer.company && customer.company.trim() && customer.company.trim().toLowerCase() !== 'sin empresa' && (
+                    <Text style={S.clientDetail}>{customer.company}</Text>
+                  )}
                   {customer.rut       && <Text style={S.clientDetail}>RUT: {customer.rut}</Text>}
                   {customer.email     && <Text style={S.clientDetail}>{customer.email}</Text>}
                   {customer.phone     && <Text style={S.clientDetail}>Tel: {fmtPhone(customer.phone)}</Text>}
@@ -273,7 +271,7 @@ function CrmPdfDocument({ type, document: doc, business, customer, extra = {} })
             {items.map((item, idx) => (
               <View key={idx} style={[S.trow, idx % 2 === 1 ? S.trowAlt : {}]} wrap={false}>
                 <View style={S.tdesc}>
-                  <Text style={S.tcell}>{item.name}</Text>
+                  <Text style={[S.tcell, { fontFamily: 'Helvetica-Bold' }]}>{item.name}</Text>
                   {!!item.description && <Text style={S.descSub}>{item.description}</Text>}
                 </View>
                 <Text style={[S.tcell, S.tqty]}>{item.quantity}</Text>
@@ -325,12 +323,6 @@ function CrmPdfDocument({ type, document: doc, business, customer, extra = {} })
             </View>
           )}
 
-          {/* ── DISCLAIMER ── */}
-          <View style={S.disclaimer}>
-            <Text style={S.disclaimerTx}>
-              Este documento es un comprobante interno y no tiene valor tributario. No es un DTE ni reemplaza a una factura o boleta oficial.
-            </Text>
-          </View>
         </View>
 
         {/* ── FOOTER ── */}
@@ -347,7 +339,7 @@ function CrmPdfDocument({ type, document: doc, business, customer, extra = {} })
 export default function CrmDocumentPdf({ type, document: doc, business, customer, extra, onClose }) {
   const filename = type === 'quote'
     ? `presupuesto-${formatQuoteNumber(doc?.quote_number)}.pdf`
-    : `factura-${formatInvoiceNumber(doc?.invoice_number)}.pdf`;
+    : `nota-venta-${formatInvoiceNumber(doc?.invoice_number)}.pdf`;
 
   return (
     <div className="fixed inset-0 bg-black/80 z-50 flex flex-col">

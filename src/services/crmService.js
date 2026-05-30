@@ -9,7 +9,7 @@ export function formatQuoteNumber(n) {
 }
 
 export function formatInvoiceNumber(n) {
-  return `FAC-${String(n).padStart(4, '0')}`;
+  return `NV-${String(n).padStart(4, '0')}`;
 }
 
 function calcItemSubtotal(unitPrice, quantity, discountPct) {
