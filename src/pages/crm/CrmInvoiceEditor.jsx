@@ -1,100 +1,42 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import DashboardAppShell from 'components/ui/DashboardAppShell';
 import DashboardLayoutContent from 'components/ui/DashboardLayoutContent';
 import PanelHeader from 'components/ui/PanelHeader';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
-import { getCrmInvoice, createCrmInvoice, getCrmCustomers, formatInvoiceNumber } from '../../services/crmService';
+import {
+  getCrmInvoice,
+  createCrmInvoice,
+  getCrmCustomers,
+  formatInvoiceNumber,
+} from '../../services/crmService';
 import { getProducts } from '../../services/waBusinessService';
 import CrmDocumentPdf from './CrmDocumentPdf';
+import { CrmLineItemRow, calcItemSubtotal, EMPTY_ITEM } from './components/CrmLineItemRow';
+import { CrmProductSearchModal } from './components/CrmProductSearchModal';
 
-function calcItemSubtotal(unitPrice, quantity, discountPct) {
-  const base = (unitPrice || 0) * (quantity || 1);
-  return +(base - (base * (discountPct || 0)) / 100).toFixed(2);
-}
+const STATUS_STYLES = {
+  pendiente: 'bg-yellow-100 text-yellow-700',
+  pagada: 'bg-green-100 text-green-700',
+  anulada: 'bg-red-100 text-red-600',
+};
 
-const EMPTY_ITEM = { product_id: null, name: '', description: '', unit_price: 0, quantity: 1, discount_pct: 0, subtotal: 0 };
-
-const STATUS_STYLES = { pendiente: 'bg-yellow-100 text-yellow-700', pagada: 'bg-green-100 text-green-700', anulada: 'bg-red-100 text-red-600' };
-
-function ItemRow({ item, idx, products, onChange, onRemove, readOnly }) {
-  const handleProductSelect = (productId) => {
-    if (!productId) return;
-    const p = products.find(pr => pr.id === productId);
-    if (!p) return;
-    onChange(idx, {
-      product_id: p.id, name: p.name, description: p.description || '',
-      unit_price: +(p.price || 0), quantity: item.quantity || 1, discount_pct: item.discount_pct || 0,
-      subtotal: calcItemSubtotal(+(p.price || 0), item.quantity || 1, item.discount_pct || 0),
-    });
-  };
-  const set = (key, val) => {
-    const next = { ...item, [key]: val };
-    next.subtotal = calcItemSubtotal(+next.unit_price, +next.quantity, +next.discount_pct);
-    onChange(idx, next);
-  };
-  const fmt = (n) => new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 }).format(n || 0);
-
-  if (readOnly) {
-    return (
-      <div className="flex justify-between items-center py-2.5 border-b border-gray-100 last:border-0">
-        <div className="min-w-0">
-          <p className="text-sm text-gray-900 font-medium">{item.name}</p>
-          {item.description && <p className="text-xs text-gray-500">{item.description}</p>}
-          <p className="text-xs text-gray-400 mt-0.5">{item.quantity} × {fmt(item.unit_price)}{item.discount_pct > 0 ? ` (-${item.discount_pct}%)` : ''}</p>
-        </div>
-        <p className="text-sm font-semibold text-gray-900 ml-4 shrink-0">{fmt(item.subtotal)}</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Ítem {idx + 1}</span>
-        <button onClick={() => onRemove(idx)} className="text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50"><Icon name="Trash2" size={15} /></button>
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Producto del catálogo (opcional)</label>
-          <select onChange={e => handleProductSelect(e.target.value)} value={item.product_id || ''} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
-            <option value="">— Seleccionar o completar manual —</option>
-            {products.map(p => <option key={p.id} value={p.id}>{p.name} · {new Intl.NumberFormat('es-CL').format(p.price)}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Descripción del ítem *</label>
-          <input type="text" placeholder="Ej: Flete, Diseño, Servicio…" value={item.name} onChange={e => set('name', e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Precio unitario</label>
-          <input type="number" min="0" step="1" value={item.unit_price} onChange={e => set('unit_price', +e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Cantidad</label>
-          <input type="number" min="1" step="1" value={item.quantity} onChange={e => set('quantity', Math.max(1, +e.target.value))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Descuento %</label>
-          <input type="number" min="0" max="100" step="0.5" value={item.discount_pct} onChange={e => set('discount_pct', Math.min(100, Math.max(0, +e.target.value)))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-        </div>
-        <div className="flex items-end">
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Subtotal</label>
-            <p className="text-base font-bold text-gray-900">{fmt(item.subtotal)}</p>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
+const MANUAL_CHARGES = [
+  { name: 'Flete', icon: 'Truck' },
+  { name: 'Embalaje', icon: 'Package2' },
+  { name: 'Diseño', icon: 'Pen' },
+  { name: 'Instalación', icon: 'Wrench' },
+  { name: 'Servicio técnico', icon: 'Settings' },
+  { name: 'Otro', icon: 'Plus' },
+];
 
 export default function CrmInvoiceEditor() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { business } = useAuth();
   const isNew = !id || id === 'nueva';
+  const chargeMenuRef = useRef(null);
 
   const [pageLoading, setPageLoading] = useState(!isNew);
   const [saving, setSaving] = useState(false);
@@ -103,13 +45,14 @@ export default function CrmInvoiceEditor() {
   const [showPdf, setShowPdf] = useState(false);
   const [saved, setSaved] = useState(null);
   const [saveError, setSaveError] = useState('');
+  const [showProductModal, setShowProductModal] = useState(false);
+  const [showChargeMenu, setShowChargeMenu] = useState(false);
 
   const [customerId, setCustomerId] = useState('');
   const [issueDate, setIssueDate] = useState(new Date().toISOString().slice(0, 10));
   const [dueDate, setDueDate] = useState('');
   const [notes, setNotes] = useState('');
-  const [items, setItems] = useState([{ ...EMPTY_ITEM }]);
-  // Condiciones comerciales
+  const [items, setItems] = useState([]);
   const [paymentTerms, setPaymentTerms] = useState('');
   const [deliveryDays, setDeliveryDays] = useState('');
   const [deliveryMethod, setDeliveryMethod] = useState('');
@@ -117,8 +60,8 @@ export default function CrmInvoiceEditor() {
 
   useEffect(() => {
     if (!business?.id) return;
-    getCrmCustomers(business.id).then(r => setCustomers(r.data || []));
-    getProducts(business.id).then(r => setProducts(r.data || []));
+    getCrmCustomers(business.id).then((r) => setCustomers(r.data || []));
+    getProducts(business.id).then((r) => setProducts(r.data || []));
     if (!isNew) {
       getCrmInvoice(id).then(({ data, error }) => {
         if (error || !data) { navigate('/crm/facturas'); return; }
@@ -127,7 +70,7 @@ export default function CrmInvoiceEditor() {
         setIssueDate(data.issue_date || new Date().toISOString().slice(0, 10));
         setDueDate(data.due_date || '');
         setNotes(data.notes || '');
-        setItems(data.crm_invoice_items?.length ? data.crm_invoice_items.map(it => ({ ...it })) : [{ ...EMPTY_ITEM }]);
+        setItems(data.crm_invoice_items?.length ? data.crm_invoice_items.map((it) => ({ ...it })) : []);
         setPaymentTerms(data.payment_terms || '');
         setDeliveryDays(data.delivery_days || '');
         setDeliveryMethod(data.delivery_method || '');
@@ -137,29 +80,84 @@ export default function CrmInvoiceEditor() {
     }
   }, [business?.id, id, isNew]);
 
-  const handleItemChange = (idx, updated) => setItems(prev => { const n = [...prev]; n[idx] = updated; return n; });
-  const handleItemRemove = (idx) => setItems(prev => prev.filter((_, i) => i !== idx));
-  const addItem = () => setItems(prev => [...prev, { ...EMPTY_ITEM }]);
+  useEffect(() => {
+    if (!showChargeMenu) return;
+    const handler = (e) => {
+      if (chargeMenuRef.current && !chargeMenuRef.current.contains(e.target)) {
+        setShowChargeMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showChargeMenu]);
+
+  const handleItemChange = (idx, updated) =>
+    setItems((prev) => { const n = [...prev]; n[idx] = updated; return n; });
+  const handleItemRemove = (idx) =>
+    setItems((prev) => prev.filter((_, i) => i !== idx));
+
+  const addProductFromCatalog = (product) => {
+    setItems((prev) => [
+      ...prev,
+      {
+        product_id: product.id,
+        name: product.name,
+        description: product.description || '',
+        unit_price: +(product.price || 0),
+        quantity: 1,
+        discount_pct: 0,
+        subtotal: calcItemSubtotal(+(product.price || 0), 1, 0),
+      },
+    ]);
+    setShowProductModal(false);
+  };
+
+  const addManualCharge = (name) => {
+    setItems((prev) => [
+      ...prev,
+      { ...EMPTY_ITEM, name: name === 'Otro' ? '' : name },
+    ]);
+    setShowChargeMenu(false);
+  };
 
   const subtotal = items.reduce((s, i) => s + (i.subtotal || 0), 0);
-  const discountTotal = items.reduce((s, i) => { const b = (i.unit_price||0)*(i.quantity||1); return s + b*(i.discount_pct||0)/100; }, 0);
-  const fmt = (n) => new Intl.NumberFormat('es-CL', { style: 'currency', currency: business?.currency || 'CLP', maximumFractionDigits: 0 }).format(n || 0);
+  const discountTotal = items.reduce((s, i) => {
+    const b = (i.unit_price || 0) * (i.quantity || 1);
+    return s + (b * (i.discount_pct || 0)) / 100;
+  }, 0);
+
+  const fmt = (n) =>
+    new Intl.NumberFormat('es-CL', {
+      style: 'currency',
+      currency: business?.currency || 'CLP',
+      maximumFractionDigits: 0,
+    }).format(n || 0);
 
   const handleSave = async () => {
     setSaveError('');
-    const validItems = items.filter(i => i.name?.trim());
-    if (!validItems.length) { setSaveError('Agrega al menos un ítem con descripción.'); return; }
+    const validItems = items.filter((i) => i.name?.trim());
+    if (!validItems.length) {
+      setSaveError('Agrega al menos un ítem con descripción.');
+      return;
+    }
     setSaving(true);
     const { data, error } = await createCrmInvoice(business.id, {
       customerId: customerId || null,
-      issueDate, dueDate: dueDate || null, notes: notes || null,
+      issueDate,
+      dueDate: dueDate || null,
+      notes: notes || null,
       paymentTerms: paymentTerms || null,
       deliveryDays: deliveryDays || null,
       deliveryMethod: deliveryMethod || null,
       commercialNotes: commercialNotes || null,
       items: validItems.map((i, idx) => ({
-        product_id: i.product_id || null, name: i.name.trim(), description: i.description || null,
-        unit_price: +(i.unit_price||0), quantity: +(i.quantity||1), discount_pct: +(i.discount_pct||0), sort_order: idx,
+        product_id: i.product_id || null,
+        name: i.name.trim(),
+        description: i.description || null,
+        unit_price: +(i.unit_price || 0),
+        quantity: +(i.quantity || 1),
+        discount_pct: +(i.discount_pct || 0),
+        sort_order: idx,
       })),
     });
     setSaving(false);
@@ -167,21 +165,38 @@ export default function CrmInvoiceEditor() {
     navigate(`/crm/facturas/${data.id}`, { replace: true });
   };
 
-  const docTitle = isNew ? 'Nueva factura interna' : `Factura ${saved ? formatInvoiceNumber(saved.invoice_number) : ''}`;
-  const pdfCustomer = customers.find(c => c.id === (saved?.customer_id || customerId));
+  const docTitle = isNew
+    ? 'Nueva factura interna'
+    : `Factura ${saved ? formatInvoiceNumber(saved.invoice_number) : ''}`;
 
-  if (pageLoading) return (
-    <DashboardAppShell>
-      <div className="flex justify-center py-20"><Icon name="Loader2" size={32} className="animate-spin text-blue-500" /></div>
-    </DashboardAppShell>
-  );
+  const pdfCustomer = customers.find((c) => c.id === (saved?.customer_id || customerId));
+
+  if (pageLoading) {
+    return (
+      <DashboardAppShell>
+        <div className="flex justify-center py-20">
+          <Icon name="Loader2" size={32} className="animate-spin text-blue-500" />
+        </div>
+      </DashboardAppShell>
+    );
+  }
 
   return (
     <DashboardAppShell>
       <PanelHeader
-        title={<h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>{docTitle}</h1>}
+        title={
+          <h1
+            className="text-base font-bold"
+            style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}
+          >
+            {docTitle}
+          </h1>
+        }
         leftAction={
-          <button onClick={() => navigate('/crm/facturas')} className="p-2 rounded-lg hover:bg-gray-100 text-gray-500">
+          <button
+            onClick={() => navigate('/crm/facturas')}
+            className="p-2 rounded-lg hover:bg-gray-100 text-gray-500"
+          >
             <Icon name="ChevronLeft" size={20} />
           </button>
         }
@@ -218,7 +233,8 @@ export default function CrmInvoiceEditor() {
         <div className="max-w-3xl space-y-6">
           {saveError && (
             <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-              <Icon name="AlertCircle" size={16} />{saveError}
+              <Icon name="AlertCircle" size={16} />
+              {saveError}
             </div>
           )}
 
@@ -228,73 +244,162 @@ export default function CrmInvoiceEditor() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Cliente</label>
-                <select disabled={!isNew} value={customerId} onChange={e => setCustomerId(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50">
+                <select
+                  disabled={!isNew}
+                  value={customerId}
+                  onChange={(e) => setCustomerId(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50"
+                >
                   <option value="">Sin cliente asignado</option>
-                  {customers.map(c => <option key={c.id} value={c.id}>{c.name}{c.company ? ` — ${c.company}` : ''}</option>)}
+                  {customers.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}{c.company ? ` — ${c.company}` : ''}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Fecha de emisión</label>
-                <input type="date" disabled={!isNew} value={issueDate} onChange={e => setIssueDate(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50" />
+                <input
+                  type="date"
+                  disabled={!isNew}
+                  value={issueDate}
+                  onChange={(e) => setIssueDate(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50"
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Fecha de vencimiento (opcional)</label>
-                <input type="date" disabled={!isNew} value={dueDate} onChange={e => setDueDate(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50" />
+                <input
+                  type="date"
+                  disabled={!isNew}
+                  value={dueDate}
+                  onChange={(e) => setDueDate(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50"
+                />
               </div>
               <div className="sm:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Notas (visibles en el PDF)</label>
-                <textarea disabled={!isNew} value={notes} onChange={e => setNotes(e.target.value)} rows={2} placeholder="Observaciones generales…" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none disabled:bg-gray-50" />
+                <textarea
+                  disabled={!isNew}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={2}
+                  placeholder="Observaciones generales…"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none disabled:bg-gray-50"
+                />
               </div>
             </div>
           </div>
 
           {/* Condiciones comerciales */}
           <div className="bg-white border border-gray-200 rounded-xl p-5">
-            <h3 className="text-sm font-semibold text-gray-700 mb-4">Condiciones comerciales <span className="text-gray-400 font-normal">(opcionales)</span></h3>
+            <h3 className="text-sm font-semibold text-gray-700 mb-4">
+              Condiciones comerciales{' '}
+              <span className="text-gray-400 font-normal">(opcionales)</span>
+            </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Forma de pago</label>
-                <input type="text" disabled={!isNew} value={paymentTerms} onChange={e => setPaymentTerms(e.target.value)} placeholder="Ej: 50% anticipo, 50% contra entrega" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50" />
+                <input type="text" disabled={!isNew} value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} placeholder="Ej: 50% anticipo, 50% contra entrega" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Plazo de entrega</label>
-                <input type="text" disabled={!isNew} value={deliveryDays} onChange={e => setDeliveryDays(e.target.value)} placeholder="Ej: 5 días hábiles" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50" />
+                <input type="text" disabled={!isNew} value={deliveryDays} onChange={(e) => setDeliveryDays(e.target.value)} placeholder="Ej: 5 días hábiles" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Método de entrega</label>
-                <input type="text" disabled={!isNew} value={deliveryMethod} onChange={e => setDeliveryMethod(e.target.value)} placeholder="Ej: Despacho a domicilio, Retiro en tienda" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50" />
+                <input type="text" disabled={!isNew} value={deliveryMethod} onChange={(e) => setDeliveryMethod(e.target.value)} placeholder="Ej: Despacho a domicilio, Retiro en tienda" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Observaciones comerciales</label>
-                <input type="text" disabled={!isNew} value={commercialNotes} onChange={e => setCommercialNotes(e.target.value)} placeholder="Ej: Precios no incluyen IVA" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50" />
+                <input type="text" disabled={!isNew} value={commercialNotes} onChange={(e) => setCommercialNotes(e.target.value)} placeholder="Ej: Precios no incluyen IVA" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50" />
               </div>
             </div>
           </div>
 
-          {/* Ítems */}
+          {/* Líneas */}
           <div className="bg-white border border-gray-200 rounded-xl p-5">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-semibold text-gray-700">Productos y servicios</h3>
-              {!isNew && <span className="text-xs text-gray-400">{items.length} ítem{items.length !== 1 ? 's' : ''}</span>}
+              {items.length > 0 && (
+                <span className="text-xs text-gray-400">
+                  {items.length} ítem{items.length !== 1 ? 's' : ''}
+                </span>
+              )}
             </div>
+
             {isNew ? (
               <>
-                <div className="space-y-3">
-                  {items.map((item, idx) => (
-                    <ItemRow key={idx} item={item} idx={idx} products={products} onChange={handleItemChange} onRemove={handleItemRemove} readOnly={false} />
-                  ))}
+                {items.length === 0 ? (
+                  <p className="text-sm text-gray-400 text-center py-6">
+                    Aún no hay ítems. Agregá un producto o un cargo manual.
+                  </p>
+                ) : (
+                  <div className="space-y-3 mb-4">
+                    {items.map((item, idx) => (
+                      <CrmLineItemRow
+                        key={idx}
+                        item={item}
+                        idx={idx}
+                        onChange={handleItemChange}
+                        onRemove={handleItemRemove}
+                      />
+                    ))}
+                  </div>
+                )}
+
+                {/* Botones agregar */}
+                <div className="flex flex-col sm:flex-row gap-2 mt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowProductModal(true)}
+                    className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border-2 border-dashed border-blue-200 text-blue-600 hover:border-blue-400 hover:bg-blue-50 text-sm font-medium transition-colors"
+                  >
+                    <Icon name="Search" size={15} />
+                    Producto del catálogo
+                  </button>
+
+                  <div className="relative flex-1" ref={chargeMenuRef}>
+                    <button
+                      type="button"
+                      onClick={() => setShowChargeMenu((v) => !v)}
+                      className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border-2 border-dashed border-gray-200 text-gray-600 hover:border-gray-400 hover:bg-gray-50 text-sm font-medium transition-colors"
+                    >
+                      <Icon name="Plus" size={15} />
+                      Cargo manual
+                      <Icon name="ChevronDown" size={13} />
+                    </button>
+
+                    {showChargeMenu && (
+                      <div className="absolute bottom-full mb-1 left-0 right-0 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden z-10">
+                        {MANUAL_CHARGES.map((charge) => (
+                          <button
+                            key={charge.name}
+                            type="button"
+                            onClick={() => addManualCharge(charge.name)}
+                            className="w-full flex items-center gap-2.5 px-4 py-2.5 hover:bg-gray-50 text-sm text-gray-700 transition-colors border-b border-gray-50 last:border-0"
+                          >
+                            <Icon name={charge.icon} size={14} color="#9ca3af" />
+                            {charge.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <button
-                  onClick={addItem}
-                  className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-lg border-2 border-dashed border-gray-300 text-gray-600 hover:border-blue-400 hover:text-blue-600 text-sm font-medium w-full justify-center transition-colors"
-                >
-                  <Icon name="Plus" size={16} />Agregar ítem (producto, flete, servicio, etc.)
-                </button>
               </>
             ) : (
               <div>
                 {items.map((item, idx) => (
-                  <ItemRow key={idx} item={item} idx={idx} products={products} onChange={() => {}} onRemove={() => {}} readOnly={true} />
+                  <CrmLineItemRow
+                    key={idx}
+                    item={item}
+                    idx={idx}
+                    onChange={() => {}}
+                    onRemove={() => {}}
+                    readOnly
+                  />
                 ))}
               </div>
             )}
@@ -303,17 +408,19 @@ export default function CrmInvoiceEditor() {
           {/* Totales */}
           <div className="bg-white border border-gray-200 rounded-xl p-5">
             <div className="flex flex-col gap-2 sm:max-w-xs sm:ml-auto">
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Subtotal bruto</span>
-                <span className="text-gray-700">{fmt(subtotal + discountTotal)}</span>
-              </div>
+              {discountTotal > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Subtotal bruto</span>
+                  <span className="text-gray-700">{fmt(subtotal + discountTotal)}</span>
+                </div>
+              )}
               {discountTotal > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500">Descuentos</span>
-                  <span className="text-green-600">-{fmt(discountTotal)}</span>
+                  <span className="text-green-600">−{fmt(discountTotal)}</span>
                 </div>
               )}
-              <div className="flex justify-between border-t border-gray-200 pt-2">
+              <div className={`flex justify-between ${discountTotal > 0 ? 'border-t border-gray-200 pt-2' : ''}`}>
                 <span className="font-bold text-gray-900 text-base">Total</span>
                 <span className="font-bold text-gray-900 text-base">{fmt(subtotal)}</span>
               </div>
@@ -321,16 +428,40 @@ export default function CrmInvoiceEditor() {
           </div>
 
           {isNew && (
-            <div className="flex flex-col sm:flex-row sm:justify-end gap-3 pb-6">
-              <button onClick={() => navigate('/crm/facturas')} className="w-full sm:w-auto px-4 py-3 sm:py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm text-center">Cancelar</button>
-              <button onClick={handleSave} disabled={saving} className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 sm:py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium disabled:opacity-60">
-                {saving ? <Icon name="Loader2" size={15} className="animate-spin" /> : <Icon name="Save" size={15} />}
-                Crear factura
-              </button>
-            </div>
+            <>
+              {saveError && (
+                <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                  <Icon name="AlertCircle" size={16} />{saveError}
+                </div>
+              )}
+              <div className="flex flex-col sm:flex-row sm:justify-end gap-3 pb-6">
+                <button
+                  onClick={() => navigate('/crm/facturas')}
+                  className="w-full sm:w-auto px-4 py-3 sm:py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm text-center"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 sm:py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium disabled:opacity-60"
+                >
+                  {saving ? <Icon name="Loader2" size={15} className="animate-spin" /> : <Icon name="Save" size={15} />}
+                  Crear factura
+                </button>
+              </div>
+            </>
           )}
         </div>
       </DashboardLayoutContent>
+
+      {showProductModal && (
+        <CrmProductSearchModal
+          products={products}
+          onSelect={addProductFromCatalog}
+          onClose={() => setShowProductModal(false)}
+        />
+      )}
 
       {showPdf && saved && (
         <CrmDocumentPdf
