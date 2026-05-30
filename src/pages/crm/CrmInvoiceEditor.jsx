@@ -325,32 +325,55 @@ export default function CrmInvoiceEditor() {
           </button>
         }
         leftSpacer={false}
-      >
-        <div className="flex items-center gap-2">
-          {!isNew && saved && (
-            <>
-              <span className={`text-xs px-2 py-1 rounded-full font-medium ${STATUS_STYLES[saved.status] || ''}`}>
-                {saved.status.charAt(0).toUpperCase() + saved.status.slice(1)}
-              </span>
+        mobileActions={
+          <div className="flex gap-2 w-full">
+            {!isNew && saved && (
               <button
                 onClick={() => setShowPdf(true)}
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm font-medium"
+                className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm font-medium"
               >
-                <Icon name="FileDown" size={15} />PDF
+                <Icon name="FileDown" size={15} />
+                Ver PDF
               </button>
-            </>
-          )}
-          {isNew && (
+            )}
+            {isNew && (
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium disabled:opacity-60"
+              >
+                {saving ? <Icon name="Loader2" size={15} className="animate-spin" /> : <Icon name="Save" size={15} />}
+                Crear factura
+              </button>
+            )}
+          </div>
+        }
+      >
+        {/* Desktop: botones inline a la derecha */}
+        {!isNew && saved && (
+          <>
+            <span className={`text-xs px-2 py-1 rounded-full font-medium ${STATUS_STYLES[saved.status] || ''}`}>
+              {saved.status.charAt(0).toUpperCase() + saved.status.slice(1)}
+            </span>
             <button
-              onClick={handleSave}
-              disabled={saving}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium disabled:opacity-60"
+              onClick={() => setShowPdf(true)}
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm font-medium"
             >
-              {saving ? <Icon name="Loader2" size={15} className="animate-spin" /> : <Icon name="Save" size={15} />}
-              Crear factura
+              <Icon name="FileDown" size={15} />
+              Ver PDF
             </button>
-          )}
-        </div>
+          </>
+        )}
+        {isNew && (
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium disabled:opacity-60"
+          >
+            {saving ? <Icon name="Loader2" size={15} className="animate-spin" /> : <Icon name="Save" size={15} />}
+            Crear factura
+          </button>
+        )}
       </PanelHeader>
 
       <DashboardLayoutContent>

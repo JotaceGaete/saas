@@ -17,6 +17,7 @@ export default function PanelHeader({
   leftSpacer = true,
   leftAction,
   children,
+  mobileActions,
   className = '',
   style = {},
 }) {
@@ -35,7 +36,7 @@ export default function PanelHeader({
       role="banner"
     >
       <div
-        className="flex items-center justify-between gap-3 px-4 md:px-6 lg:pl-4 lg:pr-6 py-0"
+        className="flex items-center gap-3 px-4 md:px-6 lg:pl-4 lg:pr-6 py-0"
         style={{ minHeight: HEADER_BAR_HEIGHT }}
       >
         {leftSpacer && (
@@ -48,8 +49,19 @@ export default function PanelHeader({
           {title}
           {subtitle}
         </div>
-        {children}
+        {/* En desktop siempre visible. En móvil se oculta si hay mobileActions. */}
+        {children && (
+          <div className={`flex-shrink-0 flex items-center gap-2${mobileActions ? ' hidden sm:flex' : ''}`}>
+            {children}
+          </div>
+        )}
       </div>
+      {/* Segunda fila solo en móvil */}
+      {mobileActions && (
+        <div className="sm:hidden flex gap-2 px-4 pb-3">
+          {mobileActions}
+        </div>
+      )}
     </div>
   );
 }

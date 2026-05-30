@@ -311,25 +311,46 @@ export default function CrmQuoteEditor() {
           </button>
         }
         leftSpacer={false}
-      >
-        <div className="flex items-center gap-2">
-          {!isNew && (
+        mobileActions={
+          <div className="flex gap-2 w-full">
+            {!isNew && (
+              <button
+                onClick={() => setShowPdf(true)}
+                className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm font-medium"
+              >
+                <Icon name="FileDown" size={15} />
+                Ver PDF
+              </button>
+            )}
             <button
-              onClick={() => setShowPdf(true)}
-              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm font-medium"
+              onClick={handleSave}
+              disabled={saving}
+              className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium disabled:opacity-60"
             >
-              <Icon name="FileDown" size={15} />PDF
+              {saving ? <Icon name="Loader2" size={15} className="animate-spin" /> : <Icon name="Save" size={15} />}
+              {isNew ? 'Crear presupuesto' : 'Guardar'}
             </button>
-          )}
+          </div>
+        }
+      >
+        {/* Desktop: botones inline a la derecha */}
+        {!isNew && (
           <button
-            onClick={handleSave}
-            disabled={saving}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium disabled:opacity-60"
+            onClick={() => setShowPdf(true)}
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm font-medium"
           >
-            {saving ? <Icon name="Loader2" size={15} className="animate-spin" /> : <Icon name="Save" size={15} />}
-            {isNew ? 'Crear presupuesto' : 'Guardar cambios'}
+            <Icon name="FileDown" size={15} />
+            Ver PDF
           </button>
-        </div>
+        )}
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium disabled:opacity-60"
+        >
+          {saving ? <Icon name="Loader2" size={15} className="animate-spin" /> : <Icon name="Save" size={15} />}
+          {isNew ? 'Crear presupuesto' : 'Guardar cambios'}
+        </button>
       </PanelHeader>
 
       <DashboardLayoutContent>
