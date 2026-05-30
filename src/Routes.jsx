@@ -96,15 +96,16 @@ const Routes = () => {
             <Route path="/register" element={<BusinessRegistration />} />
             <Route path="/landing-page" element={<LandingPage />} />
             <Route path="/complete-business-setup" element={<RequireAuth><CompleteBusinessSetupPage /></RequireAuth>} />
-            <Route path="/crm" element={<RequireAuth><CrmDashboard /></RequireAuth>} />
-            <Route path="/crm/clientes" element={<RequireAuth><CrmCustomers /></RequireAuth>} />
-            <Route path="/crm/presupuestos" element={<RequireAuth><CrmQuotes /></RequireAuth>} />
-            <Route path="/crm/presupuestos/nuevo" element={<RequireAuth><CrmQuoteEditor /></RequireAuth>} />
-            <Route path="/crm/presupuestos/:id" element={<RequireAuth><CrmQuoteEditor /></RequireAuth>} />
-            <Route path="/crm/facturas" element={<RequireAuth><CrmInvoices /></RequireAuth>} />
-            <Route path="/crm/facturas/nueva" element={<RequireAuth><CrmInvoiceEditor /></RequireAuth>} />
-            <Route path="/crm/facturas/:id" element={<RequireAuth><CrmInvoiceEditor /></RequireAuth>} />
-            <Route path="/crm/stock" element={<RequireAuth><CrmStock /></RequireAuth>} />
+            {/* CRM — acceso exclusivo admin hasta habilitación general (feature flag: CRM_PUBLIC) */}
+            <Route path="/crm" element={<RequireAdmin><CrmDashboard /></RequireAdmin>} />
+            <Route path="/crm/clientes" element={<RequireAdmin><CrmCustomers /></RequireAdmin>} />
+            <Route path="/crm/presupuestos" element={<RequireAdmin><CrmQuotes /></RequireAdmin>} />
+            <Route path="/crm/presupuestos/nuevo" element={<RequireAdmin><CrmQuoteEditor /></RequireAdmin>} />
+            <Route path="/crm/presupuestos/:id" element={<RequireAdmin><CrmQuoteEditor /></RequireAdmin>} />
+            <Route path="/crm/facturas" element={<RequireAdmin><CrmInvoices /></RequireAdmin>} />
+            <Route path="/crm/facturas/nueva" element={<RequireAdmin><CrmInvoiceEditor /></RequireAdmin>} />
+            <Route path="/crm/facturas/:id" element={<RequireAdmin><CrmInvoiceEditor /></RequireAdmin>} />
+            <Route path="/crm/stock" element={<RequireAdmin><CrmStock /></RequireAdmin>} />
             <Route path="/business-configuration" element={<RequireAuth><BusinessConfiguration /></RequireAuth>} />
             <Route path="/product-management" element={<RequireAuth><ProductManagement /></RequireAuth>} />
             <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />

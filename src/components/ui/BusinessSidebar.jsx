@@ -16,13 +16,14 @@ const NAV_ITEMS = [
   { label: 'Productos', path: '/product-management', icon: 'Package' },
   { label: 'Pedidos', path: '/orders', icon: 'ShoppingCart' },
   { label: 'Historial pedidos', path: '/orders/historial', icon: 'History' },
-  { label: '— CRM —', path: null, icon: null, section: true },
-  { label: 'CRM', path: '/crm', icon: 'BarChart2' },
-  { label: 'Clientes', path: '/crm/clientes', icon: 'Users' },
-  { label: 'Presupuestos', path: '/crm/presupuestos', icon: 'FileText' },
-  { label: 'Facturas internas', path: '/crm/facturas', icon: 'Receipt' },
-  { label: 'Stock', path: '/crm/stock', icon: 'Archive' },
-  { label: '—', path: null, icon: null, section: true },
+  // CRM_ADMIN_ONLY: estos ítems se muestran solo a admins (ver filtro adminCrmItems más abajo)
+  { label: '— CRM —', path: null, icon: null, section: true, adminOnly: true },
+  { label: 'CRM', path: '/crm', icon: 'BarChart2', adminOnly: true },
+  { label: 'Clientes', path: '/crm/clientes', icon: 'Users', adminOnly: true },
+  { label: 'Presupuestos', path: '/crm/presupuestos', icon: 'FileText', adminOnly: true },
+  { label: 'Facturas internas', path: '/crm/facturas', icon: 'Receipt', adminOnly: true },
+  { label: 'Stock', path: '/crm/stock', icon: 'Archive', adminOnly: true },
+  { label: '—', path: null, icon: null, section: true, adminOnly: true },
   { label: 'Configuración', path: '/business-configuration', icon: 'Settings' },
   { label: 'Diseño', path: '/design', icon: 'Palette' },
   { label: 'Plan y facturación', path: '/planes', icon: 'CreditCard' },
@@ -146,7 +147,7 @@ Motivo (opcional):`;
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto overflow-x-hidden px-2 py-2.5" aria-label="Navegación principal">
         <ul className="space-y-0.5" role="list">
-          {NAV_ITEMS?.map((item, idx) => {
+          {NAV_ITEMS?.filter(item => !item?.adminOnly || isAdmin)?.map((item, idx) => {
             if (item?.section) {
               if (collapsed) return null;
               return (
