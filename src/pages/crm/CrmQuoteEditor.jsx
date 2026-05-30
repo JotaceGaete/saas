@@ -326,8 +326,8 @@ export default function CrmQuoteEditor() {
                 onClick={() => setShowPdf(true)}
                 className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm font-medium"
               >
-                <Icon name="FileDown" size={15} />
-                Ver PDF
+                <Icon name="Eye" size={15} />
+                Vista previa
               </button>
             )}
             <button
@@ -347,8 +347,8 @@ export default function CrmQuoteEditor() {
             onClick={() => setShowPdf(true)}
             className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm font-medium"
           >
-            <Icon name="FileDown" size={15} />
-            Ver PDF
+            <Icon name="Eye" size={15} />
+            Vista previa
           </button>
         )}
         <button

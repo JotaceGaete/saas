@@ -336,35 +336,100 @@ function CrmPdfDocument({ type, document: doc, business, customer, extra = {} })
 }
 
 // ─── Wrapper con visor ─────────────────────────────────────────────────────────
+function MobileDocumentPreview({ type, document: doc, business, customer }) {
+  const isQuote = type === 'quote';
+  const items = isQuote ? (doc.crm_quote_items || []) : (doc.crm_invoice_items || []);
+  const docNum = isQuote ? formatQuoteNumber(doc.quote_number) : formatInvoiceNumber(doc.invoice_number);
+  const docTitle = isQuote ? 'Presupuesto' : 'Factura interna';
+  const currency = business?.currency || 'CLP';
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl bg-white p-4 shadow-sm">
+        <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">{docTitle}</p>
+        <h3 className="mt-1 text-lg font-bold text-gray-900">{docNum}</h3>
+        <p className="mt-2 text-sm text-gray-500">{business?.name || 'Mi negocio'}</p>
+      </div>
+
+      <div className="rounded-xl bg-white p-4 shadow-sm">
+        <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Cliente</p>
+        <p className="mt-1 text-sm font-semibold text-gray-900">{customer?.name || 'Sin cliente asignado'}</p>
+        {customer?.email && <p className="mt-1 text-sm text-gray-500">{customer.email}</p>}
+        {customer?.phone && <p className="mt-1 text-sm text-gray-500">{fmtPhone(customer.phone)}</p>}
+      </div>
+
+      <div className="rounded-xl bg-white p-4 shadow-sm">
+        <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Items</p>
+        <div className="mt-3 divide-y divide-gray-100">
+          {items.map((item, idx) => (
+            <div key={`${item.name}-${idx}`} className="py-3 first:pt-0 last:pb-0">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-gray-900">{item.name}</p>
+                  {!!item.description && <p className="mt-1 text-xs text-gray-500">{item.description}</p>}
+                  <p className="mt-1 text-xs text-gray-400">Cant. {item.quantity}</p>
+                </div>
+                <p className="shrink-0 text-sm font-semibold text-gray-900">{fmtMoney(item.subtotal, currency)}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="rounded-xl bg-gray-900 p-4 shadow-sm">
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-medium text-gray-300">Total</span>
+          <span className="text-xl font-bold text-white">{fmtMoney(doc.total, currency)}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function CrmDocumentPdf({ type, document: doc, business, customer, extra, onClose }) {
   const filename = type === 'quote'
     ? `presupuesto-${formatQuoteNumber(doc?.quote_number)}.pdf`
     : `nota-venta-${formatInvoiceNumber(doc?.invoice_number)}.pdf`;
+  const modalTitle = type === 'quote'
+    ? `Vista previa del presupuesto ${formatQuoteNumber(doc?.quote_number)}`
+    : `Vista previa de la factura ${formatInvoiceNumber(doc?.invoice_number)}`;
 
   return (
-    <div className="fixed inset-0 bg-black/80 z-50 flex flex-col">
-      <div className="flex items-center justify-between px-5 py-3 bg-white border-b border-gray-200 shadow-sm">
-        <div className="flex items-center gap-3">
-          <button onClick={onClose} className="p-2 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg">
+    <div className="fixed inset-0 z-50 bg-black/75 p-0 md:p-6">
+      <div className="flex h-full w-full flex-col overflow-hidden bg-white shadow-2xl md:rounded-2xl">
+        <div className="flex items-center justify-between gap-3 border-b border-gray-200 bg-white px-4 py-3 shadow-sm md:px-5">
+          <div className="flex min-w-0 items-center gap-3">
+          <button
+            onClick={onClose}
+            className="shrink-0 rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-800"
+            aria-label="Cerrar vista previa"
+          >
             <Icon name="X" size={18} />
           </button>
-          <span className="font-semibold text-gray-800 text-sm">{filename}</span>
-        </div>
-        <PDFDownloadLink
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-gray-900">{modalTitle}</p>
+            <p className="truncate text-xs text-gray-400">{filename}</p>
+          </div>
+          </div>
+          <PDFDownloadLink
           document={<CrmPdfDocument type={type} document={doc} business={business} customer={customer} extra={extra} />}
           fileName={filename}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium"
+          className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 md:px-4"
         >
           {({ loading }) => loading
-            ? <><Icon name="Loader2" size={15} className="animate-spin" />Preparando…</>
-            : <><Icon name="Download" size={15} />Descargar PDF</>
+            ? <><Icon name="Loader2" size={15} className="animate-spin" /><span className="hidden sm:inline">Preparando...</span></>
+            : <><Icon name="Download" size={15} /><span className="hidden sm:inline">Descargar PDF</span><span className="sm:hidden">PDF</span></>
           }
-        </PDFDownloadLink>
-      </div>
-      <div className="flex-1 overflow-hidden">
-        <PDFViewer width="100%" height="100%" style={{ border: 'none' }}>
-          <CrmPdfDocument type={type} document={doc} business={business} customer={customer} extra={extra} />
-        </PDFViewer>
+          </PDFDownloadLink>
+        </div>
+        <div className="hidden flex-1 overflow-hidden md:block">
+          <PDFViewer width="100%" height="100%" style={{ border: 'none' }}>
+            <CrmPdfDocument type={type} document={doc} business={business} customer={customer} extra={extra} />
+          </PDFViewer>
+        </div>
+        <div className="flex-1 overflow-y-auto bg-gray-100 p-4 md:hidden">
+          <MobileDocumentPreview type={type} document={doc} business={business} customer={customer} />
+        </div>
       </div>
     </div>
   );
