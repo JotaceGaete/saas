@@ -115,14 +115,14 @@ export default function CrmQuotes() {
                 <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-gray-100">
                   <button
                     onClick={() => navigate(`/crm/presupuestos/${q.id}`)}
-                    className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50"
+                    className="inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50"
                   >
                     <Icon name="Pencil" size={13} />Ver / Editar
                   </button>
                   <button
                     onClick={() => handleDuplicate(q.id)}
                     disabled={!!busy}
-                    className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                   >
                     <Icon name="Copy" size={13} />Duplicar
                   </button>
@@ -130,7 +130,7 @@ export default function CrmQuotes() {
                     <button
                       onClick={() => handleStatus(q.id, 'enviado')}
                       disabled={!!busy}
-                      className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+                      className="inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 disabled:opacity-50"
                     >
                       <Icon name="Send" size={13} />Marcar enviado
                     </button>
@@ -140,14 +140,14 @@ export default function CrmQuotes() {
                       <button
                         onClick={() => handleStatus(q.id, 'aceptado')}
                         disabled={!!busy}
-                        className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-green-50 text-green-700 hover:bg-green-100 disabled:opacity-50"
+                        className="inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg bg-green-50 text-green-700 hover:bg-green-100 disabled:opacity-50"
                       >
                         <Icon name="ThumbsUp" size={13} />Aceptado
                       </button>
                       <button
                         onClick={() => handleStatus(q.id, 'rechazado')}
                         disabled={!!busy}
-                        className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-50"
+                        className="inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-50"
                       >
                         <Icon name="ThumbsDown" size={13} />Rechazado
                       </button>
@@ -157,13 +157,13 @@ export default function CrmQuotes() {
                     <button
                       onClick={() => handleConvert(q)}
                       disabled={!!busy}
-                      className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 font-medium"
+                      className="inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 font-medium"
                     >
                       <Icon name="ArrowRightCircle" size={13} />Convertir a factura
                     </button>
                   )}
                   {q.converted_to_invoice_id && (
-                    <span className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 text-gray-400">
+                    <span className="inline-flex items-center gap-1.5 text-xs px-3 py-2 text-gray-400">
                       <Icon name="CheckCircle2" size={13} />Facturado
                     </span>
                   )}

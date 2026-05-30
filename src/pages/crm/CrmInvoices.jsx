@@ -96,7 +96,7 @@ export default function CrmInvoices() {
                 <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-gray-100">
                   <button
                     onClick={() => navigate(`/crm/facturas/${inv.id}`)}
-                    className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50"
+                    className="inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50"
                   >
                     <Icon name="Eye" size={13} />Ver / PDF
                   </button>
@@ -105,21 +105,21 @@ export default function CrmInvoices() {
                       <button
                         onClick={() => handleStatus(inv.id, 'pagada')}
                         disabled={!!busy}
-                        className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-green-50 text-green-700 hover:bg-green-100 font-medium disabled:opacity-50"
+                        className="inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg bg-green-50 text-green-700 hover:bg-green-100 font-medium disabled:opacity-50"
                       >
                         <Icon name="CheckCircle2" size={13} />Marcar pagada
                       </button>
                       <button
                         onClick={() => handleStatus(inv.id, 'anulada')}
                         disabled={!!busy}
-                        className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-50"
+                        className="inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-50"
                       >
                         <Icon name="XCircle" size={13} />Anular
                       </button>
                     </>
                   )}
                   {inv.status === 'pagada' && (
-                    <span className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 text-green-600">
+                    <span className="inline-flex items-center gap-1.5 text-xs px-3 py-2 text-green-600">
                       <Icon name="CheckCircle2" size={13} />Pagada {inv.paid_at ? `el ${new Date(inv.paid_at).toLocaleDateString('es-CL')}` : ''}
                     </span>
                   )}
