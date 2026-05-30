@@ -18,9 +18,14 @@ export default function PanelHeader({
   leftAction,
   children,
   mobileActions,
+  debugActions = false,
   className = '',
   style = {},
 }) {
+  const actionDebugClass = debugActions
+    ? 'rounded-xl border border-amber-300 bg-amber-50/70 p-1'
+    : '';
+
   return (
     <div
       className={`sticky top-0 z-50 flex-shrink-0 border-b flex flex-col ${className}`}
@@ -51,19 +56,19 @@ export default function PanelHeader({
         </div>
         {/* En desktop siempre visible. En móvil se oculta si hay mobileActions. */}
         {children && !mobileActions && (
-          <div className="flex flex-shrink-0 items-center gap-2">
+          <div className={`flex flex-shrink-0 items-center gap-2 ${actionDebugClass}`}>
             {children}
           </div>
         )}
         {children && mobileActions && (
-          <div className="hidden lg:flex flex-shrink-0 items-center gap-2">
+          <div className={`hidden lg:flex flex-shrink-0 items-center gap-2 ${actionDebugClass}`}>
             {children}
           </div>
         )}
       </div>
       {/* Segunda fila en móvil y ancho medio (sin sidebar) */}
       {mobileActions && (
-        <div className="lg:hidden flex gap-2 px-4 pb-3">
+        <div className={`lg:hidden flex gap-2 px-4 pb-3 ${debugActions ? 'border-t border-amber-300 bg-amber-50/70 pt-2' : ''}`}>
           {mobileActions}
         </div>
       )}

@@ -277,6 +277,7 @@ export default function CrmCustomers() {
       <PanelHeader
         title={<h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Clientes</h1>}
         subtitle={<p className="text-xs" style={{ color: 'var(--color-muted-foreground)' }}>{loading ? 'Cargando…' : `${customers.length} cliente${customers.length !== 1 ? 's' : ''}`}</p>}
+        debugActions
         mobileActions={
           <button
             onClick={() => setModal('new')}
@@ -297,6 +298,16 @@ export default function CrmCustomers() {
       </PanelHeader>
 
       <DashboardLayoutContent>
+        <div className="flex w-full sm:w-auto">
+          <button
+            onClick={() => setModal('new')}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-700 sm:w-auto"
+          >
+            <Icon name="UserPlus" size={16} />
+            Nuevo cliente
+          </button>
+        </div>
+
         {/* ── Métricas ── */}
         <div className="grid grid-cols-3 gap-3">
           <div className="bg-white border border-gray-200 rounded-xl p-4">
