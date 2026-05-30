@@ -360,18 +360,18 @@ export default function CrmQuoteEditor() {
 
           {/* Totales */}
           <div className="bg-white border border-gray-200 rounded-xl p-5">
-            <div className="flex flex-col items-end gap-2 max-w-xs ml-auto">
-              <div className="flex justify-between w-full text-sm">
+            <div className="flex flex-col gap-2 sm:max-w-xs sm:ml-auto">
+              <div className="flex justify-between text-sm">
                 <span className="text-gray-500">Subtotal bruto</span>
                 <span className="text-gray-700">{fmt(subtotal + discountTotal)}</span>
               </div>
               {discountTotal > 0 && (
-                <div className="flex justify-between w-full text-sm">
+                <div className="flex justify-between text-sm">
                   <span className="text-gray-500">Descuentos</span>
                   <span className="text-green-600">-{fmt(discountTotal)}</span>
                 </div>
               )}
-              <div className="flex justify-between w-full border-t border-gray-200 pt-2">
+              <div className="flex justify-between border-t border-gray-200 pt-2">
                 <span className="font-bold text-gray-900 text-base">Total</span>
                 <span className="font-bold text-gray-900 text-base">{fmt(subtotal)}</span>
               </div>
@@ -384,14 +384,14 @@ export default function CrmQuoteEditor() {
               <Icon name="AlertCircle" size={16} />{saveError}
             </div>
           )}
-          <div className="flex justify-end gap-3 pb-6">
-            <button onClick={() => navigate('/crm/presupuestos')} className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm">
+          <div className="flex flex-col sm:flex-row sm:justify-end gap-3 pb-6">
+            <button onClick={() => navigate('/crm/presupuestos')} className="w-full sm:w-auto px-4 py-3 sm:py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm text-center">
               Cancelar
             </button>
             <button
               onClick={handleSave}
               disabled={saving}
-              className="inline-flex items-center gap-2 px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium disabled:opacity-60"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 sm:py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium disabled:opacity-60"
             >
               {saving ? <Icon name="Loader2" size={15} className="animate-spin" /> : <Icon name="Save" size={15} />}
               {isNew ? 'Crear presupuesto' : 'Guardar cambios'}

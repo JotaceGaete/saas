@@ -85,7 +85,7 @@ export default function CrmDashboard() {
         ) : (
           <div className="space-y-6">
             {/* Métricas */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <MetricCard icon="FileText" label="Presupuestado este mes" value={fmt(stats?.totalPresupuestadoMes)} iconColor="bg-purple-100 text-purple-600" onClick={() => navigate('/crm/presupuestos')} />
               <MetricCard icon="Receipt" label="Facturado este mes" value={fmt(stats?.totalFacturadoMes)} iconColor="bg-green-100 text-green-600" onClick={() => navigate('/crm/facturas')} />
               <MetricCard icon="Users" label="Clientes" value={stats?.recentCustomers?.length ?? 0} iconColor="bg-blue-100 text-blue-600" onClick={() => navigate('/crm/clientes')} />
@@ -93,7 +93,7 @@ export default function CrmDashboard() {
             </div>
 
             {/* Accesos rápidos */}
-            <div className="flex flex-wrap gap-3">
+            <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-3">
               {[
                 { label: 'Nuevo cliente', icon: 'UserPlus', path: '/crm/clientes' },
                 { label: 'Nuevo presupuesto', icon: 'FilePlus', path: '/crm/presupuestos/nuevo' },
@@ -103,16 +103,16 @@ export default function CrmDashboard() {
                 <button
                   key={a.path}
                   onClick={() => navigate(a.path)}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 hover:border-blue-300 hover:shadow-sm text-gray-700 rounded-lg text-sm font-medium transition-all"
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-gray-200 hover:border-blue-300 hover:shadow-sm text-gray-700 rounded-lg text-sm font-medium transition-all"
                 >
-                  <Icon name={a.icon} size={15} className="text-blue-500" />
-                  {a.label}
+                  <Icon name={a.icon} size={15} className="text-blue-500 shrink-0" />
+                  <span className="truncate">{a.label}</span>
                 </button>
               ))}
             </div>
 
             {/* Listas recientes */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
               <RecentTable
                 title="Presupuestos recientes"
                 icon="FileText"

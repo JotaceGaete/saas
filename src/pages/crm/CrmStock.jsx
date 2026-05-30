@@ -221,49 +221,44 @@ export default function CrmStock() {
     const status = stockStatus(p);
     return (
       <div key={p.id} className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-sm transition-shadow">
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3 min-w-0">
-            {p.thumbnail_url ? (
-              <img src={p.thumbnail_url} alt={p.name} className="w-10 h-10 rounded-lg object-cover shrink-0" />
-            ) : (
-              <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center shrink-0">
-                <Icon name="Package" size={18} className="text-gray-400" />
-              </div>
-            )}
-            <div className="min-w-0">
-              <p className="font-semibold text-gray-900 truncate text-sm">{p.name}</p>
-              {p.category && <p className="text-xs text-gray-400">{p.category}</p>}
+        {/* Nombre + imagen */}
+        <div className="flex items-center gap-3 min-w-0 mb-3">
+          {p.thumbnail_url ? (
+            <img src={p.thumbnail_url} alt={p.name} className="w-10 h-10 rounded-lg object-cover shrink-0" />
+          ) : (
+            <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center shrink-0">
+              <Icon name="Package" size={18} className="text-gray-400" />
             </div>
+          )}
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold text-gray-900 truncate text-sm">{p.name}</p>
+            {p.category && <p className="text-xs text-gray-400">{p.category}</p>}
           </div>
-
-          <div className="flex items-center gap-6 shrink-0">
-            {/* Stock actual */}
-            <div className="text-center min-w-[48px]">
-              <p className="text-xs text-gray-400 mb-0.5">Stock</p>
-              <p className={`text-lg font-bold ${
-                status === 'agotado' ? 'text-red-500' :
-                status === 'bajo' ? 'text-yellow-500' :
-                status === 'ok' ? 'text-green-600' : 'text-gray-400'
-              }`}>
-                {p.stock_actual ?? '—'}
-              </p>
-            </div>
-            {/* Mínimo */}
-            <div className="text-center min-w-[56px]">
-              <p className="text-xs text-gray-400 mb-1">Mínimo</p>
-              <MinimoEditor product={p} onSave={handleMinimoSave} />
-            </div>
-            {/* Badge */}
-            {status === 'bajo' && <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full font-medium whitespace-nowrap">Stock bajo</span>}
-            {status === 'agotado' && <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-medium whitespace-nowrap">Agotado</span>}
-            {/* Botón */}
-            <button
-              onClick={() => setModal(p)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium whitespace-nowrap"
-            >
-              <Icon name="ArrowUpDown" size={13} />Movimiento
-            </button>
+        </div>
+        {/* Stock + mínimo + badge + botón */}
+        <div className="flex items-center gap-4 flex-wrap">
+          <div className="text-center">
+            <p className="text-xs text-gray-400 mb-0.5">Stock</p>
+            <p className={`text-lg font-bold leading-none ${
+              status === 'agotado' ? 'text-red-500' :
+              status === 'bajo' ? 'text-yellow-500' :
+              status === 'ok' ? 'text-green-600' : 'text-gray-400'
+            }`}>
+              {p.stock_actual ?? '—'}
+            </p>
           </div>
+          <div className="text-center">
+            <p className="text-xs text-gray-400 mb-1">Mínimo</p>
+            <MinimoEditor product={p} onSave={handleMinimoSave} />
+          </div>
+          {status === 'bajo' && <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full font-medium">Stock bajo</span>}
+          {status === 'agotado' && <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-medium">Agotado</span>}
+          <button
+            onClick={() => setModal(p)}
+            className="ml-auto inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium"
+          >
+            <Icon name="ArrowUpDown" size={13} />Movimiento
+          </button>
         </div>
       </div>
     );
@@ -286,7 +281,7 @@ export default function CrmStock() {
 
       <DashboardLayoutContent>
         <div className="mb-5">
-          <div className="relative max-w-sm">
+          <div className="relative w-full sm:max-w-sm">
             <Icon name="Search" size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               type="text"

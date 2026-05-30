@@ -77,17 +77,19 @@ export default function CrmInvoices() {
           <div className="space-y-3">
             {invoices.map(inv => (
               <div key={inv.id} className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-sm transition-shadow">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <span className="font-bold text-gray-900 text-sm whitespace-nowrap">{formatInvoiceNumber(inv.invoice_number)}</span>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_STYLES[inv.status] || 'bg-gray-100 text-gray-600'}`}>
-                      {inv.status.charAt(0).toUpperCase() + inv.status.slice(1)}
-                    </span>
-                    <span className="text-gray-500 text-sm truncate">{inv.wa_customers?.name || <em className="text-gray-400">Sin cliente</em>}</span>
+                <div className="flex items-start justify-between gap-3 min-w-0">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                      <span className="font-bold text-gray-900 text-sm whitespace-nowrap">{formatInvoiceNumber(inv.invoice_number)}</span>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_STYLES[inv.status] || 'bg-gray-100 text-gray-600'}`}>
+                        {inv.status.charAt(0).toUpperCase() + inv.status.slice(1)}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-500 truncate">{inv.wa_customers?.name || <em className="text-gray-400">Sin cliente</em>}</p>
                   </div>
-                  <div className="flex items-center gap-4 shrink-0">
-                    <span className="font-bold text-gray-900">{fmt(inv.total)}</span>
-                    <span className="text-xs text-gray-400">{new Date(inv.issue_date).toLocaleDateString('es-CL')}</span>
+                  <div className="text-right shrink-0">
+                    <p className="font-bold text-gray-900 text-sm">{fmt(inv.total)}</p>
+                    <p className="text-xs text-gray-400">{new Date(inv.issue_date).toLocaleDateString('es-CL')}</p>
                   </div>
                 </div>
 

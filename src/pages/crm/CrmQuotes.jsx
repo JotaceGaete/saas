@@ -95,17 +95,19 @@ export default function CrmQuotes() {
           <div className="space-y-3">
             {quotes.map(q => (
               <div key={q.id} className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-sm transition-shadow">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <span className="font-bold text-gray-900 text-sm whitespace-nowrap">{formatQuoteNumber(q.quote_number)}</span>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_STYLES[q.status] || 'bg-gray-100 text-gray-600'}`}>
-                      {STATUS_LABELS[q.status] || q.status}
-                    </span>
-                    <span className="text-gray-500 text-sm truncate">{q.wa_customers?.name || <em className="text-gray-400">Sin cliente</em>}</span>
+                <div className="flex items-start justify-between gap-3 min-w-0">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                      <span className="font-bold text-gray-900 text-sm whitespace-nowrap">{formatQuoteNumber(q.quote_number)}</span>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_STYLES[q.status] || 'bg-gray-100 text-gray-600'}`}>
+                        {STATUS_LABELS[q.status] || q.status}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-500 truncate">{q.wa_customers?.name || <em className="text-gray-400">Sin cliente</em>}</p>
                   </div>
-                  <div className="flex items-center gap-4 shrink-0">
-                    <span className="font-bold text-gray-900">{fmt(q.total)}</span>
-                    <span className="text-xs text-gray-400">{new Date(q.created_at).toLocaleDateString('es-CL')}</span>
+                  <div className="text-right shrink-0">
+                    <p className="font-bold text-gray-900 text-sm">{fmt(q.total)}</p>
+                    <p className="text-xs text-gray-400">{new Date(q.created_at).toLocaleDateString('es-CL')}</p>
                   </div>
                 </div>
 
