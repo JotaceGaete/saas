@@ -37,6 +37,7 @@ import AdminUserNewPage from './pages/admin/AdminUserNewPage';
 import AdminAuditLogPage from './pages/admin/AdminAuditLogPage';
 import AdminEmailsPage from './pages/admin/AdminEmailsPage';
 import AdminConfigRubrosPage from './pages/admin/AdminConfigRubrosPage';
+import TerminalTPV from './pages/crm/terminal';
 import PlansPage from './pages/plans';
 import BillingSuccessPage from './pages/billing/BillingSuccessPage';
 import BillingCancelPage from './pages/billing/BillingCancelPage';
@@ -98,6 +99,7 @@ const Routes = () => {
             <Route path="/customers/:customerId" element={<RequireAuth><CustomerPage /></RequireAuth>} />
             <Route path="/design" element={<RequireAuth><DesignPage /></RequireAuth>} />
             <Route path="/ayuda" element={<RequireAuth><HelpPage /></RequireAuth>} />
+            <Route path="/crm/terminal" element={<RequireAuth><TerminalTPV /></RequireAuth>} />
             <Route path="/login" element={<Login />} />
             <Route path="/verify-email" element={<VerifyEmailPage />} />
             <Route path="/auth/callback" element={<AuthCallback />} />

@@ -19,6 +19,7 @@ const NAV_ITEMS = [
   { label: 'Configuración', path: '/business-configuration', icon: 'Settings' },
   { label: 'Diseño', path: '/design', icon: 'Palette' },
   { label: 'Plan y facturación', path: '/planes', icon: 'CreditCard' },
+  { label: 'Terminal TPV', path: '/crm/terminal', icon: 'Monitor' },
   { label: 'Ayuda', path: '/ayuda', icon: 'HelpCircle' },
 ];
 
