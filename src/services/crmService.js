@@ -423,7 +423,6 @@ export async function createPosInvoice(businessId, { customerId, items = [], dis
       invoice_number: nextNum,
       issue_date: new Date().toISOString().slice(0, 10),
       status: 'pagada',
-      source: 'pos',
       subtotal: +subtotal.toFixed(2),
       discount_amount: discountAmount,
       total,
