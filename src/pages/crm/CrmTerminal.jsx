@@ -7,6 +7,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useIsDesktop } from 'hooks/useMediaQuery';
 import { getCrmCustomers, getCrmStockProducts, createPosInvoice } from '../../services/crmService';
 import { getEffectivePlanSlug } from '../../services/waBusinessService';
+import CrmThermalTicket from './components/CrmThermalTicket';
 
 const PAYMENT_METHODS = [
   { value: 'efectivo',      label: 'Efectivo',      icon: 'Banknote' },
@@ -90,7 +91,11 @@ export default function CrmTerminal() {
   const [paymentMethod, setPaymentMethod] = useState('efectivo');
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
-  const [success, setSuccess] = useState(null);
+  const [errorMsg, setErrorMsg] = useState(null);
+
+  // Ticket modal state — set after successful (or locally-fallback) sale
+  const [ticketData, setTicketData] = useState(null);
+
   const searchRef = useRef(null);
 
   useEffect(() => {
@@ -145,6 +150,8 @@ export default function CrmTerminal() {
   const total = subtotal - discountAmount;
   const cartCount = cart.reduce((s, i) => s + i.quantity, 0);
 
+  const selectedCustomer = customers.find(c => c.id === customerId) || null;
+
   const resetForm = () => {
     setCart([]);
     setCustomerId('');
@@ -153,12 +160,26 @@ export default function CrmTerminal() {
     setNotes('');
     setSearch('');
     setActiveCategory('');
-    searchRef.current?.focus();
+    setErrorMsg(null);
+    setTimeout(() => searchRef.current?.focus(), 50);
   };
 
   const handleRegister = async () => {
     if (cart.length === 0) return;
     setBusy(true);
+    setErrorMsg(null);
+
+    const saleSnapshot = {
+      items: [...cart],
+      customer: selectedCustomer,
+      paymentMethod,
+      discountAmount,
+      subtotal,
+      total,
+      notes: notes || null,
+      createdAt: new Date().toISOString(),
+    };
+
     const { data, error } = await createPosInvoice(business.id, {
       customerId: customerId || null,
       items: cart,
@@ -166,18 +187,33 @@ export default function CrmTerminal() {
       paymentMethod,
       notes: notes || null,
     });
+
     setBusy(false);
+
     if (error) {
-      alert('Error al registrar la venta: ' + error.message);
+      // DB failed — show ticket from local state anyway with a TODO marker
+      // TODO: implement dedicated pos_sales table when schema is ready
+      console.warn('[TPV] crm_invoices insert failed, showing local ticket:', error.message);
+      setTicketData({ sale: null, ...saleSnapshot });
       return;
     }
-    setSuccess(data);
+
+    setTicketData({ sale: data, ...saleSnapshot });
   };
 
+  const handleCloseTicket = () => {
+    setTicketData(null);
+  };
+
+  const handleNewSale = () => {
+    setTicketData(null);
+    resetForm();
+  };
+
+  // ── Sidebar layout helpers ──────────────────────────────────────────────────
   const sidebarWidth = sidebarCollapsed ? 'var(--sidebar-collapsed-width)' : 'var(--sidebar-width)';
   const mainMarginLeft = isDesktop && !sidebarHidden ? sidebarWidth : 0;
 
-  // Botón "Ocultar menú" — solo desktop, solo cuando sidebar visible
   const hideMenuBtn = isDesktop && !sidebarHidden ? (
     <button
       onClick={toggleSidebar}
@@ -197,7 +233,8 @@ export default function CrmTerminal() {
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'var(--color-background)' }}>
-      {/* Sidebar — se oculta completamente en modo TPV enfocado */}
+
+      {/* Sidebar */}
       {!sidebarHidden && (
         <BusinessSidebar
           isCollapsed={sidebarCollapsed}
@@ -205,15 +242,13 @@ export default function CrmTerminal() {
         />
       )}
 
-      {/* Botón flotante para reabrir sidebar cuando está oculto */}
+      {/* Floating button to reopen sidebar */}
       {sidebarHidden && isDesktop && (
         <button
           onClick={toggleSidebar}
-          className="fixed flex items-center gap-1.5 rounded-lg border bg-white px-2.5 py-1.5 text-xs font-medium shadow-md hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-all"
+          className="fixed flex items-center gap-1.5 rounded-lg border bg-white px-2.5 py-1.5 text-xs font-medium shadow-md hover:bg-muted transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           style={{
-            top: 12,
-            left: 12,
-            zIndex: 40,
+            top: 12, left: 12, zIndex: 40,
             fontFamily: 'var(--font-caption)',
             color: 'var(--color-foreground)',
             borderColor: 'var(--color-border)',
@@ -226,16 +261,13 @@ export default function CrmTerminal() {
         </button>
       )}
 
-      {/* Contenido principal */}
+      {/* Main */}
       <main
         className="flex flex-col min-h-screen"
-        style={{
-          marginLeft: mainMarginLeft,
-          transition: 'margin-left var(--transition-base)',
-        }}
+        style={{ marginLeft: mainMarginLeft, transition: 'margin-left var(--transition-base)' }}
       >
 
-        {/* ── PLAN GATE ──────────────────────────────────────────────────── */}
+        {/* ── PLAN GATE ──────────────────────────────────────────────────────── */}
         {!hasAccess && (
           <>
             <PanelHeader
@@ -259,47 +291,8 @@ export default function CrmTerminal() {
           </>
         )}
 
-        {/* ── SUCCESS SCREEN ─────────────────────────────────────────────── */}
-        {hasAccess && success && (
-          <>
-            <PanelHeader
-              title={<h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Terminal de ventas</h1>}
-            >
-              {hideMenuBtn}
-            </PanelHeader>
-            <div className="max-w-sm mx-auto w-full flex flex-col items-center text-center py-16 gap-6 px-6">
-              <div className="w-24 h-24 rounded-full bg-emerald-100 flex items-center justify-center">
-                <Icon name="CheckCircle2" size={48} className="text-emerald-500" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-gray-900">¡Venta registrada!</p>
-                <p className="text-gray-400 text-sm mt-1">
-                  NV-{String(success.invoice_number).padStart(4, '0')}
-                </p>
-                <p className="text-3xl font-bold text-emerald-600 mt-3">
-                  {fmt(success.total, business?.currency)}
-                </p>
-              </div>
-              <div className="flex flex-col sm:flex-row gap-3 w-full">
-                <button
-                  onClick={() => navigate(`/crm/facturas/${success.id}`)}
-                  className="flex-1 flex items-center justify-center gap-2 px-5 py-3 rounded-xl border border-gray-200 text-gray-700 text-sm font-medium hover:bg-gray-50"
-                >
-                  <Icon name="FileText" size={15} />Ver nota de venta
-                </button>
-                <button
-                  onClick={() => { setSuccess(null); resetForm(); }}
-                  className="flex-1 flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold"
-                >
-                  <Icon name="Plus" size={15} />Nueva venta
-                </button>
-              </div>
-            </div>
-          </>
-        )}
-
-        {/* ── MAIN POS ───────────────────────────────────────────────────── */}
-        {hasAccess && !success && (
+        {/* ── MAIN POS ───────────────────────────────────────────────────────── */}
+        {hasAccess && (
           <>
             <PanelHeader
               title={
@@ -316,12 +309,22 @@ export default function CrmTerminal() {
               {hideMenuBtn}
             </PanelHeader>
 
-            {/* Contenedor principal sin overflow-x-hidden para que el panel derecho no se corte */}
             <div className="w-full px-4 py-5 pb-24 sm:px-5 md:px-6 md:py-8 lg:px-8 lg:pb-8">
               <div className="flex flex-col lg:flex-row gap-5 lg:items-start w-full max-w-7xl">
 
                 {/* ── LEFT: search + categories + products ── */}
                 <div className="flex-1 min-w-0 flex flex-col gap-3">
+
+                  {/* Error banner */}
+                  {errorMsg && (
+                    <div className="flex items-start gap-2 p-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700">
+                      <Icon name="AlertCircle" size={16} color="currentColor" className="shrink-0 mt-0.5" />
+                      <span>{errorMsg}</span>
+                      <button onClick={() => setErrorMsg(null)} className="ml-auto shrink-0 text-red-400 hover:text-red-600">
+                        <Icon name="X" size={14} color="currentColor" />
+                      </button>
+                    </div>
+                  )}
 
                   {/* Search */}
                   <div className="relative">
@@ -572,6 +575,25 @@ export default function CrmTerminal() {
         )}
 
       </main>
+
+      {/* Thermal ticket modal — rendered outside main flow to avoid layout issues */}
+      {ticketData && (
+        <CrmThermalTicket
+          business={business}
+          sale={ticketData.sale}
+          items={ticketData.items}
+          customer={ticketData.customer}
+          paymentMethod={ticketData.paymentMethod}
+          discountAmount={ticketData.discountAmount}
+          subtotal={ticketData.subtotal}
+          total={ticketData.total}
+          notes={ticketData.notes}
+          createdAt={ticketData.createdAt}
+          onNewSale={handleNewSale}
+          onClose={handleCloseTicket}
+        />
+      )}
+
     </div>
   );
 }
