@@ -5,7 +5,7 @@ import DashboardLayoutContent from 'components/ui/DashboardLayoutContent';
 import PanelHeader from 'components/ui/PanelHeader';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
-import { getCrmQuotes, updateCrmQuote, duplicateCrmQuote, convertQuoteToInvoice, formatQuoteNumber } from '../../services/crmService';
+import { getCrmQuotes, updateCrmQuote, duplicateCrmQuote, convertQuoteToInvoice, formatQuoteNumber, getQuoteDocLabel } from '../../services/crmService';
 
 const STATUS_STYLES = {
   borrador: 'bg-gray-100 text-gray-600',
@@ -52,7 +52,7 @@ export default function CrmQuotes() {
   };
 
   const handleConvert = async (q) => {
-    if (!window.confirm(`¿Convertir ${formatQuoteNumber(q.quote_number)} en factura interna?`)) return;
+    if (!window.confirm(`¿Convertir ${formatQuoteNumber(q.quote_number, business?.documentTitleType)} en factura interna?`)) return;
     setBusy(q.id + 'conv');
     const { data, error } = await convertQuoteToInvoice(q.id);
     setBusy('');
@@ -60,18 +60,20 @@ export default function CrmQuotes() {
     else if (error) alert('Error: ' + error.message);
   };
 
+  const docLabel = getQuoteDocLabel(business?.documentTitleType);
+
   return (
     <DashboardAppShell>
       <PanelHeader
-        title={<h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Presupuestos</h1>}
-        subtitle={<p className="text-xs" style={{ color: 'var(--color-muted-foreground)' }}>{loading ? 'Cargando…' : `${quotes.length} presupuesto${quotes.length !== 1 ? 's' : ''}`}</p>}
+        title={<h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>{docLabel.title}s</h1>}
+        subtitle={<p className="text-xs" style={{ color: 'var(--color-muted-foreground)' }}>{loading ? 'Cargando…' : `${quotes.length} ${quotes.length !== 1 ? docLabel.plural : docLabel.singular}`}</p>}
         mobileActions={
           <button
             onClick={() => navigate('/crm/presupuestos/nuevo')}
             className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
           >
             <Icon name="FilePlus" size={16} />
-            Nuevo presupuesto
+            {docLabel.nuevo}
           </button>
         }
       >
@@ -80,7 +82,7 @@ export default function CrmQuotes() {
           className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
         >
           <Icon name="FilePlus" size={16} />
-          Nuevo presupuesto
+          {docLabel.nuevo}
         </button>
       </PanelHeader>
 
@@ -92,12 +94,12 @@ export default function CrmQuotes() {
         ) : quotes.length === 0 ? (
           <div className="text-center py-20">
             <Icon name="FileText" size={48} className="mx-auto mb-3 text-gray-300" />
-            <p className="text-gray-500 font-medium">Todavía no hay presupuestos.</p>
+            <p className="text-gray-500 font-medium">Todavía no hay {docLabel.plural}.</p>
             <button
               onClick={() => navigate('/crm/presupuestos/nuevo')}
               className="mt-4 inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
             >
-              <Icon name="FilePlus" size={16} />Crear primer presupuesto
+              <Icon name="FilePlus" size={16} />Crear primer {docLabel.singular}
             </button>
           </div>
         ) : (
@@ -107,7 +109,7 @@ export default function CrmQuotes() {
                 <div className="flex items-start justify-between gap-3 min-w-0">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap mb-0.5">
-                      <span className="font-bold text-gray-900 text-sm whitespace-nowrap">{formatQuoteNumber(q.quote_number)}</span>
+                      <span className="font-bold text-gray-900 text-sm whitespace-nowrap">{formatQuoteNumber(q.quote_number, business?.documentTitleType)}</span>
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_STYLES[q.status] || 'bg-gray-100 text-gray-600'}`}>
                         {STATUS_LABELS[q.status] || q.status}
                       </span>

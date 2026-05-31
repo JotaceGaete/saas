@@ -395,6 +395,7 @@ const mapBusinessFromDb = (row) => {
   scheduledPlanSlug: row?.scheduled_plan_slug ?? null,
   scheduledChangeAt: row?.scheduled_change_at ?? null,
   businessMode: row?.business_mode ?? 'store',
+  documentTitleType: row?.document_title_type || 'cotizacion',
   createdAt: row?.created_at,
   updatedAt: row?.updated_at,
 };
@@ -782,6 +783,7 @@ export async function updateBusiness(businessId, updates) {
   if (updates?.tiktokUrl    !== undefined) dbUpdates.tiktok_url    = normalizeTikTokUrl(updates.tiktokUrl);
   if (updates?.facebookUrl  !== undefined) dbUpdates.facebook_url  = normalizeSharedSocialUrl(updates.facebookUrl,  'https://facebook.com');
   if (updates?.businessMode !== undefined)     dbUpdates.business_mode = updates?.businessMode;
+  if (updates?.documentTitleType !== undefined) dbUpdates.document_title_type = updates?.documentTitleType;
   if (updates?.printLegend !== undefined || updates?.print_legend !== undefined) {
     const rawPrintLegend = updates?.printLegend !== undefined ? updates?.printLegend : updates?.print_legend;
     const normalizedPrintLegend = String(rawPrintLegend ?? '').trim();

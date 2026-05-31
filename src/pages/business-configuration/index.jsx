@@ -93,6 +93,7 @@ function buildSavedConfigSnapshotFromBusiness(business) {
       currency: business?.currency || labels.currency,
       rubroId: business?.rubroId || '',
       businessMode: business?.businessMode || BUSINESS_MODES.STORE,
+      documentTitleType: business?.documentTitleType || 'cotizacion',
     },
     design: designSnap,
     orderMessageTemplate: business?.orderMessageTemplate || '',
@@ -491,6 +492,7 @@ export default function BusinessConfiguration() {
         tiktokUrl: business?.tiktokUrl || '',
         facebookUrl: business?.facebookUrl || '',
         businessMode: business?.businessMode || BUSINESS_MODES.STORE,
+        documentTitleType: business?.documentTitleType || 'cotizacion',
       });
       if (business?.designSettings) {
         const ds = business.designSettings;
@@ -690,6 +692,7 @@ export default function BusinessConfiguration() {
       region: parsedAddr.region,
       rubroId: form?.rubroId || null,
       businessMode: form?.businessMode || BUSINESS_MODES.STORE,
+      documentTitleType: form?.documentTitleType || 'cotizacion',
       instagramUrl: form?.instagramUrl || null,
       tiktokUrl: form?.tiktokUrl || null,
       facebookUrl: form?.facebookUrl || null,
@@ -1375,6 +1378,32 @@ export default function BusinessConfiguration() {
                         <p className="text-right text-[11px] text-slate-400 tabular-nums mt-1.5 font-[family-name:var(--font-caption)]">
                           {(form?.printLegend ?? '').length}/{PRINT_LEGEND_MAX}
                         </p>
+                      </div>
+                    </SettingsField>
+
+                    <SettingsField
+                      label="Nombre del documento comercial"
+                      hint="Elige cómo quieres que se muestre este documento a tus clientes."
+                    >
+                      <div className="flex gap-2">
+                        {[
+                          { value: 'cotizacion', label: 'Cotización' },
+                          { value: 'presupuesto', label: 'Presupuesto' },
+                        ].map(opt => (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() => handleFormChange('documentTitleType', opt.value)}
+                            className={[
+                              'flex-1 px-4 py-2.5 rounded-xl border-2 text-sm font-semibold transition-all',
+                              (form?.documentTitleType || 'cotizacion') === opt.value
+                                ? 'border-blue-500 bg-blue-50 text-blue-700'
+                                : 'border-slate-200 text-slate-500 hover:border-slate-300',
+                            ].join(' ')}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
                       </div>
                     </SettingsField>
 

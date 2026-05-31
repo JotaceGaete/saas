@@ -11,6 +11,7 @@ import {
   updateCrmQuote,
   getCrmCustomers,
   formatQuoteNumber,
+  getQuoteDocLabel,
 } from '../../services/crmService';
 import { getProducts } from '../../services/waBusinessService';
 import CrmDocumentPdf from './CrmDocumentPdf';
@@ -192,9 +193,10 @@ export default function CrmQuoteEditor() {
     }
   };
 
+  const docLabel = getQuoteDocLabel(business?.documentTitleType);
   const docTitle = isNew
-    ? 'Nuevo presupuesto'
-    : `Presupuesto ${saved ? formatQuoteNumber(saved.quote_number) : ''}`;
+    ? docLabel.nuevo
+    : `${docLabel.title} ${saved ? formatQuoteNumber(saved.quote_number, business?.documentTitleType) : ''}`;
 
   const pdfCustomer = customers.find((c) => c.id === (saved?.customer_id || customerId));
 
@@ -353,7 +355,7 @@ export default function CrmQuoteEditor() {
               className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium disabled:opacity-60"
             >
               {saving ? <Icon name="Loader2" size={15} className="animate-spin" /> : <Icon name="Save" size={15} />}
-              {isNew ? 'Crear presupuesto' : 'Guardar'}
+              {isNew ? docLabel.crear : 'Guardar'}
             </button>
           </div>
         }
@@ -388,7 +390,7 @@ export default function CrmQuoteEditor() {
 
           {/* Datos del presupuesto */}
           <div className="bg-white border border-gray-200 rounded-xl p-5">
-            <h3 className="text-sm font-semibold text-gray-700 mb-4">Datos del presupuesto</h3>
+            <h3 className="text-sm font-semibold text-gray-700 mb-4">Datos del {docLabel.singular}</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Cliente</label>
@@ -501,7 +503,7 @@ export default function CrmQuoteEditor() {
               className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 sm:py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold disabled:opacity-60 transition-colors"
             >
               {saving ? <Icon name="Loader2" size={15} className="animate-spin" /> : <Icon name="CheckCircle" size={15} />}
-              {isNew ? 'Crear presupuesto' : 'Guardar cambios'}
+              {isNew ? docLabel.crear : 'Guardar cambios'}
             </button>
           </div>
         </div>

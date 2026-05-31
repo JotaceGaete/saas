@@ -4,7 +4,7 @@ import {
   PDFViewer, PDFDownloadLink, Image,
 } from '@react-pdf/renderer';
 import Icon from 'components/AppIcon';
-import { formatQuoteNumber, formatInvoiceNumber } from '../../services/crmService';
+import { formatQuoteNumber, formatInvoiceNumber, getQuoteDocLabel } from '../../services/crmService';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -126,8 +126,9 @@ const S = StyleSheet.create({
 function CrmPdfDocument({ type, document: doc, business, customer, extra = {} }) {
   const isQuote   = type === 'quote';
   const items     = isQuote ? (doc.crm_quote_items || []) : (doc.crm_invoice_items || []);
-  const docNum    = isQuote ? formatQuoteNumber(doc.quote_number ?? 0) : formatInvoiceNumber(doc.invoice_number ?? 0);
-  const docTitle  = isQuote ? 'Presupuesto' : 'Nota de Venta';
+  const docLabel  = getQuoteDocLabel(business?.documentTitleType);
+  const docNum    = isQuote ? formatQuoteNumber(doc.quote_number ?? 0, business?.documentTitleType) : formatInvoiceNumber(doc.invoice_number ?? 0);
+  const docTitle  = isQuote ? docLabel.title : 'Nota de Venta';
   const currency  = business?.currency || 'CLP';
   const today     = new Date().toLocaleDateString('es-CL');
   const statusCfg = STATUS_COLORS[doc.status] || STATUS_COLORS.borrador;
@@ -279,8 +280,9 @@ function CrmPdfDocument({ type, document: doc, business, customer, extra = {} })
 function HtmlDocumentPreview({ type, document: doc, business, customer, extra = {} }) {
   const isQuote  = type === 'quote';
   const items    = isQuote ? (doc.crm_quote_items || []) : (doc.crm_invoice_items || []);
-  const docNum   = isQuote ? formatQuoteNumber(doc.quote_number ?? 0) : formatInvoiceNumber(doc.invoice_number ?? 0);
-  const docTitle = isQuote ? 'Presupuesto' : 'Nota de Venta';
+  const docLabel  = getQuoteDocLabel(business?.documentTitleType);
+  const docNum   = isQuote ? formatQuoteNumber(doc.quote_number ?? 0, business?.documentTitleType) : formatInvoiceNumber(doc.invoice_number ?? 0);
+  const docTitle = isQuote ? docLabel.title : 'Nota de Venta';
   const currency = business?.currency || 'CLP';
   const today    = new Date().toLocaleDateString('es-CL');
   const issueStr = isQuote ? doc.created_at?.slice(0, 10) : doc.issue_date;
@@ -449,8 +451,9 @@ export default function CrmDocumentPdf({ type, document: doc, business, customer
     return () => mql.removeEventListener('change', handler);
   }, []);
 
+  const docLabelForFilename = getQuoteDocLabel(business?.documentTitleType);
   const filename = type === 'quote'
-    ? `presupuesto-${formatQuoteNumber(doc?.quote_number ?? 0)}.pdf`
+    ? `${docLabelForFilename.singular}-${formatQuoteNumber(doc?.quote_number ?? 0, business?.documentTitleType)}.pdf`
     : `nota-venta-${formatInvoiceNumber(doc?.invoice_number ?? 0)}.pdf`;
 
   const pdfEl = <CrmPdfDocument type={type} document={doc} business={business} customer={customer} extra={extra} />;

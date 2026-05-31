@@ -4,8 +4,25 @@ import { supabase } from '../lib/supabase';
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function formatQuoteNumber(n) {
-  return `PRES-${String(n).padStart(4, '0')}`;
+export function formatQuoteNumber(n, documentTitleType = 'cotizacion') {
+  const prefix = documentTitleType === 'presupuesto' ? 'PRES' : 'COT';
+  return `${prefix}-${String(n).padStart(4, '0')}`;
+}
+
+/** Returns UI and PDF labels for the quote document type. */
+export function getQuoteDocLabel(documentTitleType = 'cotizacion') {
+  if (documentTitleType === 'presupuesto') {
+    return {
+      title: 'Presupuesto', titleUpper: 'PRESUPUESTO', prefix: 'PRES',
+      singular: 'presupuesto', plural: 'presupuestos',
+      nuevo: 'Nuevo presupuesto', crear: 'Crear presupuesto',
+    };
+  }
+  return {
+    title: 'Cotización', titleUpper: 'COTIZACIÓN', prefix: 'COT',
+    singular: 'cotización', plural: 'cotizaciones',
+    nuevo: 'Nueva cotización', crear: 'Crear cotización',
+  };
 }
 
 export function formatInvoiceNumber(n) {
