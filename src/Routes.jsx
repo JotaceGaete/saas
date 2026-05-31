@@ -95,6 +95,8 @@ const Routes = () => {
             <Route path="/product-editor" element={<RequireAuth><ProductEditor /></RequireAuth>} />
             <Route path="/orders/historial" element={<RequireAuth><OrdersHistory /></RequireAuth>} />
             <Route path="/orders" element={<RequireAuth><Orders /></RequireAuth>} />
+            <Route path="/crm" element={<RequireAuth><Navigate to="/crm/terminal" replace /></RequireAuth>} />
+            <Route path="/crm/terminal" element={<RequireAuth><Orders /></RequireAuth>} />
             <Route path="/customers/:customerId" element={<RequireAuth><CustomerPage /></RequireAuth>} />
             <Route path="/design" element={<RequireAuth><DesignPage /></RequireAuth>} />
             <Route path="/ayuda" element={<RequireAuth><HelpPage /></RequireAuth>} />
