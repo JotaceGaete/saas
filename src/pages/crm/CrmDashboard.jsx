@@ -109,7 +109,7 @@ function ModuleCard({ mod, locked, stockAlert, navigate }) {
 
   return (
     <div
-      className={`relative bg-white border rounded-2xl p-5 flex flex-col gap-4 transition-all duration-200
+      className={`relative min-w-0 max-w-full overflow-hidden bg-white border rounded-2xl p-5 flex flex-col gap-4 transition-all duration-200
         ${mod.borderIdle} ${!dimmed ? mod.borderHover + ' hover:shadow-md' : ''}
         ${dimmed ? 'opacity-70' : ''}`}
     >
@@ -126,12 +126,12 @@ function ModuleCard({ mod, locked, stockAlert, navigate }) {
       )}
 
       {/* Icon + title */}
-      <div className="flex items-start gap-3">
+      <div className="flex min-w-0 items-start gap-3">
         <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${mod.iconBg}`}>
           <Icon name={mod.icon} size={22} className={mod.iconColor} />
         </div>
         <div className="min-w-0">
-          <h2 className="font-bold text-gray-900 text-[15px] leading-snug flex items-center gap-2 flex-wrap">
+          <h2 className="font-bold text-gray-900 text-[15px] leading-snug flex min-w-0 items-center gap-2 flex-wrap [overflow-wrap:anywhere]">
             {mod.title}
             {stockAlert && (
               <span className="text-[10px] font-semibold bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded-full">
@@ -139,20 +139,20 @@ function ModuleCard({ mod, locked, stockAlert, navigate }) {
               </span>
             )}
           </h2>
-          <p className="text-xs text-gray-400 mt-0.5 leading-snug">{mod.description}</p>
+          <p className="text-xs text-gray-400 mt-0.5 leading-snug [overflow-wrap:anywhere]">{mod.description}</p>
         </div>
       </div>
 
       {/* Bullets */}
-      <ul className="space-y-1.5 flex-1">
+      <ul className="min-w-0 space-y-1.5 flex-1">
         {mod.bullets.map(b => (
-          <li key={b} className="flex items-center gap-2 text-sm text-gray-500">
+          <li key={b} className="flex min-w-0 items-center gap-2 text-sm text-gray-500">
             <Icon
               name={isComingSoon ? 'Circle' : isLocked ? 'Lock' : 'CheckCircle2'}
               size={13}
-              className={isComingSoon ? 'text-gray-300' : isLocked ? 'text-amber-400' : mod.iconColor}
+              className={`${isComingSoon ? 'text-gray-300' : isLocked ? 'text-amber-400' : mod.iconColor} shrink-0`}
             />
-            {b}
+            <span className="min-w-0 [overflow-wrap:anywhere]">{b}</span>
           </li>
         ))}
       </ul>
@@ -217,11 +217,11 @@ export default function CrmDashboard() {
 
       <DashboardLayoutContent>
         {/* Context banner */}
-        <div className="mb-6 p-4 bg-gradient-to-r from-slate-800 to-slate-700 rounded-2xl flex items-center gap-4 text-white">
+        <div className="mb-6 flex min-w-0 max-w-full flex-col gap-4 rounded-2xl bg-gradient-to-r from-slate-800 to-slate-700 p-4 text-white sm:flex-row sm:items-center">
           <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center shrink-0">
             <Icon name="TrendingUp" size={20} className="text-white" />
           </div>
-          <div>
+          <div className="min-w-0">
             <p className="font-semibold text-sm">Tu catálogo ya recibe pedidos.</p>
             <p className="text-xs text-white/70 mt-0.5">
               Desde aquí puedes transformar esa actividad en gestión comercial completa.
@@ -231,10 +231,10 @@ export default function CrmDashboard() {
 
         {/* Plan notice for non-business */}
         {!hasCrmAccess && (
-          <div className="mb-5 p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
+          <div className="mb-5 flex min-w-0 max-w-full flex-col gap-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 items-center gap-3">
               <Icon name="Zap" size={18} className="text-amber-500 shrink-0" />
-              <div>
+              <div className="min-w-0">
                 <p className="text-sm font-semibold text-amber-800">CRM disponible en plan Full</p>
                 <p className="text-xs text-amber-600 mt-0.5">Desbloquea todos los módulos de gestión comercial.</p>
               </div>
@@ -250,10 +250,10 @@ export default function CrmDashboard() {
 
         {/* Stock alert */}
         {hasCrmAccess && stockAlertCount > 0 && (
-          <div className="mb-5 p-4 bg-yellow-50 border border-yellow-200 rounded-2xl flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
+          <div className="mb-5 flex min-w-0 max-w-full flex-col gap-4 rounded-2xl border border-yellow-200 bg-yellow-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 items-center gap-3">
               <Icon name="AlertTriangle" size={18} className="text-yellow-600 shrink-0" />
-              <p className="text-sm text-yellow-800 font-medium">
+              <p className="min-w-0 text-sm text-yellow-800 font-medium [overflow-wrap:anywhere]">
                 {stockAlertCount} producto{stockAlertCount !== 1 ? 's' : ''} con stock bajo o agotado
               </p>
             </div>
@@ -267,7 +267,7 @@ export default function CrmDashboard() {
         )}
 
         {/* Module grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+        <div className="grid min-w-0 max-w-full grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-3">
           {MODULES.map(mod => (
             <ModuleCard
               key={mod.id}
