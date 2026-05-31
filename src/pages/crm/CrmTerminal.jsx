@@ -92,6 +92,7 @@ export default function CrmTerminal() {
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
+  const [amountReceived, setAmountReceived] = useState('');
 
   // Ticket modal state — set after successful (or locally-fallback) sale
   const [ticketData, setTicketData] = useState(null);
@@ -135,9 +136,9 @@ export default function CrmTerminal() {
 
   const updateQty = (product_id, delta) => {
     setCart(prev =>
-      prev.map(i =>
-        i.product_id === product_id ? { ...i, quantity: Math.max(1, i.quantity + delta) } : i
-      )
+      prev
+        .map(i => i.product_id === product_id ? { ...i, quantity: i.quantity + delta } : i)
+        .filter(i => i.quantity > 0)
     );
   };
 
@@ -150,6 +151,11 @@ export default function CrmTerminal() {
   const total = subtotal - discountAmount;
   const cartCount = cart.reduce((s, i) => s + i.quantity, 0);
 
+  const isEfectivo = paymentMethod === 'efectivo';
+  const parsedReceived = parseFloat(amountReceived) || 0;
+  const change = isEfectivo && parsedReceived > 0 ? parsedReceived - total : 0;
+  const isCashShort = isEfectivo && amountReceived !== '' && parsedReceived < total;
+
   const selectedCustomer = customers.find(c => c.id === customerId) || null;
 
   const resetForm = () => {
@@ -161,6 +167,7 @@ export default function CrmTerminal() {
     setSearch('');
     setActiveCategory('');
     setErrorMsg(null);
+    setAmountReceived('');
     setTimeout(() => searchRef.current?.focus(), 50);
   };
 
@@ -176,6 +183,8 @@ export default function CrmTerminal() {
       discountAmount,
       subtotal,
       total,
+      amountReceived: isEfectivo && parsedReceived > 0 ? parsedReceived : null,
+      change: isEfectivo && change > 0 ? change : null,
       notes: notes || null,
       createdAt: new Date().toISOString(),
     };
@@ -455,33 +464,45 @@ export default function CrmTerminal() {
                     ) : (
                       <div className="divide-y divide-gray-100 max-h-64 overflow-y-auto">
                         {cart.map(item => (
-                          <div key={item.product_id} className="px-4 py-3 flex items-start gap-3">
+                          <div key={item.product_id} className="px-3 py-2.5 flex items-center gap-2">
+                            {/* Name + price */}
                             <div className="flex-1 min-w-0">
                               <p className="text-xs font-semibold text-gray-800 truncate leading-snug">{item.name}</p>
                               <p className="text-[11px] text-gray-400 mt-0.5">{fmt(item.unit_price, business?.currency)} c/u</p>
                             </div>
-                            <div className="flex items-center gap-1 shrink-0 mt-0.5">
+                            {/* Qty controls */}
+                            <div className="flex items-center gap-1 shrink-0">
                               <button
                                 onClick={() => updateQty(item.product_id, -1)}
-                                className="w-7 h-7 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors"
+                                title={item.quantity === 1 ? 'Quitar del carrito' : 'Reducir cantidad'}
+                                className="w-7 h-7 rounded-lg bg-gray-100 hover:bg-red-50 hover:text-red-500 flex items-center justify-center transition-colors text-gray-600"
                               >
-                                <Icon name="Minus" size={12} />
+                                {item.quantity === 1
+                                  ? <Icon name="Trash2" size={12} color="currentColor" />
+                                  : <Icon name="Minus" size={12} color="currentColor" />
+                                }
                               </button>
-                              <span className="w-7 text-center text-sm font-bold text-gray-800">{item.quantity}</span>
+                              <span className="w-6 text-center text-sm font-bold text-gray-800">{item.quantity}</span>
                               <button
                                 onClick={() => updateQty(item.product_id, 1)}
-                                className="w-7 h-7 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors"
+                                title="Aumentar cantidad"
+                                className="w-7 h-7 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors text-gray-600"
                               >
-                                <Icon name="Plus" size={12} />
+                                <Icon name="Plus" size={12} color="currentColor" />
                               </button>
                             </div>
-                            <div className="text-right shrink-0 min-w-[60px]">
-                              <p className="text-sm font-bold text-gray-900">{fmt(item.unit_price * item.quantity, business?.currency)}</p>
+                            {/* Subtotal + delete */}
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <span className="text-sm font-bold text-gray-900 min-w-[52px] text-right">
+                                {fmt(item.unit_price * item.quantity, business?.currency)}
+                              </span>
                               <button
                                 onClick={() => removeItem(item.product_id)}
-                                className="text-gray-300 hover:text-red-400 transition-colors mt-0.5"
+                                title="Eliminar producto"
+                                aria-label="Eliminar producto del carrito"
+                                className="w-7 h-7 rounded-lg bg-red-50 hover:bg-red-100 flex items-center justify-center transition-colors text-red-400 hover:text-red-600"
                               >
-                                <Icon name="X" size={12} />
+                                <Icon name="Trash2" size={13} color="currentColor" />
                               </button>
                             </div>
                           </div>
@@ -538,6 +559,41 @@ export default function CrmTerminal() {
                     />
                   </div>
 
+                  {/* Pago recibido + vuelto — solo efectivo */}
+                  {isEfectivo && (
+                    <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-2">
+                      <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">
+                        Pago recibido
+                      </label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                        <input
+                          type="number"
+                          min="0"
+                          value={amountReceived}
+                          onChange={e => setAmountReceived(e.target.value)}
+                          placeholder={String(Math.ceil(total))}
+                          className="w-full pl-7 pr-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
+                        />
+                      </div>
+                      {amountReceived !== '' && (
+                        <div className={`flex items-center justify-between rounded-lg px-3 py-2 text-sm font-semibold ${
+                          isCashShort
+                            ? 'bg-red-50 text-red-600'
+                            : 'bg-emerald-50 text-emerald-700'
+                        }`}>
+                          <span>{isCashShort ? 'Faltan' : 'Vuelto'}</span>
+                          <span>
+                            {isCashShort
+                              ? fmt(total - parsedReceived, business?.currency)
+                              : fmt(change, business?.currency)
+                            }
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* Totals + Cobrar */}
                   <div className="bg-gray-900 rounded-2xl p-4 flex flex-col gap-3">
                     <div className="space-y-1.5">
@@ -558,7 +614,7 @@ export default function CrmTerminal() {
                     </div>
                     <button
                       onClick={handleRegister}
-                      disabled={cart.length === 0 || busy}
+                      disabled={cart.length === 0 || busy || isCashShort}
                       className="w-full py-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:bg-gray-700 disabled:text-gray-500 text-white font-bold text-base transition-colors flex items-center justify-center gap-2 mt-1"
                     >
                       {busy
@@ -566,6 +622,11 @@ export default function CrmTerminal() {
                         : <><Icon name="Zap" size={18} />Cobrar</>
                       }
                     </button>
+                    {isCashShort && (
+                      <p className="text-center text-xs text-red-400">
+                        Faltan {fmt(total - parsedReceived, business?.currency)} para completar el pago
+                      </p>
+                    )}
                   </div>
 
                 </div>
@@ -587,6 +648,8 @@ export default function CrmTerminal() {
           discountAmount={ticketData.discountAmount}
           subtotal={ticketData.subtotal}
           total={ticketData.total}
+          amountReceived={ticketData.amountReceived}
+          change={ticketData.change}
           notes={ticketData.notes}
           createdAt={ticketData.createdAt}
           onNewSale={handleNewSale}

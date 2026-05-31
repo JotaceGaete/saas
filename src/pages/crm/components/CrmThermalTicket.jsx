@@ -46,6 +46,8 @@ export default function CrmThermalTicket({
   discountAmount = 0,
   subtotal = 0,
   total = 0,
+  amountReceived = null,
+  change = null,
   notes,
   createdAt,
   onNewSale,
@@ -212,6 +214,12 @@ export default function CrmThermalTicket({
           <Divider />
 
           <Row label="Método de pago" value={PAYMENT_LABELS[paymentMethod] || paymentMethod} />
+          {amountReceived != null && amountReceived > 0 && (
+            <Row label="Pago recibido" value={formatCurrency(amountReceived, business?.currency)} />
+          )}
+          {change != null && change > 0 && (
+            <Row label="Vuelto" value={formatCurrency(change, business?.currency)} bold />
+          )}
 
           {notes && (
             <>
