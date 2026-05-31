@@ -126,6 +126,23 @@ export default function CrmQuoteEditor() {
     return s + (base * (i.discount_pct || 0)) / 100;
   }, 0);
 
+  // Documento para vista previa — funciona con o sin guardado previo
+  const previewDoc = {
+    ...(saved || {}),
+    quote_number:    saved?.quote_number    ?? null,
+    status:          saved?.status          || 'borrador',
+    total:           subtotal,
+    discount_amount: discountTotal,
+    notes,
+    valid_until:     validUntil,
+    created_at:      saved?.created_at || new Date().toISOString(),
+    crm_quote_items: items,
+    payment_terms:   paymentTerms,
+    delivery_days:   deliveryDays,
+    delivery_method: deliveryMethod,
+    commercial_notes: commercialNotes,
+  };
+
   const fmt = (n) =>
     new Intl.NumberFormat('es-CL', {
       style: 'currency',
@@ -321,13 +338,13 @@ export default function CrmQuoteEditor() {
         leftSpacer={false}
         mobileActions={
           <div className="flex gap-2 w-full">
-            {!isNew && (
+            {items.length > 0 && (
               <button
                 onClick={() => setShowPdf(true)}
                 className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm font-medium"
               >
-                <Icon name="FileDown" size={15} />
-                Ver PDF
+                <Icon name="Eye" size={15} />
+                Vista previa
               </button>
             )}
             <button
@@ -342,13 +359,13 @@ export default function CrmQuoteEditor() {
         }
       >
         {/* Desktop: botones inline a la derecha */}
-        {!isNew && (
+        {items.length > 0 && (
           <button
             onClick={() => setShowPdf(true)}
             className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm font-medium"
           >
-            <Icon name="FileDown" size={15} />
-            Ver PDF
+            <Icon name="Eye" size={15} />
+            Vista previa
           </button>
         )}
         <button
@@ -469,13 +486,13 @@ export default function CrmQuoteEditor() {
             >
               Cancelar
             </button>
-            {!isNew && saved && (
+            {items.length > 0 && (
               <button
                 onClick={() => setShowPdf(true)}
                 className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 sm:py-2.5 rounded-xl border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm font-medium transition-colors"
               >
-                <Icon name="FileDown" size={15} />
-                Descargar PDF
+                <Icon name="Eye" size={15} />
+                Vista previa
               </button>
             )}
             <button
@@ -498,13 +515,12 @@ export default function CrmQuoteEditor() {
         />
       )}
 
-      {showPdf && saved && (
+      {showPdf && (
         <CrmDocumentPdf
           type="quote"
-          document={{ ...saved, crm_quote_items: items }}
+          document={previewDoc}
           business={business}
           customer={pdfCustomer}
-          extra={{ paymentTerms, deliveryDays, deliveryMethod, commercialNotes }}
           onClose={() => setShowPdf(false)}
         />
       )}

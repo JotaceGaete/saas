@@ -152,6 +152,23 @@ export default function CrmInvoiceEditor() {
     return s + (b * (i.discount_pct || 0)) / 100;
   }, 0);
 
+  // Documento para vista previa — funciona con o sin guardado previo
+  const previewDoc = {
+    ...(saved || {}),
+    invoice_number:  saved?.invoice_number  ?? null,
+    status:          saved?.status          || 'pendiente',
+    total:           subtotal,
+    discount_amount: discountTotal,
+    notes,
+    issue_date:      issueDate,
+    due_date:        dueDate || null,
+    crm_invoice_items: items,
+    payment_terms:   paymentTerms,
+    delivery_days:   deliveryDays,
+    delivery_method: deliveryMethod,
+    commercial_notes: commercialNotes,
+  };
+
   const fmt = (n) =>
     new Intl.NumberFormat('es-CL', {
       style: 'currency',
@@ -388,13 +405,13 @@ export default function CrmInvoiceEditor() {
         leftSpacer={false}
         mobileActions={
           <div className="flex gap-2 w-full">
-            {!isNew && saved && (
+            {items.length > 0 && (
               <button
                 onClick={() => setShowPdf(true)}
                 className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm font-medium"
               >
-                <Icon name="FileDown" size={15} />
-                Ver PDF
+                <Icon name="Eye" size={15} />
+                Vista previa
               </button>
             )}
             {isNew && (
@@ -416,13 +433,15 @@ export default function CrmInvoiceEditor() {
             <span className={`text-xs px-2 py-1 rounded-full font-medium ${STATUS_STYLES[saved.status] || ''}`}>
               {saved.status.charAt(0).toUpperCase() + saved.status.slice(1)}
             </span>
-            <button
-              onClick={() => setShowPdf(true)}
-              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm font-medium"
-            >
-              <Icon name="FileDown" size={15} />
-              Ver PDF
-            </button>
+            {items.length > 0 && (
+              <button
+                onClick={() => setShowPdf(true)}
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm font-medium"
+              >
+                <Icon name="Eye" size={15} />
+                Vista previa
+              </button>
+            )}
           </>
         )}
         {isNew && (
@@ -652,13 +671,13 @@ export default function CrmInvoiceEditor() {
             >
               {isNew ? 'Cancelar' : 'Volver'}
             </button>
-            {!isNew && saved && (
+            {items.length > 0 && (
               <button
                 onClick={() => setShowPdf(true)}
                 className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 sm:py-2.5 rounded-xl border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm font-medium transition-colors"
               >
-                <Icon name="FileDown" size={15} />
-                Descargar PDF
+                <Icon name="Eye" size={15} />
+                Vista previa
               </button>
             )}
             {isNew && (
@@ -788,13 +807,12 @@ export default function CrmInvoiceEditor() {
         </div>
       )}
 
-      {showPdf && saved && (
+      {showPdf && (
         <CrmDocumentPdf
           type="invoice"
-          document={{ ...saved, crm_invoice_items: items }}
+          document={previewDoc}
           business={business}
           customer={pdfCustomer}
-          extra={{ paymentTerms, deliveryDays, deliveryMethod, commercialNotes }}
           onClose={() => setShowPdf(false)}
         />
       )}
