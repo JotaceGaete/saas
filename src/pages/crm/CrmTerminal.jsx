@@ -97,6 +97,13 @@ export default function CrmTerminal() {
   // Ticket modal state — set after successful (or locally-fallback) sale
   const [ticketData, setTicketData] = useState(null);
 
+  // Free item modal state
+  const [showFreeItemModal, setShowFreeItemModal] = useState(false);
+  const [freeItemName, setFreeItemName] = useState('');
+  const [freeItemPrice, setFreeItemPrice] = useState('');
+  const [freeItemQty, setFreeItemQty] = useState('1');
+  const [freeItemError, setFreeItemError] = useState('');
+
   const searchRef = useRef(null);
 
   useEffect(() => {
@@ -119,13 +126,12 @@ export default function CrmTerminal() {
 
   const addToCart = (product) => {
     setCart(prev => {
-      const existing = prev.find(i => i.product_id === product.id);
+      const existing = prev.find(i => i.id === product.id);
       if (existing) {
-        return prev.map(i =>
-          i.product_id === product.id ? { ...i, quantity: i.quantity + 1 } : i
-        );
+        return prev.map(i => i.id === product.id ? { ...i, quantity: i.quantity + 1 } : i);
       }
       return [...prev, {
+        id: product.id,
         product_id: product.id,
         name: product.name,
         unit_price: product.price || 0,
@@ -134,16 +140,38 @@ export default function CrmTerminal() {
     });
   };
 
-  const updateQty = (product_id, delta) => {
+  const addFreeItem = () => {
+    const name = freeItemName.trim();
+    const price = parseFloat(freeItemPrice);
+    const qty = parseInt(freeItemQty, 10);
+    if (!name) { setFreeItemError('El nombre es obligatorio.'); return; }
+    if (isNaN(price) || price < 0) { setFreeItemError('El precio debe ser 0 o mayor.'); return; }
+    if (!qty || qty < 1) { setFreeItemError('La cantidad debe ser mayor a 0.'); return; }
+    setCart(prev => [...prev, {
+      id: `manual-${Date.now()}`,
+      product_id: null,
+      name,
+      unit_price: price,
+      quantity: qty,
+      isManualItem: true,
+    }]);
+    setShowFreeItemModal(false);
+    setFreeItemName('');
+    setFreeItemPrice('');
+    setFreeItemQty('1');
+    setFreeItemError('');
+  };
+
+  const updateQty = (id, delta) => {
     setCart(prev =>
       prev
-        .map(i => i.product_id === product_id ? { ...i, quantity: i.quantity + delta } : i)
+        .map(i => i.id === id ? { ...i, quantity: i.quantity + delta } : i)
         .filter(i => i.quantity > 0)
     );
   };
 
-  const removeItem = (product_id) => {
-    setCart(prev => prev.filter(i => i.product_id !== product_id));
+  const removeItem = (id) => {
+    setCart(prev => prev.filter(i => i.id !== id));
   };
 
   const subtotal = cart.reduce((s, i) => s + i.unit_price * i.quantity, 0);
@@ -335,26 +363,36 @@ export default function CrmTerminal() {
                     </div>
                   )}
 
-                  {/* Search */}
-                  <div className="relative">
-                    <Icon name="Search" size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                    <input
-                      ref={searchRef}
-                      autoFocus
-                      type="text"
-                      value={search}
-                      onChange={e => setSearch(e.target.value)}
-                      placeholder="Buscar producto por nombre…"
-                      className="w-full pl-10 pr-4 py-3 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-blue-500 bg-white shadow-sm transition-colors"
-                    />
-                    {search && (
-                      <button
-                        onClick={() => setSearch('')}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                      >
-                        <Icon name="X" size={15} />
-                      </button>
-                    )}
+                  {/* Search + free item button */}
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <Icon name="Search" size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                      <input
+                        ref={searchRef}
+                        autoFocus
+                        type="text"
+                        value={search}
+                        onChange={e => setSearch(e.target.value)}
+                        placeholder="Buscar producto por nombre…"
+                        className="w-full pl-10 pr-4 py-3 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-blue-500 bg-white shadow-sm transition-colors"
+                      />
+                      {search && (
+                        <button
+                          onClick={() => setSearch('')}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                        >
+                          <Icon name="X" size={15} />
+                        </button>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => { setShowFreeItemModal(true); setFreeItemError(''); }}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl border-2 border-dashed border-gray-300 bg-white text-gray-600 text-sm font-semibold hover:border-blue-400 hover:text-blue-600 transition-colors shrink-0"
+                      title="Agregar ítem libre (servicio, concepto manual)"
+                    >
+                      <Icon name="Plus" size={15} color="currentColor" />
+                      <span className="hidden sm:inline">Ítem libre</span>
+                    </button>
                   </div>
 
                   {/* Category chips */}
@@ -464,16 +502,21 @@ export default function CrmTerminal() {
                     ) : (
                       <div className="divide-y divide-gray-100 max-h-64 overflow-y-auto">
                         {cart.map(item => (
-                          <div key={item.product_id} className="px-3 py-2.5 flex items-center gap-2">
+                          <div key={item.id} className="px-3 py-2.5 flex items-center gap-2">
                             {/* Name + price */}
                             <div className="flex-1 min-w-0">
-                              <p className="text-xs font-semibold text-gray-800 truncate leading-snug">{item.name}</p>
+                              <div className="flex items-center gap-1.5">
+                                <p className="text-xs font-semibold text-gray-800 truncate leading-snug">{item.name}</p>
+                                {item.isManualItem && (
+                                  <span className="shrink-0 text-[9px] font-bold px-1 py-0.5 rounded bg-amber-100 text-amber-700 uppercase tracking-wide">libre</span>
+                                )}
+                              </div>
                               <p className="text-[11px] text-gray-400 mt-0.5">{fmt(item.unit_price, business?.currency)} c/u</p>
                             </div>
                             {/* Qty controls */}
                             <div className="flex items-center gap-1 shrink-0">
                               <button
-                                onClick={() => updateQty(item.product_id, -1)}
+                                onClick={() => updateQty(item.id, -1)}
                                 title={item.quantity === 1 ? 'Quitar del carrito' : 'Reducir cantidad'}
                                 className="w-7 h-7 rounded-lg bg-gray-100 hover:bg-red-50 hover:text-red-500 flex items-center justify-center transition-colors text-gray-600"
                               >
@@ -484,7 +527,7 @@ export default function CrmTerminal() {
                               </button>
                               <span className="w-6 text-center text-sm font-bold text-gray-800">{item.quantity}</span>
                               <button
-                                onClick={() => updateQty(item.product_id, 1)}
+                                onClick={() => updateQty(item.id, 1)}
                                 title="Aumentar cantidad"
                                 className="w-7 h-7 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors text-gray-600"
                               >
@@ -497,9 +540,9 @@ export default function CrmTerminal() {
                                 {fmt(item.unit_price * item.quantity, business?.currency)}
                               </span>
                               <button
-                                onClick={() => removeItem(item.product_id)}
-                                title="Eliminar producto"
-                                aria-label="Eliminar producto del carrito"
+                                onClick={() => removeItem(item.id)}
+                                title="Eliminar del carrito"
+                                aria-label="Eliminar del carrito"
                                 className="w-7 h-7 rounded-lg bg-red-50 hover:bg-red-100 flex items-center justify-center transition-colors text-red-400 hover:text-red-600"
                               >
                                 <Icon name="Trash2" size={13} color="currentColor" />
@@ -636,6 +679,104 @@ export default function CrmTerminal() {
         )}
 
       </main>
+
+      {/* Free item modal */}
+      {showFreeItemModal && (
+        <div
+          style={{ position: 'fixed', inset: 0, zIndex: 9999, backgroundColor: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+          onClick={() => setShowFreeItemModal(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Agregar ítem libre"
+        >
+          <div
+            style={{ backgroundColor: '#fff', borderRadius: 16, boxShadow: '0 20px 60px rgba(0,0,0,0.2)', width: '100%', maxWidth: 400, padding: 24 }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <h3 style={{ fontWeight: 700, fontSize: 15, color: '#111827', margin: 0 }}>Ítem libre</h3>
+              <button
+                onClick={() => setShowFreeItemModal(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', padding: 4, borderRadius: 6 }}
+                aria-label="Cerrar"
+              >
+                <Icon name="X" size={18} color="currentColor" />
+              </button>
+            </div>
+
+            {freeItemError && (
+              <div style={{ marginBottom: 12, padding: '8px 12px', borderRadius: 8, backgroundColor: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', fontSize: 12 }}>
+                {freeItemError}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
+                  Nombre / concepto *
+                </label>
+                <input
+                  autoFocus
+                  type="text"
+                  value={freeItemName}
+                  onChange={e => setFreeItemName(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && addFreeItem()}
+                  placeholder="Ej: Despacho especial, Reparación, Diseño…"
+                  style={{ width: '100%', border: '1.5px solid #e5e7eb', borderRadius: 10, padding: '10px 12px', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: 10 }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
+                    Precio unitario *
+                  </label>
+                  <div style={{ position: 'relative' }}>
+                    <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', fontSize: 13 }}>$</span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={freeItemPrice}
+                      onChange={e => setFreeItemPrice(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && addFreeItem()}
+                      placeholder="0"
+                      style={{ width: '100%', border: '1.5px solid #e5e7eb', borderRadius: 10, padding: '10px 12px 10px 24px', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                </div>
+                <div style={{ width: 90 }}>
+                  <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
+                    Cantidad *
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={freeItemQty}
+                    onChange={e => setFreeItemQty(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && addFreeItem()}
+                    style={{ width: '100%', border: '1.5px solid #e5e7eb', borderRadius: 10, padding: '10px 12px', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+              <button
+                onClick={() => setShowFreeItemModal(false)}
+                style={{ flex: 1, padding: '11px 0', borderRadius: 10, border: '1.5px solid #e5e7eb', backgroundColor: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#6b7280' }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={addFreeItem}
+                style={{ flex: 1, padding: '11px 0', borderRadius: 10, border: 'none', backgroundColor: '#2563eb', cursor: 'pointer', fontSize: 13, fontWeight: 700, color: '#fff' }}
+              >
+                Agregar al carrito
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Thermal ticket modal — rendered outside main flow to avoid layout issues */}
       {ticketData && (
