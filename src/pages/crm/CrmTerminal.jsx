@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import DashboardAppShell from 'components/ui/DashboardAppShell';
 import DashboardLayoutContent from 'components/ui/DashboardLayoutContent';
@@ -9,16 +9,36 @@ import { getCrmCustomers, getCrmStockProducts, createPosInvoice } from '../../se
 import { getEffectivePlanSlug } from '../../services/waBusinessService';
 
 const PAYMENT_METHODS = [
-  { value: 'efectivo', label: 'Efectivo' },
-  { value: 'transferencia', label: 'Transferencia' },
-  { value: 'tarjeta', label: 'Tarjeta' },
-  { value: 'otro', label: 'Otro' },
+  { value: 'efectivo',      label: 'Efectivo',      icon: 'Banknote' },
+  { value: 'transferencia', label: 'Transferencia',  icon: 'ArrowLeftRight' },
+  { value: 'tarjeta',       label: 'Tarjeta',        icon: 'CreditCard' },
+  { value: 'otro',          label: 'Otro',           icon: 'MoreHorizontal' },
 ];
 
 function fmt(n, currency) {
   return new Intl.NumberFormat('es-CL', {
     style: 'currency', currency: currency || 'CLP', maximumFractionDigits: 0,
   }).format(n || 0);
+}
+
+function ProductThumb({ product }) {
+  const src = product.thumbnail_url || product.image_url;
+  if (src) {
+    return (
+      <img
+        src={src}
+        alt={product.name}
+        className="w-full h-20 object-cover rounded-lg"
+        loading="lazy"
+      />
+    );
+  }
+  const initial = (product.name || '?')[0].toUpperCase();
+  return (
+    <div className="w-full h-20 rounded-lg bg-gray-100 flex items-center justify-center text-2xl font-bold text-gray-300 select-none">
+      {initial}
+    </div>
+  );
 }
 
 export default function CrmTerminal() {
@@ -35,6 +55,7 @@ export default function CrmTerminal() {
   const [products, setProducts] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [search, setSearch] = useState('');
+  const [activeCategory, setActiveCategory] = useState('');
   const [cart, setCart] = useState([]);
   const [customerId, setCustomerId] = useState('');
   const [discount, setDiscount] = useState('');
@@ -50,11 +71,18 @@ export default function CrmTerminal() {
     getCrmCustomers(business.id).then(({ data }) => setCustomers(data || []));
   }, [business?.id, hasAccess]);
 
-  const filtered = search.trim().length > 0
-    ? products.filter(p =>
-        p.name.toLowerCase().includes(search.toLowerCase())
-      )
-    : products;
+  // Derive unique categories from products
+  const categories = useMemo(() => {
+    const cats = [...new Set(products.map(p => p.category).filter(Boolean))].sort();
+    return cats;
+  }, [products]);
+
+  const filtered = useMemo(() => {
+    let list = products;
+    if (activeCategory) list = list.filter(p => p.category === activeCategory);
+    if (search.trim()) list = list.filter(p => p.name.toLowerCase().includes(search.toLowerCase()));
+    return list.slice(0, 40);
+  }, [products, search, activeCategory]);
 
   const addToCart = (product) => {
     setCart(prev => {
@@ -71,13 +99,13 @@ export default function CrmTerminal() {
         quantity: 1,
       }];
     });
-    setSearch('');
-    searchRef.current?.focus();
   };
 
   const updateQty = (product_id, delta) => {
-    setCart(prev => prev
-      .map(i => i.product_id === product_id ? { ...i, quantity: Math.max(1, i.quantity + delta) } : i)
+    setCart(prev =>
+      prev.map(i =>
+        i.product_id === product_id ? { ...i, quantity: Math.max(1, i.quantity + delta) } : i
+      )
     );
   };
 
@@ -88,6 +116,7 @@ export default function CrmTerminal() {
   const subtotal = cart.reduce((s, i) => s + i.unit_price * i.quantity, 0);
   const discountAmount = Math.min(parseFloat(discount) || 0, subtotal);
   const total = subtotal - discountAmount;
+  const cartCount = cart.reduce((s, i) => s + i.quantity, 0);
 
   const resetForm = () => {
     setCart([]);
@@ -96,6 +125,7 @@ export default function CrmTerminal() {
     setPaymentMethod('efectivo');
     setNotes('');
     setSearch('');
+    setActiveCategory('');
     searchRef.current?.focus();
   };
 
@@ -117,6 +147,7 @@ export default function CrmTerminal() {
     setSuccess(data);
   };
 
+  // ── PLAN GATE ──────────────────────────────────────────────────────────────
   if (!hasAccess) {
     return (
       <DashboardAppShell>
@@ -142,6 +173,7 @@ export default function CrmTerminal() {
     );
   }
 
+  // ── SUCCESS SCREEN ─────────────────────────────────────────────────────────
   if (success) {
     return (
       <DashboardAppShell>
@@ -149,28 +181,31 @@ export default function CrmTerminal() {
           title={<h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Terminal de ventas</h1>}
         />
         <DashboardLayoutContent>
-          <div className="flex flex-col items-center justify-center py-20 gap-5">
-            <div className="w-20 h-20 rounded-full bg-emerald-100 flex items-center justify-center">
-              <Icon name="CheckCircle2" size={40} className="text-emerald-500" />
+          <div className="max-w-sm mx-auto flex flex-col items-center text-center py-16 gap-6">
+            <div className="w-24 h-24 rounded-full bg-emerald-100 flex items-center justify-center">
+              <Icon name="CheckCircle2" size={48} className="text-emerald-500" />
             </div>
-            <div className="text-center">
-              <p className="text-xl font-bold text-gray-900">¡Venta registrada!</p>
-              <p className="text-gray-500 text-sm mt-1">
-                NV-{String(success.invoice_number).padStart(4, '0')} — {fmt(success.total, business?.currency)}
+            <div>
+              <p className="text-2xl font-bold text-gray-900">¡Venta registrada!</p>
+              <p className="text-gray-400 text-sm mt-1">
+                NV-{String(success.invoice_number).padStart(4, '0')}
+              </p>
+              <p className="text-3xl font-bold text-emerald-600 mt-3">
+                {fmt(success.total, business?.currency)}
               </p>
             </div>
-            <div className="flex gap-3">
+            <div className="flex flex-col sm:flex-row gap-3 w-full">
               <button
                 onClick={() => navigate(`/crm/facturas/${success.id}`)}
-                className="px-5 py-2.5 rounded-xl border border-gray-200 text-gray-700 text-sm font-medium hover:bg-gray-50"
+                className="flex-1 flex items-center justify-center gap-2 px-5 py-3 rounded-xl border border-gray-200 text-gray-700 text-sm font-medium hover:bg-gray-50"
               >
-                Ver nota de venta
+                <Icon name="FileText" size={15} />Ver nota de venta
               </button>
               <button
                 onClick={() => { setSuccess(null); resetForm(); }}
-                className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold"
+                className="flex-1 flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold"
               >
-                Nueva venta
+                <Icon name="Plus" size={15} />Nueva venta
               </button>
             </div>
           </div>
@@ -179,20 +214,31 @@ export default function CrmTerminal() {
     );
   }
 
+  // ── MAIN POS ───────────────────────────────────────────────────────────────
   return (
     <DashboardAppShell>
       <PanelHeader
-        title={<h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Terminal de ventas</h1>}
-        subtitle={<p className="text-xs" style={{ color: 'var(--color-muted-foreground)' }}>Registra ventas rápidas desde tu catálogo</p>}
+        title={
+          <h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>
+            Terminal de ventas
+          </h1>
+        }
+        subtitle={
+          <p className="text-xs" style={{ color: 'var(--color-muted-foreground)' }}>
+            Registra ventas rápidas desde tu catálogo
+          </p>
+        }
       />
 
       <DashboardLayoutContent>
-        <div className="flex flex-col lg:flex-row gap-4 lg:items-start">
+        <div className="flex flex-col lg:flex-row gap-5 lg:items-start">
 
-          {/* LEFT: product search */}
+          {/* ── LEFT PANEL: search + categories + products ── */}
           <div className="flex-1 min-w-0 flex flex-col gap-3">
+
+            {/* Search */}
             <div className="relative">
-              <Icon name="Search" size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+              <Icon name="Search" size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
               <input
                 ref={searchRef}
                 autoFocus
@@ -200,94 +246,154 @@ export default function CrmTerminal() {
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 placeholder="Buscar producto por nombre…"
-                className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full pl-10 pr-4 py-3 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-blue-500 bg-white shadow-sm transition-colors"
               />
-            </div>
-
-            {/* Product grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {filtered.slice(0, 30).map(p => (
+              {search && (
                 <button
-                  key={p.id}
-                  onClick={() => addToCart(p)}
-                  className="flex flex-col items-start gap-1 p-3 bg-white border border-gray-200 rounded-xl hover:border-blue-300 hover:shadow-sm transition-all text-left"
+                  onClick={() => setSearch('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                 >
-                  {p.thumbnail_url && (
-                    <img src={p.thumbnail_url} alt={p.name} className="w-full h-20 object-cover rounded-lg mb-1" />
-                  )}
-                  <p className="text-xs font-semibold text-gray-800 line-clamp-2 leading-snug">{p.name}</p>
-                  <p className="text-xs text-blue-600 font-bold">{fmt(p.price, business?.currency)}</p>
+                  <Icon name="X" size={15} />
                 </button>
-              ))}
-              {filtered.length === 0 && (
-                <div className="col-span-3 text-center py-10 text-gray-400 text-sm">
-                  {search ? 'Sin resultados' : 'No hay productos activos'}
-                </div>
               )}
             </div>
+
+            {/* Category chips */}
+            {categories.length > 0 && (
+              <div className="flex gap-2 flex-wrap">
+                <button
+                  onClick={() => setActiveCategory('')}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+                    activeCategory === ''
+                      ? 'bg-gray-900 text-white border-gray-900'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'
+                  }`}
+                >
+                  Todos
+                </button>
+                {categories.map(cat => (
+                  <button
+                    key={cat}
+                    onClick={() => setActiveCategory(cat === activeCategory ? '' : cat)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+                      activeCategory === cat
+                        ? 'bg-gray-900 text-white border-gray-900'
+                        : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Product grid */}
+            {filtered.length === 0 ? (
+              <div className="text-center py-16 text-gray-400 text-sm">
+                <Icon name="PackageSearch" size={36} className="mx-auto mb-3 text-gray-200" />
+                {search ? `Sin resultados para "${search}"` : 'No hay productos activos'}
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-3 xl:grid-cols-4 gap-2.5">
+                {filtered.map(p => (
+                  <button
+                    key={p.id}
+                    onClick={() => addToCart(p)}
+                    className="flex flex-col gap-2 p-3 bg-white border border-gray-200 rounded-xl hover:border-blue-400 hover:shadow-md transition-all text-left active:scale-95"
+                  >
+                    <ProductThumb product={p} />
+                    <div className="min-w-0">
+                      {p.category && (
+                        <p className="text-[10px] text-gray-400 font-medium uppercase tracking-wide truncate mb-0.5">{p.category}</p>
+                      )}
+                      <p className="text-xs font-semibold text-gray-800 line-clamp-2 leading-snug">{p.name}</p>
+                      <p className="text-sm font-bold text-blue-600 mt-1">{fmt(p.price, business?.currency)}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
-          {/* RIGHT: cart + checkout */}
-          <div className="w-full lg:w-80 xl:w-96 shrink-0 flex flex-col gap-3">
+          {/* ── RIGHT PANEL: cart + checkout ── */}
+          <div className="w-full lg:w-[340px] xl:w-[380px] shrink-0 flex flex-col gap-4 lg:sticky lg:top-4">
 
-            {/* Customer selector */}
-            <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1">Cliente</label>
+            {/* Customer */}
+            <div className="bg-white border border-gray-200 rounded-xl p-4">
+              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Cliente</label>
               <select
                 value={customerId}
                 onChange={e => setCustomerId(e.target.value)}
-                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
               >
-                <option value="">Consumidor final</option>
+                <option value="">👤 Consumidor final</option>
                 {customers.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}{c.company ? ` (${c.company})` : ''}</option>
+                  <option key={c.id} value={c.id}>
+                    {c.name}{c.company ? ` — ${c.company}` : ''}
+                  </option>
                 ))}
               </select>
             </div>
 
-            {/* Cart items */}
+            {/* Cart */}
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-              <div className="px-4 py-2.5 border-b border-gray-100 flex items-center justify-between">
-                <span className="text-xs font-semibold text-gray-600">Carrito</span>
+              <div className="px-4 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Icon name="ShoppingCart" size={15} className="text-gray-500" />
+                  <span className="text-sm font-bold text-gray-700">
+                    Carrito
+                    {cartCount > 0 && (
+                      <span className="ml-1.5 bg-blue-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{cartCount}</span>
+                    )}
+                  </span>
+                </div>
                 {cart.length > 0 && (
-                  <button onClick={resetForm} className="text-xs text-red-400 hover:text-red-600">Vaciar</button>
+                  <button
+                    onClick={resetForm}
+                    className="text-xs text-red-400 hover:text-red-600 flex items-center gap-1"
+                  >
+                    <Icon name="Trash2" size={11} />Vaciar
+                  </button>
                 )}
               </div>
 
               {cart.length === 0 ? (
-                <div className="px-4 py-8 text-center text-gray-400 text-sm">
-                  <Icon name="ShoppingCart" size={24} className="mx-auto mb-2 text-gray-300" />
-                  Agrega productos desde la izquierda
+                <div className="px-4 py-10 text-center">
+                  <Icon name="ShoppingCart" size={32} className="mx-auto mb-2 text-gray-200" />
+                  <p className="text-gray-400 text-sm">Toca un producto para agregarlo</p>
                 </div>
               ) : (
-                <div className="divide-y divide-gray-100">
+                <div className="divide-y divide-gray-100 max-h-64 overflow-y-auto">
                   {cart.map(item => (
-                    <div key={item.product_id} className="px-4 py-2.5 flex items-center gap-2">
+                    <div key={item.product_id} className="px-4 py-3 flex items-start gap-3">
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium text-gray-800 truncate">{item.name}</p>
-                        <p className="text-xs text-gray-400">{fmt(item.unit_price, business?.currency)} c/u</p>
+                        <p className="text-xs font-semibold text-gray-800 truncate leading-snug">{item.name}</p>
+                        <p className="text-[11px] text-gray-400 mt-0.5">{fmt(item.unit_price, business?.currency)} c/u</p>
                       </div>
-                      <div className="flex items-center gap-1 shrink-0">
+                      <div className="flex items-center gap-1 shrink-0 mt-0.5">
                         <button
                           onClick={() => updateQty(item.product_id, -1)}
-                          className="w-6 h-6 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center"
+                          className="w-7 h-7 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors"
                         >
-                          <Icon name="Minus" size={11} />
+                          <Icon name="Minus" size={12} />
                         </button>
-                        <span className="w-6 text-center text-xs font-semibold">{item.quantity}</span>
+                        <span className="w-7 text-center text-sm font-bold text-gray-800">{item.quantity}</span>
                         <button
                           onClick={() => updateQty(item.product_id, 1)}
-                          className="w-6 h-6 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center"
+                          className="w-7 h-7 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors"
                         >
-                          <Icon name="Plus" size={11} />
+                          <Icon name="Plus" size={12} />
                         </button>
                       </div>
-                      <div className="text-xs font-bold text-gray-800 w-16 text-right shrink-0">
-                        {fmt(item.unit_price * item.quantity, business?.currency)}
+                      <div className="text-right shrink-0 min-w-[60px]">
+                        <p className="text-sm font-bold text-gray-900">{fmt(item.unit_price * item.quantity, business?.currency)}</p>
+                        <button
+                          onClick={() => removeItem(item.product_id)}
+                          className="text-gray-300 hover:text-red-400 transition-colors mt-0.5"
+                        >
+                          <Icon name="X" size={12} />
+                        </button>
                       </div>
-                      <button onClick={() => removeItem(item.product_id)} className="text-gray-300 hover:text-red-400 shrink-0">
-                        <Icon name="X" size={13} />
-                      </button>
                     </div>
                   ))}
                 </div>
@@ -295,32 +401,36 @@ export default function CrmTerminal() {
             </div>
 
             {/* Discount */}
-            <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1">Descuento (monto)</label>
-              <input
-                type="number"
-                min="0"
-                value={discount}
-                onChange={e => setDiscount(e.target.value)}
-                placeholder="0"
-                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+            <div className="bg-white border border-gray-200 rounded-xl p-4">
+              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Descuento</label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                <input
+                  type="number"
+                  min="0"
+                  value={discount}
+                  onChange={e => setDiscount(e.target.value)}
+                  placeholder="0"
+                  className="w-full pl-7 pr-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
+                />
+              </div>
             </div>
 
             {/* Payment method */}
-            <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1">Método de pago</label>
-              <div className="flex gap-2 flex-wrap">
+            <div className="bg-white border border-gray-200 rounded-xl p-4">
+              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-2.5">Método de pago</label>
+              <div className="grid grid-cols-2 gap-2">
                 {PAYMENT_METHODS.map(m => (
                   <button
                     key={m.value}
                     onClick={() => setPaymentMethod(m.value)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                    className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-semibold border-2 transition-all ${
                       paymentMethod === m.value
-                        ? 'bg-blue-600 text-white border-blue-600'
-                        : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                        : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-50'
                     }`}
                   >
+                    <Icon name={m.icon} size={13} />
                     {m.label}
                   </button>
                 ))}
@@ -329,43 +439,45 @@ export default function CrmTerminal() {
 
             {/* Notes */}
             <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1">Notas (opcional)</label>
               <input
                 type="text"
                 value={notes}
                 onChange={e => setNotes(e.target.value)}
-                placeholder="Ej. Pago en cuotas, entrega a domicilio…"
-                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Notas de la venta (opcional)"
+                className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
               />
             </div>
 
-            {/* Totals */}
-            <div className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 space-y-1.5">
-              <div className="flex justify-between text-xs text-gray-500">
-                <span>Subtotal</span>
-                <span>{fmt(subtotal, business?.currency)}</span>
-              </div>
-              {discountAmount > 0 && (
-                <div className="flex justify-between text-xs text-red-500">
-                  <span>Descuento</span>
-                  <span>-{fmt(discountAmount, business?.currency)}</span>
+            {/* Totals + Cobrar */}
+            <div className="bg-gray-900 rounded-2xl p-4 flex flex-col gap-3">
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-xs text-gray-400">
+                  <span>Subtotal</span>
+                  <span>{fmt(subtotal, business?.currency)}</span>
                 </div>
-              )}
-              <div className="flex justify-between text-sm font-bold text-gray-900 pt-1 border-t border-gray-200">
-                <span>Total</span>
-                <span>{fmt(total, business?.currency)}</span>
+                {discountAmount > 0 && (
+                  <div className="flex justify-between text-xs text-red-400">
+                    <span>Descuento</span>
+                    <span>-{fmt(discountAmount, business?.currency)}</span>
+                  </div>
+                )}
               </div>
+              <div className="flex justify-between items-baseline border-t border-gray-700 pt-2">
+                <span className="text-gray-300 text-sm font-semibold">Total</span>
+                <span className="text-3xl font-bold text-white tracking-tight">{fmt(total, business?.currency)}</span>
+              </div>
+              <button
+                onClick={handleRegister}
+                disabled={cart.length === 0 || busy}
+                className="w-full py-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:bg-gray-700 disabled:text-gray-500 text-white font-bold text-base transition-colors flex items-center justify-center gap-2 mt-1"
+              >
+                {busy
+                  ? <><Icon name="Loader2" size={18} className="animate-spin" />Registrando…</>
+                  : <><Icon name="Zap" size={18} />Cobrar</>
+                }
+              </button>
             </div>
 
-            {/* Register button */}
-            <button
-              onClick={handleRegister}
-              disabled={cart.length === 0 || busy}
-              className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-            >
-              {busy ? <Icon name="Loader2" size={16} className="animate-spin" /> : <Icon name="CheckCircle2" size={16} />}
-              {busy ? 'Registrando…' : 'Registrar venta'}
-            </button>
           </div>
         </div>
       </DashboardLayoutContent>
