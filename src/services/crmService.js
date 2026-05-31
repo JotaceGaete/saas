@@ -392,6 +392,71 @@ export async function updateStockMinimo(productId, stockMinimo) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// TERMINAL DE VENTAS (POS)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function createPosInvoice(businessId, { customerId, items = [], discount = 0, paymentMethod = 'efectivo', notes }) {
+  const { data: nextNum, error: numErr } = await supabase
+    .rpc('crm_next_invoice_number', { p_business_id: businessId });
+  if (numErr) return { data: null, error: numErr };
+
+  const mappedItems = items.map((it, idx) => ({
+    product_id: it.product_id || null,
+    name: it.name,
+    description: null,
+    unit_price: it.unit_price,
+    quantity: it.quantity,
+    discount_pct: 0,
+    subtotal: +(it.unit_price * it.quantity).toFixed(2),
+    sort_order: idx,
+  }));
+
+  const subtotal = mappedItems.reduce((s, i) => s + i.subtotal, 0);
+  const discountAmount = +Math.min(discount, subtotal).toFixed(2);
+  const total = +(subtotal - discountAmount).toFixed(2);
+
+  const { data: invoice, error } = await supabase
+    .from('crm_invoices')
+    .insert({
+      business_id: businessId,
+      customer_id: customerId || null,
+      invoice_number: nextNum,
+      issue_date: new Date().toISOString().slice(0, 10),
+      status: 'pagada',
+      source: 'pos',
+      subtotal: +subtotal.toFixed(2),
+      discount_amount: discountAmount,
+      total,
+      notes: notes || null,
+      paid_at: new Date().toISOString(),
+    })
+    .select()
+    .single();
+  if (error) return { data: null, error };
+
+  if (mappedItems.length > 0) {
+    const { error: itemsErr } = await supabase
+      .from('crm_invoice_items')
+      .insert(mappedItems.map(it => ({ ...it, invoice_id: invoice.id })));
+    if (itemsErr) return { data: null, error: itemsErr };
+  }
+
+  // Register payment record
+  const { error: payErr } = await supabase
+    .from('crm_payments')
+    .insert({
+      business_id: businessId,
+      invoice_id: invoice.id,
+      amount: total,
+      method: paymentMethod,
+      paid_at: new Date().toISOString(),
+    });
+  if (payErr) console.warn('POS payment record failed:', payErr.message);
+
+  return { data: invoice, error: null };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // DASHBOARD CRM
 // ─────────────────────────────────────────────────────────────────────────────
 
