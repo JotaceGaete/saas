@@ -24,6 +24,14 @@ import OrderConfirmation from './pages/order-confirmation';
 import Orders from './pages/orders';
 import OrdersHistory from './pages/orders-history';
 import CustomerPage from './pages/customers';
+import CrmDashboard from './pages/crm/CrmDashboard';
+import CrmCustomers from './pages/crm/CrmCustomers';
+import CrmQuotes from './pages/crm/CrmQuotes';
+import CrmQuoteEditor from './pages/crm/CrmQuoteEditor';
+import CrmInvoices from './pages/crm/CrmInvoices';
+import CrmInvoiceEditor from './pages/crm/CrmInvoiceEditor';
+import CrmStock from './pages/crm/CrmStock';
+import CrmTerminal from './pages/crm/CrmTerminal';
 import Login from './pages/login';
 import AuthCallback from './pages/auth-callback';
 import ResetPassword from './pages/reset-password';
@@ -89,14 +97,23 @@ const Routes = () => {
             <Route path="/register" element={<BusinessRegistration />} />
             <Route path="/landing-page" element={<LandingPage />} />
             <Route path="/complete-business-setup" element={<RequireAuth><CompleteBusinessSetupPage /></RequireAuth>} />
+            {/* CRM — acceso exclusivo admin hasta habilitación general (feature flag: CRM_PUBLIC) */}
+            <Route path="/crm" element={<RequireAdmin><CrmDashboard /></RequireAdmin>} />
+            <Route path="/crm/clientes" element={<RequireAdmin><CrmCustomers /></RequireAdmin>} />
+            <Route path="/crm/presupuestos" element={<RequireAdmin><CrmQuotes /></RequireAdmin>} />
+            <Route path="/crm/presupuestos/nuevo" element={<RequireAdmin><CrmQuoteEditor /></RequireAdmin>} />
+            <Route path="/crm/presupuestos/:id" element={<RequireAdmin><CrmQuoteEditor /></RequireAdmin>} />
+            <Route path="/crm/facturas" element={<RequireAdmin><CrmInvoices /></RequireAdmin>} />
+            <Route path="/crm/facturas/nueva" element={<RequireAdmin><CrmInvoiceEditor /></RequireAdmin>} />
+            <Route path="/crm/facturas/:id" element={<RequireAdmin><CrmInvoiceEditor /></RequireAdmin>} />
+            <Route path="/crm/stock" element={<RequireAdmin><CrmStock /></RequireAdmin>} />
+            <Route path="/crm/terminal" element={<RequireAdmin><CrmTerminal /></RequireAdmin>} />
             <Route path="/business-configuration" element={<RequireAuth><BusinessConfiguration /></RequireAuth>} />
             <Route path="/product-management" element={<RequireAuth><ProductManagement /></RequireAuth>} />
             <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
             <Route path="/product-editor" element={<RequireAuth><ProductEditor /></RequireAuth>} />
             <Route path="/orders/historial" element={<RequireAuth><OrdersHistory /></RequireAuth>} />
             <Route path="/orders" element={<RequireAuth><Orders /></RequireAuth>} />
-            <Route path="/crm" element={<RequireAuth><Navigate to="/crm/terminal" replace /></RequireAuth>} />
-            <Route path="/crm/terminal" element={<RequireAuth><Orders /></RequireAuth>} />
             <Route path="/customers/:customerId" element={<RequireAuth><CustomerPage /></RequireAuth>} />
             <Route path="/design" element={<RequireAuth><DesignPage /></RequireAuth>} />
             <Route path="/ayuda" element={<RequireAuth><HelpPage /></RequireAuth>} />
