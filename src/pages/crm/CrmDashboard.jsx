@@ -5,45 +5,134 @@ import DashboardLayoutContent from 'components/ui/DashboardLayoutContent';
 import PanelHeader from 'components/ui/PanelHeader';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
-import { getCrmDashboardStats, formatQuoteNumber, formatInvoiceNumber } from '../../services/crmService';
+import { getCrmDashboardStats } from '../../services/crmService';
 
-const STATUS_Q = { borrador: 'bg-gray-100 text-gray-600', enviado: 'bg-blue-100 text-blue-700', aceptado: 'bg-green-100 text-green-700', rechazado: 'bg-red-100 text-red-600' };
-const STATUS_I = { pendiente: 'bg-yellow-100 text-yellow-700', pagada: 'bg-green-100 text-green-700', anulada: 'bg-red-100 text-red-600' };
+const MODULES = [
+  {
+    id: 'clientes',
+    title: 'Clientes',
+    description: 'Gestiona tu cartera de clientes.',
+    bullets: ['Historial de compras', 'Datos de contacto', 'Seguimiento comercial'],
+    icon: 'Users',
+    iconBg: 'bg-blue-100',
+    iconColor: 'text-blue-600',
+    accentBorder: 'border-blue-200 hover:border-blue-400',
+    accentBtn: 'bg-blue-600 hover:bg-blue-700',
+    path: '/crm/clientes',
+  },
+  {
+    id: 'presupuestos',
+    title: 'Presupuestos',
+    description: 'Genera y administra presupuestos profesionales.',
+    bullets: ['Crear presupuesto', 'PDF profesional', 'Seguimiento de estado'],
+    icon: 'FileText',
+    iconBg: 'bg-purple-100',
+    iconColor: 'text-purple-600',
+    accentBorder: 'border-purple-200 hover:border-purple-400',
+    accentBtn: 'bg-purple-600 hover:bg-purple-700',
+    path: '/crm/presupuestos',
+  },
+  {
+    id: 'notas',
+    title: 'Notas de venta',
+    description: 'Registro comercial de tus ventas.',
+    bullets: ['Conversión desde presupuesto', 'Seguimiento de pagos', 'Estados y historial'],
+    icon: 'Receipt',
+    iconBg: 'bg-emerald-100',
+    iconColor: 'text-emerald-600',
+    accentBorder: 'border-emerald-200 hover:border-emerald-400',
+    accentBtn: 'bg-emerald-600 hover:bg-emerald-700',
+    path: '/crm/facturas',
+  },
+  {
+    id: 'stock',
+    title: 'Stock',
+    description: 'Control de inventario en tiempo real.',
+    bullets: ['Entradas y salidas', 'Stock mínimo configurable', 'Alertas de reposición'],
+    icon: 'Archive',
+    iconBg: 'bg-orange-100',
+    iconColor: 'text-orange-600',
+    accentBorder: 'border-orange-200 hover:border-orange-400',
+    accentBtn: 'bg-orange-600 hover:bg-orange-700',
+    path: '/crm/stock',
+  },
+  {
+    id: 'terminal',
+    title: 'Terminal de ventas',
+    description: 'Punto de venta rápido para tu negocio.',
+    bullets: ['Venta rápida', 'Búsqueda de productos', 'Generación de venta'],
+    icon: 'Monitor',
+    iconBg: 'bg-gray-100',
+    iconColor: 'text-gray-400',
+    accentBorder: 'border-gray-200',
+    accentBtn: 'bg-gray-300',
+    path: null,
+    comingSoon: true,
+  },
+  {
+    id: 'informes',
+    title: 'Informes',
+    description: 'Indicadores y métricas de tu negocio.',
+    bullets: ['Ventas por período', 'Productos más vendidos', 'Clientes frecuentes'],
+    icon: 'BarChart2',
+    iconBg: 'bg-gray-100',
+    iconColor: 'text-gray-400',
+    accentBorder: 'border-gray-200',
+    accentBtn: 'bg-gray-300',
+    path: null,
+    comingSoon: true,
+  },
+];
 
-function MetricCard({ icon, label, value, iconColor, onClick }) {
+function ModuleCard({ mod, stats, navigate }) {
+  const stockAlert = mod.id === 'stock' && (stats?.stockBajo?.length || 0) > 0;
+
   return (
-    <button
-      onClick={onClick}
-      className="bg-white border border-gray-200 rounded-xl p-5 text-left w-full hover:shadow-md transition-shadow"
+    <div
+      className={`relative bg-white border-2 rounded-2xl p-5 flex flex-col gap-4 transition-all duration-200 ${mod.accentBorder} ${mod.comingSoon ? 'opacity-60' : 'hover:shadow-md'}`}
     >
-      <div className="flex items-center gap-3 mb-2">
-        <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${iconColor}`}>
-          <Icon name={icon} size={18} />
-        </div>
-        <span className="text-sm text-gray-500">{label}</span>
-      </div>
-      <p className="text-2xl font-bold text-gray-900">{value}</p>
-    </button>
-  );
-}
-
-function RecentTable({ title, icon, items, renderRow, onViewAll }) {
-  return (
-    <div className="bg-white border border-gray-200 rounded-xl">
-      <div className="flex justify-between items-center px-5 py-4 border-b border-gray-100">
-        <div className="flex items-center gap-2">
-          <Icon name={icon} size={16} className="text-gray-400" />
-          <h3 className="font-semibold text-gray-800 text-sm">{title}</h3>
-        </div>
-        <button onClick={onViewAll} className="text-xs text-blue-600 hover:underline font-medium">Ver todos →</button>
-      </div>
-      {items.length === 0 ? (
-        <p className="text-gray-400 text-sm text-center py-8">Sin registros.</p>
-      ) : (
-        <ul className="divide-y divide-gray-100">
-          {items.map(renderRow)}
-        </ul>
+      {mod.comingSoon && (
+        <span className="absolute top-4 right-4 text-[10px] font-bold uppercase tracking-wider bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">
+          Próximamente
+        </span>
       )}
+
+      {/* Icon + title */}
+      <div className="flex items-center gap-3">
+        <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${mod.iconBg}`}>
+          <Icon name={mod.icon} size={22} className={mod.iconColor} />
+        </div>
+        <div>
+          <h2 className="font-bold text-gray-900 text-[15px] leading-tight flex items-center gap-2">
+            {mod.title}
+            {stockAlert && (
+              <span className="text-[10px] font-semibold bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded-full">
+                {stats.stockBajo.length} alerta{stats.stockBajo.length !== 1 ? 's' : ''}
+              </span>
+            )}
+          </h2>
+          <p className="text-xs text-gray-400 mt-0.5">{mod.description}</p>
+        </div>
+      </div>
+
+      {/* Bullet points */}
+      <ul className="space-y-1.5 flex-1">
+        {mod.bullets.map(b => (
+          <li key={b} className="flex items-center gap-2 text-sm text-gray-500">
+            <Icon name={mod.comingSoon ? 'Circle' : 'CheckCircle2'} size={13} className={mod.comingSoon ? 'text-gray-300' : mod.iconColor} />
+            {b}
+          </li>
+        ))}
+      </ul>
+
+      {/* CTA */}
+      <button
+        onClick={() => !mod.comingSoon && navigate(mod.path)}
+        disabled={mod.comingSoon}
+        className={`w-full py-2.5 rounded-xl text-sm font-semibold text-white transition-colors ${mod.accentBtn} disabled:cursor-not-allowed`}
+      >
+        {mod.comingSoon ? 'Próximamente' : 'Entrar →'}
+      </button>
     </div>
   );
 }
@@ -52,147 +141,45 @@ export default function CrmDashboard() {
   const navigate = useNavigate();
   const { business } = useAuth();
   const [stats, setStats] = useState(null);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!business?.id) return;
-    getCrmDashboardStats(business.id).then(s => { setStats(s); setLoading(false); });
+    getCrmDashboardStats(business.id).then(s => setStats(s));
   }, [business?.id]);
-
-  const fmt = (n) => new Intl.NumberFormat('es-CL', { style: 'currency', currency: business?.currency || 'CLP', maximumFractionDigits: 0 }).format(n || 0);
 
   return (
     <DashboardAppShell>
       <PanelHeader
-        title={<h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>CRM</h1>}
-        subtitle={<p className="text-xs" style={{ color: 'var(--color-muted-foreground)' }}>Panel interno — solo administradores</p>}
-        mobileActions={
-          <div className="flex gap-2 w-full">
-            <button onClick={() => navigate('/crm/presupuestos/nuevo')} className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 text-sm font-medium">
-              <Icon name="FilePlus" size={15} />Presupuesto
-            </button>
-            <button onClick={() => navigate('/crm/facturas/nueva')} className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium">
-              <Icon name="PlusCircle" size={15} />Factura
-            </button>
-          </div>
+        title={
+          <h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>
+            CRM
+          </h1>
         }
-      >
-        <div className="flex items-center gap-2">
-          <button onClick={() => navigate('/crm/presupuestos/nuevo')} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 text-xs font-medium">
-            <Icon name="FilePlus" size={14} />Presupuesto
-          </button>
-          <button onClick={() => navigate('/crm/facturas/nueva')} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium">
-            <Icon name="PlusCircle" size={14} />Factura
-          </button>
-        </div>
-      </PanelHeader>
+        subtitle={
+          <p className="text-xs" style={{ color: 'var(--color-muted-foreground)' }}>
+            Centro de gestión comercial
+          </p>
+        }
+      />
 
       <DashboardLayoutContent>
-        {loading ? (
-          <div className="flex justify-center py-20">
-            <Icon name="Loader2" size={32} className="animate-spin text-blue-500" />
+        {/* Intro banner */}
+        <div className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-2xl flex items-center gap-4">
+          <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center shrink-0">
+            <Icon name="LayoutDashboard" size={20} className="text-white" />
           </div>
-        ) : (
-          <div className="space-y-6">
-            {/* Métricas */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <MetricCard icon="FileText" label="Presupuestado este mes" value={fmt(stats?.totalPresupuestadoMes)} iconColor="bg-purple-100 text-purple-600" onClick={() => navigate('/crm/presupuestos')} />
-              <MetricCard icon="Receipt" label="Facturado este mes" value={fmt(stats?.totalFacturadoMes)} iconColor="bg-green-100 text-green-600" onClick={() => navigate('/crm/facturas')} />
-              <MetricCard icon="Users" label="Clientes" value={stats?.recentCustomers?.length ?? 0} iconColor="bg-blue-100 text-blue-600" onClick={() => navigate('/crm/clientes')} />
-              <MetricCard icon="AlertTriangle" label="Stock bajo" value={stats?.stockBajo?.length ?? 0} iconColor="bg-yellow-100 text-yellow-600" onClick={() => navigate('/crm/stock')} />
-            </div>
-
-            {/* Accesos rápidos */}
-            <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-3">
-              {[
-                { label: 'Nuevo cliente', icon: 'UserPlus', path: '/crm/clientes' },
-                { label: 'Nuevo presupuesto', icon: 'FilePlus', path: '/crm/presupuestos/nuevo' },
-                { label: 'Nueva factura', icon: 'PlusCircle', path: '/crm/facturas/nueva' },
-                { label: 'Control de stock', icon: 'Package', path: '/crm/stock' },
-              ].map(a => (
-                <button
-                  key={a.path}
-                  onClick={() => navigate(a.path)}
-                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-gray-200 hover:border-blue-300 hover:shadow-sm text-gray-700 rounded-lg text-sm font-medium transition-all"
-                >
-                  <Icon name={a.icon} size={15} className="text-blue-500 shrink-0" />
-                  <span className="truncate">{a.label}</span>
-                </button>
-              ))}
-            </div>
-
-            {/* Listas recientes */}
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              <RecentTable
-                title="Presupuestos recientes"
-                icon="FileText"
-                items={stats?.recentQuotes || []}
-                onViewAll={() => navigate('/crm/presupuestos')}
-                renderRow={q => (
-                  <li key={q.id} className="flex items-center justify-between px-5 py-3 hover:bg-gray-50 cursor-pointer" onClick={() => navigate(`/crm/presupuestos/${q.id}`)}>
-                    <div>
-                      <p className="text-sm font-semibold text-gray-900">{formatQuoteNumber(q.quote_number)}</p>
-                      <p className="text-xs text-gray-400">{q.wa_customers?.name || 'Sin cliente'}</p>
-                    </div>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_Q[q.status] || 'bg-gray-100 text-gray-600'}`}>{q.status}</span>
-                  </li>
-                )}
-              />
-
-              <RecentTable
-                title="Facturas recientes"
-                icon="Receipt"
-                items={stats?.recentInvoices || []}
-                onViewAll={() => navigate('/crm/facturas')}
-                renderRow={inv => (
-                  <li key={inv.id} className="flex items-center justify-between px-5 py-3 hover:bg-gray-50 cursor-pointer" onClick={() => navigate(`/crm/facturas/${inv.id}`)}>
-                    <div>
-                      <p className="text-sm font-semibold text-gray-900">{formatInvoiceNumber(inv.invoice_number)}</p>
-                      <p className="text-xs text-gray-400">{inv.wa_customers?.name || 'Sin cliente'}</p>
-                    </div>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_I[inv.status] || 'bg-gray-100 text-gray-600'}`}>{inv.status}</span>
-                  </li>
-                )}
-              />
-
-              <RecentTable
-                title="Clientes recientes"
-                icon="Users"
-                items={stats?.recentCustomers || []}
-                onViewAll={() => navigate('/crm/clientes')}
-                renderRow={c => (
-                  <li key={c.id} className="flex items-center gap-3 px-5 py-3 hover:bg-gray-50" onClick={() => navigate('/crm/clientes')}>
-                    <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-xs font-bold text-white shrink-0">
-                      {(c.name || '?')[0].toUpperCase()}
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">{c.name || 'Sin nombre'}</p>
-                      {c.company && <p className="text-xs text-gray-400">{c.company}</p>}
-                    </div>
-                  </li>
-                )}
-              />
-            </div>
-
-            {/* Stock bajo */}
-            {(stats?.stockBajo?.length || 0) > 0 && (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-5">
-                <div className="flex items-center gap-2 mb-3">
-                  <Icon name="AlertTriangle" size={16} className="text-yellow-600" />
-                  <h3 className="font-semibold text-yellow-800 text-sm">Productos con stock bajo o agotado</h3>
-                </div>
-                <ul className="space-y-2">
-                  {stats.stockBajo.map(p => (
-                    <li key={p.id} className="flex justify-between text-sm">
-                      <span className="text-gray-700">{p.name}</span>
-                      <span className="text-yellow-700 font-semibold">{p.stock_actual} / mín {p.stock_minimo}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+          <div>
+            <p className="font-semibold text-gray-900 text-sm">Tu catálogo ya funciona.</p>
+            <p className="text-xs text-gray-500 mt-0.5">Ahora también puedes administrar tu negocio desde aquí.</p>
           </div>
-        )}
+        </div>
+
+        {/* Module grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+          {MODULES.map(mod => (
+            <ModuleCard key={mod.id} mod={mod} stats={stats} navigate={navigate} />
+          ))}
+        </div>
       </DashboardLayoutContent>
     </DashboardAppShell>
   );
