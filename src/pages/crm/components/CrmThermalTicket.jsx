@@ -62,18 +62,46 @@ export default function CrmThermalTicket({
     style.id = styleId;
     style.textContent = `
       @media print {
-        @page { size: 58mm auto; margin: 3mm; }
-        body > * { visibility: hidden !important; }
-        #crm-thermal-ticket-root,
-        #crm-thermal-ticket-root * { visibility: visible !important; }
-        #crm-thermal-ticket-root {
-          position: fixed !important;
-          top: 0; left: 0;
-          width: 52mm;
-          background: white;
-          padding: 0;
+        body * {
+          visibility: hidden !important;
         }
-        .crm-ticket-noprint { display: none !important; }
+
+        #print-ticket-area,
+        #print-ticket-area * {
+          visibility: visible !important;
+        }
+
+        #print-ticket-area {
+          position: absolute !important;
+          left: 0 !important;
+          top: 0 !important;
+          width: 58mm !important;
+          max-width: 58mm !important;
+          min-height: auto !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          background: #fff !important;
+          color: #000 !important;
+          overflow: visible !important;
+          transform: none !important;
+        }
+
+        #print-ticket-area * {
+          color: #000 !important;
+          background: transparent !important;
+          box-shadow: none !important;
+        }
+
+        .no-print,
+        .crm-ticket-noprint {
+          display: none !important;
+          visibility: hidden !important;
+        }
+
+        @page {
+          size: 58mm auto;
+          margin: 0;
+        }
       }
     `;
     document.head.appendChild(style);
@@ -96,7 +124,6 @@ export default function CrmThermalTicket({
   return (
     /* Modal overlay */
     <div
-      className="crm-ticket-noprint"
       style={{
         position: 'fixed', inset: 0, zIndex: 9999,
         backgroundColor: 'rgba(0,0,0,0.55)',
@@ -146,7 +173,7 @@ export default function CrmThermalTicket({
         </div>
 
         {/* Ticket body — this IS printed */}
-        <div id="crm-thermal-ticket-root" ref={ticketRef} style={{
+        <div id="print-ticket-area" ref={ticketRef} style={{
           padding: '16px 20px',
           fontFamily: "'Courier New', Courier, monospace",
           fontSize: 11,
