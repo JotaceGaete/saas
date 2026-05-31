@@ -162,11 +162,13 @@ function CrmPdfDocument({ type, document: doc, business, customer, extra = {} })
               <Text style={S.docMeta}>Fecha de emisión: {issueDate}</Text>
               {validDate && <Text style={S.docMeta}>Válido hasta: {validDate}</Text>}
               {dueDate   && <Text style={S.docMeta}>Vence: {dueDate}</Text>}
-              <View style={[S.statusBadge, { backgroundColor: statusCfg.bg }]}>
-                <Text style={[S.statusText, { color: statusCfg.text }]}>
-                  {STATUS_LABELS[doc.status] || (doc.status || '').toUpperCase()}
-                </Text>
-              </View>
+              {!isQuote && (
+                <View style={[S.statusBadge, { backgroundColor: statusCfg.bg }]}>
+                  <Text style={[S.statusText, { color: statusCfg.text }]}>
+                    {STATUS_LABELS[doc.status] || (doc.status || '').toUpperCase()}
+                  </Text>
+                </View>
+              )}
             </View>
           </View>
 
@@ -214,7 +216,7 @@ function CrmPdfDocument({ type, document: doc, business, customer, extra = {} })
               <View key={idx} style={[S.trow, idx % 2 === 1 ? S.trowAlt : {}]} wrap={false}>
                 <View style={S.tdesc}>
                   <Text style={[S.tcell, { fontFamily: 'Helvetica-Bold' }]}>{item.name}</Text>
-                  {!!item.description && <Text style={S.descSub}>{item.description}</Text>}
+                  {!isQuote && !!item.description && <Text style={S.descSub}>{item.description}</Text>}
                 </View>
                 <Text style={[S.tcell, S.tqty]}>{item.quantity}</Text>
                 <Text style={[S.tcell, S.tprice]}>{fmtMoney(item.unit_price, currency)}</Text>
@@ -316,9 +318,11 @@ function HtmlDocumentPreview({ type, document: doc, business, customer, extra = 
             <p className="text-xs text-gray-500 mt-1">Emisión: {issueDate}</p>
             {validDate && <p className="text-xs text-gray-500">Válido hasta: {validDate}</p>}
             {dueDate   && <p className="text-xs text-gray-500">Vence: {dueDate}</p>}
-            <span className={`inline-block mt-1.5 text-[10px] font-bold px-2 py-0.5 rounded ${statusCls}`}>
-              {statusLabel}
-            </span>
+            {!isQuote && (
+              <span className={`inline-block mt-1.5 text-[10px] font-bold px-2 py-0.5 rounded ${statusCls}`}>
+                {statusLabel}
+              </span>
+            )}
           </div>
         </div>
 
@@ -369,7 +373,7 @@ function HtmlDocumentPreview({ type, document: doc, business, customer, extra = 
                 <tr key={idx} className={idx % 2 === 1 ? 'bg-gray-50' : ''}>
                   <td className="px-3 py-2 border-b border-gray-100">
                     <p className="font-semibold text-gray-900">{item.name}</p>
-                    {item.description && <p className="text-[10px] text-gray-400 mt-0.5">{item.description}</p>}
+                    {!isQuote && item.description && <p className="text-[10px] text-gray-400 mt-0.5">{item.description}</p>}
                   </td>
                   <td className="text-center px-2 py-2 border-b border-gray-100 text-gray-700">{item.quantity}</td>
                   <td className="text-right px-2 py-2 border-b border-gray-100 text-gray-700">{fmtMoney(item.unit_price, currency)}</td>
