@@ -58,7 +58,7 @@ export default function OrderDetailDrawer({
   const printLegend = business?.print_legend || 'Gracias por tu pedido 🙌';
   const printableItems = Array.isArray(order?.items) ? order.items : [];
   const handlePrint = () => {
-    window.print();
+    setTimeout(() => window.print(), 50);
   };
 
   const handleStatusChange = async (newStatus) => {
@@ -104,8 +104,14 @@ export default function OrderDetailDrawer({
     <>
       <style>{`
         @page {
-          size: auto;
-          margin: 8mm;
+          size: 58mm auto;
+          margin: 0;
+        }
+
+        @media screen {
+          #print-ticket-area {
+            display: none;
+          }
         }
 
         @media print {
@@ -119,52 +125,56 @@ export default function OrderDetailDrawer({
             visibility: hidden !important;
           }
 
-          .order-print-sheet,
-          .order-print-sheet * {
+          #print-ticket-area,
+          #print-ticket-area * {
             visibility: visible !important;
           }
 
-          .order-print-sheet {
+          #print-ticket-area {
             display: block !important;
             position: absolute !important;
             left: 0 !important;
             top: 0 !important;
-            width: 320px !important;
-            min-height: auto !important;
+            width: 58mm !important;
+            max-width: 58mm !important;
+            background: white !important;
+            color: black !important;
             padding: 0 !important;
-            margin: 0 auto !important;
-            background: #fff !important;
-            color: #000 !important;
+            margin: 0 !important;
             font-family: monospace !important;
             font-size: 12px !important;
             line-height: 1.4 !important;
-            page-break-inside: avoid !important;
           }
 
-          .order-print-sheet .receipt,
-          .order-print-sheet .receipt *,
-          .order-print-sheet .receipt-item,
-          .order-print-sheet .receipt-item * {
+          #print-ticket-area .receipt,
+          #print-ticket-area .receipt *,
+          #print-ticket-area .receipt-item,
+          #print-ticket-area .receipt-item * {
             page-break-inside: avoid !important;
             break-inside: avoid !important;
+            color: black !important;
           }
 
-          .order-print-sheet .receipt-price {
+          #print-ticket-area .receipt-price {
             text-align: right !important;
           }
 
-          .order-print-sheet .receipt-legend {
+          #print-ticket-area .receipt-legend {
             text-align: center !important;
             font-size: 11px !important;
             line-height: 1.4 !important;
             white-space: pre-wrap !important;
             word-break: break-word !important;
           }
+
+          .no-print {
+            display: none !important;
+          }
         }
       `}</style>
 
       <div
-        className="fixed inset-0 z-50 flex justify-end order-print-hide"
+        className="fixed inset-0 z-50 flex justify-end no-print"
         style={{ backgroundColor: 'rgba(15,23,42,0.42)' }}
         onClick={onClose}
       >
@@ -366,11 +376,10 @@ export default function OrderDetailDrawer({
       </div>
 
       <div
-        className="order-print-sheet"
-        style={{ display: 'none' }}
+        id="print-ticket-area"
         aria-hidden="true"
       >
-        <div className="receipt" style={{ width: '320px', padding: '16px 14px', fontFamily: 'monospace', fontSize: '12px', lineHeight: 1.4 }}>
+        <div className="receipt" style={{ width: '58mm', padding: '4mm 3mm', fontFamily: 'monospace', fontSize: '12px', lineHeight: 1.4, color: 'black' }}>
           <div style={{ textAlign: 'center', borderBottom: '1px dashed #000', paddingBottom: '8px', marginBottom: '10px' }}>
             <div style={{ fontSize: '18px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
               {businessName || business?.name || 'Mi negocio'}
