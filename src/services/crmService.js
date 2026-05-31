@@ -325,7 +325,7 @@ export async function convertQuoteToInvoice(quoteId) {
 export async function getCrmStockProducts(businessId) {
   const { data, error } = await supabase
     .from('wa_products')
-    .select('id, name, price, image_url, thumbnail_url, category, stock_actual, stock_minimo, is_active')
+    .select('id, name, price, image_url, thumbnail_url, card_image_url, images, category, stock_actual, stock_minimo, is_active')
     .eq('business_id', businessId)
     .eq('is_active', true)
     .order('name', { ascending: true });

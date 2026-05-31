@@ -21,8 +21,19 @@ function fmt(n, currency) {
   }).format(n || 0);
 }
 
+function getProductImageSrc(product) {
+  if (product.thumbnail_url) return product.thumbnail_url;
+  if (product.card_image_url) return product.card_image_url;
+  if (product.image_url) return product.image_url;
+  if (Array.isArray(product.images) && product.images.length > 0) {
+    const first = product.images[0];
+    return typeof first === 'string' ? first : (first?.url || first?.src || null);
+  }
+  return null;
+}
+
 function ProductThumb({ product }) {
-  const src = product.thumbnail_url || product.image_url;
+  const src = getProductImageSrc(product);
   if (src) {
     return (
       <img
