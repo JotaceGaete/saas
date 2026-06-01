@@ -570,11 +570,22 @@ export async function getCostCenter(businessId, month, year) {
 export async function upsertCostCenter(businessId, month, year, fields) {
   const { data, error } = await supabase
     .from('crm_cost_centers')
-    .upsert({ business_id: businessId, month, year, ...fields }, { onConflict: 'business_id,month,year' })
+    .upsert(
+      { business_id: businessId, month, year, ...fields },
+      { onConflict: 'business_id,month,year' }
+    )
     .select()
     .single();
   if (error) throw error;
   return data;
+}
+
+export async function bulkCreateCostItems(businessId, month, year, items) {
+  if (!items.length) return [];
+  const rows = items.map(it => ({ business_id: businessId, month, year, ...it }));
+  const { data, error } = await supabase.from('crm_cost_items').insert(rows).select();
+  if (error) throw error;
+  return data || [];
 }
 
 export async function getCostItems(businessId, month, year) {
