@@ -38,11 +38,33 @@ export const PLAN_PRICES_CLP = Object.freeze({
   business: 9990,
 });
 
+/**
+ * Precios anuales en CLP — equivalente mensual al contratar el año completo (~2 meses gratis).
+ * TODO: Confirmar estos montos con el equipo comercial antes de activar checkout anual real.
+ * Total anual: pro = 59.880 CLP (12 × 4.990), business = 99.600 CLP (12 × 8.300).
+ */
+export const PLAN_ANNUAL_PRICES_CLP = Object.freeze({
+  starter:  0,
+  pro:      4990,
+  business: 8300,
+});
+
 /** Precios en ARS (Argentina). */
 export const PLAN_PRICES_ARS = Object.freeze({
   starter:  0,
   pro:      8990,
   business: 13990,
+});
+
+/**
+ * Precios anuales en ARS — equivalente mensual al contratar el año completo (~17% off).
+ * TODO: Confirmar montos finales con el equipo comercial antes de activar checkout anual real.
+ * Total anual: pro = 89.880 ARS (12 × 7.490), business = 139.800 ARS (12 × 11.650).
+ */
+export const PLAN_ANNUAL_PRICES_ARS = Object.freeze({
+  starter:  0,
+  pro:      7490,
+  business: 11650,
 });
 
 /** Precios en USD (referencia internacional, fuera de Chile). Pro=6 USD, Full=10 USD. */
@@ -51,6 +73,24 @@ export const PLAN_PRICES_USD = Object.freeze({
   pro:      6,
   business: 10,
 });
+
+/**
+ * Precios anuales en USD — equivalente mensual (~2 meses gratis).
+ * TODO: Confirmar con equipo comercial antes de activar checkout anual real.
+ * Total anual: pro = 60 USD, business = 96 USD.
+ */
+export const PLAN_ANNUAL_PRICES_USD = Object.freeze({
+  starter:  0,
+  pro:      5,
+  business: 8,
+});
+
+/**
+ * Monedas con precios anuales habilitados en UI.
+ * TODO: Montos en PLAN_ANNUAL_PRICES_* son aproximados (~17% off); confirmar con equipo
+ * comercial antes de activar checkout anual real para cada mercado.
+ */
+export const CURRENCIES_WITH_ANNUAL_PRICING = Object.freeze(['CLP', 'ARS', 'USD']);
 
 /**
  * Límites por plan. null = ilimitado.
@@ -120,6 +160,18 @@ export function getPlanPrice(planSlug) {
  */
 export function getPlanPriceByCountry(planSlug, countryCode, _paymentProvider) {
   return getPlanPriceForCountry(countryCode, planSlug);
+}
+
+/**
+ * Descuento porcentual del plan anual respecto al mensual (para UI).
+ * @param {string} planSlug
+ * @returns {number} porcentaje (0-100)
+ */
+export function getAnnualDiscountPercent(planSlug) {
+  const monthly = PLAN_PRICES_CLP[planSlug] ?? 0;
+  const annual  = PLAN_ANNUAL_PRICES_CLP[planSlug] ?? 0;
+  if (monthly === 0 || annual === 0) return 0;
+  return Math.round(((monthly - annual) / monthly) * 100);
 }
 
 /**
