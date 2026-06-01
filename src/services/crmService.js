@@ -624,3 +624,42 @@ export async function deleteCostItem(id) {
   const { error } = await supabase.from('crm_cost_items').delete().eq('id', id);
   if (error) throw error;
 }
+
+// ─── Compras registradas ──────────────────────────────────────────────────────
+
+export async function getCrmPurchases(businessId, month, year) {
+  const { data } = await supabase
+    .from('crm_purchases')
+    .select('*')
+    .eq('business_id', businessId)
+    .eq('month', month)
+    .eq('year', year)
+    .order('purchase_date', { ascending: true });
+  return data || [];
+}
+
+export async function createCrmPurchase(businessId, month, year, fields) {
+  const { data, error } = await supabase
+    .from('crm_purchases')
+    .insert({ business_id: businessId, month, year, ...fields })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateCrmPurchase(id, fields) {
+  const { data, error } = await supabase
+    .from('crm_purchases')
+    .update(fields)
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteCrmPurchase(id) {
+  const { error } = await supabase.from('crm_purchases').delete().eq('id', id);
+  if (error) throw error;
+}

@@ -12,6 +12,9 @@ import {
   deleteCostItem,
   bulkCreateCostItems,
   getCrmSalesTotalsForPeriod,
+  getCrmPurchases,
+  createCrmPurchase,
+  deleteCrmPurchase,
 } from 'services/crmService';
 import { getEffectivePlanSlug } from 'services/waBusinessService';
 
@@ -138,7 +141,6 @@ function Onboarding({ businessId, month, year, onDone }) {
       await upsertCostCenter(businessId, month, year, {
         open_days: clamp(+openDays || 22, 1, 31),
         vat_rate: 19,
-        monthly_purchases_gross: hasPurchases ? +purchases || 0 : 0,
         uses_vat: usesVat,
         profit_goal: profitGoal !== '' ? +profitGoal : null,
         business_type: bizType || null,
@@ -466,8 +468,8 @@ function Dashboard({
 }) {
   const now = new Date();
 
-  const effectiveSalesMonth = center?.manual_sales_month != null ? center.manual_sales_month : sales.salesMonth;
-  const effectiveSalesToday = center?.manual_sales_today != null ? center.manual_sales_today : sales.salesToday;
+  const effectiveSalesMonth = (center?.manual_sales_month != null) ? +center.manual_sales_month : sales.salesMonth;
+  const effectiveSalesToday = (center?.manual_sales_today != null) ? +center.manual_sales_today : sales.salesToday;
 
   const totalExpenses = items.reduce((s, i) => s + (i.amount || 0), 0);
   const profitGoal = center?.profit_goal || 0;
@@ -510,10 +512,6 @@ function Dashboard({
 
   const vatRate = center?.vat_rate || 19;
   const usesVat = center?.uses_vat !== false;
-  const rate = vatRate / 100;
-  const vatSales = usesVat ? effectiveSalesMonth * rate / (1 + rate) : 0;
-  const vatPurchases = usesVat ? (center?.monthly_purchases_gross || 0) * rate / (1 + rate) : 0;
-  const vatNet = vatSales - vatPurchases;
 
   return (
     <div className="space-y-4">
@@ -612,10 +610,164 @@ function Dashboard({
         </div>
       </Accordion>
 
-      {/* IVA estimado */}
-      {usesVat && (
-        <Accordion title="IVA estimado" icon="FileText">
-          <div className="pt-4 space-y-3">
+      {/* Compras registradas */}
+      <PurchasesSection
+        businessId={businessId}
+        month={month}
+        year={year}
+        usesVat={usesVat}
+        vatRate={vatRate}
+        effectiveSalesMonth={effectiveSalesMonth}
+      />
+
+      {/* Ajustes avanzados */}
+      <Accordion title="Ajustes avanzados" icon="Settings">
+        <AdvancedSettings center={center} businessId={businessId} month={month} year={year} onSave={onEditSettings} />
+      </Accordion>
+
+    </div>
+  );
+}
+
+// ─── Compras registradas ──────────────────────────────────────────────────────
+
+function PurchasesSection({ businessId, month, year, usesVat, vatRate, effectiveSalesMonth }) {
+  const [purchases, setPurchases] = useState([]);
+  const [loaded, setLoaded] = useState(false);
+  const [form, setForm] = useState({ supplier: '', description: '', amount: '', purchase_date: new Date().toISOString().slice(0, 10) });
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    getCrmPurchases(businessId, month, year).then(data => {
+      setPurchases(data);
+      setLoaded(true);
+    });
+  }, [businessId, month, year]);
+
+  const totalPurchases = purchases.reduce((s, p) => s + (p.amount || 0), 0);
+
+  const handleAdd = async (e) => {
+    e.preventDefault();
+    if (!form.amount) return;
+    setSaving(true);
+    const p = await createCrmPurchase(businessId, month, year, {
+      supplier: form.supplier || null,
+      description: form.description || null,
+      amount: +form.amount,
+      purchase_date: form.purchase_date,
+    });
+    setPurchases(prev => [...prev, p]);
+    setForm({ supplier: '', description: '', amount: '', purchase_date: new Date().toISOString().slice(0, 10) });
+    setSaving(false);
+  };
+
+  const handleDelete = async (id) => {
+    await deleteCrmPurchase(id);
+    setPurchases(prev => prev.filter(p => p.id !== id));
+  };
+
+  const rate = (vatRate || 19) / 100;
+  const vatSales = usesVat ? effectiveSalesMonth * rate / (1 + rate) : 0;
+  const vatPurchases = usesVat ? totalPurchases * rate / (1 + rate) : 0;
+  const vatNet = vatSales - vatPurchases;
+
+  return (
+    <Accordion
+      title="Compras registradas"
+      icon="ShoppingCart"
+      badge={totalPurchases > 0 ? fmt(totalPurchases) : null}
+    >
+      <div className="pt-4 space-y-4">
+        {/* Tabla de compras */}
+        {loaded && purchases.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-gray-100">
+                  <th className="text-left text-xs font-medium text-gray-400 pb-2 px-3">Proveedor</th>
+                  <th className="text-left text-xs font-medium text-gray-400 pb-2 px-3 hidden sm:table-cell">Descripción</th>
+                  <th className="text-left text-xs font-medium text-gray-400 pb-2 px-3">Fecha</th>
+                  <th className="text-right text-xs font-medium text-gray-400 pb-2 px-3">Total</th>
+                  <th className="w-10" />
+                </tr>
+              </thead>
+              <tbody>
+                {purchases.map(p => (
+                  <tr key={p.id} className="border-b border-gray-100 last:border-0 group hover:bg-gray-50/40 transition-colors">
+                    <td className="py-2.5 px-3 text-sm text-gray-900">{p.supplier || <span className="text-gray-300 italic">—</span>}</td>
+                    <td className="py-2.5 px-3 text-sm text-gray-400 hidden sm:table-cell">{p.description || '—'}</td>
+                    <td className="py-2.5 px-3 text-sm text-gray-500 whitespace-nowrap">
+                      {p.purchase_date
+                        ? new Date(p.purchase_date + 'T12:00:00').toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit' })
+                        : '—'}
+                    </td>
+                    <td className="py-2.5 px-3 text-sm font-semibold text-gray-900 text-right">{fmt(p.amount)}</td>
+                    <td className="py-2.5 px-3">
+                      <button
+                        onClick={() => handleDelete(p.id)}
+                        className="opacity-0 group-hover:opacity-100 p-1 text-gray-300 hover:text-red-500 rounded hover:bg-red-50 transition-all"
+                      >
+                        <Icon name="Trash2" size={13} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t border-gray-200">
+                  <td colSpan={3} className="py-2.5 px-3 text-xs font-semibold text-gray-500">Total compras</td>
+                  <td className="py-2.5 px-3 text-sm font-bold text-gray-900 text-right">{fmt(totalPurchases)}</td>
+                  <td />
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        ) : loaded ? (
+          <p className="text-sm text-gray-400">No hay compras registradas este mes.</p>
+        ) : null}
+
+        {/* Formulario agregar */}
+        <form onSubmit={handleAdd} className="flex gap-2 flex-wrap items-end pt-3 border-t border-gray-100">
+          <input
+            value={form.supplier}
+            onChange={e => setForm(f => ({ ...f, supplier: e.target.value }))}
+            placeholder="Proveedor (opcional)"
+            className="flex-1 min-w-28 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-400"
+          />
+          <input
+            value={form.description}
+            onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+            placeholder="Descripción (opcional)"
+            className="flex-1 min-w-28 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-400"
+          />
+          <input
+            type="date"
+            value={form.purchase_date}
+            onChange={e => setForm(f => ({ ...f, purchase_date: e.target.value }))}
+            className="text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-400 bg-white"
+          />
+          <div className="flex items-center border border-gray-200 rounded-lg px-2 py-2 bg-white focus-within:border-blue-400">
+            <span className="text-xs text-gray-400 mr-1 select-none">$</span>
+            <input
+              type="number"
+              min="0"
+              value={form.amount}
+              onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
+              placeholder="Total factura"
+              className="w-28 text-sm text-gray-900 border-0 focus:outline-none bg-transparent"
+              required
+            />
+          </div>
+          <button type="submit" disabled={saving}
+            className="text-sm bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors font-medium whitespace-nowrap">
+            {saving ? '...' : '+ Agregar'}
+          </button>
+        </form>
+
+        {/* IVA estimado desde compras reales */}
+        {usesVat && totalPurchases > 0 && (
+          <div className="pt-3 border-t border-gray-100">
+            <p className="text-xs font-semibold text-gray-500 mb-3">IVA estimado</p>
             <div className="grid grid-cols-3 gap-3 text-center">
               <div className="bg-gray-50 rounded-xl p-3">
                 <p className="text-xs text-gray-400 mb-1">IVA de tus ventas</p>
@@ -630,19 +782,18 @@ function Dashboard({
                 <p className={`text-base font-bold ${vatNet > 0 ? 'text-red-600' : 'text-green-700'}`}>{fmt(vatNet)}</p>
               </div>
             </div>
-            <p className="text-xs text-gray-400 text-center">
-              Estimación referencial al {vatRate}% de IVA. No reemplaza tu contador.
+            <p className="text-xs text-gray-400 text-center mt-2">
+              Estimación referencial al {vatRate}%. No reemplaza tu contador.
             </p>
           </div>
-        </Accordion>
-      )}
-
-      {/* Ajustes avanzados */}
-      <Accordion title="Ajustes avanzados" icon="Settings">
-        <AdvancedSettings center={center} businessId={businessId} month={month} year={year} onSave={onEditSettings} />
-      </Accordion>
-
-    </div>
+        )}
+        {usesVat && totalPurchases === 0 && loaded && (
+          <p className="text-xs text-gray-400 pt-3 border-t border-gray-100">
+            Registra compras para ver el IVA estimado del mes.
+          </p>
+        )}
+      </div>
+    </Accordion>
   );
 }
 
@@ -652,7 +803,6 @@ function AdvancedSettings({ center, businessId, month, year, onSave }) {
   const [openDays, setOpenDays]         = useState(center?.open_days ?? 22);
   const [vatRate, setVatRate]           = useState(center?.vat_rate ?? 19);
   const [usesVat, setUsesVat]           = useState(center?.uses_vat !== false);
-  const [purchasesGross, setPurchasesGross] = useState(center?.monthly_purchases_gross ?? 0);
   const [profitGoal, setProfitGoal]     = useState(center?.profit_goal ?? '');
   const [manualToday, setManualToday]   = useState(center?.manual_sales_today ?? '');
   const [manualMonth, setManualMonth]   = useState(center?.manual_sales_month ?? '');
@@ -665,7 +815,6 @@ function AdvancedSettings({ center, businessId, month, year, onSave }) {
       open_days: clamp(+openDays || 22, 1, 31),
       vat_rate: +vatRate || 19,
       uses_vat: usesVat,
-      monthly_purchases_gross: +purchasesGross || 0,
       profit_goal: profitGoal !== '' ? +profitGoal : null,
       manual_sales_today: manualToday !== '' ? +manualToday : null,
       manual_sales_month: manualMonth !== '' ? +manualMonth : null,
@@ -691,14 +840,6 @@ function AdvancedSettings({ center, businessId, month, year, onSave }) {
             <span className="text-xs text-gray-400 mr-1">$</span>
             <input type="number" min="0" value={profitGoal} onChange={e => setProfitGoal(e.target.value)}
               placeholder="0"
-              className="w-full text-sm border-0 focus:outline-none bg-transparent" />
-          </div>
-        </div>
-        <div>
-          <label className="text-xs text-gray-500 block mb-1">Compras del mes (con IVA)</label>
-          <div className="flex items-center border border-gray-200 rounded-lg px-2 py-2 focus-within:border-blue-400">
-            <span className="text-xs text-gray-400 mr-1">$</span>
-            <input type="number" min="0" value={purchasesGross} onChange={e => setPurchasesGross(e.target.value)}
               className="w-full text-sm border-0 focus:outline-none bg-transparent" />
           </div>
         </div>
