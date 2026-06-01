@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { formatMoney } from '../../utils/formatMoney';
 import {
   Document, Page, Text, View, StyleSheet,
   PDFViewer, PDFDownloadLink, Image,
@@ -21,11 +22,7 @@ function fmtDate(str) {
   return d.toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
-function fmtMoney(n, currency = 'CLP') {
-  return new Intl.NumberFormat('es-CL', {
-    style: 'currency', currency, maximumFractionDigits: 0,
-  }).format(n || 0);
-}
+const fmtMoney = (n, currency) => formatMoney(n, currency);
 
 function fmtPhone(raw) {
   if (!raw) return null;

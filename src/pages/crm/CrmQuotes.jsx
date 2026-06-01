@@ -6,6 +6,7 @@ import PanelHeader from 'components/ui/PanelHeader';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
 import { getCrmQuotes, updateCrmQuote, duplicateCrmQuote, convertQuoteToInvoice, formatQuoteNumber, getQuoteDocLabel } from '../../services/crmService';
+import { formatMoney } from '../../utils/formatMoney';
 
 const STATUS_STYLES = {
   borrador: 'bg-gray-100 text-gray-600',
@@ -32,9 +33,7 @@ export default function CrmQuotes() {
 
   useEffect(() => { load(); }, [business?.id]);
 
-  const fmt = (n) => new Intl.NumberFormat('es-CL', {
-    style: 'currency', currency: business?.currency || 'CLP', maximumFractionDigits: 0,
-  }).format(n || 0);
+  const fmt = (n) => formatMoney(n, business?.currency);
 
   const handleStatus = async (id, status) => {
     setBusy(id + status);

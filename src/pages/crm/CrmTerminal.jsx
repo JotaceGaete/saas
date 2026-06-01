@@ -9,6 +9,7 @@ import { getCrmCustomers, getCrmStockProducts, createPosInvoice } from '../../se
 import { getEffectivePlanSlug } from '../../services/waBusinessService';
 import { CRM_EARLY_ACCESS_MODE } from '../../config/crmConfig';
 import CrmThermalTicket from './components/CrmThermalTicket';
+import { formatMoney, fmtMoneyInput, parseMoneyInput } from '../../utils/formatMoney';
 
 const PAYMENT_METHODS = [
   { value: 'efectivo',      label: 'Efectivo',      icon: 'Banknote' },
@@ -17,11 +18,7 @@ const PAYMENT_METHODS = [
   { value: 'otro',          label: 'Otro',           icon: 'MoreHorizontal' },
 ];
 
-function fmt(n, currency) {
-  return new Intl.NumberFormat('es-CL', {
-    style: 'currency', currency: currency || 'CLP', maximumFractionDigits: 0,
-  }).format(n || 0);
-}
+const fmt = (n, currency) => formatMoney(n, currency);
 
 function getProductImageSrc(product) {
   if (product.thumbnail_url) return product.thumbnail_url;
@@ -148,12 +145,12 @@ export default function CrmTerminal() {
   };
 
   const subtotal = cart.reduce((s, i) => s + i.unit_price * i.quantity, 0);
-  const discountAmount = Math.min(parseFloat(discount) || 0, subtotal);
+  const discountAmount = Math.min(parseMoneyInput(discount), subtotal);
   const total = subtotal - discountAmount;
   const cartCount = cart.reduce((s, i) => s + i.quantity, 0);
 
   const isEfectivo = paymentMethod === 'efectivo';
-  const parsedReceived = parseFloat(amountReceived) || 0;
+  const parsedReceived = parseMoneyInput(amountReceived);
   const change = isEfectivo && parsedReceived > 0 ? parsedReceived - total : 0;
   const isCashShort = isEfectivo && amountReceived !== '' && parsedReceived < total;
 
@@ -543,10 +540,10 @@ export default function CrmTerminal() {
                       <div className="flex-1 relative">
                         <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none">$</span>
                         <input
-                          type="number"
-                          min="0"
-                          value={discount}
-                          onChange={e => setDiscount(e.target.value)}
+                          type="text"
+                          inputMode="numeric"
+                          value={fmtMoneyInput(discount)}
+                          onChange={e => setDiscount(e.target.value.replace(/\D/g, ''))}
                           placeholder="Descuento"
                           className="w-full pl-6 pr-2 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                         />
@@ -584,11 +581,11 @@ export default function CrmTerminal() {
                         <div className="relative">
                           <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none">$</span>
                           <input
-                            type="number"
-                            min="0"
-                            value={amountReceived}
-                            onChange={e => setAmountReceived(e.target.value)}
-                            placeholder={`Pago recibido (${Math.ceil(total)})`}
+                            type="text"
+                            inputMode="numeric"
+                            value={fmtMoneyInput(amountReceived)}
+                            onChange={e => setAmountReceived(e.target.value.replace(/\D/g, ''))}
+                            placeholder={`Pago recibido (${fmtMoneyInput(Math.ceil(total))})`}
                             className="w-full pl-6 pr-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
                           />
                         </div>

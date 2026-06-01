@@ -6,6 +6,7 @@ import PanelHeader from 'components/ui/PanelHeader';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
 import { getCrmInvoices, updateCrmInvoiceStatus, formatInvoiceNumber } from '../../services/crmService';
+import { formatMoney } from '../../utils/formatMoney';
 
 const STATUS_STYLES = {
   pendiente: 'bg-yellow-100 text-yellow-700',
@@ -30,9 +31,7 @@ export default function CrmInvoices() {
 
   useEffect(() => { load(); }, [business?.id]);
 
-  const fmt = (n) => new Intl.NumberFormat('es-CL', {
-    style: 'currency', currency: business?.currency || 'CLP', maximumFractionDigits: 0,
-  }).format(n || 0);
+  const fmt = (n) => formatMoney(n, business?.currency);
 
   const handleStatus = async (id, status) => {
     if (status === 'anulada' && !window.confirm('¿Anular esta factura? Esta acción no se puede deshacer.')) return;

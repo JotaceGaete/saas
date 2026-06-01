@@ -22,6 +22,7 @@ import {
   calcItemSubtotal,
   EMPTY_ITEM,
 } from './components/CrmLineItemRow';
+import { formatMoney } from '../../utils/formatMoney';
 import { CrmProductSearchModal } from './components/CrmProductSearchModal';
 import { ChileanDateInput } from './components/ChileanDateInput';
 
@@ -170,12 +171,7 @@ export default function CrmInvoiceEditor() {
     commercial_notes: commercialNotes,
   };
 
-  const fmt = (n) =>
-    new Intl.NumberFormat('es-CL', {
-      style: 'currency',
-      currency: business?.currency || 'CLP',
-      maximumFractionDigits: 0,
-    }).format(n || 0);
+  const fmt = (n) => formatMoney(n, business?.currency);
 
   const handleMarkPaid = async () => {
     setMarkingPaid(true);
