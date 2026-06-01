@@ -436,6 +436,7 @@ const mapProductFromDb = (row) => {
     cardImagePath: row?.thumbnail_path || row?.card_image_path || null,
     addOns: Array.isArray(row?.add_ons) ? row.add_ons : [],
     isSoldOut: row?.is_sold_out === true,
+    showPrice: row?.show_price !== false,
     comboConfig:
       row?.combo_config && typeof row.combo_config === 'object' && !Array.isArray(row.combo_config)
         ? row.combo_config
@@ -1038,6 +1039,7 @@ export const createProduct = async (businessId, productData) => {
     card_image_url: productData?.cardImageUrl ?? null,
     card_image_path: productData?.cardImagePath ?? null,
     is_sold_out: productData?.isSoldOut === true,
+    show_price: productData?.showPrice !== false,
     add_ons: Array.isArray(productData?.addOns) ? productData.addOns : [],
     combo_config:
       productData?.comboConfig && typeof productData.comboConfig === 'object' && !Array.isArray(productData.comboConfig)
@@ -1143,6 +1145,7 @@ export const updateProduct = async (productId, productData) => {
   if (productData?.cardImagePath !== undefined)      dbUpdates.card_image_path = productData.cardImagePath;
   if (productData?.addOns !== undefined) dbUpdates.add_ons = Array.isArray(productData.addOns) ? productData.addOns : [];
   if (productData?.isSoldOut !== undefined) dbUpdates.is_sold_out = productData.isSoldOut === true;
+  if (productData?.showPrice !== undefined) dbUpdates.show_price = productData.showPrice !== false;
   if (productData?.comboConfig !== undefined) {
     dbUpdates.combo_config =
       productData?.comboConfig && typeof productData.comboConfig === 'object' && !Array.isArray(productData.comboConfig)

@@ -47,6 +47,7 @@ const EMPTY_FORM = {
   stock: '',
   activo: true,
   soldOut: false,
+  showPrice: true,
   featured: false,
   isMainFeatured: false,
   onSale: false,
@@ -314,6 +315,7 @@ export default function ProductEditor() {
           stock: '',
           activo: data?.isActive !== undefined ? data?.isActive : true,
           soldOut: data?.isSoldOut === true,
+          showPrice: data?.showPrice !== false,
           featured: data?.featured || false,
           isMainFeatured: data?.isMainFeatured === true,
           onSale: data?.onSale || false,
@@ -1001,6 +1003,7 @@ export default function ProductEditor() {
         isDraft: false,
         isActive: formData?.activo,
         isSoldOut: formData?.soldOut === true,
+        showPrice: formData?.showPrice !== false,
         featured: formData?.featured,
         isMainFeatured: formData?.isMainFeatured === true,
         onSale: formData?.onSale,
@@ -1299,17 +1302,20 @@ export default function ProductEditor() {
                   />
                 </div>
 
-                {/* Estado de venta */}
+                {/* Estado en catálogo */}
                 <div
                   className="rounded-2xl border p-5 md:p-6"
                   style={sectionSurfaceStyle}
                 >
-                  <div className="flex items-center gap-2 mb-4">
+                  <div className="flex items-center gap-2 mb-1">
                     <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(124,58,237,0.08)' }}>
                       <Icon name="ShoppingBag" size={15} color="var(--color-primary)" />
                     </div>
-                    <h2 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>Precio y disponibilidad</h2>
+                    <h2 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>Estado en catálogo</h2>
                   </div>
+                  <p className="text-xs mb-4 ml-9" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                    Controla si este {itemSingular} aparece en el catálogo y si se puede pedir.
+                  </p>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                     {[
                       { key: 'available', label: 'Disponible', icon: 'Eye',      color: '#059669', bg: 'rgba(5,150,105,0.08)',  border: 'rgba(5,150,105,0.3)',  desc: 'Visible y se puede pedir' },
@@ -1339,6 +1345,37 @@ export default function ProductEditor() {
                         </button>
                       );
                     })}
+                  </div>
+
+                  {/* Visibilidad del precio */}
+                  <div className="mt-5 pt-4" style={{ borderTop: '1px solid rgba(17,24,39,0.07)' }}>
+                    <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                      Visibilidad del precio
+                    </p>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      {[
+                        { key: 'show',  label: 'Mostrar precio',   icon: 'DollarSign', color: '#059669', bg: 'rgba(5,150,105,0.08)',    border: 'rgba(5,150,105,0.3)',    desc: 'El precio aparece en el catálogo' },
+                        { key: 'hide',  label: 'Consultar precio',  icon: 'MessageCircle', color: '#7c3aed', bg: 'rgba(124,58,237,0.08)', border: 'rgba(124,58,237,0.3)',  desc: 'Se muestra "Consultar precio"' },
+                      ].map(({ key, label, icon, color, bg, border, desc }) => {
+                        const selected = key === 'show' ? formData?.showPrice !== false : formData?.showPrice === false;
+                        return (
+                          <button
+                            key={key}
+                            type="button"
+                            onClick={() => handleFieldChange('showPrice', key === 'show')}
+                            className="flex flex-row items-center gap-3 rounded-xl border px-3 py-3 text-left transition-all duration-200 hover:-translate-y-0.5 sm:flex-col sm:gap-1.5 sm:text-center"
+                            style={{
+                              borderColor: selected ? border : 'rgba(17,24,39,0.08)',
+                              backgroundColor: selected ? bg : 'rgba(255,255,255,0.42)',
+                            }}
+                          >
+                            <Icon name={icon} size={16} color={selected ? color : 'var(--color-muted-foreground)'} />
+                            <span className="text-xs font-semibold leading-none" style={{ color: selected ? color : 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>{label}</span>
+                            <span className="text-[10px] leading-tight" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>{desc}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
 

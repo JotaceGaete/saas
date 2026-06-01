@@ -1,0 +1,2 @@
+ALTER TABLE wa_products
+  ADD COLUMN IF NOT EXISTS show_price BOOLEAN NOT NULL DEFAULT true;

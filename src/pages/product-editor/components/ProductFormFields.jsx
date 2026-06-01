@@ -430,11 +430,11 @@ export default function ProductFormFields({ formData, errors, onChange, currency
           </div>
         </div>
       )}
-      {/* Inventario */}
-      <div>
-        <label className="block text-sm font-medium mb-1" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}>
-          Stock disponible
-          <span className="ml-1 text-xs font-normal" style={{ color: 'var(--color-muted-foreground)' }}>(opcional)</span>
+      {/* Inventario interno (CRM) */}
+      <div className="pt-2" style={{ borderTop: '1px solid rgba(17,24,39,0.07)' }}>
+        <label className="block text-xs font-semibold uppercase tracking-wide mb-2" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-muted-foreground)' }}>
+          Inventario interno
+          <span className="ml-1.5 text-[10px] font-normal normal-case tracking-normal px-1.5 py-0.5 rounded-full" style={{ backgroundColor: 'rgba(17,24,39,0.06)', color: 'var(--color-muted-foreground)' }}>CRM</span>
         </label>
         <Input
           type="number"
@@ -443,7 +443,7 @@ export default function ProductFormFields({ formData, errors, onChange, currency
           onChange={(e) => handleChange('stock', e?.target?.value)}
         />
         <p className="mt-1 text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-          Deja vacío si no deseas controlar el inventario
+          Solo para control interno. No afecta la disponibilidad del catálogo.
         </p>
       </div>
     </div>
