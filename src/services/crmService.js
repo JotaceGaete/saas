@@ -556,6 +556,26 @@ export async function getCrmSalesTotalsForPeriod(businessId, month, year) {
   return { salesMonth, salesToday };
 }
 
+export async function getCrmDailySalesForPeriod(businessId, month, year) {
+  const from = new Date(year, month - 1, 1).toISOString();
+  const to = new Date(year, month, 1).toISOString();
+
+  const { data } = await supabase
+    .from('crm_invoices')
+    .select('total, issue_date')
+    .eq('business_id', businessId)
+    .neq('status', 'anulada')
+    .gte('issue_date', from)
+    .lt('issue_date', to);
+
+  const byDay = {};
+  for (const r of data || []) {
+    const day = r.issue_date ? parseInt(r.issue_date.slice(8, 10), 10) : null;
+    if (day) byDay[day] = (byDay[day] || 0) + (r.total || 0);
+  }
+  return byDay;
+}
+
 export async function getCostCenter(businessId, month, year) {
   const { data } = await supabase
     .from('crm_cost_centers')
