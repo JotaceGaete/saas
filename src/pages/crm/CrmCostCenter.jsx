@@ -128,6 +128,7 @@ function HeroCard({ state, salesToday, dailyCost }) {
   const s = STATE[state];
   const pct = dailyCost > 0 ? Math.round((salesToday / dailyCost) * 100) : 0;
   const remaining = Math.max(0, dailyCost - salesToday);
+  const surplus = Math.max(0, salesToday - dailyCost);
 
   return (
     <div className={`rounded-2xl bg-gradient-to-br ${s.bg} p-6 shadow-lg select-none`}>
@@ -149,14 +150,14 @@ function HeroCard({ state, salesToday, dailyCost }) {
           </div>
           {remaining > 0 && (
             <div className={`mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold ${s.badge}`}>
-              <Icon name="ArrowUp" size={11} />
+              <Icon name="TrendingDown" size={11} />
               Te faltan {fmt(Math.ceil(remaining))} para hoy
             </div>
           )}
-          {remaining === 0 && (
+          {surplus > 0 && (
             <div className={`mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold ${s.badge}`}>
-              <Icon name="Check" size={11} />
-              ¡Meta del día superada!
+              <Icon name="TrendingUp" size={11} />
+              Vas {fmt(Math.floor(surplus))} arriba 🎯
             </div>
           )}
         </>
@@ -172,6 +173,8 @@ function HoyoCard({ totalExpenses, salesMonth }) {
   const covered = gap <= 0;
   const pct = totalExpenses > 0 ? Math.min(100, Math.round((salesMonth / totalExpenses) * 100)) : 0;
   const close = !covered && pct >= 80;
+  const [barWidth, setBarWidth] = useState(0);
+  useEffect(() => { const t = setTimeout(() => setBarWidth(pct), 120); return () => clearTimeout(t); }, [pct]);
 
   if (totalExpenses === 0) return null;
 
@@ -207,10 +210,10 @@ function HoyoCard({ totalExpenses, salesMonth }) {
       <div className="space-y-2">
         <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
           <div
-            className={`h-full rounded-full transition-all duration-700 ${
+            className={`h-full rounded-full transition-all duration-700 ease-out ${
               covered ? 'bg-green-500' : close ? 'bg-yellow-400' : 'bg-red-400'
             }`}
-            style={{ width: `${pct}%` }}
+            style={{ width: `${barWidth}%` }}
           />
         </div>
         <div className="flex justify-between text-xs text-gray-400">
@@ -220,9 +223,10 @@ function HoyoCard({ totalExpenses, salesMonth }) {
       </div>
 
       {covered && (
-        <p className="text-sm text-green-700 font-medium mt-3">
-          🎉 ¡Ya cubriste todos los gastos del mes!
-        </p>
+        <div className="mt-3 space-y-1">
+          <p className="text-sm text-green-700 font-bold">🎉 ¡Ya cubriste todos los gastos del mes!</p>
+          <p className="text-sm text-green-600">Desde ahora cada venta suma directamente a tu ganancia.</p>
+        </div>
       )}
       {!covered && close && (
         <p className="text-sm text-yellow-700 font-medium mt-3">
@@ -235,7 +239,7 @@ function HoyoCard({ totalExpenses, salesMonth }) {
 
 // ─── Calendario GitHub-style ──────────────────────────────────────────────────
 
-function CalendarDot({ day, state, sales, dailyCost, isToday }) {
+function CalendarDot({ day, month, year, state, sales, dailyCost, isToday }) {
   const [showTip, setShowTip] = useState(false);
   const ref = useRef(null);
 
@@ -256,6 +260,11 @@ function CalendarDot({ day, state, sales, dailyCost, isToday }) {
   };
 
   const isFuture = state === 'future' || state === 'unconfigured';
+  const diff = dailyCost > 0 ? (sales || 0) - dailyCost : null;
+  const dateLabel = new Date(year, month - 1, day).toLocaleDateString('es-CL', { day: 'numeric', month: 'long' });
+
+  // Align tooltip to avoid going off-screen edges
+  const tipAlign = 'left-1/2 -translate-x-1/2';
 
   return (
     <div ref={ref} className="relative flex items-center justify-center aspect-square">
@@ -266,13 +275,30 @@ function CalendarDot({ day, state, sales, dailyCost, isToday }) {
         className={`w-full h-full rounded-md transition-colors ${DOT_COLOR[state] || 'bg-gray-100'} ${
           isToday ? 'ring-2 ring-blue-500 ring-offset-1' : ''
         } ${isFuture ? 'cursor-default' : 'cursor-pointer'}`}
-        title={`Día ${day}`}
       />
       {showTip && (
-        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-30 bg-gray-900 text-white text-xs rounded-lg px-3 py-2 whitespace-nowrap shadow-xl pointer-events-none">
-          <p className="font-bold mb-0.5">Día {day}</p>
-          <p>{fmt(sales || 0)}</p>
-          {dailyCost > 0 && <p className="text-gray-300">Meta: {fmt(Math.ceil(dailyCost))}</p>}
+        <div className={`absolute bottom-full ${tipAlign} mb-2 z-30 bg-gray-900 text-white text-xs rounded-xl px-3 py-2.5 shadow-xl min-w-36`}>
+          <p className="font-bold mb-1.5 text-white capitalize">{dateLabel}</p>
+          <div className="space-y-0.5">
+            <div className="flex justify-between gap-4">
+              <span className="text-gray-400">Ventas</span>
+              <span className="font-semibold">{fmt(sales || 0)}</span>
+            </div>
+            {dailyCost > 0 && (
+              <div className="flex justify-between gap-4">
+                <span className="text-gray-400">Meta</span>
+                <span className="font-semibold">{fmt(Math.ceil(dailyCost))}</span>
+              </div>
+            )}
+            {diff !== null && (
+              <div className="flex justify-between gap-4 pt-1 border-t border-gray-700 mt-1">
+                <span className="text-gray-400">Resultado</span>
+                <span className={`font-bold ${diff >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  {diff >= 0 ? '+' : ''}{fmt(Math.round(diff))}
+                </span>
+              </div>
+            )}
+          </div>
           <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900" />
         </div>
       )}
@@ -316,6 +342,8 @@ function HealthCalendar({ month, year, dailySales, dailyCost }) {
           <CalendarDot
             key={d}
             day={d}
+            month={month}
+            year={year}
             state={state}
             sales={sales}
             dailyCost={dailyCost}
