@@ -36,22 +36,32 @@ export default function AdminUsersPage() {
   const load = useCallback(async (search = '') => {
     setLoading(true);
     setError(null);
-    const { data, error: err } = await listAdminUsers({ page: 1, per_page: 100, search });
-    if (err) setError(err.message);
-    else if (data?.users) setUsers(data.users);
+    try {
+      const { data, error: err } = await listAdminUsers({ page: 1, per_page: 200, search });
+      if (err) {
+        console.error('[AdminUsersPage] load error:', err);
+        setError(err.message);
+      } else {
+        console.log('[AdminUsersPage] loaded:', { total: data?.users?.length ?? 0, search: search || '(all)' });
+        setUsers(data?.users ?? []);
+      }
+    } catch (e) {
+      console.error('[AdminUsersPage] unexpected error:', e);
+      setError(String(e?.message ?? e));
+    }
     setLoading(false);
   }, []);
 
   // Cargar lista inicial sin búsqueda
   useEffect(() => { load(''); }, [load]);
 
-  // Disparar búsqueda server-side con debounce de 400ms
+  // Disparar búsqueda server-side con debounce de 500ms
   useEffect(() => {
     const t = setTimeout(() => {
       const q = searchQ.trim();
       setActiveSearch(q);
       load(q);
-    }, 400);
+    }, 500);
     return () => clearTimeout(t);
   }, [searchQ, load]);
 

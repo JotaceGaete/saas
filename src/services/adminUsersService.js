@@ -1,6 +1,9 @@
 /**
  * Servicio admin: gestión de usuarios (listar, ver, crear, editar, suspender, eliminar, rol admin).
- * Solo para usuarios con role admin. Llama a la Edge Function admin-users.
+ * Solo para usuarios con role admin.
+ *
+ * listAdminUsers usa la función SQL admin_search_users (RPC) como método principal.
+ * Las mutaciones (ban/unban/create/update/delete/setRole) siguen usando la Edge Function admin-users.
  */
 import { supabase } from '../lib/supabase';
 
@@ -12,26 +15,6 @@ async function getAuthHeaders() {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
   const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
-
-  // Logs temporales: verificar env y headers (no imprimir valores sensibles completos)
-  if (typeof window !== 'undefined') {
-    const hasUrl = !!VITE_SUPABASE_URL;
-    const hasAnon = !!anonKey;
-    const headersPreview = {
-      'Content-Type': 'application/json',
-      Authorization: token ? `Bearer ${token.slice(0, 20)}...` : '(vacío)',
-      apikey: hasAnon ? `(presente, ${anonKey.length} chars)` : '(vacío o undefined)',
-    };
-    console.log('[adminUsersService] getAuthHeaders:', {
-      VITE_SUPABASE_URL: hasUrl ? VITE_SUPABASE_URL : '(vacío)',
-      VITE_SUPABASE_ANON_KEY: hasAnon ? `presente, length=${anonKey.length}` : 'NO DEFINIDO',
-      anonKeyFinal: hasAnon ? `length=${anonKey.length}` : 'vacío',
-      headersKeys: ['Content-Type', 'Authorization', 'apikey'],
-      apikeyInHeaders: hasAnon,
-      headersPreview,
-    });
-  }
-
   if (!token) return null;
   return {
     'Content-Type': 'application/json',
@@ -40,30 +23,33 @@ async function getAuthHeaders() {
   };
 }
 
-/** Listar usuarios (paginado). Acepta opts.search para búsqueda server-side. */
+/**
+ * Listar / buscar usuarios usando la función SQL admin_search_users (RPC).
+ * No depende de Edge Functions — funciona en cuanto se aplica la migración.
+ *
+ * Campos de búsqueda: email del usuario, id del usuario, nombre del negocio,
+ * email del negocio, slug del negocio, id del negocio.
+ */
 export async function listAdminUsers(opts = {}) {
-  const headers = await getAuthHeaders();
-  if (!headers) return { data: null, error: { message: 'No autenticado' } };
-  const page = opts.page ?? 1;
-  const perPage = opts.per_page ?? 100;
-  const search = (opts.search ?? '').trim();
-  const params = new URLSearchParams({ page: String(page), per_page: String(perPage) });
-  if (search.length >= 2) params.set('search', search);
-  const url = `${FUNCTIONS_BASE}?${params.toString()}`;
+  const page    = Math.max(1, opts.page ?? 1);
+  const perPage = Math.min(500, opts.per_page ?? 100);
+  const search  = (opts.search ?? '').trim();
+  const offset  = (page - 1) * perPage;
 
-  if (typeof window !== 'undefined') {
-    console.log('[adminUsersService] listAdminUsers fetch:', {
-      url,
-      hasApikey: !!headers.apikey,
-      apikeyLength: headers.apikey?.length ?? 0,
-      headerNames: Object.keys(headers),
-    });
+  const { data, error } = await supabase.rpc('admin_search_users', {
+    search_term: search,
+    p_limit:     perPage,
+    p_offset:    offset,
+  });
+
+  if (error) {
+    console.error('[adminUsersService] admin_search_users RPC error:', error.message);
+    return { data: null, error: { message: error.message } };
   }
 
-  const res = await fetch(url, { method: 'GET', headers });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) return { data: null, error: { message: data?.error ?? 'Error al listar usuarios' } };
-  return { data: { users: data.users ?? [], total: data.total, page: data.page, per_page: data.per_page }, error: null };
+  // La función devuelve JSONB — Supabase lo parsea automáticamente
+  const users = Array.isArray(data) ? data : [];
+  return { data: { users, total: users.length, page, per_page: perPage }, error: null };
 }
 
 /** Obtener detalle de un usuario y sus negocios. */

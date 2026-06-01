@@ -1,5 +1,6 @@
 // admin-users — Panel admin: listar, ver, crear, editar, suspender, habilitar, eliminar usuarios y asignar rol admin.
 // Solo usuarios con app_metadata.role === 'admin' (o user_metadata.role). Usa Auth Admin API con service_role.
+// debugVersion: "admin-users-search-v3-2026-06-02"
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -141,7 +142,8 @@ Deno.serve(async (req) => {
             })(),
       }));
 
-      return jsonResponse({ users: list, total: list.length, page: 1, per_page: list.length, search }, 200);
+      console.log('[admin-users] search:', { search, bizMatches: (matchedBiz ?? []).length, userIds: [...userIdsFromBiz], authUsersFound: authUsers.length });
+      return jsonResponse({ users: list, total: list.length, page: 1, per_page: list.length, search, debugVersion: 'admin-users-search-v3-2026-06-02' }, 200);
     }
 
     // ── Lista paginada sin búsqueda ───────────────────────────────────────
@@ -177,11 +179,13 @@ Deno.serve(async (req) => {
       businesses: businessesByUser[u.id] ?? [],
     }));
 
+    console.log('[admin-users] GET list:', { page, perPage, total: list.length });
     return jsonResponse({
       users: list,
       total: list.length,
       page,
       per_page: perPage,
+      debugVersion: 'admin-users-search-v3-2026-06-02',
     }, 200);
   }
 
