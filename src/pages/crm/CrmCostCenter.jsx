@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from 'contexts/AuthContext';
 import { CRM_EARLY_ACCESS_MODE } from 'config/crmConfig';
 import { formatMoney, fmtMoneyInput, parseMoneyInput } from 'utils/formatMoney';
@@ -46,16 +46,403 @@ const CATEGORY_LABELS = {
 };
 
 const fmt = (n) => formatMoney(n, 'CLP');
-
 function clamp(v, min, max) { return Math.min(max, Math.max(min, v)); }
 
-// ─── Semáforo diario ──────────────────────────────────────────────────────────
+// ─── Estado del negocio ───────────────────────────────────────────────────────
 
-function semaphoreForDay(salesToday, dailyCost) {
-  if (dailyCost <= 0) return null;
-  if (salesToday >= dailyCost) return 'green';
-  if (salesToday >= dailyCost * 0.7) return 'yellow';
-  return 'red';
+function getState(salesToday, dailyCost) {
+  if (dailyCost <= 0) return 'unconfigured';
+  if (salesToday >= dailyCost) return 'winning';
+  if (salesToday >= dailyCost * 0.75) return 'breaking';
+  return 'losing';
+}
+
+const STATE = {
+  winning: {
+    emoji: '😊',
+    label: 'Hoy vas ganando',
+    sub: '¡Superaste tu meta del día!',
+    bg: 'from-green-500 to-emerald-600',
+    ring: 'ring-green-300',
+    bar: 'bg-green-400',
+    text: 'text-white',
+    badge: 'bg-green-600/30 text-white',
+    dotBg: 'bg-green-500',
+  },
+  breaking: {
+    emoji: '😐',
+    label: 'Hoy estás empatando',
+    sub: 'Casi llegas al punto de equilibrio',
+    bg: 'from-yellow-400 to-amber-500',
+    ring: 'ring-yellow-300',
+    bar: 'bg-yellow-300',
+    text: 'text-white',
+    badge: 'bg-yellow-600/30 text-white',
+    dotBg: 'bg-yellow-400',
+  },
+  losing: {
+    emoji: '😟',
+    label: 'Hoy estás perdiendo dinero',
+    sub: 'Todavía no cubriste la meta del día',
+    bg: 'from-red-500 to-rose-600',
+    ring: 'ring-red-300',
+    bar: 'bg-red-400',
+    text: 'text-white',
+    badge: 'bg-red-600/30 text-white',
+    dotBg: 'bg-red-400',
+  },
+  unconfigured: {
+    emoji: '🏪',
+    label: 'Configura tu negocio',
+    sub: 'Registra tus gastos mensuales para activar el termómetro',
+    bg: 'from-gray-400 to-gray-500',
+    ring: 'ring-gray-300',
+    bar: 'bg-gray-300',
+    text: 'text-white',
+    badge: 'bg-gray-600/30 text-white',
+    dotBg: 'bg-gray-300',
+  },
+};
+
+// ─── Barra animada ────────────────────────────────────────────────────────────
+
+function AnimatedBar({ pct, colorClass, height = 'h-4' }) {
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    const t = setTimeout(() => setWidth(Math.min(100, pct)), 80);
+    return () => clearTimeout(t);
+  }, [pct]);
+  return (
+    <div className={`w-full ${height} bg-white/20 rounded-full overflow-hidden`}>
+      <div
+        className={`h-full rounded-full ${colorClass} transition-all duration-700 ease-out`}
+        style={{ width: `${width}%` }}
+      />
+    </div>
+  );
+}
+
+// ─── Tarjeta héroe ────────────────────────────────────────────────────────────
+
+function HeroCard({ state, salesToday, dailyCost }) {
+  const s = STATE[state];
+  const pct = dailyCost > 0 ? Math.round((salesToday / dailyCost) * 100) : 0;
+  const remaining = Math.max(0, dailyCost - salesToday);
+
+  return (
+    <div className={`rounded-2xl bg-gradient-to-br ${s.bg} p-6 shadow-lg select-none`}>
+      <div className="flex items-start justify-between mb-4">
+        <div>
+          <p className="text-white/70 text-xs font-semibold uppercase tracking-widest mb-1">Hoy</p>
+          <p className={`text-2xl font-black leading-tight ${s.text}`}>{s.label}</p>
+          <p className="text-white/80 text-sm mt-1">{s.sub}</p>
+        </div>
+        <span className="text-5xl leading-none">{s.emoji}</span>
+      </div>
+
+      {dailyCost > 0 && (
+        <>
+          <AnimatedBar pct={pct} colorClass="bg-white/70" height="h-3" />
+          <div className="flex justify-between items-center mt-2 text-sm text-white/80">
+            <span className="font-bold text-white text-base">{fmt(salesToday)}</span>
+            <span>meta {fmt(Math.ceil(dailyCost))}</span>
+          </div>
+          {remaining > 0 && (
+            <div className={`mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold ${s.badge}`}>
+              <Icon name="ArrowUp" size={11} />
+              Te faltan {fmt(Math.ceil(remaining))} para hoy
+            </div>
+          )}
+          {remaining === 0 && (
+            <div className={`mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold ${s.badge}`}>
+              <Icon name="Check" size={11} />
+              ¡Meta del día superada!
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── Hoyo financiero ──────────────────────────────────────────────────────────
+
+function HoyoCard({ totalExpenses, salesMonth }) {
+  const gap = totalExpenses - salesMonth;
+  const covered = gap <= 0;
+  const pct = totalExpenses > 0 ? Math.min(100, Math.round((salesMonth / totalExpenses) * 100)) : 0;
+  const close = !covered && pct >= 80;
+
+  if (totalExpenses === 0) return null;
+
+  return (
+    <div className={`rounded-2xl border-2 p-5 transition-colors ${
+      covered ? 'bg-green-50 border-green-200' :
+      close   ? 'bg-yellow-50 border-yellow-200' :
+                'bg-white border-gray-200'
+    }`}>
+      <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-3">
+        {covered ? '✅ Gastos del mes' : '🕳️ Hoyo financiero del mes'}
+      </p>
+
+      <div className="flex items-end gap-3 mb-4">
+        <p className={`text-4xl font-black leading-none tabular-nums ${
+          covered ? 'text-green-600' : close ? 'text-yellow-600' : 'text-red-600'
+        }`}>
+          {covered ? '+' : '-'}{fmt(Math.abs(gap))}
+        </p>
+        {!covered && (
+          <p className="text-sm text-gray-500 mb-1 leading-tight">
+            para cubrir<br />todos los gastos
+          </p>
+        )}
+        {covered && (
+          <p className="text-sm text-green-600 mb-1 leading-tight font-medium">
+            ganancia<br />acumulada
+          </p>
+        )}
+      </div>
+
+      {/* Barra de cierre del hoyo */}
+      <div className="space-y-2">
+        <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
+          <div
+            className={`h-full rounded-full transition-all duration-700 ${
+              covered ? 'bg-green-500' : close ? 'bg-yellow-400' : 'bg-red-400'
+            }`}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+        <div className="flex justify-between text-xs text-gray-400">
+          <span>Ventas: <span className="font-semibold text-gray-600">{fmt(salesMonth)}</span></span>
+          <span>{pct}% de {fmt(totalExpenses)}</span>
+        </div>
+      </div>
+
+      {covered && (
+        <p className="text-sm text-green-700 font-medium mt-3">
+          🎉 ¡Ya cubriste todos los gastos del mes!
+        </p>
+      )}
+      {!covered && close && (
+        <p className="text-sm text-yellow-700 font-medium mt-3">
+          Vas muy bien — casi llegas 💪
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ─── Calendario GitHub-style ──────────────────────────────────────────────────
+
+function CalendarDot({ day, state, sales, dailyCost, isToday }) {
+  const [showTip, setShowTip] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!showTip) return;
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setShowTip(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showTip]);
+
+  const DOT_COLOR = {
+    winning:      'bg-green-500 hover:bg-green-400',
+    breaking:     'bg-yellow-400 hover:bg-yellow-300',
+    losing:       'bg-red-400 hover:bg-red-300',
+    future:       'bg-gray-100',
+    nodata:       'bg-gray-200 hover:bg-gray-300',
+    unconfigured: 'bg-gray-100',
+  };
+
+  const isFuture = state === 'future' || state === 'unconfigured';
+
+  return (
+    <div ref={ref} className="relative flex items-center justify-center aspect-square">
+      <button
+        type="button"
+        disabled={isFuture}
+        onClick={() => !isFuture && setShowTip(v => !v)}
+        className={`w-full h-full rounded-md transition-colors ${DOT_COLOR[state] || 'bg-gray-100'} ${
+          isToday ? 'ring-2 ring-blue-500 ring-offset-1' : ''
+        } ${isFuture ? 'cursor-default' : 'cursor-pointer'}`}
+        title={`Día ${day}`}
+      />
+      {showTip && (
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-30 bg-gray-900 text-white text-xs rounded-lg px-3 py-2 whitespace-nowrap shadow-xl pointer-events-none">
+          <p className="font-bold mb-0.5">Día {day}</p>
+          <p>{fmt(sales || 0)}</p>
+          {dailyCost > 0 && <p className="text-gray-300">Meta: {fmt(Math.ceil(dailyCost))}</p>}
+          <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900" />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HealthCalendar({ month, year, dailySales, dailyCost }) {
+  const now = new Date();
+  const isCurrentMonth = month === now.getMonth() + 1 && year === now.getFullYear();
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const todayDay = isCurrentMonth ? now.getDate() : daysInMonth;
+  const firstDow = new Date(year, month - 1, 1).getDay();
+  const offset = firstDow === 0 ? 6 : firstDow - 1;
+
+  const days = Array.from({ length: daysInMonth }, (_, i) => {
+    const d = i + 1;
+    if (d > todayDay) return { d, state: 'future', sales: 0 };
+    const sales = dailySales[d] || 0;
+    if (dailyCost <= 0) return { d, state: 'nodata', sales };
+    return { d, state: getState(sales, dailyCost), sales };
+  });
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 p-5">
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-sm font-bold text-gray-800">Historial del mes</p>
+        <div className="flex items-center gap-3 text-xs text-gray-400">
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-green-500 inline-block" />Ganó</span>
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-yellow-400 inline-block" />Empató</span>
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-red-400 inline-block" />Perdió</span>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-7 gap-1.5">
+        {['L','M','X','J','V','S','D'].map(d => (
+          <div key={d} className="text-center text-xs text-gray-300 font-medium pb-0.5">{d}</div>
+        ))}
+        {Array.from({ length: offset }, (_, i) => <div key={`off-${i}`} />)}
+        {days.map(({ d, state, sales }) => (
+          <CalendarDot
+            key={d}
+            day={d}
+            state={state}
+            sales={sales}
+            dailyCost={dailyCost}
+            isToday={isCurrentMonth && d === todayDay}
+          />
+        ))}
+      </div>
+
+      <p className="text-xs text-gray-400 text-center mt-3">Toca un día para ver detalles</p>
+    </div>
+  );
+}
+
+// ─── Panel de gastos ──────────────────────────────────────────────────────────
+
+function ExpensesPanel({ items, onAdd, onUpdate, onDelete, totalExpenses, dailyCost }) {
+  const [open, setOpen] = useState(false);
+  const [editId, setEditId] = useState(null);
+  const [draft, setDraft] = useState({});
+  const [addForm, setAddForm] = useState({ name: '', amount: '', category: 'other' });
+  const [saving, setSaving] = useState(false);
+
+  const saveEdit = async () => {
+    await onUpdate(editId, { name: draft.name, amount: parseMoneyInput(draft.amount), category: draft.category });
+    setEditId(null);
+  };
+
+  const submitAdd = async (e) => {
+    e.preventDefault();
+    if (!addForm.name || !addForm.amount) return;
+    setSaving(true);
+    await onAdd({ name: addForm.name, amount: parseMoneyInput(addForm.amount), type: 'fixed', category: addForm.category });
+    setAddForm({ name: '', amount: '', category: 'other' });
+    setSaving(false);
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50/50 transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-xl bg-gray-100 flex items-center justify-center">
+            <Icon name="Receipt" size={15} color="#6b7280" />
+          </div>
+          <div className="text-left">
+            <p className="text-sm font-bold text-gray-800">Mis gastos del mes</p>
+            <p className="text-xs text-gray-400">{items.length} gasto{items.length !== 1 ? 's' : ''} · {fmt(totalExpenses)}</p>
+          </div>
+        </div>
+        <Icon name={open ? 'ChevronUp' : 'ChevronDown'} size={16} color="#9ca3af" />
+      </button>
+
+      {open && (
+        <div className="border-t border-gray-100 px-5 pb-5 pt-4 space-y-2">
+          {items.map(item => (
+            editId === item.id ? (
+              <div key={item.id} className="flex gap-2 flex-wrap items-center bg-blue-50 rounded-xl p-3">
+                <input autoFocus value={draft.name} onChange={e => setDraft(d => ({ ...d, name: e.target.value }))}
+                  className="flex-1 min-w-24 text-sm border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-blue-400 bg-white" />
+                <select value={draft.category} onChange={e => setDraft(d => ({ ...d, category: e.target.value }))}
+                  className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none bg-white">
+                  {Object.entries(CATEGORY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </select>
+                <div className="flex items-center border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus-within:border-blue-400">
+                  <span className="text-xs text-gray-400 mr-1">$</span>
+                  <input type="text" inputMode="numeric"
+                    value={fmtMoneyInput(draft.amount)}
+                    onChange={e => setDraft(d => ({ ...d, amount: e.target.value.replace(/\D/g, '') }))}
+                    className="w-24 text-sm text-right border-0 focus:outline-none bg-transparent" />
+                </div>
+                <button onClick={saveEdit} className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700">Guardar</button>
+                <button onClick={() => setEditId(null)} className="text-xs text-gray-400 hover:text-gray-600 px-2 py-1.5 rounded-lg">Cancelar</button>
+              </div>
+            ) : (
+              <div key={item.id} className="flex items-center justify-between py-2.5 px-3 rounded-xl hover:bg-gray-50 group transition-colors">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-gray-800 truncate">{item.name}</p>
+                  <p className="text-xs text-gray-400">{CATEGORY_LABELS[item.category] || item.category}</p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <p className="text-sm font-bold text-gray-900">{fmt(item.amount)}</p>
+                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={() => { setDraft({ ...item, amount: String(item.amount) }); setEditId(item.id); }}
+                      className="p-1 text-gray-300 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition-colors">
+                      <Icon name="Pencil" size={13} />
+                    </button>
+                    <button
+                      onClick={() => onDelete(item.id)}
+                      className="p-1 text-gray-300 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors">
+                      <Icon name="Trash2" size={13} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )
+          ))}
+
+          <form onSubmit={submitAdd} className="flex gap-2 flex-wrap items-center pt-3 mt-1 border-t border-gray-100">
+            <input value={addForm.name} onChange={e => setAddForm(f => ({ ...f, name: e.target.value }))}
+              placeholder="Nombre del gasto..."
+              className="flex-1 min-w-28 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-400"
+              required />
+            <select value={addForm.category} onChange={e => setAddForm(f => ({ ...f, category: e.target.value }))}
+              className="text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none bg-white">
+              {Object.entries(CATEGORY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
+            <div className="flex items-center border border-gray-200 rounded-lg px-2 py-2 bg-white focus-within:border-blue-400">
+              <span className="text-xs text-gray-400 mr-1">$</span>
+              <input type="text" inputMode="numeric"
+                value={fmtMoneyInput(addForm.amount)}
+                onChange={e => setAddForm(f => ({ ...f, amount: e.target.value.replace(/\D/g, '') }))}
+                placeholder="0"
+                className="w-24 text-sm text-gray-900 border-0 focus:outline-none bg-transparent" required />
+            </div>
+            <button type="submit" disabled={saving}
+              className="text-sm bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium whitespace-nowrap">
+              {saving ? '…' : '+ Agregar'}
+            </button>
+          </form>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ─── Onboarding ───────────────────────────────────────────────────────────────
@@ -90,38 +477,31 @@ function StepBar({ step, total }) {
 }
 
 function Onboarding({ businessId, month, year, onDone }) {
-  const [step, setStep] = useState(1);
-  const [saving, setSaving] = useState(false);
+  const [step, setStep]         = useState(1);
+  const [saving, setSaving]     = useState(false);
+  const [bizType, setBizType]   = useState('');
+  const [rent, setRent]         = useState('');
+  const [salaries, setSalaries] = useState('');
+  const [utilities, setUtilities] = useState('');
+  const [other, setOther]       = useState('');
+  const [openDays, setOpenDays] = useState('22');
 
-  const [bizType,    setBizType]    = useState('');
-  const [rent,       setRent]       = useState('');
-  const [salaries,   setSalaries]   = useState('');
-  const [utilities,  setUtilities]  = useState('');
-  const [other,      setOther]      = useState('');
-  const [openDays,   setOpenDays]   = useState('22');
+  const totalMonthly = parseMoneyInput(rent) + parseMoneyInput(salaries) + parseMoneyInput(utilities) + parseMoneyInput(other);
+  const dailyPreview = totalMonthly > 0 && +openDays > 0 ? Math.ceil(totalMonthly / +openDays) : 0;
 
   const finish = async () => {
     setSaving(true);
     try {
       await upsertCostCenter(businessId, month, year, {
         open_days: clamp(+openDays || 22, 1, 31),
-        vat_rate: 19,
-        uses_vat: true,
-        profit_goal: null,
-        business_type: bizType || null,
-        onboarding_done: true,
+        vat_rate: 19, uses_vat: true, profit_goal: null,
+        business_type: bizType || null, onboarding_done: true,
       });
-
       const items = [];
-      if (parseMoneyInput(rent) > 0)
-        items.push({ name: 'Arriendo del local', amount: parseMoneyInput(rent), type: 'fixed', category: 'rent' });
-      if (parseMoneyInput(salaries) > 0)
-        items.push({ name: 'Sueldos', amount: parseMoneyInput(salaries), type: 'fixed', category: 'salaries' });
-      if (parseMoneyInput(utilities) > 0)
-        items.push({ name: 'Servicios básicos', amount: parseMoneyInput(utilities), type: 'fixed', category: 'utilities' });
-      if (parseMoneyInput(other) > 0)
-        items.push({ name: 'Otros gastos', amount: parseMoneyInput(other), type: 'fixed', category: 'other' });
-
+      if (parseMoneyInput(rent) > 0)      items.push({ name: 'Arriendo', amount: parseMoneyInput(rent), type: 'fixed', category: 'rent' });
+      if (parseMoneyInput(salaries) > 0)  items.push({ name: 'Sueldos', amount: parseMoneyInput(salaries), type: 'fixed', category: 'salaries' });
+      if (parseMoneyInput(utilities) > 0) items.push({ name: 'Servicios básicos', amount: parseMoneyInput(utilities), type: 'fixed', category: 'utilities' });
+      if (parseMoneyInput(other) > 0)     items.push({ name: 'Otros gastos', amount: parseMoneyInput(other), type: 'fixed', category: 'other' });
       if (items.length > 0) await bulkCreateCostItems(businessId, month, year, items);
       onDone();
     } catch (err) {
@@ -130,12 +510,10 @@ function Onboarding({ businessId, month, year, onDone }) {
     }
   };
 
-  const TOTAL_STEPS = 3;
-
   return (
     <div className="max-w-lg mx-auto">
       <div className="bg-white rounded-2xl border border-gray-100 p-6 sm:p-8">
-        <StepBar step={step} total={TOTAL_STEPS} />
+        <StepBar step={step} total={3} />
 
         {step === 1 && (
           <div>
@@ -143,16 +521,12 @@ function Onboarding({ businessId, month, year, onDone }) {
             <p className="text-sm text-gray-400 mb-6">Para personalizar tu termómetro.</p>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               {BUSINESS_TYPES.map(bt => (
-                <button
-                  key={bt.id}
-                  type="button"
-                  onClick={() => setBizType(bt.id)}
-                  className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all text-center ${
-                    bizType === bt.id ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300 bg-white'
-                  }`}
-                >
+                <button key={bt.id} type="button" onClick={() => setBizType(bt.id)}
+                  className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${
+                    bizType === bt.id ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
+                  }`}>
                   <span className="text-2xl">{bt.icon}</span>
-                  <span className="text-xs font-medium text-gray-700 leading-tight">{bt.label}</span>
+                  <span className="text-xs font-medium text-gray-700 leading-tight text-center">{bt.label}</span>
                 </button>
               ))}
             </div>
@@ -176,303 +550,52 @@ function Onboarding({ businessId, month, year, onDone }) {
           <div className="space-y-5">
             <div>
               <h2 className="text-xl font-bold text-gray-900 mb-1">¿Cuántos días abrirás este mes?</h2>
-              <p className="text-sm text-gray-400">Esto calcula cuánto necesitas vender cada día.</p>
+              <p className="text-sm text-gray-400">Calculamos cuánto necesitas vender cada día.</p>
             </div>
             <div className="flex items-center gap-4">
               <div className="flex items-center border border-gray-200 rounded-xl overflow-hidden bg-white">
-                <button
-                  type="button"
-                  onClick={() => setOpenDays(d => String(Math.max(1, +d - 1)))}
-                  className="w-11 h-11 flex items-center justify-center text-gray-500 hover:bg-gray-50 text-xl font-medium"
-                >−</button>
+                <button type="button" onClick={() => setOpenDays(d => String(Math.max(1, +d - 1)))}
+                  className="w-11 h-11 flex items-center justify-center text-gray-500 hover:bg-gray-50 text-xl font-medium">−</button>
                 <span className="w-12 text-center text-lg font-bold text-gray-900">{openDays}</span>
-                <button
-                  type="button"
-                  onClick={() => setOpenDays(d => String(Math.min(31, +d + 1)))}
-                  className="w-11 h-11 flex items-center justify-center text-gray-500 hover:bg-gray-50 text-xl font-medium"
-                >+</button>
+                <button type="button" onClick={() => setOpenDays(d => String(Math.min(31, +d + 1)))}
+                  className="w-11 h-11 flex items-center justify-center text-gray-500 hover:bg-gray-50 text-xl font-medium">+</button>
               </div>
               <span className="text-sm text-gray-500">días al mes</span>
             </div>
 
-            {/* Vista previa del costo diario */}
-            {(parseMoneyInput(rent) + parseMoneyInput(salaries) + parseMoneyInput(utilities) + parseMoneyInput(other)) > 0 && (
-              <div className="bg-blue-50 rounded-xl p-4">
-                <p className="text-xs text-blue-600 font-medium mb-0.5">Tu costo diario será</p>
-                <p className="text-2xl font-bold text-blue-700">
-                  {fmt(Math.round(
-                    (parseMoneyInput(rent) + parseMoneyInput(salaries) + parseMoneyInput(utilities) + parseMoneyInput(other))
-                    / Math.max(1, +openDays || 22)
-                  ))}
+            {dailyPreview > 0 && (
+              <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl p-5 text-white">
+                <p className="text-xs font-semibold text-blue-200 uppercase tracking-wider mb-1">Tu meta diaria</p>
+                <p className="text-4xl font-black">{fmt(dailyPreview)}</p>
+                <p className="text-sm text-blue-200 mt-2">
+                  Si vendes más que esto cada día, tu negocio está sano 💪
                 </p>
-                <p className="text-xs text-blue-400 mt-1">Si un día vendes más que esto, estás cubriendo gastos.</p>
               </div>
             )}
           </div>
         )}
 
         <div className="flex justify-between items-center mt-8">
-          {step > 1 ? (
-            <button type="button" onClick={() => setStep(s => s - 1)}
-              className="text-sm text-gray-400 hover:text-gray-700 transition-colors flex items-center gap-1.5">
-              <Icon name="ChevronLeft" size={15} />Atrás
-            </button>
-          ) : <div />}
+          {step > 1
+            ? <button type="button" onClick={() => setStep(s => s - 1)}
+                className="text-sm text-gray-400 hover:text-gray-700 flex items-center gap-1.5">
+                <Icon name="ChevronLeft" size={15} />Atrás
+              </button>
+            : <div />}
 
-          {step < TOTAL_STEPS ? (
-            <button
-              type="button"
-              onClick={() => setStep(s => s + 1)}
-              disabled={step === 1 && !bizType}
-              className="text-sm bg-blue-600 text-white px-5 py-2.5 rounded-xl hover:bg-blue-700 disabled:opacity-40 transition-colors font-medium flex items-center gap-1.5"
-            >
-              Siguiente<Icon name="ChevronRight" size={15} />
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={finish}
-              disabled={saving || !openDays || +openDays < 1}
-              className="text-sm bg-blue-600 text-white px-6 py-2.5 rounded-xl hover:bg-blue-700 disabled:opacity-40 transition-colors font-medium"
-            >
-              {saving ? 'Guardando...' : 'Ver mi termómetro →'}
-            </button>
-          )}
+          {step < 3
+            ? <button type="button" onClick={() => setStep(s => s + 1)}
+                disabled={step === 1 && !bizType}
+                className="text-sm bg-blue-600 text-white px-5 py-2.5 rounded-xl hover:bg-blue-700 disabled:opacity-40 font-medium flex items-center gap-1.5">
+                Siguiente<Icon name="ChevronRight" size={15} />
+              </button>
+            : <button type="button" onClick={finish} disabled={saving || !openDays || +openDays < 1}
+                className="text-sm bg-blue-600 text-white px-6 py-2.5 rounded-xl hover:bg-blue-700 disabled:opacity-40 font-medium">
+                {saving ? 'Guardando...' : 'Activar termómetro →'}
+              </button>}
         </div>
       </div>
-      <p className="text-center text-xs text-gray-400 mt-4">Puedes editar estos datos en cualquier momento.</p>
-    </div>
-  );
-}
-
-// ─── Acordeón ────────────────────────────────────────────────────────────────
-
-function Accordion({ title, icon, badge, children, defaultOpen = false }) {
-  const [open, setOpen] = useState(defaultOpen);
-  return (
-    <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-      <button
-        type="button"
-        onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50/50 transition-colors"
-      >
-        <span className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-          <Icon name={icon} size={15} color="#6b7280" />
-          {title}
-          {badge && <span className="ml-1 text-sm font-bold text-gray-900">{badge}</span>}
-        </span>
-        <Icon name={open ? 'ChevronUp' : 'ChevronDown'} size={16} color="#9ca3af" />
-      </button>
-      {open && <div className="px-5 pb-5 border-t border-gray-100">{children}</div>}
-    </div>
-  );
-}
-
-// ─── Fila de gasto ────────────────────────────────────────────────────────────
-
-function ExpenseRow({ item, onUpdate, onDelete }) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(item);
-
-  const save = async () => {
-    await onUpdate(item.id, { name: draft.name, amount: parseMoneyInput(draft.amount), category: draft.category });
-    setEditing(false);
-  };
-
-  if (editing) {
-    return (
-      <tr className="border-b border-gray-100 bg-blue-50/30">
-        <td className="py-2 px-3">
-          <input autoFocus value={draft.name} onChange={e => setDraft(d => ({ ...d, name: e.target.value }))}
-            className="w-full text-sm border border-gray-200 rounded px-2 py-1 focus:outline-none focus:border-blue-400" />
-        </td>
-        <td className="py-2 px-3 hidden sm:table-cell">
-          <select value={draft.category} onChange={e => setDraft(d => ({ ...d, category: e.target.value }))}
-            className="text-sm border border-gray-200 rounded px-2 py-1 focus:outline-none bg-white">
-            {Object.entries(CATEGORY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-          </select>
-        </td>
-        <td className="py-2 px-3 text-right">
-          <div className="flex items-center border border-gray-200 rounded px-2 py-1 justify-end">
-            <span className="text-xs text-gray-400 mr-1">$</span>
-            <input type="text" inputMode="numeric"
-              value={fmtMoneyInput(draft.amount)}
-              onChange={e => setDraft(d => ({ ...d, amount: e.target.value.replace(/\D/g, '') }))}
-              className="w-24 text-sm text-right border-0 focus:outline-none bg-transparent" />
-          </div>
-        </td>
-        <td className="py-2 px-3">
-          <div className="flex gap-1">
-            <button onClick={save} className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700">Guardar</button>
-            <button onClick={() => setEditing(false)} className="text-xs text-gray-400 hover:text-gray-600 px-2 py-1 rounded">Cancelar</button>
-          </div>
-        </td>
-      </tr>
-    );
-  }
-
-  return (
-    <tr className="border-b border-gray-100 last:border-0 group hover:bg-gray-50/40 transition-colors">
-      <td className="py-2.5 px-3 text-sm text-gray-900">{item.name}</td>
-      <td className="py-2.5 px-3 text-sm text-gray-400 hidden sm:table-cell">{CATEGORY_LABELS[item.category] || item.category}</td>
-      <td className="py-2.5 px-3 text-sm font-semibold text-gray-900 text-right">{fmt(item.amount)}</td>
-      <td className="py-2.5 px-3 w-14">
-        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button onClick={() => { setDraft({ ...item, amount: String(item.amount) }); setEditing(true); }}
-            className="p-1 text-gray-400 hover:text-blue-600 rounded hover:bg-blue-50 transition-colors">
-            <Icon name="Pencil" size={13} />
-          </button>
-          <button onClick={() => onDelete(item.id)}
-            className="p-1 text-gray-400 hover:text-red-500 rounded hover:bg-red-50 transition-colors">
-            <Icon name="Trash2" size={13} />
-          </button>
-        </div>
-      </td>
-    </tr>
-  );
-}
-
-function AddExpenseForm({ onAdd }) {
-  const [form, setForm] = useState({ name: '', amount: '', category: 'other' });
-  const [saving, setSaving] = useState(false);
-
-  const submit = async (e) => {
-    e.preventDefault();
-    if (!form.name || !form.amount) return;
-    setSaving(true);
-    await onAdd({ name: form.name, amount: parseMoneyInput(form.amount), type: 'fixed', category: form.category });
-    setForm({ name: '', amount: '', category: 'other' });
-    setSaving(false);
-  };
-
-  return (
-    <form onSubmit={submit} className="flex gap-2 flex-wrap items-end pt-4 mt-2 border-t border-gray-100">
-      <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-        placeholder="Nombre del gasto..."
-        className="flex-1 min-w-32 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-400"
-        required />
-      <select value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
-        className="text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none bg-white">
-        {Object.entries(CATEGORY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-      </select>
-      <div className="flex items-center border border-gray-200 rounded-lg px-2 py-2 bg-white focus-within:border-blue-400">
-        <span className="text-xs text-gray-400 mr-1 select-none">$</span>
-        <input type="text" inputMode="numeric"
-          value={fmtMoneyInput(form.amount)}
-          onChange={e => setForm(f => ({ ...f, amount: e.target.value.replace(/\D/g, '') }))}
-          placeholder="0"
-          className="w-24 text-sm text-gray-900 border-0 focus:outline-none bg-transparent" required />
-      </div>
-      <button type="submit" disabled={saving}
-        className="text-sm bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium">
-        {saving ? '...' : '+ Agregar'}
-      </button>
-    </form>
-  );
-}
-
-// ─── Calendario de salud ──────────────────────────────────────────────────────
-
-function HealthCalendar({ month, year, dailySales, dailyCost, openDays }) {
-  const now = new Date();
-  const isCurrentMonth = month === now.getMonth() + 1 && year === now.getFullYear();
-  const daysInMonth = new Date(year, month, 0).getDate();
-  const todayDay = isCurrentMonth ? now.getDate() : daysInMonth;
-
-  const DAY_COLORS = {
-    green:  { bg: 'bg-green-500',  title: 'Cubriste gastos' },
-    yellow: { bg: 'bg-yellow-400', title: 'Cerca del equilibrio' },
-    red:    { bg: 'bg-red-400',    title: 'No cubriste gastos' },
-    future: { bg: 'bg-gray-100',   title: 'Día futuro' },
-    nodata: { bg: 'bg-gray-200',   title: 'Sin ventas registradas' },
-  };
-
-  const days = Array.from({ length: daysInMonth }, (_, i) => {
-    const d = i + 1;
-    if (d > todayDay) return { d, state: 'future' };
-    const sales = dailySales[d] || 0;
-    if (dailyCost <= 0) return { d, state: 'nodata', sales };
-    const sem = semaphoreForDay(sales, dailyCost);
-    return { d, state: sem, sales };
-  });
-
-  return (
-    <div className="bg-white rounded-xl border border-gray-100 p-5">
-      <p className="text-sm font-semibold text-gray-700 mb-4">Salud del mes</p>
-      <div className="grid grid-cols-7 gap-1.5">
-        {['L','M','X','J','V','S','D'].map(d => (
-          <div key={d} className="text-center text-xs text-gray-300 font-medium pb-1">{d}</div>
-        ))}
-        {/* Offset for first day of month */}
-        {(() => {
-          const firstDow = new Date(year, month - 1, 1).getDay();
-          const offset = firstDow === 0 ? 6 : firstDow - 1;
-          return Array.from({ length: offset }, (_, i) => <div key={`off-${i}`} />);
-        })()}
-        {days.map(({ d, state, sales }) => {
-          const color = DAY_COLORS[state] || DAY_COLORS.nodata;
-          const isToday = isCurrentMonth && d === todayDay;
-          return (
-            <div
-              key={d}
-              title={`Día ${d}: ${sales != null ? fmt(sales) : '—'} — ${color.title}`}
-              className={`relative aspect-square rounded-lg flex items-center justify-center text-xs font-bold transition-all
-                ${state === 'future' ? 'text-gray-300' : 'text-white'}
-                ${color.bg}
-                ${isToday ? 'ring-2 ring-blue-500 ring-offset-1' : ''}
-              `}
-            >
-              {d}
-            </div>
-          );
-        })}
-      </div>
-      <div className="flex gap-4 mt-3 justify-center text-xs text-gray-400">
-        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-green-500 inline-block" />Cubrió</span>
-        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-yellow-400 inline-block" />Cerca</span>
-        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-red-400 inline-block" />Faltó</span>
-        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-gray-200 inline-block" />Sin dato</span>
-      </div>
-    </div>
-  );
-}
-
-// ─── Ajustes ─────────────────────────────────────────────────────────────────
-
-function Settings({ center, businessId, month, year, onSave }) {
-  const [openDays, setOpenDays] = useState(center?.open_days ?? 22);
-  const [saving, setSaving]     = useState(false);
-  const [saved, setSaved]       = useState(false);
-
-  const save = async () => {
-    setSaving(true);
-    const c = await upsertCostCenter(businessId, month, year, {
-      open_days: clamp(+openDays || 22, 1, 31),
-      vat_rate: center?.vat_rate ?? 19,
-      uses_vat: center?.uses_vat !== false,
-      profit_goal: null,
-      onboarding_done: true,
-    });
-    setSaving(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-    onSave(c);
-  };
-
-  return (
-    <div className="pt-4 space-y-4">
-      <div>
-        <label className="text-xs text-gray-500 block mb-1">Días hábiles del mes</label>
-        <div className="flex items-center gap-3">
-          <input type="number" min="1" max="31" value={openDays} onChange={e => setOpenDays(e.target.value)}
-            className="w-20 text-center text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-400" />
-          <span className="text-sm text-gray-500">días</span>
-        </div>
-      </div>
-      <button onClick={save} disabled={saving}
-        className="text-sm bg-blue-600 text-white px-5 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium">
-        {saving ? 'Guardando...' : saved ? '✓ Guardado' : 'Guardar'}
-      </button>
+      <p className="text-center text-xs text-gray-400 mt-4">Puedes editar tus datos en cualquier momento.</p>
     </div>
   );
 }
@@ -485,158 +608,96 @@ function Dashboard({ center, items, sales, dailySales, month, year, onUpdateItem
 
   const totalExpenses = items.reduce((s, i) => s + (i.amount || 0), 0);
   const openDays = center?.open_days || 22;
-  const dailyCost = openDays > 0 ? totalExpenses / openDays : 0;
+  const dailyCost = openDays > 0 && totalExpenses > 0 ? totalExpenses / openDays : 0;
 
+  const salesToday = isCurrentMonth ? sales.salesToday : 0;
   const salesMonth = sales.salesMonth;
-  const salesToday = sales.salesToday;
 
-  // Agujero financiero del mes: positivo = falta cubrir, negativo = superávit
-  const gap = totalExpenses - salesMonth;
-
-  // Semáforo de hoy
-  const todaySem = semaphoreForDay(salesToday, dailyCost);
-
-  const SEM_CONFIG = {
-    green:  { emoji: '🟢', bg: 'bg-green-50',  border: 'border-green-200',  title: '¡Hoy cubriste tus gastos!', titleColor: 'text-green-700' },
-    yellow: { emoji: '🟡', bg: 'bg-yellow-50', border: 'border-yellow-200', title: 'Casi llegas al punto de equilibrio', titleColor: 'text-yellow-700' },
-    red:    { emoji: '🔴', bg: 'bg-red-50',    border: 'border-red-200',    title: 'Hoy no cubriste los gastos del día', titleColor: 'text-red-700' },
-    null:   { emoji: '⚪', bg: 'bg-gray-50',   border: 'border-gray-200',   title: 'Registra tus gastos para ver el termómetro', titleColor: 'text-gray-500' },
-  };
-
-  const sem = SEM_CONFIG[todaySem] || SEM_CONFIG[null];
+  const todayState = getState(salesToday, dailyCost);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 max-w-lg mx-auto">
 
-      {/* Semáforo de hoy */}
-      <div className={`rounded-2xl px-5 py-4 border ${sem.bg} ${sem.border}`}>
-        <div className="flex items-center gap-3 mb-3">
-          <span className="text-3xl leading-none">{sem.emoji}</span>
-          <div>
-            <p className={`text-base font-bold ${sem.titleColor}`}>{sem.title}</p>
-            {isCurrentMonth && (
-              <p className="text-sm text-gray-500">
-                Hoy: <span className="font-semibold text-gray-700">{fmt(salesToday)}</span>
-                {dailyCost > 0 && <> · Necesitas al día: <span className="font-semibold text-gray-700">{fmt(Math.ceil(dailyCost))}</span></>}
-              </p>
-            )}
-            {!isCurrentMonth && (
-              <p className="text-sm text-gray-400">Mes histórico</p>
-            )}
-          </div>
-        </div>
-        {dailyCost > 0 && isCurrentMonth && (
-          <div className="h-2 bg-white/70 rounded-full overflow-hidden">
-            <div
-              className={`h-full rounded-full transition-all ${todaySem === 'green' ? 'bg-green-500' : todaySem === 'yellow' ? 'bg-yellow-400' : 'bg-red-400'}`}
-              style={{ width: `${Math.min(100, Math.round((salesToday / dailyCost) * 100))}%` }}
-            />
-          </div>
-        )}
-      </div>
+      {/* Tarjeta héroe */}
+      <HeroCard state={isCurrentMonth ? todayState : 'unconfigured'} salesToday={salesToday} dailyCost={dailyCost} />
 
-      {/* Agujero financiero del mes */}
-      {totalExpenses > 0 && (
-        <div className={`rounded-2xl px-5 py-4 border ${gap <= 0 ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200'}`}>
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
-            {isCurrentMonth ? 'Resultado del mes hasta hoy' : `Resultado de ${MONTHS[month - 1]}`}
-          </p>
-          <div className="flex items-end justify-between gap-4 flex-wrap">
-            <div>
-              <p className={`text-3xl font-black tracking-tight ${gap <= 0 ? 'text-green-700' : 'text-red-600'}`}>
-                {gap <= 0 ? '+' : '-'}{fmt(Math.abs(gap))}
-              </p>
-              <p className="text-sm text-gray-500 mt-0.5">
-                {gap <= 0
-                  ? `Superávit — cubriste todos tus gastos y te sobra`
-                  : `Falta para cubrir gastos del mes`}
-              </p>
-            </div>
-            <div className="text-right text-xs text-gray-400 space-y-0.5 shrink-0">
-              <p>Gastos: <span className="font-semibold text-gray-600">{fmt(totalExpenses)}</span></p>
-              <p>Ventas: <span className="font-semibold text-gray-600">{fmt(salesMonth)}</span></p>
-            </div>
-          </div>
-          {totalExpenses > 0 && (
-            <div className="h-2 bg-gray-100 rounded-full overflow-hidden mt-3">
-              <div
-                className={`h-full rounded-full transition-all ${gap <= 0 ? 'bg-green-500' : salesMonth / totalExpenses > 0.7 ? 'bg-yellow-400' : 'bg-red-400'}`}
-                style={{ width: `${Math.min(100, Math.round((salesMonth / totalExpenses) * 100))}%` }}
-              />
-            </div>
-          )}
-        </div>
-      )}
+      {/* Hoyo financiero */}
+      <HoyoCard totalExpenses={totalExpenses} salesMonth={salesMonth} />
 
-      {/* Tarjetas pequeñas */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="bg-white rounded-xl border border-gray-100 p-4">
-          <p className="text-xs text-gray-400 font-medium mb-1">
-            {isCurrentMonth ? 'Vendiste hoy' : 'Total del mes'}
-          </p>
-          <p className="text-2xl font-bold text-blue-700">{fmt(isCurrentMonth ? salesToday : salesMonth)}</p>
-          {dailyCost > 0 && isCurrentMonth && (
-            <p className="text-xs text-gray-400 mt-1">Meta diaria: <span className="font-medium text-gray-600">{fmt(Math.ceil(dailyCost))}</span></p>
-          )}
-        </div>
-        <div className="bg-white rounded-xl border border-gray-100 p-4">
-          <p className="text-xs text-gray-400 font-medium mb-1">Costo mensual</p>
-          <p className="text-2xl font-bold text-gray-900">{fmt(totalExpenses)}</p>
-          {dailyCost > 0 && (
-            <p className="text-xs text-gray-400 mt-1">{fmt(Math.ceil(dailyCost))} por día hábil</p>
-          )}
-        </div>
-      </div>
+      {/* Calendario */}
+      <HealthCalendar month={month} year={year} dailySales={dailySales} dailyCost={dailyCost} />
 
-      {/* Calendario de salud */}
-      <HealthCalendar
-        month={month}
-        year={year}
-        dailySales={dailySales}
+      {/* Panel de gastos */}
+      <ExpensesPanel
+        items={items}
+        onAdd={onAddItem}
+        onUpdate={onUpdateItem}
+        onDelete={onDeleteItem}
+        totalExpenses={totalExpenses}
         dailyCost={dailyCost}
-        openDays={openDays}
       />
 
-      {/* Gastos del mes */}
-      <Accordion title="Gastos del mes" icon="Receipt" badge={fmt(totalExpenses)} defaultOpen={items.length === 0}>
-        <div className="pt-4">
-          {items.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-gray-100">
-                    <th className="text-left text-xs font-medium text-gray-400 pb-2 px-3">Gasto</th>
-                    <th className="text-left text-xs font-medium text-gray-400 pb-2 px-3 hidden sm:table-cell">Categoría</th>
-                    <th className="text-right text-xs font-medium text-gray-400 pb-2 px-3">Monto</th>
-                    <th className="w-14" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map(item => (
-                    <ExpenseRow key={item.id} item={item} onUpdate={onUpdateItem} onDelete={onDeleteItem} />
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr className="border-t border-gray-200">
-                    <td colSpan={2} className="py-2.5 px-3 text-xs font-semibold text-gray-500 hidden sm:table-cell">Total</td>
-                    <td className="py-2.5 px-3 text-sm font-bold text-gray-900 text-right">{fmt(totalExpenses)}</td>
-                    <td />
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          ) : (
-            <p className="text-sm text-gray-400 mb-2">No tienes gastos registrados aún.</p>
-          )}
-          <AddExpenseForm onAdd={onAddItem} />
+      {/* Ajustes mínimos */}
+      <SettingsPanel center={center} businessId={businessId} month={month} year={year} onSave={onEditSettings} />
+    </div>
+  );
+}
+
+// ─── Panel de ajustes ─────────────────────────────────────────────────────────
+
+function SettingsPanel({ center, businessId, month, year, onSave }) {
+  const [open, setOpen] = useState(false);
+  const [openDays, setOpenDays] = useState(center?.open_days ?? 22);
+  const [saving, setSaving]     = useState(false);
+  const [saved, setSaved]       = useState(false);
+
+  const save = async () => {
+    setSaving(true);
+    const c = await upsertCostCenter(businessId, month, year, {
+      open_days: clamp(+openDays || 22, 1, 31),
+      vat_rate: center?.vat_rate ?? 19,
+      uses_vat: center?.uses_vat !== false,
+      profit_goal: null, onboarding_done: true,
+    });
+    setSaving(false); setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+    onSave(c);
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+      <button type="button" onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50/50 transition-colors">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-xl bg-gray-100 flex items-center justify-center">
+            <Icon name="Settings" size={15} color="#6b7280" />
+          </div>
+          <p className="text-sm font-bold text-gray-800">Ajustes</p>
         </div>
-      </Accordion>
+        <Icon name={open ? 'ChevronUp' : 'ChevronDown'} size={16} color="#9ca3af" />
+      </button>
 
-      {/* Ajustes */}
-      <Accordion title="Ajustes" icon="Settings">
-        <Settings center={center} businessId={businessId} month={month} year={year} onSave={onEditSettings} />
-      </Accordion>
-
+      {open && (
+        <div className="border-t border-gray-100 px-5 pb-5 pt-4 space-y-4">
+          <div>
+            <label className="text-xs text-gray-500 block mb-1.5">Días hábiles del mes</label>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center border border-gray-200 rounded-xl overflow-hidden bg-white">
+                <button type="button" onClick={() => setOpenDays(d => Math.max(1, +d - 1))}
+                  className="w-9 h-9 flex items-center justify-center text-gray-500 hover:bg-gray-50 font-medium">−</button>
+                <span className="w-10 text-center text-sm font-bold text-gray-900">{openDays}</span>
+                <button type="button" onClick={() => setOpenDays(d => Math.min(31, +d + 1))}
+                  className="w-9 h-9 flex items-center justify-center text-gray-500 hover:bg-gray-50 font-medium">+</button>
+              </div>
+              <span className="text-sm text-gray-500">días</span>
+            </div>
+          </div>
+          <button onClick={save} disabled={saving}
+            className="text-sm bg-blue-600 text-white px-5 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium">
+            {saving ? 'Guardando...' : saved ? '✓ Guardado' : 'Guardar'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -654,11 +715,11 @@ export default function CrmCostCenter() {
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year,  setYear]  = useState(now.getFullYear());
 
-  const [center,      setCenter]      = useState(null);
-  const [items,       setItems]       = useState([]);
-  const [sales,       setSales]       = useState({ salesMonth: 0, salesToday: 0 });
-  const [dailySales,  setDailySales]  = useState({});
-  const [loading,     setLoading]     = useState(true);
+  const [center,         setCenter]        = useState(null);
+  const [items,          setItems]         = useState([]);
+  const [sales,          setSales]         = useState({ salesMonth: 0, salesToday: 0 });
+  const [dailySales,     setDailySales]    = useState({});
+  const [loading,        setLoading]       = useState(true);
   const [showOnboarding, setShowOnboarding] = useState(false);
 
   const load = useCallback(async () => {
@@ -670,10 +731,7 @@ export default function CrmCostCenter() {
       getCrmSalesTotalsForPeriod(business.id, month, year),
       getCrmDailySalesForPeriod(business.id, month, year),
     ]);
-    setCenter(c);
-    setItems(its);
-    setSales(s);
-    setDailySales(ds);
+    setCenter(c); setItems(its); setSales(s); setDailySales(ds);
     setShowOnboarding(!c?.onboarding_done);
     setLoading(false);
   }, [business?.id, month, year]);
@@ -684,12 +742,10 @@ export default function CrmCostCenter() {
     const it = await createCostItem(business.id, month, year, fields);
     setItems(prev => [...prev, it]);
   };
-
   const handleUpdateItem = async (id, fields) => {
     const it = await updateCostItem(id, fields);
     setItems(prev => prev.map(x => x.id === id ? it : x));
   };
-
   const handleDeleteItem = async (id) => {
     await deleteCostItem(id);
     setItems(prev => prev.filter(x => x.id !== id));
@@ -705,9 +761,7 @@ export default function CrmCostCenter() {
               <Icon name="BarChart2" size={24} color="#2563eb" />
             </div>
             <h3 className="text-lg font-semibold text-gray-900 mb-2">Funcionalidad Business</h3>
-            <p className="text-sm text-gray-500 max-w-sm">
-              El termómetro financiero requiere el plan Business. Actualiza tu plan para acceder.
-            </p>
+            <p className="text-sm text-gray-500 max-w-sm">Requiere el plan Business.</p>
           </div>
         </DashboardLayoutContent>
       </DashboardAppShell>
@@ -717,15 +771,21 @@ export default function CrmCostCenter() {
   return (
     <DashboardAppShell>
       <PanelHeader
-        title={<h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Termómetro del negocio</h1>}
-        subtitle={<p className="text-xs" style={{ color: 'var(--color-muted-foreground)' }}>
-          {showOnboarding ? 'Cuéntanos sobre tu negocio' : `${MONTHS[month - 1]} ${year}`}
-        </p>}
+        title={
+          <h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>
+            Termómetro del negocio
+          </h1>
+        }
+        subtitle={
+          <p className="text-xs" style={{ color: 'var(--color-muted-foreground)' }}>
+            {showOnboarding ? 'Configuración inicial' : `${MONTHS[month - 1]} ${year}`}
+          </p>
+        }
       />
 
       <DashboardLayoutContent>
         {!showOnboarding && !loading && (
-          <div className="flex items-center gap-2 mb-5 flex-wrap">
+          <div className="flex items-center gap-2 mb-5 max-w-lg mx-auto flex-wrap">
             <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-xl px-3 py-2">
               <Icon name="Calendar" size={14} color="#9ca3af" />
               <select value={month} onChange={e => setMonth(+e.target.value)}
@@ -737,11 +797,8 @@ export default function CrmCostCenter() {
                 {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
               </select>
             </div>
-            <button
-              type="button"
-              onClick={() => setShowOnboarding(true)}
-              className="text-xs text-gray-400 hover:text-blue-600 flex items-center gap-1 transition-colors"
-            >
+            <button type="button" onClick={() => setShowOnboarding(true)}
+              className="text-xs text-gray-400 hover:text-blue-600 flex items-center gap-1 transition-colors">
               <Icon name="Edit3" size={13} />Editar mis datos
             </button>
           </div>
