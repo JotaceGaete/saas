@@ -416,7 +416,12 @@ export default function CrmTerminal() {
                 </div>
 
                 {/* ── RIGHT: cart + checkout ── */}
-                <div className="w-full lg:w-72 xl:w-80 shrink-0 flex flex-col gap-4 lg:sticky lg:top-4">
+                {/* Desktop: sticky column with controlled height. Scrollable area on top, totals/cobrar pinned at bottom.
+                    Mobile: column flows normally; totals+cobrar shown via fixed bottom bar. */}
+                <div className="w-full lg:w-72 xl:w-80 shrink-0 lg:sticky lg:top-4 lg:flex lg:flex-col lg:max-h-[calc(100vh-5rem)]">
+
+                  {/* Scrollable section (desktop) ─ customer, cart, discount, payment, notes, received */}
+                  <div className="flex flex-col gap-4 lg:flex-1 lg:overflow-y-auto lg:min-h-0 lg:pb-2">
 
                   {/* Customer */}
                   <div className="bg-white border border-gray-200 rounded-xl p-4">
@@ -595,7 +600,10 @@ export default function CrmTerminal() {
                     </div>
                   )}
 
-                  {/* Totals + Cobrar */}
+                  </div>{/* end scrollable section */}
+
+                  {/* Totals + Cobrar — desktop only (mobile uses fixed bottom bar below) */}
+                  <div className="hidden lg:block shrink-0 pt-4">
                   <div className="bg-gray-900 rounded-2xl p-4 flex flex-col gap-3">
                     <div className="space-y-1.5">
                       <div className="flex justify-between text-xs text-gray-400">
@@ -629,10 +637,41 @@ export default function CrmTerminal() {
                       </p>
                     )}
                   </div>
+                  </div>{/* end desktop totals wrapper */}
 
-                </div>
+                </div>{/* end right column */}
+              </div>{/* end flex row */}
+            </div>{/* end outer padding container */}
+
+            {/* ── Mobile sticky bottom bar ─────────────────────────────────────────
+                Always visible on small screens when cobrar is relevant.
+                lg:hidden so it disappears when desktop layout takes over.            */}
+            <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-gray-900 border-t border-gray-800 shadow-2xl px-4 py-3 flex items-center gap-3">
+              <div className="flex-1 min-w-0">
+                {discountAmount > 0 && (
+                  <p className="text-[10px] text-gray-500 line-through leading-none mb-0.5">
+                    {fmt(subtotal, business?.currency)}
+                  </p>
+                )}
+                <p className="text-lg font-bold text-white leading-tight">{fmt(total, business?.currency)}</p>
+                {isCashShort && (
+                  <p className="text-[10px] text-red-400 mt-0.5">
+                    Faltan {fmt(total - parsedReceived, business?.currency)}
+                  </p>
+                )}
               </div>
+              <button
+                onClick={handleRegister}
+                disabled={cart.length === 0 || busy || isCashShort}
+                className="shrink-0 px-6 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:bg-gray-700 disabled:text-gray-500 text-white font-bold text-sm transition-colors flex items-center gap-2"
+              >
+                {busy
+                  ? <><Icon name="Loader2" size={16} className="animate-spin" />Procesando…</>
+                  : <><Icon name="Zap" size={16} />Cobrar</>
+                }
+              </button>
             </div>
+
           </>
         )}
 
