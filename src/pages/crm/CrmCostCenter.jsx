@@ -16,6 +16,10 @@ import {
   bulkCreateCostItems,
   getCrmSalesTotalsForPeriod,
   getCrmDailySalesForPeriod,
+  getVariableExpenses,
+  createVariableExpense,
+  updateVariableExpense,
+  deleteVariableExpense,
 } from 'services/crmService';
 import { getEffectivePlanSlug } from 'services/waBusinessService';
 
@@ -45,8 +49,26 @@ const CATEGORY_LABELS = {
   other:     'Otros gastos',
 };
 
+const VAR_CATEGORY_LABELS = {
+  cleaning:  'Limpieza',
+  services:  'Servicios menores',
+  repairs:   'Reparaciones',
+  food:      'Comida / Café',
+  transport: 'Transporte',
+  supplies:  'Insumos',
+  other:     'Otros',
+};
+
 const fmt = (n) => formatMoney(n, 'CLP');
 function clamp(v, min, max) { return Math.min(max, Math.max(min, v)); }
+
+function todayISO() { return new Date().toISOString().slice(0, 10); }
+function dayFromDate(dateStr) { return dateStr ? parseInt(dateStr.slice(8, 10), 10) : null; }
+function fmtDate(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr + 'T12:00:00');
+  return d.toLocaleDateString('es-CL', { day: 'numeric', month: 'short' });
+}
 
 // ─── Estado del negocio ───────────────────────────────────────────────────────
 
@@ -108,16 +130,21 @@ function AnimatedBar({ pct, colorClass, height = 'h-4' }) {
 
 // ─── Tarjeta héroe ────────────────────────────────────────────────────────────
 
-function HeroCard({ state, salesToday, dailyCost, totalExpenses, openDays }) {
+function HeroCard({ state, salesToday, dailyCost, varExpensesToday, totalExpenses, openDays }) {
   const s = STATE[state];
-  const pct = dailyCost > 0 ? Math.round((salesToday / dailyCost) * 100) : 0;
-  const remaining = Math.max(0, dailyCost - salesToday);
-  const surplus = Math.max(0, salesToday - dailyCost);
+  // effectiveCost = costo fijo diario + gastos variables de hoy
+  const effectiveCost = dailyCost + (varExpensesToday || 0);
+  const pct = effectiveCost > 0 ? Math.round((salesToday / effectiveCost) * 100) : 0;
+  const remaining = Math.max(0, effectiveCost - salesToday);
+  const surplus   = Math.max(0, salesToday - effectiveCost);
+  const hasVar    = varExpensesToday > 0;
 
   const subText = {
     winning:      `Ya cubriste el costo de hoy.\nTodo lo que vendas ahora es ganancia.`,
     breaking:     `Casi llegas — te faltan ${fmt(Math.ceil(remaining))} más para cubrir el día.`,
-    losing:       `Todavía no cubres los gastos de hoy.\nTe faltan ${fmt(Math.ceil(remaining))}.`,
+    losing:       hasVar
+      ? `Hoy tu negocio necesita cubrir ${fmt(Math.ceil(effectiveCost))} considerando gastos extra.`
+      : `Todavía no cubres los gastos de hoy.\nTe faltan ${fmt(Math.ceil(remaining))}.`,
     unconfigured: 'Registra tus gastos mensuales para ver tu termómetro.',
   }[state] || '';
 
@@ -134,15 +161,14 @@ function HeroCard({ state, salesToday, dailyCost, totalExpenses, openDays }) {
       </div>
 
       {/* Barra + números */}
-      {dailyCost > 0 && (
+      {effectiveCost > 0 && (
         <>
           <AnimatedBar pct={pct} colorClass="bg-white/70" height="h-4" />
           <div className="flex justify-between items-baseline mt-3">
             <span className="font-black text-white text-2xl tabular-nums">{fmt(salesToday)}</span>
-            <span className="text-white/60 text-sm">de {fmt(Math.ceil(dailyCost))} hoy</span>
+            <span className="text-white/60 text-sm">de {fmt(Math.ceil(effectiveCost))} hoy</span>
           </div>
 
-          {/* Badge resultado */}
           {surplus > 0 && (
             <div className={`mt-4 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-bold ${s.badge}`}>
               <Icon name="TrendingUp" size={13} />
@@ -150,17 +176,22 @@ function HeroCard({ state, salesToday, dailyCost, totalExpenses, openDays }) {
             </div>
           )}
 
-          {/* Meta diaria siempre visible */}
-          <div className="mt-4 pt-4 border-t border-white/20 flex items-center justify-between">
-            <div>
-              <p className="text-white/50 text-xs uppercase tracking-wide">Meta diaria</p>
-              <p className="text-white font-bold text-lg">{fmt(Math.ceil(dailyCost))}</p>
+          {/* Desglose meta diaria */}
+          <div className="mt-4 pt-4 border-t border-white/20 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <p className="text-white/50 text-xs">Costo fijo diario</p>
+              <p className="text-white/70 text-sm font-semibold">{fmt(Math.ceil(dailyCost))}</p>
             </div>
-            {totalExpenses > 0 && openDays > 0 && (
-              <p className="text-white/40 text-xs text-right">
-                {fmt(totalExpenses)}<br />÷ {openDays} días
-              </p>
+            {hasVar && (
+              <div className="flex items-center justify-between">
+                <p className="text-white/50 text-xs">Gastos extra hoy</p>
+                <p className="text-white/70 text-sm font-semibold">+{fmt(varExpensesToday)}</p>
+              </div>
             )}
+            <div className="flex items-center justify-between pt-1 border-t border-white/10">
+              <p className="text-white/70 text-xs font-semibold">Necesitas cubrir hoy</p>
+              <p className="text-white font-bold text-base">{fmt(Math.ceil(effectiveCost))}</p>
+            </div>
           </div>
         </>
       )}
@@ -176,15 +207,16 @@ function HeroCard({ state, salesToday, dailyCost, totalExpenses, openDays }) {
 
 // ─── Hoyo financiero ──────────────────────────────────────────────────────────
 
-function HoyoCard({ totalExpenses, salesMonth }) {
-  const gap = totalExpenses - salesMonth;
+function HoyoCard({ totalExpenses, varExpensesMonth, salesMonth }) {
+  const totalCosts = totalExpenses + (varExpensesMonth || 0);
+  const gap = totalCosts - salesMonth;
   const covered = gap <= 0;
-  const pct = totalExpenses > 0 ? Math.min(100, Math.round((salesMonth / totalExpenses) * 100)) : 0;
+  const pct = totalCosts > 0 ? Math.min(100, Math.round((salesMonth / totalCosts) * 100)) : 0;
   const close = !covered && pct >= 80;
   const [barWidth, setBarWidth] = useState(0);
   useEffect(() => { const t = setTimeout(() => setBarWidth(pct), 120); return () => clearTimeout(t); }, [pct]);
 
-  if (totalExpenses === 0) return null;
+  if (totalCosts === 0) return null;
 
   return (
     <div className={`rounded-2xl border-2 p-5 transition-colors ${
@@ -224,9 +256,27 @@ function HoyoCard({ totalExpenses, salesMonth }) {
         </div>
         <div className="flex justify-between text-xs text-gray-400">
           <span>Ventas: <span className="font-semibold text-gray-600">{fmt(salesMonth)}</span></span>
-          <span>{pct}% de {fmt(totalExpenses)}</span>
+          <span>{pct}% de {fmt(totalCosts)}</span>
         </div>
       </div>
+
+      {/* Desglose de costos cuando hay gastos variables */}
+      {varExpensesMonth > 0 && (
+        <div className="mt-3 pt-3 border-t border-gray-100 space-y-1 text-xs text-gray-400">
+          <div className="flex justify-between">
+            <span>Gastos fijos</span>
+            <span className="font-medium text-gray-600">{fmt(totalExpenses)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span>Gastos variables</span>
+            <span className="font-medium text-gray-600">+{fmt(varExpensesMonth)}</span>
+          </div>
+          <div className="flex justify-between pt-1 border-t border-gray-100 font-semibold text-gray-500">
+            <span>Total a cubrir</span>
+            <span>{fmt(totalCosts)}</span>
+          </div>
+        </div>
+      )}
 
       {/* Mensajes de estado */}
       {covered && (
@@ -245,7 +295,7 @@ function HoyoCard({ totalExpenses, salesMonth }) {
 
 // ─── Calendario GitHub-style ──────────────────────────────────────────────────
 
-function CalendarDot({ day, month, year, state, sales, dailyCost, isToday }) {
+function CalendarDot({ day, month, year, state, sales, varExp, dailyCost, isToday }) {
   const [showTip, setShowTip] = useState(false);
   const ref = useRef(null);
 
@@ -266,7 +316,8 @@ function CalendarDot({ day, month, year, state, sales, dailyCost, isToday }) {
   };
 
   const isFuture = state === 'future' || state === 'unconfigured';
-  const diff = dailyCost > 0 ? (sales || 0) - dailyCost : null;
+  const effectiveCost = dailyCost + (varExp || 0);
+  const diff = effectiveCost > 0 ? (sales || 0) - effectiveCost : null;
   const dateLabel = new Date(year, month - 1, day).toLocaleDateString('es-CL', { day: 'numeric', month: 'long' });
 
   // Align tooltip to avoid going off-screen edges
@@ -292,8 +343,14 @@ function CalendarDot({ day, month, year, state, sales, dailyCost, isToday }) {
             </div>
             {dailyCost > 0 && (
               <div className="flex justify-between gap-4">
-                <span className="text-gray-400">Meta</span>
+                <span className="text-gray-400">Meta fija</span>
                 <span className="font-semibold">{fmt(Math.ceil(dailyCost))}</span>
+              </div>
+            )}
+            {varExp > 0 && (
+              <div className="flex justify-between gap-4">
+                <span className="text-gray-400">Gastos extra</span>
+                <span className="font-semibold">+{fmt(varExp)}</span>
               </div>
             )}
             {diff !== null && (
@@ -312,7 +369,7 @@ function CalendarDot({ day, month, year, state, sales, dailyCost, isToday }) {
   );
 }
 
-function HealthCalendar({ month, year, dailySales, dailyCost }) {
+function HealthCalendar({ month, year, dailySales, dailyCost, dailyVarExpenses }) {
   const now = new Date();
   const isCurrentMonth = month === now.getMonth() + 1 && year === now.getFullYear();
   const daysInMonth = new Date(year, month, 0).getDate();
@@ -322,10 +379,11 @@ function HealthCalendar({ month, year, dailySales, dailyCost }) {
 
   const days = Array.from({ length: daysInMonth }, (_, i) => {
     const d = i + 1;
-    if (d > todayDay) return { d, state: 'future', sales: 0 };
+    if (d > todayDay) return { d, state: 'future', sales: 0, varExp: 0 };
     const sales = dailySales[d] || 0;
-    if (dailyCost <= 0) return { d, state: 'nodata', sales };
-    return { d, state: getState(sales, dailyCost), sales };
+    const varExp = (dailyVarExpenses || {})[d] || 0;
+    if (dailyCost <= 0) return { d, state: 'nodata', sales, varExp };
+    return { d, state: getState(sales, dailyCost + varExp), sales, varExp };
   });
 
   return (
@@ -344,13 +402,14 @@ function HealthCalendar({ month, year, dailySales, dailyCost }) {
           <div key={d} className="text-center text-xs text-gray-300 font-medium pb-0.5">{d}</div>
         ))}
         {Array.from({ length: offset }, (_, i) => <div key={`off-${i}`} />)}
-        {days.map(({ d, state, sales }) => (
+        {days.map(({ d, state, sales, varExp }) => (
           <CalendarDot
             key={d}
             day={d}
             month={month}
             year={year}
             state={state}
+            varExp={varExp}
             sales={sales}
             dailyCost={dailyCost}
             isToday={isCurrentMonth && d === todayDay}
@@ -472,6 +531,169 @@ function ExpensesPanel({ items, onAdd, onUpdate, onDelete, totalExpenses, dailyC
               className="text-sm bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium whitespace-nowrap">
               {saving ? '…' : '+ Agregar'}
             </button>
+          </form>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Panel de gastos variables ────────────────────────────────────────────────
+
+function VariableExpensesPanel({ varExpenses, onAdd, onUpdate, onDelete, varExpensesToday, varExpensesMonth }) {
+  const [open, setOpen] = useState(false);
+  const [editId, setEditId] = useState(null);
+  const [draft, setDraft] = useState({});
+  const [form, setForm] = useState({ name: '', category: 'other', amount: '', date: todayISO() });
+  const [saving, setSaving] = useState(false);
+
+  const submitAdd = async (e) => {
+    e.preventDefault();
+    if (!form.name || !form.amount) return;
+    setSaving(true);
+    await onAdd({ name: form.name, category: form.category, amount: parseMoneyInput(form.amount), date: form.date });
+    setForm({ name: '', category: 'other', amount: '', date: todayISO() });
+    setSaving(false);
+  };
+
+  const saveEdit = async () => {
+    await onUpdate(editId, {
+      name: draft.name,
+      category: draft.category,
+      amount: parseMoneyInput(draft.amount),
+      date: draft.date,
+    });
+    setEditId(null);
+  };
+
+  const badge = varExpensesMonth > 0
+    ? `${varExpenses.length} · ${fmt(varExpensesMonth)}`
+    : `${varExpenses.length}`;
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50/50 transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-xl bg-orange-50 flex items-center justify-center">
+            <Icon name="ShoppingBag" size={15} color="#f97316" />
+          </div>
+          <div className="text-left">
+            <p className="text-sm font-bold text-gray-800">Otros gastos del negocio</p>
+            <p className="text-xs text-gray-400">
+              {varExpensesMonth > 0
+                ? `${varExpenses.length} gasto${varExpenses.length !== 1 ? 's' : ''} · ${fmt(varExpensesMonth)} este mes`
+                : 'Gastos del día, compras menores…'}
+            </p>
+          </div>
+        </div>
+        <Icon name={open ? 'ChevronUp' : 'ChevronDown'} size={16} color="#9ca3af" />
+      </button>
+
+      {open && (
+        <div className="border-t border-gray-100 px-5 pb-5 pt-4">
+          {/* Lista de gastos variables */}
+          <div className="space-y-2 mb-4">
+            {varExpenses.length === 0 && (
+              <p className="text-sm text-gray-400 text-center py-3">No hay gastos registrados este mes.</p>
+            )}
+            {varExpenses.map(item => (
+              editId === item.id ? (
+                <div key={item.id} className="bg-blue-50 rounded-xl p-3 space-y-2">
+                  <input autoFocus value={draft.name}
+                    onChange={e => setDraft(d => ({ ...d, name: e.target.value }))}
+                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-400 bg-white"
+                    placeholder="Nombre del gasto" />
+                  <div className="flex gap-2 flex-wrap">
+                    <select value={draft.category}
+                      onChange={e => setDraft(d => ({ ...d, category: e.target.value }))}
+                      className="text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none bg-white flex-1">
+                      {Object.entries(VAR_CATEGORY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                    </select>
+                    <input type="date" value={draft.date}
+                      onChange={e => setDraft(d => ({ ...d, date: e.target.value }))}
+                      className="text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none bg-white" />
+                  </div>
+                  <div className="flex items-center border border-gray-200 rounded-lg px-3 py-2 bg-white focus-within:border-blue-400">
+                    <span className="text-xs text-gray-400 mr-1">$</span>
+                    <input type="text" inputMode="numeric"
+                      value={fmtMoneyInput(draft.amount)}
+                      onChange={e => setDraft(d => ({ ...d, amount: e.target.value.replace(/\D/g, '') }))}
+                      className="flex-1 text-sm text-gray-900 border-0 focus:outline-none bg-transparent" />
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={saveEdit} className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 font-medium">Guardar</button>
+                    <button onClick={() => setEditId(null)} className="text-xs text-gray-400 hover:text-gray-600 px-2 py-1.5 rounded-lg">Cancelar</button>
+                  </div>
+                </div>
+              ) : (
+                <div key={item.id}
+                  className="flex items-center justify-between px-3 py-2.5 rounded-xl hover:bg-gray-50 group transition-colors">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-gray-800 truncate">{item.description || '—'}</p>
+                    <p className="text-xs text-gray-400">
+                      {VAR_CATEGORY_LABELS[item.supplier] || item.supplier || 'Otros'} · {fmtDate(item.purchase_date)}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0 ml-3">
+                    <p className="text-sm font-bold text-gray-900">{fmt(item.amount)}</p>
+                    <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={() => {
+                          setDraft({ name: item.description || '', category: item.supplier || 'other', amount: String(item.amount), date: item.purchase_date || todayISO() });
+                          setEditId(item.id);
+                        }}
+                        className="p-1.5 text-gray-300 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition-colors">
+                        <Icon name="Pencil" size={13} />
+                      </button>
+                      <button
+                        onClick={() => onDelete(item.id)}
+                        className="p-1.5 text-gray-300 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors">
+                        <Icon name="Trash2" size={13} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )
+            ))}
+          </div>
+
+          {/* Formulario de añadir */}
+          <form onSubmit={submitAdd} className="space-y-2 pt-3 border-t border-gray-100">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Agregar gasto</p>
+            <input value={form.name}
+              onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+              placeholder="¿Qué compraste o pagaste?"
+              className="w-full text-sm border border-gray-200 rounded-xl px-4 py-2.5 focus:outline-none focus:border-blue-400"
+              required />
+            <div className="flex gap-2 flex-wrap">
+              <select value={form.category}
+                onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
+                className="text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none bg-white flex-1">
+                {Object.entries(VAR_CATEGORY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+              <input type="date" value={form.date}
+                onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
+                className="text-sm border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none bg-white" />
+            </div>
+            <div className="flex gap-2">
+              <div className="flex-1 flex items-center border border-gray-200 rounded-xl px-3 py-2.5 bg-white focus-within:border-blue-400">
+                <span className="text-xs text-gray-400 mr-2 select-none font-medium">$</span>
+                <input type="text" inputMode="numeric"
+                  value={fmtMoneyInput(form.amount)}
+                  onChange={e => setForm(f => ({ ...f, amount: e.target.value.replace(/\D/g, '') }))}
+                  placeholder="0"
+                  className="flex-1 text-sm text-gray-900 border-0 focus:outline-none bg-transparent"
+                  required />
+              </div>
+              <button type="submit" disabled={saving}
+                className="text-sm bg-orange-500 text-white px-5 py-2.5 rounded-xl hover:bg-orange-600 disabled:opacity-50 font-bold whitespace-nowrap">
+                {saving ? '…' : '+ Agregar'}
+              </button>
+            </div>
           </form>
         </div>
       )}
@@ -636,18 +858,37 @@ function Onboarding({ businessId, month, year, onDone }) {
 
 // ─── Dashboard principal ──────────────────────────────────────────────────────
 
-function Dashboard({ center, items, sales, dailySales, month, year, onUpdateItem, onDeleteItem, onAddItem, onEditSettings, businessId }) {
+function Dashboard({ center, items, varExpenses, sales, dailySales, month, year,
+  onUpdateItem, onDeleteItem, onAddItem,
+  onAddVar, onUpdateVar, onDeleteVar,
+  onEditSettings, businessId }) {
   const now = new Date();
   const isCurrentMonth = month === now.getMonth() + 1 && year === now.getFullYear();
+  const today = todayISO();
 
   const totalExpenses = items.reduce((s, i) => s + (i.amount || 0), 0);
   const openDays = center?.open_days || 22;
   const dailyCost = openDays > 0 && totalExpenses > 0 ? totalExpenses / openDays : 0;
 
+  // Gastos variables agregados
+  const varExpensesMonth = varExpenses.reduce((s, e) => s + (e.amount || 0), 0);
+  const varExpensesToday = varExpenses
+    .filter(e => e.purchase_date === today)
+    .reduce((s, e) => s + (e.amount || 0), 0);
+
+  // Mapa día → total variables (para calendario)
+  const dailyVarExpenses = {};
+  for (const e of varExpenses) {
+    const d = dayFromDate(e.purchase_date);
+    if (d) dailyVarExpenses[d] = (dailyVarExpenses[d] || 0) + (e.amount || 0);
+  }
+
   const salesToday = isCurrentMonth ? sales.salesToday : 0;
   const salesMonth = sales.salesMonth;
 
-  const todayState = getState(salesToday, dailyCost);
+  // Estado de hoy considera gastos variables
+  const effectiveDailyCost = dailyCost + (isCurrentMonth ? varExpensesToday : 0);
+  const todayState = getState(salesToday, effectiveDailyCost);
 
   return (
     <div className="space-y-4 max-w-lg mx-auto">
@@ -657,17 +898,38 @@ function Dashboard({ center, items, sales, dailySales, month, year, onUpdateItem
         state={isCurrentMonth ? todayState : 'unconfigured'}
         salesToday={salesToday}
         dailyCost={dailyCost}
+        varExpensesToday={isCurrentMonth ? varExpensesToday : 0}
         totalExpenses={totalExpenses}
         openDays={openDays}
       />
 
       {/* Hoyo financiero */}
-      <HoyoCard totalExpenses={totalExpenses} salesMonth={salesMonth} />
+      <HoyoCard
+        totalExpenses={totalExpenses}
+        varExpensesMonth={varExpensesMonth}
+        salesMonth={salesMonth}
+      />
 
       {/* Calendario */}
-      <HealthCalendar month={month} year={year} dailySales={dailySales} dailyCost={dailyCost} />
+      <HealthCalendar
+        month={month}
+        year={year}
+        dailySales={dailySales}
+        dailyCost={dailyCost}
+        dailyVarExpenses={dailyVarExpenses}
+      />
 
-      {/* Panel de gastos */}
+      {/* Gastos variables */}
+      <VariableExpensesPanel
+        varExpenses={varExpenses}
+        onAdd={onAddVar}
+        onUpdate={onUpdateVar}
+        onDelete={onDeleteVar}
+        varExpensesToday={varExpensesToday}
+        varExpensesMonth={varExpensesMonth}
+      />
+
+      {/* Gastos fijos del mes */}
       <ExpensesPanel
         items={items}
         onAdd={onAddItem}
@@ -757,6 +1019,7 @@ export default function CrmCostCenter() {
 
   const [center,         setCenter]        = useState(null);
   const [items,          setItems]         = useState([]);
+  const [varExpenses,    setVarExpenses]   = useState([]);
   const [sales,          setSales]         = useState({ salesMonth: 0, salesToday: 0 });
   const [dailySales,     setDailySales]    = useState({});
   const [loading,        setLoading]       = useState(true);
@@ -765,13 +1028,14 @@ export default function CrmCostCenter() {
   const load = useCallback(async () => {
     if (!business?.id) return;
     setLoading(true);
-    const [c, its, s, ds] = await Promise.all([
+    const [c, its, s, ds, ve] = await Promise.all([
       getCostCenter(business.id, month, year),
       getCostItems(business.id, month, year),
       getCrmSalesTotalsForPeriod(business.id, month, year),
       getCrmDailySalesForPeriod(business.id, month, year),
+      getVariableExpenses(business.id, month, year),
     ]);
-    setCenter(c); setItems(its); setSales(s); setDailySales(ds);
+    setCenter(c); setItems(its); setSales(s); setDailySales(ds); setVarExpenses(ve);
     setShowOnboarding(!c?.onboarding_done);
     setLoading(false);
   }, [business?.id, month, year]);
@@ -789,6 +1053,19 @@ export default function CrmCostCenter() {
   const handleDeleteItem = async (id) => {
     await deleteCostItem(id);
     setItems(prev => prev.filter(x => x.id !== id));
+  };
+
+  const handleAddVar = async (fields) => {
+    const it = await createVariableExpense(business.id, month, year, fields);
+    setVarExpenses(prev => [it, ...prev]);
+  };
+  const handleUpdateVar = async (id, fields) => {
+    const it = await updateVariableExpense(id, fields);
+    setVarExpenses(prev => prev.map(x => x.id === id ? it : x));
+  };
+  const handleDeleteVar = async (id) => {
+    await deleteVariableExpense(id);
+    setVarExpenses(prev => prev.filter(x => x.id !== id));
   };
 
   if (!isPro) {
@@ -859,6 +1136,7 @@ export default function CrmCostCenter() {
           <Dashboard
             center={center}
             items={items}
+            varExpenses={varExpenses}
             sales={sales}
             dailySales={dailySales}
             month={month}
@@ -866,6 +1144,9 @@ export default function CrmCostCenter() {
             onAddItem={handleAddItem}
             onUpdateItem={handleUpdateItem}
             onDeleteItem={handleDeleteItem}
+            onAddVar={handleAddVar}
+            onUpdateVar={handleUpdateVar}
+            onDeleteVar={handleDeleteVar}
             onEditSettings={(c) => setCenter(c)}
             businessId={business.id}
           />

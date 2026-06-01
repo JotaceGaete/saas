@@ -683,3 +683,49 @@ export async function deleteCrmPurchase(id) {
   const { error } = await supabase.from('crm_purchases').delete().eq('id', id);
   if (error) throw error;
 }
+
+// ─── Gastos variables ─────────────────────────────────────────────────────────
+// Reusa la tabla crm_purchases: description=nombre, supplier=categoría
+
+export async function getVariableExpenses(businessId, month, year) {
+  const { data } = await supabase
+    .from('crm_purchases')
+    .select('*')
+    .eq('business_id', businessId)
+    .eq('month', month)
+    .eq('year', year)
+    .order('purchase_date', { ascending: false });
+  return data || [];
+}
+
+export async function createVariableExpense(businessId, month, year, { name, category, amount, date }) {
+  const { data, error } = await supabase
+    .from('crm_purchases')
+    .insert({
+      business_id: businessId, month, year,
+      description: name,
+      supplier: category,
+      amount,
+      purchase_date: date,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateVariableExpense(id, { name, category, amount, date }) {
+  const { data, error } = await supabase
+    .from('crm_purchases')
+    .update({ description: name, supplier: category, amount, purchase_date: date })
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteVariableExpense(id) {
+  const { error } = await supabase.from('crm_purchases').delete().eq('id', id);
+  if (error) throw error;
+}
