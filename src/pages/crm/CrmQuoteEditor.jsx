@@ -22,6 +22,7 @@ import {
   EMPTY_ITEM,
   fmtCLP,
 } from './components/CrmLineItemRow';
+import { formatMoney } from '../../utils/formatMoney';
 import { CrmProductSearchModal } from './components/CrmProductSearchModal';
 import { ChileanDateInput } from './components/ChileanDateInput';
 
@@ -145,12 +146,7 @@ export default function CrmQuoteEditor() {
     commercial_notes: commercialNotes,
   };
 
-  const fmt = (n) =>
-    new Intl.NumberFormat('es-CL', {
-      style: 'currency',
-      currency: business?.currency || 'CLP',
-      maximumFractionDigits: 0,
-    }).format(n || 0);
+  const fmt = (n) => formatMoney(n, business?.currency);
 
   const buildPayload = () => ({
     customerId: customerId || null,

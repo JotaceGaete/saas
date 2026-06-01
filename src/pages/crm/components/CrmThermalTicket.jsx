@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import Icon from 'components/AppIcon';
+import { formatMoney } from '../../../utils/formatMoney';
 
 const PAYMENT_LABELS = {
   efectivo: 'Efectivo',
@@ -18,11 +19,7 @@ function formatDateTime(dt) {
   });
 }
 
-function formatCurrency(n, currency) {
-  return new Intl.NumberFormat('es-CL', {
-    style: 'currency', currency: currency || 'CLP', maximumFractionDigits: 0,
-  }).format(n || 0);
-}
+const formatCurrency = (n, currency) => formatMoney(n, currency);
 
 function Divider() {
   return <div style={{ borderTop: '1px dashed #999', margin: '6px 0' }} />;

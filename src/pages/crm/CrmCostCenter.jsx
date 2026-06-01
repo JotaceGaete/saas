@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from 'contexts/AuthContext';
 import { CRM_EARLY_ACCESS_MODE } from 'config/crmConfig';
+import { formatMoney } from 'utils/formatMoney';
 import DashboardLayoutContent from 'components/ui/DashboardLayoutContent';
 import PanelHeader from 'components/ui/PanelHeader';
 import Icon from 'components/AppIcon';
@@ -45,11 +46,7 @@ const CATEGORY_LABELS = {
   other:     'Otros gastos',
 };
 
-function fmt(n) {
-  return new Intl.NumberFormat('es-CL', {
-    style: 'currency', currency: 'CLP', maximumFractionDigits: 0,
-  }).format(n || 0);
-}
+const fmt = (n) => formatMoney(n, 'CLP');
 
 function clamp(v, min, max) {
   return Math.min(max, Math.max(min, v));

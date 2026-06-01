@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import Icon from 'components/AppIcon';
+import { fmtCLP, fmtMoneyInput, parseMoneyInput } from '../../../utils/formatMoney';
 
 export function calcItemSubtotal(unitPrice, quantity, discountPct, discountType = 'percentage') {
   const base = (unitPrice || 0) * (quantity || 1);
@@ -26,13 +27,8 @@ export const EMPTY_ITEM = {
   subtotal: 0,
 };
 
-export function fmtCLP(n) {
-  return new Intl.NumberFormat('es-CL', {
-    style: 'currency',
-    currency: 'CLP',
-    maximumFractionDigits: 0,
-  }).format(n || 0);
-}
+// fmtCLP re-exported from utils — kept here for backward compatibility
+export { fmtCLP };
 
 function DiscountTypeToggle({ value, onChange }) {
   return (
@@ -156,11 +152,11 @@ export function CrmLineItemTableRow({ item, idx, onChange, onRemove, imageUrl })
         <div className="flex items-center border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus-within:border-blue-400">
           <span className="text-xs text-gray-400 mr-1 select-none shrink-0">$</span>
           <input
-            type="number"
-            min="0"
-            step="1"
-            value={item.unit_price}
-            onChange={e => set('unit_price', +e.target.value)}
+            type="text"
+            inputMode="numeric"
+            value={fmtMoneyInput(item.unit_price)}
+            placeholder="0"
+            onChange={e => set('unit_price', parseMoneyInput(e.target.value))}
             className="w-full text-sm text-gray-900 border-0 focus:outline-none bg-transparent min-w-0"
           />
         </div>
@@ -170,19 +166,30 @@ export function CrmLineItemTableRow({ item, idx, onChange, onRemove, imageUrl })
       <td className="py-2 px-2 align-top w-44">
         <div className="flex items-center gap-1.5">
           <div className="flex items-center border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus-within:border-blue-400 flex-1 min-w-0">
-            <input
-              type="number"
-              min="0"
-              max={type === 'percentage' ? 100 : undefined}
-              step={type === 'percentage' ? 0.5 : 1}
-              value={item.discount_pct || ''}
-              placeholder="0"
-              onChange={e => {
-                const v = parseFloat(e.target.value) || 0;
-                set('discount_pct', type === 'percentage' ? Math.min(100, Math.max(0, v)) : Math.max(0, v));
-              }}
-              className="w-full text-sm text-right text-gray-900 border-0 focus:outline-none bg-transparent"
-            />
+            {type === 'fixed' ? (
+              <input
+                type="text"
+                inputMode="numeric"
+                value={fmtMoneyInput(item.discount_pct)}
+                placeholder="0"
+                onChange={e => set('discount_pct', parseMoneyInput(e.target.value))}
+                className="w-full text-sm text-right text-gray-900 border-0 focus:outline-none bg-transparent"
+              />
+            ) : (
+              <input
+                type="number"
+                min="0"
+                max={100}
+                step={0.5}
+                value={item.discount_pct || ''}
+                placeholder="0"
+                onChange={e => {
+                  const v = parseFloat(e.target.value) || 0;
+                  set('discount_pct', Math.min(100, Math.max(0, v)));
+                }}
+                className="w-full text-sm text-right text-gray-900 border-0 focus:outline-none bg-transparent"
+              />
+            )}
           </div>
           <DiscountTypeToggle value={type} onChange={setType} />
         </div>
@@ -292,11 +299,11 @@ export function CrmLineItemCard({ item, idx, onChange, onRemove, imageUrl }) {
         <div className="flex items-center border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus-within:border-blue-400">
           <span className="text-xs text-gray-400 mr-1 select-none">$</span>
           <input
-            type="number"
-            min="0"
-            step="1"
-            value={item.unit_price}
-            onChange={e => set('unit_price', +e.target.value)}
+            type="text"
+            inputMode="numeric"
+            value={fmtMoneyInput(item.unit_price)}
+            placeholder="0"
+            onChange={e => set('unit_price', parseMoneyInput(e.target.value))}
             className="w-24 text-sm text-gray-900 border-0 focus:outline-none bg-transparent"
           />
         </div>
@@ -323,19 +330,30 @@ export function CrmLineItemCard({ item, idx, onChange, onRemove, imageUrl }) {
               <span className="text-xs text-gray-500 shrink-0">Descuento</span>
               <div className="flex items-center gap-1.5 flex-1">
                 <div className="flex items-center border border-gray-200 rounded-lg px-2 py-1 bg-white focus-within:border-blue-400 flex-1 min-w-0">
-                  <input
-                    type="number"
-                    min="0"
-                    max={type === 'percentage' ? 100 : undefined}
-                    step={type === 'percentage' ? 0.5 : 1}
-                    value={item.discount_pct || ''}
-                    placeholder="0"
-                    onChange={e => {
-                      const v = parseFloat(e.target.value) || 0;
-                      set('discount_pct', type === 'percentage' ? Math.min(100, Math.max(0, v)) : Math.max(0, v));
-                    }}
-                    className="w-full text-sm text-right text-gray-900 border-0 focus:outline-none bg-transparent"
-                  />
+                  {type === 'fixed' ? (
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={fmtMoneyInput(item.discount_pct)}
+                      placeholder="0"
+                      onChange={e => set('discount_pct', parseMoneyInput(e.target.value))}
+                      className="w-full text-sm text-right text-gray-900 border-0 focus:outline-none bg-transparent"
+                    />
+                  ) : (
+                    <input
+                      type="number"
+                      min="0"
+                      max={100}
+                      step={0.5}
+                      value={item.discount_pct || ''}
+                      placeholder="0"
+                      onChange={e => {
+                        const v = parseFloat(e.target.value) || 0;
+                        set('discount_pct', Math.min(100, Math.max(0, v)));
+                      }}
+                      className="w-full text-sm text-right text-gray-900 border-0 focus:outline-none bg-transparent"
+                    />
+                  )}
                 </div>
                 <DiscountTypeToggle value={type} onChange={setType} />
               </div>
