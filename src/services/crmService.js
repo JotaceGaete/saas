@@ -29,17 +29,23 @@ export function formatInvoiceNumber(n) {
   return `NV-${String(n).padStart(4, '0')}`;
 }
 
-function calcItemSubtotal(unitPrice, quantity, discountPct) {
-  const base = unitPrice * quantity;
-  return +(base - (base * discountPct) / 100).toFixed(2);
+function calcItemSubtotal(unitPrice, quantity, discountPct, discountType = 'percentage') {
+  const base = (unitPrice || 0) * (quantity || 0);
+  if (discountType === 'fixed') {
+    return +(Math.max(0, base - Math.min(discountPct || 0, base))).toFixed(2);
+  }
+  return +(base - (base * (discountPct || 0)) / 100).toFixed(2);
+}
+
+function calcItemDiscountAmount(item) {
+  const base = (item.unit_price || 0) * (item.quantity || 0);
+  if (item.discount_type === 'fixed') return Math.min(item.discount_pct || 0, base);
+  return (base * (item.discount_pct || 0)) / 100;
 }
 
 function calcDocTotals(items) {
   const subtotal = items.reduce((s, i) => s + i.subtotal, 0);
-  const discountAmount = items.reduce((s, i) => {
-    const base = i.unit_price * i.quantity;
-    return s + (base * i.discount_pct) / 100;
-  }, 0);
+  const discountAmount = items.reduce((s, i) => s + calcItemDiscountAmount(i), 0);
   const total = subtotal;
   return {
     subtotal: +subtotal.toFixed(2),
@@ -126,7 +132,8 @@ export async function createCrmQuote(businessId, { customerId, validUntil, notes
 
   const mappedItems = items.map((it, idx) => ({
     ...it,
-    subtotal: calcItemSubtotal(it.unit_price, it.quantity, it.discount_pct || 0),
+    discount_type: it.discount_type || 'percentage',
+    subtotal: calcItemSubtotal(it.unit_price, it.quantity, it.discount_pct || 0, it.discount_type || 'percentage'),
     sort_order: idx,
   }));
   const totals = calcDocTotals(mappedItems);
@@ -172,7 +179,8 @@ export async function updateCrmQuote(quoteId, { customerId, validUntil, notes, p
   if (items !== undefined) {
     const mappedItems = items.map((it, idx) => ({
       ...it,
-      subtotal: calcItemSubtotal(it.unit_price, it.quantity, it.discount_pct || 0),
+      discount_type: it.discount_type || 'percentage',
+      subtotal: calcItemSubtotal(it.unit_price, it.quantity, it.discount_pct || 0, it.discount_type || 'percentage'),
       sort_order: idx,
     }));
     const totals = calcDocTotals(mappedItems);
@@ -208,6 +216,7 @@ export async function duplicateCrmQuote(quoteId) {
       unit_price: it.unit_price,
       quantity: it.quantity,
       discount_pct: it.discount_pct,
+      discount_type: it.discount_type || 'percentage',
     })),
   });
 }
@@ -244,7 +253,8 @@ export async function createCrmInvoice(businessId, { customerId, issueDate, dueD
 
   const mappedItems = items.map((it, idx) => ({
     ...it,
-    subtotal: calcItemSubtotal(it.unit_price, it.quantity, it.discount_pct || 0),
+    discount_type: it.discount_type || 'percentage',
+    subtotal: calcItemSubtotal(it.unit_price, it.quantity, it.discount_pct || 0, it.discount_type || 'percentage'),
     sort_order: idx,
   }));
   const totals = calcDocTotals(mappedItems);
@@ -306,6 +316,7 @@ export async function convertQuoteToInvoice(quoteId) {
       unit_price: it.unit_price,
       quantity: it.quantity,
       discount_pct: it.discount_pct,
+      discount_type: it.discount_type || 'percentage',
     })),
   });
   if (invErr) return { data: null, error: invErr };

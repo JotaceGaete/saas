@@ -1,9 +1,18 @@
 import React, { useState } from 'react';
 import Icon from 'components/AppIcon';
 
-export function calcItemSubtotal(unitPrice, quantity, discountPct) {
+export function calcItemSubtotal(unitPrice, quantity, discountPct, discountType = 'percentage') {
   const base = (unitPrice || 0) * (quantity || 1);
+  if (discountType === 'fixed') {
+    return +(Math.max(0, base - Math.min(discountPct || 0, base))).toFixed(2);
+  }
   return +(base - (base * (discountPct || 0)) / 100).toFixed(2);
+}
+
+export function calcItemDiscountAmount(item) {
+  const base = (item.unit_price || 0) * (item.quantity || 0);
+  if (item.discount_type === 'fixed') return Math.min(item.discount_pct || 0, base);
+  return (base * (item.discount_pct || 0)) / 100;
 }
 
 export const EMPTY_ITEM = {
@@ -13,6 +22,7 @@ export const EMPTY_ITEM = {
   unit_price: 0,
   quantity: 1,
   discount_pct: 0,
+  discount_type: 'percentage',
   subtotal: 0,
 };
 
@@ -24,8 +34,38 @@ export function fmtCLP(n) {
   }).format(n || 0);
 }
 
+function DiscountTypeToggle({ value, onChange }) {
+  return (
+    <div className="flex rounded-lg overflow-hidden border border-gray-200 bg-white shrink-0">
+      <button
+        type="button"
+        onClick={() => onChange('percentage')}
+        className={`px-2 py-1 text-xs font-semibold transition-colors ${
+          value === 'percentage'
+            ? 'bg-blue-600 text-white'
+            : 'text-gray-500 hover:bg-gray-50'
+        }`}
+      >%</button>
+      <button
+        type="button"
+        onClick={() => onChange('fixed')}
+        className={`px-2 py-1 text-xs font-semibold transition-colors border-l border-gray-200 ${
+          value === 'fixed'
+            ? 'bg-blue-600 text-white'
+            : 'text-gray-500 hover:bg-gray-50'
+        }`}
+      >$</button>
+    </div>
+  );
+}
+
 // ─── Vista de solo lectura (facturas ya guardadas) ──────────────────────────
 export function CrmLineItemReadOnly({ item, imageUrl }) {
+  const discountAmount = calcItemDiscountAmount(item);
+  const discountLabel = item.discount_pct > 0
+    ? (item.discount_type === 'fixed' ? `-${fmtCLP(item.discount_pct)}` : `-${item.discount_pct}%`)
+    : null;
+
   return (
     <div className="flex justify-between items-center py-2.5 border-b border-gray-100 last:border-0 gap-3">
       <div className="flex items-start gap-3 min-w-0">
@@ -40,7 +80,7 @@ export function CrmLineItemReadOnly({ item, imageUrl }) {
           {item.description && <p className="text-xs text-gray-500">{item.description}</p>}
           <p className="text-xs text-gray-400 mt-0.5">
             {item.quantity} × {fmtCLP(item.unit_price)}
-            {item.discount_pct > 0 ? ` (−${item.discount_pct}%)` : ''}
+            {discountLabel && ` (${discountLabel})`}
           </p>
         </div>
       </div>
@@ -51,13 +91,22 @@ export function CrmLineItemReadOnly({ item, imageUrl }) {
 
 // ─── Fila de tabla — desktop ────────────────────────────────────────────────
 export function CrmLineItemTableRow({ item, idx, onChange, onRemove, imageUrl }) {
+  const type = item.discount_type || 'percentage';
+
   const set = (key, val) => {
     const next = { ...item, [key]: val };
-    next.subtotal = calcItemSubtotal(+next.unit_price, +next.quantity, +next.discount_pct);
+    next.discount_type = next.discount_type || 'percentage';
+    next.subtotal = calcItemSubtotal(+next.unit_price, +next.quantity, +(next.discount_pct || 0), next.discount_type);
     onChange(idx, next);
   };
 
-  const discountAmount = (item.unit_price * item.quantity * item.discount_pct) / 100;
+  const setType = (newType) => {
+    const next = { ...item, discount_type: newType, discount_pct: 0 };
+    next.subtotal = calcItemSubtotal(+next.unit_price, +next.quantity, 0, newType);
+    onChange(idx, next);
+  };
+
+  const discountAmount = calcItemDiscountAmount(item);
 
   return (
     <tr className="border-b border-gray-100 last:border-0 group hover:bg-gray-50/40 transition-colors">
@@ -115,19 +164,24 @@ export function CrmLineItemTableRow({ item, idx, onChange, onRemove, imageUrl })
         </div>
       </td>
 
-      {/* Descuento % */}
-      <td className="py-2 px-2 align-top w-20">
-        <div className="flex items-center border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus-within:border-blue-400">
-          <input
-            type="number"
-            min="0"
-            max="100"
-            step="0.5"
-            value={item.discount_pct}
-            onChange={e => set('discount_pct', Math.min(100, Math.max(0, +e.target.value)))}
-            className="w-full text-sm text-center text-gray-900 border-0 focus:outline-none bg-transparent"
-          />
-          <span className="text-xs text-gray-400 ml-1 select-none shrink-0">%</span>
+      {/* Descuento: valor + toggle %/$ */}
+      <td className="py-2 px-2 align-top w-32">
+        <div className="flex items-center gap-1">
+          <div className="flex items-center border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus-within:border-blue-400 flex-1 min-w-0">
+            <input
+              type="number"
+              min="0"
+              max={type === 'percentage' ? 100 : undefined}
+              step={type === 'percentage' ? 0.5 : 1}
+              value={item.discount_pct}
+              onChange={e => {
+                const v = +e.target.value;
+                set('discount_pct', type === 'percentage' ? Math.min(100, Math.max(0, v)) : Math.max(0, v));
+              }}
+              className="w-full text-sm text-center text-gray-900 border-0 focus:outline-none bg-transparent"
+            />
+          </div>
+          <DiscountTypeToggle value={type} onChange={setType} />
         </div>
       </td>
 
@@ -156,16 +210,23 @@ export function CrmLineItemTableRow({ item, idx, onChange, onRemove, imageUrl })
 
 // ─── Card — mobile ──────────────────────────────────────────────────────────
 export function CrmLineItemCard({ item, idx, onChange, onRemove, imageUrl }) {
+  const type = item.discount_type || 'percentage';
   const [showDiscount, setShowDiscount] = useState(item.discount_pct > 0);
 
   const set = (key, val) => {
     const next = { ...item, [key]: val };
-    next.subtotal = calcItemSubtotal(+next.unit_price, +next.quantity, +next.discount_pct);
+    next.discount_type = next.discount_type || 'percentage';
+    next.subtotal = calcItemSubtotal(+next.unit_price, +next.quantity, +(next.discount_pct || 0), next.discount_type);
     onChange(idx, next);
   };
 
-  const isCatalog = !!item.product_id;
-  const discountAmount = (item.unit_price * item.quantity * item.discount_pct) / 100;
+  const setType = (newType) => {
+    const next = { ...item, discount_type: newType, discount_pct: 0 };
+    next.subtotal = calcItemSubtotal(+next.unit_price, +next.quantity, 0, newType);
+    onChange(idx, next);
+  };
+
+  const discountAmount = calcItemDiscountAmount(item);
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-4">
@@ -259,19 +320,22 @@ export function CrmLineItemCard({ item, idx, onChange, onRemove, imageUrl }) {
             <input
               type="number"
               min="0"
-              max="100"
-              step="0.5"
+              max={type === 'percentage' ? 100 : undefined}
+              step={type === 'percentage' ? 0.5 : 1}
               value={item.discount_pct}
-              onChange={e => set('discount_pct', Math.min(100, Math.max(0, +e.target.value)))}
-              className="w-14 border border-gray-200 rounded-lg px-2 py-0.5 text-xs text-center focus:outline-none focus:border-blue-400"
+              onChange={e => {
+                const v = +e.target.value;
+                set('discount_pct', type === 'percentage' ? Math.min(100, Math.max(0, v)) : Math.max(0, v));
+              }}
+              className="w-16 border border-gray-200 rounded-lg px-2 py-0.5 text-xs text-center focus:outline-none focus:border-blue-400"
             />
-            <span className="text-xs text-gray-500">%</span>
+            <DiscountTypeToggle value={type} onChange={setType} />
             {discountAmount > 0 && (
               <span className="text-xs text-green-600 font-medium">−{fmtCLP(discountAmount)}</span>
             )}
             <button
               type="button"
-              onClick={() => { set('discount_pct', 0); setShowDiscount(false); }}
+              onClick={() => { set('discount_pct', 0); setType('percentage'); setShowDiscount(false); }}
               className="ml-auto text-xs text-gray-400 hover:text-gray-600 transition-colors"
             >
               Quitar

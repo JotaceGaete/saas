@@ -221,7 +221,11 @@ function CrmPdfDocument({ type, document: doc, business, customer, extra = {} })
                 </View>
                 <Text style={[S.tcell, S.tqty]}>{item.quantity}</Text>
                 <Text style={[S.tcell, S.tprice]}>{fmtMoney(item.unit_price, currency)}</Text>
-                <Text style={[S.tcell, S.tdisc]}>{item.discount_pct > 0 ? `${item.discount_pct}%` : '—'}</Text>
+                <Text style={[S.tcell, S.tdisc]}>
+                  {item.discount_pct > 0
+                    ? (item.discount_type === 'fixed' ? fmtMoney(item.discount_pct, currency) : `${item.discount_pct}%`)
+                    : '—'}
+                </Text>
                 <Text style={[S.tcell, S.tsubtotal]}>{fmtMoney(item.subtotal, currency)}</Text>
               </View>
             ))}
@@ -379,7 +383,11 @@ function HtmlDocumentPreview({ type, document: doc, business, customer, extra = 
                   </td>
                   <td className="text-center px-2 py-2 border-b border-gray-100 text-gray-700">{item.quantity}</td>
                   <td className="text-right px-2 py-2 border-b border-gray-100 text-gray-700">{fmtMoney(item.unit_price, currency)}</td>
-                  <td className="text-center px-2 py-2 border-b border-gray-100 text-gray-500">{item.discount_pct > 0 ? `${item.discount_pct}%` : '—'}</td>
+                  <td className="text-center px-2 py-2 border-b border-gray-100 text-gray-500">
+                    {item.discount_pct > 0
+                      ? (item.discount_type === 'fixed' ? fmtMoney(item.discount_pct, currency) : `${item.discount_pct}%`)
+                      : '—'}
+                  </td>
                   <td className="text-right px-3 py-2 border-b border-gray-100 font-semibold text-gray-900">{fmtMoney(item.subtotal, currency)}</td>
                 </tr>
               ))}

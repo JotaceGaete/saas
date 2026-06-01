@@ -149,6 +149,7 @@ export default function CrmInvoiceEditor() {
   const subtotal = items.reduce((s, i) => s + (i.subtotal || 0), 0);
   const discountTotal = items.reduce((s, i) => {
     const b = (i.unit_price || 0) * (i.quantity || 1);
+    if (i.discount_type === 'fixed') return s + Math.min(i.discount_pct || 0, b);
     return s + (b * (i.discount_pct || 0)) / 100;
   }, 0);
 
@@ -236,6 +237,7 @@ export default function CrmInvoiceEditor() {
         unit_price: +(i.unit_price || 0),
         quantity: +(i.quantity || 1),
         discount_pct: +(i.discount_pct || 0),
+        discount_type: i.discount_type || 'percentage',
         sort_order: idx,
       })),
     });
