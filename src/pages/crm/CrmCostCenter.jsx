@@ -61,45 +61,29 @@ const STATE = {
   winning: {
     emoji: '😊',
     label: 'Hoy vas ganando',
-    sub: '¡Superaste tu meta del día!',
     bg: 'from-green-500 to-emerald-600',
-    ring: 'ring-green-300',
-    bar: 'bg-green-400',
-    text: 'text-white',
     badge: 'bg-green-600/30 text-white',
     dotBg: 'bg-green-500',
   },
   breaking: {
     emoji: '😐',
-    label: 'Hoy estás empatando',
-    sub: 'Casi llegas al punto de equilibrio',
+    label: 'Estás cerca del equilibrio',
     bg: 'from-yellow-400 to-amber-500',
-    ring: 'ring-yellow-300',
-    bar: 'bg-yellow-300',
-    text: 'text-white',
     badge: 'bg-yellow-600/30 text-white',
     dotBg: 'bg-yellow-400',
   },
   losing: {
     emoji: '😟',
     label: 'Hoy estás perdiendo dinero',
-    sub: 'Todavía no cubriste la meta del día',
     bg: 'from-red-500 to-rose-600',
-    ring: 'ring-red-300',
-    bar: 'bg-red-400',
-    text: 'text-white',
     badge: 'bg-red-600/30 text-white',
     dotBg: 'bg-red-400',
   },
   unconfigured: {
     emoji: '🏪',
-    label: 'Configura tu negocio',
-    sub: 'Registra tus gastos mensuales para activar el termómetro',
-    bg: 'from-gray-400 to-gray-500',
-    ring: 'ring-gray-300',
-    bar: 'bg-gray-300',
-    text: 'text-white',
-    badge: 'bg-gray-600/30 text-white',
+    label: 'Activa tu termómetro',
+    bg: 'from-blue-500 to-blue-600',
+    badge: 'bg-blue-600/30 text-white',
     dotBg: 'bg-gray-300',
   },
 };
@@ -124,43 +108,67 @@ function AnimatedBar({ pct, colorClass, height = 'h-4' }) {
 
 // ─── Tarjeta héroe ────────────────────────────────────────────────────────────
 
-function HeroCard({ state, salesToday, dailyCost }) {
+function HeroCard({ state, salesToday, dailyCost, totalExpenses, openDays }) {
   const s = STATE[state];
   const pct = dailyCost > 0 ? Math.round((salesToday / dailyCost) * 100) : 0;
   const remaining = Math.max(0, dailyCost - salesToday);
   const surplus = Math.max(0, salesToday - dailyCost);
 
+  const subText = {
+    winning:      `Ya cubriste el costo de hoy.\nTodo lo que vendas ahora es ganancia.`,
+    breaking:     `Casi llegas — te faltan ${fmt(Math.ceil(remaining))} más para cubrir el día.`,
+    losing:       `Todavía no cubres los gastos de hoy.\nTe faltan ${fmt(Math.ceil(remaining))}.`,
+    unconfigured: 'Registra tus gastos mensuales para ver tu termómetro.',
+  }[state] || '';
+
   return (
-    <div className={`rounded-2xl bg-gradient-to-br ${s.bg} p-6 shadow-lg select-none`}>
-      <div className="flex items-start justify-between mb-4">
-        <div>
-          <p className="text-white/70 text-xs font-semibold uppercase tracking-widest mb-1">Hoy</p>
-          <p className={`text-2xl font-black leading-tight ${s.text}`}>{s.label}</p>
-          <p className="text-white/80 text-sm mt-1">{s.sub}</p>
+    <div className={`rounded-2xl bg-gradient-to-br ${s.bg} p-7 shadow-lg select-none`}>
+      {/* Encabezado */}
+      <div className="flex items-start justify-between mb-5">
+        <div className="flex-1 min-w-0 pr-4">
+          <p className="text-white/60 text-xs font-semibold uppercase tracking-widest mb-2">Estado hoy</p>
+          <p className="text-3xl font-black leading-tight text-white">{s.label}</p>
+          <p className="text-white/80 text-sm mt-2 leading-relaxed whitespace-pre-line">{subText}</p>
         </div>
-        <span className="text-5xl leading-none">{s.emoji}</span>
+        <span className="text-6xl leading-none shrink-0">{s.emoji}</span>
       </div>
 
+      {/* Barra + números */}
       {dailyCost > 0 && (
         <>
-          <AnimatedBar pct={pct} colorClass="bg-white/70" height="h-3" />
-          <div className="flex justify-between items-center mt-2 text-sm text-white/80">
-            <span className="font-bold text-white text-base">{fmt(salesToday)}</span>
-            <span>meta {fmt(Math.ceil(dailyCost))}</span>
+          <AnimatedBar pct={pct} colorClass="bg-white/70" height="h-4" />
+          <div className="flex justify-between items-baseline mt-3">
+            <span className="font-black text-white text-2xl tabular-nums">{fmt(salesToday)}</span>
+            <span className="text-white/60 text-sm">de {fmt(Math.ceil(dailyCost))} hoy</span>
           </div>
-          {remaining > 0 && (
-            <div className={`mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold ${s.badge}`}>
-              <Icon name="TrendingDown" size={11} />
-              Te faltan {fmt(Math.ceil(remaining))} para hoy
-            </div>
-          )}
+
+          {/* Badge resultado */}
           {surplus > 0 && (
-            <div className={`mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold ${s.badge}`}>
-              <Icon name="TrendingUp" size={11} />
+            <div className={`mt-4 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-bold ${s.badge}`}>
+              <Icon name="TrendingUp" size={13} />
               Vas {fmt(Math.floor(surplus))} arriba 🎯
             </div>
           )}
+
+          {/* Meta diaria siempre visible */}
+          <div className="mt-4 pt-4 border-t border-white/20 flex items-center justify-between">
+            <div>
+              <p className="text-white/50 text-xs uppercase tracking-wide">Meta diaria</p>
+              <p className="text-white font-bold text-lg">{fmt(Math.ceil(dailyCost))}</p>
+            </div>
+            {totalExpenses > 0 && openDays > 0 && (
+              <p className="text-white/40 text-xs text-right">
+                {fmt(totalExpenses)}<br />÷ {openDays} días
+              </p>
+            )}
+          </div>
         </>
+      )}
+
+      {state === 'unconfigured' && (
+        <div className="mt-4 pt-4 border-t border-white/20">
+          <p className="text-white/60 text-xs">Usa "Mis gastos del mes" para comenzar.</p>
+        </div>
       )}
     </div>
   );
@@ -184,27 +192,25 @@ function HoyoCard({ totalExpenses, salesMonth }) {
       close   ? 'bg-yellow-50 border-yellow-200' :
                 'bg-white border-gray-200'
     }`}>
-      <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-3">
-        {covered ? '✅ Gastos del mes' : '🕳️ Hoyo financiero del mes'}
+      <p className={`text-xs font-semibold uppercase tracking-widest mb-3 ${
+        covered ? 'text-green-500' : close ? 'text-yellow-500' : 'text-gray-400'
+      }`}>
+        {covered ? '🎉 ¡Saliste del agua!' : 'Lo que te falta para salir del agua'}
       </p>
 
-      <div className="flex items-end gap-3 mb-4">
-        <p className={`text-4xl font-black leading-none tabular-nums ${
+      {/* Número protagonista */}
+      <div className="mb-1">
+        <p className={`text-5xl font-black leading-none tabular-nums ${
           covered ? 'text-green-600' : close ? 'text-yellow-600' : 'text-red-600'
         }`}>
           {covered ? '+' : '-'}{fmt(Math.abs(gap))}
         </p>
-        {!covered && (
-          <p className="text-sm text-gray-500 mb-1 leading-tight">
-            para cubrir<br />todos los gastos
-          </p>
-        )}
-        {covered && (
-          <p className="text-sm text-green-600 mb-1 leading-tight font-medium">
-            ganancia<br />acumulada
-          </p>
-        )}
       </div>
+      <p className={`text-sm mb-4 ${covered ? 'text-green-700 font-semibold' : 'text-gray-500'}`}>
+        {covered
+          ? 'Ya cubriste todos los gastos del mes.'
+          : `Te faltan ${fmt(Math.abs(gap))} para cubrir los gastos del mes.`}
+      </p>
 
       {/* Barra de cierre del hoyo */}
       <div className="space-y-2">
@@ -222,11 +228,11 @@ function HoyoCard({ totalExpenses, salesMonth }) {
         </div>
       </div>
 
+      {/* Mensajes de estado */}
       {covered && (
-        <div className="mt-3 space-y-1">
-          <p className="text-sm text-green-700 font-bold">🎉 ¡Ya cubriste todos los gastos del mes!</p>
-          <p className="text-sm text-green-600">Desde ahora cada venta suma directamente a tu ganancia.</p>
-        </div>
+        <p className="text-sm text-green-600 mt-3">
+          Desde este momento cada venta suma directamente a tu utilidad. 💪
+        </p>
       )}
       {!covered && close && (
         <p className="text-sm text-yellow-700 font-medium mt-3">
@@ -647,7 +653,13 @@ function Dashboard({ center, items, sales, dailySales, month, year, onUpdateItem
     <div className="space-y-4 max-w-lg mx-auto">
 
       {/* Tarjeta héroe */}
-      <HeroCard state={isCurrentMonth ? todayState : 'unconfigured'} salesToday={salesToday} dailyCost={dailyCost} />
+      <HeroCard
+        state={isCurrentMonth ? todayState : 'unconfigured'}
+        salesToday={salesToday}
+        dailyCost={dailyCost}
+        totalExpenses={totalExpenses}
+        openDays={openDays}
+      />
 
       {/* Hoyo financiero */}
       <HoyoCard totalExpenses={totalExpenses} salesMonth={salesMonth} />
