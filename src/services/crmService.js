@@ -531,3 +531,85 @@ export async function getCrmDashboardStats(businessId) {
     totalFacturadoMes,
   };
 }
+
+// ─── Centro de Costos ────────────────────────────────────────────────────────
+
+export async function getCrmSalesTotalsForPeriod(businessId, month, year) {
+  const from = new Date(year, month - 1, 1).toISOString();
+  const to = new Date(year, month, 1).toISOString();
+
+  const { data } = await supabase
+    .from('crm_invoices')
+    .select('total, issue_date')
+    .eq('business_id', businessId)
+    .neq('status', 'anulada')
+    .gte('issue_date', from)
+    .lt('issue_date', to);
+
+  const salesMonth = (data || []).reduce((s, r) => s + (r.total || 0), 0);
+
+  const today = new Date().toISOString().slice(0, 10);
+  const salesToday = (data || [])
+    .filter(r => r.issue_date && r.issue_date.slice(0, 10) === today)
+    .reduce((s, r) => s + (r.total || 0), 0);
+
+  return { salesMonth, salesToday };
+}
+
+export async function getCostCenter(businessId, month, year) {
+  const { data } = await supabase
+    .from('crm_cost_centers')
+    .select('*')
+    .eq('business_id', businessId)
+    .eq('month', month)
+    .eq('year', year)
+    .maybeSingle();
+  return data;
+}
+
+export async function upsertCostCenter(businessId, month, year, fields) {
+  const { data, error } = await supabase
+    .from('crm_cost_centers')
+    .upsert({ business_id: businessId, month, year, ...fields }, { onConflict: 'business_id,month,year' })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function getCostItems(businessId, month, year) {
+  const { data } = await supabase
+    .from('crm_cost_items')
+    .select('*')
+    .eq('business_id', businessId)
+    .eq('month', month)
+    .eq('year', year)
+    .order('created_at', { ascending: true });
+  return data || [];
+}
+
+export async function createCostItem(businessId, month, year, fields) {
+  const { data, error } = await supabase
+    .from('crm_cost_items')
+    .insert({ business_id: businessId, month, year, ...fields })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateCostItem(id, fields) {
+  const { data, error } = await supabase
+    .from('crm_cost_items')
+    .update(fields)
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteCostItem(id) {
+  const { error } = await supabase.from('crm_cost_items').delete().eq('id', id);
+  if (error) throw error;
+}
