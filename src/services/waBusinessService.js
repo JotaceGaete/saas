@@ -793,11 +793,27 @@ export async function updateBusiness(businessId, updates) {
   if (updates?.planSlug !== undefined)         dbUpdates.plan_slug = updates?.planSlug;
   if (updates?.planExpiresAt !== undefined)    dbUpdates.plan_expires_at = updates?.planExpiresAt ?? null;
   if (updates?.trialExpiresAt !== undefined)   dbUpdates.trial_expires_at = updates?.trialExpiresAt ?? null;
-  console.log('[waBusinessService] updateBusiness: payload =', dbUpdates);
-  const { data, error } = await supabase?.from('wa_businesses')?.update(dbUpdates)?.eq('id', businessId)?.eq('user_id', user?.id)?.select()?.single();
+  console.log('[waBusinessService] updateBusiness: payload keys =', Object.keys(dbUpdates));
+  let { data, error } = await supabase?.from('wa_businesses')?.update(dbUpdates)?.eq('id', businessId)?.eq('user_id', user?.id)?.select()?.single();
   if (error) {
-    console.error('[waBusinessService] updateBusiness error:', error);
-    return { data: null, error };
+    console.error('[waBusinessService] updateBusiness error:', error?.message, '| code:', error?.code, '| details:', error?.details, '| hint:', error?.hint);
+    // If the error is caused by document_title_type column not existing yet (migration pending),
+    // retry without it so other fields are still saved.
+    const missingColumn = error?.message?.includes('document_title_type') || error?.details?.includes('document_title_type');
+    if (missingColumn && dbUpdates.document_title_type !== undefined) {
+      console.warn('[waBusinessService] document_title_type column not found — retrying without it (migration may be pending)');
+      const fallbackUpdates = { ...dbUpdates };
+      delete fallbackUpdates.document_title_type;
+      const { data: d2, error: e2 } = await supabase?.from('wa_businesses')?.update(fallbackUpdates)?.eq('id', businessId)?.eq('user_id', user?.id)?.select()?.single();
+      if (e2) {
+        console.error('[waBusinessService] updateBusiness fallback error:', e2?.message, '| code:', e2?.code);
+        return { data: null, error: e2 };
+      }
+      data = d2;
+      error = null;
+    } else {
+      return { data: null, error };
+    }
   }
   console.log('[waBusinessService] updateBusiness success: updated id =', data?.id);
   if (data?.id) {
