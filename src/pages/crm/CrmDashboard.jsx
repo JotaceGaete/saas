@@ -7,6 +7,7 @@ import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
 import { getCrmDashboardStats } from '../../services/crmService';
 import { getEffectivePlanSlug } from '../../services/waBusinessService';
+import { CRM_EARLY_ACCESS_MODE } from '../../config/crmConfig';
 
 // Módulos activos — planRequired: true exige plan Business/Full
 const MODULES = [
@@ -198,7 +199,7 @@ export default function CrmDashboard() {
     business?.planExpiresAt,
     business?.trialExpiresAt
   );
-  const hasCrmAccess = effectivePlan === 'business';
+  const hasCrmAccess = CRM_EARLY_ACCESS_MODE || effectivePlan === 'business';
   const stockAlertCount = stats?.stockBajo?.length || 0;
 
   return (

@@ -7,6 +7,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useIsDesktop } from 'hooks/useMediaQuery';
 import { getCrmCustomers, getCrmStockProducts, createPosInvoice } from '../../services/crmService';
 import { getEffectivePlanSlug } from '../../services/waBusinessService';
+import { CRM_EARLY_ACCESS_MODE } from '../../config/crmConfig';
 import CrmThermalTicket from './components/CrmThermalTicket';
 
 const PAYMENT_METHODS = [
@@ -79,7 +80,7 @@ export default function CrmTerminal() {
     business?.planExpiresAt,
     business?.trialExpiresAt
   );
-  const hasAccess = effectivePlan === 'business';
+  const hasAccess = CRM_EARLY_ACCESS_MODE || effectivePlan === 'business';
 
   const [products, setProducts] = useState([]);
   const [customers, setCustomers] = useState([]);

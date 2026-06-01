@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from 'contexts/AuthContext';
+import { CRM_EARLY_ACCESS_MODE } from 'config/crmConfig';
 import DashboardLayoutContent from 'components/ui/DashboardLayoutContent';
 import PanelHeader from 'components/ui/PanelHeader';
 import Icon from 'components/AppIcon';
@@ -895,7 +896,7 @@ export default function CrmCostCenter() {
   const planSlug = getEffectivePlanSlug(
     business?.planSlug, business?.planExpiresAt, business?.trialExpiresAt
   );
-  const isPro = planSlug === 'business';
+  const isPro = CRM_EARLY_ACCESS_MODE || planSlug === 'business';
 
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth() + 1);
