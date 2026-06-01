@@ -1300,7 +1300,7 @@ export default function BusinessConfiguration() {
                       )}
                     </SettingsField>
 
-                    {business?.designSettings?.useCategories && business?.id && (
+                    {business?.id && (
                       <div className="border-t border-slate-200/70 pt-6">
                         <div className="mb-4 flex items-start gap-3">
                           <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg" style={{ backgroundColor: 'rgba(15,23,42,0.06)' }}>
@@ -1311,13 +1311,44 @@ export default function BusinessConfiguration() {
                               Organización del catálogo
                             </p>
                             <h2 className="mt-1 text-lg font-black text-slate-950" style={{ fontFamily: 'var(--font-heading)', letterSpacing: 0 }}>
-                              Estructura de la tienda
+                              Categorías de productos
                             </h2>
                             <p className="mt-1 text-sm leading-6" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-body)' }}>
                               Agrupa productos como una vitrina: colecciones, líneas, momentos de compra o secciones del menú.
                             </p>
                           </div>
                         </div>
+
+                        {/* Toggle: mostrar categorías en el catálogo público */}
+                        <label
+                          className="flex items-center justify-between px-4 py-3 rounded-xl border cursor-pointer transition-all mb-4"
+                          style={{
+                            borderColor: design?.useCategories ? 'rgba(15,23,42,0.22)' : 'rgba(15,23,42,0.08)',
+                            backgroundColor: design?.useCategories ? 'rgba(15,23,42,0.04)' : 'rgba(255,255,255,0.58)',
+                          }}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: design?.useCategories ? 'rgba(15,23,42,0.10)' : '#f0f0f8' }}>
+                              <Icon name="LayoutList" size={14} color={design?.useCategories ? 'var(--color-primary)' : '#a0a0b8'} />
+                            </div>
+                            <div>
+                              <span className="text-sm font-medium block" style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-caption)' }}>
+                                Mostrar categorías en el catálogo
+                              </span>
+                              <span className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+                                Activa filtros de navegación en tu tienda pública
+                              </span>
+                            </div>
+                          </div>
+                          <div
+                            className="relative flex-shrink-0 transition-all cursor-pointer"
+                            style={{ width: '40px', height: '22px', borderRadius: '11px', backgroundColor: design?.useCategories ? 'var(--color-primary)' : '#d1d5db' }}
+                            onClick={(e) => { e.preventDefault(); setDesign(prev => ({ ...prev, useCategories: !prev.useCategories })); }}
+                          >
+                            <div className="absolute top-0.5 rounded-full bg-white transition-all" style={{ width: '18px', height: '18px', left: design?.useCategories ? '20px' : '2px', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
+                          </div>
+                        </label>
+
                         <BusinessCategoriesManager business={business} />
                       </div>
                     )}
