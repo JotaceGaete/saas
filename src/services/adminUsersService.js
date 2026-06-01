@@ -40,13 +40,16 @@ async function getAuthHeaders() {
   };
 }
 
-/** Listar usuarios (paginado). */
+/** Listar usuarios (paginado). Acepta opts.search para búsqueda server-side. */
 export async function listAdminUsers(opts = {}) {
   const headers = await getAuthHeaders();
   if (!headers) return { data: null, error: { message: 'No autenticado' } };
   const page = opts.page ?? 1;
-  const perPage = opts.per_page ?? 50;
-  const url = `${FUNCTIONS_BASE}?page=${page}&per_page=${perPage}`;
+  const perPage = opts.per_page ?? 100;
+  const search = (opts.search ?? '').trim();
+  const params = new URLSearchParams({ page: String(page), per_page: String(perPage) });
+  if (search.length >= 2) params.set('search', search);
+  const url = `${FUNCTIONS_BASE}?${params.toString()}`;
 
   if (typeof window !== 'undefined') {
     console.log('[adminUsersService] listAdminUsers fetch:', {

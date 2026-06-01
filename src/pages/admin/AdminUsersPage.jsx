@@ -31,22 +31,43 @@ export default function AdminUsersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchQ, setSearchQ] = useState('');
+  const [activeSearch, setActiveSearch] = useState('');
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (search = '') => {
     setLoading(true);
     setError(null);
-    const { data, error: err } = await listAdminUsers({ page: 1, per_page: 100 });
+    const { data, error: err } = await listAdminUsers({ page: 1, per_page: 100, search });
     if (err) setError(err.message);
     else if (data?.users) setUsers(data.users);
     setLoading(false);
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  // Cargar lista inicial sin búsqueda
+  useEffect(() => { load(''); }, [load]);
 
+  // Disparar búsqueda server-side con debounce de 400ms
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const q = searchQ.trim();
+      setActiveSearch(q);
+      load(q);
+    }, 400);
+    return () => clearTimeout(t);
+  }, [searchQ, load]);
+
+  // Filtro client-side sobre los resultados ya cargados (por si el servidor no filtra)
   const filtered = users.filter((u) => {
-    const q = searchQ.toLowerCase().trim();
+    const q = activeSearch.toLowerCase();
     if (!q) return true;
-    return (u.email ?? '').toLowerCase().includes(q) || (u.id ?? '').toLowerCase().includes(q);
+    if ((u.email ?? '').toLowerCase().includes(q)) return true;
+    if ((u.id ?? '').toLowerCase().includes(q)) return true;
+    // Buscar también en datos del negocio
+    return (u.businesses ?? []).some((b) =>
+      (b.name ?? '').toLowerCase().includes(q) ||
+      (b.email ?? '').toLowerCase().includes(q) ||
+      (b.slug ?? '').toLowerCase().includes(q) ||
+      (b.id ?? '').toLowerCase().includes(q)
+    );
   });
 
   return (
@@ -81,16 +102,28 @@ export default function AdminUsersPage() {
           )}
 
           <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
-            <input
-              type="text"
-              value={searchQ}
-              onChange={(e) => setSearchQ(e.target.value)}
-              placeholder="Buscar por email o ID..."
-              className="px-3 py-1.5 rounded-lg border text-sm"
-              style={{ borderColor: 'var(--color-border)', fontFamily: 'var(--font-caption)', minWidth: 200, outline: 'none' }}
-            />
+            <div className="relative">
+              <input
+                type="text"
+                value={searchQ}
+                onChange={(e) => setSearchQ(e.target.value)}
+                placeholder="Buscar por email, nombre de negocio, slug, ID..."
+                className="px-3 py-1.5 rounded-lg border text-sm pr-8"
+                style={{ borderColor: 'var(--color-border)', fontFamily: 'var(--font-caption)', minWidth: 280, outline: 'none' }}
+              />
+              {searchQ && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQ('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 opacity-40 hover:opacity-80 transition-opacity"
+                  title="Limpiar búsqueda"
+                >
+                  <Icon name="X" size={13} />
+                </button>
+              )}
+            </div>
             <span className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-              {filtered.length} usuario(s)
+              {loading ? 'Buscando...' : `${filtered.length} usuario(s)`}
             </span>
           </div>
 
@@ -131,7 +164,10 @@ export default function AdminUsersPage() {
                         <tr key={u.id} className="border-b last:border-b-0 text-sm" style={{ borderColor: 'var(--color-border)' }}>
                           <td className="px-3 py-3">
                             <p className="font-medium">{u.email || '—'}</p>
-                            <p className="text-xs opacity-50 truncate max-w-[180px]" title={u.id}>{u.id}</p>
+                            {biz?.name && (
+                              <p className="text-xs font-medium truncate max-w-[220px]" style={{ color: 'var(--color-primary)', opacity: 0.8 }} title={biz.name}>{biz.name}</p>
+                            )}
+                            <p className="text-xs opacity-40 truncate max-w-[180px]" title={u.id}>{u.id}</p>
                           </td>
                           <td className="px-3 py-3">
                             {banned ? (
