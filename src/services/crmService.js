@@ -458,7 +458,8 @@ export async function createPosInvoice(businessId, { customerId, items = [], dis
       business_id: businessId,
       invoice_id: invoice.id,
       amount: total,
-      method: paymentMethod,
+      payment_method: paymentMethod,
+      payment_status: 'pagado',
       payment_date: new Date().toISOString().slice(0, 10),
     });
   if (payErr) return { data: null, error: payErr };
@@ -792,15 +793,14 @@ export async function getPaymentsForSession(businessId, sessionId) {
 
   const { data, error } = await supabase
     .from('crm_payments')
-    .select('id, amount, method, payment_date, created_at, invoice_id, customer_id, notes, reference_number')
+    .select('id, amount, payment_method, payment_status, payment_date, created_at, invoice_id, customer_id, notes, reference')
     .eq('business_id', businessId)
     .gte('created_at', dayStart)
     .lte('created_at', dayEnd)
     .order('created_at', { ascending: false });
   if (error) throw error;
 
-  // Normalize method → payment_method for UI compatibility
-  return (data || []).map(p => ({ ...p, payment_method: p.method || 'otro' }));
+  return (data || []).map(p => ({ ...p, payment_method: p.payment_method || 'otro' }));
 }
 
 export async function getRecentCashSessions(businessId, limit = 10) {

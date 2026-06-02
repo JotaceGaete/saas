@@ -499,7 +499,7 @@ ${RLS_SQL}`}</SqlBlock>
                       {PAYMENT_LABELS[p.payment_method] || p.payment_method}
                     </p>
                     <p style={{ fontSize: 11, color: '#9ca3af', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {fmt(p.created_at)}{p.reference_number ? ` · ${p.reference_number}` : ''}{p.notes ? ` · ${p.notes}` : ''}
+                      {fmt(p.created_at)}{p.reference ? ` · ${p.reference}` : ''}{p.notes ? ` · ${p.notes}` : ''}
                     </p>
                   </div>
                   <span style={{ fontSize: 14, fontWeight: 700, color: '#059669', flexShrink: 0 }}>
