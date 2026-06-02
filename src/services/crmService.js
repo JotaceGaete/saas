@@ -834,7 +834,6 @@ export async function openCashSession(businessId, { openedBy, initialAmount = nu
       opened_by: openedBy || user?.id || null,
       initial_amount: initialAmount,
       date: date || getLocalDateString(),
-      notes: notes || null,
       status: 'open',
       opened_at: new Date().toISOString(),
     })
