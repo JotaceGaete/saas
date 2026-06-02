@@ -103,12 +103,15 @@ export default function CrmCaja() {
         setPayments([]);
       }
     } catch (err) {
-      if (err?.message?.includes('does not exist') || err?.code === '42P01') {
+      const msg = err?.message || '';
+      const code = err?.code || err?.details || '';
+      if (code === '42P01' || msg.includes('relation') && msg.includes('does not exist')) {
         setTableError(true);
-      } else if (err?.code === '42501' || err?.message?.includes('row-level security') || err?.message?.includes('policy')) {
+      } else if (code === '42501' || msg.includes('row-level security') || msg.includes('policy') || msg.includes('permission denied')) {
         setRlsError(true);
       } else {
-        setError(err?.message || 'Error al cargar la caja');
+        // Show raw error so we can diagnose
+        setError(`[${code || '?'}] ${msg || 'Error desconocido al cargar la caja'}`);
       }
     } finally {
       setLoading(false);
