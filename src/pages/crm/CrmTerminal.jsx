@@ -103,6 +103,7 @@ export default function CrmTerminal() {
     if (!ticketId) return;
     if (printedTicketRef.current === ticketId) return;
     printedTicketRef.current = ticketId;
+    console.log('[PRINT] ticket', ticketId, Date.now(), '— auto-print disparado');
     window.print();
   }, []);
 
@@ -111,6 +112,7 @@ export default function CrmTerminal() {
   useEffect(() => {
     if (!ticketData) return;
     const ticketId = ticketData.sale?.id ?? ticketData.sale?.invoice_number;
+    console.log('[PRINT] useEffect ticketData cambió, ticketId=', ticketId, 'printedTicketRef=', printedTicketRef.current, Date.now());
     printTicketOnce(String(ticketId));
   }, [ticketData, printTicketOnce]);
 
@@ -229,6 +231,7 @@ export default function CrmTerminal() {
 
   // Explicit reprint: user deliberately requested another copy.
   const handleReprint = useCallback(() => {
+    console.log('[PRINT] handleReprint — usuario pulsó Reimprimir', Date.now());
     window.print();
   }, []);
 
