@@ -5,7 +5,7 @@ import PanelHeader from 'components/ui/PanelHeader';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
 import { useIsDesktop } from 'hooks/useMediaQuery';
-import { getCrmCustomers, getCrmStockProducts, createPosInvoice } from '../../services/crmService';
+import { getCrmCustomers, getCrmStockProducts, createPosInvoice, getOpenCashSession } from '../../services/crmService';
 import { getEffectivePlanSlug } from '../../services/waBusinessService';
 import { CRM_EARLY_ACCESS_MODE } from '../../config/crmConfig';
 import CrmThermalTicket from './components/CrmThermalTicket';
@@ -193,6 +193,14 @@ export default function CrmTerminal() {
     setBusy(true);
     setErrorMsg(null);
 
+    // Guard: require an open cash session before creating any invoice or payment.
+    const { data: openSession } = await getOpenCashSession(business.id);
+    if (!openSession) {
+      setBusy(false);
+      setErrorMsg('NO_OPEN_CASH');
+      return;
+    }
+
     const saleSnapshot = {
       items: [...cart],
       customer: selectedCustomer,
@@ -346,7 +354,24 @@ export default function CrmTerminal() {
                 <div className="flex-1 min-w-0 flex flex-col gap-3">
 
                   {/* Error banner */}
-                  {errorMsg && (
+                  {errorMsg === 'NO_OPEN_CASH' ? (
+                    <div className="flex flex-col gap-2 p-4 rounded-xl bg-amber-50 border border-amber-200 text-sm text-amber-800">
+                      <div className="flex items-start gap-2">
+                        <Icon name="AlertTriangle" size={16} color="currentColor" className="shrink-0 mt-0.5" />
+                        <span className="font-semibold">Debes abrir caja antes de registrar una venta.</span>
+                        <button onClick={() => setErrorMsg(null)} className="ml-auto shrink-0 text-amber-400 hover:text-amber-600">
+                          <Icon name="X" size={14} color="currentColor" />
+                        </button>
+                      </div>
+                      <button
+                        onClick={() => navigate('/crm/caja')}
+                        className="self-start flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold transition-colors"
+                      >
+                        <Icon name="Landmark" size={13} color="currentColor" />
+                        Ir a Caja diaria
+                      </button>
+                    </div>
+                  ) : errorMsg ? (
                     <div className="flex items-start gap-2 p-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700">
                       <Icon name="AlertCircle" size={16} color="currentColor" className="shrink-0 mt-0.5" />
                       <span>{errorMsg}</span>
@@ -354,7 +379,7 @@ export default function CrmTerminal() {
                         <Icon name="X" size={14} color="currentColor" />
                       </button>
                     </div>
-                  )}
+                  ) : null}
 
                   {/* Search */}
                   <div className="relative">

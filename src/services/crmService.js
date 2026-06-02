@@ -439,6 +439,12 @@ export async function updateStockMinimo(productId, stockMinimo) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function createPosInvoice(businessId, { customerId, items = [], discount = 0, paymentMethod = 'cash', notes, currency = 'CLP' }) {
+  // Defensive server-side guard: no open cash session → reject before any DB write.
+  const { data: openSession } = await getOpenCashSession(businessId);
+  if (!openSession) {
+    return { data: null, error: { message: 'No hay caja abierta. Abre caja antes de registrar una venta.' } };
+  }
+
   const { data: nextNum, error: numErr } = await supabase
     .rpc('crm_next_invoice_number', { p_business_id: businessId });
   if (numErr) return { data: null, error: numErr };
