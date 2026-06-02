@@ -1236,3 +1236,96 @@ export async function getRecentCashSessions(businessId, limit = 10) {
   if (error) throw error;
   return data || [];
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FACTURAS DE COMPRA (crm_purchase_invoices)
+// Requiere migración en Supabase Dashboard:
+//
+//   CREATE TABLE IF NOT EXISTS public.crm_purchase_invoices (
+//     id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+//     business_id    uuid NOT NULL REFERENCES wa_businesses(id) ON DELETE CASCADE,
+//     supplier_name  text,
+//     invoice_date   date NOT NULL,
+//     purchase_type  text NOT NULL
+//                    CHECK (purchase_type IN ('mercaderia','gasto_con_iva','gasto_sin_iva')),
+//     tax_rate       numeric(5,2) NOT NULL DEFAULT 19,
+//     tax_included   boolean NOT NULL DEFAULT true,
+//     net_amount     numeric(12,2) NOT NULL DEFAULT 0,
+//     tax_amount     numeric(12,2) NOT NULL DEFAULT 0,
+//     total_amount   numeric(12,2) NOT NULL,
+//     notes          text,
+//     created_at     timestamptz NOT NULL DEFAULT now()
+//   );
+//   ALTER TABLE public.crm_purchase_invoices ENABLE ROW LEVEL SECURITY;
+//   CREATE POLICY "owner_purchase_invoices" ON public.crm_purchase_invoices
+//     FOR ALL USING (
+//       business_id IN (SELECT id FROM wa_businesses WHERE user_id = auth.uid())
+//     );
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function getPurchaseInvoices(businessId, { month, year } = {}) {
+  let q = supabase
+    .from('crm_purchase_invoices')
+    .select('*')
+    .eq('business_id', businessId)
+    .order('invoice_date', { ascending: false });
+
+  if (month && year) {
+    const from = `${year}-${String(month).padStart(2, '0')}-01`;
+    const to   = new Date(year, month, 1).toISOString().slice(0, 10);
+    q = q.gte('invoice_date', from).lt('invoice_date', to);
+  }
+
+  const { data, error } = await q;
+  return { data: data || [], error };
+}
+
+export async function createPurchaseInvoice(businessId, fields) {
+  const { data, error } = await supabase
+    .from('crm_purchase_invoices')
+    .insert({ business_id: businessId, ...fields })
+    .select()
+    .single();
+  return { data, error };
+}
+
+export async function deletePurchaseInvoice(id) {
+  const { error } = await supabase.from('crm_purchase_invoices').delete().eq('id', id);
+  return { error };
+}
+
+// Totales de compras por período, agrupados por tipo.
+// Devuelve: { totals: { mercaderia, gasto_con_iva, gasto_sin_iva }, totalTaxCredit, totalOperational }
+export async function getPurchaseTotalsForPeriod(businessId, month, year) {
+  const from = `${year}-${String(month).padStart(2, '0')}-01`;
+  const to   = new Date(year, month, 1).toISOString().slice(0, 10);
+
+  const { data } = await supabase
+    .from('crm_purchase_invoices')
+    .select('purchase_type, net_amount, tax_amount, total_amount')
+    .eq('business_id', businessId)
+    .gte('invoice_date', from)
+    .lt('invoice_date', to);
+
+  const totals = {
+    mercaderia:    { net: 0, tax: 0, total: 0 },
+    gasto_con_iva: { net: 0, tax: 0, total: 0 },
+    gasto_sin_iva: { net: 0, tax: 0, total: 0 },
+  };
+
+  for (const r of data || []) {
+    const t = totals[r.purchase_type];
+    if (t) {
+      t.net   += r.net_amount   || 0;
+      t.tax   += r.tax_amount   || 0;
+      t.total += r.total_amount || 0;
+    }
+  }
+
+  // IVA recuperable = mercadería + gasto con IVA
+  const totalTaxCredit = totals.mercaderia.tax + totals.gasto_con_iva.tax;
+  // Gasto operativo = gasto con IVA + gasto sin IVA (mercadería es inventario, no pérdida)
+  const totalOperational = totals.gasto_con_iva.total + totals.gasto_sin_iva.total;
+
+  return { totals, totalTaxCredit, totalOperational };
+}

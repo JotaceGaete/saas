@@ -24,6 +24,8 @@ const NAV_ITEMS = [
       { label: 'Terminal TPV', path: '/crm/terminal' },
       { label: 'Clientes', path: '/crm/clientes' },
       { label: 'Stock', path: '/crm/stock' },
+      { label: 'Compras', path: '/crm/compras' },
+      { label: 'Termómetro', path: '/crm/cost-center' },
     ],
   },
   { label: 'Configuración', path: '/business-configuration', icon: 'Settings' },

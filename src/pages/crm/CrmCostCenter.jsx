@@ -20,6 +20,7 @@ import {
   createVariableExpense,
   updateVariableExpense,
   deleteVariableExpense,
+  getPurchaseTotalsForPeriod,
 } from 'services/crmService';
 import { getEffectivePlanSlug } from 'services/waBusinessService';
 
@@ -856,9 +857,96 @@ function Onboarding({ businessId, month, year, onDone }) {
   );
 }
 
+// ─── Panel IVA estimado ───────────────────────────────────────────────────────
+
+function IvaSummaryPanel({ salesMonth, purchaseTotals, vatRate }) {
+  const rate = vatRate || 19;
+  // IVA ventas estimado: precios incluyen IVA → despejar IVA
+  const ivaVentas = salesMonth > 0 ? +(salesMonth * rate / (100 + rate)).toFixed(0) : 0;
+  const ivaCompras = purchaseTotals?.totalTaxCredit || 0;
+  const ivaNeto = Math.max(0, ivaVentas - ivaCompras);
+  const mercaderiaTotal = purchaseTotals?.totals?.mercaderia?.total || 0;
+  const operacionalTotal = purchaseTotals?.totalOperational || 0;
+
+  if (!salesMonth && !ivaCompras && !mercaderiaTotal && !operacionalTotal) return null;
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+      <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
+        <div className="w-8 h-8 rounded-xl bg-indigo-100 flex items-center justify-center">
+          <Icon name="Percent" size={15} color="#4f46e5" />
+        </div>
+        <div>
+          <p className="text-sm font-bold text-gray-800">Resumen IVA estimado</p>
+          <p className="text-[10px] text-gray-400">Tasa {rate}% · Cálculo referencial</p>
+        </div>
+      </div>
+
+      <div className="px-5 py-4 space-y-3">
+        {/* Ventas e IVA ventas */}
+        <div className="flex justify-between items-center">
+          <span className="text-xs text-gray-500">Ventas del período</span>
+          <span className="text-sm font-semibold text-gray-800">{fmt(salesMonth)}</span>
+        </div>
+        <div className="flex justify-between items-center">
+          <span className="text-xs text-gray-500">IVA ventas estimado</span>
+          <span className="text-sm font-semibold text-emerald-700">{fmt(ivaVentas)}</span>
+        </div>
+
+        {ivaCompras > 0 && (
+          <>
+            <div className="border-t border-gray-100 pt-2 flex justify-between items-center">
+              <span className="text-xs text-gray-500">IVA compras (crédito fiscal)</span>
+              <span className="text-sm font-semibold text-blue-700">− {fmt(ivaCompras)}</span>
+            </div>
+            <div className="flex justify-between items-center bg-indigo-50 rounded-lg px-3 py-2">
+              <span className="text-xs font-bold text-indigo-800">IVA neto estimado</span>
+              <span className="text-base font-bold text-indigo-900">{fmt(ivaNeto)}</span>
+            </div>
+          </>
+        )}
+
+        {/* Separación mercadería vs gasto operativo */}
+        {(mercaderiaTotal > 0 || operacionalTotal > 0) && (
+          <div className="border-t border-gray-100 pt-3 space-y-2">
+            {mercaderiaTotal > 0 && (
+              <div className="flex justify-between items-center">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-blue-400 shrink-0" />
+                  <span className="text-xs text-gray-500">Compra mercadería</span>
+                </div>
+                <div className="text-right">
+                  <span className="text-sm font-semibold text-gray-700">{fmt(mercaderiaTotal)}</span>
+                  <p className="text-[9px] text-blue-500 leading-none">inventario</p>
+                </div>
+              </div>
+            )}
+            {operacionalTotal > 0 && (
+              <div className="flex justify-between items-center">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
+                  <span className="text-xs text-gray-500">Gastos operativos</span>
+                </div>
+                <div className="text-right">
+                  <span className="text-sm font-semibold text-gray-700">{fmt(operacionalTotal)}</span>
+                  <p className="text-[9px] text-amber-500 leading-none">afecta rentabilidad</p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        <p className="text-[10px] text-gray-400 pt-1 border-t border-gray-100">
+          ⚠️ Estimación referencial. No reemplaza la declaración tributaria oficial.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // ─── Dashboard principal ──────────────────────────────────────────────────────
 
-function Dashboard({ center, items, varExpenses, sales, dailySales, month, year,
+function Dashboard({ center, items, varExpenses, sales, dailySales, purchaseTotals, month, year,
   onUpdateItem, onDeleteItem, onAddItem,
   onAddVar, onUpdateVar, onDeleteVar,
   onEditSettings, businessId }) {
@@ -937,6 +1025,13 @@ function Dashboard({ center, items, varExpenses, sales, dailySales, month, year,
         onDelete={onDeleteItem}
         totalExpenses={totalExpenses}
         dailyCost={dailyCost}
+      />
+
+      {/* IVA estimado */}
+      <IvaSummaryPanel
+        salesMonth={salesMonth}
+        purchaseTotals={purchaseTotals}
+        vatRate={center?.vat_rate || 19}
       />
 
       {/* Ajustes mínimos */}
@@ -1022,20 +1117,23 @@ export default function CrmCostCenter() {
   const [varExpenses,    setVarExpenses]   = useState([]);
   const [sales,          setSales]         = useState({ salesMonth: 0, salesToday: 0 });
   const [dailySales,     setDailySales]    = useState({});
+  const [purchaseTotals, setPurchaseTotals] = useState(null);
   const [loading,        setLoading]       = useState(true);
   const [showOnboarding, setShowOnboarding] = useState(false);
 
   const load = useCallback(async () => {
     if (!business?.id) return;
     setLoading(true);
-    const [c, its, s, ds, ve] = await Promise.all([
+    const [c, its, s, ds, ve, pt] = await Promise.all([
       getCostCenter(business.id, month, year),
       getCostItems(business.id, month, year),
       getCrmSalesTotalsForPeriod(business.id, month, year),
       getCrmDailySalesForPeriod(business.id, month, year),
       getVariableExpenses(business.id, month, year),
+      getPurchaseTotalsForPeriod(business.id, month, year),
     ]);
     setCenter(c); setItems(its); setSales(s); setDailySales(ds); setVarExpenses(ve);
+    setPurchaseTotals(pt);
     setShowOnboarding(!c?.onboarding_done);
     setLoading(false);
   }, [business?.id, month, year]);
@@ -1139,6 +1237,7 @@ export default function CrmCostCenter() {
             varExpenses={varExpenses}
             sales={sales}
             dailySales={dailySales}
+            purchaseTotals={purchaseTotals}
             month={month}
             year={year}
             onAddItem={handleAddItem}

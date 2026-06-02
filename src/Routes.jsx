@@ -34,6 +34,7 @@ import CrmStock from './pages/crm/CrmStock';
 import CrmTerminal from './pages/crm/CrmTerminal';
 import CrmCash from './pages/crm/CrmCash';
 import CrmCostCenter from './pages/crm/CrmCostCenter';
+import CrmPurchases from './pages/crm/CrmPurchases';
 import Login from './pages/login';
 import AuthCallback from './pages/auth-callback';
 import ResetPassword from './pages/reset-password';
@@ -112,6 +113,7 @@ const Routes = () => {
             <Route path="/crm/terminal" element={<RequireAdmin><CrmTerminal /></RequireAdmin>} />
             <Route path="/crm/caja" element={<RequireAdmin><CrmCash /></RequireAdmin>} />
             <Route path="/crm/cost-center" element={<RequireAdmin><CrmCostCenter /></RequireAdmin>} />
+            <Route path="/crm/compras" element={<RequireAdmin><CrmPurchases /></RequireAdmin>} />
             <Route path="/business-configuration" element={<RequireAuth><BusinessConfiguration /></RequireAuth>} />
             <Route path="/product-management" element={<RequireAuth><ProductManagement /></RequireAuth>} />
             <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
