@@ -10,6 +10,7 @@ import Icon from 'components/AppIcon';
 import {
   getCostCenter,
   upsertCostCenter,
+  getCostItems,
   getCrmSalesTotalsForPeriod,
   getCrmDailySalesForPeriod,
   getPurchaseTotalsForPeriod,
@@ -363,6 +364,35 @@ function ComprasWidget({ purchaseTotals, navigate }) {
   );
 }
 
+// ─── Widget Costos fijos ──────────────────────────────────────────────────────
+
+function CostosWidget({ totalCostosFijos, navigate }) {
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 p-4 flex items-center justify-between gap-4">
+      <div className="flex items-center gap-3 min-w-0">
+        <div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center shrink-0">
+          <Icon name="Building2" size={16} color="#2563eb" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm font-bold text-gray-800">Costos fijos del período</p>
+          {totalCostosFijos > 0 ? (
+            <p className="text-xs text-blue-600 mt-0.5">Total: <strong>{fmt(totalCostosFijos)}</strong></p>
+          ) : (
+            <p className="text-xs text-gray-400">Sin costos fijos registrados</p>
+          )}
+        </div>
+      </div>
+      <button
+        onClick={() => navigate('/crm/costos')}
+        className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition-colors"
+      >
+        <Icon name="Pencil" size={12} />
+        Editar
+      </button>
+    </div>
+  );
+}
+
 // ─── Panel IVA estimado ───────────────────────────────────────────────────────
 
 function IvaSummaryPanel({ salesMonth, purchaseTotals, vatRate }) {
@@ -522,15 +552,16 @@ function SettingsPanel({ center, businessId, month, year, onSave }) {
 
 // ─── Dashboard principal ──────────────────────────────────────────────────────
 
-function Dashboard({ center, sales, dailySales, purchaseTotals, purchases, month, year, onEditSettings, businessId, navigate }) {
+function Dashboard({ center, costItems, sales, dailySales, purchaseTotals, purchases, month, year, onEditSettings, businessId, navigate }) {
   const now = new Date();
   const isCurrentMonth = month === now.getMonth() + 1 && year === now.getFullYear();
   const today = now.toISOString().slice(0, 10);
 
-  const openDays        = center?.open_days || 22;
-  const totalOperacional = purchaseTotals?.totalOperational || 0;
-  // dailyCost = gastos operativos amortizados por día hábil
-  const dailyCost       = openDays > 0 && totalOperacional > 0 ? totalOperacional / openDays : 0;
+  const openDays          = center?.open_days || 22;
+  const totalCostosFijos  = (costItems || []).reduce((s, i) => s + (i.amount || 0), 0);
+  const totalOperacional  = purchaseTotals?.totalOperational || 0;
+  const totalMes          = totalCostosFijos + totalOperacional;
+  const dailyCost         = openDays > 0 && totalMes > 0 ? totalMes / openDays : 0;
 
   // Mapa día → gastos operativos (gasto_con_iva + gasto_sin_iva) para el calendario
   const dailyVarExpenses = {};
@@ -556,7 +587,7 @@ function Dashboard({ center, sales, dailySales, purchaseTotals, purchases, month
 
       {/* Hoyo financiero */}
       <HoyoCard
-        totalCosts={totalOperacional}
+        totalCosts={totalMes}
         salesMonth={salesMonth}
       />
 
@@ -567,6 +598,9 @@ function Dashboard({ center, sales, dailySales, purchaseTotals, purchases, month
         dailyCost={dailyCost}
         dailyVarExpenses={dailyVarExpenses}
       />
+
+      {/* Enlace a costos fijos */}
+      <CostosWidget totalCostosFijos={totalCostosFijos} navigate={navigate} />
 
       {/* Widget de compras — fuente única de datos */}
       <ComprasWidget purchaseTotals={purchaseTotals} navigate={navigate} />
@@ -599,6 +633,7 @@ export default function CrmCostCenter() {
   const [year,  setYear]  = useState(now.getFullYear());
 
   const [center,         setCenter]         = useState(null);
+  const [costItems,      setCostItems]      = useState([]);
   const [sales,          setSales]          = useState({ salesMonth: 0, salesToday: 0 });
   const [dailySales,     setDailySales]     = useState({});
   const [purchaseTotals, setPurchaseTotals] = useState(null);
@@ -608,14 +643,16 @@ export default function CrmCostCenter() {
   const load = useCallback(async () => {
     if (!business?.id) return;
     setLoading(true);
-    const [c, s, ds, pt, pr] = await Promise.all([
+    const [c, ci, s, ds, pt, pr] = await Promise.all([
       getCostCenter(business.id, month, year),
+      getCostItems(business.id, month, year),
       getCrmSalesTotalsForPeriod(business.id, month, year),
       getCrmDailySalesForPeriod(business.id, month, year),
       getPurchaseTotalsForPeriod(business.id, month, year),
       getPurchaseInvoices(business.id, { month, year }),
     ]);
     setCenter(c);
+    setCostItems(ci || []);
     setSales(s);
     setDailySales(ds);
     setPurchaseTotals(pt);
@@ -682,6 +719,7 @@ export default function CrmCostCenter() {
         ) : (
           <Dashboard
             center={center}
+            costItems={costItems}
             sales={sales}
             dailySales={dailySales}
             purchaseTotals={purchaseTotals}
