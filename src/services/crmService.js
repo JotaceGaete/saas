@@ -459,7 +459,7 @@ export async function createPosInvoice(businessId, { customerId, items = [], dis
       invoice_id: invoice.id,
       amount: total,
       payment_method: paymentMethod,
-      payment_status: 'pagado',
+      payment_status: 'received',
       payment_date: new Date().toISOString().slice(0, 10),
     });
   if (payErr) return { data: null, error: payErr };
@@ -784,19 +784,16 @@ export async function getPaymentsForSession(businessId, sessionId) {
     .single();
   if (sErr) throw sErr;
 
-  // Use the session date to build a full-day range as the outer bound,
-  // and opened_at as the inner bound — so same-day sales before opening
-  // are excluded but nothing is missed due to timezone drift.
+  // Filter by payment_date (the actual date column) matching the session date.
+  // This is the canonical field — created_at can differ due to timezone offsets.
   const sessionDate = session.date || session.opened_at.slice(0, 10);
-  const dayStart = session.opened_at;
-  const dayEnd = session.closed_at || `${sessionDate}T23:59:59.999Z`;
 
   const { data, error } = await supabase
     .from('crm_payments')
     .select('id, amount, payment_method, payment_status, payment_date, created_at, invoice_id, customer_id, notes, reference')
     .eq('business_id', businessId)
-    .gte('created_at', dayStart)
-    .lte('created_at', dayEnd)
+    .eq('payment_date', sessionDate)
+    .eq('payment_status', 'received')
     .order('created_at', { ascending: false });
   if (error) throw error;
 
