@@ -459,9 +459,9 @@ export async function createPosInvoice(businessId, { customerId, items = [], dis
       invoice_id: invoice.id,
       amount: total,
       method: paymentMethod,
-      paid_at: new Date().toISOString(),
+      payment_date: new Date().toISOString().slice(0, 10),
     });
-  if (payErr) console.warn('POS payment record failed:', payErr.message);
+  if (payErr) return { data: null, error: payErr };
 
   return { data: invoice, error: null };
 }
@@ -776,26 +776,31 @@ export async function closeCashSession(sessionId) {
 }
 
 export async function getPaymentsForSession(businessId, sessionId) {
-  // Fetch the session to know its time range
   const { data: session, error: sErr } = await supabase
     .from('crm_cash_sessions')
-    .select('opened_at, closed_at')
+    .select('opened_at, closed_at, date')
     .eq('id', sessionId)
     .single();
   if (sErr) throw sErr;
 
-  const from = session.opened_at;
-  const to = session.closed_at || new Date().toISOString();
+  // Use the session date to build a full-day range as the outer bound,
+  // and opened_at as the inner bound — so same-day sales before opening
+  // are excluded but nothing is missed due to timezone drift.
+  const sessionDate = session.date || session.opened_at.slice(0, 10);
+  const dayStart = session.opened_at;
+  const dayEnd = session.closed_at || `${sessionDate}T23:59:59.999Z`;
 
   const { data, error } = await supabase
     .from('crm_payments')
-    .select('id, amount, payment_method, created_at, invoice_id, customer_id')
+    .select('id, amount, method, payment_date, created_at, invoice_id, customer_id, notes, reference_number')
     .eq('business_id', businessId)
-    .gte('created_at', from)
-    .lte('created_at', to)
+    .gte('created_at', dayStart)
+    .lte('created_at', dayEnd)
     .order('created_at', { ascending: false });
   if (error) throw error;
-  return data || [];
+
+  // Normalize method → payment_method for UI compatibility
+  return (data || []).map(p => ({ ...p, payment_method: p.method || 'otro' }));
 }
 
 export async function getRecentCashSessions(businessId, limit = 10) {
