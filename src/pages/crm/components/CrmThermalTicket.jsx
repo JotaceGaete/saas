@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import ReactDOM from 'react-dom';
 import Icon from 'components/AppIcon';
 import { formatMoney } from '../../../utils/formatMoney';
 
@@ -57,46 +58,43 @@ export default function CrmThermalTicket({
   onReprint,
 }) {
   // Inject print styles while modal is open.
+  // The print div is portaled directly into document.body so
+  // `body > *:not(#crm-thermal-print-root)` can hide the entire app
+  // (including the modal) while leaving only the ticket visible — 1 page.
   useEffect(() => {
     const styleId = 'crm-thermal-print-style';
     const style = document.createElement('style');
     style.id = styleId;
     style.textContent = `
       @media print {
-        body * {
-          visibility: hidden !important;
+        /* Hide the entire React app tree and everything else in body */
+        body > *:not(#crm-thermal-print-root) {
+          display: none !important;
         }
 
-        #crm-ticket-print-content,
-        #crm-ticket-print-content * {
-          visibility: visible !important;
-        }
-
-        #crm-ticket-print-content {
+        /* Show the ticket portal */
+        #crm-thermal-print-root {
           display: block !important;
-          position: fixed !important;
-          left: 0 !important;
-          top: 0 !important;
+          position: static !important;
           width: 58mm !important;
           max-width: 58mm !important;
-          min-height: auto !important;
           margin: 0 !important;
           padding: 0 !important;
           background: #fff !important;
           color: #000 !important;
           overflow: visible !important;
-          transform: none !important;
         }
 
-        #crm-ticket-print-content *:not(img) {
+        #crm-thermal-print-root *:not(img) {
           color: #000 !important;
           background: transparent !important;
           box-shadow: none !important;
         }
 
-        .no-print,
-        .crm-ticket-noprint {
-          visibility: hidden !important;
+        html, body {
+          margin: 0 !important;
+          padding: 0 !important;
+          background: #fff !important;
         }
 
         @page {
@@ -122,7 +120,9 @@ export default function CrmThermalTicket({
   const address = business?.address || null;
   const phone = business?.whatsapp || null;
 
-  // Ticket content
+  // Ticket content — rendered in the modal preview AND in the print portal.
+  // The modal copy is for screen preview only (hidden during print).
+  // The portal copy is the sole source of print output.
   const ticketBody = (
     <div style={{
       padding: '16px 14px',
@@ -236,11 +236,9 @@ export default function CrmThermalTicket({
 
   return (
     <>
-      {/* Modal overlay — crm-ticket-noprint → display:none during @media print.
-          This removes the entire fixed overlay from print layout, preventing Chrome
-          from double-rendering the ticket content. */}
+      {/* Modal overlay — screen only. Hidden entirely during @media print via
+          `body > *:not(#crm-thermal-print-root) { display: none }`.            */}
       <div
-        className="crm-ticket-noprint"
         style={{
           position: 'fixed', inset: 0, zIndex: 9999,
           backgroundColor: 'rgba(0,0,0,0.55)',
@@ -289,10 +287,8 @@ export default function CrmThermalTicket({
             </button>
           </div>
 
-          {/* Ticket preview inside modal — also serves as the print target */}
-          <div id="crm-ticket-print-content">
-            {ticketBody}
-          </div>
+          {/* Ticket preview (screen only) */}
+          {ticketBody}
 
           {/* Action buttons */}
           <div style={{
@@ -325,6 +321,16 @@ export default function CrmThermalTicket({
         </div>
       </div>
 
+      {/* Print-only portal — mounted directly in document.body so the CSS rule
+          `body > *:not(#crm-thermal-print-root) { display: none }` can hide
+          the entire app (#root) while showing only this ticket.
+          position: static + @page size: 58mm auto = exactly 1 page.            */}
+      {ReactDOM.createPortal(
+        <div id="crm-thermal-print-root" aria-hidden="true" style={{ display: 'none' }}>
+          {ticketBody}
+        </div>,
+        document.body
+      )}
     </>
   );
 }
