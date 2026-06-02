@@ -729,3 +729,82 @@ export async function deleteVariableExpense(id) {
   const { error } = await supabase.from('crm_purchases').delete().eq('id', id);
   if (error) throw error;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Caja Diaria (crm_cash_sessions)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function getOpenCashSession(businessId) {
+  const { data, error } = await supabase
+    .from('crm_cash_sessions')
+    .select('*')
+    .eq('business_id', businessId)
+    .eq('status', 'open')
+    .order('opened_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+export async function openCashSession(businessId, { openedBy, initialAmount = null, date = null }) {
+  const { data, error } = await supabase
+    .from('crm_cash_sessions')
+    .insert({
+      business_id: businessId,
+      opened_by: openedBy,
+      initial_amount: initialAmount,
+      date: date || new Date().toISOString().slice(0, 10),
+      status: 'open',
+      opened_at: new Date().toISOString(),
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function closeCashSession(sessionId) {
+  const { data, error } = await supabase
+    .from('crm_cash_sessions')
+    .update({ status: 'closed', closed_at: new Date().toISOString() })
+    .eq('id', sessionId)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function getPaymentsForSession(businessId, sessionId) {
+  // Fetch the session to know its time range
+  const { data: session, error: sErr } = await supabase
+    .from('crm_cash_sessions')
+    .select('opened_at, closed_at')
+    .eq('id', sessionId)
+    .single();
+  if (sErr) throw sErr;
+
+  const from = session.opened_at;
+  const to = session.closed_at || new Date().toISOString();
+
+  const { data, error } = await supabase
+    .from('crm_payments')
+    .select('id, amount, payment_method, created_at, invoice_id, customer_id')
+    .eq('business_id', businessId)
+    .gte('created_at', from)
+    .lte('created_at', to)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function getRecentCashSessions(businessId, limit = 10) {
+  const { data, error } = await supabase
+    .from('crm_cash_sessions')
+    .select('*')
+    .eq('business_id', businessId)
+    .order('opened_at', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return data || [];
+}

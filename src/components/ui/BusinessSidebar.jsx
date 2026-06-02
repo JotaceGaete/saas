@@ -16,7 +16,16 @@ const NAV_ITEMS = [
   { label: 'Productos', path: '/product-management', icon: 'Package' },
   { label: 'Pedidos', path: '/orders', icon: 'ShoppingCart' },
   { label: 'Historial pedidos', path: '/orders/historial', icon: 'History' },
-  { label: 'CRM', path: '/crm', icon: 'LayoutDashboard', adminOnly: true },
+  {
+    label: 'CRM', path: '/crm', icon: 'LayoutDashboard', adminOnly: true,
+    subItems: [
+      { label: 'Dashboard', path: '/crm' },
+      { label: 'Caja', path: '/crm/caja' },
+      { label: 'Terminal TPV', path: '/crm/terminal' },
+      { label: 'Clientes', path: '/crm/clientes' },
+      { label: 'Stock', path: '/crm/stock' },
+    ],
+  },
   { label: 'Configuración', path: '/business-configuration', icon: 'Settings' },
   { label: 'Diseño', path: '/design', icon: 'Palette' },
   { label: 'Plan y facturación', path: '/planes', icon: 'CreditCard' },
