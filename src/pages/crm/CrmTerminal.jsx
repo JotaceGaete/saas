@@ -18,6 +18,7 @@ const PAYMENT_METHODS = [
   { value: 'card',          label: 'Tarjeta',       icon: 'CreditCard' },
   { value: 'check',         label: 'Cheque',        icon: 'BadgeCheck' },
   { value: 'other',         label: 'Otro',          icon: 'MoreHorizontal' },
+  { value: 'credit',        label: 'Cta. cte.',     icon: 'BookUser' },
 ];
 
 const fmt = (n, currency) => formatMoney(n, currency);
@@ -170,6 +171,7 @@ export default function CrmTerminal() {
   const cartCount = cart.reduce((s, i) => s + i.quantity, 0);
 
   const isEfectivo = paymentMethod === 'cash';
+  const isCredit   = paymentMethod === 'credit';
   const parsedReceived = parseMoneyInput(amountReceived);
   const change = isEfectivo && parsedReceived > 0 ? parsedReceived - total : 0;
   const isCashShort = isEfectivo && amountReceived !== '' && parsedReceived < total;
@@ -194,12 +196,22 @@ export default function CrmTerminal() {
     setBusy(true);
     setErrorMsg(null);
 
-    // Guard: require an open cash session before creating any invoice or payment.
-    const { data: openSession } = await getOpenCashSession(business.id);
-    if (!openSession) {
+    // Cuenta corriente requiere cliente registrado.
+    if (isCredit && !customerId) {
       setBusy(false);
-      setErrorMsg('NO_OPEN_CASH');
+      setErrorMsg('CREDIT_NO_CUSTOMER');
       return;
+    }
+
+    // Guard: pago real requiere caja abierta (cuenta corriente lo omite aquí;
+    // el servicio tiene su propia validación defensiva).
+    if (!isCredit) {
+      const { data: openSession } = await getOpenCashSession(business.id);
+      if (!openSession) {
+        setBusy(false);
+        setErrorMsg('NO_OPEN_CASH');
+        return;
+      }
     }
 
     const saleSnapshot = {
@@ -369,6 +381,16 @@ export default function CrmTerminal() {
                         <Icon name="Landmark" size={13} color="currentColor" />
                         Ir a Caja diaria
                       </button>
+                    </div>
+                  ) : errorMsg === 'CREDIT_NO_CUSTOMER' ? (
+                    <div className="flex flex-col gap-2 p-4 rounded-xl bg-amber-50 border border-amber-200 text-sm text-amber-800">
+                      <div className="flex items-start gap-2">
+                        <Icon name="AlertTriangle" size={16} color="currentColor" className="shrink-0 mt-0.5" />
+                        <span className="font-semibold">Las ventas en cuenta corriente requieren un cliente registrado.</span>
+                        <button onClick={() => setErrorMsg(null)} className="ml-auto shrink-0 text-amber-400 hover:text-amber-600">
+                          <Icon name="X" size={14} color="currentColor" />
+                        </button>
+                      </div>
                     </div>
                   ) : errorMsg ? (
                     <div className="flex items-start gap-2 p-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700">
@@ -649,6 +671,14 @@ export default function CrmTerminal() {
                             </span>
                           </div>
                         )}
+                      </div>
+                    )}
+
+                    {/* Aviso cuenta corriente */}
+                    {isCredit && (
+                      <div className="flex items-start gap-2 p-2.5 rounded-lg bg-indigo-50 border border-indigo-100 text-xs text-indigo-700">
+                        <Icon name="BookUser" size={13} color="currentColor" className="shrink-0 mt-0.5" />
+                        <span>Cuenta corriente: no ingresa a caja. Queda como nota de venta pendiente.</span>
                       </div>
                     )}
 

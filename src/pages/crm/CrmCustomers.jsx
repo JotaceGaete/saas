@@ -5,7 +5,11 @@ import PanelHeader from 'components/ui/PanelHeader';
 import CrmBreadcrumb from 'components/ui/CrmBreadcrumb';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
-import { getCrmCustomers, createCrmCustomer, updateCrmCustomer, deleteCrmCustomer } from '../../services/crmService';
+import {
+  getCrmCustomers, createCrmCustomer, updateCrmCustomer, deleteCrmCustomer,
+  getBusinessCreditSummary, getCustomerPendingInvoices, registerCustomerAbono,
+  formatInvoiceNumber,
+} from '../../services/crmService';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -120,14 +124,11 @@ function CustomerModal({ initial, onSave, onClose }) {
 
 // ─── Card de cliente ──────────────────────────────────────────────────────────
 
-function CustomerCard({ c, onEdit, onDelete, deleting }) {
+function CustomerCard({ c, balance, onEdit, onDelete, onViewAccount, deleting }) {
   const waNumber = cleanPhone(c.whatsapp || c.phone);
   const hasWa    = waNumber.length >= 7;
   const hasEmail = !!c.email;
-
-  // Estado financiero maquetado — conectar cuando la BD lo soporte
-  const deuda = 0;
-  const alDia = deuda === 0;
+  const alDia    = (balance ?? 0) === 0;
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow flex flex-col gap-3">
@@ -145,8 +146,11 @@ function CustomerCard({ c, onEdit, onDelete, deleting }) {
             }
           </div>
         </div>
-        {/* Acciones editar/eliminar */}
+        {/* Acciones */}
         <div className="flex gap-1 shrink-0">
+          <button onClick={onViewAccount} className="p-1.5 text-gray-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition-colors" title="Ver cuenta corriente">
+            <Icon name="BookUser" size={13} />
+          </button>
           <button onClick={onEdit} className="p-1.5 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition-colors" title="Editar">
             <Icon name="Pencil" size={13} />
           </button>
@@ -164,10 +168,10 @@ function CustomerCard({ c, onEdit, onDelete, deleting }) {
             Al día
           </span>
         ) : (
-          <span className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-red-50 text-red-700 font-medium border border-red-100">
+          <button onClick={onViewAccount} className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-red-50 text-red-700 font-medium border border-red-100 hover:bg-red-100 transition-colors">
             <Icon name="AlertCircle" size={11} />
-            Debe ${deuda.toLocaleString('es-CL')}
-          </span>
+            Debe ${(balance ?? 0).toLocaleString('es-CL')}
+          </button>
         )}
       </div>
 
@@ -222,6 +226,175 @@ function CustomerCard({ c, onEdit, onDelete, deleting }) {
   );
 }
 
+// ─── Drawer cuenta corriente ──────────────────────────────────────────────────
+
+const ABONO_METHODS = [
+  { value: 'cash',          label: 'Efectivo' },
+  { value: 'bank_transfer', label: 'Transferencia' },
+  { value: 'card',          label: 'Tarjeta' },
+  { value: 'check',         label: 'Cheque' },
+  { value: 'other',         label: 'Otro' },
+];
+
+function CustomerAccountDrawer({ customer, business, onClose, fmt }) {
+  const [invoices, setInvoices]     = useState([]);
+  const [loading, setLoading]       = useState(true);
+  const [selectedInv, setSelectedInv] = useState(null);
+  const [abonoAmount, setAbonoAmount] = useState('');
+  const [abonoMethod, setAbonoMethod] = useState('cash');
+  const [saving, setSaving]         = useState(false);
+  const [error, setError]           = useState(null);
+  const [success, setSuccess]       = useState(null);
+
+  const load = async () => {
+    setLoading(true);
+    const { data } = await getCustomerPendingInvoices(business.id, customer.id);
+    setInvoices(data || []);
+    setLoading(false);
+  };
+
+  useEffect(() => { load(); }, [customer.id]);
+
+  const totalPendiente = invoices.reduce((s, inv) => {
+    const pagado = (inv.crm_payments || []).reduce((p, r) => p + (r.amount || 0), 0);
+    return s + Math.max(0, inv.total - pagado);
+  }, 0);
+
+  const handleAbono = async () => {
+    if (!selectedInv) return;
+    const amount = parseFloat(abonoAmount.replace(/\./g, '').replace(',', '.'));
+    if (!amount || amount <= 0) { setError('Ingresa un monto válido.'); return; }
+    setSaving(true);
+    setError(null);
+    const { error: err } = await registerCustomerAbono(business.id, {
+      customerId: customer.id,
+      invoiceId: selectedInv.id,
+      amount,
+      paymentMethod: abonoMethod,
+      invoiceTotal: selectedInv.total,
+    });
+    setSaving(false);
+    if (err) { setError(err.message || 'No se pudo registrar el abono.'); return; }
+    setSuccess('Abono registrado correctamente.');
+    setSelectedInv(null);
+    setAbonoAmount('');
+    load();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end" style={{ backgroundColor: 'rgba(15,23,42,0.42)' }} onClick={onClose}>
+      <div className="h-full w-full max-w-md overflow-y-auto bg-white shadow-xl" onClick={e => e.stopPropagation()}>
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-white px-4 py-3">
+          <div>
+            <h2 className="text-base font-bold text-gray-900">{customer.name}</h2>
+            <p className="text-xs text-gray-400">Cuenta corriente</p>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-gray-100">
+            <Icon name="X" size={18} color="var(--color-muted-foreground)" />
+          </button>
+        </div>
+
+        <div className="p-4 space-y-4">
+          {/* Resumen saldo */}
+          <div className={`rounded-xl p-4 flex items-center justify-between ${totalPendiente > 0 ? 'bg-red-50 border border-red-100' : 'bg-green-50 border border-green-100'}`}>
+            <div>
+              <p className="text-xs font-semibold text-gray-500 mb-0.5">Saldo pendiente</p>
+              <p className={`text-2xl font-bold ${totalPendiente > 0 ? 'text-red-600' : 'text-green-600'}`}>{fmt(totalPendiente)}</p>
+            </div>
+            {totalPendiente === 0 && <Icon name="CheckCircle2" size={28} color="#059669" />}
+            {totalPendiente > 0 && <Icon name="AlertCircle" size={28} color="#dc2626" />}
+          </div>
+
+          {success && (
+            <div className="flex items-center gap-2 p-3 rounded-xl bg-green-50 border border-green-200 text-sm text-green-700">
+              <Icon name="CheckCircle2" size={14} color="currentColor" />
+              <span>{success}</span>
+              <button onClick={() => setSuccess(null)} className="ml-auto text-green-400 hover:text-green-600"><Icon name="X" size={12} /></button>
+            </div>
+          )}
+
+          {error && (
+            <div className="flex items-center gap-2 p-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700">
+              <Icon name="AlertCircle" size={14} color="currentColor" />
+              <span>{error}</span>
+              <button onClick={() => setError(null)} className="ml-auto text-red-400 hover:text-red-600"><Icon name="X" size={12} /></button>
+            </div>
+          )}
+
+          {/* Listado de facturas pendientes */}
+          <div>
+            <p className="text-xs font-semibold text-gray-500 mb-2">Facturas pendientes</p>
+            {loading ? (
+              <p className="text-xs text-gray-400">Cargando…</p>
+            ) : invoices.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-6">Sin facturas pendientes</p>
+            ) : (
+              <div className="space-y-2">
+                {invoices.map(inv => {
+                  const pagado = (inv.crm_payments || []).reduce((p, r) => p + (r.amount || 0), 0);
+                  const saldo  = Math.max(0, inv.total - pagado);
+                  const sel    = selectedInv?.id === inv.id;
+                  return (
+                    <div key={inv.id} className={`rounded-xl border p-3 transition-colors ${sel ? 'border-indigo-400 bg-indigo-50' : 'border-gray-200 bg-gray-50'}`}>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-semibold text-gray-800">NV-{String(inv.invoice_number).padStart(4, '0')}</p>
+                          <p className="text-xs text-gray-400">{inv.issue_date}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm font-bold text-red-600">{fmt(saldo)}</p>
+                          {pagado > 0 && <p className="text-[10px] text-gray-400">Total: {fmt(inv.total)}</p>}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => { setSelectedInv(sel ? null : inv); setError(null); setAbonoAmount(''); }}
+                        className={`mt-2 w-full text-xs font-semibold py-1.5 rounded-lg transition-colors ${sel ? 'bg-indigo-600 text-white' : 'bg-white border border-indigo-300 text-indigo-700 hover:bg-indigo-50'}`}
+                      >
+                        {sel ? 'Cancelar' : 'Abonar a esta factura'}
+                      </button>
+
+                      {sel && (
+                        <div className="mt-3 space-y-2 border-t border-indigo-200 pt-3">
+                          <select
+                            value={abonoMethod}
+                            onChange={e => setAbonoMethod(e.target.value)}
+                            className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
+                          >
+                            {ABONO_METHODS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                          </select>
+                          <div className="relative">
+                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none">$</span>
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              value={abonoAmount}
+                              onChange={e => setAbonoAmount(e.target.value.replace(/[^\d]/g, ''))}
+                              placeholder={`Monto abono (máx. ${fmt(saldo)})`}
+                              className="w-full pl-6 pr-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                            />
+                          </div>
+                          <button
+                            disabled={saving}
+                            onClick={handleAbono}
+                            className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold disabled:opacity-60 flex items-center justify-center gap-2 transition-colors"
+                          >
+                            {saving && <Icon name="Loader2" size={14} className="animate-spin" />}
+                            {saving ? 'Registrando…' : 'Confirmar abono'}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Página principal ─────────────────────────────────────────────────────────
 
 export default function CrmCustomers() {
@@ -231,12 +404,20 @@ export default function CrmCustomers() {
   const [modal, setModal]         = useState(null);
   const [search, setSearch]       = useState('');
   const [deleting, setDeleting]   = useState(null);
+  const [balanceMap, setBalanceMap] = useState({});
+  const [creditSummary, setCreditSummary] = useState({ clientesConDeuda: 0, totalPorCobrar: 0 });
+  const [accountDrawer, setAccountDrawer] = useState(null); // customer object
 
   const load = async () => {
     if (!business?.id) return;
     setLoading(true);
-    const { data } = await getCrmCustomers(business.id);
+    const [{ data }, summary] = await Promise.all([
+      getCrmCustomers(business.id),
+      getBusinessCreditSummary(business.id),
+    ]);
     setCustomers(data || []);
+    setBalanceMap(summary.balanceByCustomer || {});
+    setCreditSummary({ clientesConDeuda: summary.clientesConDeuda, totalPorCobrar: summary.totalPorCobrar });
     setLoading(false);
   };
 
@@ -266,10 +447,8 @@ export default function CrmCustomers() {
     (c.phone   || '').includes(search)
   ), [customers, search]);
 
-  // Métricas — valores reales de debt pendientes de integrar con BD
-  const totalClientes   = customers.length;
-  const clientesConDeuda = 0;  // TODO: conectar a crm_payments
-  const totalPorCobrar   = 0;  // TODO: conectar a crm_payments
+  const totalClientes    = customers.length;
+  const { clientesConDeuda, totalPorCobrar } = creditSummary;
 
   const fmt = (n) => new Intl.NumberFormat('es-CL', { style: 'currency', currency: business?.currency || 'CLP', maximumFractionDigits: 0 }).format(n);
 
@@ -352,8 +531,10 @@ export default function CrmCustomers() {
               <CustomerCard
                 key={c.id}
                 c={c}
+                balance={balanceMap[c.id] ?? 0}
                 onEdit={() => setModal(c)}
                 onDelete={() => handleDelete(c.id)}
+                onViewAccount={() => setAccountDrawer(c)}
                 deleting={deleting === c.id}
               />
             ))}
@@ -366,6 +547,14 @@ export default function CrmCustomers() {
           initial={modal === 'new' ? null : modal}
           onSave={handleSave}
           onClose={() => setModal(null)}
+        />
+      )}
+      {accountDrawer && (
+        <CustomerAccountDrawer
+          customer={accountDrawer}
+          business={business}
+          fmt={fmt}
+          onClose={() => { setAccountDrawer(null); load(); }}
         />
       )}
     </DashboardAppShell>

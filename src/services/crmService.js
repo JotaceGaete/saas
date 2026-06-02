@@ -80,11 +80,15 @@ export function normalizePaymentMethod(method) {
     transferencia: 'bank_transfer',
     check: 'check',
     cheque: 'check',
+    credit: 'credit',
+    cuenta_corriente: 'credit',
     other: 'other',
     otro: 'other',
   };
   return map[value] || 'other';
 }
+
+export const IS_CREDIT_METHOD = (method) => method === 'credit' || method === 'cuenta_corriente';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CLIENTES
@@ -106,6 +110,118 @@ export async function getCrmCustomer(id) {
     .eq('id', id)
     .single();
   return { data, error };
+}
+
+// Retorna { invoiced, paid, balance } para un cliente.
+// balance = sum(facturas pendientes) - sum(pagos recibidos del cliente)
+export async function getCustomerBalance(businessId, customerId) {
+  const [invRes, payRes] = await Promise.all([
+    supabase
+      .from('crm_invoices')
+      .select('total, status')
+      .eq('business_id', businessId)
+      .eq('customer_id', customerId)
+      .neq('status', 'anulada'),
+    supabase
+      .from('crm_payments')
+      .select('amount')
+      .eq('business_id', businessId)
+      .eq('customer_id', customerId)
+      .eq('payment_status', 'received'),
+  ]);
+  const invoiced = (invRes.data || []).reduce((s, r) => s + (r.total || 0), 0);
+  const paid     = (payRes.data || []).reduce((s, r) => s + (r.amount || 0), 0);
+  const balance  = Math.max(0, invoiced - paid);
+  return { invoiced, paid, balance };
+}
+
+// Facturas pendientes de un cliente con sus ítems de pago.
+export async function getCustomerPendingInvoices(businessId, customerId) {
+  const { data, error } = await supabase
+    .from('crm_invoices')
+    .select('id, invoice_number, total, status, issue_date, notes, crm_payments(amount)')
+    .eq('business_id', businessId)
+    .eq('customer_id', customerId)
+    .eq('status', 'pendiente')
+    .order('issue_date', { ascending: false });
+  return { data: data || [], error };
+}
+
+// Registra un abono. Requiere caja abierta.
+// Si el pago cubre el total de la factura, la marca como pagada.
+export async function registerCustomerAbono(businessId, { customerId, invoiceId, amount, paymentMethod, invoiceTotal }) {
+  const { data: openSession } = await getOpenCashSession(businessId);
+  if (!openSession) {
+    return { data: null, error: { message: 'No hay caja abierta. Abre caja antes de registrar un abono.' } };
+  }
+
+  const { data: { user } } = await supabase.auth.getUser();
+  const localDate = getLocalDateString();
+  const normalizedMethod = normalizePaymentMethod(paymentMethod);
+
+  const { data: payment, error: payErr } = await supabase
+    .from('crm_payments')
+    .insert({
+      business_id: businessId,
+      invoice_id: invoiceId,
+      customer_id: customerId,
+      amount: +amount.toFixed(2),
+      currency: 'CLP',
+      payment_method: normalizedMethod,
+      payment_status: 'received',
+      payment_date: localDate,
+      reference: `Abono cuenta corriente`,
+      created_by: user?.id || null,
+    })
+    .select()
+    .single();
+  if (payErr) return { data: null, error: payErr };
+
+  // Si el abono cubre el total, cerrar la factura
+  if (invoiceTotal != null && amount >= invoiceTotal) {
+    await supabase
+      .from('crm_invoices')
+      .update({ status: 'pagada', paid_at: new Date().toISOString() })
+      .eq('id', invoiceId);
+  }
+
+  return { data: payment, error: null };
+}
+
+// Balance resumido de todos los clientes del negocio (para métricas).
+export async function getBusinessCreditSummary(businessId) {
+  const [invRes, payRes] = await Promise.all([
+    supabase
+      .from('crm_invoices')
+      .select('customer_id, total')
+      .eq('business_id', businessId)
+      .eq('status', 'pendiente'),
+    supabase
+      .from('crm_payments')
+      .select('customer_id, amount')
+      .eq('business_id', businessId)
+      .eq('payment_status', 'received'),
+  ]);
+
+  const invoicedByCustomer = {};
+  for (const r of (invRes.data || [])) {
+    if (r.customer_id) invoicedByCustomer[r.customer_id] = (invoicedByCustomer[r.customer_id] || 0) + (r.total || 0);
+  }
+  const paidByCustomer = {};
+  for (const r of (payRes.data || [])) {
+    if (r.customer_id) paidByCustomer[r.customer_id] = (paidByCustomer[r.customer_id] || 0) + (r.amount || 0);
+  }
+
+  let totalPorCobrar = 0;
+  let clientesConDeuda = 0;
+  const balanceByCustomer = {};
+  for (const cid of Object.keys(invoicedByCustomer)) {
+    const balance = Math.max(0, (invoicedByCustomer[cid] || 0) - (paidByCustomer[cid] || 0));
+    balanceByCustomer[cid] = balance;
+    if (balance > 0) { clientesConDeuda++; totalPorCobrar += balance; }
+  }
+
+  return { totalPorCobrar, clientesConDeuda, balanceByCustomer };
 }
 
 export async function createCrmCustomer(businessId, fields) {
@@ -439,10 +555,15 @@ export async function updateStockMinimo(productId, stockMinimo) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function createPosInvoice(businessId, { customerId, items = [], discount = 0, paymentMethod = 'cash', notes, currency = 'CLP' }) {
-  // Defensive server-side guard: no open cash session → reject before any DB write.
-  const { data: openSession } = await getOpenCashSession(businessId);
-  if (!openSession) {
-    return { data: null, error: { message: 'No hay caja abierta. Abre caja antes de registrar una venta.' } };
+  const isCredit = IS_CREDIT_METHOD(paymentMethod);
+
+  // Cuenta corriente: no requiere caja abierta, no genera pago, queda pendiente.
+  // Pago real: requiere caja abierta antes de tocar la BD.
+  if (!isCredit) {
+    const { data: openSession } = await getOpenCashSession(businessId);
+    if (!openSession) {
+      return { data: null, error: { message: 'No hay caja abierta. Abre caja antes de registrar una venta.' } };
+    }
   }
 
   const { data: nextNum, error: numErr } = await supabase
@@ -474,12 +595,12 @@ export async function createPosInvoice(businessId, { customerId, items = [], dis
       customer_id: customerId || null,
       invoice_number: nextNum,
       issue_date: localDate,
-      status: 'pagada',
+      status: isCredit ? 'pendiente' : 'pagada',
       subtotal: +subtotal.toFixed(2),
       discount_amount: discountAmount,
       total,
       notes: notes || null,
-      paid_at: new Date().toISOString(),
+      paid_at: isCredit ? null : new Date().toISOString(),
     })
     .select()
     .single();
@@ -492,9 +613,13 @@ export async function createPosInvoice(businessId, { customerId, items = [], dis
     if (itemsErr) return { data: null, error: itemsErr };
   }
 
+  // Cuenta corriente: no crear pago, no impactar caja.
+  if (isCredit) {
+    return { data: invoice, error: null };
+  }
+
   const { data: { user } } = await supabase.auth.getUser();
 
-  // Register payment record
   const { error: payErr } = await supabase
     .from('crm_payments')
     .insert({
