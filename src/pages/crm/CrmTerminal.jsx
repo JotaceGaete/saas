@@ -97,6 +97,22 @@ export default function CrmTerminal() {
   const [ticketData, setTicketData] = useState(null);
 
   const searchRef = useRef(null);
+  const printedTicketRef = useRef(null);
+
+  const printTicketOnce = useCallback((ticketId) => {
+    if (!ticketId) return;
+    if (printedTicketRef.current === ticketId) return;
+    printedTicketRef.current = ticketId;
+    window.print();
+  }, []);
+
+  // Auto-print once when a new ticket is ready. The ref guard ensures
+  // re-renders or StrictMode double-effects never trigger a second print.
+  useEffect(() => {
+    if (!ticketData) return;
+    const ticketId = ticketData.sale?.id ?? ticketData.sale?.invoice_number;
+    printTicketOnce(String(ticketId));
+  }, [ticketData, printTicketOnce]);
 
   useEffect(() => {
     if (!business?.id || !hasAccess) return;
@@ -210,6 +226,11 @@ export default function CrmTerminal() {
   const handleCloseTicket = () => {
     setTicketData(null);
   };
+
+  // Explicit reprint: user deliberately requested another copy.
+  const handleReprint = useCallback(() => {
+    window.print();
+  }, []);
 
   const handleNewSale = () => {
     setTicketData(null);
@@ -696,6 +717,7 @@ export default function CrmTerminal() {
           createdAt={ticketData.createdAt}
           onNewSale={handleNewSale}
           onClose={handleCloseTicket}
+          onReprint={handleReprint}
         />
       )}
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect } from 'react';
 import Icon from 'components/AppIcon';
 import { formatMoney } from '../../../utils/formatMoney';
 
@@ -54,13 +54,9 @@ export default function CrmThermalTicket({
   createdAt,
   onNewSale,
   onClose,
+  onReprint,
 }) {
-  const printingRef = useRef(false);
-
   // Inject print styles while modal is open.
-  // The overlay (.crm-ticket-noprint) becomes visibility:hidden (not display:none)
-  // so #crm-ticket-print-content (inside it) can override to visibility:visible
-  // and position:fixed — rendering a single copy of the ticket without double-print.
   useEffect(() => {
     const styleId = 'crm-thermal-print-style';
     const style = document.createElement('style');
@@ -126,19 +122,7 @@ export default function CrmThermalTicket({
   const address = business?.address || null;
   const phone = business?.whatsapp || null;
 
-  const handlePrint = () => {
-    // Guard: prevent double-fire from fast double-clicks or re-entrant calls.
-    if (printingRef.current) return;
-    printingRef.current = true;
-    const reset = () => {
-      printingRef.current = false;
-      window.removeEventListener('afterprint', reset);
-    };
-    window.addEventListener('afterprint', reset);
-    window.print();
-  };
-
-  // Ticket content — rendered both in the modal preview and in the print-only sibling.
+  // Ticket content
   const ticketBody = (
     <div style={{
       padding: '16px 14px',
@@ -316,7 +300,7 @@ export default function CrmThermalTicket({
             borderTop: '1px solid #f0f0f0',
           }}>
             <button
-              onClick={handlePrint}
+              onClick={onReprint}
               style={{
                 flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
                 gap: 6, padding: '10px 0', borderRadius: 10, border: '1.5px solid #d1d5db',
@@ -324,7 +308,7 @@ export default function CrmThermalTicket({
               }}
             >
               <Icon name="Printer" size={15} color="currentColor" />
-              Imprimir ticket
+              Reimprimir
             </button>
             <button
               onClick={onNewSale}
