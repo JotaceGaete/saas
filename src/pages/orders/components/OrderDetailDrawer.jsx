@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Icon from 'components/AppIcon';
+import { getInvoiceByOrderId, createInvoiceFromOrder, registerOrderPayment } from '../../../services/crmService';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import {
@@ -9,6 +10,14 @@ import {
   formatPreparationDurationLabel,
 } from 'utils/orderDates';
 import { isOrdersDoubleFlickerDebug, ordersDoubleFlickerLog } from '../ordersDoubleFlickerLog';
+
+const PAYMENT_METHOD_OPTIONS = [
+  { value: 'cash',          label: 'Efectivo' },
+  { value: 'bank_transfer', label: 'Transferencia' },
+  { value: 'card',          label: 'Tarjeta' },
+  { value: 'check',         label: 'Cheque' },
+  { value: 'other',         label: 'Otro' },
+];
 
 export default function OrderDetailDrawer({
   order,
@@ -26,6 +35,50 @@ export default function OrderDetailDrawer({
   const [savingStatus, setSavingStatus] = useState(false);
   const [savingPayment, setSavingPayment] = useState(false);
   const navigate = useNavigate();
+
+  // ── CRM invoice state ──────────────────────────────────────────────────────
+  const [orderInvoice, setOrderInvoice] = useState(undefined); // undefined = loading
+  const [generatingInvoice, setGeneratingInvoice] = useState(false);
+  const [registeringPayment, setRegisteringPayment] = useState(false);
+  const [payMethod, setPayMethod] = useState('cash');
+  const [crmError, setCrmError] = useState(null);
+
+  useEffect(() => {
+    if (!order?.id) return;
+    setOrderInvoice(undefined);
+    setCrmError(null);
+    getInvoiceByOrderId(order.id).then(({ data }) => setOrderInvoice(data ?? null));
+  }, [order?.id]);
+
+  const handleGenerateInvoice = async () => {
+    if (!order || !business?.id) return;
+    setGeneratingInvoice(true);
+    setCrmError(null);
+    const { data, error } = await createInvoiceFromOrder(business.id, order);
+    setGeneratingInvoice(false);
+    if (error) { setCrmError(error.message || 'No se pudo crear la nota de venta.'); return; }
+    setOrderInvoice(data);
+  };
+
+  const handleRegisterPayment = async () => {
+    if (!orderInvoice || !business?.id) return;
+    setRegisteringPayment(true);
+    setCrmError(null);
+    const { error } = await registerOrderPayment(business.id, {
+      invoiceId: orderInvoice.id,
+      orderId: order.id,
+      amount: orderInvoice.total,
+      currency: business?.currency || 'CLP',
+      paymentMethod: payMethod,
+    });
+    setRegisteringPayment(false);
+    if (error) { setCrmError(error.message || 'No se pudo registrar el pago.'); return; }
+    // Refresh invoice state and mark order as paid
+    setOrderInvoice(prev => ({ ...prev, status: 'pagada' }));
+    if (order.paymentStatus !== 'pagado') {
+      await onUpdate(order.id, { paymentStatus: 'pagado' });
+    }
+  };
 
   const formattedOrderDate = order?.createdAt
     ? format(new Date(order.createdAt), "d 'de' MMMM yyyy, HH:mm", { locale: es })
@@ -360,6 +413,90 @@ export default function OrderDetailDrawer({
               <span aria-hidden>🧾</span>
               Imprimir
             </button>
+          </div>
+
+          {/* ── Nota de Venta CRM ──────────────────────────────────────────── */}
+          <div className="pt-3 border-t space-y-3" style={{ borderColor: 'var(--color-border)' }}>
+            <p className="text-xs font-semibold" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+              Nota de Venta CRM
+            </p>
+
+            {/* Error banner */}
+            {crmError && (
+              <div className="flex items-start gap-2 p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700">
+                <Icon name="AlertCircle" size={14} color="currentColor" className="shrink-0 mt-0.5" />
+                <span>{crmError}</span>
+                <button onClick={() => setCrmError(null)} className="ml-auto shrink-0 text-red-400 hover:text-red-600">
+                  <Icon name="X" size={12} color="currentColor" />
+                </button>
+              </div>
+            )}
+
+            {/* Loading */}
+            {orderInvoice === undefined && (
+              <p className="text-xs" style={{ color: 'var(--color-muted-foreground)' }}>Cargando…</p>
+            )}
+
+            {/* No invoice yet */}
+            {orderInvoice === null && (
+              <button
+                type="button"
+                disabled={generatingInvoice}
+                onClick={handleGenerateInvoice}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border-2 transition-all disabled:opacity-50"
+                style={{ borderColor: '#6366f1', color: '#6366f1', fontFamily: 'var(--font-caption)' }}
+              >
+                <Icon name="FileText" size={15} color="currentColor" />
+                {generatingInvoice ? 'Generando…' : 'Generar nota de venta'}
+              </button>
+            )}
+
+            {/* Invoice exists */}
+            {orderInvoice && orderInvoice.id && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between p-2.5 rounded-lg bg-indigo-50 border border-indigo-100">
+                  <div className="flex items-center gap-2">
+                    <Icon name="FileCheck" size={14} color="#6366f1" />
+                    <span className="text-xs font-semibold text-indigo-700" style={{ fontFamily: 'var(--font-caption)' }}>
+                      NV-{String(orderInvoice.invoice_number).padStart(4, '0')}
+                    </span>
+                  </div>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                    orderInvoice.status === 'pagada'
+                      ? 'bg-emerald-100 text-emerald-700'
+                      : 'bg-amber-100 text-amber-700'
+                  }`}>
+                    {orderInvoice.status === 'pagada' ? 'Pagada' : 'Pendiente'}
+                  </span>
+                </div>
+
+                {/* Register payment — only if not paid */}
+                {orderInvoice.status !== 'pagada' && (
+                  <div className="space-y-2">
+                    <select
+                      value={payMethod}
+                      onChange={e => setPayMethod(e.target.value)}
+                      className="w-full border rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-gray-50"
+                      style={{ borderColor: 'var(--color-border)', fontFamily: 'var(--font-caption)' }}
+                    >
+                      {PAYMENT_METHOD_OPTIONS.map(m => (
+                        <option key={m.value} value={m.value}>{m.label}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      disabled={registeringPayment}
+                      onClick={handleRegisterPayment}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-50"
+                      style={{ backgroundColor: '#059669', color: '#fff', fontFamily: 'var(--font-caption)' }}
+                    >
+                      <Icon name="Banknote" size={15} color="currentColor" />
+                      {registeringPayment ? 'Registrando…' : `Registrar pago · ${formatCLP(orderInvoice.total)}`}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>

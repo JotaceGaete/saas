@@ -515,6 +515,120 @@ export async function createPosInvoice(businessId, { customerId, items = [], dis
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// PUENTE CATÁLOGO → CRM
+// Requiere migración en Supabase Dashboard:
+//
+//   ALTER TABLE public.crm_invoices
+//     ADD COLUMN IF NOT EXISTS order_id uuid REFERENCES public.wa_orders(id);
+//
+//   CREATE UNIQUE INDEX IF NOT EXISTS crm_invoices_order_id_uq
+//     ON public.crm_invoices(order_id) WHERE order_id IS NOT NULL;
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function getInvoiceByOrderId(orderId) {
+  const { data, error } = await supabase
+    .from('crm_invoices')
+    .select('*, crm_invoice_items(*)')
+    .eq('order_id', orderId)
+    .maybeSingle();
+  return { data, error };
+}
+
+// Crea una crm_invoice en status='pendiente' a partir de un wa_order.
+// No crea pago ni afecta caja.
+export async function createInvoiceFromOrder(businessId, order) {
+  const { data: existing } = await getInvoiceByOrderId(order.id);
+  if (existing) {
+    return { data: null, error: { message: 'Ya existe una nota de venta para este pedido.' } };
+  }
+
+  const { data: nextNum, error: numErr } = await supabase
+    .rpc('crm_next_invoice_number', { p_business_id: businessId });
+  if (numErr) return { data: null, error: numErr };
+
+  const localDate = getLocalDateString();
+  const shortRef = order.id.slice(-6).toUpperCase();
+
+  const { data: invoice, error } = await supabase
+    .from('crm_invoices')
+    .insert({
+      business_id: businessId,
+      customer_id: order.customerId || null,
+      invoice_number: nextNum,
+      issue_date: localDate,
+      status: 'pendiente',
+      subtotal: +(order.subtotal ?? order.totalAmount ?? 0).toFixed(2),
+      discount_amount: 0,
+      total: +(order.totalAmount ?? 0).toFixed(2),
+      notes: `Pedido catálogo #${shortRef}${order.notes ? '\n' + order.notes : ''}`,
+      order_id: order.id,
+    })
+    .select()
+    .single();
+  if (error) return { data: null, error };
+
+  if (Array.isArray(order.items) && order.items.length > 0) {
+    const mappedItems = order.items.map((it, idx) => ({
+      invoice_id: invoice.id,
+      product_id: it.productId || null,
+      name: it.productName || it.name || 'Producto',
+      description: null,
+      unit_price: +(it.productPrice ?? it.unit_price ?? 0),
+      quantity: it.quantity,
+      discount_pct: 0,
+      subtotal: +(it.subtotal ?? 0).toFixed(2),
+      sort_order: idx,
+    }));
+    const { error: itemsErr } = await supabase
+      .from('crm_invoice_items')
+      .insert(mappedItems);
+    if (itemsErr) return { data: null, error: itemsErr };
+  }
+
+  return { data: invoice, error: null };
+}
+
+// Registra pago real: requiere caja abierta.
+// Crea crm_payment, marca invoice como pagada.
+// El llamador debe actualizar wa_orders.payment_status si corresponde.
+export async function registerOrderPayment(businessId, { invoiceId, orderId, amount, currency, paymentMethod }) {
+  const { data: openSession } = await getOpenCashSession(businessId);
+  if (!openSession) {
+    return { data: null, error: { message: 'No hay caja abierta. Abre caja antes de registrar un pago.' } };
+  }
+
+  const { data: { user } } = await supabase.auth.getUser();
+  const localDate = getLocalDateString();
+  const normalizedMethod = normalizePaymentMethod(paymentMethod);
+  const shortRef = orderId ? orderId.slice(-6).toUpperCase() : '';
+
+  const { data: payment, error: payErr } = await supabase
+    .from('crm_payments')
+    .insert({
+      business_id: businessId,
+      invoice_id: invoiceId,
+      order_id: orderId || null,
+      amount: +amount.toFixed(2),
+      currency: currency || 'CLP',
+      payment_method: normalizedMethod,
+      payment_status: 'received',
+      payment_date: localDate,
+      reference: `Pedido catálogo #${shortRef}`,
+      created_by: user?.id || null,
+    })
+    .select()
+    .single();
+  if (payErr) return { data: null, error: payErr };
+
+  await supabase
+    .from('crm_invoices')
+    .update({ status: 'pagada', paid_at: new Date().toISOString() })
+    .eq('id', invoiceId);
+
+  return { data: payment, error: null };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // DASHBOARD CRM
 // ─────────────────────────────────────────────────────────────────────────────
 
