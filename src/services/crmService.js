@@ -939,6 +939,22 @@ export async function getCashDayPayments(businessId, date = getLocalDateString()
   return { data: data || [], error };
 }
 
+export async function updateCrmPayment(paymentId, fields = {}) {
+  const updates = {};
+  if (fields.amount !== undefined) updates.amount = fields.amount;
+  if (fields.payment_method !== undefined) updates.payment_method = normalizePaymentMethod(fields.payment_method);
+  if (fields.reference !== undefined) updates.reference = fields.reference || null;
+  if (fields.notes !== undefined) updates.notes = fields.notes || null;
+
+  const { data, error } = await supabase
+    .from('crm_payments')
+    .update(updates)
+    .eq('id', paymentId)
+    .select()
+    .single();
+  return { data, error };
+}
+
 export async function getRecentCashSessions(businessId, limit = 10) {
   const { data, error } = await supabase
     .from('crm_cash_sessions')

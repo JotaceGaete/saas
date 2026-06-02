@@ -123,7 +123,7 @@ export default function CrmThermalTicket({
 
   const customerName = customer?.name || 'Consumidor final';
 
-  const logoUrl = business?.logoUrl || null;
+  const logoUrl = business?.logoUrl || business?.logo_url || null;
   const address = business?.address || null;
   const phone = business?.whatsapp || null;
 
@@ -153,12 +153,12 @@ export default function CrmThermalTicket({
       {/* Header */}
       <div style={{ textAlign: 'center', marginBottom: 8 }}>
         {logoUrl && (
-          <div style={{ marginBottom: 6 }}>
+          <div style={{ marginBottom: 6, textAlign: 'center' }}>
             <img
               src={logoUrl}
               alt={business?.name || 'Logo'}
               crossOrigin="anonymous"
-              style={{ maxWidth: 100, maxHeight: 56, objectFit: 'contain', display: 'inline-block' }}
+              style={{ maxWidth: 160, maxHeight: 70, width: '70%', objectFit: 'contain', display: 'inline-block' }}
             />
           </div>
         )}
