@@ -785,8 +785,7 @@ export async function getOpenCashSession(businessId) {
     .order('opened_at', { ascending: false })
     .limit(1)
     .maybeSingle();
-  if (error) throw error;
-  return data;
+  return { data, error };
 }
 
 export async function getLatestCashSessionForDate(businessId, date = getLocalDateString()) {
@@ -801,21 +800,81 @@ export async function getLatestCashSessionForDate(businessId, date = getLocalDat
   return { data, error };
 }
 
-export async function openCashSession(businessId, { openedBy, initialAmount = null, date = null }) {
+export async function getCashSessionsForDate(businessId, date = getLocalDateString()) {
+  const { data, error } = await supabase
+    .from('crm_cash_sessions')
+    .select('*')
+    .eq('business_id', businessId)
+    .eq('date', date)
+    .order('opened_at', { ascending: false });
+  return { data: data || [], error };
+}
+
+export async function openCashSession(businessId, { openedBy, initialAmount = null, date = null, notes = null } = {}) {
+  const openRes = await getOpenCashSession(businessId);
+  if (openRes.error) return { data: null, error: openRes.error };
+  if (openRes.data) {
+    return {
+      data: null,
+      error: new Error('Ya hay una caja abierta. Cierra esa caja antes de abrir otra.'),
+    };
+  }
+
+  const { data: { user } } = await supabase.auth.getUser();
   const { data, error } = await supabase
     .from('crm_cash_sessions')
     .insert({
       business_id: businessId,
-      opened_by: openedBy,
+      opened_by: openedBy || user?.id || null,
       initial_amount: initialAmount,
-      date: date || new Date().toISOString().slice(0, 10),
+      date: date || getLocalDateString(),
+      notes: notes || null,
       status: 'open',
       opened_at: new Date().toISOString(),
     })
     .select()
     .single();
-  if (error) throw error;
-  return data;
+  return { data, error };
+}
+
+export async function reopenCashSession(sessionId) {
+  const { data: session, error: sessionError } = await supabase
+    .from('crm_cash_sessions')
+    .select('*')
+    .eq('id', sessionId)
+    .single();
+  if (sessionError) return { data: null, error: sessionError };
+
+  const openRes = await getOpenCashSession(session.business_id);
+  if (openRes.error) return { data: null, error: openRes.error };
+  if (openRes.data && openRes.data.id !== sessionId) {
+    return {
+      data: null,
+      error: new Error('No se puede reabrir esta caja porque ya hay otra caja abierta.'),
+    };
+  }
+
+  const { data, error } = await supabase
+    .from('crm_cash_sessions')
+    .update({ status: 'open', closed_at: null })
+    .eq('id', sessionId)
+    .select()
+    .single();
+  return { data, error };
+}
+
+export async function updateCashSession(sessionId, fields = {}) {
+  const updates = {};
+  if (fields.initial_amount !== undefined) updates.initial_amount = fields.initial_amount;
+  if (fields.notes !== undefined) updates.notes = fields.notes || null;
+
+  const { data, error } = await supabase
+    .from('crm_cash_sessions')
+    .update(updates)
+    .eq('id', sessionId)
+    .select()
+    .single();
+  return { data, error };
 }
 
 export async function closeCashSession(sessionId) {
@@ -825,8 +884,7 @@ export async function closeCashSession(sessionId) {
     .eq('id', sessionId)
     .select()
     .single();
-  if (error) throw error;
-  return data;
+  return { data, error };
 }
 
 export async function getPaymentsForSession(businessId, sessionId) {
@@ -853,7 +911,24 @@ export async function getPaymentsForSession(businessId, sessionId) {
   return (data || []).map(p => ({ ...p, payment_method: p.payment_method || 'otro' }));
 }
 
-export async function getCashSessionPayments(businessId, date) {
+export async function getCashSessionPayments(businessId, session) {
+  if (!session?.opened_at) return { data: [], error: null };
+
+  let query = supabase
+    .from('crm_payments')
+    .select('id, business_id, invoice_id, amount, currency, payment_method, payment_status, payment_date, reference, notes, created_at')
+    .eq('business_id', businessId)
+    .eq('payment_status', 'received')
+    .gte('created_at', session.opened_at);
+
+  query = query.lte('created_at', session.closed_at || new Date().toISOString());
+
+  const { data, error } = await query
+    .order('created_at', { ascending: false });
+  return { data: data || [], error };
+}
+
+export async function getCashDayPayments(businessId, date = getLocalDateString()) {
   const { data, error } = await supabase
     .from('crm_payments')
     .select('id, business_id, invoice_id, amount, currency, payment_method, payment_status, payment_date, reference, notes, created_at')
