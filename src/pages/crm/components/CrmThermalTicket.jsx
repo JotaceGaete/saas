@@ -58,9 +58,9 @@ export default function CrmThermalTicket({
   const printingRef = useRef(false);
 
   // Inject print styles while modal is open.
-  // The modal overlay has crm-ticket-noprint → display:none during print.
-  // #crm-print-ticket-area is a sibling outside the fixed overlay to avoid
-  // Chrome double-rendering position:fixed nested elements.
+  // The overlay (.crm-ticket-noprint) becomes visibility:hidden (not display:none)
+  // so #crm-ticket-print-content (inside it) can override to visibility:visible
+  // and position:fixed — rendering a single copy of the ticket without double-print.
   useEffect(() => {
     const styleId = 'crm-thermal-print-style';
     const style = document.createElement('style');
@@ -71,12 +71,12 @@ export default function CrmThermalTicket({
           visibility: hidden !important;
         }
 
-        #crm-print-ticket-area,
-        #crm-print-ticket-area * {
+        #crm-ticket-print-content,
+        #crm-ticket-print-content * {
           visibility: visible !important;
         }
 
-        #crm-print-ticket-area {
+        #crm-ticket-print-content {
           display: block !important;
           position: fixed !important;
           left: 0 !important;
@@ -92,7 +92,7 @@ export default function CrmThermalTicket({
           transform: none !important;
         }
 
-        #crm-print-ticket-area *:not(img) {
+        #crm-ticket-print-content *:not(img) {
           color: #000 !important;
           background: transparent !important;
           box-shadow: none !important;
@@ -100,7 +100,6 @@ export default function CrmThermalTicket({
 
         .no-print,
         .crm-ticket-noprint {
-          display: none !important;
           visibility: hidden !important;
         }
 
@@ -158,7 +157,7 @@ export default function CrmThermalTicket({
               src={logoUrl}
               alt={business?.name || 'Logo'}
               crossOrigin="anonymous"
-              style={{ maxWidth: 160, maxHeight: 70, width: '70%', objectFit: 'contain', display: 'inline-block' }}
+              style={{ maxWidth: 260, maxHeight: 120, width: '90%', objectFit: 'contain', display: 'inline-block' }}
             />
           </div>
         )}
@@ -306,8 +305,10 @@ export default function CrmThermalTicket({
             </button>
           </div>
 
-          {/* Ticket preview inside modal */}
-          {ticketBody}
+          {/* Ticket preview inside modal — also serves as the print target */}
+          <div id="crm-ticket-print-content">
+            {ticketBody}
+          </div>
 
           {/* Action buttons */}
           <div style={{
@@ -340,11 +341,6 @@ export default function CrmThermalTicket({
         </div>
       </div>
 
-      {/* Print-only ticket — sibling of the modal overlay, outside its fixed context.
-          Hidden on screen via inline style; display:block !important during @media print. */}
-      <div id="crm-print-ticket-area" aria-hidden="true" style={{ display: 'none' }}>
-        {ticketBody}
-      </div>
     </>
   );
 }
