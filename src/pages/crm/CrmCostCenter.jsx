@@ -396,14 +396,13 @@ function CostosWidget({ totalCostosFijos, navigate }) {
 // ─── Panel IVA estimado ───────────────────────────────────────────────────────
 
 function IvaSummaryPanel({ salesMonth, purchaseTotals, vatRate }) {
-  const rate = vatRate || 19;
-  const ivaVentas  = salesMonth > 0 ? +(salesMonth * rate / (100 + rate)).toFixed(0) : 0;
-  const ivaCompras = purchaseTotals?.totalTaxCredit  || 0;
-  const ivaNeto    = Math.max(0, ivaVentas - ivaCompras);
-  const mercaderiaTotal  = purchaseTotals?.totals?.mercaderia?.total  || 0;
-  const operacionalTotal = purchaseTotals?.totalOperational           || 0;
+  const rate      = vatRate || 19;
+  const ivaVentas = salesMonth > 0 ? +(salesMonth * rate / (100 + rate)).toFixed(0) : 0;
+  const ivaCompras = purchaseTotals?.totalTaxCredit || 0;
+  const ivaNeto    = ivaVentas - ivaCompras;
+  const aPagar     = ivaNeto > 0;
 
-  if (!salesMonth && !ivaCompras && !mercaderiaTotal && !operacionalTotal) return null;
+  if (!ivaVentas && !ivaCompras) return null;
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
@@ -412,64 +411,48 @@ function IvaSummaryPanel({ salesMonth, purchaseTotals, vatRate }) {
           <Icon name="Percent" size={15} color="#4f46e5" />
         </div>
         <div>
-          <p className="text-sm font-bold text-gray-800">Resumen IVA estimado</p>
+          <p className="text-sm font-bold text-gray-800">IVA estimado del período</p>
           <p className="text-[10px] text-gray-400">Tasa {rate}% · Cálculo referencial</p>
         </div>
       </div>
 
-      <div className="px-5 py-4 space-y-3">
-        <div className="flex justify-between items-center">
-          <span className="text-xs text-gray-500">Ventas del período</span>
-          <span className="text-sm font-semibold text-gray-800">{fmt(salesMonth)}</span>
-        </div>
-        <div className="flex justify-between items-center">
-          <span className="text-xs text-gray-500">IVA ventas estimado</span>
-          <span className="text-sm font-semibold text-emerald-700">{fmt(ivaVentas)}</span>
-        </div>
-
-        {ivaCompras > 0 && (
-          <>
-            <div className="border-t border-gray-100 pt-2 flex justify-between items-center">
-              <span className="text-xs text-gray-500">IVA compras (crédito fiscal)</span>
-              <span className="text-sm font-semibold text-blue-700">− {fmt(ivaCompras)}</span>
-            </div>
-            <div className="flex justify-between items-center bg-indigo-50 rounded-lg px-3 py-2">
-              <span className="text-xs font-bold text-indigo-800">IVA neto estimado</span>
-              <span className="text-base font-bold text-indigo-900">{fmt(ivaNeto)}</span>
-            </div>
-          </>
-        )}
-
-        {(mercaderiaTotal > 0 || operacionalTotal > 0) && (
-          <div className="border-t border-gray-100 pt-3 space-y-2">
-            {mercaderiaTotal > 0 && (
-              <div className="flex justify-between items-center">
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-blue-400 shrink-0" />
-                  <span className="text-xs text-gray-500">Compra mercadería</span>
-                </div>
-                <div className="text-right">
-                  <span className="text-sm font-semibold text-gray-700">{fmt(mercaderiaTotal)}</span>
-                  <p className="text-[9px] text-blue-500 leading-none">inventario</p>
-                </div>
-              </div>
-            )}
-            {operacionalTotal > 0 && (
-              <div className="flex justify-between items-center">
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
-                  <span className="text-xs text-gray-500">Gastos operativos</span>
-                </div>
-                <div className="text-right">
-                  <span className="text-sm font-semibold text-gray-700">{fmt(operacionalTotal)}</span>
-                  <p className="text-[9px] text-amber-500 leading-none">afecta rentabilidad</p>
-                </div>
-              </div>
-            )}
+      <div className="px-5 py-4 space-y-0">
+        {/* IVA ventas */}
+        <div className="flex justify-between items-center py-2.5 border-b border-gray-100">
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0" />
+            <span className="text-sm text-gray-600">IVA ventas</span>
           </div>
-        )}
+          <span className="text-sm font-bold text-emerald-700">+ {fmt(ivaVentas)}</span>
+        </div>
 
-        <p className="text-[10px] text-gray-400 pt-1 border-t border-gray-100">
+        {/* IVA compras */}
+        <div className="flex justify-between items-center py-2.5 border-b border-gray-100">
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-blue-400 shrink-0" />
+            <span className="text-sm text-gray-600">IVA compras (crédito fiscal)</span>
+          </div>
+          <span className="text-sm font-bold text-blue-700">− {fmt(ivaCompras)}</span>
+        </div>
+
+        {/* Resultado */}
+        <div className={`mt-3 rounded-xl px-4 py-3.5 flex justify-between items-center ${
+          aPagar ? 'bg-amber-50 border border-amber-200' : 'bg-green-50 border border-green-200'
+        }`}>
+          <div>
+            <p className={`text-xs font-semibold uppercase tracking-wide ${aPagar ? 'text-amber-600' : 'text-green-600'}`}>
+              {aPagar ? 'IVA estimado a pagar' : 'Crédito fiscal estimado'}
+            </p>
+            <p className="text-[10px] text-gray-400 mt-0.5">
+              {aPagar ? 'Débito fiscal − crédito fiscal' : 'Tus compras superan el IVA de ventas'}
+            </p>
+          </div>
+          <span className={`text-2xl font-black tabular-nums ${aPagar ? 'text-amber-700' : 'text-green-700'}`}>
+            {fmt(Math.abs(ivaNeto))}
+          </span>
+        </div>
+
+        <p className="text-[10px] text-gray-400 pt-3">
           ⚠️ Estimación referencial. No reemplaza la declaración tributaria oficial.
         </p>
       </div>
