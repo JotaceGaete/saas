@@ -45,12 +45,8 @@ function toNumber(value) {
   return Number(value || 0);
 }
 
-function emptySummary() {
-  return Object.fromEntries(METHOD_ORDER.map(method => [method, 0]));
-}
-
 function summarizePayments(payments = []) {
-  const summary = emptySummary();
+  const summary = Object.fromEntries(METHOD_ORDER.map(method => [method, 0]));
   for (const payment of payments) {
     const method = METHOD_ORDER.includes(payment.payment_method) ? payment.payment_method : 'other';
     summary[method] += toNumber(payment.amount);
@@ -62,19 +58,86 @@ function totalPayments(payments = []) {
   return payments.reduce((sum, payment) => sum + toNumber(payment.amount), 0);
 }
 
-function MethodSummary({ summary, currency }) {
+function turnLabel(session, sessions) {
+  const reverseIndex = sessions.length - sessions.findIndex(item => item.id === session.id);
+  const note = session.notes ? ` / ${session.notes}` : '';
+  return `Caja #${reverseIndex}${note || ' / Turno'}`;
+}
+
+function turnTimeRange(session) {
+  return session.closed_at
+    ? `${fmtTime(session.opened_at)} - ${fmtTime(session.closed_at)}`
+    : fmtTime(session.opened_at);
+}
+
+function SectionButton({ open, onClick, children }) {
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"
+    >
+      <Icon name={open ? 'ChevronUp' : 'ChevronDown'} size={15} />
+      {children}
+    </button>
+  );
+}
+
+function MethodBreakdown({ summary, currency }) {
+  return (
+    <div className="grid grid-cols-1 gap-2 sm:grid-cols-5">
       {METHOD_ORDER.map(method => (
-        <div key={method} className="rounded-xl border border-gray-100 bg-white p-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+        <div key={method} className="rounded-xl border border-gray-100 bg-white p-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
             {PAYMENT_METHOD_LABELS[method]}
           </p>
-          <p className="mt-2 text-lg font-black text-gray-900">
+          <p className="mt-1 text-sm font-black text-gray-900">
             {formatMoney(summary[method] || 0, currency)}
           </p>
         </div>
       ))}
+    </div>
+  );
+}
+
+function MovementsTable({ payments, currency }) {
+  if (payments.length === 0) {
+    return (
+      <div className="rounded-2xl border border-gray-100 bg-white px-5 py-10 text-center">
+        <Icon name="ReceiptText" size={30} className="mx-auto mb-3 text-gray-200" />
+        <p className="text-sm font-semibold text-gray-600">Aun no hay pagos recibidos para esta caja.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white">
+      <div className="overflow-x-auto">
+        <table className="min-w-full divide-y divide-gray-100 text-sm">
+          <thead className="bg-gray-50 text-left text-xs font-bold uppercase tracking-wide text-gray-400">
+            <tr>
+              <th className="px-5 py-3">Hora</th>
+              <th className="px-5 py-3">Metodo</th>
+              <th className="px-5 py-3">Referencia / notas</th>
+              <th className="px-5 py-3 text-right">Monto</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {payments.map(payment => (
+              <tr key={payment.id}>
+                <td className="whitespace-nowrap px-5 py-3 font-medium text-gray-700">{fmtTime(payment.created_at)}</td>
+                <td className="whitespace-nowrap px-5 py-3 text-gray-600">
+                  {PAYMENT_METHOD_LABELS[payment.payment_method] || PAYMENT_METHOD_LABELS.other}
+                </td>
+                <td className="px-5 py-3 text-gray-500">{payment.reference || payment.notes || '-'}</td>
+                <td className="whitespace-nowrap px-5 py-3 text-right font-bold text-gray-900">
+                  {formatMoney(payment.amount, payment.currency || currency)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -97,43 +160,41 @@ function CashSessionForm({ title, initialValue = '', notesValue = '', busy, subm
   };
 
   return (
-    <form onSubmit={handleSubmit} className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <h3 className="text-sm font-bold text-gray-900">{title}</h3>
-        {onCancel && (
+    <div className="fixed inset-0 z-modal flex items-center justify-center bg-slate-900/40 px-4">
+      <form onSubmit={handleSubmit} className="w-full max-w-lg rounded-2xl border border-gray-100 bg-white p-5 shadow-xl">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <h3 className="text-sm font-bold text-gray-900">{title}</h3>
           <button type="button" onClick={onCancel} className="text-gray-400 hover:text-gray-600" aria-label="Cancelar">
-            <Icon name="X" size={16} />
+            <Icon name="X" size={17} />
           </button>
-        )}
-      </div>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div>
-          <label className="mb-1.5 block text-xs font-semibold text-gray-500">Monto inicial</label>
-          <div className="relative">
-            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">$</span>
+        </div>
+        <div className="space-y-3">
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-gray-500">Monto inicial</label>
+            <div className="relative">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">$</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={fmtMoneyInput(amount)}
+                onChange={e => setAmount(e.target.value.replace(/\D/g, ''))}
+                placeholder="0"
+                className="w-full rounded-xl border border-gray-200 bg-white py-3 pl-7 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-gray-500">Nota</label>
             <input
               type="text"
-              inputMode="numeric"
-              value={fmtMoneyInput(amount)}
-              onChange={e => setAmount(e.target.value.replace(/\D/g, ''))}
-              placeholder="0"
-              className="w-full rounded-xl border border-gray-200 bg-white py-3 pl-7 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              placeholder="Ej: Turno tarde"
+              className="w-full rounded-xl border border-gray-200 bg-white px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
             />
           </div>
         </div>
-        <div>
-          <label className="mb-1.5 block text-xs font-semibold text-gray-500">Nota</label>
-          <input
-            type="text"
-            value={notes}
-            onChange={e => setNotes(e.target.value)}
-            placeholder="Ej: turno tarde"
-            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-          />
-        </div>
-      </div>
-      <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
-        {onCancel && (
+        <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
           <button
             type="button"
             onClick={onCancel}
@@ -141,17 +202,17 @@ function CashSessionForm({ title, initialValue = '', notesValue = '', busy, subm
           >
             Cancelar
           </button>
-        )}
-        <button
-          type="submit"
-          disabled={busy}
-          className="flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
-        >
-          {busy && <Icon name="Loader2" size={15} className="animate-spin" />}
-          {submitLabel}
-        </button>
-      </div>
-    </form>
+          <button
+            type="submit"
+            disabled={busy}
+            className="flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+          >
+            {busy && <Icon name="Loader2" size={15} className="animate-spin" />}
+            {submitLabel}
+          </button>
+        </div>
+      </form>
+    </div>
   );
 }
 
@@ -163,9 +224,12 @@ export default function CrmCash() {
   const [sessions, setSessions] = useState([]);
   const [sessionPayments, setSessionPayments] = useState({});
   const [dayPayments, setDayPayments] = useState([]);
-  const [selectedSessionId, setSelectedSessionId] = useState(null);
   const [showOpenForm, setShowOpenForm] = useState(false);
   const [editingSession, setEditingSession] = useState(null);
+  const [detailSessionId, setDetailSessionId] = useState(null);
+  const [showDayBreakdown, setShowDayBreakdown] = useState(false);
+  const [showMovements, setShowMovements] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -203,19 +267,11 @@ export default function CrmCash() {
       })
     );
 
-    const paymentsBySession = Object.fromEntries(paymentsEntries);
     setOpenSession(openRes.data || null);
     setSessions(sessionsList);
-    setSessionPayments(paymentsBySession);
+    setSessionPayments(Object.fromEntries(paymentsEntries));
     setDayPayments(dayRes.data || []);
     setShowOpenForm(sessionsList.length === 0 && !openRes.data);
-
-    setSelectedSessionId(current => {
-      if (openRes.data) return openRes.data.id;
-      if (current && sessionsList.some(session => session.id === current)) return current;
-      return sessionsList[0]?.id || null;
-    });
-
     setLoading(false);
   }, [business?.id, hasAccess, today]);
 
@@ -223,17 +279,15 @@ export default function CrmCash() {
     load();
   }, [load]);
 
-  const selectedSession = useMemo(
-    () => sessions.find(session => session.id === selectedSessionId) || openSession || null,
-    [sessions, selectedSessionId, openSession]
-  );
-
-  const selectedPayments = selectedSession ? (sessionPayments[selectedSession.id] || []) : [];
-  const selectedSummary = useMemo(() => summarizePayments(selectedPayments), [selectedPayments]);
+  const currentSession = openSession || sessions[0] || null;
+  const currentPayments = currentSession ? (sessionPayments[currentSession.id] || []) : [];
+  const detailSession = detailSessionId ? sessions.find(session => session.id === detailSessionId) : null;
+  const detailPayments = detailSession ? (sessionPayments[detailSession.id] || []) : [];
   const daySummary = useMemo(() => summarizePayments(dayPayments), [dayPayments]);
-  const selectedTotal = useMemo(() => totalPayments(selectedPayments), [selectedPayments]);
   const dayTotal = useMemo(() => totalPayments(dayPayments), [dayPayments]);
-  const canOpenNew = !openSession;
+  const currentTotal = useMemo(() => totalPayments(currentPayments), [currentPayments]);
+  const detailSummary = useMemo(() => summarizePayments(detailPayments), [detailPayments]);
+  const detailTotal = useMemo(() => totalPayments(detailPayments), [detailPayments]);
 
   const handleOpen = async ({ initialAmount, notes }) => {
     if (!business?.id) return;
@@ -253,11 +307,11 @@ export default function CrmCash() {
     await load();
   };
 
-  const handleClose = async () => {
-    if (!openSession?.id) return;
+  const handleClose = async (sessionId = openSession?.id) => {
+    if (!sessionId) return;
     setBusy(true);
     setErrorMsg('');
-    const { error } = await closeCashSession(openSession.id);
+    const { error } = await closeCashSession(sessionId);
     setBusy(false);
     if (error) {
       setErrorMsg(error.message);
@@ -267,6 +321,10 @@ export default function CrmCash() {
   };
 
   const handleReopen = async (sessionId) => {
+    if (openSession) {
+      setErrorMsg('Cierra la caja abierta antes de reabrir otra.');
+      return;
+    }
     setBusy(true);
     setErrorMsg('');
     const { error } = await reopenCashSession(sessionId);
@@ -293,6 +351,11 @@ export default function CrmCash() {
     }
     setEditingSession(null);
     await load();
+  };
+
+  const openDetail = (sessionId) => {
+    setDetailSessionId(sessionId);
+    setShowHistory(true);
   };
 
   if (!hasAccess) {
@@ -327,14 +390,14 @@ export default function CrmCash() {
           </h1>
         }
         subtitle={
-          <p className="text-xs" style={{ color: 'var(--color-muted-foreground)' }}>
-            Puedes abrir mas de una caja en el dia, por ejemplo para cambios de turno.
+          <p className="text-xs capitalize" style={{ color: 'var(--color-muted-foreground)' }}>
+            {fmtDate(today)}
           </p>
         }
       />
 
       <DashboardLayoutContent>
-        <div className="mx-auto max-w-6xl space-y-5">
+        <div className="mx-auto max-w-5xl space-y-4">
           {errorMsg && (
             <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
               <Icon name="AlertCircle" size={16} className="mt-0.5 shrink-0" />
@@ -353,64 +416,104 @@ export default function CrmCash() {
             <>
               <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                  <div>
-                    <div className={`mb-3 inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-bold ${
+                  <div className="min-w-0">
+                    <div className={`mb-2 inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-bold ${
                       openSession ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-600'
                     }`}>
                       <Icon name={openSession ? 'UnlockKeyhole' : 'LockKeyhole'} size={13} />
-                      {openSession ? 'Caja abierta' : 'Caja cerrada'}
+                      Estado: {openSession ? 'Caja abierta' : 'Caja cerrada'}
                     </div>
-                    <h2 className="text-2xl font-black text-gray-900 capitalize">{fmtDate(today)}</h2>
-                    <div className="mt-2 space-y-1 text-sm text-gray-500">
-                      <p>Solo puede haber una caja abierta a la vez.</p>
-                      <p>Reabrir caja permite corregir errores de cierre.</p>
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-600">
+                      <span className="capitalize">{fmtDate(today)}</span>
+                      <span>{currentSession ? turnLabel(currentSession, sessions) : 'Sin caja abierta'}</span>
+                      <span>Total cobrado del dia: <strong className="text-gray-900">{formatMoney(dayTotal, business?.currency)}</strong></span>
+                    </div>
+                    <div className="mt-3 space-y-1 text-xs text-gray-400">
+                      <p>La caja registra pagos reales, no ventas pendientes.</p>
+                      <p>Puedes abrir mas de una caja por dia para cambios de turno.</p>
                     </div>
                   </div>
-                  <div className="flex flex-col gap-2 sm:flex-row">
-                    {openSession ? (
-                      <>
-                        <button
-                          onClick={() => setEditingSession(openSession)}
-                          className="flex items-center justify-center gap-2 rounded-xl border border-gray-200 px-4 py-3 text-sm font-bold text-gray-700 hover:bg-gray-50"
-                        >
-                          <Icon name="Pencil" size={16} />
-                          Editar datos de caja
-                        </button>
-                        <button
-                          onClick={handleClose}
-                          disabled={busy}
-                          className="flex items-center justify-center gap-2 rounded-xl bg-gray-900 px-5 py-3 text-sm font-bold text-white hover:bg-gray-800 disabled:opacity-50"
-                        >
-                          {busy ? <Icon name="Loader2" size={16} className="animate-spin" /> : <Icon name="LockKeyhole" size={16} />}
-                          Cerrar caja
-                        </button>
-                      </>
-                    ) : (
+
+                  <div className="flex flex-wrap gap-2">
+                    {!openSession && (
                       <button
-                        onClick={() => setShowOpenForm(value => !value)}
-                        className="flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-3 text-sm font-bold text-white hover:bg-emerald-700"
+                        onClick={() => setShowOpenForm(true)}
+                        className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-700"
                       >
-                        <Icon name="UnlockKeyhole" size={16} />
                         Abrir nueva caja
+                      </button>
+                    )}
+                    {openSession && (
+                      <button
+                        onClick={() => handleClose(openSession.id)}
+                        disabled={busy}
+                        className="rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-bold text-white hover:bg-gray-800 disabled:opacity-50"
+                      >
+                        Cerrar caja
+                      </button>
+                    )}
+                    {currentSession && (
+                      <button
+                        onClick={() => setEditingSession(currentSession)}
+                        className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-bold text-gray-700 hover:bg-gray-50"
+                      >
+                        Editar
+                      </button>
+                    )}
+                    {currentSession?.status === 'closed' && (
+                      <button
+                        onClick={() => handleReopen(currentSession.id)}
+                        className="rounded-xl border border-emerald-200 px-4 py-2.5 text-sm font-bold text-emerald-700 hover:bg-emerald-50"
+                      >
+                        Reabrir
                       </button>
                     )}
                   </div>
                 </div>
               </div>
 
-              {showOpenForm && !openSession && (
+              <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+                <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Total del dia</p>
+                    <p className="mt-1 text-lg font-black text-gray-900">{formatMoney(dayTotal, business?.currency)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Movimientos</p>
+                    <p className="mt-1 text-lg font-black text-gray-900">{dayPayments.length}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Cajas</p>
+                    <p className="mt-1 text-lg font-black text-gray-900">{sessions.length}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <SectionButton open={showMovements} onClick={() => setShowMovements(value => !value)}>
+                  Ver movimientos
+                </SectionButton>
+                <SectionButton open={showDayBreakdown} onClick={() => setShowDayBreakdown(value => !value)}>
+                  Ver desglose del dia
+                </SectionButton>
+                <SectionButton open={showHistory} onClick={() => setShowHistory(value => !value)}>
+                  Ver historial de cajas
+                </SectionButton>
+              </div>
+
+              {showOpenForm && (
                 <CashSessionForm
                   title="Abrir nueva caja"
                   busy={busy}
                   submitLabel="Abrir caja"
                   onSubmit={handleOpen}
-                  onCancel={sessions.length > 0 ? () => setShowOpenForm(false) : null}
+                  onCancel={() => setShowOpenForm(false)}
                 />
               )}
 
               {editingSession && (
                 <CashSessionForm
-                  title="Editar datos de caja"
+                  title="Editar caja"
                   initialValue={editingSession.initial_amount || ''}
                   notesValue={editingSession.notes || ''}
                   busy={busy}
@@ -420,181 +523,103 @@ export default function CrmCash() {
                 />
               )}
 
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                <div className="rounded-2xl bg-emerald-600 p-5 text-white">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-emerald-100">Total cobrado del dia</p>
-                  <p className="mt-2 text-3xl font-black">{formatMoney(dayTotal, business?.currency)}</p>
-                </div>
-                <div className="rounded-2xl border border-gray-100 bg-white p-5">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Movimientos del dia</p>
-                  <p className="mt-2 text-3xl font-black text-gray-900">{dayPayments.length}</p>
-                </div>
-                <div className="rounded-2xl border border-gray-100 bg-white p-5">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Cajas del dia</p>
-                  <p className="mt-2 text-3xl font-black text-gray-900">{sessions.length}</p>
-                </div>
-              </div>
-
-              <MethodSummary summary={daySummary} currency={business?.currency} />
-
-              {selectedSession && (
-                <>
-                  <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                      <div>
-                        <div className={`mb-3 inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-bold ${
-                          selectedSession.status === 'open' ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-600'
-                        }`}>
-                          <Icon name={selectedSession.status === 'open' ? 'UnlockKeyhole' : 'LockKeyhole'} size={13} />
-                          {selectedSession.status === 'open' ? 'Caja abierta' : 'Caja cerrada'}
-                        </div>
-                        <h3 className="text-xl font-black text-gray-900">
-                          Detalle de turno
-                        </h3>
-                        <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm text-gray-500">
-                          <span>Apertura: <strong className="text-gray-700">{fmtTime(selectedSession.opened_at)}</strong></span>
-                          {selectedSession.closed_at && (
-                            <span>Cierre: <strong className="text-gray-700">{fmtTime(selectedSession.closed_at)}</strong></span>
-                          )}
-                          <span>Monto inicial: <strong className="text-gray-700">{formatMoney(selectedSession.initial_amount || 0, business?.currency)}</strong></span>
-                          {selectedSession.notes && <span>Nota: <strong className="text-gray-700">{selectedSession.notes}</strong></span>}
-                        </div>
-                      </div>
-                      <div className="text-left lg:text-right">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Total de esta caja</p>
-                        <p className="text-2xl font-black text-gray-900">{formatMoney(selectedTotal, business?.currency)}</p>
-                      </div>
-                    </div>
+              {showMovements && currentSession && (
+                <div className="space-y-3">
+                  <div className="rounded-2xl border border-gray-100 bg-white p-4">
+                    <p className="text-sm font-bold text-gray-900">{turnLabel(currentSession, sessions)}</p>
+                    <p className="mt-1 text-xs text-gray-400">
+                      {turnTimeRange(currentSession)} · {formatMoney(currentTotal, business?.currency)}
+                    </p>
                   </div>
-
-                  <MethodSummary summary={selectedSummary} currency={business?.currency} />
-
-                  <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white">
-                    <div className="border-b border-gray-100 px-5 py-4">
-                      <h3 className="text-sm font-bold text-gray-900">Movimientos de esta caja</h3>
-                      <p className="mt-0.5 text-xs text-gray-400">Pagos recibidos entre apertura y cierre del turno.</p>
-                    </div>
-
-                    {selectedPayments.length === 0 ? (
-                      <div className="px-5 py-12 text-center">
-                        <Icon name="ReceiptText" size={34} className="mx-auto mb-3 text-gray-200" />
-                        <p className="text-sm font-semibold text-gray-600">Aun no hay pagos recibidos para esta caja.</p>
-                      </div>
-                    ) : (
-                      <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-gray-100 text-sm">
-                          <thead className="bg-gray-50 text-left text-xs font-bold uppercase tracking-wide text-gray-400">
-                            <tr>
-                              <th className="px-5 py-3">Hora</th>
-                              <th className="px-5 py-3">Metodo</th>
-                              <th className="px-5 py-3">Referencia / notas</th>
-                              <th className="px-5 py-3 text-right">Monto</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-gray-100">
-                            {selectedPayments.map(payment => (
-                              <tr key={payment.id}>
-                                <td className="whitespace-nowrap px-5 py-3 font-medium text-gray-700">{fmtTime(payment.created_at)}</td>
-                                <td className="whitespace-nowrap px-5 py-3 text-gray-600">
-                                  {PAYMENT_METHOD_LABELS[payment.payment_method] || PAYMENT_METHOD_LABELS.other}
-                                </td>
-                                <td className="px-5 py-3 text-gray-500">
-                                  {payment.reference || payment.notes || '-'}
-                                </td>
-                                <td className="whitespace-nowrap px-5 py-3 text-right font-bold text-gray-900">
-                                  {formatMoney(payment.amount, payment.currency || business?.currency)}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                </>
+                  <MovementsTable payments={currentPayments} currency={business?.currency} />
+                </div>
               )}
 
-              <div className="rounded-2xl border border-gray-100 bg-white p-5">
-                <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <h3 className="text-sm font-bold text-gray-900">Historial del dia</h3>
-                    <p className="mt-0.5 text-xs text-gray-400">Cada tarjeta representa un turno de caja.</p>
-                  </div>
-                </div>
+              {showDayBreakdown && (
+                <MethodBreakdown summary={daySummary} currency={business?.currency} />
+              )}
 
-                {sessions.length === 0 ? (
-                  <div className="py-10 text-center">
-                    <Icon name="Wallet" size={34} className="mx-auto mb-3 text-gray-200" />
-                    <p className="text-sm font-semibold text-gray-600">Todavia no hay cajas abiertas hoy.</p>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-                    {sessions.map((session, index) => {
-                      const payments = sessionPayments[session.id] || [];
-                      const total = totalPayments(payments);
-                      const summary = summarizePayments(payments);
-                      const isSelected = selectedSessionId === session.id;
-                      return (
-                        <div key={session.id} className={`rounded-2xl border p-4 ${isSelected ? 'border-emerald-300 bg-emerald-50/40' : 'border-gray-100 bg-white'}`}>
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <div className={`mb-2 inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-[11px] font-bold ${
-                                session.status === 'open' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'
-                              }`}>
-                                {session.status === 'open' ? 'Abierta' : 'Cerrada'}
-                              </div>
-                              <h4 className="text-sm font-black text-gray-900">Caja #{sessions.length - index} / Turno</h4>
-                              <p className="mt-1 text-xs text-gray-500">
-                                {fmtTime(session.opened_at)} - {session.closed_at ? fmtTime(session.closed_at) : 'ahora'}
-                              </p>
-                              <p className="mt-1 text-xs text-gray-500">
-                                Inicial: {formatMoney(session.initial_amount || 0, business?.currency)}
-                              </p>
-                              {session.notes && <p className="mt-1 text-xs text-gray-500">Nota: {session.notes}</p>}
+              {showHistory && (
+                <div className="rounded-2xl border border-gray-100 bg-white p-4">
+                  {sessions.length === 0 ? (
+                    <div className="py-8 text-center">
+                      <Icon name="Wallet" size={30} className="mx-auto mb-3 text-gray-200" />
+                      <p className="text-sm font-semibold text-gray-600">Todavia no hay cajas abiertas hoy.</p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-gray-100">
+                      {sessions.map(session => {
+                        const payments = sessionPayments[session.id] || [];
+                        const total = totalPayments(payments);
+                        return (
+                          <div key={session.id} className="flex flex-col gap-3 py-3 lg:flex-row lg:items-center lg:justify-between">
+                            <div className="min-w-0 text-sm text-gray-700">
+                              <span className="font-bold text-gray-900">{turnLabel(session, sessions)}</span>
+                              <span className="mx-2 text-gray-300">|</span>
+                              <span>{session.status === 'open' ? 'Abierta' : 'Cerrada'}</span>
+                              <span className="mx-2 text-gray-300">|</span>
+                              <span>{turnTimeRange(session)}</span>
+                              <span className="mx-2 text-gray-300">|</span>
+                              <span className="font-bold text-gray-900">{formatMoney(total, business?.currency)}</span>
                             </div>
-                            <div className="text-right">
-                              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Total</p>
-                              <p className="text-lg font-black text-gray-900">{formatMoney(total, business?.currency)}</p>
-                              <p className="text-xs text-gray-400">{payments.length} mov.</p>
-                            </div>
-                          </div>
-                          <div className="mt-3 grid grid-cols-2 gap-1 text-[11px] text-gray-500 sm:grid-cols-5">
-                            {METHOD_ORDER.map(method => (
-                              <span key={method} className="rounded-lg bg-gray-50 px-2 py-1">
-                                {PAYMENT_METHOD_LABELS[method]}: {formatMoney(summary[method] || 0, business?.currency)}
-                              </span>
-                            ))}
-                          </div>
-                          <div className="mt-4 flex flex-wrap gap-2">
-                            <button
-                              onClick={() => setSelectedSessionId(session.id)}
-                              className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold text-gray-700 hover:bg-gray-50"
-                            >
-                              Ver detalle
-                            </button>
-                            <button
-                              onClick={() => setEditingSession(session)}
-                              className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold text-gray-700 hover:bg-gray-50"
-                            >
-                              Editar
-                            </button>
-                            {session.status === 'closed' && (
+                            <div className="flex flex-wrap gap-2">
                               <button
-                                onClick={() => handleReopen(session.id)}
-                                disabled={busy || !!openSession}
-                                className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:bg-gray-200 disabled:text-gray-500"
-                                title={openSession ? 'Cierra la caja abierta antes de reabrir otra.' : 'Reabrir caja'}
+                                onClick={() => openDetail(session.id)}
+                                className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold text-gray-700 hover:bg-gray-50"
                               >
-                                Reabrir
+                                Ver detalle
                               </button>
-                            )}
+                              <button
+                                onClick={() => setEditingSession(session)}
+                                className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold text-gray-700 hover:bg-gray-50"
+                              >
+                                Editar
+                              </button>
+                              {session.status === 'open' ? (
+                                <button
+                                  onClick={() => handleClose(session.id)}
+                                  disabled={busy}
+                                  className="rounded-lg bg-gray-900 px-3 py-2 text-xs font-bold text-white hover:bg-gray-800 disabled:opacity-50"
+                                >
+                                  Cerrar
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => handleReopen(session.id)}
+                                  className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700"
+                                >
+                                  Reabrir
+                                </button>
+                              )}
+                            </div>
                           </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {detailSession && (
+                    <div className="mt-4 space-y-3 border-t border-gray-100 pt-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-bold text-gray-900">{turnLabel(detailSession, sessions)}</p>
+                          <p className="mt-1 text-xs text-gray-400">
+                            {turnTimeRange(detailSession)} · {formatMoney(detailTotal, business?.currency)}
+                          </p>
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
+                        <button
+                          onClick={() => setDetailSessionId(null)}
+                          className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold text-gray-600 hover:bg-gray-50"
+                        >
+                          Ocultar detalle
+                        </button>
+                      </div>
+                      <MethodBreakdown summary={detailSummary} currency={business?.currency} />
+                      <MovementsTable payments={detailPayments} currency={business?.currency} />
+                    </div>
+                  )}
+                </div>
+              )}
             </>
           )}
         </div>
