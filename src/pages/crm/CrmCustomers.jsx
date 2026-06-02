@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import DashboardAppShell from 'components/ui/DashboardAppShell';
 import DashboardLayoutContent from 'components/ui/DashboardLayoutContent';
 import PanelHeader from 'components/ui/PanelHeader';
+import CrmBreadcrumb from 'components/ui/CrmBreadcrumb';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
 import { getCrmCustomers, createCrmCustomer, updateCrmCustomer, deleteCrmCustomer } from '../../services/crmService';
@@ -275,7 +276,7 @@ export default function CrmCustomers() {
   return (
     <DashboardAppShell>
       <PanelHeader
-        title={<h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Clientes</h1>}
+        title={<><CrmBreadcrumb section="Clientes" /><h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Clientes</h1></>}
         subtitle={<p className="text-xs" style={{ color: 'var(--color-muted-foreground)' }}>{loading ? 'Cargando…' : `${customers.length} cliente${customers.length !== 1 ? 's' : ''}`}</p>}
         mobileActions={
           <button

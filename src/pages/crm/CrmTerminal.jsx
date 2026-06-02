@@ -9,6 +9,7 @@ import { getCrmCustomers, getCrmStockProducts, createPosInvoice, getOpenCashSess
 import { getEffectivePlanSlug } from '../../services/waBusinessService';
 import { CRM_EARLY_ACCESS_MODE } from '../../config/crmConfig';
 import CrmThermalTicket from './components/CrmThermalTicket';
+import CrmBreadcrumb from 'components/ui/CrmBreadcrumb';
 import { formatMoney, fmtMoneyInput, parseMoneyInput } from '../../utils/formatMoney';
 
 const PAYMENT_METHODS = [
@@ -309,7 +310,7 @@ export default function CrmTerminal() {
         {!hasAccess && (
           <>
             <PanelHeader
-              title={<h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Terminal de ventas</h1>}
+              title={<><CrmBreadcrumb section="Terminal TPV" /><h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Terminal de ventas</h1></>}
             >
               {hideMenuBtn}
             </PanelHeader>
@@ -334,9 +335,7 @@ export default function CrmTerminal() {
           <>
             <PanelHeader
               title={
-                <h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>
-                  Terminal de ventas
-                </h1>
+                <><CrmBreadcrumb section="Terminal TPV" /><h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Terminal de ventas</h1></>
               }
               subtitle={
                 <p className="text-xs" style={{ color: 'var(--color-muted-foreground)' }}>

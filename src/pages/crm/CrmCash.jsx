@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import DashboardAppShell from 'components/ui/DashboardAppShell';
 import DashboardLayoutContent from 'components/ui/DashboardLayoutContent';
 import PanelHeader from 'components/ui/PanelHeader';
+import CrmBreadcrumb from 'components/ui/CrmBreadcrumb';
 import Icon from 'components/AppIcon';
 import { useAuth } from 'contexts/AuthContext';
 import { CRM_EARLY_ACCESS_MODE } from 'config/crmConfig';
@@ -553,7 +554,7 @@ export default function CrmCash() {
   if (!hasAccess) {
     return (
       <DashboardAppShell>
-        <PanelHeader title="Caja diaria" subtitle="Pagos reales del negocio" />
+        <PanelHeader title={<><CrmBreadcrumb section="Caja diaria" /><h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Caja diaria</h1></>} subtitle="Pagos reales del negocio" />
         <DashboardLayoutContent>
           <div className="flex flex-col items-center justify-center px-4 py-24 text-center">
             <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-50">
@@ -577,9 +578,7 @@ export default function CrmCash() {
     <DashboardAppShell>
       <PanelHeader
         title={
-          <h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>
-            Caja diaria
-          </h1>
+          <><CrmBreadcrumb section="Caja diaria" /><h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Caja diaria</h1></>
         }
         subtitle={
           <p className="text-xs capitalize" style={{ color: 'var(--color-muted-foreground)' }}>
