@@ -9,6 +9,7 @@ const PAYMENT_LABELS = {
   card: 'Tarjeta',
   check: 'Cheque',
   other: 'Otro',
+  credit: 'Cuenta corriente',
   efectivo: 'Efectivo',
   transferencia: 'Transferencia',
   tarjeta: 'Tarjeta',
@@ -51,6 +52,8 @@ export default function CrmThermalTicket({
   total = 0,
   amountReceived = null,
   change = null,
+  initialPaymentAmount = null,
+  pendingBalance = null,
   notes,
   createdAt,
   onNewSale,
@@ -175,7 +178,7 @@ export default function CrmThermalTicket({
           <span style={{ flex: '0 0 64px', textAlign: 'right' }}>Total</span>
         </div>
         {items.map((item, i) => (
-          <div key={item.product_id || item.id || i} style={{ marginBottom: 3 }}>
+          <div key={item._key || item.product_id || item.id || i} style={{ marginBottom: 3 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
               <span style={{ flex: '0 0 28px', color: '#555' }}>{item.quantity}x</span>
               <span style={{ flex: 1, fontWeight: 600, wordBreak: 'break-word', paddingRight: 4 }}>{item.name}</span>
@@ -187,6 +190,9 @@ export default function CrmThermalTicket({
               <div style={{ paddingLeft: 28, fontSize: 10, color: '#888' }}>
                 {formatCurrency(item.unit_price, business?.currency)} c/u
               </div>
+            )}
+            {item.note && (
+              <div style={{ paddingLeft: 28, fontSize: 10, color: '#888', fontStyle: 'italic' }}>{item.note}</div>
             )}
           </div>
         ))}
@@ -208,12 +214,25 @@ export default function CrmThermalTicket({
 
       <Divider />
 
-      <Row label="Método de pago" value={PAYMENT_LABELS[paymentMethod] || paymentMethod} />
-      {amountReceived != null && amountReceived > 0 && (
-        <Row label="Pago recibido" value={formatCurrency(amountReceived, business?.currency)} />
-      )}
-      {change != null && change > 0 && (
-        <Row label="Vuelto" value={formatCurrency(change, business?.currency)} bold />
+      <Row label="Forma de pago" value={PAYMENT_LABELS[paymentMethod] || paymentMethod} />
+      {paymentMethod === 'credit' ? (
+        <>
+          {initialPaymentAmount != null && initialPaymentAmount > 0 && (
+            <Row label="Abono" value={formatCurrency(initialPaymentAmount, business?.currency)} bold />
+          )}
+          {pendingBalance != null && pendingBalance > 0 && (
+            <Row label="Saldo pendiente" value={formatCurrency(pendingBalance, business?.currency)} bold />
+          )}
+        </>
+      ) : (
+        <>
+          {amountReceived != null && amountReceived > 0 && (
+            <Row label="Pago recibido" value={formatCurrency(amountReceived, business?.currency)} />
+          )}
+          {change != null && change > 0 && (
+            <Row label="Vuelto" value={formatCurrency(change, business?.currency)} bold />
+          )}
+        </>
       )}
 
       {notes && (

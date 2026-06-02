@@ -142,7 +142,7 @@ export async function getCustomerPendingInvoices(businessId, customerId) {
     .select('id, invoice_number, total, status, issue_date, notes, crm_payments(amount)')
     .eq('business_id', businessId)
     .eq('customer_id', customerId)
-    .eq('status', 'pendiente')
+    .in('status', ['pendiente', 'parcial'])
     .order('issue_date', { ascending: false });
   return { data: data || [], error };
 }
@@ -195,7 +195,7 @@ export async function getBusinessCreditSummary(businessId) {
       .from('crm_invoices')
       .select('customer_id, total')
       .eq('business_id', businessId)
-      .eq('status', 'pendiente'),
+      .in('status', ['pendiente', 'parcial']),
     supabase
       .from('crm_payments')
       .select('customer_id, amount')
@@ -554,12 +554,17 @@ export async function updateStockMinimo(productId, stockMinimo) {
 // TERMINAL DE VENTAS (POS)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function createPosInvoice(businessId, { customerId, items = [], discount = 0, paymentMethod = 'cash', notes, currency = 'CLP' }) {
+export async function createPosInvoice(businessId, {
+  customerId, items = [], discount = 0, paymentMethod = 'cash',
+  notes, currency = 'CLP',
+  initialPaymentAmount = 0, initialPaymentMethod = 'cash',
+}) {
   const isCredit = IS_CREDIT_METHOD(paymentMethod);
+  const abonoAmount = isCredit ? Math.max(0, +initialPaymentAmount || 0) : 0;
+  const hasAbono = abonoAmount > 0;
 
-  // Cuenta corriente: no requiere caja abierta, no genera pago, queda pendiente.
-  // Pago real: requiere caja abierta antes de tocar la BD.
-  if (!isCredit) {
+  // Require open cash session for real payments and for credit with abono.
+  if (!isCredit || hasAbono) {
     const { data: openSession } = await getOpenCashSession(businessId);
     if (!openSession) {
       return { data: null, error: { message: 'No hay caja abierta. Abre caja antes de registrar una venta.' } };
@@ -576,7 +581,7 @@ export async function createPosInvoice(businessId, { customerId, items = [], dis
   const mappedItems = items.map((it, idx) => ({
     product_id: it.product_id || null,
     name: it.name,
-    description: null,
+    description: it.note || null,
     unit_price: it.unit_price,
     quantity: it.quantity,
     discount_pct: 0,
@@ -588,6 +593,25 @@ export async function createPosInvoice(businessId, { customerId, items = [], dis
   const discountAmount = +Math.min(discount, subtotal).toFixed(2);
   const total = +(subtotal - discountAmount).toFixed(2);
 
+  // Determine invoice status:
+  // - Real payment: 'pagada'
+  // - Credit, no abono: 'pendiente'
+  // - Credit, abono covers total: 'pagada'
+  // - Credit, partial abono: 'parcial'
+  let invoiceStatus;
+  let paidAt = null;
+  if (!isCredit) {
+    invoiceStatus = 'pagada';
+    paidAt = new Date().toISOString();
+  } else if (!hasAbono) {
+    invoiceStatus = 'pendiente';
+  } else if (abonoAmount >= total) {
+    invoiceStatus = 'pagada';
+    paidAt = new Date().toISOString();
+  } else {
+    invoiceStatus = 'parcial';
+  }
+
   const { data: invoice, error } = await supabase
     .from('crm_invoices')
     .insert({
@@ -595,12 +619,12 @@ export async function createPosInvoice(businessId, { customerId, items = [], dis
       customer_id: customerId || null,
       invoice_number: nextNum,
       issue_date: localDate,
-      status: isCredit ? 'pendiente' : 'pagada',
+      status: invoiceStatus,
       subtotal: +subtotal.toFixed(2),
       discount_amount: discountAmount,
       total,
       notes: notes || null,
-      paid_at: isCredit ? null : new Date().toISOString(),
+      paid_at: paidAt,
     })
     .select()
     .single();
@@ -613,24 +637,27 @@ export async function createPosInvoice(businessId, { customerId, items = [], dis
     if (itemsErr) return { data: null, error: itemsErr };
   }
 
-  // Cuenta corriente: no crear pago, no impactar caja.
-  if (isCredit) {
+  // Credit with no abono: no payment, no cash impact.
+  if (isCredit && !hasAbono) {
     return { data: invoice, error: null };
   }
 
   const { data: { user } } = await supabase.auth.getUser();
+  const payAmount = isCredit ? abonoAmount : total;
+  const payMethod = isCredit ? normalizePaymentMethod(initialPaymentMethod) : normalizedPaymentMethod;
 
   const { error: payErr } = await supabase
     .from('crm_payments')
     .insert({
       business_id: businessId,
       invoice_id: invoice.id,
-      amount: total,
+      customer_id: customerId || null,
+      amount: +payAmount.toFixed(2),
       currency: currency || 'CLP',
-      payment_method: normalizedPaymentMethod,
+      payment_method: payMethod,
       payment_status: 'received',
       payment_date: localDate,
-      reference: `TPV ${formatInvoiceNumber(nextNum)}`,
+      reference: isCredit ? `Abono TPV ${formatInvoiceNumber(nextNum)}` : `TPV ${formatInvoiceNumber(nextNum)}`,
       notes: notes || null,
       created_by: user?.id || null,
     });

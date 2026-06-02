@@ -54,6 +54,100 @@ function ProductThumb({ product }) {
   );
 }
 
+function ManualItemModal({ onAdd, onClose, currency }) {
+  const [name, setName] = useState('');
+  const [price, setPrice] = useState('');
+  const [qty, setQty] = useState('1');
+  const [note, setNote] = useState('');
+  const [err, setErr] = useState('');
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const trimmedName = name.trim();
+    if (!trimmedName) { setErr('Ingresa un nombre para el artículo.'); return; }
+    const parsedPrice = parseMoneyInput(price);
+    if (isNaN(parsedPrice) || parsedPrice < 0) { setErr('Precio inválido.'); return; }
+    const parsedQty = Math.max(1, Math.round(+qty) || 1);
+    onAdd({ name: trimmedName, unit_price: parsedPrice, quantity: parsedQty, note: note.trim() || null });
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl">
+        <div className="flex justify-between items-center px-5 py-4 border-b">
+          <h2 className="font-bold text-gray-900 text-base flex items-center gap-2">
+            <Icon name="PenLine" size={16} className="text-purple-500" />
+            Artículo manual
+          </h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100">
+            <Icon name="X" size={18} />
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} className="px-5 py-4 space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Nombre *</label>
+            <input
+              autoFocus
+              type="text"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              placeholder="Ej: Servicio técnico, Traslado, etc."
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+            />
+          </div>
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <label className="block text-xs font-medium text-gray-700 mb-1">Precio unitario *</label>
+              <div className="relative">
+                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none">$</span>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={fmtMoneyInput(price)}
+                  onChange={e => setPrice(e.target.value.replace(/\D/g, ''))}
+                  placeholder="0"
+                  className="w-full pl-6 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+            </div>
+            <div className="w-24">
+              <label className="block text-xs font-medium text-gray-700 mb-1">Cantidad</label>
+              <input
+                type="number"
+                min="1"
+                step="1"
+                value={qty}
+                onChange={e => setQty(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Nota (opcional)</label>
+            <input
+              type="text"
+              value={note}
+              onChange={e => setNote(e.target.value)}
+              placeholder="Descripción adicional…"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+            />
+          </div>
+          {err && <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">{err}</p>}
+          <div className="flex gap-3 pt-1">
+            <button type="button" onClick={onClose} className="flex-1 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm font-medium">
+              Cancelar
+            </button>
+            <button type="submit" className="flex-1 py-2.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-sm font-semibold">
+              Agregar al carrito
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 function useSidebarHidden() {
   const [hidden, setHidden] = useState(() => {
     try { return localStorage.getItem('tpv_sidebar_hidden') === 'true'; } catch { return false; }
@@ -94,6 +188,9 @@ export default function CrmTerminal() {
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
   const [amountReceived, setAmountReceived] = useState('');
+  const [initialPaymentAmount, setInitialPaymentAmount] = useState('');
+  const [initialPaymentMethod, setInitialPaymentMethod] = useState('cash');
+  const [showManualModal, setShowManualModal] = useState(false);
 
   // Ticket modal state — set after successful (or locally-fallback) sale
   const [ticketData, setTicketData] = useState(null);
@@ -105,16 +202,12 @@ export default function CrmTerminal() {
     if (!ticketId) return;
     if (printedTicketRef.current === ticketId) return;
     printedTicketRef.current = ticketId;
-    console.log('[PRINT] ticket', ticketId, Date.now(), '— auto-print disparado');
     window.print();
   }, []);
 
-  // Auto-print once when a new ticket is ready. The ref guard ensures
-  // re-renders or StrictMode double-effects never trigger a second print.
   useEffect(() => {
     if (!ticketData) return;
     const ticketId = ticketData.sale?.id ?? ticketData.sale?.invoice_number;
-    console.log('[PRINT] useEffect ticketData cambió, ticketId=', ticketId, 'printedTicketRef=', printedTicketRef.current, Date.now());
     printTicketOnce(String(ticketId));
   }, [ticketData, printTicketOnce]);
 
@@ -138,13 +231,12 @@ export default function CrmTerminal() {
 
   const addToCart = (product) => {
     setCart(prev => {
-      const existing = prev.find(i => i.product_id === product.id);
+      const existing = prev.find(i => i._key === product.id);
       if (existing) {
-        return prev.map(i =>
-          i.product_id === product.id ? { ...i, quantity: i.quantity + 1 } : i
-        );
+        return prev.map(i => i._key === product.id ? { ...i, quantity: i.quantity + 1 } : i);
       }
       return [...prev, {
+        _key: product.id,
         product_id: product.id,
         name: product.name,
         unit_price: product.price || 0,
@@ -153,16 +245,21 @@ export default function CrmTerminal() {
     });
   };
 
-  const updateQty = (product_id, delta) => {
+  const addManualItem = ({ name, unit_price, quantity, note }) => {
+    const _key = `manual_${Date.now()}`;
+    setCart(prev => [...prev, { _key, product_id: null, name, unit_price, quantity, note: note || null }]);
+  };
+
+  const updateQty = (_key, delta) => {
     setCart(prev =>
       prev
-        .map(i => i.product_id === product_id ? { ...i, quantity: i.quantity + delta } : i)
+        .map(i => i._key === _key ? { ...i, quantity: i.quantity + delta } : i)
         .filter(i => i.quantity > 0)
     );
   };
 
-  const removeItem = (product_id) => {
-    setCart(prev => prev.filter(i => i.product_id !== product_id));
+  const removeItem = (_key) => {
+    setCart(prev => prev.filter(i => i._key !== _key));
   };
 
   const subtotal = cart.reduce((s, i) => s + i.unit_price * i.quantity, 0);
@@ -175,6 +272,11 @@ export default function CrmTerminal() {
   const parsedReceived = parseMoneyInput(amountReceived);
   const change = isEfectivo && parsedReceived > 0 ? parsedReceived - total : 0;
   const isCashShort = isEfectivo && amountReceived !== '' && parsedReceived < total;
+  const parsedInitialPayment = parseMoneyInput(initialPaymentAmount);
+  const pendingBalance = isCredit ? Math.max(0, total - parsedInitialPayment) : 0;
+  const creditButtonLabel = !isCredit ? 'Cobrar'
+    : parsedInitialPayment > 0 ? 'Guardar con abono'
+    : 'Guardar en cuenta corriente';
 
   const selectedCustomer = customers.find(c => c.id === customerId) || null;
 
@@ -188,6 +290,8 @@ export default function CrmTerminal() {
     setActiveCategory('');
     setErrorMsg(null);
     setAmountReceived('');
+    setInitialPaymentAmount('');
+    setInitialPaymentMethod('cash');
     setTimeout(() => searchRef.current?.focus(), 50);
   };
 
@@ -203,9 +307,8 @@ export default function CrmTerminal() {
       return;
     }
 
-    // Guard: pago real requiere caja abierta (cuenta corriente lo omite aquí;
-    // el servicio tiene su propia validación defensiva).
-    if (!isCredit) {
+    // Guard: real payment OR credit with abono requires open cash session.
+    if (!isCredit || parsedInitialPayment > 0) {
       const { data: openSession } = await getOpenCashSession(business.id);
       if (!openSession) {
         setBusy(false);
@@ -223,6 +326,8 @@ export default function CrmTerminal() {
       total,
       amountReceived: isEfectivo && parsedReceived > 0 ? parsedReceived : null,
       change: isEfectivo && change > 0 ? change : null,
+      initialPaymentAmount: isCredit && parsedInitialPayment > 0 ? parsedInitialPayment : null,
+      pendingBalance: isCredit ? pendingBalance : null,
       notes: notes || null,
       createdAt: new Date().toISOString(),
     };
@@ -234,6 +339,8 @@ export default function CrmTerminal() {
       paymentMethod,
       notes: notes || null,
       currency: business?.currency || 'CLP',
+      initialPaymentAmount: isCredit ? parsedInitialPayment : 0,
+      initialPaymentMethod,
     });
 
     setBusy(false);
@@ -250,9 +357,7 @@ export default function CrmTerminal() {
     setTicketData(null);
   };
 
-  // Explicit reprint: user deliberately requested another copy.
   const handleReprint = useCallback(() => {
-    console.log('[PRINT] handleReprint — usuario pulsó Reimprimir', Date.now());
     window.print();
   }, []);
 
@@ -453,6 +558,15 @@ export default function CrmTerminal() {
                     </div>
                   )}
 
+                  {/* Manual item button */}
+                  <button
+                    onClick={() => setShowManualModal(true)}
+                    className="self-start flex items-center gap-2 px-3 py-2 rounded-xl border-2 border-dashed border-purple-300 text-purple-600 hover:bg-purple-50 text-xs font-semibold transition-colors"
+                  >
+                    <Icon name="PenLine" size={14} />
+                    Artículo manual
+                  </button>
+
                   {/* Product grid */}
                   {filtered.length === 0 ? (
                     <div className="text-center py-16 text-gray-400 text-sm">
@@ -554,14 +668,18 @@ export default function CrmTerminal() {
                       <div className="divide-y divide-gray-100 max-h-52 overflow-y-auto
                                       lg:flex-1 lg:min-h-0 lg:max-h-none lg:overflow-y-auto">
                         {cart.map(item => (
-                          <div key={item.product_id} className="px-3 py-2.5 flex items-center gap-2">
+                          <div key={item._key} className="px-3 py-2.5 flex items-center gap-2">
                             <div className="flex-1 min-w-0">
-                              <p className="text-xs font-semibold text-gray-800 truncate leading-snug">{item.name}</p>
+                              <p className="text-xs font-semibold text-gray-800 truncate leading-snug flex items-center gap-1">
+                                {item.product_id == null && <span className="text-[9px] bg-purple-100 text-purple-600 px-1 py-0.5 rounded font-bold shrink-0">M</span>}
+                                {item.name}
+                              </p>
                               <p className="text-[11px] text-gray-400 mt-0.5">{fmt(item.unit_price, business?.currency)} c/u</p>
+                              {item.note && <p className="text-[10px] text-gray-400 italic truncate">{item.note}</p>}
                             </div>
                             <div className="flex items-center gap-1 shrink-0">
                               <button
-                                onClick={() => updateQty(item.product_id, -1)}
+                                onClick={() => updateQty(item._key, -1)}
                                 title={item.quantity === 1 ? 'Quitar del carrito' : 'Reducir cantidad'}
                                 className="w-7 h-7 rounded-lg bg-gray-100 hover:bg-red-50 hover:text-red-500 flex items-center justify-center transition-colors text-gray-600"
                               >
@@ -572,7 +690,7 @@ export default function CrmTerminal() {
                               </button>
                               <span className="w-6 text-center text-sm font-bold text-gray-800">{item.quantity}</span>
                               <button
-                                onClick={() => updateQty(item.product_id, 1)}
+                                onClick={() => updateQty(item._key, 1)}
                                 title="Aumentar cantidad"
                                 className="w-7 h-7 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors text-gray-600"
                               >
@@ -584,7 +702,7 @@ export default function CrmTerminal() {
                                 {fmt(item.unit_price * item.quantity, business?.currency)}
                               </span>
                               <button
-                                onClick={() => removeItem(item.product_id)}
+                                onClick={() => removeItem(item._key)}
                                 title="Eliminar producto"
                                 aria-label="Eliminar producto del carrito"
                                 className="w-7 h-7 rounded-lg bg-red-50 hover:bg-red-100 flex items-center justify-center transition-colors text-red-400 hover:text-red-600"
@@ -674,11 +792,43 @@ export default function CrmTerminal() {
                       </div>
                     )}
 
-                    {/* Aviso cuenta corriente */}
+                    {/* Aviso + abono cuenta corriente */}
                     {isCredit && (
-                      <div className="flex items-start gap-2 p-2.5 rounded-lg bg-indigo-50 border border-indigo-100 text-xs text-indigo-700">
-                        <Icon name="BookUser" size={13} color="currentColor" className="shrink-0 mt-0.5" />
-                        <span>Cuenta corriente: no ingresa a caja. Queda como nota de venta pendiente.</span>
+                      <div className="flex flex-col gap-2 p-2.5 rounded-lg bg-indigo-50 border border-indigo-100 text-xs text-indigo-700">
+                        <div className="flex items-start gap-2">
+                          <Icon name="BookUser" size={13} color="currentColor" className="shrink-0 mt-0.5" />
+                          <span>Cuenta corriente. Abono inicial opcional (requiere caja abierta).</span>
+                        </div>
+                        <div className="flex gap-2">
+                          <select
+                            value={initialPaymentMethod}
+                            onChange={e => setInitialPaymentMethod(e.target.value)}
+                            className="border border-indigo-200 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400 text-gray-700"
+                          >
+                            <option value="cash">Efectivo</option>
+                            <option value="bank_transfer">Transferencia</option>
+                            <option value="card">Tarjeta</option>
+                            <option value="check">Cheque</option>
+                            <option value="other">Otro</option>
+                          </select>
+                          <div className="relative flex-1">
+                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none">$</span>
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              value={fmtMoneyInput(initialPaymentAmount)}
+                              onChange={e => setInitialPaymentAmount(e.target.value.replace(/\D/g, ''))}
+                              placeholder="Abono (opcional)"
+                              className="w-full pl-5 pr-2 py-1.5 border border-indigo-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white text-gray-700 placeholder-gray-400"
+                            />
+                          </div>
+                        </div>
+                        {parsedInitialPayment > 0 && (
+                          <div className="flex justify-between font-semibold">
+                            <span>Saldo pendiente:</span>
+                            <span>{fmt(pendingBalance, business?.currency)}</span>
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -707,7 +857,7 @@ export default function CrmTerminal() {
                       >
                         {busy
                           ? <><Icon name="Loader2" size={18} className="animate-spin" />Registrando…</>
-                          : <><Icon name="Zap" size={18} />Cobrar</>
+                          : <><Icon name={isCredit ? 'BookUser' : 'Zap'} size={18} />{creditButtonLabel}</>
                         }
                       </button>
                       {isCashShort && (
@@ -747,7 +897,7 @@ export default function CrmTerminal() {
               >
                 {busy
                   ? <><Icon name="Loader2" size={16} className="animate-spin" />Procesando…</>
-                  : <><Icon name="Zap" size={16} />Cobrar</>
+                  : <><Icon name={isCredit ? 'BookUser' : 'Zap'} size={16} />{creditButtonLabel}</>
                 }
               </button>
             </div>
@@ -756,6 +906,15 @@ export default function CrmTerminal() {
         )}
 
       </main>
+
+      {/* Manual item modal */}
+      {showManualModal && (
+        <ManualItemModal
+          currency={business?.currency}
+          onAdd={addManualItem}
+          onClose={() => setShowManualModal(false)}
+        />
+      )}
 
       {/* Thermal ticket modal — rendered outside main flow to avoid layout issues */}
       {ticketData && (
@@ -770,6 +929,8 @@ export default function CrmTerminal() {
           total={ticketData.total}
           amountReceived={ticketData.amountReceived}
           change={ticketData.change}
+          initialPaymentAmount={ticketData.initialPaymentAmount}
+          pendingBalance={ticketData.pendingBalance}
           notes={ticketData.notes}
           createdAt={ticketData.createdAt}
           onNewSale={handleNewSale}
