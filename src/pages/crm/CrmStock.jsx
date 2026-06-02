@@ -1,350 +1,680 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import DashboardAppShell from 'components/ui/DashboardAppShell';
 import DashboardLayoutContent from 'components/ui/DashboardLayoutContent';
 import PanelHeader from 'components/ui/PanelHeader';
 import CrmBreadcrumb from 'components/ui/CrmBreadcrumb';
 import Icon from 'components/AppIcon';
+import { formatMoney } from 'utils/formatMoney';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   getCrmStockProducts,
+  getCrmStockMovements,
   registerStockMovement,
   updateStockMinimo,
 } from '../../services/crmService';
 
-const TYPE_CONFIG = {
-  entrada: { label: 'Entrada', icon: 'TrendingUp', color: 'text-green-600', bg: 'bg-green-50 border-green-300' },
-  salida:  { label: 'Salida',  icon: 'TrendingDown', color: 'text-red-600', bg: 'bg-red-50 border-red-300' },
-  ajuste:  { label: 'Ajuste', icon: 'SlidersHorizontal', color: 'text-blue-600', bg: 'bg-blue-50 border-blue-300' },
+// ─── Tipos de movimiento ──────────────────────────────────────────────────────
+
+const MOVEMENT_TYPES = {
+  entrada:          { label: 'Entrada manual',     icon: 'TrendingUp',      color: 'text-green-600',  bg: 'bg-green-50 border-green-300' },
+  salida:           { label: 'Salida manual',      icon: 'TrendingDown',    color: 'text-red-600',    bg: 'bg-red-50 border-red-300' },
+  ajuste:           { label: 'Ajuste',             icon: 'SlidersHorizontal', color: 'text-blue-600', bg: 'bg-blue-50 border-blue-300' },
+  entrada_manual:   { label: 'Entrada manual',     icon: 'TrendingUp',      color: 'text-green-600',  bg: 'bg-green-50' },
+  salida_manual:    { label: 'Salida manual',      icon: 'TrendingDown',    color: 'text-red-600',    bg: 'bg-red-50' },
+  venta_tpv:        { label: 'Venta TPV',          icon: 'Monitor',         color: 'text-orange-600', bg: 'bg-orange-50' },
+  venta_catalogo:   { label: 'Venta catálogo',     icon: 'ShoppingCart',    color: 'text-purple-600', bg: 'bg-purple-50' },
+  compra_mercaderia:{ label: 'Compra mercadería',  icon: 'PackagePlus',     color: 'text-teal-600',   bg: 'bg-teal-50' },
+  devolucion:       { label: 'Devolución',         icon: 'RotateCcw',       color: 'text-indigo-600', bg: 'bg-indigo-50' },
 };
 
-function MovementModal({ products, initialProduct, onSave, onClose }) {
-  const [productId, setProductId] = useState(initialProduct?.id || '');
-  const [type, setType] = useState('entrada');
-  const [quantity, setQuantity] = useState(1);
-  const [notes, setNotes] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
+const MANUAL_TYPES = ['entrada', 'salida', 'ajuste'];
 
-  const selectedProduct = products.find(p => p.id === productId);
-  const isAdjust = type === 'ajuste';
+const TYPE_LABELS = { entrada: 'Entrada', salida: 'Salida', ajuste: 'Ajuste' };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!productId) { setError('Selecciona un producto.'); return; }
-    const qty = +quantity;
-    if (!qty || qty < 0 || (!isAdjust && qty <= 0)) { setError('Ingresa una cantidad válida.'); return; }
-    setSaving(true);
-    const { error: err } = await onSave({ productId, type, quantity: qty, notes });
-    if (err) { setError(err.message || 'Error al registrar.'); setSaving(false); return; }
-    setSaving(false);
+const fmt = (n) => formatMoney(n, 'CLP');
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function stockStatus(p) {
+  if (p.stock_actual == null) return 'sin_control';
+  if (p.stock_actual === 0)   return 'agotado';
+  if (p.stock_minimo != null && p.stock_actual <= p.stock_minimo) return 'bajo';
+  return 'ok';
+}
+
+const STATUS_CONFIG = {
+  ok:          { label: 'OK',           color: 'text-green-700',  bg: 'bg-green-100',  dot: 'bg-green-500' },
+  bajo:        { label: 'Stock bajo',   color: 'text-yellow-700', bg: 'bg-yellow-100', dot: 'bg-yellow-500' },
+  agotado:     { label: 'Agotado',      color: 'text-red-700',    bg: 'bg-red-100',    dot: 'bg-red-500' },
+  sin_control: { label: 'Sin control',  color: 'text-gray-500',   bg: 'bg-gray-100',   dot: 'bg-gray-400' },
+};
+
+function StatusBadge({ status }) {
+  const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.sin_control;
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${cfg.color} ${cfg.bg}`}>
+      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${cfg.dot}`} />
+      {cfg.label}
+    </span>
+  );
+}
+
+function catalogStatus(p) {
+  if (!p.is_active) return { label: 'Oculto',      color: 'text-gray-500', bg: 'bg-gray-100' };
+  if (p.soldOut)    return { label: 'Agotado',     color: 'text-orange-700', bg: 'bg-orange-100' };
+  return               { label: 'Disponible',  color: 'text-emerald-700', bg: 'bg-emerald-100' };
+}
+
+// ─── Buscador con dropdown ────────────────────────────────────────────────────
+
+function ProductSearch({ products, onSelect }) {
+  const [query, setQuery]     = useState('');
+  const [open,  setOpen]      = useState(false);
+  const ref                   = useRef(null);
+
+  const results = query.trim().length > 0
+    ? products.filter(p => {
+        const q = query.toLowerCase();
+        return (
+          p.name?.toLowerCase().includes(q) ||
+          (p.public_code && p.public_code.toLowerCase().includes(q))
+        );
+      }).slice(0, 8)
+    : [];
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [open]);
+
+  const choose = (p) => {
+    setQuery('');
+    setOpen(false);
+    onSelect(p);
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl">
-        <div className="flex justify-between items-center px-6 py-4 border-b">
-          <h2 className="font-bold text-gray-900 text-lg">Registrar movimiento</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100">
-            <Icon name="X" size={20} />
+    <div ref={ref} className="relative w-full max-w-xl">
+      <div className="relative">
+        <Icon name="Search" size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+        <input
+          type="text"
+          value={query}
+          onChange={e => { setQuery(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          placeholder="Buscar por código interno o nombre del producto…"
+          className="w-full border-2 border-gray-200 focus:border-blue-400 rounded-2xl pl-11 pr-4 py-3.5 text-sm bg-white shadow-sm focus:outline-none focus:shadow-md transition-all placeholder:text-gray-400"
+        />
+        {query && (
+          <button onClick={() => { setQuery(''); setOpen(false); }}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500 p-1">
+            <Icon name="X" size={15} />
           </button>
+        )}
+      </div>
+
+      {open && results.length > 0 && (
+        <div className="absolute z-30 w-full mt-1.5 bg-white border border-gray-200 rounded-2xl shadow-xl overflow-hidden">
+          {results.map(p => {
+            const status = stockStatus(p);
+            const cfg    = STATUS_CONFIG[status];
+            return (
+              <button
+                key={p.id}
+                onClick={() => choose(p)}
+                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left border-b border-gray-50 last:border-0"
+              >
+                {p.thumbnail_url ? (
+                  <img src={p.thumbnail_url} alt="" className="w-9 h-9 rounded-lg object-cover shrink-0" />
+                ) : (
+                  <div className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center shrink-0">
+                    <Icon name="Package" size={16} className="text-gray-400" />
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-gray-900 truncate">{p.name}</p>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    {p.public_code && (
+                      <span className="text-xs text-blue-600 font-mono">{p.public_code}</span>
+                    )}
+                    {p.category && <span className="text-xs text-gray-400">{p.category}</span>}
+                  </div>
+                </div>
+                <span className={`shrink-0 text-xs font-semibold px-2 py-0.5 rounded-full ${cfg.color} ${cfg.bg}`}>
+                  {p.stock_actual ?? '—'}
+                </span>
+              </button>
+            );
+          })}
         </div>
-        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
-          {/* Producto */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Producto *</label>
-            <select
-              value={productId}
-              onChange={e => setProductId(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">— Seleccionar producto —</option>
-              {products.map(p => (
-                <option key={p.id} value={p.id}>
-                  {p.name}{p.stock_actual != null ? ` (stock: ${p.stock_actual})` : ' (sin control)'}
-                </option>
-              ))}
-            </select>
-          </div>
+      )}
 
-          {/* Tipo de movimiento */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Tipo de movimiento</label>
-            <div className="grid grid-cols-3 gap-2">
-              {Object.entries(TYPE_CONFIG).map(([key, cfg]) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setType(key)}
-                  className={`flex flex-col items-center gap-1 py-3 rounded-xl border-2 text-xs font-semibold transition-colors ${
-                    type === key ? `${cfg.bg} ${cfg.color}` : 'border-gray-200 text-gray-500 hover:bg-gray-50'
-                  }`}
-                >
-                  <Icon name={cfg.icon} size={18} />
-                  {cfg.label}
-                </button>
-              ))}
-            </div>
-          </div>
+      {open && query.trim().length > 0 && results.length === 0 && (
+        <div className="absolute z-30 w-full mt-1.5 bg-white border border-gray-200 rounded-2xl shadow-xl px-4 py-4 text-sm text-gray-400 text-center">
+          Sin resultados para "{query}"
+        </div>
+      )}
+    </div>
+  );
+}
 
-          {/* Cantidad */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              {isAdjust ? 'Nuevo stock total *' : 'Cantidad *'}
-            </label>
-            <input
-              type="number"
-              min={isAdjust ? 0 : 1}
-              step="1"
-              value={quantity}
-              onChange={e => setQuantity(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder={isAdjust ? 'Stock total resultante' : 'Cantidad a registrar'}
-            />
-            {selectedProduct && selectedProduct.stock_actual != null && !isAdjust && (
-              <p className="text-xs text-gray-400 mt-1">
-                Stock actual: {selectedProduct.stock_actual} →&nbsp;
-                <strong className="text-gray-700">
-                  {type === 'entrada'
-                    ? selectedProduct.stock_actual + (+quantity || 0)
-                    : Math.max(0, selectedProduct.stock_actual - (+quantity || 0))}
-                </strong>
-              </p>
-            )}
-          </div>
+// ─── Vista por defecto — resumen + críticos ────────────────────────────────────
 
-          {/* Notas */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Notas (opcional)</label>
-            <input
-              type="text"
-              value={notes}
-              onChange={e => setNotes(e.target.value)}
-              placeholder="Ej: Compra proveedor X, Devolución cliente…"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
+function DefaultView({ products, recentMovements, loadingMov, onSelectProduct }) {
+  const withControl = products.filter(p => p.stock_actual != null);
+  const critical    = products.filter(p => {
+    const s = stockStatus(p);
+    return s === 'agotado' || s === 'bajo';
+  });
 
-          {error && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
+  return (
+    <div className="space-y-5 max-w-2xl mx-auto">
 
-          <div className="flex gap-3 pt-2">
-            <button type="button" onClick={onClose} className="flex-1 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm font-medium">
-              Cancelar
-            </button>
-            <button type="submit" disabled={saving} className="flex-1 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium disabled:opacity-60 flex items-center justify-center gap-2">
-              {saving && <Icon name="Loader2" size={15} className="animate-spin" />}
-              {saving ? 'Registrando…' : 'Registrar movimiento'}
-            </button>
+      {/* Summary chips */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="bg-white rounded-2xl border border-gray-100 p-4 text-center">
+          <p className="text-2xl font-black text-gray-900">{products.length}</p>
+          <p className="text-xs text-gray-400 mt-0.5">Productos</p>
+        </div>
+        <div className="bg-white rounded-2xl border border-gray-100 p-4 text-center">
+          <p className="text-2xl font-black text-gray-700">{withControl.length}</p>
+          <p className="text-xs text-gray-400 mt-0.5">Con control</p>
+        </div>
+        <div className={`rounded-2xl border p-4 text-center ${critical.length > 0 ? 'bg-red-50 border-red-200' : 'bg-white border-gray-100'}`}>
+          <p className={`text-2xl font-black ${critical.length > 0 ? 'text-red-600' : 'text-gray-400'}`}>{critical.length}</p>
+          <p className={`text-xs mt-0.5 ${critical.length > 0 ? 'text-red-400' : 'text-gray-400'}`}>Críticos</p>
+        </div>
+      </div>
+
+      {/* Productos críticos */}
+      {critical.length > 0 && (
+        <div className="bg-white rounded-2xl border border-red-100 overflow-hidden">
+          <div className="px-5 py-3.5 border-b border-red-100 flex items-center gap-2">
+            <Icon name="AlertTriangle" size={15} color="#dc2626" />
+            <p className="text-sm font-bold text-red-700">Productos críticos ({critical.length})</p>
           </div>
-        </form>
+          <div className="divide-y divide-gray-50">
+            {critical.slice(0, 8).map(p => (
+              <button
+                key={p.id}
+                onClick={() => onSelectProduct(p)}
+                className="w-full flex items-center gap-3 px-5 py-3 hover:bg-red-50/60 transition-colors text-left"
+              >
+                {p.thumbnail_url ? (
+                  <img src={p.thumbnail_url} alt="" className="w-8 h-8 rounded-lg object-cover shrink-0" />
+                ) : (
+                  <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center shrink-0">
+                    <Icon name="Package" size={14} className="text-gray-400" />
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-gray-900 truncate">{p.name}</p>
+                  {p.public_code && <p className="text-xs font-mono text-blue-500">{p.public_code}</p>}
+                </div>
+                <StatusBadge status={stockStatus(p)} />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Últimos movimientos */}
+      <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+        <div className="px-5 py-3.5 border-b border-gray-100 flex items-center gap-2">
+          <Icon name="Activity" size={15} color="#6b7280" />
+          <p className="text-sm font-bold text-gray-800">Últimos movimientos</p>
+        </div>
+        {loadingMov ? (
+          <div className="py-8 flex justify-center">
+            <div className="w-5 h-5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : recentMovements.length === 0 ? (
+          <p className="text-sm text-gray-400 text-center py-8">Sin movimientos registrados</p>
+        ) : (
+          <div className="divide-y divide-gray-50">
+            {recentMovements.map(m => {
+              const cfg = MOVEMENT_TYPES[m.type] || MOVEMENT_TYPES.entrada;
+              return (
+                <div key={m.id} className="px-5 py-3 flex items-center gap-3">
+                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${cfg.bg}`}>
+                    <Icon name={cfg.icon} size={13} className={cfg.color} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm text-gray-700 truncate">{m.product_name || '—'}</p>
+                    <p className="text-xs text-gray-400">{cfg.label} · {new Date(m.created_at).toLocaleDateString('es-CL')}</p>
+                  </div>
+                  <span className={`text-sm font-bold shrink-0 ${cfg.color}`}>
+                    {m.type === 'ajuste' ? `=${m.quantity}` : m.type === 'salida' || m.type === 'salida_manual' || m.type === 'venta_tpv' || m.type === 'venta_catalogo' ? `-${m.quantity}` : `+${m.quantity}`}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Ayuda */}
+      <div className="text-center py-2">
+        <p className="text-sm text-gray-400">Usa el buscador para encontrar un producto y gestionar su stock</p>
       </div>
     </div>
   );
 }
 
+// ─── Panel movimiento inline ───────────────────────────────────────────────────
+
+function MovementPanel({ product, businessId, onDone }) {
+  const [type,     setType]     = useState('entrada');
+  const [quantity, setQuantity] = useState('');
+  const [notes,    setNotes]    = useState('');
+  const [saving,   setSaving]   = useState(false);
+  const [error,    setError]    = useState('');
+  const [success,  setSuccess]  = useState(false);
+
+  const isAdjust   = type === 'ajuste';
+  const qty        = parseFloat(quantity);
+  const preview    = product.stock_actual != null && !isAdjust && !isNaN(qty)
+    ? type === 'entrada'
+      ? product.stock_actual + qty
+      : Math.max(0, product.stock_actual - qty)
+    : null;
+
+  const submit = async () => {
+    if (!qty || qty < 0 || (!isAdjust && qty <= 0)) { setError('Ingresa una cantidad válida'); return; }
+    setSaving(true);
+    setError('');
+    const { error: err } = await registerStockMovement(businessId, { productId: product.id, type, quantity: qty, notes });
+    setSaving(false);
+    if (err) { setError(err.message || 'Error al registrar'); return; }
+    setSuccess(true);
+    setTimeout(() => { setSuccess(false); setQuantity(''); setNotes(''); onDone(); }, 800);
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+      <div className="px-5 py-4 border-b border-gray-100">
+        <p className="text-sm font-bold text-gray-800">Registrar movimiento</p>
+      </div>
+      <div className="px-5 py-4 space-y-4">
+
+        {/* Tipo */}
+        <div className="grid grid-cols-3 gap-2">
+          {MANUAL_TYPES.map(t => {
+            const cfg = MOVEMENT_TYPES[t];
+            return (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setType(t)}
+                className={`flex flex-col items-center gap-1.5 py-3 rounded-xl border-2 text-xs font-semibold transition-colors ${
+                  type === t ? `${cfg.bg} ${cfg.color}` : 'border-gray-200 text-gray-500 hover:bg-gray-50'
+                }`}
+              >
+                <Icon name={cfg.icon} size={17} />
+                {TYPE_LABELS[t]}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Cantidad */}
+        <div>
+          <label className="text-xs text-gray-500 block mb-1.5">
+            {isAdjust ? 'Nuevo stock total' : 'Cantidad'}
+          </label>
+          <input
+            type="number" min={isAdjust ? 0 : 1} step="1"
+            value={quantity}
+            onChange={e => setQuantity(e.target.value)}
+            placeholder={isAdjust ? 'Stock total resultante' : '0'}
+            className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          {preview !== null && (
+            <p className="text-xs text-gray-400 mt-1.5">
+              {product.stock_actual} → <strong className="text-gray-700">{preview}</strong>
+            </p>
+          )}
+        </div>
+
+        {/* Notas */}
+        <div>
+          <label className="text-xs text-gray-500 block mb-1.5">Nota (opcional)</label>
+          <input
+            type="text" value={notes}
+            onChange={e => setNotes(e.target.value)}
+            placeholder="Ej: Compra proveedor X, devolución…"
+            className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+
+        {error && <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
+
+        <button
+          onClick={submit}
+          disabled={saving || success}
+          className={`w-full py-3 rounded-xl text-sm font-bold transition-colors flex items-center justify-center gap-2 ${
+            success
+              ? 'bg-green-500 text-white'
+              : 'bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60'
+          }`}
+        >
+          {success ? (
+            <><Icon name="Check" size={15} />Registrado</>
+          ) : saving ? (
+            <><div className="w-4 h-4 border-2 border-white/50 border-t-white rounded-full animate-spin" />Guardando…</>
+          ) : (
+            'Registrar movimiento'
+          )}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Stock mínimo inline ───────────────────────────────────────────────────────
+
 function MinimoEditor({ product, onSave }) {
   const [editing, setEditing] = useState(false);
-  const [val, setVal] = useState('');
-  const [saving, setSaving] = useState(false);
+  const [val,     setVal]     = useState('');
+  const [saving,  setSaving]  = useState(false);
 
-  const start = () => { setVal(product.stock_minimo ?? ''); setEditing(true); };
+  const start  = () => { setVal(product.stock_minimo ?? ''); setEditing(true); };
   const cancel = () => setEditing(false);
-  const save = async () => {
+  const save   = async () => {
     setSaving(true);
     await onSave(product.id, val === '' ? null : +val);
     setSaving(false);
     setEditing(false);
   };
 
-  if (!editing) {
-    return (
-      <button onClick={start} className="text-sm text-gray-500 hover:text-blue-600 underline underline-offset-2">
-        {product.stock_minimo != null ? product.stock_minimo : 'Definir'}
-      </button>
-    );
-  }
+  if (!editing) return (
+    <button onClick={start} className="text-sm text-gray-500 hover:text-blue-600 underline underline-offset-2 tabular-nums">
+      {product.stock_minimo != null ? product.stock_minimo : '—'}
+    </button>
+  );
+
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex items-center gap-1.5">
       <input
-        type="number" min="0" step="1"
+        type="number" min="0" step="1" autoFocus
         value={val}
         onChange={e => setVal(e.target.value)}
-        className="w-16 border border-blue-400 rounded px-2 py-1 text-sm focus:outline-none"
-        autoFocus
+        className="w-16 border border-blue-400 rounded-lg px-2 py-1 text-sm focus:outline-none text-center"
       />
-      <button onClick={save} disabled={saving} className="p-1 text-green-600 hover:bg-green-50 rounded">
-        {saving ? <Icon name="Loader2" size={14} className="animate-spin" /> : <Icon name="Check" size={14} />}
+      <button onClick={save} disabled={saving} className="p-1.5 rounded-lg text-green-600 hover:bg-green-50">
+        {saving ? <div className="w-3.5 h-3.5 border-2 border-green-500 border-t-transparent rounded-full animate-spin" /> : <Icon name="Check" size={14} />}
       </button>
-      <button onClick={cancel} className="p-1 text-gray-400 hover:bg-gray-100 rounded"><Icon name="X" size={14} /></button>
+      <button onClick={cancel} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100">
+        <Icon name="X" size={14} />
+      </button>
     </div>
   );
 }
 
-export default function CrmStock() {
-  const { business } = useAuth();
-  const [products, setProducts] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [modal, setModal] = useState(null); // null | true (sin producto preseleccionado) | product object
-  const [search, setSearch] = useState('');
+// ─── Ficha del producto ────────────────────────────────────────────────────────
 
-  const load = async () => {
+function ProductCard({ product, businessId, onBack, onMinimoSave, onMovementDone, movements, loadingMov }) {
+  const status  = stockStatus(product);
+  const catSt   = catalogStatus(product);
+
+  return (
+    <div className="space-y-4 max-w-2xl mx-auto">
+
+      {/* Back */}
+      <button onClick={onBack} className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-blue-600 transition-colors">
+        <Icon name="ArrowLeft" size={15} />
+        Volver
+      </button>
+
+      {/* Ficha principal */}
+      <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+        <div className="p-5 flex items-start gap-4">
+          {/* Imagen */}
+          {product.thumbnail_url ? (
+            <img src={product.thumbnail_url} alt={product.name}
+              className="w-20 h-20 rounded-xl object-cover shrink-0 border border-gray-100" />
+          ) : (
+            <div className="w-20 h-20 rounded-xl bg-gray-100 flex items-center justify-center shrink-0">
+              <Icon name="Package" size={28} className="text-gray-300" />
+            </div>
+          )}
+
+          {/* Info */}
+          <div className="flex-1 min-w-0">
+            <h2 className="text-base font-bold text-gray-900 leading-snug">{product.name}</h2>
+
+            <div className="flex flex-wrap items-center gap-2 mt-1.5">
+              {product.public_code && (
+                <span className="flex items-center gap-1 text-xs bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-lg font-mono font-semibold">
+                  <Icon name="Hash" size={11} />{product.public_code}
+                </span>
+              )}
+              {product.category && (
+                <span className="text-xs text-gray-500 bg-gray-50 px-2 py-0.5 rounded-lg">{product.category}</span>
+              )}
+              <span className={`text-xs font-semibold px-2 py-0.5 rounded-lg ${catSt.color} ${catSt.bg}`}>
+                {catSt.label}
+              </span>
+            </div>
+
+            {product.price != null && (
+              <p className="text-sm font-bold text-gray-700 mt-2">{fmt(product.price)}</p>
+            )}
+          </div>
+        </div>
+
+        {/* Stock metrics */}
+        <div className="border-t border-gray-100 px-5 py-4 grid grid-cols-3 gap-4">
+          <div className="text-center">
+            <p className="text-xs text-gray-400 mb-1">Stock actual</p>
+            <p className={`text-3xl font-black leading-none tabular-nums ${
+              status === 'agotado' ? 'text-red-600' :
+              status === 'bajo'    ? 'text-yellow-600' :
+              status === 'ok'      ? 'text-green-600' : 'text-gray-400'
+            }`}>
+              {product.stock_actual ?? '—'}
+            </p>
+          </div>
+          <div className="text-center">
+            <p className="text-xs text-gray-400 mb-1.5">Stock mínimo</p>
+            <MinimoEditor product={product} onSave={onMinimoSave} />
+          </div>
+          <div className="text-center">
+            <p className="text-xs text-gray-400 mb-1.5">Estado</p>
+            <StatusBadge status={status} />
+          </div>
+        </div>
+      </div>
+
+      {/* Panel de movimiento */}
+      <MovementPanel product={product} businessId={businessId} onDone={onMovementDone} />
+
+      {/* Historial */}
+      <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
+          <Icon name="ClipboardList" size={15} color="#6b7280" />
+          <p className="text-sm font-bold text-gray-800">Historial de movimientos</p>
+        </div>
+
+        {loadingMov ? (
+          <div className="py-8 flex justify-center">
+            <div className="w-5 h-5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : movements.length === 0 ? (
+          <div className="py-10 text-center">
+            <Icon name="ClipboardList" size={28} className="text-gray-200 mx-auto mb-2" />
+            <p className="text-sm text-gray-400">Sin movimientos registrados</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-gray-50">
+            {movements.map(m => {
+              const cfg = MOVEMENT_TYPES[m.type] || MOVEMENT_TYPES.entrada;
+              const isOut = ['salida', 'salida_manual', 'venta_tpv', 'venta_catalogo'].includes(m.type);
+              const isAdj = m.type === 'ajuste';
+              return (
+                <div key={m.id} className="px-5 py-3.5 flex items-center gap-3">
+                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${cfg.bg}`}>
+                    <Icon name={cfg.icon} size={14} className={cfg.color} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-gray-800">{cfg.label}</p>
+                    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                      <span className="text-xs text-gray-400">
+                        {new Date(m.created_at).toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </span>
+                      {m.notes && <span className="text-xs text-gray-500 italic truncate max-w-40">{m.notes}</span>}
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className={`text-base font-black tabular-nums ${isOut ? 'text-red-600' : isAdj ? 'text-blue-600' : 'text-green-600'}`}>
+                      {isAdj ? `= ${m.quantity}` : isOut ? `−${m.quantity}` : `+${m.quantity}`}
+                    </p>
+                    {m.stock_after != null && (
+                      <p className="text-[10px] text-gray-400">→ {m.stock_after}</p>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Página principal ─────────────────────────────────────────────────────────
+
+export default function CrmStock() {
+  const { business }                  = useAuth();
+  const [products, setProducts]       = useState([]);
+  const [loading,  setLoading]        = useState(true);
+  const [selected, setSelected]       = useState(null); // product object
+  const [movements, setMovements]     = useState([]);
+  const [loadingMov, setLoadingMov]   = useState(false);
+  const [recentMov, setRecentMov]     = useState([]);
+  const [loadingRecent, setLoadingRecent] = useState(false);
+
+  // Cargar productos
+  const loadProducts = useCallback(async () => {
     if (!business?.id) return;
     setLoading(true);
     const { data } = await getCrmStockProducts(business.id);
     setProducts(data || []);
     setLoading(false);
+  }, [business?.id]);
+
+  // Cargar movimientos recientes (todos, para la vista por defecto)
+  const loadRecentMovements = useCallback(async () => {
+    if (!business?.id) return;
+    setLoadingRecent(true);
+    const { data } = await getCrmStockMovements(business.id, null);
+    setRecentMov((data || []).slice(0, 15));
+    setLoadingRecent(false);
+  }, [business?.id]);
+
+  // Cargar movimientos del producto seleccionado
+  const loadProductMovements = useCallback(async (productId) => {
+    if (!business?.id) return;
+    setLoadingMov(true);
+    const { data } = await getCrmStockMovements(business.id, productId);
+    setMovements(data || []);
+    setLoadingMov(false);
+  }, [business?.id]);
+
+  useEffect(() => { loadProducts(); loadRecentMovements(); }, [loadProducts, loadRecentMovements]);
+
+  const handleSelect = (p) => {
+    setSelected(p);
+    loadProductMovements(p.id);
   };
 
-  useEffect(() => { load(); }, [business?.id]);
-
-  const handleMovement = async (mov) => {
-    const result = await registerStockMovement(business.id, mov);
-    if (!result.error) { setModal(null); load(); }
-    return result;
+  const handleBack = () => {
+    setSelected(null);
+    setMovements([]);
   };
+
+  // Después de un movimiento: refrescar producto y movimientos
+  const handleMovementDone = async () => {
+    await loadProducts();
+    if (selected) loadProductMovements(selected.id);
+    loadRecentMovements();
+    // Sync stock_actual en el producto seleccionado
+    setProducts(prev => {
+      const updated = prev.find(p => p.id === selected?.id);
+      if (updated) setSelected(updated);
+      return prev;
+    });
+  };
+
+  // Sync selected product cuando cambia la lista
+  useEffect(() => {
+    if (!selected) return;
+    const fresh = products.find(p => p.id === selected.id);
+    if (fresh) setSelected(fresh);
+  }, [products]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleMinimoSave = async (productId, value) => {
     await updateStockMinimo(productId, value);
-    load();
-  };
-
-  const filtered = products.filter(p => !search || p.name.toLowerCase().includes(search.toLowerCase()));
-  const withStock = filtered.filter(p => p.stock_actual != null);
-  const withoutStock = filtered.filter(p => p.stock_actual == null);
-
-  const stockStatus = (p) => {
-    if (p.stock_actual == null) return null;
-    if (p.stock_actual === 0) return 'agotado';
-    if (p.stock_minimo != null && p.stock_actual <= p.stock_minimo) return 'bajo';
-    return 'ok';
-  };
-
-  const renderProduct = (p) => {
-    const status = stockStatus(p);
-    return (
-      <div key={p.id} className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-sm transition-shadow">
-        {/* Nombre + imagen */}
-        <div className="flex items-center gap-3 min-w-0 mb-3">
-          {p.thumbnail_url ? (
-            <img src={p.thumbnail_url} alt={p.name} className="w-10 h-10 rounded-lg object-cover shrink-0" />
-          ) : (
-            <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center shrink-0">
-              <Icon name="Package" size={18} className="text-gray-400" />
-            </div>
-          )}
-          <div className="min-w-0 flex-1">
-            <p className="font-semibold text-gray-900 truncate text-sm">{p.name}</p>
-            {p.category && <p className="text-xs text-gray-400">{p.category}</p>}
-          </div>
-        </div>
-        {/* Stock + mínimo + badge + botón */}
-        <div className="flex items-center gap-4 flex-wrap">
-          <div className="text-center">
-            <p className="text-xs text-gray-400 mb-0.5">Stock</p>
-            <p className={`text-lg font-bold leading-none ${
-              status === 'agotado' ? 'text-red-500' :
-              status === 'bajo' ? 'text-yellow-500' :
-              status === 'ok' ? 'text-green-600' : 'text-gray-400'
-            }`}>
-              {p.stock_actual ?? '—'}
-            </p>
-          </div>
-          <div className="text-center">
-            <p className="text-xs text-gray-400 mb-1">Mínimo</p>
-            <MinimoEditor product={p} onSave={handleMinimoSave} />
-          </div>
-          {status === 'bajo' && <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full font-medium">Stock bajo</span>}
-          {status === 'agotado' && <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-medium">Agotado</span>}
-          <button
-            onClick={() => setModal(p)}
-            className="ml-auto inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium"
-          >
-            <Icon name="ArrowUpDown" size={13} />Movimiento
-          </button>
-        </div>
-      </div>
-    );
+    await loadProducts();
   };
 
   return (
     <DashboardAppShell>
       <PanelHeader
-        title={<><CrmBreadcrumb section="Stock" /><h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Control de stock</h1></>}
-        subtitle={<p className="text-xs" style={{ color: 'var(--color-muted-foreground)' }}>{loading ? 'Cargando…' : `${products.length} producto${products.length !== 1 ? 's' : ''}`}</p>}
-        mobileActions={
-          <button
-            onClick={() => setModal(true)}
-            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
-          >
-            <Icon name="ArrowUpDown" size={16} />
-            Nuevo movimiento
-          </button>
+        title={
+          <>
+            <CrmBreadcrumb section="Stock" />
+            <h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>
+              Control de stock
+            </h1>
+          </>
         }
-      >
-        <button
-          onClick={() => setModal(true)}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
-        >
-          <Icon name="ArrowUpDown" size={16} />
-          Nuevo movimiento
-        </button>
-      </PanelHeader>
+        subtitle={
+          <p className="text-xs" style={{ color: 'var(--color-muted-foreground)' }}>
+            {loading ? 'Cargando…' : `${products.length} producto${products.length !== 1 ? 's' : ''}`}
+          </p>
+        }
+      />
 
       <DashboardLayoutContent>
-        <div className="mb-5">
-          <div className="relative w-full sm:max-w-sm">
-            <Icon name="Search" size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Buscar producto…"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="w-full border border-gray-200 rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-        </div>
-
         {loading ? (
           <div className="flex justify-center py-20">
-            <Icon name="Loader2" size={32} className="animate-spin text-blue-500" />
-          </div>
-        ) : products.length === 0 ? (
-          <div className="text-center py-20 text-gray-400">
-            <Icon name="Package" size={48} className="mx-auto mb-3" />
-            <p className="font-medium">No hay productos activos en el catálogo.</p>
+            <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
           </div>
         ) : (
-          <div className="space-y-6">
-            {withStock.length > 0 && (
-              <section>
-                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-                  <Icon name="CheckCircle2" size={14} className="text-green-500" />
-                  Con control de stock ({withStock.length})
-                </h3>
-                <div className="space-y-2">{withStock.map(renderProduct)}</div>
-              </section>
+          <div className="space-y-5">
+            {/* Buscador — siempre visible */}
+            {!selected && (
+              <div className="max-w-2xl mx-auto">
+                <ProductSearch products={products} onSelect={handleSelect} />
+              </div>
             )}
-            {withoutStock.length > 0 && (
-              <section>
-                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-                  <Icon name="Circle" size={14} />
-                  Sin control de stock — activar con un primer movimiento ({withoutStock.length})
-                </h3>
-                <div className="space-y-2">{withoutStock.map(renderProduct)}</div>
-              </section>
+
+            {selected ? (
+              <ProductCard
+                product={selected}
+                businessId={business.id}
+                onBack={handleBack}
+                onMinimoSave={handleMinimoSave}
+                onMovementDone={handleMovementDone}
+                movements={movements}
+                loadingMov={loadingMov}
+              />
+            ) : (
+              <DefaultView
+                products={products}
+                recentMovements={recentMov}
+                loadingMov={loadingRecent}
+                onSelectProduct={handleSelect}
+              />
             )}
-            {filtered.length === 0 && <p className="text-gray-400 text-sm text-center py-10">Sin resultados para "{search}".</p>}
           </div>
         )}
       </DashboardLayoutContent>
-
-      {modal && (
-        <MovementModal
-          products={products}
-          initialProduct={modal === true ? null : modal}
-          onSave={handleMovement}
-          onClose={() => setModal(null)}
-        />
-      )}
     </DashboardAppShell>
   );
 }

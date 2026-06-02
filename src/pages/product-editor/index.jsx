@@ -1379,6 +1379,32 @@ export default function ProductEditor() {
                   </div>
                 </div>
 
+                {/* Gestionar stock — solo en modo edición */}
+                {isEditingFlow && (
+                  <div
+                    className="rounded-2xl border p-5 flex items-center justify-between gap-4"
+                    style={{ borderColor: 'rgba(37,99,235,0.2)', backgroundColor: 'rgba(239,246,255,0.7)' }}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-8 h-8 rounded-xl bg-blue-100 flex items-center justify-center shrink-0">
+                        <Icon name="Archive" size={15} color="#2563eb" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold" style={{ color: 'var(--color-foreground)' }}>Stock e inventario</p>
+                        <p className="text-xs" style={{ color: 'var(--color-muted-foreground)' }}>Entradas, salidas, ajustes y mínimos</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => navigate('/crm/stock')}
+                      className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition-colors"
+                    >
+                      <Icon name="ExternalLink" size={12} />
+                      Gestionar stock
+                    </button>
+                  </div>
+                )}
+
                 {/* Featured toggles */}
                 <div
                   className="rounded-2xl border p-5 md:p-6"
