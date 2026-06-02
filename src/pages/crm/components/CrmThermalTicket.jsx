@@ -3,6 +3,11 @@ import Icon from 'components/AppIcon';
 import { formatMoney } from '../../../utils/formatMoney';
 
 const PAYMENT_LABELS = {
+  cash: 'Efectivo',
+  bank_transfer: 'Transferencia',
+  card: 'Tarjeta',
+  check: 'Cheque',
+  other: 'Otro',
   efectivo: 'Efectivo',
   transferencia: 'Transferencia',
   tarjeta: 'Tarjeta',

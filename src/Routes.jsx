@@ -32,6 +32,7 @@ import CrmInvoices from './pages/crm/CrmInvoices';
 import CrmInvoiceEditor from './pages/crm/CrmInvoiceEditor';
 import CrmStock from './pages/crm/CrmStock';
 import CrmTerminal from './pages/crm/CrmTerminal';
+import CrmCash from './pages/crm/CrmCash';
 import CrmCostCenter from './pages/crm/CrmCostCenter';
 import CrmCaja from './pages/crm/CrmCaja';
 import Login from './pages/login';
@@ -110,6 +111,7 @@ const Routes = () => {
             <Route path="/crm/facturas/:id" element={<RequireAdmin><CrmInvoiceEditor /></RequireAdmin>} />
             <Route path="/crm/stock" element={<RequireAdmin><CrmStock /></RequireAdmin>} />
             <Route path="/crm/terminal" element={<RequireAdmin><CrmTerminal /></RequireAdmin>} />
+            <Route path="/crm/caja" element={<RequireAdmin><CrmCash /></RequireAdmin>} />
             <Route path="/crm/cost-center" element={<RequireAdmin><CrmCostCenter /></RequireAdmin>} />
             <Route path="/crm/caja" element={<RequireAdmin><CrmCaja /></RequireAdmin>} />
             <Route path="/business-configuration" element={<RequireAuth><BusinessConfiguration /></RequireAuth>} />

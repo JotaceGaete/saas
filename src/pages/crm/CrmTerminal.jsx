@@ -12,10 +12,11 @@ import CrmThermalTicket from './components/CrmThermalTicket';
 import { formatMoney, fmtMoneyInput, parseMoneyInput } from '../../utils/formatMoney';
 
 const PAYMENT_METHODS = [
-  { value: 'efectivo',      label: 'Efectivo',      icon: 'Banknote' },
-  { value: 'transferencia', label: 'Transferencia',  icon: 'ArrowLeftRight' },
-  { value: 'tarjeta',       label: 'Tarjeta',        icon: 'CreditCard' },
-  { value: 'otro',          label: 'Otro',           icon: 'MoreHorizontal' },
+  { value: 'cash',          label: 'Efectivo',      icon: 'Banknote' },
+  { value: 'bank_transfer', label: 'Transferencia', icon: 'ArrowLeftRight' },
+  { value: 'card',          label: 'Tarjeta',       icon: 'CreditCard' },
+  { value: 'check',         label: 'Cheque',        icon: 'BadgeCheck' },
+  { value: 'other',         label: 'Otro',          icon: 'MoreHorizontal' },
 ];
 
 const fmt = (n, currency) => formatMoney(n, currency);
@@ -86,7 +87,7 @@ export default function CrmTerminal() {
   const [cart, setCart] = useState([]);
   const [customerId, setCustomerId] = useState('');
   const [discount, setDiscount] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('efectivo');
+  const [paymentMethod, setPaymentMethod] = useState('cash');
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
@@ -149,7 +150,7 @@ export default function CrmTerminal() {
   const total = subtotal - discountAmount;
   const cartCount = cart.reduce((s, i) => s + i.quantity, 0);
 
-  const isEfectivo = paymentMethod === 'efectivo';
+  const isEfectivo = paymentMethod === 'cash';
   const parsedReceived = parseMoneyInput(amountReceived);
   const change = isEfectivo && parsedReceived > 0 ? parsedReceived - total : 0;
   const isCashShort = isEfectivo && amountReceived !== '' && parsedReceived < total;
@@ -160,7 +161,7 @@ export default function CrmTerminal() {
     setCart([]);
     setCustomerId('');
     setDiscount('');
-    setPaymentMethod('efectivo');
+    setPaymentMethod('cash');
     setNotes('');
     setSearch('');
     setActiveCategory('');
@@ -193,15 +194,13 @@ export default function CrmTerminal() {
       discount: discountAmount,
       paymentMethod,
       notes: notes || null,
+      currency: business?.currency || 'CLP',
     });
 
     setBusy(false);
 
     if (error) {
-      // DB failed — show ticket from local state anyway with a TODO marker
-      // TODO: implement dedicated pos_sales table when schema is ready
-      console.warn('[TPV] crm_invoices insert failed, showing local ticket:', error.message);
-      setTicketData({ sale: null, ...saleSnapshot });
+      setErrorMsg(error.message || 'No se pudo registrar el pago de la venta.');
       return;
     }
 

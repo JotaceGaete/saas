@@ -54,6 +54,38 @@ function calcDocTotals(items) {
   };
 }
 
+export const PAYMENT_METHOD_LABELS = {
+  cash: 'Efectivo',
+  card: 'Tarjeta',
+  bank_transfer: 'Transferencia',
+  check: 'Cheque',
+  other: 'Otro',
+};
+
+export function getLocalDateString() {
+  const d = new Date();
+  const offset = d.getTimezoneOffset();
+  const local = new Date(d.getTime() - offset * 60000);
+  return local.toISOString().slice(0, 10);
+}
+
+export function normalizePaymentMethod(method) {
+  const value = String(method || '').trim().toLowerCase();
+  const map = {
+    cash: 'cash',
+    efectivo: 'cash',
+    card: 'card',
+    tarjeta: 'card',
+    bank_transfer: 'bank_transfer',
+    transferencia: 'bank_transfer',
+    check: 'check',
+    cheque: 'check',
+    other: 'other',
+    otro: 'other',
+  };
+  return map[value] || 'other';
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // CLIENTES
 // ─────────────────────────────────────────────────────────────────────────────
@@ -406,10 +438,13 @@ export async function updateStockMinimo(productId, stockMinimo) {
 // TERMINAL DE VENTAS (POS)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function createPosInvoice(businessId, { customerId, items = [], discount = 0, paymentMethod = 'efectivo', notes }) {
+export async function createPosInvoice(businessId, { customerId, items = [], discount = 0, paymentMethod = 'cash', notes, currency = 'CLP' }) {
   const { data: nextNum, error: numErr } = await supabase
     .rpc('crm_next_invoice_number', { p_business_id: businessId });
   if (numErr) return { data: null, error: numErr };
+
+  const localDate = getLocalDateString();
+  const normalizedPaymentMethod = normalizePaymentMethod(paymentMethod);
 
   const mappedItems = items.map((it, idx) => ({
     product_id: it.product_id || null,
@@ -432,7 +467,7 @@ export async function createPosInvoice(businessId, { customerId, items = [], dis
       business_id: businessId,
       customer_id: customerId || null,
       invoice_number: nextNum,
-      issue_date: new Date().toISOString().slice(0, 10),
+      issue_date: localDate,
       status: 'pagada',
       subtotal: +subtotal.toFixed(2),
       discount_amount: discountAmount,
@@ -451,6 +486,8 @@ export async function createPosInvoice(businessId, { customerId, items = [], dis
     if (itemsErr) return { data: null, error: itemsErr };
   }
 
+  const { data: { user } } = await supabase.auth.getUser();
+
   // Register payment record
   const { error: payErr } = await supabase
     .from('crm_payments')
@@ -458,9 +495,13 @@ export async function createPosInvoice(businessId, { customerId, items = [], dis
       business_id: businessId,
       invoice_id: invoice.id,
       amount: total,
-      payment_method: paymentMethod,
+      currency: currency || 'CLP',
+      payment_method: normalizedPaymentMethod,
       payment_status: 'received',
-      payment_date: new Date().toISOString().slice(0, 10),
+      payment_date: localDate,
+      reference: `TPV ${formatInvoiceNumber(nextNum)}`,
+      notes: notes || null,
+      created_by: user?.id || null,
     });
   if (payErr) return { data: null, error: payErr };
 
@@ -748,6 +789,18 @@ export async function getOpenCashSession(businessId) {
   return data;
 }
 
+export async function getLatestCashSessionForDate(businessId, date = getLocalDateString()) {
+  const { data, error } = await supabase
+    .from('crm_cash_sessions')
+    .select('*')
+    .eq('business_id', businessId)
+    .eq('date', date)
+    .order('opened_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return { data, error };
+}
+
 export async function openCashSession(businessId, { openedBy, initialAmount = null, date = null }) {
   const { data, error } = await supabase
     .from('crm_cash_sessions')
@@ -798,6 +851,17 @@ export async function getPaymentsForSession(businessId, sessionId) {
   if (error) throw error;
 
   return (data || []).map(p => ({ ...p, payment_method: p.payment_method || 'otro' }));
+}
+
+export async function getCashSessionPayments(businessId, date) {
+  const { data, error } = await supabase
+    .from('crm_payments')
+    .select('id, business_id, invoice_id, amount, currency, payment_method, payment_status, payment_date, reference, notes, created_at')
+    .eq('business_id', businessId)
+    .eq('payment_date', date)
+    .eq('payment_status', 'received')
+    .order('created_at', { ascending: false });
+  return { data: data || [], error };
 }
 
 export async function getRecentCashSessions(businessId, limit = 10) {
