@@ -16,19 +16,7 @@ const NAV_ITEMS = [
   { label: 'Productos', path: '/product-management', icon: 'Package' },
   { label: 'Pedidos', path: '/orders', icon: 'ShoppingCart' },
   { label: 'Historial pedidos', path: '/orders/historial', icon: 'History' },
-  {
-    label: 'CRM', path: '/crm', icon: 'LayoutDashboard', adminOnly: true,
-    subItems: [
-      { label: 'Dashboard', path: '/crm' },
-      { label: 'Caja', path: '/crm/caja' },
-      { label: 'Terminal TPV', path: '/crm/terminal' },
-      { label: 'Clientes', path: '/crm/clientes' },
-      { label: 'Stock', path: '/crm/stock' },
-      { label: 'Costos', path: '/crm/costos' },
-      { label: 'Compras', path: '/crm/compras' },
-      { label: 'Termómetro', path: '/crm/cost-center' },
-    ],
-  },
+  { label: 'CRM', path: '/crm', icon: 'LayoutDashboard', adminOnly: true, badge: 'Pro' },
   { label: 'Configuración', path: '/business-configuration', icon: 'Settings' },
   { label: 'Diseño', path: '/design', icon: 'Palette' },
   { label: 'Plan y facturación', path: '/planes', icon: 'CreditCard' },
@@ -193,6 +181,11 @@ Motivo (opcional):`;
                   {!collapsed && (
                     <>
                       <span className="flex-1 text-left truncate">{item?.label}</span>
+                      {item?.badge && (
+                        <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-md bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                          {item.badge}
+                        </span>
+                      )}
                       {item?.subItems && (
                         <Icon name={expanded ? 'ChevronUp' : 'ChevronDown'} size={13} color="currentColor" className="flex-shrink-0 opacity-50" />
                       )}
