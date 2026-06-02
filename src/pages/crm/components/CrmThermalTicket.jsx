@@ -50,9 +50,12 @@ export default function CrmThermalTicket({
   onNewSale,
   onClose,
 }) {
-  const ticketRef = useRef(null);
+  const printingRef = useRef(false);
 
-  // Inject print styles while modal is open
+  // Inject print styles while modal is open.
+  // The modal overlay has crm-ticket-noprint → display:none during print.
+  // #crm-print-ticket-area is a sibling outside the fixed overlay to avoid
+  // Chrome double-rendering position:fixed nested elements.
   useEffect(() => {
     const styleId = 'crm-thermal-print-style';
     const style = document.createElement('style');
@@ -63,13 +66,14 @@ export default function CrmThermalTicket({
           visibility: hidden !important;
         }
 
-        #print-ticket-area,
-        #print-ticket-area * {
+        #crm-print-ticket-area,
+        #crm-print-ticket-area * {
           visibility: visible !important;
         }
 
-        #print-ticket-area {
-          position: absolute !important;
+        #crm-print-ticket-area {
+          display: block !important;
+          position: fixed !important;
           left: 0 !important;
           top: 0 !important;
           width: 58mm !important;
@@ -83,7 +87,7 @@ export default function CrmThermalTicket({
           transform: none !important;
         }
 
-        #print-ticket-area * {
+        #crm-print-ticket-area *:not(img) {
           color: #000 !important;
           background: transparent !important;
           box-shadow: none !important;
@@ -114,183 +118,228 @@ export default function CrmThermalTicket({
 
   const customerName = customer?.name || 'Consumidor final';
 
+  const logoUrl = business?.logoUrl || null;
+  const address = business?.address || null;
+  const phone = business?.whatsapp || null;
+
   const handlePrint = () => {
+    // Guard: prevent double-fire from fast double-clicks or re-entrant calls.
+    if (printingRef.current) return;
+    printingRef.current = true;
+    const reset = () => {
+      printingRef.current = false;
+      window.removeEventListener('afterprint', reset);
+    };
+    window.addEventListener('afterprint', reset);
     window.print();
   };
 
-  return (
-    /* Modal overlay */
-    <div
-      style={{
-        position: 'fixed', inset: 0, zIndex: 9999,
-        backgroundColor: 'rgba(0,0,0,0.55)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: 16,
-      }}
-      role="dialog"
-      aria-modal="true"
-      aria-label="Ticket de venta"
-    >
-      <div style={{
-        backgroundColor: '#fff',
-        borderRadius: 12,
-        boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
-        width: '100%',
-        maxWidth: 400,
-        maxHeight: '90vh',
-        overflowY: 'auto',
-        display: 'flex',
-        flexDirection: 'column',
-      }}>
-
-        {/* Modal header */}
-        <div className="crm-ticket-noprint" style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '14px 16px', borderBottom: '1px solid #f0f0f0',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{
-              width: 32, height: 32, borderRadius: 8, backgroundColor: '#d1fae5',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-              <Icon name="CheckCircle2" size={18} color="#059669" />
-            </div>
-            <div>
-              <p style={{ fontWeight: 700, fontSize: 13, color: '#111827', margin: 0 }}>¡Venta registrada!</p>
-              <p style={{ fontSize: 11, color: '#6b7280', margin: 0 }}>{ticketNumber}</p>
-            </div>
+  // Ticket content — rendered both in the modal preview and in the print-only sibling.
+  const ticketBody = (
+    <div style={{
+      padding: '16px 14px',
+      fontFamily: "'Courier New', Courier, monospace",
+      fontSize: 11,
+      color: '#111',
+      lineHeight: 1.4,
+      backgroundColor: '#fff',
+      width: '100%',
+    }}>
+      {/* Header */}
+      <div style={{ textAlign: 'center', marginBottom: 8 }}>
+        {logoUrl && (
+          <div style={{ marginBottom: 6 }}>
+            <img
+              src={logoUrl}
+              alt={business?.name || 'Logo'}
+              crossOrigin="anonymous"
+              style={{ maxWidth: 100, maxHeight: 56, objectFit: 'contain', display: 'inline-block' }}
+            />
           </div>
-          <button
-            onClick={onClose}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, borderRadius: 6, color: '#9ca3af' }}
-            aria-label="Cerrar"
-          >
-            <Icon name="X" size={18} color="currentColor" />
-          </button>
+        )}
+        <div style={{ fontWeight: 700, fontSize: 14, letterSpacing: 1, textTransform: 'uppercase' }}>
+          {business?.name || 'Mi Negocio'}
         </div>
+        {address && (
+          <div style={{ fontSize: 10, color: '#555', marginTop: 2 }}>{address}</div>
+        )}
+        {phone && (
+          <div style={{ fontSize: 10, color: '#555', marginTop: 1 }}>{phone}</div>
+        )}
+        <div style={{ fontSize: 10, color: '#555', marginTop: 2 }}>Terminal de Ventas</div>
+      </div>
 
-        {/* Ticket body — this IS printed */}
-        <div id="print-ticket-area" ref={ticketRef} style={{
-          padding: '16px 20px',
-          fontFamily: "'Courier New', Courier, monospace",
-          fontSize: 11,
-          color: '#111',
-          lineHeight: 1.4,
-          backgroundColor: '#fff',
-        }}>
-          {/* Header */}
-          <div style={{ textAlign: 'center', marginBottom: 8 }}>
-            <div style={{ fontWeight: 700, fontSize: 14, letterSpacing: 1, textTransform: 'uppercase' }}>
-              {business?.name || 'Mi Negocio'}
+      <Divider />
+
+      <div style={{ fontSize: 10, color: '#444', marginBottom: 4 }}>
+        <div>Ticket: <strong>{ticketNumber}</strong></div>
+        <div>Fecha: {formatDateTime(createdAt)}</div>
+        <div>Cliente: {customerName}</div>
+      </div>
+
+      <Divider />
+
+      {/* Items */}
+      <div style={{ marginBottom: 4 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, fontWeight: 700, marginBottom: 4, color: '#555' }}>
+          <span style={{ flex: '0 0 28px' }}>Cant</span>
+          <span style={{ flex: 1 }}>Producto</span>
+          <span style={{ flex: '0 0 64px', textAlign: 'right' }}>Total</span>
+        </div>
+        {items.map((item, i) => (
+          <div key={item.product_id || item.id || i} style={{ marginBottom: 3 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
+              <span style={{ flex: '0 0 28px', color: '#555' }}>{item.quantity}x</span>
+              <span style={{ flex: 1, fontWeight: 600, wordBreak: 'break-word', paddingRight: 4 }}>{item.name}</span>
+              <span style={{ flex: '0 0 64px', textAlign: 'right' }}>
+                {formatCurrency(item.unit_price * item.quantity, business?.currency)}
+              </span>
             </div>
-            <div style={{ fontSize: 10, color: '#555', marginTop: 2 }}>Terminal de Ventas</div>
-          </div>
-
-          <Divider />
-
-          <div style={{ fontSize: 10, color: '#444', marginBottom: 4 }}>
-            <div>Ticket: <strong>{ticketNumber}</strong></div>
-            <div>Fecha: {formatDateTime(createdAt)}</div>
-            <div>Cliente: {customerName}</div>
-          </div>
-
-          <Divider />
-
-          {/* Items */}
-          <div style={{ marginBottom: 4 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, fontWeight: 700, marginBottom: 4, color: '#555' }}>
-              <span style={{ flex: '0 0 28px' }}>Cant</span>
-              <span style={{ flex: 1 }}>Producto</span>
-              <span style={{ flex: '0 0 64px', textAlign: 'right' }}>Total</span>
-            </div>
-            {items.map((item, i) => (
-              <div key={item.product_id || i} style={{ marginBottom: 3 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
-                  <span style={{ flex: '0 0 28px', color: '#555' }}>{item.quantity}x</span>
-                  <span style={{ flex: 1, fontWeight: 600, wordBreak: 'break-word', paddingRight: 4 }}>{item.name}</span>
-                  <span style={{ flex: '0 0 64px', textAlign: 'right' }}>
-                    {formatCurrency(item.unit_price * item.quantity, business?.currency)}
-                  </span>
-                </div>
-                {item.quantity > 1 && (
-                  <div style={{ paddingLeft: 28, fontSize: 10, color: '#888' }}>
-                    {formatCurrency(item.unit_price, business?.currency)} c/u
-                  </div>
-                )}
+            {item.quantity > 1 && (
+              <div style={{ paddingLeft: 28, fontSize: 10, color: '#888' }}>
+                {formatCurrency(item.unit_price, business?.currency)} c/u
               </div>
-            ))}
-          </div>
-
-          <Divider />
-
-          {/* Totals */}
-          <div style={{ marginBottom: 4 }}>
-            <Row label="Subtotal" value={formatCurrency(subtotal, business?.currency)} />
-            {discountAmount > 0 && (
-              <Row label="Descuento" value={`-${formatCurrency(discountAmount, business?.currency)}`} />
             )}
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, fontWeight: 700, margin: '6px 0' }}>
-            <span>TOTAL</span>
-            <span>{formatCurrency(total, business?.currency)}</span>
-          </div>
+        ))}
+      </div>
 
+      <Divider />
+
+      {/* Totals */}
+      <div style={{ marginBottom: 4 }}>
+        <Row label="Subtotal" value={formatCurrency(subtotal, business?.currency)} />
+        {discountAmount > 0 && (
+          <Row label="Descuento" value={`-${formatCurrency(discountAmount, business?.currency)}`} />
+        )}
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, fontWeight: 700, margin: '6px 0' }}>
+        <span>TOTAL</span>
+        <span>{formatCurrency(total, business?.currency)}</span>
+      </div>
+
+      <Divider />
+
+      <Row label="Método de pago" value={PAYMENT_LABELS[paymentMethod] || paymentMethod} />
+      {amountReceived != null && amountReceived > 0 && (
+        <Row label="Pago recibido" value={formatCurrency(amountReceived, business?.currency)} />
+      )}
+      {change != null && change > 0 && (
+        <Row label="Vuelto" value={formatCurrency(change, business?.currency)} bold />
+      )}
+
+      {notes && (
+        <>
           <Divider />
-
-          <Row label="Método de pago" value={PAYMENT_LABELS[paymentMethod] || paymentMethod} />
-          {amountReceived != null && amountReceived > 0 && (
-            <Row label="Pago recibido" value={formatCurrency(amountReceived, business?.currency)} />
-          )}
-          {change != null && change > 0 && (
-            <Row label="Vuelto" value={formatCurrency(change, business?.currency)} bold />
-          )}
-
-          {notes && (
-            <>
-              <Divider />
-              <div style={{ fontSize: 10, color: '#555' }}>
-                <div style={{ fontWeight: 600, marginBottom: 2 }}>Notas:</div>
-                <div>{notes}</div>
-              </div>
-            </>
-          )}
-
-          <Divider />
-
-          <div style={{ textAlign: 'center', fontSize: 11, color: '#555', marginTop: 8, marginBottom: 4 }}>
-            Gracias por su compra
+          <div style={{ fontSize: 10, color: '#555' }}>
+            <div style={{ fontWeight: 600, marginBottom: 2 }}>Notas:</div>
+            <div>{notes}</div>
           </div>
-        </div>
+        </>
+      )}
 
-        {/* Modal action buttons */}
-        <div className="crm-ticket-noprint" style={{
-          display: 'flex', gap: 10, padding: '12px 16px 16px',
-          borderTop: '1px solid #f0f0f0',
-        }}>
-          <button
-            onClick={handlePrint}
-            style={{
-              flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-              gap: 6, padding: '10px 0', borderRadius: 10, border: '1.5px solid #d1d5db',
-              backgroundColor: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#374151',
-            }}
-          >
-            <Icon name="Printer" size={15} color="currentColor" />
-            Imprimir ticket
-          </button>
-          <button
-            onClick={onNewSale}
-            style={{
-              flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-              gap: 6, padding: '10px 0', borderRadius: 10, border: 'none',
-              backgroundColor: '#059669', cursor: 'pointer', fontSize: 13, fontWeight: 700, color: '#fff',
-            }}
-          >
-            <Icon name="Plus" size={15} color="currentColor" />
-            Nueva venta
-          </button>
-        </div>
+      <Divider />
+
+      <div style={{ textAlign: 'center', fontSize: 11, color: '#555', marginTop: 8, marginBottom: 4 }}>
+        Gracias por su compra
       </div>
     </div>
+  );
+
+  return (
+    <>
+      {/* Modal overlay — crm-ticket-noprint → display:none during @media print.
+          This removes the entire fixed overlay from print layout, preventing Chrome
+          from double-rendering the ticket content. */}
+      <div
+        className="crm-ticket-noprint"
+        style={{
+          position: 'fixed', inset: 0, zIndex: 9999,
+          backgroundColor: 'rgba(0,0,0,0.55)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: 16,
+        }}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Ticket de venta"
+      >
+        <div style={{
+          backgroundColor: '#fff',
+          borderRadius: 12,
+          boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
+          width: '100%',
+          maxWidth: 400,
+          maxHeight: '90vh',
+          overflowY: 'auto',
+          display: 'flex',
+          flexDirection: 'column',
+        }}>
+
+          {/* Modal header */}
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '14px 16px', borderBottom: '1px solid #f0f0f0',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{
+                width: 32, height: 32, borderRadius: 8, backgroundColor: '#d1fae5',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <Icon name="CheckCircle2" size={18} color="#059669" />
+              </div>
+              <div>
+                <p style={{ fontWeight: 700, fontSize: 13, color: '#111827', margin: 0 }}>¡Venta registrada!</p>
+                <p style={{ fontSize: 11, color: '#6b7280', margin: 0 }}>{ticketNumber}</p>
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, borderRadius: 6, color: '#9ca3af' }}
+              aria-label="Cerrar"
+            >
+              <Icon name="X" size={18} color="currentColor" />
+            </button>
+          </div>
+
+          {/* Ticket preview inside modal */}
+          {ticketBody}
+
+          {/* Action buttons */}
+          <div style={{
+            display: 'flex', gap: 10, padding: '12px 16px 16px',
+            borderTop: '1px solid #f0f0f0',
+          }}>
+            <button
+              onClick={handlePrint}
+              style={{
+                flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                gap: 6, padding: '10px 0', borderRadius: 10, border: '1.5px solid #d1d5db',
+                backgroundColor: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#374151',
+              }}
+            >
+              <Icon name="Printer" size={15} color="currentColor" />
+              Imprimir ticket
+            </button>
+            <button
+              onClick={onNewSale}
+              style={{
+                flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                gap: 6, padding: '10px 0', borderRadius: 10, border: 'none',
+                backgroundColor: '#059669', cursor: 'pointer', fontSize: 13, fontWeight: 700, color: '#fff',
+              }}
+            >
+              <Icon name="Plus" size={15} color="currentColor" />
+              Nueva venta
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Print-only ticket — sibling of the modal overlay, outside its fixed context.
+          Hidden on screen via inline style; display:block !important during @media print. */}
+      <div id="crm-print-ticket-area" aria-hidden="true" style={{ display: 'none' }}>
+        {ticketBody}
+      </div>
+    </>
   );
 }
