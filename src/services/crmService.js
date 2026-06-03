@@ -485,9 +485,18 @@ export async function convertQuoteToInvoice(quoteId) {
 export async function getCrmStockProducts(businessId) {
   const { data, error } = await supabase
     .from('wa_products')
-    .select('id, name, price, image_url, thumbnail_url, card_image_url, images, category, stock_actual, stock_minimo, is_active, soldOut, public_code, slug, sku, barcode')
+    .select('id, name, price, image_url, thumbnail_url, card_image_url, images, category, stock_actual, stock_minimo, is_active, is_sold_out, public_code, slug, sku, barcode')
     .eq('business_id', businessId)
     .eq('is_active', true)
+    .order('name', { ascending: true });
+  return { data: data || [], error };
+}
+
+export async function getProductsForBarcodes(businessId) {
+  const { data, error } = await supabase
+    .from('wa_products')
+    .select('id, name, price, is_active, is_sold_out, public_code, slug, sku, barcode, category')
+    .eq('business_id', businessId)
     .order('name', { ascending: true });
   return { data: data || [], error };
 }

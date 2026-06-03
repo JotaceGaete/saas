@@ -9,7 +9,7 @@ import Icon from 'components/AppIcon';
 import { formatMoney } from 'utils/formatMoney';
 import { useAuth } from '../../contexts/AuthContext';
 import {
-  getCrmStockProducts,
+  getProductsForBarcodes,
   generateUniqueBarcode,
   saveProductBarcode,
 } from '../../services/crmService';
@@ -127,7 +127,7 @@ function ProductSearch({ products, selectedIds, onAdd }) {
   const [open, setOpen]   = useState(false);
   const ref               = useRef(null);
 
-  const results = query.trim().length > 0
+  const results = query.trim().length >= 2
     ? products
         .filter(p => {
           const q = query.toLowerCase();
@@ -180,7 +180,7 @@ function ProductSearch({ products, selectedIds, onAdd }) {
           ))}
         </div>
       )}
-      {open && query.trim() && results.length === 0 && (
+      {open && query.trim().length >= 2 && results.length === 0 && (
         <div className="absolute z-30 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-xl px-4 py-4 text-sm text-gray-400 text-center">
           Sin resultados
         </div>
@@ -250,7 +250,7 @@ export default function CrmBarcodes() {
   const load = useCallback(async () => {
     if (!business?.id) return;
     setLoading(true);
-    const { data } = await getCrmStockProducts(business.id);
+    const { data } = await getProductsForBarcodes(business.id);
     const products = data || [];
     setAllProducts(products);
 
