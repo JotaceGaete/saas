@@ -14,11 +14,88 @@ import {
   saveProductBarcode,
 } from '../../services/crmService';
 
-const fmt = (n) => formatMoney(n, 'CLP');
+const fmt = (n, currency) => formatMoney(n, currency || 'CLP');
+
+// ─── Configuración de tamaños ─────────────────────────────────────────────────
+
+const LABEL_SIZES = {
+  S: {
+    id: 'S',
+    label: 'Pequeña',
+    dims: '30×20mm',
+    use: 'Estanterías pequeñas',
+    widthMm: 30,
+    heightMm: 20,
+    cols: 6,
+    nameFontSize: '5px',
+    nameMaxChars: 28,
+    codeFontSize: '4px',
+    priceFontSize: '9px',
+    barcodeHeight: 18,
+    barcodeWidth: 1.0,
+    paddingX: '1mm',
+    paddingY: '0.5mm',
+    gapMm: 2,
+  },
+  M: {
+    id: 'M',
+    label: 'Mediana',
+    dims: '50×30mm',
+    use: 'Formato estándar',
+    widthMm: 50,
+    heightMm: 30,
+    cols: 4,
+    nameFontSize: '7px',
+    nameMaxChars: 36,
+    codeFontSize: '5.5px',
+    priceFontSize: '14px',
+    barcodeHeight: 28,
+    barcodeWidth: 1.4,
+    paddingX: '1.5mm',
+    paddingY: '1mm',
+    gapMm: 2,
+  },
+  L: {
+    id: 'L',
+    label: 'Grande',
+    dims: '70×40mm',
+    use: 'Productos de exhibición',
+    widthMm: 70,
+    heightMm: 40,
+    cols: 3,
+    nameFontSize: '9px',
+    nameMaxChars: 48,
+    codeFontSize: '6.5px',
+    priceFontSize: '20px',
+    barcodeHeight: 38,
+    barcodeWidth: 1.6,
+    paddingX: '2mm',
+    paddingY: '1.5mm',
+    gapMm: 3,
+  },
+  XL: {
+    id: 'XL',
+    label: 'XL',
+    dims: '100×50mm',
+    use: 'Góndolas y cartelería',
+    widthMm: 100,
+    heightMm: 50,
+    cols: 2,
+    nameFontSize: '11px',
+    nameMaxChars: 60,
+    codeFontSize: '8px',
+    priceFontSize: '28px',
+    barcodeHeight: 52,
+    barcodeWidth: 1.8,
+    paddingX: '3mm',
+    paddingY: '2mm',
+    gapMm: 3,
+  },
+};
 
 // ─── Barcode SVG ──────────────────────────────────────────────────────────────
 
-function BarcodeSvg({ value, height = 32 }) {
+function BarcodeSvg({ value, height, width }) {
   const ref = useRef(null);
 
   useEffect(() => {
@@ -26,55 +103,129 @@ function BarcodeSvg({ value, height = 32 }) {
     try {
       JsBarcode(ref.current, value, {
         format: 'EAN13',
-        width: 1.2,
-        height,
+        width: width || 1.2,
+        height: height || 32,
         displayValue: false,
         margin: 0,
       });
     } catch {
-      // invalid barcode value — leave empty
+      // invalid barcode — leave empty
     }
-  }, [value, height]);
+  }, [value, height, width]);
 
   if (!value) return null;
-  return <svg ref={ref} className="w-full" />;
+  return <svg ref={ref} style={{ width: '100%', display: 'block' }} />;
 }
 
 // ─── Etiqueta individual ──────────────────────────────────────────────────────
 
-function BarcodeLabel({ product }) {
-  const shortName = (product.name || '').slice(0, 28);
+function BarcodeLabel({ product, size = 'S', currency }) {
+  const cfg = LABEL_SIZES[size];
+  const name = (product.name || '').slice(0, cfg.nameMaxChars);
+
   return (
     <div
-      className="barcode-label flex flex-col items-center justify-between px-1 py-0.5"
+      className="barcode-label"
       style={{
-        width: '30mm',
-        height: '20mm',
+        width: `${cfg.widthMm}mm`,
+        height: `${cfg.heightMm}mm`,
         overflow: 'hidden',
-        border: '0.2mm dashed #bbb',
+        border: '0.2mm dashed #ccc',
         pageBreakInside: 'avoid',
         boxSizing: 'border-box',
-        fontFamily: 'monospace',
+        fontFamily: "'Arial', 'Helvetica', sans-serif",
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingLeft: cfg.paddingX,
+        paddingRight: cfg.paddingX,
+        paddingTop: cfg.paddingY,
+        paddingBottom: cfg.paddingY,
+        backgroundColor: '#fff',
       }}
     >
-      <p style={{ fontSize: '5px', fontWeight: 700, textAlign: 'center', lineHeight: 1.2, maxWidth: '100%', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
-        {shortName}
+      {/* Nombre — arriba, 1 línea */}
+      <p style={{
+        fontSize: cfg.nameFontSize,
+        fontWeight: 700,
+        textAlign: 'center',
+        lineHeight: 1.2,
+        width: '100%',
+        overflow: 'hidden',
+        whiteSpace: 'nowrap',
+        textOverflow: 'ellipsis',
+        color: '#333',
+        margin: 0,
+        flexShrink: 0,
+      }}>
+        {name}
       </p>
-      <div style={{ width: '100%', flex: 1, display: 'flex', alignItems: 'center' }}>
-        <BarcodeSvg value={product.barcode} height={22} />
+
+      {/* Barcode — zona media */}
+      <div style={{ width: '100%', flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 0 }}>
+        <BarcodeSvg value={product.barcode} height={cfg.barcodeHeight} width={cfg.barcodeWidth} />
+        <p style={{
+          fontSize: cfg.codeFontSize,
+          fontFamily: 'monospace',
+          letterSpacing: '0.3px',
+          color: '#555',
+          margin: '0.5mm 0 0',
+          textAlign: 'center',
+          lineHeight: 1,
+        }}>
+          {product.barcode}
+        </p>
       </div>
-      <div style={{ textAlign: 'center', fontSize: '4.5px', lineHeight: 1.2 }}>
-        <div style={{ letterSpacing: '0.5px' }}>{product.barcode}</div>
-        {product.price != null && <div style={{ fontWeight: 700 }}>{fmt(product.price)}</div>}
-      </div>
+
+      {/* Precio — zona inferior, elemento dominante */}
+      {product.price != null && (
+        <p style={{
+          fontSize: cfg.priceFontSize,
+          fontWeight: 900,
+          textAlign: 'center',
+          lineHeight: 1,
+          color: '#000',
+          margin: 0,
+          flexShrink: 0,
+          letterSpacing: '-0.5px',
+        }}>
+          {fmt(product.price, currency)}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ─── Selector de tamaño ───────────────────────────────────────────────────────
+
+function SizeSelector({ value, onChange }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {Object.values(LABEL_SIZES).map(s => (
+        <button
+          key={s.id}
+          onClick={() => onChange(s.id)}
+          className={`flex flex-col items-start px-3 py-2 rounded-xl border text-left transition-all ${
+            value === s.id
+              ? 'border-blue-500 bg-blue-50 text-blue-700'
+              : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+          }`}
+        >
+          <span className="font-bold text-sm">{s.label}</span>
+          <span className="text-[10px] opacity-70">{s.dims}</span>
+          <span className="text-[10px] opacity-50 mt-0.5">{s.use}</span>
+        </button>
+      ))}
     </div>
   );
 }
 
 // ─── Fila de selección de producto ───────────────────────────────────────────
 
-function ProductRow({ item, onQtyChange, onRemove, onGenerateBarcode }) {
+function ProductRow({ item, onQtyChange, onRemove, onGenerateBarcode, generating }) {
   const hasBarcode = !!item.barcode;
+  const isGenerating = generating === item.id;
   return (
     <div className="flex items-center gap-3 py-2.5 border-b border-gray-100 last:border-0">
       {item.thumbnail_url ? (
@@ -92,14 +243,15 @@ function ProductRow({ item, onQtyChange, onRemove, onGenerateBarcode }) {
           ) : (
             <button
               onClick={() => onGenerateBarcode(item)}
-              className="text-xs text-amber-600 hover:text-amber-700 flex items-center gap-1 font-semibold"
+              disabled={isGenerating}
+              className="text-xs text-amber-600 hover:text-amber-700 flex items-center gap-1 font-semibold disabled:opacity-50"
             >
-              <Icon name="Wand2" size={11} />
-              Generar código
+              <Icon name={isGenerating ? 'Loader2' : 'Wand2'} size={11} className={isGenerating ? 'animate-spin' : ''} />
+              {isGenerating ? 'Generando…' : 'Generar código'}
             </button>
           )}
           {item.sku && <span className="text-xs text-gray-400">SKU: {item.sku}</span>}
-          {item.price != null && <span className="text-xs text-gray-400">{fmt(item.price)}</span>}
+          {item.price != null && <span className="text-xs text-gray-400 font-medium">{fmt(item.price)}</span>}
         </div>
       </div>
       <div className="flex items-center gap-2 shrink-0">
@@ -191,32 +343,32 @@ function ProductSearch({ products, selectedIds, onAdd }) {
 
 // ─── Vista previa de impresión ────────────────────────────────────────────────
 
-function PrintPreview({ items }) {
+function PrintPreview({ items, size, currency }) {
+  const cfg = LABEL_SIZES[size];
   const labels = items.flatMap(item =>
     Array.from({ length: item.qty }, (_, i) => ({ ...item, _labelKey: `${item.id}-${i}` }))
   );
 
   return (
-    <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(6, 30mm)',
-        gap: '2mm',
-        padding: '0',
-        width: 'fit-content',
-        margin: '0 auto',
-      }}
-    >
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: `repeat(${cfg.cols}, ${cfg.widthMm}mm)`,
+      gap: `${cfg.gapMm}mm`,
+      width: 'fit-content',
+      margin: '0 auto',
+    }}>
       {labels.map(item => (
-        <BarcodeLabel key={item._labelKey} product={item} />
+        <BarcodeLabel key={item._labelKey} product={item} size={size} currency={currency} />
       ))}
     </div>
   );
 }
 
-// ─── CSS de impresión ─────────────────────────────────────────────────────────
+// ─── CSS de impresión (dinámico según tamaño) ─────────────────────────────────
 
-const PRINT_STYLE = `
+function buildPrintStyle(size) {
+  const cfg = LABEL_SIZES[size];
+  return `
 @media print {
   body * {
     visibility: hidden !important;
@@ -230,8 +382,8 @@ const PRINT_STYLE = `
     left: 0 !important;
     top: 0 !important;
     display: grid !important;
-    grid-template-columns: repeat(6, 30mm) !important;
-    gap: 2mm !important;
+    grid-template-columns: repeat(${cfg.cols}, ${cfg.widthMm}mm) !important;
+    gap: ${cfg.gapMm}mm !important;
   }
   @page {
     size: A4;
@@ -239,25 +391,35 @@ const PRINT_STYLE = `
   }
 }
 `;
+}
 
 // ─── Página principal ─────────────────────────────────────────────────────────
 
 export default function CrmBarcodes() {
-  const { business }           = useAuth();
-  const [searchParams]         = useSearchParams();
-  const [allProducts, setAllProducts] = useState([]);
-  const [loading, setLoading]  = useState(true);
-  const [items, setItems]      = useState([]); // { ...product, qty }
-  const [showPreview, setShowPreview] = useState(false);
-  const [generating, setGenerating]  = useState(null); // product id being generated
+  const { business }                    = useAuth();
+  const [searchParams]                  = useSearchParams();
+  const [allProducts, setAllProducts]   = useState([]);
+  const [loading, setLoading]           = useState(true);
+  const [items, setItems]               = useState([]);
+  const [showPreview, setShowPreview]   = useState(false);
+  const [generating, setGenerating]     = useState(null);
+  const [labelSize, setLabelSize]       = useState('S');
+  const printStyleRef                   = useRef(null);
 
-  // Inject print CSS once
+  // Inject/update print CSS when size changes
   useEffect(() => {
-    const style = document.createElement('style');
-    style.textContent = PRINT_STYLE;
-    document.head.appendChild(style);
-    return () => document.head.removeChild(style);
-  }, []);
+    if (!printStyleRef.current) {
+      printStyleRef.current = document.createElement('style');
+      document.head.appendChild(printStyleRef.current);
+    }
+    printStyleRef.current.textContent = buildPrintStyle(labelSize);
+    return () => {
+      if (printStyleRef.current) {
+        document.head.removeChild(printStyleRef.current);
+        printStyleRef.current = null;
+      }
+    };
+  }, [labelSize]);
 
   const load = useCallback(async () => {
     if (!business?.id) return;
@@ -266,26 +428,19 @@ export default function CrmBarcodes() {
     const products = data || [];
     setAllProducts(products);
 
-    // Pre-load product from URL param
     const preloadId = searchParams.get('product');
     if (preloadId) {
       const p = products.find(x => x.id === preloadId);
-      if (p && !items.find(i => i.id === p.id)) {
-        setItems([{ ...p, qty: 1 }]);
-      }
+      if (p) setItems([{ ...p, qty: 1 }]);
     }
     setLoading(false);
   }, [business?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { load(); }, [load]);
 
-  const handleAdd = (p) => {
-    setItems(prev => prev.find(i => i.id === p.id) ? prev : [...prev, { ...p, qty: 1 }]);
-  };
-
-  const handleRemove = (id) => setItems(prev => prev.filter(i => i.id !== id));
-
-  const handleQty = (id, qty) => setItems(prev => prev.map(i => i.id === id ? { ...i, qty } : i));
+  const handleAdd    = (p)        => setItems(prev => prev.find(i => i.id === p.id) ? prev : [...prev, { ...p, qty: 1 }]);
+  const handleRemove = (id)       => setItems(prev => prev.filter(i => i.id !== id));
+  const handleQty    = (id, qty)  => setItems(prev => prev.map(i => i.id === id ? { ...i, qty } : i));
 
   const handleGenerateBarcode = async (product) => {
     if (!business?.id) return;
@@ -293,7 +448,6 @@ export default function CrmBarcodes() {
     const { barcode, error } = await generateUniqueBarcode(business.id);
     if (error) { alert(error); setGenerating(null); return; }
     await saveProductBarcode(product.id, barcode);
-    // Update both allProducts and items
     setAllProducts(prev => prev.map(p => p.id === product.id ? { ...p, barcode } : p));
     setItems(prev => prev.map(i => i.id === product.id ? { ...i, barcode } : i));
     setGenerating(null);
@@ -305,12 +459,12 @@ export default function CrmBarcodes() {
   const totalLabels     = items.reduce((s, i) => s + i.qty, 0);
   const hasMissingCodes = items.some(i => !i.barcode);
   const canPrint        = items.length > 0 && !hasMissingCodes;
-
-  const printItems = items.filter(i => i.barcode);
+  const printItems      = items.filter(i => i.barcode);
+  const cfg             = LABEL_SIZES[labelSize];
 
   return (
     <DashboardAppShell>
-      {/* Off-screen print area — always rendered so SVGs are computed */}
+      {/* Off-screen print area — always rendered so SVGs are pre-computed */}
       <div
         className="barcode-print-area"
         aria-hidden="true"
@@ -318,7 +472,7 @@ export default function CrmBarcodes() {
       >
         {printItems.flatMap(item =>
           Array.from({ length: item.qty }, (_, i) => (
-            <BarcodeLabel key={`${item.id}-${i}`} product={item} />
+            <BarcodeLabel key={`${item.id}-${i}`} product={item} size={labelSize} currency={business?.currency} />
           ))
         )}
       </div>
@@ -334,7 +488,7 @@ export default function CrmBarcodes() {
         }
         subtitle={
           <p className="text-xs" style={{ color: 'var(--color-muted-foreground)' }}>
-            Etiquetas 30×20mm · hoja A4
+            Etiqueta {cfg.label} · {cfg.dims} · hoja A4
           </p>
         }
       >
@@ -366,6 +520,12 @@ export default function CrmBarcodes() {
         ) : (
           <div className="space-y-5 max-w-3xl mx-auto">
 
+            {/* Selector de tamaño */}
+            <div className="bg-white rounded-2xl border border-gray-100 p-4 space-y-3">
+              <p className="text-sm font-bold text-gray-800">Tamaño de etiqueta</p>
+              <SizeSelector value={labelSize} onChange={setLabelSize} />
+            </div>
+
             {/* Buscador */}
             <div className="bg-white rounded-2xl border border-gray-100 p-4 space-y-3">
               <p className="text-sm font-bold text-gray-800">Agregar producto</p>
@@ -382,7 +542,7 @@ export default function CrmBarcodes() {
                   {hasMissingCodes && (
                     <span className="text-xs text-amber-600 flex items-center gap-1">
                       <Icon name="AlertTriangle" size={12} />
-                      Algunos productos no tienen código de barras
+                      Algunos sin código
                     </span>
                   )}
                 </div>
@@ -394,6 +554,7 @@ export default function CrmBarcodes() {
                       onQtyChange={handleQty}
                       onRemove={handleRemove}
                       onGenerateBarcode={handleGenerateBarcode}
+                      generating={generating}
                     />
                   ))}
                 </div>
@@ -406,14 +567,14 @@ export default function CrmBarcodes() {
             )}
 
             {/* Vista previa */}
-            {showPreview && items.length > 0 && (
+            {showPreview && printItems.length > 0 && (
               <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
                 <div className="px-4 py-3 border-b border-gray-100">
-                  <p className="text-sm font-bold text-gray-800">Vista previa</p>
-                  <p className="text-xs text-gray-400 mt-0.5">Tamaño real aproximado en pantalla puede variar según zoom del navegador</p>
+                  <p className="text-sm font-bold text-gray-800">Vista previa — {cfg.label} ({cfg.dims})</p>
+                  <p className="text-xs text-gray-400 mt-0.5">El tamaño en pantalla es aproximado; la impresión usa milímetros exactos.</p>
                 </div>
                 <div className="p-4 overflow-auto">
-                  <PrintPreview items={printItems} />
+                  <PrintPreview items={printItems} size={labelSize} currency={business?.currency} />
                 </div>
                 {hasMissingCodes && (
                   <div className="px-4 pb-4">
@@ -427,9 +588,10 @@ export default function CrmBarcodes() {
 
             {/* Info */}
             <div className="text-xs text-gray-400 text-center space-y-1 pb-4">
-              <p>Etiquetas de 30×20mm · 6 columnas · 13 filas · hasta 78 etiquetas por hoja A4</p>
-              <p>Los códigos internos generados (prefijo 20) son de uso exclusivo del negocio. No reemplazan códigos GS1 oficiales.</p>
+              <p>Formato {cfg.label}: {cfg.dims} · {cfg.cols} columnas por hoja A4</p>
+              <p>Los códigos internos (prefijo 20) son de uso exclusivo del negocio. No reemplazan códigos GS1 oficiales.</p>
             </div>
+
           </div>
         )}
       </DashboardLayoutContent>
