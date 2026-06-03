@@ -389,6 +389,15 @@ export default function CrmPurchases() {
 
   const defaultTaxRate = getDefaultTaxRate(business?.country);
 
+  const navigateMonth = (delta) => {
+    let m = month + delta;
+    let y = year;
+    if (m > 12) { m = 1;  y += 1; }
+    if (m < 1)  { m = 12; y -= 1; }
+    setMonth(m);
+    setYear(y);
+  };
+
   const load = useCallback(async () => {
     if (!business?.id) return;
     setLoading(true);
@@ -449,22 +458,30 @@ export default function CrmPurchases() {
 
       <DashboardLayoutContent>
 
-        {/* Filtros */}
-        <div className="flex flex-col sm:flex-row gap-3 mb-5">
-          {/* Mes / Año */}
-          <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 py-2">
-            <Icon name="Calendar" size={14} className="text-gray-400" />
-            <select value={month} onChange={e => setMonth(+e.target.value)}
-              className="text-sm text-gray-700 border-0 focus:outline-none bg-transparent">
-              {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-            </select>
-            <select value={year} onChange={e => setYear(+e.target.value)}
-              className="text-sm text-gray-700 border-0 focus:outline-none bg-transparent">
-              {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
-            </select>
+        {/* Navegador de mes + filtro tipo — una sola línea compacta */}
+        <div className="flex flex-col sm:flex-row gap-3 mb-5 items-start sm:items-center">
+          {/* ← Mes Año → */}
+          <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-xl px-2 py-1.5">
+            <button
+              onClick={() => navigateMonth(-1)}
+              className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-800 transition-colors"
+              aria-label="Mes anterior"
+            >
+              <Icon name="ChevronLeft" size={15} />
+            </button>
+            <span className="text-sm font-semibold text-gray-800 min-w-[120px] text-center select-none">
+              {MONTHS[month - 1]} {year}
+            </span>
+            <button
+              onClick={() => navigateMonth(1)}
+              className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-800 transition-colors"
+              aria-label="Mes siguiente"
+            >
+              <Icon name="ChevronRight" size={15} />
+            </button>
           </div>
 
-          {/* Tipo */}
+          {/* Filtro por tipo */}
           <div className="flex gap-2 flex-wrap">
             <button
               onClick={() => setTypeFilter('')}
@@ -488,7 +505,7 @@ export default function CrmPurchases() {
           </div>
         </div>
 
-        {/* Resumen */}
+        {/* Resumen — siempre visible arriba */}
         <PeriodSummary purchases={purchases} taxRate={defaultTaxRate} />
 
         {/* Lista */}
