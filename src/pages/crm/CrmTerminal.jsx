@@ -7,7 +7,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useIsDesktop } from 'hooks/useMediaQuery';
 import { getCrmCustomers, getCrmStockProducts, createPosInvoice, getOpenCashSession } from '../../services/crmService';
 import { getEffectivePlanSlug } from '../../services/waBusinessService';
-import { CRM_EARLY_ACCESS_MODE } from '../../config/crmConfig';
+import { canUseFeature } from '../../config/planFeatures';
 import CrmThermalTicket from './components/CrmThermalTicket';
 import CrmBreadcrumb from 'components/ui/CrmBreadcrumb';
 import { formatMoney, fmtMoneyInput, parseMoneyInput } from '../../utils/formatMoney';
@@ -174,7 +174,7 @@ export default function CrmTerminal() {
     business?.planExpiresAt,
     business?.trialExpiresAt
   );
-  const hasAccess = CRM_EARLY_ACCESS_MODE || effectivePlan === 'business';
+  const hasAccess = canUseFeature(effectivePlan, 'pos');
 
   const [products, setProducts] = useState([]);
   const [customers, setCustomers] = useState([]);

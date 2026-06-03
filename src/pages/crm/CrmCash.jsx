@@ -6,7 +6,7 @@ import PanelHeader from 'components/ui/PanelHeader';
 import CrmBreadcrumb from 'components/ui/CrmBreadcrumb';
 import Icon from 'components/AppIcon';
 import { useAuth } from 'contexts/AuthContext';
-import { CRM_EARLY_ACCESS_MODE } from 'config/crmConfig';
+import { canUseFeature } from 'config/planFeatures';
 import { getEffectivePlanSlug } from 'services/waBusinessService';
 import { formatMoney, fmtMoneyInput, parseMoneyInput } from 'utils/formatMoney';
 import {
@@ -414,7 +414,7 @@ export default function CrmCash() {
     business?.planExpiresAt,
     business?.trialExpiresAt
   );
-  const hasAccess = CRM_EARLY_ACCESS_MODE || planSlug === 'business';
+  const hasAccess = canUseFeature(planSlug, 'cashRegister');
 
   const load = useCallback(async () => {
     if (!business?.id || !hasAccess) return;

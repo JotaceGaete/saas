@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from 'contexts/AuthContext';
-import { CRM_EARLY_ACCESS_MODE } from 'config/crmConfig';
+import { canUseFeature } from 'config/planFeatures';
 import { formatMoney } from 'utils/formatMoney';
 import DashboardLayoutContent from 'components/ui/DashboardLayoutContent';
 import DashboardAppShell from 'components/ui/DashboardAppShell';
@@ -626,7 +626,7 @@ export default function CrmCostCenter() {
   const planSlug = getEffectivePlanSlug(
     business?.planSlug, business?.planExpiresAt, business?.trialExpiresAt
   );
-  const isPro = CRM_EARLY_ACCESS_MODE || planSlug === 'business';
+  const isPro = canUseFeature(planSlug, 'costCenter');
 
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth() + 1);

@@ -7,7 +7,7 @@ import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
 import { getCrmDashboardStats } from '../../services/crmService';
 import { getEffectivePlanSlug } from '../../services/waBusinessService';
-import { CRM_EARLY_ACCESS_MODE } from '../../config/crmConfig';
+import { canUseFeature } from '../../config/planFeatures';
 
 // Módulos activos — planRequired: true exige plan Business/Full
 const MODULES = [
@@ -255,7 +255,8 @@ export default function CrmDashboard() {
     business?.planExpiresAt,
     business?.trialExpiresAt
   );
-  const hasCrmAccess = CRM_EARLY_ACCESS_MODE || effectivePlan === 'business';
+  // CRM está disponible desde Starter; hasCrmAccess siempre true para cualquier plan activo.
+  const hasCrmAccess = canUseFeature(effectivePlan, 'pos');
   const stockAlertCount = stats?.stockBajo?.length || 0;
 
   return (
@@ -287,27 +288,8 @@ export default function CrmDashboard() {
           </div>
         </div>
 
-        {/* Plan notice for non-business */}
-        {!hasCrmAccess && (
-          <div className="mb-5 flex min-w-0 max-w-full flex-col gap-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex min-w-0 items-center gap-3">
-              <Icon name="Zap" size={18} className="text-amber-500 shrink-0" />
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-amber-800">CRM disponible en plan Full</p>
-                <p className="text-xs text-amber-600 mt-0.5">Desbloquea todos los módulos de gestión comercial.</p>
-              </div>
-            </div>
-            <button
-              onClick={() => navigate('/planes')}
-              className="shrink-0 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold transition-colors"
-            >
-              Ver planes
-            </button>
-          </div>
-        )}
-
         {/* Stock alert */}
-        {hasCrmAccess && stockAlertCount > 0 && (
+        {stockAlertCount > 0 && (
           <div className="mb-5 flex min-w-0 max-w-full flex-col gap-4 rounded-2xl border border-yellow-200 bg-yellow-50 p-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex min-w-0 items-center gap-3">
               <Icon name="AlertTriangle" size={18} className="text-yellow-600 shrink-0" />
@@ -330,7 +312,7 @@ export default function CrmDashboard() {
             <ModuleCard
               key={mod.id}
               mod={mod}
-              locked={!hasCrmAccess}
+              locked={false}
               stockAlert={mod.id === 'stock' ? stockAlertCount : 0}
               navigate={navigate}
             />
