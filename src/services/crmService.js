@@ -191,35 +191,29 @@ export async function registerCustomerAbono(businessId, { customerId, invoiceId,
 
 // Balance resumido de todos los clientes del negocio (para métricas).
 export async function getBusinessCreditSummary(businessId) {
-  const [invRes, payRes] = await Promise.all([
-    supabase
-      .from('crm_invoices')
-      .select('customer_id, total')
-      .eq('business_id', businessId)
-      .in('status', ['pendiente', 'parcial']),
-    supabase
-      .from('crm_payments')
-      .select('customer_id, amount')
-      .eq('business_id', businessId)
-      .eq('payment_status', 'received'),
-  ]);
+  // Per-invoice calculation with embedded payments — same formula as getCustomerPendingInvoices
+  const { data, error } = await supabase
+    .from('crm_invoices')
+    .select('customer_id, total, crm_payments(amount)')
+    .eq('business_id', businessId)
+    .in('status', ['pendiente', 'parcial']);
 
-  const invoicedByCustomer = {};
-  for (const r of (invRes.data || [])) {
-    if (r.customer_id) invoicedByCustomer[r.customer_id] = (invoicedByCustomer[r.customer_id] || 0) + (r.total || 0);
-  }
-  const paidByCustomer = {};
-  for (const r of (payRes.data || [])) {
-    if (r.customer_id) paidByCustomer[r.customer_id] = (paidByCustomer[r.customer_id] || 0) + (r.amount || 0);
+  if (error) console.error('[getBusinessCreditSummary] query error:', error);
+
+  const balanceByCustomer = {};
+  for (const inv of (data || [])) {
+    if (!inv.customer_id) continue;
+    const pagado = (inv.crm_payments || []).reduce((s, p) => s + (p.amount || 0), 0);
+    const saldo  = Math.max(0, (inv.total || 0) - pagado);
+    console.log(`[creditSummary] inv=${inv.id || '?'} customer=${inv.customer_id} total=${inv.total} pagado=${pagado} saldo=${saldo}`);
+    balanceByCustomer[inv.customer_id] = (balanceByCustomer[inv.customer_id] || 0) + saldo;
   }
 
   let totalPorCobrar = 0;
   let clientesConDeuda = 0;
-  const balanceByCustomer = {};
-  for (const cid of Object.keys(invoicedByCustomer)) {
-    const balance = Math.max(0, (invoicedByCustomer[cid] || 0) - (paidByCustomer[cid] || 0));
-    balanceByCustomer[cid] = balance;
-    if (balance > 0) { clientesConDeuda++; totalPorCobrar += balance; }
+  for (const [cid, bal] of Object.entries(balanceByCustomer)) {
+    console.log(`[creditSummary] customer=${cid} balance_total=${bal}`);
+    if (bal > 0) { clientesConDeuda++; totalPorCobrar += bal; }
   }
 
   return { totalPorCobrar, clientesConDeuda, balanceByCustomer };

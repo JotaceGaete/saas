@@ -262,8 +262,11 @@ function CustomerDetailDrawer({ customer, business, balance, fmt, onClose, onEdi
 
   const totalPendiente = invoices.reduce((s, inv) => {
     const pagado = (inv.crm_payments || []).reduce((p, r) => p + (r.amount || 0), 0);
-    return s + Math.max(0, inv.total - pagado);
+    const saldo  = Math.max(0, inv.total - pagado);
+    console.log(`[drawer] inv=${inv.id} total=${inv.total} pagado=${pagado} saldo=${saldo}`);
+    return s + saldo;
   }, 0);
+  console.log(`[drawer] customer=${customer.id} totalPendiente=${totalPendiente} balance_prop=${balance}`);
 
   const handleAbono = async () => {
     if (!selectedInv) return;
@@ -380,17 +383,17 @@ function CustomerDetailDrawer({ customer, business, balance, fmt, onClose, onEdi
                 )}
               </div>
 
-              {/* Balance rápido */}
+              {/* Balance rápido — usa totalPendiente (dato fresco, misma fórmula que tab cuenta) */}
               <div className={`rounded-xl p-4 flex items-center justify-between ${
-                (balance ?? 0) > 0 ? 'bg-red-50 border border-red-100' : 'bg-green-50 border border-green-100'
+                totalPendiente > 0 ? 'bg-red-50 border border-red-100' : 'bg-green-50 border border-green-100'
               }`}>
                 <div>
                   <p className="text-xs text-gray-500 mb-0.5">Deuda pendiente</p>
-                  <p className={`text-xl font-bold ${(balance ?? 0) > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                    {fmt(balance ?? 0)}
+                  <p className={`text-xl font-bold ${totalPendiente > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                    {loadingInv ? '…' : fmt(totalPendiente)}
                   </p>
                 </div>
-                {(balance ?? 0) === 0
+                {totalPendiente === 0
                   ? <Icon name="CheckCircle2" size={24} color="#059669" />
                   : <button onClick={() => setTab('cuenta')} className="text-xs font-semibold text-red-600 hover:underline">
                       Ver cuenta →
