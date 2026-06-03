@@ -181,6 +181,8 @@ export default function CrmTerminal() {
   const [posProducts, setPosProducts]   = useState([]);
   const [allProducts, setAllProducts]   = useState([]);
   const [posLoading,  setPosLoading]    = useState(true);
+  const [posFallback, setPosFallback]   = useState(false); // true si migración pos no aplicada
+  const [diagVisible, setDiagVisible]   = useState(false);
   const allProductsRef = useRef([]);    // ref para findExactProduct sin re-render
   const customers = useRef([]);
   const [customersDisplay, setCustomersDisplay] = useState([]);
@@ -230,14 +232,27 @@ export default function CrmTerminal() {
     if (!business?.id || !hasAccess) return;
 
     // Carga rápida: solo productos visibles en TPV
-    getPosProducts(business.id).then(({ data }) => {
-      setPosProducts(data || []);
+    getPosProducts(business.id).then((result) => {
+      const list = result.data || [];
+      const fallback = !!result._fallback;
+      console.log('[TPV-diag] getPosProducts →', {
+        total: list.length,
+        fallback,
+        sample: list.slice(0, 3).map(p => ({ id: p.id, name: p.name, show_in_pos: p.show_in_pos })),
+      });
+      setPosProducts(list);
+      setPosFallback(fallback);
       setPosLoading(false);
     });
 
     // Carga en background: todos los activos para búsqueda global
-    getAllActiveProducts(business.id).then(({ data }) => {
+    getAllActiveProducts(business.id).then(({ data, error }) => {
       const list = data || [];
+      console.log('[TPV-diag] getAllActiveProducts →', {
+        total: list.length,
+        error: error?.message ?? null,
+        sample: list.slice(0, 3).map(p => ({ id: p.id, name: p.name })),
+      });
       setAllProducts(list);
       allProductsRef.current = list;
     });
@@ -257,16 +272,24 @@ export default function CrmTerminal() {
   // Con búsqueda: resultados de todos los productos activos.
   const isSearching = debouncedSearch.trim().length > 0;
 
+  // Normaliza texto para búsqueda: minúsculas + sin acentos
+  const normalize = (s) =>
+    (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+
   const filtered = useMemo(() => {
     if (isSearching) {
-      const q = debouncedSearch.toLowerCase();
-      return allProducts.filter(p =>
-        p.name?.toLowerCase().includes(q) ||
-        (p.public_code && p.public_code.toLowerCase().includes(q)) ||
-        (p.sku         && p.sku.toLowerCase().includes(q)) ||
-        (p.barcode     && p.barcode.toLowerCase().includes(q)) ||
-        (p.category    && p.category.toLowerCase().includes(q))
+      const q = normalize(debouncedSearch);
+      // Si no hay productos en allProducts todavía, buscamos en posProducts como fallback
+      const pool = allProducts.length > 0 ? allProducts : posProducts;
+      const results = pool.filter(p =>
+        normalize(p.name).includes(q) ||
+        (p.public_code && normalize(p.public_code).includes(q)) ||
+        (p.sku         && normalize(p.sku).includes(q)) ||
+        (p.barcode     && normalize(p.barcode).includes(q)) ||
+        (p.category    && normalize(p.category).includes(q))
       ).slice(0, 50);
+      console.log(`[TPV-diag] search "${debouncedSearch}" → pool=${pool.length} results=${results.length}`);
+      return results;
     }
     let list = posProducts;
     if (activeCategory) list = list.filter(p => p.category === activeCategory);
@@ -518,6 +541,15 @@ export default function CrmTerminal() {
                 </p>
               }
             >
+              <button
+                onClick={() => setDiagVisible(v => !v)}
+                className="flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-lg border transition-colors"
+                style={{ color: diagVisible ? '#7c3aed' : 'var(--color-muted-foreground)', borderColor: diagVisible ? '#c4b5fd' : 'var(--color-border)', backgroundColor: diagVisible ? '#f5f3ff' : 'transparent' }}
+                title="Panel de diagnóstico TPV"
+              >
+                <Icon name="Bug" size={12} />
+                Diag
+              </button>
               {hideMenuBtn}
             </PanelHeader>
 
@@ -526,6 +558,46 @@ export default function CrmTerminal() {
 
                 {/* ── LEFT: search + categories + products ── */}
                 <div className="flex-1 min-w-0 flex flex-col gap-3">
+
+                  {/* ── Panel de diagnóstico (temporal) ── */}
+                  {diagVisible && (
+                    <div className="rounded-xl border border-purple-200 bg-purple-50 px-4 py-3 text-xs font-mono space-y-1.5">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Icon name="Bug" size={13} color="#7c3aed" />
+                        <span className="font-bold text-purple-800 text-[11px] not-italic" style={{ fontFamily: 'var(--font-caption)' }}>Diagnóstico TPV</span>
+                        {posFallback && (
+                          <span className="ml-auto text-[10px] bg-amber-100 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full font-semibold">
+                            ⚠️ Migración POS no aplicada — modo fallback
+                          </span>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-purple-700">
+                        <span>Productos activos (total):</span>
+                        <strong>{allProducts.length}</strong>
+                        <span>Productos visibles TPV:</span>
+                        <strong>{posProducts.length}{posFallback ? ' (todos — sin filtro show_in_pos)' : ''}</strong>
+                        <span>Resultados búsqueda actual:</span>
+                        <strong>{isSearching ? filtered.length : '—  (sin búsqueda activa)'}</strong>
+                        <span>Búsqueda activa:</span>
+                        <strong>{debouncedSearch || '(vacía)'}</strong>
+                        <span>Pool de búsqueda:</span>
+                        <strong>{allProducts.length > 0 ? `allProducts (${allProducts.length})` : `posProducts fallback (${posProducts.length})`}</strong>
+                      </div>
+                      {allProducts.length > 0 && (
+                        <details className="mt-1">
+                          <summary className="cursor-pointer text-purple-600 hover:text-purple-800">Ver primeros 5 productos</summary>
+                          <ul className="mt-1 space-y-0.5 pl-2 border-l-2 border-purple-200">
+                            {allProducts.slice(0, 5).map(p => (
+                              <li key={p.id} className="text-purple-700">
+                                <strong>{p.name}</strong>
+                                {' · '}sku:{p.sku || '—'}{' · '}code:{p.public_code || '—'}{' · '}show_in_pos:{String(p.show_in_pos ?? '(no field)')}
+                              </li>
+                            ))}
+                          </ul>
+                        </details>
+                      )}
+                    </div>
+                  )}
 
                   {/* Error banner */}
                   {errorMsg === 'NO_OPEN_CASH' ? (

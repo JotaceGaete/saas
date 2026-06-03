@@ -484,7 +484,11 @@ export async function convertQuoteToInvoice(quoteId) {
 // STOCK
 // ─────────────────────────────────────────────────────────────────────────────
 
-const POS_PRODUCT_FIELDS = 'id, name, price, image_url, thumbnail_url, card_image_url, images, category, stock_actual, stock_minimo, is_active, is_sold_out, public_code, slug, sku, barcode, show_in_pos, pos_sort_order';
+// Campos base — siempre disponibles (sin columnas de la migración pos)
+const BASE_PRODUCT_FIELDS = 'id, name, price, image_url, thumbnail_url, card_image_url, images, category, stock_actual, stock_minimo, is_active, is_sold_out, public_code, slug, sku, barcode';
+
+// Campos extendidos incluyendo columnas de la migración pos (puede fallar si migración no aplicada)
+const POS_PRODUCT_FIELDS = `${BASE_PRODUCT_FIELDS}, show_in_pos, pos_sort_order`;
 
 export async function getCrmStockProducts(businessId) {
   const { data, error } = await supabase
@@ -496,8 +500,10 @@ export async function getCrmStockProducts(businessId) {
   return { data: data || [], error };
 }
 
-/** Productos marcados como visibles en TPV, ordenados por pos_sort_order luego nombre. */
+/** Productos marcados como visibles en TPV, ordenados por pos_sort_order luego nombre.
+ *  Si la migración pos no fue aplicada, cae silenciosamente a todos los activos. */
 export async function getPosProducts(businessId) {
+  // Intento 1: con columnas pos (requiere migración aplicada)
   const { data, error } = await supabase
     .from('wa_products')
     .select(POS_PRODUCT_FIELDS)
@@ -506,17 +512,30 @@ export async function getPosProducts(businessId) {
     .eq('show_in_pos', true)
     .order('pos_sort_order', { ascending: true })
     .order('name', { ascending: true });
-  return { data: data || [], error };
-}
 
-/** Todos los productos activos del negocio — para búsqueda global en el TPV. */
-export async function getAllActiveProducts(businessId) {
-  const { data, error } = await supabase
+  if (!error) return { data: data || [], error: null };
+
+  // Fallback: migración aún no aplicada — devuelve todos los activos
+  console.warn('[getPosProducts] show_in_pos column missing, falling back to all active products:', error.message);
+  const fallback = await supabase
     .from('wa_products')
-    .select(POS_PRODUCT_FIELDS)
+    .select(BASE_PRODUCT_FIELDS)
     .eq('business_id', businessId)
     .eq('is_active', true)
     .order('name', { ascending: true });
+  return { data: fallback.data || [], error: null, _fallback: true };
+}
+
+/** Todos los productos activos del negocio — para búsqueda global en el TPV.
+ *  Usa BASE_PRODUCT_FIELDS para no depender de la migración pos. */
+export async function getAllActiveProducts(businessId) {
+  const { data, error } = await supabase
+    .from('wa_products')
+    .select(BASE_PRODUCT_FIELDS)
+    .eq('business_id', businessId)
+    .eq('is_active', true)
+    .order('name', { ascending: true });
+  if (error) console.error('[getAllActiveProducts] error:', error.message);
   return { data: data || [], error };
 }
 
