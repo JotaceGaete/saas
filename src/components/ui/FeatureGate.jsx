@@ -3,21 +3,22 @@ import { useNavigate } from 'react-router-dom';
 import Icon from 'components/AppIcon';
 import { usePlanFeature, useFeatureMinPlan } from 'hooks/usePlanFeature';
 import { PLAN_LABELS } from 'constants/plans';
+import { getFeature } from 'config/planFeatures';
 
-// Beneficios visibles por feature cuando el acceso está bloqueado
-const FEATURE_COPY = {
-  invoices:          { title: 'Notas de venta',           benefits: ['Convierte presupuestos en ventas', 'Seguimiento de pagos', 'Historial completo'] },
-  customerAccount:   { title: 'Cuenta corriente',         benefits: ['Registra abonos parciales', 'Control de deuda por cliente', 'Historial de pagos'] },
-  barcodePrinting:   { title: 'Códigos de barras',        benefits: ['Genera EAN-13 internos', 'Asocia códigos a productos', 'Búsqueda por escáner en TPV'] },
-  labelPrinting:     { title: 'Impresión de etiquetas',   benefits: ['Etiquetas 30×20 mm en A4', '4 formatos de tamaño', 'Precio y barcode en cada etiqueta'] },
-  stockManagement:   { title: 'Control de stock',         benefits: ['Inventario en tiempo real', 'Stock mínimo configurable', 'Alertas de reposición'] },
-  cashRegister:      { title: 'Caja diaria',              benefits: ['Apertura y cierre de caja', 'Movimientos reales', 'Resumen por método de pago'] },
-  purchaseInvoices:  { title: 'Compras y facturas',       benefits: ['Registra facturas recibidas', 'IVA crédito estimado', 'Historial por proveedor'] },
-  fixedCosts:        { title: 'Costos fijos',             benefits: ['Arriendo, sueldos, servicios', 'Vinculado al Termómetro', 'Por categoría'] },
-  costCenter:        { title: 'Termómetro del negocio',   benefits: ['Semáforo de rentabilidad diaria', 'Costo fijo vs ventas', 'IVA neto estimado'] },
-  aiAssistant:       { title: 'Asistente IA',             benefits: ['Respuestas automáticas', 'Sugerencias inteligentes', 'Ahorra tiempo de atención'] },
-  advancedReports:   { title: 'Reportes avanzados',       benefits: ['Análisis de tendencias', 'Exportación de datos', 'Dashboard personalizable'] },
-  customDomains:     { title: 'Dominio personalizado',    benefits: ['Tu catálogo en tu dominio', 'Marca propia', 'Mejor posicionamiento'] },
+// Fallback benefits para features sin datos en PLAN_FEATURES
+const FEATURE_BENEFITS = {
+  invoices:          ['Convierte presupuestos en ventas', 'Seguimiento de pagos', 'Historial completo'],
+  customerAccount:   ['Registra abonos parciales', 'Control de deuda por cliente', 'Historial de pagos'],
+  barcodePrinting:   ['Genera EAN-13 internos', 'Asocia códigos a productos', 'Búsqueda por escáner en TPV'],
+  labelPrinting:     ['Etiquetas 30×20 mm en A4', '4 formatos de tamaño', 'Precio y barcode en cada etiqueta'],
+  stockManagement:   ['Inventario en tiempo real', 'Stock mínimo configurable', 'Alertas de reposición'],
+  cashRegister:      ['Apertura y cierre de caja', 'Movimientos reales', 'Resumen por método de pago'],
+  purchaseInvoices:  ['Registra facturas recibidas', 'IVA crédito estimado', 'Historial por proveedor'],
+  fixedCosts:        ['Arriendo, sueldos, servicios', 'Vinculado al Termómetro', 'Por categoría'],
+  costCenter:        ['Semáforo de rentabilidad diaria', 'Costo fijo vs ventas', 'IVA neto estimado'],
+  aiAssistant:       ['Respuestas automáticas', 'Sugerencias inteligentes', 'Ahorra tiempo de atención'],
+  advancedReports:   ['Análisis de tendencias', 'Exportación de datos', 'Dashboard personalizable'],
+  customDomains:     ['Tu catálogo en tu dominio', 'Marca propia', 'Mejor posicionamiento'],
 };
 
 const PLAN_COLORS = {
@@ -46,7 +47,8 @@ export default function FeatureGate({ feature, children, fallback, compact = fal
 
   if (fallback) return <>{fallback}</>;
 
-  const copy   = FEATURE_COPY[feature] ?? { title: feature, benefits: [] };
+  const feat   = getFeature(feature);
+  const copy   = { title: feat?.label ?? feature, benefits: FEATURE_BENEFITS[feature] ?? [] };
   const colors = PLAN_COLORS[minPlan] ?? PLAN_COLORS.business;
   const planLabel = PLAN_LABELS[minPlan] ?? minPlan;
 
