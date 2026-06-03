@@ -218,12 +218,25 @@ function PrintPreview({ items }) {
 
 const PRINT_STYLE = `
 @media print {
-  body > * { display: none !important; }
-  #barcode-print-root { display: block !important; }
-  @page { size: A4; margin: 10mm; }
-}
-#barcode-print-root {
-  display: none;
+  body * {
+    visibility: hidden !important;
+  }
+  .barcode-print-area,
+  .barcode-print-area * {
+    visibility: visible !important;
+  }
+  .barcode-print-area {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    display: grid !important;
+    grid-template-columns: repeat(6, 30mm) !important;
+    gap: 2mm !important;
+  }
+  @page {
+    size: A4;
+    margin: 10mm;
+  }
 }
 `;
 
@@ -237,7 +250,6 @@ export default function CrmBarcodes() {
   const [items, setItems]      = useState([]); // { ...product, qty }
   const [showPreview, setShowPreview] = useState(false);
   const [generating, setGenerating]  = useState(null); // product id being generated
-  const printRef = useRef(null);
 
   // Inject print CSS once
   useEffect(() => {
@@ -287,23 +299,29 @@ export default function CrmBarcodes() {
     setGenerating(null);
   };
 
-  const handlePrint = () => {
-    const printRoot = document.getElementById('barcode-print-root');
-    if (!printRoot || !printRef.current) return;
-    printRoot.innerHTML = '';
-    printRoot.appendChild(printRef.current.cloneNode(true));
-    window.print();
-  };
+  const handlePrint = () => window.print();
 
   const selectedIds     = new Set(items.map(i => i.id));
   const totalLabels     = items.reduce((s, i) => s + i.qty, 0);
   const hasMissingCodes = items.some(i => !i.barcode);
   const canPrint        = items.length > 0 && !hasMissingCodes;
 
+  const printItems = items.filter(i => i.barcode);
+
   return (
     <DashboardAppShell>
-      {/* Print root — hidden, populated on print */}
-      <div id="barcode-print-root" aria-hidden="true" />
+      {/* Off-screen print area — always rendered so SVGs are computed */}
+      <div
+        className="barcode-print-area"
+        aria-hidden="true"
+        style={{ position: 'absolute', left: '-9999px', top: 0, visibility: 'hidden', pointerEvents: 'none' }}
+      >
+        {printItems.flatMap(item =>
+          Array.from({ length: item.qty }, (_, i) => (
+            <BarcodeLabel key={`${item.id}-${i}`} product={item} />
+          ))
+        )}
+      </div>
 
       <PanelHeader
         title={
@@ -395,9 +413,7 @@ export default function CrmBarcodes() {
                   <p className="text-xs text-gray-400 mt-0.5">Tamaño real aproximado en pantalla puede variar según zoom del navegador</p>
                 </div>
                 <div className="p-4 overflow-auto">
-                  <div ref={printRef}>
-                    <PrintPreview items={items.filter(i => i.barcode)} />
-                  </div>
+                  <PrintPreview items={printItems} />
                 </div>
                 {hasMissingCodes && (
                   <div className="px-4 pb-4">
