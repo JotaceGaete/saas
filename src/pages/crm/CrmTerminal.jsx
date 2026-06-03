@@ -909,7 +909,7 @@ export default function CrmTerminal() {
             {/* ── Mobile sticky bottom bar ────────────────────────────────────
                 Fixed at viewport bottom on small screens (lg:hidden).
                 pb-24 on outer container prevents overlap with content.          */}
-            <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-gray-900 border-t border-gray-800 shadow-2xl px-4 py-3 flex items-center gap-3">
+            <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-800 shadow-2xl px-4 py-3 flex items-center gap-3" style={{ zIndex: 150 }}>
               <div className="flex-1 min-w-0">
                 {discountAmount > 0 && (
                   <p className="text-[10px] text-gray-500 line-through leading-none mb-0.5">
