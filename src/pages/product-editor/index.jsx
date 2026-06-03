@@ -37,6 +37,7 @@ import { getBusinessLocale } from '../../lib/locale/businessLocale';
 import { resolveVentaAiProductDescriptionEndpoint } from '../../lib/ai/resolveVentaAiProductDescriptionUrl.js';
 import { appendCacheBust, uploadToMediaService } from '../../services/mediaUploadService';
 import { getPublicProductUrl } from '../../config/appUrl';
+import { generateUniqueBarcode, saveProductBarcode } from '../../services/crmService';
 
 const EMPTY_FORM = {
   nombre: '',
@@ -192,6 +193,7 @@ export default function ProductEditor() {
   const [manualAddonDraft, setManualAddonDraft] = useState({ emoji: '', label: '', price: '' });
   const [isImprovingDescription, setIsImprovingDescription] = useState(false);
   const [publicCode, setPublicCode] = useState('');
+  const [generatingBarcode, setGeneratingBarcode] = useState(false);
   const [cardImageUrl, setCardImageUrl] = useState(null);
   const [productSlug, setProductSlug] = useState('');
   const toast = useToast();
@@ -956,6 +958,23 @@ export default function ProductEditor() {
     return newErrors;
   };
 
+  const handleGenerateBarcode = async () => {
+    if (!business?.id) return;
+    if (formData?.barcode) {
+      const ok = window.confirm(`Ya tiene un código de barras (${formData.barcode}). ¿Deseas reemplazarlo?`);
+      if (!ok) return;
+    }
+    setGeneratingBarcode(true);
+    const { barcode, error } = await generateUniqueBarcode(business.id);
+    setGeneratingBarcode(false);
+    if (error) { toast.error?.(error); return; }
+    handleFieldChange('barcode', barcode);
+    // Si ya existe el producto, guardarlo inmediatamente
+    if (currentProductId) {
+      await saveProductBarcode(currentProductId, barcode);
+    }
+  };
+
   const handleSave = async (andNew = false) => {
     const validationErrors = validate();
     if (Object.keys(validationErrors)?.length > 0) { setErrors(validationErrors); window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
@@ -1301,6 +1320,8 @@ export default function ProductEditor() {
                     publicCode={isEditingFlow ? publicCode : ''}
                     businessId={business?.id}
                     isRestaurant={isRestaurant}
+                    onGenerateBarcode={handleGenerateBarcode}
+                    productId={isEditingFlow ? currentProductId : null}
                     onCategoryCreated={(cat) => {
                       setBusinessCategories((prev) => [...prev, cat]);
                       toast.success(`Categoría «${cat.name}» creada`);

@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { generateRawEan13 } from '../utils/barcode';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -957,6 +958,36 @@ export async function updateCostItem(id, fields) {
 export async function deleteCostItem(id) {
   const { error } = await supabase.from('crm_cost_items').delete().eq('id', id);
   if (error) throw error;
+}
+
+// ─── Generador de barcode EAN-13 interno ──────────────────────────────────────
+
+/**
+ * Genera un EAN-13 interno único para el negocio (prefijo "20").
+ * Reintenta hasta 10 veces si el código ya existe.
+ * Returns { barcode: string } | { error: string }
+ */
+export async function generateUniqueBarcode(businessId) {
+  for (let i = 0; i < 10; i++) {
+    const code = generateRawEan13();
+    const { data } = await supabase
+      .from('wa_products')
+      .select('id')
+      .eq('business_id', businessId)
+      .eq('barcode', code)
+      .maybeSingle();
+    if (!data) return { barcode: code };
+  }
+  return { error: 'No se pudo generar un código único. Intenta de nuevo.' };
+}
+
+/** Guarda el barcode en el producto (sin sobrescribir si ya tiene uno) */
+export async function saveProductBarcode(productId, barcode) {
+  const { error } = await supabase
+    .from('wa_products')
+    .update({ barcode })
+    .eq('id', productId);
+  return { error };
 }
 
 // ─── Compras registradas ──────────────────────────────────────────────────────
