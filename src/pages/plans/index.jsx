@@ -49,38 +49,48 @@ import { isRestaurantBusiness } from '../../utils/businessType';
 const PAYMENT_DEBUG_PREFIX = '[plans-payment-debug]';
 
 /**
- * Features reales disponibles hoy para mostrar en la página pública.
- * Criterio: solo funcionalidades implementadas, probadas y accesibles para clientes.
- * NO incluir: roadmap, próximamente, parcialmente implementadas.
+ * Datos de planes para la página pública.
+ * Solo funcionalidades implementadas. Sin roadmap ni próximamente.
  * Fuente de verdad interna: /admin/plan-features
  */
-const PUBLIC_PLAN_BULLETS = {
-  starter: [
-    { icon: 'Globe',        text: 'Catálogo público por WhatsApp' },
-    { icon: 'ShoppingCart', text: 'Pedidos desde el catálogo' },
-    { icon: 'Monitor',      text: 'TPV — cobros rápidos en mostrador' },
-    { icon: 'FileText',     text: 'Presupuestos para clientes' },
-    { icon: 'Users',        text: 'Gestión de clientes' },
-    { icon: 'Package',      text: 'Control de stock' },
-    { icon: 'Calculator',   text: 'Caja diaria' },
-    { icon: 'TrendingUp',   text: 'Salud financiera del negocio' },
-  ],
-  pro: [
-    { icon: 'CheckCircle2', text: 'Todo Starter incluido', highlight: true },
-    { icon: 'Receipt',      text: 'Facturas internas' },
-    { icon: 'Printer',      text: 'Impresión de tickets' },
-    { icon: 'CreditCard',   text: 'Cuenta corriente de clientes' },
-    { icon: 'Barcode',      text: 'Códigos de barras EAN-13' },
-    { icon: 'Tag',          text: 'Impresión de etiquetas' },
-    { icon: 'ShoppingBag',  text: 'Facturas de compra y proveedores' },
-    { icon: 'Sparkles',     text: 'Asistente IA' },
-  ],
-  business: [
-    { icon: 'CheckCircle2', text: 'Todo Pro incluido', highlight: true },
-    { icon: 'Infinity',     text: 'Productos y pedidos ilimitados' },
-    { icon: 'BarChart2',    text: 'Reportes y estadísticas avanzadas' },
-    { icon: 'Award',        text: 'Sin branding de Walinka' },
-  ],
+const PLAN_DATA = {
+  starter: {
+    subtitle: 'Ideal para comenzar.',
+    bullets: [
+      { icon: 'Globe',        color: '#3b82f6', bg: 'rgba(59,130,246,0.10)', text: 'Catálogo online por WhatsApp' },
+      { icon: 'ShoppingCart', color: '#8b5cf6', bg: 'rgba(139,92,246,0.10)', text: 'Pedidos desde el catálogo' },
+      { icon: 'Users',        color: '#0ea5e9', bg: 'rgba(14,165,233,0.10)', text: 'Gestión de clientes' },
+      { icon: 'FileText',     color: '#6366f1', bg: 'rgba(99,102,241,0.10)', text: 'Presupuestos' },
+      { icon: 'Monitor',      color: '#0284c7', bg: 'rgba(2,132,199,0.10)',  text: 'TPV básico' },
+      { icon: 'Package',      color: '#059669', bg: 'rgba(5,150,105,0.10)', text: 'Control de stock' },
+      { icon: 'TrendingUp',   color: '#d97706', bg: 'rgba(217,119,6,0.10)', text: 'Salud financiera' },
+    ],
+    limits: ['Hasta 20 productos', 'Hasta 50 pedidos/mes'],
+  },
+  pro: {
+    subtitle: 'Ideal para comercios físicos.',
+    inherit: 'Todo Starter incluido',
+    bullets: [
+      { icon: 'Receipt',      color: '#dc2626', bg: 'rgba(220,38,38,0.10)',  text: 'Facturas internas',          star: true },
+      { icon: 'FileCheck',    color: '#ea580c', bg: 'rgba(234,88,12,0.10)',  text: 'Notas de venta',             star: true },
+      { icon: 'Printer',      color: '#7c3aed', bg: 'rgba(124,58,237,0.10)', text: 'Impresión de tickets',       star: true },
+      { icon: 'CreditCard',   color: '#0891b2', bg: 'rgba(8,145,178,0.10)', text: 'Cuenta corriente',           star: true },
+      { icon: 'AlertCircle',  color: '#b45309', bg: 'rgba(180,83,9,0.10)',  text: 'Seguimiento de deudas',      star: true },
+      { icon: 'Barcode',      color: '#374151', bg: 'rgba(55,65,81,0.10)',  text: 'Códigos de barras EAN-13',   star: true },
+      { icon: 'Tag',          color: '#0d9488', bg: 'rgba(13,148,136,0.10)',text: 'Impresión de etiquetas',     star: true },
+      { icon: 'Sparkles',     color: '#7c3aed', bg: 'rgba(124,58,237,0.10)', text: 'Asistente IA',              star: true },
+    ],
+  },
+  business: {
+    subtitle: 'Control total del negocio.',
+    inherit: 'Todo Pro incluido',
+    bullets: [
+      { icon: 'BarChart2',    color: '#0891b2', bg: 'rgba(8,145,178,0.10)', text: 'Reportes avanzados',         star: true },
+      { icon: 'PieChart',     color: '#7c3aed', bg: 'rgba(124,58,237,0.10)', text: 'Estadísticas completas',    star: true },
+      { icon: 'Sparkles',     color: '#d97706', bg: 'rgba(217,119,6,0.10)', text: 'IA avanzada',                star: true },
+      { icon: 'Zap',          color: '#059669', bg: 'rgba(5,150,105,0.10)', text: 'Funciones premium futuras',  star: true },
+    ],
+  },
 };
 
 /** Copy y alternativa manual bajo el CTA PayPal (sin tocar backend). */
@@ -1155,11 +1165,12 @@ export default function PlansPage() {
                 countryCode: billingCountryForUi,
               });
               const isPurchasable = marketPlan?.enabled !== false && marketPlan?.purchasable !== false;
+                const planData = PLAN_DATA[slug] || { bullets: [] };
               return (
                 <div
                   key={slug}
                   className={[
-                    'relative h-full rounded-2xl border p-4 sm:p-5 flex flex-col transition-[transform,box-shadow,background-color,border-color] duration-300 ease-out hover:-translate-y-0.5 hover:shadow-[0_18px_42px_rgba(15,23,42,0.08)]',
+                    'relative h-full rounded-2xl border p-5 sm:p-6 flex flex-col transition-[transform,box-shadow,background-color,border-color] duration-300 ease-out hover:-translate-y-0.5 hover:shadow-[0_18px_42px_rgba(15,23,42,0.08)]',
                     isProRecommended ? 'ring-2 ring-violet-500/20 shadow-[0_18px_40px_rgba(124,58,237,0.10)] hover:bg-violet-50/40 hover:shadow-[0_22px_48px_rgba(124,58,237,0.16)]' : '',
                   ].filter(Boolean).join(' ')}
                   style={{
@@ -1177,19 +1188,30 @@ export default function PlansPage() {
                       Popular
                     </span>
                   )}
-                  <div className="flex items-center justify-between mb-4 pt-1">
-                    <h2 className="text-lg font-semibold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.015em' }}>
-                      {getPlanLabel(slug)}
-                    </h2>
-                    {isCurrent && (
-                      <span className="text-xs font-semibold px-2 py-1 rounded-full" style={{ backgroundColor: 'var(--color-primary)', color: '#fff' }}>
-                        Actual
-                      </span>
+
+                  {/* Plan header */}
+                  <div className="mb-4 pt-1">
+                    <div className="flex items-center justify-between">
+                      <h2 className="text-xl font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>
+                        {getPlanLabel(slug)}
+                      </h2>
+                      {isCurrent && (
+                        <span className="text-xs font-semibold px-2 py-1 rounded-full" style={{ backgroundColor: 'var(--color-primary)', color: '#fff' }}>
+                          Actual
+                        </span>
+                      )}
+                    </div>
+                    {planData.subtitle && (
+                      <p className="text-sm mt-0.5" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                        {planData.subtitle}
+                      </p>
                     )}
                   </div>
-                  <div className="mb-4 min-h-[4.9rem] sm:min-h-[5.4rem]">
+
+                  {/* Price */}
+                  <div className="mb-5 pb-5 border-b" style={{ borderColor: 'rgba(17,24,39,0.07)' }}>
                     {getDisplayPlanPrice(slug) === 0 ? (
-                      <p className="text-2xl font-bold text-slate-900" style={{ fontFamily: 'var(--font-heading)' }}>
+                      <p className="text-3xl font-bold text-slate-900" style={{ fontFamily: 'var(--font-heading)' }}>
                         Gratis
                       </p>
                     ) : (
@@ -1234,28 +1256,63 @@ export default function PlansPage() {
                       </>
                     )}
                   </div>
-                  <ul className="space-y-1.5 sm:space-y-2 mb-4 sm:mb-6 flex-1">
-                    {(PUBLIC_PLAN_BULLETS[slug] ?? []).map(({ icon, text, highlight }) => {
-                      const checkColor = slug === 'business' ? '#059669' : 'var(--color-primary)';
-                      return (
-                        <li
-                          key={text}
-                          className="flex items-center gap-2 text-sm"
-                          style={{ color: highlight ? 'var(--color-foreground)' : 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}
+
+                  {/* Feature list */}
+                  <div className="flex-1 mb-5 space-y-0.5">
+                    {/* Inherit pill */}
+                    {planData.inherit && (
+                      <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-xl" style={{ backgroundColor: 'rgba(5,150,105,0.07)', border: '1px solid rgba(5,150,105,0.15)' }}>
+                        <Icon name="CheckCircle2" size={14} color="#059669" className="shrink-0" aria-hidden />
+                        <span className="text-sm font-semibold" style={{ color: '#047857', fontFamily: 'var(--font-caption)' }}>
+                          {planData.inherit}
+                        </span>
+                      </div>
+                    )}
+                    {(planData.bullets ?? []).map(({ icon, color, bg, text, star }) => (
+                      <div
+                        key={text}
+                        className="flex items-center gap-3 px-2 py-1.5 rounded-xl"
+                      >
+                        <div
+                          className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+                          style={{ backgroundColor: bg }}
                         >
-                          <Icon
-                            name={highlight ? 'CheckCircle2' : 'Check'}
-                            size={13}
-                            color={highlight ? checkColor : checkColor}
-                            className="shrink-0"
-                            aria-hidden
-                          />
-                          <span className={highlight ? 'font-semibold' : undefined}>{text}</span>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                  <div className="mt-auto pt-3 sm:pt-4 border-t" style={{ borderColor: 'rgba(17,24,39,0.08)' }}>
+                          <Icon name={icon} size={14} color={color} aria-hidden />
+                        </div>
+                        <span
+                          className={`text-sm leading-snug ${star ? 'font-semibold' : ''}`}
+                          style={{ color: star ? 'var(--color-foreground)' : 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)', flex: 1 }}
+                        >
+                          {text}
+                        </span>
+                        {star && slug === 'pro' && (
+                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0" style={{ backgroundColor: 'rgba(124,58,237,0.10)', color: 'var(--color-primary)' }}>
+                            Pro
+                          </span>
+                        )}
+                        {star && slug === 'business' && (
+                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0" style={{ backgroundColor: 'rgba(5,150,105,0.10)', color: '#047857' }}>
+                            Full
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                    {planData.limits && (
+                      <div className="flex flex-wrap gap-1.5 mt-3 pt-3" style={{ borderTop: '1px dashed rgba(17,24,39,0.10)' }}>
+                        {planData.limits.map(limit => (
+                          <span
+                            key={limit}
+                            className="text-[11px] px-2.5 py-1 rounded-full font-medium"
+                            style={{ backgroundColor: 'rgba(17,24,39,0.05)', color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}
+                          >
+                            {limit}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-auto pt-4 border-t" style={{ borderColor: 'rgba(17,24,39,0.08)' }}>
                     {isCurrent ? (
                       <span className="text-sm font-medium" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
                         Tu plan actual
