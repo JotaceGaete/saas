@@ -17,6 +17,7 @@ import {
   getPurchaseInvoices,
 } from 'services/crmService';
 import { getEffectivePlanSlug } from 'services/waBusinessService';
+import BusinessStatusAvatar from 'components/business-status-avatar/BusinessStatusAvatar';
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
@@ -40,25 +41,25 @@ function getState(salesToday, dailyCost) {
 
 const STATE = {
   winning: {
-    emoji: '😊',
+    avatarStatus: 'success',
     label: 'Hoy vas ganando',
     bg: 'from-green-500 to-emerald-600',
     badge: 'bg-green-600/30 text-white',
   },
   breaking: {
-    emoji: '😐',
+    avatarStatus: 'warning',
     label: 'Estás cerca del equilibrio',
     bg: 'from-yellow-400 to-amber-500',
     badge: 'bg-yellow-600/30 text-white',
   },
   losing: {
-    emoji: '😟',
+    avatarStatus: 'danger',
     label: 'Hoy estás perdiendo dinero',
     bg: 'from-red-500 to-rose-600',
     badge: 'bg-red-600/30 text-white',
   },
   unconfigured: {
-    emoji: '🏪',
+    avatarStatus: null,
     label: 'Sin datos de gastos aún',
     bg: 'from-blue-500 to-blue-600',
     badge: 'bg-blue-600/30 text-white',
@@ -99,19 +100,35 @@ function HeroCard({ state, salesToday, dailyCost }) {
   }[state] || '';
 
   return (
-    <div className={`rounded-2xl bg-gradient-to-br ${s.bg} p-7 shadow-lg select-none`}>
-      <div className="flex items-start justify-between mb-5">
-        <div className="flex-1 min-w-0 pr-4">
+    <div className={`rounded-2xl bg-gradient-to-br ${s.bg} p-5 sm:p-7 shadow-lg select-none`}>
+      {/* Header: texto + avatar */}
+      <div className="flex items-start justify-between mb-5 gap-3">
+        <div className="flex-1 min-w-0">
           <p className="text-white/60 text-xs font-semibold uppercase tracking-widest mb-2">Estado hoy</p>
-          <p className="text-3xl font-black leading-tight text-white">{s.label}</p>
+          <p className="text-2xl sm:text-3xl font-black leading-tight text-white">{s.label}</p>
           <p className="text-white/80 text-sm mt-2 leading-relaxed whitespace-pre-line">{subText}</p>
         </div>
-        <span className="text-6xl leading-none shrink-0">{s.emoji}</span>
+        {/* Avatar Lottie animado — 80x80, sin bloquear render */}
+        <div className="w-20 h-20 shrink-0 drop-shadow-lg">
+          {s.avatarStatus
+            ? <BusinessStatusAvatar status={s.avatarStatus} />
+            : <span className="text-5xl leading-none flex items-center justify-center w-full h-full">🏪</span>
+          }
+        </div>
       </div>
 
       {dailyCost > 0 && (
         <>
-          <AnimatedBar pct={pct} colorClass="bg-white/70" height="h-4" />
+          {/* Barra de progreso con porcentaje */}
+          <div className="mb-2">
+            <div className="flex justify-between items-baseline mb-1.5">
+              <span className="text-white/70 text-xs font-semibold">Meta diaria</span>
+              <span className="text-white font-bold text-sm tabular-nums">{pct}%</span>
+            </div>
+            <AnimatedBar pct={pct} colorClass="bg-white/80" height="h-3" />
+          </div>
+
+          {/* Montos */}
           <div className="flex justify-between items-baseline mt-3">
             <span className="font-black text-white text-2xl tabular-nums">{fmt(salesToday)}</span>
             <span className="text-white/60 text-sm">de {fmt(Math.ceil(dailyCost))} hoy</span>
