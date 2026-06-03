@@ -1,5 +1,15 @@
 import { supabase } from '../lib/supabase';
 import { generateRawEan13 } from '../utils/barcode';
+import { hasPlanFeature } from '../config/planFeatures';
+import { CRM_EARLY_ACCESS_MODE } from '../config/crmConfig';
+
+// Helper: verifica feature con early-access override; lanza error 403-style si no tiene acceso
+function assertFeature(planSlug, feature) {
+  if (CRM_EARLY_ACCESS_MODE) return;
+  if (!hasPlanFeature(planSlug, feature)) {
+    throw Object.assign(new Error(`Plan insuficiente para usar "${feature}". Actualiza tu plan.`), { code: 'PLAN_GATE', feature, statusCode: 403 });
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -150,7 +160,8 @@ export async function getCustomerPendingInvoices(businessId, customerId) {
 
 // Registra un abono. Requiere caja abierta.
 // Si el pago cubre el total de la factura, la marca como pagada.
-export async function registerCustomerAbono(businessId, { customerId, invoiceId, amount, paymentMethod, invoiceTotal }) {
+export async function registerCustomerAbono(businessId, { customerId, invoiceId, amount, paymentMethod, invoiceTotal, _planSlug } = {}) {
+  assertFeature(_planSlug ?? 'business', 'customerAccount');
   const { data: openSession } = await getOpenCashSession(businessId);
   if (!openSession) {
     return { data: null, error: { message: 'No hay caja abierta. Abre caja antes de registrar un abono.' } };
@@ -385,7 +396,8 @@ export async function getCrmInvoice(id) {
   return { data, error };
 }
 
-export async function createCrmInvoice(businessId, { customerId, issueDate, dueDate, notes, paymentTerms, deliveryDays, deliveryMethod, commercialNotes, items = [], quoteId }) {
+export async function createCrmInvoice(businessId, { customerId, issueDate, dueDate, notes, paymentTerms, deliveryDays, deliveryMethod, commercialNotes, items = [], quoteId, _planSlug } = {}) {
+  assertFeature(_planSlug ?? 'business', 'invoices');
   const { data: nextNum, error: numErr } = await supabase
     .rpc('crm_next_invoice_number', { p_business_id: businessId });
   if (numErr) return { data: null, error: numErr };
@@ -503,7 +515,8 @@ export async function getCrmStockMovements(businessId, productId) {
   return { data: data || [], error };
 }
 
-export async function registerStockMovement(businessId, { productId, type, quantity, notes }) {
+export async function registerStockMovement(businessId, { productId, type, quantity, notes, _planSlug } = {}) {
+  assertFeature(_planSlug ?? 'business', 'stockManagement');
   const { data: { user } } = await supabase.auth.getUser();
 
   const { error: movErr } = await supabase
@@ -933,7 +946,8 @@ export async function getCostItems(businessId, month, year) {
   return data || [];
 }
 
-export async function createCostItem(businessId, month, year, fields) {
+export async function createCostItem(businessId, month, year, fields, _planSlug) {
+  assertFeature(_planSlug ?? 'business', 'fixedCosts');
   const { data, error } = await supabase
     .from('crm_cost_items')
     .insert({ business_id: businessId, month, year, ...fields })
@@ -966,7 +980,8 @@ export async function deleteCostItem(id) {
  * Reintenta hasta 10 veces si el código ya existe.
  * Returns { barcode: string } | { error: string }
  */
-export async function generateUniqueBarcode(businessId) {
+export async function generateUniqueBarcode(businessId, _planSlug) {
+  assertFeature(_planSlug ?? 'business', 'barcodePrinting');
   for (let i = 0; i < 10; i++) {
     const code = generateRawEan13();
     const { data } = await supabase
@@ -1310,7 +1325,8 @@ export async function getPurchaseInvoices(businessId, { month, year } = {}) {
   return { data: data || [], error };
 }
 
-export async function createPurchaseInvoice(businessId, fields) {
+export async function createPurchaseInvoice(businessId, fields, _planSlug) {
+  assertFeature(_planSlug ?? 'business', 'purchaseInvoices');
   const { data, error } = await supabase
     .from('crm_purchase_invoices')
     .insert({ business_id: businessId, ...fields })
