@@ -198,21 +198,17 @@ export async function getBusinessCreditSummary(businessId) {
     .eq('business_id', businessId)
     .in('status', ['pendiente', 'parcial']);
 
-  if (error) console.error('[getBusinessCreditSummary] query error:', error);
-
   const balanceByCustomer = {};
   for (const inv of (data || [])) {
     if (!inv.customer_id) continue;
     const pagado = (inv.crm_payments || []).reduce((s, p) => s + (p.amount || 0), 0);
     const saldo  = Math.max(0, (inv.total || 0) - pagado);
-    console.log(`[creditSummary] inv=${inv.id || '?'} customer=${inv.customer_id} total=${inv.total} pagado=${pagado} saldo=${saldo}`);
     balanceByCustomer[inv.customer_id] = (balanceByCustomer[inv.customer_id] || 0) + saldo;
   }
 
   let totalPorCobrar = 0;
   let clientesConDeuda = 0;
-  for (const [cid, bal] of Object.entries(balanceByCustomer)) {
-    console.log(`[creditSummary] customer=${cid} balance_total=${bal}`);
+  for (const bal of Object.values(balanceByCustomer)) {
     if (bal > 0) { clientesConDeuda++; totalPorCobrar += bal; }
   }
 

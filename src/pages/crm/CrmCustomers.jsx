@@ -262,11 +262,8 @@ function CustomerDetailDrawer({ customer, business, balance, fmt, onClose, onEdi
 
   const totalPendiente = invoices.reduce((s, inv) => {
     const pagado = (inv.crm_payments || []).reduce((p, r) => p + (r.amount || 0), 0);
-    const saldo  = Math.max(0, inv.total - pagado);
-    console.log(`[drawer] inv=${inv.id} total=${inv.total} pagado=${pagado} saldo=${saldo}`);
-    return s + saldo;
+    return s + Math.max(0, inv.total - pagado);
   }, 0);
-  console.log(`[drawer] customer=${customer.id} totalPendiente=${totalPendiente} balance_prop=${balance}`);
 
   const handleAbono = async () => {
     if (!selectedInv) return;
