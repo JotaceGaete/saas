@@ -410,6 +410,8 @@ const mapProductFromDb = (row) => {
     name: row?.name,
     slug: row?.slug || null,
     publicCode: row?.public_code ?? null,
+    sku:        row?.sku        ?? null,
+    barcode:    row?.barcode    ?? null,
     description: row?.description,
     price: parseFloat(row?.price),
     imageUrl: row?.image_url || imagesArray?.[0] || null,
@@ -1061,6 +1063,8 @@ export const createProduct = async (businessId, productData) => {
       productData?.comboConfig && typeof productData.comboConfig === 'object' && !Array.isArray(productData.comboConfig)
         ? productData.comboConfig
         : null,
+    sku:     productData?.sku     || null,
+    barcode: productData?.barcode || null,
   })?.select()?.single();
   if (error) return { data: null, error };
   const mappedProduct = mapProductFromDb(data);
@@ -1168,6 +1172,8 @@ export const updateProduct = async (productId, productData) => {
         ? productData.comboConfig
         : null;
   }
+  if (productData?.sku     !== undefined) dbUpdates.sku     = productData.sku     || null;
+  if (productData?.barcode !== undefined) dbUpdates.barcode = productData.barcode || null;
   if (productData?.isMainFeatured === true) {
     const businessId = currentProduct?.business_id;
     if (!businessId) {

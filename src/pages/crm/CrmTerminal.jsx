@@ -225,9 +225,29 @@ export default function CrmTerminal() {
   const filtered = useMemo(() => {
     let list = products;
     if (activeCategory) list = list.filter(p => p.category === activeCategory);
-    if (search.trim()) list = list.filter(p => p.name.toLowerCase().includes(search.toLowerCase()));
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter(p =>
+        p.name?.toLowerCase().includes(q) ||
+        (p.public_code && p.public_code.toLowerCase().includes(q)) ||
+        (p.sku        && p.sku.toLowerCase().includes(q)) ||
+        (p.barcode    && p.barcode.toLowerCase().includes(q))
+      );
+    }
     return list.slice(0, 40);
   }, [products, search, activeCategory]);
+
+  // Busca coincidencia exacta de barcode/sku/public_code para lector de código de barras
+  const findExactProduct = useCallback((code) => {
+    const c = code.trim().toLowerCase();
+    if (!c) return null;
+    return (
+      products.find(p => p.barcode    && p.barcode.toLowerCase()    === c) ||
+      products.find(p => p.sku        && p.sku.toLowerCase()        === c) ||
+      products.find(p => p.public_code && p.public_code.toLowerCase() === c) ||
+      null
+    );
+  }, [products]);
 
   const addToCart = (product) => {
     setCart(prev => {
@@ -516,7 +536,20 @@ export default function CrmTerminal() {
                       type="text"
                       value={search}
                       onChange={e => setSearch(e.target.value)}
-                      placeholder="Buscar producto por nombre…"
+                      onKeyDown={e => {
+                        if (e.key !== 'Enter') return;
+                        const exact = findExactProduct(search);
+                        if (exact) {
+                          addToCart(exact);
+                          setSearch('');
+                          e.preventDefault();
+                        } else if (filtered.length === 1) {
+                          addToCart(filtered[0]);
+                          setSearch('');
+                          e.preventDefault();
+                        }
+                      }}
+                      placeholder="Buscar por nombre, SKU o código de barras…"
                       className="w-full pl-10 pr-4 py-3 border-2 border-gray-200 rounded-xl text-sm focus:outline-none focus:border-blue-500 bg-white shadow-sm transition-colors"
                     />
                     {search && (

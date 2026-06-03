@@ -89,6 +89,39 @@ export default function ProductFormFields({ formData, errors, onChange, currency
           </p>
         </div>
       ) : null}
+
+      {/* SKU / Código propio + Código de barras */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div>
+          <label className="block text-[13px] font-semibold mb-1" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}>
+            SKU / Código propio
+          </label>
+          <Input
+            type="text"
+            placeholder="Ej: CAM-001, REF-2024"
+            value={formData?.sku || ''}
+            onChange={(e) => handleChange('sku', e?.target?.value)}
+          />
+          <p className="text-xs mt-1" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+            Tu código interno de referencia
+          </p>
+        </div>
+        <div>
+          <label className="block text-[13px] font-semibold mb-1" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}>
+            Código de barras / EAN
+          </label>
+          <Input
+            type="text"
+            placeholder="Ej: 7891234567890"
+            value={formData?.barcode || ''}
+            onChange={(e) => handleChange('barcode', e?.target?.value)}
+          />
+          <p className="text-xs mt-1" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+            Escanea o escribe el código
+          </p>
+        </div>
+      </div>
+
       {/* Nombre */}
       <div>
         <div className="flex items-end justify-between mb-1">

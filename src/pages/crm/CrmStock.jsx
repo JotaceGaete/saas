@@ -78,7 +78,9 @@ function ProductSearch({ products, onSelect }) {
         const q = query.toLowerCase();
         return (
           p.name?.toLowerCase().includes(q) ||
-          (p.public_code && p.public_code.toLowerCase().includes(q))
+          (p.public_code && p.public_code.toLowerCase().includes(q)) ||
+          (p.sku         && p.sku.toLowerCase().includes(q)) ||
+          (p.barcode     && p.barcode.toLowerCase().includes(q))
         );
       }).slice(0, 8)
     : [];
@@ -136,9 +138,15 @@ function ProductSearch({ products, onSelect }) {
                 )}
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold text-gray-900 truncate">{p.name}</p>
-                  <div className="flex items-center gap-2 mt-0.5">
+                  <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                     {p.public_code && (
                       <span className="text-xs text-blue-600 font-mono">{p.public_code}</span>
+                    )}
+                    {p.sku && (
+                      <span className="text-xs text-gray-500 font-mono">SKU: {p.sku}</span>
+                    )}
+                    {p.barcode && (
+                      <span className="text-xs text-gray-500 font-mono">{p.barcode}</span>
                     )}
                     {p.category && <span className="text-xs text-gray-400">{p.category}</span>}
                   </div>
@@ -450,6 +458,16 @@ function ProductCard({ product, businessId, onBack, onMinimoSave, onMovementDone
               {product.public_code && (
                 <span className="flex items-center gap-1 text-xs bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-lg font-mono font-semibold">
                   <Icon name="Hash" size={11} />{product.public_code}
+                </span>
+              )}
+              {product.sku && (
+                <span className="flex items-center gap-1 text-xs bg-gray-50 text-gray-700 border border-gray-200 px-2 py-0.5 rounded-lg font-mono">
+                  SKU: {product.sku}
+                </span>
+              )}
+              {product.barcode && (
+                <span className="flex items-center gap-1 text-xs bg-gray-50 text-gray-600 border border-gray-200 px-2 py-0.5 rounded-lg font-mono">
+                  <Icon name="Barcode" size={11} />{product.barcode}
                 </span>
               )}
               {product.category && (
