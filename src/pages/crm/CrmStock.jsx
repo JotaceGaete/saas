@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import DashboardAppShell from 'components/ui/DashboardAppShell';
 import DashboardLayoutContent from 'components/ui/DashboardLayoutContent';
 import PanelHeader from 'components/ui/PanelHeader';
@@ -152,7 +152,14 @@ function ProductSearch({ products, onSelect }) {
                   </div>
                 </div>
                 <span className={`shrink-0 text-xs font-semibold px-2 py-0.5 rounded-full ${cfg.color} ${cfg.bg}`}>
-                  {p.stock_actual ?? '—'}
+                  {p.stock_actual == null
+                    ? 'Sin configurar'
+                    : status === 'agotado'
+                      ? `${p.stock_actual} 🔴`
+                      : status === 'bajo'
+                        ? `${p.stock_actual} ⚠️`
+                        : p.stock_actual
+                  }
                 </span>
               </button>
             );
@@ -177,6 +184,55 @@ function DefaultView({ products, recentMovements, loadingMov, onSelectProduct })
     const s = stockStatus(p);
     return s === 'agotado' || s === 'bajo';
   });
+  const hasMovements = recentMovements.length > 0;
+
+  // CAMBIO 1 + 2: onboarding cuando nadie tiene control de stock
+  if (withControl.length === 0 && products.length > 0) {
+    return (
+      <div className="space-y-4 max-w-2xl mx-auto">
+        {/* CAMBIO 2: alerta */}
+        <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3.5">
+          <Icon name="AlertTriangle" size={17} color="#d97706" className="shrink-0 mt-0.5" />
+          <p className="text-sm text-amber-800 leading-snug">
+            <strong>Ningún producto tiene control de stock activado.</strong>{' '}
+            Busca un producto y regístralo para comenzar a controlar tu inventario.
+          </p>
+        </div>
+
+        {/* CAMBIO 1: card de onboarding */}
+        <div className="bg-white rounded-2xl border border-blue-100 overflow-hidden">
+          <div className="px-5 pt-6 pb-5 flex flex-col items-center text-center gap-3">
+            <div className="w-14 h-14 rounded-2xl bg-blue-50 flex items-center justify-center">
+              <Icon name="PackageSearch" size={28} color="#3b82f6" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-gray-900">Cómo comenzar</h3>
+              <p className="text-sm text-gray-500 mt-1 max-w-xs">
+                Busca un producto por nombre o código, luego registra su stock inicial y define un mínimo de alerta.
+              </p>
+            </div>
+            <div className="flex flex-col gap-2 text-sm text-gray-600 w-full max-w-xs mt-1">
+              <div className="flex items-center gap-2.5 bg-gray-50 rounded-xl px-3 py-2.5">
+                <span className="w-5 h-5 rounded-full bg-blue-600 text-white text-[11px] font-bold flex items-center justify-center shrink-0">1</span>
+                <span>Busca el producto en el campo de arriba</span>
+              </div>
+              <div className="flex items-center gap-2.5 bg-gray-50 rounded-xl px-3 py-2.5">
+                <span className="w-5 h-5 rounded-full bg-blue-600 text-white text-[11px] font-bold flex items-center justify-center shrink-0">2</span>
+                <span>Registra una <strong>entrada</strong> con el stock actual</span>
+              </div>
+              <div className="flex items-center gap-2.5 bg-gray-50 rounded-xl px-3 py-2.5">
+                <span className="w-5 h-5 rounded-full bg-blue-600 text-white text-[11px] font-bold flex items-center justify-center shrink-0">3</span>
+                <span>Define el stock mínimo para recibir alertas</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* CAMBIO 3: tipos de movimiento (siempre visible cuando no hay movimientos) */}
+        <MovementTypesCard />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5 max-w-2xl mx-auto">
@@ -197,19 +253,19 @@ function DefaultView({ products, recentMovements, loadingMov, onSelectProduct })
         </div>
       </div>
 
-      {/* Productos críticos */}
+      {/* CAMBIO 6: Productos críticos — prominente arriba */}
       {critical.length > 0 && (
-        <div className="bg-white rounded-2xl border border-red-100 overflow-hidden">
-          <div className="px-5 py-3.5 border-b border-red-100 flex items-center gap-2">
+        <div className="bg-white rounded-2xl border border-red-200 overflow-hidden shadow-sm">
+          <div className="px-5 py-3.5 border-b border-red-100 flex items-center gap-2 bg-red-50/60">
             <Icon name="AlertTriangle" size={15} color="#dc2626" />
-            <p className="text-sm font-bold text-red-700">Productos críticos ({critical.length})</p>
+            <p className="text-sm font-bold text-red-700">Atención: {critical.length} producto{critical.length !== 1 ? 's' : ''} con stock crítico</p>
           </div>
           <div className="divide-y divide-gray-50">
             {critical.slice(0, 8).map(p => (
               <button
                 key={p.id}
                 onClick={() => onSelectProduct(p)}
-                className="w-full flex items-center gap-3 px-5 py-3 hover:bg-red-50/60 transition-colors text-left"
+                className="w-full flex items-center gap-3 px-5 py-3 hover:bg-red-50/40 transition-colors text-left"
               >
                 {p.thumbnail_url ? (
                   <img src={p.thumbnail_url} alt="" className="w-8 h-8 rounded-lg object-cover shrink-0" />
@@ -229,6 +285,9 @@ function DefaultView({ products, recentMovements, loadingMov, onSelectProduct })
         </div>
       )}
 
+      {/* CAMBIO 3: Tarjeta educativa — solo cuando no hay movimientos aún */}
+      {!hasMovements && <MovementTypesCard />}
+
       {/* Últimos movimientos */}
       <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
         <div className="px-5 py-3.5 border-b border-gray-100 flex items-center gap-2">
@@ -240,7 +299,7 @@ function DefaultView({ products, recentMovements, loadingMov, onSelectProduct })
             <div className="w-5 h-5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
           </div>
         ) : recentMovements.length === 0 ? (
-          <p className="text-sm text-gray-400 text-center py-8">Sin movimientos registrados</p>
+          <p className="text-sm text-gray-400 text-center py-8">Sin movimientos registrados aún</p>
         ) : (
           <div className="divide-y divide-gray-50">
             {recentMovements.map(m => {
@@ -267,6 +326,36 @@ function DefaultView({ products, recentMovements, loadingMov, onSelectProduct })
       {/* Ayuda */}
       <div className="text-center py-2">
         <p className="text-sm text-gray-400">Usa el buscador para encontrar un producto y gestionar su stock</p>
+      </div>
+    </div>
+  );
+}
+
+// CAMBIO 3: tarjeta educativa de tipos de movimiento
+function MovementTypesCard() {
+  const types = [
+    { icon: 'TrendingUp',   color: 'text-green-600', bg: 'bg-green-50', label: 'Entrada', desc: 'Recibes mercadería o haces un ingreso manual.' },
+    { icon: 'TrendingDown', color: 'text-red-600',   bg: 'bg-red-50',   label: 'Salida',  desc: 'Retiras unidades fuera del sistema de ventas.' },
+    { icon: 'SlidersHorizontal', color: 'text-blue-600', bg: 'bg-blue-50', label: 'Ajuste', desc: 'Corrige el stock total (inventario físico).' },
+  ];
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+      <div className="px-5 py-3.5 border-b border-gray-100 flex items-center gap-2">
+        <Icon name="BookOpen" size={15} color="#6b7280" />
+        <p className="text-sm font-bold text-gray-800">Tipos de movimiento</p>
+      </div>
+      <div className="px-5 py-4 space-y-3">
+        {types.map(t => (
+          <div key={t.label} className="flex items-start gap-3">
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${t.bg}`}>
+              <Icon name={t.icon} size={15} className={t.color} />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-gray-800">{t.label}</p>
+              <p className="text-xs text-gray-500 mt-0.5">{t.desc}</p>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -399,8 +488,8 @@ function MinimoEditor({ product, onSave }) {
   };
 
   if (!editing) return (
-    <button onClick={start} className="text-sm text-gray-500 hover:text-blue-600 underline underline-offset-2 tabular-nums">
-      {product.stock_minimo != null ? product.stock_minimo : '—'}
+    <button onClick={start} className={`text-sm underline underline-offset-2 tabular-nums ${product.stock_minimo != null ? 'text-gray-500 hover:text-blue-600' : 'text-gray-400 hover:text-blue-500 italic'}`}>
+      {product.stock_minimo != null ? product.stock_minimo : 'No configurado'}
     </button>
   );
 
@@ -488,13 +577,17 @@ function ProductCard({ product, businessId, onBack, onMinimoSave, onMovementDone
         <div className="border-t border-gray-100 px-5 py-4 grid grid-cols-3 gap-4">
           <div className="text-center">
             <p className="text-xs text-gray-400 mb-1">Stock actual</p>
-            <p className={`text-3xl font-black leading-none tabular-nums ${
-              status === 'agotado' ? 'text-red-600' :
-              status === 'bajo'    ? 'text-yellow-600' :
-              status === 'ok'      ? 'text-green-600' : 'text-gray-400'
-            }`}>
-              {product.stock_actual ?? '—'}
-            </p>
+            {product.stock_actual != null ? (
+              <p className={`text-3xl font-black leading-none tabular-nums ${
+                status === 'agotado' ? 'text-red-600' :
+                status === 'bajo'    ? 'text-yellow-600' :
+                status === 'ok'      ? 'text-green-600' : 'text-gray-400'
+              }`}>
+                {product.stock_actual}
+              </p>
+            ) : (
+              <p className="text-xs text-gray-400 italic leading-snug mt-1">No configurado</p>
+            )}
           </div>
           <div className="text-center">
             <p className="text-xs text-gray-400 mb-1.5">Stock mínimo</p>
@@ -505,6 +598,14 @@ function ProductCard({ product, businessId, onBack, onMinimoSave, onMovementDone
             <StatusBadge status={status} />
           </div>
         </div>
+        {/* CAMBIO 4: CTA cuando no hay stock configurado */}
+        {product.stock_actual == null && (
+          <div className="border-t border-dashed border-blue-100 px-5 py-3 bg-blue-50/40 flex items-center justify-between gap-3">
+            <p className="text-xs text-blue-700 leading-snug">
+              Registra una <strong>entrada</strong> abajo para configurar el stock inicial de este producto.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Panel de movimiento */}
