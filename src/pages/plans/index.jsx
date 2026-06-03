@@ -48,6 +48,41 @@ import { isRestaurantBusiness } from '../../utils/businessType';
 
 const PAYMENT_DEBUG_PREFIX = '[plans-payment-debug]';
 
+/**
+ * Features reales disponibles hoy para mostrar en la página pública.
+ * Criterio: solo funcionalidades implementadas, probadas y accesibles para clientes.
+ * NO incluir: roadmap, próximamente, parcialmente implementadas.
+ * Fuente de verdad interna: /admin/plan-features
+ */
+const PUBLIC_PLAN_BULLETS = {
+  starter: [
+    { icon: 'Globe',        text: 'Catálogo público por WhatsApp' },
+    { icon: 'ShoppingCart', text: 'Pedidos desde el catálogo' },
+    { icon: 'Monitor',      text: 'TPV — cobros rápidos en mostrador' },
+    { icon: 'FileText',     text: 'Presupuestos para clientes' },
+    { icon: 'Users',        text: 'Gestión de clientes' },
+    { icon: 'Package',      text: 'Control de stock' },
+    { icon: 'Calculator',   text: 'Caja diaria' },
+    { icon: 'TrendingUp',   text: 'Salud financiera del negocio' },
+  ],
+  pro: [
+    { icon: 'CheckCircle2', text: 'Todo Starter incluido', highlight: true },
+    { icon: 'Receipt',      text: 'Facturas internas' },
+    { icon: 'Printer',      text: 'Impresión de tickets' },
+    { icon: 'CreditCard',   text: 'Cuenta corriente de clientes' },
+    { icon: 'Barcode',      text: 'Códigos de barras EAN-13' },
+    { icon: 'Tag',          text: 'Impresión de etiquetas' },
+    { icon: 'ShoppingBag',  text: 'Facturas de compra y proveedores' },
+    { icon: 'Sparkles',     text: 'Asistente IA' },
+  ],
+  business: [
+    { icon: 'CheckCircle2', text: 'Todo Pro incluido', highlight: true },
+    { icon: 'Infinity',     text: 'Productos y pedidos ilimitados' },
+    { icon: 'BarChart2',    text: 'Reportes y estadísticas avanzadas' },
+    { icon: 'Award',        text: 'Sin branding de Walinka' },
+  ],
+};
+
 /** Copy y alternativa manual bajo el CTA PayPal (sin tocar backend). */
 function PayPalCheckoutHelper({ planSlug, onOpenManualPayment }) {
   const handlePayWithCard = () => {
@@ -1200,82 +1235,25 @@ export default function PlansPage() {
                     )}
                   </div>
                   <ul className="space-y-1.5 sm:space-y-2 mb-4 sm:mb-6 flex-1">
-                    <li className="flex items-center gap-2.5 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
-                      <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg" style={{ backgroundColor: isProRecommended ? 'rgba(124,58,237,0.10)' : 'rgba(17,24,39,0.06)' }} aria-hidden>
-                        <Icon name="Package" size={16} color={isProRecommended ? 'var(--color-primary)' : '#64748b'} />
-                      </span>
-                      <span>
-                        <span className="font-semibold text-slate-800">Productos</span>
-                        {' · '}
-                        {limits.maxProducts == null ? 'Ilimitados' : limits.maxProducts}
-                      </span>
-                    </li>
-                    <li className="flex items-center gap-2.5 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
-                      <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg" style={{ backgroundColor: isProRecommended ? 'rgba(124,58,237,0.10)' : 'rgba(17,24,39,0.06)' }} aria-hidden>
-                        <Icon name="ShoppingCart" size={16} color={isProRecommended ? 'var(--color-primary)' : '#64748b'} />
-                      </span>
-                      <span>
-                        <span className="font-semibold text-slate-800">Pedidos/mes</span>
-                        {' · '}
-                        {limits.maxOrdersPerMonth == null ? 'Ilimitados' : limits.maxOrdersPerMonth}
-                      </span>
-                    </li>
-                    {slug === 'starter' && (
-                      <>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-                          <Icon name="X" size={13} color="var(--color-text-tertiary)" className="shrink-0" aria-hidden />
-                          Sin estadísticas ni ingresos del mes
+                    {(PUBLIC_PLAN_BULLETS[slug] ?? []).map(({ icon, text, highlight }) => {
+                      const checkColor = slug === 'business' ? '#059669' : 'var(--color-primary)';
+                      return (
+                        <li
+                          key={text}
+                          className="flex items-center gap-2 text-sm"
+                          style={{ color: highlight ? 'var(--color-foreground)' : 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}
+                        >
+                          <Icon
+                            name={highlight ? 'CheckCircle2' : 'Check'}
+                            size={13}
+                            color={highlight ? checkColor : checkColor}
+                            className="shrink-0"
+                            aria-hidden
+                          />
+                          <span className={highlight ? 'font-semibold' : undefined}>{text}</span>
                         </li>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-                          <Icon name="X" size={13} color="var(--color-text-tertiary)" className="shrink-0" aria-hidden />
-                          Sin productos más vendidos
-                        </li>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-                          <Icon name="X" size={13} color="var(--color-text-tertiary)" className="shrink-0" aria-hidden />
-                          Sin asistencia de IA
-                        </li>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-                          <Icon name="X" size={13} color="var(--color-text-tertiary)" className="shrink-0" aria-hidden />
-                          Incluye branding de Walinka
-                        </li>
-                      </>
-                    )}
-                    {slug === 'pro' && (
-                      <>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
-                          <Icon name="Check" size={13} color="var(--color-primary)" className="shrink-0" aria-hidden />
-                          Panel completo y estadísticas
-                        </li>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
-                          <Icon name="Check" size={13} color="var(--color-primary)" className="shrink-0" aria-hidden />
-                          Asistencia de IA para descripciones
-                        </li>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
-                          <Icon name="Check" size={13} color="var(--color-primary)" className="shrink-0" aria-hidden />
-                          Branding discreto: Powered by Walinka
-                        </li>
-                      </>
-                    )}
-                    {slug === 'business' && (
-                      <>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
-                          <Icon name="Check" size={13} color="#059669" className="shrink-0" aria-hidden />
-                          Panel completo
-                        </li>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
-                          <Icon name="Check" size={13} color="#059669" className="shrink-0" aria-hidden />
-                          Estadísticas completas
-                        </li>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
-                          <Icon name="Check" size={13} color="#059669" className="shrink-0" aria-hidden />
-                          IA ilimitada
-                        </li>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
-                          <Icon name="Check" size={13} color="#059669" className="shrink-0" aria-hidden />
-                          Sin branding de Walinka
-                        </li>
-                      </>
-                    )}
+                      );
+                    })}
                   </ul>
                   <div className="mt-auto pt-3 sm:pt-4 border-t" style={{ borderColor: 'rgba(17,24,39,0.08)' }}>
                     {isCurrent ? (
