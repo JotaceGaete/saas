@@ -484,10 +484,36 @@ export async function convertQuoteToInvoice(quoteId) {
 // STOCK
 // ─────────────────────────────────────────────────────────────────────────────
 
+const POS_PRODUCT_FIELDS = 'id, name, price, image_url, thumbnail_url, card_image_url, images, category, stock_actual, stock_minimo, is_active, is_sold_out, public_code, slug, sku, barcode, show_in_pos, pos_sort_order';
+
 export async function getCrmStockProducts(businessId) {
   const { data, error } = await supabase
     .from('wa_products')
-    .select('id, name, price, image_url, thumbnail_url, card_image_url, images, category, stock_actual, stock_minimo, is_active, is_sold_out, public_code, slug, sku, barcode')
+    .select(POS_PRODUCT_FIELDS)
+    .eq('business_id', businessId)
+    .eq('is_active', true)
+    .order('name', { ascending: true });
+  return { data: data || [], error };
+}
+
+/** Productos marcados como visibles en TPV, ordenados por pos_sort_order luego nombre. */
+export async function getPosProducts(businessId) {
+  const { data, error } = await supabase
+    .from('wa_products')
+    .select(POS_PRODUCT_FIELDS)
+    .eq('business_id', businessId)
+    .eq('is_active', true)
+    .eq('show_in_pos', true)
+    .order('pos_sort_order', { ascending: true })
+    .order('name', { ascending: true });
+  return { data: data || [], error };
+}
+
+/** Todos los productos activos del negocio — para búsqueda global en el TPV. */
+export async function getAllActiveProducts(businessId) {
+  const { data, error } = await supabase
+    .from('wa_products')
+    .select(POS_PRODUCT_FIELDS)
     .eq('business_id', businessId)
     .eq('is_active', true)
     .order('name', { ascending: true });

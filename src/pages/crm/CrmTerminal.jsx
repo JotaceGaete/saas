@@ -5,7 +5,7 @@ import PanelHeader from 'components/ui/PanelHeader';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
 import { useIsDesktop } from 'hooks/useMediaQuery';
-import { getCrmCustomers, getCrmStockProducts, createPosInvoice, getOpenCashSession } from '../../services/crmService';
+import { getCrmCustomers, getPosProducts, getAllActiveProducts, createPosInvoice, getOpenCashSession } from '../../services/crmService';
 import { getEffectivePlanSlug } from '../../services/waBusinessService';
 import { canUseFeature } from '../../config/planFeatures';
 import CrmThermalTicket from './components/CrmThermalTicket';
@@ -176,9 +176,17 @@ export default function CrmTerminal() {
   );
   const hasAccess = canUseFeature(effectivePlan, 'pos');
 
-  const [products, setProducts] = useState([]);
-  const [customers, setCustomers] = useState([]);
+  // posProducts: solo show_in_pos=true — se muestran en la grilla sin búsqueda
+  // allProducts: todos los activos — se cargan en background para búsqueda global
+  const [posProducts, setPosProducts]   = useState([]);
+  const [allProducts, setAllProducts]   = useState([]);
+  const [posLoading,  setPosLoading]    = useState(true);
+  const allProductsRef = useRef([]);    // ref para findExactProduct sin re-render
+  const customers = useRef([]);
+  const [customersDisplay, setCustomersDisplay] = useState([]);
   const [search, setSearch] = useState('');
+  const searchDebounceRef = useRef(null);
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState('');
   const [cart, setCart] = useState([]);
   const [customerId, setCustomerId] = useState('');
@@ -211,43 +219,73 @@ export default function CrmTerminal() {
     printTicketOnce(String(ticketId));
   }, [ticketData, printTicketOnce]);
 
+  // Debounce search → debouncedSearch
+  useEffect(() => {
+    clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => setDebouncedSearch(search), 260);
+    return () => clearTimeout(searchDebounceRef.current);
+  }, [search]);
+
   useEffect(() => {
     if (!business?.id || !hasAccess) return;
-    getCrmStockProducts(business.id).then(({ data }) => setProducts(data || []));
-    getCrmCustomers(business.id).then(({ data }) => setCustomers(data || []));
+
+    // Carga rápida: solo productos visibles en TPV
+    getPosProducts(business.id).then(({ data }) => {
+      setPosProducts(data || []);
+      setPosLoading(false);
+    });
+
+    // Carga en background: todos los activos para búsqueda global
+    getAllActiveProducts(business.id).then(({ data }) => {
+      const list = data || [];
+      setAllProducts(list);
+      allProductsRef.current = list;
+    });
+
+    getCrmCustomers(business.id).then(({ data }) => {
+      customers.current = data || [];
+      setCustomersDisplay(data || []);
+    });
   }, [business?.id, hasAccess]);
 
   const categories = useMemo(() => {
-    const cats = [...new Set(products.map(p => p.category).filter(Boolean))].sort();
+    const cats = [...new Set(posProducts.map(p => p.category).filter(Boolean))].sort();
     return cats;
-  }, [products]);
+  }, [posProducts]);
+
+  // Sin búsqueda: grilla de productos TPV (show_in_pos), filtrada por categoría.
+  // Con búsqueda: resultados de todos los productos activos.
+  const isSearching = debouncedSearch.trim().length > 0;
 
   const filtered = useMemo(() => {
-    let list = products;
-    if (activeCategory) list = list.filter(p => p.category === activeCategory);
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      list = list.filter(p =>
+    if (isSearching) {
+      const q = debouncedSearch.toLowerCase();
+      return allProducts.filter(p =>
         p.name?.toLowerCase().includes(q) ||
         (p.public_code && p.public_code.toLowerCase().includes(q)) ||
-        (p.sku        && p.sku.toLowerCase().includes(q)) ||
-        (p.barcode    && p.barcode.toLowerCase().includes(q))
-      );
+        (p.sku         && p.sku.toLowerCase().includes(q)) ||
+        (p.barcode     && p.barcode.toLowerCase().includes(q)) ||
+        (p.category    && p.category.toLowerCase().includes(q))
+      ).slice(0, 50);
     }
+    let list = posProducts;
+    if (activeCategory) list = list.filter(p => p.category === activeCategory);
     return list.slice(0, 40);
-  }, [products, search, activeCategory]);
+  }, [posProducts, allProducts, debouncedSearch, isSearching, activeCategory]);
 
-  // Busca coincidencia exacta de barcode/sku/public_code para lector de código de barras
+  // Busca coincidencia exacta de barcode/sku/public_code para lector de código de barras.
+  // Siempre busca en TODOS los productos activos para no perder productos no visibles en grilla.
   const findExactProduct = useCallback((code) => {
     const c = code.trim().toLowerCase();
     if (!c) return null;
+    const pool = allProductsRef.current.length > 0 ? allProductsRef.current : posProducts;
     return (
-      products.find(p => p.barcode    && p.barcode.toLowerCase()    === c) ||
-      products.find(p => p.sku        && p.sku.toLowerCase()        === c) ||
-      products.find(p => p.public_code && p.public_code.toLowerCase() === c) ||
+      pool.find(p => p.barcode     && p.barcode.toLowerCase()     === c) ||
+      pool.find(p => p.sku         && p.sku.toLowerCase()         === c) ||
+      pool.find(p => p.public_code && p.public_code.toLowerCase() === c) ||
       null
     );
-  }, [products]);
+  }, [posProducts]);
 
   const addToCart = (product) => {
     setCart(prev => {
@@ -298,7 +336,7 @@ export default function CrmTerminal() {
     : parsedInitialPayment > 0 ? 'Guardar con abono'
     : 'Guardar en cuenta corriente';
 
-  const selectedCustomer = customers.find(c => c.id === customerId) || null;
+  const selectedCustomer = customersDisplay.find(c => c.id === customerId) || null;
 
   const resetForm = () => {
     setCart([]);
@@ -600,11 +638,44 @@ export default function CrmTerminal() {
                     Artículo manual
                   </button>
 
+                  {/* Indicador de modo búsqueda */}
+                  {isSearching && (
+                    <div className="flex items-center gap-2 text-xs text-blue-600 bg-blue-50 border border-blue-100 rounded-lg px-3 py-1.5">
+                      <Icon name="Search" size={12} />
+                      <span>Buscando en todos los productos activos</span>
+                      <button onClick={() => setSearch('')} className="ml-auto text-blue-400 hover:text-blue-600">
+                        <Icon name="X" size={12} />
+                      </button>
+                    </div>
+                  )}
+
                   {/* Product grid */}
-                  {filtered.length === 0 ? (
-                    <div className="text-center py-16 text-gray-400 text-sm">
+                  {posLoading && !isSearching ? (
+                    <div className="text-center py-16 text-gray-300 text-sm">
+                      <Icon name="Loader2" size={28} className="mx-auto mb-2 animate-spin" />
+                      Cargando productos…
+                    </div>
+                  ) : filtered.length === 0 ? (
+                    <div className="text-center py-14 text-gray-400 text-sm">
                       <Icon name="PackageSearch" size={36} className="mx-auto mb-3 text-gray-200" />
-                      {search ? `Sin resultados para "${search}"` : 'No hay productos activos'}
+                      {isSearching
+                        ? `Sin resultados para "${debouncedSearch}"`
+                        : posProducts.length === 0
+                          ? (
+                            <div className="space-y-2">
+                              <p className="font-medium text-gray-500">No tienes productos rápidos en el TPV.</p>
+                              <p className="text-xs text-gray-400">Marca productos como &quot;Visible en TPV&quot; desde el editor de productos.</p>
+                              <button
+                                onClick={() => navigate('/product-management')}
+                                className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition-colors"
+                              >
+                                <Icon name="Package" size={13} />
+                                Ir a productos
+                              </button>
+                            </div>
+                          )
+                          : 'Sin productos en esta categoría'
+                      }
                     </div>
                   ) : (
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-3 xl:grid-cols-4 gap-2.5">
@@ -652,7 +723,7 @@ export default function CrmTerminal() {
                       className="w-full border border-gray-200 rounded-lg px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
                     >
                       <option value="">👤 Consumidor final</option>
-                      {customers.map(c => (
+                      {customersDisplay.map(c => (
                         <option key={c.id} value={c.id}>
                           {c.name}{c.company ? ` — ${c.company}` : ''}
                         </option>

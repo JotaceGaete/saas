@@ -439,6 +439,8 @@ const mapProductFromDb = (row) => {
     addOns: Array.isArray(row?.add_ons) ? row.add_ons : [],
     isSoldOut: row?.is_sold_out === true,
     showPrice: row?.show_price !== false,
+    showInPos: row?.show_in_pos === true,
+    posSortOrder: row?.pos_sort_order ?? 0,
     comboConfig:
       row?.combo_config && typeof row.combo_config === 'object' && !Array.isArray(row.combo_config)
         ? row.combo_config
@@ -1063,8 +1065,10 @@ export const createProduct = async (businessId, productData) => {
       productData?.comboConfig && typeof productData.comboConfig === 'object' && !Array.isArray(productData.comboConfig)
         ? productData.comboConfig
         : null,
-    sku:     productData?.sku     || null,
-    barcode: productData?.barcode || null,
+    sku:          productData?.sku          || null,
+    barcode:      productData?.barcode      || null,
+    show_in_pos:  productData?.showInPos    === true,
+    pos_sort_order: productData?.posSortOrder ?? 0,
   })?.select()?.single();
   if (error) return { data: null, error };
   const mappedProduct = mapProductFromDb(data);
@@ -1172,8 +1176,10 @@ export const updateProduct = async (productId, productData) => {
         ? productData.comboConfig
         : null;
   }
-  if (productData?.sku     !== undefined) dbUpdates.sku     = productData.sku     || null;
-  if (productData?.barcode !== undefined) dbUpdates.barcode = productData.barcode || null;
+  if (productData?.sku          !== undefined) dbUpdates.sku           = productData.sku     || null;
+  if (productData?.barcode      !== undefined) dbUpdates.barcode       = productData.barcode || null;
+  if (productData?.showInPos    !== undefined) dbUpdates.show_in_pos   = productData.showInPos === true;
+  if (productData?.posSortOrder !== undefined) dbUpdates.pos_sort_order = productData.posSortOrder ?? 0;
   if (productData?.isMainFeatured === true) {
     const businessId = currentProduct?.business_id;
     if (!businessId) {

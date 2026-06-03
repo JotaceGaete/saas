@@ -54,6 +54,7 @@ const EMPTY_FORM = {
   featured: false,
   isMainFeatured: false,
   onSale: false,
+  showInPos: false,
   compareAtPrice: '',
   hasOptions: false,
   optionsDescription: '',
@@ -325,6 +326,7 @@ export default function ProductEditor() {
           featured: data?.featured || false,
           isMainFeatured: data?.isMainFeatured === true,
           onSale: data?.onSale || false,
+          showInPos: data?.showInPos === true,
           compareAtPrice: data?.compareAtPrice != null ? Number(data.compareAtPrice) : '',
           hasOptions: data?.hasOptions || false,
           optionsDescription: data?.optionsDescription || '',
@@ -1030,6 +1032,7 @@ export default function ProductEditor() {
         featured: formData?.featured,
         isMainFeatured: formData?.isMainFeatured === true,
         onSale: formData?.onSale,
+        showInPos: formData?.showInPos === true,
         compareAtPrice: !isNaN(compareAtNum) ? Math.round(compareAtNum) : null,
         hasOptions: formData?.hasOptions,
         optionsDescription: formData?.hasOptions ? (formData?.optionsDescription || null) : null,
@@ -1447,10 +1450,12 @@ export default function ProductEditor() {
                     activo={formData?.activo}
                     featured={formData?.featured}
                     onSale={formData?.onSale}
+                    showInPos={formData?.showInPos}
                     slug={business?.slug ?? ''}
                     onActiveChange={(val) => handleFieldChange('activo', val)}
                     onFeaturedChange={(val) => handleFieldChange('featured', val)}
                     onOnSaleChange={(val) => handleFieldChange('onSale', val)}
+                    onShowInPosChange={(val) => handleFieldChange('showInPos', val)}
                     hideActive
                   />
                 </div>
