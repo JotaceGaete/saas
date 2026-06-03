@@ -695,19 +695,35 @@ export default function CrmCostCenter() {
       />
 
       <DashboardLayoutContent>
-        {/* Selector de período */}
+        {/* Selector de período — navegación con flechas */}
         {!loading && (
-          <div className="flex items-center gap-2 mb-5 max-w-lg mx-auto flex-wrap">
-            <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-xl px-3 py-2">
-              <Icon name="Calendar" size={14} color="#9ca3af" />
-              <select value={month} onChange={e => setMonth(+e.target.value)}
-                className="text-sm text-gray-700 border-0 focus:outline-none bg-transparent pr-1">
-                {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-              </select>
-              <select value={year} onChange={e => setYear(+e.target.value)}
-                className="text-sm text-gray-700 border-0 focus:outline-none bg-transparent pr-1">
-                {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
-              </select>
+          <div className="flex items-center justify-center gap-1 mb-5">
+            <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-xl px-2 py-1.5">
+              <button
+                onClick={() => {
+                  let m = month - 1, y = year;
+                  if (m < 1) { m = 12; y -= 1; }
+                  setMonth(m); setYear(y);
+                }}
+                className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-800 transition-colors"
+                aria-label="Mes anterior"
+              >
+                <Icon name="ChevronLeft" size={15} />
+              </button>
+              <span className="text-sm font-semibold text-gray-800 min-w-[130px] text-center select-none">
+                {MONTHS[month - 1]} {year}
+              </span>
+              <button
+                onClick={() => {
+                  let m = month + 1, y = year;
+                  if (m > 12) { m = 1; y += 1; }
+                  setMonth(m); setYear(y);
+                }}
+                className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-800 transition-colors"
+                aria-label="Mes siguiente"
+              >
+                <Icon name="ChevronRight" size={15} />
+              </button>
             </div>
           </div>
         )}
