@@ -177,7 +177,7 @@ function ModuleCard({ mod, locked, stockAlert, navigate }) {
         <div className="min-w-0">
           <h2 className="font-bold text-gray-900 text-[15px] leading-snug flex min-w-0 items-center gap-2 flex-wrap [overflow-wrap:anywhere]">
             {mod.title}
-            {stockAlert && (
+            {stockAlert > 0 && (
               <span className="text-[10px] font-semibold bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded-full">
                 {stockAlert} alerta{stockAlert !== 1 ? 's' : ''}
               </span>
