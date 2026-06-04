@@ -810,9 +810,9 @@ async function handleDomainLookup(request) {
 
   const { data: dr, error } = await admin
     .from('business_domains')
-    .select('business_id')
+    .select('business_id, status')
     .eq('domain', domain)
-    .eq('status', 'active')
+    .neq('status', 'error')
     .maybeSingle();
 
   if (error || !dr) return jsonResp({ slug: null }, 404);

@@ -100,8 +100,18 @@ function GoRootEntry() {
   if (customDomain) {
     if (!customResolved) return <PremiumLoader fullScreen />;
     if (customSlug) return <Navigate to={`/catalogo/${customSlug}`} replace />;
-    if (typeof window !== 'undefined') window.location.href = 'https://ventalink.app';
-    return <PremiumLoader fullScreen />;
+    // Dominio no encontrado en business_domains — mostrar página neutral sin redirigir
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 px-4 text-center">
+        <div className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center mb-4">
+          <svg width="28" height="28" fill="none" stroke="#9ca3af" strokeWidth="1.8" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><circle cx="12" cy="16" r="0.5" fill="#9ca3af"/>
+          </svg>
+        </div>
+        <h1 className="text-lg font-bold text-gray-700 mb-1">Tienda no encontrada</h1>
+        <p className="text-sm text-gray-400">Este dominio no tiene un catálogo asociado aún.</p>
+      </div>
+    );
   }
 
   if (loading) return <PremiumLoader fullScreen />;
