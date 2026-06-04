@@ -48,19 +48,28 @@ import RefundsPage from './pages/legal/RefundsPage';
 import DLocalReturnPage from './pages/billing-dlocal-return';
 import { useAuth } from './contexts/AuthContext';
 import PremiumLoader from './components/ui/PremiumLoader';
+import { useCustomDomainSlug } from './hooks/useCustomDomainSlug';
 
 /**
- * Raíz `/` en go.ventalink.app: sesión → dashboard; sin sesión → login (nunca apex/www).
- * En otros hosts, navegación relativa a /login o /dashboard para que Vercel redirija al host app.
+ * Raíz `/`:
+ * - Dominios personalizados (business_domains) → renderiza el catálogo directamente.
+ * - go.ventalink.app con sesión → /dashboard; sin sesión → /login.
+ * - Otros hosts Walinka → /login o /dashboard según estado de sesión.
  */
 function GoRootEntry() {
+  const { slug: domainSlug, loading: domainLoading } = useCustomDomainSlug();
   const isGo =
     typeof window !== "undefined" &&
     /(^|\.)go\.ventalink\.app$/.test((window.location?.hostname || "").toLowerCase());
-  const { user, loading } = useAuth();
+  const { user, loading: authLoading } = useAuth();
 
-  if (loading) {
+  if (domainLoading || authLoading) {
     return <PremiumLoader fullScreen />;
+  }
+
+  // Dominio personalizado activo → mostrar catálogo, sin redirigir
+  if (domainSlug) {
+    return <PublicCatalog slugOverride={domainSlug} />;
   }
 
   if (!isGo) {

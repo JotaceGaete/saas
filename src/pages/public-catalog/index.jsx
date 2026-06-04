@@ -139,8 +139,9 @@ function logCfCacheStatusIfPossible(url) {
 
 // SocialLinks, CatalogInfoBlock, CatalogInfoGrid → moved to CatalogStoreHeader.jsx
 
-export default function PublicCatalog() {
-  const { slug } = useParams();
+export default function PublicCatalog({ slugOverride } = {}) {
+  const params = useParams();
+  const slug = slugOverride || params.slug;
   return (
     <CartProvider>
       <CatalogInner slug={slug} />
