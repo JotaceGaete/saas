@@ -19,7 +19,6 @@ const corsHeaders = {
 };
 
 const ALLOWED_PLANS = ['pro', 'business'];
-const PLAN_ORDER: Record<string, number> = { starter: 0, pro: 1, business: 2 };
 
 function getEffectivePlan(planSlug: string | null, planExpiresAt: string | null, trialExpiresAt: string | null): string {
   const slug = planSlug || 'starter';
