@@ -91,7 +91,7 @@ function GoRootEntry() {
 
   useEffect(() => {
     if (!customDomain) return;
-    fetch(`/api/domain-lookup?domain=${encodeURIComponent(hostname)}`)
+    fetch(`/api/seo?mode=domain-lookup&domain=${encodeURIComponent(hostname)}`)
       .then(r => r.ok ? r.json() : Promise.reject())
       .then(({ slug }) => { setCustomSlug(slug || null); setCustomResolved(true); })
       .catch(() => setCustomResolved(true));
