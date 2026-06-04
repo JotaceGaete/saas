@@ -207,6 +207,16 @@
       "destination": "/index.html"
     },
     {
+      "source": "/(.*)",
+      "missing": [
+        { "type": "host", "value": "ventalink.app" },
+        { "type": "host", "value": "go.ventalink.app" },
+        { "type": "host", "value": "cl.ventalink.app" },
+        { "type": "host", "value": "miralatienda.de" }
+      ],
+      "destination": "/index.html"
+    },
+    {
       "source": "/:slug",
       "destination": "/api/seo?slug=:slug&publicPath=short"
     },

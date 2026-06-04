@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { BrowserRouter, Routes as RouterRoutes, Route, Navigate } from "react-router-dom";
 import ScrollToTop from "components/ScrollToTop";
 import ErrorBoundary from "components/ErrorBoundary";
@@ -64,28 +64,51 @@ import DLocalReturnPage from './pages/billing-dlocal-return';
 import { useAuth } from './contexts/AuthContext';
 import PremiumLoader from './components/ui/PremiumLoader';
 
+const PLATFORM_HOSTS = [
+  'ventalink.app',
+  'go.ventalink.app',
+  'cl.ventalink.app',
+  'miralatienda.de',
+  'www.miralatienda.de',
+];
+
+function isCustomDomain(hostname) {
+  if (!hostname || hostname === 'localhost') return false;
+  if (/^(127\.|192\.168\.|10\.|::1)/.test(hostname)) return false;
+  return !PLATFORM_HOSTS.some(h => hostname === h || hostname.endsWith(`.${h}`));
+}
+
 /**
  * Raíz `/` en go.ventalink.app: sesión → dashboard; sin sesión → login (nunca apex/www).
- * En otros hosts, navegación relativa a /login o /dashboard para que Vercel redirija al host app.
+ * En dominios personalizados: resuelve dominio → slug → navega a /catalogo/:slug.
  */
 function GoRootEntry() {
-  const isGo =
-    typeof window !== "undefined" &&
-    /(^|\.)go\.ventalink\.app$/.test((window.location?.hostname || "").toLowerCase());
+  const hostname = typeof window !== 'undefined' ? (window.location?.hostname || '') : '';
+  const customDomain = isCustomDomain(hostname);
   const { user, loading } = useAuth();
+  const [customSlug, setCustomSlug] = useState(null);
+  const [customResolved, setCustomResolved] = useState(!customDomain);
 
-  if (loading) {
+  useEffect(() => {
+    if (!customDomain) return;
+    fetch(`/api/domain-lookup?domain=${encodeURIComponent(hostname)}`)
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(({ slug }) => { setCustomSlug(slug || null); setCustomResolved(true); })
+      .catch(() => setCustomResolved(true));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (customDomain) {
+    if (!customResolved) return <PremiumLoader fullScreen />;
+    if (customSlug) return <Navigate to={`/catalogo/${customSlug}`} replace />;
+    if (typeof window !== 'undefined') window.location.href = 'https://ventalink.app';
     return <PremiumLoader fullScreen />;
   }
 
-  if (!isGo) {
-    return <Navigate to={user ? "/dashboard" : "/login"} replace />;
-  }
+  if (loading) return <PremiumLoader fullScreen />;
 
-  if (!user) {
-    return <Navigate to="/login" replace />;
-  }
-
+  const isGo = /(^|\.)go\.ventalink\.app$/.test(hostname.toLowerCase());
+  if (!isGo) return <Navigate to={user ? '/dashboard' : '/login'} replace />;
+  if (!user) return <Navigate to="/login" replace />;
   return <Navigate to="/dashboard" replace />;
 }
 
