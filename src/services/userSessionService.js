@@ -5,13 +5,14 @@
  */
 import { supabase } from '../lib/supabase';
 
-const SESSION_KEY = 'walinka_session_id';
-const TOUCH_INTERVAL_MS = 60_000; // 60 seconds
+const SESSION_KEY = 'walinka_user_session_id';
+const TOUCH_INTERVAL_MS = 60_000;
 const TOUCH_THROTTLE_MS = 60_000;
 
 let touchTimer = null;
 let lastTouchAt = 0;
-let currentSessionId = null;
+// Module-level guard: prevents concurrent startSession calls across renders
+let startingSession = false;
 
 function getStoredSessionId() {
   try {
@@ -28,7 +29,22 @@ function setStoredSessionId(id) {
   } catch { /* ignore */ }
 }
 
+/**
+ * Starts a session or reuses the existing one for this tab.
+ * Returns the session id (new or existing).
+ */
 export async function startSession(businessId) {
+  // If there's already a session stored for this tab, reuse it
+  const existing = getStoredSessionId();
+  if (existing) {
+    await touchSession(existing);
+    return existing;
+  }
+
+  // Prevent concurrent calls from creating multiple sessions
+  if (startingSession) return null;
+  startingSession = true;
+
   try {
     const userAgent = typeof navigator !== 'undefined' ? navigator.userAgent : null;
     const { data, error } = await supabase.rpc('start_user_session', {
@@ -39,17 +55,18 @@ export async function startSession(businessId) {
       console.warn('[session-tracking] start_user_session failed:', error.message);
       return null;
     }
-    currentSessionId = data;
     setStoredSessionId(data);
     return data;
   } catch (err) {
     console.warn('[session-tracking] startSession exception:', err?.message);
     return null;
+  } finally {
+    startingSession = false;
   }
 }
 
 export async function touchSession(sessionId) {
-  const id = sessionId || currentSessionId || getStoredSessionId();
+  const id = sessionId || getStoredSessionId();
   if (!id) return;
   const now = Date.now();
   if (now - lastTouchAt < TOUCH_THROTTLE_MS) return;
@@ -63,11 +80,10 @@ export async function touchSession(sessionId) {
 }
 
 export async function endSession(sessionId) {
-  const id = sessionId || currentSessionId || getStoredSessionId();
-  if (!id) return;
+  const id = sessionId || getStoredSessionId();
   stopHeartbeat();
-  currentSessionId = null;
   setStoredSessionId(null);
+  if (!id) return;
   try {
     const { error } = await supabase.rpc('end_user_session', { p_session_id: id });
     if (error) console.warn('[session-tracking] end_user_session failed:', error.message);
@@ -78,7 +94,7 @@ export async function endSession(sessionId) {
 
 export function startHeartbeat(sessionId) {
   stopHeartbeat();
-  const id = sessionId || currentSessionId || getStoredSessionId();
+  const id = sessionId || getStoredSessionId();
   if (!id) return;
   touchTimer = setInterval(() => touchSession(id), TOUCH_INTERVAL_MS);
 }
@@ -91,10 +107,9 @@ export function stopHeartbeat() {
 }
 
 export function getCurrentSessionId() {
-  return currentSessionId || getStoredSessionId();
+  return getStoredSessionId();
 }
 
-/** Register activity events that trigger a throttled touch. */
 export function registerActivityListeners(sessionId) {
   const handler = () => touchSession(sessionId);
   const events = ['click', 'keydown'];
@@ -113,13 +128,10 @@ export function registerActivityListeners(sessionId) {
   };
 }
 
-/** Best-effort end via sendBeacon on page unload. */
 export function registerUnloadHandler(sessionId) {
   const handler = () => {
     const id = sessionId || getCurrentSessionId();
     if (!id) return;
-    // sendBeacon cannot call supabase RPC directly, so we fire a best-effort fetch
-    // We use keepalive fetch instead
     try {
       const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL ?? '';
       const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';

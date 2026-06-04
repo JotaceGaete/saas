@@ -59,6 +59,7 @@ export const AuthProvider = ({ children }) => {
   const [sessionExpiredMessage, setSessionExpiredMessage] = useState(null)
   const trackingSessionIdRef = useRef(null)
   const trackingCleanupRef = useRef(null)
+  const trackingStartedRef = useRef(false)
 
   const businessOperations = {
     async load(userId) {
@@ -102,11 +103,17 @@ export const AuthProvider = ({ children }) => {
   const clearSessionExpiredMessage = () => setSessionExpiredMessage(null)
 
   const startSessionTracking = async (businessId) => {
-    // Don't start tracking if admin is impersonating (we track the real user only)
+    // Guard: if tracking is already running for this tab, do nothing.
+    // userSessionService.startSession also checks sessionStorage, so this is
+    // a fast exit before even making an async call.
+    if (trackingStartedRef.current) return;
+    trackingStartedRef.current = true;
     try {
-      stopTrackingSession();
       const id = await startSession(businessId || null);
-      if (!id) return;
+      if (!id) {
+        trackingStartedRef.current = false;
+        return;
+      }
       trackingSessionIdRef.current = id;
       startHeartbeat(id);
       const removeActivity = registerActivityListeners(id);
@@ -117,11 +124,13 @@ export const AuthProvider = ({ children }) => {
         removeUnload?.();
       };
     } catch (err) {
+      trackingStartedRef.current = false;
       console.warn('[AuthContext] startSessionTracking error:', err?.message);
     }
   };
 
   const stopTrackingSession = () => {
+    trackingStartedRef.current = false;
     if (trackingCleanupRef.current) {
       trackingCleanupRef.current();
       trackingCleanupRef.current = null;
