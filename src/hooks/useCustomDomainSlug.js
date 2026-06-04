@@ -16,11 +16,16 @@ function isWalinkaHost(hostname) {
 }
 
 /**
- * Resolves a business slug from the current hostname via the business_domains table.
- * Returns { slug: string|null, loading: boolean }.
- *   - loading=true  → query in flight, render nothing yet
- *   - slug=null     → hostname is not a custom domain (normal walinka flow)
- *   - slug=string   → custom domain matched; render this catalog
+ * Resolves a business slug from the current hostname.
+ *
+ * Strategy (in order):
+ *   1. Call RPC get_slug_by_custom_domain — SECURITY DEFINER, bypasses RLS.
+ *   2. Fallback: direct SELECT on business_domains → wa_businesses (works if RLS allows anon).
+ *
+ * Returns { slug: string|null, loading: boolean }
+ *   loading=true  → resolution in flight
+ *   slug=null     → not a custom domain; normal walinka routing applies
+ *   slug=string   → custom domain matched; render this catalog
  */
 export function useCustomDomainSlug() {
   const [slug, setSlug] = useState(null);
@@ -30,7 +35,10 @@ export function useCustomDomainSlug() {
     const hostname =
       typeof window !== 'undefined' ? window.location.hostname.toLowerCase() : '';
 
+    console.log('[custom-domain] hostname detected:', hostname);
+
     if (!hostname || isWalinkaHost(hostname)) {
+      console.log('[custom-domain] walinka host — skipping lookup');
       setSlug(null);
       setLoading(false);
       return;
@@ -39,50 +47,67 @@ export function useCustomDomainSlug() {
     let cancelled = false;
 
     (async () => {
-      // Query business_domains using the `domain` column + status filter
-      const { data, error } = await supabase
+      // ── Step 1: RPC (SECURITY DEFINER — bypasses RLS) ──────────────────────
+      const { data: rpcSlug, error: rpcError } = await supabase
+        .rpc('get_slug_by_custom_domain', { p_domain: hostname });
+
+      console.log('[custom-domain] rpc get_slug_by_custom_domain →', {
+        hostname,
+        rpcSlug,
+        rpcError: rpcError ? { message: rpcError.message, code: rpcError.code } : null,
+      });
+
+      if (!cancelled && !rpcError && rpcSlug) {
+        console.log('[custom-domain] resolved via rpc, slug:', rpcSlug);
+        setSlug(rpcSlug);
+        setLoading(false);
+        return;
+      }
+
+      if (cancelled) return;
+
+      // ── Step 2: Direct query fallback ───────────────────────────────────────
+      console.log('[custom-domain] rpc failed or empty — trying direct query');
+
+      const { data: domainRow, error: domainError } = await supabase
         .from('business_domains')
-        .select('*')
+        .select('business_id, status, domain')
         .eq('domain', hostname)
         .eq('status', 'active')
         .maybeSingle();
 
-      console.log('[custom-domain]', hostname, { data, error });
+      console.log('[custom-domain] business_domains row →', {
+        domainRow,
+        domainError: domainError ? { message: domainError.message, code: domainError.code } : null,
+      });
 
       if (cancelled) return;
 
-      if (error || !data) {
+      if (domainError || !domainRow?.business_id) {
+        console.log('[custom-domain] no matching domain row — rendering normal flow');
         setSlug(null);
         setLoading(false);
         return;
       }
 
-      // Try common slug columns first (direct)
-      const directSlug =
-        data.slug || data.business_slug || data.catalog_slug || null;
+      const { data: bizRow, error: bizError } = await supabase
+        .from('wa_businesses')
+        .select('slug')
+        .eq('id', domainRow.business_id)
+        .eq('is_active', true)
+        .maybeSingle();
 
-      if (directSlug) {
-        setSlug(directSlug);
-        setLoading(false);
-        return;
-      }
+      console.log('[custom-domain] wa_businesses row →', {
+        business_id: domainRow.business_id,
+        bizRow,
+        bizError: bizError ? { message: bizError.message, code: bizError.code } : null,
+      });
 
-      // Fallback: look up slug via business_id FK → wa_businesses
-      if (data.business_id) {
-        const { data: biz } = await supabase
-          .from('wa_businesses')
-          .select('slug')
-          .eq('id', data.business_id)
-          .maybeSingle();
+      if (cancelled) return;
 
-        if (!cancelled) {
-          setSlug(biz?.slug || null);
-          setLoading(false);
-        }
-        return;
-      }
-
-      setSlug(null);
+      const resolvedSlug = bizRow?.slug || null;
+      console.log('[custom-domain] final slug:', resolvedSlug);
+      setSlug(resolvedSlug);
       setLoading(false);
     })();
 
