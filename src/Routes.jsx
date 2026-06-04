@@ -18,7 +18,7 @@ import Dashboard from './pages/dashboard';
 import ProductEditor from './pages/product-editor';
 import DesignPage from './pages/design';
 import HelpPage from './pages/help';
-import PublicCatalog from './pages/public-catalog';
+import PublicCatalog, { CatalogForSlug } from './pages/public-catalog';
 import PublicOffers from './pages/public-offers';
 import PublicProductPage from './pages/public-product';
 import OrderConfirmation from './pages/order-confirmation';
@@ -99,8 +99,8 @@ function GoRootEntry() {
 
   if (customDomain) {
     if (!customResolved) return <PremiumLoader fullScreen />;
-    if (customSlug) return <Navigate to={`/catalogo/${customSlug}`} replace />;
-    // Dominio no encontrado en business_domains — mostrar página neutral sin redirigir
+    // Renderizar catálogo directamente (URL permanece en el dominio personalizado)
+    if (customSlug) return <CatalogForSlug slug={customSlug} />;
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 px-4 text-center">
         <div className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center mb-4">

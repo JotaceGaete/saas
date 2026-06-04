@@ -149,6 +149,15 @@ export default function PublicCatalog() {
   );
 }
 
+/** Renderiza el catálogo con un slug externo (dominios personalizados). */
+export function CatalogForSlug({ slug }) {
+  return (
+    <CartProvider>
+      <CatalogInner slug={slug} />
+    </CartProvider>
+  );
+}
+
 function CatalogInner({ slug }) {
   const navigate = useNavigate();
   const { user, business: authBusiness } = useAuth();
