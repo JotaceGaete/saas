@@ -170,6 +170,7 @@ export default function CustomDomainSettings() {
   const [removing, setRemoving] = useState(false);
   const [error, setError]       = useState('');
   const [success, setSuccess]   = useState('');
+  const [confirmRemove, setConfirmRemove] = useState(false);
 
   const load = useCallback(async () => {
     if (!business?.id || !hasAccess) { setLoading(false); return; }
@@ -211,7 +212,8 @@ export default function CustomDomainSettings() {
 
   // ── Eliminar dominio ─────────────────────────────────────────────────────────
   const handleRemove = async () => {
-    if (!window.confirm(`¿Eliminar el dominio "${record?.domain}"? El catálogo volverá a estar solo en ventalink.app.`)) return;
+    if (!confirmRemove) { setConfirmRemove(true); return; }
+    setConfirmRemove(false);
     setError(''); setSuccess('');
     setRemoving(true);
     const { error: err } = await deleteBusinessDomain();
@@ -286,17 +288,33 @@ export default function CustomDomainSettings() {
                 Abrir sitio
               </a>
             )}
-            <button
-              onClick={handleRemove}
-              disabled={removing}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 text-xs font-semibold transition-colors disabled:opacity-60 ml-auto"
-            >
-              {removing
-                ? <div className="w-3.5 h-3.5 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
-                : <Icon name="Trash2" size={13} />
-              }
-              Quitar dominio
-            </button>
+            {confirmRemove ? (
+              <div className="flex items-center gap-2 ml-auto">
+                <span className="text-xs text-red-700 font-semibold">¿Confirmar eliminación?</span>
+                <button
+                  onClick={handleRemove}
+                  disabled={removing}
+                  className="px-3 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-semibold transition-colors disabled:opacity-60"
+                >
+                  {removing ? <div className="w-3.5 h-3.5 border-2 border-white/50 border-t-white rounded-full animate-spin" /> : 'Sí, eliminar'}
+                </button>
+                <button
+                  onClick={() => setConfirmRemove(false)}
+                  className="px-3 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 text-xs font-semibold transition-colors"
+                >
+                  Cancelar
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={handleRemove}
+                disabled={removing}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 text-xs font-semibold transition-colors disabled:opacity-60 ml-auto"
+              >
+                <Icon name="Trash2" size={13} />
+                Quitar dominio
+              </button>
+            )}
           </div>
         </div>
       ) : (
