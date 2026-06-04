@@ -50,6 +50,13 @@ import { useAuth } from './contexts/AuthContext';
 import PremiumLoader from './components/ui/PremiumLoader';
 import { useCustomDomainSlug } from './hooks/useCustomDomainSlug';
 
+// Layer 1: fires when this module is first imported (before any component renders).
+// If you don't see this in the console, the new JS bundle is NOT being served.
+console.log(
+  '[routes-module] loaded — hostname:',
+  typeof window !== 'undefined' ? window.location.hostname : 'ssr',
+);
+
 /**
  * Raíz `/`:
  * - Dominios personalizados (business_domains) → renderiza el catálogo directamente.
@@ -57,6 +64,13 @@ import { useCustomDomainSlug } from './hooks/useCustomDomainSlug';
  * - Otros hosts Walinka → /login o /dashboard según estado de sesión.
  */
 function GoRootEntry() {
+  // Layer 2: fires on every render of this component.
+  // If you don't see this, GoRootEntry is not being mounted (routing mismatch or crash above it).
+  console.log(
+    '[GoRootEntry] render — hostname:',
+    typeof window !== 'undefined' ? window.location.hostname : 'ssr',
+  );
+
   const { slug: domainSlug, loading: domainLoading } = useCustomDomainSlug();
   const isGo =
     typeof window !== "undefined" &&

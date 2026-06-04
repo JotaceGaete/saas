@@ -1,6 +1,12 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 
+// Layer 1b: fires when this module is first imported.
+console.log(
+  '[custom-domain-module] loaded — hostname:',
+  typeof window !== 'undefined' ? window.location.hostname : 'ssr',
+);
+
 const WALINKA_HOSTS = [
   'ventalink.app',
   'cl.ventalink.app',
@@ -16,29 +22,28 @@ function isWalinkaHost(hostname) {
 }
 
 /**
- * Resolves a business slug from the current hostname.
+ * Resolves a business slug from the current hostname via business_domains.
  *
- * Strategy (in order):
- *   1. Call RPC get_slug_by_custom_domain — SECURITY DEFINER, bypasses RLS.
- *   2. Fallback: direct SELECT on business_domains → wa_businesses (works if RLS allows anon).
+ * Resolution order:
+ *   1. RPC get_slug_by_custom_domain — SECURITY DEFINER, bypasses RLS.
+ *   2. Direct SELECT business_domains → wa_businesses (fallback if RLS allows anon).
  *
  * Returns { slug: string|null, loading: boolean }
- *   loading=true  → resolution in flight
- *   slug=null     → not a custom domain; normal walinka routing applies
- *   slug=string   → custom domain matched; render this catalog
  */
 export function useCustomDomainSlug() {
   const [slug, setSlug] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Layer 3: fires inside the effect — if you see layer-2 but not this,
+    // React is suppressing effects (strict-mode double-invoke?).
     const hostname =
       typeof window !== 'undefined' ? window.location.hostname.toLowerCase() : '';
 
-    console.log('[custom-domain] hostname detected:', hostname);
+    console.log('[custom-domain] useEffect fired — hostname:', hostname);
 
     if (!hostname || isWalinkaHost(hostname)) {
-      console.log('[custom-domain] walinka host — skipping lookup');
+      console.log('[custom-domain] walinka host — skipping lookup, hostname:', hostname);
       setSlug(null);
       setLoading(false);
       return;
@@ -48,8 +53,15 @@ export function useCustomDomainSlug() {
 
     (async () => {
       // ── Step 1: RPC (SECURITY DEFINER — bypasses RLS) ──────────────────────
-      const { data: rpcSlug, error: rpcError } = await supabase
-        .rpc('get_slug_by_custom_domain', { p_domain: hostname });
+      let rpcSlug = null;
+      let rpcError = null;
+      try {
+        const result = await supabase.rpc('get_slug_by_custom_domain', { p_domain: hostname });
+        rpcSlug = result.data;
+        rpcError = result.error;
+      } catch (err) {
+        rpcError = { message: err?.message || String(err), code: 'JS_EXCEPTION' };
+      }
 
       console.log('[custom-domain] rpc get_slug_by_custom_domain →', {
         hostname,
@@ -58,7 +70,7 @@ export function useCustomDomainSlug() {
       });
 
       if (!cancelled && !rpcError && rpcSlug) {
-        console.log('[custom-domain] resolved via rpc, slug:', rpcSlug);
+        console.log('[custom-domain] resolved via rpc — slug:', rpcSlug);
         setSlug(rpcSlug);
         setLoading(false);
         return;
@@ -67,14 +79,22 @@ export function useCustomDomainSlug() {
       if (cancelled) return;
 
       // ── Step 2: Direct query fallback ───────────────────────────────────────
-      console.log('[custom-domain] rpc failed or empty — trying direct query');
+      console.log('[custom-domain] rpc empty/failed — trying direct SELECT on business_domains');
 
-      const { data: domainRow, error: domainError } = await supabase
-        .from('business_domains')
-        .select('business_id, status, domain')
-        .eq('domain', hostname)
-        .eq('status', 'active')
-        .maybeSingle();
+      let domainRow = null;
+      let domainError = null;
+      try {
+        const result = await supabase
+          .from('business_domains')
+          .select('business_id, status, domain')
+          .eq('domain', hostname)
+          .eq('status', 'active')
+          .maybeSingle();
+        domainRow = result.data;
+        domainError = result.error;
+      } catch (err) {
+        domainError = { message: err?.message || String(err), code: 'JS_EXCEPTION' };
+      }
 
       console.log('[custom-domain] business_domains row →', {
         domainRow,
@@ -84,18 +104,26 @@ export function useCustomDomainSlug() {
       if (cancelled) return;
 
       if (domainError || !domainRow?.business_id) {
-        console.log('[custom-domain] no matching domain row — rendering normal flow');
+        console.log('[custom-domain] no matching domain row — falling back to normal routing');
         setSlug(null);
         setLoading(false);
         return;
       }
 
-      const { data: bizRow, error: bizError } = await supabase
-        .from('wa_businesses')
-        .select('slug')
-        .eq('id', domainRow.business_id)
-        .eq('is_active', true)
-        .maybeSingle();
+      let bizRow = null;
+      let bizError = null;
+      try {
+        const result = await supabase
+          .from('wa_businesses')
+          .select('slug')
+          .eq('id', domainRow.business_id)
+          .eq('is_active', true)
+          .maybeSingle();
+        bizRow = result.data;
+        bizError = result.error;
+      } catch (err) {
+        bizError = { message: err?.message || String(err), code: 'JS_EXCEPTION' };
+      }
 
       console.log('[custom-domain] wa_businesses row →', {
         business_id: domainRow.business_id,
@@ -106,7 +134,7 @@ export function useCustomDomainSlug() {
       if (cancelled) return;
 
       const resolvedSlug = bizRow?.slug || null;
-      console.log('[custom-domain] final slug:', resolvedSlug);
+      console.log('[custom-domain] final resolved slug:', resolvedSlug);
       setSlug(resolvedSlug);
       setLoading(false);
     })();
