@@ -29,6 +29,7 @@ import { resolveVentaAiProductDescriptionEndpoint } from '../../lib/ai/resolveVe
 import DesignSettings from './components/DesignSettings';
 import RubroPrincipalSelector from './components/RubroPrincipalSelector';
 import BusinessCategoriesManager from './components/BusinessCategoriesManager';
+import CustomDomainSettings from './components/CustomDomainSettings';
 import { BUSINESS_MODES, getRecommendedBusinessModeFromRubro } from '../../lib/business-mode';
 
 const BUSINESS_DESCRIPTION_MAX = 280;
@@ -1659,6 +1660,23 @@ export default function BusinessConfiguration() {
             )}
 
               </div>
+            </div>
+
+            {/* Dominio propio */}
+            <div className="rounded-xl border border-slate-100/80 p-5 lg:p-6 mb-6 shadow-sm"
+              style={{ background: 'rgba(255,255,255,0.72)', boxShadow: '0 12px 34px rgba(17,24,39,0.04)' }}>
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-9 h-9 rounded-xl bg-violet-50 flex items-center justify-center shrink-0">
+                  <Icon name="Globe" size={18} color="#7c3aed" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-gray-900" style={{ fontFamily: 'var(--font-heading)' }}>
+                    Dominio propio
+                  </h2>
+                  <p className="text-xs text-gray-400 mt-0.5">Conecta tu catálogo a un dominio personalizado</p>
+                </div>
+              </div>
+              <CustomDomainSettings />
             </div>
 
             <InstallAppBlock />

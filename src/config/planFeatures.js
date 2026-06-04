@@ -66,7 +66,7 @@ export const PLAN_FEATURES = [
     description: 'Tu catálogo en tu propio dominio. Mejor posicionamiento.',
     salesPitch: 'Usa tutienda.com en vez de ventalink.app/tutienda. Más profesional.',
     category: 'Catálogo',
-    plans: { starter: false, pro: false, business: true },
+    plans: { starter: false, pro: true, business: true },
     status: 'active',
     showLocked: true,
   },
