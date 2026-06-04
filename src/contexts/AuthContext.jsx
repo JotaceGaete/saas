@@ -1,7 +1,16 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { createBusinessForUser, getMyBusiness, updateBusiness } from '../services/waBusinessService';
 import { getAppBaseUrl, getAuthRedirectUrl, getResetPasswordRedirectUrl } from '../config/appUrl';
+import {
+  startSession,
+  startHeartbeat,
+  stopHeartbeat,
+  endSession,
+  registerActivityListeners,
+  registerUnloadHandler,
+  getCurrentSessionId,
+} from '../services/userSessionService';
 
 const AuthContext = createContext({})
 let handlingCorruptSession = false
@@ -48,6 +57,8 @@ export const AuthProvider = ({ children }) => {
   const [sessionReady, setSessionReady] = useState(false)
   const [businessLoading, setBusinessLoading] = useState(false)
   const [sessionExpiredMessage, setSessionExpiredMessage] = useState(null)
+  const trackingSessionIdRef = useRef(null)
+  const trackingCleanupRef = useRef(null)
 
   const businessOperations = {
     async load(userId) {
@@ -67,11 +78,13 @@ export const AuthProvider = ({ children }) => {
             await updateBusiness(data.id, { planSlug: 'starter', planExpiresAt: null, trialExpiresAt: null })
             const { data: updated } = await getMyBusiness()
             setBusiness(updated || data)
+            startSessionTracking((updated || data)?.id).catch(() => {})
             if (typeof sessionStorage !== 'undefined') {
               sessionStorage.setItem(trialExpired ? 'showTrialExpiredBanner' : 'showPlanExpiredBanner', '1')
             }
           } else {
             setBusiness(data)
+            startSessionTracking(data?.id).catch(() => {})
           }
         }
       } catch (err) {
@@ -87,6 +100,33 @@ export const AuthProvider = ({ children }) => {
   }
 
   const clearSessionExpiredMessage = () => setSessionExpiredMessage(null)
+
+  const startSessionTracking = async (businessId) => {
+    // Don't start tracking if admin is impersonating (we track the real user only)
+    try {
+      stopTrackingSession();
+      const id = await startSession(businessId || null);
+      if (!id) return;
+      trackingSessionIdRef.current = id;
+      startHeartbeat(id);
+      const removeActivity = registerActivityListeners(id);
+      const removeUnload = registerUnloadHandler(id);
+      trackingCleanupRef.current = () => {
+        stopHeartbeat();
+        removeActivity?.();
+        removeUnload?.();
+      };
+    } catch (err) {
+      console.warn('[AuthContext] startSessionTracking error:', err?.message);
+    }
+  };
+
+  const stopTrackingSession = () => {
+    if (trackingCleanupRef.current) {
+      trackingCleanupRef.current();
+      trackingCleanupRef.current = null;
+    }
+  };
 
   const handleCorruptSession = async (reason) => {
     if (handlingCorruptSession) return
@@ -139,6 +179,9 @@ export const AuthProvider = ({ children }) => {
         if (typeof window !== 'undefined') {
           console.log('[Auth] session expired')
         }
+        stopTrackingSession()
+        endSession(trackingSessionIdRef.current || getCurrentSessionId()).catch(() => {})
+        trackingSessionIdRef.current = null
         setUser(null)
         setImpersonatedBusiness(null)
         businessOperations?.clear()
@@ -354,6 +397,11 @@ export const AuthProvider = ({ children }) => {
 
   const signOut = async () => {
     try {
+      // End session tracking before signing out
+      stopTrackingSession()
+      await endSession(trackingSessionIdRef.current || getCurrentSessionId()).catch(() => {})
+      trackingSessionIdRef.current = null
+
       const { error } = await supabase?.auth?.signOut()
       if (typeof window !== 'undefined' && window.__AUTH_DEBUG__) {
         console.log('[Auth] signOut done', error ? { error: error?.message } : 'ok')
