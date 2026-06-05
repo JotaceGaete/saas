@@ -71,7 +71,7 @@ export default function AdminAuditLogPage() {
     <div className="panel-root min-h-screen" style={{ backgroundColor: 'var(--color-background)' }}>
       <BusinessSidebar isCollapsed={sidebarCollapsed} onCollapsedChange={setSidebarCollapsed} />
       <main
-        className="panel-main min-h-screen w-full max-w-full min-w-0 overflow-x-hidden"
+        className="panel-main min-h-screen min-w-0 overflow-x-hidden"
         style={{ marginLeft: isDesktop ? sidebarWidth : 0, transition: 'margin-left var(--transition-base)' }}
       >
         {/* Header */}

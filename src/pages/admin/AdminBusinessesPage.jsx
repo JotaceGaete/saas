@@ -103,7 +103,7 @@ const SEGMENTS = [
 function CountryCell({ countryCode }) {
   if (!countryCode) return <span style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)', fontSize: 12 }}>—</span>;
   const labels = getCountryLabels(countryCode);
-  return <span style={{ fontFamily: 'var(--font-caption)', fontSize: 12, whiteSpace: 'nowrap' }}>{labels.flag} {labels.countryName}</span>;
+  return <span style={{ fontFamily: 'var(--font-caption)', fontSize: 12, whiteSpace: 'normal' }}>{labels.flag} {labels.countryName}</span>;
 }
 
 function PlanCell({ b }) {
@@ -306,7 +306,7 @@ export default function AdminBusinessesPage() {
     <div className="panel-root min-h-screen" style={{ backgroundColor: 'var(--color-background)' }}>
       <BusinessSidebar isCollapsed={sidebarCollapsed} onCollapsedChange={setSidebarCollapsed} />
       <main
-        className="panel-main min-h-screen w-full max-w-full min-w-0 overflow-x-hidden"
+        className="panel-main min-h-screen min-w-0 overflow-x-hidden"
         style={{ marginLeft: isDesktop ? sidebarWidth : 0, transition: 'margin-left var(--transition-base)' }}
       >
         {/* Header */}
@@ -525,7 +525,7 @@ export default function AdminBusinessesPage() {
                   onChange={e => setSearchQ(e.target.value)}
                   placeholder="Buscar nombre, email, slug…"
                   className="px-2.5 py-1.5 rounded-lg border text-xs"
-                  style={{ borderColor: 'var(--color-border)', fontFamily: 'var(--font-caption)', minWidth: 160, outline: 'none' }}
+                  style={{ borderColor: 'var(--color-border)', fontFamily: 'var(--font-caption)', minWidth: 100, outline: 'none' }}
                 />
               </div>
             </div>
@@ -578,7 +578,7 @@ export default function AdminBusinessesPage() {
                             }}
                           >
                             {/* Negocio */}
-                            <td className="px-3 py-3 min-w-[180px]">
+                            <td className="px-3 py-3 min-w-0">
                               <div className="flex items-start gap-2">
                                 <div className="min-w-0">
                                   <div className="flex items-center gap-1.5 flex-wrap">
@@ -601,7 +601,7 @@ export default function AdminBusinessesPage() {
                               </div>
                             </td>
                             {/* Plan */}
-                            <td className="px-3 py-3 min-w-[110px]">
+                            <td className="px-3 py-3">
                               <PlanCell b={b} />
                             </td>
                             {/* País */}
