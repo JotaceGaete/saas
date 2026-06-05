@@ -26,12 +26,45 @@ function cleanDomain(raw: string): string {
     .replace(/\s/g, '');
 }
 
-/** Classify domain type for DNS instructions. */
 function classifyDomain(domain: string): 'apex' | 'www' | 'subdomain' {
   const parts = domain.split('.');
   if (parts.length === 2) return 'apex';
   if (parts[0] === 'www') return 'www';
   return 'subdomain';
+}
+
+/**
+ * Build DNS instructions from Vercel's /v6/domains/{domain}/config response.
+ * Falls back to known-good defaults when Vercel doesn't specify alternatives.
+ */
+function dnsFromVercelConfig(
+  domain: string,
+  configData: Record<string, unknown> | null,
+): Array<{ type: string; host: string; value: string }> {
+  const dnsType = classifyDomain(domain);
+  const host = dnsType === 'apex' ? '@' : domain.split('.')[0];
+
+  if (configData) {
+    if (dnsType === 'apex') {
+      // For apex, use Vercel's recommended A record(s)
+      const aValues = Array.isArray(configData.aValues) ? configData.aValues as string[] : [];
+      if (aValues.length > 0) {
+        return aValues.map((v) => ({ type: 'A', host: '@', value: v }));
+      }
+    } else {
+      // For subdomain/www, use Vercel's recommended CNAME target
+      const cnames = Array.isArray(configData.cnames) ? configData.cnames as string[] : [];
+      if (cnames.length > 0) {
+        return [{ type: 'CNAME', host, value: cnames[0] }];
+      }
+    }
+  }
+
+  // Fallback to well-known Vercel defaults
+  if (dnsType === 'apex') {
+    return [{ type: 'A', host: '@', value: '76.76.21.21' }];
+  }
+  return [{ type: 'CNAME', host, value: 'cname.vercel-dns.com' }];
 }
 
 Deno.serve(async (req: Request) => {
@@ -40,7 +73,7 @@ Deno.serve(async (req: Request) => {
   }
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
 
-  // Auth check
+  // Auth
   const authHeader = req.headers.get('Authorization') || '';
   const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
   const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
@@ -75,7 +108,7 @@ Deno.serve(async (req: Request) => {
   if (!businessId) return json({ error: 'business_id is required' }, 400);
   if (!['add', 'verify'].includes(action)) return json({ error: 'action must be add or verify' }, 400);
 
-  // Verify the user owns this business
+  // Ownership check
   const { data: biz } = await supabase
     .from('wa_businesses')
     .select('id')
@@ -84,16 +117,46 @@ Deno.serve(async (req: Request) => {
     .maybeSingle();
   if (!biz) return json({ error: 'Business not found or access denied' }, 403);
 
-  const vercelBase = `https://api.vercel.com`;
+  const vercelBase = 'https://api.vercel.com';
   const vercelHeaders = {
     'Authorization': `Bearer ${VERCEL_TOKEN}`,
     'Content-Type': 'application/json',
   };
 
-  // ── ADD ─────────────────────────────────────────────────────────────────
+  // ── helpers ────────────────────────────────────────────────────────────────
+
+  /** GET /v6/domains/{domain}/config — returns actual CNAME/A values Vercel expects. */
+  async function fetchVercelDomainConfig(): Promise<Record<string, unknown> | null> {
+    try {
+      const r = await fetch(
+        `${vercelBase}/v6/domains/${encodeURIComponent(domain)}/config`,
+        { headers: vercelHeaders }
+      );
+      if (!r.ok) return null;
+      return await r.json() as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+  }
+
+  /** GET /v9/projects/{projectId}/domains/{domain} — current verification state. */
+  async function fetchVercelProjectDomain(): Promise<Record<string, unknown> | null> {
+    try {
+      const r = await fetch(
+        `${vercelBase}/v9/projects/${VERCEL_PROJECT_ID}/domains/${encodeURIComponent(domain)}`,
+        { headers: vercelHeaders }
+      );
+      if (!r.ok) return null;
+      return await r.json() as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+  }
+
+  // ── ADD ────────────────────────────────────────────────────────────────────
   if (action === 'add') {
-    // 1. Call Vercel to add the domain to the project
-    const vercelRes = await fetch(
+    // 1. Register domain in Vercel project
+    const addRes = await fetch(
       `${vercelBase}/v10/projects/${VERCEL_PROJECT_ID}/domains`,
       {
         method: 'POST',
@@ -101,74 +164,89 @@ Deno.serve(async (req: Request) => {
         body: JSON.stringify({ name: domain }),
       }
     );
-    const vercelData = await vercelRes.json();
+    const addData = await addRes.json() as Record<string, unknown>;
+    console.log('[manage-custom-domain] POST domain', { domain, status: addRes.status, addData });
 
-    console.log('[manage-custom-domain] add', { domain, status: vercelRes.status, vercelData });
-
-    if (!vercelRes.ok) {
-      const errCode = vercelData?.error?.code || '';
-      // domain_already_in_use is fine — it's already registered for this project
+    if (!addRes.ok) {
+      const errCode = String((addData?.error as Record<string, unknown>)?.code || '');
       if (errCode !== 'domain_already_in_use') {
         return json({
           ok: false,
-          error: vercelData?.error?.message || `Vercel error (${vercelRes.status})`,
+          error: (addData?.error as Record<string, unknown>)?.message || `Vercel error (${addRes.status})`,
           vercel_code: errCode,
-        }, 200);
+        });
       }
     }
 
-    // 2. Upsert into business_domains
+    // 2. Fetch actual DNS config Vercel expects for this domain
+    const [configData, projectDomain] = await Promise.all([
+      fetchVercelDomainConfig(),
+      fetchVercelProjectDomain(),
+    ]);
+    console.log('[manage-custom-domain] DNS config', { configData, projectDomain });
+
+    const dnsInstructions = dnsFromVercelConfig(domain, configData);
+    const vercelConfig = {
+      dns_instructions: dnsInstructions,
+      config: configData,
+      project_domain: projectDomain,
+      verification: (projectDomain?.verification as unknown[]) ?? (addData?.verification as unknown[]) ?? [],
+      fetched_at: new Date().toISOString(),
+    };
+
+    // 3. Upsert business_domains with real DNS config
     const { error: dbError } = await supabase
       .from('business_domains')
       .upsert(
-        { business_id: businessId, domain, status: 'pending' },
+        { business_id: businessId, domain, status: 'pending', vercel_config: vercelConfig },
         { onConflict: 'business_id' }
       );
 
     if (dbError) {
-      return json({ ok: false, error: `DB error: ${dbError.message}` }, 200);
+      return json({ ok: false, error: `DB error: ${dbError.message}` });
     }
 
-    const dnsType = classifyDomain(domain);
     return json({
       ok: true,
       domain,
-      dns_type: dnsType,
-      dns_instructions: buildDnsInstructions(domain, dnsType),
+      dns_instructions: dnsInstructions,
+      vercel_config: vercelConfig,
     });
   }
 
-  // ── VERIFY ───────────────────────────────────────────────────────────────
+  // ── VERIFY ─────────────────────────────────────────────────────────────────
   if (action === 'verify') {
-    const vercelRes = await fetch(
-      `${vercelBase}/v9/projects/${VERCEL_PROJECT_ID}/domains/${encodeURIComponent(domain)}`,
-      { method: 'GET', headers: vercelHeaders }
-    );
-    const vercelData = await vercelRes.json();
+    const [projectDomain, configData] = await Promise.all([
+      fetchVercelProjectDomain(),
+      fetchVercelDomainConfig(),
+    ]);
+    console.log('[manage-custom-domain] verify', { domain, projectDomain, configData });
 
-    console.log('[manage-custom-domain] verify', { domain, status: vercelRes.status, vercelData });
-
-    if (!vercelRes.ok) {
+    if (!projectDomain) {
       await supabase
         .from('business_domains')
         .update({ status: 'error' })
         .eq('business_id', businessId)
         .eq('domain', domain);
-
-      return json({
-        ok: false,
-        status: 'error',
-        error: vercelData?.error?.message || `Vercel error (${vercelRes.status})`,
-      });
+      return json({ ok: false, status: 'error', error: 'No se encontró el dominio en el proyecto Vercel.' });
     }
 
-    // verified = true when DNS is configured correctly and Vercel has confirmed it
-    const verified: boolean = vercelData?.verified === true;
-    const newStatus = verified ? 'active' : 'pending';
+    const verified = projectDomain?.verified === true;
+    const misconfigured = projectDomain?.misconfigured !== false;
+    const newStatus: string = verified ? 'active' : 'pending';
+
+    const dnsInstructions = dnsFromVercelConfig(domain, configData);
+    const vercelConfig = {
+      dns_instructions: dnsInstructions,
+      config: configData,
+      project_domain: projectDomain,
+      verification: (projectDomain?.verification as unknown[]) ?? [],
+      fetched_at: new Date().toISOString(),
+    };
 
     await supabase
       .from('business_domains')
-      .update({ status: newStatus })
+      .update({ status: newStatus, vercel_config: vercelConfig })
       .eq('business_id', businessId)
       .eq('domain', domain);
 
@@ -177,18 +255,15 @@ Deno.serve(async (req: Request) => {
       domain,
       status: newStatus,
       verified,
-      vercel_verification: vercelData?.verification ?? [],
-      vercel_error: vercelData?.error ?? null,
+      misconfigured,
+      dns_instructions: dnsInstructions,
+      vercel_config: vercelConfig,
+      // Human-readable message when DNS isn't configured yet
+      pending_message: !verified
+        ? 'El dominio fue registrado correctamente en Vercel, pero aún falta configurar el registro DNS indicado abajo. Puede demorar hasta 48 h en propagarse.'
+        : null,
     });
   }
 
   return json({ error: 'Unknown action' }, 400);
 });
-
-function buildDnsInstructions(domain: string, type: 'apex' | 'www' | 'subdomain') {
-  if (type === 'apex') {
-    return [{ type: 'A', host: '@', value: '76.76.21.21' }];
-  }
-  const host = domain.split('.')[0]; // e.g. "www" or "catalogo"
-  return [{ type: 'CNAME', host, value: 'cname.vercel-dns.com' }];
-}

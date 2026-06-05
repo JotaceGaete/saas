@@ -58,7 +58,7 @@ function StatusBadge({ status }) {
     active:    { label: 'Activo',       bg: 'bg-emerald-50', text: 'text-emerald-700', dot: 'bg-emerald-500' },
     pending:   { label: 'Pendiente',    bg: 'bg-amber-50',   text: 'text-amber-700',   dot: 'bg-amber-400'  },
     verifying: { label: 'Verificando',  bg: 'bg-blue-50',    text: 'text-blue-700',    dot: 'bg-blue-500 animate-pulse' },
-    error:     { label: 'Error DNS',    bg: 'bg-red-50',     text: 'text-red-700',     dot: 'bg-red-500'    },
+    error:     { label: 'DNS pendiente', bg: 'bg-red-50',     text: 'text-red-700',     dot: 'bg-red-500'    },
   };
   const s = map[status] || map.pending;
   return (
@@ -160,13 +160,13 @@ export default function CustomDomainSection({ business, isStarter = false }) {
   const [verifyMsg, setVerifyMsg] = useState('');
   const [copiedLink, setCopiedLink] = useState(false);
 
-  // Load existing domain row from DB
+  // Load existing domain row from DB — includes vercel_config with real DNS records
   useEffect(() => {
     if (!business?.id) return;
     let cancelled = false;
     supabase
       .from('business_domains')
-      .select('id, domain, status')
+      .select('id, domain, status, vercel_config')
       .eq('business_id', business.id)
       .maybeSingle()
       .then(({ data }) => {
@@ -175,7 +175,11 @@ export default function CustomDomainSection({ business, isStarter = false }) {
           setSavedDomain(data.domain);
           setDomainInput(data.domain);
           setStatus(data.status || 'pending');
-          setDns(buildDnsInstructions(data.domain));
+          // Use stored Vercel DNS records if available, fall back to computed
+          const storedDns = data.vercel_config?.dns_instructions;
+          setDns(Array.isArray(storedDns) && storedDns.length > 0
+            ? storedDns
+            : buildDnsInstructions(data.domain));
         }
         setLoading(false);
       });
@@ -225,15 +229,13 @@ export default function CustomDomainSection({ business, isStarter = false }) {
         return;
       }
       setStatus(result.status);
-      if (result.status === 'active') {
-        setVerifyMsg('');
-      } else {
-        setVerifyMsg(
-          result.verified === false
-            ? 'Los registros DNS aún no se han propagado. Puede demorar hasta 48 h. Vuelve a verificar más tarde.'
-            : 'Dominio pendiente de verificación.'
-        );
-      }
+      // Update DNS instructions with fresh Vercel data
+      const freshDns = result.dns_instructions;
+      if (Array.isArray(freshDns) && freshDns.length > 0) setDns(freshDns);
+      // Show pending message from Vercel or a generic one
+      setVerifyMsg(result.status !== 'active'
+        ? (result.pending_message || 'Los registros DNS aún no se han propagado. Puede demorar hasta 48 h.')
+        : '');
     } catch (e) {
       console.error('[domain] handleVerify error', e);
       setStatus('error');
