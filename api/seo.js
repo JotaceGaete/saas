@@ -538,6 +538,180 @@ async function handleProductHtml(request) {
   });
 }
 
+// --- Custom domain root (catalogo.gong.cl/) ---
+
+const SAAS_HOST_RE_SERVER = /^(localhost|127\.0\.0\.1|(.*\.)?go\.ventalink\.app|(.*\.)?ventalink\.app|(.*\.)?walinka\.com|(.*\.)?miralatienda\.de)$/i;
+
+async function handleCustomDomainHtml(request) {
+  const host = (
+    request.headers.get('x-forwarded-host') || request.headers.get('host') || ''
+  ).toLowerCase().replace(/:\d+$/, '');
+
+  const origin = getOriginCatalog(request);
+  if (!origin) return new Response('Origin unknown', { status: 500 });
+
+  // SaaS hosts: just serve the SPA shell — GoRootEntry handles auth/dashboard routing.
+  if (!host || SAAS_HOST_RE_SERVER.test(host)) {
+    try {
+      const res = await fetch(`${origin}/index.html`, { headers: { Accept: 'text/html' } });
+      if (!res.ok) throw new Error(`index.html ${res.status}`);
+      const html = await res.text();
+      return new Response(html, {
+        status: 200,
+        headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' },
+      });
+    } catch (e) {
+      return new Response(`Failed to load template: ${e.message}`, { status: 502 });
+    }
+  }
+
+  // Custom domain: look up slug via SECURITY DEFINER RPC (bypasses RLS).
+  const supabaseUrl = (process.env.VITE_SUPABASE_URL || '').replace(/\/$/, '');
+  const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return new Response('Missing Supabase config', { status: 500 });
+  }
+
+  const supabase = createClient(supabaseUrl, supabaseAnonKey);
+  const { data: slug, error: slugError } = await supabase.rpc('get_slug_by_custom_domain', {
+    p_domain: host,
+  });
+
+  console.log('[seo-custom-domain]', JSON.stringify({ host, slug, error: slugError?.message || null }));
+
+  if (slugError || !slug) {
+    // Unknown custom domain — serve SPA shell.
+    try {
+      const res = await fetch(`${origin}/index.html`, { headers: { Accept: 'text/html' } });
+      if (!res.ok) throw new Error(`index.html ${res.status}`);
+      const html = await res.text();
+      return new Response(html, {
+        status: 200,
+        headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' },
+      });
+    } catch (e) {
+      return new Response(`Failed to load template: ${e.message}`, { status: 502 });
+    }
+  }
+
+  // Found slug — generate SEO HTML exactly like handleCatalogHtml but with
+  // canonical/og:url pointing to the custom domain root instead of CATALOG_ORIGIN/catalogo/slug.
+  const FULL_SELECT =
+    'id, name, description, slug, logo_url, cover_image_url, design_settings, og_image_url, city, region, country, country_code, currency, whatsapp, updated_at, rubro_id, seo_family_key, seo_content_override, seo_content_ai, wa_rubros(name, slug)';
+  const SAFE_SELECT =
+    'id, name, description, slug, logo_url, cover_image_url, design_settings, city, country, currency, whatsapp, updated_at, rubro_id';
+
+  let { data: row, error: rowError } = await supabase
+    .from('wa_businesses')
+    .select(FULL_SELECT)
+    .eq('slug', slug)
+    .eq('is_active', true)
+    .maybeSingle();
+
+  if (rowError) {
+    const retry = await supabase.from('wa_businesses').select(SAFE_SELECT).eq('slug', slug).eq('is_active', true).maybeSingle();
+    row = retry.data;
+  }
+
+  if (!row) {
+    try {
+      const res = await fetch(`${origin}/index.html`, { headers: { Accept: 'text/html' } });
+      if (!res.ok) throw new Error(`index.html ${res.status}`);
+      const html = await res.text();
+      return new Response(html, {
+        status: 200,
+        headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' },
+      });
+    } catch (e) {
+      return new Response(`Failed to load template: ${e.message}`, { status: 502 });
+    }
+  }
+
+  const customOrigin = `https://${host}`;
+  const canonicalUrl = `${customOrigin}/`;
+
+  const seoInput = { storeName: row.name, city: row.city, region: row.region, country: row.country, currency: row.currency, countryCode: row.country_code, host };
+  const pageTitle = getCatalogShareDocumentTitle(row.name);
+  const metaDescription = getCatalogShareDescription(row);
+  const ogDescription = resolveCatalogSeoContent({ business: row }).ogDescription || metaDescription;
+  const ri = detectCatalogRegion(seoInput);
+  // og:image: prefer og_image_url → cover → logo → og-catalog API using custom origin
+  const rawOgImage =
+    row.og_image_url ||
+    getBusinessCoverUrl(row) ||
+    getBusinessLogoUrl(row) ||
+    getOgCatalogShareImageUrl(slug, row.updated_at ?? null, customOrigin);
+  const ogImageHttps = toAbsoluteUrl(rawOgImage, customOrigin);
+  const fbAppId = String(process.env.META_FB_APP_ID || process.env.FB_APP_ID || '').trim();
+  const fbAppIdMeta = `<meta property="fb:app_id" content="${escapeHtmlCatalog(fbAppId || '0')}" />`;
+
+  const metaTitle = metaPlainTextAttr(pageTitle);
+  const metaOgDesc = metaPlainTextAttr(ogDescription);
+  const metaDesc = metaPlainTextAttr(metaDescription);
+  const metaOgLocale = metaPlainTextAttr(ri.ogLocale || '');
+  const ogImageSecure = ogImageHttps.startsWith('https://')
+    ? `<meta property="og:image:secure_url" content="${escapeHtmlCatalog(ogImageHttps)}" />`
+    : '';
+
+  const jsonLd = buildLocalBusinessJsonLd({
+    name: row.name || 'Catálogo', imageUrl: ogImageHttps, city: row.city, region: row.region,
+    country: row.country, countryCode: row.country_code, telephone: row.whatsapp, url: canonicalUrl,
+    currency: row.currency, host,
+  });
+  const jsonLdScript = `<script type="application/ld+json">${stringifyJsonLd(jsonLd)}</script>`;
+
+  const metaTags = [
+    fbAppIdMeta,
+    `<meta name="robots" content="index, follow" />`,
+    `<meta property="og:type" content="website" />`,
+    `<meta property="og:url" content="${escapeHtmlCatalog(canonicalUrl)}" />`,
+    `<meta property="og:title" content="${metaTitle}" />`,
+    `<meta property="og:description" content="${metaOgDesc}" />`,
+    `<meta property="og:image" content="${escapeHtmlCatalog(ogImageHttps)}" />`,
+    ogImageSecure,
+    `<meta property="og:image:type" content="image/png" />`,
+    `<meta property="og:image:width" content="1200" />`,
+    `<meta property="og:image:height" content="630" />`,
+    `<meta property="og:locale" content="${metaOgLocale}" />`,
+    `<meta name="twitter:card" content="summary_large_image" />`,
+    `<meta name="twitter:url" content="${escapeHtmlCatalog(canonicalUrl)}" />`,
+    `<meta name="twitter:title" content="${metaTitle}" />`,
+    `<meta name="twitter:description" content="${metaOgDesc}" />`,
+    `<meta name="twitter:image" content="${escapeHtmlCatalog(ogImageHttps)}" />`,
+    `<meta name="description" content="${metaDesc}" />`,
+    `<link rel="canonical" href="${escapeHtmlCatalog(canonicalUrl)}" />`,
+    jsonLdScript,
+  ].filter(Boolean).join('\n  ');
+
+  console.log('[seo-custom-domain]', JSON.stringify({ host, slug, canonical: canonicalUrl, ogImage: ogImageHttps }));
+
+  let html;
+  try {
+    const res = await fetch(`${origin}/index.html`, { headers: { Accept: 'text/html' } });
+    if (!res.ok) throw new Error(`index.html ${res.status}`);
+    html = await res.text();
+  } catch (e) {
+    return new Response(`Failed to load template: ${e.message}`, { status: 502 });
+  }
+
+  html = html.replace(/<title>[^<]*<\/title>/i, `<title>${metaTitle}</title>`);
+  const insertIndex = html.indexOf('</head>');
+  const injected = insertIndex !== -1
+    ? html.slice(0, insertIndex) + '\n  ' + metaTags + '\n  ' + html.slice(insertIndex)
+    : html;
+
+  return new Response(injected, {
+    status: 200,
+    headers: {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'public, s-maxage=120, stale-while-revalidate=600',
+      'X-Catalog-Og-Source': 'seo-custom-domain',
+      'X-Catalog-Slug': slug,
+      'X-Custom-Domain': host,
+    },
+  });
+}
+
 // --- go.ventalink.app (antes go-html.js) ---
 
 function escapeHtmlGo(str) {
@@ -808,6 +982,9 @@ async function routeSeoRequest(request) {
   }
   if (mode === 'go') {
     return handleGoHtml(request);
+  }
+  if (mode === 'custom-domain') {
+    return handleCustomDomainHtml(request);
   }
   if (path === '/api/go-html' || path.endsWith('/api/go-html')) {
     return handleGoHtml(request);

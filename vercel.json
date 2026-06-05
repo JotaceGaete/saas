@@ -182,6 +182,10 @@
       "destination": "/api/seo?mode=go"
     },
     {
+      "source": "/",
+      "destination": "/api/seo?mode=custom-domain"
+    },
+    {
       "source": "/catalogo/:slug",
       "has": [{ "type": "host", "value": "miralatienda.de" }],
       "destination": "/api/seo?slug=:slug&publicPath=catalogo"
