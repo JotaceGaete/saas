@@ -14,7 +14,7 @@
  *   badgeLabel   — texto del pill de estado (default: 'Activa')
  *   onBack       — callback para el botón ← en móvil; null = solo espaciador
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Icon from '../../components/AppIcon';
 import CatalogImage from '../../components/CatalogImage';
 import { buildCfImageErrorHandler, cfImageUrl, unwrapCfImageUrl } from '../../utils/cloudflareImage';
@@ -22,6 +22,40 @@ import { recordCatalogWhatsAppClick } from '../../services/waBusinessService';
 import { getPublicCatalogRelativePath } from '../../config/appUrl';
 import { normalizeTikTokUrl } from '../../utils/socialLinks';
 import { isRestaurantBusiness } from '../../utils/businessType';
+import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+
+// Fix Leaflet default marker icons (Vite asset path issue)
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+  iconUrl:       'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  shadowUrl:     'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+});
+
+function getPinIcon(color) {
+  return L.divIcon({
+    className: '',
+    html: `<div style="
+      width:26px;height:26px;
+      background:${color};
+      border:3px solid #fff;
+      border-radius:50% 50% 50% 0;
+      transform:rotate(-45deg);
+      box-shadow:0 2px 8px rgba(0,0,0,0.30);
+    "></div>`,
+    iconSize: [26, 26],
+    iconAnchor: [13, 26],
+  });
+}
+
+/** Forces map to invalidate size after mount (fixes rendering in hidden/flex containers) */
+function MapInvalidator() {
+  const map = useMap();
+  useEffect(() => { setTimeout(() => map.invalidateSize(), 50); }, [map]);
+  return null;
+}
 
 // ─── Bloques de info reutilizados en acordeón mobile y barra desktop ──────────
 
@@ -76,42 +110,93 @@ function CatalogLocationCard({
     ? 'linear-gradient(135deg, rgba(15,23,42,0.9), rgba(51,65,85,0.7))'
     : 'linear-gradient(135deg, #ECFDF5 0%, #F8FAFC 52%, #FFF7ED 100%)';
 
+  const lat = business?.lat ?? business?.latitude;
+  const lng = business?.lng ?? business?.longitude;
+  const hasCoords = lat != null && lng != null && !isNaN(parseFloat(lat)) && !isNaN(parseFloat(lng));
+
   return (
     <div
       className="overflow-hidden rounded-2xl shadow-sm sm:col-span-2"
       style={{ background: cardBg, border: `1px solid ${theme?.borderColor ?? '#e5e7eb'}` }}
     >
       <div className="grid gap-0 sm:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
-        <a
-          href={mapsSearchUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="group relative min-h-[150px] overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset"
-          style={{ background: mapBg, '--tw-ring-color': primaryColor }}
-          aria-label="Ver mapa de ubicación"
-        >
-          <div className="absolute inset-0 opacity-70">
-            <div className="absolute left-[-12%] top-[18%] h-px w-[125%] rotate-[-12deg] bg-white/80" />
-            <div className="absolute left-[-16%] top-[56%] h-px w-[135%] rotate-[9deg] bg-white/80" />
-            <div className="absolute left-[15%] top-[-18%] h-[150%] w-px rotate-[18deg] bg-white/80" />
-            <div className="absolute right-[22%] top-[-16%] h-[140%] w-px rotate-[-22deg] bg-white/80" />
-          </div>
-          <div className="absolute left-4 top-4 rounded-full px-2.5 py-1 text-[11px] font-bold shadow-sm" style={{ background: 'rgba(255,255,255,0.9)', color: primaryColorDark }}>
-            Ver mapa
-          </div>
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="relative">
-              <span className="absolute inset-0 rounded-full opacity-25 blur-md" style={{ background: primaryColor, transform: 'scale(1.9)' }} />
-              <span className="relative flex h-14 w-14 items-center justify-center rounded-full text-white shadow-xl ring-4 ring-white/80" style={{ background: `linear-gradient(135deg, ${primaryColor}, ${primaryColorDark})` }}>
-                <Icon name="MapPin" size={26} color="#FFFFFF" />
-              </span>
+        {hasCoords ? (
+          /* ── Real Leaflet map when coordinates exist ── */
+          <div className="relative min-h-[180px] overflow-hidden" style={{ minHeight: 180 }}>
+            <MapContainer
+              center={[parseFloat(lat), parseFloat(lng)]}
+              zoom={15}
+              zoomControl={false}
+              scrollWheelZoom={false}
+              dragging={false}
+              doubleClickZoom={false}
+              touchZoom={false}
+              keyboard={false}
+              style={{ height: '100%', width: '100%', minHeight: 180 }}
+            >
+              <TileLayer
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+              />
+              <Marker
+                position={[parseFloat(lat), parseFloat(lng)]}
+                icon={getPinIcon(primaryColor)}
+              />
+              <MapInvalidator />
+            </MapContainer>
+            {/* Transparent overlay: clicks open full Google Maps */}
+            <a
+              href={mapsSearchUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="absolute inset-0 z-[400]"
+              aria-label="Abrir en Google Maps"
+              style={{ cursor: 'pointer' }}
+            />
+            {/* "Ver mapa" pill pinned top-left */}
+            <div className="absolute left-3 top-3 z-[500] rounded-full px-2.5 py-1 text-[11px] font-bold shadow-sm pointer-events-none"
+              style={{ background: 'rgba(255,255,255,0.92)', color: primaryColorDark }}>
+              Ver mapa
+            </div>
+            {/* Address tooltip pinned bottom */}
+            <div className="absolute bottom-3 left-3 right-3 z-[500] rounded-xl bg-white/90 px-3 py-2 shadow-sm backdrop-blur-sm pointer-events-none">
+              <p className="truncate text-xs font-bold text-slate-900">{business?.name || ''}</p>
+              <p className="truncate text-[11px] text-slate-600">{cityLine || fullAddress}</p>
             </div>
           </div>
-          <div className="absolute bottom-3 left-3 right-3 rounded-xl bg-white/88 px-3 py-2 shadow-sm backdrop-blur-sm transition-transform group-hover:-translate-y-0.5">
-            <p className="truncate text-xs font-bold text-slate-900">{business?.name || 'Restaurante'}</p>
-            <p className="truncate text-[11px] text-slate-600">{cityLine || fullAddress}</p>
-          </div>
-        </a>
+        ) : (
+          /* ── Decorative fallback when no coordinates ── */
+          <a
+            href={mapsSearchUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group relative min-h-[150px] overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset"
+            style={{ background: mapBg, '--tw-ring-color': primaryColor }}
+            aria-label="Ver mapa de ubicación"
+          >
+            <div className="absolute inset-0 opacity-70">
+              <div className="absolute left-[-12%] top-[18%] h-px w-[125%] rotate-[-12deg] bg-white/80" />
+              <div className="absolute left-[-16%] top-[56%] h-px w-[135%] rotate-[9deg] bg-white/80" />
+              <div className="absolute left-[15%] top-[-18%] h-[150%] w-px rotate-[18deg] bg-white/80" />
+              <div className="absolute right-[22%] top-[-16%] h-[140%] w-px rotate-[-22deg] bg-white/80" />
+            </div>
+            <div className="absolute left-4 top-4 rounded-full px-2.5 py-1 text-[11px] font-bold shadow-sm" style={{ background: 'rgba(255,255,255,0.9)', color: primaryColorDark }}>
+              Ver mapa
+            </div>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="relative">
+                <span className="absolute inset-0 rounded-full opacity-25 blur-md" style={{ background: primaryColor, transform: 'scale(1.9)' }} />
+                <span className="relative flex h-14 w-14 items-center justify-center rounded-full text-white shadow-xl ring-4 ring-white/80" style={{ background: `linear-gradient(135deg, ${primaryColor}, ${primaryColorDark})` }}>
+                  <Icon name="MapPin" size={26} color="#FFFFFF" />
+                </span>
+              </div>
+            </div>
+            <div className="absolute bottom-3 left-3 right-3 rounded-xl bg-white/88 px-3 py-2 shadow-sm backdrop-blur-sm transition-transform group-hover:-translate-y-0.5">
+              <p className="truncate text-xs font-bold text-slate-900">{business?.name || ''}</p>
+              <p className="truncate text-[11px] text-slate-600">{cityLine || fullAddress}</p>
+            </div>
+          </a>
+        )}
 
         <div className="flex min-w-0 flex-col gap-3 p-4">
           <div>
