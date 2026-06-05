@@ -2,7 +2,7 @@
 import CatalogLayout from './CatalogLayout';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
-import { getBusinessBySlug, getPublicProducts, getCategoriesByRubroId, getBusinessCategories, recordCatalogVisit, recordCatalogWhatsAppClick, createOrder } from '../../services/waBusinessService';
+import { getBusinessBySlug, getPublicProducts, getCategoriesByRubroId, getBusinessCategories, recordCatalogVisit, recordCatalogWhatsAppClick, createOrder, getBusinessCustomDomain } from '../../services/waBusinessService';
 import { collectVisitAttribution } from '../../utils/analytics';
 import Icon from '../../components/AppIcon';
 import { CartProvider, useCart } from '../../contexts/CartContext';
@@ -156,6 +156,9 @@ function CatalogInner({ slug }) {
   const navigate = useNavigate();
   const { user, business: authBusiness } = useAuth();
   const [business, setBusiness] = useState(null);
+  const [customDomain, setCustomDomain] = useState(() =>
+    isCustomDomainHost() ? window.location.hostname : null
+  );
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
@@ -217,9 +220,13 @@ function CatalogInner({ slug }) {
 
   const loadCatalog = async () => {
     setLoading(true);
-    const { data: biz, error: bizErr } = await getBusinessBySlug(slug);
+    const [{ data: biz, error: bizErr }, domain] = await Promise.all([
+      getBusinessBySlug(slug),
+      getBusinessCustomDomain(slug),
+    ]);
     if (bizErr || !biz) { setNotFound(true); setLoading(false); return; }
     setBusiness(biz);
+    if (domain) setCustomDomain(domain);
     const path = typeof window !== 'undefined' ? window.location?.pathname || getPublicCatalogRelativePath(slug) : getPublicCatalogRelativePath(slug);
     const attribution = collectVisitAttribution();
     recordCatalogVisit(slug, path, attribution)
@@ -559,7 +566,7 @@ function CatalogInner({ slug }) {
   const buildSingleWhatsAppMessage = (product) => {
     const storeName = business?.name || 'la tienda';
     const code = product?.publicCode;
-    const catalogUrl = slug ? getEffectiveCatalogUrl(slug) : '';
+    const catalogUrl = slug ? getEffectiveCatalogUrl(slug, customDomain) : '';
     const body = code
       ? `Hola, quiero este producto: ${code} - ${product?.name}\n\nPrecio: ${formatPrice(product?.price)}\n\nTienda: ${storeName}`
       : `Hola! Me interesa el producto:\n\n*${product?.name}*\nPrecio: ${formatPrice(product?.price)}\n\nTienda: ${storeName}`;
@@ -775,7 +782,7 @@ function CatalogInner({ slug }) {
     if (!raw) return '';
     return raw.length > 140 ? `${raw.slice(0, 137).trim()}...` : raw;
   })();
-  const baseUrl = getEffectiveCatalogBaseUrl();
+  const baseUrl = getEffectiveCatalogBaseUrl(customDomain);
   const host =
     typeof window !== 'undefined' && window?.location?.host ? window.location.host : '';
   const seoInput = {
@@ -798,7 +805,7 @@ function CatalogInner({ slug }) {
   const shareDescription = catalogSeoContent?.metaDescription || getCatalogShareDescription(business);
   const ogDescription = catalogSeoContent?.ogDescription || shareDescription;
   const ogRegion = detectCatalogRegion(seoInput);
-  const canonicalUrl = getEffectiveCatalogUrl(slug);
+  const canonicalUrl = getEffectiveCatalogUrl(slug, customDomain);
   const ogImage = getCatalogOgImageUrl(business, baseUrl);
   const showGridEmptyState = gridProducts.length === 0 && (!mainFeaturedProduct || hasActiveFilters);
   const jsonLd =
@@ -1675,7 +1682,7 @@ function OrderPanel({ business, slug, formatPrice, onClose, theme }) {
           const label = item?.publicCode ? `${item.publicCode} - ${item?.name}` : item?.name;
           return `- ${item?.quantity} ${label}`;
         });
-        const catalogUrl = slug ? getEffectiveCatalogUrl(slug) : '';
+        const catalogUrl = slug ? getEffectiveCatalogUrl(slug, customDomain) : '';
         let message = '';
         if (catalogUrl) message += `${catalogUrl}\n\n`;
         message += `Hola, quiero hacer un pedido.\n\nNombre: ${customerName?.trim()}`;

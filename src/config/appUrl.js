@@ -157,50 +157,64 @@ export function isCustomDomainHost() {
 }
 
 /**
- * Base URL to use for public catalog links when on a custom domain.
- * Returns the current origin (e.g. "https://catalogo.gong.cl") so all
- * generated URLs stay on the merchant's domain.
- * Falls back to CATALOG_ORIGIN on SaaS hosts or SSR.
+ * Resolves the effective origin for a business's catalog links.
+ * Priority: explicit customDomain param > current hostname if custom > CATALOG_ORIGIN.
+ * @param {string|null} customDomain - e.g. 'catalogo.gong.cl' from business_domains table
  */
-export function getEffectiveCatalogBaseUrl() {
-  if (isCustomDomainHost()) {
-    return String(window.location.origin || '').replace(/\/$/, '');
-  }
-  return CATALOG_ORIGIN;
+function resolveCustomOrigin(customDomain) {
+  if (customDomain) return `https://${customDomain}`;
+  if (isCustomDomainHost()) return String(window.location.origin || '').replace(/\/$/, '');
+  return null;
+}
+
+/**
+ * Base URL for catalog images / OG. Respects custom domain if provided.
+ * @param {string|null} [customDomain]
+ */
+export function getEffectiveCatalogBaseUrl(customDomain) {
+  return resolveCustomOrigin(customDomain) || CATALOG_ORIGIN;
 }
 
 /**
  * Shareable catalog URL respecting custom domains.
- * - Custom domain: https://catalogo.gong.cl/            (root — slug is implicit)
- * - SaaS host:     https://miralatienda.de/catalogo/slug
+ * - With custom domain: https://catalogo.gong.cl/
+ * - SaaS host:          https://miralatienda.de/catalogo/slug
+ * @param {string} slug
+ * @param {string|null} [customDomain]
  */
-export function getEffectiveCatalogUrl(slug) {
-  if (isCustomDomainHost()) {
-    return String(window.location.origin || '').replace(/\/$/, '') + '/';
-  }
+export function getEffectiveCatalogUrl(slug, customDomain) {
+  const origin = resolveCustomOrigin(customDomain);
+  if (origin) return `${origin}/`;
   return getPublicCatalogUrl(slug);
 }
 
 /**
  * Shareable offers URL respecting custom domains.
+ * @param {string} slug
+ * @param {string|null} [customDomain]
  */
-export function getEffectiveOffersUrl(slug) {
-  if (isCustomDomainHost()) {
+export function getEffectiveOffersUrl(slug, customDomain) {
+  const origin = resolveCustomOrigin(customDomain);
+  if (origin) {
     const s = String(slug || '').trim();
-    return String(window.location.origin || '').replace(/\/$/, '') + `/catalogo/${s}/ofertas`;
+    return `${origin}/catalogo/${s}/ofertas`;
   }
   return getPublicOffersUrl(slug);
 }
 
 /**
  * Shareable product URL respecting custom domains.
+ * @param {string} businessSlug
+ * @param {string} productSlug
+ * @param {string|null} [customDomain]
  */
-export function getEffectiveProductUrl(businessSlug, productSlug) {
-  if (isCustomDomainHost()) {
+export function getEffectiveProductUrl(businessSlug, productSlug, customDomain) {
+  const origin = resolveCustomOrigin(customDomain);
+  if (origin) {
     const b = String(businessSlug || '').trim();
     const p = String(productSlug || '').trim();
     if (!b || !p) return '';
-    return String(window.location.origin || '').replace(/\/$/, '') + `/p/${b}/${p}`;
+    return `${origin}/p/${b}/${p}`;
   }
   return getPublicProductUrl(businessSlug, productSlug);
 }

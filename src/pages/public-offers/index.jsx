@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
-import { getBusinessBySlug, getPublicOfferProducts, getPublicProducts } from '../../services/waBusinessService';
+import { getBusinessBySlug, getPublicOfferProducts, getPublicProducts, getBusinessCustomDomain } from '../../services/waBusinessService';
 import { CartProvider, useCart } from '../../contexts/CartContext';
 import { formatPrice as formatPriceUtil, resolveCatalogCurrency } from '../../utils/formatPrice';
 import { getBusinessLocale } from '../../lib/locale/businessLocale';
 import { resolveCatalogTheme } from '../../utils/catalogTheme';
 import { cfImageUrl } from '../../utils/cloudflareImage';
-import { getPublicCatalogUrl, getPublicOffersUrl, getEffectiveCatalogUrl, getEffectiveOffersUrl } from '../../config/appUrl';
+import { getPublicCatalogUrl, getPublicOffersUrl, getEffectiveCatalogUrl, getEffectiveOffersUrl, isCustomDomainHost } from '../../config/appUrl';
 import { openWhatsAppUrl } from '../../utils/openWhatsAppUrl';
 import CatalogLayout from '../public-catalog/CatalogLayout';
 import { ProductCard, ProductModal, getProductCardImage } from '../public-catalog';
@@ -210,6 +210,9 @@ function PublicOffersContent() {
   const { slug } = useParams();
   const isDesktop = useIsDesktop();
   const [business, setBusiness] = useState(null);
+  const [customDomain, setCustomDomain] = useState(() =>
+    isCustomDomainHost() ? window.location.hostname : null
+  );
   const [products, setProducts] = useState([]);
   const [fallbackProducts, setFallbackProducts] = useState([]);
   const [status, setStatus] = useState('loading');
@@ -225,7 +228,10 @@ function PublicOffersContent() {
       setStatus('loading');
       setFallbackProducts([]);
 
-      const bizResult = await getBusinessBySlug(slug);
+      const [bizResult, domain] = await Promise.all([
+        getBusinessBySlug(slug),
+        getBusinessCustomDomain(slug),
+      ]);
       if (!alive) return;
 
       if (bizResult.error) {
@@ -239,6 +245,7 @@ function PublicOffersContent() {
 
       const biz = bizResult.data;
       setBusiness(biz);
+      if (domain) setCustomDomain(domain);
 
       const { data: offerProducts, error: offerError } = await getPublicOfferProducts(biz.id);
       if (!alive) return;
@@ -273,8 +280,8 @@ function PublicOffersContent() {
       : `$${Number(amount || 0).toFixed(2)}`;
 
   const theme = resolveCatalogTheme(business?.designSettings || null);
-  const catalogUrl = business?.slug ? getEffectiveCatalogUrl(business.slug) : null;
-  const offersUrl = business?.slug ? getEffectiveOffersUrl(business.slug) : null;
+  const catalogUrl = business?.slug ? getEffectiveCatalogUrl(business.slug, customDomain) : null;
+  const offersUrl = business?.slug ? getEffectiveOffersUrl(business.slug, customDomain) : null;
   const hasOffers = products.length > 0;
   const hasFallbackProducts = fallbackProducts.length > 0;
 

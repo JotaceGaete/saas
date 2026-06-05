@@ -28,9 +28,10 @@ import {
   getEffectivePlanSlug,
   expireDeliveredOrders,
   getDailyMessage,
+  getBusinessCustomDomain,
 } from "../../services/waBusinessService";
 import { supabase } from "../../lib/supabase";
-import { getPublicCatalogUrl, getPublicOffersUrl } from "../../config/appUrl";
+import { getEffectiveCatalogUrl, getEffectiveOffersUrl } from "../../config/appUrl";
 import { buildCfImageErrorHandler, cfImageUrl } from "../../utils/cloudflareImage";
 import OrdersByDayCard from "./components/OrdersByDayCard";
 import TopProductsCard from "./components/TopProductsCard";
@@ -108,8 +109,13 @@ export default function Dashboard() {
   const [dismissedExpiredBanner, setDismissedExpiredBanner] = useState(false);
   const aiInsightRetryAfterRef = useRef(0);
 
-  const catalogUrl = getPublicCatalogUrl(business?.slug ?? '');
-  const offersUrl = getPublicOffersUrl(business?.slug ?? '');
+  const [customDomain, setCustomDomain] = useState(null);
+  useEffect(() => {
+    if (!business?.slug) return;
+    getBusinessCustomDomain(business.slug).then((d) => { if (d) setCustomDomain(d); });
+  }, [business?.slug]);
+  const catalogUrl = getEffectiveCatalogUrl(business?.slug ?? '', customDomain);
+  const offersUrl = getEffectiveOffersUrl(business?.slug ?? '', customDomain);
 
   const planExpiresAt = business?.planExpiresAt ?? null;
   const trialExpiresAt = business?.trialExpiresAt ?? null;

@@ -9,11 +9,12 @@ import {
   getPublicProductBySlug,
   recordCatalogWhatsAppClick,
   slugifyProductName,
+  getBusinessCustomDomain,
 } from '../../services/waBusinessService';
 import { formatPrice as formatPriceUtil, resolveCatalogCurrency } from '../../utils/formatPrice';
 import { getBusinessLocale } from '../../lib/locale/businessLocale';
 import { getOrderMessageBrandingSuffix } from '../../utils/branding';
-import { getPublicCatalogRelativePath, getPublicProductUrl, getEffectiveCatalogUrl, getEffectiveProductUrl } from '../../config/appUrl';
+import { getPublicCatalogRelativePath, getPublicProductUrl, getEffectiveCatalogUrl, getEffectiveProductUrl, isCustomDomainHost } from '../../config/appUrl';
 import { resolveCatalogTheme } from '../../utils/catalogTheme';
 import { cfImageUrl, isCfTransformableUrl } from '../../utils/cloudflareImage';
 import { openWhatsAppUrl } from '../../utils/openWhatsAppUrl';
@@ -85,6 +86,9 @@ function PublicProductInner() {
   const { businessSlug, productSlug } = useParams();
   const navigate = useNavigate();
   const [business, setBusiness] = useState(null);
+  const [customDomain, setCustomDomain] = useState(() =>
+    isCustomDomainHost() ? window.location.hostname : null
+  );
   const [product, setProduct] = useState(null);
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -107,8 +111,12 @@ function PublicProductInner() {
         pathname: typeof window !== 'undefined' ? window.location?.pathname : null,
       });
 
-      const { data, error } = await getPublicProductBySlug(businessSlug, productSlug);
+      const [{ data, error }, domain] = await Promise.all([
+        getPublicProductBySlug(businessSlug, productSlug),
+        getBusinessCustomDomain(businessSlug),
+      ]);
       if (cancelled) return;
+      if (domain) setCustomDomain(domain);
 
       const nextBusiness = data?.business || null;
       const nextProduct = data?.product || null;
@@ -187,8 +195,8 @@ function PublicProductInner() {
   }), [design?.cardSettings]);
   const resolvedProductSlug = product?.slug || slugifyProductName(product?.name);
   const productUrl = useMemo(
-    () => getEffectiveProductUrl(businessSlug, resolvedProductSlug),
-    [businessSlug, resolvedProductSlug],
+    () => getEffectiveProductUrl(businessSlug, resolvedProductSlug, customDomain),
+    [businessSlug, resolvedProductSlug, customDomain],
   );
   const phone = normalizePhone(business?.whatsapp);
   const productState = getProductCommercialState(product);

@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useCart } from '../../contexts/CartContext';
-import { createOrder, getBusinessBySlug } from '../../services/waBusinessService';
+import { createOrder, getBusinessBySlug, getBusinessCustomDomain } from '../../services/waBusinessService';
 import Icon from '../../components/AppIcon';
 import { formatPrice as formatPriceUtil, resolveCatalogCurrency } from '../../utils/formatPrice';
 import { getBusinessLocale } from '../../lib/locale/businessLocale';
-import { getPublicCatalogRelativePath, getWhatsAppOrderCatalogUrl, getEffectiveCatalogUrl } from '../../config/appUrl';
+import { getPublicCatalogRelativePath, getWhatsAppOrderCatalogUrl, getEffectiveCatalogUrl, isCustomDomainHost } from '../../config/appUrl';
 import { getBrandingMessage } from '../../utils/branding';
 import { isRestaurantBusiness } from '../../utils/businessType';
 import { normalizeOptionalCustomerPhone } from '../../utils/customerPhone';
@@ -37,14 +37,23 @@ export default function OrderConfirmation() {
   const [pendingWhatsappMessage, setPendingWhatsappMessage] = useState('');
   const [copiedMessage, setCopiedMessage] = useState(false);
   const [business, setBusiness] = useState(null);
+  const [customDomain, setCustomDomain] = useState(() =>
+    isCustomDomainHost() ? window.location.hostname : null
+  );
   const submitLockRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       if (!slug) return;
-      const { data } = await getBusinessBySlug(slug);
-      if (!cancelled) setBusiness(data || null);
+      const [{ data }, domain] = await Promise.all([
+        getBusinessBySlug(slug),
+        getBusinessCustomDomain(slug),
+      ]);
+      if (!cancelled) {
+        setBusiness(data || null);
+        if (domain) setCustomDomain(domain);
+      }
     })();
     return () => { cancelled = true; };
   }, [slug]);
@@ -91,7 +100,7 @@ export default function OrderConfirmation() {
       ...lines,
       notes?.trim() ? `\nComentario:\n${notes?.trim()}` : '',
     ]?.filter(Boolean)?.join('\n')?.trim();
-    const catalogUrl = slug ? getEffectiveCatalogUrl(slug) : '';
+    const catalogUrl = slug ? getEffectiveCatalogUrl(slug, customDomain) : '';
     let message = catalogUrl ? `${catalogUrl}\n\n${body}` : body;
     const branding = getBrandingMessage(biz);
     if (branding) message += `\n\n\n${branding}`;

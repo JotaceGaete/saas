@@ -2741,3 +2741,12 @@ export const getBusinessSlugByDomain = async (domain) => {
   }
   return data || null;
 };
+
+export const getBusinessCustomDomain = async (slug) => {
+  const { data, error } = await supabase.rpc('get_active_custom_domain', { p_slug: slug });
+  if (error) {
+    console.error('[custom-domain] get_active_custom_domain error', slug, error.message);
+    return null;
+  }
+  return data || null;
+};
