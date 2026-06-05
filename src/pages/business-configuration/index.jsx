@@ -13,6 +13,7 @@ import WhatsAppMessageTemplate from './components/WhatsAppMessageTemplate';
 import DynamicWhatsAppField from 'components/DynamicWhatsAppField';
 import { getCountryLabels, getCountryCode } from '../../config/country';
 import InstallAppBlock from './components/InstallAppBlock';
+import CustomDomainSection from './components/CustomDomainSection';
 import SettingsSwitch from './components/SettingsSwitch';
 import { Building2, CreditCard, Palette, Sparkles } from 'lucide-react';
 import { truncateAtWordBoundary } from '../../utils/textTruncate';
@@ -1620,6 +1621,18 @@ export default function BusinessConfiguration() {
             )}
 
               </div>
+            </div>
+
+            {/* Dominio personalizado */}
+            <div className="mt-8 mb-2">
+              <div className="flex items-center gap-2 mb-4">
+                <span className="text-lg">🌐</span>
+                <p className="text-sm font-bold text-slate-800 font-[family-name:var(--font-caption)]">Dominio personalizado</p>
+              </div>
+              <CustomDomainSection
+                business={business}
+                isStarter={effectivePlan === 'starter'}
+              />
             </div>
 
             <InstallAppBlock />
