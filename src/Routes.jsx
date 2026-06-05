@@ -49,6 +49,13 @@ import DLocalReturnPage from './pages/billing-dlocal-return';
 import { useAuth } from './contexts/AuthContext';
 import PremiumLoader from './components/ui/PremiumLoader';
 
+function LandingRedirectLog() {
+  const hostname = typeof window !== "undefined" ? window.location.hostname : "ssr";
+  const pathname = typeof window !== "undefined" ? window.location.pathname : "/landing";
+  console.log('[landing-redirect] REACHED /landing route', hostname, pathname);
+  return <Navigate to="/landing-page" replace />;
+}
+
 /**
  * Raíz `/` en go.ventalink.app: sesión → dashboard; sin sesión → login (nunca apex/www).
  * En otros hosts, navegación relativa a /login o /dashboard para que Vercel redirija al host app.
@@ -63,18 +70,30 @@ function GoRootEntry() {
     return <PremiumLoader fullScreen />;
   }
 
+  const hostname = typeof window !== "undefined" ? window.location.hostname : "ssr";
+  const pathname = typeof window !== "undefined" ? window.location.pathname : "/";
+
+  console.log('[GoRootEntry]', { hostname, pathname, isGo, user: !!user });
+
   if (!isGo) {
-    return <Navigate to={user ? "/dashboard" : "/login"} replace />;
+    const dest = user ? "/dashboard" : "/login";
+    console.log('[GoRootEntry] non-go redirect →', dest);
+    return <Navigate to={dest} replace />;
   }
 
   if (!user) {
+    console.log('[GoRootEntry] go, no user → /login');
     return <Navigate to="/login" replace />;
   }
 
+  console.log('[GoRootEntry] go, user → /dashboard');
   return <Navigate to="/dashboard" replace />;
 }
 
 const Routes = () => {
+  if (typeof window !== "undefined") {
+    console.log('[Routes] app loaded', window.location.hostname, window.location.pathname);
+  }
   return (
     <BrowserRouter>
       <SessionExpiredHandler />
@@ -88,6 +107,7 @@ const Routes = () => {
             <Route path="/business-registration" element={<BusinessRegistration />} />
             <Route path="/register" element={<BusinessRegistration />} />
             <Route path="/landing-page" element={<LandingPage />} />
+            <Route path="/landing" element={<LandingRedirectLog />} />
             <Route path="/complete-business-setup" element={<RequireAuth><CompleteBusinessSetupPage /></RequireAuth>} />
             <Route path="/business-configuration" element={<RequireAuth><BusinessConfiguration /></RequireAuth>} />
             <Route path="/product-management" element={<RequireAuth><ProductManagement /></RequireAuth>} />
