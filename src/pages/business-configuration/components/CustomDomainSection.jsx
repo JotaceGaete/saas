@@ -3,7 +3,6 @@ import { supabase } from '../../../lib/supabase';
 import { openWhatsAppUrl } from '../../../utils/openWhatsAppUrl';
 
 const SUPPORT_PHONE = '5492966544879'; // +54 2966 544879
-const EDGE_FUNCTION_URL = `${(import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '')}/functions/v1/manage-custom-domain`;
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -37,17 +36,19 @@ function buildDnsInstructions(domain) {
 }
 
 async function callEdge(action, domain, businessId) {
-  const { data: { session } } = await supabase.auth.getSession();
-  const token = session?.access_token ?? '';
-  const res = await fetch(EDGE_FUNCTION_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`,
-    },
-    body: JSON.stringify({ action, domain, business_id: businessId }),
+  const payload = { action, domain, business_id: businessId };
+  console.log('[domain] invoking manage-custom-domain', payload);
+
+  const { data, error } = await supabase.functions.invoke('manage-custom-domain', {
+    body: payload,
   });
-  return res.json();
+
+  console.log('[domain] response', { data, error });
+
+  if (error) {
+    return { ok: false, error: error.message || String(error) };
+  }
+  return data ?? { ok: false, error: 'Empty response from edge function' };
 }
 
 // ─── sub-components ──────────────────────────────────────────────────────────
@@ -183,6 +184,7 @@ export default function CustomDomainSection({ business, isStarter = false }) {
 
   const handleSave = async () => {
     const domain = cleanDomain(domainInput);
+    console.log('[domain] handleSave', { domain, businessId: business?.id });
     if (!domain) { setError('Ingresa un dominio válido.'); return; }
     if (!isValidDomain(domain)) { setError('Formato inválido. Ej: catalogo.tutienda.com'); return; }
     setError('');
@@ -200,13 +202,15 @@ export default function CustomDomainSection({ business, isStarter = false }) {
       setStatus('pending');
       setDns(result.dns_instructions || buildDnsInstructions(domain));
     } catch (e) {
-      setError('Error de conexión. Intenta de nuevo.');
+      console.error('[domain] handleSave error', e);
+      setError(`Error de conexión: ${e?.message || String(e)}`);
     } finally {
       setSaving(false);
     }
   };
 
   const handleVerify = useCallback(async () => {
+    console.log('[domain] handleVerify', { savedDomain, businessId: business?.id });
     if (!savedDomain) return;
     setVerifying(true);
     setVerifyMsg('');
@@ -230,9 +234,10 @@ export default function CustomDomainSection({ business, isStarter = false }) {
             : 'Dominio pendiente de verificación.'
         );
       }
-    } catch {
+    } catch (e) {
+      console.error('[domain] handleVerify error', e);
       setStatus('error');
-      setError('Error de conexión. Intenta de nuevo.');
+      setError(`Error de conexión: ${e?.message || String(e)}`);
     } finally {
       setVerifying(false);
     }
