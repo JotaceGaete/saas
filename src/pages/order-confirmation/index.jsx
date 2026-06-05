@@ -5,7 +5,7 @@ import { createOrder, getBusinessBySlug } from '../../services/waBusinessService
 import Icon from '../../components/AppIcon';
 import { formatPrice as formatPriceUtil, resolveCatalogCurrency } from '../../utils/formatPrice';
 import { getBusinessLocale } from '../../lib/locale/businessLocale';
-import { getPublicCatalogRelativePath, getWhatsAppOrderCatalogUrl } from '../../config/appUrl';
+import { getPublicCatalogRelativePath, getWhatsAppOrderCatalogUrl, getEffectiveCatalogUrl } from '../../config/appUrl';
 import { getBrandingMessage } from '../../utils/branding';
 import { isRestaurantBusiness } from '../../utils/businessType';
 import { normalizeOptionalCustomerPhone } from '../../utils/customerPhone';
@@ -91,7 +91,7 @@ export default function OrderConfirmation() {
       ...lines,
       notes?.trim() ? `\nComentario:\n${notes?.trim()}` : '',
     ]?.filter(Boolean)?.join('\n')?.trim();
-    const catalogUrl = slug ? getWhatsAppOrderCatalogUrl(slug) : '';
+    const catalogUrl = slug ? getEffectiveCatalogUrl(slug) : '';
     let message = catalogUrl ? `${catalogUrl}\n\n${body}` : body;
     const branding = getBrandingMessage(biz);
     if (branding) message += `\n\n\n${branding}`;

@@ -7,7 +7,7 @@ import { formatPrice as formatPriceUtil, resolveCatalogCurrency } from '../../ut
 import { getBusinessLocale } from '../../lib/locale/businessLocale';
 import { resolveCatalogTheme } from '../../utils/catalogTheme';
 import { cfImageUrl } from '../../utils/cloudflareImage';
-import { getPublicCatalogUrl, getPublicOffersUrl } from '../../config/appUrl';
+import { getPublicCatalogUrl, getPublicOffersUrl, getEffectiveCatalogUrl, getEffectiveOffersUrl } from '../../config/appUrl';
 import { openWhatsAppUrl } from '../../utils/openWhatsAppUrl';
 import CatalogLayout from '../public-catalog/CatalogLayout';
 import { ProductCard, ProductModal, getProductCardImage } from '../public-catalog';
@@ -273,8 +273,8 @@ function PublicOffersContent() {
       : `$${Number(amount || 0).toFixed(2)}`;
 
   const theme = resolveCatalogTheme(business?.designSettings || null);
-  const catalogUrl = business?.slug ? getPublicCatalogUrl(business.slug) : null;
-  const offersUrl = business?.slug ? getPublicOffersUrl(business.slug) : null;
+  const catalogUrl = business?.slug ? getEffectiveCatalogUrl(business.slug) : null;
+  const offersUrl = business?.slug ? getEffectiveOffersUrl(business.slug) : null;
   const hasOffers = products.length > 0;
   const hasFallbackProducts = fallbackProducts.length > 0;
 

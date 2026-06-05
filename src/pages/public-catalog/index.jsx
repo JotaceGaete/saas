@@ -16,6 +16,9 @@ import {
   getPublicCatalogRelativePath,
   getPublicCatalogUrl,
   getWhatsAppOrderCatalogUrl,
+  getEffectiveCatalogBaseUrl,
+  getEffectiveCatalogUrl,
+  isCustomDomainHost,
 } from '../../config/appUrl';
 import BrandingFooter from '../../components/BrandingFooter';
 import CatalogImage from '../../components/CatalogImage';
@@ -556,7 +559,7 @@ function CatalogInner({ slug }) {
   const buildSingleWhatsAppMessage = (product) => {
     const storeName = business?.name || 'la tienda';
     const code = product?.publicCode;
-    const catalogUrl = slug ? getWhatsAppOrderCatalogUrl(slug) : '';
+    const catalogUrl = slug ? getEffectiveCatalogUrl(slug) : '';
     const body = code
       ? `Hola, quiero este producto: ${code} - ${product?.name}\n\nPrecio: ${formatPrice(product?.price)}\n\nTienda: ${storeName}`
       : `Hola! Me interesa el producto:\n\n*${product?.name}*\nPrecio: ${formatPrice(product?.price)}\n\nTienda: ${storeName}`;
@@ -772,7 +775,7 @@ function CatalogInner({ slug }) {
     if (!raw) return '';
     return raw.length > 140 ? `${raw.slice(0, 137).trim()}...` : raw;
   })();
-  const baseUrl = getPublicCatalogBaseUrl();
+  const baseUrl = getEffectiveCatalogBaseUrl();
   const host =
     typeof window !== 'undefined' && window?.location?.host ? window.location.host : '';
   const seoInput = {
@@ -795,7 +798,7 @@ function CatalogInner({ slug }) {
   const shareDescription = catalogSeoContent?.metaDescription || getCatalogShareDescription(business);
   const ogDescription = catalogSeoContent?.ogDescription || shareDescription;
   const ogRegion = detectCatalogRegion(seoInput);
-  const canonicalUrl = getPublicCatalogUrl(slug);
+  const canonicalUrl = getEffectiveCatalogUrl(slug);
   const ogImage = getCatalogOgImageUrl(business, baseUrl);
   const showGridEmptyState = gridProducts.length === 0 && (!mainFeaturedProduct || hasActiveFilters);
   const jsonLd =
@@ -1672,7 +1675,7 @@ function OrderPanel({ business, slug, formatPrice, onClose, theme }) {
           const label = item?.publicCode ? `${item.publicCode} - ${item?.name}` : item?.name;
           return `- ${item?.quantity} ${label}`;
         });
-        const catalogUrl = slug ? getWhatsAppOrderCatalogUrl(slug) : '';
+        const catalogUrl = slug ? getEffectiveCatalogUrl(slug) : '';
         let message = '';
         if (catalogUrl) message += `${catalogUrl}\n\n`;
         message += `Hola, quiero hacer un pedido.\n\nNombre: ${customerName?.trim()}`;

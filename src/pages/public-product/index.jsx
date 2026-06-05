@@ -13,7 +13,7 @@ import {
 import { formatPrice as formatPriceUtil, resolveCatalogCurrency } from '../../utils/formatPrice';
 import { getBusinessLocale } from '../../lib/locale/businessLocale';
 import { getOrderMessageBrandingSuffix } from '../../utils/branding';
-import { getPublicCatalogRelativePath, getPublicProductUrl } from '../../config/appUrl';
+import { getPublicCatalogRelativePath, getPublicProductUrl, getEffectiveCatalogUrl, getEffectiveProductUrl } from '../../config/appUrl';
 import { resolveCatalogTheme } from '../../utils/catalogTheme';
 import { cfImageUrl, isCfTransformableUrl } from '../../utils/cloudflareImage';
 import { openWhatsAppUrl } from '../../utils/openWhatsAppUrl';
@@ -187,7 +187,7 @@ function PublicProductInner() {
   }), [design?.cardSettings]);
   const resolvedProductSlug = product?.slug || slugifyProductName(product?.name);
   const productUrl = useMemo(
-    () => getPublicProductUrl(businessSlug, resolvedProductSlug),
+    () => getEffectiveProductUrl(businessSlug, resolvedProductSlug),
     [businessSlug, resolvedProductSlug],
   );
   const phone = normalizePhone(business?.whatsapp);

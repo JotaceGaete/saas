@@ -139,6 +139,74 @@ export function getWhatsAppOrderCatalogUrl(slug) {
   return getPublicCatalogUrl(slug);
 }
 
+// ---------------------------------------------------------------------------
+// Custom-domain helpers
+// These are runtime-only and safe to call only from browser code.
+// ---------------------------------------------------------------------------
+
+const SAAS_HOST_RE = /^(localhost|127\.0\.0\.1|(.*\.)?go\.ventalink\.app|(.*\.)?ventalink\.app|(.*\.)?walinka\.com|(.*\.)?miralatienda\.de)$/i;
+
+/**
+ * Returns true when the current page is served from a merchant's custom domain
+ * (e.g. catalogo.gong.cl), NOT from the standard SaaS hosts.
+ */
+export function isCustomDomainHost() {
+  if (typeof window === 'undefined') return false;
+  const h = (window.location.hostname || '').toLowerCase();
+  return !!h && !SAAS_HOST_RE.test(h);
+}
+
+/**
+ * Base URL to use for public catalog links when on a custom domain.
+ * Returns the current origin (e.g. "https://catalogo.gong.cl") so all
+ * generated URLs stay on the merchant's domain.
+ * Falls back to CATALOG_ORIGIN on SaaS hosts or SSR.
+ */
+export function getEffectiveCatalogBaseUrl() {
+  if (isCustomDomainHost()) {
+    return String(window.location.origin || '').replace(/\/$/, '');
+  }
+  return CATALOG_ORIGIN;
+}
+
+/**
+ * Shareable catalog URL respecting custom domains.
+ * - Custom domain: https://catalogo.gong.cl/            (root — slug is implicit)
+ * - SaaS host:     https://miralatienda.de/catalogo/slug
+ */
+export function getEffectiveCatalogUrl(slug) {
+  if (isCustomDomainHost()) {
+    return String(window.location.origin || '').replace(/\/$/, '') + '/';
+  }
+  return getPublicCatalogUrl(slug);
+}
+
+/**
+ * Shareable offers URL respecting custom domains.
+ */
+export function getEffectiveOffersUrl(slug) {
+  if (isCustomDomainHost()) {
+    const s = String(slug || '').trim();
+    return String(window.location.origin || '').replace(/\/$/, '') + `/catalogo/${s}/ofertas`;
+  }
+  return getPublicOffersUrl(slug);
+}
+
+/**
+ * Shareable product URL respecting custom domains.
+ */
+export function getEffectiveProductUrl(businessSlug, productSlug) {
+  if (isCustomDomainHost()) {
+    const b = String(businessSlug || '').trim();
+    const p = String(productSlug || '').trim();
+    if (!b || !p) return '';
+    return String(window.location.origin || '').replace(/\/$/, '') + `/p/${b}/${p}`;
+  }
+  return getPublicProductUrl(businessSlug, productSlug);
+}
+
+// ---------------------------------------------------------------------------
+
 /**
  * URL de callback para OAuth (Google, etc.) y confirmación de email.
  * En producción VentALink siempre APP_ORIGIN (nunca apex/www).
