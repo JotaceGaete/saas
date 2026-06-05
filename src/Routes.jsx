@@ -70,9 +70,10 @@ function GoRootEntry() {
   useEffect(() => {
     if (isSaasHost) return;
     let cancelled = false;
+    console.log('[custom-domain] resolving', hostname);
     getBusinessSlugByDomain(hostname).then((slug) => {
       if (!cancelled) {
-        console.log('[GoRootEntry] domain lookup', hostname, '→', slug);
+        console.log('[custom-domain] rpc result', hostname, '→', slug);
         setDomainState({ loading: false, slug });
       }
     });
@@ -82,11 +83,9 @@ function GoRootEntry() {
   if (authLoading || domainState.loading) return <PremiumLoader fullScreen />;
 
   if (!isSaasHost) {
-    if (domainState.slug) {
-      console.log('[GoRootEntry] custom domain', hostname, '→ catalog', domainState.slug);
-      return <PublicCatalog slugOverride={domainState.slug} />;
-    }
-    console.log('[GoRootEntry] unknown custom domain', hostname, '→ /login');
+    const slug = domainState.slug;
+    console.log('[custom-domain] final slug', slug);
+    if (slug) return <PublicCatalog slugOverride={slug} />;
   }
 
   if (!isGo) {

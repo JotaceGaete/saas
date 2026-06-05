@@ -2734,13 +2734,10 @@ export const deleteRubroCategory = async (id) => {
 };
 
 export const getBusinessSlugByDomain = async (domain) => {
-  const { data, error } = await supabase
-    ?.from('business_domains')
-    ?.select('slug:wa_businesses(slug)')
-    ?.eq('domain', domain)
-    ?.eq('status', 'active')
-    ?.single();
-  if (error || !data) return null;
-  // Supabase returns nested: { slug: { slug: 'gong' } } when joining
-  return data?.slug?.slug ?? data?.slug ?? null;
+  const { data, error } = await supabase.rpc('get_slug_by_custom_domain', { p_domain: domain });
+  if (error) {
+    console.error('[custom-domain] rpc error', domain, error.message);
+    return null;
+  }
+  return data || null;
 };
