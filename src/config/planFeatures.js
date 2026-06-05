@@ -296,7 +296,7 @@ export const PLAN_FEATURES = [
     salesPitch: 'Escribe la descripción del producto en segundos. La IA la hace vendedora.',
     category: 'IA',
     plans: { starter: false, pro: true, business: true },
-    status: 'planned',
+    status: 'active',
     showLocked: true,
   },
   {
@@ -306,7 +306,7 @@ export const PLAN_FEATURES = [
     salesPitch: 'La IA analiza tus números y te dice qué hacer para ganar más.',
     category: 'IA',
     plans: { starter: false, pro: false, business: true },
-    status: 'planned',
+    status: 'active',
     showLocked: true,
   },
 
