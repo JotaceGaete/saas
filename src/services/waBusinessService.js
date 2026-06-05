@@ -355,6 +355,8 @@ const mapBusinessFromDb = (row) => {
   city: row?.city,
   region: row?.region,
   country: row?.country,
+  lat: row?.lat != null ? parseFloat(row.lat) : null,
+  lng: row?.lng != null ? parseFloat(row.lng) : null,
   /** ISO solo si existe columna country_code; no inferir desde moneda (evitaba “Chile” por CLP). */
   countryCode: routingCountryCodeFromRow(row) || null,
   /**
@@ -776,6 +778,8 @@ export async function updateBusiness(businessId, updates) {
   if (updates?.coverImageUrl !== undefined) dbUpdates.cover_image_url = updates?.coverImageUrl;
   if (updates?.slug !== undefined)        dbUpdates.slug = updates?.slug;
   if (updates?.isActive !== undefined)    dbUpdates.is_active = updates?.isActive;
+  if (updates?.lat !== undefined) dbUpdates.lat = updates?.lat ?? null;
+  if (updates?.lng !== undefined) dbUpdates.lng = updates?.lng ?? null;
   if (updates?.designSettings !== undefined) dbUpdates.design_settings = updates?.designSettings;
   if (updates?.rubroId !== undefined) dbUpdates.rubro_id = updates?.rubroId || null;
   if (updates?.instagramUrl !== undefined) dbUpdates.instagram_url = normalizeSharedSocialUrl(updates.instagramUrl, 'https://instagram.com');

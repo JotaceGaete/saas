@@ -1,0 +1,7 @@
+<svg width="400" height="120" viewBox="0 0 400 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <g id="V-Check-Isotype">
+    <path d="M30 65L48 85L85 35" stroke="rgba(0,175,255,0.82)" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M50 65L68 85L105 35" stroke="#00AFFF" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <text x="135" y="82" fill="#1E1B4B" font-family="Inter, system-ui, sans-serif" font-weight="800" font-size="60" letter-spacing="-2.5">Walinka</text>
+</svg>

@@ -28,6 +28,7 @@ import { parseAddressByCountry, buildFullAddressLine } from '../../utils/address
 import { resolveVentaAiProductDescriptionEndpoint } from '../../lib/ai/resolveVentaAiProductDescriptionUrl.js';
 import DesignSettings from './components/DesignSettings';
 import RubroPrincipalSelector from './components/RubroPrincipalSelector';
+import LocationPicker from './components/LocationPicker';
 import BusinessCategoriesManager from './components/BusinessCategoriesManager';
 import { BUSINESS_MODES, getRecommendedBusinessModeFromRubro } from '../../lib/business-mode';
 
@@ -269,6 +270,7 @@ export default function BusinessConfiguration() {
   });
   const [rubros, setRubros] = useState([]);
   const [fullAddressInput, setFullAddressInput] = useState('');
+  const [locationCoords, setLocationCoords] = useState({ lat: null, lng: null });
   const [slugEditUnlocked, setSlugEditUnlocked] = useState(false);
   const [settingsTab, setSettingsTab] = useState('identity');
 
@@ -518,6 +520,9 @@ export default function BusinessConfiguration() {
           region: business?.region,
         }),
       );
+      if (business?.lat && business?.lng) {
+        setLocationCoords({ lat: business.lat, lng: business.lng });
+      }
       setSlugEditUnlocked(false);
       setSavedConfigSnapshot(buildSavedConfigSnapshotFromBusiness(business));
     }
@@ -688,6 +693,8 @@ export default function BusinessConfiguration() {
       address: parsedAddr.address,
       city: parsedAddr.city,
       region: parsedAddr.region,
+      lat: locationCoords.lat ?? null,
+      lng: locationCoords.lng ?? null,
       rubroId: form?.rubroId || null,
       businessMode: form?.businessMode || BUSINESS_MODES.STORE,
       instagramUrl: form?.instagramUrl || null,
@@ -1470,21 +1477,35 @@ export default function BusinessConfiguration() {
                   />
                 </div>
 
-                <div>
-                  <p className={sectionHeadingClass}>Ubicación simplificada</p>
-                  <SettingsField
-                    label="Dirección completa"
-                    hint="Incluye tu dirección y ciudad para que tus clientes te encuentren fácilmente. Un solo campo: calle, ciudad y referencias de ubicación."
-                  >
-                    <textarea
-                      rows={3}
-                      className={inputClass}
-                      style={inputStyle}
-                      placeholder="Ej: Calle 123, Ciudad"
-                      value={fullAddressInput}
-                      onChange={e => setFullAddressInput(e?.target?.value ?? '')}
-                    />
-                  </SettingsField>
+                <div id="onboarding-field-address">
+                  <p className={sectionHeadingClass}>Ubicación del negocio</p>
+                  <p className="text-xs mb-4" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+                    Buscá tu dirección para que tus clientes te encuentren fácilmente. Podés ajustar el pin en el mapa para mayor precisión.
+                  </p>
+                  <LocationPicker
+                    value={{
+                      address: form?.address,
+                      city: form?.city,
+                      region: form?.region,
+                      lat: locationCoords.lat,
+                      lng: locationCoords.lng,
+                    }}
+                    onChange={({ address, city, region, lat, lng }) => {
+                      if (address !== undefined) handleFormChange('address', address);
+                      if (city !== undefined) handleFormChange('city', city);
+                      if (region !== undefined) handleFormChange('region', region);
+                      if (lat !== undefined || lng !== undefined) {
+                        setLocationCoords(prev => ({
+                          lat: lat !== undefined ? lat : prev.lat,
+                          lng: lng !== undefined ? lng : prev.lng,
+                        }));
+                      }
+                      setFullAddressInput(
+                        buildFullAddressLine({ address, city, region }),
+                      );
+                    }}
+                    primaryColor={design?.primaryColor || 'var(--color-primary)'}
+                  />
                 </div>
 
                 <div className="mt-2 pt-6 border-t border-slate-100">
