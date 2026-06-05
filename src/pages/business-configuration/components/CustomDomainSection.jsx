@@ -3,10 +3,9 @@ import { supabase } from '../../../lib/supabase';
 import { openWhatsAppUrl } from '../../../utils/openWhatsAppUrl';
 
 const SUPPORT_PHONE = '5492966544879'; // +54 2966 544879
+const EDGE_FUNCTION_URL = `${(import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '')}/functions/v1/manage-custom-domain`;
 
-const CNAME_TARGET = 'cname.vercel-dns.com';
-
-// ─── helpers ────────────────────────────────────────────────────────────────
+// ─── helpers ─────────────────────────────────────────────────────────────────
 
 function cleanDomain(raw) {
   return String(raw || '')
@@ -14,14 +13,44 @@ function cleanDomain(raw) {
     .toLowerCase()
     .replace(/^https?:\/\//i, '')
     .replace(/\/.*$/, '')
-    .replace(/^www\./i, '');
+    .replace(/\s/g, '');
 }
 
 function isValidDomain(d) {
   return /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/.test(d);
 }
 
-// ─── sub-components ─────────────────────────────────────────────────────────
+function classifyDomain(domain) {
+  const parts = domain.split('.');
+  if (parts.length === 2) return 'apex';
+  if (parts[0] === 'www') return 'www';
+  return 'subdomain';
+}
+
+function buildDnsInstructions(domain) {
+  const type = classifyDomain(domain);
+  if (type === 'apex') {
+    return [{ type: 'A', host: '@', value: '76.76.21.21' }];
+  }
+  const host = domain.split('.')[0];
+  return [{ type: 'CNAME', host, value: 'cname.vercel-dns.com' }];
+}
+
+async function callEdge(action, domain, businessId) {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token ?? '';
+  const res = await fetch(EDGE_FUNCTION_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify({ action, domain, business_id: businessId }),
+  });
+  return res.json();
+}
+
+// ─── sub-components ──────────────────────────────────────────────────────────
 
 function StatusBadge({ status }) {
   const map = {
@@ -62,6 +91,41 @@ function CopyButton({ value, label = 'Copiar' }) {
   );
 }
 
+function DnsTable({ dns }) {
+  return (
+    <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="border-b border-slate-100">
+            <th className="text-left px-3 py-2 font-semibold text-slate-500">Tipo</th>
+            <th className="text-left px-3 py-2 font-semibold text-slate-500">Nombre / Host</th>
+            <th className="text-left px-3 py-2 font-semibold text-slate-500">Valor / Destino</th>
+          </tr>
+        </thead>
+        <tbody>
+          {dns.map((row, i) => (
+            <tr key={i}>
+              <td className="px-3 py-2.5 font-mono font-bold text-violet-700">{row.type}</td>
+              <td className="px-3 py-2.5">
+                <div className="flex items-center gap-2">
+                  <code className="font-mono text-slate-700">{row.host}</code>
+                  <CopyButton value={row.host} />
+                </div>
+              </td>
+              <td className="px-3 py-2.5">
+                <div className="flex items-center gap-2">
+                  <code className="font-mono text-slate-700 break-all">{row.value}</code>
+                  <CopyButton value={row.value} />
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function FaqItem({ question, answer }) {
   const [open, setOpen] = useState(false);
   return (
@@ -72,10 +136,7 @@ function FaqItem({ question, answer }) {
         className="w-full flex items-center justify-between py-3 text-left gap-3 text-sm font-medium text-slate-800 hover:text-slate-900 transition-colors"
       >
         <span>{question}</span>
-        <svg
-          className={`w-4 h-4 shrink-0 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`}
-          fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"
-        >
+        <svg className={`w-4 h-4 shrink-0 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
         </svg>
       </button>
@@ -84,20 +145,21 @@ function FaqItem({ question, answer }) {
   );
 }
 
-// ─── main component ──────────────────────────────────────────────────────────
+// ─── main component ───────────────────────────────────────────────────────────
 
 export default function CustomDomainSection({ business, isStarter = false }) {
   const [domainInput, setDomainInput] = useState('');
   const [savedDomain, setSavedDomain] = useState(null);
-  const [status, setStatus] = useState('pending'); // pending | verifying | active | error
-  const [rowId, setRowId] = useState(null);
+  const [status, setStatus] = useState('pending');
+  const [dns, setDns] = useState(null);       // [{type, host, value}]
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState('');
+  const [verifyMsg, setVerifyMsg] = useState('');
   const [copiedLink, setCopiedLink] = useState(false);
 
-  // Load existing domain row
+  // Load existing domain row from DB
   useEffect(() => {
     if (!business?.id) return;
     let cancelled = false;
@@ -112,7 +174,7 @@ export default function CustomDomainSection({ business, isStarter = false }) {
           setSavedDomain(data.domain);
           setDomainInput(data.domain);
           setStatus(data.status || 'pending');
-          setRowId(data.id);
+          setDns(buildDnsInstructions(data.domain));
         }
         setLoading(false);
       });
@@ -124,63 +186,75 @@ export default function CustomDomainSection({ business, isStarter = false }) {
     if (!domain) { setError('Ingresa un dominio válido.'); return; }
     if (!isValidDomain(domain)) { setError('Formato inválido. Ej: catalogo.tutienda.com'); return; }
     setError('');
+    setVerifyMsg('');
     setSaving(true);
+
     try {
-      if (rowId) {
-        await supabase.from('business_domains').update({ domain, status: 'pending' }).eq('id', rowId);
-      } else {
-        const { data } = await supabase
-          .from('business_domains')
-          .insert({ business_id: business.id, domain, status: 'pending' })
-          .select('id')
-          .single();
-        setRowId(data?.id);
+      const result = await callEdge('add', domain, business.id);
+      if (!result.ok) {
+        setError(result.error || 'No se pudo agregar el dominio. Intenta de nuevo.');
+        setSaving(false);
+        return;
       }
       setSavedDomain(domain);
       setStatus('pending');
+      setDns(result.dns_instructions || buildDnsInstructions(domain));
     } catch (e) {
-      setError('No se pudo guardar. Intenta de nuevo.');
+      setError('Error de conexión. Intenta de nuevo.');
     } finally {
       setSaving(false);
     }
   };
 
   const handleVerify = useCallback(async () => {
-    if (!savedDomain || !rowId) return;
+    if (!savedDomain) return;
     setVerifying(true);
+    setVerifyMsg('');
+    setError('');
     setStatus('verifying');
+
     try {
-      // Optimistic check: try to resolve via the existing RPC
-      const { data: slug } = await supabase.rpc('get_slug_by_custom_domain', { p_domain: savedDomain });
-      if (slug) {
-        await supabase.from('business_domains').update({ status: 'active' }).eq('id', rowId);
-        setStatus('active');
+      const result = await callEdge('verify', savedDomain, business.id);
+      if (!result.ok) {
+        setStatus('error');
+        setError(result.error || 'Error al verificar. Intenta de nuevo.');
+        return;
+      }
+      setStatus(result.status);
+      if (result.status === 'active') {
+        setVerifyMsg('');
       } else {
-        // DNS not propagated yet; mark as pending and give feedback
-        await supabase.from('business_domains').update({ status: 'pending' }).eq('id', rowId);
-        setStatus('pending');
-        setError('Los registros DNS aún no se han propagado. Puede demorar hasta 48 h. Vuelve a verificar más tarde.');
+        setVerifyMsg(
+          result.verified === false
+            ? 'Los registros DNS aún no se han propagado. Puede demorar hasta 48 h. Vuelve a verificar más tarde.'
+            : 'Dominio pendiente de verificación.'
+        );
       }
     } catch {
       setStatus('error');
+      setError('Error de conexión. Intenta de nuevo.');
     } finally {
       setVerifying(false);
     }
-  }, [savedDomain, rowId]);
+  }, [savedDomain, business?.id]);
 
   const handleDelete = async () => {
-    if (!rowId) return;
     if (!window.confirm('¿Eliminar el dominio personalizado?')) return;
-    await supabase.from('business_domains').delete().eq('id', rowId);
+    await supabase
+      .from('business_domains')
+      .delete()
+      .eq('business_id', business.id);
     setSavedDomain(null);
     setDomainInput('');
     setStatus('pending');
-    setRowId(null);
+    setDns(null);
     setError('');
+    setVerifyMsg('');
   };
 
   const handleWhatsAppHelp = () => {
-    const msg = `Hola, necesito ayuda para conectar mi dominio a Ventalink.\n\nMi dominio es: ${savedDomain || domainInput || '(por definir)'}`;
+    const d = savedDomain || cleanDomain(domainInput) || '(por definir)';
+    const msg = `Hola, necesito ayuda para conectar mi dominio a Ventalink.\n\nMi dominio es: ${d}`;
     openWhatsAppUrl(`https://wa.me/${SUPPORT_PHONE}?text=${encodeURIComponent(msg)}`);
   };
 
@@ -192,7 +266,7 @@ export default function CustomDomainSection({ business, isStarter = false }) {
 
   if (loading) return null;
 
-  // ── Starter gate ────────────────────────────────────────────────────────
+  // ── Starter gate ─────────────────────────────────────────────────────────
   if (isStarter) {
     return (
       <div className="rounded-2xl border border-violet-100 bg-gradient-to-br from-violet-50 to-white p-5">
@@ -210,7 +284,7 @@ export default function CustomDomainSection({ business, isStarter = false }) {
     );
   }
 
-  // ── Active state celebration card ───────────────────────────────────────
+  // ── Active state ─────────────────────────────────────────────────────────
   if (status === 'active' && savedDomain) {
     return (
       <div className="space-y-4">
@@ -219,41 +293,28 @@ export default function CustomDomainSection({ business, isStarter = false }) {
             <span className="text-2xl">🎉</span>
             <div className="min-w-0 flex-1">
               <p className="text-sm font-bold text-emerald-900 font-[family-name:var(--font-caption)]">Tu dominio está conectado correctamente</p>
-              <a
-                href={`https://${savedDomain}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-1 block text-sm font-semibold text-emerald-700 hover:underline break-all"
-              >
+              <a href={`https://${savedDomain}`} target="_blank" rel="noopener noreferrer"
+                className="mt-1 block text-sm font-semibold text-emerald-700 hover:underline break-all">
                 https://{savedDomain}
               </a>
               <div className="mt-3 flex flex-wrap gap-2">
-                <a
-                  href={`https://${savedDomain}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
-                >
+                <a href={`https://${savedDomain}`} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 transition-colors">
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
                   Abrir catálogo
                 </a>
-                <button
-                  type="button"
-                  onClick={handleCopyLink}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold border border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50 transition-colors"
-                >
-                  {copiedLink ? (
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-                  ) : (
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
-                  )}
+                <button type="button" onClick={handleCopyLink}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold border border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50 transition-colors">
+                  {copiedLink
+                    ? <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                    : <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+                  }
                   {copiedLink ? 'Copiado' : 'Copiar enlace'}
                 </button>
               </div>
             </div>
           </div>
         </div>
-
         <div className="flex items-center justify-between text-xs text-slate-500 px-1">
           <span>¿Quieres cambiar el dominio?</span>
           <button type="button" onClick={handleDelete} className="text-red-500 hover:text-red-700 font-medium transition-colors">
@@ -264,8 +325,9 @@ export default function CustomDomainSection({ business, isStarter = false }) {
     );
   }
 
-  // ── Setup flow ───────────────────────────────────────────────────────────
-  const showDnsInstructions = !!savedDomain;
+  // ── Setup / pending / error flow ─────────────────────────────────────────
+  const showDnsInstructions = !!savedDomain && dns;
+  const dnsType = savedDomain ? classifyDomain(savedDomain) : null;
 
   return (
     <div className="space-y-5">
@@ -300,44 +362,29 @@ export default function CustomDomainSection({ business, isStarter = false }) {
       {/* DNS instructions */}
       {showDnsInstructions && (
         <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-3">
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
             <p className="text-sm font-semibold text-slate-800 font-[family-name:var(--font-caption)]">
               Configuración DNS requerida
             </p>
             <StatusBadge status={status} />
           </div>
+
+          {/* Domain-type hint */}
           <p className="text-xs text-slate-500">
-            Crea el siguiente registro en el panel de tu proveedor de dominio (GoDaddy, Namecheap, Cloudflare, etc.):
+            {dnsType === 'apex'
+              ? 'Tu dominio es un dominio raíz (apex). Crea el siguiente registro A en tu proveedor:'
+              : dnsType === 'www'
+              ? 'Tu dominio usa www. Crea el siguiente registro CNAME en tu proveedor:'
+              : 'Tu dominio es un subdominio. Crea el siguiente registro CNAME en tu proveedor:'}
           </p>
 
-          <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-slate-100">
-                  <th className="text-left px-3 py-2 font-semibold text-slate-500">Tipo</th>
-                  <th className="text-left px-3 py-2 font-semibold text-slate-500">Nombre / Host</th>
-                  <th className="text-left px-3 py-2 font-semibold text-slate-500">Valor / Destino</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td className="px-3 py-2.5 font-mono font-bold text-violet-700">CNAME</td>
-                  <td className="px-3 py-2.5">
-                    <div className="flex items-center gap-2">
-                      <code className="font-mono text-slate-700">{savedDomain?.split('.')[0] || '@'}</code>
-                      <CopyButton value={savedDomain?.split('.')[0] || '@'} />
-                    </div>
-                  </td>
-                  <td className="px-3 py-2.5">
-                    <div className="flex items-center gap-2">
-                      <code className="font-mono text-slate-700">{CNAME_TARGET}</code>
-                      <CopyButton value={CNAME_TARGET} />
-                    </div>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+          <DnsTable dns={dns} />
+
+          {verifyMsg && (
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">
+              ⏳ {verifyMsg}
+            </p>
+          )}
 
           <div className="flex flex-col sm:flex-row gap-2 pt-1">
             <button
@@ -399,7 +446,7 @@ export default function CustomDomainSection({ business, isStarter = false }) {
             'Tener un dominio propio',
             'Acceso al panel donde administras tu dominio',
             'Crear un registro DNS (te indicamos exactamente cuál)',
-          ].map((item) => (
+          ].map(item => (
             <li key={item} className="flex items-start gap-2 text-xs text-slate-600">
               <svg className="w-4 h-4 shrink-0 text-emerald-500 mt-0.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
