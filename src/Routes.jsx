@@ -57,40 +57,70 @@ console.log(
   typeof window !== 'undefined' ? window.location.hostname : 'ssr',
 );
 
+const WALINKA_HOSTS = [
+  'ventalink.app',
+  'cl.ventalink.app',
+  'go.ventalink.app',
+  'miralatienda.de',
+  'localhost',
+  '127.0.0.1',
+];
+
+function isWalinkaHost(h) {
+  const hostname = (h || '').toLowerCase();
+  return WALINKA_HOSTS.some((d) => hostname === d || hostname.endsWith(`.${d}`));
+}
+
 /**
  * Raíz `/`:
  * - Dominios personalizados (business_domains) → renderiza el catálogo directamente.
+ * - Dominios personalizados sin registro → pantalla de error (NUNCA redirige a /login).
  * - go.ventalink.app con sesión → /dashboard; sin sesión → /login.
  * - Otros hosts Walinka → /login o /dashboard según estado de sesión.
  */
 function GoRootEntry() {
+  const hostname =
+    typeof window !== 'undefined' ? window.location.hostname.toLowerCase() : '';
+  const pathname =
+    typeof window !== 'undefined' ? window.location.pathname : '';
+
   // Layer 2: fires on every render of this component.
   // If you don't see this, GoRootEntry is not being mounted (routing mismatch or crash above it).
-  console.log(
-    '[GoRootEntry] render — hostname:',
-    typeof window !== 'undefined' ? window.location.hostname : 'ssr',
-  );
+  console.log('[GoRootEntry] render — hostname:', hostname, 'pathname:', pathname);
 
   const { slug: domainSlug, loading: domainLoading } = useCustomDomainSlug();
-  const isGo =
-    typeof window !== "undefined" &&
-    /(^|\.)go\.ventalink\.app$/.test((window.location?.hostname || "").toLowerCase());
+  const isGo = /(^|\.)go\.ventalink\.app$/.test(hostname);
+  const isCustomDomain = !!hostname && !isWalinkaHost(hostname);
   const { user, loading: authLoading } = useAuth();
 
-  if (domainLoading || authLoading) {
+  // For custom domains, don't block on auth loading — domain lookup is enough.
+  if (domainLoading) {
     return <PremiumLoader fullScreen />;
   }
 
-  // Dominio personalizado activo → mostrar catálogo, sin redirigir
-  if (domainSlug) {
-    return <PublicCatalog slugOverride={domainSlug} />;
+  // Dominio personalizado → NUNCA redirigir a /login ni a ninguna ruta interna.
+  if (isCustomDomain) {
+    if (domainSlug) {
+      console.log('[GoRootEntry] custom domain resolved — slug:', domainSlug);
+      return <PublicCatalog slugOverride={domainSlug} />;
+    }
+    console.warn('[GoRootEntry] custom domain — no slug found, showing fallback. hostname:', hostname);
+    // Render a generic 404 rather than redirecting (avoids polluting the URL).
+    return <NotFound />;
+  }
+
+  if (authLoading) {
+    return <PremiumLoader fullScreen />;
   }
 
   if (!isGo) {
-    return <Navigate to={user ? "/dashboard" : "/login"} replace />;
+    const dest = user ? '/dashboard' : '/login';
+    console.log('[GoRootEntry] walinka host (not go) — navigating to', dest, 'hostname:', hostname);
+    return <Navigate to={dest} replace />;
   }
 
   if (!user) {
+    console.log('[GoRootEntry] go.ventalink.app — no user, navigating to /login');
     return <Navigate to="/login" replace />;
   }
 
