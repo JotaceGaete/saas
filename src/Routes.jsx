@@ -1,5 +1,6 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { BrowserRouter, Routes as RouterRoutes, Route, Navigate } from "react-router-dom";
+import { getBusinessSlugByDomain } from './services/waBusinessService';
 import ScrollToTop from "components/ScrollToTop";
 import ErrorBoundary from "components/ErrorBoundary";
 import AnimatedLayout from "components/AnimatedLayout";
@@ -56,37 +57,42 @@ function LandingRedirectLog() {
   return <Navigate to="/landing-page" replace />;
 }
 
-/**
- * Raíz `/` en go.ventalink.app: sesión → dashboard; sin sesión → login (nunca apex/www).
- * En otros hosts, navegación relativa a /login o /dashboard para que Vercel redirija al host app.
- */
+const SAAS_HOSTS = /^(localhost|127\.0\.0\.1|(.*\.)?go\.ventalink\.app|(.*\.)?ventalink\.app|(.*\.)?walinka\.com|(.*\.)?miralatienda\.de)$/i;
+
 function GoRootEntry() {
-  const isGo =
-    typeof window !== "undefined" &&
-    /(^|\.)go\.ventalink\.app$/.test((window.location?.hostname || "").toLowerCase());
-  const { user, loading } = useAuth();
+  const hostname = typeof window !== "undefined" ? window.location.hostname : "";
+  const isSaasHost = SAAS_HOSTS.test(hostname);
+  const isGo = /(^|\.)go\.ventalink\.app$/.test(hostname.toLowerCase());
+  const { user, loading: authLoading } = useAuth();
 
-  if (loading) {
-    return <PremiumLoader fullScreen />;
+  const [domainState, setDomainState] = useState({ loading: !isSaasHost, slug: null });
+
+  useEffect(() => {
+    if (isSaasHost) return;
+    let cancelled = false;
+    getBusinessSlugByDomain(hostname).then((slug) => {
+      if (!cancelled) {
+        console.log('[GoRootEntry] domain lookup', hostname, '→', slug);
+        setDomainState({ loading: false, slug });
+      }
+    });
+    return () => { cancelled = true; };
+  }, [hostname, isSaasHost]);
+
+  if (authLoading || domainState.loading) return <PremiumLoader fullScreen />;
+
+  if (!isSaasHost) {
+    if (domainState.slug) {
+      console.log('[GoRootEntry] custom domain', hostname, '→ catalog', domainState.slug);
+      return <PublicCatalog slugOverride={domainState.slug} />;
+    }
+    console.log('[GoRootEntry] unknown custom domain', hostname, '→ /login');
   }
-
-  const hostname = typeof window !== "undefined" ? window.location.hostname : "ssr";
-  const pathname = typeof window !== "undefined" ? window.location.pathname : "/";
-
-  console.log('[GoRootEntry]', { hostname, pathname, isGo, user: !!user });
 
   if (!isGo) {
-    const dest = user ? "/dashboard" : "/login";
-    console.log('[GoRootEntry] non-go redirect →', dest);
-    return <Navigate to={dest} replace />;
+    return <Navigate to={user ? "/dashboard" : "/login"} replace />;
   }
-
-  if (!user) {
-    console.log('[GoRootEntry] go, no user → /login');
-    return <Navigate to="/login" replace />;
-  }
-
-  console.log('[GoRootEntry] go, user → /dashboard');
+  if (!user) return <Navigate to="/login" replace />;
   return <Navigate to="/dashboard" replace />;
 }
 

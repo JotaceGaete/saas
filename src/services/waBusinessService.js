@@ -2732,3 +2732,15 @@ export const deleteRubroCategory = async (id) => {
   if (error) return { error };
   return { error: null };
 };
+
+export const getBusinessSlugByDomain = async (domain) => {
+  const { data, error } = await supabase
+    ?.from('business_domains')
+    ?.select('slug:wa_businesses(slug)')
+    ?.eq('domain', domain)
+    ?.eq('status', 'active')
+    ?.single();
+  if (error || !data) return null;
+  // Supabase returns nested: { slug: { slug: 'gong' } } when joining
+  return data?.slug?.slug ?? data?.slug ?? null;
+};
