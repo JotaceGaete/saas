@@ -72,7 +72,7 @@ function formatMoney(n) {
 
 export default function AdminPaymentsPage() {
   const navigate = useNavigate();
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.innerWidth < 1400);
   const isDesktop = useIsDesktop();
   const sidebarWidth = sidebarCollapsed ? 'var(--sidebar-collapsed-width)' : 'var(--sidebar-width)';
 
@@ -457,13 +457,13 @@ export default function AdminPaymentsPage() {
                     <tr className="text-xs font-semibold" style={{ backgroundColor: 'var(--color-muted)', color: 'var(--color-muted-foreground)' }}>
                       <th className="px-4 py-3">Fecha</th>
                       <th className="px-4 py-3">Negocio</th>
-                      <th className="px-4 py-3">Usuario</th>
+                      <th className="px-4 py-3 hidden md:table-cell">Usuario</th>
                       <th className="px-4 py-3">Plan</th>
-                      <th className="px-4 py-3">Monto</th>
-                      <th className="px-4 py-3">Estado pago</th>
-                      <th className="px-4 py-3">Origen</th>
-                      <th className="px-4 py-3">Vence</th>
-                      <th className="px-4 py-3">MP payment_id</th>
+                      <th className="px-4 py-3 hidden xl:table-cell">Monto</th>
+                      <th className="px-4 py-3">Estado</th>
+                      <th className="px-4 py-3 hidden xl:table-cell">Origen</th>
+                      <th className="px-4 py-3 hidden 2xl:table-cell">Vence</th>
+                      <th className="px-4 py-3 hidden 2xl:table-cell">MP payment_id</th>
                     </tr>
                   </thead>
                   <tbody style={{ color: 'var(--color-foreground)' }}>
@@ -479,15 +479,15 @@ export default function AdminPaymentsPage() {
                           style={{ borderColor: 'var(--color-border)' }}
                           onClick={() => { setDetailPaymentId(row.id); setDetailBusinessId(null); }}
                         >
-                          <td className="px-4 py-3 text-sm">{formatDate(row.created_at)}</td>
+                          <td className="px-4 py-3 text-sm whitespace-nowrap">{formatDate(row.created_at)}</td>
                           <td className="px-4 py-3 font-medium">{row.business_name || '—'}</td>
-                          <td className="px-4 py-3 text-sm">{row.user_email || '—'}</td>
+                          <td className="px-4 py-3 text-sm hidden md:table-cell">{row.user_email || '—'}</td>
                           <td className="px-4 py-3">{row.plan_slug || '—'}</td>
-                          <td className="px-4 py-3">{formatMoney(row.amount)}</td>
+                          <td className="px-4 py-3 hidden xl:table-cell">{formatMoney(row.amount)}</td>
                           <td className="px-4 py-3"><Badge status={row.status} /></td>
-                          <td className="px-4 py-3 text-sm">{row.origin || '—'}</td>
-                          <td className="px-4 py-3 text-sm">{formatDate(row.plan_expires_at)}</td>
-                          <td className="px-4 py-3 text-xs truncate max-w-[120px]" title={row.mp_payment_id || ''}>{row.mp_payment_id || '—'}</td>
+                          <td className="px-4 py-3 text-sm hidden xl:table-cell">{row.origin || '—'}</td>
+                          <td className="px-4 py-3 text-sm hidden 2xl:table-cell">{formatDate(row.plan_expires_at)}</td>
+                          <td className="px-4 py-3 text-xs truncate max-w-[120px] hidden 2xl:table-cell" title={row.mp_payment_id || ''}>{row.mp_payment_id || '—'}</td>
                         </tr>
                       ))
                     )}

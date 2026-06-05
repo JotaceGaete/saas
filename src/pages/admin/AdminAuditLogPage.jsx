@@ -19,7 +19,7 @@ function formatDate(d) {
 export default function AdminAuditLogPage() {
   const navigate = useNavigate();
   const isDesktop = useIsDesktop();
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.innerWidth < 1400);
   const sidebarWidth = sidebarCollapsed ? 'var(--sidebar-collapsed-width)' : 'var(--sidebar-width)';
 
   const [rows, setRows] = useState([]);
@@ -191,7 +191,7 @@ export default function AdminAuditLogPage() {
                       <th className="px-3 py-2 text-left">Fecha</th>
                       <th className="px-3 py-2 text-left">Acción</th>
                       <th className="px-3 py-2 text-left">Entidad</th>
-                      <th className="px-3 py-2 text-left">Admin</th>
+                      <th className="px-3 py-2 text-left hidden lg:table-cell">Admin</th>
                       <th className="px-3 py-2 text-left">Payload</th>
                     </tr>
                   </thead>
@@ -221,7 +221,7 @@ export default function AdminAuditLogPage() {
                               <code className="text-[10px] break-all">{r.entity_id}</code>
                             </div>
                           </td>
-                          <td className="px-3 py-2">
+                          <td className="px-3 py-2 hidden lg:table-cell">
                             <code className="text-[10px] break-all">{r.admin_user_id}</code>
                           </td>
                           <td className="px-3 py-2">

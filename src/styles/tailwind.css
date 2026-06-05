@@ -201,6 +201,19 @@ body {
   }
 }
 
+/* Ensure admin table containers never cause page-level overflow */
+.panel-main section {
+  min-width: 0;
+  max-width: 100%;
+}
+.panel-main .overflow-x-auto {
+  -webkit-overflow-scrolling: touch;
+}
+/* Tables inside overflow containers stay contained */
+.panel-main .overflow-x-auto table {
+  min-width: 0;
+}
+
 @media (max-width: 640px) {
   body {
     font-size: 15px;

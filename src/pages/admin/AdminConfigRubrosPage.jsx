@@ -8,7 +8,7 @@ import AdminRubrosSection from './components/AdminRubrosSection';
 export default function AdminConfigRubrosPage() {
   const navigate  = useNavigate();
   const isDesktop = useIsDesktop();
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.innerWidth < 1400);
   const sidebarWidth = sidebarCollapsed ? 'var(--sidebar-collapsed-width)' : 'var(--sidebar-width)';
 
   return (

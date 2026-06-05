@@ -45,7 +45,7 @@ export default function AdminEmailsPage() {
   const navigate = useNavigate();
   const { user, business } = useAuth();
   const isDesktop = useIsDesktop();
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.innerWidth < 1400);
   const sidebarWidth = sidebarCollapsed ? 'var(--sidebar-collapsed-width)' : 'var(--sidebar-width)';
 
   // Template selector

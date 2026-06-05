@@ -180,7 +180,7 @@ function SegmentChip({ seg, count, active, onClick, visitsAvailable }) {
 export default function AdminBusinessesPage() {
   const navigate  = useNavigate();
   const isDesktop = useIsDesktop();
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.innerWidth < 1400);
   const sidebarWidth = sidebarCollapsed ? 'var(--sidebar-collapsed-width)' : 'var(--sidebar-width)';
 
   const [stats,      setStats]      = useState({ totalBusinesses: 0, totalProducts: 0, totalOrders: 0, byPlan: {} });
@@ -558,7 +558,7 @@ export default function AdminBusinessesPage() {
                         <th className="px-3 py-2.5 hidden md:table-cell">País</th>
                         <SortHeader colKey="products"  label="Productos" className="hidden sm:table-cell" />
                         <SortHeader colKey="visits30d" label="Visitas 30d" className="hidden sm:table-cell" />
-                        <SortHeader colKey="orders"    label="Pedidos/mes" className="hidden lg:table-cell" />
+                        <SortHeader colKey="orders"    label="Pedidos/mes" className="hidden xl:table-cell" />
                         <SortHeader colKey="createdAt" label="Creado" className="hidden md:table-cell" />
                         <th className="px-3 py-2.5 text-right">Acciones</th>
                       </tr>
@@ -620,7 +620,7 @@ export default function AdminBusinessesPage() {
                               <VisitsCell visits30d={b.visits30d} />
                             </td>
                             {/* Pedidos/mes */}
-                            <td className="px-3 py-3 hidden lg:table-cell tabular-nums">
+                            <td className="px-3 py-3 hidden xl:table-cell tabular-nums">
                               {b.ordersThisMonth ?? '—'}
                             </td>
                             {/* Creado */}

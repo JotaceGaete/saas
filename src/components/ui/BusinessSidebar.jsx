@@ -36,10 +36,21 @@ export default function BusinessSidebar({ isCollapsed = false, onCollapsedChange
   useEffect(() => { setCollapsed(isCollapsed); }, [isCollapsed]);
   useEffect(() => { setMobileOpen(false); }, [location?.pathname]);
   useEffect(() => {
-    const handleResize = () => { if (window.innerWidth >= 1024) setMobileOpen(false); };
+    const handleResize = () => {
+      if (window.innerWidth >= 1024) setMobileOpen(false);
+      // Auto-collapse sidebar below 1400px
+      const narrow = window.innerWidth < 1400;
+      setCollapsed(narrow);
+      onCollapsedChange?.(narrow);
+    };
+    // Initial auto-collapse check on mount
+    if (window.innerWidth < 1400) {
+      setCollapsed(true);
+      onCollapsedChange?.(true);
+    }
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!userMenuOpen) return;

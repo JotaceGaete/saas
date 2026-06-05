@@ -23,7 +23,7 @@ export default function AdminBusinessDetailPage() {
   const navigate = useNavigate();
   const { impersonateBusiness, stopImpersonation, isImpersonating } = useAuth();
   const isDesktop = useIsDesktop();
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.innerWidth < 1400);
   const sidebarWidth = sidebarCollapsed ? 'var(--sidebar-collapsed-width)' : 'var(--sidebar-width)';
 
   const [business, setBusiness] = useState(null);
