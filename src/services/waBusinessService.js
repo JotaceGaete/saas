@@ -2728,3 +2728,138 @@ export const deleteRubroCategory = async (id) => {
   if (error) return { error };
   return { error: null };
 };
+
+// ——— Proveedores ———
+
+const mapSupplierFromDb = (row) => ({
+  id: row?.id,
+  businessId: row?.business_id,
+  name: row?.name,
+  contactName: row?.contact_name,
+  phone: row?.phone,
+  email: row?.email,
+  notes: row?.notes,
+  createdAt: row?.created_at,
+  updatedAt: row?.updated_at,
+});
+
+const mapDebtFromDb = (row) => ({
+  id: row?.id,
+  businessId: row?.business_id,
+  supplierId: row?.supplier_id,
+  description: row?.description,
+  amount: Number(row?.amount ?? 0),
+  dueDate: row?.due_date,
+  paidAt: row?.paid_at,
+  status: row?.status,
+  createdAt: row?.created_at,
+  updatedAt: row?.updated_at,
+});
+
+export const getSuppliers = async (businessId) => {
+  const { data, error } = await supabase
+    ?.from('wa_suppliers')
+    ?.select('*')
+    ?.eq('business_id', businessId)
+    ?.order('name');
+  if (error) return { data: null, error };
+  return { data: data?.map(mapSupplierFromDb) ?? [], error: null };
+};
+
+export const getSupplier = async (id) => {
+  const { data, error } = await supabase?.from('wa_suppliers')?.select('*')?.eq('id', id)?.single();
+  if (error) return { data: null, error };
+  return { data: mapSupplierFromDb(data), error: null };
+};
+
+export const createSupplier = async (businessId, payload) => {
+  const { data, error } = await supabase?.from('wa_suppliers')?.insert({
+    business_id: businessId,
+    name: payload?.name,
+    contact_name: payload?.contactName ?? null,
+    phone: payload?.phone ?? null,
+    email: payload?.email ?? null,
+    notes: payload?.notes ?? null,
+  })?.select()?.single();
+  if (error) return { data: null, error };
+  return { data: mapSupplierFromDb(data), error: null };
+};
+
+export const updateSupplier = async (id, payload) => {
+  const db = {};
+  if (payload?.name !== undefined) db.name = payload.name;
+  if (payload?.contactName !== undefined) db.contact_name = payload.contactName;
+  if (payload?.phone !== undefined) db.phone = payload.phone;
+  if (payload?.email !== undefined) db.email = payload.email;
+  if (payload?.notes !== undefined) db.notes = payload.notes;
+  const { data, error } = await supabase?.from('wa_suppliers')?.update(db)?.eq('id', id)?.select()?.single();
+  if (error) return { data: null, error };
+  return { data: mapSupplierFromDb(data), error: null };
+};
+
+export const deleteSupplier = async (id) => {
+  const { error } = await supabase?.from('wa_suppliers')?.delete()?.eq('id', id);
+  if (error) return { error };
+  return { error: null };
+};
+
+export const getSupplierDebts = async (supplierId) => {
+  const { data, error } = await supabase
+    ?.from('wa_supplier_debts')
+    ?.select('*')
+    ?.eq('supplier_id', supplierId)
+    ?.order('created_at', { ascending: false });
+  if (error) return { data: null, error };
+  return { data: data?.map(mapDebtFromDb) ?? [], error: null };
+};
+
+export const getAllBusinessDebts = async (businessId) => {
+  const { data, error } = await supabase
+    ?.from('wa_supplier_debts')
+    ?.select('*')
+    ?.eq('business_id', businessId)
+    ?.order('due_date', { ascending: true, nullsFirst: false });
+  if (error) return { data: null, error };
+  return { data: data?.map(mapDebtFromDb) ?? [], error: null };
+};
+
+export const createSupplierDebt = async (businessId, supplierId, payload) => {
+  const { data, error } = await supabase?.from('wa_supplier_debts')?.insert({
+    business_id: businessId,
+    supplier_id: supplierId,
+    description: payload?.description,
+    amount: payload?.amount,
+    due_date: payload?.dueDate ?? null,
+    status: 'pending',
+  })?.select()?.single();
+  if (error) return { data: null, error };
+  return { data: mapDebtFromDb(data), error: null };
+};
+
+export const updateSupplierDebt = async (id, payload) => {
+  const db = {};
+  if (payload?.description !== undefined) db.description = payload.description;
+  if (payload?.amount !== undefined) db.amount = payload.amount;
+  if (payload?.dueDate !== undefined) db.due_date = payload.dueDate;
+  if (payload?.status !== undefined) db.status = payload.status;
+  const { data, error } = await supabase?.from('wa_supplier_debts')?.update(db)?.eq('id', id)?.select()?.single();
+  if (error) return { data: null, error };
+  return { data: mapDebtFromDb(data), error: null };
+};
+
+export const markDebtAsPaid = async (id) => {
+  const { data, error } = await supabase
+    ?.from('wa_supplier_debts')
+    ?.update({ status: 'paid', paid_at: new Date().toISOString() })
+    ?.eq('id', id)
+    ?.select()
+    ?.single();
+  if (error) return { data: null, error };
+  return { data: mapDebtFromDb(data), error: null };
+};
+
+export const deleteSupplierDebt = async (id) => {
+  const { error } = await supabase?.from('wa_supplier_debts')?.delete()?.eq('id', id);
+  if (error) return { error };
+  return { error: null };
+};
