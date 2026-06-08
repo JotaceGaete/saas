@@ -37,6 +37,7 @@ import AdminUserNewPage from './pages/admin/AdminUserNewPage';
 import AdminAuditLogPage from './pages/admin/AdminAuditLogPage';
 import AdminEmailsPage from './pages/admin/AdminEmailsPage';
 import AdminConfigRubrosPage from './pages/admin/AdminConfigRubrosPage';
+import SuppliersPage from './pages/suppliers';
 import PlansPage from './pages/plans';
 import BillingSuccessPage from './pages/billing/BillingSuccessPage';
 import BillingCancelPage from './pages/billing/BillingCancelPage';
@@ -96,6 +97,7 @@ const Routes = () => {
             <Route path="/orders/historial" element={<RequireAuth><OrdersHistory /></RequireAuth>} />
             <Route path="/orders" element={<RequireAuth><Orders /></RequireAuth>} />
             <Route path="/customers/:customerId" element={<RequireAuth><CustomerPage /></RequireAuth>} />
+            <Route path="/proveedores" element={<RequireAuth><SuppliersPage /></RequireAuth>} />
             <Route path="/design" element={<RequireAuth><DesignPage /></RequireAuth>} />
             <Route path="/ayuda" element={<RequireAuth><HelpPage /></RequireAuth>} />
             <Route path="/login" element={<Login />} />

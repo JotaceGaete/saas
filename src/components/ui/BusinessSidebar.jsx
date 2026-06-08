@@ -15,6 +15,7 @@ const NAV_ITEMS = [
   { label: 'Mi tienda', path: '/dashboard', icon: 'Store' },
   { label: 'Productos', path: '/product-management', icon: 'Package' },
   { label: 'Pedidos', path: '/orders', icon: 'ShoppingCart' },
+  { label: 'Proveedores', path: '/proveedores', icon: 'Truck' },
   { label: 'Historial pedidos', path: '/orders/historial', icon: 'History' },
   { label: 'Configuración', path: '/business-configuration', icon: 'Settings' },
   { label: 'Diseño', path: '/design', icon: 'Palette' },

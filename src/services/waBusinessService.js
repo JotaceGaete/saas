@@ -2728,3 +2728,94 @@ export const deleteRubroCategory = async (id) => {
   if (error) return { error };
   return { error: null };
 };
+
+// ============================================================
+// Proveedores (wa_suppliers + wa_supplier_debts)
+// ============================================================
+
+export const getSuppliers = async (businessId) => {
+  const { data, error } = await supabase
+    .from('wa_suppliers')
+    .select('*')
+    .eq('business_id', businessId)
+    .order('name', { ascending: true });
+  return { data: data || [], error };
+};
+
+export const getSupplier = async (id) => {
+  const { data, error } = await supabase
+    .from('wa_suppliers')
+    .select('*')
+    .eq('id', id)
+    .single();
+  return { data, error };
+};
+
+export const createSupplier = async (businessId, payload) => {
+  const { data, error } = await supabase
+    .from('wa_suppliers')
+    .insert({ business_id: businessId, ...payload })
+    .select()
+    .single();
+  return { data, error };
+};
+
+export const updateSupplier = async (id, payload) => {
+  const { data, error } = await supabase
+    .from('wa_suppliers')
+    .update(payload)
+    .eq('id', id)
+    .select()
+    .single();
+  return { data, error };
+};
+
+export const deleteSupplier = async (id) => {
+  const { error } = await supabase.from('wa_suppliers').delete().eq('id', id);
+  return { error };
+};
+
+export const getSupplierDebts = async (businessId, supplierId) => {
+  let query = supabase
+    .from('wa_supplier_debts')
+    .select('*')
+    .eq('business_id', businessId)
+    .order('created_at', { ascending: false });
+  if (supplierId) query = query.eq('supplier_id', supplierId);
+  const { data, error } = await query;
+  return { data: data || [], error };
+};
+
+export const createSupplierDebt = async (businessId, payload) => {
+  const { data, error } = await supabase
+    .from('wa_supplier_debts')
+    .insert({ business_id: businessId, ...payload })
+    .select()
+    .single();
+  return { data, error };
+};
+
+export const updateSupplierDebt = async (id, payload) => {
+  const { data, error } = await supabase
+    .from('wa_supplier_debts')
+    .update(payload)
+    .eq('id', id)
+    .select()
+    .single();
+  return { data, error };
+};
+
+export const deleteSupplierDebt = async (id) => {
+  const { error } = await supabase.from('wa_supplier_debts').delete().eq('id', id);
+  return { error };
+};
+
+export const markDebtAsPaid = async (id) => {
+  const { data, error } = await supabase
+    .from('wa_supplier_debts')
+    .update({ status: 'paid', paid_at: new Date().toISOString() })
+    .eq('id', id)
+    .select()
+    .single();
+  return { data, error };
+};
