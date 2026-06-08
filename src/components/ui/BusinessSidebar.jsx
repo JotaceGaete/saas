@@ -283,6 +283,7 @@ Motivo (opcional):`;
                 )}
               </li>
               {[
+                { label: 'Embudo',    path: '/admin/funnel',    icon: 'TrendingUp',    match: (p) => p === '/admin/funnel' },
                 { label: 'Auditoría', path: '/admin/audit-log', icon: 'ClipboardList', match: (p) => p === '/admin/audit-log' },
                 { label: 'Emails',    path: '/admin/emails',    icon: 'Mail',          match: (p) => p === '/admin/emails' },
               ].map(item => {

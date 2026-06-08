@@ -195,3 +195,10 @@ export async function adminChangePlan(businessId, newPlanSlug, reason = null) {
   if (data?.ok === false) return { data: null, error: { message: data.error || 'Error' } };
   return { data, error: null };
 }
+
+
+export async function getAdminFunnel() {
+  const { data, error } = await supabase.rpc('admin_get_funnel');
+  if (error) return { data: null, error };
+  return { data, error: null };
+}
