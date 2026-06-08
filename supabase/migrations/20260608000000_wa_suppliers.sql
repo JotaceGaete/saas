@@ -31,10 +31,12 @@ create index if not exists wa_supplier_debts_business_id_idx on wa_supplier_debt
 create index if not exists wa_supplier_debts_status_idx on wa_supplier_debts(status);
 
 -- triggers updated_at
+drop trigger if exists wa_suppliers_updated_at on wa_suppliers;
 create trigger wa_suppliers_updated_at
   before update on wa_suppliers
   for each row execute function wa_set_updated_at();
 
+drop trigger if exists wa_supplier_debts_updated_at on wa_supplier_debts;
 create trigger wa_supplier_debts_updated_at
   before update on wa_supplier_debts
   for each row execute function wa_set_updated_at();
@@ -44,27 +46,35 @@ alter table wa_suppliers enable row level security;
 alter table wa_supplier_debts enable row level security;
 
 -- wa_suppliers policies
+drop policy if exists "suppliers_select" on wa_suppliers;
 create policy "suppliers_select" on wa_suppliers for select
   using (business_id in (select id from wa_businesses where user_id = auth.uid()));
 
+drop policy if exists "suppliers_insert" on wa_suppliers;
 create policy "suppliers_insert" on wa_suppliers for insert
   with check (business_id in (select id from wa_businesses where user_id = auth.uid()));
 
+drop policy if exists "suppliers_update" on wa_suppliers;
 create policy "suppliers_update" on wa_suppliers for update
   using (business_id in (select id from wa_businesses where user_id = auth.uid()));
 
+drop policy if exists "suppliers_delete" on wa_suppliers;
 create policy "suppliers_delete" on wa_suppliers for delete
   using (business_id in (select id from wa_businesses where user_id = auth.uid()));
 
 -- wa_supplier_debts policies
+drop policy if exists "supplier_debts_select" on wa_supplier_debts;
 create policy "supplier_debts_select" on wa_supplier_debts for select
   using (business_id in (select id from wa_businesses where user_id = auth.uid()));
 
+drop policy if exists "supplier_debts_insert" on wa_supplier_debts;
 create policy "supplier_debts_insert" on wa_supplier_debts for insert
   with check (business_id in (select id from wa_businesses where user_id = auth.uid()));
 
+drop policy if exists "supplier_debts_update" on wa_supplier_debts;
 create policy "supplier_debts_update" on wa_supplier_debts for update
   using (business_id in (select id from wa_businesses where user_id = auth.uid()));
 
+drop policy if exists "supplier_debts_delete" on wa_supplier_debts;
 create policy "supplier_debts_delete" on wa_supplier_debts for delete
   using (business_id in (select id from wa_businesses where user_id = auth.uid()));
