@@ -2739,6 +2739,7 @@ const mapSupplierFromDb = (row) => ({
   phone: row?.phone,
   email: row?.email,
   notes: row?.notes,
+  supplierType: row?.supplier_type ?? 'otros',
   createdAt: row?.created_at,
   updatedAt: row?.updated_at,
 });
@@ -2749,6 +2750,8 @@ const mapDebtFromDb = (row) => ({
   supplierId: row?.supplier_id,
   description: row?.description,
   amount: Number(row?.amount ?? 0),
+  amountPaid: Number(row?.amount_paid ?? 0),
+  balance: Number(row?.amount ?? 0) - Number(row?.amount_paid ?? 0),
   dueDate: row?.due_date,
   paidAt: row?.paid_at,
   status: row?.status,
@@ -2780,6 +2783,7 @@ export const createSupplier = async (businessId, payload) => {
     phone: payload?.phone ?? null,
     email: payload?.email ?? null,
     notes: payload?.notes ?? null,
+    supplier_type: payload?.supplierType ?? 'otros',
   })?.select()?.single();
   if (error) return { data: null, error };
   return { data: mapSupplierFromDb(data), error: null };
@@ -2792,6 +2796,7 @@ export const updateSupplier = async (id, payload) => {
   if (payload?.phone !== undefined) db.phone = payload.phone;
   if (payload?.email !== undefined) db.email = payload.email;
   if (payload?.notes !== undefined) db.notes = payload.notes;
+  if (payload?.supplierType !== undefined) db.supplier_type = payload.supplierType;
   const { data, error } = await supabase?.from('wa_suppliers')?.update(db)?.eq('id', id)?.select()?.single();
   if (error) return { data: null, error };
   return { data: mapSupplierFromDb(data), error: null };
@@ -2840,6 +2845,7 @@ export const updateSupplierDebt = async (id, payload) => {
   const db = {};
   if (payload?.description !== undefined) db.description = payload.description;
   if (payload?.amount !== undefined) db.amount = payload.amount;
+  if (payload?.amountPaid !== undefined) db.amount_paid = payload.amountPaid;
   if (payload?.dueDate !== undefined) db.due_date = payload.dueDate;
   if (payload?.status !== undefined) db.status = payload.status;
   const { data, error } = await supabase?.from('wa_supplier_debts')?.update(db)?.eq('id', id)?.select()?.single();
@@ -2847,10 +2853,22 @@ export const updateSupplierDebt = async (id, payload) => {
   return { data: mapDebtFromDb(data), error: null };
 };
 
-export const markDebtAsPaid = async (id) => {
+export const addDebtPayment = async (id, paymentAmount, currentAmountPaid, totalAmount) => {
+  const newAmountPaid = Math.min(Number(currentAmountPaid) + Number(paymentAmount), Number(totalAmount));
+  const isPaidOff = newAmountPaid >= Number(totalAmount);
+  const db = {
+    amount_paid: newAmountPaid,
+    ...(isPaidOff ? { status: 'paid', paid_at: new Date().toISOString() } : {}),
+  };
+  const { data, error } = await supabase?.from('wa_supplier_debts')?.update(db)?.eq('id', id)?.select()?.single();
+  if (error) return { data: null, error };
+  return { data: mapDebtFromDb(data), error: null };
+};
+
+export const markDebtAsPaid = async (id, totalAmount) => {
   const { data, error } = await supabase
     ?.from('wa_supplier_debts')
-    ?.update({ status: 'paid', paid_at: new Date().toISOString() })
+    ?.update({ status: 'paid', paid_at: new Date().toISOString(), amount_paid: totalAmount ?? undefined })
     ?.eq('id', id)
     ?.select()
     ?.single();

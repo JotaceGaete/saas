@@ -61,16 +61,19 @@ export const PLAN_LIMITS = Object.freeze({
     maxProducts:       20,
     maxOrdersPerMonth: 50,
     maxBusinesses:     1,
+    maxSuppliers:      5,
   },
   pro: {
     maxProducts:       100,
     maxOrdersPerMonth: null,
     maxBusinesses:     1,
+    maxSuppliers:      null,
   },
   business: {
     maxProducts:       null,
     maxOrdersPerMonth: null,
     maxBusinesses:     1,
+    maxSuppliers:      null,
   },
 });
 

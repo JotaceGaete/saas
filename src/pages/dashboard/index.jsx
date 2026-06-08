@@ -41,6 +41,7 @@ import PlanUsageCard from "./components/PlanUsageCard";
 import TrialConversionBanner from "./components/TrialConversionBanner";
 import AiInsightsCard from "./components/AiInsightsCard";
 import DailyMessageCard from "./components/DailyMessageCard";
+import SuppliersSummaryCard from "./components/SuppliersSummaryCard";
 import AddProductHero from "./components/AddProductHero";
 import ChartEmptyWave from "./components/ChartEmptyWave";
 import { getCatalogShareMessage } from "../../utils/branding";
@@ -900,6 +901,15 @@ export default function Dashboard() {
               ))}
             </div>
           </section>
+
+          {/* ── Proveedores y Cuentas por Pagar ── */}
+          {business?.id && (
+            <section aria-label="Proveedores">
+              <div className="stagger-item min-w-0">
+                <SuppliersSummaryCard businessId={business.id} />
+              </div>
+            </section>
+          )}
 
           {/* ── Analíticas (solo Pro y Business) ── */}
           {!isStarterPlan && (
