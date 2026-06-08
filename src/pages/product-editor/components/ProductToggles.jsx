@@ -50,7 +50,7 @@ function ToggleRow({ icon, iconColor, iconBg, title, description, checked, onCha
   );
 }
 
-export default function ProductToggles({ activo, featured, onSale, slug = '', onActiveChange, onFeaturedChange, onOnSaleChange, hideActive = false }) {
+export default function ProductToggles({ activo, featured, onSale, showInPos, slug = '', onActiveChange, onFeaturedChange, onOnSaleChange, onShowInPosChange, hideActive = false }) {
   const offersUrl = slug ? getPublicOffersUrl(slug) : '';
 
   return (
@@ -146,6 +146,19 @@ export default function ProductToggles({ activo, featured, onSale, slug = '', on
         checked={!!featured}
         onChange={onFeaturedChange}
       />
+
+      {onShowInPosChange && (
+        <ToggleRow
+          icon="Monitor"
+          iconColor="#3b82f6"
+          iconBg="rgba(59,130,246,0.1)"
+          accentColor="#3b82f6"
+          title="Visible en TPV"
+          description={showInPos ? 'Aparece en la grilla rápida del terminal de ventas' : 'Solo disponible al buscar en el TPV'}
+          checked={!!showInPos}
+          onChange={onShowInPosChange}
+        />
+      )}
     </div>
   );
 }

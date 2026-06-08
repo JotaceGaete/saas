@@ -56,43 +56,27 @@ export default function CatalogLayoutSettings({ design, onChange, isRestaurant =
 
   return (
     <div className="flex flex-col gap-5">
-      <SectionCard icon="Tags" title={`Categorías en el ${catalogLabel}`} subtitle="Activa filtros para ordenar la experiencia de compra.">
-        <label
-          className="flex items-center justify-between px-4 py-3 rounded-xl border cursor-pointer transition-all"
-          style={{
-            borderColor: design?.useCategories ? `${primaryColor}66` : 'rgba(17,24,39,0.08)',
-            backgroundColor: design?.useCategories ? `${primaryColor}08` : 'rgba(255,255,255,0.58)',
-          }}
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: design?.useCategories ? `${primaryColor}18` : '#f0f0f8' }}>
-              <Icon name="Tags" size={14} color={design?.useCategories ? primaryColor : '#a0a0b8'} />
-            </div>
-            <span className="text-sm font-medium" style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-caption)' }}>Usar categorías en el catálogo</span>
+      <SectionCard icon="Tags" title={`Categorías en el ${catalogLabel}`} subtitle="Organiza la experiencia de compra con filtros de categoría.">
+        <div className="flex items-start gap-3 px-4 py-3 rounded-xl border" style={{ borderColor: 'rgba(17,24,39,0.08)', backgroundColor: 'rgba(255,255,255,0.58)' }}>
+          <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5" style={{ backgroundColor: '#f0f0f8' }}>
+            <Icon name="Settings" size={14} color="#a0a0b8" />
           </div>
-          <div
-            className="relative w-10 h-5.5 rounded-full transition-all flex-shrink-0 cursor-pointer"
-            style={{ width: '40px', height: '22px', backgroundColor: design?.useCategories ? primaryColor : '#d1d5db' }}
-            onClick={(e) => { e.preventDefault(); onChange?.({ ...design, useCategories: !design?.useCategories }); }}
-          >
-            <div className="absolute top-0.5 rounded-full bg-white transition-all" style={{ width: '18px', height: '18px', left: design?.useCategories ? '20px' : '2px', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
-          </div>
-        </label>
-        <p className="mt-2 text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-          Las categorías sugeridas dependen del <strong>rubro principal</strong> (Identidad). Si cambias de rubro, revisa tus categorías de producto.
-        </p>
-        <div className="mt-4 pt-4 border-t" style={{ borderColor: 'rgba(17,24,39,0.08)' }}>
-          <p className="text-xs" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)', lineHeight: '1.6' }}>
-            ¿Necesitas categorías que no están en tu rubro?{' '}
+          <p className="text-sm leading-relaxed" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
+            El toggle "Mostrar categorías en el catálogo" y la gestión de categorías propias se encuentran en{' '}
             <a
               href="/business-configuration"
               className="font-semibold underline underline-offset-2"
               style={{ color: 'var(--color-primary)' }}
             >
-              Crea tus propias categorías en Configuración →
+              Configuración del negocio →
             </a>
           </p>
         </div>
+        {design?.useCategories && (
+          <p className="mt-2 text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+            ✓ Las categorías están activas en tu catálogo público.
+          </p>
+        )}
       </SectionCard>
 
       <SectionCard icon="Smartphone" title={`Vista del ${catalogLabel} en móvil`} subtitle="Define la densidad de productos en celulares.">

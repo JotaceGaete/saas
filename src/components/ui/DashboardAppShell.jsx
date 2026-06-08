@@ -6,9 +6,10 @@ export default function DashboardAppShell({ children, backgroundColor = 'var(--c
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const isDesktop = useIsDesktop();
   const sidebarWidth = sidebarCollapsed ? 'var(--sidebar-collapsed-width)' : 'var(--sidebar-width)';
+  const mainWidth = isDesktop ? `calc(100% - ${sidebarWidth})` : '100%';
 
   return (
-    <div className="panel-root min-h-screen" style={{ backgroundColor }}>
+    <div className="panel-root min-h-screen w-full max-w-full min-w-0 overflow-x-hidden" style={{ backgroundColor }}>
       <BusinessSidebar isCollapsed={sidebarCollapsed} onCollapsedChange={setSidebarCollapsed} />
       <main
         className="panel-main flex min-h-screen min-w-0 justify-center overflow-x-hidden overflow-y-visible transition-all duration-200"

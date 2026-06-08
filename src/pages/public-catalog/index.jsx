@@ -2,7 +2,8 @@
 import CatalogLayout from './CatalogLayout';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
-import { getBusinessBySlug, getPublicProducts, getCategoriesByRubroId, getBusinessCategories, recordCatalogVisit, recordCatalogWhatsAppClick, createOrder } from '../../services/waBusinessService';
+import { getBusinessBySlug, getPublicProducts, getCategoriesByRubroId, getBusinessCategories, recordCatalogVisit, recordCatalogWhatsAppClick, createOrder, getEffectivePlanSlug } from '../../services/waBusinessService';
+import { getPlanLimits } from '../../constants/plans';
 import { collectVisitAttribution } from '../../utils/analytics';
 import Icon from '../../components/AppIcon';
 import { CartProvider, useCart } from '../../contexts/CartContext';
@@ -148,6 +149,15 @@ export default function PublicCatalog() {
   );
 }
 
+/** Renderiza el catálogo con un slug externo (dominios personalizados). */
+export function CatalogForSlug({ slug }) {
+  return (
+    <CartProvider>
+      <CatalogInner slug={slug} />
+    </CartProvider>
+  );
+}
+
 function CatalogInner({ slug }) {
   const navigate = useNavigate();
   const { user, business: authBusiness } = useAuth();
@@ -166,6 +176,7 @@ function CatalogInner({ slug }) {
   const [priceRange, setPriceRange] = useState([0, 0]);
   const [maxPrice, setMaxPrice] = useState(0);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [planProductLimit, setPlanProductLimit] = useState(null);
   const [visibleCount, setVisibleCount] = useState(() => {
     if (typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches) return 16;
     const conn = getNavConnection();
@@ -221,7 +232,17 @@ function CatalogInner({ slug }) {
     recordCatalogVisit(slug, path, attribution)
       .then((r) => console.log('[public-catalog] recordCatalogVisit result', { slug, recorded: r?.recorded, throttled: r?.throttled, error: r?.error }))
       .catch((e) => console.error('[public-catalog] recordCatalogVisit error', slug, e));
-    const { data: prods } = await getPublicProducts(biz?.id);
+    // Calcular plan efectivo para limitar productos visibles (enforcement de plan vencido)
+    const effectivePlan = getEffectivePlanSlug(
+      biz?.planSlug,
+      biz?.planExpiresAt ?? null,
+      biz?.trialExpiresAt ?? null,
+    );
+    const { maxProducts } = getPlanLimits(effectivePlan);
+    setPlanProductLimit(maxProducts ?? null);
+    // Si el plan tiene límite, mostrar todos los productos permitidos sin paginación
+    if (maxProducts != null) setVisibleCount(maxProducts);
+    const { data: prods } = await getPublicProducts(biz?.id, { maxProducts });
     const loadedProducts = prods || [];
     setProducts(loadedProducts);
     if (loadedProducts?.length > 0) {
@@ -556,9 +577,10 @@ function CatalogInner({ slug }) {
     const storeName = business?.name || 'la tienda';
     const code = product?.publicCode;
     const catalogUrl = slug ? getWhatsAppOrderCatalogUrl(slug) : '';
+    const priceText = product?.showPrice !== false ? `Precio: ${formatPrice(product?.price)}` : 'Precio a consultar';
     const body = code
-      ? `Hola, quiero este producto: ${code} - ${product?.name}\n\nPrecio: ${formatPrice(product?.price)}\n\nTienda: ${storeName}`
-      : `Hola! Me interesa el producto:\n\n*${product?.name}*\nPrecio: ${formatPrice(product?.price)}\n\nTienda: ${storeName}`;
+      ? `Hola, quiero este producto: ${code} - ${product?.name}\n\n${priceText}\n\nTienda: ${storeName}`
+      : `Hola! Me interesa el producto:\n\n*${product?.name}*\n${priceText}\n\nTienda: ${storeName}`;
     let message = catalogUrl ? `${catalogUrl}\n\n${body}` : body;
     const branding = getOrderMessageBrandingSuffix(business);
     if (branding) message += `${catalogUrl ? '\n\n\n' : '\n\n'}${branding}`;
@@ -707,7 +729,8 @@ function CatalogInner({ slug }) {
     return sortedProducts.filter((product) => product?.id !== mainFeaturedProduct.id);
   }, [mainFeaturedProduct?.id, sortedProducts]);
   const visibleProducts = useMemo(() => gridProducts.slice(0, visibleCount), [gridProducts, visibleCount]);
-  const hasMoreProducts = gridProducts.length > visibleCount;
+  // Si el plan tiene límite de productos, SQL ya entregó solo los permitidos — no hay "más" que mostrar
+  const hasMoreProducts = planProductLimit != null ? false : gridProducts.length > visibleCount;
 
   const totalGridProducts = useMemo(() => {
     if (!Array.isArray(products)) return 0;
@@ -1000,7 +1023,7 @@ function CatalogInner({ slug }) {
 
                 <div className="mt-3 flex items-center gap-3 flex-wrap">
                   <span className="text-xl font-black tabular-nums" style={{ color: primaryColorDark }}>
-                    {formatPrice(activeFeaturedProduct?.price)}
+                    {activeFeaturedProduct?.showPrice !== false ? formatPrice(activeFeaturedProduct?.price) : 'Consultar precio'}
                   </span>
                   {activeFeaturedProduct?.category?.trim() && (
                     <span
@@ -2015,7 +2038,7 @@ export function ProductCard({
 }) {
   const primaryColor = theme?.primaryColor || '#25D366';
   const primaryColorDark = theme?.primaryColorDark || '#128C7E';
-  const showPrice = cardSettings?.showPrice !== false;
+  const showPrice = cardSettings?.showPrice !== false && product?.showPrice !== false;
   const productState = getProductCommercialState(product);
   const { addItem, updateQuantity, items } = useCart();
   const cartItem = items?.find(i => i?.id === product?.id);
@@ -2180,7 +2203,7 @@ export function ProductCard({
 
         {/* Bottom: price + button — always anchored at the card bottom */}
         <div className={`w-full shrink-0 flex flex-col ${compact ? 'gap-1.5' : 'gap-2'} pt-1`}>
-          {showPrice && (
+          {showPrice ? (
             <div className="flex flex-col gap-0.5">
               <p className={`shrink-0 font-bold leading-none tracking-tight text-gray-900 ${compact ? 'text-lg' : 'text-xl'}`}>
                 {formatPrice(product?.price)}
@@ -2192,7 +2215,11 @@ export function ProductCard({
                 </p>
               )}
             </div>
-          )}
+          ) : cardSettings?.showPrice !== false && product?.showPrice === false ? (
+            <p className={`shrink-0 font-semibold leading-none ${compact ? 'text-sm' : 'text-base'}`} style={{ color: 'var(--color-muted-foreground)' }}>
+              Consultar precio
+            </p>
+          ) : null}
           {productState === 'sold_out' ? (
             <button
               type="button"
@@ -2350,7 +2377,7 @@ export function ProductModal({ product, products = [], business, slug, formatPri
   const primaryColor = theme?.primaryColor || '#25D366';
   const primaryColorDark = theme?.primaryColorDark || '#128C7E';
   const primaryRgba = theme?.primaryRgba || (() => 'rgba(37,211,102,0.35)');
-  const showPrice = cardSettings?.showPrice !== false;
+  const showPrice = cardSettings?.showPrice !== false && product?.showPrice !== false;
   const productState = getProductCommercialState(product);
   const isRestaurant = isRestaurantBusiness(business);
   const showDescription = cardSettings?.showDescription !== false;
@@ -2517,7 +2544,8 @@ export function ProductModal({ product, products = [], business, slug, formatPri
   };
 
   const effectiveWaMessage = (() => {
-    const base = whatsAppMessage || `Hola! Quiero pedir:\n\n*${product?.name}*\nPrecio: ${formatPrice(product?.price)}`;
+    const priceText = product?.showPrice !== false ? `Precio: ${formatPrice(product?.price)}` : 'Precio a consultar';
+    const base = whatsAppMessage || `Hola! Quiero pedir:\n\n*${product?.name}*\n${priceText}`;
     if (!isRestaurant) return base;
 
     const comboLines = selectedComboDetails

@@ -788,6 +788,51 @@ ${blocks}
   });
 }
 
+// --- domain-lookup: resuelve hostname personalizado → slug del negocio ---
+
+async function handleDomainLookup(request) {
+  const url = new URL(request.url);
+  const domain = (url.searchParams.get('domain') || '').toLowerCase().split(':')[0].trim();
+
+  const jsonResp = (data, status = 200, extra = {}) =>
+    new Response(JSON.stringify(data), {
+      status,
+      headers: { 'Content-Type': 'application/json; charset=utf-8', ...extra },
+    });
+
+  if (!domain) return jsonResp({ slug: null }, 400);
+
+  const supabaseUrl = (process.env.VITE_SUPABASE_URL || '').replace(/\/$/, '');
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+  if (!supabaseUrl || !serviceKey) return jsonResp({ slug: null }, 503);
+
+  const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
+
+  const { data: dr, error } = await admin
+    .from('business_domains')
+    .select('business_id, status')
+    .eq('domain', domain)
+    .neq('status', 'error')
+    .maybeSingle();
+
+  if (error || !dr) return jsonResp({ slug: null }, 404);
+
+  const { data: biz } = await admin
+    .from('wa_businesses')
+    .select('slug')
+    .eq('id', dr.business_id)
+    .eq('is_active', true)
+    .maybeSingle();
+
+  if (!biz?.slug) return jsonResp({ slug: null }, 404);
+
+  return jsonResp(
+    { slug: biz.slug },
+    200,
+    { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300' },
+  );
+}
+
 // --- Router (mode= en rewrites; slug= para catálogo) ---
 
 async function routeSeoRequest(request) {
@@ -797,6 +842,9 @@ async function routeSeoRequest(request) {
   const mode = url.searchParams.get('mode');
   const publicPath = url.searchParams.get('publicPath');
 
+  if (mode === 'domain-lookup') {
+    return handleDomainLookup(request);
+  }
   if (publicPath === 'product') {
     return handleProductHtml(request);
   }

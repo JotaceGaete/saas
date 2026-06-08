@@ -1,7 +1,16 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { createBusinessForUser, getMyBusiness, updateBusiness } from '../services/waBusinessService';
 import { getAppBaseUrl, getAuthRedirectUrl, getResetPasswordRedirectUrl } from '../config/appUrl';
+import {
+  startSession,
+  startHeartbeat,
+  stopHeartbeat,
+  endSession,
+  registerActivityListeners,
+  registerUnloadHandler,
+  getCurrentSessionId,
+} from '../services/userSessionService';
 
 const AuthContext = createContext({})
 let handlingCorruptSession = false
@@ -48,6 +57,9 @@ export const AuthProvider = ({ children }) => {
   const [sessionReady, setSessionReady] = useState(false)
   const [businessLoading, setBusinessLoading] = useState(false)
   const [sessionExpiredMessage, setSessionExpiredMessage] = useState(null)
+  const trackingSessionIdRef = useRef(null)
+  const trackingCleanupRef = useRef(null)
+  const trackingStartedRef = useRef(false)
 
   const businessOperations = {
     async load(userId) {
@@ -67,11 +79,13 @@ export const AuthProvider = ({ children }) => {
             await updateBusiness(data.id, { planSlug: 'starter', planExpiresAt: null, trialExpiresAt: null })
             const { data: updated } = await getMyBusiness()
             setBusiness(updated || data)
+            startSessionTracking((updated || data)?.id).catch(() => {})
             if (typeof sessionStorage !== 'undefined') {
               sessionStorage.setItem(trialExpired ? 'showTrialExpiredBanner' : 'showPlanExpiredBanner', '1')
             }
           } else {
             setBusiness(data)
+            startSessionTracking(data?.id).catch(() => {})
           }
         }
       } catch (err) {
@@ -87,6 +101,41 @@ export const AuthProvider = ({ children }) => {
   }
 
   const clearSessionExpiredMessage = () => setSessionExpiredMessage(null)
+
+  const startSessionTracking = async (businessId) => {
+    // Guard: if tracking is already running for this tab, do nothing.
+    // userSessionService.startSession also checks sessionStorage, so this is
+    // a fast exit before even making an async call.
+    if (trackingStartedRef.current) return;
+    trackingStartedRef.current = true;
+    try {
+      const id = await startSession(businessId || null);
+      if (!id) {
+        trackingStartedRef.current = false;
+        return;
+      }
+      trackingSessionIdRef.current = id;
+      startHeartbeat(id);
+      const removeActivity = registerActivityListeners(id);
+      const removeUnload = registerUnloadHandler(id);
+      trackingCleanupRef.current = () => {
+        stopHeartbeat();
+        removeActivity?.();
+        removeUnload?.();
+      };
+    } catch (err) {
+      trackingStartedRef.current = false;
+      console.warn('[AuthContext] startSessionTracking error:', err?.message);
+    }
+  };
+
+  const stopTrackingSession = () => {
+    trackingStartedRef.current = false;
+    if (trackingCleanupRef.current) {
+      trackingCleanupRef.current();
+      trackingCleanupRef.current = null;
+    }
+  };
 
   const handleCorruptSession = async (reason) => {
     if (handlingCorruptSession) return
@@ -139,6 +188,9 @@ export const AuthProvider = ({ children }) => {
         if (typeof window !== 'undefined') {
           console.log('[Auth] session expired')
         }
+        stopTrackingSession()
+        endSession(trackingSessionIdRef.current || getCurrentSessionId()).catch(() => {})
+        trackingSessionIdRef.current = null
         setUser(null)
         setImpersonatedBusiness(null)
         businessOperations?.clear()
@@ -354,6 +406,11 @@ export const AuthProvider = ({ children }) => {
 
   const signOut = async () => {
     try {
+      // End session tracking before signing out
+      stopTrackingSession()
+      await endSession(trackingSessionIdRef.current || getCurrentSessionId()).catch(() => {})
+      trackingSessionIdRef.current = null
+
       const { error } = await supabase?.auth?.signOut()
       if (typeof window !== 'undefined' && window.__AUTH_DEBUG__) {
         console.log('[Auth] signOut done', error ? { error: error?.message } : 'ok')

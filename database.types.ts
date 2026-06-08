@@ -1693,6 +1693,7 @@ export type Database = {
           name: string
           options_description: string | null
           price: number
+          show_price: boolean
           sort_order: number | null
           updated_at: string | null
         }
@@ -1709,6 +1710,7 @@ export type Database = {
           name: string
           options_description?: string | null
           price: number
+          show_price?: boolean
           sort_order?: number | null
           updated_at?: string | null
         }
@@ -1725,6 +1727,7 @@ export type Database = {
           name?: string
           options_description?: string | null
           price?: number
+          show_price?: boolean
           sort_order?: number | null
           updated_at?: string | null
         }

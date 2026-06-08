@@ -16,7 +16,7 @@ function formatPriceInput(value, locale) {
   return formatIntegerInputGrouped(value, locale);
 }
 
-export default function ProductFormFields({ formData, errors, onChange, currencyCode = 'USD', locale = 'en-US', useCategories = false, businessCategories = [], rubroCategories = [], onImproveWithAi, isImprovingDescription = false, publicCode = '', businessId, onCategoryCreated, isRestaurant = false }) {
+export default function ProductFormFields({ formData, errors, onChange, currencyCode = 'USD', locale = 'en-US', useCategories = false, businessCategories = [], rubroCategories = [], onImproveWithAi, isImprovingDescription = false, publicCode = '', businessId, onCategoryCreated, isRestaurant = false, onGenerateBarcode, productId }) {
   const handleChange = (field, value) => onChange(field, value);
   const ownOptions   = Array.isArray(businessCategories) ? businessCategories.filter((c) => c?.name?.trim()) : [];
   const rubroOptions = Array.isArray(rubroCategories)    ? rubroCategories.filter((c) => c?.name?.trim())    : [];
@@ -89,6 +89,90 @@ export default function ProductFormFields({ formData, errors, onChange, currency
           </p>
         </div>
       ) : null}
+
+      {/* SKU / Código propio + Código de barras */}
+      <div
+        className="rounded-xl border p-4 space-y-4"
+        style={{ borderColor: 'var(--color-border)', backgroundColor: 'rgba(17,24,39,0.02)' }}
+      >
+        <p className="text-[13px] font-bold" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>
+          Códigos del producto
+        </p>
+
+        {/* SKU */}
+        <div>
+          <label className="block text-[13px] font-semibold mb-1" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}>
+            SKU / Código propio
+          </label>
+          <Input
+            type="text"
+            placeholder="Ej: CAM-001, REF-2024"
+            value={formData?.sku || ''}
+            onChange={(e) => handleChange('sku', e?.target?.value)}
+          />
+          <p className="text-xs mt-1" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+            Tu código interno de referencia
+          </p>
+        </div>
+
+        {/* Código de barras */}
+        <div>
+          <label className="block text-[13px] font-semibold mb-1" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}>
+            Código de barras / EAN
+          </label>
+          <div className="flex gap-2">
+            <Input
+              type="text"
+              placeholder="Ej: 7891234567890"
+              value={formData?.barcode || ''}
+              onChange={(e) => handleChange('barcode', e?.target?.value)}
+              className="flex-1"
+            />
+            {formData?.barcode ? (
+              <button
+                type="button"
+                title="Copiar código"
+                onClick={() => navigator.clipboard?.writeText(formData.barcode)}
+                className="shrink-0 flex items-center gap-1 px-3 py-2 rounded-lg border text-xs font-medium transition-colors"
+                style={{ borderColor: 'var(--color-border)', color: 'var(--color-muted-foreground)' }}
+              >
+                <Icon name="Copy" size={13} />
+                Copiar
+              </button>
+            ) : null}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 mt-2">
+            {onGenerateBarcode && (
+              <button
+                type="button"
+                onClick={onGenerateBarcode}
+                className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors"
+                style={{ backgroundColor: 'rgba(124,58,237,0.08)', color: 'var(--color-primary)' }}
+              >
+                <Icon name="Wand2" size={12} />
+                {formData?.barcode ? 'Regenerar' : 'Generar código de barras interno'}
+              </button>
+            )}
+            {productId && formData?.barcode && (
+              <a
+                href={`/crm/barcodes?product=${productId}`}
+                className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors"
+                style={{ backgroundColor: 'rgba(5,150,105,0.08)', color: '#059669' }}
+              >
+                <Icon name="Printer" size={12} />
+                Imprimir etiquetas
+              </a>
+            )}
+          </div>
+
+          <p className="text-xs mt-1.5" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+            Escanea o escribe el código · Puedes generar uno interno EAN-13 (prefijo 20).{' '}
+            <span style={{ opacity: 0.7 }}>Este código es interno para tu negocio. No reemplaza un código comercial oficial GS1.</span>
+          </p>
+        </div>
+      </div>
+
       {/* Nombre */}
       <div>
         <div className="flex items-end justify-between mb-1">
@@ -430,6 +514,7 @@ export default function ProductFormFields({ formData, errors, onChange, currency
           </div>
         </div>
       )}
+
     </div>
   );
 }
