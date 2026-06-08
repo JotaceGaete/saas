@@ -203,8 +203,8 @@ export default function DesignPage() {
               {designSubtitle}
             </p>
           </section>
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start w-full min-w-0 flex-1 min-h-0">
-            <div className="min-w-0 w-full lg:col-span-8">
+          <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start w-full min-w-0 flex-1 min-h-0">
+            <div className="min-w-0 w-full xl:col-span-8">
               <DesignCustomization
                 design={draftDesign}
                 onChange={setDraftDesign}
@@ -223,7 +223,7 @@ export default function DesignPage() {
             <div
               ref={previewAnchorRef}
               id="design-preview"
-              className="w-full min-w-0 max-w-[360px] mx-auto scroll-mt-24 lg:mx-0 lg:max-w-none lg:col-span-4 lg:sticky lg:top-[calc(var(--safe-area-top)+60px+1.5rem)] lg:z-[5] lg:self-start"
+              className="w-full min-w-0 max-w-[360px] mx-auto scroll-mt-24 xl:mx-0 xl:max-w-none xl:col-span-4 xl:sticky xl:top-[calc(var(--safe-area-top)+60px+1.5rem)] xl:z-[5] xl:self-start"
             >
               <div
                 className="rounded-[24px] border p-4 shadow-[0_18px_42px_rgba(17,24,39,0.08)]"

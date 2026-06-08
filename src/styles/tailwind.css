@@ -201,6 +201,16 @@ body {
   }
 }
 
+/* En desktop el panel principal debe tener exactamente el ancho disponible
+   después del sidebar, no el 100vw completo. Esto evita que el contenido
+   se desborde y quede recortado a la derecha en pantallas 1024–1366px. */
+@media (min-width: 1024px) {
+  .panel-main {
+    width: calc(100% - var(--sidebar-width)) !important;
+    max-width: calc(100% - var(--sidebar-width)) !important;
+  }
+}
+
 @media (max-width: 640px) {
   body {
     font-size: 15px;
