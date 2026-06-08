@@ -40,6 +40,8 @@ import { getDiscountPercent } from '../../utils/offerHelpers';
 import { resolveCatalogTheme, hexToRgb, hexToRgba, darkenHex } from '../../utils/catalogTheme';
 import { openWhatsAppUrl } from '../../utils/openWhatsAppUrl';
 import CatalogStoreHeader from './CatalogStoreHeader';
+import CatalogWhatsAppFirstHeader from './CatalogWhatsAppFirstHeader';
+import CatalogWhatsAppFirstProduct from './CatalogWhatsAppFirstProduct';
 
 function isWhatsAppWebView() {
   if (typeof navigator === 'undefined') return false;
@@ -184,7 +186,7 @@ function CatalogInner({ slug }) {
   const featuredTouchInteractionRef = useRef(false);
   const featuredAutoplayResumeTimeoutRef = useRef(null);
 
-  const { itemCount } = useCart();
+  const { itemCount, addItem } = useCart();
   const isDesktop = useIsDesktop();
   const isSlowConnection = useSlowConnection();
   const isFastMode = !isDesktop && isSlowConnection;
@@ -757,6 +759,14 @@ function CatalogInner({ slug }) {
 
   const storeName = business?.name || 'Catálogo';
   const isRestaurant = isRestaurantBusiness(business);
+  const isWhatsAppFirst = business?.designSettings?.catalogTemplate === 'whatsapp_first';
+
+  const handleWhatsAppClick = (source) => {
+    const path = typeof window !== 'undefined'
+      ? window.location?.pathname || getPublicCatalogRelativePath(slug)
+      : getPublicCatalogRelativePath(slug);
+    recordCatalogWhatsAppClick(slug, path, source).catch(() => {});
+  };
   const catalogFooterText = resolveCatalogFooterText({ business });
   const activeFeaturedProduct = featuredProducts[activeFeaturedIndex] || null;
   const activeFeaturedImage = activeFeaturedProduct ? getProductImages(activeFeaturedProduct)?.[0] || null : null;
@@ -864,14 +874,25 @@ function CatalogInner({ slug }) {
         </Helmet>
       )}
 
-      {/* ── Cabecera del negocio (reutilizada en /ofertas) ── */}
-      <CatalogStoreHeader
-        business={business}
-        theme={catalogTheme}
-        slug={slug}
-        isDesktop={isDesktop}
-        onBack={isOwner ? () => navigate('/dashboard') : null}
-      />
+      {/* ── Cabecera del negocio ── */}
+      {isWhatsAppFirst ? (
+        <CatalogWhatsAppFirstHeader
+          business={business}
+          slug={slug}
+          theme={catalogTheme}
+          isDesktop={isDesktop}
+          onWhatsAppClick={handleWhatsAppClick}
+          onBack={isOwner ? () => navigate('/dashboard') : null}
+        />
+      ) : (
+        <CatalogStoreHeader
+          business={business}
+          theme={catalogTheme}
+          slug={slug}
+          isDesktop={isDesktop}
+          onBack={isOwner ? () => navigate('/dashboard') : null}
+        />
+      )}
 
       {activeFeaturedProduct && (
         <div className="w-full px-4 pt-4 lg:max-w-5xl lg:mx-auto">
@@ -1286,42 +1307,83 @@ function CatalogInner({ slug }) {
           </div>
         ) : gridProducts.length > 0 ? (
           /* Una sola grilla continua (vista Todos o categoría seleccionada) */
-          <>
-            <div className={gridClass} style={gridStyle}>
-              {visibleProducts.map((product, idx) => (
-                <ProductCard
-                  key={product?.id}
-                  product={product}
-                  formatPrice={formatPrice}
-                  onOpen={openProduct}
-                  theme={theme}
-                  cardSettings={cardSettings}
-                  useCategories={useCategories}
-                  compact={useCompactCard}
-                  imageIndex={idx}
-                  isDesktop={isDesktop}
-                  imageProfile={cardImageProfile}
-                  isRestaurant={isRestaurant}
-                />
-              ))}
-            </div>
-            {hasMoreProducts && (
-              <div className="flex justify-center mt-6 mb-2">
-                <button
-                  type="button"
-                  onClick={() => setVisibleCount(c => c + (isDesktop ? 12 : isFastMode ? 4 : 8))}
-                  className="px-6 py-3 rounded-2xl text-sm font-bold border transition-all hover:opacity-80 active:scale-[0.98]"
-                  style={{
-                    borderColor: primaryColor,
-                    color: primaryColorDark,
-                    backgroundColor: theme.primaryRgba(0.08),
-                  }}
-                >
-                  Ver más productos ({gridProducts.length - visibleCount} restantes)
-                </button>
+          isWhatsAppFirst ? (
+            /* WhatsApp First: lista vertical de productos */
+            <>
+              <div className="flex flex-col gap-3 max-w-2xl">
+                {visibleProducts.map((product) => (
+                  <CatalogWhatsAppFirstProduct
+                    key={product?.id}
+                    product={product}
+                    business={business}
+                    slug={slug}
+                    formatPrice={formatPrice}
+                    onWhatsAppClick={handleWhatsAppClick}
+                    onAddToCart={(p) => addItem?.(p)}
+                    onOpenProduct={openProduct}
+                    primaryColor={primaryColor}
+                    primaryColorDark={primaryColorDark}
+                    theme={catalogTheme}
+                    buildSingleWhatsAppUrl={buildSingleWhatsAppUrl}
+                  />
+                ))}
               </div>
-            )}
-          </>
+              {hasMoreProducts && (
+                <div className="flex justify-center mt-6 mb-2">
+                  <button
+                    type="button"
+                    onClick={() => setVisibleCount(c => c + (isDesktop ? 12 : isFastMode ? 4 : 8))}
+                    className="px-6 py-3 rounded-2xl text-sm font-bold border transition-all hover:opacity-80 active:scale-[0.98]"
+                    style={{
+                      borderColor: primaryColor,
+                      color: primaryColorDark,
+                      backgroundColor: theme.primaryRgba(0.08),
+                    }}
+                  >
+                    Ver más productos ({gridProducts.length - visibleCount} restantes)
+                  </button>
+                </div>
+              )}
+            </>
+          ) : (
+            /* Comercio (default): grilla existente */
+            <>
+              <div className={gridClass} style={gridStyle}>
+                {visibleProducts.map((product, idx) => (
+                  <ProductCard
+                    key={product?.id}
+                    product={product}
+                    formatPrice={formatPrice}
+                    onOpen={openProduct}
+                    theme={theme}
+                    cardSettings={cardSettings}
+                    useCategories={useCategories}
+                    compact={useCompactCard}
+                    imageIndex={idx}
+                    isDesktop={isDesktop}
+                    imageProfile={cardImageProfile}
+                    isRestaurant={isRestaurant}
+                  />
+                ))}
+              </div>
+              {hasMoreProducts && (
+                <div className="flex justify-center mt-6 mb-2">
+                  <button
+                    type="button"
+                    onClick={() => setVisibleCount(c => c + (isDesktop ? 12 : isFastMode ? 4 : 8))}
+                    className="px-6 py-3 rounded-2xl text-sm font-bold border transition-all hover:opacity-80 active:scale-[0.98]"
+                    style={{
+                      borderColor: primaryColor,
+                      color: primaryColorDark,
+                      backgroundColor: theme.primaryRgba(0.08),
+                    }}
+                  >
+                    Ver más productos ({gridProducts.length - visibleCount} restantes)
+                  </button>
+                </div>
+              )}
+            </>
+          )
         ) : null}
 
         {!loading && !notFound && business && catalogSeoContent?.visibleDescription && (

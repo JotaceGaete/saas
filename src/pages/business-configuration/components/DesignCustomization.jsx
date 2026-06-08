@@ -1049,6 +1049,154 @@ export default function DesignCustomization({
 
       <DesignUnifiedHeading title={`Composición del ${catalogLabel}`} subtitle="Define ritmo, densidad y presentación de productos." />
 
+      {/* Catalog Template Selector */}
+      {(() => {
+        const CATALOG_TEMPLATE_OPTIONS = [
+          {
+            id: 'comercio',
+            label: 'Comercio',
+            description: 'Catálogo explorable con carrito',
+            icon: 'ShoppingCart',
+          },
+          {
+            id: 'whatsapp_first',
+            label: 'WhatsApp First',
+            description: 'Conversación directa, respuesta inmediata',
+            icon: 'MessageCircle',
+          },
+        ];
+        const selectedCatalogTemplate = design?.catalogTemplate || 'comercio';
+        const isWhatsAppFirst = selectedCatalogTemplate === 'whatsapp_first';
+        return (
+          <SectionCard
+            icon="Layout"
+            title="Template del catálogo"
+            subtitle="Elige cómo se presenta el catálogo a tus clientes."
+            accent={primaryColor}
+          >
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {CATALOG_TEMPLATE_OPTIONS.map((tpl) => {
+                const isSelected = selectedCatalogTemplate === tpl.id;
+                return (
+                  <button
+                    key={tpl.id}
+                    type="button"
+                    onClick={() => handleChange({ ...design, catalogTemplate: tpl.id })}
+                    className="relative flex flex-col gap-2 p-4 rounded-xl border transition-all duration-200 text-left hover:-translate-y-0.5"
+                    style={{
+                      borderColor: isSelected ? `${primaryColor}66` : 'rgba(17,24,39,0.08)',
+                      backgroundColor: isSelected ? `${primaryColor}08` : 'rgba(255,255,255,0.58)',
+                    }}
+                  >
+                    {isSelected && (
+                      <div
+                        className="absolute top-2 right-2 w-5 h-5 rounded-full flex items-center justify-center"
+                        style={{ backgroundColor: primaryColor }}
+                      >
+                        <Icon name="Check" size={11} color="#fff" />
+                      </div>
+                    )}
+                    <div
+                      className="w-9 h-9 rounded-xl flex items-center justify-center"
+                      style={{ backgroundColor: isSelected ? `${primaryColor}15` : 'rgba(17,24,39,0.06)' }}
+                    >
+                      <Icon name={tpl.icon} size={18} color={isSelected ? primaryColor : 'var(--color-foreground)'} />
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold" style={{ color: isSelected ? primaryColor : 'var(--color-text-primary)', fontFamily: 'var(--font-caption)' }}>
+                        {tpl.label}
+                      </p>
+                      <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+                        {tpl.description}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* WhatsApp First: campos de persona de contacto */}
+            {isWhatsAppFirst && (
+              <div className="mt-5 pt-5 border-t space-y-4" style={{ borderColor: 'rgba(17,24,39,0.08)' }}>
+                <p className="text-xs font-bold" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
+                  Persona de contacto (visible en la barra de WhatsApp)
+                </p>
+
+                {/* Nombre del responsable */}
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
+                    Nombre del responsable
+                  </label>
+                  <input
+                    type="text"
+                    value={design?.contactPersonName || ''}
+                    onChange={(e) => handleChange({ ...design, contactPersonName: e.target.value })}
+                    placeholder="Sofía, Carlos, Marta..."
+                    maxLength={60}
+                    className="h-9 px-3 rounded-lg border text-sm focus:outline-none focus:ring-2"
+                    style={{
+                      borderColor: 'var(--color-border)',
+                      backgroundColor: 'var(--color-background)',
+                      color: 'var(--color-foreground)',
+                      fontFamily: 'var(--font-body)',
+                      '--tw-ring-color': primaryColor,
+                    }}
+                  />
+                  <p className="text-[10px]" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+                    Si no se completa, se usará el nombre del negocio.
+                  </p>
+                </div>
+
+                {/* Foto de perfil (URL) */}
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
+                    URL de foto de perfil
+                  </label>
+                  <div className="flex items-center gap-2">
+                    {design?.contactPhotoUrl && (
+                      <img
+                        src={design.contactPhotoUrl}
+                        alt="Foto de contacto"
+                        className="w-9 h-9 rounded-full object-cover flex-shrink-0 border"
+                        style={{ borderColor: 'var(--color-border)' }}
+                        onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                      />
+                    )}
+                    <input
+                      type="url"
+                      value={design?.contactPhotoUrl || ''}
+                      onChange={(e) => handleChange({ ...design, contactPhotoUrl: e.target.value })}
+                      placeholder="https://..."
+                      className="flex-1 h-9 px-3 rounded-lg border text-sm focus:outline-none focus:ring-2"
+                      style={{
+                        borderColor: 'var(--color-border)',
+                        backgroundColor: 'var(--color-background)',
+                        color: 'var(--color-foreground)',
+                        fontFamily: 'var(--font-body)',
+                        '--tw-ring-color': primaryColor,
+                      }}
+                    />
+                    {design?.contactPhotoUrl && (
+                      <button
+                        type="button"
+                        onClick={() => handleChange({ ...design, contactPhotoUrl: '' })}
+                        className="flex-shrink-0 text-xs px-2.5 py-1.5 rounded-lg border transition-colors hover:opacity-80"
+                        style={{ borderColor: '#fecaca', color: '#ef4444', backgroundColor: '#fff5f5', fontFamily: 'var(--font-caption)' }}
+                      >
+                        <Icon name="X" size={12} color="#ef4444" />
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-[10px]" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+                    Si no se completa, no se mostrará foto en la barra de contacto.
+                  </p>
+                </div>
+              </div>
+            )}
+          </SectionCard>
+        );
+      })()}
+
       {/* 4. Catalog Style Selector */}
       <SectionCard icon="Layers" title="Estilo de tarjetas" subtitle="Ajusta cómo se sienten las tarjetas en la vista pública.">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">

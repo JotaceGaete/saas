@@ -388,6 +388,10 @@ const mapBusinessFromDb = (row) => {
   printLegend: row?.print_legend || null,
   print_legend: row?.print_legend || null,
   designSettings,
+  // Catalog template fields (read directly from design_settings for convenience)
+  catalogTemplate: designSettings?.catalogTemplate || 'comercio',
+  contactPersonName: designSettings?.contactPersonName || null,
+  contactPhotoUrl: designSettings?.contactPhotoUrl || null,
   orderMessageTemplate: row?.order_message_template || null,
   planSlug: row?.plan_slug || 'starter',
   planExpiresAt: row?.plan_expires_at ?? null,
