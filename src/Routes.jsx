@@ -77,6 +77,7 @@ const PLATFORM_HOSTS = [
 function isCustomDomain(hostname) {
   if (!hostname || hostname === 'localhost') return false;
   if (/^(127\.|192\.168\.|10\.|::1)/.test(hostname)) return false;
+  if (/\.vercel\.app$/i.test(hostname)) return false;
   return !PLATFORM_HOSTS.some(h => hostname === h || hostname.endsWith(`.${h}`));
 }
 
