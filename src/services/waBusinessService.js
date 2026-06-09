@@ -434,7 +434,7 @@ const mapProductFromDb = (row) => {
     videoThumbnailUrl: row?.video_thumbnail_url || null,
     videoPath: row?.video_path || null,
     videoThumbnailPath: row?.video_thumbnail_path || null,
-    cardImageUrl: row?.thumbnail_url || row?.card_image_url || null,
+    cardImageUrl: row?.thumbnail_url || row?.card_image_url || row?.image_url || null,
     cardImagePath: row?.thumbnail_path || row?.card_image_path || null,
     addOns: Array.isArray(row?.add_ons) ? row.add_ons : [],
     isSoldOut: row?.is_sold_out === true,

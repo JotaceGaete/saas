@@ -363,6 +363,7 @@ function CatalogInner({ slug }) {
       }
       const img = new window.Image();
       img.decoding = 'async';
+      img.onerror = () => { img.onerror = null; img.src = ''; };
       img.src = optimizedUrl;
       return img;
     });
