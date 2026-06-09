@@ -37,6 +37,7 @@ import { getBusinessLocale } from '../../lib/locale/businessLocale';
 import { resolveVentaAiProductDescriptionEndpoint } from '../../lib/ai/resolveVentaAiProductDescriptionUrl.js';
 import { appendCacheBust, uploadToMediaService } from '../../services/mediaUploadService';
 import { getPublicProductUrl } from '../../config/appUrl';
+import { generateUniqueBarcode, saveProductBarcode } from '../../services/crmService';
 
 const EMPTY_FORM = {
   nombre: '',
@@ -44,11 +45,15 @@ const EMPTY_FORM = {
   descripcion: '',
   longDescription: '',
   categoria: '',
+  sku: '',
+  barcode: '',
   activo: true,
   soldOut: false,
+  showPrice: true,
   featured: false,
   isMainFeatured: false,
   onSale: false,
+  showInPos: false,
   compareAtPrice: '',
   hasOptions: false,
   optionsDescription: '',
@@ -188,6 +193,7 @@ export default function ProductEditor() {
   const [manualAddonDraft, setManualAddonDraft] = useState({ emoji: '', label: '', price: '' });
   const [isImprovingDescription, setIsImprovingDescription] = useState(false);
   const [publicCode, setPublicCode] = useState('');
+  const [generatingBarcode, setGeneratingBarcode] = useState(false);
   const [cardImageUrl, setCardImageUrl] = useState(null);
   const [productSlug, setProductSlug] = useState('');
   const toast = useToast();
@@ -310,11 +316,15 @@ export default function ProductEditor() {
           descripcion: data?.description || '',
           longDescription: data?.longDescription || '',
           categoria: data?.category ?? '',
+          sku:     data?.sku     || '',
+          barcode: data?.barcode || '',
           activo: data?.isActive !== undefined ? data?.isActive : true,
           soldOut: data?.isSoldOut === true,
+          showPrice: data?.showPrice !== false,
           featured: data?.featured || false,
           isMainFeatured: data?.isMainFeatured === true,
           onSale: data?.onSale || false,
+          showInPos: data?.showInPos === true,
           compareAtPrice: data?.compareAtPrice != null ? Number(data.compareAtPrice) : '',
           hasOptions: data?.hasOptions || false,
           optionsDescription: data?.optionsDescription || '',
@@ -948,6 +958,23 @@ export default function ProductEditor() {
     return newErrors;
   };
 
+  const handleGenerateBarcode = async () => {
+    if (!business?.id) return;
+    if (formData?.barcode) {
+      const ok = window.confirm(`Ya tiene un código de barras (${formData.barcode}). ¿Deseas reemplazarlo?`);
+      if (!ok) return;
+    }
+    setGeneratingBarcode(true);
+    const { barcode, error } = await generateUniqueBarcode(business.id);
+    setGeneratingBarcode(false);
+    if (error) { toast.error?.(error); return; }
+    handleFieldChange('barcode', barcode);
+    // Si ya existe el producto, guardarlo inmediatamente
+    if (currentProductId) {
+      await saveProductBarcode(currentProductId, barcode);
+    }
+  };
+
   const handleSave = async (andNew = false) => {
     const validationErrors = validate();
     if (Object.keys(validationErrors)?.length > 0) { setErrors(validationErrors); window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
@@ -999,14 +1026,18 @@ export default function ProductEditor() {
         isDraft: false,
         isActive: formData?.activo,
         isSoldOut: formData?.soldOut === true,
+        showPrice: formData?.showPrice !== false,
         featured: formData?.featured,
         isMainFeatured: formData?.isMainFeatured === true,
         onSale: formData?.onSale,
+        showInPos: formData?.showInPos === true,
         compareAtPrice: !isNaN(compareAtNum) ? Math.round(compareAtNum) : null,
         hasOptions: formData?.hasOptions,
         optionsDescription: formData?.hasOptions ? (formData?.optionsDescription || null) : null,
         longDescription: formData?.longDescription?.trim() || null,
         category: formData?.categoria?.trim() || null,
+        sku:     formData?.sku?.trim()     || null,
+        barcode: formData?.barcode?.trim() || null,
         cardImageUrl: cardImageUrl || null,
         addOns: normalizedAddOns,
         comboConfig: isRestaurant && normalizedComboConfig.enabled
@@ -1290,6 +1321,8 @@ export default function ProductEditor() {
                     publicCode={isEditingFlow ? publicCode : ''}
                     businessId={business?.id}
                     isRestaurant={isRestaurant}
+                    onGenerateBarcode={handleGenerateBarcode}
+                    productId={isEditingFlow ? currentProductId : null}
                     onCategoryCreated={(cat) => {
                       setBusinessCategories((prev) => [...prev, cat]);
                       toast.success(`Categoría «${cat.name}» creada`);
@@ -1297,17 +1330,20 @@ export default function ProductEditor() {
                   />
                 </div>
 
-                {/* Estado de venta */}
+                {/* Estado en catálogo */}
                 <div
                   className="rounded-2xl border p-5 md:p-6"
                   style={sectionSurfaceStyle}
                 >
-                  <div className="flex items-center gap-2 mb-4">
+                  <div className="flex items-center gap-2 mb-1">
                     <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(124,58,237,0.08)' }}>
                       <Icon name="ShoppingBag" size={15} color="var(--color-primary)" />
                     </div>
-                    <h2 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>Precio y disponibilidad</h2>
+                    <h2 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>Estado en catálogo</h2>
                   </div>
+                  <p className="text-xs mb-4 ml-9" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                    Controla si este {itemSingular} aparece en el catálogo y si se puede pedir.
+                  </p>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                     {[
                       { key: 'available', label: 'Disponible', icon: 'Eye',      color: '#059669', bg: 'rgba(5,150,105,0.08)',  border: 'rgba(5,150,105,0.3)',  desc: 'Visible y se puede pedir' },
@@ -1338,7 +1374,64 @@ export default function ProductEditor() {
                       );
                     })}
                   </div>
+
+                  {/* Visibilidad del precio */}
+                  <div className="mt-5 pt-4" style={{ borderTop: '1px solid rgba(17,24,39,0.07)' }}>
+                    <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                      Visibilidad del precio
+                    </p>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      {[
+                        { key: 'show',  label: 'Mostrar precio',   icon: 'DollarSign', color: '#059669', bg: 'rgba(5,150,105,0.08)',    border: 'rgba(5,150,105,0.3)',    desc: 'El precio aparece en el catálogo' },
+                        { key: 'hide',  label: 'Consultar precio',  icon: 'MessageCircle', color: '#7c3aed', bg: 'rgba(124,58,237,0.08)', border: 'rgba(124,58,237,0.3)',  desc: 'Se muestra "Consultar precio"' },
+                      ].map(({ key, label, icon, color, bg, border, desc }) => {
+                        const selected = key === 'show' ? formData?.showPrice !== false : formData?.showPrice === false;
+                        return (
+                          <button
+                            key={key}
+                            type="button"
+                            onClick={() => handleFieldChange('showPrice', key === 'show')}
+                            className="flex flex-row items-center gap-3 rounded-xl border px-3 py-3 text-left transition-all duration-200 hover:-translate-y-0.5 sm:flex-col sm:gap-1.5 sm:text-center"
+                            style={{
+                              borderColor: selected ? border : 'rgba(17,24,39,0.08)',
+                              backgroundColor: selected ? bg : 'rgba(255,255,255,0.42)',
+                            }}
+                          >
+                            <Icon name={icon} size={16} color={selected ? color : 'var(--color-muted-foreground)'} />
+                            <span className="text-xs font-semibold leading-none" style={{ color: selected ? color : 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>{label}</span>
+                            <span className="text-[10px] leading-tight" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>{desc}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
+
+                {/* Gestionar stock — solo en modo edición */}
+                {isEditingFlow && (
+                  <div
+                    className="rounded-2xl border p-5 flex items-center justify-between gap-4"
+                    style={{ borderColor: 'rgba(37,99,235,0.2)', backgroundColor: 'rgba(239,246,255,0.7)' }}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-8 h-8 rounded-xl bg-blue-100 flex items-center justify-center shrink-0">
+                        <Icon name="Archive" size={15} color="#2563eb" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold" style={{ color: 'var(--color-foreground)' }}>Stock e inventario</p>
+                        <p className="text-xs" style={{ color: 'var(--color-muted-foreground)' }}>Entradas, salidas, ajustes y mínimos</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => navigate('/crm/stock')}
+                      className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition-colors"
+                    >
+                      <Icon name="ExternalLink" size={12} />
+                      Gestionar stock
+                    </button>
+                  </div>
+                )}
 
                 {/* Featured toggles */}
                 <div
@@ -1355,10 +1448,12 @@ export default function ProductEditor() {
                     activo={formData?.activo}
                     featured={formData?.featured}
                     onSale={formData?.onSale}
+                    showInPos={formData?.showInPos}
                     slug={business?.slug ?? ''}
                     onActiveChange={(val) => handleFieldChange('activo', val)}
                     onFeaturedChange={(val) => handleFieldChange('featured', val)}
                     onOnSaleChange={(val) => handleFieldChange('onSale', val)}
+                    onShowInPosChange={(val) => handleFieldChange('showInPos', val)}
                     hideActive
                   />
                 </div>

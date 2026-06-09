@@ -52,7 +52,8 @@ function Toast({ message, type, onClose }) {
 
 export default function DesignPage() {
   const navigate = useNavigate();
-  const previewAnchorRef = useRef(null);
+  const previewAnchorRef = useRef(null);   // desktop (sticky)
+  const previewMobileRef = useRef(null);   // móvil/tablet (al final)
   const { user, business: ctxBusiness, businessLoading, refreshBusiness, patchBusiness } = useAuth();
   const [business, setBusiness] = useState(null);
   const [products, setProducts] = useState([]);
@@ -188,10 +189,7 @@ export default function DesignPage() {
           subtitle={<p className="text-xs hidden sm:block" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Identidad visual, portada y experiencia de catálogo.</p>}
         />
 
-        <DashboardLayoutContent
-          className="flex flex-1 flex-col min-h-0 w-full"
-          innerClassName="flex flex-col flex-1 min-h-0 min-h-[calc(100vh-88px)] space-y-7"
-        >
+        <DashboardLayoutContent>
           <section className="border-b pb-6" style={{ borderColor: 'rgba(17,24,39,0.08)' }}>
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
               Identidad visual
@@ -203,8 +201,12 @@ export default function DesignPage() {
               {designSubtitle}
             </p>
           </section>
-          <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start w-full min-w-0 flex-1 min-h-0">
-            <div className="min-w-0 w-full xl:col-span-8">
+
+          {/* Grid de 2 columnas en desktop. Columna izquierda crece con el formulario;
+              columna derecha hace sticky real: se queda visible mientras el usuario scrollea. */}
+          <div className="xl:grid xl:grid-cols-[minmax(0,1fr)_380px] xl:gap-8 xl:items-start">
+            {/* Columna izquierda — formulario largo */}
+            <div className="min-w-0 w-full">
               <DesignCustomization
                 design={draftDesign}
                 onChange={setDraftDesign}
@@ -220,10 +222,12 @@ export default function DesignPage() {
                 isRestaurant={isRestaurant}
               />
             </div>
+
+            {/* Columna derecha — preview sticky */}
             <div
               ref={previewAnchorRef}
               id="design-preview"
-              className="w-full min-w-0 max-w-[360px] mx-auto scroll-mt-24 xl:mx-0 xl:max-w-none xl:col-span-4 lg:sticky lg:top-[calc(var(--safe-area-top)+60px+1.5rem)] lg:z-[5] lg:self-start"
+              className="hidden xl:block xl:self-start xl:sticky xl:top-[84px]"
             >
               <div
                 className="rounded-[24px] border p-4 shadow-[0_18px_42px_rgba(17,24,39,0.08)]"
@@ -257,6 +261,44 @@ export default function DesignPage() {
               </div>
             </div>
           </div>
+
+          {/* Móvil/tablet: preview al final del formulario (acceso por botón flotante) */}
+          <div
+            ref={previewMobileRef}
+            id="design-preview-mobile"
+            className="xl:hidden w-full max-w-[360px] mx-auto scroll-mt-24 mt-8"
+          >
+            <div
+              className="rounded-[24px] border p-4 shadow-[0_18px_42px_rgba(17,24,39,0.08)]"
+              style={{ backgroundColor: 'rgba(255,255,255,0.72)', borderColor: 'rgba(17,24,39,0.08)' }}
+            >
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                    En vivo
+                  </p>
+                  <p className="mt-1 text-sm font-semibold" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-heading)' }}>
+                    {previewTitle}
+                  </p>
+                </div>
+                <span className="rounded-full px-2.5 py-1 text-[11px] font-semibold" style={{ backgroundColor: 'rgba(17,24,39,0.06)', color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                  Mobile
+                </span>
+              </div>
+              <MobilePreviewPanel
+                storeName={business?.name || (isRestaurant ? 'Mi restaurante' : 'Mi tienda')}
+                storeSlug={business?.slug || ''}
+                logoUrl={draftDesign?.logoUrl || business?.logoUrl}
+                coverImageUrl={draftDesign?.headerImageUrl || business?.coverImageUrl}
+                products={products}
+                currency={business?.currency || locale.currencyCode}
+                locale={locale.locale}
+                countryCode={locale.countryCode}
+                design={draftDesign}
+                hideCurrencySymbol={draftDesign?.showCatalogCurrencySymbol === false}
+              />
+            </div>
+          </div>
         </DashboardLayoutContent>
 
         {/* Móvil: acceso rápido a la vista previa (al final del flujo o scroll al ancla) */}
@@ -269,7 +311,7 @@ export default function DesignPage() {
             fontFamily: 'var(--font-caption)',
             boxShadow: '0 12px 30px rgba(17,24,39,0.22)',
           }}
-          onClick={() => previewAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+          onClick={() => previewMobileRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
           aria-label="Ir a vista previa"
         >
           <Icon name="Smartphone" size={18} color="#fff" />

@@ -395,6 +395,7 @@ const mapBusinessFromDb = (row) => {
   scheduledPlanSlug: row?.scheduled_plan_slug ?? null,
   scheduledChangeAt: row?.scheduled_change_at ?? null,
   businessMode: row?.business_mode ?? 'store',
+  documentTitleType: row?.document_title_type || 'cotizacion',
   createdAt: row?.created_at,
   updatedAt: row?.updated_at,
 };
@@ -409,6 +410,8 @@ const mapProductFromDb = (row) => {
     name: row?.name,
     slug: row?.slug || null,
     publicCode: row?.public_code ?? null,
+    sku:        row?.sku        ?? null,
+    barcode:    row?.barcode    ?? null,
     description: row?.description,
     price: parseFloat(row?.price),
     imageUrl: row?.image_url || imagesArray?.[0] || null,
@@ -431,10 +434,13 @@ const mapProductFromDb = (row) => {
     videoThumbnailUrl: row?.video_thumbnail_url || null,
     videoPath: row?.video_path || null,
     videoThumbnailPath: row?.video_thumbnail_path || null,
-    cardImageUrl: row?.thumbnail_url || row?.card_image_url || null,
+    cardImageUrl: row?.thumbnail_url || row?.card_image_url || row?.image_url || null,
     cardImagePath: row?.thumbnail_path || row?.card_image_path || null,
     addOns: Array.isArray(row?.add_ons) ? row.add_ons : [],
     isSoldOut: row?.is_sold_out === true,
+    showPrice: row?.show_price !== false,
+    showInPos: row?.show_in_pos === true,
+    posSortOrder: row?.pos_sort_order ?? 0,
     comboConfig:
       row?.combo_config && typeof row.combo_config === 'object' && !Array.isArray(row.combo_config)
         ? row.combo_config
@@ -782,6 +788,7 @@ export async function updateBusiness(businessId, updates) {
   if (updates?.tiktokUrl    !== undefined) dbUpdates.tiktok_url    = normalizeTikTokUrl(updates.tiktokUrl);
   if (updates?.facebookUrl  !== undefined) dbUpdates.facebook_url  = normalizeSharedSocialUrl(updates.facebookUrl,  'https://facebook.com');
   if (updates?.businessMode !== undefined)     dbUpdates.business_mode = updates?.businessMode;
+  if (updates?.documentTitleType !== undefined) dbUpdates.document_title_type = updates?.documentTitleType;
   if (updates?.printLegend !== undefined || updates?.print_legend !== undefined) {
     const rawPrintLegend = updates?.printLegend !== undefined ? updates?.printLegend : updates?.print_legend;
     const normalizedPrintLegend = String(rawPrintLegend ?? '').trim();
@@ -790,11 +797,27 @@ export async function updateBusiness(businessId, updates) {
   if (updates?.planSlug !== undefined)         dbUpdates.plan_slug = updates?.planSlug;
   if (updates?.planExpiresAt !== undefined)    dbUpdates.plan_expires_at = updates?.planExpiresAt ?? null;
   if (updates?.trialExpiresAt !== undefined)   dbUpdates.trial_expires_at = updates?.trialExpiresAt ?? null;
-  console.log('[waBusinessService] updateBusiness: payload =', dbUpdates);
-  const { data, error } = await supabase?.from('wa_businesses')?.update(dbUpdates)?.eq('id', businessId)?.eq('user_id', user?.id)?.select()?.single();
+  console.log('[waBusinessService] updateBusiness: payload keys =', Object.keys(dbUpdates));
+  let { data, error } = await supabase?.from('wa_businesses')?.update(dbUpdates)?.eq('id', businessId)?.eq('user_id', user?.id)?.select()?.single();
   if (error) {
-    console.error('[waBusinessService] updateBusiness error:', error);
-    return { data: null, error };
+    console.error('[waBusinessService] updateBusiness error:', error?.message, '| code:', error?.code, '| details:', error?.details, '| hint:', error?.hint);
+    // If the error is caused by document_title_type column not existing yet (migration pending),
+    // retry without it so other fields are still saved.
+    const missingColumn = error?.message?.includes('document_title_type') || error?.details?.includes('document_title_type');
+    if (missingColumn && dbUpdates.document_title_type !== undefined) {
+      console.warn('[waBusinessService] document_title_type column not found — retrying without it (migration may be pending)');
+      const fallbackUpdates = { ...dbUpdates };
+      delete fallbackUpdates.document_title_type;
+      const { data: d2, error: e2 } = await supabase?.from('wa_businesses')?.update(fallbackUpdates)?.eq('id', businessId)?.eq('user_id', user?.id)?.select()?.single();
+      if (e2) {
+        console.error('[waBusinessService] updateBusiness fallback error:', e2?.message, '| code:', e2?.code);
+        return { data: null, error: e2 };
+      }
+      data = d2;
+      error = null;
+    } else {
+      return { data: null, error };
+    }
   }
   console.log('[waBusinessService] updateBusiness success: updated id =', data?.id);
   if (data?.id) {
@@ -1036,11 +1059,16 @@ export const createProduct = async (businessId, productData) => {
     card_image_url: productData?.cardImageUrl ?? null,
     card_image_path: productData?.cardImagePath ?? null,
     is_sold_out: productData?.isSoldOut === true,
+    show_price: productData?.showPrice !== false,
     add_ons: Array.isArray(productData?.addOns) ? productData.addOns : [],
     combo_config:
       productData?.comboConfig && typeof productData.comboConfig === 'object' && !Array.isArray(productData.comboConfig)
         ? productData.comboConfig
         : null,
+    sku:          productData?.sku          || null,
+    barcode:      productData?.barcode      || null,
+    show_in_pos:  productData?.showInPos    === true,
+    pos_sort_order: productData?.posSortOrder ?? 0,
   })?.select()?.single();
   if (error) return { data: null, error };
   const mappedProduct = mapProductFromDb(data);
@@ -1141,12 +1169,17 @@ export const updateProduct = async (productId, productData) => {
   if (productData?.cardImagePath !== undefined)      dbUpdates.card_image_path = productData.cardImagePath;
   if (productData?.addOns !== undefined) dbUpdates.add_ons = Array.isArray(productData.addOns) ? productData.addOns : [];
   if (productData?.isSoldOut !== undefined) dbUpdates.is_sold_out = productData.isSoldOut === true;
+  if (productData?.showPrice !== undefined) dbUpdates.show_price = productData.showPrice !== false;
   if (productData?.comboConfig !== undefined) {
     dbUpdates.combo_config =
       productData?.comboConfig && typeof productData.comboConfig === 'object' && !Array.isArray(productData.comboConfig)
         ? productData.comboConfig
         : null;
   }
+  if (productData?.sku          !== undefined) dbUpdates.sku           = productData.sku     || null;
+  if (productData?.barcode      !== undefined) dbUpdates.barcode       = productData.barcode || null;
+  if (productData?.showInPos    !== undefined) dbUpdates.show_in_pos   = productData.showInPos === true;
+  if (productData?.posSortOrder !== undefined) dbUpdates.pos_sort_order = productData.posSortOrder ?? 0;
   if (productData?.isMainFeatured === true) {
     const businessId = currentProduct?.business_id;
     if (!businessId) {
@@ -1468,13 +1501,21 @@ export const deleteProducts = async (productIds) => {
   return { error: null };
 };
 
-export async function getPublicProducts(businessId) {
-  const { data, error } = await supabase
+export async function getPublicProducts(businessId, options = {}) {
+  const { maxProducts } = options;
+  let query = supabase
     ?.from('wa_products')
     ?.select('*')
     ?.eq('business_id', businessId)
     ?.eq('is_active', true)
     ?.order('sort_order', { ascending: true });
+
+  // Aplicar límite del plan si se especifica (enforcement de productos visible en catálogo)
+  if (maxProducts != null && maxProducts > 0) {
+    query = query?.limit(maxProducts);
+  }
+
+  const { data, error } = await query;
   if (error) {
     logPublicProductSlugDebug('active_products_lookup_error', {
       businessId,

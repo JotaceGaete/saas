@@ -16,6 +16,7 @@ const NAV_ITEMS = [
   { label: 'Productos', path: '/product-management', icon: 'Package' },
   { label: 'Pedidos', path: '/orders', icon: 'ShoppingCart' },
   { label: 'Historial pedidos', path: '/orders/historial', icon: 'History' },
+  { label: 'CRM', path: '/crm', icon: 'LayoutDashboard' },
   { label: 'Proveedores', path: '/proveedores', icon: 'Truck' },
   { label: 'Configuración', path: '/business-configuration', icon: 'Settings' },
   { label: 'Diseño', path: '/design', icon: 'Palette' },
@@ -140,7 +141,16 @@ Motivo (opcional):`;
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto overflow-x-hidden px-2 py-2.5" aria-label="Navegación principal">
         <ul className="space-y-0.5" role="list">
-          {NAV_ITEMS?.map((item) => {
+          {NAV_ITEMS?.filter(item => !item?.adminOnly || isAdmin)?.map((item, idx) => {
+            if (item?.section) {
+              if (collapsed) return null;
+              return (
+                <li key={`section-${idx}`} role="separator" className="px-3 pt-3 pb-1">
+                  {item.label !== '—' && <span className="text-[10px] uppercase tracking-widest text-slate-600 font-semibold select-none">{item.label.replace(/—/g, '').trim()}</span>}
+                  {item.label === '—' && <div className="h-px bg-white/5" />}
+                </li>
+              );
+            }
             const active = isParentActive(item);
             const expanded = expandedItems?.[item?.path];
             return (
@@ -172,6 +182,11 @@ Motivo (opcional):`;
                   {!collapsed && (
                     <>
                       <span className="flex-1 text-left truncate">{item?.label}</span>
+                      {item?.badge && (
+                        <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-md bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                          {item.badge}
+                        </span>
+                      )}
                       {item?.subItems && (
                         <Icon name={expanded ? 'ChevronUp' : 'ChevronDown'} size={13} color="currentColor" className="flex-shrink-0 opacity-50" />
                       )}
@@ -250,7 +265,8 @@ Motivo (opcional):`;
                 )}
               </li>
               {[
-                { label: 'Rubros y categorías', path: '/admin/config/rubros', icon: 'Tag', match: (p) => p.startsWith('/admin/config') },
+                { label: 'Rubros y categorías', path: '/admin/config/rubros',      icon: 'Tag',         match: (p) => p.startsWith('/admin/config') },
+                { label: 'Funciones por plan',  path: '/admin/plan-features',      icon: 'LayoutGrid',  match: (p) => p === '/admin/plan-features' },
               ].map(item => {
                 const active = item.match(location?.pathname || '');
                 return (

@@ -10,7 +10,16 @@ import { useConfirmedEmailGuard } from '../../hooks/useConfirmedEmailGuard';
 import { supabase } from '../../lib/supabase';
 import { getAppBaseUrl } from '../../config/appUrl';
 import { formatSubscriptionPlanPrice } from '../../utils/formatCLP';
-import { PLAN_SLUGS, getPlanLimits, getPlanLabel } from '../../constants/plans';
+import {
+  PLAN_SLUGS,
+  getPlanLimits,
+  getPlanLabel,
+  PLAN_ANNUAL_PRICES_CLP,
+  PLAN_ANNUAL_PRICES_ARS,
+  PLAN_ANNUAL_PRICES_USD,
+  getAnnualDiscountPercent,
+  CURRENCIES_WITH_ANNUAL_PRICING,
+} from '../../constants/plans';
 import {
   normalizeBillingProvider,
   PAYMENT_PROVIDERS,
@@ -38,6 +47,51 @@ import { useToast } from '../../components/ui/Toast';
 import { isRestaurantBusiness } from '../../utils/businessType';
 
 const PAYMENT_DEBUG_PREFIX = '[plans-payment-debug]';
+
+/**
+ * Datos de planes para la página pública.
+ * Solo funcionalidades implementadas. Sin roadmap ni próximamente.
+ * Fuente de verdad interna: /admin/plan-features
+ */
+const PLAN_DATA = {
+  starter: {
+    subtitle: 'Ideal para comenzar.',
+    bullets: [
+      { icon: 'Globe',        color: '#3b82f6', bg: 'rgba(59,130,246,0.10)', text: 'Catálogo online por WhatsApp' },
+      { icon: 'ShoppingCart', color: '#8b5cf6', bg: 'rgba(139,92,246,0.10)', text: 'Pedidos desde el catálogo' },
+      { icon: 'Users',        color: '#0ea5e9', bg: 'rgba(14,165,233,0.10)', text: 'Gestión de clientes' },
+      { icon: 'FileText',     color: '#6366f1', bg: 'rgba(99,102,241,0.10)', text: 'Presupuestos' },
+      { icon: 'Monitor',      color: '#0284c7', bg: 'rgba(2,132,199,0.10)',  text: 'TPV básico' },
+      { icon: 'Package',      color: '#059669', bg: 'rgba(5,150,105,0.10)', text: 'Control de stock' },
+      { icon: 'TrendingUp',   color: '#d97706', bg: 'rgba(217,119,6,0.10)', text: 'Salud financiera' },
+    ],
+    limits: ['Hasta 20 productos', 'Hasta 50 pedidos/mes'],
+  },
+  pro: {
+    subtitle: 'Ideal para comercios físicos.',
+    inherit: 'Todo Starter incluido',
+    bullets: [
+      { icon: 'Receipt',      color: '#dc2626', bg: 'rgba(220,38,38,0.10)',  text: 'Facturas internas',          star: true },
+      { icon: 'FileCheck',    color: '#ea580c', bg: 'rgba(234,88,12,0.10)',  text: 'Notas de venta',             star: true },
+      { icon: 'Printer',      color: '#7c3aed', bg: 'rgba(124,58,237,0.10)', text: 'Impresión de tickets',       star: true },
+      { icon: 'CreditCard',   color: '#0891b2', bg: 'rgba(8,145,178,0.10)', text: 'Cuenta corriente',           star: true },
+      { icon: 'AlertCircle',  color: '#b45309', bg: 'rgba(180,83,9,0.10)',  text: 'Seguimiento de deudas',      star: true },
+      { icon: 'Barcode',      color: '#374151', bg: 'rgba(55,65,81,0.10)',  text: 'Códigos de barras EAN-13',   star: true },
+      { icon: 'Tag',          color: '#0d9488', bg: 'rgba(13,148,136,0.10)',text: 'Impresión de etiquetas',     star: true },
+      { icon: 'Sparkles',     color: '#7c3aed', bg: 'rgba(124,58,237,0.10)', text: 'Asistente IA',              star: true },
+    ],
+  },
+  business: {
+    subtitle: 'Control total del negocio.',
+    inherit: 'Todo Pro incluido',
+    bullets: [
+      { icon: 'BarChart2',    color: '#0891b2', bg: 'rgba(8,145,178,0.10)', text: 'Reportes avanzados',         star: true },
+      { icon: 'PieChart',     color: '#7c3aed', bg: 'rgba(124,58,237,0.10)', text: 'Estadísticas completas',    star: true },
+      { icon: 'Sparkles',     color: '#d97706', bg: 'rgba(217,119,6,0.10)', text: 'IA avanzada',                star: true },
+      { icon: 'Zap',          color: '#059669', bg: 'rgba(5,150,105,0.10)', text: 'Funciones premium futuras',  star: true },
+    ],
+  },
+};
 
 /** Copy y alternativa manual bajo el CTA PayPal (sin tocar backend). */
 function PayPalCheckoutHelper({ planSlug, onOpenManualPayment }) {
@@ -83,21 +137,28 @@ function PayPalCheckoutHelper({ planSlug, onOpenManualPayment }) {
   );
 }
 
-function ManualPaymentLinkModal({ open, onClose, planSlug, user, business }) {
+function ManualPaymentLinkModal({ open, onClose, planSlug, isAnnual = false, user, business }) {
   if (!open) return null;
-  const message = [
-    'Hola, quiero solicitar un link de pago con tarjeta para mi plan en Walinka (prefiero no usar PayPal).',
-    planSlug ? `Plan: ${planSlug}` : null,
-    `Email: ${user?.email || ''}`,
-    `Negocio: ${business?.name || ''}`,
-  ].filter(Boolean).join('\n\n');
+  const planLabel = planSlug === 'pro' ? 'Pro' : planSlug === 'business' ? 'Full' : planSlug || '';
+  const message = isAnnual
+    ? [
+        `Hola, quiero contratar el plan anual ${planLabel} en Walinka.`,
+        `Email: ${user?.email || ''}`,
+        `Negocio: ${business?.name || ''}`,
+      ].filter(Boolean).join('\n\n')
+    : [
+        'Hola, quiero solicitar un link de pago con tarjeta para mi plan en Walinka (prefiero no usar PayPal).',
+        planSlug ? `Plan: ${planSlug}` : null,
+        `Email: ${user?.email || ''}`,
+        `Negocio: ${business?.name || ''}`,
+      ].filter(Boolean).join('\n\n');
   const waUrl = buildWhatsAppUrl(message, SUPPORT_WHATSAPP_NUMBER);
 
   const handleWhatsApp = () => {
     const plan = String(planSlug || 'unknown').toLowerCase();
     trackEvent('manual_payment_whatsapp_continue', {
       plan,
-      provider: 'dlocal_manual',
+      provider: isAnnual ? 'annual_manual' : 'dlocal_manual',
     });
     if (waUrl) openWhatsAppUrl(waUrl);
     onClose();
@@ -118,10 +179,12 @@ function ManualPaymentLinkModal({ open, onClose, planSlug, user, business }) {
         aria-labelledby="manual-payment-title"
       >
         <h3 id="manual-payment-title" className="text-sm font-semibold mb-2" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>
-          Pago con tarjeta (link manual)
+          {isAnnual ? `Solicitud plan anual ${planLabel}` : 'Pago con tarjeta (link manual)'}
         </h3>
         <p className="text-sm leading-relaxed mb-4" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
-          Te enviaremos un enlace seguro para pagar con tarjeta por WhatsApp o email. No necesitas cuenta PayPal.
+          {isAnnual
+            ? `Te contactamos por WhatsApp para coordinar el pago anual del plan ${planLabel}. Sin tarjeta automática ni suscripción recurrente hasta que lo confirmes.`
+            : 'Te enviaremos un enlace seguro para pagar con tarjeta por WhatsApp o email. No necesitas cuenta PayPal.'}
         </p>
         <div className="flex flex-col sm:flex-row gap-2">
           <button
@@ -184,21 +247,25 @@ export default function PlansPage() {
   const guard = useConfirmedEmailGuard();
   const toast = useToast();
   const [paymentReturnStatus, setPaymentReturnStatus] = useState(null); // 'success' | 'failure' | 'pending' al volver del checkout
+  const [billingCycle, setBillingCycle] = useState('monthly'); // 'monthly' | 'annual'
   const [loadingPlanSlug, setLoadingPlanSlug] = useState(null);
   const [preview, setPreview] = useState(null);
   const [previewPlanSlug, setPreviewPlanSlug] = useState(null);
   const [manualPaymentModalOpen, setManualPaymentModalOpen] = useState(false);
   const [manualPaymentPlanSlug, setManualPaymentPlanSlug] = useState(null);
+  const [manualPaymentIsAnnual, setManualPaymentIsAnnual] = useState(false);
   const [subscriptionState, setSubscriptionState] = useState(null);
 
-  const openManualPaymentModal = useCallback((planSlug) => {
+  const openManualPaymentModal = useCallback((planSlug, isAnnual = false) => {
     setManualPaymentPlanSlug(planSlug ?? null);
+    setManualPaymentIsAnnual(Boolean(isAnnual));
     setManualPaymentModalOpen(true);
   }, []);
 
   const closeManualPaymentModal = useCallback(() => {
     setManualPaymentModalOpen(false);
     setManualPaymentPlanSlug(null);
+    setManualPaymentIsAnnual(false);
   }, []);
   const [billingReady, setBillingReady] = useState(false);
   const [billingRemoteError, setBillingRemoteError] = useState(null);
@@ -313,8 +380,22 @@ export default function PlansPage() {
     ),
     [subscriptionState?.billingProvider?.alternatives, subscriptionState?.billingProvider],
   );
-  const getDisplayPlanPrice = (slug) =>
-    getPlanPrice({ countryCode: businessCountryCode, planSlug: slug }) ?? 0;
+  /** Precio mensual equivalente al contratar el año (para la línea "Equivale a X/mes"). */
+  const getAnnualMonthlyEquiv = (slug) => {
+    if (planBillingDisplayCurrency === 'CLP') return PLAN_ANNUAL_PRICES_CLP[slug] ?? 0;
+    if (planBillingDisplayCurrency === 'ARS') return PLAN_ANNUAL_PRICES_ARS[slug] ?? 0;
+    return PLAN_ANNUAL_PRICES_USD[slug] ?? 0;
+  };
+
+  const getDisplayPlanPrice = (slug) => {
+    const monthlyPrice = getPlanPrice({ countryCode: businessCountryCode, planSlug: slug }) ?? 0;
+    if (billingCycle === 'annual' && monthlyPrice > 0 && CURRENCIES_WITH_ANNUAL_PRICING.includes(planBillingDisplayCurrency)) {
+      // Total anual (equiv_mensual × 12)
+      const equiv = getAnnualMonthlyEquiv(slug);
+      return equiv > 0 ? equiv * 12 : monthlyPrice;
+    }
+    return monthlyPrice;
+  };
   const planExpiryMs = useMemo(() => {
     const iso = billingSubscriptionRow?.next_billing_date || business?.planExpiresAt;
     return iso ? new Date(iso).getTime() : null;
@@ -612,6 +693,7 @@ export default function PlansPage() {
       event: 'click_plan_button',
       handler: 'handlePayWithMercadoPago',
       planSlug,
+      billingCycle,
       resolvedCountryCode: countryCode,
       resolvedProvider: checkoutProvider,
     });
@@ -620,8 +702,14 @@ export default function PlansPage() {
       toast.info(automaticCheckoutBlockedMessage);
       return;
     }
-    setLoadingPlanSlug(planSlug);
 
+    // Annual: skip preview panel, go direct to checkout (no proration for annual).
+    if (billingCycle === 'annual') {
+      await confirmPayWithMercadoPago(planSlug);
+      return;
+    }
+
+    setLoadingPlanSlug(planSlug);
     setPreview(null);
     setPreviewPlanSlug(null);
     try {
@@ -739,23 +827,25 @@ export default function PlansPage() {
     setPreviewPlanSlug(null);
   };
 
-  const confirmPayWithMercadoPago = async () => {
+  const confirmPayWithMercadoPago = async (planSlugArg = null) => {
     if (guard.isBlocked) {
       guard.runIfConfirmed(() => {});
       return;
     }
+    const targetPlanSlug = planSlugArg ?? previewPlanSlug;
     console.info(PAYMENT_DEBUG_PREFIX, {
       event: 'confirm_payment',
       handler: 'confirmPayWithMercadoPago',
-      planSlug: previewPlanSlug,
+      planSlug: targetPlanSlug,
+      billingCycle,
       resolvedCountryCode: countryCode,
     });
-    if (!previewPlanSlug) return;
+    if (!targetPlanSlug) return;
     if (isAutomaticCheckoutBlocked) {
       toast.info(automaticCheckoutBlockedMessage);
       return;
     }
-    setLoadingPlanSlug(previewPlanSlug);
+    setLoadingPlanSlug(targetPlanSlug);
 
     try {
       if (authLoading) {
@@ -780,22 +870,26 @@ export default function PlansPage() {
         authorizationLooksLikeJwt: token.includes('.'),
         tokenLength: token?.length ?? 0,
         hasApiKeyHeader: !!anonKey,
+        billingCycle,
       });
       // Conservar el host actual para no redirigir a otro país tras el pago
       const returnBaseUrl = (typeof window !== 'undefined' && window.location?.origin)
         ? window.location.origin.replace(/\/$/, '')
         : (getAppBaseUrl() || '');
       const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
+      const mpPayload = {
+        planSlug: targetPlanSlug,
+        billingCycle,
+        success_url: `${returnBaseUrl}/planes?payment=success`,
+        failure_url: `${returnBaseUrl}/planes?payment=failure`,
+        pending_url: `${returnBaseUrl}/planes?payment=pending`,
+        origin: returnBaseUrl,
+      };
+      console.log('[Plans] MP checkout payload', { planSlug: targetPlanSlug, billingCycle, currency: planBillingDisplayCurrency, countryCode });
       const res = await fetch(`${supabaseUrl}/functions/v1/create-mp-preference`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, apikey: anonKey },
-        body: JSON.stringify({
-          planSlug: previewPlanSlug,
-          success_url: `${returnBaseUrl}/planes?payment=success`,
-          failure_url: `${returnBaseUrl}/planes?payment=failure`,
-          pending_url: `${returnBaseUrl}/planes?payment=pending`,
-          origin: returnBaseUrl,
-        }),
+        body: JSON.stringify(mpPayload),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -889,6 +983,7 @@ export default function PlansPage() {
           provider: safeProvider,
           businessId: business.id,
           planSlug: targetPlanSlug,
+          billingCycle,
           returnUrl: safeProvider === PAYMENT_PROVIDERS.PAYPAL
             ? `${window.location.origin}/billing/paypal/success`
             : `${window.location.origin}/planes?payment=success`,
@@ -950,6 +1045,8 @@ export default function PlansPage() {
   const getSafePreviewTotal = () => {
     if (!preview || !previewPlanSlug) return 0;
     const providerCatalogAmount = getDisplayPlanPrice(preview.targetPlanSlug);
+    // For annual, always use the annual total from our catalog (server preview uses monthly amounts).
+    if (billingCycle === 'annual') return providerCatalogAmount;
     const reported = Number(preview.finalAmount);
     if (!Number.isFinite(reported)) return providerCatalogAmount;
     // Guardrail: evita mostrar montos CLP como USD (ej. 5990 -> USD).
@@ -1006,21 +1103,61 @@ export default function PlansPage() {
             />
           )}
 
-          <div className="mb-4 mt-8 flex flex-col gap-1">
-            <h3 className="text-xl font-semibold" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}>
-              Elige cómo quieres crecer
-            </h3>
-            <p className="text-sm leading-6" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-body)' }}>
-              Planes pensados para operar tu {planNoun} sin ruido técnico.
-            </p>
+          <div className="mt-6 mb-4 sm:mt-8 sm:mb-6 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 sm:gap-4">
+            <div className="flex flex-col gap-1">
+              <h3 className="text-xl font-semibold" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}>
+                Elige cómo quieres crecer
+              </h3>
+              <p className="hidden sm:block text-sm leading-6" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-body)' }}>
+                Planes pensados para operar tu {planNoun} sin ruido técnico.
+              </p>
+            </div>
+
+            {/* Toggle mensual / anual */}
+            <div
+              className="inline-flex items-center self-start sm:self-auto rounded-xl p-1 gap-0.5"
+              role="group"
+              aria-label="Ciclo de facturación"
+              style={{ backgroundColor: 'rgba(17,24,39,0.06)' }}
+            >
+              <button
+                type="button"
+                onClick={() => setBillingCycle('monthly')}
+                className="px-4 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 font-[family-name:var(--font-caption)]"
+                style={billingCycle === 'monthly'
+                  ? { backgroundColor: '#fff', color: '#111827', boxShadow: '0 1px 4px rgba(17,24,39,0.12)' }
+                  : { backgroundColor: 'transparent', color: 'var(--color-muted-foreground)' }}
+                aria-pressed={billingCycle === 'monthly'}
+              >
+                Mensual
+              </button>
+              <button
+                type="button"
+                onClick={() => setBillingCycle('annual')}
+                className="px-4 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 flex items-center gap-2 font-[family-name:var(--font-caption)]"
+                style={billingCycle === 'annual'
+                  ? { backgroundColor: '#fff', color: '#111827', boxShadow: '0 1px 4px rgba(17,24,39,0.12)' }
+                  : { backgroundColor: 'transparent', color: 'var(--color-muted-foreground)' }}
+                aria-pressed={billingCycle === 'annual'}
+              >
+                Anual
+                <span
+                  className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full font-[family-name:var(--font-caption)]"
+                  style={{ backgroundColor: billingCycle === 'annual' ? 'rgba(124,58,237,0.12)' : 'rgba(124,58,237,0.10)', color: 'var(--color-primary)' }}
+                >
+                  {getAnnualDiscountPercent('pro')}% off
+                </span>
+              </button>
+            </div>
           </div>
 
-          <div id="planes-grid" className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-5">
+          <div id="planes-grid" className="grid grid-cols-1 md:grid-cols-3 gap-3.5 sm:gap-4 md:gap-5 items-stretch">
             {PLAN_SLUGS.map((slug) => {
               const limits = getPlanLimits(slug);
               const isProTrialCard = slug === 'pro' && isProTrialActive;
               const isCurrent = currentPlan === slug && !isProTrialCard;
-              const actionLabel = `Elegir plan ${getPlanLabel(slug)}`;
+              const isAnnual = billingCycle === 'annual';
+              const actionLabel = isAnnual ? 'Pagar plan anual' : `Elegir plan ${getPlanLabel(slug)}`;
               const isProRecommended = slug === 'pro';
               const marketPlan = getPlanConfig({
                 marketCode,
@@ -1028,105 +1165,154 @@ export default function PlansPage() {
                 countryCode: billingCountryForUi,
               });
               const isPurchasable = marketPlan?.enabled !== false && marketPlan?.purchasable !== false;
+                const planData = PLAN_DATA[slug] || { bullets: [] };
               return (
                 <div
                   key={slug}
                   className={[
-                    'relative rounded-2xl border p-5 flex flex-col transition-all duration-200 hover:-translate-y-0.5',
-                    isProRecommended ? 'shadow-[0_18px_40px_rgba(17,24,39,0.08)]' : '',
+                    'relative h-full rounded-2xl border p-5 sm:p-6 flex flex-col transition-[transform,box-shadow,background-color,border-color] duration-300 ease-out hover:-translate-y-0.5 hover:shadow-[0_18px_42px_rgba(15,23,42,0.08)]',
+                    isProRecommended ? 'ring-2 ring-violet-500/20 shadow-[0_18px_40px_rgba(124,58,237,0.10)] hover:bg-violet-50/40 hover:shadow-[0_22px_48px_rgba(124,58,237,0.16)]' : '',
                   ].filter(Boolean).join(' ')}
                   style={{
-                    backgroundColor: isCurrent ? 'rgba(255,255,255,0.86)' : 'rgba(255,255,255,0.72)',
-                    borderColor: isCurrent ? 'rgba(17,24,39,0.22)' : 'rgba(17,24,39,0.08)',
-                    boxShadow: isCurrent ? '0 0 0 1px rgba(17,24,39,0.14), 0 18px 42px rgba(17,24,39,0.08)' : '0 12px 30px rgba(17,24,39,0.045)',
+                    backgroundColor: isCurrent ? 'rgba(124,58,237,0.04)' : '#ffffff',
+                    borderColor: isCurrent ? 'var(--color-primary)' : isProRecommended ? 'rgba(124,58,237,0.20)' : 'var(--color-border)',
+                    boxShadow: isCurrent ? '0 0 0 2px rgba(124,58,237,0.18), 0 18px 42px rgba(124,58,237,0.06)' : isProRecommended ? '' : '0 1px 4px rgba(0,0,0,0.05)',
                   }}
                 >
                   {isProRecommended && (
                     <span
                       className="absolute -top-2.5 left-1/2 -translate-x-1/2 rounded-full px-3 py-0.5 text-[10px] font-semibold uppercase tracking-wide shadow-sm font-[family-name:var(--font-caption)]"
-                      style={{ backgroundColor: '#111827', color: '#fff' }}
+                      style={{ backgroundColor: 'var(--color-primary)', color: '#fff' }}
                       aria-hidden
                     >
                       Popular
                     </span>
                   )}
-                  <div className="flex items-center justify-between mb-4 pt-1">
-                    <h2 className="text-lg font-semibold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.015em' }}>
-                      {getPlanLabel(slug)}
-                    </h2>
-                    {isCurrent && (
-                      <span className="text-xs font-semibold px-2 py-1 rounded-full" style={{ backgroundColor: 'rgba(17,24,39,0.08)', color: '#111827' }}>
-                        Actual
-                      </span>
+
+                  {/* Plan header */}
+                  <div className="mb-4 pt-1">
+                    <div className="flex items-center justify-between">
+                      <h2 className="text-xl font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>
+                        {getPlanLabel(slug)}
+                      </h2>
+                      {isCurrent && (
+                        <span className="text-xs font-semibold px-2 py-1 rounded-full" style={{ backgroundColor: 'var(--color-primary)', color: '#fff' }}>
+                          Actual
+                        </span>
+                      )}
+                    </div>
+                    {planData.subtitle && (
+                      <p className="text-sm mt-0.5" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                        {planData.subtitle}
+                      </p>
                     )}
                   </div>
-                  <div className="mb-4">
+
+                  {/* Price */}
+                  <div className="mb-5 pb-5 border-b" style={{ borderColor: 'rgba(17,24,39,0.07)' }}>
                     {getDisplayPlanPrice(slug) === 0 ? (
-                      <p className="text-2xl font-bold text-slate-900" style={{ fontFamily: 'var(--font-heading)' }}>
+                      <p className="text-3xl font-bold text-slate-900" style={{ fontFamily: 'var(--font-heading)' }}>
                         Gratis
                       </p>
                     ) : (
-                      <p
-                        className={
-                          planBillingDisplayCurrency === 'CLP'
-                            ? 'text-3xl font-semibold text-slate-950 tracking-tight'
-                            : 'text-2xl font-bold text-slate-900'
-                        }
-                        style={{ fontFamily: 'var(--font-heading)' }}
-                      >
-                        {formatSubscriptionPlanPrice(getDisplayPlanPrice(slug), planBillingDisplayCurrency, planBillingDisplayLocale)}
-                      </p>
+                      <>
+                        <div className="flex items-baseline gap-1">
+                          <p
+                            className={
+                              planBillingDisplayCurrency === 'CLP'
+                                ? 'text-3xl font-bold text-slate-950 tracking-tight'
+                                : 'text-2xl font-bold text-slate-900'
+                            }
+                            style={{ fontFamily: 'var(--font-heading)' }}
+                          >
+                            {formatSubscriptionPlanPrice(getDisplayPlanPrice(slug), planBillingDisplayCurrency, planBillingDisplayLocale)}
+                          </p>
+                          {isAnnual && (
+                            <span className="text-sm font-medium text-slate-500" style={{ fontFamily: 'var(--font-caption)' }}>/año</span>
+                          )}
+                        </div>
+                        {isAnnual ? (
+                          <>
+                            <p className="text-[11px] sm:text-xs mt-1 leading-snug" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                              Equivale a {formatSubscriptionPlanPrice(getAnnualMonthlyEquiv(slug), planBillingDisplayCurrency, planBillingDisplayLocale)}/mes
+                            </p>
+                            {(() => {
+                              const monthlyPrice = getPlanPrice({ countryCode: businessCountryCode, planSlug: slug }) ?? 0;
+                              const savings = Math.max(0, monthlyPrice * 12 - getDisplayPlanPrice(slug));
+                              if (!savings) return null;
+                              const discountPct = monthlyPrice > 0 ? Math.round((savings / (monthlyPrice * 12)) * 100) : 0;
+                              return (
+                                <p className="text-[11px] mt-0.5 leading-snug" style={{ color: '#059669', fontFamily: 'var(--font-caption)' }}>
+                                  Ahorrás {formatSubscriptionPlanPrice(savings, planBillingDisplayCurrency, planBillingDisplayLocale)} al año ({discountPct}%)
+                                </p>
+                              );
+                            })()}
+                          </>
+                        ) : (
+                          <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
+                            {`por mes · ${planBillingDisplayCurrency}`}
+                          </p>
+                        )}
+                      </>
                     )}
-                    <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>
-                      {getDisplayPlanPrice(slug) === 0 ? '' : `por mes · ${planBillingDisplayCurrency}`}
-                    </p>
                   </div>
-                  <ul className="space-y-2 mb-6 flex-1">
-                    <li className="flex items-center gap-2.5 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
-                        <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-slate-600" style={{ backgroundColor: 'rgba(17,24,39,0.06)' }} aria-hidden>
-                        <Icon name="Package" size={16} color="currentColor" />
-                      </span>
-                      <span>
-                        <span className="font-semibold text-slate-800">Productos</span>
-                        {' · '}
-                        {limits.maxProducts == null ? 'Ilimitados' : limits.maxProducts}
-                      </span>
-                    </li>
-                    <li className="flex items-center gap-2.5 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
-                        <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-slate-600" style={{ backgroundColor: 'rgba(17,24,39,0.06)' }} aria-hidden>
-                        <Icon name="ShoppingCart" size={16} color="currentColor" />
-                      </span>
-                      <span>
-                        <span className="font-semibold text-slate-800">Pedidos/mes</span>
-                        {' · '}
-                        {limits.maxOrdersPerMonth == null ? 'Ilimitados' : limits.maxOrdersPerMonth}
-                      </span>
-                    </li>
-                    {slug === 'starter' && (
-                      <>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Sin estadísticas ni ingresos del mes</li>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Sin productos más vendidos</li>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Sin asistencia de IA</li>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Incluye branding de Walinka en mensajes y links compartidos</li>
-                      </>
+
+                  {/* Feature list */}
+                  <div className="flex-1 mb-5 space-y-0.5">
+                    {/* Inherit pill */}
+                    {planData.inherit && (
+                      <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-xl" style={{ backgroundColor: 'rgba(5,150,105,0.07)', border: '1px solid rgba(5,150,105,0.15)' }}>
+                        <Icon name="CheckCircle2" size={14} color="#059669" className="shrink-0" aria-hidden />
+                        <span className="text-sm font-semibold" style={{ color: '#047857', fontFamily: 'var(--font-caption)' }}>
+                          {planData.inherit}
+                        </span>
+                      </div>
                     )}
-                    {slug === 'pro' && (
-                      <>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Panel completo y estadísticas</li>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Asistencia de IA para descripciones</li>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Branding discreto: Powered by Walinka</li>
-                      </>
+                    {(planData.bullets ?? []).map(({ icon, color, bg, text, star }) => (
+                      <div
+                        key={text}
+                        className="flex items-center gap-3 px-2 py-1.5 rounded-xl"
+                      >
+                        <div
+                          className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+                          style={{ backgroundColor: bg }}
+                        >
+                          <Icon name={icon} size={14} color={color} aria-hidden />
+                        </div>
+                        <span
+                          className={`text-sm leading-snug ${star ? 'font-semibold' : ''}`}
+                          style={{ color: star ? 'var(--color-foreground)' : 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)', flex: 1 }}
+                        >
+                          {text}
+                        </span>
+                        {star && slug === 'pro' && (
+                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0" style={{ backgroundColor: 'rgba(124,58,237,0.10)', color: 'var(--color-primary)' }}>
+                            Pro
+                          </span>
+                        )}
+                        {star && slug === 'business' && (
+                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0" style={{ backgroundColor: 'rgba(5,150,105,0.10)', color: '#047857' }}>
+                            Full
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                    {planData.limits && (
+                      <div className="flex flex-wrap gap-1.5 mt-3 pt-3" style={{ borderTop: '1px dashed rgba(17,24,39,0.10)' }}>
+                        {planData.limits.map(limit => (
+                          <span
+                            key={limit}
+                            className="text-[11px] px-2.5 py-1 rounded-full font-medium"
+                            style={{ backgroundColor: 'rgba(17,24,39,0.05)', color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}
+                          >
+                            {limit}
+                          </span>
+                        ))}
+                      </div>
                     )}
-                    {slug === 'business' && (
-                      <>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Panel completo</li>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Estadísticas completas</li>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>IA ilimitada</li>
-                        <li className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Sin branding de Walinka en catálogo o mensajes</li>
-                      </>
-                    )}
-                  </ul>
-                  <div className="pt-4 border-t" style={{ borderColor: 'rgba(17,24,39,0.08)' }}>
+                  </div>
+
+                  <div className="mt-auto pt-4 border-t" style={{ borderColor: 'rgba(17,24,39,0.08)' }}>
                     {isCurrent ? (
                       <span className="text-sm font-medium" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
                         Tu plan actual
@@ -1322,6 +1508,7 @@ export default function PlansPage() {
           open={manualPaymentModalOpen}
           onClose={closeManualPaymentModal}
           planSlug={manualPaymentPlanSlug}
+          isAnnual={manualPaymentIsAnnual}
           user={user}
           business={business}
         />

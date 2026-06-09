@@ -4,11 +4,38 @@ import Icon from 'components/AppIcon';
 import BusinessSidebar from 'components/ui/BusinessSidebar';
 import { useIsDesktop } from 'hooks/useMediaQuery';
 import { listAdminUsers } from 'services/adminUsersService';
+import { getAdminUsersWithSessionStats } from 'services/userSessionService';
 import { getPlanLabel, getPlanColors } from 'constants/plans';
 
 function formatDate(d) {
   if (!d) return '—';
   return new Date(d).toLocaleDateString('es-CL', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function formatRelative(d) {
+  if (!d) return 'Nunca';
+  const diffMs = Date.now() - new Date(d).getTime();
+  const diffMins = Math.floor(diffMs / 60_000);
+  if (diffMins < 2) return 'Activo ahora';
+  if (diffMins < 60) return `Hace ${diffMins} min`;
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `Hace ${diffHours}h`;
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 30) return `Hace ${diffDays} día${diffDays !== 1 ? 's' : ''}`;
+  return `Hace ${Math.floor(diffDays / 30)} mes(es)`;
+}
+
+function formatDuration(totalSeconds) {
+  if (!totalSeconds || totalSeconds <= 0) return '0m';
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+}
+
+function isActiveNow(lastSeenAt) {
+  if (!lastSeenAt) return false;
+  return Date.now() - new Date(lastSeenAt).getTime() < 2 * 60_000;
 }
 
 function PlanBadge({ slug }) {
@@ -28,25 +55,65 @@ export default function AdminUsersPage() {
   const sidebarWidth = sidebarCollapsed ? 'var(--sidebar-collapsed-width)' : 'var(--sidebar-width)';
 
   const [users, setUsers] = useState([]);
+  const [sessionStats, setSessionStats] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchQ, setSearchQ] = useState('');
+  const [activeSearch, setActiveSearch] = useState('');
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (search = '') => {
     setLoading(true);
     setError(null);
-    const { data, error: err } = await listAdminUsers({ page: 1, per_page: 100 });
-    if (err) setError(err.message);
-    else if (data?.users) setUsers(data.users);
+    try {
+      const [usersResult, statsResult] = await Promise.all([
+        listAdminUsers({ page: 1, per_page: 200, search }),
+        getAdminUsersWithSessionStats(),
+      ]);
+      if (usersResult.error) {
+        console.error('[AdminUsersPage] load error:', usersResult.error);
+        setError(usersResult.error.message);
+      } else {
+        console.log('[AdminUsersPage] loaded:', { total: usersResult.data?.users?.length ?? 0, search: search || '(all)' });
+        setUsers(usersResult.data?.users ?? []);
+      }
+      if (statsResult.data) {
+        const map = {};
+        statsResult.data.forEach((s) => { map[s.user_id] = s; });
+        setSessionStats(map);
+      }
+    } catch (e) {
+      console.error('[AdminUsersPage] unexpected error:', e);
+      setError(String(e?.message ?? e));
+    }
     setLoading(false);
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  // Cargar lista inicial sin búsqueda
+  useEffect(() => { load(''); }, [load]);
 
+  // Disparar búsqueda server-side con debounce de 500ms
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const q = searchQ.trim();
+      setActiveSearch(q);
+      load(q);
+    }, 500);
+    return () => clearTimeout(t);
+  }, [searchQ, load]);
+
+  // Filtro client-side sobre los resultados ya cargados (por si el servidor no filtra)
   const filtered = users.filter((u) => {
-    const q = searchQ.toLowerCase().trim();
+    const q = activeSearch.toLowerCase();
     if (!q) return true;
-    return (u.email ?? '').toLowerCase().includes(q) || (u.id ?? '').toLowerCase().includes(q);
+    if ((u.email ?? '').toLowerCase().includes(q)) return true;
+    if ((u.id ?? '').toLowerCase().includes(q)) return true;
+    // Buscar también en datos del negocio
+    return (u.businesses ?? []).some((b) =>
+      (b.name ?? '').toLowerCase().includes(q) ||
+      (b.email ?? '').toLowerCase().includes(q) ||
+      (b.slug ?? '').toLowerCase().includes(q) ||
+      (b.id ?? '').toLowerCase().includes(q)
+    );
   });
 
   return (
@@ -81,16 +148,28 @@ export default function AdminUsersPage() {
           )}
 
           <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
-            <input
-              type="text"
-              value={searchQ}
-              onChange={(e) => setSearchQ(e.target.value)}
-              placeholder="Buscar por email o ID..."
-              className="px-3 py-1.5 rounded-lg border text-sm"
-              style={{ borderColor: 'var(--color-border)', fontFamily: 'var(--font-caption)', minWidth: 200, outline: 'none' }}
-            />
+            <div className="relative">
+              <input
+                type="text"
+                value={searchQ}
+                onChange={(e) => setSearchQ(e.target.value)}
+                placeholder="Buscar por email, nombre de negocio, slug, ID..."
+                className="px-3 py-1.5 rounded-lg border text-sm pr-8"
+                style={{ borderColor: 'var(--color-border)', fontFamily: 'var(--font-caption)', minWidth: 280, outline: 'none' }}
+              />
+              {searchQ && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQ('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 opacity-40 hover:opacity-80 transition-opacity"
+                  title="Limpiar búsqueda"
+                >
+                  <Icon name="X" size={13} />
+                </button>
+              )}
+            </div>
             <span className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-              {filtered.length} usuario(s)
+              {loading ? 'Buscando...' : `${filtered.length} usuario(s)`}
             </span>
           </div>
 
@@ -114,6 +193,9 @@ export default function AdminUsersPage() {
                       <th className="px-3 py-2.5">Estado</th>
                       <th className="px-3 py-2.5">Rol</th>
                       <th className="px-3 py-2.5 hidden sm:table-cell">Plan / Trial</th>
+                      <th className="px-3 py-2.5 hidden lg:table-cell">Último acceso</th>
+                      <th className="px-3 py-2.5 hidden xl:table-cell">Sesiones 30d</th>
+                      <th className="px-3 py-2.5 hidden xl:table-cell">Tiempo 30d</th>
                       <th className="px-3 py-2.5 hidden md:table-cell">Creado</th>
                       <th className="px-3 py-2.5 text-right">Acciones</th>
                     </tr>
@@ -127,11 +209,17 @@ export default function AdminUsersPage() {
                       const planExp = biz?.plan_expires_at ?? null;
                       const isTrial = trialExp && new Date(trialExp) > new Date() && !planExp;
                       const planLabel = isTrial ? `Trial hasta ${formatDate(trialExp)}` : getPlanLabel(planSlug);
+                      const stats = sessionStats[u.id];
+                      const lastSeen = stats?.last_seen_at ?? null;
+                      const active = isActiveNow(lastSeen);
                       return (
                         <tr key={u.id} className="border-b last:border-b-0 text-sm" style={{ borderColor: 'var(--color-border)' }}>
                           <td className="px-3 py-3">
                             <p className="font-medium">{u.email || '—'}</p>
-                            <p className="text-xs opacity-50 truncate max-w-[180px]" title={u.id}>{u.id}</p>
+                            {biz?.name && (
+                              <p className="text-xs font-medium truncate max-w-[220px]" style={{ color: 'var(--color-primary)', opacity: 0.8 }} title={biz.name}>{biz.name}</p>
+                            )}
+                            <p className="text-xs opacity-40 truncate max-w-[180px]" title={u.id}>{u.id}</p>
                           </td>
                           <td className="px-3 py-3">
                             {banned ? (
@@ -152,6 +240,22 @@ export default function AdminUsersPage() {
                               <PlanBadge slug={planSlug} />
                               {isTrial && <span className="text-xs opacity-70">Trial {formatDate(trialExp)}</span>}
                             </div>
+                          </td>
+                          <td className="px-3 py-3 hidden lg:table-cell text-xs">
+                            {active ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: 'rgba(16,185,129,0.15)', color: '#059669' }}>
+                                <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ backgroundColor: '#059669' }} />
+                                Activo ahora
+                              </span>
+                            ) : (
+                              <span className="opacity-70">{formatRelative(lastSeen)}</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-3 hidden xl:table-cell text-xs opacity-70">
+                            {stats ? (stats.sessions_30d ?? 0) : '—'}
+                          </td>
+                          <td className="px-3 py-3 hidden xl:table-cell text-xs opacity-70">
+                            {stats ? formatDuration(stats.total_duration_30d_seconds) : '—'}
                           </td>
                           <td className="px-3 py-3 hidden md:table-cell text-xs opacity-60">
                             {formatDate(u.created_at)}

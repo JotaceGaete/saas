@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import Icon from 'components/AppIcon';
 import BusinessSidebar from 'components/ui/BusinessSidebar';
@@ -16,10 +16,37 @@ import { adminChangePlan } from 'services/adminPaymentsService';
 import { getPlanLabel, getPlanColors } from 'constants/plans';
 import { APP_ORIGIN } from 'config/appUrl';
 import { supabase } from 'lib/supabase';
+import { getAdminUserSessionDetail } from 'services/userSessionService';
 
 function formatDate(d) {
   if (!d) return '—';
   return new Date(d).toLocaleDateString('es-CL', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+function formatRelative(d) {
+  if (!d) return 'Nunca';
+  const diffMs = Date.now() - new Date(d).getTime();
+  const diffMins = Math.floor(diffMs / 60_000);
+  if (diffMins < 2) return 'Activo ahora';
+  if (diffMins < 60) return `Hace ${diffMins} min`;
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `Hace ${diffHours}h`;
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 30) return `Hace ${diffDays} día${diffDays !== 1 ? 's' : ''}`;
+  return `Hace ${Math.floor(diffDays / 30)} mes(es)`;
+}
+
+function formatDuration(totalSeconds) {
+  if (!totalSeconds || totalSeconds <= 0) return '0m';
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+}
+
+function isActiveNow(lastSeenAt) {
+  if (!lastSeenAt) return false;
+  return Date.now() - new Date(lastSeenAt).getTime() < 2 * 60_000;
 }
 
 function PlanBadge({ slug }) {
@@ -42,6 +69,7 @@ export default function AdminUserDetailPage() {
 
   const [user, setUser] = useState(null);
   const [businesses, setBusinesses] = useState([]);
+  const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [actionLoading, setActionLoading] = useState(null);
@@ -55,14 +83,29 @@ export default function AdminUserDetailPage() {
     if (!userId) return;
     setLoading(true);
     setError(null);
-    const { data, error: err } = await getAdminUser(userId);
-    if (err) setError(err.message);
-    else if (data) {
-      setUser(data.user);
-      setBusinesses(data.businesses ?? []);
+    const [userResult, sessionsResult] = await Promise.all([
+      getAdminUser(userId),
+      getAdminUserSessionDetail(userId),
+    ]);
+    if (userResult.error) setError(userResult.error.message);
+    else if (userResult.data) {
+      setUser(userResult.data.user);
+      setBusinesses(userResult.data.businesses ?? []);
     }
+    if (sessionsResult.data) setSessions(sessionsResult.data);
     setLoading(false);
   }, [userId]);
+
+  const sessionStats = useMemo(() => {
+    const now = Date.now();
+    const cutoff = now - 30 * 24 * 60 * 60 * 1000;
+    const recent = sessions.filter((s) => new Date(s.login_at).getTime() >= cutoff);
+    const totalDuration = recent.reduce((acc, s) => acc + (s.duration_seconds || 0), 0);
+    const lastSeen = sessions[0]?.last_seen_at ?? null;
+    const lastIp = sessions[0]?.ip_address ?? null;
+    const lastAgent = sessions[0]?.user_agent ?? null;
+    return { sessions30d: recent.length, totalDuration, lastSeen, lastIp, lastAgent };
+  }, [sessions]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -234,6 +277,79 @@ export default function AdminUserDetailPage() {
                 Eliminar usuario
               </button>
             </div>
+          </section>
+
+          <section className="mb-6 rounded-xl border p-4" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-card)' }}>
+            <h2 className="text-sm font-bold mb-3" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>Actividad de sesiones</h2>
+            <dl className="grid sm:grid-cols-2 gap-2 text-sm mb-4">
+              <div>
+                <dt className="opacity-70 text-xs">Último acceso</dt>
+                <dd className="font-medium">
+                  {isActiveNow(sessionStats.lastSeen) ? (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: 'rgba(16,185,129,0.15)', color: '#059669' }}>
+                      <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ backgroundColor: '#059669' }} />
+                      Activo ahora
+                    </span>
+                  ) : (
+                    formatRelative(sessionStats.lastSeen)
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt className="opacity-70 text-xs">Sesiones últimos 30 días</dt>
+                <dd className="font-medium">{sessionStats.sessions30d}</dd>
+              </div>
+              <div>
+                <dt className="opacity-70 text-xs">Tiempo acumulado 30 días</dt>
+                <dd className="font-medium">{formatDuration(sessionStats.totalDuration)}</dd>
+              </div>
+              {sessionStats.lastIp && (
+                <div>
+                  <dt className="opacity-70 text-xs">Última IP</dt>
+                  <dd className="font-mono text-xs">{sessionStats.lastIp}</dd>
+                </div>
+              )}
+              {sessionStats.lastAgent && (
+                <div className="sm:col-span-2">
+                  <dt className="opacity-70 text-xs">Último navegador</dt>
+                  <dd className="text-xs opacity-80 break-all">{sessionStats.lastAgent}</dd>
+                </div>
+              )}
+            </dl>
+
+            {sessions.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold mb-2 opacity-60">Últimas {sessions.length} sesiones</p>
+                <div className="overflow-x-auto rounded-lg border" style={{ borderColor: 'var(--color-border)' }}>
+                  <table className="w-full text-xs" style={{ fontFamily: 'var(--font-caption)' }}>
+                    <thead>
+                      <tr style={{ backgroundColor: 'var(--color-muted)', color: 'var(--color-muted-foreground)' }}>
+                        <th className="px-2 py-2 text-left font-semibold">Inicio</th>
+                        <th className="px-2 py-2 text-left font-semibold hidden sm:table-cell">Último ping</th>
+                        <th className="px-2 py-2 text-left font-semibold hidden sm:table-cell">Fin</th>
+                        <th className="px-2 py-2 text-left font-semibold">Duración</th>
+                        <th className="px-2 py-2 text-left font-semibold hidden md:table-cell">IP</th>
+                      </tr>
+                    </thead>
+                    <tbody style={{ color: 'var(--color-foreground)' }}>
+                      {sessions.map((s) => (
+                        <tr key={s.id} className="border-t" style={{ borderColor: 'var(--color-border)' }}>
+                          <td className="px-2 py-1.5 whitespace-nowrap">{formatDate(s.login_at)}</td>
+                          <td className="px-2 py-1.5 whitespace-nowrap hidden sm:table-cell opacity-70">{formatDate(s.last_seen_at)}</td>
+                          <td className="px-2 py-1.5 whitespace-nowrap hidden sm:table-cell opacity-70">{s.logout_at ? formatDate(s.logout_at) : <span className="text-green-600">Activa</span>}</td>
+                          <td className="px-2 py-1.5">{formatDuration(s.duration_seconds)}</td>
+                          <td className="px-2 py-1.5 hidden md:table-cell opacity-60 font-mono">{s.ip_address || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {sessions.length === 0 && (
+              <p className="text-sm opacity-60" style={{ fontFamily: 'var(--font-caption)' }}>Sin sesiones registradas.</p>
+            )}
           </section>
 
           <section className="mb-6 rounded-xl border p-4" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-card)' }}>

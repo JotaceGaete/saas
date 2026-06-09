@@ -18,6 +18,9 @@ export default function MobileBottomNav() {
   const { isAdmin } = useAuth();
   const items = isAdmin ? [...ITEMS, ADMIN_ITEM] : ITEMS;
 
+  // Hide on CRM pages — they have their own mobile bottom bars
+  if (location?.pathname?.startsWith('/crm')) return null;
+
   const isActive = (path) =>
     location?.pathname === path || location?.pathname?.startsWith(path + '/');
 

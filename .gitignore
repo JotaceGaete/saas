@@ -14,3 +14,4 @@ vite.config.*s.*
 .claude/worktrees/
 .vercel
 .env*.local
+dist/

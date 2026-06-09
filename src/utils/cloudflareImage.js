@@ -29,6 +29,8 @@ const PRODUCTION_CF_HOSTS = new Set([
   'go.ventalink.app',
   'ventalink.app',
   'www.ventalink.app',
+  'miralatienda.de',
+  'www.miralatienda.de',
 ]);
 
 function getCfImageOrigin() {
