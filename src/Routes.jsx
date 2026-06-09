@@ -6,6 +6,7 @@ import AnimatedLayout from "components/AnimatedLayout";
 import NotFound from "pages/NotFound";
 import RequireAdmin from "components/RequireAdmin";
 import RequireAuth from "components/RequireAuth";
+import RequireCrm from "components/RequireCrm";
 import FeatureGate from "components/ui/FeatureGate";
 import SessionExpiredHandler from "components/SessionExpiredHandler";
 import CountrySelectPage from "./pages/country-select";
@@ -140,24 +141,22 @@ const Routes = () => {
             <Route path="/register" element={<BusinessRegistration />} />
             <Route path="/landing-page" element={<LandingPage />} />
             <Route path="/complete-business-setup" element={<RequireAuth><CompleteBusinessSetupPage /></RequireAuth>} />
-            {/* CRM — acceso por plan del negocio, no por rol admin de Ventalink */}
-            {/* Starter+ (disponibles para todos los planes) */}
-            <Route path="/crm"                    element={<RequireAuth><CrmDashboard /></RequireAuth>} />
-            <Route path="/crm/clientes"           element={<RequireAuth><CrmCustomers /></RequireAuth>} />
-            <Route path="/crm/presupuestos"       element={<RequireAuth><CrmQuotes /></RequireAuth>} />
-            <Route path="/crm/presupuestos/nuevo" element={<RequireAuth><CrmQuoteEditor /></RequireAuth>} />
-            <Route path="/crm/presupuestos/:id"   element={<RequireAuth><CrmQuoteEditor /></RequireAuth>} />
-            <Route path="/crm/stock"              element={<RequireAuth><CrmStock /></RequireAuth>} />
-            <Route path="/crm/terminal"           element={<RequireAuth><CrmTerminal /></RequireAuth>} />
-            <Route path="/crm/caja"               element={<RequireAuth><CrmCash /></RequireAuth>} />
-            <Route path="/crm/cost-center"        element={<RequireAuth><CrmCostCenter /></RequireAuth>} />
-            {/* Pro+ (requieren plan Pro o superior) */}
-            <Route path="/crm/facturas"      element={<RequireAuth><FeatureGate feature="invoices"><CrmInvoices /></FeatureGate></RequireAuth>} />
-            <Route path="/crm/facturas/nueva" element={<RequireAuth><FeatureGate feature="invoices"><CrmInvoiceEditor /></FeatureGate></RequireAuth>} />
-            <Route path="/crm/facturas/:id"  element={<RequireAuth><FeatureGate feature="invoices"><CrmInvoiceEditor /></FeatureGate></RequireAuth>} />
-            <Route path="/crm/compras"       element={<RequireAuth><FeatureGate feature="purchaseInvoices"><CrmPurchases /></FeatureGate></RequireAuth>} />
-            <Route path="/crm/costos"        element={<RequireAuth><FeatureGate feature="fixedCosts"><CrmCostos /></FeatureGate></RequireAuth>} />
-            <Route path="/crm/barcodes"      element={<RequireAuth><FeatureGate feature="barcodePrinting"><CrmBarcodes /></FeatureGate></RequireAuth>} />
+            {/* CRM — requiere plan Pro o superior (RequireCrm hace el bloqueo duro) */}
+            <Route path="/crm"                    element={<RequireCrm><CrmDashboard /></RequireCrm>} />
+            <Route path="/crm/clientes"           element={<RequireCrm><CrmCustomers /></RequireCrm>} />
+            <Route path="/crm/presupuestos"       element={<RequireCrm><CrmQuotes /></RequireCrm>} />
+            <Route path="/crm/presupuestos/nuevo" element={<RequireCrm><CrmQuoteEditor /></RequireCrm>} />
+            <Route path="/crm/presupuestos/:id"   element={<RequireCrm><CrmQuoteEditor /></RequireCrm>} />
+            <Route path="/crm/stock"              element={<RequireCrm><CrmStock /></RequireCrm>} />
+            <Route path="/crm/terminal"           element={<RequireCrm><CrmTerminal /></RequireCrm>} />
+            <Route path="/crm/caja"               element={<RequireCrm><CrmCash /></RequireCrm>} />
+            <Route path="/crm/cost-center"        element={<RequireCrm><CrmCostCenter /></RequireCrm>} />
+            <Route path="/crm/facturas"           element={<RequireCrm><FeatureGate feature="invoices"><CrmInvoices /></FeatureGate></RequireCrm>} />
+            <Route path="/crm/facturas/nueva"     element={<RequireCrm><FeatureGate feature="invoices"><CrmInvoiceEditor /></FeatureGate></RequireCrm>} />
+            <Route path="/crm/facturas/:id"       element={<RequireCrm><FeatureGate feature="invoices"><CrmInvoiceEditor /></FeatureGate></RequireCrm>} />
+            <Route path="/crm/compras"            element={<RequireCrm><FeatureGate feature="purchaseInvoices"><CrmPurchases /></FeatureGate></RequireCrm>} />
+            <Route path="/crm/costos"             element={<RequireCrm><FeatureGate feature="fixedCosts"><CrmCostos /></FeatureGate></RequireCrm>} />
+            <Route path="/crm/barcodes"           element={<RequireCrm><FeatureGate feature="barcodePrinting"><CrmBarcodes /></FeatureGate></RequireCrm>} />
             <Route path="/business-configuration" element={<RequireAuth><BusinessConfiguration /></RequireAuth>} />
             <Route path="/product-management" element={<RequireAuth><ProductManagement /></RequireAuth>} />
             <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
