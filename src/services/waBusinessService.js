@@ -402,6 +402,7 @@ const mapBusinessFromDb = (row) => {
 
 const mapProductFromDb = (row) => {
   const imagesArray = Array.isArray(row?.images) ? row.images : (row?.image_url ? [row.image_url] : []);
+  const primaryImageUrl = row?.image_url || imagesArray?.[0] || null;
   const status = row?.status ?? (row?.is_active ? 'active' : 'inactive');
   return {
     id: row?.id,
@@ -411,7 +412,8 @@ const mapProductFromDb = (row) => {
     publicCode: row?.public_code ?? null,
     description: row?.description,
     price: parseFloat(row?.price),
-    imageUrl: row?.image_url || imagesArray?.[0] || null,
+    imageUrl: primaryImageUrl,
+    primaryImageUrl,
     thumbnailUrl: row?.thumbnail_url || null,
     thumbnailPath: row?.thumbnail_path || null,
     images: imagesArray,
@@ -431,7 +433,7 @@ const mapProductFromDb = (row) => {
     videoThumbnailUrl: row?.video_thumbnail_url || null,
     videoPath: row?.video_path || null,
     videoThumbnailPath: row?.video_thumbnail_path || null,
-    cardImageUrl: row?.thumbnail_url || row?.card_image_url || null,
+    cardImageUrl: row?.card_image_url || row?.thumbnail_url || null,
     cardImagePath: row?.thumbnail_path || row?.card_image_path || null,
     addOns: Array.isArray(row?.add_ons) ? row.add_ons : [],
     isSoldOut: row?.is_sold_out === true,

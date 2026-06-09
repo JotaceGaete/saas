@@ -17,7 +17,7 @@ import { getPublicCatalogRelativePath, getPublicProductUrl } from '../../config/
 import { resolveCatalogTheme } from '../../utils/catalogTheme';
 import { cfImageUrl, isCfTransformableUrl } from '../../utils/cloudflareImage';
 import { openWhatsAppUrl } from '../../utils/openWhatsAppUrl';
-import { getProductImages, ProductModal } from '../public-catalog';
+import { getProductCardImage, getProductImages, ProductModal } from '../public-catalog';
 
 function getProductCommercialState(product) {
   if (product?.isActive === false) return 'hidden';
@@ -480,7 +480,7 @@ function PublicProductInner() {
                 {relatedProducts.map((item) => {
                   const itemSlug = item.slug || slugifyProductName(item.name);
                   const itemPath = getPublicProductPath(businessSlug, itemSlug);
-                  const itemImage = getProductImages(item)?.[0] || null;
+                  const itemImage = getProductCardImage(item);
                   return (
                     <button
                       key={item.id}
@@ -489,7 +489,7 @@ function PublicProductInner() {
                       className="overflow-hidden rounded-2xl border border-gray-200 bg-white text-left"
                     >
                       <CatalogImage
-                        src={itemImage ? cfImageUrl(itemImage, 'card') : null}
+                        src={itemImage}
                         originalSrc={itemImage}
                         alt={item.name || 'Producto'}
                         variant="product"

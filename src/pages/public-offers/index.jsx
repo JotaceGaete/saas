@@ -6,7 +6,6 @@ import { CartProvider, useCart } from '../../contexts/CartContext';
 import { formatPrice as formatPriceUtil, resolveCatalogCurrency } from '../../utils/formatPrice';
 import { getBusinessLocale } from '../../lib/locale/businessLocale';
 import { resolveCatalogTheme } from '../../utils/catalogTheme';
-import { cfImageUrl } from '../../utils/cloudflareImage';
 import { getPublicCatalogUrl, getPublicOffersUrl } from '../../config/appUrl';
 import { openWhatsAppUrl } from '../../utils/openWhatsAppUrl';
 import CatalogLayout from '../public-catalog/CatalogLayout';
@@ -28,6 +27,7 @@ function OfferCard({ product, formatPrice, theme, onOpen }) {
   const [bump, setBump] = useState(false);
   const discount = getDiscountPercent(product?.price, product?.compareAtPrice);
   const qtyTopClass = discount !== null ? 'top-[1.85rem]' : 'top-1';
+  const productImage = getProductCardImage(product);
 
   const handleAdd = (e) => {
     e?.stopPropagation();
@@ -60,10 +60,10 @@ function OfferCard({ product, formatPrice, theme, onOpen }) {
         aria-label={`Ver detalles de ${product?.name || 'producto'}`}
       >
         <div className="relative w-full aspect-[4/5] min-h-0">
-          {getProductCardImage(product) ? (
+          {productImage ? (
             <CatalogImage
-              src={product?.thumbnailUrl || product?.cardImageUrl ? getProductCardImage(product) : cfImageUrl(getProductCardImage(product), 'card')}
-              originalSrc={getProductCardImage(product)}
+              src={productImage}
+              originalSrc={productImage}
               alt={product?.name}
               className="h-full w-full"
               imgClassName="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"

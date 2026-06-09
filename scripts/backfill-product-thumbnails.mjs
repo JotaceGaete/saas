@@ -4,15 +4,18 @@
  *
  * Estrategia:
  * - Lee wa_products por lotes.
- * - Si el producto ya tiene thumbnail_url, lo salta.
+ * - Procesa productos activos con image_url/images pero sin thumbnail_url/card_image_url.
  * - Si image_url apunta al host de media, descarga una version Cloudflare ya reducida
  *   (420px / q70 / webp) y la sube a R2 como thumbnail persistido.
- * - Actualiza thumbnail_url + thumbnail_path.
+ * - Actualiza thumbnail_url + thumbnail_path + card_image_url.
+ * - Con --copy-only no usa R2: copia image_url como fallback persistente en
+ *   thumbnail_url/card_image_url para catálogos legacy.
  *
  * Uso:
  *   node scripts/backfill-product-thumbnails.mjs
  *   node scripts/backfill-product-thumbnails.mjs --dry-run --batch-size=50 --limit=200
  *   node scripts/backfill-product-thumbnails.mjs --dry-run --batch=50 --limit=200
+ *   node scripts/backfill-product-thumbnails.mjs --copy-only --dry-run
  */
 
 import { createClient } from '@supabase/supabase-js';
@@ -46,6 +49,7 @@ function getArgNumber(names, fallback) {
 loadEnv();
 
 const DRY_RUN = process.argv.includes('--dry-run');
+const COPY_ONLY = process.argv.includes('--copy-only');
 const BATCH_SIZE = Math.max(1, getArgNumber(['--batch-size', '--batch'], 25));
 const LIMIT = Math.max(0, getArgNumber(['--limit'], 0));
 
@@ -59,15 +63,19 @@ const R2_PUBLIC_URL = (process.env.R2_PUBLIC_URL || '').replace(/\/$/, '');
 const CF_IMAGE_ORIGIN = (process.env.VITE_CF_IMAGE_ORIGIN || process.env.CF_IMAGE_ORIGIN || 'https://walinka.com').replace(/\/$/, '');
 const MEDIA_HOST = 'media.gong.cl';
 
-for (const [name, value] of Object.entries({
+const requiredEnv = {
   SUPABASE_URL,
   SUPABASE_SERVICE_ROLE_KEY,
-  R2_ACCOUNT_ID,
-  R2_ACCESS_KEY_ID,
-  R2_SECRET_ACCESS_KEY,
-  R2_BUCKET_NAME,
-  R2_PUBLIC_URL,
-})) {
+  ...(COPY_ONLY ? {} : {
+    R2_ACCOUNT_ID,
+    R2_ACCESS_KEY_ID,
+    R2_SECRET_ACCESS_KEY,
+    R2_BUCKET_NAME,
+    R2_PUBLIC_URL,
+  }),
+};
+
+for (const [name, value] of Object.entries(requiredEnv)) {
   if (!value) {
     console.error(`Falta variable de entorno: ${name}`);
     process.exit(1);
@@ -75,7 +83,7 @@ for (const [name, value] of Object.entries({
 }
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-const s3 = new S3Client({
+const s3 = COPY_ONLY ? null : new S3Client({
   region: 'auto',
   endpoint: `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
   credentials: {
@@ -119,10 +127,33 @@ async function uploadThumbnailFromUrl(sourceUrl, key) {
 
 async function processProduct(product) {
   const thumbnailUrl = String(product?.thumbnail_url || '').trim();
-  if (thumbnailUrl) return { status: 'skipped', reason: 'already_has_thumbnail' };
+  const cardImageUrl = String(product?.card_image_url || '').trim();
+  if (thumbnailUrl && cardImageUrl) return { status: 'skipped', reason: 'already_has_thumbnail_and_card_image' };
+  if (product?.is_active !== true) return { status: 'skipped', reason: 'inactive' };
 
-  const imageUrl = String(product?.image_url || '').trim();
+  const imageUrl = String(product?.image_url || product?.images?.[0] || '').trim();
   if (!imageUrl) return { status: 'skipped', reason: 'no_image_url' };
+
+  if (COPY_ONLY) {
+    if (DRY_RUN) {
+      return { status: 'dry-run', source: imageUrl, mode: 'copy-only' };
+    }
+
+    const updates = {};
+    if (!thumbnailUrl) updates.thumbnail_url = imageUrl;
+    if (!cardImageUrl) updates.card_image_url = imageUrl;
+    const { error } = await supabase
+      .from('wa_products')
+      .update(updates)
+      .eq('id', product.id);
+
+    if (error) {
+      throw new Error(error.message || 'No se pudo actualizar wa_products');
+    }
+
+    return { status: 'updated', publicUrl: imageUrl, mode: 'copy-only' };
+  }
+
   if (!isTransformableMediaUrl(imageUrl)) return { status: 'skipped', reason: 'non_transformable_source' };
 
   const cfThumbUrl = buildCloudflareThumbnailUrl(imageUrl);
@@ -133,12 +164,16 @@ async function processProduct(product) {
   }
 
   const publicUrl = await uploadThumbnailFromUrl(cfThumbUrl, key);
+  const updates = {
+    card_image_url: publicUrl,
+  };
+  if (!thumbnailUrl) {
+    updates.thumbnail_url = publicUrl;
+    updates.thumbnail_path = key;
+  }
   const { error } = await supabase
     .from('wa_products')
-    .update({
-      thumbnail_url: publicUrl,
-      thumbnail_path: key,
-    })
+    .update(updates)
     .eq('id', product.id);
 
   if (error) {
@@ -162,7 +197,8 @@ async function main() {
     const to = from + BATCH_SIZE - 1;
     const { data, error } = await supabase
       .from('wa_products')
-      .select('id, business_id, image_url, thumbnail_url, thumbnail_path, created_at')
+      .select('id, business_id, image_url, images, thumbnail_url, thumbnail_path, card_image_url, is_active, created_at')
+      .eq('is_active', true)
       .order('created_at', { ascending: true })
       .range(from, to);
 

@@ -100,6 +100,8 @@ function firstImageCandidate(value) {
 
 export function getProductImageUrl(product) {
   return firstImageCandidate([
+    product?.primaryImageUrl,
+    product?.primary_image_url,
     product?.imageUrl,
     product?.image_url,
     product?.mainImageUrl,
@@ -108,11 +110,16 @@ export function getProductImageUrl(product) {
     product?.image_urls,
     product?.media,
     product?.image,
+  ]);
+}
+
+export function getProductCardDisplayUrl(product) {
+  return firstImageCandidate([
     product?.cardImageUrl,
     product?.card_image_url,
     product?.thumbnailUrl,
     product?.thumbnail_url,
-  ]);
+  ]) || getProductImageUrl(product);
 }
 
 export function getProductImages(product) {
@@ -151,7 +158,7 @@ export function getProductImages(product) {
 }
 
 export function getProductCardImage(product) {
-  return getProductImageUrl(product);
+  return getProductCardDisplayUrl(product);
 }
 
 function getProductCommercialState(product) {
@@ -372,7 +379,10 @@ function CatalogInner({ slug }) {
       if (saleA !== saleB) return saleB - saleA;
       const dateA = new Date(a?.createdAt || 0).getTime();
       const dateB = new Date(b?.createdAt || 0).getTime();
-      return dateB - dateA;
+      if (dateA !== dateB) return dateB - dateA;
+      const nameCompare = String(a?.name || '').localeCompare(String(b?.name || ''), undefined, { sensitivity: 'base' });
+      if (nameCompare !== 0) return nameCompare;
+      return String(a?.id || '').localeCompare(String(b?.id || ''));
     });
   }, [filteredProducts]);
 
@@ -382,9 +392,9 @@ function CatalogInner({ slug }) {
     const preloadUrls = sortedProducts
       .slice(0, isDesktop ? 6 : 4)
       .map((product) => {
-        const imageUrl = getProductImageUrl(product);
+        const imageUrl = getProductCardDisplayUrl(product);
         if (!imageUrl) return null;
-        return cfImageUrl(imageUrl, 'card');
+        return imageUrl;
       })
       .filter(Boolean);
 
@@ -1828,7 +1838,7 @@ function OrderPanel({ business, slug, formatPrice, onClose, theme }) {
                   <div className="w-12 h-12 rounded-xl overflow-hidden bg-gray-100 flex-shrink-0">
                     {itemImage ? (
                       <CatalogImage
-                        src={cfImageUrl(itemImage, 'thumbnail')}
+                        src={itemImage}
                         originalSrc={itemImage}
                         alt={item?.name}
                         className="w-full h-full"
@@ -2104,7 +2114,7 @@ export function ProductCard({
   };
 
   const imgs = getProductImages(product);
-  const productImage = getProductImageUrl(product);
+  const productImage = getProductCardDisplayUrl(product);
   const extraImages = imgs.length > 1 ? imgs.length - 1 : 0;
   const trustBadge = getProductCardTrustBadge(product);
   // discount viene del badge para no recalcular; null cuando no hay descuento real
@@ -2138,7 +2148,7 @@ export function ProductCard({
         <div className={`relative w-full ${imgAspect} min-h-0`}>
           {productImage ? (
             <CatalogImage
-              src={cfImageUrl(productImage, imgProfile)}
+              src={productImage}
               originalSrc={productImage}
               alt={product?.name}
               className="h-full w-full"
