@@ -69,34 +69,89 @@ function useSlowConnection() {
   return isSlow;
 }
 
-// Normalizar imágenes del producto: la primera es siempre imageUrl (misma que la tarjeta);
-// el resto viene de product.images para galería. Así el modal usa la misma URL que la tarjeta.
+// Normalizar imágenes del producto: una única URL canónica alimenta tarjeta, modal y carrito.
 function withMediaVersion(url, version) {
   if (!url) return null;
   const sep = url.includes('?') ? '&' : '?';
   return `${url}${sep}v=${encodeURIComponent(version)}`;
 }
 
+function firstImageCandidate(value) {
+  if (!value) return null;
+  if (typeof value === 'string') return value.trim() || null;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const candidate = firstImageCandidate(item);
+      if (candidate) return candidate;
+    }
+    return null;
+  }
+  if (typeof value === 'object') {
+    return firstImageCandidate(
+      value.url ||
+      value.src ||
+      value.imageUrl ||
+      value.image_url ||
+      value.main_image_url
+    );
+  }
+  return null;
+}
+
+export function getProductImageUrl(product) {
+  return firstImageCandidate([
+    product?.imageUrl,
+    product?.image_url,
+    product?.mainImageUrl,
+    product?.main_image_url,
+    product?.images,
+    product?.image_urls,
+    product?.media,
+    product?.image,
+    product?.cardImageUrl,
+    product?.card_image_url,
+    product?.thumbnailUrl,
+    product?.thumbnail_url,
+  ]);
+}
+
 export function getProductImages(product) {
-  const primary = product?.imageUrl || null;
-  const extra = Array.isArray(product?.images) && product.images.length > 0 ? product.images : [];
+  const primary = getProductImageUrl(product);
+  const extra = [
+    product?.images,
+    product?.image_urls,
+    product?.media,
+    product?.imageUrl,
+    product?.image_url,
+    product?.mainImageUrl,
+    product?.main_image_url,
+    product?.image,
+    product?.cardImageUrl,
+    product?.card_image_url,
+    product?.thumbnailUrl,
+    product?.thumbnail_url,
+  ];
   const seen = new Set();
   const result = [];
   if (primary) {
     result.push(primary);
     seen.add(primary);
   }
-  for (const url of extra) {
-    if (url && !seen.has(url)) {
-      result.push(url);
-      seen.add(url);
+  for (const source of extra) {
+    const values = Array.isArray(source) ? source : [source];
+    for (const value of values) {
+      const url = firstImageCandidate(value);
+      if (url && !seen.has(url)) {
+        result.push(url);
+        seen.add(url);
+      }
     }
   }
   return result;
 }
 
 export function getProductCardImage(product) {
-  return product?.cardImageUrl || product?.thumbnailUrl || getProductImages(product)?.[0] || null;
+  return getProductImageUrl(product);
 }
 
 function getProductCommercialState(product) {
@@ -327,9 +382,9 @@ function CatalogInner({ slug }) {
     const preloadUrls = sortedProducts
       .slice(0, isDesktop ? 6 : 4)
       .map((product) => {
-        const cardImage = getProductCardImage(product);
-        if (!cardImage) return null;
-        return product?.thumbnailUrl || product?.cardImageUrl ? cardImage : cfImageUrl(cardImage, 'card');
+        const imageUrl = getProductImageUrl(product);
+        if (!imageUrl) return null;
+        return cfImageUrl(imageUrl, 'card');
       })
       .filter(Boolean);
 
@@ -1765,14 +1820,16 @@ function OrderPanel({ business, slug, formatPrice, onClose, theme }) {
               className="space-y-3 rounded-2xl bg-gray-50/80 border border-gray-100"
               style={{ maxHeight: '210px', overflowY: 'auto' }}
             >
-              {items?.map(item => (
+              {items?.map(item => {
+                const itemImage = getProductImageUrl(item);
+                return (
                 <div key={item?.id} className="flex items-center gap-3 px-3 py-2.5">
                   {/* Image */}
                   <div className="w-12 h-12 rounded-xl overflow-hidden bg-gray-100 flex-shrink-0">
-                    {item?.imageUrl ? (
+                    {itemImage ? (
                       <CatalogImage
-                        src={cfImageUrl(item.imageUrl, 'thumbnail')}
-                        originalSrc={item.imageUrl}
+                        src={cfImageUrl(itemImage, 'thumbnail')}
+                        originalSrc={itemImage}
                         alt={item?.name}
                         className="w-full h-full"
                         imgClassName="w-full h-full object-cover"
@@ -1813,7 +1870,8 @@ function OrderPanel({ business, slug, formatPrice, onClose, theme }) {
                     </button>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
@@ -2046,7 +2104,7 @@ export function ProductCard({
   };
 
   const imgs = getProductImages(product);
-  const cardImage = getProductCardImage(product);
+  const productImage = getProductImageUrl(product);
   const extraImages = imgs.length > 1 ? imgs.length - 1 : 0;
   const trustBadge = getProductCardTrustBadge(product);
   // discount viene del badge para no recalcular; null cuando no hay descuento real
@@ -2078,10 +2136,10 @@ export function ProductCard({
         className={`relative block w-full shrink-0 overflow-hidden bg-gray-50 text-left ${roundTop}`}
       >
         <div className={`relative w-full ${imgAspect} min-h-0`}>
-          {cardImage ? (
+          {productImage ? (
             <CatalogImage
-              src={cardImage === product?.thumbnailUrl || cardImage === product?.cardImageUrl ? cardImage : cfImageUrl(cardImage, imgProfile)}
-              originalSrc={cardImage}
+              src={cfImageUrl(productImage, imgProfile)}
+              originalSrc={productImage}
               alt={product?.name}
               className="h-full w-full"
               imgClassName="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
