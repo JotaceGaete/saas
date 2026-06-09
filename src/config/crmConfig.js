@@ -3,4 +3,4 @@
  *                                  normal users are already blocked by sidebar adminOnly.
  * CRM_EARLY_ACCESS_MODE = false → re-enables plan checks (requires 'business' plan).
  */
-export const CRM_EARLY_ACCESS_MODE = true;
+export const CRM_EARLY_ACCESS_MODE = false;
