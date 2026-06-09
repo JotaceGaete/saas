@@ -12,7 +12,7 @@ export default function DashboardLayoutContent({ children, className = '', inner
         className,
       )}
     >
-      <div className={joinClasses('w-full max-w-full min-w-0 flex flex-col gap-5 overflow-x-hidden md:gap-6 lg:max-w-7xl', innerClassName)}>
+      <div className={joinClasses('w-full max-w-full min-w-0 flex flex-col gap-5 overflow-x-clip md:gap-6 lg:max-w-7xl', innerClassName)}>
         {children}
       </div>
     </div>
