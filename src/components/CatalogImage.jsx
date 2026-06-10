@@ -23,6 +23,14 @@ const PLACEHOLDER_STYLES = {
   },
 };
 
+/**
+ * data: URLs (p. ej. logos SVG de template) no dependen de red: se marcan
+ * como cargadas de inmediato. Si se esperara onLoad y el evento no llegara
+ * a capturarse, la imagen quedaría invisible (opacity 0) mostrando solo el
+ * placeholder gris aunque el src sea válido.
+ */
+const isDataUrl = (value) => typeof value === 'string' && value.startsWith('data:');
+
 export default function CatalogImage({
   src,
   originalSrc = null,
@@ -45,12 +53,12 @@ export default function CatalogImage({
   ...props
 }) {
   const [currentSrc, setCurrentSrc] = useState(src || null);
-  const [loaded, setLoaded] = useState(false);
+  const [loaded, setLoaded] = useState(() => isDataUrl(src));
   const [failed, setFailed] = useState(!src);
 
   useEffect(() => {
     setCurrentSrc(src || null);
-    setLoaded(false);
+    setLoaded(isDataUrl(src));
     setFailed(!src);
   }, [src, originalSrc]);
 

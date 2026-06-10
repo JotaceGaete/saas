@@ -240,13 +240,11 @@ function CatalogInfoGrid({
   fullAddress,
   mapsSearchUrl,
   showAddressInCatalog,
-  referenceLocation = null,
   storeWhatsAppUrl,
   onWhatsAppClick,
   isRestaurant,
   theme,
 }) {
-  const showReferenceLocation = !showAddressInCatalog && !!referenceLocation;
   const blockProps = {
     sectionBg: theme?.sectionBg,
     borderColor: theme?.borderColor,
@@ -260,7 +258,7 @@ function CatalogInfoGrid({
           <span className="whitespace-pre-line">{design.businessHours.trim()}</span>
         </CatalogInfoBlock>
       )}
-      {(showAddressInCatalog || showReferenceLocation) && (
+      {showAddressInCatalog && (
         <CatalogLocationCard
           business={business}
           design={design}
@@ -273,7 +271,6 @@ function CatalogInfoGrid({
           primaryColorDark={primaryColorDark}
           primaryRgba={primaryRgba}
           theme={theme}
-          referenceLocation={showReferenceLocation ? referenceLocation : null}
         />
       )}
       {(design?.shippingMethods ?? '').trim() !== '' && !showAddressInCatalog && (
@@ -419,6 +416,16 @@ export default function CatalogStoreHeader({
   const coverUrlTransformed = coverUrlNormalized ? cfImageUrl(coverUrlNormalized, coverImageProfile) : null;
   const coverImageErrorHandler = coverUrlNormalized ? buildCfImageErrorHandler(coverUrlNormalized) : undefined;
 
+  // Log temporal: trazar exactamente qué logo llega y qué src final se usa.
+  const resolvedLogo = business?.logoUrl || null;
+  const finalLogoSrc = resolvedLogo ? resolveLogoSrc(resolvedLogo) : null;
+  console.log('[logo-debug]', {
+    businessLogo: business?.logoUrl,
+    designLogo: business?.designSettings?.logoUrl,
+    resolvedLogo,
+    finalSrc: finalLogoSrc,
+  });
+
   const whatsappPhone = business?.whatsapp?.replace(/\D/g, '');
   const storeWhatsAppUrl = whatsappPhone
     ? `https://wa.me/${whatsappPhone}?text=${encodeURIComponent(isRestaurant ? 'Hola! Quiero hacer un pedido por WhatsApp.' : 'Hola! Vi tu catálogo en línea.')}`
@@ -435,17 +442,24 @@ export default function CatalogStoreHeader({
 
   // Sin dirección configurada: ubicación referencial por país (solo
   // presentación, marcada como aproximada; nunca se persiste como dirección).
-  // Se muestra aunque design.showAddress sea false: el catálogo automático no
-  // debe verse vacío en la sección de mapa.
+  // Se muestra aunque design.showAddress sea false, como sección propia y
+  // siempre visible — no dentro del acordeón/barra colapsada, donde quedaba
+  // oculta hasta expandir "Ver más".
   const referenceLocation = !hasRealAddress
     ? getCountryReferenceLocation(business?.countryCode || business?.countryCodeDb || business?.country)
     : null;
-  const showLocationSection = !!showAddressInCatalog || !!referenceLocation;
-  console.log('[templates] reference location mode', { hasRealAddress, referenceLocation, showLocationSection });
+  const showReferenceCard = !showAddressInCatalog && !!referenceLocation;
+  console.log('[reference-location]', {
+    showAddress: design?.showAddress === true,
+    hasRealAddress,
+    referenceLocation,
+    shouldRenderSection: showReferenceCard || !!showAddressInCatalog,
+    country: business?.countryCode || business?.countryCodeDb || business?.country || null,
+  });
 
   const hasCatalogInfo =
     (design?.businessHours ?? '').trim() !== '' ||
-    showLocationSection ||
+    showAddressInCatalog ||
     (design?.shippingMethods ?? '').trim() !== '' ||
     (design?.shippingCost ?? '').trim() !== '' ||
     design?.retiroEnTienda === true;
@@ -535,7 +549,7 @@ export default function CatalogStoreHeader({
           <div className="flex-1 min-w-0 flex items-center gap-2.5">
             {business?.logoUrl ? (
               <CatalogImage
-                src={resolveLogoSrc(business.logoUrl)}
+                src={finalLogoSrc}
                 originalSrc={business.logoUrl}
                 alt=""
                 className="w-8 h-8 rounded-full flex-shrink-0"
@@ -567,7 +581,7 @@ export default function CatalogStoreHeader({
               <div className="w-1 h-9 rounded-full flex-shrink-0" style={{ backgroundColor: primaryColor }} />
               {business?.logoUrl ? (
                 <CatalogImage
-                  src={resolveLogoSrc(business.logoUrl)}
+                  src={finalLogoSrc}
                   originalSrc={business.logoUrl}
                   alt={business?.name}
                   className="w-10 h-10 rounded-full flex-shrink-0"
@@ -636,7 +650,7 @@ export default function CatalogStoreHeader({
               <div className="flex items-center gap-4 mb-3">
                 {business?.logoUrl ? (
                   <CatalogImage
-                    src={resolveLogoSrc(business.logoUrl)}
+                    src={finalLogoSrc}
                     originalSrc={business.logoUrl}
                     alt={business?.name}
                     className="w-14 h-14 rounded-full border-2 border-white/30 flex-shrink-0"
@@ -724,7 +738,7 @@ export default function CatalogStoreHeader({
                 <div className="flex-shrink-0">
                   {business?.logoUrl ? (
                     <CatalogImage
-                      src={resolveLogoSrc(business.logoUrl)}
+                      src={finalLogoSrc}
                       originalSrc={business.logoUrl}
                       alt={business?.name}
                       className="w-14 h-14 sm:w-16 sm:h-16 rounded-full border-2 border-gray-100"
@@ -866,7 +880,6 @@ export default function CatalogStoreHeader({
                           fullAddress={fullAddress}
                           mapsSearchUrl={mapsSearchUrl}
                           showAddressInCatalog={showAddressInCatalog}
-                          referenceLocation={referenceLocation}
                           storeWhatsAppUrl={storeWhatsAppUrl}
                           onWhatsAppClick={handleWaClick}
                           isRestaurant={isRestaurant}
@@ -883,6 +896,27 @@ export default function CatalogStoreHeader({
 
         {/* Redes sociales */}
         <SocialLinks business={business} primaryColor={primaryColor} theme={theme} />
+
+        {/* Ubicación referencial: sección propia, siempre visible (móvil y
+            escritorio) cuando el negocio no configuró dirección real. */}
+        {showReferenceCard && (
+          <div className="max-w-5xl mx-auto px-4 mt-3 text-sm">
+            <CatalogLocationCard
+              business={business}
+              design={design}
+              fullAddress={fullAddress}
+              mapsSearchUrl={mapsSearchUrl}
+              storeWhatsAppUrl={storeWhatsAppUrl}
+              onWhatsAppClick={handleWaClick}
+              isRestaurant={isRestaurant}
+              primaryColor={primaryColor}
+              primaryColorDark={primaryColorDark}
+              primaryRgba={primaryRgba}
+              theme={theme}
+              referenceLocation={referenceLocation}
+            />
+          </div>
+        )}
 
         {/* Barra de info (escritorio, colapsada por defecto) */}
         {hasCatalogInfo && (
@@ -907,12 +941,6 @@ export default function CatalogStoreHeader({
                     <span className="flex items-center gap-1.5 text-xs" style={{ color: theme?.isDark ? 'rgba(255,255,255,0.5)' : '#6B7280' }}>
                       <Icon name="MapPin" size={13} color={theme?.isDark ? 'rgba(255,255,255,0.4)' : '#9CA3AF'} aria-hidden />
                       {business.city}
-                    </span>
-                  )}
-                  {!showAddressInCatalog && referenceLocation && (
-                    <span className="flex items-center gap-1.5 text-xs" style={{ color: theme?.isDark ? 'rgba(255,255,255,0.5)' : '#6B7280' }}>
-                      <Icon name="MapPin" size={13} color={theme?.isDark ? 'rgba(255,255,255,0.4)' : '#9CA3AF'} aria-hidden />
-                      Ubicación aproximada
                     </span>
                   )}
                   {(design?.shippingMethods ?? '').trim() !== '' && (
@@ -960,7 +988,6 @@ export default function CatalogStoreHeader({
                         fullAddress={fullAddress}
                         mapsSearchUrl={mapsSearchUrl}
                         showAddressInCatalog={showAddressInCatalog}
-                        referenceLocation={referenceLocation}
                         storeWhatsAppUrl={storeWhatsAppUrl}
                         onWhatsAppClick={handleWaClick}
                         isRestaurant={isRestaurant}
