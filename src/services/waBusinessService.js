@@ -675,6 +675,9 @@ export const createBusiness = async (businessData) => {
       country_code: null,
       currency: null,
       logo_url: businessData?.logoUrl || null,
+      // Explícito: en bases legacy el DEFAULT de la columna era 'quote', que
+      // viola wa_businesses_document_title_type_check.
+      document_title_type: 'cotizacion',
       slug,
       is_active: true,
       plan_slug:           'pro',
@@ -712,6 +715,9 @@ export const createBusinessForUser = async (userId, businessData) => {
       country_code: null,
       currency: null,
       logo_url: businessData?.logoUrl || null,
+      // Explícito: en bases legacy el DEFAULT de la columna era 'quote', que
+      // viola wa_businesses_document_title_type_check.
+      document_title_type: 'cotizacion',
       slug,
       is_active: true,
       plan_slug:           'pro',
@@ -788,7 +794,12 @@ export async function updateBusiness(businessId, updates) {
   if (updates?.tiktokUrl    !== undefined) dbUpdates.tiktok_url    = normalizeTikTokUrl(updates.tiktokUrl);
   if (updates?.facebookUrl  !== undefined) dbUpdates.facebook_url  = normalizeSharedSocialUrl(updates.facebookUrl,  'https://facebook.com');
   if (updates?.businessMode !== undefined)     dbUpdates.business_mode = updates?.businessMode;
-  if (updates?.documentTitleType !== undefined) dbUpdates.document_title_type = updates?.documentTitleType;
+  if (updates?.documentTitleType !== undefined) {
+    // Solo valores del CHECK; cualquier otro (p. ej. 'quote' legacy) se normaliza.
+    dbUpdates.document_title_type = ['presupuesto', 'cotizacion'].includes(updates?.documentTitleType)
+      ? updates.documentTitleType
+      : 'cotizacion';
+  }
   if (updates?.printLegend !== undefined || updates?.print_legend !== undefined) {
     const rawPrintLegend = updates?.printLegend !== undefined ? updates?.printLegend : updates?.print_legend;
     const normalizedPrintLegend = String(rawPrintLegend ?? '').trim();
