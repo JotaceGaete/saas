@@ -183,3 +183,98 @@ export async function uploadToMediaService(file, {
     timeoutHost.clearTimeout(timeoutId);
   }
 }
+
+/**
+ * Sube una imagen de plantilla de catálogo (panel /admin/catalog-templates).
+ * Solo admins: la Edge Function upload-image-r2 valida el rol. No requiere
+ * negocio; las imágenes quedan en catalog-templates/{templateId}/ en R2.
+ *
+ * @param {File|Blob} file
+ * @param {{ templateId?: string, variant?: 'logo'|'banner'|'preview'|'product', timeoutMs?: number }} options
+ * @returns {Promise<{ ok: true, url: string, key: string }>}
+ */
+export async function uploadTemplateImage(file, { templateId, variant = 'product', timeoutMs = DEFAULT_UPLOAD_TIMEOUT_MS } = {}) {
+  if (!(file instanceof Blob)) {
+    throw new Error('Selecciona una imagen valida antes de subir.');
+  }
+
+  let fileToUpload = file;
+  if (variant === 'product' || variant === 'banner' || variant === 'preview') {
+    try {
+      fileToUpload = await compressImageForUpload(file, 'product');
+    } catch {
+      fileToUpload = file;
+    }
+  }
+
+  const token = await getValidToken();
+  if (!token) {
+    throw new Error('Tu sesion vencio. Vuelve a iniciar sesion para subir imagenes.');
+  }
+
+  const controller = new AbortController();
+  const timeoutHost = typeof window !== 'undefined' ? window : globalThis;
+  const timeoutId = timeoutHost.setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const requestBody = {
+      type: 'template',
+      templateId: typeof templateId === 'string' && templateId.trim() ? templateId.trim() : undefined,
+      variant,
+      fileName: typeof fileToUpload?.name === 'string' && fileToUpload.name.trim() ? fileToUpload.name.trim() : `template-${Date.now()}.jpg`,
+      contentType: String(fileToUpload?.type || 'image/jpeg').trim() || 'image/jpeg',
+    };
+
+    const signedUrlResponse = await fetch(getSupabaseFunctionUrl('upload-image-r2'), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        apikey: getSupabaseAnonKey(),
+      },
+      body: JSON.stringify(requestBody),
+      signal: controller.signal,
+    });
+
+    let signedUrlPayload = null;
+    try {
+      signedUrlPayload = await signedUrlResponse.json();
+    } catch {
+      throw new Error('El servidor devolvio una respuesta invalida al preparar la subida de la imagen.');
+    }
+
+    if (!signedUrlResponse.ok) {
+      throw new Error(
+        signedUrlPayload?.error || signedUrlPayload?.message ||
+        `Error del servidor al preparar la subida de la imagen (${signedUrlResponse.status}).`,
+      );
+    }
+    if (typeof signedUrlPayload?.uploadUrl !== 'string' || !signedUrlPayload.uploadUrl.trim()) {
+      throw new Error('La respuesta no incluyo una URL firmada valida para subir la imagen.');
+    }
+    if (typeof signedUrlPayload?.publicUrl !== 'string' || !signedUrlPayload.publicUrl.trim()) {
+      throw new Error('La respuesta no incluyo una URL publica valida para la imagen.');
+    }
+
+    const uploadResponse = await fetch(signedUrlPayload.uploadUrl.trim(), {
+      method: 'PUT',
+      headers: { 'Content-Type': requestBody.contentType },
+      body: fileToUpload,
+      signal: controller.signal,
+    });
+    if (!uploadResponse.ok) {
+      const uploadErrorText = await uploadResponse.text().catch(() => '');
+      throw new Error(uploadErrorText || `Error al subir la imagen al storage (${uploadResponse.status}).`);
+    }
+
+    return {
+      ok: true,
+      url: signedUrlPayload.publicUrl.trim(),
+      key: typeof signedUrlPayload?.key === 'string' ? signedUrlPayload.key.trim() : '',
+    };
+  } catch (error) {
+    throw normalizeMediaUploadError(error, 'No se pudo subir la imagen de la plantilla.');
+  } finally {
+    timeoutHost.clearTimeout(timeoutId);
+  }
+}

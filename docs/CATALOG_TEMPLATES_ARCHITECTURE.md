@@ -1,6 +1,6 @@
 # Biblioteca de plantillas de catálogo — Arquitectura
 
-**Estado:** Fase 1 entregada (DB + migración + servicio). UI admin pendiente.
+**Estado:** Fases 1 y 2 entregadas (DB + servicio + panel admin con uploads R2).
 **Objetivo:** biblioteca de plantillas administrable por el equipo de Ventalink, sin perder el catálogo automático que elimina la pantalla vacía del onboarding.
 
 ---
@@ -49,7 +49,7 @@ Componentes:
 | Migración DB + seed | `supabase/migrations/20260610000000_catalog_templates.sql` | ✅ Fase 1 |
 | Servicio de biblioteca | `src/services/catalogTemplateService.js` | ✅ Fase 1 |
 | Onboarding automático | `productTemplateService.js` + `productTemplates.js` | Sin cambios |
-| Panel admin | `/admin/catalog-templates` | Fase 2 |
+| Panel admin | `/admin/catalog-templates` (`AdminCatalogTemplatesPage.jsx`) | ✅ Fase 2 |
 | Switch del onboarding a DB | `seedTemplateProductsIfEmpty` lee biblioteca con fallback | Fase 3 |
 | Biblioteca visible al usuario final | opcional | Fase 4 |
 

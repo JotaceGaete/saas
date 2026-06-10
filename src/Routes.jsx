@@ -55,6 +55,7 @@ import AdminAuditLogPage from './pages/admin/AdminAuditLogPage';
 import AdminEmailsPage from './pages/admin/AdminEmailsPage';
 import AdminConfigRubrosPage from './pages/admin/AdminConfigRubrosPage';
 import AdminPlanFeaturesPage from './pages/admin/AdminPlanFeaturesPage';
+import AdminCatalogTemplatesPage from './pages/admin/AdminCatalogTemplatesPage';
 import PlansPage from './pages/plans';
 import BillingSuccessPage from './pages/billing/BillingSuccessPage';
 import BillingCancelPage from './pages/billing/BillingCancelPage';
@@ -203,6 +204,7 @@ const Routes = () => {
             <Route path="/admin/audit-log" element={<RequireAdmin><AdminAuditLogPage /></RequireAdmin>} />
             <Route path="/admin/emails" element={<RequireAdmin><AdminEmailsPage /></RequireAdmin>} />
             <Route path="/admin/plan-features" element={<RequireAdmin><AdminPlanFeaturesPage /></RequireAdmin>} />
+            <Route path="/admin/catalog-templates" element={<RequireAdmin><AdminCatalogTemplatesPage /></RequireAdmin>} />
             {/* URL corta del catálogo: /:slug → PublicCatalog.
                 React Router v6 prioriza estáticos sobre dinámicos,
                 por lo que /dashboard, /login, /planes, etc. nunca caen aquí. */}

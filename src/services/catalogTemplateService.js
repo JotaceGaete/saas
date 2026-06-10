@@ -348,3 +348,252 @@ export async function duplicateTemplate(templateId) {
 
   return getTemplate(created.id);
 }
+
+// ─── CRUD del panel admin (/admin/catalog-templates) ─────────────────────────
+
+/**
+ * Verifica que no exista OTRA plantilla activa con el mismo rubro_slug.
+ * El índice único parcial (catalog_templates_rubro_active_unique) lo garantiza
+ * a nivel DB; este chequeo entrega un error legible antes del insert/update.
+ */
+async function findActiveRubroConflict(rubroSlug, excludeTemplateId = null) {
+  const normalized = String(rubroSlug || '').trim().toLowerCase();
+  if (!normalized) return null;
+  let query = supabase
+    ?.from('catalog_templates')
+    ?.select('id, name')
+    ?.eq('rubro_slug', normalized)
+    ?.eq('is_active', true)
+    ?.limit(1);
+  if (excludeTemplateId) query = query?.neq('id', excludeTemplateId);
+  const { data } = (await query) ?? {};
+  return data?.[0] || null;
+}
+
+function buildTemplateDbPayload(input = {}) {
+  const payload = {};
+  if (input.name !== undefined) payload.name = String(input.name || '').trim();
+  if (input.description !== undefined) payload.description = String(input.description || '').trim() || null;
+  if (input.category !== undefined) payload.category = String(input.category || '').trim() || null;
+  if (input.previewImageUrl !== undefined) payload.preview_image_url = String(input.previewImageUrl || '').trim() || null;
+  if (input.bannerUrl !== undefined) payload.banner_url = String(input.bannerUrl || '').trim() || null;
+  if (input.logoUrl !== undefined) payload.logo_url = String(input.logoUrl || '').trim() || null;
+  if (input.isActive !== undefined) payload.is_active = input.isActive === true;
+  if (input.rubroSlug !== undefined) {
+    payload.rubro_slug = String(input.rubroSlug || '').trim().toLowerCase() || null;
+  }
+  return payload;
+}
+
+const RUBRO_CONFLICT_MESSAGE =
+  'Ya existe otra plantilla activa asociada a ese rubro. Desactívala o quítale el rubro primero.';
+
+/** Crea una plantilla (cabecera). Las plantillas del panel nacen source='custom'. */
+export async function createTemplate(input = {}) {
+  const name = String(input?.name || '').trim();
+  if (!name) return { data: null, error: { message: 'El nombre de la plantilla es obligatorio' } };
+
+  const payload = buildTemplateDbPayload({ isActive: false, ...input, name });
+  if (payload.is_active && payload.rubro_slug) {
+    const conflict = await findActiveRubroConflict(payload.rubro_slug);
+    if (conflict) return { data: null, error: { message: RUBRO_CONFLICT_MESSAGE } };
+  }
+
+  const baseSlug = slugify(name) || 'plantilla';
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const slug = attempt === 0 ? baseSlug : `${baseSlug}-${Math.random().toString(36).slice(2, 7)}`;
+    const { data, error } = await supabase
+      ?.from('catalog_templates')
+      ?.insert({ ...payload, slug, source: 'custom' })
+      ?.select(TEMPLATE_FIELDS)
+      ?.single() ?? {};
+    if (!error) return { data: mapTemplateFromDb(data), error: null };
+    if (error?.code !== '23505') return { data: null, error };
+    if (String(error?.message || '').includes('rubro')) {
+      return { data: null, error: { message: RUBRO_CONFLICT_MESSAGE } };
+    }
+  }
+  return { data: null, error: { message: 'No se pudo generar un identificador único para la plantilla' } };
+}
+
+/** Actualiza la cabecera de una plantilla. */
+export async function updateTemplate(templateId, updates = {}) {
+  if (!templateId) return { data: null, error: { message: 'templateId es obligatorio' } };
+
+  const payload = buildTemplateDbPayload(updates);
+  if (payload.name !== undefined && !payload.name) {
+    return { data: null, error: { message: 'El nombre de la plantilla es obligatorio' } };
+  }
+  if (Object.keys(payload).length === 0) return getTemplate(templateId);
+
+  // Resolver estado/rubro finales para validar el conflicto de rubro activo.
+  const { data: current, error: currentError } = await supabase
+    ?.from('catalog_templates')
+    ?.select('id, is_active, rubro_slug')
+    ?.eq('id', templateId)
+    ?.single() ?? {};
+  if (currentError || !current) {
+    return { data: null, error: currentError || { message: 'Plantilla no encontrada' } };
+  }
+  const finalActive = payload.is_active !== undefined ? payload.is_active : current.is_active;
+  const finalRubro = payload.rubro_slug !== undefined ? payload.rubro_slug : current.rubro_slug;
+  if (finalActive && finalRubro) {
+    const conflict = await findActiveRubroConflict(finalRubro, templateId);
+    if (conflict) return { data: null, error: { message: RUBRO_CONFLICT_MESSAGE } };
+  }
+
+  const { data, error } = await supabase
+    ?.from('catalog_templates')
+    ?.update(payload)
+    ?.eq('id', templateId)
+    ?.select(TEMPLATE_FIELDS)
+    ?.single() ?? {};
+  if (error) {
+    if (error?.code === '23505') return { data: null, error: { message: RUBRO_CONFLICT_MESSAGE } };
+    return { data: null, error };
+  }
+  return { data: mapTemplateFromDb(data), error: null };
+}
+
+/** Activa o desactiva una plantilla (valida el conflicto de rubro al activar). */
+export async function toggleTemplateActive(templateId, isActive) {
+  return updateTemplate(templateId, { isActive: isActive === true });
+}
+
+/**
+ * Elimina una plantilla custom (cascade borra categorías y productos), o solo
+ * desactiva si es source='system' (respaldan el onboarding hardcodeado).
+ * El caller debe haber pedido confirmación explícita antes.
+ */
+export async function deleteOrDeactivateTemplate(templateId) {
+  if (!templateId) return { data: null, error: { message: 'templateId es obligatorio' } };
+
+  const { data: current, error: currentError } = await supabase
+    ?.from('catalog_templates')
+    ?.select('id, source')
+    ?.eq('id', templateId)
+    ?.single() ?? {};
+  if (currentError || !current) {
+    return { data: null, error: currentError || { message: 'Plantilla no encontrada' } };
+  }
+
+  if (current.source === 'system') {
+    const result = await toggleTemplateActive(templateId, false);
+    if (result.error) return result;
+    return { data: { deleted: false, deactivated: true }, error: null };
+  }
+
+  const { error } = await supabase
+    ?.from('catalog_templates')
+    ?.delete()
+    ?.eq('id', templateId) ?? {};
+  if (error) return { data: null, error };
+  return { data: { deleted: true, deactivated: false }, error: null };
+}
+
+/**
+ * Sincroniza las categorías de una plantilla con la lista entregada:
+ * actualiza las que traen id, inserta las nuevas y elimina las que ya no
+ * están (el caller confirma las eliminaciones en la UI antes de llamar).
+ *
+ * @param {string} templateId
+ * @param {Array<{ id?: string, name: string, sortOrder?: number }>} categories
+ */
+export async function upsertTemplateCategories(templateId, categories = []) {
+  if (!templateId) return { data: null, error: { message: 'templateId es obligatorio' } };
+
+  const cleaned = (categories || [])
+    .map((c, index) => ({ id: c?.id || null, name: String(c?.name || '').trim(), sort_order: c?.sortOrder ?? index }))
+    .filter((c) => c.name);
+
+  const { data: existing, error: existingError } = await supabase
+    ?.from('catalog_template_categories')
+    ?.select('id')
+    ?.eq('template_id', templateId) ?? {};
+  if (existingError) return { data: null, error: existingError };
+
+  const keptIds = new Set(cleaned.filter((c) => c.id).map((c) => c.id));
+  const toDelete = (existing || []).map((r) => r.id).filter((id) => !keptIds.has(id));
+
+  if (toDelete.length > 0) {
+    const { error } = await supabase
+      ?.from('catalog_template_categories')?.delete()?.in('id', toDelete) ?? {};
+    if (error) return { data: null, error };
+  }
+  for (const cat of cleaned.filter((c) => c.id)) {
+    const { error } = await supabase
+      ?.from('catalog_template_categories')
+      ?.update({ name: cat.name, sort_order: cat.sort_order })
+      ?.eq('id', cat.id)?.eq('template_id', templateId) ?? {};
+    if (error) return { data: null, error };
+  }
+  const toInsert = cleaned.filter((c) => !c.id).map((c) => ({
+    template_id: templateId, name: c.name, sort_order: c.sort_order,
+  }));
+  if (toInsert.length > 0) {
+    const { error } = await supabase
+      ?.from('catalog_template_categories')?.insert(toInsert) ?? {};
+    if (error) return { data: null, error };
+  }
+
+  return getTemplate(templateId);
+}
+
+/**
+ * Sincroniza los productos de una plantilla (misma semántica diff que
+ * upsertTemplateCategories: update por id, insert nuevos, delete ausentes
+ * — las eliminaciones llegan ya confirmadas por el usuario).
+ *
+ * @param {string} templateId
+ * @param {Array<{ id?: string, name: string, description?: string, price?: number,
+ *   imageUrl?: string, thumbnailUrl?: string, categoryName?: string, sortOrder?: number }>} products
+ */
+export async function upsertTemplateProducts(templateId, products = []) {
+  if (!templateId) return { data: null, error: { message: 'templateId es obligatorio' } };
+
+  const cleaned = (products || [])
+    .map((p, index) => ({
+      id: p?.id || null,
+      name: String(p?.name || '').trim(),
+      description: String(p?.description || '').trim() || null,
+      price: Number.isFinite(Number(p?.price)) ? Number(p.price) : 0,
+      image_url: String(p?.imageUrl || '').trim() || null,
+      thumbnail_url: String(p?.thumbnailUrl || p?.imageUrl || '').trim() || null,
+      category_name: String(p?.categoryName || '').trim() || null,
+      sort_order: p?.sortOrder ?? index,
+    }))
+    .filter((p) => p.name);
+
+  const { data: existing, error: existingError } = await supabase
+    ?.from('catalog_template_products')
+    ?.select('id')
+    ?.eq('template_id', templateId) ?? {};
+  if (existingError) return { data: null, error: existingError };
+
+  const keptIds = new Set(cleaned.filter((p) => p.id).map((p) => p.id));
+  const toDelete = (existing || []).map((r) => r.id).filter((id) => !keptIds.has(id));
+
+  if (toDelete.length > 0) {
+    const { error } = await supabase
+      ?.from('catalog_template_products')?.delete()?.in('id', toDelete) ?? {};
+    if (error) return { data: null, error };
+  }
+  for (const prod of cleaned.filter((p) => p.id)) {
+    const { id, ...fields } = prod;
+    const { error } = await supabase
+      ?.from('catalog_template_products')
+      ?.update(fields)
+      ?.eq('id', id)?.eq('template_id', templateId) ?? {};
+    if (error) return { data: null, error };
+  }
+  const toInsert = cleaned.filter((p) => !p.id).map(({ id: _id, ...fields }) => ({
+    template_id: templateId, ...fields,
+  }));
+  if (toInsert.length > 0) {
+    const { error } = await supabase
+      ?.from('catalog_template_products')?.insert(toInsert) ?? {};
+    if (error) return { data: null, error };
+  }
+
+  return getTemplate(templateId);
+}

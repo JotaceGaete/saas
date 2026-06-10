@@ -51,8 +51,9 @@ function jsonResponse(body: Record<string, unknown>, status: number, corsHeaders
   });
 }
 
-type UploadType = 'logo' | 'cover' | 'product';
+type UploadType = 'logo' | 'cover' | 'product' | 'template';
 type ProductVariant = 'main' | 'thumb' | 'gallery';
+type TemplateVariant = 'logo' | 'banner' | 'preview' | 'product';
 
 // Rutas R2: businesses/{business_id}/logo|cover|products/{product_id}/...
 function buildKey(type: UploadType, businessId: string, fileName: string, productId?: string, variant?: ProductVariant): string {
@@ -64,6 +65,21 @@ function buildKey(type: UploadType, businessId: string, fileName: string, produc
   const unique = productId ? `${productId}-${ts}-${Math.random().toString(36).slice(2, 9)}` : `${ts}-${Math.random().toString(36).slice(2, 9)}`;
   const safeVariant: ProductVariant = variant === 'main' || variant === 'thumb' || variant === 'gallery' ? variant : 'gallery';
   return `businesses/${businessId}/products/${productId || 'draft'}/${safeVariant}-${unique}.${safeExt}`;
+}
+
+// Rutas R2 de plantillas admin: catalog-templates/{template_id}/{variant}-...
+function buildTemplateKey(templateId: string, fileName: string, variant?: string): string {
+  const ext = fileName?.split('.')?.pop()?.toLowerCase() || 'jpg';
+  const safeExt = /^[a-z0-9]+$/.test(ext) ? ext : 'jpg';
+  const safeTemplateId = /^[a-zA-Z0-9-]+$/.test(templateId) ? templateId : 'unassigned';
+  const safeVariant: TemplateVariant =
+    variant === 'logo' || variant === 'banner' || variant === 'preview' ? (variant as TemplateVariant) : 'product';
+  const unique = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  return `catalog-templates/${safeTemplateId}/${safeVariant}-${unique}.${safeExt}`;
+}
+
+function isAdminUser(user: { app_metadata?: Record<string, unknown>; user_metadata?: Record<string, unknown> }): boolean {
+  return (user.app_metadata?.role as string) === 'admin' || (user.user_metadata?.role as string) === 'admin';
 }
 
 Deno.serve(async (req) => {
@@ -99,7 +115,7 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: 'User not authenticated' }, 401, corsHeaders);
     }
 
-    let body: { type?: string; businessId?: string; productId?: string; fileName?: string; contentType?: string; variant?: string };
+    let body: { type?: string; businessId?: string; productId?: string; templateId?: string; fileName?: string; contentType?: string; variant?: string };
     try {
       body = (await req.json().catch(() => ({}))) as typeof body;
     } catch {
@@ -107,15 +123,23 @@ Deno.serve(async (req) => {
     }
 
     const type = (body?.type ?? '') as UploadType;
-    if (!['logo', 'cover', 'product'].includes(type)) {
-      return jsonResponse({ error: 'type must be logo, cover, or product' }, 400, corsHeaders);
+    if (!['logo', 'cover', 'product', 'template'].includes(type)) {
+      return jsonResponse({ error: 'type must be logo, cover, product, or template' }, 400, corsHeaders);
     }
+
+    // Imágenes de plantillas de catálogo (panel /admin/catalog-templates):
+    // sin negocio asociado; solo admins.
+    if (type === 'template' && !isAdminUser(user)) {
+      return jsonResponse({ error: 'Forbidden: solo admins pueden subir imágenes de plantillas' }, 403, corsHeaders);
+    }
+
     const businessId = typeof body?.businessId === 'string' ? body.businessId.trim() : '';
-    if (!businessId) return jsonResponse({ error: 'businessId is required' }, 400, corsHeaders);
+    if (type !== 'template' && !businessId) return jsonResponse({ error: 'businessId is required' }, 400, corsHeaders);
+    const templateId = typeof body?.templateId === 'string' ? body.templateId.trim() : '';
     const fileName = typeof body?.fileName === 'string' ? body.fileName.trim() : `upload.${type === 'product' ? 'jpg' : 'png'}`;
     const contentType = typeof body?.contentType === 'string' ? body.contentType.trim() : 'image/jpeg';
     const productId = typeof body?.productId === 'string' ? body.productId.trim() || undefined : undefined;
-    const variant = typeof body?.variant === 'string' ? body.variant.trim().toLowerCase() as ProductVariant : undefined;
+    const variant = typeof body?.variant === 'string' ? body.variant.trim().toLowerCase() : undefined;
 
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
     if (!serviceRoleKey) {
@@ -123,13 +147,15 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: 'Server configuration error' }, 500, corsHeaders);
     }
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
-    const { data: biz, error: bizError } = await adminClient
-      .from('wa_businesses')
-      .select('id, user_id')
-      .eq('id', businessId)
-      .maybeSingle();
-    if (bizError || !biz?.id || (biz as { user_id?: string }).user_id !== user.id) {
-      return jsonResponse({ error: 'Business not found or access denied' }, 403, corsHeaders);
+    if (type !== 'template') {
+      const { data: biz, error: bizError } = await adminClient
+        .from('wa_businesses')
+        .select('id, user_id')
+        .eq('id', businessId)
+        .maybeSingle();
+      if (bizError || !biz?.id || (biz as { user_id?: string }).user_id !== user.id) {
+        return jsonResponse({ error: 'Business not found or access denied' }, 403, corsHeaders);
+      }
     }
 
     const accountId = Deno.env.get('R2_ACCOUNT_ID') ?? '';
@@ -149,7 +175,9 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: 'Storage not configured', missing: missingR2 }, 500, corsHeaders);
     }
 
-    const key = buildKey(type, businessId, fileName, productId, variant);
+    const key = type === 'template'
+      ? buildTemplateKey(templateId, fileName, variant)
+      : buildKey(type, businessId, fileName, productId, variant as ProductVariant);
 
     const endpoint = `https://${accountId}.r2.cloudflarestorage.com`;
     const s3 = new S3Client({
