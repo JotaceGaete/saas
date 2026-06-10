@@ -14,6 +14,7 @@ const COUNTRY_REFERENCE_LOCATIONS = {
   CO: { city: 'Bogotá', country: 'Colombia', lat: 4.711, lng: -74.0721 },
   MX: { city: 'Ciudad de México', country: 'México', lat: 19.4326, lng: -99.1332 },
   UY: { city: 'Montevideo', country: 'Uruguay', lat: -34.9011, lng: -56.1645 },
+  EC: { city: 'Quito', country: 'Ecuador', lat: -0.2202, lng: -78.5123 },
 };
 
 /** Nombres legacy de wa_businesses.country → código ISO. */
@@ -24,6 +25,7 @@ const COUNTRY_NAME_TO_CODE = {
   'colombia': 'CO',
   'mexico': 'MX',
   'uruguay': 'UY',
+  'ecuador': 'EC',
 };
 
 function normalizeCountryInput(value) {
@@ -54,6 +56,6 @@ export function getCountryReferenceLocation(countryCodeOrName) {
   return {
     ...base,
     label: 'Ubicación aproximada',
-    subtitle: 'Configura tu dirección real para que tus clientes sepan dónde encontrarte',
+    subtitle: 'Configura tu dirección real desde Configuración',
   };
 }

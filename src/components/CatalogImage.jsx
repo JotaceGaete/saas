@@ -63,6 +63,8 @@ export default function CatalogImage({
   }, [src, originalSrc]);
 
   const placeholder = PLACEHOLDER_STYLES[variant] || PLACEHOLDER_STYLES.product;
+  const currentIsDataUrl = isDataUrl(currentSrc);
+  const showImage = (loaded || currentIsDataUrl) && !failed;
 
   const handleLoad = (event) => {
     setLoaded(true);
@@ -87,20 +89,22 @@ export default function CatalogImage({
 
   return (
     <div className={`relative overflow-hidden ${className}`} style={style}>
-      <div
-        className={`absolute inset-0 flex items-center justify-center transition-opacity duration-300 ${loaded && !failed ? 'opacity-0' : 'opacity-100'}`}
-        style={{ background: placeholder.background }}
-        aria-hidden="true"
-      >
-        {showFallbackIcon && (
-          <div
-            className="flex h-11 w-11 items-center justify-center rounded-full shadow-sm animate-pulse"
-            style={{ backgroundColor: placeholder.iconBg }}
-          >
-            <Icon name={placeholder.iconName} size={variant === 'product' ? 18 : 20} color={placeholder.iconColor} />
-          </div>
-        )}
-      </div>
+      {!(currentIsDataUrl && !failed) && (
+        <div
+          className={`absolute inset-0 flex items-center justify-center transition-opacity duration-300 ${showImage ? 'opacity-0' : 'opacity-100'}`}
+          style={{ background: placeholder.background }}
+          aria-hidden="true"
+        >
+          {showFallbackIcon && (
+            <div
+              className="flex h-11 w-11 items-center justify-center rounded-full shadow-sm animate-pulse"
+              style={{ backgroundColor: placeholder.iconBg }}
+            >
+              <Icon name={placeholder.iconName} size={variant === 'product' ? 18 : 20} color={placeholder.iconColor} />
+            </div>
+          )}
+        </div>
+      )}
 
       {currentSrc && !failed ? (
         <img
@@ -109,8 +113,8 @@ export default function CatalogImage({
           className={imgClassName}
           style={{
             ...imgStyle,
-            opacity: loaded ? loadedOpacity : 0,
-            visibility: loaded ? 'visible' : 'hidden',
+            opacity: showImage ? loadedOpacity : 0,
+            visibility: showImage ? 'visible' : 'hidden',
             transition: 'opacity 220ms ease-out, transform 300ms ease-out',
           }}
           loading={loading}

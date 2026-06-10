@@ -33,6 +33,34 @@ function resolveLogoSrc(logoUrl) {
   return url.startsWith('data:') ? url : cfImageUrl(url, 'thumbnail');
 }
 
+/**
+ * Logos data: (SVG embebido de template) se renderizan como <img> plano:
+ * no hay carga de red que esperar, y así ningún placeholder ni transición
+ * de opacidad de CatalogImage puede dejarlos invisibles. El resto de los
+ * logos sigue pasando por CatalogImage con su placeholder y fallback.
+ */
+function StoreLogo({ src, originalSrc, alt = '', className = '', imgClassName = '' }) {
+  if (String(src || '').startsWith('data:')) {
+    return (
+      <div className={`relative overflow-hidden ${className}`}>
+        <img src={src} alt={alt} className={imgClassName} loading="eager" decoding="async" />
+      </div>
+    );
+  }
+  return (
+    <CatalogImage
+      src={src}
+      originalSrc={originalSrc}
+      alt={alt}
+      className={className}
+      imgClassName={imgClassName}
+      variant="logo"
+      loading="eager"
+      fetchPriority="high"
+    />
+  );
+}
+
 // ─── Bloques de info reutilizados en acordeón mobile y barra desktop ──────────
 
 function CatalogInfoBlock({ icon, title, children, sectionBg, borderColor, textColor, isDark }) {
@@ -548,15 +576,12 @@ export default function CatalogStoreHeader({
           )}
           <div className="flex-1 min-w-0 flex items-center gap-2.5">
             {business?.logoUrl ? (
-              <CatalogImage
+              <StoreLogo
                 src={finalLogoSrc}
                 originalSrc={business.logoUrl}
                 alt=""
                 className="w-8 h-8 rounded-full flex-shrink-0"
                 imgClassName="w-full h-full rounded-full object-cover"
-                variant="logo"
-                loading="eager"
-                fetchPriority="high"
               />
             ) : (
               <div
@@ -580,15 +605,12 @@ export default function CatalogStoreHeader({
             <div className="max-w-5xl mx-auto px-6 py-3.5 flex items-center gap-4">
               <div className="w-1 h-9 rounded-full flex-shrink-0" style={{ backgroundColor: primaryColor }} />
               {business?.logoUrl ? (
-                <CatalogImage
+                <StoreLogo
                   src={finalLogoSrc}
                   originalSrc={business.logoUrl}
                   alt={business?.name}
                   className="w-10 h-10 rounded-full flex-shrink-0"
                   imgClassName="w-full h-full rounded-full object-cover"
-                  variant="logo"
-                  loading="eager"
-                  fetchPriority="high"
                 />
               ) : (
                 <div
@@ -649,15 +671,12 @@ export default function CatalogStoreHeader({
             >
               <div className="flex items-center gap-4 mb-3">
                 {business?.logoUrl ? (
-                  <CatalogImage
+                  <StoreLogo
                     src={finalLogoSrc}
                     originalSrc={business.logoUrl}
                     alt={business?.name}
                     className="w-14 h-14 rounded-full border-2 border-white/30 flex-shrink-0"
                     imgClassName="w-full h-full rounded-full object-cover"
-                    variant="logo"
-                    loading="eager"
-                    fetchPriority="high"
                   />
                 ) : (
                   <div className="w-14 h-14 rounded-full flex items-center justify-center border-2 border-white/30 bg-white/20 flex-shrink-0">
@@ -737,15 +756,12 @@ export default function CatalogStoreHeader({
               <div className="flex flex-col sm:flex-row sm:items-start gap-3 min-w-0 flex-1">
                 <div className="flex-shrink-0">
                   {business?.logoUrl ? (
-                    <CatalogImage
+                    <StoreLogo
                       src={finalLogoSrc}
                       originalSrc={business.logoUrl}
                       alt={business?.name}
                       className="w-14 h-14 sm:w-16 sm:h-16 rounded-full border-2 border-gray-100"
                       imgClassName="w-full h-full rounded-full object-cover"
-                      variant="logo"
-                      loading="eager"
-                      fetchPriority="high"
                     />
                   ) : (
                     <div
