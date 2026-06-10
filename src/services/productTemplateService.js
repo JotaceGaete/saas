@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import { getTemplateProductsForRubro } from '../utils/productTemplates';
+import { getTemplateForRubro } from '../utils/productTemplates';
 
 /**
  * Siembra productos de ejemplo en wa_products según el rubro del negocio.
@@ -12,18 +12,40 @@ import { getTemplateProductsForRubro } from '../utils/productTemplates';
  * is_active=true y status='active' para que aparezcan de inmediato en el
  * catálogo; el usuario los edita después desde /product-editor.
  *
+ * Además del resultado de la siembra devuelve el branding del template
+ * (logo y cover prediseñados) para que el caller lo aplique al negocio
+ * solo si este no tiene imágenes propias.
+ *
  * @param {{ businessId: string, rubroSlug: string }} params
- * @returns {Promise<{ created: number, skipped: boolean, reason: string|null, error: object|null }>}
+ * @returns {Promise<{
+ *   created: number,
+ *   skipped: boolean,
+ *   reason: string|null,
+ *   error: object|null,
+ *   templateKey: string|null,
+ *   branding: { logoUrl: string|null, coverImageUrl: string|null }|null,
+ * }>}
  */
 export async function seedTemplateProductsIfEmpty({ businessId, rubroSlug }) {
   if (!businessId || !rubroSlug) {
-    return { created: 0, skipped: true, reason: 'missing-business-or-rubro-slug', error: null };
+    return {
+      created: 0, skipped: true, reason: 'missing-business-or-rubro-slug',
+      error: null, templateKey: null, branding: null,
+    };
   }
 
-  const templateProducts = getTemplateProductsForRubro(rubroSlug);
-  if (templateProducts.length === 0) {
-    return { created: 0, skipped: true, reason: `no-template-for-rubro:${rubroSlug}`, error: null };
+  const template = getTemplateForRubro(rubroSlug);
+  if (!template || template.products.length === 0) {
+    return {
+      created: 0, skipped: true, reason: `no-template-for-rubro:${rubroSlug}`,
+      error: null, templateKey: null, branding: null,
+    };
   }
+  const templateKey = template.templateKey;
+  const branding = {
+    logoUrl: template.logoUrl || null,
+    coverImageUrl: template.coverImageUrl || null,
+  };
 
   const { data: existing, error: existingError } = await supabase
     ?.from('wa_products')
@@ -32,7 +54,10 @@ export async function seedTemplateProductsIfEmpty({ businessId, rubroSlug }) {
     ?.limit(50);
   if (existingError) {
     console.error('[templates] error consultando productos existentes:', existingError);
-    return { created: 0, skipped: true, reason: 'count-error', error: existingError };
+    return {
+      created: 0, skipped: true, reason: 'count-error',
+      error: existingError, templateKey, branding,
+    };
   }
 
   const realProducts = (existing || []).filter((p) => p?.is_draft !== true);
@@ -42,10 +67,13 @@ export async function seedTemplateProductsIfEmpty({ businessId, rubroSlug }) {
     existing,
   );
   if (realProducts.length > 0) {
-    return { created: 0, skipped: true, reason: 'business-has-products', error: null };
+    return {
+      created: 0, skipped: true, reason: 'business-has-products',
+      error: null, templateKey, branding,
+    };
   }
 
-  const rows = templateProducts.map((p, index) => ({
+  const rows = template.products.map((p, index) => ({
     business_id: businessId,
     name: p.name,
     description: p.description,
@@ -66,8 +94,14 @@ export async function seedTemplateProductsIfEmpty({ businessId, rubroSlug }) {
     ?.select('id');
   if (error) {
     console.error('[templates] insert error:', error);
-    return { created: 0, skipped: false, reason: 'insert-error', error };
+    return {
+      created: 0, skipped: false, reason: 'insert-error',
+      error, templateKey, branding,
+    };
   }
 
-  return { created: data?.length ?? rows.length, skipped: false, reason: null, error: null };
+  return {
+    created: data?.length ?? rows.length, skipped: false, reason: null,
+    error: null, templateKey, branding,
+  };
 }

@@ -733,6 +733,8 @@ export default function BusinessConfiguration() {
       // Siembra automática de catálogo de ejemplo según el rubro recién guardado.
       // Solo inserta si el negocio no tiene productos reales; si falla, el guardado igual fue exitoso.
       let seededCount = 0;
+      let brandingApplied = false;
+      let designAfterBranding = design;
       try {
         const selectedRubro =
           currentRubro ?? rubros.find((r) => String(r?.id) === String(form?.rubroId)) ?? null;
@@ -757,6 +759,45 @@ export default function BusinessConfiguration() {
         });
         console.log('[templates] seed result:', seedResult);
         seededCount = seedResult?.created || 0;
+
+        // Identidad visual del template: solo cuando se crearon productos y
+        // solo en campos vacíos — nunca pisar imágenes subidas por el usuario.
+        if (seededCount > 0 && seedResult?.branding) {
+          const bizAfterSave = updated || business;
+          const hasLogo = String(bizAfterSave?.logoUrl || '').trim() !== '';
+          const hasCover = String(bizAfterSave?.coverImageUrl || '').trim() !== '';
+          const brandingUpdates = {};
+          if (seedResult.branding.logoUrl && !hasLogo) {
+            brandingUpdates.logoUrl = seedResult.branding.logoUrl;
+          }
+          if (seedResult.branding.coverImageUrl && !hasCover) {
+            brandingUpdates.coverImageUrl = seedResult.branding.coverImageUrl;
+          }
+          console.log('[templates] branding a aplicar:', brandingUpdates);
+          if (Object.keys(brandingUpdates).length > 0) {
+            const { data: brandedBiz, error: brandingError } = await updateBusiness(bizId, brandingUpdates);
+            if (brandingError) {
+              console.error('[templates] branding update error:', brandingError);
+            } else {
+              if (brandedBiz) patchBusiness(brandedBiz);
+              brandingApplied = true;
+              // Reflejar en el estado de diseño local: el payload de guardado
+              // prioriza design.logoUrl/coverImageUrl, así que sin esto el
+              // próximo guardado pisaría el branding con valores vacíos.
+              designAfterBranding = {
+                ...designAfterBranding,
+                ...(brandingUpdates.logoUrl ? { logoUrl: brandingUpdates.logoUrl } : {}),
+                ...(brandingUpdates.coverImageUrl
+                  ? {
+                      coverImageUrl: brandingUpdates.coverImageUrl,
+                      headerImageUrl: brandingUpdates.coverImageUrl,
+                    }
+                  : {}),
+              };
+              setDesign(designAfterBranding);
+            }
+          }
+        }
       } catch (seedError) {
         console.error('[templates] seedTemplateProductsIfEmpty exception:', seedError);
       }
@@ -774,13 +815,15 @@ export default function BusinessConfiguration() {
       setSavedConfigSnapshot(
         JSON.stringify({
           form: formAfterAddr,
-          design,
+          design: designAfterBranding,
           orderMessageTemplate,
           fullAddressInput: buildFullAddressLine(parsedAddr),
           uxCountry: countryToPersist,
         }),
       );
-      if (seededCount > 0) {
+      if (seededCount > 0 && brandingApplied) {
+        showToast('Rubro guardado, catálogo e identidad visual creados.', 'success');
+      } else if (seededCount > 0) {
         showToast(`Rubro guardado y catálogo creado con ${seededCount} productos de ejemplo.`, 'success');
       } else if (rubroChanged) {
         showToast('Rubro guardado correctamente.', 'success');
