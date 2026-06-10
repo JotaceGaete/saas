@@ -8,7 +8,7 @@ import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
 import { updateBusiness, getMyBusiness, getRubros, getEffectivePlanSlug } from '../../services/waBusinessService';
 import { seedTemplateProductsIfEmpty } from '../../services/productTemplateService';
-import { DEMO_SOCIAL_LINKS } from '../../utils/productTemplates';
+import { DEMO_SOCIAL_LINKS, LEGACY_TEMPLATE_LOGO_PREFIX } from '../../utils/productTemplates';
 import { supabase } from '../../lib/supabase';
 import StoreCreationStep from '../business-registration/components/StoreCreationStep';
 import WhatsAppMessageTemplate from './components/WhatsAppMessageTemplate';
@@ -736,6 +736,7 @@ export default function BusinessConfiguration() {
       let seededCount = 0;
       let brandingApplied = false;
       let designAfterBranding = design;
+      let appliedDemoSocials = null;
       try {
         const selectedRubro =
           currentRubro ?? rubros.find((r) => String(r?.id) === String(form?.rubroId)) ?? null;
@@ -773,7 +774,13 @@ export default function BusinessConfiguration() {
           const bizAfterSave = updated || business;
 
           const brandingPayload = {};
-          if (seedResult.branding.logoUrl && !String(bizAfterSave?.logoUrl || '').trim()) {
+          // Logo vacío o con el formato data-URL antiguo (";utf8,", inválido
+          // según RFC 2397 y que algunos navegadores no renderizan): aplicar o
+          // reparar con el SVG en base64. El prefijo legacy solo puede venir de
+          // templates, nunca de un upload del usuario.
+          const logoRaw = String(bizAfterSave?.logoUrl || '').trim();
+          const logoMissingOrLegacy = !logoRaw || logoRaw.startsWith(LEGACY_TEMPLATE_LOGO_PREFIX);
+          if (seedResult.branding.logoUrl && logoMissingOrLegacy) {
             brandingPayload.logoUrl = seedResult.branding.logoUrl;
           }
           if (seedResult.branding.coverImageUrl && !String(bizAfterSave?.coverImageUrl || '').trim()) {
@@ -781,16 +788,19 @@ export default function BusinessConfiguration() {
           }
           console.log('[templates] branding payload:', brandingPayload);
 
-          // Redes demo de Ventalink: solo si el negocio no tiene ninguna red
-          // y nunca se aplicaron antes (flag demoSocialLinksApplied evita
-          // re-forzarlas si el usuario las edita o borra después).
+          // Redes demo de Ventalink: solo si el negocio no tiene ninguna red.
+          // demoSocialLinksRepaired hace la aplicación one-shot: cubre negocios
+          // nuevos y repara los que quedaron con demoSocialLinksApplied=true
+          // pero columnas null (el form no reflejaba las redes demo y el
+          // siguiente guardado las pisaba). Tras esto, si el usuario edita o
+          // borra las redes, no se vuelven a forzar.
           const socialPayload = {};
           const hasAnySocial = [
             bizAfterSave?.instagramUrl,
             bizAfterSave?.tiktokUrl,
             bizAfterSave?.facebookUrl,
           ].some((v) => String(v || '').trim() !== '');
-          if (!hasAnySocial && designAfterBranding?.demoSocialLinksApplied !== true) {
+          if (!hasAnySocial && designAfterBranding?.demoSocialLinksRepaired !== true) {
             socialPayload.instagramUrl = DEMO_SOCIAL_LINKS.instagramUrl;
             socialPayload.facebookUrl = DEMO_SOCIAL_LINKS.facebookUrl;
             socialPayload.tiktokUrl = DEMO_SOCIAL_LINKS.tiktokUrl;
@@ -808,7 +818,9 @@ export default function BusinessConfiguration() {
                     headerImageUrl: brandingPayload.coverImageUrl,
                   }
                 : {}),
-              ...(Object.keys(socialPayload).length > 0 ? { demoSocialLinksApplied: true } : {}),
+              ...(Object.keys(socialPayload).length > 0
+                ? { demoSocialLinksApplied: true, demoSocialLinksRepaired: true }
+                : {}),
             };
             // designSettings va incluido para que /design y la rehidratación de
             // esta página lean logo/portada desde el JSON persistido; sin esto,
@@ -828,6 +840,7 @@ export default function BusinessConfiguration() {
             } else {
               if (brandedBiz) patchBusiness(brandedBiz);
               brandingApplied = true;
+              if (Object.keys(socialPayload).length > 0) appliedDemoSocials = socialPayload;
               setDesign(designAfterBranding);
               await refreshBusiness?.();
             }
@@ -843,6 +856,10 @@ export default function BusinessConfiguration() {
         city: parsedAddr.city,
         region: parsedAddr.region,
         slug: nextSlug || form?.slug,
+        // Reflejar las redes demo recién aplicadas: el payload de guardado
+        // siempre envía form.instagramUrl/facebookUrl/tiktokUrl, así que sin
+        // esto el próximo guardado las pisaría con null.
+        ...(appliedDemoSocials || {}),
       };
       setForm(formAfterAddr);
       setFullAddressInput(buildFullAddressLine(parsedAddr));

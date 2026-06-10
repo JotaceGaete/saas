@@ -24,6 +24,15 @@ import { normalizeTikTokUrl } from '../../utils/socialLinks';
 import { isRestaurantBusiness } from '../../utils/businessType';
 import { getCountryReferenceLocation } from '../../utils/countryReferenceLocation';
 
+/**
+ * Logos data: (SVG de template) van directo al <img>, sin pasar por
+ * Cloudflare Images ni transformadores; el resto usa el preset thumbnail.
+ */
+function resolveLogoSrc(logoUrl) {
+  const url = String(logoUrl || '');
+  return url.startsWith('data:') ? url : cfImageUrl(url, 'thumbnail');
+}
+
 // ─── Bloques de info reutilizados en acordeón mobile y barra desktop ──────────
 
 function CatalogInfoBlock({ icon, title, children, sectionBg, borderColor, textColor, isDark }) {
@@ -417,21 +426,26 @@ export default function CatalogStoreHeader({
 
   const fullAddress = [business?.address, business?.city, business?.region, business?.country].filter(Boolean).join(', ');
   const mapsSearchUrl = buildMapsSearchUrl({ business, fullAddress });
-  const showAddressInCatalog = design?.showAddress === true && fullAddress;
+  // Dirección real = address/city/region; `country` solo no cuenta (un negocio
+  // nuevo siempre tiene país, y eso hacía fullAddress truthy bloqueando el
+  // modo referencial).
+  const hasRealAddress = [business?.address, business?.city, business?.region]
+    .some((v) => String(v || '').trim() !== '');
+  const showAddressInCatalog = design?.showAddress === true && hasRealAddress && fullAddress;
 
   // Sin dirección configurada: ubicación referencial por país (solo
   // presentación, marcada como aproximada; nunca se persiste como dirección).
-  const referenceLocation = !fullAddress
+  // Se muestra aunque design.showAddress sea false: el catálogo automático no
+  // debe verse vacío en la sección de mapa.
+  const referenceLocation = !hasRealAddress
     ? getCountryReferenceLocation(business?.countryCode || business?.countryCodeDb || business?.country)
     : null;
-  if (referenceLocation) {
-    console.log('[templates] reference location mode:', referenceLocation);
-  }
+  const showLocationSection = !!showAddressInCatalog || !!referenceLocation;
+  console.log('[templates] reference location mode', { hasRealAddress, referenceLocation, showLocationSection });
 
   const hasCatalogInfo =
     (design?.businessHours ?? '').trim() !== '' ||
-    showAddressInCatalog ||
-    !!referenceLocation ||
+    showLocationSection ||
     (design?.shippingMethods ?? '').trim() !== '' ||
     (design?.shippingCost ?? '').trim() !== '' ||
     design?.retiroEnTienda === true;
@@ -521,7 +535,7 @@ export default function CatalogStoreHeader({
           <div className="flex-1 min-w-0 flex items-center gap-2.5">
             {business?.logoUrl ? (
               <CatalogImage
-                src={cfImageUrl(business.logoUrl, 'thumbnail')}
+                src={resolveLogoSrc(business.logoUrl)}
                 originalSrc={business.logoUrl}
                 alt=""
                 className="w-8 h-8 rounded-full flex-shrink-0"
@@ -553,7 +567,7 @@ export default function CatalogStoreHeader({
               <div className="w-1 h-9 rounded-full flex-shrink-0" style={{ backgroundColor: primaryColor }} />
               {business?.logoUrl ? (
                 <CatalogImage
-                  src={cfImageUrl(business.logoUrl, 'thumbnail')}
+                  src={resolveLogoSrc(business.logoUrl)}
                   originalSrc={business.logoUrl}
                   alt={business?.name}
                   className="w-10 h-10 rounded-full flex-shrink-0"
@@ -622,7 +636,7 @@ export default function CatalogStoreHeader({
               <div className="flex items-center gap-4 mb-3">
                 {business?.logoUrl ? (
                   <CatalogImage
-                    src={cfImageUrl(business.logoUrl, 'thumbnail')}
+                    src={resolveLogoSrc(business.logoUrl)}
                     originalSrc={business.logoUrl}
                     alt={business?.name}
                     className="w-14 h-14 rounded-full border-2 border-white/30 flex-shrink-0"
@@ -710,7 +724,7 @@ export default function CatalogStoreHeader({
                 <div className="flex-shrink-0">
                   {business?.logoUrl ? (
                     <CatalogImage
-                      src={cfImageUrl(business.logoUrl, 'thumbnail')}
+                      src={resolveLogoSrc(business.logoUrl)}
                       originalSrc={business.logoUrl}
                       alt={business?.name}
                       className="w-14 h-14 sm:w-16 sm:h-16 rounded-full border-2 border-gray-100"

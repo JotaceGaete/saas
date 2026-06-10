@@ -23,10 +23,18 @@ const unsplashCover = (id) =>
   `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=1600&h=600&q=80`;
 
 /**
- * Logo como SVG data-URL (icono simple sobre degradado). No usar fotos como
- * logo: el data-URL carga instantáneo, sin red, y cfImageUrl lo deja pasar
- * sin transformar — evita el círculo gris de placeholder en el catálogo.
+ * Logo como SVG data-URL en base64 (icono simple sobre degradado). No usar
+ * fotos como logo: el data-URL carga instantáneo, sin red, y cfImageUrl lo
+ * deja pasar sin transformar — evita el círculo gris de placeholder en el
+ * catálogo. Base64 (RFC 2397) en vez de ";utf8," porque ese parámetro es
+ * inválido y algunos navegadores/contextos no lo renderizan.
  */
+function toBase64(value) {
+  if (typeof btoa === 'function') return btoa(value);
+  // eslint-disable-next-line no-undef
+  return Buffer.from(value, 'utf-8').toString('base64');
+}
+
 function svgLogoDataUrl({ from, to, paths }) {
   const icon = paths.map((d) => `<path d="${d}"/>`).join('');
   const svg =
@@ -37,8 +45,15 @@ function svgLogoDataUrl({ from, to, paths }) {
     `<rect x="-7" y="-7" width="38" height="38" fill="url(#g)"/>` +
     `<g fill="none" stroke="#ffffff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${icon}</g>` +
     `</svg>`;
-  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+  return `data:image/svg+xml;base64,${toBase64(svg)}`;
 }
+
+/**
+ * Prefijo del formato anterior de logos de template (parámetro ";utf8,"
+ * inválido). Sirve para detectar y reparar logos sembrados con ese formato;
+ * solo puede venir de templates, nunca de un upload del usuario.
+ */
+export const LEGACY_TEMPLATE_LOGO_PREFIX = 'data:image/svg+xml;utf8,';
 
 // Iconos estilo lucide: polera (ropa), cubiertos (restaurante), tienda (default).
 const LOGO_ROPA = svgLogoDataUrl({
