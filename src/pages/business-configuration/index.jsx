@@ -734,6 +734,7 @@ export default function BusinessConfiguration() {
       // Siembra automática de catálogo de ejemplo según el rubro recién guardado.
       // Solo inserta si el negocio no tiene productos reales; si falla, el guardado igual fue exitoso.
       let seededCount = 0;
+      let categoriesSeeded = false;
       let brandingApplied = false;
       let designAfterBranding = design;
       let appliedDemoSocials = null;
@@ -761,6 +762,7 @@ export default function BusinessConfiguration() {
         });
         console.log('[templates] seedResult completo:', seedResult);
         seededCount = Number(seedResult?.created || 0);
+        categoriesSeeded = Number(seedResult?.categoriesCreated || 0) > 0;
 
         // Identidad visual del template: solo en campos vacíos — nunca pisar
         // imágenes subidas por el usuario. Se aplica cuando se crearon
@@ -808,7 +810,9 @@ export default function BusinessConfiguration() {
           console.log('[templates] social demo payload:', socialPayload);
 
           const onboardingPayload = { ...brandingPayload, ...socialPayload };
-          if (Object.keys(onboardingPayload).length > 0) {
+          // useCategories: las categorías sembradas solo se ven en el catálogo
+          // público con el toggle activo, así que se persiste junto al branding.
+          if (Object.keys(onboardingPayload).length > 0 || categoriesSeeded) {
             designAfterBranding = {
               ...designAfterBranding,
               ...(brandingPayload.logoUrl ? { logoUrl: brandingPayload.logoUrl } : {}),
@@ -821,6 +825,7 @@ export default function BusinessConfiguration() {
               ...(Object.keys(socialPayload).length > 0
                 ? { demoSocialLinksApplied: true, demoSocialLinksRepaired: true }
                 : {}),
+              ...(categoriesSeeded ? { useCategories: true } : {}),
             };
             // designSettings va incluido para que /design y la rehidratación de
             // esta página lean logo/portada desde el JSON persistido; sin esto,
@@ -873,7 +878,9 @@ export default function BusinessConfiguration() {
           uxCountry: countryToPersist,
         }),
       );
-      if (seededCount > 0 && brandingApplied) {
+      if (seededCount > 0 && brandingApplied && categoriesSeeded) {
+        showToast('Rubro guardado, catálogo con categorías e identidad visual creados.', 'success');
+      } else if (seededCount > 0 && brandingApplied) {
         showToast('Rubro guardado, catálogo e identidad visual creados.', 'success');
       } else if (brandingApplied) {
         showToast('Rubro guardado e identidad visual aplicada.', 'success');

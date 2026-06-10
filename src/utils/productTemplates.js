@@ -10,9 +10,12 @@
  * RUBRO_SLUG_TO_TEMPLATE: mapea wa_rubros.slug → clave de template.
  *
  * Cada template: logoUrl y coverImageUrl prediseñados (placeholders públicos
- * por ahora; idealmente migrar a R2 después) y products[] con name,
- * description, price (entero, moneda local) y las imágenes para
- * wa_products.card_image_url / wa_products.thumbnail_url.
+ * por ahora; idealmente migrar a R2 después), categories[] con { name, slug }
+ * (se siembran como wa_business_categories del negocio) y products[] con name,
+ * description, price (entero, moneda local), categorySlug (referencia a
+ * categories[].slug; el producto guarda el NOMBRE en wa_products.category,
+ * que es como el catálogo público asocia producto↔categoría) y las imágenes
+ * para wa_products.card_image_url / wa_products.thumbnail_url.
  */
 
 const unsplashCard = (id) =>
@@ -95,10 +98,11 @@ export const DEMO_SOCIAL_LINKS = {
   tiktokUrl: 'https://www.tiktok.com/@ventalink.app',
 };
 
-const templateProduct = ({ name, description, price, photoId }) => ({
+const templateProduct = ({ name, description, price, photoId, categorySlug = null }) => ({
   name,
   description,
   price,
+  categorySlug,
   cardImageUrl: unsplashCard(photoId),
   thumbnailUrl: unsplashThumb(photoId),
 });
@@ -107,42 +111,98 @@ export const PRODUCT_TEMPLATES = {
   ropa: {
     logoUrl: LOGO_ROPA,
     coverImageUrl: unsplashCover('1441986300917-64674bd600d8'),
+    categories: [
+      { name: 'Poleras', slug: 'poleras' },
+      { name: 'Pantalones', slug: 'pantalones' },
+      { name: 'Chaquetas', slug: 'chaquetas' },
+      { name: 'Vestidos', slug: 'vestidos' },
+      { name: 'Calzado', slug: 'calzado' },
+      { name: 'Accesorios', slug: 'accesorios' },
+    ],
     products: [
       templateProduct({
-        name: 'Polera básica de algodón',
+        name: 'Polera Básica',
         description: 'Polera unisex de algodón 100%, suave y fresca. Disponible en varios colores y tallas.',
         price: 9990,
         photoId: '1521572163474-6864f9cf17ab',
+        categorySlug: 'poleras',
       }),
       templateProduct({
-        name: 'Jeans clásico',
+        name: 'Polera Oversize',
+        description: 'Polera de corte oversize, cómoda y moderna. Perfecta para un look relajado.',
+        price: 12990,
+        photoId: '1503341504253-dff4815485f1',
+        categorySlug: 'poleras',
+      }),
+      templateProduct({
+        name: 'Jeans Clásico',
         description: 'Jeans de corte recto, cómodo y resistente para el uso diario.',
         price: 19990,
         photoId: '1542272604-787c3835535d',
+        categorySlug: 'pantalones',
       }),
       templateProduct({
-        name: 'Polerón con capucha',
-        description: 'Polerón abrigado con capucha y bolsillo canguro. Ideal para media estación.',
-        price: 17990,
-        photoId: '1556821840-3a63f95609a7',
+        name: 'Pantalón Cargo',
+        description: 'Pantalón cargo con bolsillos laterales, resistente y versátil.',
+        price: 24990,
+        photoId: '1542272604-787c3835535d',
+        categorySlug: 'pantalones',
       }),
       templateProduct({
-        name: 'Chaqueta urbana',
+        name: 'Chaqueta Urbana',
         description: 'Chaqueta liviana de estilo urbano, perfecta para combinar con cualquier outfit.',
         price: 29990,
         photoId: '1551028719-00167b16eac5',
+        categorySlug: 'chaquetas',
       }),
       templateProduct({
-        name: 'Vestido casual',
+        name: 'Polerón Canguro',
+        description: 'Polerón abrigado con capucha y bolsillo canguro. Ideal para media estación.',
+        price: 17990,
+        photoId: '1556821840-3a63f95609a7',
+        categorySlug: 'chaquetas',
+      }),
+      templateProduct({
+        name: 'Vestido Casual',
         description: 'Vestido casual de tela fresca, cómodo para el día a día.',
         price: 22990,
         photoId: '1595777457583-95e059d581b8',
+        categorySlug: 'vestidos',
       }),
       templateProduct({
-        name: 'Zapatillas urbanas',
+        name: 'Vestido Primavera',
+        description: 'Vestido liviano de temporada, fresco y con caída elegante.',
+        price: 24990,
+        photoId: '1595777457583-95e059d581b8',
+        categorySlug: 'vestidos',
+      }),
+      templateProduct({
+        name: 'Zapatillas Urbanas',
         description: 'Zapatillas cómodas y versátiles para acompañar tu look diario.',
         price: 34990,
         photoId: '1542291026-7eec264c27ff',
+        categorySlug: 'calzado',
+      }),
+      templateProduct({
+        name: 'Sandalias',
+        description: 'Sandalias livianas y cómodas, ideales para los días de calor.',
+        price: 15990,
+        photoId: '1542291026-7eec264c27ff',
+        categorySlug: 'calzado',
+      }),
+      templateProduct({
+        name: 'Gorro de Lana',
+        description: 'Gorro tejido de lana suave, abrigado y con estilo para el invierno.',
+        price: 6990,
+        photoId: '1576871337622-98d48d1cf531',
+        categorySlug: 'accesorios',
+      }),
+      templateProduct({
+        name: 'Cartera Pequeña',
+        description: 'Cartera compacta de uso diario, con espacio para lo esencial.',
+        price: 14990,
+        photoId: '1611591437281-460bfbe1220a',
+        categorySlug: 'accesorios',
       }),
     ],
   },
@@ -150,36 +210,97 @@ export const PRODUCT_TEMPLATES = {
   restaurante: {
     logoUrl: LOGO_RESTAURANTE,
     coverImageUrl: unsplashCover('1517248135467-4c7edcad34c4'),
+    categories: [
+      { name: 'Entradas', slug: 'entradas' },
+      { name: 'Platos principales', slug: 'platos-principales' },
+      { name: 'Combos', slug: 'combos' },
+      { name: 'Postres', slug: 'postres' },
+      { name: 'Bebidas', slug: 'bebidas' },
+    ],
     products: [
       templateProduct({
-        name: 'Hamburguesa de la casa',
-        description: 'Hamburguesa con queso derretido, lechuga, tomate y nuestra salsa especial. Incluye papas fritas.',
-        price: 8990,
-        photoId: '1568901346375-23c9450c58cd',
+        name: 'Empanadas',
+        description: 'Empanadas caseras horneadas, rellenas con ingredientes frescos. Unidad.',
+        price: 2990,
+        photoId: '1601050690597-df0568f70950',
+        categorySlug: 'entradas',
       }),
       templateProduct({
-        name: 'Pizza artesanal',
-        description: 'Pizza a la piedra con masa artesanal, salsa de tomate natural y queso mozzarella.',
-        price: 11990,
-        photoId: '1513104890138-7c749659a591',
+        name: 'Papas Fritas',
+        description: 'Porción de papas fritas crujientes, perfectas para compartir.',
+        price: 3990,
+        photoId: '1573080496219-bb080dd4f877',
+        categorySlug: 'entradas',
       }),
       templateProduct({
-        name: 'Ensalada fresca',
-        description: 'Mix de hojas verdes, palta, tomates cherry y aderezo de la casa.',
+        name: 'Ensalada César',
+        description: 'Lechuga fresca, pollo grillado, crutones y aderezo césar de la casa.',
         price: 6990,
         photoId: '1546069901-ba9599a7e63c',
+        categorySlug: 'entradas',
       }),
       templateProduct({
-        name: 'Pasta de la casa',
-        description: 'Pasta fresca con salsa a elección, terminada con queso parmesano.',
-        price: 9490,
-        photoId: '1551183053-bf91a1d81141',
+        name: 'Hamburguesa Clásica',
+        description: 'Hamburguesa con queso derretido, lechuga, tomate y nuestra salsa especial.',
+        price: 8990,
+        photoId: '1568901346375-23c9450c58cd',
+        categorySlug: 'platos-principales',
       }),
       templateProduct({
-        name: 'Panqueques dulces',
-        description: 'Torre de panqueques con miel de maple y frutas frescas. Perfecto para compartir.',
+        name: 'Pizza Familiar',
+        description: 'Pizza familiar a la piedra con masa artesanal y queso mozzarella.',
+        price: 12990,
+        photoId: '1513104890138-7c749659a591',
+        categorySlug: 'platos-principales',
+      }),
+      templateProduct({
+        name: 'Pollo con Papas',
+        description: 'Pollo dorado acompañado de papas fritas. Contundente y sabroso.',
+        price: 9990,
+        photoId: '1598103442097-8b74394b95c6',
+        categorySlug: 'platos-principales',
+      }),
+      templateProduct({
+        name: 'Combo Familiar',
+        description: 'Combo para compartir: incluye plato principal, acompañamientos y bebidas.',
+        price: 19990,
+        photoId: '1571091718767-18b5b1457add',
+        categorySlug: 'combos',
+      }),
+      templateProduct({
+        name: 'Menú del Día',
+        description: 'Plato del día con entrada y bebida incluida. Pregunta por el menú de hoy.',
+        price: 7990,
+        photoId: '1559847844-5315695dadae',
+        categorySlug: 'combos',
+      }),
+      templateProduct({
+        name: 'Panqueque con Manjar',
+        description: 'Panqueques caseros rellenos con manjar. Un clásico irresistible.',
         price: 4990,
         photoId: '1567620905732-2d1ec7ab7445',
+        categorySlug: 'postres',
+      }),
+      templateProduct({
+        name: 'Torta Tres Leches',
+        description: 'Trozo de torta tres leches, húmeda y suave, con un toque de canela.',
+        price: 5990,
+        photoId: '1629121003845-e96bfccd1026',
+        categorySlug: 'postres',
+      }),
+      templateProduct({
+        name: 'Bebida 350ml',
+        description: 'Bebida fría en lata de 350ml. Consulta por sabores disponibles.',
+        price: 1990,
+        photoId: '1554866585-cd94860890b7',
+        categorySlug: 'bebidas',
+      }),
+      templateProduct({
+        name: 'Jugo Natural',
+        description: 'Jugo de fruta natural recién exprimido, sin azúcar añadida.',
+        price: 2990,
+        photoId: '1600271886742-f049cd451bba',
+        categorySlug: 'bebidas',
       }),
     ],
   },
@@ -196,7 +317,7 @@ export const RUBRO_SLUG_TO_TEMPLATE = {
 
 /**
  * Devuelve el template completo para un slug de rubro:
- * { templateKey, logoUrl, coverImageUrl, products } — o null si no hay template.
+ * { templateKey, logoUrl, coverImageUrl, categories, products } — o null si no hay template.
  */
 export function getTemplateForRubro(rubroSlug) {
   const templateKey = RUBRO_SLUG_TO_TEMPLATE[String(rubroSlug || '').trim().toLowerCase()];
@@ -205,6 +326,7 @@ export function getTemplateForRubro(rubroSlug) {
   return {
     templateKey,
     ...template,
+    categories: template.categories || [],
     logoUrl: template.logoUrl || DEFAULT_TEMPLATE_LOGO_URL,
   };
 }
