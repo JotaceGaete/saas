@@ -169,7 +169,7 @@ Todas las rutas requeridas están presentes en `src/Routes.jsx`:
 | `20260531100000_wa_businesses_document_title_type.sql` | Tipo de título en documentos | 🟡 Media |
 | `20260531200000_crm_invoices_source.sql` | Campo `source` en facturas | 🟡 Media |
 | `20260601000000_crm_items_discount_type.sql` | Tipo de descuento en ítems | 🟡 Media |
-| `20260601000000_wa_products_show_price.sql` | Visibilidad de precio en catálogo | 🟡 Media |
+| `20260601000001_wa_products_show_price.sql` | Visibilidad de precio en catálogo | 🟡 Media |
 | `20260602010000_crm_cost_center_onboarding.sql` | Datos iniciales para cost center | 🟡 Media |
 | `20260602030000_admin_search_users_fn.sql` | Función RPC de búsqueda de usuarios (admin) | 🟡 Media |
 | `20260602050000_crm_cash_sessions_notes.sql` | Campo `notes` en sesiones de caja | 🟢 Baja |
