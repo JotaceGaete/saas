@@ -209,7 +209,7 @@
       "destination": "/api/seo?publicPath=product&businessSlug=:businessSlug&productSlug=:productSlug"
     },
     {
-      "source": "/(dashboard|elegir-pais|business-registration|register|complete-business-setup|business-configuration|product-management|product-editor|orders|design|ayuda|login|verify-email|auth|reset-password|planes|plan-y-facturacion|billing|admin|landing-page|plans|terms|privacy|refunds|crm|proveedores|customers)(.*)",
+      "source": "/(crm|proveedores|customers|dashboard|elegir-pais|business-registration|register|complete-business-setup|business-configuration|product-management|product-editor|orders|design|ayuda|login|verify-email|auth|reset-password|planes|plan-y-facturacion|billing|admin|landing-page|plans|terms|privacy|refunds)(.*)",
       "destination": "/index.html"
     },
     {
