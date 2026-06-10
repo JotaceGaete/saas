@@ -14,9 +14,11 @@ CREATE TABLE IF NOT EXISTS crm_purchases (
 
 ALTER TABLE crm_purchases ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "owner_crm_purchases" ON crm_purchases;
 CREATE POLICY "owner_crm_purchases" ON crm_purchases
   USING (business_id IN (SELECT id FROM wa_businesses WHERE user_id = auth.uid()));
 
+DROP TRIGGER IF EXISTS trg_crm_purchases_updated_at ON crm_purchases;
 CREATE TRIGGER trg_crm_purchases_updated_at
   BEFORE UPDATE ON crm_purchases
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();

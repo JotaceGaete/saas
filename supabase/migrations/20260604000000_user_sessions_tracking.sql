@@ -20,18 +20,22 @@ CREATE INDEX IF NOT EXISTS user_sessions_last_seen_at_idx ON public.user_session
 ALTER TABLE public.user_sessions ENABLE ROW LEVEL SECURITY;
 
 -- Users can only see their own sessions
+DROP POLICY IF EXISTS "user_sessions_own_read" ON public.user_sessions;
 CREATE POLICY "user_sessions_own_read" ON public.user_sessions
   FOR SELECT USING (auth.uid() = user_id);
 
 -- Users can insert their own sessions
+DROP POLICY IF EXISTS "user_sessions_own_insert" ON public.user_sessions;
 CREATE POLICY "user_sessions_own_insert" ON public.user_sessions
   FOR INSERT WITH CHECK (auth.uid() = user_id);
 
 -- Users can update their own sessions
+DROP POLICY IF EXISTS "user_sessions_own_update" ON public.user_sessions;
 CREATE POLICY "user_sessions_own_update" ON public.user_sessions
   FOR UPDATE USING (auth.uid() = user_id);
 
 -- Admin can see all sessions
+DROP POLICY IF EXISTS "user_sessions_admin_read" ON public.user_sessions;
 CREATE POLICY "user_sessions_admin_read" ON public.user_sessions
   FOR SELECT USING (
     (auth.jwt() ->> 'role') = 'admin'

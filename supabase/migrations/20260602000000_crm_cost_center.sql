@@ -34,8 +34,10 @@ CREATE TABLE IF NOT EXISTS crm_cost_items (
 ALTER TABLE crm_cost_centers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE crm_cost_items ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "owner_cost_centers" ON crm_cost_centers;
 CREATE POLICY "owner_cost_centers" ON crm_cost_centers
   USING (business_id IN (SELECT id FROM wa_businesses WHERE user_id = auth.uid()));
+DROP POLICY IF EXISTS "owner_cost_items" ON crm_cost_items;
 CREATE POLICY "owner_cost_items" ON crm_cost_items
   USING (business_id IN (SELECT id FROM wa_businesses WHERE user_id = auth.uid()));
 
@@ -45,10 +47,12 @@ RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN NEW.updated_at = NOW(); RETURN NEW; END;
 $$;
 
+DROP TRIGGER IF EXISTS trg_cost_centers_updated_at ON crm_cost_centers;
 CREATE TRIGGER trg_cost_centers_updated_at
   BEFORE UPDATE ON crm_cost_centers
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
+DROP TRIGGER IF EXISTS trg_cost_items_updated_at ON crm_cost_items;
 CREATE TRIGGER trg_cost_items_updated_at
   BEFORE UPDATE ON crm_cost_items
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();

@@ -102,10 +102,21 @@ CREATE TABLE IF NOT EXISTS public.crm_invoices (
   CONSTRAINT crm_invoices_number_unique UNIQUE (business_id, invoice_number)
 );
 
--- FK diferida para evitar dependencia circular con crm_quotes
-ALTER TABLE public.crm_quotes
-  ADD CONSTRAINT crm_quotes_invoice_fk
-  FOREIGN KEY (converted_to_invoice_id) REFERENCES public.crm_invoices(id) ON DELETE SET NULL;
+-- FK diferida para evitar dependencia circular con crm_quotes.
+-- ADD CONSTRAINT no soporta IF NOT EXISTS: se verifica pg_constraint para que
+-- la migración sea re-ejecutable sobre una base que ya tiene el esquema CRM.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'crm_quotes_invoice_fk'
+      AND conrelid = 'public.crm_quotes'::regclass
+  ) THEN
+    ALTER TABLE public.crm_quotes
+      ADD CONSTRAINT crm_quotes_invoice_fk
+      FOREIGN KEY (converted_to_invoice_id) REFERENCES public.crm_invoices(id) ON DELETE SET NULL;
+  END IF;
+END $$;
 
 CREATE INDEX IF NOT EXISTS idx_crm_invoices_business_id ON public.crm_invoices(business_id);
 CREATE INDEX IF NOT EXISTS idx_crm_invoices_customer_id ON public.crm_invoices(customer_id);

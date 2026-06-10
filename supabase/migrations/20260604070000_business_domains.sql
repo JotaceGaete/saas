@@ -30,6 +30,7 @@ BEGIN
 END;
 $$;
 
+DROP TRIGGER IF EXISTS trg_business_domains_updated_at ON public.business_domains;
 CREATE TRIGGER trg_business_domains_updated_at
   BEFORE UPDATE ON public.business_domains
   FOR EACH ROW EXECUTE FUNCTION public.set_business_domains_updated_at();
@@ -38,6 +39,7 @@ CREATE TRIGGER trg_business_domains_updated_at
 ALTER TABLE public.business_domains ENABLE ROW LEVEL SECURITY;
 
 -- Propietario del negocio puede leer su propio dominio
+DROP POLICY IF EXISTS "owner_select_business_domains" ON public.business_domains;
 CREATE POLICY "owner_select_business_domains"
   ON public.business_domains FOR SELECT
   USING (
