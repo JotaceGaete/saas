@@ -265,8 +265,9 @@ Motivo (opcional):`;
                 )}
               </li>
               {[
-                { label: 'Rubros y categorías', path: '/admin/config/rubros',      icon: 'Tag',         match: (p) => p.startsWith('/admin/config') },
-                { label: 'Funciones por plan',  path: '/admin/plan-features',      icon: 'LayoutGrid',  match: (p) => p === '/admin/plan-features' },
+                { label: 'Rubros y categorías', path: '/admin/config/rubros',      icon: 'Tag',            match: (p) => p.startsWith('/admin/config') },
+                { label: 'Plantillas de catálogo', path: '/admin/catalog-templates', icon: 'LayoutTemplate', match: (p) => p === '/admin/catalog-templates' },
+                { label: 'Funciones por plan',  path: '/admin/plan-features',      icon: 'LayoutGrid',     match: (p) => p === '/admin/plan-features' },
               ].map(item => {
                 const active = item.match(location?.pathname || '');
                 return (
