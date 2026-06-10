@@ -7,6 +7,7 @@ import PremiumLoader from 'components/ui/PremiumLoader';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
 import { updateBusiness, getMyBusiness, getRubros, getEffectivePlanSlug } from '../../services/waBusinessService';
+import { seedTemplateProductsIfEmpty } from '../../services/productTemplateService';
 import { supabase } from '../../lib/supabase';
 import StoreCreationStep from '../business-registration/components/StoreCreationStep';
 import WhatsAppMessageTemplate from './components/WhatsAppMessageTemplate';
@@ -672,6 +673,9 @@ export default function BusinessConfiguration() {
     }
     setRubroError(null);
 
+    const prevRubroId = business?.rubroId != null ? String(business.rubroId) : '';
+    const rubroChanged = prevRubroId !== String(form?.rubroId || '');
+
     setIsSaving(true);
 
     const countryToPersist = uxCountry ?? businessCountry;
@@ -725,6 +729,20 @@ export default function BusinessConfiguration() {
       if (updated) {
         patchBusiness(updated);
       }
+
+      // Siembra automática de catálogo de ejemplo según el rubro recién guardado.
+      // Solo inserta si el negocio tiene 0 productos; si falla, el guardado igual fue exitoso.
+      let seededCount = 0;
+      try {
+        const { created } = await seedTemplateProductsIfEmpty({
+          businessId: bizId,
+          rubroSlug: currentRubro?.slug || null,
+        });
+        seededCount = created || 0;
+      } catch (seedError) {
+        console.error('[BusinessConfig] seedTemplateProductsIfEmpty exception:', seedError);
+      }
+
       const formAfterAddr = {
         ...form,
         address: parsedAddr.address,
@@ -744,7 +762,13 @@ export default function BusinessConfiguration() {
           uxCountry: countryToPersist,
         }),
       );
-      showToast('¡Configuración guardada!', 'success');
+      if (seededCount > 0) {
+        showToast(`Rubro guardado y catálogo creado con ${seededCount} productos de ejemplo.`, 'success');
+      } else if (rubroChanged) {
+        showToast('Rubro guardado correctamente.', 'success');
+      } else {
+        showToast('¡Configuración guardada!', 'success');
+      }
     } catch (e) {
       console.error('[BusinessConfig] handleSaveSettings exception:', e);
       showToast('Error inesperado. Intenta de nuevo.', 'error');
