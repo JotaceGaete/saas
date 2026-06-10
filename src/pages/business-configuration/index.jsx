@@ -757,44 +757,57 @@ export default function BusinessConfiguration() {
           businessId: bizId,
           rubroSlug,
         });
-        console.log('[templates] seed result:', seedResult);
-        seededCount = seedResult?.created || 0;
+        console.log('[templates] seedResult completo:', seedResult);
+        seededCount = Number(seedResult?.created || 0);
 
-        // Identidad visual del template: solo cuando se crearon productos y
-        // solo en campos vacíos — nunca pisar imágenes subidas por el usuario.
-        if (seededCount > 0 && seedResult?.branding) {
+        // Identidad visual del template: solo en campos vacíos — nunca pisar
+        // imágenes subidas por el usuario. Se aplica cuando se crearon
+        // productos en este guardado, o retroactivamente si el catálogo ya
+        // existía pero el negocio sigue sin logo/portada (negocios sembrados
+        // antes de esta funcionalidad).
+        const didCreateProducts = Number(seedResult?.created || 0) > 0;
+        const hasTemplateCatalog =
+          didCreateProducts || seedResult?.reason === 'business-has-products';
+        if (hasTemplateCatalog && seedResult?.branding) {
           const bizAfterSave = updated || business;
-          const hasLogo = String(bizAfterSave?.logoUrl || '').trim() !== '';
-          const hasCover = String(bizAfterSave?.coverImageUrl || '').trim() !== '';
-          const brandingUpdates = {};
-          if (seedResult.branding.logoUrl && !hasLogo) {
-            brandingUpdates.logoUrl = seedResult.branding.logoUrl;
+          const brandingPayload = {};
+          if (seedResult.branding.logoUrl && !String(bizAfterSave?.logoUrl || '').trim()) {
+            brandingPayload.logoUrl = seedResult.branding.logoUrl;
           }
-          if (seedResult.branding.coverImageUrl && !hasCover) {
-            brandingUpdates.coverImageUrl = seedResult.branding.coverImageUrl;
+          if (seedResult.branding.coverImageUrl && !String(bizAfterSave?.coverImageUrl || '').trim()) {
+            brandingPayload.coverImageUrl = seedResult.branding.coverImageUrl;
           }
-          console.log('[templates] branding a aplicar:', brandingUpdates);
-          if (Object.keys(brandingUpdates).length > 0) {
-            const { data: brandedBiz, error: brandingError } = await updateBusiness(bizId, brandingUpdates);
+          console.log('[templates] branding payload:', brandingPayload);
+          if (Object.keys(brandingPayload).length > 0) {
+            designAfterBranding = {
+              ...designAfterBranding,
+              ...(brandingPayload.logoUrl ? { logoUrl: brandingPayload.logoUrl } : {}),
+              ...(brandingPayload.coverImageUrl
+                ? {
+                    coverImageUrl: brandingPayload.coverImageUrl,
+                    headerImageUrl: brandingPayload.coverImageUrl,
+                  }
+                : {}),
+            };
+            // designSettings va incluido para que /design y la rehidratación de
+            // esta página lean logo/portada desde el JSON persistido; sin esto,
+            // el estado local se pisaría con los valores vacíos antiguos.
+            const { data: brandedBiz, error: brandingError } = await updateBusiness(bizId, {
+              ...brandingPayload,
+              designSettings: designAfterBranding,
+            });
+            console.log('[templates] branding update result:', {
+              logoUrl: brandedBiz?.logoUrl,
+              coverImageUrl: brandedBiz?.coverImageUrl,
+              error: brandingError,
+            });
             if (brandingError) {
               console.error('[templates] branding update error:', brandingError);
             } else {
               if (brandedBiz) patchBusiness(brandedBiz);
               brandingApplied = true;
-              // Reflejar en el estado de diseño local: el payload de guardado
-              // prioriza design.logoUrl/coverImageUrl, así que sin esto el
-              // próximo guardado pisaría el branding con valores vacíos.
-              designAfterBranding = {
-                ...designAfterBranding,
-                ...(brandingUpdates.logoUrl ? { logoUrl: brandingUpdates.logoUrl } : {}),
-                ...(brandingUpdates.coverImageUrl
-                  ? {
-                      coverImageUrl: brandingUpdates.coverImageUrl,
-                      headerImageUrl: brandingUpdates.coverImageUrl,
-                    }
-                  : {}),
-              };
               setDesign(designAfterBranding);
+              await refreshBusiness?.();
             }
           }
         }
@@ -823,6 +836,8 @@ export default function BusinessConfiguration() {
       );
       if (seededCount > 0 && brandingApplied) {
         showToast('Rubro guardado, catálogo e identidad visual creados.', 'success');
+      } else if (brandingApplied) {
+        showToast('Rubro guardado e identidad visual aplicada.', 'success');
       } else if (seededCount > 0) {
         showToast(`Rubro guardado y catálogo creado con ${seededCount} productos de ejemplo.`, 'success');
       } else if (rubroChanged) {
