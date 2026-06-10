@@ -22,7 +22,11 @@ import { supabase } from '../lib/supabase';
  */
 
 const TEMPLATE_FIELDS =
-  'id, name, slug, description, category, preview_image_url, banner_url, logo_url, is_active, rubro_slug, source, created_at, updated_at';
+  'id, name, slug, description, category, preview_image_url, banner_url, logo_url, is_active, rubro_slug, source, primary_color, secondary_color, theme, catalog_layout, button_style, created_at, updated_at';
+
+/** Presets de fondo que consume el catálogo público (catalogTheme.js). */
+const VALID_TEMPLATE_THEMES = ['light', 'dark', 'pastel'];
+const isValidHexColor = (value) => /^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/.test(String(value || '').trim());
 
 /** Convierte texto a slug limpio (sin acentos, solo a-z0-9-). */
 function slugify(value) {
@@ -48,6 +52,11 @@ const mapTemplateFromDb = (row) => ({
   isActive: row?.is_active === true,
   rubroSlug: row?.rubro_slug || null,
   source: row?.source || 'custom',
+  primaryColor: row?.primary_color || null,
+  secondaryColor: row?.secondary_color || null,
+  theme: row?.theme || null,
+  catalogLayout: row?.catalog_layout || null,
+  buttonStyle: row?.button_style || null,
   createdAt: row?.created_at,
   updatedAt: row?.updated_at,
 });
@@ -149,6 +158,7 @@ export async function getTemplateForRubroSlug(rubroSlug) {
  *   categoriesCreated: number,
  *   logoApplied: boolean,
  *   bannerApplied: boolean,
+ *   designApplied: boolean,
  * }|null, error: object|null }>}
  */
 export async function applyTemplate(businessId, templateId, options = {}) {
@@ -176,6 +186,7 @@ export async function applyTemplate(businessId, templateId, options = {}) {
     categoriesCreated: 0,
     logoApplied: false,
     bannerApplied: false,
+    designApplied: false,
   };
 
   // ── Categorías: crear solo las que no existan (match por slug) ──
@@ -242,8 +253,10 @@ export async function applyTemplate(businessId, templateId, options = {}) {
     summary.productsCreated = inserted?.length ?? rows.length;
   }
 
-  // ── Branding: solo si falta, salvo overwriteBranding (confirmado) ──
-  if (applyBranding && (template.logoUrl || template.bannerUrl)) {
+  // ── Branding + identidad visual: solo si falta / sigue en defaults, salvo
+  // overwriteBranding (confirmado por el usuario) ──
+  const hasVisualIdentity = !!(template.primaryColor || template.secondaryColor || template.theme || template.catalogLayout);
+  if (applyBranding && (template.logoUrl || template.bannerUrl || hasVisualIdentity)) {
     const { data: biz, error: bizError } = await supabase
       ?.from('wa_businesses')
       ?.select('id, logo_url, cover_image_url, design_settings')
@@ -251,9 +264,10 @@ export async function applyTemplate(businessId, templateId, options = {}) {
       ?.single() ?? {};
     if (bizError) return { data: null, error: bizError };
 
-    const hasLogo = String(biz?.logo_url || biz?.design_settings?.logoUrl || '').trim() !== '';
+    const design = biz?.design_settings || {};
+    const hasLogo = String(biz?.logo_url || design?.logoUrl || '').trim() !== '';
     const hasCover = String(
-      biz?.cover_image_url || biz?.design_settings?.coverImageUrl || biz?.design_settings?.headerImageUrl || '',
+      biz?.cover_image_url || design?.coverImageUrl || design?.headerImageUrl || '',
     ).trim() !== '';
 
     const dbUpdates = {};
@@ -270,8 +284,37 @@ export async function applyTemplate(businessId, templateId, options = {}) {
       summary.bannerApplied = true;
     }
 
-    if (Object.keys(dbUpdates).length > 0) {
-      dbUpdates.design_settings = { ...(biz?.design_settings || {}), ...designUpdates };
+    // Identidad visual: cada campo se aplica solo si el negocio sigue en su
+    // valor por defecto — un color/tema elegido por el usuario nunca se pisa.
+    // Defaults reales: primaryColor '#7C3AED' (pre-llenado de /design) o
+    // '#25D366' (fallback de resolveCatalogTheme); template 'light';
+    // backgroundColor vacío; catalogLayout 'list'.
+    const currentPrimary = String(design?.primaryColor || '').trim().toUpperCase();
+    const primaryIsDefault = !isValidHexColor(currentPrimary) || currentPrimary === '#7C3AED' || currentPrimary === '#25D366';
+    if (template.primaryColor && (overwriteBranding || primaryIsDefault)) {
+      designUpdates.primaryColor = template.primaryColor;
+      summary.designApplied = true;
+    }
+
+    const currentTheme = String(design?.template || '').trim().toLowerCase();
+    if (template.theme && (overwriteBranding || !currentTheme || currentTheme === 'light')) {
+      designUpdates.template = template.theme;
+      summary.designApplied = true;
+    }
+
+    if (template.secondaryColor && (overwriteBranding || !isValidHexColor(design?.backgroundColor))) {
+      designUpdates.backgroundColor = template.secondaryColor;
+      summary.designApplied = true;
+    }
+
+    const currentLayout = String(design?.catalogLayout || '').trim();
+    if (template.catalogLayout && (overwriteBranding || !currentLayout || currentLayout === 'list')) {
+      designUpdates.catalogLayout = template.catalogLayout;
+      summary.designApplied = true;
+    }
+
+    if (Object.keys(dbUpdates).length > 0 || Object.keys(designUpdates).length > 0) {
+      dbUpdates.design_settings = { ...design, ...designUpdates };
       const { error: updateError } = await supabase
         ?.from('wa_businesses')
         ?.update(dbUpdates)
@@ -312,6 +355,11 @@ export async function duplicateTemplate(templateId) {
       is_active: false,
       rubro_slug: null,
       source: 'custom',
+      primary_color: template.primaryColor,
+      secondary_color: template.secondaryColor,
+      theme: template.theme,
+      catalog_layout: template.catalogLayout,
+      button_style: template.buttonStyle,
     })
     ?.select(TEMPLATE_FIELDS)
     ?.single() ?? {};
@@ -382,6 +430,18 @@ function buildTemplateDbPayload(input = {}) {
   if (input.rubroSlug !== undefined) {
     payload.rubro_slug = String(input.rubroSlug || '').trim().toLowerCase() || null;
   }
+  if (input.primaryColor !== undefined) {
+    payload.primary_color = isValidHexColor(input.primaryColor) ? String(input.primaryColor).trim() : null;
+  }
+  if (input.secondaryColor !== undefined) {
+    payload.secondary_color = isValidHexColor(input.secondaryColor) ? String(input.secondaryColor).trim() : null;
+  }
+  if (input.theme !== undefined) {
+    const theme = String(input.theme || '').trim().toLowerCase();
+    payload.theme = VALID_TEMPLATE_THEMES.includes(theme) ? theme : null;
+  }
+  if (input.catalogLayout !== undefined) payload.catalog_layout = String(input.catalogLayout || '').trim() || null;
+  if (input.buttonStyle !== undefined) payload.button_style = String(input.buttonStyle || '').trim() || null;
   return payload;
 }
 

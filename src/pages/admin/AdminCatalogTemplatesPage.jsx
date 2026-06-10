@@ -5,6 +5,7 @@ import BusinessSidebar from 'components/ui/BusinessSidebar';
 import { useIsDesktop } from 'hooks/useMediaQuery';
 import { getRubros } from 'services/waBusinessService';
 import { uploadTemplateImage } from 'services/mediaUploadService';
+import { resolveCatalogTheme, CATALOG_TEMPLATES as CATALOG_THEME_PRESETS } from 'utils/catalogTheme';
 import {
   getTemplates,
   getTemplate,
@@ -73,6 +74,46 @@ function TemplateImageField({ label, value, onChange, templateId, variant, hint 
   );
 }
 
+// ─── Apariencia: vista previa con el motor real del catálogo ──────────────────
+
+function AppearancePreview({ primaryColor, secondaryColor, theme }) {
+  const tokens = resolveCatalogTheme({
+    primaryColor: primaryColor || undefined,
+    backgroundColor: secondaryColor || undefined,
+    template: theme || undefined,
+  });
+  const accentGradient = `linear-gradient(135deg, ${tokens.primaryColor}, ${tokens.primaryColorDark})`;
+  return (
+    <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--color-border)' }}>
+      <div className="p-4 space-y-3" style={{ background: tokens.bgColor }}>
+        {/* Encabezado */}
+        <div className="rounded-lg px-3 py-2.5 flex items-center gap-2" style={{ background: accentGradient }}>
+          <div className="w-6 h-6 rounded-full bg-white/30 flex-shrink-0" />
+          <span className="text-xs font-bold text-white">Tu Tienda</span>
+          <span className="ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/25 text-white">Activa</span>
+        </div>
+        {/* Badge de categoría */}
+        <span
+          className="inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-bold"
+          style={{ background: tokens.primaryRgba(0.15), color: tokens.isDark ? tokens.primaryColor : tokens.primaryColorDark }}
+        >
+          Categoría
+        </span>
+        {/* Tarjeta de producto */}
+        <div className="rounded-lg border p-3" style={{ background: tokens.cardBg, borderColor: tokens.borderColor }}>
+          <div className="h-10 rounded-md mb-2" style={{ background: tokens.primaryRgba(0.12) }} />
+          <p className="text-xs font-bold" style={{ color: tokens.textColor }}>Producto de ejemplo</p>
+          <p className="text-[11px] font-bold mt-0.5" style={{ color: tokens.primaryColor }}>$9.990</p>
+        </div>
+        {/* Botón CTA */}
+        <div className="w-full rounded-lg py-2 text-center text-xs font-bold text-white" style={{ background: accentGradient }}>
+          Pedir por WhatsApp
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Editor de plantilla (cabecera + categorías + productos) ──────────────────
 
 const emptyCategory = () => ({ id: null, name: '', _key: Math.random().toString(36).slice(2) });
@@ -97,6 +138,7 @@ function TemplateEditor({ templateId, rubros, onBack, onSaved, notify }) {
   const [form, setForm] = useState({
     name: '', description: '', rubroSlug: '', isActive: false,
     logoUrl: '', bannerUrl: '', previewImageUrl: '',
+    primaryColor: '', secondaryColor: '', theme: '',
   });
   const [categories, setCategories] = useState([]);
   const [products, setProducts] = useState([]);
@@ -118,6 +160,7 @@ function TemplateEditor({ templateId, rubros, onBack, onSaved, notify }) {
         name: data.name, description: data.description, rubroSlug: data.rubroSlug || '',
         isActive: data.isActive, logoUrl: data.logoUrl || '', bannerUrl: data.bannerUrl || '',
         previewImageUrl: data.previewImageUrl || '',
+        primaryColor: data.primaryColor || '', secondaryColor: data.secondaryColor || '', theme: data.theme || '',
       });
       setCategories(data.categories.map((c) => ({ ...c, _key: c.id })));
       setProducts(data.products.map((p) => ({ ...p, imageUrl: p.imageUrl || '', categoryName: p.categoryName || '', _key: p.id })));
@@ -267,6 +310,100 @@ function TemplateEditor({ templateId, rubros, onBack, onSaved, notify }) {
           <TemplateImageField label="Logo" value={form.logoUrl} onChange={(v) => setField('logoUrl', v)} templateId={isNew ? undefined : templateId} variant="logo" />
           <TemplateImageField label="Portada / banner" value={form.bannerUrl} onChange={(v) => setField('bannerUrl', v)} templateId={isNew ? undefined : templateId} variant="banner" />
           <TemplateImageField label="Imagen de preview" value={form.previewImageUrl} onChange={(v) => setField('previewImageUrl', v)} templateId={isNew ? undefined : templateId} variant="preview" hint="Se muestra en el listado de plantillas" />
+        </div>
+      </section>
+
+      {/* ── Apariencia de la plantilla ── */}
+      <section className="rounded-xl border p-4 sm:p-5 bg-white space-y-4" style={{ borderColor: 'var(--color-border)' }}>
+        <div>
+          <h2 className="text-sm font-bold" style={{ color: 'var(--color-foreground)' }}>Apariencia de la plantilla</h2>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--color-muted-foreground)' }}>
+            Identidad visual que recibe el negocio al aplicar la plantilla. Solo se usa si el negocio
+            aún no personalizó sus colores o tema — nunca pisa cambios del usuario.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-5">
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--color-muted-foreground)' }}>Color principal</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={/^#[0-9a-fA-F]{6}$/.test(form.primaryColor) ? form.primaryColor : '#7C3AED'}
+                    onChange={(e) => setField('primaryColor', e.target.value)}
+                    className="w-10 h-10 rounded-lg border cursor-pointer flex-shrink-0"
+                    style={inputStyle}
+                    aria-label="Elegir color principal"
+                  />
+                  <input
+                    type="text"
+                    value={form.primaryColor}
+                    onChange={(e) => setField('primaryColor', e.target.value)}
+                    placeholder="#7C3AED"
+                    className={inputClass}
+                    style={inputStyle}
+                  />
+                  {form.primaryColor && (
+                    <button onClick={() => setField('primaryColor', '')} className="text-xs font-semibold flex-shrink-0 hover:opacity-70" style={{ color: 'var(--color-muted-foreground)' }}>
+                      Quitar
+                    </button>
+                  )}
+                </div>
+                <p className="mt-1 text-[11px]" style={{ color: 'var(--color-muted-foreground)' }}>Acento de botones, precios y badges.</p>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--color-muted-foreground)' }}>Color secundario (fondo, opcional)</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={/^#[0-9a-fA-F]{6}$/.test(form.secondaryColor) ? form.secondaryColor : '#F8F8FB'}
+                    onChange={(e) => setField('secondaryColor', e.target.value)}
+                    className="w-10 h-10 rounded-lg border cursor-pointer flex-shrink-0"
+                    style={inputStyle}
+                    aria-label="Elegir color secundario"
+                  />
+                  <input
+                    type="text"
+                    value={form.secondaryColor}
+                    onChange={(e) => setField('secondaryColor', e.target.value)}
+                    placeholder="Hereda del tema"
+                    className={inputClass}
+                    style={inputStyle}
+                  />
+                  {form.secondaryColor && (
+                    <button onClick={() => setField('secondaryColor', '')} className="text-xs font-semibold flex-shrink-0 hover:opacity-70" style={{ color: 'var(--color-muted-foreground)' }}>
+                      Quitar
+                    </button>
+                  )}
+                </div>
+                <p className="mt-1 text-[11px]" style={{ color: 'var(--color-muted-foreground)' }}>Tinte del fondo de página del catálogo.</p>
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--color-muted-foreground)' }}>Tema visual</label>
+              <div className="flex gap-2 flex-wrap">
+                {[{ id: '', label: 'Por defecto', description: 'Claro estándar' }, ...Object.values(CATALOG_THEME_PRESETS)].map((preset) => (
+                  <button
+                    key={preset.id || 'default'}
+                    type="button"
+                    onClick={() => setField('theme', preset.id)}
+                    className="px-3 py-2 rounded-lg border text-xs font-semibold transition-all"
+                    style={(form.theme || '') === preset.id
+                      ? { borderColor: 'var(--color-primary)', background: 'rgba(124,58,237,0.06)', color: 'var(--color-foreground)' }
+                      : { borderColor: 'var(--color-border)', color: 'var(--color-muted-foreground)' }}
+                  >
+                    {preset.label}
+                    <span className="block text-[10px] font-normal">{preset.description}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div>
+            <p className="text-[11px] font-semibold mb-1.5 uppercase tracking-wide" style={{ color: 'var(--color-muted-foreground)' }}>Vista previa</p>
+            <AppearancePreview primaryColor={form.primaryColor} secondaryColor={form.secondaryColor} theme={form.theme} />
+          </div>
         </div>
       </section>
 
@@ -564,6 +701,9 @@ export default function AdminCatalogTemplatesPage() {
                     <div className="flex-1 min-w-[180px]">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm font-bold" style={{ color: 'var(--color-foreground)' }}>{t.name}</span>
+                        {t.primaryColor && (
+                          <span className="w-3.5 h-3.5 rounded-full border flex-shrink-0" style={{ background: t.primaryColor, borderColor: 'var(--color-border)' }} title={`Color principal: ${t.primaryColor}`} />
+                        )}
                         <span
                           className="px-2 py-0.5 rounded-full text-[11px] font-bold"
                           style={t.isActive
