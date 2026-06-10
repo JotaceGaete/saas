@@ -731,16 +731,34 @@ export default function BusinessConfiguration() {
       }
 
       // Siembra automática de catálogo de ejemplo según el rubro recién guardado.
-      // Solo inserta si el negocio tiene 0 productos; si falla, el guardado igual fue exitoso.
+      // Solo inserta si el negocio no tiene productos reales; si falla, el guardado igual fue exitoso.
       let seededCount = 0;
       try {
-        const { created } = await seedTemplateProductsIfEmpty({
+        const selectedRubro =
+          currentRubro ?? rubros.find((r) => String(r?.id) === String(form?.rubroId)) ?? null;
+        console.log('[templates] selected rubro:', selectedRubro);
+
+        let rubroSlug = selectedRubro?.slug || null;
+        if (!rubroSlug && form?.rubroId) {
+          // Fallback: si la lista de rubros aún no cargó, leer el slug directo de wa_rubros.
+          const { data: rubroRow, error: rubroError } = await supabase
+            ?.from('wa_rubros')
+            ?.select('slug')
+            ?.eq('id', form.rubroId)
+            ?.maybeSingle();
+          if (rubroError) console.error('[templates] error leyendo wa_rubros:', rubroError);
+          rubroSlug = rubroRow?.slug || null;
+        }
+        console.log('[templates] rubroSlug enviado:', rubroSlug);
+
+        const seedResult = await seedTemplateProductsIfEmpty({
           businessId: bizId,
-          rubroSlug: currentRubro?.slug || null,
+          rubroSlug,
         });
-        seededCount = created || 0;
+        console.log('[templates] seed result:', seedResult);
+        seededCount = seedResult?.created || 0;
       } catch (seedError) {
-        console.error('[BusinessConfig] seedTemplateProductsIfEmpty exception:', seedError);
+        console.error('[templates] seedTemplateProductsIfEmpty exception:', seedError);
       }
 
       const formAfterAddr = {

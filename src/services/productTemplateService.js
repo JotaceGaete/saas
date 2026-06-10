@@ -5,29 +5,45 @@ import { getTemplateProductsForRubro } from '../utils/productTemplates';
  * Siembra productos de ejemplo en wa_products según el rubro del negocio.
  *
  * Automático e invisible: se llama al guardar el rubro principal en
- * /business-configuration. Solo inserta si el negocio tiene 0 productos
- * (de cualquier estado) y existe un template para el rubro. Los productos
- * quedan is_active=true y status='active' para que aparezcan de inmediato
- * en el catálogo; el usuario los edita después desde /product-editor.
+ * /business-configuration. Solo inserta si el negocio no tiene productos
+ * reales y existe un template para el rubro. Los borradores automáticos del
+ * editor (is_draft=true, invisibles para el usuario) no cuentan como
+ * productos reales y no bloquean la siembra. Los productos quedan
+ * is_active=true y status='active' para que aparezcan de inmediato en el
+ * catálogo; el usuario los edita después desde /product-editor.
  *
  * @param {{ businessId: string, rubroSlug: string }} params
- * @returns {Promise<{ created: number, skipped: boolean, error: object|null }>}
+ * @returns {Promise<{ created: number, skipped: boolean, reason: string|null, error: object|null }>}
  */
 export async function seedTemplateProductsIfEmpty({ businessId, rubroSlug }) {
-  if (!businessId || !rubroSlug) return { created: 0, skipped: true, error: null };
+  if (!businessId || !rubroSlug) {
+    return { created: 0, skipped: true, reason: 'missing-business-or-rubro-slug', error: null };
+  }
 
   const templateProducts = getTemplateProductsForRubro(rubroSlug);
-  if (templateProducts.length === 0) return { created: 0, skipped: true, error: null };
-
-  const { count, error: countError } = await supabase
-    ?.from('wa_products')
-    ?.select('id', { count: 'exact', head: true })
-    ?.eq('business_id', businessId);
-  if (countError) {
-    console.error('[productTemplateService] count error:', countError);
-    return { created: 0, skipped: true, error: countError };
+  if (templateProducts.length === 0) {
+    return { created: 0, skipped: true, reason: `no-template-for-rubro:${rubroSlug}`, error: null };
   }
-  if ((count ?? 0) > 0) return { created: 0, skipped: true, error: null };
+
+  const { data: existing, error: existingError } = await supabase
+    ?.from('wa_products')
+    ?.select('id, name, status, is_active, is_draft')
+    ?.eq('business_id', businessId)
+    ?.limit(50);
+  if (existingError) {
+    console.error('[templates] error consultando productos existentes:', existingError);
+    return { created: 0, skipped: true, reason: 'count-error', error: existingError };
+  }
+
+  const realProducts = (existing || []).filter((p) => p?.is_draft !== true);
+  console.log(
+    '[templates] productos existentes:', existing?.length ?? 0,
+    '| reales (no draft):', realProducts.length,
+    existing,
+  );
+  if (realProducts.length > 0) {
+    return { created: 0, skipped: true, reason: 'business-has-products', error: null };
+  }
 
   const rows = templateProducts.map((p, index) => ({
     business_id: businessId,
@@ -49,9 +65,9 @@ export async function seedTemplateProductsIfEmpty({ businessId, rubroSlug }) {
     ?.insert(rows)
     ?.select('id');
   if (error) {
-    console.error('[productTemplateService] insert error:', error);
-    return { created: 0, skipped: false, error };
+    console.error('[templates] insert error:', error);
+    return { created: 0, skipped: false, reason: 'insert-error', error };
   }
 
-  return { created: data?.length ?? rows.length, skipped: false, error: null };
+  return { created: data?.length ?? rows.length, skipped: false, reason: null, error: null };
 }
