@@ -5,7 +5,12 @@
       "Bash(grep -h \"ADD COLUMN\" /c/saas1/supabase/migrations/*.sql)",
       "Bash(grep -B 2 -A 20 \"ADD COLUMN.*design_settings\\\\|ADD COLUMN.*region\\\\|ADD COLUMN.*country_code\" /c/saas1/supabase/migrations/202603*.sql)",
       "Bash(grep -v '^\\\\.$')",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "mcp__Vercel__list_teams",
+      "mcp__Vercel__list_projects",
+      "mcp__Vercel__list_deployments",
+      "mcp__Vercel__web_fetch_vercel_url",
+      "mcp__Vercel__get_access_to_vercel_url"
     ]
   }
 }
