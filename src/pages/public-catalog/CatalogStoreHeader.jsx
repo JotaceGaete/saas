@@ -22,6 +22,7 @@ import { recordCatalogWhatsAppClick } from '../../services/waBusinessService';
 import { getPublicCatalogRelativePath } from '../../config/appUrl';
 import { normalizeTikTokUrl } from '../../utils/socialLinks';
 import { isRestaurantBusiness } from '../../utils/businessType';
+import { getCountryReferenceLocation } from '../../utils/countryReferenceLocation';
 
 // ─── Bloques de info reutilizados en acordeón mobile y barra desktop ──────────
 
@@ -65,8 +66,16 @@ function CatalogLocationCard({
   primaryColorDark,
   primaryRgba,
   theme,
+  referenceLocation = null,
 }) {
-  const cityLine = [business?.city, business?.region].filter(Boolean).join(', ');
+  // Modo referencial: el negocio no configuró dirección; se muestra una
+  // ubicación aproximada por país, marcada como tal. Sin link a mapas ni
+  // "Cómo llegar" — nunca presentarla como dirección real.
+  const isReference = !!referenceLocation;
+  const MapBox = isReference ? 'div' : 'a';
+  const cityLine = isReference
+    ? [referenceLocation?.city, referenceLocation?.country].filter(Boolean).join(', ')
+    : [business?.city, business?.region].filter(Boolean).join(', ');
   const hasPickup = design?.retiroEnTienda === true;
   const hasDelivery = (design?.shippingMethods ?? '').trim() !== '';
   const shippingCost = (design?.shippingCost ?? '').trim();
@@ -82,13 +91,21 @@ function CatalogLocationCard({
       style={{ background: cardBg, border: `1px solid ${theme?.borderColor ?? '#e5e7eb'}` }}
     >
       <div className="grid gap-0 sm:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
-        <a
-          href={mapsSearchUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="group relative min-h-[150px] overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset"
-          style={{ background: mapBg, '--tw-ring-color': primaryColor }}
-          aria-label="Ver mapa de ubicación"
+        <MapBox
+          {...(isReference
+            ? {
+                className: 'group relative min-h-[150px] overflow-hidden',
+                style: { background: mapBg },
+                'aria-label': 'Ubicación aproximada, dirección sin configurar',
+              }
+            : {
+                href: mapsSearchUrl,
+                target: '_blank',
+                rel: 'noopener noreferrer',
+                className: 'group relative min-h-[150px] overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset',
+                style: { background: mapBg, '--tw-ring-color': primaryColor },
+                'aria-label': 'Ver mapa de ubicación',
+              })}
         >
           <div className="absolute inset-0 opacity-70">
             <div className="absolute left-[-12%] top-[18%] h-px w-[125%] rotate-[-12deg] bg-white/80" />
@@ -97,7 +114,7 @@ function CatalogLocationCard({
             <div className="absolute right-[22%] top-[-16%] h-[140%] w-px rotate-[-22deg] bg-white/80" />
           </div>
           <div className="absolute left-4 top-4 rounded-full px-2.5 py-1 text-[11px] font-bold shadow-sm" style={{ background: 'rgba(255,255,255,0.9)', color: primaryColorDark }}>
-            Ver mapa
+            {isReference ? 'Ubicación aproximada' : 'Ver mapa'}
           </div>
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="relative">
@@ -109,9 +126,11 @@ function CatalogLocationCard({
           </div>
           <div className="absolute bottom-3 left-3 right-3 rounded-xl bg-white/88 px-3 py-2 shadow-sm backdrop-blur-sm transition-transform group-hover:-translate-y-0.5">
             <p className="truncate text-xs font-bold text-slate-900">{business?.name || 'Restaurante'}</p>
-            <p className="truncate text-[11px] text-slate-600">{cityLine || fullAddress}</p>
+            <p className="truncate text-[11px] text-slate-600">
+              {isReference ? `${cityLine} · referencial` : (cityLine || fullAddress)}
+            </p>
           </div>
-        </a>
+        </MapBox>
 
         <div className="flex min-w-0 flex-col gap-3 p-4">
           <div>
@@ -128,8 +147,24 @@ function CatalogLocationCard({
               <Icon name="MapPin" size={16} color={primaryColorDark} />
             </span>
             <div className="min-w-0">
-              <p className="text-sm font-bold leading-snug" style={{ color: theme?.textColor ?? '#111827' }}>{fullAddress}</p>
-              {cityLine && <p className="mt-0.5 text-xs" style={{ color: mutedColor }}>{cityLine}</p>}
+              {isReference ? (
+                <>
+                  <p className="text-sm font-bold leading-snug" style={{ color: theme?.textColor ?? '#111827' }}>
+                    Tu dirección aún no está configurada
+                  </p>
+                  <p className="mt-0.5 text-xs" style={{ color: mutedColor }}>
+                    {cityLine} (ubicación aproximada)
+                  </p>
+                  <p className="mt-1 text-xs" style={{ color: mutedColor }}>
+                    Configura tu dirección real desde Configuración
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm font-bold leading-snug" style={{ color: theme?.textColor ?? '#111827' }}>{fullAddress}</p>
+                  {cityLine && <p className="mt-0.5 text-xs" style={{ color: mutedColor }}>{cityLine}</p>}
+                </>
+              )}
             </div>
           </div>
 
@@ -154,17 +189,19 @@ function CatalogLocationCard({
             )}
           </div>
 
-          <div className="mt-auto grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <a
-              href={mapsSearchUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center justify-center gap-2 rounded-xl border px-3.5 py-2.5 text-sm font-bold transition-all hover:-translate-y-0.5 active:scale-[0.98]"
-              style={{ borderColor: theme?.borderColor ?? '#e5e7eb', color: theme?.textColor ?? '#111827' }}
-            >
-              <Icon name="Navigation" size={15} color="currentColor" />
-              Cómo llegar
-            </a>
+          <div className={`mt-auto grid grid-cols-1 gap-2 ${isReference ? '' : 'sm:grid-cols-2'}`}>
+            {!isReference && (
+              <a
+                href={mapsSearchUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center gap-2 rounded-xl border px-3.5 py-2.5 text-sm font-bold transition-all hover:-translate-y-0.5 active:scale-[0.98]"
+                style={{ borderColor: theme?.borderColor ?? '#e5e7eb', color: theme?.textColor ?? '#111827' }}
+              >
+                <Icon name="Navigation" size={15} color="currentColor" />
+                Cómo llegar
+              </a>
+            )}
             {storeWhatsAppUrl && (
               <a
                 href={storeWhatsAppUrl}
@@ -194,11 +231,13 @@ function CatalogInfoGrid({
   fullAddress,
   mapsSearchUrl,
   showAddressInCatalog,
+  referenceLocation = null,
   storeWhatsAppUrl,
   onWhatsAppClick,
   isRestaurant,
   theme,
 }) {
+  const showReferenceLocation = !showAddressInCatalog && !!referenceLocation;
   const blockProps = {
     sectionBg: theme?.sectionBg,
     borderColor: theme?.borderColor,
@@ -212,7 +251,7 @@ function CatalogInfoGrid({
           <span className="whitespace-pre-line">{design.businessHours.trim()}</span>
         </CatalogInfoBlock>
       )}
-      {showAddressInCatalog && (
+      {(showAddressInCatalog || showReferenceLocation) && (
         <CatalogLocationCard
           business={business}
           design={design}
@@ -225,6 +264,7 @@ function CatalogInfoGrid({
           primaryColorDark={primaryColorDark}
           primaryRgba={primaryRgba}
           theme={theme}
+          referenceLocation={showReferenceLocation ? referenceLocation : null}
         />
       )}
       {(design?.shippingMethods ?? '').trim() !== '' && !showAddressInCatalog && (
@@ -379,9 +419,19 @@ export default function CatalogStoreHeader({
   const mapsSearchUrl = buildMapsSearchUrl({ business, fullAddress });
   const showAddressInCatalog = design?.showAddress === true && fullAddress;
 
+  // Sin dirección configurada: ubicación referencial por país (solo
+  // presentación, marcada como aproximada; nunca se persiste como dirección).
+  const referenceLocation = !fullAddress
+    ? getCountryReferenceLocation(business?.countryCode || business?.countryCodeDb || business?.country)
+    : null;
+  if (referenceLocation) {
+    console.log('[templates] reference location mode:', referenceLocation);
+  }
+
   const hasCatalogInfo =
     (design?.businessHours ?? '').trim() !== '' ||
     showAddressInCatalog ||
+    !!referenceLocation ||
     (design?.shippingMethods ?? '').trim() !== '' ||
     (design?.shippingCost ?? '').trim() !== '' ||
     design?.retiroEnTienda === true;
@@ -802,6 +852,7 @@ export default function CatalogStoreHeader({
                           fullAddress={fullAddress}
                           mapsSearchUrl={mapsSearchUrl}
                           showAddressInCatalog={showAddressInCatalog}
+                          referenceLocation={referenceLocation}
                           storeWhatsAppUrl={storeWhatsAppUrl}
                           onWhatsAppClick={handleWaClick}
                           isRestaurant={isRestaurant}
@@ -842,6 +893,12 @@ export default function CatalogStoreHeader({
                     <span className="flex items-center gap-1.5 text-xs" style={{ color: theme?.isDark ? 'rgba(255,255,255,0.5)' : '#6B7280' }}>
                       <Icon name="MapPin" size={13} color={theme?.isDark ? 'rgba(255,255,255,0.4)' : '#9CA3AF'} aria-hidden />
                       {business.city}
+                    </span>
+                  )}
+                  {!showAddressInCatalog && referenceLocation && (
+                    <span className="flex items-center gap-1.5 text-xs" style={{ color: theme?.isDark ? 'rgba(255,255,255,0.5)' : '#6B7280' }}>
+                      <Icon name="MapPin" size={13} color={theme?.isDark ? 'rgba(255,255,255,0.4)' : '#9CA3AF'} aria-hidden />
+                      Ubicación aproximada
                     </span>
                   )}
                   {(design?.shippingMethods ?? '').trim() !== '' && (
@@ -889,6 +946,7 @@ export default function CatalogStoreHeader({
                         fullAddress={fullAddress}
                         mapsSearchUrl={mapsSearchUrl}
                         showAddressInCatalog={showAddressInCatalog}
+                        referenceLocation={referenceLocation}
                         storeWhatsAppUrl={storeWhatsAppUrl}
                         onWhatsAppClick={handleWaClick}
                         isRestaurant={isRestaurant}

@@ -8,6 +8,7 @@ import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
 import { updateBusiness, getMyBusiness, getRubros, getEffectivePlanSlug } from '../../services/waBusinessService';
 import { seedTemplateProductsIfEmpty } from '../../services/productTemplateService';
+import { DEMO_SOCIAL_LINKS } from '../../utils/productTemplates';
 import { supabase } from '../../lib/supabase';
 import StoreCreationStep from '../business-registration/components/StoreCreationStep';
 import WhatsAppMessageTemplate from './components/WhatsAppMessageTemplate';
@@ -770,6 +771,7 @@ export default function BusinessConfiguration() {
           didCreateProducts || seedResult?.reason === 'business-has-products';
         if (hasTemplateCatalog && seedResult?.branding) {
           const bizAfterSave = updated || business;
+
           const brandingPayload = {};
           if (seedResult.branding.logoUrl && !String(bizAfterSave?.logoUrl || '').trim()) {
             brandingPayload.logoUrl = seedResult.branding.logoUrl;
@@ -778,7 +780,25 @@ export default function BusinessConfiguration() {
             brandingPayload.coverImageUrl = seedResult.branding.coverImageUrl;
           }
           console.log('[templates] branding payload:', brandingPayload);
-          if (Object.keys(brandingPayload).length > 0) {
+
+          // Redes demo de Ventalink: solo si el negocio no tiene ninguna red
+          // y nunca se aplicaron antes (flag demoSocialLinksApplied evita
+          // re-forzarlas si el usuario las edita o borra después).
+          const socialPayload = {};
+          const hasAnySocial = [
+            bizAfterSave?.instagramUrl,
+            bizAfterSave?.tiktokUrl,
+            bizAfterSave?.facebookUrl,
+          ].some((v) => String(v || '').trim() !== '');
+          if (!hasAnySocial && designAfterBranding?.demoSocialLinksApplied !== true) {
+            socialPayload.instagramUrl = DEMO_SOCIAL_LINKS.instagramUrl;
+            socialPayload.facebookUrl = DEMO_SOCIAL_LINKS.facebookUrl;
+            socialPayload.tiktokUrl = DEMO_SOCIAL_LINKS.tiktokUrl;
+          }
+          console.log('[templates] social demo payload:', socialPayload);
+
+          const onboardingPayload = { ...brandingPayload, ...socialPayload };
+          if (Object.keys(onboardingPayload).length > 0) {
             designAfterBranding = {
               ...designAfterBranding,
               ...(brandingPayload.logoUrl ? { logoUrl: brandingPayload.logoUrl } : {}),
@@ -788,17 +808,19 @@ export default function BusinessConfiguration() {
                     headerImageUrl: brandingPayload.coverImageUrl,
                   }
                 : {}),
+              ...(Object.keys(socialPayload).length > 0 ? { demoSocialLinksApplied: true } : {}),
             };
             // designSettings va incluido para que /design y la rehidratación de
             // esta página lean logo/portada desde el JSON persistido; sin esto,
             // el estado local se pisaría con los valores vacíos antiguos.
             const { data: brandedBiz, error: brandingError } = await updateBusiness(bizId, {
-              ...brandingPayload,
+              ...onboardingPayload,
               designSettings: designAfterBranding,
             });
             console.log('[templates] branding update result:', {
               logoUrl: brandedBiz?.logoUrl,
               coverImageUrl: brandedBiz?.coverImageUrl,
+              instagramUrl: brandedBiz?.instagramUrl,
               error: brandingError,
             });
             if (brandingError) {
