@@ -24,6 +24,10 @@ import { normalizeTikTokUrl } from '../../utils/socialLinks';
 import { isRestaurantBusiness } from '../../utils/businessType';
 import { getCountryReferenceLocation } from '../../utils/countryReferenceLocation';
 
+// Mapa real (Leaflet) de la tarjeta "Dónde estamos": lazy para no cargar
+// leaflet/react-leaflet en catálogos sin coordenadas configuradas.
+const PublicLocationMap = React.lazy(() => import('./PublicLocationMap'));
+
 /**
  * Logos data: (SVG de template) van directo al <img>, sin pasar por
  * Cloudflare Images ni transformadores; el resto usa el preset thumbnail.
@@ -110,6 +114,12 @@ function CatalogLocationCard({
   // "Cómo llegar" — nunca presentarla como dirección real.
   const isReference = !!referenceLocation;
   const MapBox = isReference ? 'div' : 'a';
+  // Mapa real solo con coordenadas guardadas (LocationPicker); sin lat/lng se
+  // mantiene el placeholder decorativo de siempre.
+  const lat = business?.lat ?? business?.latitude;
+  const lng = business?.lng ?? business?.longitude;
+  const hasCoords = !isReference && lat != null && lng != null
+    && Number.isFinite(Number(lat)) && Number.isFinite(Number(lng));
   const cityLine = isReference
     ? [referenceLocation?.city, referenceLocation?.country].filter(Boolean).join(', ')
     : [business?.city, business?.region].filter(Boolean).join(', ');
@@ -144,23 +154,31 @@ function CatalogLocationCard({
                 'aria-label': 'Ver mapa de ubicación',
               })}
         >
-          <div className="absolute inset-0 opacity-70">
-            <div className="absolute left-[-12%] top-[18%] h-px w-[125%] rotate-[-12deg] bg-white/80" />
-            <div className="absolute left-[-16%] top-[56%] h-px w-[135%] rotate-[9deg] bg-white/80" />
-            <div className="absolute left-[15%] top-[-18%] h-[150%] w-px rotate-[18deg] bg-white/80" />
-            <div className="absolute right-[22%] top-[-16%] h-[140%] w-px rotate-[-22deg] bg-white/80" />
-          </div>
+          {hasCoords ? (
+            <React.Suspense fallback={null}>
+              <PublicLocationMap lat={lat} lng={lng} primaryColor={primaryColor} />
+            </React.Suspense>
+          ) : (
+            <div className="absolute inset-0 opacity-70">
+              <div className="absolute left-[-12%] top-[18%] h-px w-[125%] rotate-[-12deg] bg-white/80" />
+              <div className="absolute left-[-16%] top-[56%] h-px w-[135%] rotate-[9deg] bg-white/80" />
+              <div className="absolute left-[15%] top-[-18%] h-[150%] w-px rotate-[18deg] bg-white/80" />
+              <div className="absolute right-[22%] top-[-16%] h-[140%] w-px rotate-[-22deg] bg-white/80" />
+            </div>
+          )}
           <div className="absolute left-4 top-4 rounded-full px-2.5 py-1 text-[11px] font-bold shadow-sm" style={{ background: 'rgba(255,255,255,0.9)', color: primaryColorDark }}>
             {isReference ? 'Ubicación aproximada' : 'Ver mapa'}
           </div>
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="relative">
-              <span className="absolute inset-0 rounded-full opacity-25 blur-md" style={{ background: primaryColor, transform: 'scale(1.9)' }} />
-              <span className="relative flex h-14 w-14 items-center justify-center rounded-full text-white shadow-xl ring-4 ring-white/80" style={{ background: `linear-gradient(135deg, ${primaryColor}, ${primaryColorDark})` }}>
-                <Icon name="MapPin" size={26} color="#FFFFFF" />
-              </span>
+          {!hasCoords && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="relative">
+                <span className="absolute inset-0 rounded-full opacity-25 blur-md" style={{ background: primaryColor, transform: 'scale(1.9)' }} />
+                <span className="relative flex h-14 w-14 items-center justify-center rounded-full text-white shadow-xl ring-4 ring-white/80" style={{ background: `linear-gradient(135deg, ${primaryColor}, ${primaryColorDark})` }}>
+                  <Icon name="MapPin" size={26} color="#FFFFFF" />
+                </span>
+              </div>
             </div>
-          </div>
+          )}
           <div className="absolute bottom-3 left-3 right-3 rounded-xl bg-white/88 px-3 py-2 shadow-sm backdrop-blur-sm transition-transform group-hover:-translate-y-0.5">
             <p className="truncate text-xs font-bold text-slate-900">{business?.name || 'Restaurante'}</p>
             <p className="truncate text-[11px] text-slate-600">
