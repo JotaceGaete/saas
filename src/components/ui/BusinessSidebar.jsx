@@ -17,7 +17,7 @@ const NAV_ITEMS = [
   { label: 'Pedidos', path: '/orders', icon: 'ShoppingCart' },
   { label: 'Historial pedidos', path: '/orders/historial', icon: 'History' },
   { label: 'CRM', path: '/crm', icon: 'LayoutDashboard' },
-  { label: 'Proveedores', path: '/proveedores', icon: 'Truck' },
+  { label: 'Compras', path: '/proveedores', icon: 'Receipt' },
   { label: 'Configuración', path: '/business-configuration', icon: 'Settings' },
   { label: 'Diseño', path: '/design', icon: 'Palette' },
   { label: 'Plan y facturación', path: '/planes', icon: 'CreditCard' },
