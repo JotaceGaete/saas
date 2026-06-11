@@ -39,6 +39,11 @@ export function templateToPreviewData({ form, categories = [], products = [] }) 
       template: form?.theme || undefined,
       backgroundColor: form?.secondaryColor || undefined,
       useCategories: categoryNames.length > 0,
+      // 'cover' es el único template del header cuyo markup (banner + tarjeta)
+      // se comparte entre móvil y desktop. Los otros dependen de media queries
+      // del viewport del navegador, que dentro del mockup de 300px mostrarían
+      // la rama desktop aplastada y ocultarían el banner móvil.
+      headerTemplate: 'cover',
       storeHeader: { showStoreName: true, showDescription: true, showWhatsAppButton: true },
       cardSettings: { showPrice: true, showDescription: true, showWhatsApp: true },
     },
@@ -59,6 +64,25 @@ export function templateToPreviewData({ form, categories = [], products = [] }) 
       isActive: true,
       showPrice: true,
     }));
+
+  // Plantilla con pocos productos: rellenar con placeholders (sin imagen,
+  // CatalogImage muestra su fallback) para que el preview transmita cómo se
+  // verá un catálogo poblado.
+  for (let i = previewProducts.length; i < 4; i += 1) {
+    previewProducts.push({
+      id: `placeholder-${i}`,
+      name: `Producto de ejemplo ${i + 1}`,
+      description: 'Así se verá un producto de esta plantilla.',
+      price: 9990,
+      category: categoryNames[0] || null,
+      imageUrl: null,
+      images: [],
+      cardImageUrl: null,
+      thumbnailUrl: null,
+      isActive: true,
+      showPrice: true,
+    });
+  }
 
   return { business, products: previewProducts, categoryNames };
 }
@@ -134,20 +158,42 @@ export function TemplateCatalogPreview({ form, categories, products, isDesktop =
 }
 
 /**
- * Marco de teléfono. El transform va en la "pantalla" (que no scrollea) y el
- * scroll en un div interior: así el header position:fixed del catálogo toma
- * la pantalla como containing block, escapa del scroller y queda anclado
- * arriba mientras el contenido se desplaza — igual que en el catálogo real.
+ * Marco de teléfono de 300px que renderiza el contenido a ancho real móvil
+ * (390px, como un iPhone estándar) y lo escala con transform: así los
+ * paddings, el grid de 2 columnas y las tipografías del catálogo se ven en
+ * su proporción real. El scroller interno (escalado) mantiene scroll real;
+ * el transform además lo vuelve containing block de los position:fixed del
+ * catálogo, conteniéndolos dentro del marco.
+ *
+ * resetKey: cambia (p. ej. templateId) → el scroll vuelve arriba.
  */
-export function PhoneMockup({ children }) {
+const PHONE_FRAME_WIDTH = 300;
+const PHONE_FRAME_HEIGHT = 580;
+const PHONE_CONTENT_WIDTH = 390;
+const PHONE_SCALE = PHONE_FRAME_WIDTH / PHONE_CONTENT_WIDTH;
+
+export function PhoneMockup({ children, resetKey }) {
+  const scrollRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+  }, [resetKey]);
+
   return (
     <div className="mx-auto w-[300px]">
       <div className="rounded-[2.2rem] border-[7px] border-slate-900 bg-slate-900 shadow-2xl overflow-hidden">
-        <div
-          className="relative bg-white overflow-hidden"
-          style={{ height: 580, transform: 'translateZ(0)' }}
-        >
-          <div className="h-full overflow-y-auto overscroll-contain" style={{ scrollbarWidth: 'none' }}>
+        <div className="relative bg-white overflow-hidden" style={{ height: PHONE_FRAME_HEIGHT }}>
+          <div
+            ref={scrollRef}
+            className="overflow-y-auto overscroll-contain"
+            style={{
+              width: PHONE_CONTENT_WIDTH,
+              height: PHONE_FRAME_HEIGHT / PHONE_SCALE,
+              transform: `scale(${PHONE_SCALE})`,
+              transformOrigin: 'top left',
+              scrollbarWidth: 'none',
+            }}
+          >
             {children}
           </div>
         </div>

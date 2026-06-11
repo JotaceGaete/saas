@@ -381,7 +381,7 @@ function TemplateEditor({ templateId, rubros, onBack, onSaved, notify }) {
                 <Icon name="Maximize2" size={11} color="currentColor" /> Abrir preview completo
               </button>
             </div>
-            <PhoneMockup>
+            <PhoneMockup resetKey={templateId}>
               <TemplateCatalogPreview form={form} categories={categories} products={products} />
             </PhoneMockup>
             <p className="mt-2 text-[11px] text-center" style={{ color: 'var(--color-muted-foreground)' }}>
