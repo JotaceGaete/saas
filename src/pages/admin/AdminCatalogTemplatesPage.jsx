@@ -5,7 +5,8 @@ import BusinessSidebar from 'components/ui/BusinessSidebar';
 import { useIsDesktop } from 'hooks/useMediaQuery';
 import { getRubros } from 'services/waBusinessService';
 import { uploadTemplateImage } from 'services/mediaUploadService';
-import { resolveCatalogTheme, CATALOG_TEMPLATES as CATALOG_THEME_PRESETS } from 'utils/catalogTheme';
+import { CATALOG_TEMPLATES as CATALOG_THEME_PRESETS } from 'utils/catalogTheme';
+import { TemplateCatalogPreview, PhoneMockup, TemplateFullPreviewModal } from './components/TemplateCatalogPreview';
 import {
   getTemplates,
   getTemplate,
@@ -74,46 +75,6 @@ function TemplateImageField({ label, value, onChange, templateId, variant, hint 
   );
 }
 
-// ─── Apariencia: vista previa con el motor real del catálogo ──────────────────
-
-function AppearancePreview({ primaryColor, secondaryColor, theme }) {
-  const tokens = resolveCatalogTheme({
-    primaryColor: primaryColor || undefined,
-    backgroundColor: secondaryColor || undefined,
-    template: theme || undefined,
-  });
-  const accentGradient = `linear-gradient(135deg, ${tokens.primaryColor}, ${tokens.primaryColorDark})`;
-  return (
-    <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--color-border)' }}>
-      <div className="p-4 space-y-3" style={{ background: tokens.bgColor }}>
-        {/* Encabezado */}
-        <div className="rounded-lg px-3 py-2.5 flex items-center gap-2" style={{ background: accentGradient }}>
-          <div className="w-6 h-6 rounded-full bg-white/30 flex-shrink-0" />
-          <span className="text-xs font-bold text-white">Tu Tienda</span>
-          <span className="ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/25 text-white">Activa</span>
-        </div>
-        {/* Badge de categoría */}
-        <span
-          className="inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-bold"
-          style={{ background: tokens.primaryRgba(0.15), color: tokens.isDark ? tokens.primaryColor : tokens.primaryColorDark }}
-        >
-          Categoría
-        </span>
-        {/* Tarjeta de producto */}
-        <div className="rounded-lg border p-3" style={{ background: tokens.cardBg, borderColor: tokens.borderColor }}>
-          <div className="h-10 rounded-md mb-2" style={{ background: tokens.primaryRgba(0.12) }} />
-          <p className="text-xs font-bold" style={{ color: tokens.textColor }}>Producto de ejemplo</p>
-          <p className="text-[11px] font-bold mt-0.5" style={{ color: tokens.primaryColor }}>$9.990</p>
-        </div>
-        {/* Botón CTA */}
-        <div className="w-full rounded-lg py-2 text-center text-xs font-bold text-white" style={{ background: accentGradient }}>
-          Pedir por WhatsApp
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─── Editor de plantilla (cabecera + categorías + productos) ──────────────────
 
 const emptyCategory = () => ({ id: null, name: '', _key: Math.random().toString(36).slice(2) });
@@ -142,6 +103,14 @@ function TemplateEditor({ templateId, rubros, onBack, onSaved, notify }) {
   });
   const [categories, setCategories] = useState([]);
   const [products, setProducts] = useState([]);
+  const [previewOpen, setPreviewOpen] = useState(false);
+
+  useEffect(() => {
+    if (!previewOpen) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') setPreviewOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [previewOpen]);
 
   useEffect(() => {
     if (isNew) return;
@@ -322,7 +291,7 @@ function TemplateEditor({ templateId, rubros, onBack, onSaved, notify }) {
             aún no personalizó sus colores o tema — nunca pisa cambios del usuario.
           </p>
         </div>
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-5">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-5">
           <div className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
@@ -401,8 +370,23 @@ function TemplateEditor({ templateId, rubros, onBack, onSaved, notify }) {
             </div>
           </div>
           <div>
-            <p className="text-[11px] font-semibold mb-1.5 uppercase tracking-wide" style={{ color: 'var(--color-muted-foreground)' }}>Vista previa</p>
-            <AppearancePreview primaryColor={form.primaryColor} secondaryColor={form.secondaryColor} theme={form.theme} />
+            <div className="flex items-center justify-between mb-1.5">
+              <p className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--color-muted-foreground)' }}>Vista previa en vivo</p>
+              <button
+                type="button"
+                onClick={() => setPreviewOpen(true)}
+                className="inline-flex items-center gap-1 text-[11px] font-semibold hover:opacity-75"
+                style={{ color: 'var(--color-primary)' }}
+              >
+                <Icon name="Maximize2" size={11} color="currentColor" /> Abrir preview completo
+              </button>
+            </div>
+            <PhoneMockup>
+              <TemplateCatalogPreview form={form} categories={categories} products={products} />
+            </PhoneMockup>
+            <p className="mt-2 text-[11px] text-center" style={{ color: 'var(--color-muted-foreground)' }}>
+              Renderizado con los componentes reales del catálogo público.
+            </p>
           </div>
         </div>
       </section>
@@ -545,6 +529,15 @@ function TemplateEditor({ templateId, rubros, onBack, onSaved, notify }) {
             </div>
           </section>
         </>
+      )}
+
+      {previewOpen && (
+        <TemplateFullPreviewModal
+          form={form}
+          categories={categories}
+          products={products}
+          onClose={() => setPreviewOpen(false)}
+        />
       )}
     </div>
   );
