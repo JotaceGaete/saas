@@ -373,6 +373,8 @@ const mapBusinessFromDb = (row) => {
   currency: row?.currency,
   logoUrl: row?.logo_url || designSettings?.logoUrl || null,
   coverImageUrl: designSettings?.headerImageUrl || designSettings?.coverImageUrl || row?.cover_image_url || null,
+  lat: row?.lat != null ? parseFloat(row.lat) : null,
+  lng: row?.lng != null ? parseFloat(row.lng) : null,
   ogImageUrl: row?.og_image_url || null,
   slug: row?.slug,
   isActive: row?.is_active,
@@ -786,6 +788,8 @@ export async function updateBusiness(businessId, updates) {
 
   if (updates?.logoUrl !== undefined)     dbUpdates.logo_url = updates?.logoUrl;
   if (updates?.coverImageUrl !== undefined) dbUpdates.cover_image_url = updates?.coverImageUrl;
+  if (updates?.lat !== undefined) dbUpdates.lat = updates?.lat ?? null;
+  if (updates?.lng !== undefined) dbUpdates.lng = updates?.lng ?? null;
   if (updates?.slug !== undefined)        dbUpdates.slug = updates?.slug;
   if (updates?.isActive !== undefined)    dbUpdates.is_active = updates?.isActive;
   if (updates?.designSettings !== undefined) dbUpdates.design_settings = updates?.designSettings;
