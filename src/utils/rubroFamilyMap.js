@@ -46,7 +46,9 @@ export const RUBRO_FAMILY_MAP = {
   // moda
   ropa: 'moda',
   'moda-y-accesorios': 'moda',
+  'accesorio-de-moda': 'moda',
   calzado: 'moda',
+  zapateria: 'moda',
   accesorios: 'moda',
   joyeria: 'moda',
   lenceria: 'moda',
@@ -58,11 +60,13 @@ export const RUBRO_FAMILY_MAP = {
   cafeteria: 'comida',
   pasteleria: 'comida',
   panaderia: 'comida',
+  'panaderia-y-pasteleria': 'comida',
   heladeria: 'comida',
   bar: 'comida',
   delivery: 'comida',
   catering: 'comida',
   // belleza
+  'belleza-y-cuidado-personal': 'belleza',
   peluqueria: 'belleza',
   barberia: 'belleza',
   unas: 'belleza',
@@ -85,13 +89,16 @@ export const RUBRO_FAMILY_MAP = {
   clases: 'servicios',
   abogados: 'servicios',
   contabilidad: 'servicios',
+  papeleria: 'servicios',
   // hogar
   hogar: 'hogar',
+  'hogar-y-decoracion': 'hogar',
   muebles: 'hogar',
   decoracion: 'hogar',
   ferreteria: 'hogar',
   electrodomesticos: 'hogar',
   pintura: 'hogar',
+  vivero: 'hogar',
   // mascotas
   mascotas: 'mascotas',
   veterinaria: 'mascotas',
@@ -99,6 +106,7 @@ export const RUBRO_FAMILY_MAP = {
   'accesorios-mascotas': 'mascotas',
   // tecnologia
   tecnologia: 'tecnologia',
+  'tecnologia-y-electronica': 'tecnologia',
   electronica: 'tecnologia',
   computacion: 'tecnologia',
   celulares: 'tecnologia',
@@ -111,6 +119,7 @@ export const RUBRO_FAMILY_MAP = {
   nutricion: 'salud',
   suplementos: 'salud',
   deporte: 'salud',
+  'bienestar-y-deporte': 'salud',
   fitness: 'salud',
   psicologia: 'salud',
   // automotriz
@@ -125,6 +134,9 @@ export const RUBRO_FAMILY_MAP = {
   souvenir: 'regalos',
   artesanias: 'regalos',
   juguetes: 'regalos',
+  'packaging-envases-y-embalajes': 'regalos',
+  'productos-personalizados': 'regalos',
+  ninos: 'regalos',
 };
 
 /** Devuelve la familia de un rubro, o null si no está mapeado. */
