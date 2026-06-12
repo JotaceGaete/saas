@@ -6,6 +6,7 @@ import { useIsDesktop } from 'hooks/useMediaQuery';
 import { getRubros } from 'services/waBusinessService';
 import { uploadTemplateImage } from 'services/mediaUploadService';
 import { CATALOG_TEMPLATES as CATALOG_THEME_PRESETS } from 'utils/catalogTheme';
+import { TEMPLATE_FAMILIES, TEMPLATE_FAMILY_LABELS } from 'utils/rubroFamilyMap';
 import { TemplateCatalogPreview, PhoneMockup, TemplateFullPreviewModal } from './components/TemplateCatalogPreview';
 import {
   getTemplates,
@@ -97,7 +98,7 @@ function TemplateEditor({ templateId, rubros, onBack, onSaved, notify }) {
   const [saving, setSaving] = useState(false);
   const [template, setTemplate] = useState(null);
   const [form, setForm] = useState({
-    name: '', description: '', rubroSlug: '', isActive: false,
+    name: '', description: '', rubroSlug: '', familySlug: '', isActive: false,
     logoUrl: '', bannerUrl: '', previewImageUrl: '',
     primaryColor: '', secondaryColor: '', theme: '',
   });
@@ -127,6 +128,7 @@ function TemplateEditor({ templateId, rubros, onBack, onSaved, notify }) {
       setTemplate(data);
       setForm({
         name: data.name, description: data.description, rubroSlug: data.rubroSlug || '',
+        familySlug: data.familySlug || '',
         isActive: data.isActive, logoUrl: data.logoUrl || '', bannerUrl: data.bannerUrl || '',
         previewImageUrl: data.previewImageUrl || '',
         primaryColor: data.primaryColor || '', secondaryColor: data.secondaryColor || '', theme: data.theme || '',
@@ -254,17 +256,47 @@ function TemplateEditor({ templateId, rubros, onBack, onSaved, notify }) {
             <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--color-muted-foreground)' }}>Nombre *</label>
             <input type="text" value={form.name} onChange={(e) => setField('name', e.target.value)} placeholder="Ej: Artículos de fiesta" className={inputClass} style={inputStyle} />
           </div>
-          <div>
-            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--color-muted-foreground)' }}>Rubro asociado (onboarding)</label>
-            <select value={form.rubroSlug} onChange={(e) => setField('rubroSlug', e.target.value)} className={inputClass} style={inputStyle}>
-              <option value="">Sin rubro (solo uso manual)</option>
-              {rubros.map((r) => (
-                <option key={r.id} value={r.slug}>{r.name} ({r.slug})</option>
-              ))}
-            </select>
-            <p className="mt-1 text-[11px]" style={{ color: 'var(--color-muted-foreground)' }}>
-              Asocia una plantilla a un rubro para que los nuevos usuarios reciban un catálogo listo para editar.
+          <div className="sm:col-span-2 rounded-xl border p-3 space-y-3" style={{ borderColor: 'var(--color-border)', background: 'rgba(124,58,237,0.03)' }}>
+            <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: 'var(--color-primary)' }}>
+              Asignación de onboarding
             </p>
+            <div className="rounded-lg px-3 py-2 text-[11px] leading-relaxed" style={{ background: 'rgba(245,158,11,0.08)', color: '#92400E' }}>
+              <strong>Guía de uso:</strong> usa <em>Familia</em> para escalar — un buen template cubre decenas de rubros.
+              Usa <em>Rubro exacto</em> solo para casos especiales donde necesitas un catálogo 100% personalizado para ese rubro.<br />
+              Prioridad de resolución: <strong>rubro exacto → familia → universal</strong>.
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--color-muted-foreground)' }}>Familia (recomendado)</label>
+                <select value={form.familySlug} onChange={(e) => setField('familySlug', e.target.value)} className={inputClass} style={inputStyle}>
+                  <option value="">Sin familia</option>
+                  {TEMPLATE_FAMILIES.map((f) => (
+                    <option key={f} value={f}>{TEMPLATE_FAMILY_LABELS[f]} ({f})</option>
+                  ))}
+                </select>
+                <p className="mt-1 text-[11px]" style={{ color: 'var(--color-muted-foreground)' }}>
+                  {form.familySlug === 'universal'
+                    ? 'Fallback general: cualquier rubro sin plantilla propia ni familia.'
+                    : form.familySlug
+                      ? `Sirve a todos los rubros de la familia "${form.familySlug}" que no tengan plantilla exacta.`
+                      : 'Sin familia: la plantilla solo aplica por rubro exacto o uso manual.'}
+                </p>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--color-muted-foreground)' }}>Rubro exacto (opcional)</label>
+                <select value={form.rubroSlug} onChange={(e) => setField('rubroSlug', e.target.value)} className={inputClass} style={inputStyle}>
+                  <option value="">Sin rubro específico</option>
+                  {rubros.map((r) => (
+                    <option key={r.id} value={r.slug}>{r.name} ({r.slug})</option>
+                  ))}
+                </select>
+                <p className="mt-1 text-[11px]" style={{ color: 'var(--color-muted-foreground)' }}>
+                  {form.rubroSlug
+                    ? 'Máxima prioridad: gana sobre familia y universal para este rubro.'
+                    : 'Deja vacío si quieres que la familia cubra todos los rubros del grupo.'}
+                </p>
+              </div>
+            </div>
           </div>
           <div className="sm:col-span-2">
             <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--color-muted-foreground)' }}>Descripción</label>

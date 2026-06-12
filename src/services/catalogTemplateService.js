@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { getFamilyForRubro } from '../utils/rubroFamilyMap';
 
 /**
  * Biblioteca de plantillas de catálogo (catalog_templates).
@@ -22,7 +23,7 @@ import { supabase } from '../lib/supabase';
  */
 
 const TEMPLATE_FIELDS =
-  'id, name, slug, description, category, preview_image_url, banner_url, logo_url, is_active, rubro_slug, source, primary_color, secondary_color, theme, catalog_layout, button_style, created_at, updated_at';
+  'id, name, slug, description, category, preview_image_url, banner_url, logo_url, is_active, rubro_slug, family_slug, source, primary_color, secondary_color, theme, catalog_layout, button_style, created_at, updated_at';
 
 /** Presets de fondo que consume el catálogo público (catalogTheme.js). */
 const VALID_TEMPLATE_THEMES = ['light', 'dark', 'pastel'];
@@ -51,6 +52,7 @@ const mapTemplateFromDb = (row) => ({
   logoUrl: row?.logo_url || null,
   isActive: row?.is_active === true,
   rubroSlug: row?.rubro_slug || null,
+  familySlug: row?.family_slug || null,
   source: row?.source || 'custom',
   primaryColor: row?.primary_color || null,
   secondaryColor: row?.secondary_color || null,
@@ -121,24 +123,63 @@ export async function getTemplate(templateId) {
 }
 
 /**
- * Devuelve la plantilla de onboarding para un slug de rubro, o null si no hay.
- * Equivalente DB de getTemplateForRubro(rubroSlug) en productTemplates.js;
- * pensada para que el onboarding migre a leer desde la biblioteca (fase 3 del
- * plan) manteniendo el JS hardcodeado como fallback.
+ * Devuelve la plantilla de onboarding para un slug de rubro usando 3 niveles:
+ *   1. Rubro exacto  — catalog_templates.rubro_slug = rubroSlug (prioridad máxima)
+ *   2. Familia       — family_slug = RUBRO_FAMILY_MAP[rubroSlug], sin rubro_slug
+ *   3. Universal     — family_slug = 'universal', sin rubro_slug
+ *
+ * Emite logs de diagnóstico en desarrollo ([templates:resolve]).
  */
 export async function getTemplateForRubroSlug(rubroSlug) {
   const normalized = String(rubroSlug || '').trim().toLowerCase();
   if (!normalized) return { data: null, error: null };
 
-  const { data, error } = await supabase
+  // ── Nivel 1: rubro exacto ────────────────────────────────────────────────
+  const { data: exactRow, error: exactError } = (await supabase
     ?.from('catalog_templates')
     ?.select('id')
     ?.eq('rubro_slug', normalized)
     ?.eq('is_active', true)
-    ?.maybeSingle() ?? {};
-  if (error || !data?.id) return { data: null, error: error || null };
+    ?.maybeSingle()) ?? {};
+  if (exactError) return { data: null, error: exactError };
+  if (exactRow?.id) {
+    if (import.meta.env.DEV) console.log('[templates:resolve]', { rubroSlug: normalized, level: 'exact', templateId: exactRow.id });
+    return getTemplate(exactRow.id);
+  }
 
-  return getTemplate(data.id);
+  // ── Nivel 2: familia ─────────────────────────────────────────────────────
+  const family = getFamilyForRubro(normalized);
+  if (family) {
+    const { data: familyRow, error: familyError } = (await supabase
+      ?.from('catalog_templates')
+      ?.select('id')
+      ?.eq('family_slug', family)
+      ?.is('rubro_slug', null)
+      ?.eq('is_active', true)
+      ?.maybeSingle()) ?? {};
+    if (familyError) return { data: null, error: familyError };
+    if (familyRow?.id) {
+      if (import.meta.env.DEV) console.log('[templates:resolve]', { rubroSlug: normalized, level: 'family', family, templateId: familyRow.id });
+      return getTemplate(familyRow.id);
+    }
+  }
+
+  // ── Nivel 3: universal ───────────────────────────────────────────────────
+  const { data: universalRow, error: universalError } = (await supabase
+    ?.from('catalog_templates')
+    ?.select('id')
+    ?.eq('family_slug', 'universal')
+    ?.is('rubro_slug', null)
+    ?.eq('is_active', true)
+    ?.maybeSingle()) ?? {};
+  if (universalError) return { data: null, error: universalError };
+  if (universalRow?.id) {
+    if (import.meta.env.DEV) console.log('[templates:resolve]', { rubroSlug: normalized, level: 'universal', family: family || null, templateId: universalRow.id });
+    return getTemplate(universalRow.id);
+  }
+
+  if (import.meta.env.DEV) console.log('[templates:resolve]', { rubroSlug: normalized, level: 'skipped', family: family || null });
+  return { data: null, error: null };
 }
 
 /**
@@ -418,6 +459,25 @@ async function findActiveRubroConflict(rubroSlug, excludeTemplateId = null) {
   return data?.[0] || null;
 }
 
+/**
+ * Verifica que no exista OTRA plantilla activa con el mismo family_slug
+ * Y sin rubro_slug (índice catalog_templates_family_active_unique).
+ */
+async function findActiveFamilyConflict(familySlug, excludeTemplateId = null) {
+  const normalized = String(familySlug || '').trim().toLowerCase();
+  if (!normalized) return null;
+  let query = supabase
+    ?.from('catalog_templates')
+    ?.select('id, name')
+    ?.eq('family_slug', normalized)
+    ?.is('rubro_slug', null)
+    ?.eq('is_active', true)
+    ?.limit(1);
+  if (excludeTemplateId) query = query?.neq('id', excludeTemplateId);
+  const { data } = (await query) ?? {};
+  return data?.[0] || null;
+}
+
 function buildTemplateDbPayload(input = {}) {
   const payload = {};
   if (input.name !== undefined) payload.name = String(input.name || '').trim();
@@ -429,6 +489,9 @@ function buildTemplateDbPayload(input = {}) {
   if (input.isActive !== undefined) payload.is_active = input.isActive === true;
   if (input.rubroSlug !== undefined) {
     payload.rubro_slug = String(input.rubroSlug || '').trim().toLowerCase() || null;
+  }
+  if (input.familySlug !== undefined) {
+    payload.family_slug = String(input.familySlug || '').trim().toLowerCase() || null;
   }
   if (input.primaryColor !== undefined) {
     payload.primary_color = isValidHexColor(input.primaryColor) ? String(input.primaryColor).trim() : null;
@@ -447,6 +510,8 @@ function buildTemplateDbPayload(input = {}) {
 
 const RUBRO_CONFLICT_MESSAGE =
   'Ya existe otra plantilla activa asociada a ese rubro. Desactívala o quítale el rubro primero.';
+const FAMILY_CONFLICT_MESSAGE =
+  'Ya existe otra plantilla activa de esa familia sin rubro específico. Desactívala o quítale la familia primero.';
 
 /** Crea una plantilla (cabecera). Las plantillas del panel nacen source='custom'. */
 export async function createTemplate(input = {}) {
@@ -457,6 +522,10 @@ export async function createTemplate(input = {}) {
   if (payload.is_active && payload.rubro_slug) {
     const conflict = await findActiveRubroConflict(payload.rubro_slug);
     if (conflict) return { data: null, error: { message: RUBRO_CONFLICT_MESSAGE } };
+  }
+  if (payload.is_active && payload.family_slug && !payload.rubro_slug) {
+    const conflict = await findActiveFamilyConflict(payload.family_slug);
+    if (conflict) return { data: null, error: { message: FAMILY_CONFLICT_MESSAGE } };
   }
 
   const baseSlug = slugify(name) || 'plantilla';
@@ -489,7 +558,7 @@ export async function updateTemplate(templateId, updates = {}) {
   // Resolver estado/rubro finales para validar el conflicto de rubro activo.
   const { data: current, error: currentError } = await supabase
     ?.from('catalog_templates')
-    ?.select('id, is_active, rubro_slug')
+    ?.select('id, is_active, rubro_slug, family_slug')
     ?.eq('id', templateId)
     ?.single() ?? {};
   if (currentError || !current) {
@@ -497,9 +566,14 @@ export async function updateTemplate(templateId, updates = {}) {
   }
   const finalActive = payload.is_active !== undefined ? payload.is_active : current.is_active;
   const finalRubro = payload.rubro_slug !== undefined ? payload.rubro_slug : current.rubro_slug;
+  const finalFamily = payload.family_slug !== undefined ? payload.family_slug : current.family_slug;
   if (finalActive && finalRubro) {
     const conflict = await findActiveRubroConflict(finalRubro, templateId);
     if (conflict) return { data: null, error: { message: RUBRO_CONFLICT_MESSAGE } };
+  }
+  if (finalActive && finalFamily && !finalRubro) {
+    const conflict = await findActiveFamilyConflict(finalFamily, templateId);
+    if (conflict) return { data: null, error: { message: FAMILY_CONFLICT_MESSAGE } };
   }
 
   const { data, error } = await supabase
@@ -509,6 +583,9 @@ export async function updateTemplate(templateId, updates = {}) {
     ?.select(TEMPLATE_FIELDS)
     ?.single() ?? {};
   if (error) {
+    if (error?.code === '23505' && String(error?.message || '').includes('family')) {
+      return { data: null, error: { message: FAMILY_CONFLICT_MESSAGE } };
+    }
     if (error?.code === '23505') return { data: null, error: { message: RUBRO_CONFLICT_MESSAGE } };
     return { data: null, error };
   }
