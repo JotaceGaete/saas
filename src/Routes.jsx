@@ -56,6 +56,7 @@ import AdminEmailsPage from './pages/admin/AdminEmailsPage';
 import AdminConfigRubrosPage from './pages/admin/AdminConfigRubrosPage';
 import AdminPlanFeaturesPage from './pages/admin/AdminPlanFeaturesPage';
 import AdminCatalogTemplatesPage from './pages/admin/AdminCatalogTemplatesPage';
+import OnboardingPage from './pages/onboarding';
 import PlansPage from './pages/plans';
 import BillingSuccessPage from './pages/billing/BillingSuccessPage';
 import BillingCancelPage from './pages/billing/BillingCancelPage';
@@ -142,6 +143,7 @@ const Routes = () => {
             <Route path="/register" element={<BusinessRegistration />} />
             <Route path="/landing-page" element={<LandingPage />} />
             <Route path="/complete-business-setup" element={<RequireAuth><CompleteBusinessSetupPage /></RequireAuth>} />
+            <Route path="/onboarding" element={<RequireAuth><OnboardingPage /></RequireAuth>} />
             {/* CRM — requiere plan Pro o superior (RequireCrm hace el bloqueo duro) */}
             <Route path="/crm"                    element={<RequireCrm><CrmDashboard /></RequireCrm>} />
             <Route path="/crm/clientes"           element={<RequireCrm><CrmCustomers /></RequireCrm>} />

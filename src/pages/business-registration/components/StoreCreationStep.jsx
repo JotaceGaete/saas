@@ -61,7 +61,7 @@ export default function StoreCreationStep({ user, businessLoading }) {
       }
       if (data) {
         await refreshBusiness();
-        navigate('/dashboard', { replace: true });
+        navigate('/onboarding', { replace: true });
       }
     } catch {
       setSaveError('Error inesperado. Por favor intenta de nuevo.');
