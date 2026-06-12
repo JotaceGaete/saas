@@ -20,6 +20,32 @@ import {
   upsertTemplateProducts,
 } from 'services/catalogTemplateService';
 
+// ─── Alcance de onboarding de una plantilla (badge + ayuda contextual) ────────
+
+/**
+ * Clasifica cómo se aplica una plantilla en el onboarding:
+ *  - exact:     tiene rubro específico (prioridad máxima)
+ *  - family:    sirve a todos los rubros de su familia (sin rubro)
+ *  - universal: fallback global (family_slug = 'universal', sin rubro)
+ *  - manual:    sin asignación — solo aplicación manual
+ */
+function templateScope({ rubroSlug, familySlug }) {
+  if (rubroSlug) return { kind: 'exact', icon: 'Target', label: `Específica: ${rubroSlug}`, bg: 'rgba(124,58,237,0.1)', color: '#6D28D9' };
+  if (familySlug === 'universal') return { kind: 'universal', icon: 'Globe', label: 'Universal', bg: 'rgba(59,130,246,0.1)', color: '#1D4ED8' };
+  if (familySlug) return { kind: 'family', icon: 'Layers', label: `Familia: ${TEMPLATE_FAMILY_LABELS[familySlug] || familySlug}`, bg: 'rgba(34,197,94,0.1)', color: '#15803D' };
+  return { kind: 'manual', icon: 'Hand', label: 'Manual', bg: 'rgba(100,116,139,0.1)', color: '#475569' };
+}
+
+function TemplateScopeBadge({ rubroSlug, familySlug }) {
+  const scope = templateScope({ rubroSlug, familySlug });
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold" style={{ background: scope.bg, color: scope.color }}>
+      <Icon name={scope.icon} size={11} color="currentColor" />
+      {scope.label}
+    </span>
+  );
+}
+
 // ─── Campo de imagen: subir archivo (R2) o pegar URL ──────────────────────────
 
 function TemplateImageField({ label, value, onChange, templateId, variant, hint }) {
@@ -257,46 +283,53 @@ function TemplateEditor({ templateId, rubros, onBack, onSaved, notify }) {
             <input type="text" value={form.name} onChange={(e) => setField('name', e.target.value)} placeholder="Ej: Artículos de fiesta" className={inputClass} style={inputStyle} />
           </div>
           <div className="sm:col-span-2 rounded-xl border p-3 space-y-3" style={{ borderColor: 'var(--color-border)', background: 'rgba(124,58,237,0.03)' }}>
-            <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: 'var(--color-primary)' }}>
-              Asignación de onboarding
-            </p>
-            <div className="rounded-lg px-3 py-2 text-[11px] leading-relaxed" style={{ background: 'rgba(245,158,11,0.08)', color: '#92400E' }}>
-              <strong>Guía de uso:</strong> usa <em>Familia</em> para escalar — un buen template cubre decenas de rubros.
-              Usa <em>Rubro exacto</em> solo para casos especiales donde necesitas un catálogo 100% personalizado para ese rubro.<br />
-              Prioridad de resolución: <strong>rubro exacto → familia → universal</strong>.
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: 'var(--color-primary)' }}>
+                Aplicación automática en onboarding
+              </p>
+              <TemplateScopeBadge rubroSlug={form.rubroSlug} familySlug={form.familySlug} />
             </div>
+            <p className="text-[11px]" style={{ color: 'var(--color-muted-foreground)' }}>
+              Prioridad de resolución: <strong>rubro específico → familia → universal</strong>.
+              Para escalar usa familias; reserva el rubro específico para casos especiales.
+            </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--color-muted-foreground)' }}>Familia (recomendado)</label>
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--color-muted-foreground)' }}>Familia comercial</label>
                 <select value={form.familySlug} onChange={(e) => setField('familySlug', e.target.value)} className={inputClass} style={inputStyle}>
-                  <option value="">Sin familia</option>
+                  <option value="">Sin familia (sin onboarding automático)</option>
                   {TEMPLATE_FAMILIES.map((f) => (
                     <option key={f} value={f}>{TEMPLATE_FAMILY_LABELS[f]} ({f})</option>
                   ))}
                 </select>
-                <p className="mt-1 text-[11px]" style={{ color: 'var(--color-muted-foreground)' }}>
-                  {form.familySlug === 'universal'
-                    ? 'Fallback general: cualquier rubro sin plantilla propia ni familia.'
-                    : form.familySlug
-                      ? `Sirve a todos los rubros de la familia "${form.familySlug}" que no tengan plantilla exacta.`
-                      : 'Sin familia: la plantilla solo aplica por rubro exacto o uso manual.'}
-                </p>
               </div>
               <div>
-                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--color-muted-foreground)' }}>Rubro exacto (opcional)</label>
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--color-muted-foreground)' }}>Rubro específico (opcional)</label>
                 <select value={form.rubroSlug} onChange={(e) => setField('rubroSlug', e.target.value)} className={inputClass} style={inputStyle}>
-                  <option value="">Sin rubro específico</option>
+                  <option value="">Ninguno — aplica a toda la familia</option>
                   {rubros.map((r) => (
                     <option key={r.id} value={r.slug}>{r.name} ({r.slug})</option>
                   ))}
                 </select>
-                <p className="mt-1 text-[11px]" style={{ color: 'var(--color-muted-foreground)' }}>
-                  {form.rubroSlug
-                    ? 'Máxima prioridad: gana sobre familia y universal para este rubro.'
-                    : 'Deja vacío si quieres que la familia cubra todos los rubros del grupo.'}
-                </p>
               </div>
             </div>
+            {(() => {
+              const scope = templateScope({ rubroSlug: form.rubroSlug, familySlug: form.familySlug });
+              const rubroName = rubros.find((r) => r.slug === form.rubroSlug)?.name || form.rubroSlug;
+              const familyName = TEMPLATE_FAMILY_LABELS[form.familySlug] || form.familySlug;
+              const help = {
+                exact: `Prioridad máxima: esta plantilla se usará para el rubro «${rubroName}», por encima de la plantilla de familia y de la universal.`,
+                family: `Esta plantilla será utilizada automáticamente para todos los rubros de la familia ${familyName} que no tengan una plantilla específica.`,
+                universal: 'Fallback global: se usará para cualquier rubro que no tenga plantilla específica ni plantilla de familia.',
+                manual: 'Sin aplicación automática: esta plantilla solo podrá aplicarse manualmente a un negocio.',
+              }[scope.kind];
+              return (
+                <div className="flex items-start gap-2 rounded-lg px-3 py-2 text-[11px] leading-relaxed" style={{ background: scope.bg, color: scope.color }}>
+                  <Icon name={scope.icon} size={13} color="currentColor" className="mt-0.5 flex-shrink-0" />
+                  <span>{help}</span>
+                </div>
+              );
+            })()}
           </div>
           <div className="sm:col-span-2">
             <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--color-muted-foreground)' }}>Descripción</label>
@@ -740,9 +773,15 @@ export default function AdminCatalogTemplatesPage() {
                         {t.source === 'system' && (
                           <span className="px-2 py-0.5 rounded-full text-[11px] font-bold" style={{ background: 'rgba(245,158,11,0.12)', color: '#B45309' }}>Sistema</span>
                         )}
+                        <TemplateScopeBadge rubroSlug={t.rubroSlug} familySlug={t.familySlug} />
                       </div>
                       <p className="text-xs mt-0.5" style={{ color: 'var(--color-muted-foreground)' }}>
-                        {t.rubroSlug ? `Rubro: ${t.rubroSlug}` : 'Sin rubro asociado'}
+                        {{
+                          exact: `Solo para el rubro «${t.rubroSlug}» (prioridad máxima)`,
+                          family: `Todos los rubros de ${TEMPLATE_FAMILY_LABELS[t.familySlug] || t.familySlug} sin plantilla específica`,
+                          universal: 'Fallback global para rubros sin plantilla',
+                          manual: 'Sin onboarding automático — solo aplicación manual',
+                        }[templateScope(t).kind]}
                         {t.description ? ` · ${t.description}` : ''}
                       </p>
                     </div>
