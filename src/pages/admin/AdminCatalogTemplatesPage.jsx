@@ -18,6 +18,7 @@ import {
   upsertTemplateCategories,
   upsertTemplateProducts,
 } from 'services/catalogTemplateService';
+import { FAMILIES } from 'utils/rubroFamilyMap';
 
 // ─── Campo de imagen: subir archivo (R2) o pegar URL ──────────────────────────
 
@@ -97,7 +98,7 @@ function TemplateEditor({ templateId, rubros, onBack, onSaved, notify }) {
   const [saving, setSaving] = useState(false);
   const [template, setTemplate] = useState(null);
   const [form, setForm] = useState({
-    name: '', description: '', rubroSlug: '', isActive: false,
+    name: '', description: '', rubroSlug: '', familySlug: '', isUniversal: false, isActive: false,
     logoUrl: '', bannerUrl: '', previewImageUrl: '',
     primaryColor: '', secondaryColor: '', theme: '',
   });
@@ -127,6 +128,7 @@ function TemplateEditor({ templateId, rubros, onBack, onSaved, notify }) {
       setTemplate(data);
       setForm({
         name: data.name, description: data.description, rubroSlug: data.rubroSlug || '',
+        familySlug: data.familySlug || '', isUniversal: data.isUniversal === true,
         isActive: data.isActive, logoUrl: data.logoUrl || '', bannerUrl: data.bannerUrl || '',
         previewImageUrl: data.previewImageUrl || '',
         primaryColor: data.primaryColor || '', secondaryColor: data.secondaryColor || '', theme: data.theme || '',
@@ -254,17 +256,43 @@ function TemplateEditor({ templateId, rubros, onBack, onSaved, notify }) {
             <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--color-muted-foreground)' }}>Nombre *</label>
             <input type="text" value={form.name} onChange={(e) => setField('name', e.target.value)} placeholder="Ej: Artículos de fiesta" className={inputClass} style={inputStyle} />
           </div>
-          <div>
-            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--color-muted-foreground)' }}>Rubro asociado (onboarding)</label>
-            <select value={form.rubroSlug} onChange={(e) => setField('rubroSlug', e.target.value)} className={inputClass} style={inputStyle}>
-              <option value="">Sin rubro (solo uso manual)</option>
-              {rubros.map((r) => (
-                <option key={r.id} value={r.slug}>{r.name} ({r.slug})</option>
-              ))}
-            </select>
-            <p className="mt-1 text-[11px]" style={{ color: 'var(--color-muted-foreground)' }}>
-              Asocia una plantilla a un rubro para que los nuevos usuarios reciban un catálogo listo para editar.
-            </p>
+          <div className="sm:col-span-2 space-y-3">
+            <div>
+              <p className="text-xs font-bold mb-0.5" style={{ color: 'var(--color-foreground)' }}>Resolución de onboarding</p>
+              <p className="text-[11px]" style={{ color: 'var(--color-muted-foreground)' }}>
+                Prioridad: rubro específico → familia comercial → universal → fallback JS
+              </p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--color-muted-foreground)' }}>Familia comercial</label>
+                <select value={form.familySlug} onChange={(e) => setField('familySlug', e.target.value)} className={inputClass} style={inputStyle}>
+                  <option value="">Sin familia</option>
+                  {FAMILIES.map((f) => (
+                    <option key={f.slug} value={f.slug}>{f.label}</option>
+                  ))}
+                </select>
+                <p className="mt-1 text-[11px]" style={{ color: 'var(--color-muted-foreground)' }}>
+                  Aplica a todos los rubros de la familia que no tengan plantilla específica.
+                </p>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--color-muted-foreground)' }}>Rubro específico (opcional)</label>
+                <select value={form.rubroSlug} onChange={(e) => setField('rubroSlug', e.target.value)} className={inputClass} style={inputStyle}>
+                  <option value="">Sin rubro específico</option>
+                  {rubros.map((r) => (
+                    <option key={r.id} value={r.slug}>{r.name} ({r.slug})</option>
+                  ))}
+                </select>
+                <p className="mt-1 text-[11px]" style={{ color: 'var(--color-muted-foreground)' }}>
+                  Máxima prioridad: solo aplica a este rubro exacto.
+                </p>
+              </div>
+            </div>
+            <label className="flex items-center gap-2 text-sm font-medium cursor-pointer" style={{ color: 'var(--color-foreground)' }}>
+              <input type="checkbox" checked={form.isUniversal} onChange={(e) => setField('isUniversal', e.target.checked)} className="w-4 h-4" />
+              Plantilla universal (último fallback antes del JS)
+            </label>
           </div>
           <div className="sm:col-span-2">
             <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--color-muted-foreground)' }}>Descripción</label>

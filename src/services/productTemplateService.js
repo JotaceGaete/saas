@@ -1,13 +1,16 @@
 import { supabase } from '../lib/supabase';
 import { getTemplateForRubro } from '../utils/productTemplates';
-import { getTemplateForRubroSlug } from './catalogTemplateService';
+import { resolveTemplateForOnboarding } from './catalogTemplateService';
+import { getFamilyForRubro } from '../utils/rubroFamilyMap';
 
 /**
  * Siembra productos de ejemplo en wa_products según el rubro del negocio.
  *
  * Resolución de plantilla (orden de prioridad):
  *  1. catalog_templates DB: rubro_slug exacto, is_active = true
- *  2. productTemplates.js hardcodeado (fallback legacy)
+ *  2. catalog_templates DB: family_slug (familia del rubro), sin rubro específico, is_active = true
+ *  3. catalog_templates DB: is_universal = true, is_active = true
+ *  4. productTemplates.js hardcodeado (fallback legacy)
  *
  * Solo inserta si el negocio no tiene productos reales. Los borradores
  * automáticos del editor (is_draft=true) no cuentan como reales.
@@ -47,22 +50,24 @@ export async function seedTemplateProductsIfEmpty({ businessId, rubroSlug }) {
     };
   }
 
-  // ── 1. Intentar plantilla desde catalog_templates (DB) ───────────────────────
+  // ── 1-3. Intentar plantilla desde catalog_templates (DB): rubro → familia → universal ──
   try {
-    const { data: dbTemplate, error: dbError } = await getTemplateForRubroSlug(rubroSlug);
+    const familySlug = getFamilyForRubro(rubroSlug);
+    console.log('[templates] rubro:', rubroSlug, '| familia:', familySlug ?? 'sin familia');
+    const { data: dbTemplate, source: dbSource, error: dbError } = await resolveTemplateForOnboarding(rubroSlug, familySlug);
     if (!dbError && dbTemplate?.isActive && (dbTemplate.products?.length ?? 0) > 0) {
-      console.log('[templates] template source: db-rubro | nombre:', dbTemplate.name);
+      console.log('[templates] template source:', dbSource, '| nombre:', dbTemplate.name);
       const result = await _seedFromDbTemplate({ businessId, dbTemplate });
       console.log('[templates] products seeded:', result.created);
-      return { ...result, source: 'db-rubro' };
+      return { ...result, source: dbSource };
     }
     if (dbError) {
-      console.warn('[templates] error consultando catalog_templates (continúa con fallback):', dbError);
+      console.warn('[templates] error consultando catalog_templates (continúa con fallback JS):', dbError);
     } else {
-      console.log('[templates] sin plantilla DB para rubro_slug:', rubroSlug, '— intentando fallback JS');
+      console.log('[templates] sin plantilla DB para rubro/familia/universal — intentando fallback JS');
     }
   } catch (dbLookupError) {
-    console.warn('[templates] excepción en lookup DB (continúa con fallback):', dbLookupError);
+    console.warn('[templates] excepción en lookup DB (continúa con fallback JS):', dbLookupError);
   }
 
   // ── 2. Fallback: plantilla JS hardcodeada ────────────────────────────────────
