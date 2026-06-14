@@ -4,8 +4,9 @@ import { useAuth } from '../../contexts/AuthContext';
 import { COUNTRY_CONFIG } from '../../config/countryConfig';
 import { getRubros, updateBusiness, getProducts } from '../../services/waBusinessService';
 import { seedTemplateProductsIfEmpty } from '../../services/productTemplateService';
+import { getTemplates } from '../../services/catalogTemplateService';
+import { getFamilyForRubro } from '../../utils/rubroFamilyMap';
 import {
-  RUBRO_SLUG_TO_TEMPLATE,
   LEGACY_TEMPLATE_LOGO_PREFIX,
   DEMO_SOCIAL_LINKS,
 } from '../../utils/productTemplates';
@@ -14,10 +15,8 @@ import PremiumLoader from '../../components/ui/PremiumLoader';
 
 // ─── Constantes de curación ───────────────────────────────────────────────────
 
-/** Países mostrados directamente sin necesidad de buscar. */
 const MAIN_COUNTRY_CODES = ['CL', 'AR', 'CO', 'MX', 'PE', 'UY', 'EC', 'BO', 'ES', 'US'];
 
-/** Rubros en el orden que queremos mostrar como destacados. */
 const FEATURED_RUBRO_SLUGS = [
   'ropa',
   'gastronomia',
@@ -29,32 +28,55 @@ const FEATURED_RUBRO_SLUGS = [
   'hogar-y-decoracion',
 ];
 
-const RUBRO_EMOJI = {
-  'ropa': '👗',
-  'gastronomia': '🍕',
-  'comida': '🍔',
-  'comida-y-bebidas': '🍽️',
-  'belleza-y-cuidado-personal': '💄',
-  'belleza': '💋',
-  'moda-y-accesorios': '👒',
-  'mascotas': '🐾',
-  'tecnologia-y-electronica': '📱',
-  'electronica': '💻',
-  'servicios': '🔧',
-  'hogar-y-decoracion': '🏠',
-  'hogar': '🛋️',
-  'bienestar-y-deporte': '🏃',
-  'ferreteria': '🔨',
-  'libreria': '📚',
-  'varios': '🛒',
-  'otros': '📦',
-  'ofertas-sale': '🏷️',
+const FAMILY_VISUAL = {
+  moda:       { icon: 'Shirt',           bg: '#f5f0ff', color: '#7c3aed' },
+  comida:     { icon: 'UtensilsCrossed', bg: '#fff7ed', color: '#ea580c' },
+  belleza:    { icon: 'Sparkles',        bg: '#fdf2f8', color: '#db2777' },
+  servicios:  { icon: 'Wrench',          bg: '#eff6ff', color: '#2563eb' },
+  hogar:      { icon: 'Home',            bg: '#f0fdf4', color: '#16a34a' },
+  mascotas:   { icon: 'PawPrint',        bg: '#fff7ed', color: '#c2410c' },
+  tecnologia: { icon: 'Smartphone',      bg: '#eff6ff', color: '#1d4ed8' },
+  salud:      { icon: 'Heart',           bg: '#fff1f2', color: '#e11d48' },
+  regalos:    { icon: 'Gift',            bg: '#fef9c3', color: '#ca8a04' },
 };
+const DEFAULT_VISUAL = { icon: 'Package', bg: '#f3f4f6', color: '#6b7280' };
+
+const FAMILY_LABELS = {
+  moda: 'Moda', comida: 'Gastronomía', belleza: 'Belleza',
+  servicios: 'Servicios', hogar: 'Hogar', mascotas: 'Mascotas',
+  tecnologia: 'Tecnología', salud: 'Salud', regalos: 'Regalos',
+};
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Resuelve la mejor plantilla para un rubroSlug desde la lista cargada en memoria. */
+function resolveTemplateForDisplay(rubroSlug, templates) {
+  if (!rubroSlug || !templates?.length) return { template: null, matchType: 'none', family: null };
+
+  const exact = templates.find((t) => t.rubroSlug === rubroSlug);
+  if (exact) return { template: exact, matchType: 'exact', family: exact.familySlug || getFamilyForRubro(rubroSlug) };
+
+  const family = getFamilyForRubro(rubroSlug);
+  if (family) {
+    const byFamily = templates.find((t) => t.familySlug === family && !t.rubroSlug);
+    if (byFamily) return { template: byFamily, matchType: 'family', family };
+  }
+
+  const universal = templates.find((t) => t.isUniversal);
+  if (universal) return { template: universal, matchType: 'universal', family };
+
+  return { template: null, matchType: 'none', family };
+}
+
+function getVisualForRubro(rubroSlug) {
+  const family = getFamilyForRubro(rubroSlug);
+  return FAMILY_VISUAL[family] || DEFAULT_VISUAL;
+}
 
 // ─── Sub-componentes pequeños ─────────────────────────────────────────────────
 
 function StepIndicator({ step }) {
-  const labels = { country: '1 de 2 · País', rubro: '2 de 2 · Rubro' };
+  const labels = { country: '1 de 2 · País', rubro: '2 de 2 · Tienda' };
   if (!labels[step]) return null;
   return (
     <p
@@ -156,7 +178,6 @@ function CountryStep({ onSelect, saving, defaultCode }) {
         Configuramos la moneda y el formato de precios de tu catálogo.
       </p>
 
-      {/* Grid de países principales */}
       <div className="grid grid-cols-2 gap-2 mb-3">
         {mainCountries.map((cfg) => {
           const isSelected = selected === cfg.code;
@@ -186,7 +207,6 @@ function CountryStep({ onSelect, saving, defaultCode }) {
         })}
       </div>
 
-      {/* Buscador expandible */}
       {!showSearch ? (
         <button
           type="button"
@@ -250,9 +270,166 @@ function CountryStep({ onSelect, saving, defaultCode }) {
   );
 }
 
-// ─── Paso 2: Rubro ────────────────────────────────────────────────────────────
+// ─── Tarjeta de plantilla (grilla 2 col) ─────────────────────────────────────
 
-function RubroStep({ rubros, onSelect, saving }) {
+function TemplateCard({ rubro, resolved, isSelected, onClick }) {
+  const { template, matchType, family } = resolved;
+  const visual = getVisualForRubro(rubro.slug);
+  const hasDemo = matchType !== 'none';
+  const displayName = template?.name || rubro.name;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="relative flex flex-col rounded-xl border overflow-hidden text-left transition-all w-full"
+      style={{
+        borderColor: isSelected ? 'var(--color-primary)' : 'var(--color-border)',
+        backgroundColor: 'var(--color-surface)',
+        boxShadow: isSelected ? '0 0 0 2px rgba(124,58,237,0.18)' : 'none',
+      }}
+    >
+      {/* Imagen o fallback */}
+      {template?.previewImageUrl ? (
+        <div className="w-full h-24 overflow-hidden shrink-0">
+          <img
+            src={template.previewImageUrl}
+            alt={displayName}
+            className="w-full h-full object-cover"
+            loading="lazy"
+          />
+        </div>
+      ) : (
+        <div
+          className="w-full h-24 flex items-center justify-center shrink-0"
+          style={{ backgroundColor: visual.bg }}
+        >
+          <Icon name={visual.icon} size={32} color={visual.color} />
+        </div>
+      )}
+
+      {/* Check de selección */}
+      {isSelected && (
+        <div
+          className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full flex items-center justify-center"
+          style={{ backgroundColor: 'var(--color-primary)' }}
+        >
+          <Icon name="Check" size={11} color="#fff" />
+        </div>
+      )}
+
+      {/* Cuerpo */}
+      <div className="p-2.5 flex flex-col gap-1">
+        <p
+          className="text-xs font-semibold leading-tight truncate"
+          style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
+        >
+          {displayName}
+        </p>
+        <div className="flex items-center gap-1 flex-wrap">
+          {hasDemo ? (
+            <span
+              className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full leading-none"
+              style={{ backgroundColor: 'rgba(124,58,237,0.12)', color: 'var(--color-primary)', fontFamily: 'var(--font-caption)' }}
+            >
+              Demo incluido
+            </span>
+          ) : (
+            <span
+              className="text-[10px] font-medium px-1.5 py-0.5 rounded-full leading-none"
+              style={{ backgroundColor: 'rgba(0,0,0,0.05)', color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}
+            >
+              Diseño base
+            </span>
+          )}
+          {matchType === 'family' && family && (
+            <span
+              className="text-[10px] font-medium px-1.5 py-0.5 rounded-full leading-none"
+              style={{ backgroundColor: 'rgba(0,0,0,0.04)', color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}
+            >
+              {FAMILY_LABELS[family] || family}
+            </span>
+          )}
+        </div>
+      </div>
+    </button>
+  );
+}
+
+// ─── Fila de plantilla (lista de búsqueda) ────────────────────────────────────
+
+function TemplateListRow({ rubro, resolved, isSelected, onClick }) {
+  const { template, matchType, family } = resolved;
+  const visual = getVisualForRubro(rubro.slug);
+  const hasDemo = matchType !== 'none';
+  const displayName = template?.name || rubro.name;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full flex items-center gap-0 rounded-xl border overflow-hidden text-left transition-all"
+      style={{
+        borderColor: isSelected ? 'var(--color-primary)' : 'var(--color-border)',
+        backgroundColor: isSelected ? 'rgba(124,58,237,0.04)' : 'var(--color-surface)',
+        boxShadow: isSelected ? '0 0 0 2px rgba(124,58,237,0.18)' : 'none',
+      }}
+    >
+      {/* Thumbnail */}
+      {template?.previewImageUrl ? (
+        <div className="w-14 h-14 shrink-0 overflow-hidden">
+          <img
+            src={template.previewImageUrl}
+            alt={displayName}
+            className="w-full h-full object-cover"
+            loading="lazy"
+          />
+        </div>
+      ) : (
+        <div
+          className="w-14 h-14 shrink-0 flex items-center justify-center"
+          style={{ backgroundColor: visual.bg }}
+        >
+          <Icon name={visual.icon} size={22} color={visual.color} />
+        </div>
+      )}
+
+      {/* Info */}
+      <div className="flex-1 min-w-0 px-3 py-2">
+        <p
+          className="text-sm font-semibold truncate"
+          style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
+        >
+          {rubro.name}
+        </p>
+        <p
+          className="text-[11px] truncate"
+          style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}
+        >
+          {hasDemo
+            ? (displayName !== rubro.name ? displayName : (matchType === 'family' && family ? `Plantilla de ${FAMILY_LABELS[family] || family}` : 'Demo incluido'))
+            : 'Sin plantilla demo'}
+        </p>
+      </div>
+
+      {/* Badge derecha */}
+      {hasDemo && (
+        <div className="pr-3 shrink-0">
+          <span
+            className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
+            style={{ backgroundColor: 'rgba(124,58,237,0.12)', color: 'var(--color-primary)', fontFamily: 'var(--font-caption)' }}
+          >
+            Demo
+          </span>
+        </div>
+      )}
+    </button>
+  );
+}
+
+// ─── Paso 2: Elige una tienda ─────────────────────────────────────────────────
+
+function TemplateStep({ rubros, templates, onSelect, saving }) {
   const navigate = useNavigate();
   const [selected, setSelected] = useState(null);
   const [showSearch, setShowSearch] = useState(false);
@@ -267,18 +444,13 @@ function RubroStep({ rubros, onSelect, saving }) {
     return result;
   }, [rubros]);
 
-  const otherRubros = useMemo(() => {
-    const featuredSlugs = new Set(FEATURED_RUBRO_SLUGS);
-    return rubros.filter((r) => !featuredSlugs.has(r.slug));
-  }, [rubros]);
-
   const searchResults = useMemo(() => {
     if (!query.trim()) return [];
     const q = query.toLowerCase();
     return rubros.filter((r) => r.name.toLowerCase().includes(q));
   }, [query, rubros]);
 
-  const displayRubros = showSearch ? [] : featuredRubros;
+  const selectedResolved = selected ? resolveTemplateForDisplay(selected.slug, templates) : null;
 
   return (
     <div>
@@ -288,58 +460,38 @@ function RubroStep({ rubros, onSelect, saving }) {
         className="text-2xl font-bold mb-1 text-center"
         style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}
       >
-        ¿Qué tipo de negocio tienes?
+        Elige una tienda para comenzar
       </h1>
-      <p className="text-sm text-center mb-1" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-        Prepararemos tu catálogo con productos de ejemplo.
+      <p className="text-sm text-center mb-5" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+        Después podrás cambiar productos, colores e imágenes.
       </p>
-
-      {/* Badge demo explicativo */}
-      <div className="flex items-center justify-center gap-1.5 mb-5">
-        <span className="text-[11px] px-2 py-0.5 rounded-full font-semibold" style={{ backgroundColor: 'rgba(124,58,237,0.1)', color: 'var(--color-primary)', fontFamily: 'var(--font-caption)' }}>
-          ✨ Demo
-        </span>
-        <span className="text-[11px]" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-          = catálogo demo real incluido
-        </span>
-      </div>
 
       {/* Grilla de destacados */}
       {!showSearch && (
-        <div className="grid grid-cols-2 gap-2 mb-3">
-          {displayRubros.map((rubro) => {
-            const hasDemo = !!RUBRO_SLUG_TO_TEMPLATE[rubro.slug];
-            const emoji = RUBRO_EMOJI[rubro.slug] || '🛒';
-            const isSelected = selected?.id === rubro.id;
+        <div className="grid grid-cols-2 gap-2.5 mb-3">
+          {featuredRubros.map((rubro) => {
+            const resolved = resolveTemplateForDisplay(rubro.slug, templates);
             return (
-              <button
+              <TemplateCard
                 key={rubro.id}
-                type="button"
+                rubro={rubro}
+                resolved={resolved}
+                isSelected={selected?.id === rubro.id}
                 onClick={() => setSelected(rubro)}
-                className="relative flex flex-col items-start gap-1 p-3 rounded-xl border text-left transition-all"
-                style={{
-                  borderColor: isSelected ? 'var(--color-primary)' : 'var(--color-border)',
-                  backgroundColor: isSelected ? 'rgba(124,58,237,0.08)' : 'var(--color-surface)',
-                  boxShadow: isSelected ? '0 0 0 2px rgba(124,58,237,0.18)' : 'none',
-                }}
-              >
-                <span className="text-2xl leading-none">{emoji}</span>
-                <span className="text-sm font-medium leading-tight" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>
-                  {rubro.name}
-                </span>
-                <span
-                  className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
-                  style={{
-                    backgroundColor: hasDemo ? 'rgba(124,58,237,0.12)' : 'rgba(0,0,0,0.05)',
-                    color: hasDemo ? 'var(--color-primary)' : 'var(--color-muted-foreground)',
-                    fontFamily: 'var(--font-caption)',
-                  }}
-                >
-                  {hasDemo ? '✨ Demo' : 'Diseño base'}
-                </span>
-              </button>
+              />
             );
           })}
+        </div>
+      )}
+
+      {/* Mensaje contextual cuando la plantilla viene por familia */}
+      {!showSearch && selected && selectedResolved?.matchType === 'family' && selectedResolved.family && (
+        <div
+          className="mb-3 p-3 rounded-xl border text-xs flex items-start gap-2"
+          style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)', color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}
+        >
+          <Icon name="Info" size={13} color="var(--color-muted-foreground)" className="mt-0.5 shrink-0" />
+          Usaremos una plantilla base de {FAMILY_LABELS[selectedResolved.family] || selectedResolved.family} para que comiences con productos y diseño de ejemplo.
         </div>
       )}
 
@@ -359,10 +511,10 @@ function RubroStep({ rubros, onSelect, saving }) {
             <button
               type="button"
               onClick={() => { setShowSearch(false); setQuery(''); }}
-              className="text-xs underline underline-offset-2"
+              className="text-xs underline underline-offset-2 shrink-0"
               style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}
             >
-              ← Volver
+              Volver
             </button>
             <input
               type="text"
@@ -379,46 +531,51 @@ function RubroStep({ rubros, onSelect, saving }) {
               }}
             />
           </div>
-          <div className="space-y-1 max-h-52 overflow-y-auto pr-1">
-            {(query ? searchResults : [...featuredRubros, ...otherRubros]).map((rubro) => {
-              const hasDemo = !!RUBRO_SLUG_TO_TEMPLATE[rubro.slug];
-              const emoji = RUBRO_EMOJI[rubro.slug] || '🛒';
-              const isSelected = selected?.id === rubro.id;
+          <div className="space-y-1.5 max-h-60 overflow-y-auto pr-0.5">
+            {(query ? searchResults : rubros).map((rubro) => {
+              const resolved = resolveTemplateForDisplay(rubro.slug, templates);
               return (
-                <button
+                <TemplateListRow
                   key={rubro.id}
-                  type="button"
+                  rubro={rubro}
+                  resolved={resolved}
+                  isSelected={selected?.id === rubro.id}
                   onClick={() => setSelected(rubro)}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left transition-all"
-                  style={{
-                    borderColor: isSelected ? 'var(--color-primary)' : 'var(--color-border)',
-                    backgroundColor: isSelected ? 'rgba(124,58,237,0.08)' : 'var(--color-surface)',
-                  }}
-                >
-                  <span className="text-lg leading-none">{emoji}</span>
-                  <span className="flex-1 text-sm font-medium" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>
-                    {rubro.name}
-                  </span>
-                  {hasDemo && (
-                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0" style={{ backgroundColor: 'rgba(124,58,237,0.12)', color: 'var(--color-primary)', fontFamily: 'var(--font-caption)' }}>
-                      ✨ Demo
-                    </span>
-                  )}
-                </button>
+                />
               );
             })}
+            {query && searchResults.length === 0 && (
+              <p className="text-xs text-center py-3" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                No se encontró ese rubro.
+              </p>
+            )}
           </div>
+          {/* Mensaje familia en búsqueda */}
+          {selected && (() => {
+            const r = resolveTemplateForDisplay(selected.slug, templates);
+            if (r.matchType === 'family' && r.family) {
+              return (
+                <div
+                  className="mt-2 p-3 rounded-xl border text-xs flex items-start gap-2"
+                  style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)', color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}
+                >
+                  <Icon name="Info" size={13} color="var(--color-muted-foreground)" className="mt-0.5 shrink-0" />
+                  Usaremos una plantilla base de {FAMILY_LABELS[r.family] || r.family} para que comiences con productos y diseño de ejemplo.
+                </div>
+              );
+            }
+            return null;
+          })()}
         </div>
       )}
 
-      {/* Fallback */}
       <button
         type="button"
         onClick={() => navigate('/business-configuration', { replace: true })}
         className="w-full text-xs py-1 text-center underline underline-offset-2 mb-4 opacity-60 hover:opacity-90 transition-opacity"
         style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}
       >
-        No encuentro mi rubro → configurar manualmente
+        Configurar manualmente
       </button>
 
       <PrimaryButton onClick={() => onSelect(selected)} disabled={!selected} loading={saving}>
@@ -478,7 +635,7 @@ function SuccessStep({ business, seededCount, selectedRubroName }) {
       <div>
         <div className="text-center mb-8">
           <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ backgroundColor: 'rgba(124,58,237,0.1)' }}>
-            <span className="text-3xl">🏗️</span>
+            <Icon name="Hammer" size={28} color="var(--color-primary)" />
           </div>
           <h1 className="text-2xl font-bold mb-2" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>
             Estamos preparando tu catálogo
@@ -515,7 +672,7 @@ function SuccessStep({ business, seededCount, selectedRubroName }) {
     <div>
       <div className="text-center mb-6">
         <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ backgroundColor: 'rgba(124,58,237,0.1)' }}>
-          <span className="text-3xl">🎉</span>
+          <Icon name="Sparkles" size={28} color="var(--color-primary)" />
         </div>
         <h1 className="text-2xl font-bold mb-2" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>
           ¡Tu catálogo está listo!
@@ -576,6 +733,7 @@ export default function OnboardingPage() {
 
   const [step, setStep] = useState('country');
   const [rubros, setRubros] = useState([]);
+  const [templates, setTemplates] = useState([]);
   const [loadingRubros, setLoadingRubros] = useState(true);
   const [seededCount, setSeededCount] = useState(0);
   const [selectedRubroName, setSelectedRubroName] = useState('');
@@ -583,7 +741,7 @@ export default function OnboardingPage() {
   const [error, setError] = useState(null);
   const [checking, setChecking] = useState(true);
 
-  // Guard: negocio con productos reales → dashboard (ya completó el onboarding)
+  // Guard: negocio con productos reales → dashboard
   useEffect(() => {
     if (!business?.id) return;
     getProducts(business.id)
@@ -596,11 +754,15 @@ export default function OnboardingPage() {
       .catch(() => setChecking(false));
   }, [business?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Cargar rubros
+  // Cargar rubros y plantillas en paralelo
   useEffect(() => {
-    getRubros()
-      .then(({ data }) => setRubros(data || []))
-      .finally(() => setLoadingRubros(false));
+    Promise.all([
+      getRubros(),
+      getTemplates(),
+    ]).then(([rubrosRes, templatesRes]) => {
+      setRubros(rubrosRes.data || []);
+      setTemplates(templatesRes.data || []);
+    }).finally(() => setLoadingRubros(false));
   }, []);
 
   const handleSkip = useCallback(() => navigate('/dashboard', { replace: true }), [navigate]);
@@ -647,7 +809,7 @@ export default function OnboardingPage() {
     setSeededCount(created);
     setSelectedRubroName(rubro.name);
 
-    // Aplicar branding del template (logo, cover, redes demo) — misma lógica que business-configuration
+    // Aplicar branding del template
     if (seedResult?.branding) {
       const currentBiz = business;
       const brandingPayload = {};
@@ -694,13 +856,13 @@ export default function OnboardingPage() {
 
   if (!business) return <PremiumLoader fullScreen text="Cargando tu cuenta..." />;
   if (checking) return <PremiumLoader fullScreen text="Verificando tu tienda..." />;
-  if (step === 'rubro' && loadingRubros) return <PremiumLoader fullScreen text="Cargando rubros..." />;
+  if (step === 'rubro' && loadingRubros) return <PremiumLoader fullScreen text="Cargando tiendas de ejemplo..." />;
 
   return (
     <div className="min-h-screen flex items-center justify-center p-5" style={{ backgroundColor: 'var(--color-background)' }}>
       <div className="w-full max-w-md">
 
-        {/* Logo reducido */}
+        {/* Logo */}
         {step !== 'success' && (
           <div className="mb-6 text-center">
             <img src="/walinka.svg" alt="Walinka" className="h-7 w-auto object-contain inline-block" />
@@ -728,7 +890,12 @@ export default function OnboardingPage() {
 
         {step === 'rubro' && (
           <>
-            <RubroStep rubros={rubros} onSelect={handleRubroSelect} saving={saving} />
+            <TemplateStep
+              rubros={rubros}
+              templates={templates}
+              onSelect={handleRubroSelect}
+              saving={saving}
+            />
             <SkipLink onClick={handleSkip} />
           </>
         )}
