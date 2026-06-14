@@ -640,7 +640,8 @@ export default function OnboardingPage() {
       rubroSlug: rubro.slug,
     });
     console.log('[onboarding] seed result:', seedResult);
-
+    console.log('[onboarding] template source:', seedResult?.source ?? 'none');
+    console.log('[onboarding] template name/key:', seedResult?.templateKey ?? '—');
     const created = Number(seedResult?.created || 0);
     console.log('[onboarding] products seeded:', created);
     setSeededCount(created);
