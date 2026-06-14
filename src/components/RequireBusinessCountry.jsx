@@ -8,6 +8,7 @@ import PremiumLoader from './ui/PremiumLoader';
 const EXEMPT_PATHS = [
   '/business-configuration',
   '/complete-business-setup',
+  '/onboarding',
   '/auth/callback',
   '/auth-callback',
   '/logout',
