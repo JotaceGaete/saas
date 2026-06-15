@@ -632,27 +632,29 @@ export default function OnboardingPage() {
       // 3.5 Asignar ubicación demo si el negocio no tiene dirección real
       const effectiveCountry = selectedCountryCode || business?.countryCodeDb || business?.country_code || null;
       const demoLoc = effectiveCountry ? DEMO_LOCATIONS[effectiveCountry] : null;
+      let demoLocApplied = false;
       if (demoLoc && !String(business?.address || '').trim()) {
         await updateBusiness(currentBusinessId, {
           address: demoLoc.address,
           city: demoLoc.city,
           lat: demoLoc.lat,
           lng: demoLoc.lng,
-          // Activar sección de dirección para que el mapa aparezca en el catálogo
-          designSettings: { ...(business?.designSettings || {}), showAddress: true },
         });
+        demoLocApplied = true;
       }
 
-      // 4. Aplicar branding de la plantilla
-      if (seedResult?.branding) {
+      // 4. Aplicar branding de la plantilla y design settings consolidados
+      // IMPORTANTE: una sola escritura de designSettings para evitar que el
+      // spread de currentBiz.designSettings sobreescriba showAddress.
+      {
         const currentBiz = business;
         const brandingPayload = {};
         const logoRaw = String(currentBiz?.logoUrl || '').trim();
         const logoMissingOrLegacy = !logoRaw || logoRaw.startsWith(LEGACY_TEMPLATE_LOGO_PREFIX);
-        if (seedResult.branding.logoUrl && logoMissingOrLegacy) {
+        if (seedResult?.branding?.logoUrl && logoMissingOrLegacy) {
           brandingPayload.logoUrl = seedResult.branding.logoUrl;
         }
-        if (seedResult.branding.coverImageUrl && !String(currentBiz?.coverImageUrl || '').trim()) {
+        if (seedResult?.branding?.coverImageUrl && !String(currentBiz?.coverImageUrl || '').trim()) {
           brandingPayload.coverImageUrl = seedResult.branding.coverImageUrl;
         }
 
@@ -668,13 +670,15 @@ export default function OnboardingPage() {
         }
 
         const onboardingPayload = { ...brandingPayload, ...socialPayload };
-        if (Object.keys(onboardingPayload).length > 0 || categoriesSeeded) {
+        const hasDesignChanges = Object.keys(onboardingPayload).length > 0 || categoriesSeeded || demoLocApplied;
+        if (hasDesignChanges) {
           const designAfterBranding = {
             ...(currentBiz?.designSettings || {}),
             ...(brandingPayload.logoUrl ? { logoUrl: brandingPayload.logoUrl } : {}),
             ...(brandingPayload.coverImageUrl ? { coverImageUrl: brandingPayload.coverImageUrl, headerImageUrl: brandingPayload.coverImageUrl } : {}),
             ...(Object.keys(socialPayload).length > 0 ? { demoSocialLinksApplied: true, demoSocialLinksRepaired: true } : {}),
             ...(categoriesSeeded ? { useCategories: true } : {}),
+            ...(demoLocApplied ? { showAddress: true } : {}),
           };
           await updateBusiness(currentBusinessId, { ...onboardingPayload, designSettings: designAfterBranding });
         }
