@@ -96,8 +96,34 @@ export function getProductImages(product) {
   return result;
 }
 
+// Una cadena vacía, solo espacios, o literales "null"/"undefined" (datos legacy corruptos)
+// no deben considerarse una URL válida al resolver la imagen a mostrar.
+function isValidImageUrl(value) {
+  if (typeof value !== 'string') return false;
+  const v = value.trim();
+  if (!v || v === 'null' || v === 'undefined') return false;
+  return true;
+}
+
+/**
+ * Resuelve la imagen a mostrar para un producto, con la MISMA prioridad y el MISMO
+ * fallback final (images[0] / imageUrl) que usa el modal, para que la card nunca
+ * muestre un campo "huérfano" (ej. un thumbnail_url apuntando a un archivo viejo/borrado)
+ * cuando la imagen principal sí es válida.
+ * Orden: card_image_url -> thumbnail_url -> image_url -> images[0] -> null (placeholder).
+ */
+export function getProductDisplayImage(product) {
+  const candidates = [
+    product?.cardImageUrl,
+    product?.thumbnailUrl,
+    product?.imageUrl,
+    ...getProductImages(product),
+  ];
+  return candidates.find(isValidImageUrl) || null;
+}
+
 export function getProductCardImage(product) {
-  return product?.cardImageUrl || product?.thumbnailUrl || getProductImages(product)?.[0] || null;
+  return getProductDisplayImage(product);
 }
 
 function getProductCommercialState(product) {
