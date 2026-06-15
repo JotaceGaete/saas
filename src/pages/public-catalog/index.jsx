@@ -2105,7 +2105,7 @@ export function ProductCard({
           {cardImage ? (
             <CatalogImage
               src={cardImage === product?.thumbnailUrl || cardImage === product?.cardImageUrl ? cardImage : cfImageUrl(cardImage, imgProfile)}
-              originalSrc={cardImage}
+              originalSrc={getProductImages(product)?.[0] || cardImage}
               alt={product?.name}
               className="h-full w-full"
               imgClassName="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"

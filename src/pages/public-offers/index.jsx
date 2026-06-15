@@ -10,7 +10,7 @@ import { cfImageUrl } from '../../utils/cloudflareImage';
 import { getPublicCatalogUrl, getPublicOffersUrl } from '../../config/appUrl';
 import { openWhatsAppUrl } from '../../utils/openWhatsAppUrl';
 import CatalogLayout from '../public-catalog/CatalogLayout';
-import { ProductCard, ProductModal, getProductCardImage } from '../public-catalog';
+import { ProductCard, ProductModal, getProductCardImage, getProductImages } from '../public-catalog';
 import CatalogStoreHeader from '../public-catalog/CatalogStoreHeader';
 import PremiumLoader from '../../components/ui/PremiumLoader';
 import BrandingFooter from '../../components/BrandingFooter';
@@ -63,7 +63,7 @@ function OfferCard({ product, formatPrice, theme, onOpen }) {
           {getProductCardImage(product) ? (
             <CatalogImage
               src={product?.thumbnailUrl || product?.cardImageUrl ? getProductCardImage(product) : cfImageUrl(getProductCardImage(product), 'card')}
-              originalSrc={getProductCardImage(product)}
+              originalSrc={getProductImages(product)?.[0] || getProductCardImage(product)}
               alt={product?.name}
               className="h-full w-full"
               imgClassName="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
