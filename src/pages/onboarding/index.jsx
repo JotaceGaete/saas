@@ -290,31 +290,66 @@ function CategoryStep({ onSelect }) {
 
 // ─── Paso 3: WhatsApp ─────────────────────────────────────────────────────────
 
-function WhatsAppStep({ onSubmit, saving }) {
-  const [value, setValue] = useState('');
+function WhatsAppStep({ onSubmit, saving, countryCode }) {
+  const [localNumber, setLocalNumber] = useState('');
+
+  const countryConf = countryCode ? COUNTRY_CONFIG[countryCode] : null;
+  const phonePrefix = countryConf?.phonePrefix || null;
+
+  const buildFull = () => {
+    const local = localNumber.trim();
+    if (!local) return '';
+    return phonePrefix ? `${phonePrefix}${local}` : local;
+  };
+
+  const handleSubmit = () => onSubmit(buildFull());
 
   return (
     <div>
       <StepIndicator step="whatsapp" />
       <h1 className="text-2xl font-bold mb-1 text-center" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>
-        ¿Cuál es tu WhatsApp?
+        ¿A qué WhatsApp te escribirán tus clientes?
       </h1>
       <p className="text-sm text-center mb-6" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
         Tus clientes podrán contactarte directamente desde tu catálogo.
       </p>
 
-      <input
-        type="tel"
-        autoFocus
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        placeholder="ej. +56 9 1234 5678"
-        className="w-full h-12 px-4 rounded-xl border text-base outline-none mb-4"
-        style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)', color: 'var(--color-foreground)', fontFamily: 'var(--font-body)' }}
-        onKeyDown={(e) => { if (e.key === 'Enter') onSubmit(value.trim()); }}
-      />
+      {phonePrefix ? (
+        <div
+          className="flex w-full h-12 rounded-xl border mb-4 overflow-hidden"
+          style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)' }}
+        >
+          <div
+            className="flex items-center justify-center px-3 shrink-0 select-none text-sm font-medium border-r"
+            style={{ color: 'var(--color-foreground)', borderColor: 'var(--color-border)', backgroundColor: 'var(--color-muted)', fontFamily: 'var(--font-body)', minWidth: '3.5rem' }}
+          >
+            {phonePrefix}
+          </div>
+          <input
+            type="tel"
+            autoFocus
+            value={localNumber}
+            onChange={(e) => setLocalNumber(e.target.value)}
+            placeholder={countryConf?.phoneLocalLength ? '0'.repeat(countryConf.phoneLocalLength) : '912345678'}
+            className="flex-1 h-full px-3 text-base outline-none bg-transparent"
+            style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-body)' }}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit(); }}
+          />
+        </div>
+      ) : (
+        <input
+          type="tel"
+          autoFocus
+          value={localNumber}
+          onChange={(e) => setLocalNumber(e.target.value)}
+          placeholder="ej. +1 555 1234567"
+          className="w-full h-12 px-4 rounded-xl border text-base outline-none mb-4"
+          style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)', color: 'var(--color-foreground)', fontFamily: 'var(--font-body)' }}
+          onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit(); }}
+        />
+      )}
 
-      <PrimaryButton onClick={() => onSubmit(value.trim())} loading={saving}>
+      <PrimaryButton onClick={handleSubmit} loading={saving}>
         {saving ? 'Creando tu tienda...' : 'Crear mi tienda'}
       </PrimaryButton>
 
@@ -496,6 +531,7 @@ export default function OnboardingPage() {
   const [step, setStep] = useState('country');
   const [rubros, setRubros] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState(null);
+  const [selectedCountryCode, setSelectedCountryCode] = useState(null);
   const [whatsapp, setWhatsapp] = useState('');
   const [seededCount, setSeededCount] = useState(0);
   const [catalogImageUrl, setCatalogImageUrl] = useState(null);
@@ -527,10 +563,10 @@ export default function OnboardingPage() {
     if (!countryCode) { setStep('category'); return; }
     setSaving(true);
     setError(null);
-    console.log('[onboarding] country:', countryCode);
     const { error: err } = await updateBusiness(business.id, { countryCode, persistCountry: true });
     setSaving(false);
     if (err) { setError('No se pudo guardar el país. Intenta de nuevo.'); return; }
+    setSelectedCountryCode(countryCode);
     await refreshBusiness();
     setStep('category');
   }, [business?.id, refreshBusiness]);
@@ -676,7 +712,7 @@ export default function OnboardingPage() {
         )}
 
         {step === 'whatsapp' && (
-          <WhatsAppStep onSubmit={handleWhatsApp} saving={false} />
+          <WhatsAppStep onSubmit={handleWhatsApp} saving={false} countryCode={selectedCountryCode || business?.countryCodeDb || business?.countryCode || null} />
         )}
 
         {step === 'success' && (
