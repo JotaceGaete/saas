@@ -1,7 +1,7 @@
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { isOnboardingComplete } from '../lib/country/business-country-policy';
+import { isOnboardingComplete, getMissingOnboardingFields } from '../lib/country/business-country-policy';
 import PremiumLoader from './ui/PremiumLoader';
 
 /** Rutas donde no se exige onboarding completo (evita redirect a /onboarding → loop). */
@@ -38,7 +38,19 @@ export default function RequireBusinessCountry({ children }) {
   const { pathname } = location;
   const { user, business, businessLoading } = useAuth();
 
-  if (isExemptRoute(pathname)) {
+  const isExempt = isExemptRoute(pathname);
+
+  console.log('[RBC_CURRENT]', {
+    pathname,
+    isExempt,
+    hasUser: !!user,
+    businessLoading,
+    businessId: business?.id,
+    isComplete: business ? isOnboardingComplete(business) : null,
+    missingFields: business ? getMissingOnboardingFields(business) : [],
+  });
+
+  if (isExempt) {
     return children;
   }
 
@@ -51,6 +63,11 @@ export default function RequireBusinessCountry({ children }) {
   }
 
   if (business?.id && !isOnboardingComplete(business)) {
+    console.log('[RBC_CURRENT_REDIRECT]', {
+      from: pathname,
+      to: '/onboarding',
+      businessId: business?.id,
+    });
     return (
       <Navigate
         to="/onboarding"
