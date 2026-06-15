@@ -6,7 +6,6 @@ import { CartProvider, useCart } from '../../contexts/CartContext';
 import { formatPrice as formatPriceUtil, resolveCatalogCurrency } from '../../utils/formatPrice';
 import { getBusinessLocale } from '../../lib/locale/businessLocale';
 import { resolveCatalogTheme } from '../../utils/catalogTheme';
-import { cfImageUrl } from '../../utils/cloudflareImage';
 import { getPublicCatalogUrl, getPublicOffersUrl } from '../../config/appUrl';
 import { openWhatsAppUrl } from '../../utils/openWhatsAppUrl';
 import CatalogLayout from '../public-catalog/CatalogLayout';
@@ -62,7 +61,7 @@ function OfferCard({ product, formatPrice, theme, onOpen }) {
         <div className="relative w-full aspect-[4/5] min-h-0">
           {getProductCardImage(product) ? (
             <CatalogImage
-              src={product?.thumbnailUrl || product?.cardImageUrl ? getProductCardImage(product) : cfImageUrl(getProductCardImage(product), 'card')}
+              src={getProductCardImage(product)}
               originalSrc={getProductImages(product)?.[0] || getProductCardImage(product)}
               alt={product?.name}
               className="h-full w-full"

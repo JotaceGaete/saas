@@ -374,9 +374,7 @@ function CatalogInner({ slug }) {
     const preloadUrls = sortedProducts
       .slice(0, isDesktop ? 6 : 4)
       .map((product) => {
-        const cardImage = getProductCardImage(product);
-        if (!cardImage) return null;
-        return product?.thumbnailUrl || product?.cardImageUrl ? cardImage : cfImageUrl(cardImage, 'card');
+        return getProductCardImage(product) || null;
       })
       .filter(Boolean);
 
@@ -2130,7 +2128,7 @@ export function ProductCard({
         <div className={`relative w-full ${imgAspect} min-h-0`}>
           {cardImage ? (
             <CatalogImage
-              src={cardImage === product?.thumbnailUrl || cardImage === product?.cardImageUrl ? cardImage : cfImageUrl(cardImage, imgProfile)}
+              src={cardImage}
               originalSrc={getProductImages(product)?.[0] || cardImage}
               alt={product?.name}
               className="h-full w-full"
