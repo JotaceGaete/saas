@@ -40,6 +40,8 @@ export default function RequireBusinessCountry({ children }) {
 
   const isExempt = isExemptRoute(pathname);
 
+  console.info('[RBC]', { pathname, isExempt, hasUser: !!user, businessLoading, businessId: business?.id });
+
   if (isExempt) {
     return children;
   }
@@ -54,6 +56,7 @@ export default function RequireBusinessCountry({ children }) {
 
   if (business?.id && !isOnboardingComplete(business)) {
     const missingFields = getMissingOnboardingFields(business);
+    console.warn('[RBC] REDIRECT → /business-configuration', { pathname, missingFields, business: { id: business.id, name: business.name, whatsapp: business.whatsapp, country_code: business.country_code, countryCodeDb: business.countryCodeDb } });
     return (
       <Navigate
         to="/business-configuration"

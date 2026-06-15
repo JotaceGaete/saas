@@ -28,6 +28,11 @@ const SIMPLE_CATEGORIES = [
 
 const MAIN_COUNTRIES = ['CL', 'AR', 'CO', 'MX', 'PE', 'UY'];
 
+// DEBUG: log when onboarding page mounts
+if (typeof window !== 'undefined') {
+  console.info('[OnboardingPage] module loaded');
+}
+
 const CREATING_STEPS = ['Diseño', 'Productos', 'Categorías', 'Configuración inicial'];
 // Tiempo en ms para marcar cada checkmark durante la pantalla de creación
 const CHECK_DELAYS = [0, 700, 1400, 2100];
@@ -492,6 +497,10 @@ function SuccessStep({ business, seededCount, catalogImageUrl }) {
 export default function OnboardingPage() {
   const navigate = useNavigate();
   const { business, refreshBusiness } = useAuth();
+
+  useEffect(() => {
+    console.info('[OnboardingPage] mounted', { businessId: business?.id });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [step, setStep] = useState('country');
   const [rubros, setRubros] = useState([]);
