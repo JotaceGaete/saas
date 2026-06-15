@@ -312,7 +312,10 @@ export const PRODUCT_TEMPLATES = {
  */
 export const RUBRO_SLUG_TO_TEMPLATE = {
   'ropa': 'ropa',
+  'moda-y-accesorios': 'ropa',
   'comida-y-bebidas': 'restaurante',
+  'comida': 'restaurante',
+  'gastronomia': 'restaurante',
 };
 
 /**

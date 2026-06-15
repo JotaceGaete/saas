@@ -22,7 +22,7 @@ import { supabase } from '../lib/supabase';
  */
 
 const TEMPLATE_FIELDS =
-  'id, name, slug, description, category, preview_image_url, banner_url, logo_url, is_active, rubro_slug, source, primary_color, secondary_color, theme, catalog_layout, button_style, created_at, updated_at';
+  'id, name, slug, description, category, preview_image_url, banner_url, logo_url, is_active, rubro_slug, family_slug, is_universal, source, primary_color, secondary_color, theme, catalog_layout, button_style, created_at, updated_at';
 
 /** Presets de fondo que consume el catálogo público (catalogTheme.js). */
 const VALID_TEMPLATE_THEMES = ['light', 'dark', 'pastel'];
@@ -51,6 +51,8 @@ const mapTemplateFromDb = (row) => ({
   logoUrl: row?.logo_url || null,
   isActive: row?.is_active === true,
   rubroSlug: row?.rubro_slug || null,
+  familySlug: row?.family_slug || null,
+  isUniversal: row?.is_universal === true,
   source: row?.source || 'custom',
   primaryColor: row?.primary_color || null,
   secondaryColor: row?.secondary_color || null,
@@ -139,6 +141,69 @@ export async function getTemplateForRubroSlug(rubroSlug) {
   if (error || !data?.id) return { data: null, error: error || null };
 
   return getTemplate(data.id);
+}
+
+/**
+ * Resolución jerárquica de plantilla para onboarding/seeding.
+ *
+ * Prioridad:
+ *   1. rubro_slug exacto + is_active
+ *   2. family_slug (sin rubro específico) + is_active
+ *   3. is_universal + is_active
+ *
+ * Devuelve la plantilla completa (con categorías y productos) o null.
+ * El caller (productTemplateService) aplica el fallback JS si retorna null.
+ *
+ * @param {string} rubroSlug   slug del rubro elegido por el usuario
+ * @param {string|null} familySlug  familia comercial ya resuelta (del RUBRO_FAMILY_MAP)
+ * @returns {Promise<{ data: object|null, source: string, error: object|null }>}
+ */
+export async function resolveTemplateForOnboarding(rubroSlug, familySlug = null) {
+  const normalized = String(rubroSlug || '').trim().toLowerCase();
+
+  // 1. Rubro específico
+  if (normalized) {
+    const { data: byId } = await supabase
+      ?.from('catalog_templates')
+      ?.select('id')
+      ?.eq('rubro_slug', normalized)
+      ?.eq('is_active', true)
+      ?.maybeSingle() ?? {};
+    if (byId?.id) {
+      const res = await getTemplate(byId.id);
+      if (res.data) return { data: res.data, source: 'db-rubro', error: null };
+    }
+  }
+
+  // 2. Familia comercial (solo plantillas sin rubro específico asignado)
+  const family = familySlug ?? null;
+  if (family) {
+    const { data: byFamily } = await supabase
+      ?.from('catalog_templates')
+      ?.select('id')
+      ?.eq('family_slug', family)
+      ?.is('rubro_slug', null)
+      ?.eq('is_active', true)
+      ?.maybeSingle() ?? {};
+    if (byFamily?.id) {
+      const res = await getTemplate(byFamily.id);
+      if (res.data) return { data: res.data, source: 'db-family', error: null };
+    }
+  }
+
+  // 3. Universal
+  const { data: universal } = await supabase
+    ?.from('catalog_templates')
+    ?.select('id')
+    ?.eq('is_universal', true)
+    ?.eq('is_active', true)
+    ?.maybeSingle() ?? {};
+  if (universal?.id) {
+    const res = await getTemplate(universal.id);
+    if (res.data) return { data: res.data, source: 'db-universal', error: null };
+  }
+
+  return { data: null, source: 'none', error: null };
 }
 
 /**
@@ -418,6 +483,25 @@ async function findActiveRubroConflict(rubroSlug, excludeTemplateId = null) {
   return data?.[0] || null;
 }
 
+/**
+ * Verifica que no exista OTRA plantilla activa con el mismo family_slug
+ * y sin rubro_slug (las que tienen rubro_slug son más específicas y no compiten).
+ */
+async function findActiveFamilyConflict(familySlug, excludeTemplateId = null) {
+  const normalized = String(familySlug || '').trim().toLowerCase();
+  if (!normalized) return null;
+  let query = supabase
+    ?.from('catalog_templates')
+    ?.select('id, name')
+    ?.eq('family_slug', normalized)
+    ?.is('rubro_slug', null)
+    ?.eq('is_active', true)
+    ?.limit(1);
+  if (excludeTemplateId) query = query?.neq('id', excludeTemplateId);
+  const { data } = (await query) ?? {};
+  return data?.[0] || null;
+}
+
 function buildTemplateDbPayload(input = {}) {
   const payload = {};
   if (input.name !== undefined) payload.name = String(input.name || '').trim();
@@ -429,6 +513,12 @@ function buildTemplateDbPayload(input = {}) {
   if (input.isActive !== undefined) payload.is_active = input.isActive === true;
   if (input.rubroSlug !== undefined) {
     payload.rubro_slug = String(input.rubroSlug || '').trim().toLowerCase() || null;
+  }
+  if (input.familySlug !== undefined) {
+    payload.family_slug = String(input.familySlug || '').trim().toLowerCase() || null;
+  }
+  if (input.isUniversal !== undefined) {
+    payload.is_universal = input.isUniversal === true;
   }
   if (input.primaryColor !== undefined) {
     payload.primary_color = isValidHexColor(input.primaryColor) ? String(input.primaryColor).trim() : null;
@@ -448,6 +538,9 @@ function buildTemplateDbPayload(input = {}) {
 const RUBRO_CONFLICT_MESSAGE =
   'Ya existe otra plantilla activa asociada a ese rubro. Desactívala o quítale el rubro primero.';
 
+const FAMILY_CONFLICT_MESSAGE =
+  'Ya existe otra plantilla activa de esa familia sin rubro específico. Desactívala o asígnale un rubro primero.';
+
 /** Crea una plantilla (cabecera). Las plantillas del panel nacen source='custom'. */
 export async function createTemplate(input = {}) {
   const name = String(input?.name || '').trim();
@@ -457,6 +550,10 @@ export async function createTemplate(input = {}) {
   if (payload.is_active && payload.rubro_slug) {
     const conflict = await findActiveRubroConflict(payload.rubro_slug);
     if (conflict) return { data: null, error: { message: RUBRO_CONFLICT_MESSAGE } };
+  }
+  if (payload.is_active && payload.family_slug && !payload.rubro_slug) {
+    const conflict = await findActiveFamilyConflict(payload.family_slug);
+    if (conflict) return { data: null, error: { message: FAMILY_CONFLICT_MESSAGE } };
   }
 
   const baseSlug = slugify(name) || 'plantilla';
@@ -489,7 +586,7 @@ export async function updateTemplate(templateId, updates = {}) {
   // Resolver estado/rubro finales para validar el conflicto de rubro activo.
   const { data: current, error: currentError } = await supabase
     ?.from('catalog_templates')
-    ?.select('id, is_active, rubro_slug')
+    ?.select('id, is_active, rubro_slug, family_slug')
     ?.eq('id', templateId)
     ?.single() ?? {};
   if (currentError || !current) {
@@ -497,9 +594,14 @@ export async function updateTemplate(templateId, updates = {}) {
   }
   const finalActive = payload.is_active !== undefined ? payload.is_active : current.is_active;
   const finalRubro = payload.rubro_slug !== undefined ? payload.rubro_slug : current.rubro_slug;
+  const finalFamily = payload.family_slug !== undefined ? payload.family_slug : current.family_slug;
   if (finalActive && finalRubro) {
     const conflict = await findActiveRubroConflict(finalRubro, templateId);
     if (conflict) return { data: null, error: { message: RUBRO_CONFLICT_MESSAGE } };
+  }
+  if (finalActive && finalFamily && !finalRubro) {
+    const conflict = await findActiveFamilyConflict(finalFamily, templateId);
+    if (conflict) return { data: null, error: { message: FAMILY_CONFLICT_MESSAGE } };
   }
 
   const { data, error } = await supabase

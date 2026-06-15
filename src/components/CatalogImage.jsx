@@ -72,10 +72,10 @@ export default function CatalogImage({
   };
 
   const handleError = (event) => {
+    // Primer intento: volver a la URL original si la transformada falló
     const canFallbackToOriginal =
       !!originalSrc &&
-      currentSrc !== originalSrc &&
-      isCfTransformableUrl(originalSrc);
+      currentSrc !== originalSrc;
 
     if (canFallbackToOriginal) {
       setCurrentSrc(originalSrc);
