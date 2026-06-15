@@ -633,7 +633,7 @@ export default function OnboardingPage() {
       const effectiveCountry = selectedCountryCode || business?.countryCodeDb || business?.country_code || null;
       const demoLoc = effectiveCountry ? DEMO_LOCATIONS[effectiveCountry] : null;
       let demoLocApplied = false;
-      if (demoLoc && !String(business?.address || '').trim()) {
+      if (demoLoc && !String(business?.address || '').trim() && business?.lat == null) {
         await updateBusiness(currentBusinessId, {
           address: demoLoc.address,
           city: demoLoc.city,
