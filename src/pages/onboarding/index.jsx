@@ -638,6 +638,8 @@ export default function OnboardingPage() {
           city: demoLoc.city,
           lat: demoLoc.lat,
           lng: demoLoc.lng,
+          // Activar sección de dirección para que el mapa aparezca en el catálogo
+          designSettings: { ...(business?.designSettings || {}), showAddress: true },
         });
       }
 
