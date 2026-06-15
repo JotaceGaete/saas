@@ -28,6 +28,23 @@ const SIMPLE_CATEGORIES = [
 
 const MAIN_COUNTRIES = ['CL', 'AR', 'CO', 'MX', 'PE', 'UY'];
 
+const DEMO_LOCATIONS = {
+  CL: { address: 'Plaza de Armas', city: 'Santiago',          lat: -33.4372,  lng: -70.6506 },
+  AR: { address: 'Obelisco',       city: 'Buenos Aires',      lat: -34.6037,  lng: -58.3816 },
+  MX: { address: 'Zócalo',         city: 'Ciudad de México',  lat:  19.4326,  lng: -99.1332 },
+  CO: { address: 'Plaza de Bolívar', city: 'Bogotá',          lat:   4.5981,  lng: -74.0758 },
+  PE: { address: 'Plaza Mayor',    city: 'Lima',              lat: -12.0464,  lng: -77.0428 },
+  UY: { address: 'Plaza Independencia', city: 'Montevideo',   lat: -34.9062,  lng: -56.1882 },
+  BO: { address: 'Plaza Murillo',  city: 'La Paz',            lat: -16.4956,  lng: -68.1339 },
+  ES: { address: 'Puerta del Sol', city: 'Madrid',            lat:  40.4168,  lng:  -3.7038 },
+  US: { address: 'Times Square',   city: 'New York',          lat:  40.7580,  lng: -73.9855 },
+  EC: { address: 'Plaza de la Independencia', city: 'Quito',  lat:  -0.2299,  lng: -78.5249 },
+  PY: { address: 'Plaza de los Héroes', city: 'Asunción',     lat: -25.2867,  lng: -57.6470 },
+  GT: { address: 'Plaza de la Constitución', city: 'Guatemala City', lat: 14.6407, lng: -90.5133 },
+  CR: { address: 'Plaza de la Democracia', city: 'San José',  lat:   9.9281,  lng: -84.0907 },
+  PA: { address: 'Plaza Herrera',  city: 'Ciudad de Panamá',  lat:   8.9824,  lng: -79.5199 },
+};
+
 const CREATING_STEPS = ['Diseño', 'Productos', 'Categorías', 'Configuración inicial'];
 // Tiempo en ms para marcar cada checkmark durante la pantalla de creación
 const CHECK_DELAYS = [0, 700, 1400, 2100];
@@ -612,6 +629,18 @@ export default function OnboardingPage() {
         await updateBusiness(currentBusinessId, { whatsapp });
       }
 
+      // 3.5 Asignar ubicación demo si el negocio no tiene dirección real
+      const effectiveCountry = selectedCountryCode || business?.countryCodeDb || business?.country_code || null;
+      const demoLoc = effectiveCountry ? DEMO_LOCATIONS[effectiveCountry] : null;
+      if (demoLoc && !String(business?.address || '').trim()) {
+        await updateBusiness(currentBusinessId, {
+          address: demoLoc.address,
+          city: demoLoc.city,
+          lat: demoLoc.lat,
+          lng: demoLoc.lng,
+        });
+      }
+
       // 4. Aplicar branding de la plantilla
       if (seedResult?.branding) {
         const currentBiz = business;
@@ -663,7 +692,7 @@ export default function OnboardingPage() {
         catalogImageUrl: img,
       };
     };
-  }, [business, rubros, selectedCategory, whatsapp, refreshBusiness]);
+  }, [business, rubros, selectedCategory, selectedCountryCode, whatsapp, refreshBusiness]);
 
   // Callback cuando CreatingStep termina
   const handleCreatingComplete = useCallback((result) => {
