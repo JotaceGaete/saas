@@ -60,12 +60,8 @@ export default function StoreCreationStep({ user, businessLoading }) {
         return;
       }
       if (data) {
-        console.info('[StoreCreationStep] business created, refreshing then → /onboarding', { data });
         await refreshBusiness();
-        console.info('[StoreCreationStep] refreshBusiness done, navigating to /onboarding');
         navigate('/onboarding', { replace: true });
-      } else {
-        console.warn('[StoreCreationStep] createBusiness returned no data and no error', { data, error });
       }
     } catch {
       setSaveError('Error inesperado. Por favor intenta de nuevo.');

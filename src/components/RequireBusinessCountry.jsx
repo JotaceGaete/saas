@@ -1,10 +1,10 @@
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { isOnboardingComplete, getMissingOnboardingFields } from '../lib/country/business-country-policy';
+import { isOnboardingComplete } from '../lib/country/business-country-policy';
 import PremiumLoader from './ui/PremiumLoader';
 
-/** Rutas donde no se exige `country_code` (evita redirect a /business-configuration → loop). */
+/** Rutas donde no se exige onboarding completo (evita redirect a /onboarding → loop). */
 const EXEMPT_PATHS = [
   '/business-configuration',
   '/complete-business-setup',
@@ -30,19 +30,15 @@ function RouteGuardSpinner({ business }) {
 }
 
 /**
- * Obliga a completar `country_code` cuando el negocio existe sin valor en BD.
- * Rutas exentas (p. ej. /business-configuration) no pasan esta validación para evitar bucles de <Navigate />.
+ * Redirige a /onboarding cuando el negocio existe pero el setup inicial no está completo.
+ * Rutas exentas (incluyendo /onboarding y /business-configuration) no pasan esta validación.
  */
 export default function RequireBusinessCountry({ children }) {
   const location = useLocation();
   const { pathname } = location;
   const { user, business, businessLoading } = useAuth();
 
-  const isExempt = isExemptRoute(pathname);
-
-  console.info('[RBC]', { pathname, isExempt, hasUser: !!user, businessLoading, businessId: business?.id });
-
-  if (isExempt) {
+  if (isExemptRoute(pathname)) {
     return children;
   }
 
@@ -55,13 +51,11 @@ export default function RequireBusinessCountry({ children }) {
   }
 
   if (business?.id && !isOnboardingComplete(business)) {
-    const missingFields = getMissingOnboardingFields(business);
-    console.warn('[RBC] REDIRECT → /business-configuration', { pathname, missingFields, business: { id: business.id, name: business.name, whatsapp: business.whatsapp, country_code: business.country_code, countryCodeDb: business.countryCodeDb } });
     return (
       <Navigate
-        to="/business-configuration"
+        to="/onboarding"
         replace
-        state={{ from: location, onboardingIncomplete: true, missingFields }}
+        state={{ from: location }}
       />
     );
   }
