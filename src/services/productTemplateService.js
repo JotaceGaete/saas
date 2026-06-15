@@ -226,7 +226,7 @@ async function _seedFromJsTemplate({ businessId, template }) {
     image_url: p.cardImageUrl,
     images: [p.cardImageUrl],
     card_image_url: p.cardImageUrl,
-    thumbnail_url: p.thumbnailUrl,
+    thumbnail_url: p.thumbnailUrl || p.cardImageUrl,
     status: 'active',
     is_active: true,
     is_draft: false,
