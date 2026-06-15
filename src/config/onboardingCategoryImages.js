@@ -14,5 +14,5 @@ export const ONBOARDING_CATEGORY_IMAGES = {
   mascotas:    'https://media.gong.cl/onboarding/mascotas.jpg',
   floreria:    'https://media.gong.cl/onboarding/floreria.jpg',
   servicios:   'https://media.gong.cl/onboarding/servicios.jpg',
-  hogar:       null, // sin imagen todavía → muestra icono Home
+  hogar:       'https://media.gong.cl/onboarding/hogar.jpg',
 };
