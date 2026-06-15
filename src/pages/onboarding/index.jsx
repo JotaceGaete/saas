@@ -12,17 +12,28 @@ import Icon from '../../components/AppIcon';
 import PremiumLoader from '../../components/ui/PremiumLoader';
 
 // ─── Config de categorías (etiquetas visibles → slugs internos) ───────────────
+//
+// imageUrl: pegar aquí la URL de cada imagen cuando estén listas en R2/Storage.
+//   1. Ropa        → rack de ropa, tienda de moda
+//   2. Tecnología  → notebook, accesorios electrónicos
+//   3. Gastronomía → platos de comida, restaurante
+//   4. Belleza     → cosméticos, productos de cuidado personal
+//   5. Mascotas    → productos o fotos de mascotas
+//   6. Florería    → arreglos florales, plantas
+//   7. Hogar       → decoración, muebles
+//   8. Servicios   → profesional de servicio (peluquería, técnico, etc.)
+//   9. Otro        → null (usa siempre el icono de fallback)
 
 const SIMPLE_CATEGORIES = [
-  { label: 'Ropa',        icon: 'Shirt',          slug: 'ropa',                     color: '#7c3aed', bg: '#f5f0ff' },
-  { label: 'Tecnología',  icon: 'Smartphone',      slug: 'tecnologia-y-electronica',  color: '#1d4ed8', bg: '#eff6ff' },
-  { label: 'Gastronomía', icon: 'UtensilsCrossed', slug: 'gastronomia',               color: '#ea580c', bg: '#fff7ed' },
-  { label: 'Belleza',     icon: 'Sparkles',        slug: 'belleza-y-cuidado-personal', color: '#db2777', bg: '#fdf2f8' },
-  { label: 'Mascotas',    icon: 'PawPrint',        slug: 'mascotas',                  color: '#c2410c', bg: '#fff7ed' },
-  { label: 'Florería',    icon: 'Leaf',            slug: 'floreria',                  color: '#16a34a', bg: '#f0fdf4' },
-  { label: 'Hogar',       icon: 'Home',            slug: 'hogar-y-decoracion',        color: '#0369a1', bg: '#f0f9ff' },
-  { label: 'Servicios',   icon: 'Wrench',          slug: 'servicios',                 color: '#2563eb', bg: '#eff6ff' },
-  { label: 'Otro',        icon: 'Package',         slug: null,                        color: '#6b7280', bg: '#f3f4f6' },
+  { label: 'Ropa',        icon: 'Shirt',          slug: 'ropa',                      color: '#7c3aed', bg: '#f5f0ff', imageUrl: null },
+  { label: 'Tecnología',  icon: 'Smartphone',      slug: 'tecnologia-y-electronica',  color: '#1d4ed8', bg: '#eff6ff', imageUrl: null },
+  { label: 'Gastronomía', icon: 'UtensilsCrossed', slug: 'gastronomia',               color: '#ea580c', bg: '#fff7ed', imageUrl: null },
+  { label: 'Belleza',     icon: 'Sparkles',        slug: 'belleza-y-cuidado-personal', color: '#db2777', bg: '#fdf2f8', imageUrl: null },
+  { label: 'Mascotas',    icon: 'PawPrint',        slug: 'mascotas',                  color: '#c2410c', bg: '#fff7ed', imageUrl: null },
+  { label: 'Florería',    icon: 'Leaf',            slug: 'floreria',                  color: '#16a34a', bg: '#f0fdf4', imageUrl: null },
+  { label: 'Hogar',       icon: 'Home',            slug: 'hogar-y-decoracion',        color: '#0369a1', bg: '#f0f9ff', imageUrl: null },
+  { label: 'Servicios',   icon: 'Wrench',          slug: 'servicios',                 color: '#2563eb', bg: '#eff6ff', imageUrl: null },
+  { label: 'Otro',        icon: 'Package',         slug: null,                        color: '#6b7280', bg: '#f3f4f6', imageUrl: null },
 ];
 
 const MAIN_COUNTRIES = ['CL', 'AR', 'CO', 'MX', 'PE', 'UY'];
@@ -186,6 +197,74 @@ function CountryStep({ onSelect, saving, defaultCode }) {
   );
 }
 
+// ─── Tile de categoría ────────────────────────────────────────────────────────
+
+function CategoryTile({ cat, isSelected, onClick }) {
+  const [imgError, setImgError] = useState(false);
+  const showImage = !!cat.imageUrl && !imgError;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="rounded-xl border overflow-hidden text-left transition-all w-full"
+      style={{
+        borderColor: isSelected ? 'var(--color-primary)' : 'var(--color-border)',
+        backgroundColor: 'var(--color-surface)',
+        boxShadow: isSelected ? '0 0 0 2px rgba(124,58,237,0.18)' : 'none',
+      }}
+    >
+      {/* Área de imagen — aspect-ratio 3:2 */}
+      <div className="relative w-full" style={{ paddingTop: '66.67%' }}>
+        {showImage ? (
+          <img
+            src={cat.imageUrl}
+            alt={cat.label}
+            className="absolute inset-0 w-full h-full object-cover"
+            loading="lazy"
+            onError={() => setImgError(true)}
+          />
+        ) : (
+          <div
+            className="absolute inset-0 flex items-center justify-center"
+            style={{ backgroundColor: isSelected ? cat.bg : 'var(--color-muted)' }}
+          >
+            <Icon name={cat.icon} size={26} color={isSelected ? cat.color : 'var(--color-muted-foreground)'} />
+          </div>
+        )}
+
+        {/* Overlay sutil cuando está seleccionado */}
+        {isSelected && (
+          <div className="absolute inset-0 pointer-events-none" style={{ backgroundColor: 'rgba(124,58,237,0.10)' }} />
+        )}
+
+        {/* Check badge */}
+        {isSelected && (
+          <div
+            className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full flex items-center justify-center"
+            style={{ backgroundColor: 'var(--color-primary)' }}
+          >
+            <Icon name="Check" size={11} color="#fff" />
+          </div>
+        )}
+      </div>
+
+      {/* Etiqueta */}
+      <div className="px-2 py-2">
+        <span
+          className="text-[11px] font-semibold leading-tight"
+          style={{
+            color: isSelected ? 'var(--color-primary)' : 'var(--color-foreground)',
+            fontFamily: 'var(--font-caption)',
+          }}
+        >
+          {cat.label}
+        </span>
+      </div>
+    </button>
+  );
+}
+
 // ─── Paso 2: Tipo de negocio ──────────────────────────────────────────────────
 
 function CategoryStep({ onSelect }) {
@@ -202,35 +281,14 @@ function CategoryStep({ onSelect }) {
       </p>
 
       <div className="grid grid-cols-3 gap-2 mb-5">
-        {SIMPLE_CATEGORIES.map((cat) => {
-          const isSelected = selected?.label === cat.label;
-          return (
-            <button
-              key={cat.label}
-              type="button"
-              onClick={() => setSelected(cat)}
-              className="flex flex-col items-center justify-center gap-2 py-4 px-2 rounded-xl border transition-all"
-              style={{
-                borderColor: isSelected ? 'var(--color-primary)' : 'var(--color-border)',
-                backgroundColor: isSelected ? 'rgba(124,58,237,0.08)' : 'var(--color-surface)',
-                boxShadow: isSelected ? '0 0 0 2px rgba(124,58,237,0.18)' : 'none',
-              }}
-            >
-              <div
-                className="w-9 h-9 rounded-xl flex items-center justify-center"
-                style={{ backgroundColor: isSelected ? cat.bg : 'var(--color-muted)' }}
-              >
-                <Icon name={cat.icon} size={18} color={isSelected ? cat.color : 'var(--color-muted-foreground)'} />
-              </div>
-              <span
-                className="text-[11px] font-semibold text-center leading-tight"
-                style={{ color: isSelected ? 'var(--color-primary)' : 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
-              >
-                {cat.label}
-              </span>
-            </button>
-          );
-        })}
+        {SIMPLE_CATEGORIES.map((cat) => (
+          <CategoryTile
+            key={cat.label}
+            cat={cat}
+            isSelected={selected?.label === cat.label}
+            onClick={() => setSelected(cat)}
+          />
+        ))}
       </div>
 
       <PrimaryButton onClick={() => onSelect(selected)} disabled={!selected}>
