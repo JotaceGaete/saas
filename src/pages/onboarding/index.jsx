@@ -10,29 +10,19 @@ import {
 } from '../../utils/productTemplates';
 import Icon from '../../components/AppIcon';
 import PremiumLoader from '../../components/ui/PremiumLoader';
+import { ONBOARDING_CATEGORY_IMAGES } from '../../config/onboardingCategoryImages';
 
 // ─── Config de categorías (etiquetas visibles → slugs internos) ───────────────
-//
-// imageUrl: pegar aquí la URL de cada imagen cuando estén listas en R2/Storage.
-//   1. Ropa        → rack de ropa, tienda de moda
-//   2. Tecnología  → notebook, accesorios electrónicos
-//   3. Gastronomía → platos de comida, restaurante
-//   4. Belleza     → cosméticos, productos de cuidado personal
-//   5. Mascotas    → productos o fotos de mascotas
-//   6. Florería    → arreglos florales, plantas
-//   7. Hogar       → decoración, muebles
-//   8. Servicios   → profesional de servicio (peluquería, técnico, etc.)
-//   9. Otro        → null (usa siempre el icono de fallback)
 
 const SIMPLE_CATEGORIES = [
-  { label: 'Ropa',        icon: 'Shirt',          slug: 'ropa',                      color: '#7c3aed', bg: '#f5f0ff', imageUrl: null },
-  { label: 'Tecnología',  icon: 'Smartphone',      slug: 'tecnologia-y-electronica',  color: '#1d4ed8', bg: '#eff6ff', imageUrl: null },
-  { label: 'Gastronomía', icon: 'UtensilsCrossed', slug: 'gastronomia',               color: '#ea580c', bg: '#fff7ed', imageUrl: null },
-  { label: 'Belleza',     icon: 'Sparkles',        slug: 'belleza-y-cuidado-personal', color: '#db2777', bg: '#fdf2f8', imageUrl: null },
-  { label: 'Mascotas',    icon: 'PawPrint',        slug: 'mascotas',                  color: '#c2410c', bg: '#fff7ed', imageUrl: null },
-  { label: 'Florería',    icon: 'Leaf',            slug: 'floreria',                  color: '#16a34a', bg: '#f0fdf4', imageUrl: null },
-  { label: 'Hogar',       icon: 'Home',            slug: 'hogar-y-decoracion',        color: '#0369a1', bg: '#f0f9ff', imageUrl: null },
-  { label: 'Servicios',   icon: 'Wrench',          slug: 'servicios',                 color: '#2563eb', bg: '#eff6ff', imageUrl: null },
+  { label: 'Ropa',        icon: 'Shirt',          slug: 'ropa',                      color: '#7c3aed', bg: '#f5f0ff', imageUrl: ONBOARDING_CATEGORY_IMAGES.ropa },
+  { label: 'Tecnología',  icon: 'Smartphone',      slug: 'tecnologia-y-electronica',  color: '#1d4ed8', bg: '#eff6ff', imageUrl: ONBOARDING_CATEGORY_IMAGES.tecnologia },
+  { label: 'Gastronomía', icon: 'UtensilsCrossed', slug: 'gastronomia',               color: '#ea580c', bg: '#fff7ed', imageUrl: ONBOARDING_CATEGORY_IMAGES.gastronomia },
+  { label: 'Belleza',     icon: 'Sparkles',        slug: 'belleza-y-cuidado-personal', color: '#db2777', bg: '#fdf2f8', imageUrl: ONBOARDING_CATEGORY_IMAGES.belleza },
+  { label: 'Mascotas',    icon: 'PawPrint',        slug: 'mascotas',                  color: '#c2410c', bg: '#fff7ed', imageUrl: ONBOARDING_CATEGORY_IMAGES.mascotas },
+  { label: 'Florería',    icon: 'Leaf',            slug: 'floreria',                  color: '#16a34a', bg: '#f0fdf4', imageUrl: ONBOARDING_CATEGORY_IMAGES.floreria },
+  { label: 'Hogar',       icon: 'Home',            slug: 'hogar-y-decoracion',        color: '#0369a1', bg: '#f0f9ff', imageUrl: ONBOARDING_CATEGORY_IMAGES.hogar },
+  { label: 'Servicios',   icon: 'Wrench',          slug: 'servicios',                 color: '#2563eb', bg: '#eff6ff', imageUrl: ONBOARDING_CATEGORY_IMAGES.servicios },
   { label: 'Otro',        icon: 'Package',         slug: null,                        color: '#6b7280', bg: '#f3f4f6', imageUrl: null },
 ];
 
