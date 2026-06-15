@@ -93,6 +93,7 @@ async function _seedFromDbTemplate({ businessId, dbTemplate }) {
   const branding = {
     logoUrl: dbTemplate.logoUrl || null,
     coverImageUrl: dbTemplate.bannerUrl || null,
+    previewImageUrl: dbTemplate.previewImageUrl || null,
   };
 
   // Categorías: crear solo las que no existan (match por slug generado del nombre)
@@ -175,6 +176,7 @@ async function _seedFromJsTemplate({ businessId, template }) {
   const branding = {
     logoUrl: template.logoUrl || null,
     coverImageUrl: template.coverImageUrl || null,
+    previewImageUrl: null,
   };
 
   let categoriesCreated = 0;
