@@ -4,10 +4,16 @@ import App from "./App";
 import "./styles/tailwind.css";
 import "./styles/index.css";
 
-/** En dev, quita SW previos (p. ej. tras `vite preview` o pruebas PWA) para no servir bundles viejos. */
-if (import.meta.env.DEV && typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+/** Quita SW/caches previos: el sitio ya no registra PWA en la config activa de Vite. */
+if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
   navigator.serviceWorker.getRegistrations?.().then((regs) => {
     regs.forEach((r) => r.unregister());
+  });
+}
+
+if (typeof window !== "undefined" && "caches" in window) {
+  caches.keys?.().then((keys) => {
+    keys.forEach((key) => caches.delete(key));
   });
 }
 

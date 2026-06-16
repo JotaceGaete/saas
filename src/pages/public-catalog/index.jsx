@@ -2069,8 +2069,37 @@ export function ProductCard({
   const cartItem = items?.find(i => i?.id === product?.id);
   const qty = cartItem?.quantity || 0;
   const [bump, setBump] = useState(false);
-  const isEager = imageIndex < 4;
-  const imgProfile = imageProfile ?? (isDesktop ? 'thumbnail' : 'cardMobile');
+  const isEager = imageIndex < 12;
+  const imgs = getProductImages(product);
+  const cardImage = getProductCardImage(product);
+  const fallbackImage = imgs?.[0] || null;
+  const [usePrimaryImageFallback, setUsePrimaryImageFallback] = useState(false);
+  const imageUrl = usePrimaryImageFallback && fallbackImage ? fallbackImage : cardImage;
+  const extraImages = imgs.length > 1 ? imgs.length - 1 : 0;
+  const trustBadge = getProductCardTrustBadge(product);
+  // discount viene del badge para no recalcular; null cuando no hay descuento real
+  const discount = trustBadge?.discount ?? null;
+  const imgAspect = compact ? 'aspect-square' : 'aspect-[4/5]';
+  const roundTop = 'rounded-t-2xl';
+  const stateBadge = productState === 'sold_out'
+    ? { label: 'Agotado', style: { color: '#9A3412', backgroundColor: 'rgba(251,146,60,0.18)' } }
+    : null;
+  const qtyTopClass =
+    qty > 0 && trustBadge ? (compact ? 'top-7' : 'top-[1.85rem]') : 'top-1';
+  // Sombra levemente más intensa para productos en oferta — señal visual sin romper diseño
+  const cardShadow = product?.onSale
+    ? '0 2px 14px rgba(220,38,38,0.10), 0 1px 4px rgba(0,0,0,0.06)'
+    : '0 2px 10px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.04)';
+
+  useEffect(() => {
+    setUsePrimaryImageFallback(false);
+  }, [product?.id, cardImage, fallbackImage]);
+
+  const handleCardImageError = () => {
+    if (!usePrimaryImageFallback && fallbackImage && fallbackImage !== imageUrl) {
+      setUsePrimaryImageFallback(true);
+    }
+  };
 
   if (productState === 'hidden') return null;
 
@@ -2093,24 +2122,6 @@ export function ProductCard({
     updateQuantity(product?.id, qty - 1);
   };
 
-  const imgs = getProductImages(product);
-  const cardImage = getProductCardImage(product);
-  const extraImages = imgs.length > 1 ? imgs.length - 1 : 0;
-  const trustBadge = getProductCardTrustBadge(product);
-  // discount viene del badge para no recalcular; null cuando no hay descuento real
-  const discount = trustBadge?.discount ?? null;
-  const imgAspect = compact ? 'aspect-square' : 'aspect-[4/5]';
-  const roundTop = 'rounded-t-2xl';
-  const stateBadge = productState === 'sold_out'
-    ? { label: 'Agotado', style: { color: '#9A3412', backgroundColor: 'rgba(251,146,60,0.18)' } }
-    : null;
-  const qtyTopClass =
-    qty > 0 && trustBadge ? (compact ? 'top-7' : 'top-[1.85rem]') : 'top-1';
-  // Sombra levemente más intensa para productos en oferta — señal visual sin romper diseño
-  const cardShadow = product?.onSale
-    ? '0 2px 14px rgba(220,38,38,0.10), 0 1px 4px rgba(0,0,0,0.06)'
-    : '0 2px 10px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.04)';
-
   return (
     <div
       className="group flex h-full min-h-0 w-full flex-col overflow-hidden rounded-2xl border bg-white text-left will-change-transform transition-[transform,box-shadow] duration-200 ease-out md:hover:-translate-y-1 md:hover:scale-[1.01] md:hover:shadow-lg active:scale-[0.98]"
@@ -2126,15 +2137,18 @@ export function ProductCard({
         className={`relative block w-full shrink-0 overflow-hidden bg-gray-50 text-left ${roundTop}`}
       >
         <div className={`relative w-full ${imgAspect} min-h-0`}>
-          {cardImage ? (
+          {imageUrl ? (
             <CatalogImage
-              src={cardImage}
-              originalSrc={getProductImages(product)?.[0] || cardImage}
+              src={imageUrl}
+              originalSrc={imageUrl}
+              imgKey={imageUrl}
               alt={product?.name}
               className="h-full w-full"
               imgClassName="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
               variant="product"
               loading={isEager ? 'eager' : 'lazy'}
+              fetchPriority={isEager ? 'high' : undefined}
+              onError={handleCardImageError}
             />
           ) : (
             <div className={`flex h-full w-full items-center justify-center bg-gray-100 ${compact ? 'min-h-[72px]' : ''}`}>

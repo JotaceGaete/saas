@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Icon from './AppIcon';
 import { isCfTransformableUrl } from '../utils/cloudflareImage';
 
@@ -48,10 +48,12 @@ export default function CatalogImage({
   ariaHidden,
   loadedOpacity = 1,
   showFallbackIcon = true,
+  imgKey,
   onLoad,
   onError,
   ...props
 }) {
+  const imgRef = useRef(null);
   const [currentSrc, setCurrentSrc] = useState(src || null);
   const [loaded, setLoaded] = useState(() => isDataUrl(src));
   const [failed, setFailed] = useState(!src);
@@ -61,6 +63,14 @@ export default function CatalogImage({
     setLoaded(isDataUrl(src));
     setFailed(!src);
   }, [src, originalSrc]);
+
+  useEffect(() => {
+    const img = imgRef.current;
+    if (!img || failed) return;
+    if (img.complete && img.naturalWidth > 0) {
+      setLoaded(true);
+    }
+  }, [currentSrc, failed]);
 
   const placeholder = PLACEHOLDER_STYLES[variant] || PLACEHOLDER_STYLES.product;
   const currentIsDataUrl = isDataUrl(currentSrc);
@@ -108,6 +118,8 @@ export default function CatalogImage({
 
       {currentSrc && !failed ? (
         <img
+          key={imgKey ?? currentSrc}
+          ref={imgRef}
           src={currentSrc}
           alt={alt}
           className={imgClassName}
