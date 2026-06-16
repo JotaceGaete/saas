@@ -122,6 +122,14 @@ export default function CrmInvoices() {
                   )}
 
                   <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-gray-100">
+                    {inv.status === 'pendiente' && (
+                      <button
+                        onClick={() => navigate(`/crm/facturas/${inv.id}`)}
+                        className="inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 font-medium"
+                      >
+                        <Icon name="Pencil" size={13} />Editar
+                      </button>
+                    )}
                     <button
                       onClick={() => navigate(`/crm/facturas/${inv.id}`)}
                       className="inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50"

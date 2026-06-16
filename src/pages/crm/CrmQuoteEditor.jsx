@@ -18,9 +18,9 @@ import CrmDocumentPdf from './CrmDocumentPdf';
 import {
   CrmLineItemCard,
   CrmLineItemTableRow,
+  CrmLineItemReadOnly,
   calcItemSubtotal,
   EMPTY_ITEM,
-  fmtCLP,
 } from './components/CrmLineItemRow';
 import { formatMoney } from '../../utils/formatMoney';
 import { CrmProductSearchModal } from './components/CrmProductSearchModal';
@@ -37,6 +37,11 @@ const MANUAL_CHARGES = [
 
 const fieldClass =
   'w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500';
+const fieldClassDisabled =
+  'w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50';
+const EDITABLE_QUOTE_STATUSES = new Set(['borrador', 'enviado', 'pendiente']);
+const LOCKED_DOCUMENT_MESSAGE = 'Este documento ya no se puede editar porque está pagado, aprobado o anulado.';
+const EDITABLE_DOCUMENT_MESSAGE = 'Puedes corregir este presupuesto mientras esté pendiente.';
 
 export default function CrmQuoteEditor() {
   const { id } = useParams();
@@ -128,6 +133,7 @@ export default function CrmQuoteEditor() {
     if (i.discount_type === 'fixed') return s + Math.min(i.discount_pct || 0, base);
     return s + (base * (i.discount_pct || 0)) / 100;
   }, 0);
+  const canEdit = isNew || (EDITABLE_QUOTE_STATUSES.has(saved?.status) && !saved?.converted_to_invoice_id);
 
   // Documento para vista previa — funciona con o sin guardado previo
   const previewDoc = {
@@ -172,6 +178,10 @@ export default function CrmQuoteEditor() {
 
   const handleSave = async () => {
     setSaveError('');
+    if (!canEdit) {
+      setSaveError(LOCKED_DOCUMENT_MESSAGE);
+      return;
+    }
     const payload = buildPayload();
     if (!payload.items.length) {
       setSaveError('Agrega al menos un ítem con descripción.');
@@ -316,6 +326,20 @@ export default function CrmQuoteEditor() {
     </div>
   );
 
+  const ReadOnlyItemsSection = (
+    <div className="bg-white border border-gray-200 rounded-xl p-5">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-sm font-semibold text-gray-700">Productos y servicios</h3>
+        <span className="text-xs text-gray-400">{items.length} ítem{items.length !== 1 ? 's' : ''}</span>
+      </div>
+      <div>
+        {items.map((item, idx) => (
+          <CrmLineItemReadOnly key={idx} item={item} imageUrl={getItemImage(item)} />
+        ))}
+      </div>
+    </div>
+  );
+
   return (
     <DashboardAppShell>
       <PanelHeader
@@ -347,14 +371,16 @@ export default function CrmQuoteEditor() {
                 Vista previa
               </button>
             )}
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium disabled:opacity-60"
-            >
-              {saving ? <Icon name="Loader2" size={15} className="animate-spin" /> : <Icon name="Save" size={15} />}
-              {isNew ? docLabel.crear : 'Guardar'}
-            </button>
+            {canEdit && (
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium disabled:opacity-60"
+              >
+                {saving ? <Icon name="Loader2" size={15} className="animate-spin" /> : <Icon name="Save" size={15} />}
+                {isNew ? docLabel.crear : 'Guardar'}
+              </button>
+            )}
           </div>
         }
       >
@@ -368,14 +394,16 @@ export default function CrmQuoteEditor() {
             Vista previa
           </button>
         )}
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium disabled:opacity-60"
-        >
-          {saving ? <Icon name="Loader2" size={15} className="animate-spin" /> : <Icon name="Save" size={15} />}
-          {isNew ? 'Crear presupuesto' : 'Guardar cambios'}
-        </button>
+        {canEdit && (
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium disabled:opacity-60"
+          >
+            {saving ? <Icon name="Loader2" size={15} className="animate-spin" /> : <Icon name="Save" size={15} />}
+            {isNew ? 'Crear presupuesto' : 'Guardar cambios'}
+          </button>
+        )}
       </PanelHeader>
 
       <DashboardLayoutContent>
@@ -383,6 +411,16 @@ export default function CrmQuoteEditor() {
           {saveError && (
             <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
               <Icon name="AlertCircle" size={16} />{saveError}
+            </div>
+          )}
+          {!isNew && (
+            <div className={`flex items-center gap-2 p-3 rounded-lg text-sm border ${
+              canEdit
+                ? 'bg-blue-50 border-blue-200 text-blue-700'
+                : 'bg-gray-50 border-gray-200 text-gray-600'
+            }`}>
+              <Icon name={canEdit ? 'Info' : 'Lock'} size={16} />
+              {canEdit ? EDITABLE_DOCUMENT_MESSAGE : LOCKED_DOCUMENT_MESSAGE}
             </div>
           )}
 
@@ -393,9 +431,10 @@ export default function CrmQuoteEditor() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Cliente</label>
                 <select
+                  disabled={!canEdit}
                   value={customerId}
                   onChange={(e) => setCustomerId(e.target.value)}
-                  className={fieldClass}
+                  className={fieldClassDisabled}
                 >
                   <option value="">Sin cliente asignado</option>
                   {customers.map((c) => (
@@ -410,17 +449,19 @@ export default function CrmQuoteEditor() {
                 <ChileanDateInput
                   value={validUntil}
                   onChange={setValidUntil}
-                  className={fieldClass}
+                  disabled={!canEdit}
+                  className={fieldClassDisabled}
                 />
               </div>
               <div className="sm:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Notas (visibles en el PDF)</label>
                 <textarea
+                  disabled={!canEdit}
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   rows={2}
                   placeholder="Observaciones generales…"
-                  className={`${fieldClass} resize-none`}
+                  className={`${fieldClassDisabled} resize-none`}
                 />
               </div>
             </div>
@@ -435,24 +476,24 @@ export default function CrmQuoteEditor() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Forma de pago</label>
-                <input type="text" value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} placeholder="Ej: 50% anticipo, 50% contra entrega" className={fieldClass} />
+                <input type="text" disabled={!canEdit} value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} placeholder="Ej: 50% anticipo, 50% contra entrega" className={fieldClassDisabled} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Plazo de entrega</label>
-                <input type="text" value={deliveryDays} onChange={(e) => setDeliveryDays(e.target.value)} placeholder="Ej: 5 días hábiles" className={fieldClass} />
+                <input type="text" disabled={!canEdit} value={deliveryDays} onChange={(e) => setDeliveryDays(e.target.value)} placeholder="Ej: 5 días hábiles" className={fieldClassDisabled} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Método de entrega</label>
-                <input type="text" value={deliveryMethod} onChange={(e) => setDeliveryMethod(e.target.value)} placeholder="Ej: Despacho a domicilio, Retiro en tienda" className={fieldClass} />
+                <input type="text" disabled={!canEdit} value={deliveryMethod} onChange={(e) => setDeliveryMethod(e.target.value)} placeholder="Ej: Despacho a domicilio, Retiro en tienda" className={fieldClassDisabled} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Observaciones comerciales</label>
-                <input type="text" value={commercialNotes} onChange={(e) => setCommercialNotes(e.target.value)} placeholder="Ej: Precios no incluyen IVA" className={fieldClass} />
+                <input type="text" disabled={!canEdit} value={commercialNotes} onChange={(e) => setCommercialNotes(e.target.value)} placeholder="Ej: Precios no incluyen IVA" className={fieldClassDisabled} />
               </div>
             </div>
           </div>
 
-          {ItemsSection}
+          {canEdit ? ItemsSection : ReadOnlyItemsSection}
 
           {/* Totales */}
           <div className="rounded-xl overflow-hidden bg-gray-900">
@@ -495,14 +536,16 @@ export default function CrmQuoteEditor() {
                 Vista previa
               </button>
             )}
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 sm:py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold disabled:opacity-60 transition-colors"
-            >
-              {saving ? <Icon name="Loader2" size={15} className="animate-spin" /> : <Icon name="CheckCircle" size={15} />}
-              {isNew ? docLabel.crear : 'Guardar cambios'}
-            </button>
+            {canEdit && (
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 sm:py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold disabled:opacity-60 transition-colors"
+              >
+                {saving ? <Icon name="Loader2" size={15} className="animate-spin" /> : <Icon name="CheckCircle" size={15} />}
+                {isNew ? docLabel.crear : 'Guardar cambios'}
+              </button>
+            )}
           </div>
         </div>
       </DashboardLayoutContent>

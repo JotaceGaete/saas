@@ -8,6 +8,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import {
   getCrmInvoice,
   createCrmInvoice,
+  updateCrmInvoice,
   getCrmCustomers,
   formatInvoiceNumber,
   updateCrmInvoiceStatus,
@@ -45,6 +46,8 @@ const fieldClass =
   'w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500';
 const fieldClassDisabled =
   'w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50';
+const LOCKED_DOCUMENT_MESSAGE = 'Este documento ya no se puede editar porque está pagado, aprobado o anulado.';
+const PENDING_DOCUMENT_MESSAGE = 'Puedes corregir esta nota mientras esté pendiente.';
 
 export default function CrmInvoiceEditor() {
   const { id } = useParams();
@@ -153,6 +156,7 @@ export default function CrmInvoiceEditor() {
     if (i.discount_type === 'fixed') return s + Math.min(i.discount_pct || 0, b);
     return s + (b * (i.discount_pct || 0)) / 100;
   }, 0);
+  const canEdit = isNew || saved?.status === 'pendiente';
 
   // Documento para vista previa — funciona con o sin guardado previo
   const previewDoc = {
@@ -211,13 +215,16 @@ export default function CrmInvoiceEditor() {
 
   const handleSave = async () => {
     setSaveError('');
+    if (!canEdit) {
+      setSaveError(LOCKED_DOCUMENT_MESSAGE);
+      return;
+    }
     const validItems = items.filter((i) => i.name?.trim());
     if (!validItems.length) {
       setSaveError('Agrega al menos un ítem con descripción.');
       return;
     }
-    setSaving(true);
-    const { data, error } = await createCrmInvoice(business.id, {
+    const payload = {
       customerId: customerId || null,
       issueDate,
       dueDate: dueDate || null,
@@ -236,10 +243,19 @@ export default function CrmInvoiceEditor() {
         discount_type: i.discount_type || 'percentage',
         sort_order: idx,
       })),
-    });
+    };
+
+    setSaving(true);
+    const { data, error } = isNew
+      ? await createCrmInvoice(business.id, payload)
+      : await updateCrmInvoice(id, payload);
     setSaving(false);
     if (error) { setSaveError(error.message || 'Error al guardar.'); return; }
-    navigate(`/crm/facturas/${data.id}`, { replace: true });
+    if (isNew) {
+      navigate(`/crm/facturas/${data.id}`, { replace: true });
+    } else {
+      setSaved((prev) => ({ ...prev, ...data }));
+    }
   };
 
   const docTitle = isNew
@@ -412,14 +428,14 @@ export default function CrmInvoiceEditor() {
                 Vista previa
               </button>
             )}
-            {isNew && (
+            {canEdit && (
               <button
                 onClick={handleSave}
                 disabled={saving}
                 className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium disabled:opacity-60"
               >
                 {saving ? <Icon name="Loader2" size={15} className="animate-spin" /> : <Icon name="Save" size={15} />}
-                Crear factura
+                {isNew ? 'Crear factura' : 'Guardar'}
               </button>
             )}
           </div>
@@ -442,14 +458,14 @@ export default function CrmInvoiceEditor() {
             )}
           </>
         )}
-        {isNew && (
+        {canEdit && (
           <button
             onClick={handleSave}
             disabled={saving}
             className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium disabled:opacity-60"
           >
             {saving ? <Icon name="Loader2" size={15} className="animate-spin" /> : <Icon name="Save" size={15} />}
-            Crear factura
+            {isNew ? 'Crear factura' : 'Guardar cambios'}
           </button>
         )}
       </PanelHeader>
@@ -461,6 +477,16 @@ export default function CrmInvoiceEditor() {
               <Icon name="AlertCircle" size={16} />{saveError}
             </div>
           )}
+          {!isNew && (
+            <div className={`flex items-center gap-2 p-3 rounded-lg text-sm border ${
+              canEdit
+                ? 'bg-blue-50 border-blue-200 text-blue-700'
+                : 'bg-gray-50 border-gray-200 text-gray-600'
+            }`}>
+              <Icon name={canEdit ? 'Info' : 'Lock'} size={16} />
+              {canEdit ? PENDING_DOCUMENT_MESSAGE : LOCKED_DOCUMENT_MESSAGE}
+            </div>
+          )}
 
           {/* Datos de la factura */}
           <div className="bg-white border border-gray-200 rounded-xl p-5">
@@ -469,7 +495,7 @@ export default function CrmInvoiceEditor() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Cliente</label>
                 <select
-                  disabled={!isNew}
+                  disabled={!canEdit}
                   value={customerId}
                   onChange={(e) => setCustomerId(e.target.value)}
                   className={fieldClassDisabled}
@@ -487,7 +513,7 @@ export default function CrmInvoiceEditor() {
                 <ChileanDateInput
                   value={issueDate}
                   onChange={setIssueDate}
-                  disabled={!isNew}
+                  disabled={!canEdit}
                   className={fieldClassDisabled}
                 />
               </div>
@@ -496,14 +522,14 @@ export default function CrmInvoiceEditor() {
                 <ChileanDateInput
                   value={dueDate}
                   onChange={setDueDate}
-                  disabled={!isNew}
+                  disabled={!canEdit}
                   className={fieldClassDisabled}
                 />
               </div>
               <div className="sm:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Notas (visibles en el PDF)</label>
                 <textarea
-                  disabled={!isNew}
+                  disabled={!canEdit}
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   rows={2}
@@ -523,24 +549,24 @@ export default function CrmInvoiceEditor() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Forma de pago</label>
-                <input type="text" disabled={!isNew} value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} placeholder="Ej: 50% anticipo, 50% contra entrega" className={fieldClassDisabled} />
+                <input type="text" disabled={!canEdit} value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} placeholder="Ej: 50% anticipo, 50% contra entrega" className={fieldClassDisabled} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Plazo de entrega</label>
-                <input type="text" disabled={!isNew} value={deliveryDays} onChange={(e) => setDeliveryDays(e.target.value)} placeholder="Ej: 5 días hábiles" className={fieldClassDisabled} />
+                <input type="text" disabled={!canEdit} value={deliveryDays} onChange={(e) => setDeliveryDays(e.target.value)} placeholder="Ej: 5 días hábiles" className={fieldClassDisabled} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Método de entrega</label>
-                <input type="text" disabled={!isNew} value={deliveryMethod} onChange={(e) => setDeliveryMethod(e.target.value)} placeholder="Ej: Despacho a domicilio, Retiro en tienda" className={fieldClassDisabled} />
+                <input type="text" disabled={!canEdit} value={deliveryMethod} onChange={(e) => setDeliveryMethod(e.target.value)} placeholder="Ej: Despacho a domicilio, Retiro en tienda" className={fieldClassDisabled} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Observaciones comerciales</label>
-                <input type="text" disabled={!isNew} value={commercialNotes} onChange={(e) => setCommercialNotes(e.target.value)} placeholder="Ej: Precios no incluyen IVA" className={fieldClassDisabled} />
+                <input type="text" disabled={!canEdit} value={commercialNotes} onChange={(e) => setCommercialNotes(e.target.value)} placeholder="Ej: Precios no incluyen IVA" className={fieldClassDisabled} />
               </div>
             </div>
           </div>
 
-          {isNew ? EditableItemsSection : ReadOnlyItemsSection}
+          {canEdit ? EditableItemsSection : ReadOnlyItemsSection}
 
           {/* Totales */}
           <div className="rounded-xl overflow-hidden bg-gray-900">
@@ -678,14 +704,14 @@ export default function CrmInvoiceEditor() {
                 Vista previa
               </button>
             )}
-            {isNew && (
+            {canEdit && (
               <button
                 onClick={handleSave}
                 disabled={saving}
                 className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 sm:py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold disabled:opacity-60 transition-colors"
               >
                 {saving ? <Icon name="Loader2" size={15} className="animate-spin" /> : <Icon name="CheckCircle" size={15} />}
-                Crear factura
+                {isNew ? 'Crear factura' : 'Guardar cambios'}
               </button>
             )}
           </div>

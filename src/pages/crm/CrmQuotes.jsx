@@ -16,6 +16,7 @@ const STATUS_STYLES = {
   rechazado:'bg-red-100 text-red-700',
 };
 const STATUS_LABELS = { borrador: 'Borrador', enviado: 'Enviado', aceptado: 'Aceptado', rechazado: 'Rechazado' };
+const EDITABLE_QUOTE_STATUSES = new Set(['borrador', 'enviado', 'pendiente']);
 
 export default function CrmQuotes() {
   const navigate = useNavigate();
@@ -104,7 +105,9 @@ export default function CrmQuotes() {
           </div>
         ) : (
           <div className="space-y-3">
-            {quotes.map(q => (
+            {quotes.map(q => {
+              const canEdit = EDITABLE_QUOTE_STATUSES.has(q.status) && !q.converted_to_invoice_id;
+              return (
               <div key={q.id} className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-sm transition-shadow">
                 <div className="flex items-start justify-between gap-3 min-w-0">
                   <div className="min-w-0 flex-1">
@@ -124,11 +127,19 @@ export default function CrmQuotes() {
 
                 {/* Acciones */}
                 <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-gray-100">
+                  {canEdit && (
+                    <button
+                      onClick={() => navigate(`/crm/presupuestos/${q.id}`)}
+                      className="inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 font-medium"
+                    >
+                      <Icon name="Pencil" size={13} />Editar
+                    </button>
+                  )}
                   <button
                     onClick={() => navigate(`/crm/presupuestos/${q.id}`)}
                     className="inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50"
                   >
-                    <Icon name="Pencil" size={13} />Ver / Editar
+                    <Icon name="Eye" size={13} />Ver / PDF
                   </button>
                   <button
                     onClick={() => handleDuplicate(q.id)}
@@ -180,7 +191,8 @@ export default function CrmQuotes() {
                   )}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </DashboardLayoutContent>

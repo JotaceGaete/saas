@@ -439,6 +439,47 @@ export async function createCrmInvoice(businessId, { customerId, issueDate, dueD
   return { data: invoice, error: null };
 }
 
+export async function updateCrmInvoice(invoiceId, { customerId, issueDate, dueDate, notes, paymentTerms, deliveryDays, deliveryMethod, commercialNotes, items }) {
+  const updates = {};
+  if (customerId !== undefined) updates.customer_id = customerId;
+  if (issueDate !== undefined) updates.issue_date = issueDate;
+  if (dueDate !== undefined) updates.due_date = dueDate;
+  if (notes !== undefined) updates.notes = notes;
+  if (paymentTerms !== undefined) updates.payment_terms = paymentTerms;
+  if (deliveryDays !== undefined) updates.delivery_days = deliveryDays;
+  if (deliveryMethod !== undefined) updates.delivery_method = deliveryMethod;
+  if (commercialNotes !== undefined) updates.commercial_notes = commercialNotes;
+
+  if (items !== undefined) {
+    const mappedItems = items.map((it, idx) => ({
+      ...it,
+      discount_type: it.discount_type || 'percentage',
+      subtotal: calcItemSubtotal(it.unit_price, it.quantity, it.discount_pct || 0, it.discount_type || 'percentage'),
+      sort_order: idx,
+    }));
+    const totals = calcDocTotals(mappedItems);
+    Object.assign(updates, totals);
+
+    const { error: deleteErr } = await supabase.from('crm_invoice_items').delete().eq('invoice_id', invoiceId);
+    if (deleteErr) return { data: null, error: deleteErr };
+
+    if (mappedItems.length > 0) {
+      const { error: itemsErr } = await supabase
+        .from('crm_invoice_items')
+        .insert(mappedItems.map(it => ({ ...it, invoice_id: invoiceId })));
+      if (itemsErr) return { data: null, error: itemsErr };
+    }
+  }
+
+  const { data, error } = await supabase
+    .from('crm_invoices')
+    .update(updates)
+    .eq('id', invoiceId)
+    .select()
+    .single();
+  return { data, error };
+}
+
 export async function updateCrmInvoiceStatus(invoiceId, status) {
   const updates = { status };
   if (status === 'pagada') updates.paid_at = new Date().toISOString();
