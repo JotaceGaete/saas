@@ -1,5 +1,6 @@
 import { getValidToken } from '../lib/auth/getValidToken';
 import { compressImageForUpload } from '../utils/imageUploadUtils';
+import { getFriendlyErrorMessage } from '../utils/errorMessages';
 
 const DEFAULT_UPLOAD_TIMEOUT_MS = 30000;
 const DEFAULT_PRODUCT_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
@@ -205,7 +206,7 @@ export async function uploadToMediaService(file, {
     };
   } catch (error) {
     console.error('[mediaUpload] upload error', { name: error?.name, message: error?.message, type, businessId });
-    throw normalizeMediaUploadError(error, 'No se pudo subir la imagen. Verifica tu conexión e intenta de nuevo.');
+    throw new Error(getFriendlyErrorMessage(error, 'No pudimos subir la imagen. Puede estar muy pesada o tu conexión está lenta. Prueba con una foto más liviana.'));
   } finally {
     timeoutHost.clearTimeout(timeoutId);
   }

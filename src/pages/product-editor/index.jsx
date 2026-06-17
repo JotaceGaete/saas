@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { getFriendlyErrorMessage, normalizeAppError } from '../../utils/errorMessages';
 import Icon from 'components/AppIcon';
 import { isRestaurantBusiness } from '../../utils/businessType';
 import DashboardAppShell from 'components/ui/DashboardAppShell';
@@ -967,7 +968,7 @@ export default function ProductEditor() {
     setGeneratingBarcode(true);
     const { barcode, error } = await generateUniqueBarcode(business.id);
     setGeneratingBarcode(false);
-    if (error) { toast.error?.(error); return; }
+    if (error) { toast.error?.(getFriendlyErrorMessage(error, 'No se pudo generar el código de barras.')); return; }
     handleFieldChange('barcode', barcode);
     // Si ya existe el producto, guardarlo inmediatamente
     if (currentProductId) {
@@ -1069,9 +1070,8 @@ export default function ProductEditor() {
         ? await updateProduct(currentProductId, productData)
         : await createProduct(biz?.id, productData);
       if (result?.error) {
-        const errMsg = result.error?.message || result.error?.details || result.error?.hint || JSON.stringify(result.error) || 'Error al guardar el producto.';
-        console.error('[ProductEditor] error al guardar:', { error: result.error, productId: currentProductId, businessId: biz?.id });
-        setErrors({ general: errMsg });
+        const { friendlyMessage, errorId } = normalizeAppError(result.error, 'product-editor:save');
+        setErrors({ general: friendlyMessage, errorId });
         return;
       }
       if (!currentProductId && result?.data?.id) {
@@ -1101,9 +1101,8 @@ export default function ProductEditor() {
         setTimeout(() => navigate('/product-management'), 1400);
       }
     } catch (e) {
-      const msg = e?.message || e?.error?.message || String(e) || 'Error inesperado al guardar.';
-      console.error('[ProductEditor] doSave catch inesperado:', { message: msg, name: e?.name, stack: e?.stack?.slice?.(0, 400) });
-      setErrors({ general: msg });
+      const { friendlyMessage, errorId } = normalizeAppError(e, 'product-editor:doSave');
+      setErrors({ general: friendlyMessage, errorId });
     }
     finally { setIsSaving(false); }
   };
@@ -1236,7 +1235,7 @@ export default function ProductEditor() {
               <div className="lg:col-span-2 space-y-5">
 
                 {/* Error banner */}
-                {Object.keys(errors)?.length > 0 && (
+                {Object.keys(errors)?.filter(k => k !== 'configPath' && k !== 'errorId').length > 0 && (
                   <div
                     className="flex items-start gap-3 p-4 rounded-xl border"
                     style={{ backgroundColor: 'rgba(239,68,68,0.05)', borderColor: 'rgba(239,68,68,0.2)' }}
@@ -1249,11 +1248,16 @@ export default function ProductEditor() {
                       </p>
                       <ul className="mt-1 space-y-0.5">
                         {Object.entries(errors)
-                          ?.filter(([k]) => k !== 'configPath')
+                          ?.filter(([k]) => k !== 'configPath' && k !== 'errorId')
                           ?.map(([k, err]) => (
                             <li key={k} className="text-xs" style={{ color: 'var(--color-error)', fontFamily: 'var(--font-caption)' }}>• {err}</li>
                           ))}
                       </ul>
+                      {errors?.errorId && (
+                        <p className="mt-1.5 text-xs" style={{ color: 'rgba(185,28,28,0.55)', fontFamily: 'var(--font-caption)' }}>
+                          Código de error: <span className="font-mono">{errors.errorId}</span>
+                        </p>
+                      )}
                       {errors?.configPath && (
                         <button
                           type="button"

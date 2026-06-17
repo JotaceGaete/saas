@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { getFriendlyErrorMessage } from '../../utils/errorMessages';
 import PanelHeader from 'components/ui/PanelHeader';
 import DashboardAppShell from 'components/ui/DashboardAppShell';
 import DashboardLayoutContent from 'components/ui/DashboardLayoutContent';
@@ -678,7 +679,7 @@ export default function PlansPage() {
       setPreview(previewData);
       setPreviewPlanSlug(planSlug);
     } catch (err) {
-      toast.error(err?.message || 'Error al cargar el resumen.');
+      toast.error(getFriendlyErrorMessage(err, 'No pudimos cargar el resumen del plan. Intenta nuevamente.'));
     } finally {
       setLoadingPlanSlug(null);
     }
@@ -748,7 +749,7 @@ export default function PlansPage() {
       setPreview(previewData);
       setPreviewPlanSlug(planSlug);
     } catch (err) {
-      toast.error(err?.message || 'Error al cargar el resumen.');
+      toast.error(getFriendlyErrorMessage(err, 'No pudimos cargar el resumen del plan. Intenta nuevamente.'));
     } finally {
       setLoadingPlanSlug(null);
     }
@@ -806,7 +807,7 @@ export default function PlansPage() {
       await confirmPayWithProvider(PAYMENT_PROVIDERS.PAYPAL, { planSlugOverride: planSlug });
     } catch (err) {
       console.error(`[billing-cta] provider=paypal plan=${planSlug} error=${err?.message || 'unknown_error'}`);
-      toast.error(err?.message || 'Error al iniciar PayPal.');
+      toast.error(getFriendlyErrorMessage(err, 'No pudimos iniciar PayPal. Intenta nuevamente.'));
     } finally {
       setLoadingPlanSlug(null);
     }
@@ -918,7 +919,7 @@ export default function PlansPage() {
       }
       throw new Error('No se recibió enlace de pago');
     } catch (err) {
-      toast.error(err?.message || 'Error al iniciar el pago.');
+      toast.error(getFriendlyErrorMessage(err, 'No pudimos iniciar el pago. Intenta nuevamente.'));
     } finally {
       setLoadingPlanSlug(null);
     }
@@ -1023,7 +1024,7 @@ export default function PlansPage() {
     } catch (err) {
       const normalizedProvider = normalizeBillingProvider(provider) || String(provider || 'unknown');
       console.error(`[billing-cta] provider=${normalizedProvider} plan=${targetPlanSlug} error=${err?.message || 'unknown_error'}`);
-      toast.error(err?.message || `Error al iniciar ${provider}.`);
+      toast.error(getFriendlyErrorMessage(err, `No pudimos iniciar el pago con ${normalizedProvider}. Intenta nuevamente.`));
     } finally {
       setLoadingPlanSlug(null);
     }

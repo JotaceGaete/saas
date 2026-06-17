@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
+import { getFriendlyErrorMessage } from "../../utils/errorMessages";
 import PanelHeader from "components/ui/PanelHeader";
 import DashboardAppShell from "components/ui/DashboardAppShell";
 import DashboardLayoutContent from "components/ui/DashboardLayoutContent";
@@ -169,10 +170,11 @@ export default function Dashboard() {
       setWeeklyOrdersCount(weeklyRes?.data ?? 0);
     } catch (err) {
       console.error('Dashboard load error:', err);
+      toast.error(getFriendlyErrorMessage(err, 'No pudimos cargar los datos del panel. Intenta recargar la página.'));
     } finally {
       setDataLoading(false);
     }
-  }, [business?.id]);
+  }, [business?.id, toast]);
 
   const loadAnalytics = useCallback(async () => {
     if (!business?.id) return;
