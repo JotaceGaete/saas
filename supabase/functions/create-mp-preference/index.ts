@@ -265,6 +265,14 @@ Deno.serve(async (req) => {
   console.log('[create-mp-preference] business.id elegido:', business.id);
   console.log('[create-mp-preference] business.user_id confirmado:', business.user_id);
 
+  // Resolver email del pagador: primero auth.email, fallback business.email.
+  // MP Argentina requiere payer.email o devuelve checkout roto ("Something went wrong").
+  const payerEmail = (user.email ?? '').trim() || ((business as { email?: string | null }).email ?? '').trim();
+  const maskedEmail = payerEmail
+    ? payerEmail.replace(/^(.{2}).*(@.*)$/, '$1***$2')
+    : '(vacío)';
+  console.log('[create-mp-preference] payer.email resuelto:', maskedEmail);
+
   const countryCode = resolveBusinessCountryCode(
     business as { country_code?: string | null; country?: string | null; currency?: string | null },
     fallbackCountry,
@@ -411,7 +419,22 @@ Deno.serve(async (req) => {
     }, 200);
   }
 
-  // ── 5. Crear registro de pago pendiente en wa_payments ────────────────────
+  // ── 5. Validar email antes de crear preferencia MP ───────────────────────
+  if (!payerEmail) {
+    console.error('[create-mp-preference] payer email ausente — user.email:', user.email ?? '(null)', '| business.email:', (business as { email?: string | null }).email ?? '(null)');
+    return jsonResponse({
+      error: 'Tu cuenta no tiene un email asociado. Por favor completa tu email en la configuración antes de suscribirte.',
+      reason: 'payer_email_missing',
+    }, 400);
+  }
+
+  // Validar currency_id explícitamente para AR (MP Argentina falla silenciosamente con CLP).
+  if (countryCode === 'AR' && currencyId !== 'ARS') {
+    console.error('[create-mp-preference] currency_id incorrecto para AR:', currencyId);
+    return jsonResponse({ error: 'Error de configuración de moneda para Argentina', reason: 'invalid_currency_ar' }, 500);
+  }
+
+  // ── 6. Crear registro de pago pendiente en wa_payments ────────────────────
   const { data: paymentRow, error: paymentInsertError } = await adminClient
     .from('wa_payments')
     .insert({
@@ -444,23 +467,31 @@ Deno.serve(async (req) => {
     .update({ external_reference: externalReference })
     .eq('id', paymentId);
 
-  // ── 6. Crear preferencia en Mercado Pago ──────────────────────────────────
+  // ── 7. Crear preferencia en Mercado Pago ──────────────────────────────────
   const successUrl = (body?.success_url as string) || `${appBaseUrl}/plans?payment=success`;
   const failureUrl = (body?.failure_url as string) || `${appBaseUrl}/plans?payment=failure`;
   const pendingUrl = (body?.pending_url as string) || `${appBaseUrl}/plans?payment=pending`;
 
   const preferencePayload = {
     items: [{
-      title:      catalog[planSlug]?.displayName ?? planSlug,
-      quantity:   1,
-      unit_price: finalAmount,
+      id:          planSlug,
+      title:       catalog[planSlug]?.displayName ?? planSlug,
+      quantity:    1,
+      unit_price:  finalAmount,
       currency_id: currencyId,
     }],
+    payer: { email: payerEmail },
     back_urls: { success: successUrl, failure: failureUrl, pending: pendingUrl },
     auto_return: 'approved' as const,
     external_reference: externalReference,
     ...(notificationUrl && { notification_url: notificationUrl }),
   };
+
+  // Log seguro: email enmascarado, token MP nunca en logs.
+  console.log('[create-mp-preference] MP payload:', JSON.stringify({
+    ...preferencePayload,
+    payer: { email: maskedEmail },
+  }));
 
   const mpRes  = await fetch('https://api.mercadopago.com/checkout/preferences', {
     method: 'POST',
@@ -488,11 +519,15 @@ Deno.serve(async (req) => {
 
   const initPoint = preference?.init_point || preference?.sandbox_init_point;
   if (!initPoint) {
+    console.error('[create-mp-preference] MP devolvió respuesta sin init_point:', JSON.stringify(preference).slice(0, 300));
     await adminClient.from('wa_payments').update({ status: 'cancelled' }).eq('id', paymentId);
-    return jsonResponse({ error: 'Mercado Pago response missing init_point' }, 500);
+    return jsonResponse({
+      error: 'No pudimos conectar con Mercado Pago. Por favor intenta nuevamente en unos minutos o contacta a soporte si el problema persiste.',
+      reason: 'mp_missing_init_point',
+    }, 500);
   }
 
-  // ── 7. Guardar preference_id y respuesta cruda en wa_payments ─────────────
+  // ── 8. Guardar preference_id y respuesta cruda en wa_payments ─────────────
   await adminClient.from('wa_payments').update({
     mp_preference_id: preference?.id ?? null,
     raw_mp_response:  preference as Record<string, unknown>,
