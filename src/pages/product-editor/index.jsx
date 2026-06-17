@@ -1007,6 +1007,10 @@ export default function ProductEditor() {
       }
     }
     setIsSaving(true);
+    setErrors({});
+    const flow = currentProductId ? 'update' : 'create';
+    console.log('[ProductEditor] doSave — inicio', { flow, productId: currentProductId ?? null, businessId: biz?.id });
+    let savedOk = false;
     try {
       const persistedImages = (images || [])
         ?.filter(i => (i?.status === 'uploaded' && (i?.persistedUrl || i?.url)) || (i?.persistedUrl || (i?.url && !i?.url?.startsWith?.('blob:'))))
@@ -1058,28 +1062,23 @@ export default function ProductEditor() {
           }
           : null,
       };
-      console.log('[ProductEditor] guardando producto', {
-        flow: currentProductId ? 'update' : 'create',
-        productId: currentProductId ?? null,
-        businessId: biz?.id,
-        name: productData.name,
-        price: productData.price,
-        imageCount: productData.images?.length ?? 0,
-      });
+      console.log('[ProductEditor] doSave — llamando DB', { flow, name: productData.name, price: productData.price, imageCount: productData.images?.length ?? 0 });
       const result = currentProductId
         ? await updateProduct(currentProductId, productData)
         : await createProduct(biz?.id, productData);
+      console.log('[ProductEditor] doSave — respuesta DB', { ok: !result?.error, hasData: !!result?.data, errorMsg: result?.error?.message ?? null });
       if (result?.error) {
         const { friendlyMessage, errorId } = normalizeAppError(result.error, 'product-editor:save');
         setErrors({ general: friendlyMessage, errorId });
         return;
       }
+      savedOk = true;
       if (!currentProductId && result?.data?.id) {
         setCurrentProductId(result.data.id);
       }
       setProductSlug(result?.data?.slug || slugifyProductName(result?.data?.name || formData?.nombre));
-      setIsSaving(false);
       setSaveSuccess(true);
+      console.log('[ProductEditor] doSave — guardado OK', { savedId: result?.data?.id ?? currentProductId });
       if (andNew) {
         setFormData({ ...EMPTY_FORM });
         setImages([]);
@@ -1098,13 +1097,29 @@ export default function ProductEditor() {
         setSaveSuccess(false);
         window.scrollTo({ top: 0, behavior: 'smooth' });
       } else {
-        setTimeout(() => navigate('/product-management'), 1400);
+        console.log('[ProductEditor] doSave — navegando a /product-management');
+        try {
+          navigate('/product-management');
+        } catch (navErr) {
+          console.error('[ProductEditor] doSave — error al navegar', navErr);
+          setErrors({
+            general: `${itemSingularCapitalized} guardado, pero no pudimos volver al listado automáticamente. Puedes ir desde el menú de ${collectionLabel}.`,
+          });
+        }
       }
     } catch (e) {
-      const { friendlyMessage, errorId } = normalizeAppError(e, 'product-editor:doSave');
-      setErrors({ general: friendlyMessage, errorId });
+      console.error('[ProductEditor] doSave — excepción', { name: e?.name, message: e?.message, savedOk });
+      if (savedOk) {
+        setErrors({
+          general: `${itemSingularCapitalized} guardado, pero ocurrió un error inesperado. Revisa el listado de ${collectionLabel} para verificarlo.`,
+        });
+      } else {
+        const { friendlyMessage, errorId } = normalizeAppError(e, 'product-editor:doSave');
+        setErrors({ general: friendlyMessage, errorId });
+      }
+    } finally {
+      setIsSaving(false);
     }
-    finally { setIsSaving(false); }
   };
 
   const handleCancel = () => navigate('/product-management');
