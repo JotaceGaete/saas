@@ -87,7 +87,9 @@ Deno.serve(async (req) => {
   const corsHeaders = getCorsHeaders(req);
 
   if (method === 'OPTIONS') {
-    console.log('[upload-image-r2] OPTIONS preflight');
+    const preflightOrigin = (req.headers.get('origin') ?? '').trim();
+    const originAllowed = isAllowedOrigin(preflightOrigin);
+    console.log('[upload-image-r2] OPTIONS preflight origin:', preflightOrigin || '(none)', '| allowed:', originAllowed);
     return new Response('ok', { headers: corsHeaders });
   }
 
@@ -96,7 +98,8 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: 'Method not allowed' }, 405, corsHeaders);
   }
 
-  console.log('[upload-image-r2] POST request');
+  const postOrigin = (req.headers.get('origin') ?? '').trim();
+  console.log('[upload-image-r2] POST request origin:', postOrigin || '(none)', '| cors-allowed:', isAllowedOrigin(postOrigin));
 
   try {
     const authHeader = (req.headers.get('authorization') ?? '').trim();
@@ -154,6 +157,13 @@ Deno.serve(async (req) => {
         .eq('id', businessId)
         .maybeSingle();
       if (bizError || !biz?.id || (biz as { user_id?: string }).user_id !== user.id) {
+        console.error('[upload-image-r2] 403 business check', {
+          businessId,
+          userId: user.id,
+          bizFound: !!biz?.id,
+          ownerMatch: biz ? (biz as { user_id?: string }).user_id === user.id : null,
+          dbError: bizError?.message ?? null,
+        });
         return jsonResponse({ error: 'Business not found or access denied' }, 403, corsHeaders);
       }
     }

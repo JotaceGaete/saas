@@ -1057,10 +1057,23 @@ export default function ProductEditor() {
           }
           : null,
       };
+      console.log('[ProductEditor] guardando producto', {
+        flow: currentProductId ? 'update' : 'create',
+        productId: currentProductId ?? null,
+        businessId: biz?.id,
+        name: productData.name,
+        price: productData.price,
+        imageCount: productData.images?.length ?? 0,
+      });
       const result = currentProductId
         ? await updateProduct(currentProductId, productData)
         : await createProduct(biz?.id, productData);
-      if (result?.error) { setErrors({ general: result?.error?.message || 'Error al guardar el producto.' }); return; }
+      if (result?.error) {
+        const errMsg = result.error?.message || result.error?.details || result.error?.hint || JSON.stringify(result.error) || 'Error al guardar el producto.';
+        console.error('[ProductEditor] error al guardar:', { error: result.error, productId: currentProductId, businessId: biz?.id });
+        setErrors({ general: errMsg });
+        return;
+      }
       if (!currentProductId && result?.data?.id) {
         setCurrentProductId(result.data.id);
       }
@@ -1087,7 +1100,11 @@ export default function ProductEditor() {
       } else {
         setTimeout(() => navigate('/product-management'), 1400);
       }
-    } catch (e) { setErrors({ general: 'Error inesperado al guardar.' }); }
+    } catch (e) {
+      const msg = e?.message || e?.error?.message || String(e) || 'Error inesperado al guardar.';
+      console.error('[ProductEditor] doSave catch inesperado:', { message: msg, name: e?.name, stack: e?.stack?.slice?.(0, 400) });
+      setErrors({ general: msg });
+    }
     finally { setIsSaving(false); }
   };
 

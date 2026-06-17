@@ -27,9 +27,25 @@ function normalizeImageUploadType(type) {
   throw new Error('Tipo de subida de imagen no soportado.');
 }
 
+function parseR2XmlError(xmlText) {
+  try {
+    const code = xmlText.match(/<Code>([^<]+)<\/Code>/)?.[1] ?? '';
+    const msg  = xmlText.match(/<Message>([^<]+)<\/Message>/)?.[1] ?? '';
+    if (code === 'EntityTooLarge') return 'La imagen es demasiado pesada para el servidor. Usa una imagen más pequeña.';
+    if (code === 'RequestTimeout')  return 'La subida tardó demasiado. Verifica tu conexión e intenta de nuevo.';
+    if (code === 'AccessDenied')    return 'No tienes permiso para subir esta imagen. Recarga la página e intenta de nuevo.';
+    if (code || msg) return `Error en el servidor de imágenes: ${msg || code}`;
+  } catch { /* no es XML, devolver null */ }
+  return null;
+}
+
 function normalizeMediaUploadError(error, fallbackMessage) {
   if (error?.name === 'AbortError') {
-    return new Error('La subida tardo demasiado. Intenta de nuevo.');
+    return new Error('La subida tardó demasiado. Si tienes conexión lenta, intenta con una imagen más pequeña.');
+  }
+  // TypeError: Failed to fetch = CORS, red cortada, DNS, etc.
+  if (error?.name === 'TypeError' || error?.message?.toLowerCase().includes('failed to fetch') || error?.message?.toLowerCase().includes('network')) {
+    return new Error('No se pudo conectar con el servidor de imágenes. Verifica tu conexión a internet e intenta de nuevo.');
   }
   if (error instanceof Error && error.message) {
     return error;
@@ -156,6 +172,14 @@ export async function uploadToMediaService(file, {
       throw new Error('La respuesta no incluyo una URL publica valida para la imagen.');
     }
 
+    console.log('[mediaUpload] PUT R2', {
+      type,
+      businessId,
+      productId: productId ?? null,
+      fileSize: fileToUpload?.size ?? null,
+      contentType: requestBody.contentType,
+    });
+
     const uploadResponse = await fetch(signedUrlPayload.uploadUrl.trim(), {
       method: 'PUT',
       headers: {
@@ -167,7 +191,9 @@ export async function uploadToMediaService(file, {
 
     if (!uploadResponse.ok) {
       const uploadErrorText = await uploadResponse.text().catch(() => '');
-      throw new Error(uploadErrorText || `Error al subir la imagen al storage (${uploadResponse.status}).`);
+      console.error('[mediaUpload] R2 PUT error', uploadResponse.status, uploadErrorText.slice(0, 300));
+      const r2UserMessage = parseR2XmlError(uploadErrorText);
+      throw new Error(r2UserMessage || uploadErrorText || `Error al subir la imagen al storage (${uploadResponse.status}).`);
     }
 
     return {
@@ -178,7 +204,8 @@ export async function uploadToMediaService(file, {
       size: Number.isFinite(Number(fileToUpload?.size)) ? Number(fileToUpload.size) : null,
     };
   } catch (error) {
-    throw normalizeMediaUploadError(error, 'No se pudo subir la imagen a R2.');
+    console.error('[mediaUpload] upload error', { name: error?.name, message: error?.message, type, businessId });
+    throw normalizeMediaUploadError(error, 'No se pudo subir la imagen. Verifica tu conexión e intenta de nuevo.');
   } finally {
     timeoutHost.clearTimeout(timeoutId);
   }
