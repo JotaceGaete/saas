@@ -443,7 +443,7 @@ function HtmlDocumentPreview({ type, document: doc, business, customer, extra = 
 }
 
 // ─── Wrapper principal ─────────────────────────────────────────────────────────
-export default function CrmDocumentPdf({ type, document: doc, business, customer, extra, onClose }) {
+export default function CrmDocumentPdf({ type, document: doc, business, customer, extra, onClose, onSave, canSave, saving = false, isNew = false }) {
   const [isMobile, setIsMobile] = useState(() => {
     if (typeof window === 'undefined') return false;
     return window.innerWidth < 768;
@@ -466,30 +466,62 @@ export default function CrmDocumentPdf({ type, document: doc, business, customer
   return (
     <div className="fixed inset-0 bg-black/80 z-50 flex flex-col">
       {/* Toolbar */}
-      <div className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-200 shadow-sm shrink-0">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={onClose}
-            className="p-2 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg"
-            aria-label="Cerrar"
-          >
-            <Icon name="X" size={18} />
-          </button>
-          <div>
-            <p className="font-semibold text-gray-800 text-sm leading-tight">{filename}</p>
-            {isMobile && <p className="text-[10px] text-gray-400 leading-tight">Vista previa — PDF disponible en escritorio</p>}
-          </div>
-        </div>
-        <PDFDownloadLink
-          document={pdfEl}
-          fileName={filename}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium"
+      <div className="flex items-center gap-2 px-3 py-2.5 bg-white border-b border-gray-200 shadow-sm shrink-0">
+        {/* Izquierda: Volver a editar */}
+        <button
+          onClick={onClose}
+          className="inline-flex items-center gap-1.5 px-3 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg text-sm font-medium shrink-0"
+          aria-label="Volver al editor"
         >
-          {({ loading }) => loading
-            ? <><Icon name="Loader2" size={15} className="animate-spin" />Preparando…</>
-            : <><Icon name="Download" size={15} />Descargar PDF</>
-          }
-        </PDFDownloadLink>
+          <Icon name="ChevronLeft" size={16} />
+          <span className="hidden sm:inline">Volver a editar</span>
+        </button>
+
+        {/* Centro: nombre archivo + aviso sin guardar */}
+        <div className="flex-1 min-w-0 text-center">
+          <p className="font-semibold text-gray-800 text-sm leading-tight truncate">{filename}</p>
+          {isNew ? (
+            <p className="text-[10px] text-amber-600 leading-tight">Sin guardar — guarda el documento para que el PDF tenga número de referencia</p>
+          ) : isMobile ? (
+            <p className="text-[10px] text-gray-400 leading-tight">Vista previa — PDF disponible en escritorio</p>
+          ) : null}
+        </div>
+
+        {/* Derecha: acciones */}
+        <div className="flex items-center gap-2 shrink-0">
+          {/* Guardar: en doc nuevo cierra el modal para que se navegue tras el save */}
+          {onSave && isNew && (
+            <button
+              onClick={() => { onClose(); onSave(); }}
+              disabled={saving}
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-lg text-sm font-medium disabled:opacity-60"
+            >
+              {saving ? <Icon name="Loader2" size={14} className="animate-spin" /> : <Icon name="Save" size={14} />}
+              <span className="hidden sm:inline">Guardar primero</span>
+            </button>
+          )}
+          {/* Guardar: en doc existente guarda sin cerrar el modal */}
+          {onSave && canSave && !isNew && (
+            <button
+              onClick={onSave}
+              disabled={saving}
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium disabled:opacity-60"
+            >
+              {saving ? <Icon name="Loader2" size={14} className="animate-spin" /> : <Icon name="Save" size={14} />}
+              <span className="hidden sm:inline">Guardar cambios</span>
+            </button>
+          )}
+          <PDFDownloadLink
+            document={pdfEl}
+            fileName={filename}
+            className="inline-flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium"
+          >
+            {({ loading }) => loading
+              ? <><Icon name="Loader2" size={14} className="animate-spin" /><span className="hidden sm:inline">Preparando…</span></>
+              : <><Icon name="Download" size={14} /><span className="hidden sm:inline">Descargar PDF</span></>
+            }
+          </PDFDownloadLink>
+        </div>
       </div>
 
       {/* Content */}

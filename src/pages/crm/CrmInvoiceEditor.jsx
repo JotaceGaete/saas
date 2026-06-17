@@ -55,6 +55,14 @@ export default function CrmInvoiceEditor() {
   const { business } = useAuth();
   const isNew = !id || id === 'nueva';
   const chargeMenuRef = useRef(null);
+  const isDirtyRef   = useRef(false);
+  const markDirty    = () => { isDirtyRef.current = true; };
+  const markClean    = () => { isDirtyRef.current = false; };
+
+  const confirmNavigate = (path) => {
+    if (isDirtyRef.current && !window.confirm('Tienes cambios sin guardar. ¿Quieres salir igualmente?')) return;
+    navigate(path);
+  };
 
   const [pageLoading, setPageLoading] = useState(!isNew);
   const [saving, setSaving] = useState(false);
@@ -124,12 +132,25 @@ export default function CrmInvoiceEditor() {
     return () => document.removeEventListener('mousedown', handler);
   }, [showChargeMenu]);
 
-  const handleItemChange = (idx, updated) =>
+  useEffect(() => {
+    const handler = (e) => {
+      if (isDirtyRef.current) { e.preventDefault(); e.returnValue = ''; }
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, []);
+
+  const handleItemChange = (idx, updated) => {
+    markDirty();
     setItems((prev) => { const n = [...prev]; n[idx] = updated; return n; });
-  const handleItemRemove = (idx) =>
+  };
+  const handleItemRemove = (idx) => {
+    markDirty();
     setItems((prev) => prev.filter((_, i) => i !== idx));
+  };
 
   const addProductFromCatalog = (product) => {
+    markDirty();
     setItems((prev) => [
       ...prev,
       {
@@ -146,6 +167,7 @@ export default function CrmInvoiceEditor() {
   };
 
   const addManualCharge = (name) => {
+    markDirty();
     setItems((prev) => [...prev, { ...EMPTY_ITEM, name: name === 'Otro' ? '' : name }]);
     setShowChargeMenu(false);
   };
@@ -251,6 +273,7 @@ export default function CrmInvoiceEditor() {
       : await updateCrmInvoice(id, payload);
     setSaving(false);
     if (error) { setSaveError(error.message || 'Error al guardar.'); return; }
+    markClean();
     if (isNew) {
       navigate(`/crm/facturas/${data.id}`, { replace: true });
     } else {
@@ -410,7 +433,7 @@ export default function CrmInvoiceEditor() {
         }
         leftAction={
           <button
-            onClick={() => navigate('/crm/facturas')}
+            onClick={() => confirmNavigate('/crm/facturas')}
             className="p-2 rounded-lg hover:bg-gray-100 text-gray-500"
           >
             <Icon name="ChevronLeft" size={20} />
@@ -497,7 +520,7 @@ export default function CrmInvoiceEditor() {
                 <select
                   disabled={!canEdit}
                   value={customerId}
-                  onChange={(e) => setCustomerId(e.target.value)}
+                  onChange={(e) => { setCustomerId(e.target.value); markDirty(); }}
                   className={fieldClassDisabled}
                 >
                   <option value="">Sin cliente asignado</option>
@@ -512,7 +535,7 @@ export default function CrmInvoiceEditor() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Fecha de emisión</label>
                 <ChileanDateInput
                   value={issueDate}
-                  onChange={setIssueDate}
+                  onChange={(v) => { setIssueDate(v); markDirty(); }}
                   disabled={!canEdit}
                   className={fieldClassDisabled}
                 />
@@ -521,7 +544,7 @@ export default function CrmInvoiceEditor() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Fecha de vencimiento (opcional)</label>
                 <ChileanDateInput
                   value={dueDate}
-                  onChange={setDueDate}
+                  onChange={(v) => { setDueDate(v); markDirty(); }}
                   disabled={!canEdit}
                   className={fieldClassDisabled}
                 />
@@ -531,7 +554,7 @@ export default function CrmInvoiceEditor() {
                 <textarea
                   disabled={!canEdit}
                   value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
+                  onChange={(e) => { setNotes(e.target.value); markDirty(); }}
                   rows={2}
                   placeholder="Observaciones generales…"
                   className={`${fieldClassDisabled} resize-none`}
@@ -549,19 +572,19 @@ export default function CrmInvoiceEditor() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Forma de pago</label>
-                <input type="text" disabled={!canEdit} value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} placeholder="Ej: 50% anticipo, 50% contra entrega" className={fieldClassDisabled} />
+                <input type="text" disabled={!canEdit} value={paymentTerms} onChange={(e) => { setPaymentTerms(e.target.value); markDirty(); }} placeholder="Ej: 50% anticipo, 50% contra entrega" className={fieldClassDisabled} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Plazo de entrega</label>
-                <input type="text" disabled={!canEdit} value={deliveryDays} onChange={(e) => setDeliveryDays(e.target.value)} placeholder="Ej: 5 días hábiles" className={fieldClassDisabled} />
+                <input type="text" disabled={!canEdit} value={deliveryDays} onChange={(e) => { setDeliveryDays(e.target.value); markDirty(); }} placeholder="Ej: 5 días hábiles" className={fieldClassDisabled} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Método de entrega</label>
-                <input type="text" disabled={!canEdit} value={deliveryMethod} onChange={(e) => setDeliveryMethod(e.target.value)} placeholder="Ej: Despacho a domicilio, Retiro en tienda" className={fieldClassDisabled} />
+                <input type="text" disabled={!canEdit} value={deliveryMethod} onChange={(e) => { setDeliveryMethod(e.target.value); markDirty(); }} placeholder="Ej: Despacho a domicilio, Retiro en tienda" className={fieldClassDisabled} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Observaciones comerciales</label>
-                <input type="text" disabled={!canEdit} value={commercialNotes} onChange={(e) => setCommercialNotes(e.target.value)} placeholder="Ej: Precios no incluyen IVA" className={fieldClassDisabled} />
+                <input type="text" disabled={!canEdit} value={commercialNotes} onChange={(e) => { setCommercialNotes(e.target.value); markDirty(); }} placeholder="Ej: Precios no incluyen IVA" className={fieldClassDisabled} />
               </div>
             </div>
           </div>
@@ -690,7 +713,7 @@ export default function CrmInvoiceEditor() {
           )}
           <div className="flex flex-col sm:flex-row sm:justify-end gap-3 pb-8">
             <button
-              onClick={() => navigate('/crm/facturas')}
+              onClick={() => confirmNavigate('/crm/facturas')}
               className="w-full sm:w-auto px-5 py-3 sm:py-2.5 rounded-xl border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm font-medium text-center transition-colors"
             >
               {isNew ? 'Cancelar' : 'Volver'}
@@ -838,6 +861,10 @@ export default function CrmInvoiceEditor() {
           business={business}
           customer={pdfCustomer}
           onClose={() => setShowPdf(false)}
+          onSave={canEdit ? handleSave : undefined}
+          canSave={canEdit}
+          saving={saving}
+          isNew={isNew}
         />
       )}
     </DashboardAppShell>
