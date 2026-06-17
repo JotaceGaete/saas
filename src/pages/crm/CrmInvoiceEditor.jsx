@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import DashboardAppShell from 'components/ui/DashboardAppShell';
 import DashboardLayoutContent from 'components/ui/DashboardLayoutContent';
 import PanelHeader from 'components/ui/PanelHeader';
@@ -52,6 +52,7 @@ const PENDING_DOCUMENT_MESSAGE = 'Puedes corregir esta nota mientras esté pendi
 export default function CrmInvoiceEditor() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { business } = useAuth();
   const isNew = !id || id === 'nueva';
   const chargeMenuRef = useRef(null);
@@ -139,6 +140,13 @@ export default function CrmInvoiceEditor() {
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
   }, []);
+
+  useEffect(() => {
+    if (!pageLoading && !isNew && location.state?.openPdf) {
+      setShowPdf(true);
+      window.history.replaceState({ ...window.history.state, usr: undefined }, '');
+    }
+  }, [pageLoading, isNew, location.state?.openPdf]);
 
   const handleItemChange = (idx, updated) => {
     markDirty();
@@ -235,7 +243,7 @@ export default function CrmInvoiceEditor() {
     });
   };
 
-  const handleSave = async () => {
+  const handleSave = async ({ openPdf = false } = {}) => {
     setSaveError('');
     if (!canEdit) {
       setSaveError(LOCKED_DOCUMENT_MESSAGE);
@@ -275,11 +283,14 @@ export default function CrmInvoiceEditor() {
     if (error) { setSaveError(error.message || 'Error al guardar.'); return; }
     markClean();
     if (isNew) {
-      navigate(`/crm/facturas/${data.id}`, { replace: true });
+      navigate(`/crm/facturas/${data.id}`, { replace: true, state: openPdf ? { openPdf: true } : undefined });
     } else {
       setSaved((prev) => ({ ...prev, ...data }));
+      if (openPdf) setShowPdf(true);
     }
   };
+
+  const handleSaveAndPreview = () => handleSave({ openPdf: true });
 
   const docTitle = isNew
     ? 'Nueva factura interna'
@@ -444,11 +455,12 @@ export default function CrmInvoiceEditor() {
           <div className="flex gap-2 w-full">
             {items.length > 0 && (
               <button
-                onClick={() => setShowPdf(true)}
-                className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm font-medium"
+                onClick={isNew ? handleSaveAndPreview : () => setShowPdf(true)}
+                disabled={isNew && saving}
+                className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm font-medium disabled:opacity-60"
               >
                 <Icon name="Eye" size={15} />
-                Vista previa
+                {isNew ? 'Guardar y previsualizar' : 'Vista previa'}
               </button>
             )}
             {canEdit && (
@@ -720,11 +732,12 @@ export default function CrmInvoiceEditor() {
             </button>
             {items.length > 0 && (
               <button
-                onClick={() => setShowPdf(true)}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 sm:py-2.5 rounded-xl border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm font-medium transition-colors"
+                onClick={isNew ? handleSaveAndPreview : () => setShowPdf(true)}
+                disabled={isNew && saving}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 sm:py-2.5 rounded-xl border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm font-medium transition-colors disabled:opacity-60"
               >
                 <Icon name="Eye" size={15} />
-                Vista previa
+                {isNew ? 'Guardar y previsualizar' : 'Vista previa'}
               </button>
             )}
             {canEdit && (

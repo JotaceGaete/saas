@@ -124,7 +124,8 @@ function CrmPdfDocument({ type, document: doc, business, customer, extra = {} })
   const isQuote   = type === 'quote';
   const items     = isQuote ? (doc.crm_quote_items || []) : (doc.crm_invoice_items || []);
   const docLabel  = getQuoteDocLabel(business?.documentTitleType);
-  const docNum    = isQuote ? formatQuoteNumber(doc.quote_number ?? 0, business?.documentTitleType) : formatInvoiceNumber(doc.invoice_number ?? 0);
+  const isUnsaved = isQuote ? (doc.quote_number == null) : (doc.invoice_number == null);
+  const docNum    = isUnsaved ? 'BORRADOR' : (isQuote ? formatQuoteNumber(doc.quote_number, business?.documentTitleType) : formatInvoiceNumber(doc.invoice_number));
   const docTitle  = isQuote ? docLabel.title : 'Nota de Venta';
   const currency  = business?.currency || 'CLP';
   const today     = new Date().toLocaleDateString('es-CL');
@@ -282,7 +283,8 @@ function HtmlDocumentPreview({ type, document: doc, business, customer, extra = 
   const isQuote  = type === 'quote';
   const items    = isQuote ? (doc.crm_quote_items || []) : (doc.crm_invoice_items || []);
   const docLabel  = getQuoteDocLabel(business?.documentTitleType);
-  const docNum   = isQuote ? formatQuoteNumber(doc.quote_number ?? 0, business?.documentTitleType) : formatInvoiceNumber(doc.invoice_number ?? 0);
+  const isUnsaved = isQuote ? (doc.quote_number == null) : (doc.invoice_number == null);
+  const docNum   = isUnsaved ? 'BORRADOR' : (isQuote ? formatQuoteNumber(doc.quote_number, business?.documentTitleType) : formatInvoiceNumber(doc.invoice_number));
   const docTitle = isQuote ? docLabel.title : 'Nota de Venta';
   const currency = business?.currency || 'CLP';
   const today    = new Date().toLocaleDateString('es-CL');
@@ -457,9 +459,12 @@ export default function CrmDocumentPdf({ type, document: doc, business, customer
   }, []);
 
   const docLabelForFilename = getQuoteDocLabel(business?.documentTitleType);
-  const filename = type === 'quote'
-    ? `${docLabelForFilename.singular}-${formatQuoteNumber(doc?.quote_number ?? 0, business?.documentTitleType)}.pdf`
-    : `nota-venta-${formatInvoiceNumber(doc?.invoice_number ?? 0)}.pdf`;
+  const isDocUnsaved = type === 'quote' ? (doc?.quote_number == null) : (doc?.invoice_number == null);
+  const filename = isDocUnsaved
+    ? 'borrador.pdf'
+    : type === 'quote'
+      ? `${docLabelForFilename.singular}-${formatQuoteNumber(doc?.quote_number, business?.documentTitleType)}.pdf`
+      : `nota-venta-${formatInvoiceNumber(doc?.invoice_number)}.pdf`;
 
   const pdfEl = <CrmPdfDocument type={type} document={doc} business={business} customer={customer} extra={extra} />;
 
