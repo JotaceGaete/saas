@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import Icon from '../AppIcon';
-import { Button } from './Button';
+import Button from './Button';
 
 /**
  * AppErrorMessage — componente visual unificado para errores.
