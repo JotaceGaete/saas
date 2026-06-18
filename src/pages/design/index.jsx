@@ -189,8 +189,7 @@ export default function DesignPage() {
           subtitle={<p className="text-xs hidden sm:block" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Identidad visual, portada y experiencia de catálogo.</p>}
         />
 
-        {/* DashboardLayoutContent clips overflow-x by default; the desktop preview needs this visible so sticky resolves against the page scroll. */}
-        <DashboardLayoutContent innerClassName="xl:overflow-visible">
+        <DashboardLayoutContent>
           <section className="border-b pb-6" style={{ borderColor: 'rgba(17,24,39,0.08)' }}>
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
               Identidad visual
@@ -203,9 +202,9 @@ export default function DesignPage() {
             </p>
           </section>
 
-          {/* Grid de 2 columnas en desktop. Columna izquierda crece con el formulario;
-              columna derecha hace sticky real: se queda visible mientras el usuario scrollea. */}
-          <div className="xl:grid xl:grid-cols-[minmax(0,1fr)_360px] xl:gap-8 xl:items-start xl:overflow-visible 2xl:grid-cols-[minmax(0,1fr)_380px]">
+          {/* Grid de 2 columnas en desktop. La columna derecha reserva el espacio (360px);
+              el contenido del preview usa fixed porque los overflow-x-clip del shell rompen sticky en Chrome. */}
+          <div className="xl:grid xl:grid-cols-[minmax(0,1fr)_360px] xl:gap-8 xl:items-start 2xl:grid-cols-[minmax(0,1fr)_380px]">
             {/* Columna izquierda — formulario largo */}
             <div className="min-w-0 w-full">
               <DesignCustomization
@@ -224,15 +223,15 @@ export default function DesignPage() {
               />
             </div>
 
-            {/* Columna derecha — preview sticky */}
+            {/* Columna derecha — spacer en grid + preview fixed en desktop.
+                El grid cell reserva 360px de ancho para que el formulario no se superponga.
+                El contenido real es fixed porque sticky falla con overflow-x-clip en ancestros (bug Chrome). */}
             <div
               ref={previewAnchorRef}
               id="design-preview"
-              className="hidden xl:block xl:self-start xl:overflow-visible"
+              className="hidden xl:block xl:self-start"
             >
-              <div
-                className="xl:sticky xl:top-24 xl:max-h-[calc(100vh-120px)] xl:overflow-visible"
-              >
+              <div className="xl:fixed xl:top-24 xl:right-8 xl:w-[360px] 2xl:right-10 2xl:w-[380px]">
                 <div
                   className="mx-auto w-full max-w-[340px] rounded-[24px] border p-3.5 shadow-[0_18px_42px_rgba(17,24,39,0.08)] 2xl:max-w-[360px] 2xl:p-4"
                   style={{ backgroundColor: 'rgba(255,255,255,0.72)', borderColor: 'rgba(17,24,39,0.08)' }}
