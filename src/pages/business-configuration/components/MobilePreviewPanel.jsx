@@ -209,8 +209,10 @@ export default function MobilePreviewPanel({
   design,
   /** Si es true, precios numéricos sin símbolo de moneda (vista previa tras fijar país). */
   hideCurrencySymbol = false,
+  previewSize = 'default',
 }) {
   const visibleProducts = products?.slice(0, 4) || [];
+  const isDesktopStickyPreview = previewSize === 'desktop-sticky';
 
   const previewFlashKey = useMemo(
     () => buildDesignPreviewFlashKey(design, logoUrl, coverImageUrl),
@@ -271,7 +273,7 @@ export default function MobilePreviewPanel({
   return (
     <div className="flex flex-col items-center w-full">
       <p
-        className="text-xs font-semibold uppercase tracking-widest mb-5"
+        className={`text-xs font-semibold uppercase tracking-widest ${isDesktopStickyPreview ? 'mb-3' : 'mb-5'}`}
         style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)', letterSpacing: '0.1em' }}
       >
         Vista previa móvil
@@ -280,7 +282,9 @@ export default function MobilePreviewPanel({
       {/* Contenedor: fondo neutro + sombra; key + animación al cambiar diseño (color/banner) */}
       <div
         key={previewChassisKey}
-        className={`flex flex-col items-center justify-center rounded-3xl p-4 sm:p-8 w-full max-w-[300px] transition-[filter,box-shadow] duration-300 ease-out ${
+        className={`flex flex-col items-center justify-center rounded-3xl w-full transition-[filter,box-shadow] duration-300 ease-out ${
+          isDesktopStickyPreview ? 'max-w-[270px] p-3' : 'max-w-[300px] p-4 sm:p-8'
+        } ${
           previewChassisKey > 0 ? 'animate-preview-update' : ''
         }`}
         style={{
@@ -289,7 +293,7 @@ export default function MobilePreviewPanel({
         }}
       >
         {/* Marco iPhone: sombra profusa tipo objeto real sobre la mesa */}
-        <div className="relative w-full max-w-[260px] mx-auto pt-2">
+        <div className={`relative w-full mx-auto pt-2 ${isDesktopStickyPreview ? 'max-w-[232px]' : 'max-w-[260px]'}`}>
           <div
             className="pointer-events-none absolute z-20 flex max-w-[calc(100%-4px)] items-center gap-1.5 rounded-full border border-white/30 bg-slate-900/80 py-1 pl-1.5 pr-2 shadow-lg backdrop-blur-md top-0 right-0"
             aria-hidden
@@ -473,7 +477,7 @@ export default function MobilePreviewPanel({
       </div>
 
       {/* Style indicator */}
-      <div className="mt-4 flex flex-wrap items-center gap-2">
+      <div className={`${isDesktopStickyPreview ? 'mt-3' : 'mt-4'} flex flex-wrap items-center gap-2`}>
         <div className="flex items-center gap-2">
           <div className="w-2 h-2 rounded-full" style={{ backgroundColor: primaryColor }} />
           <span className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>

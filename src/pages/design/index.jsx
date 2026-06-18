@@ -183,12 +183,13 @@ export default function DesignPage() {
   }
 
   return (
-    <DashboardAppShell backgroundColor="#f6f7fb" allowDesktopOverflow>
+    <DashboardAppShell backgroundColor="#f6f7fb">
         <PanelHeader
           title={<h1 className="text-lg font-semibold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Diseño</h1>}
           subtitle={<p className="text-xs hidden sm:block" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Identidad visual, portada y experiencia de catálogo.</p>}
         />
 
+        {/* DashboardLayoutContent clips overflow-x by default; the desktop preview needs this visible so sticky resolves against the page scroll. */}
         <DashboardLayoutContent innerClassName="xl:overflow-visible">
           <section className="border-b pb-6" style={{ borderColor: 'rgba(17,24,39,0.08)' }}>
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
@@ -204,7 +205,7 @@ export default function DesignPage() {
 
           {/* Grid de 2 columnas en desktop. Columna izquierda crece con el formulario;
               columna derecha hace sticky real: se queda visible mientras el usuario scrollea. */}
-          <div className="xl:grid xl:grid-cols-[minmax(0,1fr)_380px] xl:gap-8 xl:items-start xl:overflow-visible">
+          <div className="xl:grid xl:grid-cols-[minmax(0,1fr)_360px] xl:gap-8 xl:items-start xl:overflow-visible 2xl:grid-cols-[minmax(0,1fr)_380px]">
             {/* Columna izquierda — formulario largo */}
             <div className="min-w-0 w-full">
               <DesignCustomization
@@ -227,37 +228,42 @@ export default function DesignPage() {
             <div
               ref={previewAnchorRef}
               id="design-preview"
-              className="hidden xl:sticky xl:top-[84px] xl:flex xl:h-[calc(100vh-108px)] xl:self-start xl:justify-center xl:overflow-visible"
+              className="hidden xl:block xl:self-start xl:overflow-visible"
             >
               <div
-                className="rounded-[24px] border p-4 shadow-[0_18px_42px_rgba(17,24,39,0.08)] xl:max-h-full xl:overflow-visible"
-                style={{ backgroundColor: 'rgba(255,255,255,0.72)', borderColor: 'rgba(17,24,39,0.08)' }}
+                className="xl:sticky xl:top-24 xl:max-h-[calc(100vh-120px)] xl:overflow-visible"
               >
-                <div className="mb-4 flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-                      En vivo
-                    </p>
-                    <p className="mt-1 text-sm font-semibold" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-heading)' }}>
-                      {previewTitle}
-                    </p>
+                <div
+                  className="mx-auto w-full max-w-[340px] rounded-[24px] border p-3.5 shadow-[0_18px_42px_rgba(17,24,39,0.08)] 2xl:max-w-[360px] 2xl:p-4"
+                  style={{ backgroundColor: 'rgba(255,255,255,0.72)', borderColor: 'rgba(17,24,39,0.08)' }}
+                >
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                        En vivo
+                      </p>
+                      <p className="mt-1 text-sm font-semibold" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-heading)' }}>
+                        {previewTitle}
+                      </p>
+                    </div>
+                    <span className="rounded-full px-2.5 py-1 text-[11px] font-semibold" style={{ backgroundColor: 'rgba(17,24,39,0.06)', color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                      Mobile
+                    </span>
                   </div>
-                  <span className="rounded-full px-2.5 py-1 text-[11px] font-semibold" style={{ backgroundColor: 'rgba(17,24,39,0.06)', color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-                    Mobile
-                  </span>
+                  <MobilePreviewPanel
+                    storeName={business?.name || (isRestaurant ? 'Mi restaurante' : 'Mi tienda')}
+                    storeSlug={business?.slug || ''}
+                    logoUrl={draftDesign?.logoUrl || business?.logoUrl}
+                    coverImageUrl={draftDesign?.headerImageUrl || business?.coverImageUrl}
+                    products={products}
+                    currency={business?.currency || locale.currencyCode}
+                    locale={locale.locale}
+                    countryCode={locale.countryCode}
+                    design={draftDesign}
+                    hideCurrencySymbol={draftDesign?.showCatalogCurrencySymbol === false}
+                    previewSize="desktop-sticky"
+                  />
                 </div>
-                <MobilePreviewPanel
-                  storeName={business?.name || (isRestaurant ? 'Mi restaurante' : 'Mi tienda')}
-                  storeSlug={business?.slug || ''}
-                  logoUrl={draftDesign?.logoUrl || business?.logoUrl}
-                  coverImageUrl={draftDesign?.headerImageUrl || business?.coverImageUrl}
-                  products={products}
-                  currency={business?.currency || locale.currencyCode}
-                  locale={locale.locale}
-                  countryCode={locale.countryCode}
-                  design={draftDesign}
-                  hideCurrencySymbol={draftDesign?.showCatalogCurrencySymbol === false}
-                />
               </div>
             </div>
           </div>
