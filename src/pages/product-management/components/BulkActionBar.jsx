@@ -2,17 +2,14 @@ import React, { useState, useRef, useEffect } from "react";
 import Icon from "components/AppIcon";
 
 const BULK_ACTIONS = [
-  { key: 'show',         label: 'Mostrar en catálogo',  icon: 'Eye' },
-  { key: 'hide',         label: 'Ocultar del catálogo', icon: 'EyeOff' },
+  { key: 'show',      label: 'Mostrar en catálogo',  icon: 'Eye' },
+  { key: 'hide',      label: 'Ocultar del catálogo', icon: 'EyeOff' },
   null,
-  { key: 'available',    label: 'Marcar disponible',    icon: 'CheckCircle' },
-  { key: 'sold_out',     label: 'Marcar agotado',       icon: 'Package' },
+  { key: 'available', label: 'Marcar disponible',    icon: 'CheckCircle' },
+  { key: 'sold_out',  label: 'Marcar agotado',       icon: 'Package' },
   null,
-  { key: 'featured_on',  label: 'Destacar',             icon: 'Star' },
-  { key: 'featured_off', label: 'Quitar destacado',     icon: 'StarOff' },
-  null,
-  { key: 'sale_on',      label: 'Poner en oferta',      icon: 'Tag' },
-  { key: 'sale_off',     label: 'Quitar oferta',        icon: 'TagX' },
+  { key: 'pos_on',    label: 'Activar en TPV',       icon: 'Monitor' },
+  { key: 'pos_off',   label: 'Quitar del TPV',       icon: 'MonitorOff' },
 ];
 
 export default function BulkActionBar({ selectedCount, onBulkAction, onDelete, onDeselect }) {

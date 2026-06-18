@@ -63,8 +63,7 @@ export default function ProductManagement() {
     category: (p?.category && String(p.category).trim()) || 'General',
     active: p?.isActive,
     isSoldOut: p?.isSoldOut === true,
-    featured: p?.featured === true,
-    onSale: p?.onSale === true,
+    showInPos: p?.showInPos === true,
     commercialState: p?.isActive === false ? 'hidden' : (p?.isSoldOut === true ? 'sold_out' : 'available'),
     image: p?.imageUrl || '', imageAlt: p?.name,
     publicCode: p?.publicCode || '',
@@ -129,13 +128,9 @@ export default function ProductManagement() {
     if (!product) return;
 
     const PAYLOAD_MAP = {
-      available:    { isActive: true, isSoldOut: false },
-      sold_out:     { isActive: true, isSoldOut: true },
-      hidden:       { isActive: false, isSoldOut: false },
-      featured_on:  { featured: true },
-      featured_off: { featured: false },
-      sale_on:      { onSale: true },
-      sale_off:     { onSale: false },
+      available: { isActive: true, isSoldOut: false },
+      sold_out:  { isActive: true, isSoldOut: true },
+      hidden:    { isActive: false, isSoldOut: false },
     };
     const payload = PAYLOAD_MAP[nextState];
     if (!payload) return;
@@ -157,12 +152,13 @@ export default function ProductManagement() {
     applyLocalState();
   }, [products, toast, guard]);
 
+  // Toggle rápido para campos booleanos simples (ej: showInPos)
   const handleToggleField = useCallback(async (id, field, newValue) => {
-    const prev_val = products?.find(p => p?.id === id)?.[field];
+    const prevVal = products?.find(p => p?.id === id)?.[field];
     setProducts(prev => prev?.map(p => p?.id === id ? { ...p, [field]: newValue } : p));
     const { error: err } = await updateProduct(id, { [field]: newValue });
     if (err) {
-      setProducts(prev => prev?.map(p => p?.id === id ? { ...p, [field]: prev_val } : p));
+      setProducts(prev => prev?.map(p => p?.id === id ? { ...p, [field]: prevVal } : p));
       toast?.error(err?.message || 'No se pudo actualizar.');
     }
   }, [products, toast]);
@@ -170,14 +166,12 @@ export default function ProductManagement() {
   const handleBulkAction = useCallback(async (action) => {
     if (!selectedIds?.length) return;
     const PAYLOAD_MAP = {
-      featured_on:  { featured: true },
-      featured_off: { featured: false },
-      sale_on:      { onSale: true },
-      sale_off:     { onSale: false },
-      show:         { isActive: true },
-      hide:         { isActive: false },
-      available:    { isActive: true, isSoldOut: false },
-      sold_out:     { isActive: true, isSoldOut: true },
+      show:      { isActive: true },
+      hide:      { isActive: false },
+      available: { isActive: true, isSoldOut: false },
+      sold_out:  { isActive: true, isSoldOut: true },
+      pos_on:    { showInPos: true },
+      pos_off:   { showInPos: false },
     };
     const payload = PAYLOAD_MAP[action];
     if (!payload) return;
