@@ -192,7 +192,7 @@ export default function PaypalSuccessPage() {
           className="text-xl font-bold mb-3"
           style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}
         >
-          Confirmacion de suscripcion
+          Confirmación de suscripción
         </h1>
         <p className="text-sm mb-4" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>
           El retorno de PayPal fue recibido correctamente.
@@ -215,7 +215,7 @@ export default function PaypalSuccessPage() {
           className="px-5 py-2.5 rounded-lg text-sm font-medium text-white transition-opacity hover:opacity-90"
           style={{ backgroundColor: 'var(--color-primary)' }}
         >
-          Ir a Plan y facturacion
+          Ir a Plan y facturación
         </button>
       </div>
     </div>

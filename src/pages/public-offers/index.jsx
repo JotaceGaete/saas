@@ -380,7 +380,7 @@ function PublicOffersContent() {
               </p>
               {catalogUrl && (
                 <a href={catalogUrl} className="mt-2 text-sm underline" style={{ color: theme?.primaryColor }}>
-                  Ir al catalogo completo
+                  Ir al catálogo completo
                 </a>
               )}
             </div>
@@ -396,7 +396,7 @@ function PublicOffersContent() {
               </div>
               <h2 className="text-2xl font-bold tracking-tight text-gray-900">Hoy no hay ofertas activas</h2>
               <p className="max-w-2xl text-sm leading-relaxed text-gray-600 sm:text-base">
-                Igual puedes explorar el catalogo completo de {business?.name || 'este negocio'} y encontrar productos disponibles para pedir ahora mismo.
+                Igual puedes explorar el catálogo completo de {business?.name || 'este negocio'} y encontrar productos disponibles para pedir ahora mismo.
               </p>
               {catalogUrl && (
                 <a
@@ -405,7 +405,7 @@ function PublicOffersContent() {
                   style={{ background: `linear-gradient(135deg, ${theme?.primaryColor || '#25D366'}, ${theme?.primaryColorDark || '#128C7E'})` }}
                 >
                   <Icon name="ShoppingBag" size={16} color="#fff" />
-                  Explorar catalogo
+                  Explorar catálogo
                 </a>
               )}
             </div>
@@ -478,7 +478,7 @@ function PublicOffersContent() {
                   Recomendados
                 </p>
                 <h3 className="text-xl font-bold tracking-tight text-gray-900 sm:text-2xl">
-                  Mientras tanto, mira productos del catalogo
+                  Mientras tanto, mira productos del catálogo
                 </h3>
                 <p className="max-w-2xl text-sm text-gray-600">
                   Seleccionamos algunos productos disponibles para que sigas explorando sin encontrarte con una pantalla vacia.
@@ -495,7 +495,7 @@ function PublicOffersContent() {
                     formatPrice={formatPrice}
                     onOpen={openCatalog}
                     onCtaClick={openCatalog}
-                    ctaLabel="Ver en catalogo"
+                    ctaLabel="Ver en catálogo"
                     readOnly
                     theme={theme}
                     cardSettings={{ showPrice: true, showDescription: true, showStock: false, showWhatsApp: false }}

@@ -227,7 +227,7 @@ export default function ProductEditor() {
   const editorHeroTitle = isRestaurant ? 'Ficha del plato' : 'Ficha del producto';
   const editorHeroSubtitle = isRestaurant
     ? 'Presenta este plato de forma clara y atractiva para tus clientes.'
-    : 'Cuida como se vera este producto en tu catalogo.';
+    : 'Cuida cómo se verá este producto en tu catálogo.';
   const sectionSurfaceStyle = {
     backgroundColor: 'rgba(255,255,255,0.78)',
     borderColor: 'rgba(17,24,39,0.08)',
@@ -1305,7 +1305,7 @@ export default function ProductEditor() {
                     <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(124,58,237,0.08)' }}>
                       <Icon name="FileText" size={15} color="var(--color-primary)" />
                     </div>
-                    <h2 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>Informacion principal</h2>
+                    <h2 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.01em' }}>Información principal</h2>
                   </div>
                   <ProductFormFields
                     formData={formData}
@@ -1471,7 +1471,7 @@ export default function ProductEditor() {
                   <p className="text-xs mb-4" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
                     {publicProductUrl
                       ? 'Usa este enlace para compartir la ficha individual del producto.'
-                      : `Guarda este ${itemSingular} para generar su enlace publico.`}
+                      : `Guarda este ${itemSingular} para generar su enlace público.`}
                   </p>
                   {publicProductUrl ? (
                     <div className="space-y-3">

@@ -74,7 +74,7 @@ function ProductNotFound({ onBack }) {
           onClick={onBack}
           className="inline-flex items-center justify-center rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white"
         >
-          Ver catalogo
+          Ver catálogo
         </button>
       </div>
     </div>
@@ -194,7 +194,7 @@ function PublicProductInner() {
   const productState = getProductCommercialState(product);
   const isSoldOut = productState === 'sold_out';
   const hasOptions = hasAdvancedOrder(product);
-  const title = `${product?.name || 'Producto'} | ${business?.name || 'Catalogo'}`;
+  const title = `${product?.name || 'Producto'} | ${business?.name || 'Catálogo'}`;
   const plainDescription = String(
     product?.longDescription || product?.description || business?.description || 'Consulta este producto y pide por WhatsApp.',
   ).replace(/\s+/g, ' ').trim();
@@ -291,7 +291,7 @@ function PublicProductInner() {
             <Icon name="ArrowLeft" size={18} />
           </button>
           <button type="button" onClick={goToCatalog} className="min-w-0 flex-1 text-left">
-            <p className="truncate text-xs font-semibold uppercase tracking-wide text-gray-500">Catalogo</p>
+            <p className="truncate text-xs font-semibold uppercase tracking-wide text-gray-500">Catálogo</p>
             <p className="truncate text-sm font-bold text-gray-950">{business.name || 'Tienda'}</p>
           </button>
           {business.logoUrl ? (
@@ -437,7 +437,7 @@ function PublicProductInner() {
                 <p className="truncate text-xs text-gray-500">Atencion directa por WhatsApp</p>
               </div>
               <button type="button" onClick={goToCatalog} className="rounded-full bg-gray-100 px-3 py-2 text-xs font-bold text-gray-800">
-                Ver catalogo
+                Ver catálogo
               </button>
             </div>
           </div>

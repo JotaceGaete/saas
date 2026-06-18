@@ -120,7 +120,7 @@ function MovementsTable({ payments, currency, onEditPayment }) {
           <thead className="bg-gray-50 text-left text-xs font-bold uppercase tracking-wide text-gray-400">
             <tr>
               <th className="px-5 py-3">Hora</th>
-              <th className="px-5 py-3">Metodo</th>
+              <th className="px-5 py-3">Método</th>
               <th className="px-5 py-3">Referencia / notas</th>
               <th className="px-5 py-3 text-right">Monto</th>
               <th className="px-5 py-3 text-right">Accion</th>
@@ -232,7 +232,7 @@ function PaymentEditModal({ payment, currency, busy, onSubmit, onCancel, onEditS
           </div>
 
           <div>
-            <label className="mb-1.5 block text-xs font-semibold text-gray-500">Metodo de pago</label>
+            <label className="mb-1.5 block text-xs font-semibold text-gray-500">Método de pago</label>
             <select
               value={paymentMethod}
               onChange={e => setPaymentMethod(e.target.value)}

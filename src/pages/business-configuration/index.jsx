@@ -990,7 +990,7 @@ export default function BusinessConfiguration() {
     },
     {
       id: 'design',
-      label: 'Diseno',
+      label: 'Diseño',
       description: `Aspecto público de tu ${visibleCatalogSurface}`,
       Icon: Palette,
     },
@@ -1076,7 +1076,7 @@ export default function BusinessConfiguration() {
                   Editor comercial
                 </p>
                 <h2 className="text-[2rem] font-black leading-[1.05] text-slate-950 sm:text-5xl" style={{ fontFamily: 'var(--font-heading)', letterSpacing: 0 }}>
-                  Configuracion de tu {visibleBusinessKind}
+                  Configuración de tu {visibleBusinessKind}
                 </h2>
                 <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 sm:text-base" style={{ fontFamily: 'var(--font-body)' }}>
                   Personaliza cómo los clientes ven y compran en tu {visibleCatalogSurface}. Mantén la identidad clara, el pedido simple y la información pública al día.
