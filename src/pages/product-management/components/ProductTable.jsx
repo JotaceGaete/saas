@@ -11,12 +11,44 @@ const SORT_FIELDS = {
   status: "estado",
 };
 
+// Compact toggle chip for featured / onSale
+function QuickToggle({ active, onIcon, offIcon, onLabel, offLabel, activeColor, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={active ? offLabel : onLabel}
+      className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold transition-all hover:opacity-80"
+      style={active
+        ? { backgroundColor: `${activeColor}18`, borderColor: `${activeColor}40`, color: activeColor }
+        : { backgroundColor: 'transparent', borderColor: 'var(--color-border)', color: 'var(--color-muted-foreground)' }
+      }
+    >
+      <Icon name={active ? onIcon : offIcon} size={11} color="currentColor" />
+      {active ? onLabel : offLabel}
+    </button>
+  );
+}
+
+const STATUS_DROPDOWN_OPTIONS = [
+  { key: 'available',    label: 'Disponible',       icon: 'CheckCircle' },
+  { key: 'sold_out',     label: 'Agotado',           icon: 'Package' },
+  { key: 'hidden',       label: 'Ocultar catálogo',  icon: 'EyeOff' },
+  null, // separator
+  { key: 'featured_on',  label: 'Destacar',          icon: 'Star' },
+  { key: 'featured_off', label: 'Quitar destacado',  icon: 'StarOff' },
+  null,
+  { key: 'sale_on',      label: 'Poner en oferta',   icon: 'Tag' },
+  { key: 'sale_off',     label: 'Quitar oferta',     icon: 'TagX' },
+];
+
 export default function ProductTable({
   products,
   selectedIds,
   onSelectAll,
   onSelectOne,
   onChangeStatus,
+  onToggleField,
   onEdit,
   onDuplicate,
   onDeleteRequest,
@@ -96,8 +128,9 @@ export default function ProductTable({
                 <th className="px-4 py-4 text-left"><ThBtn field="name">Nombre</ThBtn></th>
                 <th className="px-4 py-4 text-left"><ThBtn field="category">Categoría</ThBtn></th>
                 <th className="px-4 py-4 text-right"><ThBtn field="price">Precio</ThBtn></th>
-                <th className="px-4 py-4 text-center"><ThBtn field="status">Estado de venta</ThBtn></th>
-                <th className="w-[280px] px-4 py-4 text-right"><span className="text-xs font-semibold uppercase tracking-wide whitespace-nowrap" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Acciones</span></th>
+                <th className="px-4 py-4 text-center"><ThBtn field="status">Estado</ThBtn></th>
+                <th className="px-4 py-4 text-center"><span className="text-xs font-semibold uppercase tracking-wide whitespace-nowrap" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Extras</span></th>
+                <th className="w-[240px] px-4 py-4 text-right"><span className="text-xs font-semibold uppercase tracking-wide whitespace-nowrap" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Acciones</span></th>
               </tr>
             </thead>
             <tbody>
@@ -146,67 +179,83 @@ export default function ProductTable({
                       {commercialState.label}
                     </span>
                   </td>
+                  <td className="px-4 py-3 text-center">
+                    <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                      <QuickToggle
+                        active={product?.featured}
+                        onIcon="Star" offIcon="Star"
+                        onLabel="Dest." offLabel="Dest."
+                        activeColor="#f59e0b"
+                        onClick={() => onToggleField(product?.id, 'featured', !product?.featured)}
+                      />
+                      <QuickToggle
+                        active={product?.onSale}
+                        onIcon="Tag" offIcon="Tag"
+                        onLabel="Oferta" offLabel="Oferta"
+                        activeColor="#8b5cf6"
+                        onClick={() => onToggleField(product?.id, 'onSale', !product?.onSale)}
+                      />
+                    </div>
+                  </td>
                   <td className="px-4 py-4">
-                    <div className="relative flex items-center justify-end gap-3 pl-2 whitespace-nowrap">
+                    <div className="relative flex items-center justify-end gap-2 pl-2 whitespace-nowrap">
                       <div className="relative">
                         <button
                           onClick={() => setOpenStatusMenuId((prev) => prev === product?.id ? null : product?.id)}
-                          className="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors hover:bg-slate-50"
+                          className="inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors hover:bg-slate-50"
                           style={{ borderColor: 'var(--color-border)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
                           aria-label={`Cambiar estado de ${product?.name}`}
                         >
-                          Cambiar estado
-                          <Icon name="ChevronDown" size={13} color="currentColor" />
+                          Estado
+                          <Icon name="ChevronDown" size={12} color="currentColor" />
                         </button>
                         {isStatusMenuOpen && (
                           <div
                             className="absolute right-0 top-full z-20 mt-2 w-48 rounded-xl border bg-white p-1.5 shadow-lg"
                             style={{ borderColor: 'var(--color-border)', boxShadow: '0 18px 40px rgba(15,23,42,0.14)' }}
                           >
-                            {[
-                              { key: 'available', label: 'Marcar disponible' },
-                              { key: 'sold_out', label: 'Marcar agotado' },
-                              { key: 'hidden', label: 'Ocultar del catálogo' },
-                            ].map((option) => (
-                              <button
-                                key={option.key}
-                                type="button"
-                                onClick={() => {
-                                  setOpenStatusMenuId(null);
-                                  onChangeStatus(product?.id, option.key);
-                                }}
-                                className="flex w-full items-center rounded-lg px-3 py-2 text-left text-xs font-medium transition-colors hover:bg-slate-50"
-                                style={{ color: commercialState.key === option.key ? 'var(--color-primary)' : 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
-                              >
-                                {option.label}
-                              </button>
-                            ))}
+                            {STATUS_DROPDOWN_OPTIONS.map((option, i) =>
+                              option === null ? (
+                                <div key={`sep-${i}`} className="my-1 border-t" style={{ borderColor: 'var(--color-border)' }} />
+                              ) : (
+                                <button
+                                  key={option.key}
+                                  type="button"
+                                  onClick={() => { setOpenStatusMenuId(null); onChangeStatus(product?.id, option.key); }}
+                                  className="flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-xs font-medium transition-colors hover:bg-slate-50"
+                                  style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
+                                >
+                                  <Icon name={option.icon} size={12} color="currentColor" />
+                                  {option.label}
+                                </button>
+                              )
+                            )}
                           </div>
                         )}
                       </div>
                       <button
                         onClick={() => onEdit(product?.id)}
-                        className="w-9 h-9 flex items-center justify-center rounded-lg text-slate-500 transition-all hover:bg-slate-100 hover:text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300/80"
+                        className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-500 transition-all hover:bg-slate-100 hover:text-slate-800 focus:outline-none"
                         title="Editar"
                         aria-label={`Editar ${product?.name}`}
                       >
-                        <Icon name="Pencil" size={15} color="currentColor" />
+                        <Icon name="Pencil" size={14} color="currentColor" />
                       </button>
                       <button
                         onClick={() => onDuplicate(product?.id)}
-                        className="w-9 h-9 flex items-center justify-center rounded-lg text-slate-500 transition-all hover:bg-slate-100 hover:text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300/80"
+                        className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-500 transition-all hover:bg-slate-100 hover:text-slate-800 focus:outline-none"
                         title="Duplicar"
                         aria-label={`Duplicar ${product?.name}`}
                       >
-                        <Icon name="Copy" size={15} color="currentColor" />
+                        <Icon name="Copy" size={14} color="currentColor" />
                       </button>
                       <button
                         onClick={() => onDeleteRequest(product?.id)}
-                        className="w-9 h-9 flex items-center justify-center rounded-lg text-rose-500 transition-all hover:bg-rose-50 hover:text-rose-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-300/60"
+                        className="w-8 h-8 flex items-center justify-center rounded-lg text-rose-500 transition-all hover:bg-rose-50 hover:text-rose-600 focus:outline-none"
                         title="Eliminar"
                         aria-label={`Eliminar ${product?.name}`}
                       >
-                        <Icon name="Trash2" size={15} color="currentColor" />
+                        <Icon name="Trash2" size={14} color="currentColor" />
                       </button>
                     </div>
                   </td>
@@ -290,6 +339,23 @@ export default function ProductTable({
               </div>
 
               <div className="flex flex-col gap-y-3 min-w-0">
+                {/* Quick feature/sale toggles */}
+                <div className="flex items-center gap-2">
+                  <QuickToggle
+                    active={product?.featured}
+                    onIcon="Star" offIcon="Star"
+                    onLabel="Destacado" offLabel="Destacado"
+                    activeColor="#f59e0b"
+                    onClick={() => onToggleField(product?.id, 'featured', !product?.featured)}
+                  />
+                  <QuickToggle
+                    active={product?.onSale}
+                    onIcon="Tag" offIcon="Tag"
+                    onLabel="En oferta" offLabel="En oferta"
+                    activeColor="#8b5cf6"
+                    onClick={() => onToggleField(product?.id, 'onSale', !product?.onSale)}
+                  />
+                </div>
                 <div className="relative min-w-0">
                   <button
                     onClick={() => setOpenStatusMenuId((prev) => prev === product?.id ? null : product?.id)}
@@ -305,24 +371,22 @@ export default function ProductTable({
                       className="absolute left-0 right-0 top-full z-20 mt-2 rounded-xl border bg-white p-1.5 shadow-lg"
                       style={{ borderColor: 'var(--color-border)', boxShadow: '0 18px 40px rgba(15,23,42,0.14)' }}
                     >
-                      {[
-                        { key: 'available', label: 'Marcar disponible' },
-                        { key: 'sold_out', label: 'Marcar agotado' },
-                        { key: 'hidden', label: 'Ocultar del catálogo' },
-                      ].map((option) => (
-                        <button
-                          key={option.key}
-                          type="button"
-                          onClick={() => {
-                            setOpenStatusMenuId(null);
-                            onChangeStatus(product?.id, option.key);
-                          }}
-                          className="flex min-h-10 w-full items-center rounded-lg px-3 py-2 text-left text-xs font-medium transition-colors hover:bg-slate-50"
-                          style={{ color: commercialState.key === option.key ? 'var(--color-primary)' : 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
-                        >
-                          {option.label}
-                        </button>
-                      ))}
+                      {STATUS_DROPDOWN_OPTIONS.map((option, i) =>
+                        option === null ? (
+                          <div key={`sep-${i}`} className="my-1 border-t" style={{ borderColor: 'var(--color-border)' }} />
+                        ) : (
+                          <button
+                            key={option.key}
+                            type="button"
+                            onClick={() => { setOpenStatusMenuId(null); onChangeStatus(product?.id, option.key); }}
+                            className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-medium transition-colors hover:bg-slate-50"
+                            style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
+                          >
+                            <Icon name={option.icon} size={13} color="currentColor" />
+                            {option.label}
+                          </button>
+                        )
+                      )}
                     </div>
                   )}
                 </div>

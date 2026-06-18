@@ -63,6 +63,8 @@ export default function ProductManagement() {
     category: (p?.category && String(p.category).trim()) || 'General',
     active: p?.isActive,
     isSoldOut: p?.isSoldOut === true,
+    featured: p?.featured === true,
+    onSale: p?.onSale === true,
     commercialState: p?.isActive === false ? 'hidden' : (p?.isSoldOut === true ? 'sold_out' : 'available'),
     image: p?.imageUrl || '', imageAlt: p?.name,
     publicCode: p?.publicCode || '',
@@ -126,38 +128,71 @@ export default function ProductManagement() {
     const product = products?.find(p => p?.id === id);
     if (!product) return;
 
-    const payload = nextState === 'available'
-      ? { isActive: true, isSoldOut: false }
-      : nextState === 'sold_out'
-        ? { isActive: true, isSoldOut: true }
-        : { isActive: false, isSoldOut: false };
+    const PAYLOAD_MAP = {
+      available:    { isActive: true, isSoldOut: false },
+      sold_out:     { isActive: true, isSoldOut: true },
+      hidden:       { isActive: false, isSoldOut: false },
+      featured_on:  { featured: true },
+      featured_off: { featured: false },
+      sale_on:      { onSale: true },
+      sale_off:     { onSale: false },
+    };
+    const payload = PAYLOAD_MAP[nextState];
+    if (!payload) return;
 
     const applyLocalState = () => {
-      setProducts(prev => prev?.map(p => (
-        p?.id === id
-          ? { ...p, isActive: payload.isActive, isSoldOut: payload.isSoldOut }
-          : p
-      )));
+      setProducts(prev => prev?.map(p => p?.id === id ? { ...p, ...payload } : p));
     };
 
     if (nextState === 'available') {
       guard.runIfConfirmed(async () => {
         const { error: err } = await updateProduct(id, payload);
-        if (err) {
-          toast?.error(err?.message || 'No se pudo actualizar.');
-          return;
-        }
+        if (err) { toast?.error(err?.message || 'No se pudo actualizar.'); return; }
         applyLocalState();
       });
       return;
     }
     const { error: err } = await updateProduct(id, payload);
-    if (err) {
-      toast?.error(err?.message || 'No se pudo actualizar.');
-      return;
-    }
+    if (err) { toast?.error(err?.message || 'No se pudo actualizar.'); return; }
     applyLocalState();
   }, [products, toast, guard]);
+
+  const handleToggleField = useCallback(async (id, field, newValue) => {
+    const prev_val = products?.find(p => p?.id === id)?.[field];
+    setProducts(prev => prev?.map(p => p?.id === id ? { ...p, [field]: newValue } : p));
+    const { error: err } = await updateProduct(id, { [field]: newValue });
+    if (err) {
+      setProducts(prev => prev?.map(p => p?.id === id ? { ...p, [field]: prev_val } : p));
+      toast?.error(err?.message || 'No se pudo actualizar.');
+    }
+  }, [products, toast]);
+
+  const handleBulkAction = useCallback(async (action) => {
+    if (!selectedIds?.length) return;
+    const PAYLOAD_MAP = {
+      featured_on:  { featured: true },
+      featured_off: { featured: false },
+      sale_on:      { onSale: true },
+      sale_off:     { onSale: false },
+      show:         { isActive: true },
+      hide:         { isActive: false },
+      available:    { isActive: true, isSoldOut: false },
+      sold_out:     { isActive: true, isSoldOut: true },
+    };
+    const payload = PAYLOAD_MAP[action];
+    if (!payload) return;
+
+    setProducts(prev => prev?.map(p => selectedIds?.includes(p?.id) ? { ...p, ...payload } : p));
+    const results = await Promise.all(selectedIds?.map(id => updateProduct(id, payload)));
+    const errCount = results?.filter(r => r?.error)?.length;
+    if (errCount) {
+      toast?.error(`Error en ${errCount} producto(s). Recarga la página.`);
+      loadProducts();
+    } else {
+      toast?.success(`${selectedIds?.length} producto(s) actualizados.`);
+    }
+    setSelectedIds([]);
+  }, [selectedIds, toast]);
 
   const handleEdit = useCallback((id) => { navigate(`/product-editor?id=${id}`); }, [navigate]);
 
@@ -279,8 +314,8 @@ export default function ProductManagement() {
               <div className="flex w-full md:hidden">
                 <AddProductButton className="w-full px-4 py-3" />
               </div>
-              {selectedIds?.length > 0 && (<div><BulkActionBar selectedCount={selectedIds?.length} onDelete={handleBulkDelete} onDeselect={() => setSelectedIds([])} /></div>)}
-              <ProductTable products={filteredProducts} selectedIds={selectedIds} onSelectAll={handleSelectAll} onSelectOne={handleSelectOne} onChangeStatus={handleChangeStatus} onEdit={handleEdit} onDuplicate={handleDuplicate} onDeleteRequest={handleDeleteRequest} sortField={sortField} sortDir={sortDir} onSort={handleSort} formatPrice={formatProductPrice} hasProducts={products?.length > 0} emptyTitle={emptyTitle} emptyDescription={emptyDescription} filteredEmptyDescription="No encontramos ítems con estos filtros. Ajusta la búsqueda o vuelve a ver todo el catálogo." />
+              {selectedIds?.length > 0 && (<div><BulkActionBar selectedCount={selectedIds?.length} onBulkAction={handleBulkAction} onDelete={handleBulkDelete} onDeselect={() => setSelectedIds([])} /></div>)}
+              <ProductTable products={filteredProducts} selectedIds={selectedIds} onSelectAll={handleSelectAll} onSelectOne={handleSelectOne} onChangeStatus={handleChangeStatus} onToggleField={handleToggleField} onEdit={handleEdit} onDuplicate={handleDuplicate} onDeleteRequest={handleDeleteRequest} sortField={sortField} sortDir={sortDir} onSort={handleSort} formatPrice={formatProductPrice} hasProducts={products?.length > 0} emptyTitle={emptyTitle} emptyDescription={emptyDescription} filteredEmptyDescription="No encontramos ítems con estos filtros. Ajusta la búsqueda o vuelve a ver todo el catálogo." />
             </>
           )}
         </DashboardLayoutContent>
