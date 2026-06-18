@@ -183,13 +183,13 @@ export default function DesignPage() {
   }
 
   return (
-    <DashboardAppShell backgroundColor="#f6f7fb">
+    <DashboardAppShell backgroundColor="#f6f7fb" allowDesktopOverflow>
         <PanelHeader
           title={<h1 className="text-lg font-semibold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Diseño</h1>}
           subtitle={<p className="text-xs hidden sm:block" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Identidad visual, portada y experiencia de catálogo.</p>}
         />
 
-        <DashboardLayoutContent>
+        <DashboardLayoutContent innerClassName="xl:overflow-visible">
           <section className="border-b pb-6" style={{ borderColor: 'rgba(17,24,39,0.08)' }}>
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
               Identidad visual
@@ -204,7 +204,7 @@ export default function DesignPage() {
 
           {/* Grid de 2 columnas en desktop. Columna izquierda crece con el formulario;
               columna derecha hace sticky real: se queda visible mientras el usuario scrollea. */}
-          <div className="xl:grid xl:grid-cols-[minmax(0,1fr)_380px] xl:gap-8 xl:items-start">
+          <div className="xl:grid xl:grid-cols-[minmax(0,1fr)_380px] xl:gap-8 xl:items-start xl:overflow-visible">
             {/* Columna izquierda — formulario largo */}
             <div className="min-w-0 w-full">
               <DesignCustomization
@@ -227,10 +227,10 @@ export default function DesignPage() {
             <div
               ref={previewAnchorRef}
               id="design-preview"
-              className="hidden xl:block xl:self-start xl:sticky xl:top-[84px]"
+              className="hidden xl:sticky xl:top-[84px] xl:flex xl:h-[calc(100vh-108px)] xl:self-start xl:justify-center xl:overflow-visible"
             >
               <div
-                className="rounded-[24px] border p-4 shadow-[0_18px_42px_rgba(17,24,39,0.08)]"
+                className="rounded-[24px] border p-4 shadow-[0_18px_42px_rgba(17,24,39,0.08)] xl:max-h-full xl:overflow-visible"
                 style={{ backgroundColor: 'rgba(255,255,255,0.72)', borderColor: 'rgba(17,24,39,0.08)' }}
               >
                 <div className="mb-4 flex items-center justify-between gap-3">
