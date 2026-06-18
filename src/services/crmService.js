@@ -1494,3 +1494,35 @@ export async function getRankingData(businessId, startDate, endDate) {
   return { invoices: invoices || [], items: items || [], error: itemErr || null };
 }
 
+export async function getPosDrafts(businessId) {
+  const { data, error } = await supabase
+    .from('crm_pos_drafts')
+    .select('*')
+    .eq('business_id', businessId)
+    .order('created_at', { ascending: false });
+  return { data: data || [], error };
+}
+
+export async function savePosDraft(businessId, { customerId, customerName, items, discount, notes, paymentMethod, label, createdBy }) {
+  const { data, error } = await supabase
+    .from('crm_pos_drafts')
+    .insert({
+      business_id:    businessId,
+      customer_id:    customerId || null,
+      customer_name:  customerName || null,
+      items:          items,
+      discount:       discount || '',
+      notes:          notes || '',
+      payment_method: paymentMethod || 'cash',
+      label:          label || null,
+      created_by:     createdBy || null,
+    })
+    .select()
+    .single();
+  return { data, error };
+}
+
+export async function deletePosDraft(draftId) {
+  const { error } = await supabase.from('crm_pos_drafts').delete().eq('id', draftId);
+  return { error };
+}

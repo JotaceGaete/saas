@@ -5,7 +5,7 @@ import PanelHeader from 'components/ui/PanelHeader';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
 import { useIsDesktop } from 'hooks/useMediaQuery';
-import { getCrmCustomers, getPosProducts, getAllActiveProducts, createPosInvoice, getOpenCashSession } from '../../services/crmService';
+import { getCrmCustomers, getPosProducts, getAllActiveProducts, createPosInvoice, getOpenCashSession, createCrmCustomer, getPosDrafts, savePosDraft, deletePosDraft } from '../../services/crmService';
 import { getEffectivePlanSlug } from '../../services/waBusinessService';
 import { canUseFeature } from '../../config/planFeatures';
 import CrmThermalTicket from './components/CrmThermalTicket';
@@ -148,6 +148,159 @@ function ManualItemModal({ onAdd, onClose, currency }) {
   );
 }
 
+function QuickCustomerModal({ businessId, onCreated, onClose }) {
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [company, setCompany] = useState('');
+  const [rut, setRut] = useState('');
+  const [email, setEmail] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!name.trim()) { setErr('El nombre es obligatorio.'); return; }
+    setBusy(true);
+    setErr('');
+    const { data, error } = await createCrmCustomer(businessId, {
+      name: name.trim(),
+      phone: phone.trim() || null,
+      company: company.trim() || null,
+      rut: rut.trim() || null,
+      email: email.trim() || null,
+    });
+    setBusy(false);
+    if (error) {
+      if (error.code === '23505') setErr('Ya existe un cliente con ese teléfono.');
+      else setErr(error.message || 'Error al crear cliente.');
+      return;
+    }
+    onCreated(data);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl">
+        <div className="flex justify-between items-center px-5 py-4 border-b">
+          <h2 className="font-bold text-gray-900 text-base flex items-center gap-2">
+            <Icon name="UserPlus" size={16} className="text-blue-500" />
+            Nuevo cliente
+          </h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100">
+            <Icon name="X" size={18} />
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} className="px-5 py-4 space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Nombre *</label>
+            <input autoFocus type="text" value={name} onChange={e => setName(e.target.value)}
+              placeholder="Nombre del cliente"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">WhatsApp / Teléfono</label>
+            <input type="tel" value={phone} onChange={e => setPhone(e.target.value)}
+              placeholder="+56 9 1234 5678"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <label className="block text-xs font-medium text-gray-700 mb-1">Empresa</label>
+              <input type="text" value={company} onChange={e => setCompany(e.target.value)}
+                placeholder="Opcional"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div className="flex-1">
+              <label className="block text-xs font-medium text-gray-700 mb-1">RUT</label>
+              <input type="text" value={rut} onChange={e => setRut(e.target.value)}
+                placeholder="Opcional"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Email</label>
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+              placeholder="Opcional"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          {err && <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">{err}</p>}
+          <div className="flex gap-3 pt-1">
+            <button type="button" onClick={onClose} className="flex-1 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm font-medium">
+              Cancelar
+            </button>
+            <button type="submit" disabled={busy} className="flex-1 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-semibold flex items-center justify-center gap-1.5">
+              {busy ? <><Icon name="Loader2" size={14} className="animate-spin" />Guardando…</> : 'Crear cliente'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function DraftsModal({ drafts, currency, onRecover, onDelete, onClose }) {
+  const fmt2 = (n) => formatMoney(n, currency);
+  return (
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl flex flex-col max-h-[80vh]">
+        <div className="flex justify-between items-center px-5 py-4 border-b shrink-0">
+          <h2 className="font-bold text-gray-900 text-base flex items-center gap-2">
+            <Icon name="PauseCircle" size={16} className="text-amber-500" />
+            Ventas suspendidas ({drafts.length})
+          </h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100">
+            <Icon name="X" size={18} />
+          </button>
+        </div>
+        {drafts.length === 0 ? (
+          <div className="flex-1 flex flex-col items-center justify-center py-12 text-gray-400 text-sm gap-2">
+            <Icon name="PauseCircle" size={32} className="text-gray-200" />
+            <p>No hay ventas suspendidas</p>
+          </div>
+        ) : (
+          <div className="flex-1 overflow-y-auto divide-y divide-gray-100">
+            {drafts.map(draft => {
+              const items = Array.isArray(draft.items) ? draft.items : [];
+              const total = items.reduce((s, i) => s + (i.unit_price || 0) * (i.quantity || 1), 0);
+              const ts = new Date(draft.created_at);
+              const timeStr = ts.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
+              const dateStr = ts.toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit' });
+              return (
+                <div key={draft.id} className="px-5 py-3.5 flex items-start gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-800 truncate">{draft.label || 'Venta suspendida'}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      {draft.customer_name || 'Consumidor final'} · {items.length} ítem{items.length !== 1 ? 's' : ''}
+                    </p>
+                    <p className="text-xs text-gray-400">{dateStr} {timeStr}</p>
+                    <p className="text-sm font-bold text-blue-600 mt-1">{fmt2(total)}</p>
+                  </div>
+                  <div className="flex flex-col gap-1.5 shrink-0">
+                    <button
+                      onClick={() => onRecover(draft)}
+                      className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold"
+                    >
+                      <Icon name="RotateCcw" size={12} />
+                      Recuperar
+                    </button>
+                    <button
+                      onClick={() => onDelete(draft.id)}
+                      className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-red-200 text-red-500 hover:bg-red-50 text-xs font-medium"
+                    >
+                      <Icon name="Trash2" size={12} />
+                      Eliminar
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function useSidebarHidden() {
   const [hidden, setHidden] = useState(() => {
     try { return localStorage.getItem('tpv_sidebar_hidden') === 'true'; } catch { return false; }
@@ -201,6 +354,9 @@ export default function CrmTerminal() {
   const [initialPaymentAmount, setInitialPaymentAmount] = useState('');
   const [initialPaymentMethod, setInitialPaymentMethod] = useState('cash');
   const [showManualModal, setShowManualModal] = useState(false);
+  const [showNewCustomerModal, setShowNewCustomerModal] = useState(false);
+  const [showDraftsModal, setShowDraftsModal] = useState(false);
+  const [drafts, setDrafts] = useState([]);
 
   // Ticket modal state — set after successful (or locally-fallback) sale
   const [ticketData, setTicketData] = useState(null);
@@ -260,6 +416,10 @@ export default function CrmTerminal() {
     getCrmCustomers(business.id).then(({ data }) => {
       customers.current = data || [];
       setCustomersDisplay(data || []);
+    });
+
+    getPosDrafts(business.id).then(({ data }) => {
+      setDrafts(data || []);
     });
   }, [business?.id, hasAccess]);
 
@@ -374,6 +534,44 @@ export default function CrmTerminal() {
     setInitialPaymentAmount('');
     setInitialPaymentMethod('cash');
     setTimeout(() => searchRef.current?.focus(), 50);
+  };
+
+  const handleSuspend = async () => {
+    if (cart.length === 0) return;
+    const draftCount = drafts.length + 1;
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
+    const label = `Venta suspendida #${draftCount} · ${timeStr}`;
+    const customerName = selectedCustomer?.name || null;
+    const { data, error } = await savePosDraft(business.id, {
+      customerId: customerId || null,
+      customerName,
+      items: cart,
+      discount,
+      notes,
+      paymentMethod,
+      label,
+      createdBy: null,
+    });
+    if (!error && data) {
+      setDrafts(prev => [data, ...prev]);
+      resetForm();
+    }
+  };
+
+  const handleRecoverDraft = (draft) => {
+    const items = Array.isArray(draft.items) ? draft.items : [];
+    setCart(items.map(i => ({ ...i, _key: i._key || i.product_id || `manual_${Date.now()}_${Math.random()}` })));
+    setCustomerId(draft.customer_id || '');
+    setDiscount(draft.discount || '');
+    setNotes(draft.notes || '');
+    setPaymentMethod(draft.payment_method || 'cash');
+    setShowDraftsModal(false);
+  };
+
+  const handleDeleteDraft = async (draftId) => {
+    const { error } = await deletePosDraft(draftId);
+    if (!error) setDrafts(prev => prev.filter(d => d.id !== draftId));
   };
 
   const handleRegister = async () => {
@@ -626,6 +824,13 @@ export default function CrmTerminal() {
                           <Icon name="X" size={14} color="currentColor" />
                         </button>
                       </div>
+                      <button
+                        onClick={() => { setErrorMsg(null); setShowNewCustomerModal(true); }}
+                        className="self-start flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition-colors"
+                      >
+                        <Icon name="UserPlus" size={13} color="currentColor" />
+                        Crear cliente
+                      </button>
                     </div>
                   ) : errorMsg ? (
                     <div className="flex items-start gap-2 p-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700">
@@ -789,18 +994,28 @@ export default function CrmTerminal() {
                   {/* ── Zone 1: Customer ── flex-none ─────────────────────── */}
                   <div className="bg-white border border-gray-200 rounded-xl p-3 lg:flex-none">
                     <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Cliente</label>
-                    <select
-                      value={customerId}
-                      onChange={e => setCustomerId(e.target.value)}
-                      className="w-full border border-gray-200 rounded-lg px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
-                    >
-                      <option value="">👤 Consumidor final</option>
-                      {customersDisplay.map(c => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}{c.company ? ` — ${c.company}` : ''}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="flex gap-1.5">
+                      <select
+                        value={customerId}
+                        onChange={e => setCustomerId(e.target.value)}
+                        className="flex-1 min-w-0 border border-gray-200 rounded-lg px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
+                      >
+                        <option value="">👤 Consumidor final</option>
+                        {customersDisplay.map(c => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}{c.company ? ` — ${c.company}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => setShowNewCustomerModal(true)}
+                        title="Nuevo cliente"
+                        className="shrink-0 flex items-center justify-center w-9 h-9 rounded-lg border border-blue-200 bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
+                      >
+                        <Icon name="UserPlus" size={15} />
+                      </button>
+                    </div>
                   </div>
 
                   {/* ── Zone 2: Cart card ── flex-1 min-h-0 ──────────────────
@@ -823,14 +1038,25 @@ export default function CrmTerminal() {
                           )}
                         </span>
                       </div>
-                      {cart.length > 0 && (
-                        <button
-                          onClick={resetForm}
-                          className="text-xs text-red-400 hover:text-red-600 flex items-center gap-1"
-                        >
-                          <Icon name="Trash2" size={11} />Vaciar
-                        </button>
-                      )}
+                      <div className="flex items-center gap-2">
+                        {drafts.length > 0 && (
+                          <button
+                            onClick={() => setShowDraftsModal(true)}
+                            className="text-xs text-amber-600 hover:text-amber-700 flex items-center gap-1 font-medium"
+                          >
+                            <Icon name="PauseCircle" size={12} />
+                            Suspendidas ({drafts.length})
+                          </button>
+                        )}
+                        {cart.length > 0 && (
+                          <button
+                            onClick={resetForm}
+                            className="text-xs text-red-400 hover:text-red-600 flex items-center gap-1"
+                          >
+                            <Icon name="Trash2" size={11} />Vaciar
+                          </button>
+                        )}
+                      </div>
                     </div>
 
                     {/* Cart items — flex-1 min-h-0 overflow-y-auto on desktop;
@@ -1041,6 +1267,15 @@ export default function CrmTerminal() {
                           Faltan {fmt(total - parsedReceived, business?.currency)} para completar el pago
                         </p>
                       )}
+                      {cart.length > 0 && (
+                        <button
+                          onClick={handleSuspend}
+                          className="w-full py-2 rounded-xl border border-gray-600 text-gray-300 hover:bg-gray-700 text-sm font-medium transition-colors flex items-center justify-center gap-2"
+                        >
+                          <Icon name="PauseCircle" size={15} />
+                          Suspender venta
+                        </button>
+                      )}
                     </div>
 
                   </div>{/* end zone 3 */}
@@ -1089,6 +1324,30 @@ export default function CrmTerminal() {
           currency={business?.currency}
           onAdd={addManualItem}
           onClose={() => setShowManualModal(false)}
+        />
+      )}
+
+      {/* New customer modal */}
+      {showNewCustomerModal && (
+        <QuickCustomerModal
+          businessId={business?.id}
+          onCreated={(newCustomer) => {
+            setCustomersDisplay(prev => [newCustomer, ...prev]);
+            setCustomerId(newCustomer.id);
+            setShowNewCustomerModal(false);
+          }}
+          onClose={() => setShowNewCustomerModal(false)}
+        />
+      )}
+
+      {/* Drafts modal */}
+      {showDraftsModal && (
+        <DraftsModal
+          drafts={drafts}
+          currency={business?.currency}
+          onRecover={handleRecoverDraft}
+          onDelete={handleDeleteDraft}
+          onClose={() => setShowDraftsModal(false)}
         />
       )}
 
