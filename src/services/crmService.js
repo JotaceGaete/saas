@@ -257,7 +257,7 @@ export async function deleteCrmCustomer(id) {
 export async function getCrmQuotes(businessId) {
   const { data, error } = await supabase
     .from('crm_quotes')
-    .select('*, wa_customers(id, name, company)')
+    .select('*, wa_customers(id, name, company, rut, phone)')
     .eq('business_id', businessId)
     .order('created_at', { ascending: false });
   return { data: data || [], error };
@@ -378,7 +378,7 @@ export async function duplicateCrmQuote(quoteId) {
 export async function getCrmInvoices(businessId) {
   const { data, error } = await supabase
     .from('crm_invoices')
-    .select('*, wa_customers(id, name, company), crm_payments(amount)')
+    .select('*, wa_customers(id, name, company, rut, phone), crm_payments(amount)')
     .eq('business_id', businessId)
     .order('created_at', { ascending: false });
   return { data: data || [], error };
