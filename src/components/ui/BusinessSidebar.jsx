@@ -11,7 +11,7 @@ import { buildWhatsAppUrl } from '../../utils/whatsapp';
 import { openWhatsAppUrl } from '../../utils/openWhatsAppUrl';
 import { SUPPORT_WHATSAPP_NUMBER } from '../../config/support';
 
-const CRM_SUB_PATHS = ['/crm', '/proveedores'];
+const CRM_SUB_PATHS = ['/crm', '/proveedores', '/crm/ranking'];
 const isCrmPath = (pathname) =>
   CRM_SUB_PATHS.some((p) => pathname === p || pathname.startsWith(p + '/'));
 
@@ -31,6 +31,7 @@ const NAV_ITEMS = [
       { label: 'Terminal',     path: '/crm/terminal' },
       { label: 'Presupuestos', path: '/crm/presupuestos' },
       { label: 'Proveedores',  path: '/proveedores' },
+      { label: 'Ranking',      path: '/crm/ranking' },
     ],
   },
   { label: 'Configuración', path: '/business-configuration', icon: 'Settings' },

@@ -41,6 +41,7 @@ import CrmCostCenter from './pages/crm/CrmCostCenter';
 import CrmPurchases from './pages/crm/CrmPurchases';
 import CrmCostos from './pages/crm/CrmCostos';
 import CrmBarcodes from './pages/crm/CrmBarcodes';
+import CrmRanking from './pages/crm/CrmRanking';
 import Login from './pages/login';
 import AuthCallback from './pages/auth-callback';
 import ResetPassword from './pages/reset-password';
@@ -160,6 +161,7 @@ const Routes = () => {
             <Route path="/crm/compras"            element={<RequireCrm><FeatureGate feature="purchaseInvoices"><CrmPurchases /></FeatureGate></RequireCrm>} />
             <Route path="/crm/costos"             element={<RequireCrm><FeatureGate feature="fixedCosts"><CrmCostos /></FeatureGate></RequireCrm>} />
             <Route path="/crm/barcodes"           element={<RequireCrm><FeatureGate feature="barcodePrinting"><CrmBarcodes /></FeatureGate></RequireCrm>} />
+            <Route path="/crm/ranking"            element={<RequireCrm><CrmRanking /></RequireCrm>} />
             <Route path="/business-configuration" element={<RequireAuth><BusinessConfiguration /></RequireAuth>} />
             <Route path="/product-management" element={<RequireAuth><ProductManagement /></RequireAuth>} />
             <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />

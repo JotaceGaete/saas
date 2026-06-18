@@ -1461,3 +1461,36 @@ export async function getPurchaseTotalsForPeriod(businessId, month, year) {
 
   return { totals, totalTaxCredit, totalOperational };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Ranking de ventas
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Fetches paid invoices in a date range (issue_date) plus their line items.
+ * Only considers status='pagada'. Excludes anuladas.
+ * Returns { invoices, items, error }.
+ */
+export async function getRankingData(businessId, startDate, endDate) {
+  const { data: invoices, error: invErr } = await supabase
+    .from('crm_invoices')
+    .select('id, total, issue_date, customer_id, wa_customers(id, name, company)')
+    .eq('business_id', businessId)
+    .eq('status', 'pagada')
+    .gte('issue_date', startDate)
+    .lte('issue_date', endDate)
+    .order('issue_date', { ascending: true });
+
+  if (invErr) return { invoices: [], items: [], error: invErr };
+  if (!invoices || invoices.length === 0) return { invoices: [], items: [], error: null };
+
+  const invoiceIds = invoices.map(i => i.id);
+
+  const { data: items, error: itemErr } = await supabase
+    .from('crm_invoice_items')
+    .select('invoice_id, product_id, name, quantity, subtotal')
+    .in('invoice_id', invoiceIds);
+
+  return { invoices: invoices || [], items: items || [], error: itemErr || null };
+}
+
