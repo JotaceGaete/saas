@@ -11,13 +11,28 @@ import { buildWhatsAppUrl } from '../../utils/whatsapp';
 import { openWhatsAppUrl } from '../../utils/openWhatsAppUrl';
 import { SUPPORT_WHATSAPP_NUMBER } from '../../config/support';
 
+const CRM_SUB_PATHS = ['/crm', '/proveedores'];
+const isCrmPath = (pathname) =>
+  CRM_SUB_PATHS.some((p) => pathname === p || pathname.startsWith(p + '/'));
+
 const NAV_ITEMS = [
   { label: 'Mi tienda', path: '/dashboard', icon: 'Store' },
   { label: 'Productos', path: '/product-management', icon: 'Package' },
   { label: 'Pedidos', path: '/orders', icon: 'ShoppingCart' },
   { label: 'Historial pedidos', path: '/orders/historial', icon: 'History' },
-  { label: 'CRM', path: '/crm', icon: 'LayoutDashboard' },
-  { label: 'Proveedores', path: '/proveedores', icon: 'Truck' },
+  {
+    label: 'CRM',
+    path: '/crm',
+    icon: 'LayoutDashboard',
+    subItems: [
+      { label: 'Clientes',     path: '/crm/clientes' },
+      { label: 'Stock',        path: '/crm/stock' },
+      { label: 'Caja',         path: '/crm/caja' },
+      { label: 'Terminal',     path: '/crm/terminal' },
+      { label: 'Presupuestos', path: '/crm/presupuestos' },
+      { label: 'Proveedores',  path: '/proveedores' },
+    ],
+  },
   { label: 'Configuración', path: '/business-configuration', icon: 'Settings' },
   { label: 'Diseño', path: '/design', icon: 'Palette' },
   { label: 'Plan y facturación', path: '/planes', icon: 'CreditCard' },
@@ -37,6 +52,11 @@ export default function BusinessSidebar({ isCollapsed = false, onCollapsedChange
 
   useEffect(() => { setCollapsed(isCollapsed); }, [isCollapsed]);
   useEffect(() => { setMobileOpen(false); }, [location?.pathname]);
+  useEffect(() => {
+    if (isCrmPath(location?.pathname || '')) {
+      setExpandedItems((prev) => ({ ...prev, '/crm': true }));
+    }
+  }, [location?.pathname]);
   useEffect(() => {
     const handleResize = () => { if (window.innerWidth >= 1024) setMobileOpen(false); };
     window.addEventListener('resize', handleResize);
@@ -108,6 +128,7 @@ Motivo (opcional):`;
     if (item?.subItems) {
       setExpandedItems(prev => ({ ...prev, [item?.path]: !prev?.[item?.path] }));
       if (collapsed) { setCollapsed(false); onCollapsedChange?.(false); }
+      navigate(item?.path);
     } else {
       navigate(item?.path);
     }
