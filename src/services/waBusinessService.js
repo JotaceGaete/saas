@@ -1959,11 +1959,27 @@ export const getConversionFunnelStats = async (businessId, range = '7d') => {
   };
 };
 
+const AI_INSIGHTS_SESSION_KEY = 'ai_insights_disabled_session';
+const AI_INSIGHTS_PERM_CODES = new Set(['MISSING_EDGE_SECRETS', 'LOCK_RPC_ERROR']);
+const AI_INSIGHTS_PERM_STATUSES = new Set([404, 503]);
+
+function aiInsightsSessionDisabled() {
+  try { return !!sessionStorage.getItem(AI_INSIGHTS_SESSION_KEY); } catch { return false; }
+}
+function aiInsightsDisableSession(reason) {
+  try {
+    sessionStorage.setItem(AI_INSIGHTS_SESSION_KEY, '1');
+    if (import.meta.env?.DEV) console.warn('[dashboard-ai-insights] skip permanente en sesión:', reason);
+  } catch { /* sessionStorage no disponible */ }
+}
+
 /**
  * Genera insight breve de IA para dashboard usando métricas agregadas.
  * Requiere usuario autenticado (Bearer token) para evitar uso público.
  */
 export const getDashboardAiInsights = async (businessId) => {
+  if (aiInsightsSessionDisabled()) return { data: null, error: null };
+
   const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
   const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
   if (!supabaseUrl || !anonKey) {
@@ -1999,6 +2015,11 @@ export const getDashboardAiInsights = async (businessId) => {
       };
     }
     if (!res.ok) {
+      const isPermanent = AI_INSIGHTS_PERM_STATUSES.has(res.status) || AI_INSIGHTS_PERM_CODES.has(body?.code);
+      if (isPermanent) {
+        aiInsightsDisableSession(`status=${res.status} code=${body?.code}`);
+        return { data: null, error: null };
+      }
       logServiceWarningOnce(
         `dashboard-ai-insights-${res.status}-${body?.code || 'unknown'}`,
         '[dashboard-ai-insights] request failed',
