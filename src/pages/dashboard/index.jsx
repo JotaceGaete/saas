@@ -109,6 +109,17 @@ export default function Dashboard() {
   const [dismissedExpiredBanner, setDismissedExpiredBanner] = useState(false);
   const aiInsightRetryAfterRef = useRef(0);
 
+  // Guards: timestamps de la última carga de cada sección.
+  // Evitan re-fetches redundantes en visibilitychange y eventos Realtime.
+  const lastDashboardFetchAt = useRef(0);
+  const lastAnalyticsFetchAt = useRef(0);
+  const lastPlanUsageFetchAt = useRef(0);
+  const lastAiInsightFetchAt = useRef(0);
+  // Debounce timer para eventos Realtime frecuentes (INSERT/UPDATE ráfaga)
+  const realtimeDebounceTimer = useRef(null);
+  const FETCH_GUARD_MS = 60_000;
+  const REALTIME_DEBOUNCE_MS = 2_500;
+
   const catalogUrl = getPublicCatalogUrl(business?.slug ?? '');
   const offersUrl = getPublicOffersUrl(business?.slug ?? '');
 
@@ -167,6 +178,7 @@ export default function Dashboard() {
       }
       setPendingOrdersCount(pendingRes?.data ?? 0);
       setWeeklyOrdersCount(weeklyRes?.data ?? 0);
+      lastDashboardFetchAt.current = Date.now();
     } catch (err) {
       console.error('Dashboard load error:', err);
     } finally {
@@ -192,6 +204,7 @@ export default function Dashboard() {
       setMonthlyRevenue(revRes?.data || null);
       setVisitStats(visitRes?.data ?? null);
       setConversionFunnel(funnelRes?.data ?? null);
+      lastAnalyticsFetchAt.current = Date.now();
     } catch (err) {
       console.error('Analytics load error:', err);
     } finally {
@@ -221,6 +234,7 @@ export default function Dashboard() {
         await new Promise((resolve) => setTimeout(resolve, 900));
       }
       setAiInsights(finalInsight);
+      lastAiInsightFetchAt.current = Date.now();
     } catch (err) {
       aiInsightRetryAfterRef.current = Date.now() + AI_INSIGHT_RETRY_COOLDOWN_MS;
       console.warn('[Dashboard] insight load skipped');
@@ -235,6 +249,7 @@ export default function Dashboard() {
     try {
       const res = await getPlanUsage(business?.id);
       setPlanUsage(res?.data ?? null);
+      lastPlanUsageFetchAt.current = Date.now();
     } catch (err) {
       console.error('[PlanUsage] error:', err);
     } finally {
@@ -284,12 +299,14 @@ export default function Dashboard() {
   useEffect(() => {
     if (!business?.id) return;
     const onVisible = () => {
-      if (document.visibilityState === 'visible') {
-        loadDashboardData();
-        loadAnalytics();
-        // Reload AI insight on visibility restore — token may have expired while
-        // the app was backgrounded (common on mobile after OAuth login).
-        if (sessionReady && user?.id) loadDailyAiInsight();
+      if (document.visibilityState !== 'visible') return;
+      const now = Date.now();
+      if (now - lastDashboardFetchAt.current >= FETCH_GUARD_MS) loadDashboardData();
+      if (now - lastAnalyticsFetchAt.current >= FETCH_GUARD_MS) loadAnalytics();
+      // AI insight: solo si el token puede haber expirado (pestaña en background)
+      // y no se cargó recientemente.
+      if (sessionReady && user?.id && now - lastAiInsightFetchAt.current >= FETCH_GUARD_MS) {
+        loadDailyAiInsight();
       }
     };
     document.addEventListener('visibilitychange', onVisible);
@@ -301,6 +318,19 @@ export default function Dashboard() {
     if (!business?.id) return;
 
     const channelName = `wa_orders_business_${business?.id}`;
+
+    // Dispara loadAnalytics + loadPlanUsage con debounce para agrupar ráfagas
+    // de eventos Realtime consecutivos (ej. INSERT seguido de UPDATE inmediato).
+    const scheduleDebouncedRefresh = () => {
+      if (realtimeDebounceTimer.current) clearTimeout(realtimeDebounceTimer.current);
+      realtimeDebounceTimer.current = setTimeout(() => {
+        const now = Date.now();
+        if (now - lastAnalyticsFetchAt.current >= FETCH_GUARD_MS) loadAnalytics();
+        if (now - lastPlanUsageFetchAt.current >= FETCH_GUARD_MS) loadPlanUsage();
+        realtimeDebounceTimer.current = null;
+      }, REALTIME_DEBOUNCE_MS);
+    };
+
     const onOrderUpdated = async () => {
       await expireDeliveredOrders(business?.id);
       const [{ data: ordersData }, pendingRes] = await Promise.all([
@@ -309,8 +339,7 @@ export default function Dashboard() {
       ]);
       if (ordersData) setOrders(ordersData);
       setPendingOrdersCount(pendingRes?.data ?? 0);
-      loadAnalytics();
-      loadPlanUsage();
+      scheduleDebouncedRefresh();
     };
 
     const channel = supabase?.channel(channelName)?.on(
@@ -336,8 +365,7 @@ export default function Dashboard() {
           await expireDeliveredOrders(business?.id);
           const { data: ordersData } = await getOrders(business?.id);
           if (ordersData) setOrders(ordersData);
-          loadAnalytics();
-          loadPlanUsage();
+          scheduleDebouncedRefresh();
 
           // Actualizar contadores en tiempo real
           setPendingOrdersCount(prev => prev + 1);
@@ -379,6 +407,7 @@ export default function Dashboard() {
     setRealtimeStatus('reconnecting');
 
     return () => {
+      if (realtimeDebounceTimer.current) clearTimeout(realtimeDebounceTimer.current);
       supabase?.removeChannel(channel);
       channelRef.current = null;
       setRealtimeStatus('disconnected');
