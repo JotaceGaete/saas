@@ -1680,47 +1680,31 @@ export async function getPublicOfferProducts(businessId) {
 // Analytics
 
 export const getOrdersByDay = async (businessId, days = 7) => {
-  const since = new Date();
-  since?.setDate(since?.getDate() - (days - 1));
-  since?.setHours(0, 0, 0, 0);
-  const { data, error } = await supabase
-    ?.from('wa_orders')
-    ?.select('created_at')
-    ?.eq('business_id', businessId)
-    ?.gte('created_at', since?.toISOString());
-  if (error) return { data: null, error };
-  // Build a map of date -> count for the last `days` days
-  const counts = {};
-  for (let i = 0; i < days; i++) {
-    const d = new Date();
-    d?.setDate(d?.getDate() - (days - 1 - i));
-    const key = d?.toISOString()?.slice(0, 10);
-    counts[key] = 0;
-  }
-  (data || [])?.forEach(row => {
-    const key = row?.created_at?.slice(0, 10);
-    if (key && counts?.[key] !== undefined) counts[key]++;
+  if (!businessId) return { data: [], error: null };
+  const { data, error } = await supabase.rpc('rpc_orders_by_day', {
+    p_business_id: businessId,
+    p_days: days,
   });
-  const result = Object.entries(counts)?.map(([date, count]) => ({ date, count }));
-  return { data: result, error: null };
+  if (error) return { data: null, error };
+  return { data: (data || []).map(r => ({ date: r.day, count: Number(r.count) })), error: null };
 };
 
-export const getTopProducts = async (businessId, limit = 5) => {
-  const { data, error } = await supabase
-    ?.from('wa_order_items')
-    ?.select('product_id, product_name, quantity, subtotal, wa_orders!inner(business_id)')
-    ?.eq('wa_orders.business_id', businessId);
-  if (error) return { data: null, error };
-  // Aggregate by product
-  const map = {};
-  (data || [])?.forEach(item => {
-    const key = item?.product_id || item?.product_name;
-    if (!map?.[key]) map[key] = { productName: item?.product_name, totalQty: 0, totalRevenue: 0 };
-    map[key].totalQty += item?.quantity || 0;
-    map[key].totalRevenue += parseFloat(item?.subtotal) || 0;
+export const getTopProducts = async (businessId, limit = 5, days = null) => {
+  if (!businessId) return { data: [], error: null };
+  const { data, error } = await supabase.rpc('rpc_top_products', {
+    p_business_id: businessId,
+    p_limit: limit,
+    p_days: days,
   });
-  const sorted = Object.values(map)?.sort((a, b) => b?.totalQty - a?.totalQty)?.slice(0, limit);
-  return { data: sorted, error: null };
+  if (error) return { data: null, error };
+  return {
+    data: (data || []).map(r => ({
+      productName: r.product_name,
+      totalQty: Number(r.total_qty),
+      totalRevenue: Number(r.total_revenue),
+    })),
+    error: null,
+  };
 };
 
 /**
@@ -1928,100 +1912,33 @@ export const getConversionFunnelStats = async (businessId, range = '7d') => {
 
   const { start, end, prevStart, prevEnd, deltaLabel } = resolveFunnelPeriod(range);
 
-  const startIso = start.toISOString();
-  const endIso = end.toISOString();
-  const prevStartIso = prevStart.toISOString();
-  const prevEndIso = prevEnd.toISOString();
-  const sq = quoteIsoForOrFilter(startIso);
-  const endQ = quoteIsoForOrFilter(endIso);
-  const psq = quoteIsoForOrFilter(prevStartIso);
-  const peq = quoteIsoForOrFilter(prevEndIso);
-  const paidOrInRange = (s, e) =>
-    `and(paid_at.is.null,updated_at.gte.${s},updated_at.lte.${e}),and(paid_at.gte.${s},paid_at.lte.${e})`;
+  const { data: raw, error } = await supabase.rpc('rpc_dashboard_funnel', {
+    p_business_id: businessId,
+    p_start:       start.toISOString(),
+    p_end:         end.toISOString(),
+    p_prev_start:  prevStart.toISOString(),
+    p_prev_end:    prevEnd.toISOString(),
+  });
+  if (error) return { data: null, error };
 
-  const [visitsRes, clicksRes, ordersRes, paidRes, prevVisitsRes, prevClicksRes, prevOrdersRes, prevPaidRes] = await Promise.all([
-    supabase
-      ?.from('wa_catalog_visits')
-      ?.select('id', { count: 'exact', head: true })
-      ?.eq('business_id', businessId)
-      ?.gte('created_at', startIso)
-      ?.lte('created_at', endIso),
-    supabase
-      ?.from('wa_catalog_whatsapp_clicks')
-      ?.select('id', { count: 'exact', head: true })
-      ?.eq('business_id', businessId)
-      ?.gte('created_at', startIso)
-      ?.lte('created_at', endIso),
-    supabase
-      ?.from('wa_orders')
-      ?.select('id, payment_status, total_amount')
-      ?.eq('business_id', businessId)
-      ?.gte('created_at', startIso)
-      ?.lte('created_at', endIso),
-    supabase
-      ?.from('wa_orders')
-      ?.select('id, total_amount, paid_at, updated_at')
-      ?.eq('business_id', businessId)
-      ?.eq('payment_status', 'pagado')
-      ?.or(paidOrInRange(sq, endQ)),
-    supabase
-      ?.from('wa_catalog_visits')
-      ?.select('id', { count: 'exact', head: true })
-      ?.eq('business_id', businessId)
-      ?.gte('created_at', prevStartIso)
-      ?.lte('created_at', prevEndIso),
-    supabase
-      ?.from('wa_catalog_whatsapp_clicks')
-      ?.select('id', { count: 'exact', head: true })
-      ?.eq('business_id', businessId)
-      ?.gte('created_at', prevStartIso)
-      ?.lte('created_at', prevEndIso),
-    supabase
-      ?.from('wa_orders')
-      ?.select('id, payment_status, total_amount')
-      ?.eq('business_id', businessId)
-      ?.gte('created_at', prevStartIso)
-      ?.lte('created_at', prevEndIso),
-    supabase
-      ?.from('wa_orders')
-      ?.select('id, total_amount, paid_at, updated_at')
-      ?.eq('business_id', businessId)
-      ?.eq('payment_status', 'pagado')
-      ?.or(paidOrInRange(psq, peq)),
-  ]);
-
-  if (visitsRes?.error) return { data: null, error: visitsRes.error };
-  if (ordersRes?.error) return { data: null, error: ordersRes.error };
-  if (paidRes?.error) return { data: null, error: paidRes.error };
-  if (prevVisitsRes?.error) return { data: null, error: prevVisitsRes.error };
-  if (prevOrdersRes?.error) return { data: null, error: prevOrdersRes.error };
-  if (prevPaidRes?.error) return { data: null, error: prevPaidRes.error };
-
-  const visits = visitsRes?.count ?? 0;
-  const clicksWhatsapp = clicksRes?.error
-    ? (clicksRes?.error?.code === '42P01' ? 0 : 0)
-    : (clicksRes?.count ?? 0);
-  const prevVisits = prevVisitsRes?.count ?? 0;
-  const prevClicksWhatsapp = prevClicksRes?.error
-    ? (prevClicksRes?.error?.code === '42P01' ? 0 : 0)
-    : (prevClicksRes?.count ?? 0);
-
-  const paidInPeriod = (rows, rangeStart, rangeEnd) =>
-    (rows || []).filter((row) => {
-      const t = orderRevenueTimestamp(row);
-      return t && t >= rangeStart && t <= rangeEnd;
-    });
-  const currentBase = buildFunnelBase(
-    visits,
-    clicksWhatsapp,
-    ordersRes?.data || [],
-    paidInPeriod(paidRes?.data, start, end),
+  const r = raw ?? {};
+  const buildFromCounts = (visits, clicks, ordersCount, paidCount, paidRevenue) => {
+    const avgPaidTicket = paidCount > 0 ? Math.round(paidRevenue / paidCount) : 0;
+    const rateClickFromVisit   = visits > 0        ? (clicks       / visits)       * 100 : 0;
+    const rateOrderFromClick   = clicks > 0        ? (ordersCount  / clicks)       * 100 : 0;
+    const rateOrderFromVisit   = visits > 0        ? (ordersCount  / visits)       * 100 : 0;
+    const ratePaidFromOrder    = ordersCount > 0   ? (paidCount    / ordersCount)  * 100 : 0;
+    const ratePaidFromVisit    = visits > 0        ? (paidCount    / visits)       * 100 : 0;
+    return { visits, clicksWhatsapp: clicks, orders: ordersCount, paid: paidCount, paidRevenue, avgPaidTicket,
+             rateClickFromVisit, rateOrderFromClick, rateOrderFromVisit, ratePaidFromOrder, ratePaidFromVisit };
+  };
+  const currentBase  = buildFromCounts(
+    Number(r.visits ?? 0), Number(r.clicks ?? 0),
+    Number(r.orders ?? 0), Number(r.paid ?? 0), Number(r.paid_revenue ?? 0),
   );
-  const previousBase = buildFunnelBase(
-    prevVisits,
-    prevClicksWhatsapp,
-    prevOrdersRes?.data || [],
-    paidInPeriod(prevPaidRes?.data, prevStart, prevEnd),
+  const previousBase = buildFromCounts(
+    Number(r.prev_visits ?? 0), Number(r.prev_clicks ?? 0),
+    Number(r.prev_orders ?? 0), Number(r.prev_paid ?? 0), Number(r.prev_revenue ?? 0),
   );
 
   return {
@@ -2031,11 +1948,11 @@ export const getConversionFunnelStats = async (businessId, range = '7d') => {
       previousPeriod: previousBase,
       deltas: {
         label: deltaLabel,
-        visits: deltaWithPercent(currentBase.visits, previousBase.visits),
-        clicksWhatsapp: deltaWithPercent(currentBase.clicksWhatsapp, previousBase.clicksWhatsapp),
-        orders: deltaWithPercent(currentBase.orders, previousBase.orders),
-        paid: deltaWithPercent(currentBase.paid, previousBase.paid),
-        paidRevenue: deltaWithPercent(currentBase.paidRevenue, previousBase.paidRevenue),
+        visits:        deltaWithPercent(currentBase.visits,        previousBase.visits),
+        clicksWhatsapp:deltaWithPercent(currentBase.clicksWhatsapp,previousBase.clicksWhatsapp),
+        orders:        deltaWithPercent(currentBase.orders,        previousBase.orders),
+        paid:          deltaWithPercent(currentBase.paid,          previousBase.paid),
+        paidRevenue:   deltaWithPercent(currentBase.paidRevenue,   previousBase.paidRevenue),
       },
     },
     error: null,
