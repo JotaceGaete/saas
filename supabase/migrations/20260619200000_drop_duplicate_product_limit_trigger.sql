@@ -1,0 +1,22 @@
+-- ============================================================
+-- wa_products: eliminar trigger duplicado de límite de plan
+--
+-- Tras el hardening (20260619120000), coexisten dos triggers
+-- BEFORE INSERT que validan el límite de productos:
+--
+--   wa_products_2_enforce_limit  (20260315000000)
+--     → llama wa_plan_max_products() [ya corregida a 20/100]
+--     → NO filtra is_draft
+--     → BEFORE INSERT OR UPDATE
+--
+--   trg_enforce_product_plan_limit  (20260619120000)
+--     → lógica propia con wa_get_effective_plan_slug()
+--     → SÍ filtra is_draft
+--     → solo BEFORE INSERT
+--
+-- El viejo es redundante y menos preciso. Se elimina solo el
+-- trigger; la función wa_products_2_enforce_limit_fn() se
+-- mantiene en caso de dependencias.
+-- ============================================================
+
+DROP TRIGGER IF EXISTS wa_products_2_enforce_limit ON public.wa_products;
