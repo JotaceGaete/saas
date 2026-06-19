@@ -1085,7 +1085,12 @@ export const createProduct = async (businessId, productData) => {
     show_in_pos:  productData?.showInPos    === true,
     pos_sort_order: productData?.posSortOrder ?? 0,
   })?.select()?.single();
-  if (error) return { data: null, error };
+  if (error) {
+    if (error?.message?.includes('Límite de productos alcanzado')) {
+      return { data: null, error: { message: `🚀 Llegaste al límite de productos del plan gratis. Actualiza a Pro para seguir agregando más.`, code: 'PLAN_LIMIT_EXCEEDED' } };
+    }
+    return { data: null, error };
+  }
   const mappedProduct = mapProductFromDb(data);
   if (status === 'active' && productData?.isDraft !== true) {
     getActiveProductCount(businessId)
