@@ -605,7 +605,9 @@ export async function registerStockMovement(businessId, { productId, type, quant
   assertFeature(_planSlug ?? 'business', 'stockManagement');
   const { data: { user } } = await supabase.auth.getUser();
 
-  const { error: movErr } = await supabase
+  // El trigger crm_apply_stock_movement() actualiza wa_products.stock_actual
+  // de forma atómica tras el INSERT — no se necesita UPDATE manual aquí.
+  const { error } = await supabase
     .from('crm_stock_movements')
     .insert({
       business_id: businessId,
@@ -615,30 +617,8 @@ export async function registerStockMovement(businessId, { productId, type, quant
       notes: notes || null,
       created_by: user?.id || null,
     });
-  if (movErr) return { error: movErr };
 
-  // Actualizar stock_actual directamente
-  const delta = type === 'entrada' ? quantity : type === 'salida' ? -quantity : 0;
-  let updateData;
-  if (type === 'ajuste') {
-    updateData = { stock_actual: quantity };
-  } else {
-    // Sumar/restar al valor actual
-    const { data: prod } = await supabase
-      .from('wa_products')
-      .select('stock_actual')
-      .eq('id', productId)
-      .single();
-    const current = prod?.stock_actual ?? 0;
-    updateData = { stock_actual: Math.max(0, current + delta) };
-  }
-
-  const { error: updErr } = await supabase
-    .from('wa_products')
-    .update(updateData)
-    .eq('id', productId);
-
-  return { error: updErr || null };
+  return { error: error || null };
 }
 
 export async function updateStockMinimo(productId, stockMinimo) {
