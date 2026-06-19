@@ -138,7 +138,15 @@ export default function CrmCaja() {
     setRlsError(false);
     try {
       const initial = openingAmount !== '' ? parseFloat(openingAmount) : null;
-      await openCashSession(business.id, { openedBy: user?.id, initialAmount: initial });
+      const { error: openErr } = await openCashSession(business.id, { openedBy: user?.id, initialAmount: initial });
+      if (openErr) {
+        if (openErr?.code === '42501' || openErr?.message?.includes('row-level security') || openErr?.message?.includes('policy')) {
+          setRlsError(true);
+        } else {
+          setError(openErr.message || 'Error al abrir caja');
+        }
+        return;
+      }
       setOpeningAmount('');
       setClosedSession(null);
       await load();

@@ -1236,6 +1236,13 @@ export async function openCashSession(businessId, { openedBy, initialAmount = nu
     })
     .select()
     .single();
+
+  if (error?.code === '23505') {
+    return {
+      data: null,
+      error: new Error('Ya hay una caja abierta en otra pestaña. Recarga la página para verla.'),
+    };
+  }
   return { data, error };
 }
 
@@ -1262,6 +1269,13 @@ export async function reopenCashSession(sessionId) {
     .eq('id', sessionId)
     .select()
     .single();
+
+  if (error?.code === '23505') {
+    return {
+      data: null,
+      error: new Error('Ya hay una caja abierta en otra pestaña. Recarga la página para verla.'),
+    };
+  }
   return { data, error };
 }
 
