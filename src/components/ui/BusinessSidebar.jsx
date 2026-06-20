@@ -162,6 +162,11 @@ Motivo (opcional):`;
           </div>
         )}
       </div>
+      {!collapsed && (
+        <div className="mx-2 mb-1 px-3 py-1 rounded-md text-[10px] font-bold text-center text-yellow-300 bg-yellow-900/40">
+          SIDEBAR TEST v2
+        </div>
+      )}
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto overflow-x-hidden px-2 py-2.5" aria-label="Navegación principal">
