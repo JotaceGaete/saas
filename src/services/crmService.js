@@ -253,7 +253,7 @@ export async function getCustomerBalance(businessId, customerId) {
 export async function getCustomerPendingInvoices(businessId, customerId) {
   const { data, error } = await supabase
     .from('crm_invoices')
-    .select('id, invoice_number, total, status, issue_date, notes, crm_payments(amount, payment_method, payment_status, voided_at)')
+    .select('id, invoice_number, total, status, issue_date, notes, crm_payments(id, amount, payment_method, payment_status, payment_date, reference, created_at, voided_at)')
     .eq('business_id', businessId)
     .eq('customer_id', customerId)
     .in('status', ['pendiente', 'parcial'])
@@ -265,6 +265,20 @@ export async function getCustomerPendingInvoices(businessId, customerId) {
     })),
     error,
   };
+}
+
+// Historial completo de pagos de un cliente (incluyendo facturas ya pagadas).
+export async function getCustomerPaymentHistory(businessId, customerId) {
+  const { data, error } = await supabase
+    .from('crm_payments')
+    .select('id, amount, payment_method, payment_date, reference, created_at, crm_invoices(id, invoice_number, total, status)')
+    .eq('business_id', businessId)
+    .eq('customer_id', customerId)
+    .eq('payment_status', 'received')
+    .is('voided_at', null)
+    .order('payment_date', { ascending: false })
+    .order('created_at', { ascending: false });
+  return { data: data || [], error };
 }
 
 // Registra un abono. Requiere caja abierta.

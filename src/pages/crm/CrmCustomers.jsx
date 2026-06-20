@@ -8,7 +8,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import {
   getCrmCustomers, createCrmCustomer, updateCrmCustomer, deleteCrmCustomer,
   getBusinessCreditSummary, getCustomerPendingInvoices, registerCustomerAbono,
-  formatInvoiceNumber,
+  getCustomerPaymentHistory, formatInvoiceNumber,
 } from '../../services/crmService';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -255,9 +255,16 @@ const FIELD_ROWS = [
   { key: 'notes',    label: 'Notas',       icon: 'FileText' },
 ];
 
+const METHOD_LABELS = {
+  cash: 'Efectivo', bank_transfer: 'Transferencia', card: 'Tarjeta',
+  check: 'Cheque', credit: 'Cta. cte.', other: 'Otro',
+};
+
 function CustomerDetailDrawer({ customer, business, balance, fmt, onClose, onEdit }) {
   const [invoices,    setInvoices]    = useState([]);
   const [loadingInv,  setLoadingInv]  = useState(true);
+  const [history,     setHistory]     = useState([]);
+  const [loadingHist, setLoadingHist] = useState(true);
   const [selectedInv, setSelectedInv] = useState(null);
   const [abonoAmount, setAbonoAmount] = useState('');
   const [abonoMethod, setAbonoMethod] = useState('cash');
@@ -276,7 +283,14 @@ function CustomerDetailDrawer({ customer, business, balance, fmt, onClose, onEdi
     setLoadingInv(false);
   };
 
-  useEffect(() => { loadInv(); }, [customer.id]);
+  const loadHistory = async () => {
+    setLoadingHist(true);
+    const { data } = await getCustomerPaymentHistory(business.id, customer.id);
+    setHistory(data || []);
+    setLoadingHist(false);
+  };
+
+  useEffect(() => { loadInv(); loadHistory(); }, [customer.id]);
 
   const totalPendiente = invoices.reduce((s, inv) => {
     const pagado = (inv.crm_payments || []).reduce((p, r) => p + (r.amount || 0), 0);
@@ -302,6 +316,7 @@ function CustomerDetailDrawer({ customer, business, balance, fmt, onClose, onEdi
     setSelectedInv(null);
     setAbonoAmount('');
     loadInv();
+    loadHistory();
   };
 
   return (
@@ -512,6 +527,50 @@ function CustomerDetailDrawer({ customer, business, balance, fmt, onClose, onEdi
                               </button>
                             </div>
                           )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Historial de abonos */}
+              <div>
+                <p className="text-xs font-semibold text-gray-500 mb-2">Historial de abonos</p>
+                {loadingHist ? (
+                  <p className="text-xs text-gray-400 text-center py-4">Cargando…</p>
+                ) : history.length === 0 ? (
+                  <div className="flex flex-col items-center gap-2 py-6 text-center">
+                    <span className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center">
+                      <Icon name="ReceiptText" size={18} className="text-gray-400" />
+                    </span>
+                    <p className="text-sm text-gray-400">Aún no hay abonos registrados</p>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    {history.map(p => {
+                      const inv = p.crm_invoices;
+                      const fmtDate = (d) => d ? new Date(d).toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—';
+                      return (
+                        <div key={p.id} className="flex items-center gap-3 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2.5">
+                          <span className="w-7 h-7 rounded-lg bg-emerald-100 flex items-center justify-center shrink-0">
+                            <Icon name="ArrowDownLeft" size={13} className="text-emerald-600" />
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-sm font-bold text-emerald-700">{fmt(p.amount)}</span>
+                              <span className="text-[11px] text-gray-500">{METHOD_LABELS[p.payment_method] || p.payment_method}</span>
+                              {inv?.invoice_number != null && (
+                                <span className="text-[11px] text-gray-400">{formatInvoiceNumber(inv.invoice_number)}</span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                              <span className="text-[10px] text-gray-400">{fmtDate(p.payment_date || p.created_at)}</span>
+                              {p.reference && p.reference !== 'Abono cuenta corriente' && (
+                                <span className="text-[10px] text-gray-400 truncate">{p.reference}</span>
+                              )}
+                            </div>
+                          </div>
                         </div>
                       );
                     })}
