@@ -15,7 +15,7 @@ export default function DashboardAppShell({ children, backgroundColor = 'var(--c
         className="panel-main flex min-h-screen min-w-0 justify-center overflow-x-clip overflow-y-visible transition-all duration-200"
         style={{ marginLeft: isDesktop ? sidebarWidth : 0, transition: 'margin-left var(--transition-base)' }}
       >
-        <div className="mx-auto w-full min-w-0 max-w-[480px] overflow-x-clip md:max-w-none lg:overflow-visible">
+        <div className="mx-auto w-full min-w-0 max-w-[480px] overflow-x-clip md:max-w-none xl:overflow-x-clip xl:overflow-y-visible">
           {children}
         </div>
       </main>
