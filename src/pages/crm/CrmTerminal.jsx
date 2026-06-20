@@ -162,7 +162,41 @@ function useSidebarHidden() {
   return [hidden, toggle];
 }
 
-export default function CrmTerminal() {
+// ── ErrorBoundary específico del TPV ─────────────────────────────────────────
+// Clase separada de ErrorBoundary.jsx para mostrar "Recargar terminal"
+// en lugar de redirigir al inicio, preservando el contexto de caja.
+class CrmTerminalBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() { return { hasError: true }; }
+  componentDidCatch(error, info) {
+    console.error('[CrmTerminal] error capturado por boundary:', error, info?.componentStack?.slice(0, 300));
+  }
+  render() {
+    if (!this.state.hasError) return this.props.children;
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-neutral-50">
+        <div className="text-center p-8 max-w-sm">
+          <div className="text-5xl mb-4" role="img" aria-label="Error">⚠️</div>
+          <h2 className="text-xl font-semibold text-neutral-800 mb-2">El terminal encontró un problema</h2>
+          <p className="text-neutral-500 text-sm mb-6">
+            No se perdió ninguna venta. Recarga para continuar.
+          </p>
+          <button
+            onClick={() => window.location.reload()}
+            className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-5 rounded-lg transition-colors"
+          >
+            Recargar terminal
+          </button>
+        </div>
+      </div>
+    );
+  }
+}
+
+function CrmTerminalUI() {
   const navigate = useNavigate();
   const { business } = useAuth();
   const isDesktop = useIsDesktop();
@@ -1116,5 +1150,13 @@ export default function CrmTerminal() {
       )}
 
     </div>
+  );
+}
+
+export default function CrmTerminal() {
+  return (
+    <CrmTerminalBoundary>
+      <CrmTerminalUI />
+    </CrmTerminalBoundary>
   );
 }
