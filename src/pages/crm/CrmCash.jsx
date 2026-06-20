@@ -108,7 +108,7 @@ function MethodBreakdown({ summary, currency }) {
   );
 }
 
-function MovementsTable({ payments, currency, onEditPayment, onVoidPayment }) {
+function MovementsTable({ payments, currency, onEditPayment, onVoidPayment, sessionOpen }) {
   if (payments.length === 0) {
     return (
       <div className="rounded-2xl border border-gray-100 bg-white px-5 py-10 text-center">
@@ -169,13 +169,22 @@ function MovementsTable({ payments, currency, onEditPayment, onVoidPayment }) {
                         >
                           Editar
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => onVoidPayment?.(payment)}
-                          className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-bold text-red-600 hover:bg-red-50"
-                        >
-                          Anular
-                        </button>
+                        {sessionOpen ? (
+                          <button
+                            type="button"
+                            onClick={() => onVoidPayment?.(payment)}
+                            className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-bold text-red-600 hover:bg-red-50"
+                          >
+                            Anular
+                          </button>
+                        ) : (
+                          <span
+                            title="No se pueden anular movimientos de una caja cerrada"
+                            className="cursor-not-allowed rounded-lg border border-gray-100 bg-gray-50 px-3 py-1.5 text-xs font-bold text-gray-300 select-none"
+                          >
+                            Anular
+                          </span>
+                        )}
                       </div>
                     )}
                   </td>
@@ -388,7 +397,8 @@ function VoidPaymentModal({ payment, currency, busy, onConfirm, onCancel }) {
 
         {payment.invoice_id && (
           <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-            Este movimiento esta vinculado a una nota de venta. Anularlo solo afecta la caja, no modifica la nota de venta.
+            <p className="font-semibold">⚠️ Movimiento asociado a una nota de venta</p>
+            <p className="mt-1">La anulación solo afectará la caja. No modificará el documento ni el estado de la factura.</p>
           </div>
         )}
 
@@ -879,6 +889,7 @@ export default function CrmCash() {
                     currency={business?.currency}
                     onEditPayment={setEditingPayment}
                     onVoidPayment={setVoidingPayment}
+                    sessionOpen={currentSession?.status === 'open'}
                   />
                 </div>
               )}
@@ -968,6 +979,7 @@ export default function CrmCash() {
                         currency={business?.currency}
                         onEditPayment={setEditingPayment}
                         onVoidPayment={setVoidingPayment}
+                        sessionOpen={detailSession?.status === 'open'}
                       />
                     </div>
                   )}
