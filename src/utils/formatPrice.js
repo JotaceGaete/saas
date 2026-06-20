@@ -6,7 +6,7 @@ import { COUNTRY_CONFIG } from '../config/countryConfig';
  * For these, we build the string manually instead of relying on Intl's `style:'currency'`,
  * which produces inconsistent output (₡3 000,00, $3.000 without space, etc.).
  */
-const LATAM_ZERO_DECIMAL = new Set(['CLP', 'ARS', 'CRC', 'COP', 'GTQ', 'PYG', 'UYU', 'BOB']);
+const LATAM_ZERO_DECIMAL = new Set(['CLP', 'ARS', 'CRC', 'COP', 'GTQ', 'PYG', 'UYU', 'BOB', 'NIO']);
 
 /**
  * Symbol fallback when countryCode is unknown but currency is.
@@ -14,6 +14,7 @@ const LATAM_ZERO_DECIMAL = new Set(['CLP', 'ARS', 'CRC', 'COP', 'GTQ', 'PYG', 'U
  */
 const CURRENCY_SYMBOL_MAP = Object.freeze({
   CLP: '$', ARS: '$', CRC: '₡', COP: '$', GTQ: 'Q', PYG: '₲', UYU: '$U', BOB: 'Bs',
+  NIO: 'C$',
 });
 
 /**

@@ -3,8 +3,24 @@
  *
  * Usa locale es-CL: separador de miles = '.', sin decimales para CLP.
  * Para otras monedas (ARS, USD) aplica la misma presentación sin decimales.
+ *
+ * CURRENCY_SYMBOL_OVERRIDE: cuando Intl.NumberFormat no produce el símbolo
+ * esperado para una moneda (ej. NIO → "C$" en lugar de "NIO"), se construye
+ * el string manualmente con el símbolo correcto.
  */
+const CURRENCY_SYMBOL_OVERRIDE = Object.freeze({
+  NIO: 'C$',
+});
+
 export function formatMoney(n, currency = 'CLP') {
+  const override = CURRENCY_SYMBOL_OVERRIDE[currency];
+  if (override) {
+    const formatted = new Intl.NumberFormat('es-CL', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(n || 0);
+    return `${override} ${formatted}`;
+  }
   return new Intl.NumberFormat('es-CL', {
     style: 'currency',
     currency: currency || 'CLP',
