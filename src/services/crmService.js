@@ -1312,7 +1312,7 @@ export async function getCashSessionPayments(businessId, session) {
 
   let query = supabase
     .from('crm_payments')
-    .select('id, business_id, invoice_id, amount, currency, payment_method, payment_status, payment_date, reference, notes, created_at')
+    .select('id, business_id, invoice_id, amount, currency, payment_method, payment_status, payment_date, reference, notes, created_at, voided_at, voided_by, void_reason')
     .eq('business_id', businessId)
     .eq('payment_status', 'received')
     .gte('created_at', session.opened_at);
@@ -1327,12 +1327,26 @@ export async function getCashSessionPayments(businessId, session) {
 export async function getCashDayPayments(businessId, date = getLocalDateString()) {
   const { data, error } = await supabase
     .from('crm_payments')
-    .select('id, business_id, invoice_id, amount, currency, payment_method, payment_status, payment_date, reference, notes, created_at')
+    .select('id, business_id, invoice_id, amount, currency, payment_method, payment_status, payment_date, reference, notes, created_at, voided_at, voided_by, void_reason')
     .eq('business_id', businessId)
     .eq('payment_date', date)
     .eq('payment_status', 'received')
     .order('created_at', { ascending: false });
   return { data: data || [], error };
+}
+
+export async function voidCrmPayment(paymentId, { voidReason, voidedBy = null } = {}) {
+  const { data, error } = await supabase
+    .from('crm_payments')
+    .update({
+      voided_at:   new Date().toISOString(),
+      voided_by:   voidedBy || null,
+      void_reason: voidReason || null,
+    })
+    .eq('id', paymentId)
+    .select()
+    .single();
+  return { data, error };
 }
 
 export async function updateCrmPayment(paymentId, fields = {}) {

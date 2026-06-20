@@ -22,6 +22,7 @@ import {
   reopenCashSession,
   updateCrmPayment,
   updateCashSession,
+  voidCrmPayment,
 } from 'services/crmService';
 
 const METHOD_ORDER = ['cash', 'card', 'bank_transfer', 'check', 'other'];
@@ -51,6 +52,7 @@ function toNumber(value) {
 function summarizePayments(payments = []) {
   const summary = Object.fromEntries(METHOD_ORDER.map(method => [method, 0]));
   for (const payment of payments) {
+    if (payment.voided_at) continue;
     const method = METHOD_ORDER.includes(payment.payment_method) ? payment.payment_method : 'other';
     summary[method] += toNumber(payment.amount);
   }
@@ -58,7 +60,10 @@ function summarizePayments(payments = []) {
 }
 
 function totalPayments(payments = []) {
-  return payments.reduce((sum, payment) => sum + toNumber(payment.amount), 0);
+  return payments.reduce((sum, payment) => {
+    if (payment.voided_at) return sum;
+    return sum + toNumber(payment.amount);
+  }, 0);
 }
 
 function turnLabel(session, sessions) {
@@ -103,7 +108,7 @@ function MethodBreakdown({ summary, currency }) {
   );
 }
 
-function MovementsTable({ payments, currency, onEditPayment }) {
+function MovementsTable({ payments, currency, onEditPayment, onVoidPayment }) {
   if (payments.length === 0) {
     return (
       <div className="rounded-2xl border border-gray-100 bg-white px-5 py-10 text-center">
@@ -127,27 +132,56 @@ function MovementsTable({ payments, currency, onEditPayment }) {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {payments.map(payment => (
-              <tr key={payment.id}>
-                <td className="whitespace-nowrap px-5 py-3 font-medium text-gray-700">{fmtTime(payment.created_at)}</td>
-                <td className="whitespace-nowrap px-5 py-3 text-gray-600">
-                  {PAYMENT_METHOD_LABELS[payment.payment_method] || PAYMENT_METHOD_LABELS.other}
-                </td>
-                <td className="px-5 py-3 text-gray-500">{payment.reference || payment.notes || '-'}</td>
-                <td className="whitespace-nowrap px-5 py-3 text-right font-bold text-gray-900">
-                  {formatMoney(payment.amount, payment.currency || currency)}
-                </td>
-                <td className="whitespace-nowrap px-5 py-3 text-right">
-                  <button
-                    type="button"
-                    onClick={() => onEditPayment?.(payment)}
-                    className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-bold text-gray-700 hover:bg-gray-50"
-                  >
-                    Editar
-                  </button>
-                </td>
-              </tr>
-            ))}
+            {payments.map(payment => {
+              const isVoided = !!payment.voided_at;
+              return (
+                <tr key={payment.id} className={isVoided ? 'bg-gray-50 opacity-60' : ''}>
+                  <td className="whitespace-nowrap px-5 py-3 font-medium text-gray-700">
+                    <div>{fmtTime(payment.created_at)}</div>
+                    {isVoided && (
+                      <span className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-600">
+                        <Icon name="Ban" size={10} />
+                        Anulado
+                      </span>
+                    )}
+                  </td>
+                  <td className="whitespace-nowrap px-5 py-3 text-gray-600">
+                    {PAYMENT_METHOD_LABELS[payment.payment_method] || PAYMENT_METHOD_LABELS.other}
+                  </td>
+                  <td className="px-5 py-3 text-gray-500">
+                    <div>{payment.reference || payment.notes || '-'}</div>
+                    {isVoided && payment.void_reason && (
+                      <div className="mt-0.5 text-[11px] text-red-500">Motivo: {payment.void_reason}</div>
+                    )}
+                  </td>
+                  <td className={`whitespace-nowrap px-5 py-3 text-right font-bold ${isVoided ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
+                    {formatMoney(payment.amount, payment.currency || currency)}
+                  </td>
+                  <td className="whitespace-nowrap px-5 py-3 text-right">
+                    {isVoided ? (
+                      <span className="text-xs text-gray-400">—</span>
+                    ) : (
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => onEditPayment?.(payment)}
+                          className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-bold text-gray-700 hover:bg-gray-50"
+                        >
+                          Editar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onVoidPayment?.(payment)}
+                          className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-bold text-red-600 hover:bg-red-50"
+                        >
+                          Anular
+                        </button>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -316,6 +350,85 @@ function PaymentEditModal({ payment, currency, busy, onSubmit, onCancel, onEditS
   );
 }
 
+function VoidPaymentModal({ payment, currency, busy, onConfirm, onCancel }) {
+  const [reason, setReason] = useState('');
+  const [error, setError] = useState('');
+
+  if (!payment) return null;
+
+  const handleSubmit = (event) => {
+    event.preventDefault();
+    if (!reason.trim()) { setError('El motivo es obligatorio.'); return; }
+    onConfirm(reason.trim());
+  };
+
+  return (
+    <div className="fixed inset-0 z-modal flex items-center justify-center bg-slate-900/40 px-4">
+      <form onSubmit={handleSubmit} className="w-full max-w-md rounded-2xl border border-gray-100 bg-white p-5 shadow-xl">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <h3 className="text-sm font-bold text-gray-900">Anular movimiento</h3>
+          <button type="button" onClick={onCancel} className="text-gray-400 hover:text-gray-600" aria-label="Cancelar">
+            <Icon name="X" size={17} />
+          </button>
+        </div>
+
+        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+          <p className="font-semibold">¿Anular este movimiento?</p>
+          <p className="mt-1 text-red-700">
+            {PAYMENT_METHOD_LABELS[payment.payment_method] || payment.payment_method}
+            {' — '}
+            <strong>{formatMoney(payment.amount, payment.currency || currency)}</strong>
+            {' — '}
+            {fmtTime(payment.created_at)}
+          </p>
+          <p className="mt-1.5 text-xs text-red-600">
+            El movimiento quedará en el historial pero no contará en los totales.
+          </p>
+        </div>
+
+        {payment.invoice_id && (
+          <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+            Este movimiento esta vinculado a una nota de venta. Anularlo solo afecta la caja, no modifica la nota de venta.
+          </div>
+        )}
+
+        <div>
+          <label className="mb-1.5 block text-xs font-semibold text-gray-500">
+            Motivo de anulación <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="text"
+            value={reason}
+            onChange={e => { setReason(e.target.value); setError(''); }}
+            placeholder="Ej: Pago duplicado, monto incorrecto…"
+            autoFocus
+            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-red-400"
+          />
+          {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
+        </div>
+
+        <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-50"
+          >
+            Cancelar
+          </button>
+          <button
+            type="submit"
+            disabled={busy}
+            className="flex items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-50"
+          >
+            {busy && <Icon name="Loader2" size={15} className="animate-spin" />}
+            Confirmar anulación
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 function CashSessionForm({ title, initialValue = '', notesValue = '', busy, submitLabel, onSubmit, onCancel }) {
   const [amount, setAmount] = useState(String(initialValue || ''));
   const [notes, setNotes] = useState(notesValue || '');
@@ -405,6 +518,7 @@ export default function CrmCash() {
   const [showMovements, setShowMovements] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [editingPayment, setEditingPayment] = useState(null);
+  const [voidingPayment, setVoidingPayment] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -539,6 +653,23 @@ export default function CrmCash() {
       return;
     }
     setEditingPayment(null);
+    await load();
+  };
+
+  const handleVoidPayment = async (reason) => {
+    if (!voidingPayment?.id) return;
+    setBusy(true);
+    setErrorMsg('');
+    const { error } = await voidCrmPayment(voidingPayment.id, {
+      voidReason: reason,
+      voidedBy: business?.userId || null,
+    });
+    setBusy(false);
+    if (error) {
+      setErrorMsg(error.message);
+      return;
+    }
+    setVoidingPayment(null);
     await load();
   };
 
@@ -725,6 +856,16 @@ export default function CrmCash() {
                 />
               )}
 
+              {voidingPayment && (
+                <VoidPaymentModal
+                  payment={voidingPayment}
+                  currency={business?.currency}
+                  busy={busy}
+                  onConfirm={handleVoidPayment}
+                  onCancel={() => setVoidingPayment(null)}
+                />
+              )}
+
               {showMovements && currentSession && (
                 <div className="space-y-3">
                   <div className="rounded-2xl border border-gray-100 bg-white p-4">
@@ -737,6 +878,7 @@ export default function CrmCash() {
                     payments={currentPayments}
                     currency={business?.currency}
                     onEditPayment={setEditingPayment}
+                    onVoidPayment={setVoidingPayment}
                   />
                 </div>
               )}
@@ -825,6 +967,7 @@ export default function CrmCash() {
                         payments={detailPayments}
                         currency={business?.currency}
                         onEditPayment={setEditingPayment}
+                        onVoidPayment={setVoidingPayment}
                       />
                     </div>
                   )}
