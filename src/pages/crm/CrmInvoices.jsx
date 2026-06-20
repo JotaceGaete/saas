@@ -11,6 +11,7 @@ import { formatMoney } from '../../utils/formatMoney';
 
 const STATUS_STYLES = {
   pendiente: 'bg-yellow-100 text-yellow-700',
+  parcial:   'bg-amber-100 text-amber-700',
   pagada:    'bg-green-100 text-green-700',
   anulada:   'bg-red-100 text-red-600',
 };

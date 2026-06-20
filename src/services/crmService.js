@@ -70,6 +70,7 @@ export const PAYMENT_METHOD_LABELS = {
   card: 'Tarjeta',
   bank_transfer: 'Transferencia',
   check: 'Cheque',
+  credit: 'Cuenta corriente',
   other: 'Otro',
 };
 
@@ -81,25 +82,125 @@ export function getLocalDateString() {
 }
 
 export function normalizePaymentMethod(method) {
-  const value = String(method || '').trim().toLowerCase();
+  const value = String(method || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
   const map = {
     cash: 'cash',
     efectivo: 'cash',
+    contado: 'cash',
     card: 'card',
     tarjeta: 'card',
+    'tarjeta credito': 'card',
+    'tarjeta debito': 'card',
+    'tarjeta de credito': 'card',
+    'tarjeta de debito': 'card',
     bank_transfer: 'bank_transfer',
     transferencia: 'bank_transfer',
+    'transferencia bancaria': 'bank_transfer',
+    transfer: 'bank_transfer',
     check: 'check',
     cheque: 'check',
     credit: 'credit',
     cuenta_corriente: 'credit',
+    'cuenta corriente': 'credit',
+    'cta cte': 'credit',
+    'cta. cte.': 'credit',
+    cta_cte: 'credit',
     other: 'other',
     otro: 'other',
+    otros: 'other',
   };
   return map[value] || 'other';
 }
 
-export const IS_CREDIT_METHOD = (method) => method === 'credit' || method === 'cuenta_corriente';
+export const IS_CREDIT_METHOD = (method) => normalizePaymentMethod(method) === 'credit';
+
+export function isCashRelevantPaymentMethod(method) {
+  return normalizePaymentMethod(method) !== 'credit';
+}
+
+export const REAL_PAYMENT_METHODS = ['cash', 'card', 'bank_transfer', 'check', 'other'];
+
+export function isActiveReceivedPayment(payment) {
+  return (
+    !payment?.voided_at &&
+    (payment?.payment_status || 'received') === 'received' &&
+    isCashRelevantPaymentMethod(payment?.payment_method)
+  );
+}
+
+function activeReceivedPayments(payments = []) {
+  return payments.filter(isActiveReceivedPayment);
+}
+
+function sumActiveReceivedPayments(payments = []) {
+  return activeReceivedPayments(payments).reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+}
+
+export async function getInvoicePaymentSummary(invoiceId) {
+  const { data: invoice, error: invErr } = await supabase
+    .from('crm_invoices')
+    .select('id, total, status')
+    .eq('id', invoiceId)
+    .single();
+  if (invErr) return { data: null, error: invErr };
+
+  const { data: payments, error: payErr } = await supabase
+    .from('crm_payments')
+    .select('amount, payment_method, payment_status, voided_at')
+    .eq('invoice_id', invoiceId)
+    .eq('payment_status', 'received')
+    .is('voided_at', null)
+    .neq('payment_method', 'credit');
+  if (payErr) return { data: null, error: payErr };
+
+  const total = Number(invoice.total || 0);
+  const paid = sumActiveReceivedPayments(payments || []);
+  const pending = Math.max(0, total - paid);
+  const nextStatus = pending <= 0 && paid > 0 ? 'pagada' : paid > 0 ? 'parcial' : 'pendiente';
+
+  return {
+    data: {
+      invoice,
+      total,
+      paid,
+      pending,
+      status: nextStatus,
+      payments: activeReceivedPayments(payments || []),
+    },
+    error: null,
+  };
+}
+
+export async function reconcileCrmInvoicePaymentStatus(invoiceId) {
+  const summaryRes = await getInvoicePaymentSummary(invoiceId);
+  if (summaryRes.error) return { data: null, error: summaryRes.error };
+
+  const summary = summaryRes.data;
+  if (summary.invoice.status === 'anulada') {
+    return { data: { ...summary.invoice, paymentSummary: summary }, error: null };
+  }
+
+  const updates = {
+    status: summary.status,
+    paid_at: summary.status === 'pagada' ? new Date().toISOString() : null,
+  };
+
+  const { data, error } = await supabase
+    .from('crm_invoices')
+    .update(updates)
+    .eq('id', invoiceId)
+    .select()
+    .single();
+
+  return {
+    data: data ? { ...data, paymentSummary: summary } : null,
+    error,
+  };
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CLIENTES
@@ -138,7 +239,9 @@ export async function getCustomerBalance(businessId, customerId) {
       .select('amount')
       .eq('business_id', businessId)
       .eq('customer_id', customerId)
-      .eq('payment_status', 'received'),
+      .eq('payment_status', 'received')
+      .is('voided_at', null)
+      .neq('payment_method', 'credit'),
   ]);
   const invoiced = (invRes.data || []).reduce((s, r) => s + (r.total || 0), 0);
   const paid     = (payRes.data || []).reduce((s, r) => s + (r.amount || 0), 0);
@@ -150,12 +253,18 @@ export async function getCustomerBalance(businessId, customerId) {
 export async function getCustomerPendingInvoices(businessId, customerId) {
   const { data, error } = await supabase
     .from('crm_invoices')
-    .select('id, invoice_number, total, status, issue_date, notes, crm_payments(amount)')
+    .select('id, invoice_number, total, status, issue_date, notes, crm_payments(amount, payment_method, payment_status, voided_at)')
     .eq('business_id', businessId)
     .eq('customer_id', customerId)
     .in('status', ['pendiente', 'parcial'])
     .order('issue_date', { ascending: false });
-  return { data: data || [], error };
+  return {
+    data: (data || []).map(inv => ({
+      ...inv,
+      crm_payments: activeReceivedPayments(inv.crm_payments || []),
+    })),
+    error,
+  };
 }
 
 // Registra un abono. Requiere caja abierta.
@@ -170,6 +279,16 @@ export async function registerCustomerAbono(businessId, { customerId, invoiceId,
   const { data: { user } } = await supabase.auth.getUser();
   const localDate = getLocalDateString();
   const normalizedMethod = normalizePaymentMethod(paymentMethod);
+  const summaryRes = await getInvoicePaymentSummary(invoiceId);
+  if (summaryRes.error) return { data: null, error: summaryRes.error };
+  const pendingBefore = summaryRes.data?.pending ?? invoiceTotal ?? 0;
+
+  if (amount > pendingBefore) {
+    return {
+      data: null,
+      error: { message: `El abono supera el saldo pendiente (${pendingBefore.toLocaleString('es-CL')}).` },
+    };
+  }
 
   const { data: payment, error: payErr } = await supabase
     .from('crm_payments')
@@ -182,6 +301,7 @@ export async function registerCustomerAbono(businessId, { customerId, invoiceId,
       payment_method: normalizedMethod,
       payment_status: 'received',
       payment_date: localDate,
+      cash_session_id: openSession.id,
       reference: `Abono cuenta corriente`,
       created_by: user?.id || null,
     })
@@ -189,15 +309,10 @@ export async function registerCustomerAbono(businessId, { customerId, invoiceId,
     .single();
   if (payErr) return { data: null, error: payErr };
 
-  // Si el abono cubre el total, cerrar la factura
-  if (invoiceTotal != null && amount >= invoiceTotal) {
-    await supabase
-      .from('crm_invoices')
-      .update({ status: 'pagada', paid_at: new Date().toISOString() })
-      .eq('id', invoiceId);
-  }
+  const reconcileRes = await reconcileCrmInvoicePaymentStatus(invoiceId);
+  if (reconcileRes.error) return { data: null, error: reconcileRes.error };
 
-  return { data: payment, error: null };
+  return { data: { payment, invoice: reconcileRes.data }, error: null };
 }
 
 // Balance resumido de todos los clientes del negocio (para métricas).
@@ -205,14 +320,14 @@ export async function getBusinessCreditSummary(businessId) {
   // Per-invoice calculation with embedded payments — same formula as getCustomerPendingInvoices
   const { data, error } = await supabase
     .from('crm_invoices')
-    .select('customer_id, total, crm_payments(amount)')
+    .select('customer_id, total, crm_payments(amount, payment_method, payment_status, voided_at)')
     .eq('business_id', businessId)
     .in('status', ['pendiente', 'parcial']);
 
   const balanceByCustomer = {};
   for (const inv of (data || [])) {
     if (!inv.customer_id) continue;
-    const pagado = (inv.crm_payments || []).reduce((s, p) => s + (p.amount || 0), 0);
+    const pagado = activeReceivedPayments(inv.crm_payments || []).reduce((s, p) => s + (p.amount || 0), 0);
     const saldo  = Math.max(0, (inv.total || 0) - pagado);
     balanceByCustomer[inv.customer_id] = (balanceByCustomer[inv.customer_id] || 0) + saldo;
   }
@@ -378,10 +493,16 @@ export async function duplicateCrmQuote(quoteId) {
 export async function getCrmInvoices(businessId) {
   const { data, error } = await supabase
     .from('crm_invoices')
-    .select('*, wa_customers(id, name, company), crm_payments(amount)')
+    .select('*, wa_customers(id, name, company), crm_payments(amount, payment_method, payment_status, voided_at)')
     .eq('business_id', businessId)
     .order('created_at', { ascending: false });
-  return { data: data || [], error };
+  return {
+    data: (data || []).map(inv => ({
+      ...inv,
+      crm_payments: activeReceivedPayments(inv.crm_payments || []),
+    })),
+    error,
+  };
 }
 
 export async function getCrmInvoice(id) {
@@ -637,19 +758,8 @@ export async function createPosInvoice(businessId, {
   customerId, items = [], discount = 0, paymentMethod = 'cash',
   notes, currency = 'CLP',
   initialPaymentAmount = 0, initialPaymentMethod = 'cash',
+  payments = null,
 }) {
-  const isCredit = IS_CREDIT_METHOD(paymentMethod);
-  const abonoAmount = isCredit ? Math.max(0, +initialPaymentAmount || 0) : 0;
-  const hasAbono = abonoAmount > 0;
-
-  // Require open cash session for real payments and for credit with abono.
-  if (!isCredit || hasAbono) {
-    const { data: openSession } = await getOpenCashSession(businessId);
-    if (!openSession) {
-      return { data: null, error: { message: 'No hay caja abierta. Abre caja antes de registrar una venta.' } };
-    }
-  }
-
   const { data: nextNum, error: numErr } = await supabase
     .rpc('crm_next_invoice_number', { p_business_id: businessId });
   if (numErr) return { data: null, error: numErr };
@@ -671,25 +781,88 @@ export async function createPosInvoice(businessId, {
   const subtotal = mappedItems.reduce((s, i) => s + i.subtotal, 0);
   const discountAmount = +Math.min(discount, subtotal).toFixed(2);
   const total = +(subtotal - discountAmount).toFixed(2);
+  const usesPaymentDetails = Array.isArray(payments);
+  let openSession = null;
+  let paymentRows = [];
+  let paidTotal = 0;
 
-  // Determine invoice status:
-  // - Real payment: 'pagada'
-  // - Credit, no abono: 'pendiente'
-  // - Credit, abono covers total: 'pagada'
-  // - Credit, partial abono: 'parcial'
-  let invoiceStatus;
-  let paidAt = null;
-  if (!isCredit) {
-    invoiceStatus = 'pagada';
-    paidAt = new Date().toISOString();
-  } else if (!hasAbono) {
-    invoiceStatus = 'pendiente';
-  } else if (abonoAmount >= total) {
-    invoiceStatus = 'pagada';
-    paidAt = new Date().toISOString();
+  if (usesPaymentDetails) {
+    const incomingPayments = payments
+      .map((payment) => ({
+        method: normalizePaymentMethod(payment.payment_method || payment.method),
+        amount: Math.max(0, Number(payment.amount || 0)),
+      }))
+      .filter((payment) => payment.amount > 0);
+
+    const nonCashTotal = incomingPayments
+      .filter((payment) => payment.method !== 'cash')
+      .reduce((sum, payment) => sum + payment.amount, 0);
+
+    if (incomingPayments.some((payment) => !REAL_PAYMENT_METHODS.includes(payment.method))) {
+      return { data: null, error: { message: 'Medio de pago no permitido para TPV.' } };
+    }
+
+    if (nonCashTotal > total) {
+      return { data: null, error: { message: 'Solo el efectivo puede generar vuelto.' } };
+    }
+
+    let remainingForCash = Math.max(0, total - nonCashTotal);
+    paymentRows = incomingPayments
+      .map((payment) => {
+        if (payment.method !== 'cash') return payment;
+        const appliedAmount = Math.min(payment.amount, remainingForCash);
+        remainingForCash = Math.max(0, remainingForCash - appliedAmount);
+        return { ...payment, amount: appliedAmount };
+      })
+      .filter((payment) => payment.amount > 0)
+      .map((payment) => ({ ...payment, amount: +payment.amount.toFixed(2) }));
+
+    paidTotal = +paymentRows.reduce((sum, payment) => sum + payment.amount, 0).toFixed(2);
+
+    if (paidTotal < total && !customerId) {
+      return { data: null, error: { message: 'Selecciona un cliente para dejar saldo en cuenta corriente.' } };
+    }
+
+    if (paymentRows.length > 0) {
+      const { data } = await getOpenCashSession(businessId);
+      openSession = data;
+      if (!openSession) {
+        return { data: null, error: { message: 'No hay caja abierta. Abre caja antes de registrar una venta.' } };
+      }
+    }
   } else {
-    invoiceStatus = 'parcial';
+    const isCredit = IS_CREDIT_METHOD(paymentMethod);
+    const abonoAmount = isCredit ? Math.max(0, +initialPaymentAmount || 0) : 0;
+    const hasAbono = abonoAmount > 0;
+
+    // Require open cash session for real payments and for credit with abono.
+    if (!isCredit || hasAbono) {
+      const { data } = await getOpenCashSession(businessId);
+      openSession = data;
+      if (!openSession) {
+        return { data: null, error: { message: 'No hay caja abierta. Abre caja antes de registrar una venta.' } };
+      }
+    }
+
+    if (isCredit && abonoAmount > total) {
+      return { data: null, error: { message: 'El abono inicial no puede superar el total de la venta.' } };
+    }
+
+    if (!isCredit || hasAbono) {
+      paymentRows = [{
+        method: isCredit ? normalizePaymentMethod(initialPaymentMethod) : normalizedPaymentMethod,
+        amount: +(isCredit ? abonoAmount : total).toFixed(2),
+      }];
+      paidTotal = paymentRows[0].amount;
+    }
   }
+
+  const invoiceStatus = paidTotal >= total
+    ? 'pagada'
+    : paidTotal > 0
+      ? 'parcial'
+      : 'pendiente';
+  const paidAt = invoiceStatus === 'pagada' ? new Date().toISOString() : null;
 
   const { data: invoice, error } = await supabase
     .from('crm_invoices')
@@ -716,30 +889,28 @@ export async function createPosInvoice(businessId, {
     if (itemsErr) return { data: null, error: itemsErr };
   }
 
-  // Credit with no abono: no payment, no cash impact.
-  if (isCredit && !hasAbono) {
+  if (paymentRows.length === 0) {
     return { data: invoice, error: null };
   }
 
   const { data: { user } } = await supabase.auth.getUser();
-  const payAmount = isCredit ? abonoAmount : total;
-  const payMethod = isCredit ? normalizePaymentMethod(initialPaymentMethod) : normalizedPaymentMethod;
 
   const { error: payErr } = await supabase
     .from('crm_payments')
-    .insert({
+    .insert(paymentRows.map((payment) => ({
       business_id: businessId,
       invoice_id: invoice.id,
       customer_id: customerId || null,
-      amount: +payAmount.toFixed(2),
+      amount: payment.amount,
       currency: currency || 'CLP',
-      payment_method: payMethod,
+      payment_method: payment.method,
       payment_status: 'received',
       payment_date: localDate,
-      reference: isCredit ? `Abono TPV ${formatInvoiceNumber(nextNum)}` : `TPV ${formatInvoiceNumber(nextNum)}`,
+      cash_session_id: openSession?.id || null,
+      reference: invoiceStatus === 'parcial' ? `Abono TPV ${formatInvoiceNumber(nextNum)}` : `TPV ${formatInvoiceNumber(nextNum)}`,
       notes: notes || null,
       created_by: user?.id || null,
-    });
+    })));
   if (payErr) return { data: null, error: payErr };
 
   return { data: invoice, error: null };
@@ -844,6 +1015,7 @@ export async function registerOrderPayment(businessId, { invoiceId, orderId, amo
       payment_method: normalizedMethod,
       payment_status: 'received',
       payment_date: localDate,
+      cash_session_id: openSession.id,
       reference: `Pedido catálogo #${shortRef}`,
       created_by: user?.id || null,
     })
@@ -1297,42 +1469,79 @@ export async function getPaymentsForSession(businessId, sessionId) {
 
   const { data, error } = await supabase
     .from('crm_payments')
-    .select('id, amount, payment_method, payment_status, payment_date, created_at, invoice_id, customer_id, notes, reference')
+    .select('id, amount, payment_method, payment_status, payment_date, created_at, invoice_id, customer_id, notes, reference, cash_session_id, voided_at')
     .eq('business_id', businessId)
     .eq('payment_date', sessionDate)
     .eq('payment_status', 'received')
+    .is('voided_at', null)
+    .neq('payment_method', 'credit')
     .order('created_at', { ascending: false });
   if (error) throw error;
 
-  return (data || []).map(p => ({ ...p, payment_method: p.payment_method || 'otro' }));
+  return (data || []).map(p => ({ ...p, payment_method: normalizePaymentMethod(p.payment_method || 'other') }));
 }
 
 export async function getCashSessionPayments(businessId, session) {
   if (!session?.opened_at) return { data: [], error: null };
 
-  let query = supabase
+  const paymentSelect = 'id, business_id, invoice_id, amount, currency, payment_method, payment_status, payment_date, reference, notes, created_at, voided_at, voided_by, void_reason, cash_session_id';
+  const sessionEnd = session.closed_at || new Date().toISOString();
+
+  const linkedQuery = supabase
     .from('crm_payments')
-    .select('id, business_id, invoice_id, amount, currency, payment_method, payment_status, payment_date, reference, notes, created_at, voided_at, voided_by, void_reason')
+    .select(paymentSelect)
     .eq('business_id', businessId)
     .eq('payment_status', 'received')
-    .gte('created_at', session.opened_at);
+    .is('voided_at', null)
+    .eq('cash_session_id', session.id)
+    .neq('payment_method', 'credit');
 
-  query = query.lte('created_at', session.closed_at || new Date().toISOString());
+  const legacyQuery = supabase
+    .from('crm_payments')
+    .select(paymentSelect)
+    .eq('business_id', businessId)
+    .eq('payment_status', 'received')
+    .is('voided_at', null)
+    .is('cash_session_id', null)
+    .gte('created_at', session.opened_at)
+    .lte('created_at', sessionEnd)
+    .neq('payment_method', 'credit');
 
-  const { data, error } = await query
-    .order('created_at', { ascending: false });
-  return { data: data || [], error };
+  const [linkedRes, legacyRes] = await Promise.all([linkedQuery, legacyQuery]);
+  const error = linkedRes.error || legacyRes.error;
+  if (error) return { data: [], error };
+
+  const byId = new Map();
+  for (const payment of [...(linkedRes.data || []), ...(legacyRes.data || [])]) {
+    byId.set(payment.id, {
+      ...payment,
+      payment_method: normalizePaymentMethod(payment.payment_method || 'other'),
+    });
+  }
+
+  return {
+    data: [...byId.values()].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)),
+    error: null,
+  };
 }
 
 export async function getCashDayPayments(businessId, date = getLocalDateString()) {
   const { data, error } = await supabase
     .from('crm_payments')
-    .select('id, business_id, invoice_id, amount, currency, payment_method, payment_status, payment_date, reference, notes, created_at, voided_at, voided_by, void_reason')
+    .select('id, business_id, invoice_id, amount, currency, payment_method, payment_status, payment_date, reference, notes, created_at, voided_at, voided_by, void_reason, cash_session_id')
     .eq('business_id', businessId)
     .eq('payment_date', date)
     .eq('payment_status', 'received')
+    .is('voided_at', null)
+    .neq('payment_method', 'credit')
     .order('created_at', { ascending: false });
-  return { data: data || [], error };
+  return {
+    data: (data || []).map(payment => ({
+      ...payment,
+      payment_method: normalizePaymentMethod(payment.payment_method || 'other'),
+    })),
+    error,
+  };
 }
 
 export async function voidCrmPayment(paymentId, { voidReason, voidedBy = null } = {}) {

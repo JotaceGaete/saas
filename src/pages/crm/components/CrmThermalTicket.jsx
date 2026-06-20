@@ -47,12 +47,14 @@ export default function CrmThermalTicket({
   items = [],
   customer,
   paymentMethod = 'efectivo',
+  payments = [],
   discountAmount = 0,
   subtotal = 0,
   total = 0,
   amountReceived = null,
   change = null,
   initialPaymentAmount = null,
+  initialPaymentMethod = null,
   pendingBalance = null,
   notes,
   createdAt,
@@ -122,6 +124,25 @@ export default function CrmThermalTicket({
   const logoUrl = business?.logoUrl || business?.logo_url || null;
   const address = business?.address || null;
   const phone = business?.whatsapp || null;
+  const normalizedPayments = (payments || [])
+    .map((payment) => ({
+      method: payment.payment_method || payment.method,
+      amount: Number(payment.amount || 0),
+    }))
+    .filter((payment) => payment.amount > 0);
+  const paidAmount = normalizedPayments.length > 0
+    ? normalizedPayments.reduce((sum, payment) => sum + payment.amount, 0)
+    : paymentMethod === 'credit'
+      ? Number(initialPaymentAmount || 0)
+      : Number(total || 0);
+  const pendingAmount = pendingBalance != null
+    ? Number(pendingBalance || 0)
+    : Math.max(0, Number(total || 0) - paidAmount);
+  const paymentState = pendingAmount <= 0
+    ? 'Pagada'
+    : paidAmount > 0
+      ? 'Parcial'
+      : 'Pendiente';
 
   // Ticket content — rendered in the modal preview AND in the print portal.
   // The modal copy is for screen preview only (hidden during print).
@@ -214,21 +235,44 @@ export default function CrmThermalTicket({
 
       <Divider />
 
-      <Row label="Forma de pago" value={PAYMENT_LABELS[paymentMethod] || paymentMethod} />
-      {paymentMethod === 'credit' ? (
+      <Row label="Estado" value={paymentState} bold />
+      {normalizedPayments.length > 0 && (
+        <>
+          <div style={{ fontSize: 10, fontWeight: 700, marginTop: 4 }}>Pagos:</div>
+          {normalizedPayments.map((payment, index) => (
+            <Row
+              key={`${payment.method}-${index}`}
+              label={`- ${PAYMENT_LABELS[payment.method] || payment.method}`}
+              value={formatCurrency(payment.amount, business?.currency)}
+            />
+          ))}
+        </>
+      )}
+      <Row label="Pagado" value={formatCurrency(paidAmount, business?.currency)} />
+      <Row label="Pendiente" value={formatCurrency(pendingAmount, business?.currency)} />
+      {normalizedPayments.length === 0 && (
+        <Row label="Forma de pago" value={PAYMENT_LABELS[paymentMethod] || paymentMethod} />
+      )}
+      {normalizedPayments.length === 0 && paymentMethod === 'credit' ? (
         <>
           {initialPaymentAmount != null && initialPaymentAmount > 0 && (
-            <Row label="Abono" value={formatCurrency(initialPaymentAmount, business?.currency)} bold />
-          )}
-          {pendingBalance != null && pendingBalance > 0 && (
-            <Row label="Saldo pendiente" value={formatCurrency(pendingBalance, business?.currency)} bold />
+            <>
+              <Row label="Metodo abono" value={PAYMENT_LABELS[initialPaymentMethod] || initialPaymentMethod || 'No informado'} />
+              <Row label="Abono" value={formatCurrency(initialPaymentAmount, business?.currency)} bold />
+            </>
           )}
         </>
-      ) : (
+      ) : normalizedPayments.length === 0 ? (
         <>
           {amountReceived != null && amountReceived > 0 && (
             <Row label="Pago recibido" value={formatCurrency(amountReceived, business?.currency)} />
           )}
+          {change != null && change > 0 && (
+            <Row label="Vuelto" value={formatCurrency(change, business?.currency)} bold />
+          )}
+        </>
+      ) : (
+        <>
           {change != null && change > 0 && (
             <Row label="Vuelto" value={formatCurrency(change, business?.currency)} bold />
           )}

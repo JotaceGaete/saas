@@ -31,8 +31,17 @@ import { QuickCustomerModal } from './components/QuickCustomerModal';
 
 const STATUS_STYLES = {
   pendiente: 'bg-yellow-100 text-yellow-700',
+  parcial: 'bg-amber-100 text-amber-700',
   pagada: 'bg-green-100 text-green-700',
   anulada: 'bg-red-100 text-red-600',
+};
+
+const PAYMENT_METHOD_LABELS = {
+  cash: 'Efectivo',
+  bank_transfer: 'Transferencia',
+  card: 'Tarjeta',
+  check: 'Cheque',
+  other: 'Otro',
 };
 
 const MANUAL_CHARGES = [
@@ -75,7 +84,7 @@ export default function CrmInvoiceEditor() {
   const [paymentForm, setPaymentForm] = useState({
     amount: '',
     payment_date: new Date().toISOString().slice(0, 10),
-    payment_method: 'Transferencia',
+    payment_method: 'bank_transfer',
     reference: '',
     notes: '',
   });
@@ -214,12 +223,17 @@ export default function CrmInvoiceEditor() {
     });
     setPaymentSaving(false);
     if (error) { setPaymentError(error.message || 'Error al registrar pago.'); return; }
-    setPayments((prev) => [data, ...prev]);
+    const [paymentsRes, invoiceRes] = await Promise.all([
+      listPaymentsByInvoice(id),
+      getCrmInvoice(id),
+    ]);
+    setPayments(paymentsRes.data || [data, ...payments]);
+    if (invoiceRes.data) setSaved((prev) => ({ ...prev, ...invoiceRes.data }));
     setShowPaymentModal(false);
     setPaymentForm({
       amount: '',
       payment_date: new Date().toISOString().slice(0, 10),
-      payment_method: 'Transferencia',
+      payment_method: 'bank_transfer',
       reference: '',
       notes: '',
     });
@@ -624,7 +638,7 @@ export default function CrmInvoiceEditor() {
                 {/* Header */}
                 <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
                   <div className="flex items-center gap-2">
-                    <h3 className="text-sm font-semibold text-gray-700">Pagos recibidos</h3>
+                    <h3 className="text-sm font-semibold text-gray-700">Historial de abonos</h3>
                     {fullPaid && (
                       <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">
                         <Icon name="CheckCircle2" size={11} />
@@ -687,7 +701,7 @@ export default function CrmInvoiceEditor() {
                         <div className="min-w-0">
                           <p className="text-sm font-semibold text-gray-900">{fmt(p.amount)}</p>
                           <p className="text-xs text-gray-400">
-                            {p.payment_method}
+                            {PAYMENT_METHOD_LABELS[p.payment_method] || p.payment_method}
                             {p.reference ? ` · Ref: ${p.reference}` : ''}
                             {p.notes ? ` · ${p.notes}` : ''}
                           </p>
@@ -806,9 +820,11 @@ export default function CrmInvoiceEditor() {
                     onChange={(e) => setPaymentForm((f) => ({ ...f, payment_method: e.target.value }))}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    {['Contado', 'Transferencia', 'Tarjeta', 'Cheque', 'Otro'].map((m) => (
-                      <option key={m} value={m}>{m}</option>
-                    ))}
+                    <option value="cash">Efectivo</option>
+                    <option value="bank_transfer">Transferencia</option>
+                    <option value="card">Tarjeta</option>
+                    <option value="check">Cheque</option>
+                    <option value="other">Otro</option>
                   </select>
                 </div>
 

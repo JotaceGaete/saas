@@ -12,30 +12,30 @@ import {
 } from '../../services/crmService';
 
 const PAYMENT_LABELS = {
-  efectivo: 'Efectivo',
-  transferencia: 'Transferencia',
-  tarjeta: 'Tarjeta',
-  cheque: 'Cheque',
-  otro: 'Otro',
+  cash: 'Efectivo',
+  bank_transfer: 'Transferencia',
+  card: 'Tarjeta',
+  check: 'Cheque',
+  other: 'Otro',
 };
 
 const PAYMENT_ICONS = {
-  efectivo: 'Banknote',
-  transferencia: 'ArrowRightLeft',
-  tarjeta: 'CreditCard',
-  cheque: 'FileText',
-  otro: 'CircleDollarSign',
+  cash: 'Banknote',
+  bank_transfer: 'ArrowRightLeft',
+  card: 'CreditCard',
+  check: 'FileText',
+  other: 'CircleDollarSign',
 };
 
 const PAYMENT_COLORS = {
-  efectivo: '#059669',
-  transferencia: '#2563eb',
-  tarjeta: '#7c3aed',
-  cheque: '#0891b2',
-  otro: '#d97706',
+  cash: '#059669',
+  bank_transfer: '#2563eb',
+  card: '#7c3aed',
+  check: '#0891b2',
+  other: '#d97706',
 };
 
-const METHOD_ORDER = ['efectivo', 'tarjeta', 'transferencia', 'cheque', 'otro'];
+const METHOD_ORDER = ['cash', 'card', 'bank_transfer', 'check', 'other'];
 
 function fmt(dt, mode = 'time') {
   if (!dt) return '—';
@@ -180,7 +180,7 @@ export default function CrmCaja() {
   // Totals helpers
   const summaryByMethod = (pmts) =>
     pmts.reduce((acc, p) => {
-      const m = p.payment_method || 'otro';
+      const m = PAYMENT_LABELS[p.payment_method] ? p.payment_method : 'other';
       if (!acc[m]) acc[m] = { count: 0, total: 0 };
       acc[m].count += 1;
       acc[m].total += Number(p.amount) || 0;
