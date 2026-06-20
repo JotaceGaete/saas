@@ -1118,6 +1118,21 @@ function CrmTerminalUI() {
 
                     {/* Payment method — 4 buttons in one row */}
                     <div className="rounded-2xl border border-gray-200 bg-white p-2.5 space-y-2">
+                      {/* Atajo: Venta a crédito */}
+                      <button
+                        type="button"
+                        onClick={() => setPayments(prev => prev.map(p => ({ ...p, amount: '' })))}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-dashed border-amber-300 bg-amber-50 hover:bg-amber-100 transition-colors text-left"
+                      >
+                        <span className="w-7 h-7 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
+                          <Icon name="BookUser" size={14} className="text-amber-600" />
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block text-xs font-bold text-amber-800 leading-tight">Vender a cuenta corriente</span>
+                          <span className="block text-[10px] text-amber-600 leading-tight mt-0.5">Deja el total como pendiente de pago</span>
+                        </span>
+                      </button>
+
                       <div className="flex items-center justify-between">
                         <div>
                           <p className="text-xs font-bold text-gray-800">Pagos</p>
