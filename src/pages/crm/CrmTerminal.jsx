@@ -1094,7 +1094,7 @@ function CrmTerminalUI() {
                         </span>
                         <span className="min-w-0">
                           <span className="block text-xs font-bold text-amber-800 leading-tight">Vender a cuenta corriente</span>
-                          <span className="block text-[10px] text-amber-600 leading-tight mt-0.5">Deja el total como pendiente de pago</span>
+                          <span className="block text-[10px] text-amber-600 leading-tight mt-0.5">Deja el total como pendiente · requiere cliente registrado</span>
                         </span>
                       </button>
 
@@ -1166,7 +1166,20 @@ function CrmTerminalUI() {
                         <p className="text-xs font-semibold text-red-600">Solo efectivo puede generar vuelto.</p>
                       )}
                       {requiresCustomerForPending && !customerId && (
-                        <p className="text-xs font-semibold text-amber-700">Selecciona un cliente para dejar saldo en cuenta corriente.</p>
+                        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 space-y-2">
+                          <p className="text-xs font-semibold text-amber-800 leading-snug">
+                            Faltan <strong>{fmt(pendingBalance, business?.currency)}</strong> por pagar.
+                            Agrega otro medio de pago o selecciona un cliente para vender a cuenta corriente.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={addPayment}
+                            className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg px-2.5 py-1.5 transition-colors"
+                          >
+                            <Icon name="Plus" size={12} />
+                            Agregar medio de pago
+                          </button>
+                        </div>
                       )}
                     </div>
 
@@ -1189,16 +1202,37 @@ function CrmTerminalUI() {
                         <span className="text-sm font-bold text-gray-300">Total</span>
                         <span className="truncate text-2xl font-black tracking-tight text-white xl:text-3xl">{fmt(total, business?.currency)}</span>
                       </div>
-                      <button
-                        onClick={handleRegister}
-                        disabled={cart.length === 0 || busy || isPaymentInvalid}
-                        className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-500 py-3.5 text-base font-black text-white shadow-lg shadow-emerald-950/30 transition-all hover:-translate-y-0.5 hover:bg-emerald-400 disabled:translate-y-0 disabled:bg-gray-800 disabled:text-gray-500 disabled:shadow-none xl:py-4 xl:text-lg"
-                      >
-                        {busy
-                          ? <><Icon name="Loader2" size={18} className="animate-spin" />Registrando…</>
-                          : <><Icon name={pendingBalance > 0 ? 'BookUser' : 'Zap'} size={18} />Completar venta</>
-                        }
-                      </button>
+                      {requiresCustomerForPending && !customerId ? (
+                        <div className="flex gap-2">
+                          <button
+                            disabled
+                            className="flex-1 flex items-center justify-center gap-2 rounded-2xl bg-gray-800 py-3.5 text-sm font-black text-gray-500 shadow-none cursor-not-allowed xl:py-4"
+                          >
+                            <Icon name="AlertCircle" size={16} />
+                            Falta pagar {fmt(pendingBalance, business?.currency)}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={addPayment}
+                            className="shrink-0 flex items-center justify-center gap-1.5 rounded-2xl bg-blue-600 hover:bg-blue-700 px-3.5 py-3.5 text-xs font-bold text-white transition-colors xl:py-4"
+                            title="Agregar pago"
+                          >
+                            <Icon name="Plus" size={15} />
+                            <span className="hidden xl:inline">Agregar pago</span>
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={handleRegister}
+                          disabled={cart.length === 0 || busy || isPaymentInvalid}
+                          className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-500 py-3.5 text-base font-black text-white shadow-lg shadow-emerald-950/30 transition-all hover:-translate-y-0.5 hover:bg-emerald-400 disabled:translate-y-0 disabled:bg-gray-800 disabled:text-gray-500 disabled:shadow-none xl:py-4 xl:text-lg"
+                        >
+                          {busy
+                            ? <><Icon name="Loader2" size={18} className="animate-spin" />Registrando…</>
+                            : <><Icon name={pendingBalance > 0 ? 'BookUser' : 'Zap'} size={18} />Completar venta</>
+                          }
+                        </button>
+                      )}
                       <p className="text-center text-xs text-gray-400">{paymentStatusLabel}</p>
                     </div>
 
@@ -1219,20 +1253,34 @@ function CrmTerminalUI() {
                   </p>
                 )}
                 <p className="truncate text-lg font-bold text-white leading-tight">{fmt(total, business?.currency)}</p>
-                <p className={`text-[10px] mt-0.5 ${isPaymentInvalid ? 'text-red-400' : 'text-gray-400'}`}>
-                  Pagado {fmt(paidTotal, business?.currency)} - Pendiente {fmt(pendingBalance, business?.currency)}
+                <p className={`text-[10px] mt-0.5 ${isPaymentInvalid ? 'text-amber-400' : 'text-gray-400'}`}>
+                  {requiresCustomerForPending && !customerId
+                    ? `Faltan ${fmt(pendingBalance, business?.currency)} · selecciona cliente`
+                    : `Pagado ${fmt(paidTotal, business?.currency)} · Pendiente ${fmt(pendingBalance, business?.currency)}`
+                  }
                 </p>
               </div>
-              <button
-                onClick={handleRegister}
-                disabled={cart.length === 0 || busy || isPaymentInvalid}
-                className="shrink-0 px-4 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:bg-gray-700 disabled:text-gray-500 text-white font-bold text-sm transition-colors flex items-center gap-2"
-              >
-                {busy
-                  ? <><Icon name="Loader2" size={16} className="animate-spin" />Procesando…</>
-                  : <><Icon name={pendingBalance > 0 ? 'BookUser' : 'Zap'} size={16} />Completar</>
-                }
-              </button>
+              {requiresCustomerForPending && !customerId ? (
+                <button
+                  type="button"
+                  onClick={addPayment}
+                  className="shrink-0 px-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm transition-colors flex items-center gap-2"
+                >
+                  <Icon name="Plus" size={16} />
+                  + Pago
+                </button>
+              ) : (
+                <button
+                  onClick={handleRegister}
+                  disabled={cart.length === 0 || busy || isPaymentInvalid}
+                  className="shrink-0 px-4 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:bg-gray-700 disabled:text-gray-500 text-white font-bold text-sm transition-colors flex items-center gap-2"
+                >
+                  {busy
+                    ? <><Icon name="Loader2" size={16} className="animate-spin" />Procesando…</>
+                    : <><Icon name={pendingBalance > 0 ? 'BookUser' : 'Zap'} size={16} />Completar</>
+                  }
+                </button>
+              )}
             </div>
 
           </>
