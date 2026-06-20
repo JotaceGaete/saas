@@ -11,8 +11,14 @@ import { getEffectivePlanSlug } from 'services/waBusinessService';
 import { formatMoney, fmtMoneyInput, parseMoneyInput } from 'utils/formatMoney';
 import {
   PAYMENT_METHOD_LABELS,
+  CASH_MOVEMENT_CATEGORIES_OUT,
+  CASH_MOVEMENT_CATEGORIES_IN,
+  getCashMovementCategoryLabel,
   closeCashSession,
+  createCashMovement,
+  getCashDayMovements,
   getCashDayPayments,
+  getCashSessionMovements,
   getCashSessionPayments,
   getCashSessionsForDate,
   getCrmInvoice,
@@ -22,6 +28,7 @@ import {
   reopenCashSession,
   updateCrmPayment,
   updateCashSession,
+  voidCashMovement,
   voidCrmPayment,
 } from 'services/crmService';
 
@@ -66,6 +73,27 @@ function totalPayments(payments = []) {
   }, 0);
 }
 
+// Saldo real de caja = monto inicial + cobros comerciales + entradas manuales - salidas
+function calcSessionBalance(session, payments = [], movements = []) {
+  const initial   = toNumber(session?.initial_amount);
+  const inflows   = payments.filter(p => !p.voided_at).reduce((s, p) => s + toNumber(p.amount), 0);
+  const manualIn  = movements.filter(m => !m.voided_at && m.direction === 'in').reduce((s, m) => s + toNumber(m.amount), 0);
+  const outs      = movements.filter(m => !m.voided_at && m.direction === 'out').reduce((s, m) => s + toNumber(m.amount), 0);
+  return initial + inflows + manualIn - outs;
+}
+
+function totalMovementsOut(movements = []) {
+  return movements.filter(m => !m.voided_at && m.direction === 'out').reduce((s, m) => s + toNumber(m.amount), 0);
+}
+
+// Mezcla pagos y movimientos en orden cronológico para la tabla unificada
+function mergeEntries(payments = [], movements = []) {
+  return [
+    ...payments.map(p => ({ ...p, _row_kind: 'payment' })),
+    ...movements.map(m => ({ ...m, _row_kind: 'movement' })),
+  ].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+}
+
 function turnLabel(session, sessions) {
   const reverseIndex = sessions.length - sessions.findIndex(item => item.id === session.id);
   const note = session.notes ? ` / ${session.notes}` : '';
@@ -108,12 +136,14 @@ function MethodBreakdown({ summary, currency }) {
   );
 }
 
-function MovementsTable({ payments, currency, onEditPayment, onVoidPayment, sessionOpen }) {
-  if (payments.length === 0) {
+function MovementsTable({ payments, movements, currency, onEditPayment, onVoidPayment, onVoidMovement, sessionOpen }) {
+  const entries = mergeEntries(payments, movements);
+
+  if (entries.length === 0) {
     return (
       <div className="rounded-2xl border border-gray-100 bg-white px-5 py-10 text-center">
         <Icon name="ReceiptText" size={30} className="mx-auto mb-3 text-gray-200" />
-        <p className="text-sm font-semibold text-gray-600">Aun no hay pagos recibidos para esta caja.</p>
+        <p className="text-sm font-semibold text-gray-600">Aun no hay movimientos en esta caja.</p>
       </div>
     );
   }
@@ -125,19 +155,31 @@ function MovementsTable({ payments, currency, onEditPayment, onVoidPayment, sess
           <thead className="bg-gray-50 text-left text-xs font-bold uppercase tracking-wide text-gray-400">
             <tr>
               <th className="px-5 py-3">Hora</th>
-              <th className="px-5 py-3">Metodo</th>
-              <th className="px-5 py-3">Referencia / notas</th>
+              <th className="px-5 py-3">Tipo</th>
+              <th className="px-5 py-3">Detalle</th>
               <th className="px-5 py-3 text-right">Monto</th>
               <th className="px-5 py-3 text-right">Accion</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {payments.map(payment => {
-              const isVoided = !!payment.voided_at;
+            {entries.map(entry => {
+              const isVoided = !!entry.voided_at;
+              const isPayment = entry._row_kind === 'payment';
+              const isOut = !isPayment && entry.direction === 'out';
+
+              const amountColor = isVoided
+                ? 'text-gray-400 line-through'
+                : isOut
+                  ? 'text-red-600'
+                  : 'text-emerald-700';
+
+              const amountPrefix = isOut ? '−' : '+';
+
               return (
-                <tr key={payment.id} className={isVoided ? 'bg-gray-50 opacity-60' : ''}>
+                <tr key={entry.id} className={isVoided ? 'bg-gray-50 opacity-60' : ''}>
+                  {/* Hora */}
                   <td className="whitespace-nowrap px-5 py-3 font-medium text-gray-700">
-                    <div>{fmtTime(payment.created_at)}</div>
+                    <div>{fmtTime(entry.created_at)}</div>
                     {isVoided && (
                       <span className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-600">
                         <Icon name="Ban" size={10} />
@@ -145,26 +187,71 @@ function MovementsTable({ payments, currency, onEditPayment, onVoidPayment, sess
                       </span>
                     )}
                   </td>
-                  <td className="whitespace-nowrap px-5 py-3 text-gray-600">
-                    {PAYMENT_METHOD_LABELS[payment.payment_method] || PAYMENT_METHOD_LABELS.other}
-                  </td>
-                  <td className="px-5 py-3 text-gray-500">
-                    <div>{payment.reference || payment.notes || '-'}</div>
-                    {isVoided && payment.void_reason && (
-                      <div className="mt-0.5 text-[11px] text-red-500">Motivo: {payment.void_reason}</div>
+
+                  {/* Tipo */}
+                  <td className="whitespace-nowrap px-5 py-3">
+                    {isPayment ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700">
+                        <Icon name="ArrowDownLeft" size={11} />
+                        Cobro
+                      </span>
+                    ) : isOut ? (
+                      <div>
+                        <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-bold text-red-600">
+                          <Icon name="ArrowUpRight" size={11} />
+                          Salida
+                        </span>
+                        <div className="mt-0.5 text-[10px] text-gray-400">
+                          {getCashMovementCategoryLabel(entry.category)}
+                        </div>
+                      </div>
+                    ) : (
+                      <div>
+                        <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-600">
+                          <Icon name="ArrowDownLeft" size={11} />
+                          Entrada
+                        </span>
+                        <div className="mt-0.5 text-[10px] text-gray-400">
+                          {getCashMovementCategoryLabel(entry.category)}
+                        </div>
+                      </div>
                     )}
                   </td>
-                  <td className={`whitespace-nowrap px-5 py-3 text-right font-bold ${isVoided ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
-                    {formatMoney(payment.amount, payment.currency || currency)}
+
+                  {/* Detalle */}
+                  <td className="px-5 py-3 text-gray-500">
+                    {isPayment ? (
+                      <>
+                        <div className="text-xs text-gray-500">
+                          {PAYMENT_METHOD_LABELS[entry.payment_method] || PAYMENT_METHOD_LABELS.other}
+                        </div>
+                        <div className="text-gray-700">{entry.reference || entry.notes || '—'}</div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="font-medium text-gray-700">{entry.reason}</div>
+                        {entry.notes && <div className="text-[11px] text-gray-400">{entry.notes}</div>}
+                      </>
+                    )}
+                    {isVoided && entry.void_reason && (
+                      <div className="mt-0.5 text-[11px] text-red-500">Motivo: {entry.void_reason}</div>
+                    )}
                   </td>
+
+                  {/* Monto */}
+                  <td className={`whitespace-nowrap px-5 py-3 text-right font-bold ${amountColor}`}>
+                    {!isVoided && amountPrefix}{formatMoney(entry.amount, entry.currency || currency)}
+                  </td>
+
+                  {/* Acción */}
                   <td className="whitespace-nowrap px-5 py-3 text-right">
                     {isVoided ? (
                       <span className="text-xs text-gray-400">—</span>
-                    ) : (
+                    ) : isPayment ? (
                       <div className="flex items-center justify-end gap-1.5">
                         <button
                           type="button"
-                          onClick={() => onEditPayment?.(payment)}
+                          onClick={() => onEditPayment?.(entry)}
                           className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-bold text-gray-700 hover:bg-gray-50"
                         >
                           Editar
@@ -172,7 +259,7 @@ function MovementsTable({ payments, currency, onEditPayment, onVoidPayment, sess
                         {sessionOpen ? (
                           <button
                             type="button"
-                            onClick={() => onVoidPayment?.(payment)}
+                            onClick={() => onVoidPayment?.(entry)}
                             className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-bold text-red-600 hover:bg-red-50"
                           >
                             Anular
@@ -186,6 +273,24 @@ function MovementsTable({ payments, currency, onEditPayment, onVoidPayment, sess
                           </span>
                         )}
                       </div>
+                    ) : (
+                      /* Movimiento operativo — solo anular */
+                      sessionOpen ? (
+                        <button
+                          type="button"
+                          onClick={() => onVoidMovement?.(entry)}
+                          className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-bold text-red-600 hover:bg-red-50"
+                        >
+                          Anular
+                        </button>
+                      ) : (
+                        <span
+                          title="No se pueden anular movimientos de una caja cerrada"
+                          className="cursor-not-allowed rounded-lg border border-gray-100 bg-gray-50 px-3 py-1.5 text-xs font-bold text-gray-300 select-none"
+                        >
+                          Anular
+                        </span>
+                      )
                     )}
                   </td>
                 </tr>
@@ -439,6 +544,167 @@ function VoidPaymentModal({ payment, currency, busy, onConfirm, onCancel }) {
   );
 }
 
+function CashMovementModal({ defaultDirection = 'out', busy, onSubmit, onCancel }) {
+  const [direction,  setDirection]  = useState(defaultDirection);
+  const [amount,     setAmount]     = useState('');
+  const [reason,     setReason]     = useState('');
+  const [category,   setCategory]   = useState('');
+  const [notes,      setNotes]      = useState('');
+  const [error,      setError]      = useState('');
+
+  const categories = direction === 'out' ? CASH_MOVEMENT_CATEGORIES_OUT : CASH_MOVEMENT_CATEGORIES_IN;
+
+  // Resetear categoría al cambiar dirección
+  useEffect(() => { setCategory(''); setError(''); }, [direction]);
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!amount || parseMoneyInput(amount) <= 0) { setError('Ingresa un monto válido.'); return; }
+    if (!reason.trim()) { setError('El motivo es obligatorio.'); return; }
+    if (!category) { setError('Selecciona una categoría.'); return; }
+    onSubmit({
+      direction,
+      amount:   parseMoneyInput(amount),
+      reason:   reason.trim(),
+      category,
+      notes:    notes.trim() || null,
+    });
+  };
+
+  const isOut = direction === 'out';
+
+  return (
+    <div className="fixed inset-0 z-modal flex items-center justify-center bg-slate-900/40 px-4">
+      <form onSubmit={handleSubmit} className="w-full max-w-md rounded-2xl border border-gray-100 bg-white p-5 shadow-xl">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <h3 className="text-sm font-bold text-gray-900">Registrar movimiento de caja</h3>
+          <button type="button" onClick={onCancel} className="text-gray-400 hover:text-gray-600" aria-label="Cancelar">
+            <Icon name="X" size={17} />
+          </button>
+        </div>
+
+        {/* Selector Entrada / Salida */}
+        <div className="mb-4 flex rounded-xl border border-gray-200 overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setDirection('in')}
+            className={`flex-1 py-2.5 text-sm font-bold transition-colors flex items-center justify-center gap-1.5 ${
+              direction === 'in' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            <Icon name="ArrowDownLeft" size={14} />
+            Entrada
+          </button>
+          <button
+            type="button"
+            onClick={() => setDirection('out')}
+            className={`flex-1 py-2.5 text-sm font-bold transition-colors flex items-center justify-center gap-1.5 ${
+              direction === 'out' ? 'bg-red-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            <Icon name="ArrowUpRight" size={14} />
+            Salida
+          </button>
+        </div>
+
+        <div className="space-y-3">
+          {/* Monto */}
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-gray-500">
+              Monto <span className="text-red-500">*</span>
+            </label>
+            <div className="relative">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">$</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                autoFocus
+                value={fmtMoneyInput(amount)}
+                onChange={e => { setAmount(e.target.value.replace(/\D/g, '')); setError(''); }}
+                placeholder="0"
+                className={`w-full rounded-xl border py-3 pl-7 pr-3 text-sm focus:outline-none focus:ring-2 ${
+                  isOut ? 'border-red-200 focus:ring-red-400' : 'border-blue-200 focus:ring-blue-400'
+                }`}
+              />
+            </div>
+          </div>
+
+          {/* Categoría */}
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-gray-500">
+              Categoría <span className="text-red-500">*</span>
+            </label>
+            <select
+              value={category}
+              onChange={e => { setCategory(e.target.value); setError(''); }}
+              className={`w-full rounded-xl border px-3 py-3 text-sm focus:outline-none focus:ring-2 ${
+                isOut ? 'border-red-200 focus:ring-red-400' : 'border-blue-200 focus:ring-blue-400'
+              }`}
+            >
+              <option value="">— Selecciona —</option>
+              {categories.map(cat => (
+                <option key={cat.value} value={cat.value}>{cat.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Motivo */}
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-gray-500">
+              Motivo <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={reason}
+              onChange={e => { setReason(e.target.value); setError(''); }}
+              placeholder={isOut ? 'Ej: Rollos térmicos, retiro Juan…' : 'Ej: Fondo adicional de cambio…'}
+              className={`w-full rounded-xl border px-3 py-3 text-sm focus:outline-none focus:ring-2 ${
+                isOut ? 'border-red-200 focus:ring-red-400' : 'border-blue-200 focus:ring-blue-400'
+              }`}
+            />
+          </div>
+
+          {/* Notas opcionales */}
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-gray-500">Notas (opcional)</label>
+            <input
+              type="text"
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              placeholder="Información adicional…"
+              className="w-full rounded-xl border border-gray-200 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
+            />
+          </div>
+
+          {error && (
+            <p className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600 border border-red-200">{error}</p>
+          )}
+        </div>
+
+        <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-50"
+          >
+            Cancelar
+          </button>
+          <button
+            type="submit"
+            disabled={busy}
+            className={`flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50 ${
+              isOut ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'
+            }`}
+          >
+            {busy && <Icon name="Loader2" size={15} className="animate-spin" />}
+            {isOut ? 'Registrar salida' : 'Registrar entrada'}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 function CashSessionForm({ title, initialValue = '', notesValue = '', busy, submitLabel, onSubmit, onCancel }) {
   const [amount, setAmount] = useState(String(initialValue || ''));
   const [notes, setNotes] = useState(notesValue || '');
@@ -520,7 +786,9 @@ export default function CrmCash() {
   const [openSession, setOpenSession] = useState(null);
   const [sessions, setSessions] = useState([]);
   const [sessionPayments, setSessionPayments] = useState({});
+  const [sessionMovements, setSessionMovements] = useState({});
   const [dayPayments, setDayPayments] = useState([]);
+  const [dayMovements, setDayMovements] = useState([]);
   const [showOpenForm, setShowOpenForm] = useState(false);
   const [editingSession, setEditingSession] = useState(null);
   const [detailSessionId, setDetailSessionId] = useState(null);
@@ -529,6 +797,8 @@ export default function CrmCash() {
   const [showHistory, setShowHistory] = useState(false);
   const [editingPayment, setEditingPayment] = useState(null);
   const [voidingPayment, setVoidingPayment] = useState(null);
+  const [showMovementForm, setShowMovementForm] = useState(false);
+  const [voidingMovement, setVoidingMovement] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -545,13 +815,14 @@ export default function CrmCash() {
     setLoading(true);
     setErrorMsg('');
 
-    const [openRes, sessionsRes, dayRes] = await Promise.all([
+    const [openRes, sessionsRes, dayPaymentsRes, dayMovementsRes] = await Promise.all([
       getOpenCashSession(business.id),
       getCashSessionsForDate(business.id, today),
       getCashDayPayments(business.id, today),
+      getCashDayMovements(business.id, today),
     ]);
 
-    const firstError = openRes.error || sessionsRes.error || dayRes.error;
+    const firstError = openRes.error || sessionsRes.error || dayPaymentsRes.error;
     if (firstError) {
       setErrorMsg(firstError.message);
       setLoading(false);
@@ -559,17 +830,23 @@ export default function CrmCash() {
     }
 
     const sessionsList = sessionsRes.data || [];
-    const paymentsEntries = await Promise.all(
-      sessionsList.map(async session => {
-        const paymentsRes = await getCashSessionPayments(business.id, session);
-        return [session.id, paymentsRes.error ? [] : (paymentsRes.data || [])];
-      })
-    );
+    const [paymentsEntries, movementsEntries] = await Promise.all([
+      Promise.all(sessionsList.map(async session => {
+        const res = await getCashSessionPayments(business.id, session);
+        return [session.id, res.error ? [] : (res.data || [])];
+      })),
+      Promise.all(sessionsList.map(async session => {
+        const res = await getCashSessionMovements(business.id, session.id);
+        return [session.id, res.error ? [] : (res.data || [])];
+      })),
+    ]);
 
     setOpenSession(openRes.data || null);
     setSessions(sessionsList);
     setSessionPayments(Object.fromEntries(paymentsEntries));
-    setDayPayments(dayRes.data || []);
+    setSessionMovements(Object.fromEntries(movementsEntries));
+    setDayPayments(dayPaymentsRes.data || []);
+    setDayMovements(dayMovementsRes.data || []);
     setShowOpenForm(sessionsList.length === 0 && !openRes.data);
     setLoading(false);
   }, [business?.id, hasAccess, today]);
@@ -578,15 +855,19 @@ export default function CrmCash() {
     load();
   }, [load]);
 
-  const currentSession = openSession || sessions[0] || null;
+  const currentSession  = openSession || sessions[0] || null;
   const currentPayments = currentSession ? (sessionPayments[currentSession.id] || []) : [];
-  const detailSession = detailSessionId ? sessions.find(session => session.id === detailSessionId) : null;
-  const detailPayments = detailSession ? (sessionPayments[detailSession.id] || []) : [];
-  const daySummary = useMemo(() => summarizePayments(dayPayments), [dayPayments]);
-  const dayTotal = useMemo(() => totalPayments(dayPayments), [dayPayments]);
-  const currentTotal = useMemo(() => totalPayments(currentPayments), [currentPayments]);
-  const detailSummary = useMemo(() => summarizePayments(detailPayments), [detailPayments]);
-  const detailTotal = useMemo(() => totalPayments(detailPayments), [detailPayments]);
+  const currentMvts     = currentSession ? (sessionMovements[currentSession.id] || []) : [];
+  const detailSession   = detailSessionId ? sessions.find(s => s.id === detailSessionId) : null;
+  const detailPayments  = detailSession ? (sessionPayments[detailSession.id] || []) : [];
+  const detailMvts      = detailSession ? (sessionMovements[detailSession.id] || []) : [];
+
+  const daySummary     = useMemo(() => summarizePayments(dayPayments), [dayPayments]);
+  const dayTotal       = useMemo(() => totalPayments(dayPayments), [dayPayments]);
+  const dayOutflows    = useMemo(() => totalMovementsOut(dayMovements), [dayMovements]);
+  const currentBalance = useMemo(() => calcSessionBalance(currentSession, currentPayments, currentMvts), [currentSession, currentPayments, currentMvts]);
+  const detailSummary  = useMemo(() => summarizePayments(detailPayments), [detailPayments]);
+  const detailBalance  = useMemo(() => calcSessionBalance(detailSession, detailPayments, detailMvts), [detailSession, detailPayments, detailMvts]);
 
   const handleOpen = async ({ initialAmount, notes }) => {
     if (!business?.id) return;
@@ -683,6 +964,34 @@ export default function CrmCash() {
     await load();
   };
 
+  const handleCreateMovement = async (fields) => {
+    if (!currentSession?.id || !business?.id) return;
+    setBusy(true);
+    setErrorMsg('');
+    const { error } = await createCashMovement(business.id, {
+      ...fields,
+      sessionId: currentSession.id,
+    });
+    setBusy(false);
+    if (error) { setErrorMsg(error.message); return; }
+    setShowMovementForm(false);
+    await load();
+  };
+
+  const handleVoidMovement = async (reason) => {
+    if (!voidingMovement?.id) return;
+    setBusy(true);
+    setErrorMsg('');
+    const { error } = await voidCashMovement(voidingMovement.id, {
+      voidReason: reason,
+      voidedBy: business?.userId || null,
+    });
+    setBusy(false);
+    if (error) { setErrorMsg(error.message); return; }
+    setVoidingMovement(null);
+    await load();
+  };
+
   const handleEditSale = (invoiceId) => {
     navigate(`/crm/facturas/${invoiceId}`);
   };
@@ -758,9 +1067,23 @@ export default function CrmCash() {
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-600">
                       <span className="capitalize">{fmtDate(today)}</span>
                       <span>{currentSession ? turnLabel(currentSession, sessions) : 'Sin caja abierta'}</span>
-                      <span>Total cobrado del dia: <strong className="text-gray-900">{formatMoney(dayTotal, business?.currency)}</strong></span>
                     </div>
-                    <div className="mt-3 space-y-1 text-xs text-gray-400">
+                    {currentSession && (
+                      <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm">
+                        <span>
+                          Cobros: <strong className="text-emerald-700">{formatMoney(dayTotal, business?.currency)}</strong>
+                        </span>
+                        {dayOutflows > 0 && (
+                          <span>
+                            Salidas: <strong className="text-red-600">−{formatMoney(dayOutflows, business?.currency)}</strong>
+                          </span>
+                        )}
+                        <span>
+                          Saldo en caja: <strong className="text-gray-900">{formatMoney(currentBalance, business?.currency)}</strong>
+                        </span>
+                      </div>
+                    )}
+                    <div className="mt-2 space-y-1 text-xs text-gray-400">
                       <p>La caja registra pagos reales, no ventas pendientes.</p>
                       <p>Puedes abrir mas de una caja por dia para cambios de turno.</p>
                     </div>
@@ -805,17 +1128,21 @@ export default function CrmCash() {
               </div>
 
               <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
-                <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-3">
+                <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Total del dia</p>
-                    <p className="mt-1 text-lg font-black text-gray-900">{formatMoney(dayTotal, business?.currency)}</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Cobros del día</p>
+                    <p className="mt-1 text-lg font-black text-emerald-700">{formatMoney(dayTotal, business?.currency)}</p>
                   </div>
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Movimientos</p>
-                    <p className="mt-1 text-lg font-black text-gray-900">{dayPayments.length}</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Salidas del día</p>
+                    <p className="mt-1 text-lg font-black text-red-600">{dayOutflows > 0 ? `−${formatMoney(dayOutflows, business?.currency)}` : '—'}</p>
                   </div>
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Cajas</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Saldo actual</p>
+                    <p className="mt-1 text-lg font-black text-gray-900">{formatMoney(currentBalance, business?.currency)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Cajas hoy</p>
                     <p className="mt-1 text-lg font-black text-gray-900">{sessions.length}</p>
                   </div>
                 </div>
@@ -831,6 +1158,16 @@ export default function CrmCash() {
                 <SectionButton open={showHistory} onClick={() => setShowHistory(value => !value)}>
                   Ver historial de cajas
                 </SectionButton>
+                {openSession && (
+                  <button
+                    type="button"
+                    onClick={() => setShowMovementForm(true)}
+                    className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-bold text-red-700 hover:bg-red-100"
+                  >
+                    <Icon name="ArrowUpRight" size={15} />
+                    Registrar movimiento
+                  </button>
+                )}
               </div>
 
               {showOpenForm && (
@@ -876,19 +1213,43 @@ export default function CrmCash() {
                 />
               )}
 
+              {showMovementForm && (
+                <CashMovementModal
+                  busy={busy}
+                  onSubmit={handleCreateMovement}
+                  onCancel={() => setShowMovementForm(false)}
+                />
+              )}
+
+              {voidingMovement && (
+                <VoidPaymentModal
+                  payment={{
+                    ...voidingMovement,
+                    payment_method: 'cash',
+                    invoice_id: null,
+                  }}
+                  currency={business?.currency}
+                  busy={busy}
+                  onConfirm={handleVoidMovement}
+                  onCancel={() => setVoidingMovement(null)}
+                />
+              )}
+
               {showMovements && currentSession && (
                 <div className="space-y-3">
                   <div className="rounded-2xl border border-gray-100 bg-white p-4">
                     <p className="text-sm font-bold text-gray-900">{turnLabel(currentSession, sessions)}</p>
                     <p className="mt-1 text-xs text-gray-400">
-                      {turnTimeRange(currentSession)} · {formatMoney(currentTotal, business?.currency)}
+                      {turnTimeRange(currentSession)} · Saldo: {formatMoney(currentBalance, business?.currency)}
                     </p>
                   </div>
                   <MovementsTable
                     payments={currentPayments}
+                    movements={currentMvts}
                     currency={business?.currency}
                     onEditPayment={setEditingPayment}
                     onVoidPayment={setVoidingPayment}
+                    onVoidMovement={setVoidingMovement}
                     sessionOpen={currentSession?.status === 'open'}
                   />
                 </div>
@@ -908,8 +1269,9 @@ export default function CrmCash() {
                   ) : (
                     <div className="divide-y divide-gray-100">
                       {sessions.map(session => {
-                        const payments = sessionPayments[session.id] || [];
-                        const total = totalPayments(payments);
+                        const payments  = sessionPayments[session.id] || [];
+                        const movements = sessionMovements[session.id] || [];
+                        const total     = calcSessionBalance(session, payments, movements);
                         return (
                           <div key={session.id} className="flex flex-col gap-3 py-3 lg:flex-row lg:items-center lg:justify-between">
                             <div className="min-w-0 text-sm text-gray-700">
@@ -963,7 +1325,7 @@ export default function CrmCash() {
                         <div>
                           <p className="text-sm font-bold text-gray-900">{turnLabel(detailSession, sessions)}</p>
                           <p className="mt-1 text-xs text-gray-400">
-                            {turnTimeRange(detailSession)} · {formatMoney(detailTotal, business?.currency)}
+                            {turnTimeRange(detailSession)} · Saldo: {formatMoney(detailBalance, business?.currency)}
                           </p>
                         </div>
                         <button
@@ -976,9 +1338,11 @@ export default function CrmCash() {
                       <MethodBreakdown summary={detailSummary} currency={business?.currency} />
                       <MovementsTable
                         payments={detailPayments}
+                        movements={detailMvts}
                         currency={business?.currency}
                         onEditPayment={setEditingPayment}
                         onVoidPayment={setVoidingPayment}
+                        onVoidMovement={setVoidingMovement}
                         sessionOpen={detailSession?.status === 'open'}
                       />
                     </div>

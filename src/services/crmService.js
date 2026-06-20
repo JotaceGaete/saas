@@ -1469,3 +1469,99 @@ export async function getPurchaseTotalsForPeriod(businessId, month, year) {
 
   return { totals, totalTaxCredit, totalOperational };
 }
+
+// ============================================================
+// MOVIMIENTOS DE CAJA (crm_cash_movements)
+// Ingresos y egresos operativos — separados de crm_payments
+// ============================================================
+
+export const CASH_MOVEMENT_CATEGORIES_OUT = [
+  { value: 'owner_withdrawal', label: 'Retiro del dueño',       isExpense: false },
+  { value: 'bank_deposit',     label: 'Depósito bancario',       isExpense: false },
+  { value: 'supplies',         label: 'Suministros',             isExpense: true  },
+  { value: 'utilities',        label: 'Servicios básicos',       isExpense: true  },
+  { value: 'rent',             label: 'Arriendo',                isExpense: true  },
+  { value: 'services',         label: 'Servicios',               isExpense: true  },
+  { value: 'taxes',            label: 'Impuestos',               isExpense: true  },
+  { value: 'salaries',         label: 'Sueldos / Comisiones',    isExpense: true  },
+  { value: 'other_expense',    label: 'Otro gasto',              isExpense: true  },
+  { value: 'other',            label: 'Otro',                    isExpense: false },
+];
+
+export const CASH_MOVEMENT_CATEGORIES_IN = [
+  { value: 'cash_fund',  label: 'Fondo de caja adicional', isExpense: false },
+  { value: 'correction', label: 'Corrección / Ajuste',     isExpense: false },
+  { value: 'other',      label: 'Otro',                    isExpense: false },
+];
+
+// Lookup unificado para mostrar etiquetas en la tabla
+const _ALL_MOVEMENT_CATEGORIES = [
+  ...CASH_MOVEMENT_CATEGORIES_OUT,
+  ...CASH_MOVEMENT_CATEGORIES_IN,
+];
+export function getCashMovementCategoryLabel(value) {
+  return _ALL_MOVEMENT_CATEGORIES.find(c => c.value === value)?.label ?? value;
+}
+
+export async function createCashMovement(businessId, {
+  sessionId     = null,
+  direction,
+  amount,
+  reason,
+  category      = 'other',
+  paymentMethod = 'cash',
+  notes         = null,
+  createdBy     = null,
+} = {}) {
+  const { data, error } = await supabase
+    .from('crm_cash_movements')
+    .insert({
+      business_id:    businessId,
+      session_id:     sessionId  || null,
+      direction,
+      amount,
+      reason:         reason.trim(),
+      category,
+      payment_method: paymentMethod,
+      notes:          notes      || null,
+      created_by:     createdBy  || null,
+      movement_date:  getLocalDateString(),
+    })
+    .select()
+    .single();
+  return { data, error };
+}
+
+export async function getCashSessionMovements(businessId, sessionId) {
+  const { data, error } = await supabase
+    .from('crm_cash_movements')
+    .select('*')
+    .eq('business_id', businessId)
+    .eq('session_id', sessionId)
+    .order('created_at', { ascending: true });
+  return { data: data || [], error };
+}
+
+export async function getCashDayMovements(businessId, date = getLocalDateString()) {
+  const { data, error } = await supabase
+    .from('crm_cash_movements')
+    .select('*')
+    .eq('business_id', businessId)
+    .eq('movement_date', date)
+    .order('created_at', { ascending: true });
+  return { data: data || [], error };
+}
+
+export async function voidCashMovement(movementId, { voidReason, voidedBy = null } = {}) {
+  const { data, error } = await supabase
+    .from('crm_cash_movements')
+    .update({
+      voided_at:   new Date().toISOString(),
+      voided_by:   voidedBy || null,
+      void_reason: voidReason || null,
+    })
+    .eq('id', movementId)
+    .select()
+    .single();
+  return { data, error };
+}
