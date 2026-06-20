@@ -1116,6 +1116,11 @@ export default function CrmCash() {
                     )}
                     {currentSession && (
                       <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm">
+                        {toNumber(currentSession.initial_amount) > 0 && (
+                          <span>
+                            Fondo inicial: <strong className="text-gray-700">{formatMoney(toNumber(currentSession.initial_amount), business?.currency)}</strong>
+                          </span>
+                        )}
                         <span>
                           Cobros: <strong className="text-emerald-700">{formatMoney(sessionTotal, business?.currency)}</strong>
                         </span>
@@ -1174,7 +1179,11 @@ export default function CrmCash() {
               </div>
 
               <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
-                <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+                <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4 lg:grid-cols-5">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Fondo inicial</p>
+                    <p className="mt-1 text-lg font-black text-gray-500">{formatMoney(toNumber(currentSession?.initial_amount), business?.currency)}</p>
+                  </div>
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Cobros de la caja</p>
                     <p className="mt-1 text-lg font-black text-emerald-700">{formatMoney(sessionTotal, business?.currency)}</p>
@@ -1340,7 +1349,9 @@ export default function CrmCash() {
                               <span className="mx-2 text-gray-300">|</span>
                               <span>{turnTimeRange(session)}</span>
                               <span className="mx-2 text-gray-300">|</span>
-                              <span className="font-bold text-gray-900">{formatMoney(total, business?.currency)}</span>
+                              <span className="text-gray-400">Inicial: {formatMoney(toNumber(session.initial_amount), business?.currency)}</span>
+                              <span className="mx-2 text-gray-300">|</span>
+                              <span className="font-bold text-gray-900">Saldo: {formatMoney(total, business?.currency)}</span>
                             </div>
                             <div className="flex flex-wrap gap-2">
                               <button
@@ -1384,7 +1395,7 @@ export default function CrmCash() {
                         <div>
                           <p className="text-sm font-bold text-gray-900">{turnLabel(detailSession, sessions)}</p>
                           <p className="mt-1 text-xs text-gray-400">
-                            {turnTimeRange(detailSession)} · Saldo: {formatMoney(detailBalance, business?.currency)}
+                            {turnTimeRange(detailSession)} · Inicial: {formatMoney(toNumber(detailSession.initial_amount), business?.currency)} · Saldo: {formatMoney(detailBalance, business?.currency)}
                           </p>
                         </div>
                         <button
