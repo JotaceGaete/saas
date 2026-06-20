@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Sitemap estático de Ventalink / miralatienda.de
+  Última actualización manual: 2026-06-20
+
+  NOTA: Las páginas de catálogo de negocios (/catalogo/:slug) son dinámicas
+  y requieren un sitemap generado por servidor con los slugs activos desde BD.
+  Pendiente: Edge Function /sitemap-catalogs.xml que consulte wa_businesses
+  WHERE is_active = true AND slug IS NOT NULL y genere entradas individuales.
+-->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+
+  <!-- Página pública principal del catálogo (landing de ejemplo/demo) -->
+  <url>
+    <loc>https://miralatienda.de/</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+</urlset>
