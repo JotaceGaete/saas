@@ -5,10 +5,11 @@ import PanelHeader from 'components/ui/PanelHeader';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
 import { useIsDesktop } from 'hooks/useMediaQuery';
-import { getCrmCustomers, getPosProducts, getAllActiveProducts, createPosInvoice, getOpenCashSession } from '../../services/crmService';
+import { getCrmCustomers, getPosProducts, getAllActiveProducts, createPosInvoice, getOpenCashSession, createCrmCustomer } from '../../services/crmService';
 import { getEffectivePlanSlug } from '../../services/waBusinessService';
 import { canUseFeature } from '../../config/planFeatures';
 import CrmThermalTicket from './components/CrmThermalTicket';
+import { QuickCustomerModal } from './components/QuickCustomerModal';
 import CrmBreadcrumb from 'components/ui/CrmBreadcrumb';
 import { formatMoney, fmtMoneyInput, parseMoneyInput } from '../../utils/formatMoney';
 
@@ -235,6 +236,7 @@ function CrmTerminalUI() {
   const [initialPaymentAmount, setInitialPaymentAmount] = useState('');
   const [initialPaymentMethod, setInitialPaymentMethod] = useState('cash');
   const [showManualModal, setShowManualModal] = useState(false);
+  const [showNewCustomer, setShowNewCustomer] = useState(false);
 
   // Ticket modal state — set after successful (or locally-fallback) sale
   const [ticketData, setTicketData] = useState(null);
@@ -296,6 +298,16 @@ function CrmTerminalUI() {
       setCustomersDisplay(data || []);
     });
   }, [business?.id, hasAccess]);
+
+  const handleCreateCustomer = async (fields) => {
+    const { data, error } = await createCrmCustomer(business.id, fields);
+    if (error) return { error };
+    customers.current = [data, ...customers.current];
+    setCustomersDisplay([data, ...customersDisplay]);
+    setCustomerId(data.id);
+    setShowNewCustomer(false);
+    return { data };
+  };
 
   const categories = useMemo(() => {
     const cats = [...new Set(posProducts.map(p => p.category).filter(Boolean))].sort();
@@ -834,7 +846,17 @@ function CrmTerminalUI() {
 
                   {/* ── Zone 1: Customer ── flex-none ─────────────────────── */}
                   <div className="bg-white border border-gray-200 rounded-xl p-3 lg:flex-none">
-                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Cliente</label>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wide">Cliente</label>
+                      <button
+                        type="button"
+                        onClick={() => setShowNewCustomer(true)}
+                        className="flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-600 hover:bg-blue-100"
+                      >
+                        <Icon name="UserPlus" size={11} />
+                        Nuevo cliente
+                      </button>
+                    </div>
                     <select
                       value={customerId}
                       onChange={e => setCustomerId(e.target.value)}
@@ -1158,6 +1180,13 @@ function CrmTerminalUI() {
           onNewSale={handleNewSale}
           onClose={handleCloseTicket}
           onReprint={handleReprint}
+        />
+      )}
+
+      {showNewCustomer && (
+        <QuickCustomerModal
+          onSave={handleCreateCustomer}
+          onClose={() => setShowNewCustomer(false)}
         />
       )}
 
