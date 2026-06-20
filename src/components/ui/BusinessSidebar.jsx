@@ -12,16 +12,31 @@ import { openWhatsAppUrl } from '../../utils/openWhatsAppUrl';
 import { SUPPORT_WHATSAPP_NUMBER } from '../../config/support';
 
 const NAV_ITEMS = [
-  { label: 'Mi tienda', path: '/dashboard', icon: 'Store' },
-  { label: 'Productos', path: '/product-management', icon: 'Package' },
-  { label: 'Pedidos', path: '/orders', icon: 'ShoppingCart' },
-  { label: 'Historial pedidos', path: '/orders/historial', icon: 'History' },
-  { label: 'CRM', path: '/crm', icon: 'LayoutDashboard' },
-  { label: 'Proveedores', path: '/proveedores', icon: 'Truck' },
-  { label: 'Configuración', path: '/business-configuration', icon: 'Settings' },
-  { label: 'Diseño', path: '/design', icon: 'Palette' },
-  { label: 'Plan y facturación', path: '/planes', icon: 'CreditCard' },
-  { label: 'Ayuda', path: '/ayuda', icon: 'HelpCircle' },
+  { label: 'Mi tienda',          path: '/dashboard',              icon: 'Store' },
+  { label: 'Productos',          path: '/product-management',     icon: 'Package' },
+  { label: 'Pedidos',            path: '/orders',                 icon: 'ShoppingCart' },
+  { label: 'Historial pedidos',  path: '/orders/historial',       icon: 'History' },
+  { label: 'Configuración',      path: '/business-configuration', icon: 'Settings' },
+  { label: 'Diseño',             path: '/design',                 icon: 'Palette' },
+  { label: 'Plan y facturación', path: '/planes',                 icon: 'CreditCard' },
+  { label: 'Ayuda',              path: '/ayuda',                  icon: 'HelpCircle' },
+  { section: true, label: '—' },
+  {
+    label: 'CRM',
+    path: '/crm',
+    icon: 'Crown',
+    badge: 'Premium',
+    premiumGated: true,
+    subItems: [
+      { label: 'Clientes',         path: '/crm/clientes' },
+      { label: 'Presupuestos',     path: '/crm/presupuestos' },
+      { label: 'Notas de venta',   path: '/crm/facturas' },
+      { label: 'Caja',             path: '/crm/caja' },
+      { label: 'Centro de costos', path: '/crm/cost-center' },
+      { label: 'Inventario',       path: '/crm/stock' },
+      { label: 'Proveedores',      path: '/proveedores' },
+    ],
+  },
 ];
 
 export default function BusinessSidebar({ isCollapsed = false, onCollapsedChange }) {
@@ -37,6 +52,12 @@ export default function BusinessSidebar({ isCollapsed = false, onCollapsedChange
 
   useEffect(() => { setCollapsed(isCollapsed); }, [isCollapsed]);
   useEffect(() => { setMobileOpen(false); }, [location?.pathname]);
+  useEffect(() => {
+    if (location?.pathname?.startsWith('/crm') || location?.pathname?.startsWith('/proveedores')) {
+      setExpandedItems(prev => ({ ...prev, '/crm': true }));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   useEffect(() => {
     const handleResize = () => { if (window.innerWidth >= 1024) setMobileOpen(false); };
     window.addEventListener('resize', handleResize);
@@ -105,6 +126,10 @@ Motivo (opcional):`;
   };
 
   const handleNavClick = (item) => {
+    if (item?.premiumGated && business?.planSlug === 'starter') {
+      navigate('/planes');
+      return;
+    }
     if (item?.subItems) {
       setExpandedItems(prev => ({ ...prev, [item?.path]: !prev?.[item?.path] }));
       if (collapsed) { setCollapsed(false); onCollapsedChange?.(false); }
@@ -176,7 +201,7 @@ Motivo (opcional):`;
                   <Icon
                     name={item?.icon}
                     size={16}
-                    color="currentColor"
+                    color={item?.premiumGated ? '#F59E0B' : 'currentColor'}
                     className="flex-shrink-0"
                   />
                   {!collapsed && (
@@ -187,8 +212,11 @@ Motivo (opcional):`;
                           {item.badge}
                         </span>
                       )}
-                      {item?.subItems && (
+                      {item?.subItems && !(item?.premiumGated && business?.planSlug === 'starter') && (
                         <Icon name={expanded ? 'ChevronUp' : 'ChevronDown'} size={13} color="currentColor" className="flex-shrink-0 opacity-50" />
+                      )}
+                      {item?.premiumGated && business?.planSlug === 'starter' && (
+                        <Icon name="Lock" size={12} color="currentColor" className="flex-shrink-0 opacity-40" />
                       )}
                     </>
                   )}
