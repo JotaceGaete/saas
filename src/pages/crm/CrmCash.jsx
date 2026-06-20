@@ -805,7 +805,7 @@ function CashSessionForm({ title, initialValue = '', notesValue = '', busy, subm
 
 export default function CrmCash() {
   const navigate = useNavigate();
-  const { business } = useAuth();
+  const { business, user } = useAuth();
   const today = getLocalDateString();
   const [openSession, setOpenSession] = useState(null);
   const [sessions, setSessions] = useState([]);
@@ -1099,6 +1099,21 @@ export default function CrmCash() {
                       <span className="capitalize">{fmtDate(today)}</span>
                       <span>{currentSession ? turnLabel(currentSession, sessions) : 'Sin caja abierta'}</span>
                     </div>
+                    {currentSession && (
+                      <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-gray-400">
+                        <span>
+                          Apertura: <strong className="text-gray-600">{fmtTime(currentSession.opened_at)}</strong>
+                        </span>
+                        <span>
+                          Responsable:{' '}
+                          <strong className="text-gray-600">
+                            {currentSession.opened_by === user?.id
+                              ? (user?.user_metadata?.name || user?.email || '—')
+                              : 'otro usuario'}
+                          </strong>
+                        </span>
+                      </div>
+                    )}
                     {currentSession && (
                       <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm">
                         <span>
