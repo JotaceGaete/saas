@@ -10,6 +10,7 @@ import {
   createCrmQuote,
   updateCrmQuote,
   getCrmCustomers,
+  createCrmCustomer,
   formatQuoteNumber,
   getQuoteDocLabel,
 } from '../../services/crmService';
@@ -24,6 +25,7 @@ import {
 } from './components/CrmLineItemRow';
 import { formatMoney } from '../../utils/formatMoney';
 import { CrmProductSearchModal } from './components/CrmProductSearchModal';
+import { QuickCustomerModal } from './components/QuickCustomerModal';
 import { ChileanDateInput } from './components/ChileanDateInput';
 
 const MANUAL_CHARGES = [
@@ -59,6 +61,7 @@ export default function CrmQuoteEditor() {
   const [saveError, setSaveError] = useState('');
   const [showProductModal, setShowProductModal] = useState(false);
   const [showChargeMenu, setShowChargeMenu] = useState(false);
+  const [showNewCustomer, setShowNewCustomer] = useState(false);
 
   const [customerId, setCustomerId] = useState('');
   const [validUntil, setValidUntil] = useState('');
@@ -153,6 +156,15 @@ export default function CrmQuoteEditor() {
   };
 
   const fmt = (n) => formatMoney(n, business?.currency);
+
+  const handleCreateCustomer = async (fields) => {
+    const { data, error } = await createCrmCustomer(business.id, fields);
+    if (error) return { error };
+    setCustomers(prev => [data, ...prev]);
+    setCustomerId(data.id);
+    setShowNewCustomer(false);
+    return { data };
+  };
 
   const buildPayload = () => ({
     customerId: customerId || null,
@@ -430,19 +442,32 @@ export default function CrmQuoteEditor() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Cliente</label>
-                <select
-                  disabled={!canEdit}
-                  value={customerId}
-                  onChange={(e) => setCustomerId(e.target.value)}
-                  className={fieldClassDisabled}
-                >
-                  <option value="">Sin cliente asignado</option>
-                  {customers.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}{c.company?.trim() && c.company.trim().toLowerCase() !== 'sin empresa' ? ` — ${c.company}` : ''}
-                    </option>
-                  ))}
-                </select>
+                <div className="flex gap-2">
+                  <select
+                    disabled={!canEdit}
+                    value={customerId}
+                    onChange={(e) => setCustomerId(e.target.value)}
+                    className={`flex-1 min-w-0 ${fieldClassDisabled}`}
+                  >
+                    <option value="">Sin cliente asignado</option>
+                    {customers.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}{c.company?.trim() && c.company.trim().toLowerCase() !== 'sin empresa' ? ` — ${c.company}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={() => setShowNewCustomer(true)}
+                      className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-colors whitespace-nowrap"
+                      title="Crear nuevo cliente"
+                    >
+                      <Icon name="UserPlus" size={15} />
+                      Nuevo
+                    </button>
+                  )}
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Válido hasta</label>
@@ -565,6 +590,13 @@ export default function CrmQuoteEditor() {
           business={business}
           customer={pdfCustomer}
           onClose={() => setShowPdf(false)}
+        />
+      )}
+
+      {showNewCustomer && (
+        <QuickCustomerModal
+          onSave={handleCreateCustomer}
+          onClose={() => setShowNewCustomer(false)}
         />
       )}
     </DashboardAppShell>

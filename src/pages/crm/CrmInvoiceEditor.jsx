@@ -10,6 +10,7 @@ import {
   createCrmInvoice,
   updateCrmInvoice,
   getCrmCustomers,
+  createCrmCustomer,
   formatInvoiceNumber,
   updateCrmInvoiceStatus,
 } from '../../services/crmService';
@@ -26,6 +27,7 @@ import {
 import { formatMoney } from '../../utils/formatMoney';
 import { CrmProductSearchModal } from './components/CrmProductSearchModal';
 import { ChileanDateInput } from './components/ChileanDateInput';
+import { QuickCustomerModal } from './components/QuickCustomerModal';
 
 const STATUS_STYLES = {
   pendiente: 'bg-yellow-100 text-yellow-700',
@@ -65,6 +67,7 @@ export default function CrmInvoiceEditor() {
   const [saveError, setSaveError] = useState('');
   const [showProductModal, setShowProductModal] = useState(false);
   const [showChargeMenu, setShowChargeMenu] = useState(false);
+  const [showNewCustomer, setShowNewCustomer] = useState(false);
 
   // Pagos
   const [payments, setPayments] = useState([]);
@@ -176,6 +179,15 @@ export default function CrmInvoiceEditor() {
   };
 
   const fmt = (n) => formatMoney(n, business?.currency);
+
+  const handleCreateCustomer = async (fields) => {
+    const { data, error } = await createCrmCustomer(business.id, fields);
+    if (error) return { error };
+    setCustomers(prev => [data, ...prev]);
+    setCustomerId(data.id);
+    setShowNewCustomer(false);
+    return { data };
+  };
 
   const handleMarkPaid = async () => {
     setMarkingPaid(true);
@@ -494,19 +506,32 @@ export default function CrmInvoiceEditor() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Cliente</label>
-                <select
-                  disabled={!canEdit}
-                  value={customerId}
-                  onChange={(e) => setCustomerId(e.target.value)}
-                  className={fieldClassDisabled}
-                >
-                  <option value="">Sin cliente asignado</option>
-                  {customers.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}{c.company?.trim() && c.company.trim().toLowerCase() !== 'sin empresa' ? ` — ${c.company}` : ''}
-                    </option>
-                  ))}
-                </select>
+                <div className="flex gap-2">
+                  <select
+                    disabled={!canEdit}
+                    value={customerId}
+                    onChange={(e) => setCustomerId(e.target.value)}
+                    className={`flex-1 min-w-0 ${fieldClassDisabled}`}
+                  >
+                    <option value="">Sin cliente asignado</option>
+                    {customers.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}{c.company?.trim() && c.company.trim().toLowerCase() !== 'sin empresa' ? ` — ${c.company}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={() => setShowNewCustomer(true)}
+                      className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-colors whitespace-nowrap"
+                      title="Crear nuevo cliente"
+                    >
+                      <Icon name="UserPlus" size={15} />
+                      Nuevo
+                    </button>
+                  )}
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Fecha de emisión</label>
@@ -838,6 +863,13 @@ export default function CrmInvoiceEditor() {
           business={business}
           customer={pdfCustomer}
           onClose={() => setShowPdf(false)}
+        />
+      )}
+
+      {showNewCustomer && (
+        <QuickCustomerModal
+          onSave={handleCreateCustomer}
+          onClose={() => setShowNewCustomer(false)}
         />
       )}
     </DashboardAppShell>
