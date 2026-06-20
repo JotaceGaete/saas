@@ -880,6 +880,7 @@ export default function CrmCash() {
   }, [load]);
 
   const currentSession  = openSession || sessions[0] || null;
+  const staleSession    = openSession && openSession.date && openSession.date !== today ? openSession : null;
   const currentPayments = currentSession ? (sessionPayments[currentSession.id] || []) : [];
   const currentMvts     = currentSession ? (sessionMovements[currentSession.id] || []) : [];
   const detailSession   = detailSessionId ? sessions.find(s => s.id === detailSessionId) : null;
@@ -1086,6 +1087,33 @@ export default function CrmCash() {
             </div>
           ) : (
             <>
+              {/* ── Alerta de caja abierta de día anterior ─────────────────── */}
+              {staleSession && (
+                <div className="flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                  <div className="flex items-start gap-3">
+                    <span className="mt-0.5 shrink-0 w-8 h-8 rounded-xl bg-amber-100 flex items-center justify-center">
+                      <Icon name="TriangleAlert" size={16} className="text-amber-600" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-amber-800">Caja abierta de día anterior</p>
+                      <p className="text-xs text-amber-700 mt-0.5">
+                        Hay una caja sin cerrar del{' '}
+                        <strong>{fmtDate(staleSession.date)}</strong>.
+                        Debes cerrarla antes de abrir una nueva para hoy.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleClose(staleSession.id)}
+                    disabled={busy}
+                    className="self-start flex items-center gap-2 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:opacity-50 px-4 py-2 text-sm font-bold text-white transition-colors"
+                  >
+                    <Icon name="LockKeyhole" size={14} />
+                    Cerrar caja del {fmtDate(staleSession.date)}
+                  </button>
+                </div>
+              )}
+
               <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                   <div className="min-w-0">
@@ -1148,6 +1176,11 @@ export default function CrmCash() {
                       >
                         Abrir nueva caja
                       </button>
+                    )}
+                    {staleSession && (
+                      <p className="text-xs text-amber-700 font-semibold self-center">
+                        Cierra la caja anterior para continuar.
+                      </p>
                     )}
                     {openSession && (
                       <button
