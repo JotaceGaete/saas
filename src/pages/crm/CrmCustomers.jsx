@@ -128,100 +128,118 @@ function CustomerCard({ c, balance, onView, onEdit, onDelete, deleting }) {
   const waNumber = cleanPhone(c.whatsapp || c.phone);
   const hasWa    = waNumber.length >= 7;
   const hasEmail = !!c.email;
-  const alDia    = (balance ?? 0) === 0;
+  const debt     = balance ?? 0;
+  const alDia    = debt === 0;
 
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow flex flex-col gap-3">
-      {/* Header de la card */}
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className={`w-11 h-11 rounded-full ${avatarColor(c.name)} flex items-center justify-center text-sm font-bold text-white shrink-0`}>
+    <div className="group bg-white border border-gray-100 rounded-2xl overflow-hidden hover:shadow-lg hover:border-gray-200 transition-all duration-200 flex flex-col">
+      {/* Franja de estado en la parte superior */}
+      <div className={`h-1 shrink-0 ${alDia ? 'bg-emerald-400' : 'bg-red-500'}`} />
+
+      {/* Header: avatar + nombre + acciones discretas */}
+      <div className="px-5 pt-4 pb-3 flex items-start justify-between gap-3">
+        <div className="flex items-center gap-3.5 min-w-0">
+          <div className={`w-12 h-12 rounded-xl ${avatarColor(c.name)} flex items-center justify-center text-base font-bold text-white shrink-0 shadow-sm`}>
             {initials(c.name)}
           </div>
           <div className="min-w-0">
-            <p className="font-semibold text-gray-900 text-sm truncate">{c.name || 'Sin nombre'}</p>
-            {hasCompany(c)
-              ? <p className="text-xs text-gray-500 truncate">{c.company}</p>
-              : <span className="text-xs text-gray-400">Persona natural</span>
-            }
+            <p className="font-bold text-gray-900 text-[15px] leading-tight truncate">{c.name || 'Sin nombre'}</p>
+            <p className="text-xs text-gray-400 mt-0.5 truncate">
+              {hasCompany(c) ? c.company : 'Persona natural'}
+            </p>
           </div>
         </div>
-        {/* Acciones */}
-        <div className="flex gap-1 shrink-0">
-          <button onClick={onView} className="p-1.5 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition-colors" title="Ver ficha">
-            <Icon name="Eye" size={13} />
+        <div className="flex gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button onClick={onView}   className="p-1.5 text-gray-300 hover:text-blue-500 rounded-lg hover:bg-blue-50 transition-colors"  title="Ver ficha">
+            <Icon name="Eye"    size={13} />
           </button>
-          <button onClick={onEdit} className="p-1.5 text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-100 transition-colors" title="Editar">
+          <button onClick={onEdit}   className="p-1.5 text-gray-300 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors"  title="Editar">
             <Icon name="Pencil" size={13} />
           </button>
-          <button onClick={onDelete} disabled={deleting} className="p-1.5 text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors" title="Eliminar">
+          <button onClick={onDelete} disabled={deleting} className="p-1.5 text-gray-300 hover:text-red-400 rounded-lg hover:bg-red-50 transition-colors" title="Eliminar">
             {deleting ? <Icon name="Loader2" size={13} className="animate-spin" /> : <Icon name="Trash2" size={13} />}
           </button>
         </div>
       </div>
 
-      {/* Badge estado financiero */}
-      <div>
-        {alDia ? (
-          <span className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-green-50 text-green-700 font-medium border border-green-100">
-            <Icon name="CheckCircle2" size={11} />
-            Al día
-          </span>
-        ) : (
-          <button onClick={onView} className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-red-50 text-red-700 font-medium border border-red-100 hover:bg-red-100 transition-colors">
-            <Icon name="AlertCircle" size={11} />
-            Debe ${(balance ?? 0).toLocaleString('es-CL')}
-          </button>
-        )}
+      {/* Deuda — elemento visual dominante */}
+      <div
+        className={`mx-4 mb-3 rounded-xl px-4 py-3 flex items-center justify-between ${
+          alDia
+            ? 'bg-emerald-50 border border-emerald-100'
+            : 'bg-red-50 border border-red-100 cursor-pointer hover:bg-red-100 transition-colors'
+        }`}
+        onClick={!alDia ? onView : undefined}
+        role={!alDia ? 'button' : undefined}
+      >
+        <div>
+          <p className={`text-[10px] font-bold uppercase tracking-wider mb-0.5 ${alDia ? 'text-emerald-600' : 'text-red-500'}`}>
+            {alDia ? 'Sin deuda' : 'Saldo pendiente'}
+          </p>
+          <p className={`text-xl font-black leading-none ${alDia ? 'text-emerald-700' : 'text-red-600'}`}>
+            {alDia ? 'Al día ✓' : `$${debt.toLocaleString('es-CL')}`}
+          </p>
+        </div>
+        {alDia
+          ? <Icon name="CheckCircle2" size={20} className="text-emerald-400 shrink-0" />
+          : <Icon name="ChevronRight" size={16} className="text-red-400 shrink-0" />
+        }
       </div>
 
       {/* Datos de contacto */}
-      <div className="space-y-1.5">
+      <div className="px-5 pb-3 space-y-1.5">
         {(c.phone || c.whatsapp) && (
           <div className="flex items-center gap-2 text-xs text-gray-500">
-            <Icon name="Phone" size={12} className="shrink-0 text-gray-400" />
+            <Icon name="Phone" size={12} className="shrink-0 text-gray-300" />
             <span className="truncate">{c.whatsapp || c.phone}</span>
           </div>
         )}
         {c.email && (
           <div className="flex items-center gap-2 text-xs text-gray-500">
-            <Icon name="Mail" size={12} className="shrink-0 text-gray-400" />
+            <Icon name="Mail" size={12} className="shrink-0 text-gray-300" />
             <span className="truncate">{c.email}</span>
           </div>
         )}
         {c.rut && (
           <div className="flex items-center gap-2 text-xs text-gray-500">
-            <Icon name="Hash" size={12} className="shrink-0 text-gray-400" />
+            <Icon name="Hash" size={12} className="shrink-0 text-gray-300" />
             <span>{c.rut}</span>
           </div>
         )}
       </div>
 
-      {/* Acciones rápidas de contacto */}
-      {(hasWa || hasEmail) && (
-        <div className="flex gap-2 pt-1 border-t border-gray-100">
-          {hasWa && (
-            <a
-              href={`https://wa.me/${waNumber}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 rounded-lg bg-green-50 hover:bg-green-100 text-green-700 text-xs font-medium transition-colors"
-            >
-              <Icon name="MessageCircle" size={13} />
-              WhatsApp
-            </a>
-          )}
-          {hasEmail && (
-            <a
-              href={`mailto:${c.email}`}
-              className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-medium transition-colors"
-            >
-              <Icon name="Mail" size={13} />
-              Email
-            </a>
-          )}
-        </div>
-      )}
+      {/* CTAs — WhatsApp prominente, email secundario */}
+      <div className="mt-auto px-4 pb-4 pt-2 flex gap-2 border-t border-gray-50">
+        {hasWa ? (
+          <a
+            href={`https://wa.me/${waNumber}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex-1 inline-flex items-center justify-center gap-2 py-2.5 rounded-xl bg-[#25D366] hover:bg-[#1ebe5d] text-white text-xs font-bold transition-colors shadow-sm"
+          >
+            <Icon name="MessageCircle" size={14} />
+            WhatsApp
+          </a>
+        ) : null}
+        {hasEmail ? (
+          <a
+            href={`mailto:${c.email}`}
+            className="flex-1 inline-flex items-center justify-center gap-2 py-2.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-600 text-xs font-bold transition-colors"
+          >
+            <Icon name="Mail" size={14} />
+            Email
+          </a>
+        ) : null}
+        {!hasWa && !hasEmail ? (
+          <button
+            onClick={onView}
+            className="flex-1 inline-flex items-center justify-center gap-2 py-2.5 rounded-xl bg-gray-50 hover:bg-gray-100 text-gray-500 text-xs font-bold transition-colors"
+          >
+            <Icon name="Eye" size={14} />
+            Ver ficha
+          </button>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -761,49 +779,84 @@ export default function CrmCustomers() {
       <DashboardLayoutContent>
         {/* ── Métricas ── */}
         <div className="grid grid-cols-3 gap-3">
-          <div className="bg-white border border-gray-200 rounded-xl p-4">
-            <p className="text-xs text-gray-400 mb-1">Total clientes</p>
-            <p className="text-2xl font-bold text-gray-900">{loading ? '—' : totalClientes}</p>
+          <div className="bg-white border border-gray-100 rounded-2xl p-4 flex flex-col gap-1 shadow-sm">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
+                <Icon name="Users" size={14} className="text-blue-500" />
+              </span>
+              <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide leading-none">Clientes</p>
+            </div>
+            <p className="text-3xl font-black text-gray-900 leading-none">{loading ? '—' : totalClientes}</p>
           </div>
-          <div className="bg-white border border-gray-200 rounded-xl p-4">
-            <p className="text-xs text-gray-400 mb-1">Con deuda</p>
-            <p className="text-2xl font-bold text-red-600">{loading ? '—' : clientesConDeuda}</p>
+          <div className="bg-white border border-gray-100 rounded-2xl p-4 flex flex-col gap-1 shadow-sm">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="w-7 h-7 rounded-lg bg-red-50 flex items-center justify-center shrink-0">
+                <Icon name="AlertCircle" size={14} className="text-red-400" />
+              </span>
+              <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide leading-none">Con deuda</p>
+            </div>
+            <p className="text-3xl font-black text-red-500 leading-none">{loading ? '—' : clientesConDeuda}</p>
           </div>
-          <div className="bg-white border border-gray-200 rounded-xl p-4">
-            <p className="text-xs text-gray-400 mb-1">Por cobrar</p>
-            <p className="text-lg font-bold text-gray-900 leading-tight">{loading ? '—' : fmt(totalPorCobrar)}</p>
+          <div className="bg-white border border-gray-100 rounded-2xl p-4 flex flex-col gap-1 shadow-sm">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="w-7 h-7 rounded-lg bg-amber-50 flex items-center justify-center shrink-0">
+                <Icon name="DollarSign" size={14} className="text-amber-500" />
+              </span>
+              <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide leading-none">Por cobrar</p>
+            </div>
+            <p className="text-xl font-black text-gray-900 leading-none">{loading ? '—' : fmt(totalPorCobrar)}</p>
           </div>
         </div>
 
         {/* ── Buscador ── */}
         <div className="relative">
-          <Icon name="Search" size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          <Icon name="Search" size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           <input
             type="text"
             placeholder="Buscar por nombre, empresa, email o teléfono…"
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className="w-full border border-gray-200 rounded-xl pl-9 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            className="w-full border border-gray-200 rounded-xl pl-10 pr-10 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white shadow-sm"
           />
+          {search && (
+            <button
+              onClick={() => setSearch('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5 rounded"
+            >
+              <Icon name="X" size={14} />
+            </button>
+          )}
         </div>
 
         {/* ── Lista ── */}
         {loading ? (
-          <div className="flex justify-center py-20">
-            <Icon name="Loader2" size={32} className="animate-spin text-blue-500" />
+          <div className="flex flex-col items-center justify-center py-24 gap-3">
+            <Icon name="Loader2" size={28} className="animate-spin text-blue-400" />
+            <p className="text-sm text-gray-400">Cargando clientes…</p>
           </div>
         ) : filtered.length === 0 ? (
-          <div className="text-center py-20">
-            <Icon name="Users" size={48} className="mx-auto mb-3 text-gray-300" />
-            <p className="text-gray-500 font-medium">
-              {search ? 'Sin resultados para esa búsqueda.' : 'Todavía no hay clientes.'}
+          <div className="flex flex-col items-center justify-center py-24 text-center gap-3">
+            <span className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center mb-1">
+              {search
+                ? <Icon name="SearchX" size={28} className="text-gray-400" />
+                : <Icon name="Users" size={28} className="text-gray-400" />
+              }
+            </span>
+            <p className="text-base font-bold text-gray-700">
+              {search ? 'Sin resultados' : 'Aún no hay clientes'}
+            </p>
+            <p className="text-sm text-gray-400 max-w-xs">
+              {search
+                ? `No se encontraron clientes para "${search}".`
+                : 'Agrega tu primer cliente para empezar a gestionar tu cartera.'}
             </p>
             {!search && (
               <button
                 onClick={() => setModal('new')}
-                className="mt-4 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 transition-colors"
+                className="mt-2 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 transition-colors shadow-sm"
               >
-                <Icon name="UserPlus" size={16} />Crear primer cliente
+                <Icon name="UserPlus" size={15} />
+                Crear primer cliente
               </button>
             )}
           </div>
