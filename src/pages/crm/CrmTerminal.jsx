@@ -151,19 +151,6 @@ function ManualItemModal({ onAdd, onClose, currency }) {
   );
 }
 
-function useSidebarHidden() {
-  const [hidden, setHidden] = useState(() => {
-    try { return localStorage.getItem('tpv_sidebar_hidden') === 'true'; } catch { return false; }
-  });
-  const toggle = useCallback(() => {
-    setHidden(prev => {
-      const next = !prev;
-      try { localStorage.setItem('tpv_sidebar_hidden', String(next)); } catch {}
-      return next;
-    });
-  }, []);
-  return [hidden, toggle];
-}
 
 // ── ErrorBoundary específico del TPV ─────────────────────────────────────────
 // Clase separada de ErrorBoundary.jsx para mostrar "Recargar terminal"
@@ -203,7 +190,6 @@ function CrmTerminalUI() {
   const navigate = useNavigate();
   const { business } = useAuth();
   const isDesktop = useIsDesktop();
-  const [sidebarHidden, toggleSidebar] = useSidebarHidden();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const effectivePlan = getEffectivePlanSlug(
@@ -543,54 +529,33 @@ function CrmTerminalUI() {
 
   // ── Sidebar layout helpers ──────────────────────────────────────────────────
   const sidebarWidth = sidebarCollapsed ? 'var(--sidebar-collapsed-width)' : 'var(--sidebar-width)';
-  const mainMarginLeft = isDesktop && !sidebarHidden ? sidebarWidth : 0;
+  const mainMarginLeft = isDesktop ? sidebarWidth : 0;
 
-  const hideMenuBtn = isDesktop && !sidebarHidden ? (
+  const collapseMenuBtn = isDesktop ? (
     <button
-      onClick={toggleSidebar}
+      onClick={() => setSidebarCollapsed(prev => !prev)}
       className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-all hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       style={{
         fontFamily: 'var(--font-caption)',
         color: 'var(--color-muted-foreground)',
         borderColor: 'var(--color-border)',
       }}
-      title="Ocultar menú lateral"
-      aria-label="Ocultar menú lateral"
+      title={sidebarCollapsed ? 'Expandir menú lateral' : 'Colapsar menú lateral'}
+      aria-label={sidebarCollapsed ? 'Expandir menú lateral' : 'Colapsar menú lateral'}
     >
-      <Icon name="PanelLeftClose" size={14} color="currentColor" />
-      Ocultar menú
+      <Icon name={sidebarCollapsed ? 'PanelLeftOpen' : 'PanelLeftClose'} size={14} color="currentColor" />
+      {sidebarCollapsed ? 'Expandir menú' : 'Colapsar menú'}
     </button>
   ) : null;
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'var(--color-background)' }}>
 
-      {/* Sidebar */}
-      {!sidebarHidden && (
-        <BusinessSidebar
-          isCollapsed={sidebarCollapsed}
-          onCollapsedChange={setSidebarCollapsed}
-        />
-      )}
-
-      {/* Floating button to reopen sidebar */}
-      {sidebarHidden && isDesktop && (
-        <button
-          onClick={toggleSidebar}
-          className="fixed flex items-center gap-1.5 rounded-lg border bg-white px-2.5 py-1.5 text-xs font-medium shadow-md hover:bg-muted transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          style={{
-            top: 12, left: 12, zIndex: 40,
-            fontFamily: 'var(--font-caption)',
-            color: 'var(--color-foreground)',
-            borderColor: 'var(--color-border)',
-          }}
-          title="Mostrar menú lateral"
-          aria-label="Mostrar menú lateral"
-        >
-          <Icon name="PanelLeftOpen" size={14} color="currentColor" />
-          Menú
-        </button>
-      )}
+      {/* Sidebar — siempre visible en desktop, solo colapsable */}
+      <BusinessSidebar
+        isCollapsed={sidebarCollapsed}
+        onCollapsedChange={setSidebarCollapsed}
+      />
 
       {/* Main */}
       <main
@@ -604,7 +569,7 @@ function CrmTerminalUI() {
             <PanelHeader
               title={<><CrmBreadcrumb section="Terminal TPV" /><h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Terminal de ventas</h1></>}
             >
-              {hideMenuBtn}
+              {collapseMenuBtn}
             </PanelHeader>
             <div className="flex flex-col items-center justify-center py-24 gap-4 px-6">
               <div className="w-16 h-16 rounded-2xl bg-amber-50 flex items-center justify-center">
@@ -644,7 +609,7 @@ function CrmTerminalUI() {
                 </p>
               }
             >
-              {hideMenuBtn}
+              {collapseMenuBtn}
             </PanelHeader>
 
             <div className="w-full px-4 py-4 pb-24 sm:px-5 md:px-6 lg:px-8 lg:pb-8">
@@ -944,7 +909,7 @@ function CrmTerminalUI() {
                     for the cart on 768px screens.
 
                     Mobile: normal flow; fixed bottom bar handles cobrar.        */}
-                <div className="w-full min-w-0 lg:sticky lg:top-4 lg:flex lg:max-h-[calc(100vh-2rem)] lg:flex-col">
+                <div className="w-full min-w-0 lg:sticky lg:top-4 lg:flex lg:h-[calc(100vh-5rem)] lg:flex-col">
 
                   {/* ── Zone 1: Customer ── flex-none ─────────────────────── */}
                   <div className="rounded-2xl border border-gray-200 bg-white p-3.5 shadow-sm lg:flex-none">
@@ -1092,7 +1057,7 @@ function CrmTerminalUI() {
                       Compacted to ~280px so the cart gets 200px+ on 768px.
                       Discount + Notes in one row. Payment as 4-button row.
                       Desktop totals+cobrar block is hidden on mobile.          */}
-                  <div className="flex flex-col gap-2 mt-2.5 lg:flex-none">
+                  <div className="flex flex-col gap-2 mt-2.5 lg:flex-none lg:shrink-0">
 
                     {/* Discount + Notes — single compact row */}
                     <div className="flex gap-2">
