@@ -575,15 +575,6 @@ function CrmTerminalUI() {
                 </p>
               }
             >
-              <button
-                onClick={() => setDiagVisible(v => !v)}
-                className="flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-lg border transition-colors"
-                style={{ color: diagVisible ? '#7c3aed' : 'var(--color-muted-foreground)', borderColor: diagVisible ? '#c4b5fd' : 'var(--color-border)', backgroundColor: diagVisible ? '#f5f3ff' : 'transparent' }}
-                title="Panel de diagnóstico TPV"
-              >
-                <Icon name="Bug" size={12} />
-                Diag
-              </button>
               {hideMenuBtn}
             </PanelHeader>
 
@@ -593,8 +584,8 @@ function CrmTerminalUI() {
                 {/* ── LEFT: search + categories + products ── */}
                 <div className="flex-1 min-w-0 flex flex-col gap-3">
 
-                  {/* ── Panel de diagnóstico (temporal) ── */}
-                  {diagVisible && (
+                  {/* ── Panel de diagnóstico — solo en entorno de desarrollo ── */}
+                  {import.meta.env.DEV && diagVisible && (
                     <div className="rounded-xl border border-purple-200 bg-purple-50 px-4 py-3 text-xs font-mono space-y-1.5">
                       <div className="flex items-center gap-2 mb-1">
                         <Icon name="Bug" size={13} color="#7c3aed" />
@@ -768,16 +759,37 @@ function CrmTerminalUI() {
                         ? `Sin resultados para "${debouncedSearch}"`
                         : posProducts.length === 0
                           ? (
-                            <div className="space-y-2">
-                              <p className="font-medium text-gray-500">No tienes productos rápidos en el TPV.</p>
-                              <p className="text-xs text-gray-400">Marca productos como &quot;Visible en TPV&quot; desde el editor de productos.</p>
+                            <div className="flex flex-col items-center gap-3 py-4">
+                              <Icon name="ShoppingBag" size={44} className="text-gray-200" />
+                              <div className="space-y-1 text-center">
+                                <p className="font-semibold text-gray-700 text-base">No tienes productos visibles en el TPV</p>
+                                {allProducts.length > 0 ? (
+                                  <p className="text-sm text-gray-400">
+                                    Tienes <strong className="text-gray-600">{allProducts.length} producto{allProducts.length !== 1 ? 's' : ''}</strong> registrado{allProducts.length !== 1 ? 's' : ''}, pero ninguno está marcado para venderse desde el Terminal de Ventas.
+                                  </p>
+                                ) : (
+                                  <p className="text-sm text-gray-400">Agrega productos a tu catálogo para poder venderlos desde aquí.</p>
+                                )}
+                              </div>
+                              {allProducts.length > 0 && (
+                                <div className="flex items-center gap-2 rounded-xl border border-gray-100 bg-gray-50 px-4 py-2.5 text-xs text-gray-500">
+                                  <span>Productos cargados:</span>
+                                  <strong className="text-gray-700">{allProducts.length}</strong>
+                                  <span className="mx-1 text-gray-300">·</span>
+                                  <span>Visibles en TPV:</span>
+                                  <strong className="text-gray-700">0</strong>
+                                </div>
+                              )}
                               <button
                                 onClick={() => navigate('/product-management')}
-                                className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition-colors"
+                                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-colors"
                               >
-                                <Icon name="Package" size={13} />
-                                Ir a productos
+                                <Icon name="Package" size={15} />
+                                {allProducts.length > 0 ? 'Configurar productos para TPV' : 'Ir a productos'}
                               </button>
+                              <p className="text-[11px] text-gray-400 text-center max-w-xs">
+                                Abre el editor de cada producto y activa la opción <strong>"Visible en TPV"</strong> para que aparezca aquí.
+                              </p>
                             </div>
                           )
                           : 'Sin productos en esta categoría'
