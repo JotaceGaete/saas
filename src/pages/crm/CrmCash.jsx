@@ -549,13 +549,18 @@ function CashMovementModal({ defaultDirection = 'out', busy, onSubmit, onCancel 
   const [amount,     setAmount]     = useState('');
   const [reason,     setReason]     = useState('');
   const [category,   setCategory]   = useState('');
+  const [isExpense,  setIsExpense]  = useState(false);
   const [notes,      setNotes]      = useState('');
   const [error,      setError]      = useState('');
 
-  const categories = direction === 'out' ? CASH_MOVEMENT_CATEGORIES_OUT : CASH_MOVEMENT_CATEGORIES_IN;
+  const categories    = direction === 'out' ? CASH_MOVEMENT_CATEGORIES_OUT : CASH_MOVEMENT_CATEGORIES_IN;
+  const selectedCat   = categories.find(c => c.value === category);
+  const canBeExpense  = direction === 'out' && (selectedCat?.isExpense ?? false);
 
   // Resetear categoría al cambiar dirección
-  useEffect(() => { setCategory(''); setError(''); }, [direction]);
+  useEffect(() => { setCategory(''); setIsExpense(false); setError(''); }, [direction]);
+  // Si la nueva categoría no puede ser gasto, desmarcar automáticamente
+  useEffect(() => { if (!canBeExpense) setIsExpense(false); }, [canBeExpense]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -564,10 +569,11 @@ function CashMovementModal({ defaultDirection = 'out', busy, onSubmit, onCancel 
     if (!category) { setError('Selecciona una categoría.'); return; }
     onSubmit({
       direction,
-      amount:   parseMoneyInput(amount),
-      reason:   reason.trim(),
+      amount:    parseMoneyInput(amount),
+      reason:    reason.trim(),
       category,
-      notes:    notes.trim() || null,
+      isExpense: canBeExpense && isExpense,
+      notes:     notes.trim() || null,
     });
   };
 
@@ -663,6 +669,24 @@ function CashMovementModal({ defaultDirection = 'out', busy, onSubmit, onCancel 
               }`}
             />
           </div>
+
+          {/* Registrar como gasto — solo visible para categorías que son gastos */}
+          {canBeExpense && (
+            <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-orange-200 bg-orange-50 px-3 py-3">
+              <input
+                type="checkbox"
+                checked={isExpense}
+                onChange={e => setIsExpense(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+              />
+              <div>
+                <p className="text-sm font-semibold text-orange-800">Registrar también como gasto del negocio</p>
+                <p className="text-xs text-orange-600 mt-0.5">
+                  Aparecerá en Costos del mes y afectará la utilidad en el Centro de Costos.
+                </p>
+              </div>
+            </label>
+          )}
 
           {/* Notas opcionales */}
           <div>
@@ -968,9 +992,12 @@ export default function CrmCash() {
     if (!currentSession?.id || !business?.id) return;
     setBusy(true);
     setErrorMsg('');
+    const now = new Date();
     const { error } = await createCashMovement(business.id, {
       ...fields,
       sessionId: currentSession.id,
+      month:     now.getMonth() + 1,
+      year:      now.getFullYear(),
     });
     setBusy(false);
     if (error) { setErrorMsg(error.message); return; }

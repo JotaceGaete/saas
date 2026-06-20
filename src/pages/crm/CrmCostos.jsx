@@ -132,6 +132,7 @@ function CostItemModal({ item, businessId, month, year, onClose, onSaved }) {
 
 function CostRow({ item, onEdit, onDelete }) {
   const [confirming, setConfirming] = useState(false);
+  const fromCash = item.source === 'cash_outflow';
 
   const handleDelete = async () => {
     if (!confirming) { setConfirming(true); return; }
@@ -140,30 +141,49 @@ function CostRow({ item, onEdit, onDelete }) {
   };
 
   return (
-    <div className="flex items-center justify-between gap-3 py-3 border-b border-gray-50 last:border-0">
+    <div className={`flex items-center justify-between gap-3 py-3 border-b border-gray-50 last:border-0 ${fromCash ? 'opacity-90' : ''}`}>
       <div className="flex items-center gap-2.5 min-w-0">
-        <div className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
-          <Icon name="Tag" size={13} color="#2563eb" />
+        <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${fromCash ? 'bg-orange-50' : 'bg-blue-50'}`}>
+          <Icon name={fromCash ? 'Wallet' : 'Tag'} size={13} color={fromCash ? '#ea580c' : '#2563eb'} />
         </div>
         <div className="min-w-0">
-          <p className="text-sm font-medium text-gray-800 truncate">{item.name || CATEGORY_LABELS[item.category] || 'Costo'}</p>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <p className="text-sm font-medium text-gray-800 truncate">{item.name || CATEGORY_LABELS[item.category] || 'Costo'}</p>
+            {fromCash && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-1.5 py-0.5 text-[10px] font-bold text-orange-700">
+                <Icon name="Wallet" size={9} />
+                Desde caja
+              </span>
+            )}
+          </div>
           <p className="text-[11px] text-gray-400">{CATEGORY_LABELS[item.category] || item.category}</p>
         </div>
       </div>
       <div className="flex items-center gap-2 shrink-0">
         <span className="text-sm font-bold text-gray-800">{fmt(item.amount)}</span>
-        <button onClick={() => onEdit(item)} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600">
-          <Icon name="Pencil" size={13} />
-        </button>
-        <button
-          onClick={handleDelete}
-          className={`p-1.5 rounded-lg text-sm font-medium transition-colors ${
-            confirming ? 'bg-red-100 text-red-600 hover:bg-red-200' : 'text-gray-400 hover:bg-gray-100 hover:text-red-500'
-          }`}
-          title={confirming ? 'Confirmar eliminar' : 'Eliminar'}
-        >
-          {confirming ? <Icon name="Check" size={13} /> : <Icon name="Trash2" size={13} />}
-        </button>
+        {fromCash ? (
+          <span
+            title="Registrado desde Caja — editar desde el módulo de Caja"
+            className="p-1.5 text-gray-300 cursor-not-allowed select-none"
+          >
+            <Icon name="Lock" size={13} />
+          </span>
+        ) : (
+          <>
+            <button onClick={() => onEdit(item)} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600">
+              <Icon name="Pencil" size={13} />
+            </button>
+            <button
+              onClick={handleDelete}
+              className={`p-1.5 rounded-lg text-sm font-medium transition-colors ${
+                confirming ? 'bg-red-100 text-red-600 hover:bg-red-200' : 'text-gray-400 hover:bg-gray-100 hover:text-red-500'
+              }`}
+              title={confirming ? 'Confirmar eliminar' : 'Eliminar'}
+            >
+              {confirming ? <Icon name="Check" size={13} /> : <Icon name="Trash2" size={13} />}
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

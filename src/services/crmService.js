@@ -1512,7 +1512,31 @@ export async function createCashMovement(businessId, {
   paymentMethod = 'cash',
   notes         = null,
   createdBy     = null,
+  isExpense     = false,
+  month         = null,
+  year          = null,
 } = {}) {
+  // Movimiento con gasto vinculado: usar RPC atómica
+  if (isExpense && direction === 'out') {
+    const now = new Date();
+    const { data, error } = await supabase.rpc('create_cash_movement_with_expense', {
+      p_business_id:    businessId,
+      p_session_id:     sessionId     || null,
+      p_direction:      direction,
+      p_amount:         amount,
+      p_reason:         reason.trim(),
+      p_category:       category,
+      p_payment_method: paymentMethod,
+      p_notes:          notes         || null,
+      p_created_by:     createdBy     || null,
+      p_movement_date:  getLocalDateString(),
+      p_month:          month         ?? (now.getMonth() + 1),
+      p_year:           year          ?? now.getFullYear(),
+    });
+    return { data, error };
+  }
+
+  // Movimiento sin gasto: insert directo
   const { data, error } = await supabase
     .from('crm_cash_movements')
     .insert({
@@ -1526,6 +1550,7 @@ export async function createCashMovement(businessId, {
       notes:          notes      || null,
       created_by:     createdBy  || null,
       movement_date:  getLocalDateString(),
+      is_expense:     false,
     })
     .select()
     .single();
