@@ -886,12 +886,16 @@ export default function CrmCash() {
   const detailPayments  = detailSession ? (sessionPayments[detailSession.id] || []) : [];
   const detailMvts      = detailSession ? (sessionMovements[detailSession.id] || []) : [];
 
-  const daySummary     = useMemo(() => summarizePayments(dayPayments), [dayPayments]);
-  const dayTotal       = useMemo(() => totalPayments(dayPayments), [dayPayments]);
-  const dayOutflows    = useMemo(() => totalMovementsOut(dayMovements), [dayMovements]);
-  const currentBalance = useMemo(() => calcSessionBalance(currentSession, currentPayments, currentMvts), [currentSession, currentPayments, currentMvts]);
-  const detailSummary  = useMemo(() => summarizePayments(detailPayments), [detailPayments]);
-  const detailBalance  = useMemo(() => calcSessionBalance(detailSession, detailPayments, detailMvts), [detailSession, detailPayments, detailMvts]);
+  const daySummary        = useMemo(() => summarizePayments(dayPayments), [dayPayments]);
+  const dayTotal          = useMemo(() => totalPayments(dayPayments), [dayPayments]);
+  const dayOutflows       = useMemo(() => totalMovementsOut(dayMovements), [dayMovements]);
+  // Métricas de la sesión actual (cuadran exactamente con la tabla)
+  const sessionTotal      = useMemo(() => totalPayments(currentPayments), [currentPayments]);
+  const sessionOutflows   = useMemo(() => totalMovementsOut(currentMvts), [currentMvts]);
+  const sessionSummary    = useMemo(() => summarizePayments(currentPayments), [currentPayments]);
+  const currentBalance    = useMemo(() => calcSessionBalance(currentSession, currentPayments, currentMvts), [currentSession, currentPayments, currentMvts]);
+  const detailSummary     = useMemo(() => summarizePayments(detailPayments), [detailPayments]);
+  const detailBalance     = useMemo(() => calcSessionBalance(detailSession, detailPayments, detailMvts), [detailSession, detailPayments, detailMvts]);
 
   const handleOpen = async ({ initialAmount, notes }) => {
     if (!business?.id) return;
@@ -1098,11 +1102,11 @@ export default function CrmCash() {
                     {currentSession && (
                       <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm">
                         <span>
-                          Cobros: <strong className="text-emerald-700">{formatMoney(dayTotal, business?.currency)}</strong>
+                          Cobros: <strong className="text-emerald-700">{formatMoney(sessionTotal, business?.currency)}</strong>
                         </span>
-                        {dayOutflows > 0 && (
+                        {sessionOutflows > 0 && (
                           <span>
-                            Salidas: <strong className="text-red-600">−{formatMoney(dayOutflows, business?.currency)}</strong>
+                            Salidas: <strong className="text-red-600">−{formatMoney(sessionOutflows, business?.currency)}</strong>
                           </span>
                         )}
                         <span>
@@ -1157,15 +1161,15 @@ export default function CrmCash() {
               <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
                 <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Cobros del día</p>
-                    <p className="mt-1 text-lg font-black text-emerald-700">{formatMoney(dayTotal, business?.currency)}</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Cobros de la caja</p>
+                    <p className="mt-1 text-lg font-black text-emerald-700">{formatMoney(sessionTotal, business?.currency)}</p>
                   </div>
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Salidas del día</p>
-                    <p className="mt-1 text-lg font-black text-red-600">{dayOutflows > 0 ? `−${formatMoney(dayOutflows, business?.currency)}` : '—'}</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Salidas de la caja</p>
+                    <p className="mt-1 text-lg font-black text-red-600">{sessionOutflows > 0 ? `−${formatMoney(sessionOutflows, business?.currency)}` : '—'}</p>
                   </div>
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Saldo actual</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Saldo de caja</p>
                     <p className="mt-1 text-lg font-black text-gray-900">{formatMoney(currentBalance, business?.currency)}</p>
                   </div>
                   <div>
@@ -1180,7 +1184,7 @@ export default function CrmCash() {
                   Ver movimientos
                 </SectionButton>
                 <SectionButton open={showDayBreakdown} onClick={() => setShowDayBreakdown(value => !value)}>
-                  Ver desglose del dia
+                  Resumen del día completo
                 </SectionButton>
                 <SectionButton open={showHistory} onClick={() => setShowHistory(value => !value)}>
                   Ver historial de cajas
@@ -1283,7 +1287,20 @@ export default function CrmCash() {
               )}
 
               {showDayBreakdown && (
-                <MethodBreakdown summary={daySummary} currency={business?.currency} />
+                <div className="space-y-3">
+                  <div className="rounded-2xl border border-gray-100 bg-white p-4">
+                    <p className="mb-3 text-xs font-bold uppercase tracking-wide text-gray-400">
+                      Resumen del día completo — por método de pago
+                    </p>
+                    <MethodBreakdown summary={daySummary} currency={business?.currency} />
+                    <p className="mt-3 text-right text-xs text-gray-400">
+                      Total del día: <strong className="text-gray-700">{formatMoney(dayTotal, business?.currency)}</strong>
+                      {dayOutflows > 0 && (
+                        <> · Salidas: <strong className="text-red-600">−{formatMoney(dayOutflows, business?.currency)}</strong></>
+                      )}
+                    </p>
+                  </div>
+                </div>
               )}
 
               {showHistory && (
