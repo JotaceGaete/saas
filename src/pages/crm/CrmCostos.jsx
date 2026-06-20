@@ -40,7 +40,7 @@ const fmt = (n) => formatMoney(n, 'CLP');
 function CostItemModal({ item, businessId, month, year, onClose, onSaved }) {
   const isEdit = !!item?.id;
   const [category, setCategory] = useState(item?.category || 'rent');
-  const [label,    setLabel]    = useState(item?.label || '');
+  const [label,    setLabel]    = useState(item?.name || '');
   const [amount,   setAmount]   = useState(item?.amount?.toString() || '');
   const [saving,   setSaving]   = useState(false);
   const [error,    setError]    = useState('');
@@ -52,7 +52,7 @@ function CostItemModal({ item, businessId, month, year, onClose, onSaved }) {
     try {
       const fields = {
         category,
-        label: label.trim() || CATEGORY_LABELS[category] || 'Costo',
+        name: label.trim() || CATEGORY_LABELS[category] || 'Costo',
         amount: amt,
       };
       if (isEdit) {
@@ -146,7 +146,7 @@ function CostRow({ item, onEdit, onDelete }) {
           <Icon name="Tag" size={13} color="#2563eb" />
         </div>
         <div className="min-w-0">
-          <p className="text-sm font-medium text-gray-800 truncate">{item.label || CATEGORY_LABELS[item.category] || 'Costo'}</p>
+          <p className="text-sm font-medium text-gray-800 truncate">{item.name || CATEGORY_LABELS[item.category] || 'Costo'}</p>
           <p className="text-[11px] text-gray-400">{CATEGORY_LABELS[item.category] || item.category}</p>
         </div>
       </div>

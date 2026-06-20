@@ -21,6 +21,7 @@ export default function CrmInvoices() {
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState('');
+  const [search, setSearch] = useState('');
 
   const load = async () => {
     if (!business?.id) return;
@@ -33,6 +34,17 @@ export default function CrmInvoices() {
   useEffect(() => { load(); }, [business?.id]);
 
   const fmt = (n) => formatMoney(n, business?.currency);
+
+  const filtered = search.trim()
+    ? invoices.filter(inv => {
+        const q = search.trim().toLowerCase();
+        return (
+          formatInvoiceNumber(inv.invoice_number).toLowerCase().includes(q) ||
+          (inv.wa_customers?.name || '').toLowerCase().includes(q) ||
+          (inv.issue_date || '').includes(q)
+        );
+      })
+    : invoices;
 
   const handleStatus = async (id, status) => {
     if (status === 'anulada' && !window.confirm('¿Anular esta factura? Esta acción no se puede deshacer.')) return;
@@ -67,6 +79,20 @@ export default function CrmInvoices() {
       </PanelHeader>
 
       <DashboardLayoutContent>
+        {!loading && invoices.length > 0 && (
+          <div className="mb-4">
+            <div className="relative">
+              <Icon name="Search" size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Buscar por número, cliente o fecha…"
+                className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+        )}
         {loading ? (
           <div className="flex justify-center py-20">
             <Icon name="Loader2" size={32} className="animate-spin text-blue-500" />
@@ -82,9 +108,15 @@ export default function CrmInvoices() {
               <Icon name="PlusCircle" size={16} />Crear primera factura
             </button>
           </div>
+        ) : filtered.length === 0 ? (
+          <div className="text-center py-12">
+            <Icon name="SearchX" size={36} className="mx-auto mb-3 text-gray-300" />
+            <p className="text-gray-500 text-sm">Sin resultados para <strong>"{search}"</strong></p>
+            <button onClick={() => setSearch('')} className="mt-2 text-blue-600 text-sm hover:underline">Limpiar búsqueda</button>
+          </div>
         ) : (
           <div className="space-y-3">
-            {invoices.map(inv => {
+            {filtered.map(inv => {
               const pagado = (inv.crm_payments || []).reduce((s, p) => s + (p.amount || 0), 0);
               const saldo  = (inv.total || 0) - pagado;
               const fullPaid = saldo <= 0 && pagado > 0;

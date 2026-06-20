@@ -124,7 +124,9 @@ function CrmPdfDocument({ type, document: doc, business, customer, extra = {} })
   const isQuote   = type === 'quote';
   const items     = isQuote ? (doc.crm_quote_items || []) : (doc.crm_invoice_items || []);
   const docLabel  = getQuoteDocLabel(business?.documentTitleType);
-  const docNum    = isQuote ? formatQuoteNumber(doc.quote_number ?? 0, business?.documentTitleType) : formatInvoiceNumber(doc.invoice_number ?? 0);
+  const docNum    = isQuote
+    ? (doc.quote_number != null ? formatQuoteNumber(doc.quote_number, business?.documentTitleType) : 'Borrador')
+    : (doc.invoice_number != null ? formatInvoiceNumber(doc.invoice_number) : 'Borrador');
   const docTitle  = isQuote ? docLabel.title : 'Nota de Venta';
   const currency  = business?.currency || 'CLP';
   const today     = new Date().toLocaleDateString('es-CL');
@@ -282,7 +284,9 @@ function HtmlDocumentPreview({ type, document: doc, business, customer, extra = 
   const isQuote  = type === 'quote';
   const items    = isQuote ? (doc.crm_quote_items || []) : (doc.crm_invoice_items || []);
   const docLabel  = getQuoteDocLabel(business?.documentTitleType);
-  const docNum   = isQuote ? formatQuoteNumber(doc.quote_number ?? 0, business?.documentTitleType) : formatInvoiceNumber(doc.invoice_number ?? 0);
+  const docNum   = isQuote
+    ? (doc.quote_number != null ? formatQuoteNumber(doc.quote_number, business?.documentTitleType) : 'Borrador')
+    : (doc.invoice_number != null ? formatInvoiceNumber(doc.invoice_number) : 'Borrador');
   const docTitle = isQuote ? docLabel.title : 'Nota de Venta';
   const currency = business?.currency || 'CLP';
   const today    = new Date().toLocaleDateString('es-CL');
@@ -458,8 +462,8 @@ export default function CrmDocumentPdf({ type, document: doc, business, customer
 
   const docLabelForFilename = getQuoteDocLabel(business?.documentTitleType);
   const filename = type === 'quote'
-    ? `${docLabelForFilename.singular}-${formatQuoteNumber(doc?.quote_number ?? 0, business?.documentTitleType)}.pdf`
-    : `nota-venta-${formatInvoiceNumber(doc?.invoice_number ?? 0)}.pdf`;
+    ? `${docLabelForFilename.singular}-${doc?.quote_number != null ? formatQuoteNumber(doc.quote_number, business?.documentTitleType) : 'borrador'}.pdf`
+    : `nota-venta-${doc?.invoice_number != null ? formatInvoiceNumber(doc.invoice_number) : 'borrador'}.pdf`;
 
   const pdfEl = <CrmPdfDocument type={type} document={doc} business={business} customer={customer} extra={extra} />;
 
@@ -480,6 +484,14 @@ export default function CrmDocumentPdf({ type, document: doc, business, customer
             {isMobile && <p className="text-[10px] text-gray-400 leading-tight">Vista previa — PDF disponible en escritorio</p>}
           </div>
         </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onClose}
+            className="inline-flex items-center gap-1.5 px-3 py-2 border border-gray-200 text-gray-600 hover:bg-gray-50 rounded-lg text-sm font-medium"
+          >
+            <Icon name="ArrowLeft" size={14} />
+            Volver a editar
+          </button>
         <PDFDownloadLink
           document={pdfEl}
           fileName={filename}
@@ -490,6 +502,7 @@ export default function CrmDocumentPdf({ type, document: doc, business, customer
             : <><Icon name="Download" size={15} />Descargar PDF</>
           }
         </PDFDownloadLink>
+        </div>
       </div>
 
       {/* Content */}

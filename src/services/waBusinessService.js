@@ -1080,10 +1080,10 @@ export const createProduct = async (businessId, productData) => {
       productData?.comboConfig && typeof productData.comboConfig === 'object' && !Array.isArray(productData.comboConfig)
         ? productData.comboConfig
         : null,
-    sku:          productData?.sku          || null,
-    barcode:      productData?.barcode      || null,
     show_in_pos:  productData?.showInPos    === true,
     pos_sort_order: productData?.posSortOrder ?? 0,
+    ...(productData?.sku     != null ? { sku:     productData.sku     || null } : {}),
+    ...(productData?.barcode != null ? { barcode: productData.barcode || null } : {}),
   })?.select()?.single();
   if (error) {
     if (error?.message?.includes('Límite de productos alcanzado')) {

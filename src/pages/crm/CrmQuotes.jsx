@@ -24,6 +24,7 @@ export default function CrmQuotes() {
   const [quotes, setQuotes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState('');
+  const [search, setSearch] = useState('');
 
   const load = async () => {
     if (!business?.id) return;
@@ -63,6 +64,17 @@ export default function CrmQuotes() {
 
   const docLabel = getQuoteDocLabel(business?.documentTitleType);
 
+  const filtered = search.trim()
+    ? quotes.filter(q => {
+        const query = search.trim().toLowerCase();
+        return (
+          formatQuoteNumber(q.quote_number, business?.documentTitleType).toLowerCase().includes(query) ||
+          (q.wa_customers?.name || '').toLowerCase().includes(query) ||
+          (q.created_at || '').slice(0, 10).includes(query)
+        );
+      })
+    : quotes;
+
   return (
     <DashboardAppShell>
       <PanelHeader
@@ -88,6 +100,20 @@ export default function CrmQuotes() {
       </PanelHeader>
 
       <DashboardLayoutContent>
+        {!loading && quotes.length > 0 && (
+          <div className="mb-4">
+            <div className="relative">
+              <Icon name="Search" size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder={`Buscar por número, cliente o fecha…`}
+                className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+        )}
         {loading ? (
           <div className="flex justify-center py-20">
             <Icon name="Loader2" size={32} className="animate-spin text-blue-500" />
@@ -103,9 +129,15 @@ export default function CrmQuotes() {
               <Icon name="FilePlus" size={16} />Crear primer {docLabel.singular}
             </button>
           </div>
+        ) : filtered.length === 0 ? (
+          <div className="text-center py-12">
+            <Icon name="SearchX" size={36} className="mx-auto mb-3 text-gray-300" />
+            <p className="text-gray-500 text-sm">Sin resultados para <strong>"{search}"</strong></p>
+            <button onClick={() => setSearch('')} className="mt-2 text-blue-600 text-sm hover:underline">Limpiar búsqueda</button>
+          </div>
         ) : (
           <div className="space-y-3">
-            {quotes.map(q => {
+            {filtered.map(q => {
               const canEdit = EDITABLE_QUOTE_STATUSES.has(q.status) && !q.converted_to_invoice_id;
               return (
               <div key={q.id} className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-sm transition-shadow">
