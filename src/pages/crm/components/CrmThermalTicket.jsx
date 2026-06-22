@@ -61,6 +61,7 @@ export default function CrmThermalTicket({
   onNewSale,
   onClose,
   onReprint,
+  onReadyToPrint,
 }) {
   // Inject print styles while modal is open.
   // The print div is portaled directly into document.body so
@@ -115,13 +116,45 @@ export default function CrmThermalTicket({
     };
   }, []);
 
+  // Resolve ticket logo: ticket-specific > catalog logo > nothing.
+  const logoUrl = business?.ticketLogoUrl || business?.ticket_logo_url
+    || business?.logoUrl || business?.logo_url
+    || null;
+
+  // Fire onReadyToPrint once the portal logo image has loaded (or immediately if no logo).
+  // Queries the print portal DOM directly to avoid duplicating the img ref across preview + portal.
+  useEffect(() => {
+    if (!onReadyToPrint) return;
+    const ticketId = sale?.id ?? sale?.invoice_number;
+    if (!ticketId) return;
+    const id = String(ticketId);
+    if (!logoUrl) {
+      onReadyToPrint(id);
+      return;
+    }
+    const portalEl = document.getElementById('crm-thermal-print-root');
+    const img = portalEl?.querySelector('img');
+    if (!img || (img.complete && img.naturalWidth > 0)) {
+      onReadyToPrint(id);
+      return;
+    }
+    const onLoad = () => onReadyToPrint(id);
+    const onError = () => onReadyToPrint(id);
+    img.addEventListener('load', onLoad);
+    img.addEventListener('error', onError);
+    return () => {
+      img.removeEventListener('load', onLoad);
+      img.removeEventListener('error', onError);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const ticketNumber = sale?.invoice_number
     ? `NV-${pad(sale.invoice_number)}`
     : `T-${Date.now().toString().slice(-6)}`;
 
   const customerName = customer?.name || 'Consumidor final';
 
-  const logoUrl = business?.logoUrl || business?.logo_url || null;
   const address = business?.address || null;
   const phone = business?.whatsapp || null;
   const normalizedPayments = (payments || [])
@@ -165,7 +198,15 @@ export default function CrmThermalTicket({
               src={logoUrl}
               alt={business?.name || 'Logo'}
               crossOrigin="anonymous"
-              style={{ maxWidth: 260, maxHeight: 120, width: '90%', objectFit: 'contain', display: 'inline-block' }}
+              style={{
+                maxWidth: 140,
+                maxHeight: 70,
+                width: 'auto',
+                objectFit: 'contain',
+                display: 'block',
+                margin: '0 auto',
+                imageRendering: 'auto',
+              }}
             />
           </div>
         )}

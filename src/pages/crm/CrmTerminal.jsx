@@ -236,12 +236,6 @@ function CrmTerminalUI() {
     window.print();
   }, []);
 
-  useEffect(() => {
-    if (!ticketData) return;
-    const ticketId = ticketData.sale?.id ?? ticketData.sale?.invoice_number;
-    printTicketOnce(String(ticketId));
-  }, [ticketData, printTicketOnce]);
-
   // Debounce search → debouncedSearch
   useEffect(() => {
     clearTimeout(searchDebounceRef.current);
@@ -1319,6 +1313,7 @@ function CrmTerminalUI() {
           onNewSale={handleNewSale}
           onClose={handleCloseTicket}
           onReprint={handleReprint}
+          onReadyToPrint={printTicketOnce}
         />
       )}
 

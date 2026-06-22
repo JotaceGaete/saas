@@ -389,6 +389,7 @@ const mapBusinessFromDb = (row) => {
   facebookUrl: row?.facebook_url || null,
   printLegend: row?.print_legend || null,
   print_legend: row?.print_legend || null,
+  ticketLogoUrl: row?.ticket_logo_url || null,
   designSettings,
   orderMessageTemplate: row?.order_message_template || null,
   planSlug: row?.plan_slug || 'starter',
@@ -809,6 +810,7 @@ export async function updateBusiness(businessId, updates) {
     const normalizedPrintLegend = String(rawPrintLegend ?? '').trim();
     dbUpdates.print_legend = normalizedPrintLegend || null;
   }
+  if (updates?.ticketLogoUrl !== undefined)    dbUpdates.ticket_logo_url = updates?.ticketLogoUrl ?? null;
   if (updates?.planSlug !== undefined)         dbUpdates.plan_slug = updates?.planSlug;
   if (updates?.planExpiresAt !== undefined)    dbUpdates.plan_expires_at = updates?.planExpiresAt ?? null;
   if (updates?.trialExpiresAt !== undefined)   dbUpdates.trial_expires_at = updates?.trialExpiresAt ?? null;
@@ -860,6 +862,22 @@ export const uploadBusinessLogo = async (file, businessId) => {
     return {
       url: null,
       error: { message: error?.message || 'No se pudo subir el logo.' },
+    };
+  }
+};
+
+export const uploadTicketLogo = async (file, businessId) => {
+  const compressed = await compressImageForUpload(file, 'logo');
+  try {
+    const uploaded = await uploadToMediaService(compressed, {
+      type: 'business-logo',
+      businessId,
+    });
+    return { url: uploaded.url, error: null };
+  } catch (error) {
+    return {
+      url: null,
+      error: { message: error?.message || 'No se pudo subir el logo del ticket.' },
     };
   }
 };

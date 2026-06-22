@@ -6,7 +6,7 @@ import DashboardLayoutContent from 'components/ui/DashboardLayoutContent';
 import PremiumLoader from 'components/ui/PremiumLoader';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
-import { updateBusiness, getMyBusiness, getRubros, getEffectivePlanSlug } from '../../services/waBusinessService';
+import { updateBusiness, getMyBusiness, getRubros, getEffectivePlanSlug, uploadTicketLogo } from '../../services/waBusinessService';
 import { seedTemplateProductsIfEmpty } from '../../services/productTemplateService';
 import { DEMO_SOCIAL_LINKS, LEGACY_TEMPLATE_LOGO_PREFIX } from '../../utils/productTemplates';
 import { supabase } from '../../lib/supabase';
@@ -281,6 +281,10 @@ export default function BusinessConfiguration() {
   const [settingsTab, setSettingsTab] = useState('identity');
 
   const [isImprovingBusinessDescription, setIsImprovingBusinessDescription] = useState(false);
+  const [ticketLogoUrl, setTicketLogoUrl] = useState(null);
+  const [ticketLogoFile, setTicketLogoFile] = useState(null);
+  const [uploadingTicketLogo, setUploadingTicketLogo] = useState(false);
+  const ticketLogoInputRef = useRef(null);
 
   const effectivePlan = getEffectivePlanSlug(business?.planSlug, business?.planExpiresAt, business?.trialExpiresAt);
   const canUseAiDescription = effectivePlan === 'pro' || effectivePlan === 'business';
@@ -501,6 +505,8 @@ export default function BusinessConfiguration() {
         businessMode: business?.businessMode || BUSINESS_MODES.STORE,
         documentTitleType: business?.documentTitleType || 'cotizacion',
       });
+      setTicketLogoUrl(business?.ticketLogoUrl || null);
+      setTicketLogoFile(null);
       if (business?.designSettings) {
         const ds = business.designSettings;
         setDesign(prev => ({
@@ -547,6 +553,19 @@ export default function BusinessConfiguration() {
 
   const handleFormChange = (field, value) => {
     setForm(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleTicketLogoFile = (e) => {
+    const file = e?.target?.files?.[0];
+    if (!file || !file.type.startsWith('image/')) return;
+    setTicketLogoFile(file);
+    setTicketLogoUrl(URL.createObjectURL(file));
+    e.target.value = '';
+  };
+
+  const handleRemoveTicketLogo = () => {
+    setTicketLogoFile(null);
+    setTicketLogoUrl(null);
   };
 
   const handleRubroChange = (nextRaw) => {
@@ -729,6 +748,25 @@ export default function BusinessConfiguration() {
         showCatalogCurrencySymbol: false,
       };
     }
+
+    // Upload ticket logo if a new file was selected
+    let resolvedTicketLogoUrl = ticketLogoUrl && !ticketLogoFile ? ticketLogoUrl : null;
+    if (ticketLogoFile && bizId) {
+      setUploadingTicketLogo(true);
+      try {
+        const { url, error: uploadErr } = await uploadTicketLogo(ticketLogoFile, bizId);
+        if (uploadErr) {
+          showToast(uploadErr.message || 'Error al subir logo del ticket', 'error');
+        } else {
+          resolvedTicketLogoUrl = url;
+          setTicketLogoFile(null);
+          setTicketLogoUrl(url);
+        }
+      } finally {
+        setUploadingTicketLogo(false);
+      }
+    }
+    payload.ticketLogoUrl = resolvedTicketLogoUrl;
 
     try {
       const { data: updated, error } = await updateBusiness(bizId, payload);
@@ -934,6 +972,8 @@ export default function BusinessConfiguration() {
       facebookUrl: business?.facebookUrl || '',
       businessMode: business?.businessMode || BUSINESS_MODES.STORE,
     });
+    setTicketLogoUrl(business?.ticketLogoUrl || null);
+    setTicketLogoFile(null);
     setOrderMessageTemplate(business?.orderMessageTemplate || '');
     setFullAddressInput(
       buildFullAddressLine({
@@ -1545,6 +1585,61 @@ export default function BusinessConfiguration() {
                         <p className="text-right text-[11px] text-slate-400 tabular-nums mt-1.5 font-[family-name:var(--font-caption)]">
                           {(form?.description ?? '').length}/{BUSINESS_DESCRIPTION_MAX}
                         </p>
+                      </div>
+                    </SettingsField>
+
+                    <SettingsField
+                      label="Logo para ticket (opcional)"
+                      hint="Se imprime en la parte superior del ticket térmico. Recomendado: blanco y negro, horizontal, fondo transparente o blanco."
+                    >
+                      <div className="flex items-start gap-4">
+                        <div
+                          className="relative flex-shrink-0 flex items-center justify-center rounded-xl border-2 overflow-hidden bg-white"
+                          style={{
+                            width: 100,
+                            height: 50,
+                            borderColor: ticketLogoUrl ? 'var(--color-primary)' : 'var(--color-border)',
+                            backgroundColor: '#fff',
+                          }}
+                        >
+                          {ticketLogoUrl ? (
+                            <>
+                              <img
+                                src={ticketLogoUrl}
+                                alt="Logo ticket"
+                                style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', display: 'block' }}
+                              />
+                              <button
+                                type="button"
+                                onClick={handleRemoveTicketLogo}
+                                className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/60 flex items-center justify-center hover:bg-black/80 transition-colors"
+                                aria-label="Quitar logo del ticket"
+                              >
+                                <Icon name="X" size={10} color="#fff" />
+                              </button>
+                            </>
+                          ) : (
+                            <Icon name="Printer" size={20} color="var(--color-muted-foreground)" />
+                          )}
+                        </div>
+                        <div className="flex-1">
+                          <div
+                            onClick={() => ticketLogoInputRef.current?.click()}
+                            className="border-2 border-dashed rounded-lg p-3 text-center cursor-pointer transition-all duration-200 border-border hover:border-primary/50 hover:bg-muted/50"
+                          >
+                            <p className="text-sm font-medium" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>
+                              {uploadingTicketLogo ? 'Subiendo...' : ticketLogoUrl ? 'Cambiar logo' : 'Subir logo de ticket'}
+                            </p>
+                            <p className="text-xs mt-0.5" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>PNG, JPG, WEBP hasta 5MB</p>
+                          </div>
+                          <input
+                            ref={ticketLogoInputRef}
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={handleTicketLogoFile}
+                          />
+                        </div>
                       </div>
                     </SettingsField>
 
