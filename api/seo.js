@@ -730,7 +730,9 @@ async function handleSitemap(request) {
     .from('wa_businesses')
     .select('slug, updated_at')
     .eq('is_active', true)
-    .not('slug', 'is', null);
+    .not('slug', 'is', null)
+    .order('updated_at', { ascending: false })
+    .limit(5000);
 
   if (error) {
     return new Response(`Sitemap error: ${error.message}`, { status: 500 });
@@ -753,20 +755,26 @@ async function handleSitemap(request) {
     })
     .filter(Boolean);
 
-  const catalogUrls = urls
+  // Limit to 5000 URLs per sitemap spec recommendation
+  const limitedUrls = urls.slice(0, 5000);
+
+  const catalogUrls = limitedUrls
     .map(({ loc, lastmod }) => {
       const lm = lastmod ? `\n    <lastmod>${escapeXml(lastmod)}</lastmod>` : '';
       return `  <url>
     <loc>${escapeXml(loc)}</loc>${lm}
     <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
+    <priority>0.7</priority>
   </url>`;
     })
     .join('\n');
 
-  const homeUrl = isGoIntl
+  // Include home for both miralatienda.de and go.ventalink.app
+  const isCatalogHost = /(^|\.)miralatienda\.de$/i.test(host);
+  const homeOrigin = isCatalogHost ? CATALOG_ORIGIN : isGoIntl ? origin : null;
+  const homeUrl = homeOrigin
     ? `  <url>
-    <loc>${escapeXml(`${origin}/`)}</loc>
+    <loc>${escapeXml(`${homeOrigin}/`)}</loc>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>`
