@@ -6,7 +6,7 @@ import DashboardLayoutContent from 'components/ui/DashboardLayoutContent';
 import PremiumLoader from 'components/ui/PremiumLoader';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
-import { updateBusiness, getMyBusiness, getRubros, getEffectivePlanSlug, uploadTicketLogo } from '../../services/waBusinessService';
+import { updateBusiness, getMyBusiness, getRubros, getEffectivePlanSlug, uploadBusinessLogo } from '../../services/waBusinessService';
 import { seedTemplateProductsIfEmpty } from '../../services/productTemplateService';
 import { DEMO_SOCIAL_LINKS, LEGACY_TEMPLATE_LOGO_PREFIX } from '../../utils/productTemplates';
 import { supabase } from '../../lib/supabase';
@@ -754,7 +754,7 @@ export default function BusinessConfiguration() {
     if (ticketLogoFile && bizId) {
       setUploadingTicketLogo(true);
       try {
-        const { url, error: uploadErr } = await uploadTicketLogo(ticketLogoFile, bizId);
+        const { url, error: uploadErr } = await uploadBusinessLogo(ticketLogoFile, bizId);
         if (uploadErr) {
           showToast(uploadErr.message || 'Error al subir logo del ticket', 'error');
         } else {

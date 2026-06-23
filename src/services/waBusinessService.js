@@ -866,22 +866,6 @@ export const uploadBusinessLogo = async (file, businessId) => {
   }
 };
 
-export const uploadTicketLogo = async (file, businessId) => {
-  const compressed = await compressImageForUpload(file, 'logo');
-  try {
-    const uploaded = await uploadToMediaService(compressed, {
-      type: 'business-logo',
-      businessId,
-    });
-    return { url: uploaded.url, error: null };
-  } catch (error) {
-    return {
-      url: null,
-      error: { message: error?.message || 'No se pudo subir el logo del ticket.' },
-    };
-  }
-};
-
 export const uploadBusinessCover = async (file, businessId) => {
   const compressed = await compressImageForUpload(file, 'cover');
   try {

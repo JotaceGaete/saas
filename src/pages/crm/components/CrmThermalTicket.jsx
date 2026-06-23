@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom';
 import Icon from 'components/AppIcon';
 import { formatMoney } from '../../../utils/formatMoney';
@@ -117,9 +117,11 @@ export default function CrmThermalTicket({
   }, []);
 
   // Resolve ticket logo: ticket-specific > catalog logo > nothing.
-  const logoUrl = business?.ticketLogoUrl || business?.ticket_logo_url
-    || business?.logoUrl || business?.logo_url
-    || null;
+  // activeLogoUrl tracks fallback to logo_url when ticket_logo_url fails to load.
+  const ticketSpecificLogo = business?.ticketLogoUrl || business?.ticket_logo_url || null;
+  const fallbackLogo = business?.logoUrl || business?.logo_url || null;
+  const logoUrl = ticketSpecificLogo || fallbackLogo;
+  const [activeLogoUrl, setActiveLogoUrl] = useState(logoUrl);
 
   // Fire onReadyToPrint once the portal logo image has loaded (or immediately if no logo).
   // Queries the print portal DOM directly to avoid duplicating the img ref across preview + portal.
@@ -192,12 +194,19 @@ export default function CrmThermalTicket({
     }}>
       {/* Header */}
       <div style={{ textAlign: 'center', marginBottom: 8 }}>
-        {logoUrl && (
+        {activeLogoUrl && (
           <div style={{ marginBottom: 6, textAlign: 'center' }}>
             <img
-              src={logoUrl}
+              src={activeLogoUrl}
               alt={business?.name || 'Logo'}
               crossOrigin="anonymous"
+              onError={() => {
+                if (activeLogoUrl !== fallbackLogo && fallbackLogo) {
+                  setActiveLogoUrl(fallbackLogo);
+                } else {
+                  setActiveLogoUrl(null);
+                }
+              }}
               style={{
                 maxWidth: 140,
                 maxHeight: 70,
