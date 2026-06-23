@@ -20,6 +20,7 @@ import {
   getCashDayPayments,
   getCashSessionMovements,
   getCashSessionPayments,
+  getCashSessionsAll,
   getCashSessionsForDate,
   getCrmInvoice,
   getLocalDateString,
@@ -841,7 +842,7 @@ export default function CrmCash() {
 
     const [openRes, sessionsRes, dayPaymentsRes, dayMovementsRes] = await Promise.all([
       getOpenCashSession(business.id),
-      getCashSessionsForDate(business.id, today),
+      getCashSessionsAll(business.id),
       getCashDayPayments(business.id, today),
       getCashDayMovements(business.id, today),
     ]);
@@ -871,7 +872,8 @@ export default function CrmCash() {
     setSessionMovements(Object.fromEntries(movementsEntries));
     setDayPayments(dayPaymentsRes.data || []);
     setDayMovements(dayMovementsRes.data || []);
-    setShowOpenForm(sessionsList.length === 0 && !openRes.data);
+    const todaySessions = sessionsList.filter(s => s.date === today);
+    setShowOpenForm(todaySessions.length === 0 && !openRes.data);
     setLoading(false);
   }, [business?.id, hasAccess, today]);
 
@@ -879,7 +881,7 @@ export default function CrmCash() {
     load();
   }, [load]);
 
-  const currentSession  = openSession || sessions[0] || null;
+  const currentSession  = openSession || sessions.find(s => s.date === today) || null;
   const currentPayments = currentSession ? (sessionPayments[currentSession.id] || []) : [];
   const currentMvts     = currentSession ? (sessionMovements[currentSession.id] || []) : [];
   const detailSession   = detailSessionId ? sessions.find(s => s.id === detailSessionId) : null;
@@ -1332,9 +1334,13 @@ export default function CrmCash() {
                   {sessions.length === 0 ? (
                     <div className="py-8 text-center">
                       <Icon name="Wallet" size={30} className="mx-auto mb-3 text-gray-200" />
-                      <p className="text-sm font-semibold text-gray-600">Todavia no hay cajas abiertas hoy.</p>
+                      <p className="text-sm font-semibold text-gray-600">No hay sesiones de caja registradas.</p>
                     </div>
                   ) : (
+                    <>
+                      <p className="mb-3 text-xs font-medium text-gray-400">
+                        {sessions.length} {sessions.length === 1 ? 'sesión registrada' : 'sesiones registradas'}
+                      </p>
                     <div className="divide-y divide-gray-100">
                       {sessions.map(session => {
                         const payments  = sessionPayments[session.id] || [];
@@ -1343,9 +1349,9 @@ export default function CrmCash() {
                         return (
                           <div key={session.id} className="flex flex-col gap-3 py-3 lg:flex-row lg:items-center lg:justify-between">
                             <div className="min-w-0 text-sm text-gray-700">
-                              <span className="font-bold text-gray-900">{turnLabel(session, sessions)}</span>
+                              <span className="font-bold text-gray-900">{fmtDate(session.date)}</span>
                               <span className="mx-2 text-gray-300">|</span>
-                              <span>{session.status === 'open' ? 'Abierta' : 'Cerrada'}</span>
+                              <span className={session.status === 'open' ? 'font-semibold text-emerald-600' : ''}>{session.status === 'open' ? 'Abierta' : 'Cerrada'}</span>
                               <span className="mx-2 text-gray-300">|</span>
                               <span>{turnTimeRange(session)}</span>
                               <span className="mx-2 text-gray-300">|</span>
@@ -1387,6 +1393,7 @@ export default function CrmCash() {
                         );
                       })}
                     </div>
+                    </>
                   )}
 
                   {detailSession && (
