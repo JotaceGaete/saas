@@ -1064,6 +1064,7 @@ export async function getCrmDashboardStats(businessId) {
       .from('crm_invoices')
       .select('id, invoice_number, status, total, created_at, wa_customers(name)')
       .eq('business_id', businessId)
+      .neq('status', 'anulada')
       .order('created_at', { ascending: false })
       .limit(5),
     supabase
