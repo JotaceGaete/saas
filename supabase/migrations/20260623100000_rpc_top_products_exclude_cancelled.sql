@@ -26,7 +26,7 @@ AS $$
   FROM public.wa_order_items  i
   JOIN public.wa_orders        o ON o.id = i.order_id
   WHERE o.business_id = p_business_id
-    AND o.status         <> 'cancelado'
+    AND o.order_status   <> 'cancelado'
     AND o.payment_status <> 'anulado'
     AND (
       p_days IS NULL
