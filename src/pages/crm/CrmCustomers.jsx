@@ -57,6 +57,41 @@ const ABONO_METHODS = [
   { value: 'other',         label: 'Otro' },
 ];
 
+/**
+ * COLUMNS — fuente única de verdad para la vista lista.
+ * Para agregar una columna: agrega una entrada aquí + un <td> en CustomerTableRow.
+ *
+ * hideBelow: 'sm' | 'md' | 'lg' | null (siempre visible)
+ * align:     'left' | 'right' (default 'left')
+ */
+const COLUMNS = [
+  { key: 'name',    label: 'Cliente',  sortable: true,  hideBelow: null, align: 'left',  className: 'pl-5' },
+  { key: 'phone',   label: 'Teléfono', sortable: false, hideBelow: 'sm', align: 'left'  },
+  { key: 'email',   label: 'Email',    sortable: false, hideBelow: 'md', align: 'left'  },
+  { key: 'balance', label: 'Saldo',    sortable: true,  hideBelow: null, align: 'left'  },
+  { key: 'actions', label: 'Acciones', sortable: false, hideBelow: null, align: 'right' },
+  // Futuras columnas a implementar:
+  // { key: 'tags',          label: 'Etiquetas',        sortable: false, hideBelow: 'lg' },
+  // { key: 'last_purchase', label: 'Última compra',    sortable: true,  hideBelow: 'lg' },
+  // { key: 'last_payment',  label: 'Último pago',      sortable: true,  hideBelow: 'xl' },
+  // { key: 'city',          label: 'Ciudad',           sortable: true,  hideBelow: 'lg' },
+  // { key: 'salesperson',   label: 'Vendedor',         sortable: true,  hideBelow: 'xl' },
+];
+
+/**
+ * QUICK_FILTERS — filtros rápidos composables con la búsqueda de texto.
+ * Para agregar un filtro: agrega una entrada aquí. No tocar más código.
+ *
+ * fn(customer, balanceMap) → boolean
+ */
+const QUICK_FILTERS = [
+  { id: 'all',      label: 'Todos',        fn: () => true },
+  { id: 'debt',     label: 'Con deuda',    fn: (c, bm) => (bm[c.id] ?? 0) > 0 },
+  { id: 'ok',       label: 'Al día',       fn: (c, bm) => (bm[c.id] ?? 0) === 0 },
+  { id: 'whatsapp', label: 'Con WhatsApp', fn: (c) => cleanPhone(c.whatsapp || c.phone).length >= 7 },
+  { id: 'no_email', label: 'Sin email',    fn: (c) => !c.email },
+];
+
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
 function initials(name) {
@@ -323,6 +358,81 @@ function CustomerViewSwitcher({ view, onChange }) {
   );
 }
 
+// ─── QuickFilterBar ────────────────────────────────────────────────────────────
+
+function QuickFilterBar({ active, onChange, textFilteredCustomers, balanceMap }) {
+  // Counts over the text-filtered set so badges reflect the current search context
+  const counts = useMemo(() => {
+    const result = {};
+    QUICK_FILTERS.forEach(f => {
+      result[f.id] = f.id === 'all'
+        ? textFilteredCustomers.length
+        : textFilteredCustomers.filter(c => f.fn(c, balanceMap)).length;
+    });
+    return result;
+  }, [textFilteredCustomers, balanceMap]);
+
+  return (
+    <div className="flex gap-2 overflow-x-auto pb-0.5" style={{ scrollbarWidth: 'none' }}>
+      {QUICK_FILTERS.map(f => (
+        <button
+          key={f.id}
+          onClick={() => onChange(f.id)}
+          className={`shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
+            active === f.id
+              ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+              : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300 hover:text-gray-700'
+          }`}
+        >
+          {f.label}
+          <span className={`text-[10px] font-bold min-w-[16px] text-center px-1 py-0.5 rounded-full ${
+            active === f.id ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-400'
+          }`}>
+            {counts[f.id] ?? 0}
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ─── ColHeader — fuera de CustomerTable para evitar remount en cada render ─────
+
+function ColHeader({ col, sortKey, sortDir, onSort }) {
+  const active    = sortKey === col.key;
+  const hideCls   = col.hideBelow === 'sm' ? 'hidden sm:table-cell'
+                  : col.hideBelow === 'md' ? 'hidden md:table-cell'
+                  : col.hideBelow === 'lg' ? 'hidden lg:table-cell'
+                  : '';
+  const alignCls  = col.align === 'right' ? 'text-right' : 'text-left';
+  const extraCls  = col.className || '';
+
+  if (!col.sortable) {
+    return (
+      <th className={`px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-gray-400 ${alignCls} ${hideCls} ${extraCls}`}>
+        {col.label}
+      </th>
+    );
+  }
+
+  return (
+    <th
+      onClick={() => onSort(col.key)}
+      className={`px-4 py-3 text-[11px] font-semibold uppercase tracking-wide cursor-pointer select-none transition-colors ${alignCls} ${hideCls} ${extraCls} ${
+        active ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'
+      }`}
+    >
+      <span className="inline-flex items-center gap-1">
+        {col.label}
+        {active
+          ? <Icon name={sortDir === 'asc' ? 'ChevronUp' : 'ChevronDown'} size={11} className="text-blue-500" />
+          : <Icon name="ChevronsUpDown" size={11} className="text-gray-300" />
+        }
+      </span>
+    </th>
+  );
+}
+
 // ─── CustomerTableRow ──────────────────────────────────────────────────────────
 
 const CustomerTableRow = React.memo(function CustomerTableRow({ c, balance, onView, onEdit, onDelete, deleting, fmt }) {
@@ -333,7 +443,7 @@ const CustomerTableRow = React.memo(function CustomerTableRow({ c, balance, onVi
 
   return (
     <tr className="group hover:bg-gray-50/70 transition-colors">
-      {/* Cliente */}
+      {/* name */}
       <td className="px-5 py-3.5">
         <div className="flex items-center gap-3 min-w-0">
           <div className={`w-8 h-8 rounded-lg ${avatarColor(c.name)} flex items-center justify-center text-[11px] font-bold text-white shrink-0`}>
@@ -346,7 +456,7 @@ const CustomerTableRow = React.memo(function CustomerTableRow({ c, balance, onVi
         </div>
       </td>
 
-      {/* Teléfono — oculto en mobile */}
+      {/* phone — oculto en mobile */}
       <td className="px-4 py-3.5 hidden sm:table-cell whitespace-nowrap">
         {(c.whatsapp || c.phone) ? (
           <div className="flex items-center gap-1.5">
@@ -368,7 +478,7 @@ const CustomerTableRow = React.memo(function CustomerTableRow({ c, balance, onVi
         )}
       </td>
 
-      {/* Email — oculto en mobile + tablet pequeña */}
+      {/* email — oculto en mobile + tablet */}
       <td className="px-4 py-3.5 hidden md:table-cell">
         {c.email ? (
           <a href={`mailto:${c.email}`} className="text-sm text-gray-600 hover:text-blue-600 truncate block max-w-[200px]">
@@ -379,7 +489,7 @@ const CustomerTableRow = React.memo(function CustomerTableRow({ c, balance, onVi
         )}
       </td>
 
-      {/* Estado / Saldo */}
+      {/* balance */}
       <td className="px-4 py-3.5 whitespace-nowrap">
         {alDia ? (
           <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-100 px-2.5 py-1 rounded-full">
@@ -387,24 +497,16 @@ const CustomerTableRow = React.memo(function CustomerTableRow({ c, balance, onVi
             Al día
           </span>
         ) : (
-          <button
-            onClick={() => onView(c)}
-            className="text-left group/debt"
-            title="Ver cuenta corriente"
-          >
+          <button onClick={() => onView(c)} className="text-left group/debt" title="Ver cuenta corriente">
             <span className="text-sm font-bold text-red-600 group-hover/debt:underline">{fmt(debt)}</span>
           </button>
         )}
       </td>
 
-      {/* Acciones */}
+      {/* actions */}
       <td className="px-4 py-3.5 text-right whitespace-nowrap">
         <div className="flex items-center justify-end gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button
-            onClick={() => onView(c)}
-            title="Ver ficha"
-            className="p-1.5 rounded-lg text-gray-300 hover:text-blue-500 hover:bg-blue-50 transition-colors"
-          >
+          <button onClick={() => onView(c)} title="Ver ficha" className="p-1.5 rounded-lg text-gray-300 hover:text-blue-500 hover:bg-blue-50 transition-colors">
             <Icon name="Eye" size={14} />
           </button>
           {hasWa && (
@@ -419,19 +521,11 @@ const CustomerTableRow = React.memo(function CustomerTableRow({ c, balance, onVi
             </a>
           )}
           {c.email && (
-            <a
-              href={`mailto:${c.email}`}
-              title="Enviar email"
-              className="p-1.5 rounded-lg text-gray-300 hover:text-blue-500 hover:bg-blue-50 transition-colors"
-            >
+            <a href={`mailto:${c.email}`} title="Enviar email" className="p-1.5 rounded-lg text-gray-300 hover:text-blue-500 hover:bg-blue-50 transition-colors">
               <Icon name="Mail" size={14} />
             </a>
           )}
-          <button
-            onClick={() => onEdit(c)}
-            title="Editar"
-            className="p-1.5 rounded-lg text-gray-300 hover:text-gray-700 hover:bg-gray-100 transition-colors"
-          >
+          <button onClick={() => onEdit(c)} title="Editar" className="p-1.5 rounded-lg text-gray-300 hover:text-gray-700 hover:bg-gray-100 transition-colors">
             <Icon name="Pencil" size={14} />
           </button>
           <button
@@ -451,37 +545,15 @@ const CustomerTableRow = React.memo(function CustomerTableRow({ c, balance, onVi
 // ─── CustomerTable ─────────────────────────────────────────────────────────────
 
 function CustomerTable({ customers, balanceMap, onView, onEdit, onDelete, deleting, fmt, sortKey, sortDir, onSort }) {
-  function ColHeader({ col, label, className = '' }) {
-    const active = sortKey === col;
-    return (
-      <th
-        onClick={() => onSort(col)}
-        className={`px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide cursor-pointer select-none transition-colors ${
-          active ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'
-        } ${className}`}
-      >
-        <span className="inline-flex items-center gap-1">
-          {label}
-          {active
-            ? <Icon name={sortDir === 'asc' ? 'ChevronUp' : 'ChevronDown'} size={11} className="text-blue-500" />
-            : <Icon name="ChevronsUpDown" size={11} className="text-gray-300" />
-          }
-        </span>
-      </th>
-    );
-  }
-
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full min-w-[560px]">
           <thead className="bg-gray-50 border-b border-gray-100">
             <tr>
-              <ColHeader col="name" label="Cliente" className="pl-5" />
-              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-400 hidden sm:table-cell">Teléfono</th>
-              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-400 hidden md:table-cell">Email</th>
-              <ColHeader col="balance" label="Saldo" />
-              <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-gray-400">Acciones</th>
+              {COLUMNS.map(col => (
+                <ColHeader key={col.key} col={col} sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+              ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
@@ -504,34 +576,21 @@ function CustomerTable({ customers, balanceMap, onView, onEdit, onDelete, deleti
   );
 }
 
-// ─── Pagination ────────────────────────────────────────────────────────────────
+// ─── LoadMoreButton ────────────────────────────────────────────────────────────
 
-function Pagination({ page, totalPages, total, pageSize, onPrev, onNext }) {
-  if (totalPages <= 1) return null;
-  const from = (page - 1) * pageSize + 1;
-  const to   = Math.min(page * pageSize, total);
+function LoadMoreButton({ visible, total, onLoadMore }) {
+  if (visible >= total) return null;
+  const remaining = total - visible;
   return (
-    <div className="flex items-center justify-between">
-      <span className="text-xs text-gray-400">{from}–{to} de {total}</span>
-      <div className="flex items-center gap-2">
-        <button
-          onClick={onPrev}
-          disabled={page === 1}
-          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-        >
-          <Icon name="ChevronLeft" size={13} />
-          Anterior
-        </button>
-        <span className="text-xs text-gray-400 font-medium">{page} / {totalPages}</span>
-        <button
-          onClick={onNext}
-          disabled={page === totalPages}
-          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-        >
-          Siguiente
-          <Icon name="ChevronRight" size={13} />
-        </button>
-      </div>
+    <div className="flex flex-col items-center gap-2 py-2">
+      <button
+        onClick={onLoadMore}
+        className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm"
+      >
+        <Icon name="ChevronDown" size={15} />
+        Cargar {Math.min(remaining, PAGE_SIZE)} más
+      </button>
+      <p className="text-xs text-gray-400">{visible} de {total} clientes</p>
     </div>
   );
 }
@@ -875,12 +934,13 @@ export default function CrmCustomers() {
   // ── Preferencias persistidas ──────────────────────────────────────────────────
   const [view, setView] = useLocalStorage(VIEW_STORAGE_KEY, 'cards');
 
-  // ── Ordenamiento ──────────────────────────────────────────────────────────────
-  const [sortKey, setSortKey] = useState(null);  // 'name' | 'balance' | null
-  const [sortDir, setSortDir] = useState('asc');
+  // ── Filtros y ordenamiento ────────────────────────────────────────────────────
+  const [quickFilter, setQuickFilter] = useState('all');
+  const [sortKey,     setSortKey]     = useState(null);  // 'name' | 'balance' | null
+  const [sortDir,     setSortDir]     = useState('asc');
 
-  // ── Paginación ────────────────────────────────────────────────────────────────
-  const [page, setPage] = useState(1);
+  // ── Visibilidad progresiva (Load More) ────────────────────────────────────────
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   // ── Formato de dinero ─────────────────────────────────────────────────────────
   const displayMode = business?.designSettings?.priceDisplayMode ?? 'auto';
@@ -926,8 +986,22 @@ export default function CrmCustomers() {
   const handleView = useCallback((c) => setViewDrawer(c), []);
   const handleEdit = useCallback((c) => setModalData(c), []);
 
+  const handleSort = useCallback((key) => {
+    setSortKey(prev => {
+      if (prev === key) { setSortDir(d => d === 'asc' ? 'desc' : 'asc'); return key; }
+      setSortDir('asc');
+      return key;
+    });
+  }, []);
+
+  const handleLoadMore = useCallback(() => {
+    setVisibleCount(n => n + PAGE_SIZE);
+  }, []);
+
   // ── Datos derivados ───────────────────────────────────────────────────────────
-  const filtered = useMemo(() => customers.filter(c =>
+
+  // 1. Filtro de texto (fuente para los contadores de filtros rápidos)
+  const textFiltered = useMemo(() => customers.filter(c =>
     !search ||
     (c.name    || '').toLowerCase().includes(search.toLowerCase()) ||
     (c.company || '').toLowerCase().includes(search.toLowerCase()) ||
@@ -935,6 +1009,14 @@ export default function CrmCustomers() {
     (c.phone   || '').includes(search)
   ), [customers, search]);
 
+  // 2. Filtro rápido (aplicado sobre el texto filtrado)
+  const filtered = useMemo(() => {
+    if (quickFilter === 'all') return textFiltered;
+    const f = QUICK_FILTERS.find(q => q.id === quickFilter);
+    return f ? textFiltered.filter(c => f.fn(c, balanceMap)) : textFiltered;
+  }, [textFiltered, quickFilter, balanceMap]);
+
+  // 3. Ordenamiento
   const sorted = useMemo(() => {
     if (!sortKey) return filtered;
     return [...filtered].sort((a, b) => {
@@ -950,19 +1032,11 @@ export default function CrmCustomers() {
     });
   }, [filtered, sortKey, sortDir, balanceMap]);
 
-  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
-  const paginated  = useMemo(() => sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [sorted, page]);
+  // 4. Visibilidad progresiva
+  const visible = useMemo(() => sorted.slice(0, visibleCount), [sorted, visibleCount]);
 
-  // Reset de página al cambiar filtros u orden
-  useEffect(() => { setPage(1); }, [search, sortKey, sortDir]);
-
-  const handleSort = useCallback((key) => {
-    setSortKey(prev => {
-      if (prev === key) { setSortDir(d => d === 'asc' ? 'desc' : 'asc'); return key; }
-      setSortDir('asc');
-      return key;
-    });
-  }, []);
+  // Reset al cambiar filtros u orden
+  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [search, quickFilter, sortKey, sortDir]);
 
   const { clientesConDeuda, totalPorCobrar } = creditSummary;
 
@@ -1057,6 +1131,14 @@ export default function CrmCustomers() {
           <CustomerViewSwitcher view={view} onChange={setView} />
         </div>
 
+        {/* Filtros rápidos */}
+        <QuickFilterBar
+          active={quickFilter}
+          onChange={setQuickFilter}
+          textFilteredCustomers={textFiltered}
+          balanceMap={balanceMap}
+        />
+
         {/* Contenido principal */}
         {loading ? (
           <div className="flex flex-col items-center justify-center py-24 gap-3">
@@ -1066,21 +1148,31 @@ export default function CrmCustomers() {
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 text-center gap-3">
             <span className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center mb-1">
-              {search
+              {search || quickFilter !== 'all'
                 ? <Icon name="SearchX" size={28} className="text-gray-400" />
                 : <Icon name="Users"   size={28} className="text-gray-400" />
               }
             </span>
             <p className="text-base font-bold text-gray-700">
-              {search ? 'Sin resultados' : 'Aún no hay clientes'}
+              {search || quickFilter !== 'all' ? 'Sin resultados' : 'Aún no hay clientes'}
             </p>
             <p className="text-sm text-gray-400 max-w-xs">
               {search
                 ? `No se encontraron clientes para "${search}".`
-                : 'Agrega tu primer cliente para empezar a gestionar tu cartera.'
+                : quickFilter !== 'all'
+                  ? 'Ningún cliente coincide con este filtro.'
+                  : 'Agrega tu primer cliente para empezar a gestionar tu cartera.'
               }
             </p>
-            {!search && (
+            {quickFilter !== 'all' && (
+              <button
+                onClick={() => setQuickFilter('all')}
+                className="mt-1 text-xs font-semibold text-blue-600 hover:underline"
+              >
+                Ver todos los clientes
+              </button>
+            )}
+            {!search && quickFilter === 'all' && (
               <button
                 onClick={() => setModalData('new')}
                 className="mt-2 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 transition-colors shadow-sm"
@@ -1094,7 +1186,7 @@ export default function CrmCustomers() {
           <>
             {view === 'cards' ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                {paginated.map(c => (
+                {visible.map(c => (
                   <CustomerCard
                     key={c.id}
                     c={c}
@@ -1109,7 +1201,7 @@ export default function CrmCustomers() {
               </div>
             ) : (
               <CustomerTable
-                customers={paginated}
+                customers={visible}
                 balanceMap={balanceMap}
                 onView={handleView}
                 onEdit={handleEdit}
@@ -1122,13 +1214,10 @@ export default function CrmCustomers() {
               />
             )}
 
-            <Pagination
-              page={page}
-              totalPages={totalPages}
+            <LoadMoreButton
+              visible={visibleCount}
               total={sorted.length}
-              pageSize={PAGE_SIZE}
-              onPrev={() => setPage(p => Math.max(1, p - 1))}
-              onNext={() => setPage(p => Math.min(totalPages, p + 1))}
+              onLoadMore={handleLoadMore}
             />
           </>
         )}
