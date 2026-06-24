@@ -1,14 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Icon from 'components/AppIcon';
+import { formatMoney } from '../../../utils/formatMoney';
 
-const fmt = (n) =>
-  new Intl.NumberFormat('es-CL', {
-    style: 'currency',
-    currency: 'CLP',
-    maximumFractionDigits: 0,
-  }).format(n || 0);
-
-export function CrmProductSearchModal({ products, onSelect, onClose }) {
+export function CrmProductSearchModal({ products, onSelect, onClose, currency = 'CLP' }) {
+  const fmt = (n) => formatMoney(n, currency);
   const [query, setQuery] = useState('');
   const inputRef = useRef(null);
 

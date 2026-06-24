@@ -1,14 +1,36 @@
+import { COUNTRY_CONFIG } from '../config/countryConfig';
+
+const LOCALE_BY_CURRENCY = Object.freeze({
+  CLP: 'es-CL', ARS: 'es-AR', BOB: 'es-BO', COP: 'es-CO', CRC: 'es-CR',
+  DOP: 'es-DO', EUR: 'es-ES', GTQ: 'es-GT', HNL: 'es-HN', MXN: 'es-MX',
+  NIO: 'es-NI', PEN: 'es-PE', PYG: 'es-PY', USD: 'en-US', UYU: 'es-UY',
+});
+
+const ZERO_DECIMAL = new Set(['CLP', 'ARS', 'CRC', 'COP', 'GTQ', 'PYG', 'UYU', 'BOB']);
+
+function resolveLocale(currency, countryCode) {
+  if (countryCode) {
+    const cfg = COUNTRY_CONFIG[String(countryCode).toUpperCase()];
+    if (cfg?.locale) return cfg.locale;
+  }
+  return LOCALE_BY_CURRENCY[String(currency || 'CLP').toUpperCase()] || 'es-CL';
+}
+
 /**
- * formatMoney — única función de formato monetario para todo el CRM.
- *
- * Usa locale es-CL: separador de miles = '.', sin decimales para CLP.
- * Para otras monedas (ARS, USD) aplica la misma presentación sin decimales.
+ * Formatea un monto en la moneda del negocio con el locale correcto.
+ * @param {number} n
+ * @param {string} [currency] - ISO 4217 (CLP, NIO, HNL, etc.)
+ * @param {string} [countryCode] - ISO 3166-1 alpha-2 (CL, NI, HN, etc.)
  */
-export function formatMoney(n, currency = 'CLP') {
-  return new Intl.NumberFormat('es-CL', {
+export function formatMoney(n, currency = 'CLP', countryCode = null) {
+  const cur = String(currency || 'CLP').toUpperCase();
+  const loc = resolveLocale(cur, countryCode);
+  const zeroDecimal = ZERO_DECIMAL.has(cur);
+  return new Intl.NumberFormat(loc, {
     style: 'currency',
-    currency: currency || 'CLP',
-    maximumFractionDigits: 0,
+    currency: cur,
+    minimumFractionDigits: zeroDecimal ? 0 : 2,
+    maximumFractionDigits: zeroDecimal ? 0 : 2,
   }).format(n || 0);
 }
 

@@ -935,7 +935,7 @@ export default function Dashboard() {
           {business?.id && (
             <section aria-label="Proveedores">
               <div className="stagger-item min-w-0">
-                <SuppliersSummaryCard businessId={business.id} />
+                <SuppliersSummaryCard businessId={business.id} currency={business?.currency} />
               </div>
             </section>
           )}

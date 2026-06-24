@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import Icon from 'components/AppIcon';
 import BusinessSidebar from 'components/ui/BusinessSidebar';
 import { useAuth } from '../../contexts/AuthContext';
+import { formatMoney } from '../../utils/formatMoney';
 import {
   getSupplier,
   getSupplierDebts,
@@ -21,9 +22,7 @@ const TYPE_LABELS = {
   transporte: 'Transporte', arriendo: 'Arriendo', marketing: 'Marketing', otros: 'Otros',
 };
 
-function fmt(n) {
-  return new Intl.NumberFormat('es', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n ?? 0);
-}
+// fmt se inicializa con la moneda del negocio en el componente raíz
 
 function timeAgo(dateStr) {
   if (!dateStr) return null;
@@ -236,6 +235,7 @@ export default function SupplierDetail() {
   const { supplierId } = useParams();
   const navigate = useNavigate();
   const { business } = useAuth();
+  const fmt = (n) => formatMoney(n, business?.currency);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [supplier, setSupplier] = useState(null);
   const [debts, setDebts] = useState([]);
