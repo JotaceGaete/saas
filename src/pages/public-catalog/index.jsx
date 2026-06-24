@@ -298,9 +298,10 @@ function CatalogInner({ slug }) {
     () => resolveCatalogCurrency(business, catalogMoney),
     [business, catalogMoney],
   );
+  const priceDisplayMode = business?.designSettings?.priceDisplayMode ?? 'auto';
   const formatPrice = useCallback(
-    (price) => formatPriceUtil(price, businessCurrency, catalogMoney?.countryCode),
-    [businessCurrency, catalogMoney?.countryCode],
+    (price) => formatPriceUtil(price, businessCurrency, catalogMoney?.countryCode, priceDisplayMode),
+    [businessCurrency, catalogMoney?.countryCode, priceDisplayMode],
   );
 
   // Derivar useCategories y categoryNames desde business, rubros y categorías propias

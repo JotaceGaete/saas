@@ -1,5 +1,6 @@
 import { formatCurrency } from './formatCLP';
 import { COUNTRY_CONFIG } from '../config/countryConfig';
+import { applyPriceDisplayMode } from './applyPriceDisplayMode';
 
 /**
  * Currencies that use zero decimals and dot-as-thousands separator in LATAM markets.
@@ -27,15 +28,18 @@ const CURRENCY_SYMBOL_MAP = Object.freeze({
  *   → delegates to Intl via formatCurrency (standard behavior, may include decimals)
  *
  * @param {number|string} amount
- * @param {string} currency   - ISO 4217 (CLP, ARS, CRC, USD, …)
+ * @param {string} currency      - ISO 4217 (CLP, ARS, CRC, USD, …)
  * @param {string} [countryCode] - ISO 3166-1 alpha-2 (CL, AR, CR, …); improves symbol lookup
+ * @param {string} [displayMode] - 'auto' | 'always' | 'hide_zero_decimals' (from design_settings)
  * @returns {string}
  */
-export function formatPrice(amount, currency, countryCode) {
-  const cur = String(currency || 'USD').trim().toUpperCase().replace(/[\s\u200e\u200f\u202a-\u202e]/g, '');
+export function formatPrice(amount, currency, countryCode, displayMode = 'auto') {
+  const cur = String(currency || 'USD').trim().toUpperCase().replace(/[\s‎‏‪-‮]/g, '');
   const code = String(countryCode || '').trim().toUpperCase();
   const n = Number(amount);
   const value = Number.isFinite(n) && n >= 0 ? n : 0;
+
+  let formatted;
 
   if (LATAM_ZERO_DECIMAL.has(cur)) {
     // Prefer symbol from COUNTRY_CONFIG when countryCode is known;
@@ -47,21 +51,21 @@ export function formatPrice(amount, currency, countryCode) {
       maximumFractionDigits: 0,
       useGrouping: true,
     }).format(Math.round(value));
-    return `${symbol} ${numStr}`;
-  }
-
-  if (cur === 'USD') {
+    formatted = `${symbol} ${numStr}`;
+  } else if (cur === 'USD') {
     const numStr = new Intl.NumberFormat('en-US', {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
       useGrouping: true,
     }).format(value);
-    return `US$ ${numStr}`;
+    formatted = `US$ ${numStr}`;
+  } else {
+    // Non-LATAM: standard Intl currency formatting.
+    const locale = COUNTRY_CONFIG[code]?.locale;
+    formatted = formatCurrency(value, cur, locale);
   }
 
-  // Non-LATAM: standard Intl currency formatting.
-  const locale = COUNTRY_CONFIG[code]?.locale;
-  return formatCurrency(value, cur, locale);
+  return applyPriceDisplayMode(formatted, value, displayMode);
 }
 
 /**
@@ -99,12 +103,13 @@ export function resolveCatalogCurrency(business, catalogMoney) {
  * Delegates to {@link formatPrice}. Pass countryCode for correct symbol lookup.
  *
  * @param {number|string} amount
- * @param {string} currency    - ISO 4217 (CLP, ARS, CRC, USD, …)
+ * @param {string} currency      - ISO 4217 (CLP, ARS, CRC, USD, …)
  * @param {string} [countryCode] - ISO 3166-1 alpha-2; improves symbol when currency is ambiguous
+ * @param {string} [displayMode] - 'auto' | 'always' | 'hide_zero_decimals'
  * @returns {string}
  */
-export function formatPriceCatalog(amount, currency, countryCode) {
-  return formatPrice(amount, currency, countryCode);
+export function formatPriceCatalog(amount, currency, countryCode, displayMode = 'auto') {
+  return formatPrice(amount, currency, countryCode, displayMode);
 }
 
 /**

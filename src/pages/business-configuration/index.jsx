@@ -81,6 +81,7 @@ function buildSavedConfigSnapshotFromBusiness(business) {
     shippingMethods: dsSnap?.shippingMethods ?? '',
     shippingCost: dsSnap?.shippingCost ?? '',
     retiroEnTienda: dsSnap?.retiroEnTienda === true,
+    priceDisplayMode: dsSnap?.priceDisplayMode ?? 'auto',
   };
   return JSON.stringify({
     form: {
@@ -330,6 +331,7 @@ export default function BusinessConfiguration() {
     shippingMethods: '',
     shippingCost: '',
     retiroEnTienda: false,
+    priceDisplayMode: 'auto',
   });
 
   const toastTimer = useRef(null);
@@ -517,6 +519,7 @@ export default function BusinessConfiguration() {
           shippingMethods: ds?.shippingMethods ?? '',
           shippingCost: ds?.shippingCost ?? '',
           retiroEnTienda: ds?.retiroEnTienda === true,
+          priceDisplayMode: ds?.priceDisplayMode ?? 'auto',
         }));
       }
       setOrderMessageTemplate(business?.orderMessageTemplate || '');
@@ -959,6 +962,7 @@ export default function BusinessConfiguration() {
         shippingMethods: ds?.shippingMethods ?? '',
         shippingCost: ds?.shippingCost ?? '',
         retiroEnTienda: ds?.retiroEnTienda === true,
+        priceDisplayMode: ds?.priceDisplayMode ?? 'auto',
       }));
     }
     setSavedConfigSnapshot(buildSavedConfigSnapshotFromBusiness(business));
@@ -1803,6 +1807,52 @@ export default function BusinessConfiguration() {
             )}
 
             {settingsTab === 'payments' && business?.id && (
+              <>
+              <div className={`${cardClass} mb-5`}>
+                <div className="flex items-center gap-3 mb-5">
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(139,92,246,0.1)' }}>
+                    <Icon name="DollarSign" size={18} color="var(--color-primary)" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-text-primary)' }}>Moneda y precios</h2>
+                    <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Cómo se muestran los precios en el catálogo</p>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: 'var(--color-text-secondary)', fontFamily: 'var(--font-caption)' }}>Mostrar decimales en precios</p>
+                  {[
+                    { value: 'auto', label: 'Automático según país', description: 'Comportamiento estándar según la moneda configurada' },
+                    { value: 'always', label: 'Siempre mostrar decimales', description: 'Aplica solo a monedas que usan decimales (NIO, USD, PEN…)' },
+                    { value: 'hide_zero_decimals', label: 'Ocultar .00 cuando sea entero', description: 'C$160.00 → C$160, pero C$160.50 se mantiene' },
+                  ].map((opt) => {
+                    const selected = (design?.priceDisplayMode ?? 'auto') === opt.value;
+                    return (
+                      <label
+                        key={opt.value}
+                        className="flex items-start gap-3 px-4 py-3 rounded-xl border cursor-pointer transition-all"
+                        style={{
+                          borderColor: selected ? 'rgba(139,92,246,0.4)' : 'rgba(17,24,39,0.08)',
+                          backgroundColor: selected ? 'rgba(139,92,246,0.05)' : 'rgba(255,255,255,0.58)',
+                        }}
+                      >
+                        <input
+                          type="radio"
+                          name="priceDisplayMode"
+                          value={opt.value}
+                          checked={selected}
+                          onChange={() => setDesign(prev => ({ ...prev, priceDisplayMode: opt.value }))}
+                          className="mt-0.5 flex-shrink-0 accent-violet-600"
+                        />
+                        <div>
+                          <p className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-caption)' }}>{opt.label}</p>
+                          <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>{opt.description}</p>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
               <div className={`${cardClass} mb-8`}>
                 <div className="flex items-center gap-3 mb-5">
                   <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(139,92,246,0.1)' }}>
@@ -1857,6 +1907,7 @@ export default function BusinessConfiguration() {
                 />
 
               </div>
+              </>
             )}
 
               </div>
