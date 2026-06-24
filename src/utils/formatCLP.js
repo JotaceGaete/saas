@@ -20,6 +20,9 @@ const FALLBACK_LOCALE_BY_CURRENCY = Object.freeze({
   GTQ: 'es-GT',
   PYG: 'es-PY',
   UYU: 'es-UY',
+  NIO: 'es-NI',
+  HNL: 'es-HN',
+  DOP: 'es-DO',
 });
 
 /**

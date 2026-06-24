@@ -344,6 +344,7 @@ export default function CrmInvoiceEditor() {
                     onChange={handleItemChange}
                     onRemove={handleItemRemove}
                     imageUrl={getItemImage(item)}
+                    currency={business?.currency}
                   />
                 ))}
               </tbody>
@@ -360,6 +361,7 @@ export default function CrmInvoiceEditor() {
                 onChange={handleItemChange}
                 onRemove={handleItemRemove}
                 imageUrl={getItemImage(item)}
+                currency={business?.currency}
               />
             ))}
           </div>
@@ -417,7 +419,7 @@ export default function CrmInvoiceEditor() {
       </div>
       <div>
         {items.map((item, idx) => (
-          <CrmLineItemReadOnly key={idx} item={item} imageUrl={getItemImage(item)} />
+          <CrmLineItemReadOnly key={idx} item={item} imageUrl={getItemImage(item)} currency={business?.currency} />
         ))}
       </div>
     </div>
@@ -762,6 +764,7 @@ export default function CrmInvoiceEditor() {
           products={products}
           onSelect={addProductFromCatalog}
           onClose={() => setShowProductModal(false)}
+          currency={business?.currency}
         />
       )}
 
