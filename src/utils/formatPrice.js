@@ -4,9 +4,16 @@ import { COUNTRY_CONFIG } from '../config/countryConfig';
 /**
  * Currencies that use zero decimals and dot-as-thousands separator in LATAM markets.
  * For these, we build the string manually instead of relying on Intl's `style:'currency'`,
- * which produces inconsistent output (₡3 000,00, $3.000 without space, etc.).
+ * which produces inconsistent output across Node.js/browser ICU versions.
  */
 const LATAM_ZERO_DECIMAL = new Set(['CLP', 'ARS', 'CRC', 'COP', 'GTQ', 'PYG', 'UYU', 'BOB']);
+
+/**
+ * Currencies that use 2 decimals but whose symbol Intl renders without a space
+ * in some Node.js/ICU versions (e.g. "C$160.00" instead of "C$ 160.00").
+ * We format these manually to guarantee consistent output across all environments.
+ */
+const LATAM_TWO_DECIMAL = new Set(['NIO', 'HNL', 'DOP']);
 
 /**
  * Symbol fallback when countryCode is unknown but currency is.
@@ -14,39 +21,54 @@ const LATAM_ZERO_DECIMAL = new Set(['CLP', 'ARS', 'CRC', 'COP', 'GTQ', 'PYG', 'U
  */
 const CURRENCY_SYMBOL_MAP = Object.freeze({
   CLP: '$', ARS: '$', CRC: '₡', COP: '$', GTQ: 'Q', PYG: '₲', UYU: '$U', BOB: 'Bs',
+  NIO: 'C$', HNL: 'L', DOP: 'RD$',
 });
 
 /**
  * Central price formatter for the public catalog and preview.
  *
- * LATAM zero-decimal currencies (CLP, ARS, CRC, COP, GTQ, PYG, UYU, BOB):
- *   → "<symbol> <dot-separated-thousands>"  — no decimals, symbol separated by one space
- *   → Examples: "$ 3.000"  "₡ 150.000"  "$ 1.200.000"
+ * LATAM zero-decimal (CLP, ARS, CRC, COP, GTQ, PYG, UYU, BOB):
+ *   -> "<symbol> <dot-separated-thousands>"  — no decimals
+ *   -> Examples: "$ 3.000"  "C$ 150.000"  "$ 1.200.000"
+ *
+ * LATAM two-decimal (NIO, HNL, DOP):
+ *   -> "<symbol> <comma-thousands>.<2 decimals>"
+ *   -> Examples: "C$ 160.00"  "L 100.00"  "RD$ 100.00"
+ *
+ * USD:
+ *   -> "US$ <en-US formatted>"
  *
  * All other currencies:
- *   → delegates to Intl via formatCurrency (standard behavior, may include decimals)
+ *   -> delegates to Intl via formatCurrency (standard behavior)
  *
  * @param {number|string} amount
- * @param {string} currency   - ISO 4217 (CLP, ARS, CRC, USD, …)
- * @param {string} [countryCode] - ISO 3166-1 alpha-2 (CL, AR, CR, …); improves symbol lookup
+ * @param {string} currency   - ISO 4217 (CLP, ARS, NIO, USD, ...)
+ * @param {string} [countryCode] - ISO 3166-1 alpha-2 (CL, AR, NI, ...); improves symbol lookup
  * @returns {string}
  */
 export function formatPrice(amount, currency, countryCode) {
-  const cur = String(currency || 'USD').trim().toUpperCase().replace(/[\s\u200e\u200f\u202a-\u202e]/g, '');
+  const cur = String(currency || 'USD').trim().toUpperCase().replace(/[\s‎‏‪-‮]/g, '');
   const code = String(countryCode || '').trim().toUpperCase();
   const n = Number(amount);
   const value = Number.isFinite(n) && n >= 0 ? n : 0;
 
   if (LATAM_ZERO_DECIMAL.has(cur)) {
-    // Prefer symbol from COUNTRY_CONFIG when countryCode is known;
-    // fall back to the static map keyed by currency code.
     const symbol = (COUNTRY_CONFIG[code]?.symbol) ?? CURRENCY_SYMBOL_MAP[cur] ?? cur;
-    // 'es-CL' consistently produces dot-as-thousands, no decimal separator.
     const numStr = new Intl.NumberFormat('es-CL', {
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
       useGrouping: true,
     }).format(Math.round(value));
+    return `${symbol} ${numStr}`;
+  }
+
+  if (LATAM_TWO_DECIMAL.has(cur)) {
+    const symbol = (COUNTRY_CONFIG[code]?.symbol) ?? CURRENCY_SYMBOL_MAP[cur] ?? cur;
+    const numStr = new Intl.NumberFormat('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+      useGrouping: true,
+    }).format(value);
     return `${symbol} ${numStr}`;
   }
 
@@ -65,8 +87,8 @@ export function formatPrice(amount, currency, countryCode) {
 }
 
 /**
- * Moneda para precios en catálogo público y checkout (cliente).
- * Si el país es AR/CL, fuerza ARS/CLP aunque en BD venga `currency` vacío o USD por defecto.
+ * Moneda para precios en catalogo publico y checkout (cliente).
+ * Si el pais es AR/CL, fuerza ARS/CLP aunque en BD venga `currency` vacio o USD por defecto.
  *
  * @param {object|null|undefined} business - wa_business mapeado
  * @param {{ currencyCode?: string|null }|null|undefined} catalogMoney - resultado de getBusinessLocale(business)
@@ -95,11 +117,11 @@ export function resolveCatalogCurrency(business, catalogMoney) {
 }
 
 /**
- * Precios para catálogo público y checkout del cliente (no billing /planes).
+ * Precios para catalogo publico y checkout del cliente (no billing /planes).
  * Delegates to {@link formatPrice}. Pass countryCode for correct symbol lookup.
  *
  * @param {number|string} amount
- * @param {string} currency    - ISO 4217 (CLP, ARS, CRC, USD, …)
+ * @param {string} currency    - ISO 4217 (CLP, ARS, CRC, USD, ...)
  * @param {string} [countryCode] - ISO 3166-1 alpha-2; improves symbol when currency is ambiguous
  * @returns {string}
  */
@@ -109,8 +131,6 @@ export function formatPriceCatalog(amount, currency, countryCode) {
 
 /**
  * Moneda visible para pantallas administrativas del negocio.
- * Mantiene la misma regla del catalogo publico: si el pais persistido es CL/AR,
- * el pais manda sobre un fallback historico en USD.
  *
  * @param {object|null|undefined} business
  * @param {{ currencyCode?: string|null }|null|undefined} businessLocale
@@ -122,7 +142,6 @@ export function resolveBusinessCurrency(business, businessLocale) {
 
 /**
  * Formato visual de montos para dashboard y pantallas administrativas.
- * No modifica importes; solo normaliza simbolo, separadores y decimales.
  *
  * @param {number|string} amount
  * @param {object|null|undefined} business

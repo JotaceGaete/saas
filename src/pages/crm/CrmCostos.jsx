@@ -33,7 +33,7 @@ const CATEGORIES = [
 
 const CATEGORY_LABELS = Object.fromEntries(CATEGORIES.map(c => [c.value, c.label]));
 
-const fmt = (n) => formatMoney(n, 'CLP');
+const fmt = (n, currency = 'CLP') => formatMoney(n, currency);
 
 // ─── Modal para añadir/editar costo fijo ──────────────────────────────────────
 
@@ -130,7 +130,7 @@ function CostItemModal({ item, businessId, month, year, onClose, onSaved }) {
 
 // ─── Fila de costo fijo ───────────────────────────────────────────────────────
 
-function CostRow({ item, onEdit, onDelete }) {
+function CostRow({ item, onEdit, onDelete, currency = 'CLP' }) {
   const [confirming, setConfirming] = useState(false);
   const fromCash = item.source === 'cash_outflow';
 
@@ -160,7 +160,7 @@ function CostRow({ item, onEdit, onDelete }) {
         </div>
       </div>
       <div className="flex items-center gap-2 shrink-0">
-        <span className="text-sm font-bold text-gray-800">{fmt(item.amount)}</span>
+        <span className="text-sm font-bold text-gray-800">{fmt(item.amount, currency)}</span>
         {fromCash ? (
           <span
             title="Registrado desde Caja — editar desde el módulo de Caja"
@@ -191,7 +191,7 @@ function CostRow({ item, onEdit, onDelete }) {
 
 // ─── Panel costos fijos ───────────────────────────────────────────────────────
 
-function FixedCostsPanel({ items, businessId, month, year, onReload }) {
+function FixedCostsPanel({ items, businessId, month, year, onReload, currency = 'CLP' }) {
   const [showModal, setShowModal] = useState(false);
   const [editItem, setEditItem]   = useState(null);
   const total = items.reduce((s, i) => s + (i.amount || 0), 0);
@@ -230,7 +230,7 @@ function FixedCostsPanel({ items, businessId, month, year, onReload }) {
           </div>
         ) : (
           items.map(item => (
-            <CostRow key={item.id} item={item} onEdit={handleEdit} onDelete={onReload} />
+            <CostRow key={item.id} item={item} onEdit={handleEdit} onDelete={onReload} currency={currency} />
           ))
         )}
       </div>
@@ -238,7 +238,7 @@ function FixedCostsPanel({ items, businessId, month, year, onReload }) {
       {items.length > 0 && (
         <div className="px-5 py-3 bg-blue-50 border-t border-blue-100 flex justify-between items-center">
           <span className="text-xs font-semibold text-blue-700">Total costos fijos</span>
-          <span className="text-base font-black text-blue-900">{fmt(total)}</span>
+          <span className="text-base font-black text-blue-900">{fmt(total, currency)}</span>
         </div>
       )}
 
@@ -258,7 +258,7 @@ function FixedCostsPanel({ items, businessId, month, year, onReload }) {
 
 // ─── Widget Compras (link) ────────────────────────────────────────────────────
 
-function ComprasLinkPanel({ purchaseTotals, navigate }) {
+function ComprasLinkPanel({ purchaseTotals, navigate, currency = 'CLP' }) {
   const mercaderiaTotal  = purchaseTotals?.totals?.mercaderia?.total  || 0;
   const operacionalTotal = purchaseTotals?.totalOperational           || 0;
   const hasData = mercaderiaTotal > 0 || operacionalTotal > 0;
@@ -284,7 +284,7 @@ function ComprasLinkPanel({ purchaseTotals, navigate }) {
                   <span className="w-2 h-2 rounded-full bg-blue-400 shrink-0" />
                   <span className="text-xs text-gray-500">Mercadería</span>
                 </div>
-                <span className="text-sm font-semibold text-gray-700">{fmt(mercaderiaTotal)}</span>
+                <span className="text-sm font-semibold text-gray-700">{fmt(mercaderiaTotal, currency)}</span>
               </div>
             )}
             {operacionalTotal > 0 && (
@@ -293,7 +293,7 @@ function ComprasLinkPanel({ purchaseTotals, navigate }) {
                   <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
                   <span className="text-xs text-gray-500">Gastos operativos</span>
                 </div>
-                <span className="text-sm font-semibold text-gray-700">{fmt(operacionalTotal)}</span>
+                <span className="text-sm font-semibold text-gray-700">{fmt(operacionalTotal, currency)}</span>
               </div>
             )}
           </div>
@@ -416,18 +416,18 @@ export default function CrmCostos() {
             {totalMes > 0 && (
               <div className="rounded-2xl bg-gradient-to-r from-slate-800 to-slate-700 p-4 text-white">
                 <p className="text-white/60 text-xs font-semibold uppercase tracking-widest mb-1">Total costos del mes</p>
-                <p className="text-3xl font-black tabular-nums">{fmt(totalMes)}</p>
+                <p className="text-3xl font-black tabular-nums">{fmt(totalMes, business?.currency)}</p>
                 <div className="mt-3 flex gap-4 flex-wrap">
                   {totalFijos > 0 && (
                     <div>
                       <p className="text-white/50 text-[10px] uppercase tracking-wide">Fijos</p>
-                      <p className="text-white/90 text-sm font-bold">{fmt(totalFijos)}</p>
+                      <p className="text-white/90 text-sm font-bold">{fmt(totalFijos, business?.currency)}</p>
                     </div>
                   )}
                   {totalOperacional > 0 && (
                     <div>
                       <p className="text-white/50 text-[10px] uppercase tracking-wide">Compras/Gastos</p>
-                      <p className="text-white/90 text-sm font-bold">{fmt(totalOperacional)}</p>
+                      <p className="text-white/90 text-sm font-bold">{fmt(totalOperacional, business?.currency)}</p>
                     </div>
                   )}
                 </div>
@@ -441,10 +441,11 @@ export default function CrmCostos() {
               month={month}
               year={year}
               onReload={load}
+              currency={business?.currency}
             />
 
             {/* Link a Compras */}
-            <ComprasLinkPanel purchaseTotals={purchaseTotals} navigate={navigate} />
+            <ComprasLinkPanel purchaseTotals={purchaseTotals} navigate={navigate} currency={business?.currency} />
 
           </div>
         )}

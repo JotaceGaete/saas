@@ -32,7 +32,7 @@ const MANUAL_TYPES = ['entrada', 'salida', 'ajuste'];
 
 const TYPE_LABELS = { entrada: 'Entrada', salida: 'Salida', ajuste: 'Ajuste' };
 
-const fmt = (n) => formatMoney(n, 'CLP');
+const fmt = (n, currency = 'CLP') => formatMoney(n, currency);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -513,7 +513,7 @@ function MinimoEditor({ product, onSave }) {
 
 // ─── Ficha del producto ────────────────────────────────────────────────────────
 
-function ProductCard({ product, businessId, onBack, onMinimoSave, onMovementDone, movements, loadingMov }) {
+function ProductCard({ product, businessId, onBack, onMinimoSave, onMovementDone, movements, loadingMov, currency = 'CLP' }) {
   const status  = stockStatus(product);
   const catSt   = catalogStatus(product);
 
@@ -568,7 +568,7 @@ function ProductCard({ product, businessId, onBack, onMinimoSave, onMovementDone
             </div>
 
             {product.price != null && (
-              <p className="text-sm font-bold text-gray-700 mt-2">{fmt(product.price)}</p>
+              <p className="text-sm font-bold text-gray-700 mt-2">{fmt(product.price, currency)}</p>
             )}
           </div>
         </div>
@@ -782,6 +782,7 @@ export default function CrmStock() {
                 onMovementDone={handleMovementDone}
                 movements={movements}
                 loadingMov={loadingMov}
+                currency={business?.currency}
               />
             ) : (
               <DefaultView
