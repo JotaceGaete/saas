@@ -139,6 +139,39 @@ export const COUNTRY_CONFIG = Object.freeze({
     phoneLocalLength: 10,
     phoneLocalPrefix: '3',
   },
+  NI: {
+    code: 'NI',
+    name: 'Nicaragua',
+    flag: '🇳🇮',
+    currency: 'NIO',
+    symbol: 'C$',
+    locale: 'es-NI',
+    phonePrefix: '+505',
+    phoneLocalLength: 8,
+    phoneLocalPrefix: null,
+  },
+  HN: {
+    code: 'HN',
+    name: 'Honduras',
+    flag: '🇭🇳',
+    currency: 'HNL',
+    symbol: 'L',
+    locale: 'es-HN',
+    phonePrefix: '+504',
+    phoneLocalLength: 8,
+    phoneLocalPrefix: null,
+  },
+  DO: {
+    code: 'DO',
+    name: 'República Dominicana',
+    flag: '🇩🇴',
+    currency: 'DOP',
+    symbol: 'RD$',
+    locale: 'es-DO',
+    phonePrefix: '+1',
+    phoneLocalLength: 10,
+    phoneLocalPrefix: null,
+  },
   ES: {
     code: 'ES',
     name: 'España',
@@ -166,7 +199,7 @@ export const COUNTRY_CONFIG = Object.freeze({
 /** Códigos de país soportados (orden para selector). */
 export const COUNTRY_CODES = Object.freeze([
   'CL', 'AR',
-  'BO', 'CO', 'CR', 'EC', 'GT', 'PA', 'PE', 'PY', 'UY',
+  'BO', 'CO', 'CR', 'DO', 'EC', 'GT', 'HN', 'NI', 'PA', 'PE', 'PY', 'UY',
   'MX', 'ES', 'US',
 ]);
 
