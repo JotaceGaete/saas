@@ -12,6 +12,7 @@ import CrmThermalTicket from './components/CrmThermalTicket';
 import { QuickCustomerModal } from './components/QuickCustomerModal';
 import CrmBreadcrumb from 'components/ui/CrmBreadcrumb';
 import { formatMoney, fmtMoneyInput, parseMoneyInput } from '../../utils/formatMoney';
+import { QuickProductsSection } from './components/QuickProductsSection';
 
 const PAYMENT_METHODS = [
   { value: 'cash',          label: 'Efectivo',      icon: 'Banknote' },
@@ -800,14 +801,17 @@ function CrmTerminalUI() {
                     </div>
                   )}
 
-                  {/* Manual item button */}
-                  <button
-                    onClick={() => setShowManualModal(true)}
-                    className="hidden"
-                  >
-                    <Icon name="PenLine" size={14} />
-                    Artículo manual
-                  </button>
+                  {/* Quick access — solo visible cuando no hay búsqueda activa */}
+                  {!isSearching && (
+                    <QuickProductsSection
+                      businessId={business?.id}
+                      allProducts={allProducts}
+                      posProducts={posProducts}
+                      isDesktop={isDesktop}
+                      addToCart={addToCart}
+                      fmt={(n) => fmt(n, business?.currency)}
+                    />
+                  )}
 
                   {/* Indicador de modo búsqueda */}
                   {isSearching && (
