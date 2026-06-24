@@ -27,12 +27,12 @@ const NAV_ITEMS = [
     icon: 'Crown',
     badge: 'Premium',
     premiumGated: true,
+    posPath: '/crm/terminal',
     subItems: [
       { label: 'Panel CRM',        path: '/crm' },
       { label: 'Clientes',         path: '/crm/clientes' },
       { label: 'Presupuestos',     path: '/crm/presupuestos' },
       { label: 'Notas de venta',   path: '/crm/facturas' },
-      { label: 'TPV',              path: '/crm/terminal' },
       { label: 'Caja',             path: '/crm/caja' },
       { label: 'Centro de costos', path: '/crm/costos' },
       { label: 'Inventario',       path: '/crm/stock' },
@@ -224,6 +224,31 @@ Motivo (opcional):`;
                     </>
                   )}
                 </button>
+                {item?.posPath && !collapsed && expanded && (() => {
+                  const tpvActive = isActive(item.posPath);
+                  const tpvBlocked = item?.premiumGated && business?.planSlug === 'starter';
+                  return (
+                    <div className="mt-1.5 ml-2 mr-1 mb-1">
+                      <button
+                        onClick={() => navigate(tpvBlocked ? '/planes' : item.posPath)}
+                        title="Nueva venta en el TPV"
+                        className={[
+                          'w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold transition-all duration-150',
+                          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/50',
+                          tpvActive
+                            ? 'bg-blue-500 text-white shadow-md shadow-blue-500/30'
+                            : 'bg-blue-600 hover:bg-blue-500 text-white shadow-sm shadow-blue-600/20 hover:shadow-blue-500/30 hover:shadow-md',
+                        ].join(' ')}
+                        style={{ fontFamily: 'var(--font-caption)' }}
+                        aria-current={tpvActive ? 'page' : undefined}
+                      >
+                        <Icon name="ShoppingCart" size={13} className="flex-shrink-0" />
+                        <span className="flex-1 text-left">Nueva venta</span>
+                        <Icon name="ArrowRight" size={11} className="flex-shrink-0 opacity-70" />
+                      </button>
+                    </div>
+                  );
+                })()}
                 {item?.subItems && !collapsed && expanded && (
                   <ul className="mt-0.5 ml-8 space-y-0.5" role="list">
                     {item?.subItems?.map((sub) => {
