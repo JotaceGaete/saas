@@ -69,7 +69,7 @@ function calcAmounts(total, taxRate, taxIncluded) {
 
 // ─── Modal de registro ────────────────────────────────────────────────────────
 
-function PurchaseModal({ defaultTaxRate, onSave, onClose }) {
+function PurchaseModal({ defaultTaxRate, onSave, onClose, fmt = formatMoney }) {
   const today = new Date().toISOString().slice(0, 10);
   const [supplier, setSupplier] = useState('');
   const [date, setDate]         = useState(today);
@@ -217,15 +217,15 @@ function PurchaseModal({ defaultTaxRate, onSave, onClose }) {
                 <div className="bg-blue-50 rounded-lg px-3 py-2 text-xs space-y-1">
                   <div className="flex justify-between text-gray-600">
                     <span>Neto</span>
-                    <span className="font-semibold">{formatMoney(calc.net_amount)}</span>
+                    <span className="font-semibold">{fmt(calc.net_amount)}</span>
                   </div>
                   <div className="flex justify-between text-blue-700">
                     <span>IVA ({taxRate}%)</span>
-                    <span className="font-semibold">{formatMoney(calc.tax_amount)}</span>
+                    <span className="font-semibold">{fmt(calc.tax_amount)}</span>
                   </div>
                   <div className="flex justify-between text-gray-800 font-bold border-t border-blue-200 pt-1">
                     <span>Total</span>
-                    <span>{formatMoney(calc.total_amount)}</span>
+                    <span>{fmt(calc.total_amount)}</span>
                   </div>
                 </div>
               )}
@@ -265,7 +265,7 @@ function PurchaseModal({ defaultTaxRate, onSave, onClose }) {
 
 // ─── Resumen del período ───────────────────────────────────────────────────────
 
-function PeriodSummary({ purchases, taxRate }) {
+function PeriodSummary({ purchases, taxRate, fmt = formatMoney }) {
   const mercaderia    = purchases.filter(p => p.purchase_type === 'mercaderia');
   const gastoConIva   = purchases.filter(p => p.purchase_type === 'gasto_con_iva');
   const gastoSinIva   = purchases.filter(p => p.purchase_type === 'gasto_sin_iva');
@@ -290,9 +290,9 @@ function PeriodSummary({ purchases, taxRate }) {
           <Icon name="ShoppingBag" size={14} className="text-blue-600" />
           <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">Mercadería</p>
         </div>
-        <p className="text-xl font-bold text-blue-800">{formatMoney(totalMercaderia)}</p>
+        <p className="text-xl font-bold text-blue-800">{fmt(totalMercaderia)}</p>
         {ivaCompMerc > 0 && (
-          <p className="text-[11px] text-blue-600 mt-1">IVA compra: {formatMoney(ivaCompMerc)}</p>
+          <p className="text-[11px] text-blue-600 mt-1">IVA compra: {fmt(ivaCompMerc)}</p>
         )}
         <p className="text-[10px] text-blue-500 mt-1 italic">Inventario — no es pérdida directa</p>
       </div>
@@ -303,9 +303,9 @@ function PeriodSummary({ purchases, taxRate }) {
           <Icon name="TrendingDown" size={14} className="text-amber-600" />
           <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide">Gastos operativos</p>
         </div>
-        <p className="text-xl font-bold text-amber-800">{formatMoney(totalOperacional)}</p>
+        <p className="text-xl font-bold text-amber-800">{fmt(totalOperacional)}</p>
         {ivaCompGasto > 0 && (
-          <p className="text-[11px] text-amber-600 mt-1">IVA compra: {formatMoney(ivaCompGasto)}</p>
+          <p className="text-[11px] text-amber-600 mt-1">IVA compra: {fmt(ivaCompGasto)}</p>
         )}
         <p className="text-[10px] text-amber-500 mt-1 italic">Afecta directamente la rentabilidad</p>
       </div>
@@ -316,7 +316,7 @@ function PeriodSummary({ purchases, taxRate }) {
           <Icon name="Percent" size={14} className="text-indigo-600" />
           <p className="text-xs font-semibold text-indigo-700 uppercase tracking-wide">IVA compras total</p>
         </div>
-        <p className="text-xl font-bold text-indigo-800">{formatMoney(totalIvaCompras)}</p>
+        <p className="text-xl font-bold text-indigo-800">{fmt(totalIvaCompras)}</p>
         <p className="text-[10px] text-indigo-500 mt-1 italic">Crédito fiscal estimado referencial</p>
       </div>
     </div>
@@ -325,7 +325,7 @@ function PeriodSummary({ purchases, taxRate }) {
 
 // ─── Fila de compra ───────────────────────────────────────────────────────────
 
-function PurchaseRow({ purchase, onDelete }) {
+function PurchaseRow({ purchase, onDelete, fmt = formatMoney }) {
   const cfg = typeConfig(purchase.purchase_type);
   const [confirming, setConfirming] = useState(false);
 
@@ -355,9 +355,9 @@ function PurchaseRow({ purchase, onDelete }) {
 
       <div className="flex items-center gap-4 shrink-0">
         <div className="text-right">
-          <p className="text-sm font-bold text-gray-900">{formatMoney(purchase.total_amount)}</p>
+          <p className="text-sm font-bold text-gray-900">{fmt(purchase.total_amount)}</p>
           {purchase.tax_amount > 0 && (
-            <p className="text-[11px] text-indigo-600">IVA: {formatMoney(purchase.tax_amount)}</p>
+            <p className="text-[11px] text-indigo-600">IVA: {fmt(purchase.tax_amount)}</p>
           )}
         </div>
         {confirming ? (
@@ -379,6 +379,8 @@ function PurchaseRow({ purchase, onDelete }) {
 
 export default function CrmPurchases() {
   const { business } = useAuth();
+  const displayMode = business?.designSettings?.priceDisplayMode ?? 'auto';
+  const fmt = (n) => formatMoney(n, business?.currency || 'CLP', displayMode);
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year,  setYear]  = useState(now.getFullYear());
@@ -506,7 +508,7 @@ export default function CrmPurchases() {
         </div>
 
         {/* Resumen — siempre visible arriba */}
-        <PeriodSummary purchases={purchases} taxRate={defaultTaxRate} />
+        <PeriodSummary purchases={purchases} taxRate={defaultTaxRate} fmt={fmt} />
 
         {/* Lista */}
         {loading ? (
@@ -529,7 +531,7 @@ export default function CrmPurchases() {
         ) : (
           <div className="space-y-2">
             {filtered.map(p => (
-              <PurchaseRow key={p.id} purchase={p} onDelete={handleDelete} />
+              <PurchaseRow key={p.id} purchase={p} onDelete={handleDelete} fmt={fmt} />
             ))}
           </div>
         )}
@@ -552,6 +554,7 @@ export default function CrmPurchases() {
           defaultTaxRate={defaultTaxRate}
           onSave={handleSave}
           onClose={() => setShowModal(false)}
+          fmt={fmt}
         />
       )}
     </DashboardAppShell>

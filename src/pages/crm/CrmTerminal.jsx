@@ -24,8 +24,6 @@ const PAYMENT_METHODS = [
 
 const REAL_PAYMENT_METHODS = PAYMENT_METHODS.filter((method) => method.value !== 'credit');
 
-const fmt = (n, currency) => formatMoney(n, currency);
-
 function getProductImageSrc(product) {
   if (product.thumbnail_url) return product.thumbnail_url;
   if (product.card_image_url) return product.card_image_url;
@@ -189,6 +187,8 @@ class CrmTerminalBoundary extends React.Component {
 function CrmTerminalUI() {
   const navigate = useNavigate();
   const { business } = useAuth();
+  const displayMode = business?.designSettings?.priceDisplayMode ?? 'auto';
+  const fmt = (n, currency) => formatMoney(n, currency, displayMode);
   const isDesktop = useIsDesktop();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 

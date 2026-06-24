@@ -34,7 +34,8 @@ export default function CrmInvoices() {
 
   useEffect(() => { load(); }, [business?.id]);
 
-  const fmt = (n) => formatMoney(n, business?.currency);
+  const displayMode = business?.designSettings?.priceDisplayMode ?? 'auto';
+  const fmt = (n) => formatMoney(n, business?.currency, displayMode);
 
   const filtered = search.trim()
     ? invoices.filter(inv => {

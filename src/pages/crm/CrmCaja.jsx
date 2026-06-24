@@ -72,6 +72,8 @@ export default function CrmCaja() {
   const { business, user } = useAuth();
   const navigate = useNavigate();
   const currency = business?.currency;
+  const displayMode = business?.designSettings?.priceDisplayMode ?? 'auto';
+  const fmtMoney = (n) => formatMoney(n, currency, displayMode);
 
   const [session, setSession] = useState(null);
   const [payments, setPayments] = useState([]);
@@ -266,16 +268,16 @@ ${RLS_SQL}`}</SqlBlock>
             <SummaryRow label="Apertura" value={fmt(cs.opened_at)} />
             <SummaryRow label="Cierre" value={fmt(cs.closed_at || new Date())} />
             {cs.initial_amount != null && (
-              <SummaryRow label="Monto inicial" value={formatMoney(cs.initial_amount, currency)} />
+              <SummaryRow label="Monto inicial" value={fmtMoney(cs.initial_amount)} />
             )}
             <div style={{ borderTop: '1px dashed #e5e7eb', margin: '12px 0' }} />
-            <SummaryRow label="Total cobrado" value={formatMoney(csTotal, currency)} bold green />
+            <SummaryRow label="Total cobrado" value={fmtMoney(csTotal)} bold green />
             <div style={{ borderTop: '1px dashed #e5e7eb', margin: '12px 0' }} />
             {METHOD_ORDER.filter(m => csSummary[m]).map(m => (
               <SummaryRow
                 key={m}
                 label={`· ${PAYMENT_LABELS[m]}`}
-                value={`${formatMoney(csSummary[m].total, currency)}  (${csSummary[m].count})`}
+                value={`${fmtMoney(csSummary[m].total)}  (${csSummary[m].count})`}
                 color={PAYMENT_COLORS[m]}
               />
             ))}
@@ -404,7 +406,7 @@ ${RLS_SQL}`}</SqlBlock>
                 <p style={{ fontSize: 14, fontWeight: 700, color: '#065f46', margin: 0 }}>Caja abierta</p>
                 <p style={{ fontSize: 12, color: '#047857', margin: 0 }}>
                   Desde las {fmt(session.opened_at)}
-                  {session.initial_amount != null && ` · Apertura ${formatMoney(session.initial_amount, currency)}`}
+                  {session.initial_amount != null && ` · Apertura ${fmtMoney(session.initial_amount)}`}
                 </p>
               </div>
             </div>
@@ -434,7 +436,7 @@ ${RLS_SQL}`}</SqlBlock>
                   Total cobrado hoy
                 </p>
                 <p style={{ fontSize: 28, fontWeight: 800, color: '#059669', margin: 0 }}>
-                  {formatMoney(grandTotal, currency)}
+                  {fmtMoney(grandTotal)}
                 </p>
               </div>
               <div style={{ textAlign: 'right' }}>
@@ -457,7 +459,7 @@ ${RLS_SQL}`}</SqlBlock>
                   <p style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', margin: 0 }}>{PAYMENT_LABELS[m]}</p>
                 </div>
                 <p style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: '0 0 1px' }}>
-                  {formatMoney(summary[m].total, currency)}
+                  {fmtMoney(summary[m].total)}
                 </p>
                 <p style={{ fontSize: 11, color: '#9ca3af', margin: 0 }}>
                   {summary[m].count} {summary[m].count === 1 ? 'pago' : 'pagos'}
@@ -470,7 +472,7 @@ ${RLS_SQL}`}</SqlBlock>
               <div style={{ backgroundColor: '#f9fafb', border: '1px dashed #e5e7eb', borderRadius: 12, padding: '12px 14px' }}>
                 <p style={{ fontSize: 11, fontWeight: 600, color: '#9ca3af', margin: '0 0 4px' }}>Monto inicial</p>
                 <p style={{ fontSize: 15, fontWeight: 700, color: '#6b7280', margin: 0 }}>
-                  {formatMoney(session.initial_amount, currency)}
+                  {fmtMoney(session.initial_amount)}
                 </p>
               </div>
             )}
@@ -511,7 +513,7 @@ ${RLS_SQL}`}</SqlBlock>
                     </p>
                   </div>
                   <span style={{ fontSize: 14, fontWeight: 700, color: '#059669', flexShrink: 0 }}>
-                    +{formatMoney(p.amount, currency)}
+                    +{fmtMoney(p.amount)}
                   </span>
                 </div>
               ))
@@ -555,14 +557,14 @@ ${RLS_SQL}`}</SqlBlock>
             <div style={{ backgroundColor: '#f9fafb', borderRadius: 10, padding: '12px 16px', marginBottom: 20 }}>
               <SummaryRow label="Apertura" value={fmt(session.opened_at)} />
               <SummaryRow label="Cierre" value={fmt(new Date())} />
-              {session.initial_amount != null && <SummaryRow label="Monto inicial" value={formatMoney(session.initial_amount, currency)} />}
+              {session.initial_amount != null && <SummaryRow label="Monto inicial" value={fmtMoney(session.initial_amount)} />}
               <div style={{ borderTop: '1px dashed #e5e7eb', margin: '8px 0' }} />
-              <SummaryRow label="Total cobrado" value={formatMoney(grandTotal, currency)} bold green />
+              <SummaryRow label="Total cobrado" value={fmtMoney(grandTotal)} bold green />
               {METHOD_ORDER.filter(m => summary[m]).map(m => (
                 <SummaryRow
                   key={m}
                   label={`· ${PAYMENT_LABELS[m]}`}
-                  value={`${formatMoney(summary[m].total, currency)} (${summary[m].count})`}
+                  value={`${fmtMoney(summary[m].total)} (${summary[m].count})`}
                   color={PAYMENT_COLORS[m]}
                 />
               ))}

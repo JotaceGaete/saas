@@ -187,7 +187,8 @@ export default function CrmInvoiceEditor() {
     commercial_notes: commercialNotes,
   };
 
-  const fmt = (n) => formatMoney(n, business?.currency);
+  const displayMode = business?.designSettings?.priceDisplayMode ?? 'auto';
+  const fmt = (n) => formatMoney(n, business?.currency, displayMode);
 
   const handleCreateCustomer = async (fields) => {
     const { data, error } = await createCrmCustomer(business.id, fields);
@@ -344,6 +345,8 @@ export default function CrmInvoiceEditor() {
                     onChange={handleItemChange}
                     onRemove={handleItemRemove}
                     imageUrl={getItemImage(item)}
+                    currency={business?.currency}
+                    displayMode={displayMode}
                   />
                 ))}
               </tbody>
@@ -360,6 +363,8 @@ export default function CrmInvoiceEditor() {
                 onChange={handleItemChange}
                 onRemove={handleItemRemove}
                 imageUrl={getItemImage(item)}
+                currency={business?.currency}
+                displayMode={displayMode}
               />
             ))}
           </div>
@@ -417,7 +422,7 @@ export default function CrmInvoiceEditor() {
       </div>
       <div>
         {items.map((item, idx) => (
-          <CrmLineItemReadOnly key={idx} item={item} imageUrl={getItemImage(item)} />
+          <CrmLineItemReadOnly key={idx} item={item} imageUrl={getItemImage(item)} currency={business?.currency} displayMode={displayMode} />
         ))}
       </div>
     </div>

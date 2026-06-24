@@ -33,8 +33,6 @@ const CATEGORIES = [
 
 const CATEGORY_LABELS = Object.fromEntries(CATEGORIES.map(c => [c.value, c.label]));
 
-const fmt = (n) => formatMoney(n, 'CLP');
-
 // ─── Modal para añadir/editar costo fijo ──────────────────────────────────────
 
 function CostItemModal({ item, businessId, month, year, onClose, onSaved }) {
@@ -130,7 +128,7 @@ function CostItemModal({ item, businessId, month, year, onClose, onSaved }) {
 
 // ─── Fila de costo fijo ───────────────────────────────────────────────────────
 
-function CostRow({ item, onEdit, onDelete }) {
+function CostRow({ item, onEdit, onDelete, fmt }) {
   const [confirming, setConfirming] = useState(false);
   const fromCash = item.source === 'cash_outflow';
 
@@ -191,7 +189,7 @@ function CostRow({ item, onEdit, onDelete }) {
 
 // ─── Panel costos fijos ───────────────────────────────────────────────────────
 
-function FixedCostsPanel({ items, businessId, month, year, onReload }) {
+function FixedCostsPanel({ items, businessId, month, year, onReload, fmt }) {
   const [showModal, setShowModal] = useState(false);
   const [editItem, setEditItem]   = useState(null);
   const total = items.reduce((s, i) => s + (i.amount || 0), 0);
@@ -230,7 +228,7 @@ function FixedCostsPanel({ items, businessId, month, year, onReload }) {
           </div>
         ) : (
           items.map(item => (
-            <CostRow key={item.id} item={item} onEdit={handleEdit} onDelete={onReload} />
+            <CostRow key={item.id} item={item} onEdit={handleEdit} onDelete={onReload} fmt={fmt} />
           ))
         )}
       </div>
@@ -258,7 +256,7 @@ function FixedCostsPanel({ items, businessId, month, year, onReload }) {
 
 // ─── Widget Compras (link) ────────────────────────────────────────────────────
 
-function ComprasLinkPanel({ purchaseTotals, navigate }) {
+function ComprasLinkPanel({ purchaseTotals, navigate, fmt }) {
   const mercaderiaTotal  = purchaseTotals?.totals?.mercaderia?.total  || 0;
   const operacionalTotal = purchaseTotals?.totalOperational           || 0;
   const hasData = mercaderiaTotal > 0 || operacionalTotal > 0;
@@ -317,6 +315,8 @@ function ComprasLinkPanel({ purchaseTotals, navigate }) {
 export default function CrmCostos() {
   const { business } = useAuth();
   const navigate = useNavigate();
+  const displayMode = business?.designSettings?.priceDisplayMode ?? 'auto';
+  const fmt = (n) => formatMoney(n, business?.currency || 'CLP', displayMode);
   const planSlug = getEffectivePlanSlug(
     business?.planSlug, business?.planExpiresAt, business?.trialExpiresAt
   );
@@ -441,10 +441,11 @@ export default function CrmCostos() {
               month={month}
               year={year}
               onReload={load}
+              fmt={fmt}
             />
 
             {/* Link a Compras */}
-            <ComprasLinkPanel purchaseTotals={purchaseTotals} navigate={navigate} />
+            <ComprasLinkPanel purchaseTotals={purchaseTotals} navigate={navigate} fmt={fmt} />
 
           </div>
         )}

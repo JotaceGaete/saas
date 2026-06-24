@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import Icon from 'components/AppIcon';
-import { fmtCLP, fmtMoneyInput, parseMoneyInput } from '../../../utils/formatMoney';
+import { fmtCLP, formatMoney, fmtMoneyInput, parseMoneyInput } from '../../../utils/formatMoney';
 
 export function calcItemSubtotal(unitPrice, quantity, discountPct, discountType = 'percentage') {
   const base = (unitPrice || 0) * (quantity || 1);
@@ -58,10 +58,11 @@ function DiscountTypeToggle({ value, onChange }) {
 }
 
 // ─── Vista de solo lectura (facturas ya guardadas) ──────────────────────────
-export function CrmLineItemReadOnly({ item, imageUrl }) {
+export function CrmLineItemReadOnly({ item, imageUrl, currency, displayMode = 'auto' }) {
+  const fmt = currency ? (n) => formatMoney(n, currency, displayMode) : fmtCLP;
   const discountAmount = calcItemDiscountAmount(item);
   const discountLabel = item.discount_pct > 0
-    ? (item.discount_type === 'fixed' ? `-${fmtCLP(item.discount_pct)}` : `-${item.discount_pct}%`)
+    ? (item.discount_type === 'fixed' ? `-${fmt(item.discount_pct)}` : `-${item.discount_pct}%`)
     : null;
 
   return (
@@ -77,18 +78,19 @@ export function CrmLineItemReadOnly({ item, imageUrl }) {
           <p className="text-sm text-gray-900 font-medium">{item.name}</p>
           {item.description && <p className="text-xs text-gray-500">{item.description}</p>}
           <p className="text-xs text-gray-400 mt-0.5">
-            {item.quantity} × {fmtCLP(item.unit_price)}
+            {item.quantity} × {fmt(item.unit_price)}
             {discountLabel && ` (${discountLabel})`}
           </p>
         </div>
       </div>
-      <p className="text-sm font-semibold text-gray-900 ml-4 shrink-0">{fmtCLP(item.subtotal)}</p>
+      <p className="text-sm font-semibold text-gray-900 ml-4 shrink-0">{fmt(item.subtotal)}</p>
     </div>
   );
 }
 
 // ─── Fila de tabla — desktop ────────────────────────────────────────────────
-export function CrmLineItemTableRow({ item, idx, onChange, onRemove, imageUrl }) {
+export function CrmLineItemTableRow({ item, idx, onChange, onRemove, imageUrl, currency, displayMode = 'auto' }) {
+  const fmt = currency ? (n) => formatMoney(n, currency, displayMode) : fmtCLP;
   const type = item.discount_type || 'percentage';
 
   const set = (key, val) => {
@@ -194,13 +196,13 @@ export function CrmLineItemTableRow({ item, idx, onChange, onRemove, imageUrl })
           <DiscountTypeToggle value={type} onChange={setType} />
         </div>
         {discountAmount > 0 && (
-          <p className="text-xs text-green-600 mt-1 text-right pr-0.5">−{fmtCLP(discountAmount)}</p>
+          <p className="text-xs text-green-600 mt-1 text-right pr-0.5">−{fmt(discountAmount)}</p>
         )}
       </td>
 
       {/* Total */}
       <td className="py-2 px-2 align-top w-28 text-right">
-        <p className="text-sm font-semibold text-gray-900 pt-1">{fmtCLP(item.subtotal)}</p>
+        <p className="text-sm font-semibold text-gray-900 pt-1">{fmt(item.subtotal)}</p>
       </td>
 
       {/* Eliminar */}
@@ -219,7 +221,8 @@ export function CrmLineItemTableRow({ item, idx, onChange, onRemove, imageUrl })
 }
 
 // ─── Card — mobile ──────────────────────────────────────────────────────────
-export function CrmLineItemCard({ item, idx, onChange, onRemove, imageUrl }) {
+export function CrmLineItemCard({ item, idx, onChange, onRemove, imageUrl, currency, displayMode = 'auto' }) {
+  const fmt = currency ? (n) => formatMoney(n, currency, displayMode) : fmtCLP;
   const type = item.discount_type || 'percentage';
   const [showDiscount, setShowDiscount] = useState(item.discount_pct > 0);
 
@@ -310,7 +313,7 @@ export function CrmLineItemCard({ item, idx, onChange, onRemove, imageUrl }) {
 
         {/* Subtotal */}
         <div className="ml-auto text-right">
-          <span className="text-sm font-bold text-gray-900">{fmtCLP(item.subtotal)}</span>
+          <span className="text-sm font-bold text-gray-900">{fmt(item.subtotal)}</span>
         </div>
       </div>
 
@@ -367,7 +370,7 @@ export function CrmLineItemCard({ item, idx, onChange, onRemove, imageUrl }) {
             </div>
             {discountAmount > 0 && (
               <p className="text-xs text-green-600 font-medium pl-1">
-                Ahorro: {fmtCLP(discountAmount)}
+                Ahorro: {fmt(discountAmount)}
               </p>
             )}
           </div>

@@ -5,6 +5,7 @@ import PanelHeader from 'components/ui/PanelHeader';
 import CrmBreadcrumb from 'components/ui/CrmBreadcrumb';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
+import { formatMoney } from '../../utils/formatMoney';
 import {
   getCrmCustomers, createCrmCustomer, updateCrmCustomer, deleteCrmCustomer,
   getBusinessCreditSummary, getCustomerPendingInvoices, registerCustomerAbono,
@@ -124,7 +125,7 @@ function CustomerModal({ initial, onSave, onClose }) {
 
 // ─── Card de cliente ──────────────────────────────────────────────────────────
 
-function CustomerCard({ c, balance, onView, onEdit, onDelete, deleting }) {
+function CustomerCard({ c, balance, onView, onEdit, onDelete, deleting, fmt }) {
   const waNumber = cleanPhone(c.whatsapp || c.phone);
   const hasWa    = waNumber.length >= 7;
   const hasEmail = !!c.email;
@@ -177,7 +178,7 @@ function CustomerCard({ c, balance, onView, onEdit, onDelete, deleting }) {
             {alDia ? 'Sin deuda' : 'Saldo pendiente'}
           </p>
           <p className={`text-xl font-black leading-none ${alDia ? 'text-emerald-700' : 'text-red-600'}`}>
-            {alDia ? 'Al día ✓' : `$${debt.toLocaleString('es-CL')}`}
+            {alDia ? 'Al día ✓' : (fmt ? fmt(debt) : `$${debt.toLocaleString('es-CL')}`)}
           </p>
         </div>
         {alDia
@@ -809,7 +810,8 @@ export default function CrmCustomers() {
   const totalClientes    = customers.length;
   const { clientesConDeuda, totalPorCobrar } = creditSummary;
 
-  const fmt = (n) => new Intl.NumberFormat('es-CL', { style: 'currency', currency: business?.currency || 'CLP', maximumFractionDigits: 0 }).format(n);
+  const displayMode = business?.designSettings?.priceDisplayMode ?? 'auto';
+  const fmt = (n) => formatMoney(n, business?.currency || 'CLP', displayMode);
 
   return (
     <DashboardAppShell>
@@ -930,6 +932,7 @@ export default function CrmCustomers() {
                 onEdit={() => setModal(c)}
                 onDelete={() => handleDelete(c.id)}
                 deleting={deleting === c.id}
+                fmt={fmt}
               />
             ))}
           </div>

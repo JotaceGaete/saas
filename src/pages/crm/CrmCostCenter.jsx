@@ -26,7 +26,6 @@ const MONTHS = [
   'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre',
 ];
 
-const fmt = (n) => formatMoney(n, 'CLP');
 function clamp(v, min, max) { return Math.min(max, Math.max(min, v)); }
 function dayFromDate(dateStr) { return dateStr ? parseInt(dateStr.slice(8, 10), 10) : null; }
 
@@ -552,7 +551,7 @@ function SettingsPanel({ center, businessId, month, year, onSave }) {
 
 // ─── Dashboard principal ──────────────────────────────────────────────────────
 
-function Dashboard({ center, costItems, sales, dailySales, purchaseTotals, purchases, month, year, onEditSettings, businessId, navigate }) {
+function Dashboard({ center, costItems, sales, dailySales, purchaseTotals, purchases, month, year, onEditSettings, businessId, navigate, fmt }) {
   const now = new Date();
   const isCurrentMonth = month === now.getMonth() + 1 && year === now.getFullYear();
   const today = now.toISOString().slice(0, 10);
@@ -623,6 +622,8 @@ function Dashboard({ center, costItems, sales, dailySales, purchaseTotals, purch
 export default function CrmCostCenter() {
   const { business } = useAuth();
   const navigate = useNavigate();
+  const displayMode = business?.designSettings?.priceDisplayMode ?? 'auto';
+  const fmt = (n) => formatMoney(n, business?.currency || 'CLP', displayMode);
   const planSlug = getEffectivePlanSlug(
     business?.planSlug, business?.planExpiresAt, business?.trialExpiresAt
   );
@@ -745,6 +746,7 @@ export default function CrmCostCenter() {
             onEditSettings={(c) => setCenter(c)}
             businessId={business.id}
             navigate={navigate}
+            fmt={fmt}
           />
         )}
       </DashboardLayoutContent>

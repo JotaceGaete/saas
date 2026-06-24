@@ -119,7 +119,7 @@ function SectionButton({ open, onClick, children }) {
   );
 }
 
-function MethodBreakdown({ summary, currency }) {
+function MethodBreakdown({ summary, currency, displayMode = 'auto' }) {
   return (
     <div className="grid grid-cols-1 gap-2 sm:grid-cols-5">
       {METHOD_ORDER.map(method => (
@@ -128,7 +128,7 @@ function MethodBreakdown({ summary, currency }) {
             {PAYMENT_METHOD_LABELS[method]}
           </p>
           <p className="mt-1 text-sm font-black text-gray-900">
-            {formatMoney(summary[method] || 0, currency)}
+            {formatMoney(summary[method] || 0, currency, displayMode)}
           </p>
         </div>
       ))}
@@ -136,7 +136,7 @@ function MethodBreakdown({ summary, currency }) {
   );
 }
 
-function MovementsTable({ payments, movements, currency, onEditPayment, onVoidPayment, onVoidMovement, sessionOpen }) {
+function MovementsTable({ payments, movements, currency, displayMode = 'auto', onEditPayment, onVoidPayment, onVoidMovement, sessionOpen }) {
   const entries = mergeEntries(payments, movements);
 
   if (entries.length === 0) {
@@ -240,7 +240,7 @@ function MovementsTable({ payments, movements, currency, onEditPayment, onVoidPa
 
                   {/* Monto */}
                   <td className={`whitespace-nowrap px-5 py-3 text-right font-bold ${amountColor}`}>
-                    {!isVoided && amountPrefix}{formatMoney(entry.amount, entry.currency || currency)}
+                    {!isVoided && amountPrefix}{formatMoney(entry.amount, entry.currency || currency, displayMode)}
                   </td>
 
                   {/* Acción */}
@@ -303,7 +303,7 @@ function MovementsTable({ payments, movements, currency, onEditPayment, onVoidPa
   );
 }
 
-function PaymentEditModal({ payment, currency, busy, onSubmit, onCancel, onEditSale }) {
+function PaymentEditModal({ payment, currency, displayMode = 'auto', busy, onSubmit, onCancel, onEditSale }) {
   const [amount, setAmount] = useState(String(payment?.amount || ''));
   const [paymentMethod, setPaymentMethod] = useState(payment?.payment_method || 'cash');
   const [reference, setReference] = useState(payment?.reference || '');
@@ -433,7 +433,7 @@ function PaymentEditModal({ payment, currency, busy, onSubmit, onCancel, onEditS
                   {invoiceItems.map((item, index) => (
                     <div key={item.id || index} className="flex justify-between gap-3 text-xs text-gray-600">
                       <span>{item.quantity}x {item.name}</span>
-                      <span className="font-semibold">{formatMoney(item.subtotal || item.unit_price * item.quantity, currency)}</span>
+                      <span className="font-semibold">{formatMoney(item.subtotal || item.unit_price * item.quantity, currency, displayMode)}</span>
                     </div>
                   ))}
                 </div>
@@ -464,7 +464,7 @@ function PaymentEditModal({ payment, currency, busy, onSubmit, onCancel, onEditS
   );
 }
 
-function VoidPaymentModal({ payment, currency, busy, onConfirm, onCancel }) {
+function VoidPaymentModal({ payment, currency, displayMode = 'auto', busy, onConfirm, onCancel }) {
   const [reason, setReason] = useState('');
   const [error, setError] = useState('');
 
@@ -491,7 +491,7 @@ function VoidPaymentModal({ payment, currency, busy, onConfirm, onCancel }) {
           <p className="mt-1 text-red-700">
             {PAYMENT_METHOD_LABELS[payment.payment_method] || payment.payment_method}
             {' — '}
-            <strong>{formatMoney(payment.amount, payment.currency || currency)}</strong>
+            <strong>{formatMoney(payment.amount, payment.currency || currency, displayMode)}</strong>
             {' — '}
             {fmtTime(payment.created_at)}
           </p>
@@ -806,6 +806,7 @@ function CashSessionForm({ title, initialValue = '', notesValue = '', busy, subm
 export default function CrmCash() {
   const navigate = useNavigate();
   const { business, user } = useAuth();
+  const displayMode = business?.designSettings?.priceDisplayMode ?? 'auto';
   const today = getLocalDateString();
   const [openSession, setOpenSession] = useState(null);
   const [sessions, setSessions] = useState([]);
@@ -1118,19 +1119,19 @@ export default function CrmCash() {
                       <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm">
                         {toNumber(currentSession.initial_amount) > 0 && (
                           <span>
-                            Fondo inicial: <strong className="text-gray-700">{formatMoney(toNumber(currentSession.initial_amount), business?.currency)}</strong>
+                            Fondo inicial: <strong className="text-gray-700">{formatMoney(toNumber(currentSession.initial_amount), business?.currency, displayMode)}</strong>
                           </span>
                         )}
                         <span>
-                          Cobros: <strong className="text-emerald-700">{formatMoney(sessionTotal, business?.currency)}</strong>
+                          Cobros: <strong className="text-emerald-700">{formatMoney(sessionTotal, business?.currency, displayMode)}</strong>
                         </span>
                         {sessionOutflows > 0 && (
                           <span>
-                            Salidas: <strong className="text-red-600">−{formatMoney(sessionOutflows, business?.currency)}</strong>
+                            Salidas: <strong className="text-red-600">−{formatMoney(sessionOutflows, business?.currency, displayMode)}</strong>
                           </span>
                         )}
                         <span>
-                          Saldo en caja: <strong className="text-gray-900">{formatMoney(currentBalance, business?.currency)}</strong>
+                          Saldo en caja: <strong className="text-gray-900">{formatMoney(currentBalance, business?.currency, displayMode)}</strong>
                         </span>
                       </div>
                     )}
@@ -1182,19 +1183,19 @@ export default function CrmCash() {
                 <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4 lg:grid-cols-5">
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Fondo inicial</p>
-                    <p className="mt-1 text-lg font-black text-gray-500">{formatMoney(toNumber(currentSession?.initial_amount), business?.currency)}</p>
+                    <p className="mt-1 text-lg font-black text-gray-500">{formatMoney(toNumber(currentSession?.initial_amount), business?.currency, displayMode)}</p>
                   </div>
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Cobros de la caja</p>
-                    <p className="mt-1 text-lg font-black text-emerald-700">{formatMoney(sessionTotal, business?.currency)}</p>
+                    <p className="mt-1 text-lg font-black text-emerald-700">{formatMoney(sessionTotal, business?.currency, displayMode)}</p>
                   </div>
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Salidas de la caja</p>
-                    <p className="mt-1 text-lg font-black text-red-600">{sessionOutflows > 0 ? `−${formatMoney(sessionOutflows, business?.currency)}` : '—'}</p>
+                    <p className="mt-1 text-lg font-black text-red-600">{sessionOutflows > 0 ? `−${formatMoney(sessionOutflows, business?.currency, displayMode)}` : '—'}</p>
                   </div>
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Saldo de caja</p>
-                    <p className="mt-1 text-lg font-black text-gray-900">{formatMoney(currentBalance, business?.currency)}</p>
+                    <p className="mt-1 text-lg font-black text-gray-900">{formatMoney(currentBalance, business?.currency, displayMode)}</p>
                   </div>
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Cajas hoy</p>
@@ -1251,6 +1252,7 @@ export default function CrmCash() {
                 <PaymentEditModal
                   payment={editingPayment}
                   currency={business?.currency}
+                  displayMode={displayMode}
                   busy={busy}
                   onSubmit={handleUpdatePayment}
                   onCancel={() => setEditingPayment(null)}
@@ -1262,6 +1264,7 @@ export default function CrmCash() {
                 <VoidPaymentModal
                   payment={voidingPayment}
                   currency={business?.currency}
+                  displayMode={displayMode}
                   busy={busy}
                   onConfirm={handleVoidPayment}
                   onCancel={() => setVoidingPayment(null)}
@@ -1284,6 +1287,7 @@ export default function CrmCash() {
                     invoice_id: null,
                   }}
                   currency={business?.currency}
+                  displayMode={displayMode}
                   busy={busy}
                   onConfirm={handleVoidMovement}
                   onCancel={() => setVoidingMovement(null)}
@@ -1295,13 +1299,14 @@ export default function CrmCash() {
                   <div className="rounded-2xl border border-gray-100 bg-white p-4">
                     <p className="text-sm font-bold text-gray-900">{turnLabel(currentSession, sessions)}</p>
                     <p className="mt-1 text-xs text-gray-400">
-                      {turnTimeRange(currentSession)} · Saldo: {formatMoney(currentBalance, business?.currency)}
+                      {turnTimeRange(currentSession)} · Saldo: {formatMoney(currentBalance, business?.currency, displayMode)}
                     </p>
                   </div>
                   <MovementsTable
                     payments={currentPayments}
                     movements={currentMvts}
                     currency={business?.currency}
+                    displayMode={displayMode}
                     onEditPayment={setEditingPayment}
                     onVoidPayment={setVoidingPayment}
                     onVoidMovement={setVoidingMovement}
@@ -1316,11 +1321,11 @@ export default function CrmCash() {
                     <p className="mb-3 text-xs font-bold uppercase tracking-wide text-gray-400">
                       Resumen del día completo — por método de pago
                     </p>
-                    <MethodBreakdown summary={daySummary} currency={business?.currency} />
+                    <MethodBreakdown summary={daySummary} currency={business?.currency} displayMode={displayMode} />
                     <p className="mt-3 text-right text-xs text-gray-400">
-                      Total del día: <strong className="text-gray-700">{formatMoney(dayTotal, business?.currency)}</strong>
+                      Total del día: <strong className="text-gray-700">{formatMoney(dayTotal, business?.currency, displayMode)}</strong>
                       {dayOutflows > 0 && (
-                        <> · Salidas: <strong className="text-red-600">−{formatMoney(dayOutflows, business?.currency)}</strong></>
+                        <> · Salidas: <strong className="text-red-600">−{formatMoney(dayOutflows, business?.currency, displayMode)}</strong></>
                       )}
                     </p>
                   </div>
@@ -1349,9 +1354,9 @@ export default function CrmCash() {
                               <span className="mx-2 text-gray-300">|</span>
                               <span>{turnTimeRange(session)}</span>
                               <span className="mx-2 text-gray-300">|</span>
-                              <span className="text-gray-400">Inicial: {formatMoney(toNumber(session.initial_amount), business?.currency)}</span>
+                              <span className="text-gray-400">Inicial: {formatMoney(toNumber(session.initial_amount), business?.currency, displayMode)}</span>
                               <span className="mx-2 text-gray-300">|</span>
-                              <span className="font-bold text-gray-900">Saldo: {formatMoney(total, business?.currency)}</span>
+                              <span className="font-bold text-gray-900">Saldo: {formatMoney(total, business?.currency, displayMode)}</span>
                             </div>
                             <div className="flex flex-wrap gap-2">
                               <button
@@ -1395,7 +1400,7 @@ export default function CrmCash() {
                         <div>
                           <p className="text-sm font-bold text-gray-900">{turnLabel(detailSession, sessions)}</p>
                           <p className="mt-1 text-xs text-gray-400">
-                            {turnTimeRange(detailSession)} · Inicial: {formatMoney(toNumber(detailSession.initial_amount), business?.currency)} · Saldo: {formatMoney(detailBalance, business?.currency)}
+                            {turnTimeRange(detailSession)} · Inicial: {formatMoney(toNumber(detailSession.initial_amount), business?.currency, displayMode)} · Saldo: {formatMoney(detailBalance, business?.currency, displayMode)}
                           </p>
                         </div>
                         <button
@@ -1405,11 +1410,12 @@ export default function CrmCash() {
                           Ocultar detalle
                         </button>
                       </div>
-                      <MethodBreakdown summary={detailSummary} currency={business?.currency} />
+                      <MethodBreakdown summary={detailSummary} currency={business?.currency} displayMode={displayMode} />
                       <MovementsTable
                         payments={detailPayments}
                         movements={detailMvts}
                         currency={business?.currency}
+                        displayMode={displayMode}
                         onEditPayment={setEditingPayment}
                         onVoidPayment={setVoidingPayment}
                         onVoidMovement={setVoidingMovement}

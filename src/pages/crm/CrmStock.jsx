@@ -32,7 +32,7 @@ const MANUAL_TYPES = ['entrada', 'salida', 'ajuste'];
 
 const TYPE_LABELS = { entrada: 'Entrada', salida: 'Salida', ajuste: 'Ajuste' };
 
-const fmt = (n) => formatMoney(n, 'CLP');
+const _fmtDefault = (n) => formatMoney(n, 'CLP');
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -513,7 +513,7 @@ function MinimoEditor({ product, onSave }) {
 
 // ─── Ficha del producto ────────────────────────────────────────────────────────
 
-function ProductCard({ product, businessId, onBack, onMinimoSave, onMovementDone, movements, loadingMov }) {
+function ProductCard({ product, businessId, onBack, onMinimoSave, onMovementDone, movements, loadingMov, fmt = _fmtDefault }) {
   const status  = stockStatus(product);
   const catSt   = catalogStatus(product);
 
@@ -669,6 +669,8 @@ function ProductCard({ product, businessId, onBack, onMinimoSave, onMovementDone
 
 export default function CrmStock() {
   const { business }                  = useAuth();
+  const displayMode = business?.designSettings?.priceDisplayMode ?? 'auto';
+  const fmt = (n) => formatMoney(n, business?.currency || 'CLP', displayMode);
   const [products, setProducts]       = useState([]);
   const [loading,  setLoading]        = useState(true);
   const [selected, setSelected]       = useState(null); // product object
@@ -782,6 +784,7 @@ export default function CrmStock() {
                 onMovementDone={handleMovementDone}
                 movements={movements}
                 loadingMov={loadingMov}
+                fmt={fmt}
               />
             ) : (
               <DefaultView
