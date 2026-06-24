@@ -12,7 +12,12 @@ import CrmThermalTicket from './components/CrmThermalTicket';
 import { QuickCustomerModal } from './components/QuickCustomerModal';
 import CrmBreadcrumb from 'components/ui/CrmBreadcrumb';
 import { formatMoney, fmtMoneyInput, parseMoneyInput } from '../../utils/formatMoney';
-import { QuickProductsSection } from './components/QuickProductsSection';
+import {
+  QuickProductsSection,
+  loadPinnedIds,
+  savePinnedIds,
+  getMigrationKey,
+} from './components/QuickProductsSection';
 
 const PAYMENT_METHODS = [
   { value: 'cash',          label: 'Efectivo',      icon: 'Banknote' },
@@ -193,6 +198,12 @@ function CrmTerminalUI() {
   const isDesktop = useIsDesktop();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
+  // ── Acceso rápido — estado compartido con la grilla principal ────────────────
+  const quickLimit = isDesktop ? 12 : 8;
+  const [pinnedIds,  setPinnedIds]  = useState(() => loadPinnedIds(business?.id));
+  const [quickToast, setQuickToast] = useState(null);
+  const quickToastTimer = useRef(null);
+
   const effectivePlan = getEffectivePlanSlug(
     business?.planSlug,
     business?.planExpiresAt,
@@ -285,6 +296,33 @@ function CrmTerminalUI() {
     });
   }, [business?.id, hasAccess]);
 
+  // Sincronizar pines si cambia el negocio activo
+  useEffect(() => {
+    setPinnedIds(loadPinnedIds(business?.id));
+  }, [business?.id]);
+
+  // Migración única: productos con show_in_pos=true → Acceso rápido.
+  // Corre una sola vez por businessId gracias al flag en localStorage.
+  useEffect(() => {
+    if (!business?.id || posProducts.length === 0) return;
+    const migKey = getMigrationKey(business.id);
+    if (localStorage.getItem(migKey)) return;
+
+    const current = loadPinnedIds(business.id);
+    const toAdd   = posProducts
+      .filter(p => p.show_in_pos && !current.includes(p.id))
+      .map(p => p.id)
+      .slice(0, Math.max(0, quickLimit - current.length));
+
+    if (toAdd.length > 0) {
+      const merged = [...current, ...toAdd];
+      setPinnedIds(merged);
+      savePinnedIds(business.id, merged);
+    }
+
+    localStorage.setItem(migKey, '1');
+  }, [business?.id, posProducts, quickLimit]);
+
   const handleCreateCustomer = async (fields) => {
     const { data, error } = await createCrmCustomer(business.id, fields);
     if (error) return { error };
@@ -362,6 +400,41 @@ function CrmTerminalUI() {
     const _key = `manual_${Date.now()}`;
     setCart(prev => [...prev, { _key, product_id: null, name, unit_price, quantity, note: note || null }]);
   };
+
+  // ── Callbacks de Acceso rápido ────────────────────────────────────────────────
+  const showQuickToast = useCallback((msg) => {
+    clearTimeout(quickToastTimer.current);
+    setQuickToast(msg);
+    quickToastTimer.current = setTimeout(() => setQuickToast(null), 2500);
+  }, []);
+
+  const handlePin = useCallback((productId) => {
+    setPinnedIds(prev => {
+      if (prev.includes(productId) || prev.length >= quickLimit) return prev;
+      const next = [...prev, productId];
+      savePinnedIds(business?.id, next);
+      return next;
+    });
+    const pool = allProductsRef.current.length > 0 ? allProductsRef.current : posProducts;
+    const product = pool.find(p => p.id === productId);
+    showQuickToast(product ? `"${product.name}" fijado en Acceso rápido` : 'Producto fijado');
+  }, [quickLimit, business?.id, posProducts, showQuickToast]);
+
+  const handleUnpin = useCallback((productId) => {
+    setPinnedIds(prev => {
+      const next = prev.filter(id => id !== productId);
+      savePinnedIds(business?.id, next);
+      return next;
+    });
+  }, [business?.id]);
+
+  const handleTogglePin = useCallback((productId) => {
+    if (pinnedIds.includes(productId)) {
+      handleUnpin(productId);
+    } else {
+      handlePin(productId);
+    }
+  }, [pinnedIds, handlePin, handleUnpin]);
 
   const updateQty = (_key, delta) => {
     setCart(prev =>
@@ -804,12 +877,15 @@ function CrmTerminalUI() {
                   {/* Quick access — solo visible cuando no hay búsqueda activa */}
                   {!isSearching && (
                     <QuickProductsSection
-                      businessId={business?.id}
                       allProducts={allProducts}
                       posProducts={posProducts}
-                      isDesktop={isDesktop}
+                      pinnedIds={pinnedIds}
+                      limit={quickLimit}
+                      onPin={handlePin}
+                      onUnpin={handleUnpin}
                       addToCart={addToCart}
                       fmt={(n) => fmt(n, business?.currency)}
+                      toast={quickToast}
                     />
                   )}
 
@@ -875,27 +951,43 @@ function CrmTerminalUI() {
                     </div>
                   ) : (
                     <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-                      {filtered.map(p => (
-                        <button
-                          key={p.id}
-                          onClick={() => addToCart(p)}
-                          className="group flex flex-col gap-2.5 rounded-2xl border border-gray-200 bg-white p-2.5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-lg active:scale-[0.98]"
-                        >
-                          <ProductThumb product={p} />
-                          <div className="min-w-0 px-1 pb-1">
-                            {p.category && (
-                              <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wide truncate mb-1">{p.category}</p>
-                            )}
-                            <p className="min-h-[32px] text-sm font-bold text-gray-900 line-clamp-2 leading-snug group-hover:text-blue-700">{p.name}</p>
-                            <div className="mt-1.5 flex items-center justify-between gap-2">
-                              <p className="truncate text-base font-black text-blue-600">{fmt(p.price, business?.currency)}</p>
-                              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-50 text-blue-600 transition-colors group-hover:bg-blue-600 group-hover:text-white">
-                                <Icon name="Plus" size={15} />
-                              </span>
-                            </div>
+                      {filtered.map(p => {
+                        const isPinned = pinnedIds.includes(p.id);
+                        return (
+                          <div key={p.id} className="relative group">
+                            <button
+                              onClick={() => addToCart(p)}
+                              className="w-full flex flex-col gap-2.5 rounded-2xl border border-gray-200 bg-white p-2.5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-lg active:scale-[0.98]"
+                            >
+                              <ProductThumb product={p} />
+                              <div className="min-w-0 px-1 pb-1">
+                                {p.category && (
+                                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wide truncate mb-1">{p.category}</p>
+                                )}
+                                <p className="min-h-[32px] text-sm font-bold text-gray-900 line-clamp-2 leading-snug group-hover:text-blue-700">{p.name}</p>
+                                <div className="mt-1.5 flex items-center justify-between gap-2">
+                                  <p className="truncate text-base font-black text-blue-600">{fmt(p.price, business?.currency)}</p>
+                                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-50 text-blue-600 transition-colors group-hover:bg-blue-600 group-hover:text-white">
+                                    <Icon name="Plus" size={15} />
+                                  </span>
+                                </div>
+                              </div>
+                            </button>
+                            {/* Chincheta — siempre visible si fijado, solo en hover si no */}
+                            <button
+                              onClick={() => handleTogglePin(p.id)}
+                              title={isPinned ? 'Quitar de Acceso rápido' : 'Fijar en Acceso rápido'}
+                              className={`absolute top-2 right-2 w-6 h-6 rounded-full border flex items-center justify-center transition-all ${
+                                isPinned
+                                  ? 'bg-blue-600 border-blue-600 text-white shadow-sm opacity-100'
+                                  : 'bg-white border-gray-200 text-gray-300 shadow-sm opacity-0 group-hover:opacity-100 hover:border-blue-400 hover:text-blue-500'
+                              }`}
+                            >
+                              <Icon name="Pin" size={11} />
+                            </button>
                           </div>
-                        </button>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>

@@ -1,39 +1,38 @@
 /**
  * QuickProductsSection — Acceso rápido en el TPV.
  *
- * Persiste en localStorage por businessId.
+ * El estado de `pinnedIds` vive en CrmTerminal (componente padre) para que
+ * el botón de chincheta en la grilla principal y esta sección compartan
+ * la misma fuente de verdad sin prop-drilling excesivo.
+ *
  * Preparado para migrar a crm_pos_quick_products (Supabase) en el futuro:
- * solo cambiar loadIds/saveIds por llamadas al servicio.
+ * solo reemplazar loadPinnedIds / savePinnedIds por llamadas al servicio.
  */
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import Icon from 'components/AppIcon';
 
-// ─── Límites ──────────────────────────────────────────────────────────────────
+// ─── Storage — exportado para uso en CrmTerminal ──────────────────────────────
 
-const QUICK_LIMIT_DESKTOP = 12;
-const QUICK_LIMIT_OTHER   = 8;
-
-// ─── Storage ──────────────────────────────────────────────────────────────────
-
-function storageKey(businessId) {
-  return `walinka:pos:quick-products:${businessId}`;
-}
-
-function loadIds(businessId) {
+export function loadPinnedIds(businessId) {
   if (!businessId) return [];
   try {
-    const parsed = JSON.parse(localStorage.getItem(storageKey(businessId)));
+    const parsed = JSON.parse(localStorage.getItem(`walinka:pos:quick-products:${businessId}`));
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
   }
 }
 
-function saveIds(businessId, ids) {
+export function savePinnedIds(businessId, ids) {
   if (!businessId) return;
   try {
-    localStorage.setItem(storageKey(businessId), JSON.stringify(ids));
+    localStorage.setItem(`walinka:pos:quick-products:${businessId}`, JSON.stringify(ids));
   } catch { /* ignore */ }
+}
+
+/** Clave que marca si la migración show_in_pos → quick access ya se ejecutó. */
+export function getMigrationKey(businessId) {
+  return `walinka:pos:quick-products-migrated:${businessId}`;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -42,7 +41,7 @@ function normalize(s) {
   return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 }
 
-function getImageSrc(product) {
+export function getQuickImageSrc(product) {
   if (product.thumbnail_url)  return product.thumbnail_url;
   if (product.card_image_url) return product.card_image_url;
   if (product.image_url)      return product.image_url;
@@ -71,7 +70,6 @@ function QuickProductPickerModal({ allProducts, posProducts, pinnedIds, limit, o
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  // Fallback a posProducts si allProducts aún no ha cargado
   const pool          = allProducts.length > 0 ? allProducts : posProducts;
   const stillLoading  = allProducts.length === 0 && posProducts.length === 0;
   const usingFallback = allProducts.length === 0 && posProducts.length > 0;
@@ -98,7 +96,6 @@ function QuickProductPickerModal({ allProducts, posProducts, pinnedIds, limit, o
         className="bg-white rounded-2xl w-full max-w-sm shadow-2xl flex flex-col max-h-[80vh]"
         onClick={e => e.stopPropagation()}
       >
-        {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
           <h2 className="font-bold text-gray-900 text-sm flex items-center gap-2">
             <Icon name="Pin" size={15} className="text-blue-500" />
@@ -109,7 +106,6 @@ function QuickProductPickerModal({ allProducts, posProducts, pinnedIds, limit, o
           </button>
         </div>
 
-        {/* Search input */}
         <div className="px-4 pt-3 pb-2 space-y-2">
           <div className="relative">
             <Icon name="Search" size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
@@ -141,7 +137,6 @@ function QuickProductPickerModal({ allProducts, posProducts, pinnedIds, limit, o
           )}
         </div>
 
-        {/* Results */}
         <div className="overflow-y-auto flex-1 px-2 pb-3">
           {stillLoading ? (
             <div className="py-10 text-center flex flex-col items-center gap-2 text-gray-400">
@@ -199,7 +194,7 @@ function QuickProductPickerModal({ allProducts, posProducts, pinnedIds, limit, o
 // ─── QuickProductCard ──────────────────────────────────────────────────────────
 
 const QuickProductCard = React.memo(function QuickProductCard({ product, onAdd, onUnpin, fmt }) {
-  const src = getImageSrc(product);
+  const src = getQuickImageSrc(product);
 
   return (
     <div className="relative group">
@@ -207,7 +202,6 @@ const QuickProductCard = React.memo(function QuickProductCard({ product, onAdd, 
         onClick={() => onAdd(product)}
         className="w-full flex flex-col gap-1.5 rounded-xl border border-gray-200 bg-white p-2 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md active:scale-[0.98]"
       >
-        {/* Thumbnail */}
         <div className="overflow-hidden rounded-lg aspect-[4/3] w-full bg-gray-50 flex items-center justify-center">
           {src ? (
             <img src={src} alt={product.name} className="w-full h-full object-cover" loading="lazy" />
@@ -217,14 +211,11 @@ const QuickProductCard = React.memo(function QuickProductCard({ product, onAdd, 
             </span>
           )}
         </div>
-        {/* Info */}
         <div className="px-0.5 pb-0.5">
           <p className="text-[11px] font-bold text-gray-800 leading-tight line-clamp-2 min-h-[26px]">{product.name}</p>
           <p className="text-xs font-black text-blue-600 mt-0.5 truncate">{fmt(product.price || 0)}</p>
         </div>
       </button>
-
-      {/* Unpin button — only on hover */}
       <button
         onClick={e => { e.stopPropagation(); onUnpin(product.id); }}
         title="Quitar de Acceso rápido"
@@ -237,21 +228,26 @@ const QuickProductCard = React.memo(function QuickProductCard({ product, onAdd, 
 });
 
 // ─── QuickProductsSection ─────────────────────────────────────────────────────
+//
+// Estado externo (gestionado por CrmTerminal):
+//   pinnedIds, onPin, onUnpin, limit, toast
+//
+// Estado interno (UI local):
+//   showPicker
 
-export function QuickProductsSection({ businessId, allProducts, posProducts, isDesktop, addToCart, fmt }) {
-  const limit = isDesktop ? QUICK_LIMIT_DESKTOP : QUICK_LIMIT_OTHER;
+export function QuickProductsSection({
+  allProducts,
+  posProducts,
+  pinnedIds,
+  limit,
+  onPin,
+  onUnpin,
+  addToCart,
+  fmt,
+  toast,
+}) {
+  const [showPicker, setShowPicker] = useState(false);
 
-  const [pinnedIds,   setPinnedIds]   = useState(() => loadIds(businessId));
-  const [showPicker,  setShowPicker]  = useState(false);
-  const [toast,       setToast]       = useState(null);
-  const toastTimer = useRef(null);
-
-  // Re-sync when businessId changes (e.g. admin switching businesses)
-  useEffect(() => {
-    setPinnedIds(loadIds(businessId));
-  }, [businessId]);
-
-  // Resolve pinned IDs → product objects (silently drops deleted products)
   const pool = useMemo(
     () => (allProducts.length > 0 ? allProducts : posProducts),
     [allProducts, posProducts],
@@ -264,31 +260,11 @@ export function QuickProductsSection({ businessId, allProducts, posProducts, isD
 
   const atLimit = pinnedIds.length >= limit;
 
-  const showToast = useCallback((msg) => {
-    clearTimeout(toastTimer.current);
-    setToast(msg);
-    toastTimer.current = setTimeout(() => setToast(null), 2500);
-  }, []);
-
-  const handlePin = useCallback((productId) => {
-    setPinnedIds(prev => {
-      if (prev.includes(productId) || prev.length >= limit) return prev;
-      const next = [...prev, productId];
-      saveIds(businessId, next);
-      return next;
-    });
+  // Cierra el picker y delega la persistencia al padre
+  const handlePickerPin = useCallback((productId) => {
+    onPin(productId);
     setShowPicker(false);
-    const product = pool.find(p => p.id === productId);
-    showToast(product ? `"${product.name}" fijado en Acceso rápido` : 'Producto fijado');
-  }, [businessId, limit, pool, showToast]);
-
-  const handleUnpin = useCallback((productId) => {
-    setPinnedIds(prev => {
-      const next = prev.filter(id => id !== productId);
-      saveIds(businessId, next);
-      return next;
-    });
-  }, [businessId]);
+  }, [onPin]);
 
   const handleAdd = useCallback((product) => {
     addToCart(product);
@@ -297,7 +273,6 @@ export function QuickProductsSection({ businessId, allProducts, posProducts, isD
   return (
     <>
       <div className="space-y-2">
-        {/* Header */}
         <div className="flex items-center justify-between min-h-[22px]">
           <div className="flex items-center gap-1.5">
             <Icon name="Pin" size={13} className="text-gray-400" />
@@ -319,7 +294,6 @@ export function QuickProductsSection({ businessId, allProducts, posProducts, isD
           )}
         </div>
 
-        {/* Grid de productos fijados */}
         {pinnedProducts.length > 0 ? (
           <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
             {pinnedProducts.map(p => (
@@ -327,11 +301,10 @@ export function QuickProductsSection({ businessId, allProducts, posProducts, isD
                 key={p.id}
                 product={p}
                 onAdd={handleAdd}
-                onUnpin={handleUnpin}
+                onUnpin={onUnpin}
                 fmt={fmt}
               />
             ))}
-            {/* Tarjeta "Agregar" — solo si hay espacio */}
             {!atLimit && (
               <button
                 onClick={() => setShowPicker(true)}
@@ -343,7 +316,6 @@ export function QuickProductsSection({ businessId, allProducts, posProducts, isD
             )}
           </div>
         ) : (
-          /* Empty state */
           <button
             onClick={() => setShowPicker(true)}
             className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 border-dashed border-gray-200 bg-white text-gray-400 hover:border-blue-300 hover:text-blue-500 hover:bg-blue-50 transition-all"
@@ -356,7 +328,7 @@ export function QuickProductsSection({ businessId, allProducts, posProducts, isD
           </button>
         )}
 
-        {/* Toast de confirmación */}
+        {/* Toast — controlado por el padre, solo renderizado aquí */}
         {toast && (
           <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-lg text-xs font-semibold text-emerald-700">
             <Icon name="CheckCircle2" size={13} />
@@ -365,14 +337,13 @@ export function QuickProductsSection({ businessId, allProducts, posProducts, isD
         )}
       </div>
 
-      {/* Modal de búsqueda/selección */}
       {showPicker && (
         <QuickProductPickerModal
           allProducts={allProducts}
           posProducts={posProducts}
           pinnedIds={pinnedIds}
           limit={limit}
-          onPin={handlePin}
+          onPin={handlePickerPin}
           onClose={() => setShowPicker(false)}
         />
       )}
