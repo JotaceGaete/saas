@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import DashboardAppShell from 'components/ui/DashboardAppShell';
 import DashboardLayoutContent from 'components/ui/DashboardLayoutContent';
 import PanelHeader from 'components/ui/PanelHeader';
@@ -12,7 +12,52 @@ import {
   getCustomerPaymentHistory, formatInvoiceNumber,
 } from '../../services/crmService';
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Constants ─────────────────────────────────────────────────────────────────
+
+const PAGE_SIZE = 50;
+const VIEW_STORAGE_KEY = 'walinka_customers_view';
+
+const AVATAR_COLORS = [
+  'bg-blue-600', 'bg-violet-600', 'bg-emerald-600',
+  'bg-rose-600',  'bg-amber-600',  'bg-sky-600',
+  'bg-indigo-600','bg-teal-600',   'bg-pink-600',
+];
+
+const EMPTY_FORM = { name: '', company: '', rut: '', phone: '', whatsapp: '', email: '', address: '', notes: '' };
+
+const FIELDS = [
+  { key: 'name',     label: 'Nombre *',        required: true, type: 'text' },
+  { key: 'company',  label: 'Empresa',                         type: 'text' },
+  { key: 'rut',      label: 'RUT / CUIT / DNI',                type: 'text' },
+  { key: 'phone',    label: 'Teléfono',                        type: 'text' },
+  { key: 'whatsapp', label: 'WhatsApp',                        type: 'text' },
+  { key: 'email',    label: 'Email',                           type: 'email' },
+  { key: 'address',  label: 'Dirección',                       type: 'text' },
+];
+
+const FIELD_ROWS = [
+  { key: 'phone',    label: 'Teléfono',    icon: 'Phone' },
+  { key: 'whatsapp', label: 'WhatsApp',    icon: 'MessageCircle' },
+  { key: 'email',    label: 'Email',       icon: 'Mail' },
+  { key: 'rut',      label: 'RUT / DNI',   icon: 'Hash' },
+  { key: 'address',  label: 'Dirección',   icon: 'MapPin' },
+  { key: 'notes',    label: 'Notas',       icon: 'FileText' },
+];
+
+const METHOD_LABELS = {
+  cash: 'Efectivo', bank_transfer: 'Transferencia', card: 'Tarjeta',
+  check: 'Cheque', credit: 'Cta. cte.', other: 'Otro',
+};
+
+const ABONO_METHODS = [
+  { value: 'cash',          label: 'Efectivo' },
+  { value: 'bank_transfer', label: 'Transferencia' },
+  { value: 'card',          label: 'Tarjeta' },
+  { value: 'check',         label: 'Cheque' },
+  { value: 'other',         label: 'Otro' },
+];
+
+// ─── Helpers ───────────────────────────────────────────────────────────────────
 
 function initials(name) {
   if (!name) return '?';
@@ -31,35 +76,35 @@ function hasCompany(c) {
   return v && v !== 'sin empresa';
 }
 
-// Avatar color based on name character
-const AVATAR_COLORS = [
-  'bg-blue-600', 'bg-violet-600', 'bg-emerald-600',
-  'bg-rose-600',  'bg-amber-600',  'bg-sky-600',
-  'bg-indigo-600','bg-teal-600',   'bg-pink-600',
-];
 function avatarColor(name) {
   const code = (name || '').charCodeAt(0) || 0;
   return AVATAR_COLORS[code % AVATAR_COLORS.length];
 }
 
-// ─── Formulario ───────────────────────────────────────────────────────────────
+function fmtDate(d) {
+  return d ? new Date(d).toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—';
+}
 
-const EMPTY_FORM = { name: '', company: '', rut: '', phone: '', whatsapp: '', email: '', address: '', notes: '' };
+// ─── useLocalStorage ───────────────────────────────────────────────────────────
 
-const FIELDS = [
-  { key: 'name',     label: 'Nombre *',        required: true, type: 'text' },
-  { key: 'company',  label: 'Empresa',                         type: 'text' },
-  { key: 'rut',      label: 'RUT / CUIT / DNI',                type: 'text' },
-  { key: 'phone',    label: 'Teléfono',                        type: 'text' },
-  { key: 'whatsapp', label: 'WhatsApp',                        type: 'text' },
-  { key: 'email',    label: 'Email',                           type: 'email' },
-  { key: 'address',  label: 'Dirección',                       type: 'text' },
-];
+function useLocalStorage(key, defaultValue) {
+  const [value, setValue] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(key)) ?? defaultValue; }
+    catch { return defaultValue; }
+  });
+  const set = useCallback((v) => {
+    setValue(v);
+    try { localStorage.setItem(key, JSON.stringify(v)); } catch { /* ignore */ }
+  }, [key]);
+  return [value, set];
+}
+
+// ─── CustomerModal ─────────────────────────────────────────────────────────────
 
 function CustomerModal({ initial, onSave, onClose }) {
-  const [form, setForm]   = useState(initial ? { ...EMPTY_FORM, ...initial } : { ...EMPTY_FORM });
+  const [form, setForm]     = useState(initial ? { ...EMPTY_FORM, ...initial } : { ...EMPTY_FORM });
   const [saving, setSaving] = useState(false);
-  const [error, setError]  = useState('');
+  const [error, setError]   = useState('');
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -123,9 +168,9 @@ function CustomerModal({ initial, onSave, onClose }) {
   );
 }
 
-// ─── Card de cliente ──────────────────────────────────────────────────────────
+// ─── CustomerCard ──────────────────────────────────────────────────────────────
 
-function CustomerCard({ c, balance, onView, onEdit, onDelete, deleting, fmt }) {
+const CustomerCard = React.memo(function CustomerCard({ c, balance, onView, onEdit, onDelete, deleting, fmt }) {
   const waNumber = cleanPhone(c.whatsapp || c.phone);
   const hasWa    = waNumber.length >= 7;
   const hasEmail = !!c.email;
@@ -134,10 +179,10 @@ function CustomerCard({ c, balance, onView, onEdit, onDelete, deleting, fmt }) {
 
   return (
     <div className="group bg-white border border-gray-100 rounded-2xl overflow-hidden hover:shadow-lg hover:border-gray-200 transition-all duration-200 flex flex-col">
-      {/* Franja de estado en la parte superior */}
+      {/* Franja de estado */}
       <div className={`h-1 shrink-0 ${alDia ? 'bg-emerald-400' : 'bg-red-500'}`} />
 
-      {/* Header: avatar + nombre + acciones discretas */}
+      {/* Header: avatar + nombre + acciones */}
       <div className="px-5 pt-4 pb-3 flex items-start justify-between gap-3">
         <div className="flex items-center gap-3.5 min-w-0">
           <div className={`w-12 h-12 rounded-xl ${avatarColor(c.name)} flex items-center justify-center text-base font-bold text-white shrink-0 shadow-sm`}>
@@ -151,26 +196,26 @@ function CustomerCard({ c, balance, onView, onEdit, onDelete, deleting, fmt }) {
           </div>
         </div>
         <div className="flex gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button onClick={onView}   className="p-1.5 text-gray-300 hover:text-blue-500 rounded-lg hover:bg-blue-50 transition-colors"  title="Ver ficha">
-            <Icon name="Eye"    size={13} />
+          <button onClick={() => onView(c)} className="p-1.5 text-gray-300 hover:text-blue-500 rounded-lg hover:bg-blue-50 transition-colors" title="Ver ficha">
+            <Icon name="Eye" size={13} />
           </button>
-          <button onClick={onEdit}   className="p-1.5 text-gray-300 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors"  title="Editar">
+          <button onClick={() => onEdit(c)} className="p-1.5 text-gray-300 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors" title="Editar">
             <Icon name="Pencil" size={13} />
           </button>
-          <button onClick={onDelete} disabled={deleting} className="p-1.5 text-gray-300 hover:text-red-400 rounded-lg hover:bg-red-50 transition-colors" title="Eliminar">
+          <button onClick={() => onDelete(c.id)} disabled={deleting} className="p-1.5 text-gray-300 hover:text-red-400 rounded-lg hover:bg-red-50 transition-colors" title="Eliminar">
             {deleting ? <Icon name="Loader2" size={13} className="animate-spin" /> : <Icon name="Trash2" size={13} />}
           </button>
         </div>
       </div>
 
-      {/* Deuda — elemento visual dominante */}
+      {/* Deuda */}
       <div
         className={`mx-4 mb-3 rounded-xl px-4 py-3 flex items-center justify-between ${
           alDia
             ? 'bg-emerald-50 border border-emerald-100'
             : 'bg-red-50 border border-red-100 cursor-pointer hover:bg-red-100 transition-colors'
         }`}
-        onClick={!alDia ? onView : undefined}
+        onClick={!alDia ? () => onView(c) : undefined}
         role={!alDia ? 'button' : undefined}
       >
         <div>
@@ -178,7 +223,7 @@ function CustomerCard({ c, balance, onView, onEdit, onDelete, deleting, fmt }) {
             {alDia ? 'Sin deuda' : 'Saldo pendiente'}
           </p>
           <p className={`text-xl font-black leading-none ${alDia ? 'text-emerald-700' : 'text-red-600'}`}>
-            {alDia ? 'Al día ✓' : (fmt ? fmt(debt) : `$${debt.toLocaleString('es-CL')}`)}
+            {alDia ? 'Al día ✓' : fmt(debt)}
           </p>
         </div>
         {alDia
@@ -209,9 +254,9 @@ function CustomerCard({ c, balance, onView, onEdit, onDelete, deleting, fmt }) {
         )}
       </div>
 
-      {/* CTAs — WhatsApp prominente, email secundario */}
+      {/* CTAs */}
       <div className="mt-auto px-4 pb-4 pt-2 flex gap-2 border-t border-gray-50">
-        {hasWa ? (
+        {hasWa && (
           <a
             href={`https://wa.me/${waNumber}`}
             target="_blank"
@@ -221,8 +266,8 @@ function CustomerCard({ c, balance, onView, onEdit, onDelete, deleting, fmt }) {
             <Icon name="MessageCircle" size={14} />
             WhatsApp
           </a>
-        ) : null}
-        {hasEmail ? (
+        )}
+        {hasEmail && (
           <a
             href={`mailto:${c.email}`}
             className="flex-1 inline-flex items-center justify-center gap-2 py-2.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-600 text-xs font-bold transition-colors"
@@ -230,36 +275,268 @@ function CustomerCard({ c, balance, onView, onEdit, onDelete, deleting, fmt }) {
             <Icon name="Mail" size={14} />
             Email
           </a>
-        ) : null}
-        {!hasWa && !hasEmail ? (
+        )}
+        {!hasWa && !hasEmail && (
           <button
-            onClick={onView}
+            onClick={() => onView(c)}
             className="flex-1 inline-flex items-center justify-center gap-2 py-2.5 rounded-xl bg-gray-50 hover:bg-gray-100 text-gray-500 text-xs font-bold transition-colors"
           >
             <Icon name="Eye" size={14} />
             Ver ficha
           </button>
-        ) : null}
+        )}
+      </div>
+    </div>
+  );
+});
+
+// ─── CustomerViewSwitcher ──────────────────────────────────────────────────────
+
+function CustomerViewSwitcher({ view, onChange }) {
+  return (
+    <div className="flex rounded-xl border border-gray-200 overflow-hidden bg-white shadow-sm shrink-0">
+      <button
+        onClick={() => onChange('cards')}
+        title="Vista tarjetas"
+        className={`px-3 py-2 flex items-center gap-1.5 text-xs font-semibold transition-colors ${
+          view === 'cards'
+            ? 'bg-blue-600 text-white'
+            : 'text-gray-400 hover:text-gray-700 hover:bg-gray-50'
+        }`}
+      >
+        <Icon name="LayoutGrid" size={14} />
+        <span className="hidden sm:inline">Tarjetas</span>
+      </button>
+      <button
+        onClick={() => onChange('list')}
+        title="Vista lista"
+        className={`px-3 py-2 flex items-center gap-1.5 text-xs font-semibold border-l border-gray-200 transition-colors ${
+          view === 'list'
+            ? 'bg-blue-600 text-white'
+            : 'text-gray-400 hover:text-gray-700 hover:bg-gray-50'
+        }`}
+      >
+        <Icon name="List" size={14} />
+        <span className="hidden sm:inline">Lista</span>
+      </button>
+    </div>
+  );
+}
+
+// ─── CustomerTableRow ──────────────────────────────────────────────────────────
+
+const CustomerTableRow = React.memo(function CustomerTableRow({ c, balance, onView, onEdit, onDelete, deleting, fmt }) {
+  const waNumber = cleanPhone(c.whatsapp || c.phone);
+  const hasWa    = waNumber.length >= 7;
+  const debt     = balance ?? 0;
+  const alDia    = debt === 0;
+
+  return (
+    <tr className="group hover:bg-gray-50/70 transition-colors">
+      {/* Cliente */}
+      <td className="px-5 py-3.5">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className={`w-8 h-8 rounded-lg ${avatarColor(c.name)} flex items-center justify-center text-[11px] font-bold text-white shrink-0`}>
+            {initials(c.name)}
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-gray-900 truncate max-w-[180px]">{c.name || 'Sin nombre'}</p>
+            <p className="text-xs text-gray-400 truncate max-w-[180px]">{hasCompany(c) ? c.company : 'Persona natural'}</p>
+          </div>
+        </div>
+      </td>
+
+      {/* Teléfono — oculto en mobile */}
+      <td className="px-4 py-3.5 hidden sm:table-cell whitespace-nowrap">
+        {(c.whatsapp || c.phone) ? (
+          <div className="flex items-center gap-1.5">
+            {hasWa && (
+              <a
+                href={`https://wa.me/${waNumber}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Abrir en WhatsApp"
+                className="text-[#25D366] hover:text-[#1ebe5d] shrink-0"
+              >
+                <Icon name="MessageCircle" size={13} />
+              </a>
+            )}
+            <span className="text-sm text-gray-600">{c.whatsapp || c.phone}</span>
+          </div>
+        ) : (
+          <span className="text-xs text-gray-300">—</span>
+        )}
+      </td>
+
+      {/* Email — oculto en mobile + tablet pequeña */}
+      <td className="px-4 py-3.5 hidden md:table-cell">
+        {c.email ? (
+          <a href={`mailto:${c.email}`} className="text-sm text-gray-600 hover:text-blue-600 truncate block max-w-[200px]">
+            {c.email}
+          </a>
+        ) : (
+          <span className="text-xs text-gray-300">—</span>
+        )}
+      </td>
+
+      {/* Estado / Saldo */}
+      <td className="px-4 py-3.5 whitespace-nowrap">
+        {alDia ? (
+          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-100 px-2.5 py-1 rounded-full">
+            <Icon name="CheckCircle2" size={11} />
+            Al día
+          </span>
+        ) : (
+          <button
+            onClick={() => onView(c)}
+            className="text-left group/debt"
+            title="Ver cuenta corriente"
+          >
+            <span className="text-sm font-bold text-red-600 group-hover/debt:underline">{fmt(debt)}</span>
+          </button>
+        )}
+      </td>
+
+      {/* Acciones */}
+      <td className="px-4 py-3.5 text-right whitespace-nowrap">
+        <div className="flex items-center justify-end gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button
+            onClick={() => onView(c)}
+            title="Ver ficha"
+            className="p-1.5 rounded-lg text-gray-300 hover:text-blue-500 hover:bg-blue-50 transition-colors"
+          >
+            <Icon name="Eye" size={14} />
+          </button>
+          {hasWa && (
+            <a
+              href={`https://wa.me/${waNumber}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="WhatsApp"
+              className="p-1.5 rounded-lg text-gray-300 hover:text-[#25D366] hover:bg-green-50 transition-colors"
+            >
+              <Icon name="MessageCircle" size={14} />
+            </a>
+          )}
+          {c.email && (
+            <a
+              href={`mailto:${c.email}`}
+              title="Enviar email"
+              className="p-1.5 rounded-lg text-gray-300 hover:text-blue-500 hover:bg-blue-50 transition-colors"
+            >
+              <Icon name="Mail" size={14} />
+            </a>
+          )}
+          <button
+            onClick={() => onEdit(c)}
+            title="Editar"
+            className="p-1.5 rounded-lg text-gray-300 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+          >
+            <Icon name="Pencil" size={14} />
+          </button>
+          <button
+            onClick={() => onDelete(c.id)}
+            disabled={deleting}
+            title="Eliminar"
+            className="p-1.5 rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors disabled:opacity-40"
+          >
+            {deleting ? <Icon name="Loader2" size={14} className="animate-spin" /> : <Icon name="Trash2" size={14} />}
+          </button>
+        </div>
+      </td>
+    </tr>
+  );
+});
+
+// ─── CustomerTable ─────────────────────────────────────────────────────────────
+
+function CustomerTable({ customers, balanceMap, onView, onEdit, onDelete, deleting, fmt, sortKey, sortDir, onSort }) {
+  function ColHeader({ col, label, className = '' }) {
+    const active = sortKey === col;
+    return (
+      <th
+        onClick={() => onSort(col)}
+        className={`px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide cursor-pointer select-none transition-colors ${
+          active ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'
+        } ${className}`}
+      >
+        <span className="inline-flex items-center gap-1">
+          {label}
+          {active
+            ? <Icon name={sortDir === 'asc' ? 'ChevronUp' : 'ChevronDown'} size={11} className="text-blue-500" />
+            : <Icon name="ChevronsUpDown" size={11} className="text-gray-300" />
+          }
+        </span>
+      </th>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[560px]">
+          <thead className="bg-gray-50 border-b border-gray-100">
+            <tr>
+              <ColHeader col="name" label="Cliente" className="pl-5" />
+              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-400 hidden sm:table-cell">Teléfono</th>
+              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-400 hidden md:table-cell">Email</th>
+              <ColHeader col="balance" label="Saldo" />
+              <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-gray-400">Acciones</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-50">
+            {customers.map(c => (
+              <CustomerTableRow
+                key={c.id}
+                c={c}
+                balance={balanceMap[c.id] ?? 0}
+                onView={onView}
+                onEdit={onEdit}
+                onDelete={onDelete}
+                deleting={deleting === c.id}
+                fmt={fmt}
+              />
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
 }
 
-// ─── Drawer "Ver cliente" — ficha completa + cuenta corriente ─────────────────
+// ─── Pagination ────────────────────────────────────────────────────────────────
 
-const FIELD_ROWS = [
-  { key: 'phone',    label: 'Teléfono',    icon: 'Phone' },
-  { key: 'whatsapp', label: 'WhatsApp',    icon: 'MessageCircle' },
-  { key: 'email',    label: 'Email',       icon: 'Mail' },
-  { key: 'rut',      label: 'RUT / DNI',   icon: 'Hash' },
-  { key: 'address',  label: 'Dirección',   icon: 'MapPin' },
-  { key: 'notes',    label: 'Notas',       icon: 'FileText' },
-];
+function Pagination({ page, totalPages, total, pageSize, onPrev, onNext }) {
+  if (totalPages <= 1) return null;
+  const from = (page - 1) * pageSize + 1;
+  const to   = Math.min(page * pageSize, total);
+  return (
+    <div className="flex items-center justify-between">
+      <span className="text-xs text-gray-400">{from}–{to} de {total}</span>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={onPrev}
+          disabled={page === 1}
+          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          <Icon name="ChevronLeft" size={13} />
+          Anterior
+        </button>
+        <span className="text-xs text-gray-400 font-medium">{page} / {totalPages}</span>
+        <button
+          onClick={onNext}
+          disabled={page === totalPages}
+          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          Siguiente
+          <Icon name="ChevronRight" size={13} />
+        </button>
+      </div>
+    </div>
+  );
+}
 
-const METHOD_LABELS = {
-  cash: 'Efectivo', bank_transfer: 'Transferencia', card: 'Tarjeta',
-  check: 'Cheque', credit: 'Cta. cte.', other: 'Otro',
-};
+// ─── CustomerDetailDrawer ──────────────────────────────────────────────────────
 
 function CustomerDetailDrawer({ customer, business, balance, fmt, onClose, onEdit }) {
   const [invoices,    setInvoices]    = useState([]);
@@ -272,31 +549,33 @@ function CustomerDetailDrawer({ customer, business, balance, fmt, onClose, onEdi
   const [saving,      setSaving]      = useState(false);
   const [error,       setError]       = useState(null);
   const [success,     setSuccess]     = useState(null);
-  const [tab,         setTab]         = useState('perfil'); // 'perfil' | 'cuenta'
+  const [tab,         setTab]         = useState('perfil');
 
   const waNumber = cleanPhone(customer.whatsapp || customer.phone);
   const hasWa    = waNumber.length >= 7;
 
-  const loadInv = async () => {
+  const loadInv = useCallback(async () => {
     setLoadingInv(true);
     const { data } = await getCustomerPendingInvoices(business.id, customer.id);
     setInvoices(data || []);
     setLoadingInv(false);
-  };
+  }, [business.id, customer.id]);
 
-  const loadHistory = async () => {
+  const loadHistory = useCallback(async () => {
     setLoadingHist(true);
     const { data } = await getCustomerPaymentHistory(business.id, customer.id);
     setHistory(data || []);
     setLoadingHist(false);
-  };
+  }, [business.id, customer.id]);
 
-  useEffect(() => { loadInv(); loadHistory(); }, [customer.id]);
+  useEffect(() => { loadInv(); loadHistory(); }, [loadInv, loadHistory]);
 
-  const totalPendiente = invoices.reduce((s, inv) => {
-    const pagado = (inv.crm_payments || []).reduce((p, r) => p + (r.amount || 0), 0);
-    return s + Math.max(0, inv.total - pagado);
-  }, 0);
+  const totalPendiente = useMemo(() =>
+    invoices.reduce((s, inv) => {
+      const pagado = (inv.crm_payments || []).reduce((p, r) => p + (r.amount || 0), 0);
+      return s + Math.max(0, inv.total - pagado);
+    }, 0),
+  [invoices]);
 
   const handleAbono = async () => {
     if (!selectedInv) return;
@@ -377,11 +656,9 @@ function CustomerDetailDrawer({ customer, business, balance, fmt, onClose, onEdi
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto">
-
-          {/* ── TAB PERFIL ── */}
+          {/* TAB PERFIL */}
           {tab === 'perfil' && (
             <div className="p-5 space-y-5">
-              {/* Acciones de contacto rápido */}
               {hasWa && (
                 <a
                   href={`https://wa.me/${waNumber}`}
@@ -393,8 +670,6 @@ function CustomerDetailDrawer({ customer, business, balance, fmt, onClose, onEdi
                   Enviar WhatsApp
                 </a>
               )}
-
-              {/* Campos del cliente */}
               <div className="bg-gray-50 rounded-2xl overflow-hidden">
                 {FIELD_ROWS.map(({ key, label, icon }, idx) => {
                   const val = customer[key];
@@ -413,8 +688,6 @@ function CustomerDetailDrawer({ customer, business, balance, fmt, onClose, onEdi
                   <p className="text-sm text-gray-400 text-center py-6">Sin datos de contacto registrados</p>
                 )}
               </div>
-
-              {/* Balance rápido — usa totalPendiente (dato fresco, misma fórmula que tab cuenta) */}
               <div className={`rounded-xl p-4 flex items-center justify-between ${
                 totalPendiente > 0 ? 'bg-red-50 border border-red-100' : 'bg-green-50 border border-green-100'
               }`}>
@@ -434,10 +707,9 @@ function CustomerDetailDrawer({ customer, business, balance, fmt, onClose, onEdi
             </div>
           )}
 
-          {/* ── TAB CUENTA CORRIENTE ── */}
+          {/* TAB CUENTA CORRIENTE */}
           {tab === 'cuenta' && (
             <div className="p-4 space-y-4">
-              {/* Saldo total */}
               <div className={`rounded-xl p-4 flex items-center justify-between ${totalPendiente > 0 ? 'bg-red-50 border border-red-100' : 'bg-green-50 border border-green-100'}`}>
                 <div>
                   <p className="text-xs font-semibold text-gray-500 mb-0.5">Saldo pendiente</p>
@@ -551,7 +823,6 @@ function CustomerDetailDrawer({ customer, business, balance, fmt, onClose, onEdi
                   <div className="space-y-1.5">
                     {history.map(p => {
                       const inv = p.crm_invoices;
-                      const fmtDate = (d) => d ? new Date(d).toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—';
                       return (
                         <div key={p.id} className="flex items-center gap-3 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2.5">
                           <span className="w-7 h-7 rounded-lg bg-emerald-100 flex items-center justify-center shrink-0">
@@ -586,189 +857,40 @@ function CustomerDetailDrawer({ customer, business, balance, fmt, onClose, onEdi
   );
 }
 
-// ─── Drawer cuenta corriente ──────────────────────────────────────────────────
-
-const ABONO_METHODS = [
-  { value: 'cash',          label: 'Efectivo' },
-  { value: 'bank_transfer', label: 'Transferencia' },
-  { value: 'card',          label: 'Tarjeta' },
-  { value: 'check',         label: 'Cheque' },
-  { value: 'other',         label: 'Otro' },
-];
-
-function CustomerAccountDrawer({ customer, business, onClose, fmt }) {
-  const [invoices, setInvoices]     = useState([]);
-  const [loading, setLoading]       = useState(true);
-  const [selectedInv, setSelectedInv] = useState(null);
-  const [abonoAmount, setAbonoAmount] = useState('');
-  const [abonoMethod, setAbonoMethod] = useState('cash');
-  const [saving, setSaving]         = useState(false);
-  const [error, setError]           = useState(null);
-  const [success, setSuccess]       = useState(null);
-
-  const load = async () => {
-    setLoading(true);
-    const { data } = await getCustomerPendingInvoices(business.id, customer.id);
-    setInvoices(data || []);
-    setLoading(false);
-  };
-
-  useEffect(() => { load(); }, [customer.id]);
-
-  const totalPendiente = invoices.reduce((s, inv) => {
-    const pagado = (inv.crm_payments || []).reduce((p, r) => p + (r.amount || 0), 0);
-    return s + Math.max(0, inv.total - pagado);
-  }, 0);
-
-  const handleAbono = async () => {
-    if (!selectedInv) return;
-    const amount = parseFloat(abonoAmount.replace(/\./g, '').replace(',', '.'));
-    if (!amount || amount <= 0) { setError('Ingresa un monto válido.'); return; }
-    setSaving(true);
-    setError(null);
-    const { error: err } = await registerCustomerAbono(business.id, {
-      customerId: customer.id,
-      invoiceId: selectedInv.id,
-      amount,
-      paymentMethod: abonoMethod,
-      invoiceTotal: selectedInv.total,
-    });
-    setSaving(false);
-    if (err) { setError(err.message || 'No se pudo registrar el abono.'); return; }
-    setSuccess('Abono registrado correctamente.');
-    setSelectedInv(null);
-    setAbonoAmount('');
-    load();
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex justify-end" style={{ backgroundColor: 'rgba(15,23,42,0.42)' }} onClick={onClose}>
-      <div className="h-full w-full max-w-md overflow-y-auto bg-white shadow-xl" onClick={e => e.stopPropagation()}>
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-white px-4 py-3">
-          <div>
-            <h2 className="text-base font-bold text-gray-900">{customer.name}</h2>
-            <p className="text-xs text-gray-400">Cuenta corriente</p>
-          </div>
-          <button onClick={onClose} className="p-2 rounded-lg hover:bg-gray-100">
-            <Icon name="X" size={18} color="var(--color-muted-foreground)" />
-          </button>
-        </div>
-
-        <div className="p-4 space-y-4">
-          {/* Resumen saldo */}
-          <div className={`rounded-xl p-4 flex items-center justify-between ${totalPendiente > 0 ? 'bg-red-50 border border-red-100' : 'bg-green-50 border border-green-100'}`}>
-            <div>
-              <p className="text-xs font-semibold text-gray-500 mb-0.5">Saldo pendiente</p>
-              <p className={`text-2xl font-bold ${totalPendiente > 0 ? 'text-red-600' : 'text-green-600'}`}>{fmt(totalPendiente)}</p>
-            </div>
-            {totalPendiente === 0 && <Icon name="CheckCircle2" size={28} color="#059669" />}
-            {totalPendiente > 0 && <Icon name="AlertCircle" size={28} color="#dc2626" />}
-          </div>
-
-          {success && (
-            <div className="flex items-center gap-2 p-3 rounded-xl bg-green-50 border border-green-200 text-sm text-green-700">
-              <Icon name="CheckCircle2" size={14} color="currentColor" />
-              <span>{success}</span>
-              <button onClick={() => setSuccess(null)} className="ml-auto text-green-400 hover:text-green-600"><Icon name="X" size={12} /></button>
-            </div>
-          )}
-
-          {error && (
-            <div className="flex items-center gap-2 p-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700">
-              <Icon name="AlertCircle" size={14} color="currentColor" />
-              <span>{error}</span>
-              <button onClick={() => setError(null)} className="ml-auto text-red-400 hover:text-red-600"><Icon name="X" size={12} /></button>
-            </div>
-          )}
-
-          {/* Listado de facturas pendientes */}
-          <div>
-            <p className="text-xs font-semibold text-gray-500 mb-2">Facturas pendientes</p>
-            {loading ? (
-              <p className="text-xs text-gray-400">Cargando…</p>
-            ) : invoices.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-6">Sin facturas pendientes</p>
-            ) : (
-              <div className="space-y-2">
-                {invoices.map(inv => {
-                  const pagado = (inv.crm_payments || []).reduce((p, r) => p + (r.amount || 0), 0);
-                  const saldo  = Math.max(0, inv.total - pagado);
-                  const sel    = selectedInv?.id === inv.id;
-                  return (
-                    <div key={inv.id} className={`rounded-xl border p-3 transition-colors ${sel ? 'border-indigo-400 bg-indigo-50' : 'border-gray-200 bg-gray-50'}`}>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-semibold text-gray-800">NV-{String(inv.invoice_number).padStart(4, '0')}</p>
-                          <p className="text-xs text-gray-400">{inv.issue_date}</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-sm font-bold text-red-600">{fmt(saldo)}</p>
-                          {pagado > 0 && <p className="text-[10px] text-gray-400">Total: {fmt(inv.total)}</p>}
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => { setSelectedInv(sel ? null : inv); setError(null); setAbonoAmount(''); }}
-                        className={`mt-2 w-full text-xs font-semibold py-1.5 rounded-lg transition-colors ${sel ? 'bg-indigo-600 text-white' : 'bg-white border border-indigo-300 text-indigo-700 hover:bg-indigo-50'}`}
-                      >
-                        {sel ? 'Cancelar' : 'Abonar a esta factura'}
-                      </button>
-
-                      {sel && (
-                        <div className="mt-3 space-y-2 border-t border-indigo-200 pt-3">
-                          <select
-                            value={abonoMethod}
-                            onChange={e => setAbonoMethod(e.target.value)}
-                            className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
-                          >
-                            {ABONO_METHODS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-                          </select>
-                          <div className="relative">
-                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none">$</span>
-                            <input
-                              type="text"
-                              inputMode="numeric"
-                              value={abonoAmount}
-                              onChange={e => setAbonoAmount(e.target.value.replace(/[^\d]/g, ''))}
-                              placeholder={`Monto abono (máx. ${fmt(saldo)})`}
-                              className="w-full pl-6 pr-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                            />
-                          </div>
-                          <button
-                            disabled={saving}
-                            onClick={handleAbono}
-                            className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold disabled:opacity-60 flex items-center justify-center gap-2 transition-colors"
-                          >
-                            {saving && <Icon name="Loader2" size={14} className="animate-spin" />}
-                            {saving ? 'Registrando…' : 'Confirmar abono'}
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Página principal ─────────────────────────────────────────────────────────
+// ─── Página principal ──────────────────────────────────────────────────────────
 
 export default function CrmCustomers() {
-  const { business }  = useAuth();
-  const [customers, setCustomers] = useState([]);
-  const [loading, setLoading]     = useState(true);
-  const [modal, setModal]         = useState(null);
-  const [search, setSearch]       = useState('');
-  const [deleting, setDeleting]   = useState(null);
-  const [balanceMap, setBalanceMap] = useState({});
-  const [creditSummary, setCreditSummary] = useState({ clientesConDeuda: 0, totalPorCobrar: 0 });
-  const [viewDrawer, setViewDrawer] = useState(null); // customer object para ver ficha
+  const { business } = useAuth();
 
-  const load = async () => {
+  // ── Estado principal ──────────────────────────────────────────────────────────
+  const [customers,     setCustomers]     = useState([]);
+  const [loading,       setLoading]       = useState(true);
+  const [balanceMap,    setBalanceMap]    = useState({});
+  const [creditSummary, setCreditSummary] = useState({ clientesConDeuda: 0, totalPorCobrar: 0 });
+  const [search,        setSearch]        = useState('');
+  const [deleting,      setDeleting]      = useState(null);
+  const [modalData,     setModalData]     = useState(null); // null | 'new' | customerObject
+  const [viewDrawer,    setViewDrawer]    = useState(null); // customer object
+
+  // ── Preferencias persistidas ──────────────────────────────────────────────────
+  const [view, setView] = useLocalStorage(VIEW_STORAGE_KEY, 'cards');
+
+  // ── Ordenamiento ──────────────────────────────────────────────────────────────
+  const [sortKey, setSortKey] = useState(null);  // 'name' | 'balance' | null
+  const [sortDir, setSortDir] = useState('asc');
+
+  // ── Paginación ────────────────────────────────────────────────────────────────
+  const [page, setPage] = useState(1);
+
+  // ── Formato de dinero ─────────────────────────────────────────────────────────
+  const displayMode = business?.designSettings?.priceDisplayMode ?? 'auto';
+  const fmt = useCallback(
+    (n) => formatMoney(n, business?.currency || 'CLP', displayMode),
+    [business?.currency, displayMode],
+  );
+
+  // ── Carga de datos ────────────────────────────────────────────────────────────
+  const load = useCallback(async () => {
     if (!business?.id) return;
     setLoading(true);
     const [{ data }, summary] = await Promise.all([
@@ -779,26 +901,32 @@ export default function CrmCustomers() {
     setBalanceMap(summary.balanceByCustomer || {});
     setCreditSummary({ clientesConDeuda: summary.clientesConDeuda, totalPorCobrar: summary.totalPorCobrar });
     setLoading(false);
-  };
+  }, [business?.id]);
 
-  useEffect(() => { load(); }, [business?.id]);
+  useEffect(() => { load(); }, [load]);
 
-  const handleSave = async (form) => {
-    const result = modal?.id
-      ? await updateCrmCustomer(modal.id, form)
+  // ── Acciones CRUD ─────────────────────────────────────────────────────────────
+  const handleSave = useCallback(async (form) => {
+    const result = modalData?.id
+      ? await updateCrmCustomer(modalData.id, form)
       : await createCrmCustomer(business.id, form);
-    if (!result.error) { setModal(null); load(); }
+    if (!result.error) { setModalData(null); load(); }
     return result;
-  };
+  }, [modalData, business?.id, load]);
 
-  const handleDelete = async (id) => {
+  const handleDelete = useCallback(async (id) => {
     if (!window.confirm('¿Eliminar este cliente? Esta acción no se puede deshacer.')) return;
     setDeleting(id);
     await deleteCrmCustomer(id);
     setDeleting(null);
     load();
-  };
+  }, [load]);
 
+  // ── Callbacks estables para componentes hijos ─────────────────────────────────
+  const handleView = useCallback((c) => setViewDrawer(c), []);
+  const handleEdit = useCallback((c) => setModalData(c), []);
+
+  // ── Datos derivados ───────────────────────────────────────────────────────────
   const filtered = useMemo(() => customers.filter(c =>
     !search ||
     (c.name    || '').toLowerCase().includes(search.toLowerCase()) ||
@@ -807,20 +935,57 @@ export default function CrmCustomers() {
     (c.phone   || '').includes(search)
   ), [customers, search]);
 
-  const totalClientes    = customers.length;
+  const sorted = useMemo(() => {
+    if (!sortKey) return filtered;
+    return [...filtered].sort((a, b) => {
+      const va = sortKey === 'name'
+        ? (a.name || '').toLowerCase()
+        : (balanceMap[a.id] ?? 0);
+      const vb = sortKey === 'name'
+        ? (b.name || '').toLowerCase()
+        : (balanceMap[b.id] ?? 0);
+      if (va < vb) return sortDir === 'asc' ? -1 : 1;
+      if (va > vb) return sortDir === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [filtered, sortKey, sortDir, balanceMap]);
+
+  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+  const paginated  = useMemo(() => sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [sorted, page]);
+
+  // Reset de página al cambiar filtros u orden
+  useEffect(() => { setPage(1); }, [search, sortKey, sortDir]);
+
+  const handleSort = useCallback((key) => {
+    setSortKey(prev => {
+      if (prev === key) { setSortDir(d => d === 'asc' ? 'desc' : 'asc'); return key; }
+      setSortDir('asc');
+      return key;
+    });
+  }, []);
+
   const { clientesConDeuda, totalPorCobrar } = creditSummary;
 
-  const displayMode = business?.designSettings?.priceDisplayMode ?? 'auto';
-  const fmt = (n) => formatMoney(n, business?.currency || 'CLP', displayMode);
-
+  // ── Render ────────────────────────────────────────────────────────────────────
   return (
     <DashboardAppShell>
       <PanelHeader
-        title={<><CrmBreadcrumb section="Clientes" /><h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Clientes</h1></>}
-        subtitle={<p className="text-xs" style={{ color: 'var(--color-muted-foreground)' }}>{loading ? 'Cargando…' : `${customers.length} cliente${customers.length !== 1 ? 's' : ''}`}</p>}
+        title={
+          <>
+            <CrmBreadcrumb section="Clientes" />
+            <h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>
+              Clientes
+            </h1>
+          </>
+        }
+        subtitle={
+          <p className="text-xs" style={{ color: 'var(--color-muted-foreground)' }}>
+            {loading ? 'Cargando…' : `${customers.length} cliente${customers.length !== 1 ? 's' : ''}`}
+          </p>
+        }
         mobileActions={
           <button
-            onClick={() => setModal('new')}
+            onClick={() => setModalData('new')}
             className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 transition-colors"
           >
             <Icon name="UserPlus" size={15} />
@@ -829,7 +994,7 @@ export default function CrmCustomers() {
         }
       >
         <button
-          onClick={() => setModal('new')}
+          onClick={() => setModalData('new')}
           className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 transition-colors"
         >
           <Icon name="UserPlus" size={15} />
@@ -838,7 +1003,7 @@ export default function CrmCustomers() {
       </PanelHeader>
 
       <DashboardLayoutContent>
-        {/* ── Métricas ── */}
+        {/* Métricas */}
         <div className="grid grid-cols-3 gap-3">
           <div className="bg-white border border-gray-100 rounded-2xl p-4 flex flex-col gap-1 shadow-sm">
             <div className="flex items-center gap-2 mb-1">
@@ -847,7 +1012,7 @@ export default function CrmCustomers() {
               </span>
               <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide leading-none">Clientes</p>
             </div>
-            <p className="text-3xl font-black text-gray-900 leading-none">{loading ? '—' : totalClientes}</p>
+            <p className="text-3xl font-black text-gray-900 leading-none">{loading ? '—' : customers.length}</p>
           </div>
           <div className="bg-white border border-gray-100 rounded-2xl p-4 flex flex-col gap-1 shadow-sm">
             <div className="flex items-center gap-2 mb-1">
@@ -869,27 +1034,30 @@ export default function CrmCustomers() {
           </div>
         </div>
 
-        {/* ── Buscador ── */}
-        <div className="relative">
-          <Icon name="Search" size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-          <input
-            type="text"
-            placeholder="Buscar por nombre, empresa, email o teléfono…"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="w-full border border-gray-200 rounded-xl pl-10 pr-10 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white shadow-sm"
-          />
-          {search && (
-            <button
-              onClick={() => setSearch('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5 rounded"
-            >
-              <Icon name="X" size={14} />
-            </button>
-          )}
+        {/* Barra de búsqueda + switcher de vista */}
+        <div className="flex items-center gap-3">
+          <div className="relative flex-1">
+            <Icon name="Search" size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Buscar por nombre, empresa, email o teléfono…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full border border-gray-200 rounded-xl pl-10 pr-10 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white shadow-sm"
+            />
+            {search && (
+              <button
+                onClick={() => setSearch('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5 rounded"
+              >
+                <Icon name="X" size={14} />
+              </button>
+            )}
+          </div>
+          <CustomerViewSwitcher view={view} onChange={setView} />
         </div>
 
-        {/* ── Lista ── */}
+        {/* Contenido principal */}
         {loading ? (
           <div className="flex flex-col items-center justify-center py-24 gap-3">
             <Icon name="Loader2" size={28} className="animate-spin text-blue-400" />
@@ -900,7 +1068,7 @@ export default function CrmCustomers() {
             <span className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center mb-1">
               {search
                 ? <Icon name="SearchX" size={28} className="text-gray-400" />
-                : <Icon name="Users" size={28} className="text-gray-400" />
+                : <Icon name="Users"   size={28} className="text-gray-400" />
               }
             </span>
             <p className="text-base font-bold text-gray-700">
@@ -909,11 +1077,12 @@ export default function CrmCustomers() {
             <p className="text-sm text-gray-400 max-w-xs">
               {search
                 ? `No se encontraron clientes para "${search}".`
-                : 'Agrega tu primer cliente para empezar a gestionar tu cartera.'}
+                : 'Agrega tu primer cliente para empezar a gestionar tu cartera.'
+              }
             </p>
             {!search && (
               <button
-                onClick={() => setModal('new')}
+                onClick={() => setModalData('new')}
                 className="mt-2 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 transition-colors shadow-sm"
               >
                 <Icon name="UserPlus" size={15} />
@@ -922,30 +1091,57 @@ export default function CrmCustomers() {
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-            {filtered.map(c => (
-              <CustomerCard
-                key={c.id}
-                c={c}
-                balance={balanceMap[c.id] ?? 0}
-                onView={() => setViewDrawer(c)}
-                onEdit={() => setModal(c)}
-                onDelete={() => handleDelete(c.id)}
-                deleting={deleting === c.id}
+          <>
+            {view === 'cards' ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                {paginated.map(c => (
+                  <CustomerCard
+                    key={c.id}
+                    c={c}
+                    balance={balanceMap[c.id] ?? 0}
+                    onView={handleView}
+                    onEdit={handleEdit}
+                    onDelete={handleDelete}
+                    deleting={deleting === c.id}
+                    fmt={fmt}
+                  />
+                ))}
+              </div>
+            ) : (
+              <CustomerTable
+                customers={paginated}
+                balanceMap={balanceMap}
+                onView={handleView}
+                onEdit={handleEdit}
+                onDelete={handleDelete}
+                deleting={deleting}
                 fmt={fmt}
+                sortKey={sortKey}
+                sortDir={sortDir}
+                onSort={handleSort}
               />
-            ))}
-          </div>
+            )}
+
+            <Pagination
+              page={page}
+              totalPages={totalPages}
+              total={sorted.length}
+              pageSize={PAGE_SIZE}
+              onPrev={() => setPage(p => Math.max(1, p - 1))}
+              onNext={() => setPage(p => Math.min(totalPages, p + 1))}
+            />
+          </>
         )}
       </DashboardLayoutContent>
 
-      {modal && (
+      {modalData && (
         <CustomerModal
-          initial={modal === 'new' ? null : modal}
+          initial={modalData === 'new' ? null : modalData}
           onSave={handleSave}
-          onClose={() => setModal(null)}
+          onClose={() => setModalData(null)}
         />
       )}
+
       {viewDrawer && (
         <CustomerDetailDrawer
           customer={viewDrawer}
@@ -953,7 +1149,7 @@ export default function CrmCustomers() {
           balance={balanceMap[viewDrawer.id] ?? 0}
           fmt={fmt}
           onClose={() => { setViewDrawer(null); load(); }}
-          onEdit={() => { setViewDrawer(null); setModal(viewDrawer); }}
+          onEdit={() => { setViewDrawer(null); setModalData(viewDrawer); }}
         />
       )}
     </DashboardAppShell>
