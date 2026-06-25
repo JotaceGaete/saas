@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import DashboardAppShell from 'components/ui/DashboardAppShell';
 import DashboardLayoutContent from 'components/ui/DashboardLayoutContent';
 import PanelHeader from 'components/ui/PanelHeader';
@@ -824,7 +824,88 @@ function CustomerAccountDrawer({ customer, business, onClose, fmt }) {
   );
 }
 
+// ─── CustomerListRow — fila compacta para vista lista ─────────────────────────
+
+function CustomerListRow({ c, balance, columns, onView, onEdit, onDelete, deleting, fmt }) {
+  const debt  = balance ?? 0;
+  const alDia = debt === 0;
+
+  return (
+    <tr className="group border-b border-gray-100 hover:bg-gray-50 transition-colors">
+      {/* Nombre — always visible */}
+      <td className="px-4 py-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className={`w-8 h-8 rounded-full ${avatarColor(c.name)} flex items-center justify-center text-xs font-bold text-white shrink-0`}>
+            {initials(c.name)}
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-gray-900 truncate">{c.name || 'Sin nombre'}</p>
+            {hasCompany(c) && (
+              <p className="text-xs text-gray-400 truncate">{c.company}</p>
+            )}
+          </div>
+        </div>
+      </td>
+      {columns.includes('company') && (
+        <td className="px-4 py-3 text-sm text-gray-600 truncate max-w-[140px]">
+          {c.company || <span className="text-gray-300">—</span>}
+        </td>
+      )}
+      {columns.includes('phone') && (
+        <td className="px-4 py-3 text-sm text-gray-600">
+          {c.phone || c.whatsapp || <span className="text-gray-300">—</span>}
+        </td>
+      )}
+      {columns.includes('email') && (
+        <td className="px-4 py-3 text-sm text-gray-600 truncate max-w-[160px]">
+          {c.email || <span className="text-gray-300">—</span>}
+        </td>
+      )}
+      {columns.includes('rut') && (
+        <td className="px-4 py-3 text-sm text-gray-600">
+          {c.rut || <span className="text-gray-300">—</span>}
+        </td>
+      )}
+      {columns.includes('debt') && (
+        <td className="px-4 py-3">
+          {alDia ? (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-xs font-semibold border border-emerald-100">
+              Al día
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-50 text-red-600 text-xs font-semibold border border-red-100">
+              {fmt(debt)}
+            </span>
+          )}
+        </td>
+      )}
+      {/* Actions */}
+      <td className="px-3 py-3">
+        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity justify-end">
+          <button onClick={onView} className="p-1.5 text-gray-300 hover:text-blue-500 rounded-lg hover:bg-blue-50 transition-colors" title="Ver ficha">
+            <Icon name="Eye" size={13} />
+          </button>
+          <button onClick={onEdit} className="p-1.5 text-gray-300 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors" title="Editar">
+            <Icon name="Pencil" size={13} />
+          </button>
+          <button onClick={onDelete} disabled={deleting} className="p-1.5 text-gray-300 hover:text-red-400 rounded-lg hover:bg-red-50 transition-colors" title="Eliminar">
+            {deleting ? <Icon name="Loader2" size={13} className="animate-spin" /> : <Icon name="Trash2" size={13} />}
+          </button>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
 // ─── Página principal ─────────────────────────────────────────────────────────
+/*
+ * Para calcular antigüedad de deuda en el futuro, usar crm_invoices.issue_date
+ * (o due_date si existe). El campo due_date ya existe en crm_invoices.
+ * La query de getCustomerPendingInvoices ya trae issue_date.
+ * Para filtros de mora 30/60/90 días, calcular:
+ *   days_overdue = today - Math.min(issue_date, due_date || issue_date)
+ * No se requiere campo nuevo en DB — solo cálculo en frontend o RPC.
+ */
 
 export default function CrmCustomers() {
   const { business }  = useAuth();
@@ -835,7 +916,40 @@ export default function CrmCustomers() {
   const [deleting, setDeleting]   = useState(null);
   const [balanceMap, setBalanceMap] = useState({});
   const [creditSummary, setCreditSummary] = useState({ clientesConDeuda: 0, totalPorCobrar: 0 });
-  const [viewDrawer, setViewDrawer] = useState(null); // customer object para ver ficha
+  const [viewDrawer, setViewDrawer] = useState(null);
+
+  // Vista y filtros avanzados
+  const [viewMode, setViewMode] = useState(() => {
+    try { return localStorage.getItem('crm_customers_view') || 'cards'; } catch { return 'cards'; }
+  });
+  const [quickFilter, setQuickFilter] = useState('todos'); // 'todos' | 'con_deuda'
+  const [sortKey, setSortKey] = useState('name');           // 'name' | 'debt' | 'company'
+  const [sortDir, setSortDir] = useState('asc');            // 'asc' | 'desc'
+  const [visibleCount, setVisibleCount] = useState(24);
+  const [columns, setColumns] = useState(['name', 'company', 'phone', 'email', 'debt']);
+  const [showColConfig, setShowColConfig] = useState(false);
+  const colConfigRef = useRef(null);
+
+  // Persist viewMode
+  useEffect(() => {
+    try { localStorage.setItem('crm_customers_view', viewMode); } catch {}
+    setVisibleCount(24);
+  }, [viewMode]);
+
+  // Reset visible count on filter/sort change
+  useEffect(() => { setVisibleCount(24); }, [search, quickFilter, sortKey, sortDir]);
+
+  // Close column config popover on outside click
+  useEffect(() => {
+    if (!showColConfig) return;
+    const handler = (e) => {
+      if (colConfigRef.current && !colConfigRef.current.contains(e.target)) {
+        setShowColConfig(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showColConfig]);
 
   const load = async () => {
     if (!business?.id) return;
@@ -868,18 +982,64 @@ export default function CrmCustomers() {
     load();
   };
 
-  const filtered = useMemo(() => customers.filter(c =>
-    !search ||
-    (c.name    || '').toLowerCase().includes(search.toLowerCase()) ||
-    (c.company || '').toLowerCase().includes(search.toLowerCase()) ||
-    (c.email   || '').toLowerCase().includes(search.toLowerCase()) ||
-    (c.phone   || '').includes(search)
-  ), [customers, search]);
+  const filtered = useMemo(() => {
+    let list = customers.filter(c =>
+      !search ||
+      (c.name || '').toLowerCase().includes(search.toLowerCase()) ||
+      (c.company || '').toLowerCase().includes(search.toLowerCase()) ||
+      (c.email || '').toLowerCase().includes(search.toLowerCase()) ||
+      (c.phone || '').includes(search)
+    );
+    if (quickFilter === 'con_deuda') {
+      list = list.filter(c => (balanceMap[c.id] ?? 0) > 0);
+    }
+    list = [...list].sort((a, b) => {
+      let av, bv;
+      if (sortKey === 'debt') { av = balanceMap[a.id] ?? 0; bv = balanceMap[b.id] ?? 0; }
+      else if (sortKey === 'company') { av = (a.company || '').toLowerCase(); bv = (b.company || '').toLowerCase(); }
+      else { av = (a.name || '').toLowerCase(); bv = (b.name || '').toLowerCase(); }
+      if (av < bv) return sortDir === 'asc' ? -1 : 1;
+      if (av > bv) return sortDir === 'asc' ? 1 : -1;
+      return 0;
+    });
+    return list;
+  }, [customers, search, quickFilter, sortKey, sortDir, balanceMap]);
 
   const totalClientes    = customers.length;
   const { clientesConDeuda, totalPorCobrar } = creditSummary;
 
   const fmt = (n) => new Intl.NumberFormat('es-CL', { style: 'currency', currency: business?.currency || 'CLP', maximumFractionDigits: 0 }).format(n);
+
+  // Sort column click handler for list view
+  const handleSortCol = (key) => {
+    if (sortKey === key) {
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortKey(key);
+      setSortDir('asc');
+    }
+  };
+
+  // Toggle a column in the columns list
+  const toggleColumn = (col) => {
+    if (col === 'name') return; // always on
+    setColumns(prev =>
+      prev.includes(col) ? prev.filter(c => c !== col) : [...prev, col]
+    );
+  };
+
+  const ALL_COLUMNS = [
+    { key: 'name',    label: 'Nombre',   disabled: true },
+    { key: 'company', label: 'Empresa',  disabled: false },
+    { key: 'phone',   label: 'Teléfono', disabled: false },
+    { key: 'email',   label: 'Email',    disabled: false },
+    { key: 'rut',     label: 'RUT',      disabled: false },
+    { key: 'debt',    label: 'Deuda',    disabled: false },
+  ];
+
+  const COL_LABELS = { name: 'Nombre', company: 'Empresa', phone: 'Teléfono', email: 'Email', rut: 'RUT', debt: 'Deuda' };
+
+  const visibleItems = filtered.slice(0, visibleCount);
 
   return (
     <DashboardAppShell>
@@ -937,27 +1097,120 @@ export default function CrmCustomers() {
           </div>
         </div>
 
-        {/* ── Buscador ── */}
-        <div className="relative">
-          <Icon name="Search" size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-          <input
-            type="text"
-            placeholder="Buscar por nombre, empresa, email o teléfono…"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="w-full border border-gray-200 rounded-xl pl-10 pr-10 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white shadow-sm"
-          />
-          {search && (
+        {/* ── Toolbar ── */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Search */}
+          <div className="relative flex-1 min-w-[180px]">
+            <Icon name="Search" size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Buscar por nombre, empresa, email o teléfono…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full border border-gray-200 rounded-xl pl-10 pr-10 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white shadow-sm"
+            />
+            {search && (
+              <button
+                onClick={() => setSearch('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5 rounded"
+              >
+                <Icon name="X" size={14} />
+              </button>
+            )}
+          </div>
+
+          {/* Quick filter chips */}
+          <div className="flex items-center gap-1.5 shrink-0">
             <button
-              onClick={() => setSearch('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5 rounded"
+              onClick={() => setQuickFilter('todos')}
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+                quickFilter === 'todos'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
             >
-              <Icon name="X" size={14} />
+              Todos
             </button>
+            <button
+              onClick={() => setQuickFilter('con_deuda')}
+              className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+                quickFilter === 'con_deuda'
+                  ? 'bg-red-500 text-white'
+                  : 'bg-red-50 text-red-600 hover:bg-red-100'
+              }`}
+            >
+              <span className={`w-1.5 h-1.5 rounded-full ${quickFilter === 'con_deuda' ? 'bg-white' : 'bg-red-400'}`} />
+              Con deuda
+            </button>
+          </div>
+
+          {/* Sort */}
+          <select
+            value={`${sortKey}_${sortDir}`}
+            onChange={e => {
+              const [key, dir] = e.target.value.split('_');
+              setSortKey(key === 'debt' ? 'debt' : key === 'company' ? 'company' : 'name');
+              setSortDir(dir);
+            }}
+            className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm shrink-0"
+          >
+            <option value="name_asc">Nombre A→Z</option>
+            <option value="name_desc">Nombre Z→A</option>
+            <option value="debt_desc">Mayor deuda</option>
+            <option value="debt_asc">Menor deuda</option>
+            <option value="company_asc">Empresa A→Z</option>
+          </select>
+
+          {/* Column config — only in list mode */}
+          {viewMode === 'list' && (
+            <div className="relative shrink-0" ref={colConfigRef}>
+              <button
+                onClick={() => setShowColConfig(v => !v)}
+                className={`p-2.5 rounded-xl border transition-colors ${showColConfig ? 'border-blue-400 bg-blue-50 text-blue-600' : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50'} shadow-sm`}
+                title="Configurar columnas"
+              >
+                <Icon name="SlidersHorizontal" size={15} />
+              </button>
+              {showColConfig && (
+                <div className="absolute right-0 top-full mt-1.5 z-30 bg-white border border-gray-200 rounded-xl shadow-lg p-3 min-w-[160px]">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400 mb-2">Columnas</p>
+                  {ALL_COLUMNS.map(col => (
+                    <label key={col.key} className={`flex items-center gap-2 py-1 text-sm cursor-pointer ${col.disabled ? 'opacity-50 cursor-not-allowed' : 'hover:text-blue-600'}`}>
+                      <input
+                        type="checkbox"
+                        checked={columns.includes(col.key)}
+                        disabled={col.disabled}
+                        onChange={() => toggleColumn(col.key)}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      {col.label}
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
+
+          {/* View toggle */}
+          <div className="flex items-center gap-0.5 border border-gray-200 rounded-xl p-1 bg-white shadow-sm shrink-0">
+            <button
+              onClick={() => setViewMode('cards')}
+              className={`p-1.5 rounded-lg transition-colors ${viewMode === 'cards' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-gray-600'}`}
+              title="Vista tarjetas"
+            >
+              <Icon name="LayoutGrid" size={15} />
+            </button>
+            <button
+              onClick={() => setViewMode('list')}
+              className={`p-1.5 rounded-lg transition-colors ${viewMode === 'list' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-gray-600'}`}
+              title="Vista lista"
+            >
+              <Icon name="List" size={15} />
+            </button>
+          </div>
         </div>
 
-        {/* ── Lista ── */}
+        {/* ── Contenido principal ── */}
         {loading ? (
           <div className="flex flex-col items-center justify-center py-24 gap-3">
             <Icon name="Loader2" size={28} className="animate-spin text-blue-400" />
@@ -966,20 +1219,22 @@ export default function CrmCustomers() {
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 text-center gap-3">
             <span className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center mb-1">
-              {search
+              {search || quickFilter !== 'todos'
                 ? <Icon name="SearchX" size={28} className="text-gray-400" />
                 : <Icon name="Users" size={28} className="text-gray-400" />
               }
             </span>
             <p className="text-base font-bold text-gray-700">
-              {search ? 'Sin resultados' : 'Aún no hay clientes'}
+              {search || quickFilter !== 'todos' ? 'Sin resultados' : 'Aún no hay clientes'}
             </p>
             <p className="text-sm text-gray-400 max-w-xs">
               {search
                 ? `No se encontraron clientes para "${search}".`
-                : 'Agrega tu primer cliente para empezar a gestionar tu cartera.'}
+                : quickFilter === 'con_deuda'
+                  ? 'No hay clientes con deuda pendiente.'
+                  : 'Agrega tu primer cliente para empezar a gestionar tu cartera.'}
             </p>
-            {!search && (
+            {!search && quickFilter === 'todos' && (
               <button
                 onClick={() => setModal('new')}
                 className="mt-2 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 transition-colors shadow-sm"
@@ -989,20 +1244,116 @@ export default function CrmCustomers() {
               </button>
             )}
           </div>
+        ) : viewMode === 'cards' ? (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+              {visibleItems.map(c => (
+                <CustomerCard
+                  key={c.id}
+                  c={c}
+                  balance={balanceMap[c.id] ?? 0}
+                  onView={() => setViewDrawer(c)}
+                  onEdit={() => setModal(c)}
+                  onDelete={() => handleDelete(c.id)}
+                  deleting={deleting === c.id}
+                />
+              ))}
+            </div>
+            {filtered.length > visibleCount && (
+              <div className="flex justify-center pt-2">
+                <button
+                  onClick={() => setVisibleCount(v => v + 24)}
+                  className="px-5 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 bg-white shadow-sm transition-colors"
+                >
+                  Cargar más ({filtered.length - visibleCount} restantes)
+                </button>
+              </div>
+            )}
+          </>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-            {filtered.map(c => (
-              <CustomerCard
-                key={c.id}
-                c={c}
-                balance={balanceMap[c.id] ?? 0}
-                onView={() => setViewDrawer(c)}
-                onEdit={() => setModal(c)}
-                onDelete={() => handleDelete(c.id)}
-                deleting={deleting === c.id}
-              />
-            ))}
-          </div>
+          <>
+            <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
+              <table className="w-full text-left table-auto">
+                <thead>
+                  <tr className="border-b border-gray-100 bg-gray-50">
+                    {/* Name header — always */}
+                    <th
+                      className="px-4 py-3 text-xs font-semibold text-gray-500 cursor-pointer select-none hover:text-gray-700"
+                      onClick={() => handleSortCol('name')}
+                    >
+                      <div className="flex items-center gap-1">
+                        Nombre
+                        {sortKey === 'name' && (
+                          <Icon name={sortDir === 'asc' ? 'ChevronUp' : 'ChevronDown'} size={12} className="text-blue-500" />
+                        )}
+                      </div>
+                    </th>
+                    {columns.includes('company') && (
+                      <th
+                        className="px-4 py-3 text-xs font-semibold text-gray-500 cursor-pointer select-none hover:text-gray-700"
+                        onClick={() => handleSortCol('company')}
+                      >
+                        <div className="flex items-center gap-1">
+                          Empresa
+                          {sortKey === 'company' && (
+                            <Icon name={sortDir === 'asc' ? 'ChevronUp' : 'ChevronDown'} size={12} className="text-blue-500" />
+                          )}
+                        </div>
+                      </th>
+                    )}
+                    {columns.includes('phone') && (
+                      <th className="px-4 py-3 text-xs font-semibold text-gray-500">Teléfono</th>
+                    )}
+                    {columns.includes('email') && (
+                      <th className="px-4 py-3 text-xs font-semibold text-gray-500">Email</th>
+                    )}
+                    {columns.includes('rut') && (
+                      <th className="px-4 py-3 text-xs font-semibold text-gray-500">RUT</th>
+                    )}
+                    {columns.includes('debt') && (
+                      <th
+                        className="px-4 py-3 text-xs font-semibold text-gray-500 cursor-pointer select-none hover:text-gray-700"
+                        onClick={() => handleSortCol('debt')}
+                      >
+                        <div className="flex items-center gap-1">
+                          Deuda
+                          {sortKey === 'debt' && (
+                            <Icon name={sortDir === 'asc' ? 'ChevronUp' : 'ChevronDown'} size={12} className="text-blue-500" />
+                          )}
+                        </div>
+                      </th>
+                    )}
+                    <th className="px-3 py-3 text-xs font-semibold text-gray-500 text-right">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleItems.map(c => (
+                    <CustomerListRow
+                      key={c.id}
+                      c={c}
+                      balance={balanceMap[c.id] ?? 0}
+                      columns={columns}
+                      onView={() => setViewDrawer(c)}
+                      onEdit={() => setModal(c)}
+                      onDelete={() => handleDelete(c.id)}
+                      deleting={deleting === c.id}
+                      fmt={fmt}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {filtered.length > visibleCount && (
+              <div className="flex justify-center pt-2">
+                <button
+                  onClick={() => setVisibleCount(v => v + 24)}
+                  className="px-5 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 bg-white shadow-sm transition-colors"
+                >
+                  Cargar más ({filtered.length - visibleCount} restantes)
+                </button>
+              </div>
+            )}
+          </>
         )}
       </DashboardLayoutContent>
 
