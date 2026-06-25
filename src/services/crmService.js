@@ -443,7 +443,7 @@ export async function createCrmQuote(businessId, { customerId, validUntil, notes
   return { data: quote, error: null };
 }
 
-export async function updateCrmQuote(quoteId, { customerId, validUntil, notes, paymentTerms, deliveryDays, deliveryMethod, commercialNotes, status, items }) {
+export async function updateCrmQuote(quoteId, { customerId, validUntil, notes, paymentTerms, deliveryDays, deliveryMethod, commercialNotes, purchaseOrderNumber, dispatchInstructions, status, items }) {
   const updates = {};
   if (customerId !== undefined) updates.customer_id = customerId;
   if (validUntil !== undefined) updates.valid_until = validUntil;
@@ -453,6 +453,8 @@ export async function updateCrmQuote(quoteId, { customerId, validUntil, notes, p
   if (deliveryDays !== undefined) updates.delivery_days = deliveryDays;
   if (deliveryMethod !== undefined) updates.delivery_method = deliveryMethod;
   if (commercialNotes !== undefined) updates.commercial_notes = commercialNotes;
+  if (purchaseOrderNumber !== undefined) updates.purchase_order_number = purchaseOrderNumber;
+  if (dispatchInstructions !== undefined) updates.dispatch_instructions = dispatchInstructions;
 
   if (items !== undefined) {
     const mappedItems = items.map((it, idx) => ({
@@ -573,7 +575,7 @@ export async function createCrmInvoice(businessId, { customerId, issueDate, dueD
   return { data: invoice, error: null };
 }
 
-export async function updateCrmInvoice(invoiceId, { customerId, issueDate, dueDate, notes, paymentTerms, deliveryDays, deliveryMethod, commercialNotes, items }) {
+export async function updateCrmInvoice(invoiceId, { customerId, issueDate, dueDate, notes, paymentTerms, deliveryDays, deliveryMethod, commercialNotes, purchaseOrderNumber, dispatchInstructions, items }) {
   const updates = {};
   if (customerId !== undefined) updates.customer_id = customerId;
   if (issueDate !== undefined) updates.issue_date = issueDate;
@@ -583,6 +585,8 @@ export async function updateCrmInvoice(invoiceId, { customerId, issueDate, dueDa
   if (deliveryDays !== undefined) updates.delivery_days = deliveryDays;
   if (deliveryMethod !== undefined) updates.delivery_method = deliveryMethod;
   if (commercialNotes !== undefined) updates.commercial_notes = commercialNotes;
+  if (purchaseOrderNumber !== undefined) updates.purchase_order_number = purchaseOrderNumber;
+  if (dispatchInstructions !== undefined) updates.dispatch_instructions = dispatchInstructions;
 
   if (items !== undefined) {
     const mappedItems = items.map((it, idx) => ({
@@ -1899,6 +1903,72 @@ export async function getCashDayMovements(businessId, date = getLocalDateString(
     .eq('business_id', businessId)
     .eq('movement_date', date)
     .order('created_at', { ascending: true });
+  return { data: data || [], error };
+}
+
+// ── Edición administrativa de documentos (post-cierre contable) ──────────────
+
+/**
+ * Actualiza sólo los campos administrativos de una factura o presupuesto
+ * y registra cada cambio en crm_document_changes.
+ */
+export async function updateDocumentAdminFields(docType, docId, businessId, fields, prevValues = {}) {
+  const table = docType === 'invoice' ? 'crm_invoices' : 'crm_quotes';
+  const colMap = {
+    notes: 'notes',
+    paymentTerms: 'payment_terms',
+    deliveryDays: 'delivery_days',
+    deliveryMethod: 'delivery_method',
+    commercialNotes: 'commercial_notes',
+    purchaseOrderNumber: 'purchase_order_number',
+    dispatchInstructions: 'dispatch_instructions',
+  };
+
+  const updatePayload = {};
+  for (const [key, col] of Object.entries(colMap)) {
+    if (key in fields) updatePayload[col] = fields[key] || null;
+  }
+
+  const { data, error } = await supabase
+    .from(table)
+    .update(updatePayload)
+    .eq('id', docId)
+    .select()
+    .single();
+  if (error) return { data: null, error };
+
+  const { data: { user } } = await supabase.auth.getUser();
+  const auditRows = [];
+  for (const [key, col] of Object.entries(colMap)) {
+    if (!(key in fields)) continue;
+    const oldVal = String(prevValues[key] ?? '');
+    const newVal = String(fields[key] ?? '');
+    if (oldVal !== newVal) {
+      auditRows.push({
+        document_type: docType,
+        document_id:   docId,
+        business_id:   businessId,
+        changed_by:    user?.id || null,
+        field_name:    col,
+        old_value:     oldVal || null,
+        new_value:     newVal || null,
+      });
+    }
+  }
+  if (auditRows.length > 0) {
+    await supabase.from('crm_document_changes').insert(auditRows);
+  }
+
+  return { data, error: null };
+}
+
+export async function getDocumentChanges(docType, docId) {
+  const { data, error } = await supabase
+    .from('crm_document_changes')
+    .select('*')
+    .eq('document_type', docType)
+    .eq('document_id', docId)
+    .order('changed_at', { ascending: false });
   return { data: data || [], error };
 }
 

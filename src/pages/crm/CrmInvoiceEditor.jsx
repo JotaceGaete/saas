@@ -13,6 +13,8 @@ import {
   createCrmCustomer,
   formatInvoiceNumber,
   updateCrmInvoiceStatus,
+  updateDocumentAdminFields,
+  getDocumentChanges,
 } from '../../services/crmService';
 import { getProducts } from '../../services/waBusinessService';
 import { listAllPaymentsByInvoice, createPayment } from '../../services/crmPaymentsService';
@@ -46,6 +48,16 @@ const PAYMENT_METHOD_LABELS = {
   other: 'Otro',
 };
 
+const ADMIN_FIELD_LABELS = {
+  notes: 'Notas',
+  payment_terms: 'Forma de pago',
+  delivery_days: 'Plazo de entrega',
+  delivery_method: 'Método de entrega',
+  commercial_notes: 'Observaciones comerciales',
+  purchase_order_number: 'N° OC',
+  dispatch_instructions: 'Instrucciones de despacho',
+};
+
 const MANUAL_CHARGES = [
   { name: 'Flete', icon: 'Truck' },
   { name: 'Embalaje', icon: 'Package2' },
@@ -59,8 +71,6 @@ const fieldClass =
   'w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500';
 const fieldClassDisabled =
   'w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50';
-const LOCKED_DOCUMENT_MESSAGE = 'Este documento ya no se puede editar porque está pagado, aprobado o anulado.';
-const PENDING_DOCUMENT_MESSAGE = 'Puedes corregir esta nota mientras esté pendiente.';
 
 export default function CrmInvoiceEditor() {
   const { id } = useParams();
@@ -97,15 +107,30 @@ export default function CrmInvoiceEditor() {
   const [voidBusy, setVoidBusy] = useState(false);
   const [voidError, setVoidError] = useState('');
 
+  // Campos financieros (bloqueados cuando hay pagos o no es pendiente)
   const [customerId, setCustomerId] = useState('');
   const [issueDate, setIssueDate] = useState(new Date().toISOString().slice(0, 10));
   const [dueDate, setDueDate] = useState('');
-  const [notes, setNotes] = useState('');
   const [items, setItems] = useState([]);
+
+  // Campos administrativos (editables mientras no esté anulada)
+  const [notes, setNotes] = useState('');
   const [paymentTerms, setPaymentTerms] = useState('');
   const [deliveryDays, setDeliveryDays] = useState('');
   const [deliveryMethod, setDeliveryMethod] = useState('');
   const [commercialNotes, setCommercialNotes] = useState('');
+  const [purchaseOrderNumber, setPurchaseOrderNumber] = useState('');
+  const [dispatchInstructions, setDispatchInstructions] = useState('');
+
+  // Admin save state
+  const [adminSaving, setAdminSaving] = useState(false);
+  const [adminSaveError, setAdminSaveError] = useState('');
+  const [adminSaveSuccess, setAdminSaveSuccess] = useState(false);
+
+  // Change history
+  const [changeHistory, setChangeHistory] = useState([]);
+  const [showChangeHistory, setShowChangeHistory] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   useEffect(() => {
     if (!business?.id) return;
@@ -124,6 +149,8 @@ export default function CrmInvoiceEditor() {
         setDeliveryDays(data.delivery_days || '');
         setDeliveryMethod(data.delivery_method || '');
         setCommercialNotes(data.commercial_notes || '');
+        setPurchaseOrderNumber(data.purchase_order_number || '');
+        setDispatchInstructions(data.dispatch_instructions || '');
         setPageLoading(false);
         listAllPaymentsByInvoice(id).then((r) => setPayments(r.data || []));
       });
@@ -173,23 +200,28 @@ export default function CrmInvoiceEditor() {
     if (i.discount_type === 'fixed') return s + Math.min(i.discount_pct || 0, b);
     return s + (b * (i.discount_pct || 0)) / 100;
   }, 0);
-  const canEdit = isNew || saved?.status === 'pendiente';
+
+  const activePayments = payments.filter((p) => !p.voided_at);
+  const canEditFinancial = isNew || (saved?.status === 'pendiente' && activePayments.length === 0);
+  const canEditAdmin = !isNew && saved?.status !== 'anulada';
 
   // Documento para vista previa — funciona con o sin guardado previo
   const previewDoc = {
     ...(saved || {}),
-    invoice_number:  saved?.invoice_number  ?? null,
-    status:          saved?.status          || 'pendiente',
-    total:           subtotal,
-    discount_amount: discountTotal,
+    invoice_number:       saved?.invoice_number  ?? null,
+    status:               saved?.status          || 'pendiente',
+    total:                subtotal,
+    discount_amount:      discountTotal,
     notes,
-    issue_date:      issueDate,
-    due_date:        dueDate || null,
-    crm_invoice_items: items,
-    payment_terms:   paymentTerms,
-    delivery_days:   deliveryDays,
-    delivery_method: deliveryMethod,
-    commercial_notes: commercialNotes,
+    issue_date:           issueDate,
+    due_date:             dueDate || null,
+    crm_invoice_items:    items,
+    payment_terms:        paymentTerms,
+    delivery_days:        deliveryDays,
+    delivery_method:      deliveryMethod,
+    commercial_notes:     commercialNotes,
+    purchase_order_number: purchaseOrderNumber,
+    dispatch_instructions: dispatchInstructions,
   };
 
   const fmt = (n) => formatMoney(n, business?.currency);
@@ -264,8 +296,8 @@ export default function CrmInvoiceEditor() {
 
   const handleSave = async () => {
     setSaveError('');
-    if (!canEdit) {
-      setSaveError(LOCKED_DOCUMENT_MESSAGE);
+    if (!canEditFinancial) {
+      setSaveError('Este documento no se puede editar en su estado actual.');
       return;
     }
     const validItems = items.filter((i) => i.name?.trim());
@@ -282,6 +314,8 @@ export default function CrmInvoiceEditor() {
       deliveryDays: deliveryDays || null,
       deliveryMethod: deliveryMethod || null,
       commercialNotes: commercialNotes || null,
+      purchaseOrderNumber: purchaseOrderNumber || null,
+      dispatchInstructions: dispatchInstructions || null,
       items: validItems.map((i, idx) => ({
         product_id: i.product_id || null,
         name: i.name.trim(),
@@ -305,6 +339,43 @@ export default function CrmInvoiceEditor() {
     } else {
       setSaved((prev) => ({ ...prev, ...data }));
     }
+  };
+
+  const handleAdminSave = async () => {
+    setAdminSaveError('');
+    setAdminSaveSuccess(false);
+    if (!canEditAdmin) return;
+    setAdminSaving(true);
+    const fields = { notes, paymentTerms, deliveryDays, deliveryMethod, commercialNotes, purchaseOrderNumber, dispatchInstructions };
+    const prevValues = {
+      notes: saved?.notes || '',
+      paymentTerms: saved?.payment_terms || '',
+      deliveryDays: saved?.delivery_days || '',
+      deliveryMethod: saved?.delivery_method || '',
+      commercialNotes: saved?.commercial_notes || '',
+      purchaseOrderNumber: saved?.purchase_order_number || '',
+      dispatchInstructions: saved?.dispatch_instructions || '',
+    };
+    const { data, error } = await updateDocumentAdminFields('invoice', id, business.id, fields, prevValues);
+    setAdminSaving(false);
+    if (error) { setAdminSaveError(error.message || 'Error al guardar.'); return; }
+    setSaved((prev) => ({ ...prev, ...data }));
+    setAdminSaveSuccess(true);
+    setTimeout(() => setAdminSaveSuccess(false), 3000);
+    // Refresh change history if visible
+    if (showChangeHistory) loadChangeHistory();
+  };
+
+  const loadChangeHistory = async () => {
+    setHistoryLoading(true);
+    const { data } = await getDocumentChanges('invoice', id);
+    setChangeHistory(data || []);
+    setHistoryLoading(false);
+  };
+
+  const handleToggleHistory = () => {
+    if (!showChangeHistory) loadChangeHistory();
+    setShowChangeHistory((v) => !v);
   };
 
   const docTitle = isNew
@@ -345,7 +416,6 @@ export default function CrmInvoiceEditor() {
         </p>
       ) : (
         <>
-          {/* Desktop: tabla compacta */}
           <div className="hidden sm:block overflow-x-auto mb-4">
             <table className="w-full">
               <thead>
@@ -373,7 +443,6 @@ export default function CrmInvoiceEditor() {
             </table>
           </div>
 
-          {/* Mobile: cards apiladas */}
           <div className="sm:hidden space-y-3 mb-4">
             {items.map((item, idx) => (
               <CrmLineItemCard
@@ -389,7 +458,6 @@ export default function CrmInvoiceEditor() {
         </>
       )}
 
-      {/* Botones agregar */}
       <div className="flex flex-col sm:flex-row gap-2 mt-2">
         <button
           type="button"
@@ -431,7 +499,6 @@ export default function CrmInvoiceEditor() {
     </div>
   );
 
-  // ─── Sección de ítems solo lectura (facturas ya guardadas) ─────────────────
   const ReadOnlyItemsSection = (
     <div className="bg-white border border-gray-200 rounded-xl p-5">
       <div className="flex items-center justify-between mb-4">
@@ -443,6 +510,141 @@ export default function CrmInvoiceEditor() {
           <CrmLineItemReadOnly key={idx} item={item} imageUrl={getItemImage(item)} />
         ))}
       </div>
+    </div>
+  );
+
+  // ─── Sección administrativa (siempre visible cuando canEditAdmin) ──────────
+  const AdminSection = canEditAdmin ? (
+    <div className="bg-white border border-blue-100 rounded-xl p-5">
+      <div className="flex items-center gap-2 mb-1">
+        <Icon name="Pencil" size={15} className="text-blue-500" />
+        <h3 className="text-sm font-semibold text-gray-700">Información administrativa</h3>
+        <span className="ml-auto text-xs text-blue-500 font-medium">Siempre editable</span>
+      </div>
+      <p className="text-xs text-gray-400 mb-4">Estos campos se pueden actualizar aunque el documento esté pagado o aprobado.</p>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="sm:col-span-2">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Notas (visibles en el PDF)</label>
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            rows={2}
+            placeholder="Observaciones generales…"
+            className={`${fieldClass} resize-none`}
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Forma de pago</label>
+          <input type="text" value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} placeholder="Ej: 50% anticipo, 50% contra entrega" className={fieldClass} />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Plazo de entrega</label>
+          <input type="text" value={deliveryDays} onChange={(e) => setDeliveryDays(e.target.value)} placeholder="Ej: 5 días hábiles" className={fieldClass} />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Método de entrega</label>
+          <input type="text" value={deliveryMethod} onChange={(e) => setDeliveryMethod(e.target.value)} placeholder="Ej: Despacho a domicilio, Retiro en tienda" className={fieldClass} />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Observaciones comerciales</label>
+          <input type="text" value={commercialNotes} onChange={(e) => setCommercialNotes(e.target.value)} placeholder="Ej: Precios no incluyen IVA" className={fieldClass} />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">N° OC del cliente</label>
+          <input type="text" value={purchaseOrderNumber} onChange={(e) => setPurchaseOrderNumber(e.target.value)} placeholder="Ej: OC-2026-0042" className={fieldClass} />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Instrucciones de despacho</label>
+          <input type="text" value={dispatchInstructions} onChange={(e) => setDispatchInstructions(e.target.value)} placeholder="Ej: Entregar en bodega 3, contactar a Juan" className={fieldClass} />
+        </div>
+      </div>
+
+      {adminSaveError && (
+        <p className="mt-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{adminSaveError}</p>
+      )}
+      {adminSaveSuccess && (
+        <div className="mt-3 flex items-center gap-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+          <Icon name="CheckCircle2" size={14} />
+          Información actualizada.
+        </div>
+      )}
+
+      <div className="mt-4 flex justify-end">
+        <button
+          type="button"
+          onClick={handleAdminSave}
+          disabled={adminSaving}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium disabled:opacity-60 transition-colors"
+        >
+          {adminSaving ? <Icon name="Loader2" size={14} className="animate-spin" /> : <Icon name="Save" size={14} />}
+          Actualizar información
+        </button>
+      </div>
+    </div>
+  ) : null;
+
+  // ─── Historial de cambios ──────────────────────────────────────────────────
+  const ChangeHistorySection = (!isNew && canEditAdmin) ? (
+    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+      <button
+        type="button"
+        onClick={handleToggleHistory}
+        className="w-full flex items-center justify-between px-5 py-3.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <Icon name="History" size={15} className="text-gray-400" />
+          Historial de cambios administrativos
+        </div>
+        <Icon name={showChangeHistory ? 'ChevronUp' : 'ChevronDown'} size={15} className="text-gray-400" />
+      </button>
+      {showChangeHistory && (
+        <div className="border-t border-gray-100 px-5 py-4">
+          {historyLoading ? (
+            <div className="flex justify-center py-4">
+              <Icon name="Loader2" size={20} className="animate-spin text-gray-400" />
+            </div>
+          ) : changeHistory.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-2">Sin cambios registrados.</p>
+          ) : (
+            <div className="divide-y divide-gray-50">
+              {changeHistory.map((ch) => (
+                <div key={ch.id} className="py-2.5">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-medium text-gray-600">{ADMIN_FIELD_LABELS[ch.field_name] || ch.field_name}</span>
+                    <span className="text-xs text-gray-400">
+                      {new Date(ch.changed_at).toLocaleString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                  <div className="flex items-start gap-2 mt-1">
+                    <span className="text-xs text-red-500 line-through min-w-0 break-all">{ch.old_value || '—'}</span>
+                    <Icon name="ArrowRight" size={11} className="text-gray-300 shrink-0 mt-0.5" />
+                    <span className="text-xs text-green-700 min-w-0 break-all">{ch.new_value || '—'}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  ) : null;
+
+  // Banner de estado de edición
+  const statusBanner = !isNew && (
+    <div className={`flex items-center gap-2 p-3 rounded-lg text-sm border ${
+      canEditFinancial
+        ? 'bg-blue-50 border-blue-200 text-blue-700'
+        : canEditAdmin
+          ? 'bg-amber-50 border-amber-200 text-amber-700'
+          : 'bg-gray-50 border-gray-200 text-gray-600'
+    }`}>
+      <Icon name={canEditFinancial ? 'Info' : canEditAdmin ? 'PencilLine' : 'Lock'} size={16} />
+      {canEditFinancial
+        ? 'Puedes corregir esta factura mientras esté pendiente y sin pagos.'
+        : canEditAdmin
+          ? 'Los datos contables están bloqueados. Puedes actualizar la información administrativa.'
+          : 'Este documento está anulado y no puede modificarse.'}
     </div>
   );
 
@@ -477,7 +679,7 @@ export default function CrmInvoiceEditor() {
                 Vista previa
               </button>
             )}
-            {canEdit && (
+            {canEditFinancial && (
               <button
                 onClick={handleSave}
                 disabled={saving}
@@ -490,7 +692,6 @@ export default function CrmInvoiceEditor() {
           </div>
         }
       >
-        {/* Desktop: botones inline a la derecha */}
         {!isNew && saved && (
           <>
             <span className={`text-xs px-2 py-1 rounded-full font-medium ${STATUS_STYLES[saved.status] || ''}`}>
@@ -507,7 +708,7 @@ export default function CrmInvoiceEditor() {
             )}
           </>
         )}
-        {canEdit && (
+        {canEditFinancial && (
           <button
             onClick={handleSave}
             disabled={saving}
@@ -526,26 +727,25 @@ export default function CrmInvoiceEditor() {
               <Icon name="AlertCircle" size={16} />{saveError}
             </div>
           )}
-          {!isNew && (
-            <div className={`flex items-center gap-2 p-3 rounded-lg text-sm border ${
-              canEdit
-                ? 'bg-blue-50 border-blue-200 text-blue-700'
-                : 'bg-gray-50 border-gray-200 text-gray-600'
-            }`}>
-              <Icon name={canEdit ? 'Info' : 'Lock'} size={16} />
-              {canEdit ? PENDING_DOCUMENT_MESSAGE : LOCKED_DOCUMENT_MESSAGE}
-            </div>
-          )}
+          {statusBanner}
 
-          {/* Datos de la factura */}
+          {/* Datos de la factura — bloqueados contablemente */}
           <div className="bg-white border border-gray-200 rounded-xl p-5">
-            <h3 className="text-sm font-semibold text-gray-700 mb-4">Datos de la factura</h3>
+            <div className="flex items-center gap-2 mb-4">
+              <h3 className="text-sm font-semibold text-gray-700">Datos de la factura</h3>
+              {!canEditFinancial && !isNew && (
+                <span className="inline-flex items-center gap-1 text-xs text-gray-400">
+                  <Icon name="Lock" size={11} />
+                  Bloqueado
+                </span>
+              )}
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Cliente</label>
                 <div className="flex gap-2">
                   <select
-                    disabled={!canEdit}
+                    disabled={!canEditFinancial}
                     value={customerId}
                     onChange={(e) => setCustomerId(e.target.value)}
                     className={`flex-1 min-w-0 ${fieldClassDisabled}`}
@@ -557,7 +757,7 @@ export default function CrmInvoiceEditor() {
                       </option>
                     ))}
                   </select>
-                  {canEdit && (
+                  {canEditFinancial && (
                     <button
                       type="button"
                       onClick={() => setShowNewCustomer(true)}
@@ -575,7 +775,7 @@ export default function CrmInvoiceEditor() {
                 <ChileanDateInput
                   value={issueDate}
                   onChange={setIssueDate}
-                  disabled={!canEdit}
+                  disabled={!canEditFinancial}
                   className={fieldClassDisabled}
                 />
               </div>
@@ -584,51 +784,72 @@ export default function CrmInvoiceEditor() {
                 <ChileanDateInput
                   value={dueDate}
                   onChange={setDueDate}
-                  disabled={!canEdit}
+                  disabled={!canEditFinancial}
                   className={fieldClassDisabled}
                 />
               </div>
-              <div className="sm:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Notas (visibles en el PDF)</label>
-                <textarea
-                  disabled={!canEdit}
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  rows={2}
-                  placeholder="Observaciones generales…"
-                  className={`${fieldClassDisabled} resize-none`}
-                />
-              </div>
+              {/* Notas sólo en modo financial cuando el admin section no está disponible */}
+              {!canEditAdmin && (
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Notas (visibles en el PDF)</label>
+                  <textarea
+                    disabled
+                    value={notes}
+                    rows={2}
+                    className={`${fieldClassDisabled} resize-none`}
+                  />
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Condiciones comerciales */}
-          <div className="bg-white border border-gray-200 rounded-xl p-5">
-            <h3 className="text-sm font-semibold text-gray-700 mb-4">
-              Condiciones comerciales{' '}
-              <span className="text-gray-400 font-normal">(opcionales)</span>
-            </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Forma de pago</label>
-                <input type="text" disabled={!canEdit} value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} placeholder="Ej: 50% anticipo, 50% contra entrega" className={fieldClassDisabled} />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Plazo de entrega</label>
-                <input type="text" disabled={!canEdit} value={deliveryDays} onChange={(e) => setDeliveryDays(e.target.value)} placeholder="Ej: 5 días hábiles" className={fieldClassDisabled} />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Método de entrega</label>
-                <input type="text" disabled={!canEdit} value={deliveryMethod} onChange={(e) => setDeliveryMethod(e.target.value)} placeholder="Ej: Despacho a domicilio, Retiro en tienda" className={fieldClassDisabled} />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Observaciones comerciales</label>
-                <input type="text" disabled={!canEdit} value={commercialNotes} onChange={(e) => setCommercialNotes(e.target.value)} placeholder="Ej: Precios no incluyen IVA" className={fieldClassDisabled} />
+          {/* Condiciones comerciales — sólo visible en modo financiero (cuando canEditAdmin muestra AdminSection) */}
+          {canEditFinancial && (
+            <div className="bg-white border border-gray-200 rounded-xl p-5">
+              <h3 className="text-sm font-semibold text-gray-700 mb-4">
+                Condiciones comerciales{' '}
+                <span className="text-gray-400 font-normal">(opcionales)</span>
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Notas (visibles en el PDF)</label>
+                  <textarea
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    rows={2}
+                    placeholder="Observaciones generales…"
+                    className={`${fieldClass} resize-none`}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Forma de pago</label>
+                  <input type="text" value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} placeholder="Ej: 50% anticipo, 50% contra entrega" className={fieldClass} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Plazo de entrega</label>
+                  <input type="text" value={deliveryDays} onChange={(e) => setDeliveryDays(e.target.value)} placeholder="Ej: 5 días hábiles" className={fieldClass} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Método de entrega</label>
+                  <input type="text" value={deliveryMethod} onChange={(e) => setDeliveryMethod(e.target.value)} placeholder="Ej: Despacho a domicilio, Retiro en tienda" className={fieldClass} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Observaciones comerciales</label>
+                  <input type="text" value={commercialNotes} onChange={(e) => setCommercialNotes(e.target.value)} placeholder="Ej: Precios no incluyen IVA" className={fieldClass} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">N° OC del cliente</label>
+                  <input type="text" value={purchaseOrderNumber} onChange={(e) => setPurchaseOrderNumber(e.target.value)} placeholder="Ej: OC-2026-0042" className={fieldClass} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Instrucciones de despacho</label>
+                  <input type="text" value={dispatchInstructions} onChange={(e) => setDispatchInstructions(e.target.value)} placeholder="Ej: Entregar en bodega 3, contactar a Juan" className={fieldClass} />
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
-          {canEdit ? EditableItemsSection : ReadOnlyItemsSection}
+          {canEditFinancial ? EditableItemsSection : ReadOnlyItemsSection}
 
           {/* Totales */}
           <div className="rounded-xl overflow-hidden bg-gray-900">
@@ -650,6 +871,9 @@ export default function CrmInvoiceEditor() {
             </div>
           </div>
 
+          {/* Sección administrativa */}
+          {!canEditFinancial && AdminSection}
+
           {/* ── PAGOS RECIBIDOS (solo facturas guardadas) ── */}
           {!isNew && saved && (() => {
             const totalPagado = payments.filter(p => !p.voided_at).reduce((s, p) => s + (p.amount || 0), 0);
@@ -658,7 +882,6 @@ export default function CrmInvoiceEditor() {
             const partial  = saldo > 0 && totalPagado > 0;
             return (
               <div className="bg-white border border-gray-200 rounded-xl p-5">
-                {/* Header */}
                 <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
                   <div className="flex items-center gap-2">
                     <h3 className="text-sm font-semibold text-gray-700">Historial de abonos</h3>
@@ -698,7 +921,6 @@ export default function CrmInvoiceEditor() {
                   </div>
                 </div>
 
-                {/* Resumen */}
                 <div className="grid grid-cols-3 gap-3 mb-4">
                   <div className="bg-gray-50 rounded-lg px-3 py-2.5 text-center">
                     <p className="text-xs text-gray-400 mb-0.5">Total factura</p>
@@ -714,7 +936,6 @@ export default function CrmInvoiceEditor() {
                   </div>
                 </div>
 
-                {/* Lista de pagos */}
                 {payments.length === 0 ? (
                   <p className="text-sm text-gray-400 text-center py-4">Sin pagos registrados.</p>
                 ) : (
@@ -775,6 +996,9 @@ export default function CrmInvoiceEditor() {
             );
           })()}
 
+          {/* Historial de cambios administrativos */}
+          {ChangeHistorySection}
+
           {saveError && (
             <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
               <Icon name="AlertCircle" size={16} />{saveError}
@@ -796,7 +1020,7 @@ export default function CrmInvoiceEditor() {
                 Vista previa
               </button>
             )}
-            {canEdit && (
+            {canEditFinancial && (
               <button
                 onClick={handleSave}
                 disabled={saving}
@@ -818,7 +1042,6 @@ export default function CrmInvoiceEditor() {
         />
       )}
 
-      {/* ── MODAL REGISTRAR PAGO ── */}
       {showPaymentModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
           <div className="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl shadow-xl">
