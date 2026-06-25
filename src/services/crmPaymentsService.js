@@ -31,8 +31,10 @@ export async function listPaymentsByInvoice(invoiceId) {
 }
 
 /**
- * Lista TODOS los pagos de una factura, incluyendo anulados.
- * Usar para historial/auditoría. No filtrar por voided_at.
+ * Lista TODOS los pagos reales de una factura, incluyendo anulados.
+ * Usar para historial/auditoría. No filtra por voided_at.
+ * Excluye método 'credit' (igual que listPaymentsByInvoice) para que
+ * el totalPagado en UI no cuente crédito como cobro real en caja.
  */
 export async function listAllPaymentsByInvoice(invoiceId) {
   const { data, error } = await supabase

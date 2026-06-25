@@ -1564,11 +1564,13 @@ export async function getCashDayPayments(businessId, date = getLocalDateString()
  *   — Backward-compat: también acepta (paymentId, { voidReason, voidedBy }) [legado CrmCash]
  *
  * Reglas:
- *   - Si la caja original está abierta → void en esa misma caja; el pago desaparece de los totales
- *     al ser excluido por voided_at IS NOT NULL.
- *   - Si la caja original está cerrada → se crea un movimiento negativo (direction='out')
- *     en la caja abierta actual para reflejar el reverso en contabilidad corriente.
+ *   - Siempre crea un movimiento direction='out' en crm_cash_movements para que la
+ *     anulación sea visible en el historial y el saldo de caja sea correcto.
+ *   - Si la caja original está abierta → el movimiento va en esa misma caja.
+ *   - Si la caja original está cerrada → el movimiento va en la caja abierta actual.
  *     Si no hay caja abierta → CASH_SESSION_REQUIRED.
+ *   - El insert del movimiento se hace ANTES de marcar voided_at.
+ *     Si falla, se aborta sin tocar el pago (evita estado inconsistente).
  *   - Siempre reconcilia el estado de la factura asociada.
  */
 export async function voidCrmPayment(paymentId, reasonOrOpts, businessId) {
@@ -1598,47 +1600,54 @@ export async function voidCrmPayment(paymentId, reasonOrOpts, businessId) {
   if (payment.payment_status !== 'received') return { data: null, error: { message: 'Solo se pueden anular pagos con estado recibido.' } };
   if (!payment.amount || payment.amount <= 0) return { data: null, error: { message: 'El pago no tiene monto válido.' } };
 
+  // Guard: el pago debe pertenecer al negocio que solicita la anulación
+  const bid = businessId || payment.business_id;
+  if (businessId && payment.business_id && payment.business_id !== businessId) {
+    return { data: null, error: { code: 'UNAUTHORIZED_PAYMENT_ACCESS', message: 'Este pago no pertenece a tu negocio.' } };
+  }
+
   const { data: { user } } = await supabase.auth.getUser();
   const voidedBy = legacyVoidedBy || user?.id || null;
 
+  // 2. Determinar en qué sesión va el movimiento de reverso
   const originalSession = payment.crm_cash_sessions;
   let voidCashSessionId = null;
 
   if (originalSession?.status === 'open') {
-    // Caja original aún abierta: la anulación se registra en esa misma caja.
-    // El pago desaparece de los totales al quedar excluido por voided_at IS NOT NULL.
+    // Caja original aún abierta: el reverso va en esa misma caja.
     voidCashSessionId = originalSession.id;
   } else {
-    // Caja original cerrada (o sin caja): necesitamos caja abierta actual para el reverso.
-    const bid = businessId || payment.business_id;
+    // Caja original cerrada (o sin caja): necesitamos caja abierta actual.
     if (!bid) return { data: null, error: { code: 'CASH_SESSION_REQUIRED', message: 'CASH_SESSION_REQUIRED' } };
-
     const { data: currentSession } = await getOpenCashSession(bid);
     if (!currentSession) {
       return { data: null, error: { code: 'CASH_SESSION_REQUIRED', message: 'CASH_SESSION_REQUIRED' } };
     }
-
     voidCashSessionId = currentSession.id;
-
-    // Crear movimiento de reverso en la caja actual
-    const methodLabel = normalizePaymentMethod(payment.payment_method);
-    await supabase.from('crm_cash_movements').insert({
-      business_id:         bid,
-      session_id:          currentSession.id,
-      direction:           'out',
-      amount:              payment.amount,
-      reason:              `Anulación pago · ${reason.trim()}`,
-      category:            'payment_reversal',
-      payment_method:      methodLabel,
-      notes:               payment.reference || null,
-      created_by:          voidedBy,
-      movement_date:       getLocalDateString(),
-      is_expense:          false,
-      reversal_payment_id: paymentId,
-    });
   }
 
-  // 2. Marcar pago como anulado
+  // 3. Crear movimiento de reverso ANTES de marcar el pago como anulado.
+  //    Si este insert falla, abortamos — el pago permanece activo.
+  const { error: movErr } = await supabase.from('crm_cash_movements').insert({
+    business_id:         bid,
+    session_id:          voidCashSessionId,
+    direction:           'out',
+    amount:              payment.amount,
+    reason:              `Anulación pago · ${reason.trim()}`,
+    category:            'payment_reversal',
+    payment_method:      normalizePaymentMethod(payment.payment_method),
+    notes:               payment.reference || null,
+    created_by:          voidedBy,
+    movement_date:       getLocalDateString(),
+    is_expense:          false,
+    reversal_payment_id: paymentId,
+  });
+
+  if (movErr) {
+    return { data: null, error: { message: `No se pudo registrar el reverso en caja: ${movErr.message}` } };
+  }
+
+  // 4. Marcar pago como anulado (solo si el movimiento fue exitoso)
   const { data, error: voidErr } = await supabase
     .from('crm_payments')
     .update({
@@ -1651,9 +1660,13 @@ export async function voidCrmPayment(paymentId, reasonOrOpts, businessId) {
     .select()
     .single();
 
-  if (voidErr) return { data: null, error: voidErr };
+  if (voidErr) {
+    // El movimiento ya fue creado pero el pago no se pudo marcar.
+    // Retornar error explícito; el movimiento quedará como registro de intento.
+    return { data: null, error: { message: `Reverso creado en caja, pero no se pudo marcar el pago como anulado: ${voidErr.message}` } };
+  }
 
-  // 3. Reconciliar estado de la factura
+  // 5. Reconciliar estado de la factura
   if (payment.invoice_id) {
     await reconcileCrmInvoicePaymentStatus(payment.invoice_id);
   }
