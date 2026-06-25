@@ -32,7 +32,7 @@ const NAV_ITEMS = [
       { label: 'Clientes',         path: '/crm/clientes' },
       { label: 'Presupuestos',     path: '/crm/presupuestos' },
       { label: 'Notas de venta',   path: '/crm/facturas' },
-      { label: 'TPV',              path: '/crm/terminal' },
+      { label: 'Punto de venta',   path: '/crm/terminal', primary: true, icon: 'Zap' },
       { label: 'Caja',             path: '/crm/caja' },
       { label: 'Centro de costos', path: '/crm/costos' },
       { label: 'Inventario',       path: '/crm/stock' },
@@ -228,6 +228,28 @@ Motivo (opcional):`;
                   <ul className="mt-0.5 ml-8 space-y-0.5" role="list">
                     {item?.subItems?.map((sub) => {
                       const subActive = isActive(sub?.path);
+                      if (sub?.primary) {
+                        return (
+                          <li key={sub?.path} role="listitem" className="my-1">
+                            <button
+                              onClick={() => navigate(sub?.path)}
+                              aria-current={subActive ? 'page' : undefined}
+                              className={[
+                                'w-full text-left px-3 py-2 rounded-lg text-xs font-bold transition-all duration-150',
+                                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/50',
+                                'flex items-center gap-2',
+                                subActive
+                                  ? 'text-white bg-emerald-600/80 shadow-sm'
+                                  : 'text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 hover:bg-emerald-500/25 hover:text-white',
+                              ]?.join(' ')}
+                              style={{ fontFamily: 'var(--font-caption)' }}
+                            >
+                              {sub?.icon && <Icon name={sub.icon} size={12} color="currentColor" className="flex-shrink-0" />}
+                              {sub?.label}
+                            </button>
+                          </li>
+                        );
+                      }
                       return (
                         <li key={sub?.path} role="listitem">
                           <button
