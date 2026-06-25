@@ -311,7 +311,7 @@ function CustomerDetailDrawer({ customer, business, balance, fmt, onClose, onEdi
       invoiceTotal: selectedInv.total,
     });
     setSaving(false);
-    if (err) { setError(err.message || 'Error al registrar.'); return; }
+    if (err) { setError(err.code === 'CASH_SESSION_REQUIRED' ? 'CASH_SESSION_REQUIRED' : (err.message || 'Error al registrar.')); return; }
     setSuccess('Abono registrado.');
     setSelectedInv(null);
     setAbonoAmount('');
@@ -455,13 +455,25 @@ function CustomerDetailDrawer({ customer, business, balance, fmt, onClose, onEdi
                   <button onClick={() => setSuccess(null)} className="ml-auto text-green-400"><Icon name="X" size={12} /></button>
                 </div>
               )}
-              {error && (
+              {error === 'CASH_SESSION_REQUIRED' ? (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-2">
+                  <div className="flex items-start gap-2 text-sm text-amber-800">
+                    <Icon name="AlertTriangle" size={14} className="shrink-0 mt-0.5" />
+                    <span className="font-semibold">Debes abrir una caja antes de registrar pagos.</span>
+                    <button onClick={() => setError(null)} className="ml-auto text-amber-400"><Icon name="X" size={12} /></button>
+                  </div>
+                  <a href="/crm/caja" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold transition-colors">
+                    <Icon name="Landmark" size={12} />
+                    Abrir caja
+                  </a>
+                </div>
+              ) : error ? (
                 <div className="flex items-center gap-2 p-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700">
                   <Icon name="AlertCircle" size={14} />
                   <span>{error}</span>
                   <button onClick={() => setError(null)} className="ml-auto text-red-400"><Icon name="X" size={12} /></button>
                 </div>
-              )}
+              ) : null}
 
               {/* Facturas pendientes */}
               <div>
@@ -633,7 +645,7 @@ function CustomerAccountDrawer({ customer, business, onClose, fmt }) {
       invoiceTotal: selectedInv.total,
     });
     setSaving(false);
-    if (err) { setError(err.message || 'No se pudo registrar el abono.'); return; }
+    if (err) { setError(err.code === 'CASH_SESSION_REQUIRED' ? 'CASH_SESSION_REQUIRED' : (err.message || 'No se pudo registrar el abono.')); return; }
     setSuccess('Abono registrado correctamente.');
     setSelectedInv(null);
     setAbonoAmount('');
@@ -672,13 +684,25 @@ function CustomerAccountDrawer({ customer, business, onClose, fmt }) {
             </div>
           )}
 
-          {error && (
+          {error === 'CASH_SESSION_REQUIRED' ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-2">
+              <div className="flex items-start gap-2 text-sm text-amber-800">
+                <Icon name="AlertTriangle" size={14} color="currentColor" className="shrink-0 mt-0.5" />
+                <span className="font-semibold">Debes abrir una caja antes de registrar pagos.</span>
+                <button onClick={() => setError(null)} className="ml-auto text-amber-400 hover:text-amber-600"><Icon name="X" size={12} /></button>
+              </div>
+              <a href="/crm/caja" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold transition-colors">
+                <Icon name="Landmark" size={12} />
+                Abrir caja
+              </a>
+            </div>
+          ) : error ? (
             <div className="flex items-center gap-2 p-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700">
               <Icon name="AlertCircle" size={14} color="currentColor" />
               <span>{error}</span>
               <button onClick={() => setError(null)} className="ml-auto text-red-400 hover:text-red-600"><Icon name="X" size={12} /></button>
             </div>
-          )}
+          ) : null}
 
           {/* Listado de facturas pendientes */}
           <div>

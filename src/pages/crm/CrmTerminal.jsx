@@ -525,7 +525,11 @@ function CrmTerminalUI() {
     setBusy(false);
 
     if (error) {
-      setErrorMsg(error.message || 'No se pudo registrar el pago de la venta.');
+      setErrorMsg(
+        (error.code === 'CASH_SESSION_REQUIRED' || error.message === 'CASH_SESSION_REQUIRED')
+          ? 'NO_OPEN_CASH'
+          : (error.message || 'No se pudo registrar el pago de la venta.')
+      );
       return;
     }
 

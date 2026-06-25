@@ -287,7 +287,7 @@ export async function registerCustomerAbono(businessId, { customerId, invoiceId,
   assertFeature(_planSlug ?? 'business', 'customerAccount');
   const { data: openSession } = await getOpenCashSession(businessId);
   if (!openSession) {
-    return { data: null, error: { message: 'No hay caja abierta. Abre caja antes de registrar un abono.' } };
+    return { data: null, error: { code: 'CASH_SESSION_REQUIRED', message: 'CASH_SESSION_REQUIRED' } };
   }
 
   const { data: { user } } = await supabase.auth.getUser();
@@ -841,7 +841,7 @@ export async function createPosInvoice(businessId, {
       const { data } = await getOpenCashSession(businessId);
       openSession = data;
       if (!openSession) {
-        return { data: null, error: { message: 'No hay caja abierta. Abre caja antes de registrar una venta.' } };
+        return { data: null, error: { code: 'CASH_SESSION_REQUIRED', message: 'CASH_SESSION_REQUIRED' } };
       }
     }
   } else {
@@ -854,7 +854,7 @@ export async function createPosInvoice(businessId, {
       const { data } = await getOpenCashSession(businessId);
       openSession = data;
       if (!openSession) {
-        return { data: null, error: { message: 'No hay caja abierta. Abre caja antes de registrar una venta.' } };
+        return { data: null, error: { code: 'CASH_SESSION_REQUIRED', message: 'CASH_SESSION_REQUIRED' } };
       }
     }
 
@@ -1010,7 +1010,7 @@ export async function createInvoiceFromOrder(businessId, order) {
 export async function registerOrderPayment(businessId, { invoiceId, orderId, amount, currency, paymentMethod }) {
   const { data: openSession } = await getOpenCashSession(businessId);
   if (!openSession) {
-    return { data: null, error: { message: 'No hay caja abierta. Abre caja antes de registrar un pago.' } };
+    return { data: null, error: { code: 'CASH_SESSION_REQUIRED', message: 'CASH_SESSION_REQUIRED' } };
   }
 
   const { data: { user } } = await supabase.auth.getUser();

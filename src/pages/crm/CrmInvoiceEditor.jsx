@@ -222,7 +222,7 @@ export default function CrmInvoiceEditor() {
       notes: paymentForm.notes || null,
     });
     setPaymentSaving(false);
-    if (error) { setPaymentError(error.message || 'Error al registrar pago.'); return; }
+    if (error) { setPaymentError(error.code === 'CASH_SESSION_REQUIRED' ? 'CASH_SESSION_REQUIRED' : (error.message || 'Error al registrar pago.')); return; }
     const [paymentsRes, invoiceRes] = await Promise.all([
       listPaymentsByInvoice(id),
       getCrmInvoice(id),
@@ -780,11 +780,26 @@ export default function CrmInvoiceEditor() {
             </div>
 
             <div className="px-5 py-4 space-y-4">
-              {paymentError && (
+              {paymentError === 'CASH_SESSION_REQUIRED' ? (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 space-y-2">
+                  <div className="flex items-start gap-2 text-sm text-amber-800">
+                    <Icon name="AlertTriangle" size={15} className="shrink-0 mt-0.5" />
+                    <span className="font-semibold">Debes abrir una caja antes de registrar pagos.</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { setShowPaymentModal(false); setPaymentError(''); navigate('/crm/caja'); }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold transition-colors"
+                  >
+                    <Icon name="Landmark" size={12} />
+                    Abrir caja
+                  </button>
+                </div>
+              ) : paymentError ? (
                 <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
                   {paymentError}
                 </p>
-              )}
+              ) : null}
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="col-span-2">

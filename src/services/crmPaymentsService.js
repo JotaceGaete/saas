@@ -55,9 +55,19 @@ export async function createPayment(payment) {
     }
   }
 
-  if (!cashSessionId && isCashRelevantPaymentMethod(normalizedMethod) && payment.business_id) {
-    const { data: openSession } = await getOpenCashSession(payment.business_id);
-    cashSessionId = openSession?.id || null;
+  // Todos los pagos received con método real (no crédito) requieren caja abierta.
+  // Si no hay sesión, bloquear — nunca insertar con cash_session_id nulo.
+  if (isCashRelevantPaymentMethod(normalizedMethod) && (payment.payment_status || 'received') === 'received') {
+    if (!payment.business_id) {
+      return { data: null, error: { code: 'CASH_SESSION_REQUIRED', message: 'CASH_SESSION_REQUIRED' } };
+    }
+    if (!cashSessionId) {
+      const { data: openSession } = await getOpenCashSession(payment.business_id);
+      if (!openSession) {
+        return { data: null, error: { code: 'CASH_SESSION_REQUIRED', message: 'CASH_SESSION_REQUIRED' } };
+      }
+      cashSessionId = openSession.id;
+    }
   }
 
   const { data, error } = await supabase
