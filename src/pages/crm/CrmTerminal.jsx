@@ -222,6 +222,9 @@ function CrmTerminalUI() {
   const [errorMsg, setErrorMsg] = useState(null);
   const [showManualModal, setShowManualModal] = useState(false);
   const [showNewCustomer, setShowNewCustomer] = useState(false);
+  const [payMode, setPayMode] = useState(false);
+  const [lastAddedKey, setLastAddedKey] = useState(null);
+  const cartListRef = useRef(null);
 
   // Ticket modal state — set after successful (or locally-fallback) sale
   const [ticketData, setTicketData] = useState(null);
@@ -345,8 +348,10 @@ function CrmTerminalUI() {
     setCart(prev => {
       const existing = prev.find(i => i._key === product.id);
       if (existing) {
+        setLastAddedKey(product.id);
         return prev.map(i => i._key === product.id ? { ...i, quantity: i.quantity + 1 } : i);
       }
+      setLastAddedKey(product.id);
       return [...prev, {
         _key: product.id,
         product_id: product.id,
@@ -359,8 +364,19 @@ function CrmTerminalUI() {
 
   const addManualItem = ({ name, unit_price, quantity, note }) => {
     const _key = `manual_${Date.now()}`;
+    setLastAddedKey(_key);
     setCart(prev => [...prev, { _key, product_id: null, name, unit_price, quantity, note: note || null }]);
   };
+
+  useEffect(() => {
+    if (!lastAddedKey) return;
+    if (cartListRef.current) {
+      const el = cartListRef.current.querySelector(`[data-key="${lastAddedKey}"]`);
+      el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+    const t = setTimeout(() => setLastAddedKey(null), 900);
+    return () => clearTimeout(t);
+  }, [lastAddedKey]);
 
   const updateQty = (_key, delta) => {
     setCart(prev =>
@@ -425,6 +441,8 @@ function CrmTerminalUI() {
     setSearch('');
     setActiveCategory('');
     setErrorMsg(null);
+    setPayMode(false);
+    setLastAddedKey(null);
     setTimeout(() => searchRef.current?.focus(), 50);
   };
 
@@ -896,317 +914,321 @@ function CrmTerminalUI() {
                   )}
                 </div>
 
-                {/* ── RIGHT: cart + checkout ──────────────────────────────────
-                    Desktop 3-zone flex column (lg:flex lg:flex-col):
-                      Zone 1 lg:flex-none        — customer selector
-                      Zone 2 lg:flex-1 lg:min-h-0 — cart card; items scroll inside
-                      Zone 3 lg:flex-none        — compact checkout controls +
-                                                   totals + cobrar (always visible)
+                {/* ── RIGHT: 2-mode panel ─────────────────────────────────────
+                    Mode A (payMode=false): Build the sale
+                      Zone 1 flex-none  — Total + item count (always visible)
+                      Zone 2 flex-1     — Cart (full height, internal scroll)
+                      Zone 3 flex-none  — Discount + Notes + [COBRAR] button
 
-                    Key: cart card is a DIRECT flex-1 child of the column.
-                    Checkout controls are flex-none BELOW the cart so they
-                    never compress it. Compacted to ~280px leaving ~200px+
-                    for the cart on 768px screens.
-
-                    Mobile: normal flow; fixed bottom bar handles cobrar.        */}
+                    Mode B (payMode=true): Collect payment
+                      Zone 1 flex-none  — Total + [← Editar]
+                      Zone 2 flex-1     — Payment methods (scrollable)
+                      Zone 3 flex-none  — [Confirmar venta]                    */}
                 <div className="w-full min-w-0 lg:sticky lg:top-4 lg:flex lg:h-[calc(100vh-5rem)] lg:flex-col">
 
-                  {/* ── Zone 1: Customer ── flex-none ─────────────────────── */}
-                  <div className="rounded-2xl border border-gray-200 bg-white p-3.5 shadow-sm lg:flex-none">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-[11px] font-black uppercase tracking-wide text-gray-400">Total venta</p>
-                        <p className="mt-1 truncate text-2xl font-black tracking-tight text-gray-950 xl:text-3xl">{fmt(total, business?.currency)}</p>
+                  {/* ── Zone 1: Total — always visible ────────────────────── */}
+                  <div className="rounded-2xl border border-gray-200 bg-white px-4 py-3 shadow-sm lg:flex-none">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-black uppercase tracking-wide text-gray-400">Total</p>
+                        <p className="mt-0.5 truncate text-2xl font-black tracking-tight text-gray-950 xl:text-3xl">{fmt(total, business?.currency)}</p>
                       </div>
-                      <span className={`rounded-full px-2.5 py-1 text-xs font-black ${pendingBalance > 0 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
-                        {paymentStatusLabel}
-                      </span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {cartCount > 0 && (
+                          <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-bold text-gray-600">
+                            {cartCount} art.
+                          </span>
+                        )}
+                        {payMode && (
+                          <button
+                            onClick={() => setPayMode(false)}
+                            className="flex items-center gap-1.5 rounded-xl border border-gray-200 bg-gray-50 px-2.5 py-1.5 text-xs font-bold text-gray-600 hover:bg-gray-100 transition-colors"
+                          >
+                            <Icon name="ChevronLeft" size={13} />
+                            Editar
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <div className="mt-3 grid grid-cols-3 gap-1.5">
-                      <div className="rounded-xl bg-gray-50 px-2.5 py-2">
-                        <p className="text-[10px] font-bold uppercase text-gray-400">Items</p>
-                        <p className="text-lg font-black text-gray-900">{cartCount}</p>
-                      </div>
-                      <div className="rounded-xl bg-emerald-50 px-2.5 py-2">
-                        <p className="text-[10px] font-bold uppercase text-emerald-600">Pagado</p>
-                        <p className="truncate text-xs font-black text-emerald-800 xl:text-sm">{fmt(paidTotal, business?.currency)}</p>
-                      </div>
-                      <div className="rounded-xl bg-amber-50 px-2.5 py-2">
-                        <p className="text-[10px] font-bold uppercase text-amber-600">Pendiente</p>
-                        <p className="truncate text-xs font-black text-amber-800 xl:text-sm">{fmt(pendingBalance, business?.currency)}</p>
-                      </div>
-                    </div>
+                    {discountAmount > 0 && (
+                      <p className="mt-1 text-[11px] text-red-500 font-semibold">
+                        Subtotal {fmt(subtotal, business?.currency)} — Descuento -{fmt(discountAmount, business?.currency)}
+                      </p>
+                    )}
                   </div>
 
-                  <div className="hidden">
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wide">Cliente</label>
-                      <button
-                        type="button"
-                        onClick={() => setShowNewCustomer(true)}
-                        className="flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-600 hover:bg-blue-100"
-                      >
-                        <Icon name="UserPlus" size={11} />
-                        Nuevo cliente
-                      </button>
-                    </div>
-                    <select
-                      value={customerId}
-                      onChange={e => setCustomerId(e.target.value)}
-                      className="w-full border border-gray-200 rounded-lg px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
-                    >
-                      <option value="">👤 Consumidor final</option>
-                      {customersDisplay.map(c => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}{c.company ? ` — ${c.company}` : ''}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  {/* ── Zone 2A: Cart (payMode=false) ── flex-1 min-h-0 ───── */}
+                  {!payMode && (
+                    <div className="mt-2.5 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm
+                                    lg:flex-1 lg:min-h-0 lg:flex lg:flex-col">
 
-                  {/* ── Zone 2: Cart card ── flex-1 min-h-0 ──────────────────
-                      On desktop this is a flex column:
-                        header  → flex-none
-                        items   → flex-1 min-h-0 overflow-y-auto
-                      This is the key change: cart fills ALL available middle
-                      space regardless of how many items are in it.             */}
-                  <div className="mt-2.5 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm
-                                  lg:flex-1 lg:min-h-0 lg:flex lg:flex-col">
-
-                    {/* Cart header — flex-none */}
-                    <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50 px-4 py-3 lg:flex-none">
-                      <div className="flex items-center gap-2">
-                        <Icon name="ShoppingCart" size={14} className="text-gray-500" />
-                        <span className="text-sm font-bold text-gray-700">
-                          Carrito
-                          {cartCount > 0 && (
-                            <span className="ml-1.5 bg-blue-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{cartCount}</span>
-                          )}
-                        </span>
+                      {/* Cart header */}
+                      <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50 px-4 py-2.5 lg:flex-none">
+                        <div className="flex items-center gap-2">
+                          <Icon name="ShoppingCart" size={13} className="text-gray-500" />
+                          <span className="text-sm font-bold text-gray-700">
+                            Carrito
+                            {cartCount > 0 && (
+                              <span className="ml-1.5 bg-blue-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{cartCount}</span>
+                            )}
+                          </span>
+                        </div>
+                        {cart.length > 0 && (
+                          <button
+                            onClick={resetForm}
+                            className="text-xs text-red-400 hover:text-red-600 flex items-center gap-1"
+                          >
+                            <Icon name="Trash2" size={11} />Vaciar
+                          </button>
+                        )}
                       </div>
-                      {cart.length > 0 && (
-                        <button
-                          onClick={resetForm}
-                          className="text-xs text-red-400 hover:text-red-600 flex items-center gap-1"
+
+                      {/* Cart items — compact single-line rows */}
+                      {cart.length === 0 ? (
+                        <div className="px-4 py-10 text-center lg:flex-1 lg:flex lg:flex-col lg:items-center lg:justify-center">
+                          <Icon name="ShoppingCart" size={32} className="mx-auto mb-2 text-gray-200" />
+                          <p className="text-gray-400 text-sm">Toca un producto para agregarlo</p>
+                        </div>
+                      ) : (
+                        <div
+                          ref={cartListRef}
+                          className="divide-y divide-gray-100 max-h-52 overflow-y-auto
+                                     lg:flex-1 lg:min-h-0 lg:max-h-none lg:overflow-y-auto"
                         >
-                          <Icon name="Trash2" size={11} />Vaciar
-                        </button>
-                      )}
-                    </div>
-
-                    {/* Cart items — flex-1 min-h-0 overflow-y-auto on desktop;
-                        max-h cap on mobile so the page doesn't get too long.   */}
-                    {cart.length === 0 ? (
-                      <div className="px-4 py-10 text-center lg:flex-1 lg:flex lg:flex-col lg:items-center lg:justify-center">
-                        <Icon name="ShoppingCart" size={32} className="mx-auto mb-2 text-gray-200" />
-                        <p className="text-gray-400 text-sm">Toca un producto para agregarlo</p>
-                      </div>
-                    ) : (
-                      <div className="divide-y divide-gray-100 max-h-52 overflow-y-auto
-                                      lg:flex-1 lg:min-h-0 lg:max-h-none lg:overflow-y-auto">
-                        {cart.map(item => (
-                          <div key={item._key} className="px-3 py-2.5 flex items-center gap-2">
-                            <div className="flex-1 min-w-0">
-                              <p className="text-xs font-semibold text-gray-800 truncate leading-snug flex items-center gap-1">
-                                {item.product_id == null && <span className="text-[9px] bg-purple-100 text-purple-600 px-1 py-0.5 rounded font-bold shrink-0">M</span>}
-                                {item.name}
-                              </p>
-                              <p className="text-[11px] text-gray-400 mt-0.5">{fmt(item.unit_price, business?.currency)} c/u</p>
-                              {item.note && <p className="text-[10px] text-gray-400 italic truncate">{item.note}</p>}
-                            </div>
-                            <div className="flex items-center gap-1 shrink-0">
-                              <button
-                                onClick={() => updateQty(item._key, -1)}
-                                title={item.quantity === 1 ? 'Quitar del carrito' : 'Reducir cantidad'}
-                                className="w-7 h-7 rounded-lg bg-gray-100 hover:bg-red-50 hover:text-red-500 flex items-center justify-center transition-colors text-gray-600"
-                              >
-                                {item.quantity === 1
-                                  ? <Icon name="Trash2" size={12} color="currentColor" />
-                                  : <Icon name="Minus" size={12} color="currentColor" />
-                                }
-                              </button>
-                              <span className="w-6 text-center text-sm font-bold text-gray-800">{item.quantity}</span>
-                              <button
-                                onClick={() => updateQty(item._key, 1)}
-                                title="Aumentar cantidad"
-                                className="w-7 h-7 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors text-gray-600"
-                              >
-                                <Icon name="Plus" size={12} color="currentColor" />
-                              </button>
-                            </div>
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              <span className="text-sm font-bold text-gray-900 min-w-[52px] text-right">
+                          {cart.map(item => (
+                            <div
+                              key={item._key}
+                              data-key={item._key}
+                              className={`flex items-center gap-2 px-3 py-1.5 transition-colors duration-700 ${
+                                lastAddedKey === item._key ? 'bg-emerald-50' : ''
+                              }`}
+                            >
+                              {/* Name */}
+                              <div className="flex-1 min-w-0 flex items-center gap-1">
+                                {item.product_id == null && (
+                                  <span className="text-[9px] bg-purple-100 text-purple-600 px-1 py-0.5 rounded font-bold shrink-0">M</span>
+                                )}
+                                {lastAddedKey === item._key && (
+                                  <Icon name="Check" size={11} className="text-emerald-500 shrink-0" />
+                                )}
+                                <p className="text-xs font-semibold text-gray-800 truncate">{item.name}</p>
+                              </div>
+                              {/* Qty controls */}
+                              <div className="flex items-center gap-0.5 shrink-0">
+                                <button
+                                  onClick={() => updateQty(item._key, -1)}
+                                  title={item.quantity === 1 ? 'Quitar del carrito' : 'Reducir cantidad'}
+                                  className="w-6 h-6 rounded-md bg-gray-100 hover:bg-red-50 hover:text-red-500 flex items-center justify-center transition-colors text-gray-600"
+                                >
+                                  {item.quantity === 1
+                                    ? <Icon name="Trash2" size={10} color="currentColor" />
+                                    : <Icon name="Minus" size={10} color="currentColor" />
+                                  }
+                                </button>
+                                <span className="w-7 text-center text-xs font-bold text-gray-800 tabular-nums">×{item.quantity}</span>
+                                <button
+                                  onClick={() => updateQty(item._key, 1)}
+                                  title="Aumentar cantidad"
+                                  className="w-6 h-6 rounded-md bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors text-gray-600"
+                                >
+                                  <Icon name="Plus" size={10} color="currentColor" />
+                                </button>
+                              </div>
+                              {/* Subtotal + delete */}
+                              <span className="text-xs font-bold text-gray-900 min-w-[52px] text-right tabular-nums shrink-0">
                                 {fmt(item.unit_price * item.quantity, business?.currency)}
                               </span>
                               <button
                                 onClick={() => removeItem(item._key)}
                                 title="Eliminar producto"
                                 aria-label="Eliminar producto del carrito"
-                                className="w-7 h-7 rounded-lg bg-red-50 hover:bg-red-100 flex items-center justify-center transition-colors text-red-400 hover:text-red-600"
+                                className="w-6 h-6 rounded-md bg-red-50 hover:bg-red-100 flex items-center justify-center transition-colors text-red-400 hover:text-red-600 shrink-0"
                               >
-                                <Icon name="Trash2" size={13} color="currentColor" />
+                                <Icon name="X" size={11} color="currentColor" />
                               </button>
                             </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* ── Zone 3: Checkout controls ── flex-none ───────────────
-                      Compacted to ~280px so the cart gets 200px+ on 768px.
-                      Discount + Notes in one row. Payment as 4-button row.
-                      Desktop totals+cobrar block is hidden on mobile.          */}
-                  <div className="flex flex-col gap-2 mt-2.5 lg:flex-none lg:shrink-0">
-
-                    {/* Discount + Notes — single compact row */}
-                    <div className="flex gap-2">
-                      <div className="flex-1 relative">
-                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none">$</span>
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          value={fmtMoneyInput(discount)}
-                          onChange={e => setDiscount(e.target.value.replace(/\D/g, ''))}
-                          placeholder="Descuento"
-                          className="w-full pl-6 pr-2 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                        />
-                      </div>
-                      <input
-                        type="text"
-                        value={notes}
-                        onChange={e => setNotes(e.target.value)}
-                        placeholder="Notas…"
-                        className="flex-1 px-2.5 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                      />
-                    </div>
-
-                    {/* Payment method — 4 buttons in one row */}
-                    <div className="rounded-2xl border border-gray-200 bg-white p-2.5 space-y-2">
-                      {/* Atajo: Venta a crédito */}
-                      <button
-                        type="button"
-                        onClick={() => setPayments(prev => prev.map(p => ({ ...p, amount: '' })))}
-                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-dashed border-amber-300 bg-amber-50 hover:bg-amber-100 transition-colors text-left"
-                      >
-                        <span className="w-7 h-7 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
-                          <Icon name="BookUser" size={14} className="text-amber-600" />
-                        </span>
-                        <span className="min-w-0">
-                          <span className="block text-xs font-bold text-amber-800 leading-tight">Vender a cuenta corriente</span>
-                          <span className="block text-[10px] text-amber-600 leading-tight mt-0.5">Deja el total como pendiente · requiere cliente registrado</span>
-                        </span>
-                      </button>
-
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-xs font-bold text-gray-800">Pagos</p>
-                          <p className="text-[11px] text-gray-500">Total: {fmt(total, business?.currency)}</p>
+                          ))}
                         </div>
-                        <button
-                          onClick={addPayment}
-                          className="h-8 px-2.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold flex items-center gap-1"
-                        >
-                          <Icon name="Plus" size={13} />
-                          Agregar
-                        </button>
-                      </div>
-
-                      <div className="space-y-1.5">
-                        {payments.map((payment) => (
-                          <div key={payment.id} className="flex items-center gap-1.5">
-                            <select
-                              value={payment.method}
-                              onChange={(e) => updatePayment(payment.id, { method: e.target.value })}
-                              className="w-[116px] border border-gray-200 rounded-lg px-2 py-2 text-xs bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            >
-                              {REAL_PAYMENT_METHODS.map((method) => (
-                                <option key={method.value} value={method.value}>{method.label}</option>
-                              ))}
-                            </select>
-                            <div className="relative flex-1 min-w-0">
-                              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none">$</span>
-                              <input
-                                type="text"
-                                inputMode="numeric"
-                                value={fmtMoneyInput(payment.amount)}
-                                onChange={(e) => updatePayment(payment.id, { amount: e.target.value.replace(/\D/g, '') })}
-                                placeholder="Monto"
-                                className="w-full pl-5 pr-2 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
-                              />
-                            </div>
-                            <button
-                              onClick={() => removePayment(payment.id)}
-                              title="Eliminar pago"
-                              aria-label="Eliminar pago"
-                              className="w-8 h-8 rounded-lg bg-red-50 hover:bg-red-100 flex items-center justify-center text-red-500"
-                            >
-                              <Icon name="Trash2" size={13} />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-1.5 pt-1">
-                        <div className="rounded-lg bg-emerald-50 px-2 py-1.5">
-                          <p className="text-[10px] text-emerald-700 font-semibold">Pagado</p>
-                          <p className="text-xs font-bold text-emerald-800">{fmt(paidTotal, business?.currency)}</p>
-                        </div>
-                        <div className={`rounded-lg px-2 py-1.5 ${pendingBalance > 0 ? 'bg-amber-50' : 'bg-gray-50'}`}>
-                          <p className={`text-[10px] font-semibold ${pendingBalance > 0 ? 'text-amber-700' : 'text-gray-500'}`}>Pendiente</p>
-                          <p className={`text-xs font-bold ${pendingBalance > 0 ? 'text-amber-800' : 'text-gray-700'}`}>{fmt(pendingBalance, business?.currency)}</p>
-                        </div>
-                        <div className={`rounded-lg px-2 py-1.5 ${change > 0 ? 'bg-blue-50' : 'bg-gray-50'}`}>
-                          <p className={`text-[10px] font-semibold ${change > 0 ? 'text-blue-700' : 'text-gray-500'}`}>Vuelto</p>
-                          <p className={`text-xs font-bold ${change > 0 ? 'text-blue-800' : 'text-gray-700'}`}>{fmt(change, business?.currency)}</p>
-                        </div>
-                      </div>
-
-                      {hasNonCashOverpay && (
-                        <p className="text-xs font-semibold text-red-600">Solo efectivo puede generar vuelto.</p>
                       )}
-                      {requiresCustomerForPending && !customerId && (
-                        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 space-y-2">
-                          <p className="text-xs font-semibold text-amber-800 leading-snug">
-                            Faltan <strong>{fmt(pendingBalance, business?.currency)}</strong> por pagar.
-                            Agrega otro medio de pago o selecciona un cliente para vender a cuenta corriente.
-                          </p>
+                    </div>
+                  )}
+
+                  {/* ── Zone 2B: Payment (payMode=true) ── flex-1 min-h-0 ─── */}
+                  {payMode && (
+                    <div className="mt-2.5 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm
+                                    lg:flex-1 lg:min-h-0 lg:flex lg:flex-col">
+                      <div className="px-4 py-2.5 border-b border-gray-100 bg-gray-50 lg:flex-none">
+                        <p className="text-xs font-bold text-gray-700">Métodos de pago</p>
+                      </div>
+                      <div className="p-3 space-y-3 overflow-y-auto lg:flex-1 lg:min-h-0">
+
+                        {/* Customer selector (needed for credit sales) */}
+                        <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-2.5 py-2">
+                          <Icon name="UserRound" size={13} className="text-gray-400 shrink-0" />
+                          <select
+                            value={customerId}
+                            onChange={e => setCustomerId(e.target.value)}
+                            className="min-w-0 flex-1 bg-transparent text-xs font-semibold text-gray-700 focus:outline-none"
+                          >
+                            <option value="">Consumidor final</option>
+                            {customersDisplay.map(c => (
+                              <option key={c.id} value={c.id}>
+                                {c.name}{c.company ? ` - ${c.company}` : ''}
+                              </option>
+                            ))}
+                          </select>
                           <button
                             type="button"
-                            onClick={addPayment}
-                            className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg px-2.5 py-1.5 transition-colors"
+                            onClick={() => setShowNewCustomer(true)}
+                            title="Nuevo cliente"
+                            className="rounded-lg p-1 text-blue-600 hover:bg-blue-50 shrink-0"
                           >
-                            <Icon name="Plus" size={12} />
-                            Agregar medio de pago
+                            <Icon name="UserPlus" size={13} />
                           </button>
                         </div>
-                      )}
-                    </div>
 
-                    {/* Pago recibido — solo efectivo */}
-                    {/* Totals + Cobrar — desktop only; mobile uses fixed bar */}
-                    <div className="hidden lg:flex flex-col gap-2.5 rounded-2xl bg-gray-950 px-4 py-4 shadow-xl">
-                      <div className="space-y-1">
-                        <div className="flex justify-between text-xs text-gray-400">
-                          <span>Subtotal</span>
-                          <span>{fmt(subtotal, business?.currency)}</span>
+                        {/* Credit account shortcut */}
+                        <button
+                          type="button"
+                          onClick={() => setPayments(prev => prev.map(p => ({ ...p, amount: '' })))}
+                          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-dashed border-amber-300 bg-amber-50 hover:bg-amber-100 transition-colors text-left"
+                        >
+                          <span className="w-6 h-6 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
+                            <Icon name="BookUser" size={13} className="text-amber-600" />
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block text-xs font-bold text-amber-800 leading-tight">Vender a cuenta corriente</span>
+                            <span className="block text-[10px] text-amber-600 leading-tight mt-0.5">Requiere cliente registrado</span>
+                          </span>
+                        </button>
+
+                        {/* Payment rows */}
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <p className="text-xs font-bold text-gray-700">Pagos</p>
+                            <button
+                              onClick={addPayment}
+                              className="h-7 px-2.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold flex items-center gap-1"
+                            >
+                              <Icon name="Plus" size={12} />Agregar
+                            </button>
+                          </div>
+                          {payments.map((payment) => (
+                            <div key={payment.id} className="flex items-center gap-1.5">
+                              <select
+                                value={payment.method}
+                                onChange={(e) => updatePayment(payment.id, { method: e.target.value })}
+                                className="w-[108px] border border-gray-200 rounded-lg px-2 py-1.5 text-xs bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              >
+                                {REAL_PAYMENT_METHODS.map((method) => (
+                                  <option key={method.value} value={method.value}>{method.label}</option>
+                                ))}
+                              </select>
+                              <div className="relative flex-1 min-w-0">
+                                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none">$</span>
+                                <input
+                                  type="text"
+                                  inputMode="numeric"
+                                  value={fmtMoneyInput(payment.amount)}
+                                  onChange={(e) => updatePayment(payment.id, { amount: e.target.value.replace(/\D/g, '') })}
+                                  placeholder="Monto"
+                                  className="w-full pl-5 pr-2 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
+                                />
+                              </div>
+                              <button
+                                onClick={() => removePayment(payment.id)}
+                                title="Eliminar pago"
+                                aria-label="Eliminar pago"
+                                className="w-7 h-7 rounded-lg bg-red-50 hover:bg-red-100 flex items-center justify-center text-red-500"
+                              >
+                                <Icon name="Trash2" size={12} />
+                              </button>
+                            </div>
+                          ))}
                         </div>
-                        {discountAmount > 0 && (
-                          <div className="flex justify-between text-xs text-red-400">
-                            <span>Descuento</span>
-                            <span>-{fmt(discountAmount, business?.currency)}</span>
+
+                        {/* Payment summary */}
+                        <div className="grid grid-cols-3 gap-1.5">
+                          <div className="rounded-lg bg-emerald-50 px-2 py-1.5">
+                            <p className="text-[10px] text-emerald-700 font-semibold">Pagado</p>
+                            <p className="text-xs font-bold text-emerald-800">{fmt(paidTotal, business?.currency)}</p>
+                          </div>
+                          <div className={`rounded-lg px-2 py-1.5 ${pendingBalance > 0 ? 'bg-amber-50' : 'bg-gray-50'}`}>
+                            <p className={`text-[10px] font-semibold ${pendingBalance > 0 ? 'text-amber-700' : 'text-gray-500'}`}>Pendiente</p>
+                            <p className={`text-xs font-bold ${pendingBalance > 0 ? 'text-amber-800' : 'text-gray-700'}`}>{fmt(pendingBalance, business?.currency)}</p>
+                          </div>
+                          <div className={`rounded-lg px-2 py-1.5 ${change > 0 ? 'bg-blue-50' : 'bg-gray-50'}`}>
+                            <p className={`text-[10px] font-semibold ${change > 0 ? 'text-blue-700' : 'text-gray-500'}`}>Vuelto</p>
+                            <p className={`text-xs font-bold ${change > 0 ? 'text-blue-800' : 'text-gray-700'}`}>{fmt(change, business?.currency)}</p>
+                          </div>
+                        </div>
+
+                        {hasNonCashOverpay && (
+                          <p className="text-xs font-semibold text-red-600">Solo efectivo puede generar vuelto.</p>
+                        )}
+                        {requiresCustomerForPending && !customerId && (
+                          <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 space-y-2">
+                            <p className="text-xs font-semibold text-amber-800 leading-snug">
+                              Faltan <strong>{fmt(pendingBalance, business?.currency)}</strong> por pagar.
+                              Agrega otro medio de pago o selecciona un cliente para vender a cuenta corriente.
+                            </p>
+                            <button
+                              type="button"
+                              onClick={addPayment}
+                              className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg px-2.5 py-1.5 transition-colors"
+                            >
+                              <Icon name="Plus" size={12} />
+                              Agregar medio de pago
+                            </button>
                           </div>
                         )}
                       </div>
-                      <div className="flex justify-between items-end border-t border-gray-800 pt-3">
-                        <span className="text-sm font-bold text-gray-300">Total</span>
-                        <span className="truncate text-2xl font-black tracking-tight text-white xl:text-3xl">{fmt(total, business?.currency)}</span>
+                    </div>
+                  )}
+
+                  {/* ── Zone 3: Action button ── flex-none ──────────────────── */}
+                  <div className="flex flex-col gap-2 mt-2.5 lg:flex-none lg:shrink-0">
+
+                    {/* Discount + Notes — only in sell mode */}
+                    {!payMode && (
+                      <div className="flex gap-2">
+                        <div className="flex-1 relative">
+                          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none">$</span>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={fmtMoneyInput(discount)}
+                            onChange={e => setDiscount(e.target.value.replace(/\D/g, ''))}
+                            placeholder="Descuento"
+                            className="w-full pl-6 pr-2 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                          />
+                        </div>
+                        <input
+                          type="text"
+                          value={notes}
+                          onChange={e => setNotes(e.target.value)}
+                          placeholder="Notas…"
+                          className="flex-1 px-2.5 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                        />
                       </div>
-                      {requiresCustomerForPending && !customerId ? (
+                    )}
+
+                    {/* Desktop CTA */}
+                    <div className="hidden lg:block">
+                      {!payMode ? (
+                        <button
+                          onClick={() => setPayMode(true)}
+                          disabled={cart.length === 0}
+                          className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-500 py-4 text-lg font-black text-white shadow-lg shadow-emerald-950/30 transition-all hover:-translate-y-0.5 hover:bg-emerald-400 disabled:translate-y-0 disabled:bg-gray-200 disabled:text-gray-400 disabled:shadow-none"
+                        >
+                          <Icon name="CreditCard" size={20} />
+                          Cobrar {cart.length > 0 && fmt(total, business?.currency)}
+                        </button>
+                      ) : requiresCustomerForPending && !customerId ? (
                         <div className="flex gap-2">
                           <button
                             disabled
-                            className="flex-1 flex items-center justify-center gap-2 rounded-2xl bg-gray-800 py-3.5 text-sm font-black text-gray-500 shadow-none cursor-not-allowed xl:py-4"
+                            className="flex-1 flex items-center justify-center gap-2 rounded-2xl bg-gray-800 py-3.5 text-sm font-black text-gray-500 cursor-not-allowed"
                           >
                             <Icon name="AlertCircle" size={16} />
                             Falta pagar {fmt(pendingBalance, business?.currency)}
@@ -1214,26 +1236,24 @@ function CrmTerminalUI() {
                           <button
                             type="button"
                             onClick={addPayment}
-                            className="shrink-0 flex items-center justify-center gap-1.5 rounded-2xl bg-blue-600 hover:bg-blue-700 px-3.5 py-3.5 text-xs font-bold text-white transition-colors xl:py-4"
+                            className="shrink-0 flex items-center justify-center gap-1.5 rounded-2xl bg-blue-600 hover:bg-blue-700 px-3.5 py-3.5 text-xs font-bold text-white transition-colors"
                             title="Agregar pago"
                           >
                             <Icon name="Plus" size={15} />
-                            <span className="hidden xl:inline">Agregar pago</span>
                           </button>
                         </div>
                       ) : (
                         <button
                           onClick={handleRegister}
                           disabled={cart.length === 0 || busy || isPaymentInvalid}
-                          className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-500 py-3.5 text-base font-black text-white shadow-lg shadow-emerald-950/30 transition-all hover:-translate-y-0.5 hover:bg-emerald-400 disabled:translate-y-0 disabled:bg-gray-800 disabled:text-gray-500 disabled:shadow-none xl:py-4 xl:text-lg"
+                          className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-500 py-4 text-lg font-black text-white shadow-lg shadow-emerald-950/30 transition-all hover:-translate-y-0.5 hover:bg-emerald-400 disabled:translate-y-0 disabled:bg-gray-800 disabled:text-gray-500 disabled:shadow-none"
                         >
                           {busy
                             ? <><Icon name="Loader2" size={18} className="animate-spin" />Registrando…</>
-                            : <><Icon name={pendingBalance > 0 ? 'BookUser' : 'Zap'} size={18} />Completar venta</>
+                            : <><Icon name={pendingBalance > 0 ? 'BookUser' : 'Zap'} size={18} />Confirmar venta</>
                           }
                         </button>
                       )}
-                      <p className="text-center text-xs text-gray-400">{paymentStatusLabel}</p>
                     </div>
 
                   </div>{/* end zone 3 */}
@@ -1253,14 +1273,28 @@ function CrmTerminalUI() {
                   </p>
                 )}
                 <p className="truncate text-lg font-bold text-white leading-tight">{fmt(total, business?.currency)}</p>
-                <p className={`text-[10px] mt-0.5 ${isPaymentInvalid ? 'text-amber-400' : 'text-gray-400'}`}>
-                  {requiresCustomerForPending && !customerId
-                    ? `Faltan ${fmt(pendingBalance, business?.currency)} · selecciona cliente`
-                    : `Pagado ${fmt(paidTotal, business?.currency)} · Pendiente ${fmt(pendingBalance, business?.currency)}`
-                  }
-                </p>
+                {payMode && (
+                  <p className={`text-[10px] mt-0.5 ${isPaymentInvalid ? 'text-amber-400' : 'text-gray-400'}`}>
+                    {requiresCustomerForPending && !customerId
+                      ? `Faltan ${fmt(pendingBalance, business?.currency)} · selecciona cliente`
+                      : `Pagado ${fmt(paidTotal, business?.currency)} · Pendiente ${fmt(pendingBalance, business?.currency)}`
+                    }
+                  </p>
+                )}
+                {!payMode && cartCount > 0 && (
+                  <p className="text-[10px] text-gray-400 mt-0.5">{cartCount} artículo{cartCount !== 1 ? 's' : ''}</p>
+                )}
               </div>
-              {requiresCustomerForPending && !customerId ? (
+              {!payMode ? (
+                <button
+                  onClick={() => setPayMode(true)}
+                  disabled={cart.length === 0}
+                  className="shrink-0 px-5 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:bg-gray-700 disabled:text-gray-500 text-white font-bold text-sm transition-colors flex items-center gap-2"
+                >
+                  <Icon name="CreditCard" size={16} />
+                  Cobrar
+                </button>
+              ) : payMode && requiresCustomerForPending && !customerId ? (
                 <button
                   type="button"
                   onClick={addPayment}
@@ -1277,7 +1311,7 @@ function CrmTerminalUI() {
                 >
                   {busy
                     ? <><Icon name="Loader2" size={16} className="animate-spin" />Procesando…</>
-                    : <><Icon name={pendingBalance > 0 ? 'BookUser' : 'Zap'} size={16} />Completar</>
+                    : <><Icon name={pendingBalance > 0 ? 'BookUser' : 'Zap'} size={16} />Confirmar</>
                   }
                 </button>
               )}
