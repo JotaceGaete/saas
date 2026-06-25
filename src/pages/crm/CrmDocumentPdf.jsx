@@ -135,11 +135,13 @@ function CrmPdfDocument({ type, document: doc, business, customer, extra = {} })
   const issueDate = fmtDate(issueStr) || today;
   const validDate = isQuote ? fmtDate(doc.valid_until) : null;
   const dueDate   = !isQuote ? fmtDate(doc.due_date) : null;
-  const paymentTerms   = doc.payment_terms   || extra.payment_terms   || null;
-  const deliveryDays   = doc.delivery_days   || extra.delivery_days   || null;
-  const deliveryMethod = doc.delivery_method || extra.delivery_method || null;
-  const commercialNotes= doc.commercial_notes|| extra.commercial_notes|| null;
-  const hasConditions  = paymentTerms || deliveryDays || deliveryMethod;
+  const paymentTerms        = doc.payment_terms        || extra.payment_terms        || null;
+  const deliveryDays        = doc.delivery_days        || extra.delivery_days        || null;
+  const deliveryMethod      = doc.delivery_method      || extra.delivery_method      || null;
+  const commercialNotes     = doc.commercial_notes     || extra.commercial_notes     || null;
+  const purchaseOrderNumber = doc.purchase_order_number|| extra.purchase_order_number|| null;
+  const dispatchInstructions= doc.dispatch_instructions|| extra.dispatch_instructions|| null;
+  const hasConditions  = paymentTerms || deliveryDays || deliveryMethod || purchaseOrderNumber || dispatchInstructions;
   const hasDiscount    = (doc.discount_amount || 0) > 0;
   const logoUrl        = business?.logoUrl || business?.logo_url || null;
 
@@ -196,9 +198,11 @@ function CrmPdfDocument({ type, document: doc, business, customer, extra = {} })
               <View style={S.colRight}>
                 <Text style={S.sectionLabel}>Condiciones</Text>
                 <View style={S.condBox}>
+                  {purchaseOrderNumber && <View style={S.condRow}><Text style={S.condKey}>N° OC</Text><Text style={S.condVal}>{purchaseOrderNumber}</Text></View>}
                   {paymentTerms   && <View style={S.condRow}><Text style={S.condKey}>Forma de pago</Text><Text style={S.condVal}>{paymentTerms}</Text></View>}
                   {deliveryDays   && <View style={S.condRow}><Text style={S.condKey}>Plazo entrega</Text><Text style={S.condVal}>{deliveryDays}</Text></View>}
                   {deliveryMethod && <View style={S.condRow}><Text style={S.condKey}>Despacho</Text><Text style={S.condVal}>{deliveryMethod}</Text></View>}
+                  {dispatchInstructions && <View style={S.condRow}><Text style={S.condKey}>Instrucciones</Text><Text style={S.condVal}>{dispatchInstructions}</Text></View>}
                 </View>
               </View>
             )}
@@ -294,11 +298,13 @@ function HtmlDocumentPreview({ type, document: doc, business, customer, extra = 
   const issueDate= fmtDate(issueStr) || today;
   const validDate= isQuote ? fmtDate(doc.valid_until) : null;
   const dueDate  = !isQuote ? fmtDate(doc.due_date) : null;
-  const paymentTerms   = doc.payment_terms   || extra.payment_terms   || null;
-  const deliveryDays   = doc.delivery_days   || extra.delivery_days   || null;
-  const deliveryMethod = doc.delivery_method || extra.delivery_method || null;
-  const commercialNotes= doc.commercial_notes|| extra.commercial_notes|| null;
-  const hasConditions  = paymentTerms || deliveryDays || deliveryMethod;
+  const paymentTerms        = doc.payment_terms        || extra.payment_terms        || null;
+  const deliveryDays        = doc.delivery_days        || extra.delivery_days        || null;
+  const deliveryMethod      = doc.delivery_method      || extra.delivery_method      || null;
+  const commercialNotes     = doc.commercial_notes     || extra.commercial_notes     || null;
+  const purchaseOrderNumber = doc.purchase_order_number|| extra.purchase_order_number|| null;
+  const dispatchInstructions= doc.dispatch_instructions|| extra.dispatch_instructions|| null;
+  const hasConditions  = paymentTerms || deliveryDays || deliveryMethod || purchaseOrderNumber || dispatchInstructions;
   const hasDiscount    = (doc.discount_amount || 0) > 0;
   const logoUrl        = business?.logoUrl || business?.logo_url || null;
   const statusCls      = STATUS_HTML[doc.status] || STATUS_HTML.borrador;
@@ -355,9 +361,11 @@ function HtmlDocumentPreview({ type, document: doc, business, customer, extra = 
             <div className="flex-1 sm:flex-[2]">
               <p className="text-[10px] font-bold text-blue-600 uppercase tracking-wider mb-1.5">Condiciones</p>
               <div className="bg-gray-50 rounded-xl p-3 space-y-1.5">
+                {purchaseOrderNumber && <div className="flex gap-2 text-xs"><span className="font-semibold text-gray-700 w-24 shrink-0">N° OC</span><span className="text-gray-500">{purchaseOrderNumber}</span></div>}
                 {paymentTerms   && <div className="flex gap-2 text-xs"><span className="font-semibold text-gray-700 w-24 shrink-0">Forma de pago</span><span className="text-gray-500">{paymentTerms}</span></div>}
                 {deliveryDays   && <div className="flex gap-2 text-xs"><span className="font-semibold text-gray-700 w-24 shrink-0">Plazo entrega</span><span className="text-gray-500">{deliveryDays}</span></div>}
                 {deliveryMethod && <div className="flex gap-2 text-xs"><span className="font-semibold text-gray-700 w-24 shrink-0">Despacho</span><span className="text-gray-500">{deliveryMethod}</span></div>}
+                {dispatchInstructions && <div className="flex gap-2 text-xs"><span className="font-semibold text-gray-700 w-24 shrink-0">Instrucciones</span><span className="text-gray-500">{dispatchInstructions}</span></div>}
               </div>
             </div>
           )}
