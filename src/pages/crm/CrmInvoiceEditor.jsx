@@ -15,7 +15,9 @@ import {
   updateCrmInvoiceStatus,
 } from '../../services/crmService';
 import { getProducts } from '../../services/waBusinessService';
-import { listPaymentsByInvoice, createPayment } from '../../services/crmPaymentsService';
+import { listAllPaymentsByInvoice, createPayment } from '../../services/crmPaymentsService';
+import { voidCrmPayment } from '../../services/crmService';
+import VoidPaymentModal from './components/VoidPaymentModal';
 import CrmDocumentPdf from './CrmDocumentPdf';
 import {
   CrmLineItemCard,
@@ -91,6 +93,9 @@ export default function CrmInvoiceEditor() {
   const [paymentSaving, setPaymentSaving] = useState(false);
   const [paymentError, setPaymentError] = useState('');
   const [markingPaid, setMarkingPaid] = useState(false);
+  const [voidingPayment, setVoidingPayment] = useState(null);
+  const [voidBusy, setVoidBusy] = useState(false);
+  const [voidError, setVoidError] = useState('');
 
   const [customerId, setCustomerId] = useState('');
   const [issueDate, setIssueDate] = useState(new Date().toISOString().slice(0, 10));
@@ -120,7 +125,7 @@ export default function CrmInvoiceEditor() {
         setDeliveryMethod(data.delivery_method || '');
         setCommercialNotes(data.commercial_notes || '');
         setPageLoading(false);
-        listPaymentsByInvoice(id).then((r) => setPayments(r.data || []));
+        listAllPaymentsByInvoice(id).then((r) => setPayments(r.data || []));
       });
     }
   }, [business?.id, id, isNew]);
@@ -224,7 +229,7 @@ export default function CrmInvoiceEditor() {
     setPaymentSaving(false);
     if (error) { setPaymentError(error.code === 'CASH_SESSION_REQUIRED' ? 'CASH_SESSION_REQUIRED' : (error.message || 'Error al registrar pago.')); return; }
     const [paymentsRes, invoiceRes] = await Promise.all([
-      listPaymentsByInvoice(id),
+      listAllPaymentsByInvoice(id),
       getCrmInvoice(id),
     ]);
     setPayments(paymentsRes.data || [data, ...payments]);
@@ -237,6 +242,24 @@ export default function CrmInvoiceEditor() {
       reference: '',
       notes: '',
     });
+  };
+
+  const handleVoidPayment = async (reason) => {
+    setVoidBusy(true);
+    setVoidError('');
+    const { error } = await voidCrmPayment(voidingPayment.id, reason, business?.id);
+    setVoidBusy(false);
+    if (error) {
+      setVoidError(error.code === 'CASH_SESSION_REQUIRED' ? 'CASH_SESSION_REQUIRED' : (error.message || 'Error al anular pago.'));
+      return;
+    }
+    const [paymentsRes, invoiceRes] = await Promise.all([
+      listAllPaymentsByInvoice(id),
+      getCrmInvoice(id),
+    ]);
+    setPayments(paymentsRes.data || []);
+    if (invoiceRes.data) setSaved(prev => ({ ...prev, ...invoiceRes.data }));
+    setVoidingPayment(null);
   };
 
   const handleSave = async () => {
@@ -629,7 +652,7 @@ export default function CrmInvoiceEditor() {
 
           {/* ── PAGOS RECIBIDOS (solo facturas guardadas) ── */}
           {!isNew && saved && (() => {
-            const totalPagado = payments.reduce((s, p) => s + (p.amount || 0), 0);
+            const totalPagado = payments.filter(p => !p.voided_at).reduce((s, p) => s + (p.amount || 0), 0);
             const saldo = subtotal - totalPagado;
             const fullPaid = saldo <= 0 && payments.length > 0;
             const partial  = saldo > 0 && totalPagado > 0;
@@ -696,26 +719,56 @@ export default function CrmInvoiceEditor() {
                   <p className="text-sm text-gray-400 text-center py-4">Sin pagos registrados.</p>
                 ) : (
                   <div className="divide-y divide-gray-100">
-                    {payments.map((p) => (
-                      <div key={p.id} className="flex items-center justify-between py-2.5 gap-3">
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold text-gray-900">{fmt(p.amount)}</p>
-                          <p className="text-xs text-gray-400">
-                            {PAYMENT_METHOD_LABELS[p.payment_method] || p.payment_method}
-                            {p.reference ? ` · Ref: ${p.reference}` : ''}
-                            {p.notes ? ` · ${p.notes}` : ''}
-                          </p>
+                    {payments.map((p) => {
+                      const isVoided = !!p.voided_at;
+                      return (
+                        <div key={p.id} className={`flex items-center justify-between py-2.5 gap-3 ${isVoided ? 'opacity-60' : ''}`}>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className={`text-sm font-semibold ${isVoided ? 'line-through text-gray-400' : 'text-gray-900'}`}>{fmt(p.amount)}</p>
+                              {isVoided && (
+                                <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full bg-red-100 text-red-600 font-medium">
+                                  <Icon name="Ban" size={10} />
+                                  Anulado
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-gray-400">
+                              {PAYMENT_METHOD_LABELS[p.payment_method] || p.payment_method}
+                              {p.reference ? ` · Ref: ${p.reference}` : ''}
+                              {p.notes ? ` · ${p.notes}` : ''}
+                            </p>
+                            {isVoided && p.void_reason && (
+                              <p className="text-xs text-red-500 mt-0.5">Motivo: {p.void_reason}</p>
+                            )}
+                          </div>
+                          <div className="text-right shrink-0 flex items-center gap-2">
+                            <div>
+                              <p className="text-xs text-gray-500">
+                                {p.payment_date
+                                  ? new Date(p.payment_date + 'T12:00:00').toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                                  : '—'}
+                              </p>
+                              {isVoided && p.voided_at && (
+                                <p className="text-xs text-red-400">
+                                  Anulado {new Date(p.voided_at).toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                                </p>
+                              )}
+                            </div>
+                            {!isVoided && (
+                              <button
+                                type="button"
+                                onClick={() => { setVoidingPayment(p); setVoidError(''); }}
+                                className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+                                title="Anular pago"
+                              >
+                                <Icon name="Ban" size={14} />
+                              </button>
+                            )}
+                          </div>
                         </div>
-                        <div className="text-right shrink-0">
-                          <p className="text-xs text-gray-500">
-                            {p.payment_date
-                              ? new Date(p.payment_date + 'T12:00:00').toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' })
-                              : '—'}
-                          </p>
-                          {p.status && <span className="text-xs text-gray-400">{p.status}</span>}
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -901,6 +954,17 @@ export default function CrmInvoiceEditor() {
         <QuickCustomerModal
           onSave={handleCreateCustomer}
           onClose={() => setShowNewCustomer(false)}
+        />
+      )}
+
+      {voidingPayment && (
+        <VoidPaymentModal
+          payment={voidingPayment}
+          currency={business?.currency}
+          busy={voidBusy}
+          error={voidError}
+          onConfirm={handleVoidPayment}
+          onCancel={() => { setVoidingPayment(null); setVoidError(''); }}
         />
       )}
     </DashboardAppShell>

@@ -8,8 +8,9 @@ import { useAuth } from '../../contexts/AuthContext';
 import {
   getCrmCustomers, createCrmCustomer, updateCrmCustomer, deleteCrmCustomer,
   getBusinessCreditSummary, getCustomerPendingInvoices, registerCustomerAbono,
-  getCustomerPaymentHistory, formatInvoiceNumber,
+  getCustomerPaymentHistory, formatInvoiceNumber, voidCrmPayment,
 } from '../../services/crmService';
+import VoidPaymentModal from './components/VoidPaymentModal';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -265,6 +266,9 @@ function CustomerDetailDrawer({ customer, business, balance, fmt, onClose, onEdi
   const [loadingInv,  setLoadingInv]  = useState(true);
   const [history,     setHistory]     = useState([]);
   const [loadingHist, setLoadingHist] = useState(true);
+  const [voidingPayment, setVoidingPayment] = useState(null);
+  const [voidBusy,    setVoidBusy]    = useState(false);
+  const [voidError,   setVoidError]   = useState('');
   const [selectedInv, setSelectedInv] = useState(null);
   const [abonoAmount, setAbonoAmount] = useState('');
   const [abonoMethod, setAbonoMethod] = useState('cash');
@@ -291,6 +295,19 @@ function CustomerDetailDrawer({ customer, business, balance, fmt, onClose, onEdi
   };
 
   useEffect(() => { loadInv(); loadHistory(); }, [customer.id]);
+
+  const handleVoidPayment = async (reason) => {
+    setVoidBusy(true);
+    setVoidError('');
+    const { error } = await voidCrmPayment(voidingPayment.id, reason, business?.id);
+    setVoidBusy(false);
+    if (error) {
+      setVoidError(error.code === 'CASH_SESSION_REQUIRED' ? 'CASH_SESSION_REQUIRED' : (error.message || 'Error al anular pago.'));
+      return;
+    }
+    await loadHistory();
+    setVoidingPayment(null);
+  };
 
   const totalPendiente = invoices.reduce((s, inv) => {
     const pagado = (inv.crm_payments || []).reduce((p, r) => p + (r.amount || 0), 0);
@@ -320,6 +337,7 @@ function CustomerDetailDrawer({ customer, business, balance, fmt, onClose, onEdi
   };
 
   return (
+    <>
     <div
       className="fixed inset-0 z-50 flex justify-end"
       style={{ backgroundColor: 'rgba(15,23,42,0.45)' }}
@@ -562,15 +580,19 @@ function CustomerDetailDrawer({ customer, business, balance, fmt, onClose, onEdi
                   <div className="space-y-1.5">
                     {history.map(p => {
                       const inv = p.crm_invoices;
+                      const isVoided = !!p.voided_at;
                       const fmtDate = (d) => d ? new Date(d).toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—';
                       return (
-                        <div key={p.id} className="flex items-center gap-3 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2.5">
-                          <span className="w-7 h-7 rounded-lg bg-emerald-100 flex items-center justify-center shrink-0">
-                            <Icon name="ArrowDownLeft" size={13} className="text-emerald-600" />
+                        <div key={p.id} className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 ${isVoided ? 'border-red-100 bg-red-50 opacity-70' : 'border-gray-100 bg-gray-50'}`}>
+                          <span className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${isVoided ? 'bg-red-100' : 'bg-emerald-100'}`}>
+                            <Icon name={isVoided ? 'Ban' : 'ArrowDownLeft'} size={13} className={isVoided ? 'text-red-500' : 'text-emerald-600'} />
                           </span>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-sm font-bold text-emerald-700">{fmt(p.amount)}</span>
+                              <span className={`text-sm font-bold ${isVoided ? 'line-through text-gray-400' : 'text-emerald-700'}`}>{fmt(p.amount)}</span>
+                              {isVoided && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-600 font-semibold">Anulado</span>
+                              )}
                               <span className="text-[11px] text-gray-500">{METHOD_LABELS[p.payment_method] || p.payment_method}</span>
                               {inv?.invoice_number != null && (
                                 <span className="text-[11px] text-gray-400">{formatInvoiceNumber(inv.invoice_number)}</span>
@@ -581,8 +603,21 @@ function CustomerDetailDrawer({ customer, business, balance, fmt, onClose, onEdi
                               {p.reference && p.reference !== 'Abono cuenta corriente' && (
                                 <span className="text-[10px] text-gray-400 truncate">{p.reference}</span>
                               )}
+                              {isVoided && p.void_reason && (
+                                <span className="text-[10px] text-red-400 truncate">Motivo: {p.void_reason}</span>
+                              )}
                             </div>
                           </div>
+                          {!isVoided && (
+                            <button
+                              type="button"
+                              onClick={() => { setVoidingPayment(p); setVoidError(''); }}
+                              className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-100 transition-colors shrink-0"
+                              title="Anular pago"
+                            >
+                              <Icon name="Ban" size={13} />
+                            </button>
+                          )}
                         </div>
                       );
                     })}
@@ -594,6 +629,17 @@ function CustomerDetailDrawer({ customer, business, balance, fmt, onClose, onEdi
         </div>
       </div>
     </div>
+    {voidingPayment && (
+      <VoidPaymentModal
+        payment={voidingPayment}
+        currency={business?.currency}
+        busy={voidBusy}
+        error={voidError}
+        onConfirm={handleVoidPayment}
+        onCancel={() => { setVoidingPayment(null); setVoidError(''); }}
+      />
+    )}
+    </>
   );
 }
 

@@ -31,6 +31,25 @@ export async function listPaymentsByInvoice(invoiceId) {
 }
 
 /**
+ * Lista TODOS los pagos de una factura, incluyendo anulados.
+ * Usar para historial/auditoría. No filtrar por voided_at.
+ */
+export async function listAllPaymentsByInvoice(invoiceId) {
+  const { data, error } = await supabase
+    .from('crm_payments')
+    .select('*')
+    .eq('invoice_id', invoiceId)
+    .eq('payment_status', 'received')
+    .order('payment_date', { ascending: false })
+    .order('created_at', { ascending: false });
+  if (error) return { data: [], error };
+  return {
+    data: (data || []).filter(payment => isCashRelevantPaymentMethod(payment.payment_method)),
+    error: null,
+  };
+}
+
+/**
  * Registra un nuevo pago para una factura.
  * @param {Object} payment
  * @param {string} payment.invoice_id

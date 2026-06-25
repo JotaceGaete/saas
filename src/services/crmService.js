@@ -271,11 +271,10 @@ export async function getCustomerPendingInvoices(businessId, customerId) {
 export async function getCustomerPaymentHistory(businessId, customerId) {
   const { data, error } = await supabase
     .from('crm_payments')
-    .select('id, amount, payment_method, payment_date, reference, created_at, crm_invoices(id, invoice_number, total, status)')
+    .select('id, amount, payment_method, payment_date, reference, created_at, voided_at, void_reason, crm_invoices(id, invoice_number, total, status)')
     .eq('business_id', businessId)
     .eq('customer_id', customerId)
     .eq('payment_status', 'received')
-    .is('voided_at', null)
     .order('payment_date', { ascending: false })
     .order('created_at', { ascending: false });
   return { data: data || [], error };
@@ -1558,18 +1557,108 @@ export async function getCashDayPayments(businessId, date = getLocalDateString()
   };
 }
 
-export async function voidCrmPayment(paymentId, { voidReason, voidedBy = null } = {}) {
-  const { data, error } = await supabase
+/**
+ * Anula un pago recibido siguiendo las reglas de caja.
+ *
+ * Firma: voidCrmPayment(paymentId, reason, businessId)
+ *   — Backward-compat: también acepta (paymentId, { voidReason, voidedBy }) [legado CrmCash]
+ *
+ * Reglas:
+ *   - Si la caja original está abierta → void en esa misma caja; el pago desaparece de los totales
+ *     al ser excluido por voided_at IS NOT NULL.
+ *   - Si la caja original está cerrada → se crea un movimiento negativo (direction='out')
+ *     en la caja abierta actual para reflejar el reverso en contabilidad corriente.
+ *     Si no hay caja abierta → CASH_SESSION_REQUIRED.
+ *   - Siempre reconcilia el estado de la factura asociada.
+ */
+export async function voidCrmPayment(paymentId, reasonOrOpts, businessId) {
+  // Backward-compat with legacy { voidReason, voidedBy } signature from CrmCash
+  let reason, legacyVoidedBy;
+  if (typeof reasonOrOpts === 'string') {
+    reason = reasonOrOpts;
+  } else {
+    reason = reasonOrOpts?.voidReason || null;
+    legacyVoidedBy = reasonOrOpts?.voidedBy || null;
+  }
+
+  if (!reason?.trim()) {
+    return { data: null, error: { message: 'El motivo de anulación es obligatorio.' } };
+  }
+
+  // 1. Fetch payment with its cash session status
+  const { data: payment, error: fetchErr } = await supabase
+    .from('crm_payments')
+    .select('*, crm_cash_sessions!cash_session_id(id, status)')
+    .eq('id', paymentId)
+    .maybeSingle();
+
+  if (fetchErr) return { data: null, error: fetchErr };
+  if (!payment) return { data: null, error: { message: 'Pago no encontrado.' } };
+  if (payment.voided_at) return { data: null, error: { message: 'Este pago ya fue anulado.' } };
+  if (payment.payment_status !== 'received') return { data: null, error: { message: 'Solo se pueden anular pagos con estado recibido.' } };
+  if (!payment.amount || payment.amount <= 0) return { data: null, error: { message: 'El pago no tiene monto válido.' } };
+
+  const { data: { user } } = await supabase.auth.getUser();
+  const voidedBy = legacyVoidedBy || user?.id || null;
+
+  const originalSession = payment.crm_cash_sessions;
+  let voidCashSessionId = null;
+
+  if (originalSession?.status === 'open') {
+    // Caja original aún abierta: la anulación se registra en esa misma caja.
+    // El pago desaparece de los totales al quedar excluido por voided_at IS NOT NULL.
+    voidCashSessionId = originalSession.id;
+  } else {
+    // Caja original cerrada (o sin caja): necesitamos caja abierta actual para el reverso.
+    const bid = businessId || payment.business_id;
+    if (!bid) return { data: null, error: { code: 'CASH_SESSION_REQUIRED', message: 'CASH_SESSION_REQUIRED' } };
+
+    const { data: currentSession } = await getOpenCashSession(bid);
+    if (!currentSession) {
+      return { data: null, error: { code: 'CASH_SESSION_REQUIRED', message: 'CASH_SESSION_REQUIRED' } };
+    }
+
+    voidCashSessionId = currentSession.id;
+
+    // Crear movimiento de reverso en la caja actual
+    const methodLabel = normalizePaymentMethod(payment.payment_method);
+    await supabase.from('crm_cash_movements').insert({
+      business_id:         bid,
+      session_id:          currentSession.id,
+      direction:           'out',
+      amount:              payment.amount,
+      reason:              `Anulación pago · ${reason.trim()}`,
+      category:            'payment_reversal',
+      payment_method:      methodLabel,
+      notes:               payment.reference || null,
+      created_by:          voidedBy,
+      movement_date:       getLocalDateString(),
+      is_expense:          false,
+      reversal_payment_id: paymentId,
+    });
+  }
+
+  // 2. Marcar pago como anulado
+  const { data, error: voidErr } = await supabase
     .from('crm_payments')
     .update({
-      voided_at:   new Date().toISOString(),
-      voided_by:   voidedBy || null,
-      void_reason: voidReason || null,
+      voided_at:            new Date().toISOString(),
+      voided_by:            voidedBy,
+      void_reason:          reason.trim(),
+      void_cash_session_id: voidCashSessionId,
     })
     .eq('id', paymentId)
     .select()
     .single();
-  return { data, error };
+
+  if (voidErr) return { data: null, error: voidErr };
+
+  // 3. Reconciliar estado de la factura
+  if (payment.invoice_id) {
+    await reconcileCrmInvoicePaymentStatus(payment.invoice_id);
+  }
+
+  return { data, error: null };
 }
 
 export async function updateCrmPayment(paymentId, fields = {}) {

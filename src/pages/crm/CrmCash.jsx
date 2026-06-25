@@ -979,13 +979,10 @@ export default function CrmCash() {
     if (!voidingPayment?.id) return;
     setBusy(true);
     setErrorMsg('');
-    const { error } = await voidCrmPayment(voidingPayment.id, {
-      voidReason: reason,
-      voidedBy: business?.userId || null,
-    });
+    const { error } = await voidCrmPayment(voidingPayment.id, reason, business?.id);
     setBusy(false);
     if (error) {
-      setErrorMsg(error.message);
+      setErrorMsg(error.code === 'CASH_SESSION_REQUIRED' ? 'CASH_SESSION_REQUIRED' : (error.message || 'Error al anular el pago.'));
       return;
     }
     setVoidingPayment(null);
@@ -1070,7 +1067,19 @@ export default function CrmCash() {
 
       <DashboardLayoutContent>
         <div className="mx-auto max-w-5xl space-y-4">
-          {errorMsg && (
+          {errorMsg === 'CASH_SESSION_REQUIRED' ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-2">
+              <div className="flex items-start gap-2 text-sm text-amber-800">
+                <Icon name="AlertTriangle" size={16} className="mt-0.5 shrink-0" />
+                <span className="font-semibold">Para anular un pago de una caja cerrada debes tener una caja abierta.</span>
+                <button onClick={() => setErrorMsg('')} className="ml-auto text-amber-400 hover:text-amber-600" aria-label="Cerrar"><Icon name="X" size={14} /></button>
+              </div>
+              <a href="/crm/caja" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold transition-colors">
+                <Icon name="Landmark" size={12} />
+                Abrir caja
+              </a>
+            </div>
+          ) : errorMsg ? (
             <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
               <Icon name="AlertCircle" size={16} className="mt-0.5 shrink-0" />
               <span>{errorMsg}</span>
@@ -1078,7 +1087,7 @@ export default function CrmCash() {
                 <Icon name="X" size={14} />
               </button>
             </div>
-          )}
+          ) : null}
 
           {loading ? (
             <div className="flex items-center justify-center py-16">
