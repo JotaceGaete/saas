@@ -13,6 +13,7 @@ import {
   createCrmCustomer,
   formatInvoiceNumber,
   updateCrmInvoiceStatus,
+  getOpenCashSession,
 } from '../../services/crmService';
 import { getProducts } from '../../services/waBusinessService';
 import { listPaymentsByInvoice, createPayment } from '../../services/crmPaymentsService';
@@ -200,6 +201,11 @@ export default function CrmInvoiceEditor() {
   };
 
   const handleMarkPaid = async () => {
+    const { data: openSession } = await getOpenCashSession(business.id);
+    if (!openSession) {
+      window.alert('No hay caja abierta. Abre una caja en la sección Caja antes de marcar una factura como pagada.');
+      return;
+    }
     setMarkingPaid(true);
     await updateCrmInvoiceStatus(id, 'pagada');
     setSaved((prev) => ({ ...prev, status: 'pagada' }));

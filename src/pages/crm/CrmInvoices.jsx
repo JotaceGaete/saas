@@ -6,7 +6,7 @@ import PanelHeader from 'components/ui/PanelHeader';
 import CrmBreadcrumb from 'components/ui/CrmBreadcrumb';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
-import { getCrmInvoices, updateCrmInvoiceStatus, formatInvoiceNumber } from '../../services/crmService';
+import { getCrmInvoices, updateCrmInvoiceStatus, formatInvoiceNumber, getOpenCashSession } from '../../services/crmService';
 import { formatMoney } from '../../utils/formatMoney';
 
 const STATUS_STYLES = {
@@ -50,6 +50,13 @@ export default function CrmInvoices() {
 
   const handleStatus = async (id, status) => {
     if (status === 'anulada' && !window.confirm('¿Anular esta factura? Esta acción no se puede deshacer.')) return;
+    if (status === 'pagada') {
+      const { data: openSession } = await getOpenCashSession(business.id);
+      if (!openSession) {
+        window.alert('No hay caja abierta. Abre una caja en la sección Caja antes de marcar una factura como pagada.');
+        return;
+      }
+    }
     setBusy(id + status);
     await updateCrmInvoiceStatus(id, status);
     await load();
