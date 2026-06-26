@@ -385,16 +385,58 @@ function turnTimeRange(session) {
     : fmtTime(session.opened_at);
 }
 
-function SectionButton({ open, onClick, children }) {
+// ─── KPI Card ─────────────────────────────────────────────────────────────────
+
+const KPI_PALETTES = {
+  gray:   { bg: 'bg-gray-50',    iconBg: 'bg-gray-100',    iconColor: 'text-gray-500',    val: 'text-gray-800'    },
+  green:  { bg: 'bg-[#ECFDF5]',  iconBg: 'bg-emerald-100', iconColor: 'text-emerald-600', val: 'text-emerald-800' },
+  red:    { bg: 'bg-[#FEF2F2]',  iconBg: 'bg-red-100',     iconColor: 'text-red-500',     val: 'text-red-700'     },
+  blue:   { bg: 'bg-[#EFF6FF]',  iconBg: 'bg-blue-100',    iconColor: 'text-blue-600',    val: 'text-blue-900'    },
+  violet: { bg: 'bg-[#F5F3FF]',  iconBg: 'bg-violet-100',  iconColor: 'text-violet-600',  val: 'text-violet-900'  },
+};
+
+function KpiCard({ label, value, icon, palette = 'gray' }) {
+  const p = KPI_PALETTES[palette] || KPI_PALETTES.gray;
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"
-    >
-      <Icon name={open ? 'ChevronUp' : 'ChevronDown'} size={15} />
-      {children}
-    </button>
+    <div className={`rounded-2xl p-4 ${p.bg} border border-white`}>
+      <div className={`mb-3 w-8 h-8 rounded-xl flex items-center justify-center ${p.iconBg}`}>
+        <Icon name={icon} size={16} className={p.iconColor} />
+      </div>
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 mb-1">{label}</p>
+      <p className={`text-xl font-black tabular-nums ${p.val}`}>{value}</p>
+    </div>
+  );
+}
+
+// ─── Accordion section ─────────────────────────────────────────────────────────
+
+function AccordionSection({ icon, title, description, open, onToggle, children }) {
+  return (
+    <div className={`rounded-2xl border bg-white overflow-hidden transition-all ${open ? 'border-gray-200 shadow-sm' : 'border-gray-100 hover:border-gray-200'}`}>
+      <button
+        type="button"
+        onClick={onToggle}
+        className="w-full flex items-center gap-4 px-5 py-4 text-left hover:bg-gray-50/60 transition-colors"
+      >
+        <div className="w-9 h-9 rounded-xl bg-gray-50 flex items-center justify-center shrink-0">
+          <Icon name={icon} size={17} className="text-gray-500" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-bold text-gray-800">{title}</p>
+          {description && <p className="text-xs text-gray-400 mt-0.5">{description}</p>}
+        </div>
+        <Icon
+          name="ChevronDown"
+          size={17}
+          className={`text-gray-400 shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+        />
+      </button>
+      {open && (
+        <div className="border-t border-gray-100 px-5 py-4">
+          {children}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1359,13 +1401,56 @@ export default function CrmCash() {
       />
 
       <DashboardLayoutContent>
-        <div className="mx-auto max-w-5xl space-y-4">
+        <div className="mx-auto max-w-5xl space-y-5">
+
+          {/* Header con botones principales */}
+          {!loading && (
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs text-gray-400 capitalize">{fmtDate(today)}</p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowHistory(v => !v)}
+                  className="flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  <Icon name="History" size={14} />
+                  Historial
+                </button>
+                {!openSession ? (
+                  <button
+                    onClick={() => setShowOpenForm(true)}
+                    className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700 transition-colors shadow-sm shadow-emerald-200"
+                  >
+                    <Icon name="Plus" size={15} />
+                    Abrir nueva caja
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handleClose(openSession.id)}
+                    disabled={busy}
+                    className="flex items-center gap-1.5 rounded-xl bg-gray-900 px-4 py-2 text-sm font-bold text-white hover:bg-gray-800 transition-colors disabled:opacity-50"
+                  >
+                    <Icon name="LockKeyhole" size={14} />
+                    Cerrar caja
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Errores */}
           {errorMsg === 'CASH_SESSION_REQUIRED' ? (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-2">
-              <div className="flex items-start gap-2 text-sm text-amber-800">
-                <Icon name="AlertTriangle" size={16} className="mt-0.5 shrink-0" />
-                <span className="font-semibold">Para anular un pago de una caja cerrada debes tener una caja abierta.</span>
-                <button onClick={() => setErrorMsg('')} className="ml-auto text-amber-400 hover:text-amber-600" aria-label="Cerrar"><Icon name="X" size={14} /></button>
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 space-y-3">
+              <div className="flex items-start gap-3 text-sm text-amber-800">
+                <div className="w-8 h-8 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
+                  <Icon name="AlertTriangle" size={15} className="text-amber-600" />
+                </div>
+                <div className="flex-1">
+                  <p className="font-semibold">Para anular un pago de una caja cerrada debes tener una caja abierta.</p>
+                </div>
+                <button onClick={() => setErrorMsg('')} className="text-amber-400 hover:text-amber-600 shrink-0" aria-label="Cerrar">
+                  <Icon name="X" size={14} />
+                </button>
               </div>
               <a href="/crm/caja" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold transition-colors">
                 <Icon name="Landmark" size={12} />
@@ -1373,42 +1458,64 @@ export default function CrmCash() {
               </a>
             </div>
           ) : errorMsg ? (
-            <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
               <Icon name="AlertCircle" size={16} className="mt-0.5 shrink-0" />
-              <span>{errorMsg}</span>
-              <button onClick={() => setErrorMsg('')} className="ml-auto text-red-400 hover:text-red-600" aria-label="Cerrar error">
+              <span className="flex-1">{errorMsg}</span>
+              <button onClick={() => setErrorMsg('')} className="text-red-400 hover:text-red-600 shrink-0" aria-label="Cerrar error">
                 <Icon name="X" size={14} />
               </button>
             </div>
           ) : null}
 
           {loading ? (
-            <div className="flex items-center justify-center py-16">
-              <div className="h-6 w-6 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
+            <div className="flex flex-col items-center justify-center py-24 gap-3">
+              <div className="h-8 w-8 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
+              <p className="text-sm text-gray-400">Cargando caja…</p>
             </div>
           ) : (
             <>
-              <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                  <div className="min-w-0">
-                    <div className={`mb-2 inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-bold ${
-                      openSession ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-600'
-                    }`}>
-                      <Icon name={openSession ? 'UnlockKeyhole' : 'LockKeyhole'} size={13} />
-                      Estado: {openSession ? 'Caja abierta' : 'Caja cerrada'}
+              {/* ── Hero card de sesión ───────────────────────────────────────── */}
+              <div className="rounded-3xl border border-gray-100 bg-white p-6 shadow-sm">
+                {/* Badge de estado */}
+                <div className="mb-4">
+                  <span className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold ring-1 ${
+                    openSession
+                      ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
+                      : 'bg-gray-100 text-gray-600 ring-gray-200'
+                  }`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${openSession ? 'bg-emerald-500' : 'bg-gray-400'}`} />
+                    {openSession ? 'Caja abierta' : 'Caja cerrada'}
+                  </span>
+                </div>
+
+                <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+                  {/* Info de la sesión */}
+                  <div className="min-w-0 flex-1">
+                    {/* Fecha + turno */}
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-700 mb-2">
+                      <span className="flex items-center gap-1.5 font-semibold text-gray-800">
+                        <Icon name="Calendar" size={14} className="text-gray-400" />
+                        <span className="capitalize">{fmtDate(today)}</span>
+                      </span>
+                      {currentSession && (
+                        <>
+                          <span className="text-gray-300">·</span>
+                          <span className="font-semibold text-gray-600">{turnLabel(currentSession, sessions)}</span>
+                        </>
+                      )}
                     </div>
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-600">
-                      <span className="capitalize">{fmtDate(today)}</span>
-                      <span>{currentSession ? turnLabel(currentSession, sessions) : 'Sin caja abierta'}</span>
-                    </div>
+
+                    {/* Apertura + Responsable */}
                     {currentSession && (
-                      <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-gray-400">
-                        <span>
-                          Apertura: <strong className="text-gray-600">{fmtTime(currentSession.opened_at)}</strong>
+                      <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-gray-400 mb-4">
+                        <span className="flex items-center gap-1.5">
+                          <Icon name="Clock" size={12} />
+                          Apertura: <strong className="text-gray-600 ml-0.5">{fmtTime(currentSession.opened_at)}</strong>
                         </span>
-                        <span>
+                        <span className="flex items-center gap-1.5">
+                          <Icon name="User" size={12} />
                           Responsable:{' '}
-                          <strong className="text-gray-600">
+                          <strong className="text-gray-600 ml-0.5">
                             {currentSession.opened_by === user?.id
                               ? (user?.user_metadata?.name || user?.email || '—')
                               : 'otro usuario'}
@@ -1416,38 +1523,47 @@ export default function CrmCash() {
                         </span>
                       </div>
                     )}
+
+                    {/* Métricas de la sesión */}
                     {currentSession && (
-                      <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm">
+                      <div className="flex flex-wrap items-center gap-x-6 gap-y-1.5 text-sm mb-4">
                         {toNumber(currentSession.initial_amount) > 0 && (
-                          <span>
-                            Fondo inicial: <strong className="text-gray-700">{formatMoney(toNumber(currentSession.initial_amount), business?.currency)}</strong>
-                          </span>
+                          <div>
+                            <span className="text-gray-400">Fondo inicial: </span>
+                            <strong className="text-gray-700">{formatMoney(toNumber(currentSession.initial_amount), business?.currency)}</strong>
+                          </div>
                         )}
-                        <span>
-                          Cobros: <strong className="text-emerald-700">{formatMoney(sessionTotal, business?.currency)}</strong>
-                        </span>
+                        <div>
+                          <span className="text-gray-400">Cobros: </span>
+                          <strong className="text-emerald-700">{formatMoney(sessionTotal, business?.currency)}</strong>
+                        </div>
                         {sessionOutflows > 0 && (
-                          <span>
-                            Salidas: <strong className="text-red-600">−{formatMoney(sessionOutflows, business?.currency)}</strong>
-                          </span>
+                          <div>
+                            <span className="text-gray-400">Salidas: </span>
+                            <strong className="text-red-600">−{formatMoney(sessionOutflows, business?.currency)}</strong>
+                          </div>
                         )}
-                        <span>
-                          Saldo en caja: <strong className="text-gray-900">{formatMoney(currentBalance, business?.currency)}</strong>
-                        </span>
+                        <div>
+                          <span className="text-gray-400">Saldo en caja: </span>
+                          <strong className="text-gray-900 text-base">{formatMoney(currentBalance, business?.currency)}</strong>
+                        </div>
                       </div>
                     )}
-                    <div className="mt-2 space-y-1 text-xs text-gray-400">
-                      <p>La caja registra pagos reales, no ventas pendientes.</p>
-                      <p>Puedes abrir mas de una caja por dia para cambios de turno.</p>
-                    </div>
+
+                    <p className="text-xs text-gray-400 leading-relaxed">
+                      La caja registra pagos reales, no ventas pendientes.
+                      {' '}Puedes abrir más de una caja por día para cambios de turno.
+                    </p>
                   </div>
 
-                  <div className="flex flex-wrap gap-2">
+                  {/* Botones de acción */}
+                  <div className="flex flex-wrap gap-2 lg:flex-col lg:items-stretch lg:w-44 lg:shrink-0">
                     {!openSession && (
                       <button
                         onClick={() => setShowOpenForm(true)}
-                        className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-700"
+                        className="flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-700 transition-colors shadow-sm shadow-emerald-200"
                       >
+                        <Icon name="Landmark" size={15} />
                         Abrir nueva caja
                       </button>
                     )}
@@ -1455,24 +1571,27 @@ export default function CrmCash() {
                       <button
                         onClick={() => handleClose(openSession.id)}
                         disabled={busy}
-                        className="rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-bold text-white hover:bg-gray-800 disabled:opacity-50"
+                        className="flex items-center justify-center gap-2 rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-bold text-white hover:bg-gray-800 transition-colors disabled:opacity-50"
                       >
+                        <Icon name="LockKeyhole" size={14} />
                         Cerrar caja
                       </button>
                     )}
                     {currentSession && (
                       <button
                         onClick={() => setEditingSession(currentSession)}
-                        className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-bold text-gray-700 hover:bg-gray-50"
+                        className="flex items-center justify-center gap-2 rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-bold text-gray-700 hover:bg-gray-50 transition-colors"
                       >
+                        <Icon name="Pencil" size={14} />
                         Editar
                       </button>
                     )}
                     {currentSession?.status === 'closed' && (
                       <button
                         onClick={() => handleReopen(currentSession.id)}
-                        className="rounded-xl border border-emerald-200 px-4 py-2.5 text-sm font-bold text-emerald-700 hover:bg-emerald-50"
+                        className="flex items-center justify-center gap-2 rounded-xl border border-emerald-200 px-4 py-2.5 text-sm font-bold text-emerald-700 hover:bg-emerald-50 transition-colors"
                       >
+                        <Icon name="RotateCcw" size={14} />
                         Reabrir
                       </button>
                     )}
@@ -1480,53 +1599,230 @@ export default function CrmCash() {
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
-                <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4 lg:grid-cols-5">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Fondo inicial</p>
-                    <p className="mt-1 text-lg font-black text-gray-500">{formatMoney(toNumber(currentSession?.initial_amount), business?.currency)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Cobros de la caja</p>
-                    <p className="mt-1 text-lg font-black text-emerald-700">{formatMoney(sessionTotal, business?.currency)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Salidas de la caja</p>
-                    <p className="mt-1 text-lg font-black text-red-600">{sessionOutflows > 0 ? `−${formatMoney(sessionOutflows, business?.currency)}` : '—'}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Saldo de caja</p>
-                    <p className="mt-1 text-lg font-black text-gray-900">{formatMoney(currentBalance, business?.currency)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Cajas hoy</p>
-                    <p className="mt-1 text-lg font-black text-gray-900">{sessions.length}</p>
-                  </div>
-                </div>
+              {/* ── KPI Cards ──────────────────────────────────────────────────── */}
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+                <KpiCard
+                  label="Fondo inicial"
+                  value={formatMoney(toNumber(currentSession?.initial_amount), business?.currency)}
+                  icon="Wallet"
+                  palette="gray"
+                />
+                <KpiCard
+                  label="Cobros de la caja"
+                  value={formatMoney(sessionTotal, business?.currency)}
+                  icon="TrendingUp"
+                  palette="green"
+                />
+                <KpiCard
+                  label="Salidas de la caja"
+                  value={sessionOutflows > 0 ? `−${formatMoney(sessionOutflows, business?.currency)}` : '—'}
+                  icon="TrendingDown"
+                  palette="red"
+                />
+                <KpiCard
+                  label="Saldo de caja"
+                  value={formatMoney(currentBalance, business?.currency)}
+                  icon="CreditCard"
+                  palette="blue"
+                />
+                <KpiCard
+                  label="Cajas hoy"
+                  value={sessions.length}
+                  icon="CalendarDays"
+                  palette="violet"
+                />
               </div>
 
-              <div className="flex flex-wrap gap-2">
-                <SectionButton open={showMovements} onClick={() => setShowMovements(value => !value)}>
-                  Ver movimientos
-                </SectionButton>
-                <SectionButton open={showDayBreakdown} onClick={() => setShowDayBreakdown(value => !value)}>
-                  Resumen del día completo
-                </SectionButton>
-                <SectionButton open={showHistory} onClick={() => setShowHistory(value => !value)}>
-                  Ver historial de cajas
-                </SectionButton>
-                {openSession && (
+              {/* ── Acciones rápidas (solo caja abierta) ──────────────────────── */}
+              {openSession && (
+                <div className="flex justify-end">
                   <button
                     type="button"
                     onClick={() => setShowMovementForm(true)}
-                    className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-bold text-red-700 hover:bg-red-100"
+                    className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-bold text-gray-700 hover:bg-gray-50 transition-colors shadow-sm"
                   >
-                    <Icon name="ArrowUpRight" size={15} />
+                    <Icon name="ArrowLeftRight" size={15} />
                     Registrar movimiento
                   </button>
-                )}
+                </div>
+              )}
+
+              {/* ── Secciones colapsables ──────────────────────────────────────── */}
+              <div className="space-y-3">
+                {/* Ver movimientos */}
+                <AccordionSection
+                  icon="ArrowLeftRight"
+                  title="Ver movimientos"
+                  description="Revisa todas las entradas y salidas de esta caja"
+                  open={showMovements}
+                  onToggle={() => setShowMovements(v => !v)}
+                >
+                  {currentSession ? (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between gap-3 pb-1">
+                        <div>
+                          <p className="text-sm font-bold text-gray-900">{turnLabel(currentSession, sessions)}</p>
+                          <p className="text-xs text-gray-400 mt-0.5">
+                            {turnTimeRange(currentSession)} · Saldo: {formatMoney(currentBalance, business?.currency)}
+                          </p>
+                        </div>
+                      </div>
+                      <MovementsTable
+                        payments={currentPayments}
+                        movements={currentMvts}
+                        currency={business?.currency}
+                        onEditPayment={setEditingPayment}
+                        onVoidPayment={setVoidingPayment}
+                        onVoidMovement={setVoidingMovement}
+                        sessionOpen={currentSession?.status === 'open'}
+                      />
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-400 text-center py-4">No hay caja activa hoy.</p>
+                  )}
+                </AccordionSection>
+
+                {/* Resumen del día */}
+                <AccordionSection
+                  icon="PieChart"
+                  title="Resumen del día completo"
+                  description="Resumen consolidado de todas las cajas del día"
+                  open={showDayBreakdown}
+                  onToggle={() => setShowDayBreakdown(v => !v)}
+                >
+                  <p className="mb-3 text-xs font-bold uppercase tracking-wide text-gray-400">
+                    Por método de pago
+                  </p>
+                  <MethodBreakdown summary={daySummary} currency={business?.currency} />
+                  <p className="mt-3 text-right text-xs text-gray-400">
+                    Total del día: <strong className="text-gray-700">{formatMoney(dayTotal, business?.currency)}</strong>
+                    {dayOutflows > 0 && (
+                      <> · Salidas: <strong className="text-red-600">−{formatMoney(dayOutflows, business?.currency)}</strong></>
+                    )}
+                  </p>
+                </AccordionSection>
+
+                {/* Historial de cajas */}
+                <AccordionSection
+                  icon="History"
+                  title="Ver historial de cajas"
+                  description="Consulta el historial de cajas anteriores"
+                  open={showHistory}
+                  onToggle={() => setShowHistory(v => !v)}
+                >
+                  {sessions.length === 0 ? (
+                    <div className="py-8 text-center">
+                      <div className="w-12 h-12 rounded-2xl bg-gray-50 flex items-center justify-center mx-auto mb-3">
+                        <Icon name="Wallet" size={20} className="text-gray-300" />
+                      </div>
+                      <p className="text-sm text-gray-400">Todavía no hay cajas abiertas hoy.</p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-gray-100">
+                      {sessions.map(session => {
+                        const payments  = sessionPayments[session.id] || [];
+                        const movements = sessionMovements[session.id] || [];
+                        const total     = calcSessionBalance(session, payments, movements);
+                        const isOpen    = session.status === 'open';
+                        return (
+                          <div key={session.id} className="flex flex-col gap-3 py-4 lg:flex-row lg:items-center lg:justify-between first:pt-0 last:pb-0">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-bold text-sm text-gray-900">{turnLabel(session, sessions)}</span>
+                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ring-1 ${
+                                  isOpen ? 'bg-emerald-50 text-emerald-700 ring-emerald-200' : 'bg-gray-100 text-gray-500 ring-gray-200'
+                                }`}>
+                                  <span className={`w-1.5 h-1.5 rounded-full ${isOpen ? 'bg-emerald-500' : 'bg-gray-400'}`} />
+                                  {isOpen ? 'Abierta' : 'Cerrada'}
+                                </span>
+                              </div>
+                              <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-gray-400 mt-1">
+                                <span>{turnTimeRange(session)}</span>
+                                <span>Inicial: {formatMoney(toNumber(session.initial_amount), business?.currency)}</span>
+                                <span className="font-semibold text-gray-700">Saldo: {formatMoney(total, business?.currency)}</span>
+                              </div>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                onClick={() => openDetail(session.id)}
+                                className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold text-gray-700 hover:bg-gray-50 transition-colors"
+                              >
+                                Ver detalle
+                              </button>
+                              <button
+                                onClick={() => setEditingSession(session)}
+                                className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold text-gray-700 hover:bg-gray-50 transition-colors"
+                              >
+                                Editar
+                              </button>
+                              {isOpen ? (
+                                <button
+                                  onClick={() => handleClose(session.id)}
+                                  disabled={busy}
+                                  className="rounded-lg bg-gray-900 px-3 py-2 text-xs font-bold text-white hover:bg-gray-800 transition-colors disabled:opacity-50"
+                                >
+                                  Cerrar
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => handleReopen(session.id)}
+                                  className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700 transition-colors"
+                                >
+                                  Reabrir
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {detailSession && (
+                    <div className="mt-4 space-y-3 border-t border-gray-100 pt-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-bold text-gray-900">{turnLabel(detailSession, sessions)}</p>
+                          <p className="mt-1 text-xs text-gray-400">
+                            {turnTimeRange(detailSession)} · Inicial: {formatMoney(toNumber(detailSession.initial_amount), business?.currency)} · Saldo: {formatMoney(detailBalance, business?.currency)}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => setDetailSessionId(null)}
+                          className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold text-gray-600 hover:bg-gray-50 transition-colors"
+                        >
+                          Ocultar detalle
+                        </button>
+                      </div>
+                      <MethodBreakdown summary={detailSummary} currency={business?.currency} />
+                      <MovementsTable
+                        payments={detailPayments}
+                        movements={detailMvts}
+                        currency={business?.currency}
+                        onEditPayment={setEditingPayment}
+                        onVoidPayment={setVoidingPayment}
+                        onVoidMovement={setVoidingMovement}
+                        sessionOpen={detailSession?.status === 'open'}
+                      />
+                    </div>
+                  )}
+                </AccordionSection>
               </div>
 
+              {/* ── Info box ──────────────────────────────────────────────────── */}
+              <div className="rounded-2xl border border-blue-100 bg-[#EFF6FF] p-4 flex items-start gap-3">
+                <div className="w-8 h-8 rounded-xl bg-blue-100 flex items-center justify-center shrink-0 mt-0.5">
+                  <Icon name="Info" size={15} className="text-blue-500" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-blue-900">Cada caja es independiente</p>
+                  <p className="text-xs text-blue-700 mt-0.5 leading-relaxed">
+                    Los saldos no se combinan entre cajas. Esto permite llevar un control preciso por turno o por responsable.
+                  </p>
+                </div>
+              </div>
+
+              {/* ── Modales ───────────────────────────────────────────────────── */}
               {showOpenForm && (
                 <CashSessionForm
                   title="Abrir nueva caja"
@@ -1602,136 +1898,6 @@ export default function CrmCash() {
                   onConfirm={handleVoidMovement}
                   onCancel={() => setVoidingMovement(null)}
                 />
-              )}
-
-              {showMovements && currentSession && (
-                <div className="space-y-3">
-                  <div className="rounded-2xl border border-gray-100 bg-white p-4">
-                    <p className="text-sm font-bold text-gray-900">{turnLabel(currentSession, sessions)}</p>
-                    <p className="mt-1 text-xs text-gray-400">
-                      {turnTimeRange(currentSession)} · Saldo: {formatMoney(currentBalance, business?.currency)}
-                    </p>
-                  </div>
-                  <MovementsTable
-                    payments={currentPayments}
-                    movements={currentMvts}
-                    currency={business?.currency}
-                    onEditPayment={setEditingPayment}
-                    onVoidPayment={setVoidingPayment}
-                    onVoidMovement={setVoidingMovement}
-                    sessionOpen={currentSession?.status === 'open'}
-                  />
-                </div>
-              )}
-
-              {showDayBreakdown && (
-                <div className="space-y-3">
-                  <div className="rounded-2xl border border-gray-100 bg-white p-4">
-                    <p className="mb-3 text-xs font-bold uppercase tracking-wide text-gray-400">
-                      Resumen del día completo — por método de pago
-                    </p>
-                    <MethodBreakdown summary={daySummary} currency={business?.currency} />
-                    <p className="mt-3 text-right text-xs text-gray-400">
-                      Total del día: <strong className="text-gray-700">{formatMoney(dayTotal, business?.currency)}</strong>
-                      {dayOutflows > 0 && (
-                        <> · Salidas: <strong className="text-red-600">−{formatMoney(dayOutflows, business?.currency)}</strong></>
-                      )}
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {showHistory && (
-                <div className="rounded-2xl border border-gray-100 bg-white p-4">
-                  {sessions.length === 0 ? (
-                    <div className="py-8 text-center">
-                      <Icon name="Wallet" size={30} className="mx-auto mb-3 text-gray-200" />
-                      <p className="text-sm font-semibold text-gray-600">Todavia no hay cajas abiertas hoy.</p>
-                    </div>
-                  ) : (
-                    <div className="divide-y divide-gray-100">
-                      {sessions.map(session => {
-                        const payments  = sessionPayments[session.id] || [];
-                        const movements = sessionMovements[session.id] || [];
-                        const total     = calcSessionBalance(session, payments, movements);
-                        return (
-                          <div key={session.id} className="flex flex-col gap-3 py-3 lg:flex-row lg:items-center lg:justify-between">
-                            <div className="min-w-0 text-sm text-gray-700">
-                              <span className="font-bold text-gray-900">{turnLabel(session, sessions)}</span>
-                              <span className="mx-2 text-gray-300">|</span>
-                              <span>{session.status === 'open' ? 'Abierta' : 'Cerrada'}</span>
-                              <span className="mx-2 text-gray-300">|</span>
-                              <span>{turnTimeRange(session)}</span>
-                              <span className="mx-2 text-gray-300">|</span>
-                              <span className="text-gray-400">Inicial: {formatMoney(toNumber(session.initial_amount), business?.currency)}</span>
-                              <span className="mx-2 text-gray-300">|</span>
-                              <span className="font-bold text-gray-900">Saldo: {formatMoney(total, business?.currency)}</span>
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                              <button
-                                onClick={() => openDetail(session.id)}
-                                className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold text-gray-700 hover:bg-gray-50"
-                              >
-                                Ver detalle
-                              </button>
-                              <button
-                                onClick={() => setEditingSession(session)}
-                                className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold text-gray-700 hover:bg-gray-50"
-                              >
-                                Editar
-                              </button>
-                              {session.status === 'open' ? (
-                                <button
-                                  onClick={() => handleClose(session.id)}
-                                  disabled={busy}
-                                  className="rounded-lg bg-gray-900 px-3 py-2 text-xs font-bold text-white hover:bg-gray-800 disabled:opacity-50"
-                                >
-                                  Cerrar
-                                </button>
-                              ) : (
-                                <button
-                                  onClick={() => handleReopen(session.id)}
-                                  className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700"
-                                >
-                                  Reabrir
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  {detailSession && (
-                    <div className="mt-4 space-y-3 border-t border-gray-100 pt-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-bold text-gray-900">{turnLabel(detailSession, sessions)}</p>
-                          <p className="mt-1 text-xs text-gray-400">
-                            {turnTimeRange(detailSession)} · Inicial: {formatMoney(toNumber(detailSession.initial_amount), business?.currency)} · Saldo: {formatMoney(detailBalance, business?.currency)}
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => setDetailSessionId(null)}
-                          className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold text-gray-600 hover:bg-gray-50"
-                        >
-                          Ocultar detalle
-                        </button>
-                      </div>
-                      <MethodBreakdown summary={detailSummary} currency={business?.currency} />
-                      <MovementsTable
-                        payments={detailPayments}
-                        movements={detailMvts}
-                        currency={business?.currency}
-                        onEditPayment={setEditingPayment}
-                        onVoidPayment={setVoidingPayment}
-                        onVoidMovement={setVoidingMovement}
-                        sessionOpen={detailSession?.status === 'open'}
-                      />
-                    </div>
-                  )}
-                </div>
               )}
             </>
           )}
