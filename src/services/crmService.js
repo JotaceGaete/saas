@@ -1462,10 +1462,24 @@ export async function updateCashSession(sessionId, fields = {}) {
   return { data, error };
 }
 
-export async function closeCashSession(sessionId) {
+export async function closeCashSession(sessionId, {
+  expectedCash   = null,
+  countedCash    = null,
+  cashDifference = null,
+  closingNotes   = null,
+} = {}) {
+  const { data: { user } } = await supabase.auth.getUser();
   const { data, error } = await supabase
     .from('crm_cash_sessions')
-    .update({ status: 'closed', closed_at: new Date().toISOString() })
+    .update({
+      status:         'closed',
+      closed_at:      new Date().toISOString(),
+      expected_cash:  expectedCash,
+      counted_cash:   countedCash,
+      cash_difference: cashDifference,
+      closing_notes:  closingNotes || null,
+      closed_by:      user?.id || null,
+    })
     .eq('id', sessionId)
     .select()
     .single();
