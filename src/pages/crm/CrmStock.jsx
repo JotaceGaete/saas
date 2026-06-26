@@ -181,7 +181,10 @@ function ProductSearch({ products, onSelect }) {
 function ProductListRow({ product, onSelect }) {
   const status = stockStatus(product);
   return (
-    <div className="flex items-center gap-3 px-5 py-3 hover:bg-gray-50 transition-colors">
+    <button
+      onClick={() => onSelect(product)}
+      className="w-full flex items-center gap-3 px-5 py-3 hover:bg-gray-50 active:bg-gray-100 transition-colors text-left"
+    >
       {product.thumbnail_url ? (
         <img src={product.thumbnail_url} alt="" className="w-9 h-9 rounded-lg object-cover shrink-0" />
       ) : (
@@ -212,15 +215,13 @@ function ProductListRow({ product, onSelect }) {
           <p className="text-[10px] text-gray-400 mt-0.5">stock</p>
         </div>
         <StatusBadge status={status} />
-        <button
-          onClick={() => onSelect(product)}
-          className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-2.5 py-1.5 rounded-lg transition-colors"
-        >
+        <span className="flex items-center gap-1 text-xs font-semibold text-blue-600 bg-blue-50 px-2.5 py-1.5 rounded-lg">
           <Icon name="SlidersHorizontal" size={12} />
-          Ajustar
-        </button>
+          <span className="hidden sm:inline">Ajustar</span>
+          <Icon name="ChevronRight" size={12} className="sm:hidden" />
+        </span>
       </div>
-    </div>
+    </button>
   );
 }
 
