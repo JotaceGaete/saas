@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import DashboardAppShell from 'components/ui/DashboardAppShell';
 import DashboardLayoutContent from 'components/ui/DashboardLayoutContent';
@@ -176,9 +176,120 @@ function ProductSearch({ products, onSelect }) {
   );
 }
 
+// ─── Fila de producto en lista filtrada ───────────────────────────────────────
+
+function ProductListRow({ product, onSelect }) {
+  const status = stockStatus(product);
+  return (
+    <div className="flex items-center gap-3 px-5 py-3 hover:bg-gray-50 transition-colors">
+      {product.thumbnail_url ? (
+        <img src={product.thumbnail_url} alt="" className="w-9 h-9 rounded-lg object-cover shrink-0" />
+      ) : (
+        <div className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center shrink-0">
+          <Icon name="Package" size={15} className="text-gray-400" />
+        </div>
+      )}
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-semibold text-gray-900 truncate">{product.name}</p>
+        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+          {product.public_code && <span className="text-xs font-mono text-blue-600">{product.public_code}</span>}
+          {product.stock_minimo != null && (
+            <span className="text-xs text-gray-400">mín: {product.stock_minimo}</span>
+          )}
+        </div>
+      </div>
+      <div className="flex items-center gap-3 shrink-0">
+        <div className="text-right hidden sm:block">
+          {product.stock_actual != null ? (
+            <p className={`text-base font-black tabular-nums leading-none ${
+              status === 'agotado' ? 'text-red-600' :
+              status === 'bajo'    ? 'text-yellow-600' :
+              'text-green-600'
+            }`}>{product.stock_actual}</p>
+          ) : (
+            <p className="text-xs text-gray-400 italic">—</p>
+          )}
+          <p className="text-[10px] text-gray-400 mt-0.5">stock</p>
+        </div>
+        <StatusBadge status={status} />
+        <button
+          onClick={() => onSelect(product)}
+          className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-2.5 py-1.5 rounded-lg transition-colors"
+        >
+          <Icon name="SlidersHorizontal" size={12} />
+          Ajustar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Lista filtrada de productos ──────────────────────────────────────────────
+
+function FilteredProductList({ products, filter, onSelect }) {
+  const filtered = useMemo(() => {
+    if (filter === 'criticos') {
+      return products.filter(p => ['agotado', 'bajo'].includes(stockStatus(p)));
+    }
+    if (filter === 'con_control') {
+      return products.filter(p => p.stock_actual != null).sort((a, b) => {
+        // críticos primero
+        const aCrit = ['agotado', 'bajo'].includes(stockStatus(a)) ? 0 : 1;
+        const bCrit = ['agotado', 'bajo'].includes(stockStatus(b)) ? 0 : 1;
+        return aCrit - bCrit;
+      });
+    }
+    // 'todos': con control primero (críticos al tope), luego sin control
+    return [...products].sort((a, b) => {
+      const aCtrl = a.stock_actual != null ? 0 : 1;
+      const bCtrl = b.stock_actual != null ? 0 : 1;
+      if (aCtrl !== bCtrl) return aCtrl - bCtrl;
+      const aCrit = ['agotado', 'bajo'].includes(stockStatus(a)) ? 0 : 1;
+      const bCrit = ['agotado', 'bajo'].includes(stockStatus(b)) ? 0 : 1;
+      return aCrit - bCrit;
+    });
+  }, [products, filter]);
+
+  const emptyMessages = {
+    criticos: 'No hay productos críticos.',
+    con_control: 'No hay productos con control de stock activo.',
+    todos: 'No hay productos.',
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
+      <div className="px-5 py-3.5 border-b border-gray-100 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Icon name="Package" size={15} color="#6b7280" />
+          <p className="text-sm font-bold text-gray-800">
+            {filter === 'criticos' && 'Productos críticos'}
+            {filter === 'con_control' && 'Productos con control de stock'}
+            {filter === 'todos' && 'Todos los productos'}
+          </p>
+        </div>
+        <span className="text-xs text-gray-400 font-semibold">{filtered.length}</span>
+      </div>
+      {filtered.length === 0 ? (
+        <div className="py-10 text-center">
+          <Icon name="PackageSearch" size={28} className="text-gray-200 mx-auto mb-2" />
+          <p className="text-sm text-gray-400">{emptyMessages[filter]}</p>
+        </div>
+      ) : (
+        <div className="divide-y divide-gray-50">
+          {filtered.map(p => (
+            <ProductListRow key={p.id} product={p} onSelect={onSelect} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Vista por defecto — resumen + críticos ────────────────────────────────────
 
 function DefaultView({ products, recentMovements, loadingMov, onSelectProduct }) {
+  const [activeFilter, setActiveFilter] = useState(null); // null | 'todos' | 'con_control' | 'criticos'
+
   const withControl = products.filter(p => p.stock_actual != null);
   const critical    = products.filter(p => {
     const s = stockStatus(p);
@@ -186,11 +297,12 @@ function DefaultView({ products, recentMovements, loadingMov, onSelectProduct })
   });
   const hasMovements = recentMovements.length > 0;
 
-  // CAMBIO 1 + 2: onboarding cuando nadie tiene control de stock
+  const toggleFilter = (f) => setActiveFilter(prev => prev === f ? null : f);
+
+  // Onboarding cuando nadie tiene control de stock
   if (withControl.length === 0 && products.length > 0) {
     return (
       <div className="space-y-4 max-w-2xl mx-auto">
-        {/* CAMBIO 2: alerta */}
         <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3.5">
           <Icon name="AlertTriangle" size={17} color="#d97706" className="shrink-0 mt-0.5" />
           <p className="text-sm text-amber-800 leading-snug">
@@ -199,7 +311,6 @@ function DefaultView({ products, recentMovements, loadingMov, onSelectProduct })
           </p>
         </div>
 
-        {/* CAMBIO 1: card de onboarding */}
         <div className="bg-white rounded-2xl border border-blue-100 overflow-hidden">
           <div className="px-5 pt-6 pb-5 flex flex-col items-center text-center gap-3">
             <div className="w-14 h-14 rounded-2xl bg-blue-50 flex items-center justify-center">
@@ -228,7 +339,6 @@ function DefaultView({ products, recentMovements, loadingMov, onSelectProduct })
           </div>
         </div>
 
-        {/* CAMBIO 3: tipos de movimiento (siempre visible cuando no hay movimientos) */}
         <MovementTypesCard />
       </div>
     );
@@ -237,96 +347,164 @@ function DefaultView({ products, recentMovements, loadingMov, onSelectProduct })
   return (
     <div className="space-y-5 max-w-2xl mx-auto">
 
-      {/* Summary chips */}
+      {/* Tarjetas métricas — accionables */}
       <div className="grid grid-cols-3 gap-3">
-        <div className="bg-white rounded-2xl border border-gray-100 p-4 text-center">
-          <p className="text-2xl font-black text-gray-900">{products.length}</p>
-          <p className="text-xs text-gray-400 mt-0.5">Productos</p>
-        </div>
-        <div className="bg-white rounded-2xl border border-gray-100 p-4 text-center">
-          <p className="text-2xl font-black text-gray-700">{withControl.length}</p>
-          <p className="text-xs text-gray-400 mt-0.5">Con control</p>
-        </div>
-        <div className={`rounded-2xl border p-4 text-center ${critical.length > 0 ? 'bg-red-50 border-red-200' : 'bg-white border-gray-100'}`}>
-          <p className={`text-2xl font-black ${critical.length > 0 ? 'text-red-600' : 'text-gray-400'}`}>{critical.length}</p>
-          <p className={`text-xs mt-0.5 ${critical.length > 0 ? 'text-red-400' : 'text-gray-400'}`}>Críticos</p>
-        </div>
+        {/* Todos */}
+        <button
+          onClick={() => toggleFilter('todos')}
+          className={`rounded-2xl border p-4 text-center cursor-pointer transition-all group ${
+            activeFilter === 'todos'
+              ? 'bg-blue-600 border-blue-600 shadow-md shadow-blue-200'
+              : 'bg-white border-gray-100 hover:border-blue-300 hover:shadow-sm'
+          }`}
+        >
+          <p className={`text-2xl font-black ${activeFilter === 'todos' ? 'text-white' : 'text-gray-900'}`}>{products.length}</p>
+          <p className={`text-xs mt-0.5 ${activeFilter === 'todos' ? 'text-blue-100' : 'text-gray-400'}`}>Productos</p>
+          {activeFilter === 'todos' && (
+            <div className="flex justify-center mt-1.5">
+              <Icon name="ChevronDown" size={13} color="white" />
+            </div>
+          )}
+        </button>
+
+        {/* Con control */}
+        <button
+          onClick={() => toggleFilter('con_control')}
+          className={`rounded-2xl border p-4 text-center cursor-pointer transition-all group ${
+            activeFilter === 'con_control'
+              ? 'bg-blue-600 border-blue-600 shadow-md shadow-blue-200'
+              : 'bg-white border-gray-100 hover:border-blue-300 hover:shadow-sm'
+          }`}
+        >
+          <p className={`text-2xl font-black ${activeFilter === 'con_control' ? 'text-white' : 'text-gray-700'}`}>{withControl.length}</p>
+          <p className={`text-xs mt-0.5 ${activeFilter === 'con_control' ? 'text-blue-100' : 'text-gray-400'}`}>Con control</p>
+          {activeFilter === 'con_control' && (
+            <div className="flex justify-center mt-1.5">
+              <Icon name="ChevronDown" size={13} color="white" />
+            </div>
+          )}
+        </button>
+
+        {/* Críticos */}
+        <button
+          onClick={() => toggleFilter('criticos')}
+          className={`rounded-2xl border p-4 text-center cursor-pointer transition-all group ${
+            activeFilter === 'criticos'
+              ? critical.length > 0
+                ? 'bg-red-600 border-red-600 shadow-md shadow-red-200'
+                : 'bg-blue-600 border-blue-600 shadow-md shadow-blue-200'
+              : critical.length > 0
+                ? 'bg-red-50 border-red-200 hover:border-red-400 hover:shadow-sm'
+                : 'bg-white border-gray-100 hover:border-blue-300 hover:shadow-sm'
+          }`}
+        >
+          <p className={`text-2xl font-black ${
+            activeFilter === 'criticos'
+              ? 'text-white'
+              : critical.length > 0
+                ? 'text-red-600'
+                : 'text-gray-400'
+          }`}>{critical.length}</p>
+          <p className={`text-xs mt-0.5 ${
+            activeFilter === 'criticos'
+              ? 'text-red-100'
+              : critical.length > 0
+                ? 'text-red-400'
+                : 'text-gray-400'
+          }`}>Críticos</p>
+          {activeFilter === 'criticos' && (
+            <div className="flex justify-center mt-1.5">
+              <Icon name="ChevronDown" size={13} color="white" />
+            </div>
+          )}
+        </button>
       </div>
 
-      {/* CAMBIO 6: Productos críticos — prominente arriba */}
-      {critical.length > 0 && (
-        <div className="bg-white rounded-2xl border border-red-200 overflow-hidden shadow-sm">
-          <div className="px-5 py-3.5 border-b border-red-100 flex items-center gap-2 bg-red-50/60">
-            <Icon name="AlertTriangle" size={15} color="#dc2626" />
-            <p className="text-sm font-bold text-red-700">Atención: {critical.length} producto{critical.length !== 1 ? 's' : ''} con stock crítico</p>
+      {/* Lista filtrada — reemplaza el contenido principal cuando hay filtro activo */}
+      {activeFilter ? (
+        <FilteredProductList
+          products={products}
+          filter={activeFilter}
+          onSelect={onSelectProduct}
+        />
+      ) : (
+        <>
+          {/* Productos críticos — prominente */}
+          {critical.length > 0 && (
+            <div className="bg-white rounded-2xl border border-red-200 overflow-hidden shadow-sm">
+              <div className="px-5 py-3.5 border-b border-red-100 flex items-center gap-2 bg-red-50/60">
+                <Icon name="AlertTriangle" size={15} color="#dc2626" />
+                <p className="text-sm font-bold text-red-700">Atención: {critical.length} producto{critical.length !== 1 ? 's' : ''} con stock crítico</p>
+              </div>
+              <div className="divide-y divide-gray-50">
+                {critical.slice(0, 8).map(p => (
+                  <button
+                    key={p.id}
+                    onClick={() => onSelectProduct(p)}
+                    className="w-full flex items-center gap-3 px-5 py-3 hover:bg-red-50/40 transition-colors text-left"
+                  >
+                    {p.thumbnail_url ? (
+                      <img src={p.thumbnail_url} alt="" className="w-8 h-8 rounded-lg object-cover shrink-0" />
+                    ) : (
+                      <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center shrink-0">
+                        <Icon name="Package" size={14} className="text-gray-400" />
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-gray-900 truncate">{p.name}</p>
+                      {p.public_code && <p className="text-xs font-mono text-blue-500">{p.public_code}</p>}
+                    </div>
+                    <StatusBadge status={stockStatus(p)} />
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Tarjeta educativa — solo cuando no hay movimientos aún */}
+          {!hasMovements && <MovementTypesCard />}
+
+          {/* Últimos movimientos */}
+          <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-gray-100 flex items-center gap-2">
+              <Icon name="Activity" size={15} color="#6b7280" />
+              <p className="text-sm font-bold text-gray-800">Últimos movimientos</p>
+            </div>
+            {loadingMov ? (
+              <div className="py-8 flex justify-center">
+                <div className="w-5 h-5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : recentMovements.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-8">Sin movimientos registrados aún</p>
+            ) : (
+              <div className="divide-y divide-gray-50">
+                {recentMovements.map(m => {
+                  const cfg = MOVEMENT_TYPES[m.type] || MOVEMENT_TYPES.entrada;
+                  return (
+                    <div key={m.id} className="px-5 py-3 flex items-center gap-3">
+                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${cfg.bg}`}>
+                        <Icon name={cfg.icon} size={13} className={cfg.color} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm text-gray-700 truncate">{m.product_name || '—'}</p>
+                        <p className="text-xs text-gray-400">{cfg.label} · {new Date(m.created_at).toLocaleDateString('es-CL')}</p>
+                      </div>
+                      <span className={`text-sm font-bold shrink-0 ${cfg.color}`}>
+                        {m.type === 'ajuste' ? `=${m.quantity}` : m.type === 'salida' || m.type === 'salida_manual' || m.type === 'venta_tpv' || m.type === 'venta_catalogo' ? `-${m.quantity}` : `+${m.quantity}`}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
-          <div className="divide-y divide-gray-50">
-            {critical.slice(0, 8).map(p => (
-              <button
-                key={p.id}
-                onClick={() => onSelectProduct(p)}
-                className="w-full flex items-center gap-3 px-5 py-3 hover:bg-red-50/40 transition-colors text-left"
-              >
-                {p.thumbnail_url ? (
-                  <img src={p.thumbnail_url} alt="" className="w-8 h-8 rounded-lg object-cover shrink-0" />
-                ) : (
-                  <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center shrink-0">
-                    <Icon name="Package" size={14} className="text-gray-400" />
-                  </div>
-                )}
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-gray-900 truncate">{p.name}</p>
-                  {p.public_code && <p className="text-xs font-mono text-blue-500">{p.public_code}</p>}
-                </div>
-                <StatusBadge status={stockStatus(p)} />
-              </button>
-            ))}
+
+          {/* Ayuda */}
+          <div className="text-center py-2">
+            <p className="text-sm text-gray-400">Haz clic en las tarjetas de arriba para filtrar productos, o usa el buscador</p>
           </div>
-        </div>
+        </>
       )}
-
-      {/* CAMBIO 3: Tarjeta educativa — solo cuando no hay movimientos aún */}
-      {!hasMovements && <MovementTypesCard />}
-
-      {/* Últimos movimientos */}
-      <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-        <div className="px-5 py-3.5 border-b border-gray-100 flex items-center gap-2">
-          <Icon name="Activity" size={15} color="#6b7280" />
-          <p className="text-sm font-bold text-gray-800">Últimos movimientos</p>
-        </div>
-        {loadingMov ? (
-          <div className="py-8 flex justify-center">
-            <div className="w-5 h-5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
-          </div>
-        ) : recentMovements.length === 0 ? (
-          <p className="text-sm text-gray-400 text-center py-8">Sin movimientos registrados aún</p>
-        ) : (
-          <div className="divide-y divide-gray-50">
-            {recentMovements.map(m => {
-              const cfg = MOVEMENT_TYPES[m.type] || MOVEMENT_TYPES.entrada;
-              return (
-                <div key={m.id} className="px-5 py-3 flex items-center gap-3">
-                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${cfg.bg}`}>
-                    <Icon name={cfg.icon} size={13} className={cfg.color} />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm text-gray-700 truncate">{m.product_name || '—'}</p>
-                    <p className="text-xs text-gray-400">{cfg.label} · {new Date(m.created_at).toLocaleDateString('es-CL')}</p>
-                  </div>
-                  <span className={`text-sm font-bold shrink-0 ${cfg.color}`}>
-                    {m.type === 'ajuste' ? `=${m.quantity}` : m.type === 'salida' || m.type === 'salida_manual' || m.type === 'venta_tpv' || m.type === 'venta_catalogo' ? `-${m.quantity}` : `+${m.quantity}`}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* Ayuda */}
-      <div className="text-center py-2">
-        <p className="text-sm text-gray-400">Usa el buscador para encontrar un producto y gestionar su stock</p>
-      </div>
     </div>
   );
 }
