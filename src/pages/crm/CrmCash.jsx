@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import DashboardAppShell from 'components/ui/DashboardAppShell';
 import DashboardLayoutContent from 'components/ui/DashboardLayoutContent';
@@ -73,7 +74,6 @@ function totalPayments(payments = []) {
   }, 0);
 }
 
-// Saldo real de caja = monto inicial + cobros comerciales + entradas manuales - salidas
 function calcSessionBalance(session, payments = [], movements = []) {
   const initial   = toNumber(session?.initial_amount);
   const inflows   = payments.filter(p => !p.voided_at).reduce((s, p) => s + toNumber(p.amount), 0);
@@ -86,9 +86,6 @@ function totalMovementsOut(movements = []) {
   return movements.filter(m => !m.voided_at && m.direction === 'out').reduce((s, m) => s + toNumber(m.amount), 0);
 }
 
-// Efectivo físico esperado al cierre:
-// solo cobros en efectivo + movimientos manuales de caja (sin método o método=cash).
-// Los cobros por tarjeta/transferencia NO afectan el efectivo físico.
 function computeExpectedCash(session, payments = [], movements = []) {
   const initial    = toNumber(session?.initial_amount);
   const cashIn     = payments
@@ -103,7 +100,8 @@ function computeExpectedCash(session, payments = [], movements = []) {
   return initial + cashIn + manualIn - manualOut;
 }
 
-// Pasos: 1=resumen, 2=conteo, 3=observacion, 4=confirmar
+// ─── Arqueo Modal (4 pasos — sin cambios) ─────────────────────────────────────
+
 function ArqueoModal({ session, payments, movements, currency, busy, onConfirm, onCancel }) {
   const [step, setStep]           = useState(1);
   const [counted, setCounted]     = useState('');
@@ -138,7 +136,6 @@ function ArqueoModal({ session, payments, movements, currency, busy, onConfirm, 
 
   const diffEmoji = diff === null ? '' : Math.abs(diff) < 1 ? '🟢' : Math.abs(diff) < expected * 0.05 ? '🟠' : '🔴';
 
-  const canStep2 = true;
   const canStep3 = Number.isFinite(countedNum) && countedNum >= 0;
   const needsNote = diff !== null && Math.abs(diff) >= 1;
   const canFinish = canStep3 && (!needsNote || notes.trim().length >= 5);
@@ -164,7 +161,6 @@ function ArqueoModal({ session, payments, movements, currency, busy, onConfirm, 
   return (
     <div className="fixed inset-0 z-modal flex items-center justify-center bg-slate-900/50 px-4">
       <div className="w-full max-w-lg rounded-2xl border border-gray-100 bg-white shadow-xl">
-        {/* Header */}
         <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
           <div>
             <h3 className="text-sm font-bold text-gray-900">Arqueo de caja</h3>
@@ -175,7 +171,6 @@ function ArqueoModal({ session, payments, movements, currency, busy, onConfirm, 
           </button>
         </div>
 
-        {/* Progress */}
         <div className="flex gap-1 px-5 pt-3">
           {[1,2,3,4].map(s => (
             <div key={s} className={`h-1 flex-1 rounded-full ${s <= step ? 'bg-gray-900' : 'bg-gray-100'}`} />
@@ -183,7 +178,6 @@ function ArqueoModal({ session, payments, movements, currency, busy, onConfirm, 
         </div>
 
         <div className="px-5 py-4">
-          {/* Step 1: Resumen automático */}
           {step === 1 && (
             <div className="space-y-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Resumen de la caja</p>
@@ -198,7 +192,6 @@ function ArqueoModal({ session, payments, movements, currency, busy, onConfirm, 
             </div>
           )}
 
-          {/* Step 2: Conteo físico */}
           {step === 2 && (
             <div className="space-y-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Cuenta el efectivo físico</p>
@@ -236,7 +229,6 @@ function ArqueoModal({ session, payments, movements, currency, busy, onConfirm, 
             </div>
           )}
 
-          {/* Step 3: Observación */}
           {step === 3 && (
             <div className="space-y-3">
               {needsNote ? (
@@ -279,7 +271,6 @@ function ArqueoModal({ session, payments, movements, currency, busy, onConfirm, 
             </div>
           )}
 
-          {/* Step 4: Confirmación */}
           {step === 4 && (
             <div className="space-y-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Confirmar cierre</p>
@@ -307,7 +298,6 @@ function ArqueoModal({ session, payments, movements, currency, busy, onConfirm, 
           )}
         </div>
 
-        {/* Footer */}
         <div className="flex justify-between gap-2 border-t border-gray-100 px-5 py-4">
           {step > 1 ? (
             <button
@@ -365,7 +355,6 @@ function Row({ label, value, color = 'text-gray-900', bold = false, note }) {
   );
 }
 
-// Mezcla pagos y movimientos en orden cronológico para la tabla unificada
 function mergeEntries(payments = [], movements = []) {
   return [
     ...payments.map(p => ({ ...p, _row_kind: 'payment' })),
@@ -388,74 +377,188 @@ function turnTimeRange(session) {
 // ─── KPI Card ─────────────────────────────────────────────────────────────────
 
 const KPI_PALETTES = {
-  gray:   { bg: 'bg-gray-50',    iconBg: 'bg-gray-100',    iconColor: 'text-gray-500',    val: 'text-gray-800'    },
-  green:  { bg: 'bg-[#ECFDF5]',  iconBg: 'bg-emerald-100', iconColor: 'text-emerald-600', val: 'text-emerald-800' },
-  red:    { bg: 'bg-[#FEF2F2]',  iconBg: 'bg-red-100',     iconColor: 'text-red-500',     val: 'text-red-700'     },
-  blue:   { bg: 'bg-[#EFF6FF]',  iconBg: 'bg-blue-100',    iconColor: 'text-blue-600',    val: 'text-blue-900'    },
-  violet: { bg: 'bg-[#F5F3FF]',  iconBg: 'bg-violet-100',  iconColor: 'text-violet-600',  val: 'text-violet-900'  },
+  gray:   { bg: 'bg-white',      border: 'border-gray-100',   iconBg: 'bg-gray-50',     iconColor: 'text-gray-400',    val: 'text-gray-900',    label: 'text-gray-400' },
+  green:  { bg: 'bg-white',      border: 'border-emerald-100',iconBg: 'bg-emerald-50',  iconColor: 'text-emerald-500', val: 'text-emerald-700', label: 'text-emerald-400' },
+  red:    { bg: 'bg-white',      border: 'border-red-100',    iconBg: 'bg-red-50',      iconColor: 'text-red-400',     val: 'text-red-600',     label: 'text-red-400' },
+  blue:   { bg: 'bg-white',      border: 'border-blue-100',   iconBg: 'bg-blue-50',     iconColor: 'text-blue-500',    val: 'text-blue-800',    label: 'text-blue-400' },
+  violet: { bg: 'bg-white',      border: 'border-violet-100', iconBg: 'bg-violet-50',   iconColor: 'text-violet-500',  val: 'text-violet-800',  label: 'text-violet-400' },
 };
 
 function KpiCard({ label, value, icon, palette = 'gray' }) {
   const p = KPI_PALETTES[palette] || KPI_PALETTES.gray;
   return (
-    <div className={`rounded-2xl p-4 ${p.bg} border border-white`}>
-      <div className={`mb-3 w-8 h-8 rounded-xl flex items-center justify-center ${p.iconBg}`}>
-        <Icon name={icon} size={16} className={p.iconColor} />
+    <div className={`rounded-2xl border ${p.border} ${p.bg} p-4 hover:shadow-md transition-shadow`}>
+      <div className={`mb-3 w-9 h-9 rounded-xl flex items-center justify-center ${p.iconBg}`}>
+        <Icon name={icon} size={17} className={p.iconColor} />
       </div>
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 mb-1">{label}</p>
-      <p className={`text-xl font-black tabular-nums ${p.val}`}>{value}</p>
+      <p className={`text-[10px] font-bold uppercase tracking-widest mb-1.5 ${p.label}`}>{label}</p>
+      <p className={`text-2xl font-black tabular-nums leading-none ${p.val}`}>{value}</p>
     </div>
   );
 }
 
-// ─── Accordion section ─────────────────────────────────────────────────────────
+// ─── Cash Timeline ─────────────────────────────────────────────────────────────
 
-function AccordionSection({ icon, title, description, open, onToggle, children }) {
+function TimelineEntry({ entry, currency, onEditPayment, onVoidPayment, onVoidMovement, sessionOpen, isLast }) {
+  const isVoided  = !!entry.voided_at;
+  const isPayment = entry._row_kind === 'payment';
+  const isOut     = !isPayment && entry.direction === 'out';
+
+  const typeMeta = isPayment
+    ? { label: 'Cobro', bg: 'bg-emerald-50', text: 'text-emerald-700', icon: 'ArrowDownLeft', dotColor: 'bg-emerald-500' }
+    : isOut
+      ? { label: 'Salida', bg: 'bg-red-50', text: 'text-red-600', icon: 'ArrowUpRight', dotColor: 'bg-red-400' }
+      : { label: 'Entrada', bg: 'bg-blue-50', text: 'text-blue-600', icon: 'ArrowDownLeft', dotColor: 'bg-blue-400' };
+
+  const amountColor = isVoided
+    ? 'text-gray-300 line-through'
+    : isOut
+      ? 'text-red-600'
+      : 'text-emerald-600';
+
   return (
-    <div className={`rounded-2xl border bg-white overflow-hidden transition-all ${open ? 'border-gray-200 shadow-sm' : 'border-gray-100 hover:border-gray-200'}`}>
-      <button
-        type="button"
-        onClick={onToggle}
-        className="w-full flex items-center gap-4 px-5 py-4 text-left hover:bg-gray-50/60 transition-colors"
-      >
-        <div className="w-9 h-9 rounded-xl bg-gray-50 flex items-center justify-center shrink-0">
-          <Icon name={icon} size={17} className="text-gray-500" />
+    <div className="flex gap-4 group">
+      {/* Timeline spine */}
+      <div className="flex flex-col items-center shrink-0 pt-1">
+        <div className={`w-2.5 h-2.5 rounded-full ring-2 ring-white ${isVoided ? 'bg-gray-200' : typeMeta.dotColor}`} />
+        {!isLast && <div className="w-px flex-1 bg-gray-100 mt-1" />}
+      </div>
+
+      {/* Content */}
+      <div className={`flex-1 pb-4 ${isLast ? '' : ''}`}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2 min-w-0">
+            <span className="text-xs font-bold text-gray-400 tabular-nums shrink-0">{fmtTime(entry.created_at)}</span>
+            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold ${typeMeta.bg} ${typeMeta.text} ${isVoided ? 'opacity-50' : ''}`}>
+              <Icon name={typeMeta.icon} size={10} />
+              {typeMeta.label}
+            </span>
+            {isVoided && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-bold text-gray-500">
+                <Icon name="Ban" size={9} />
+                Anulado
+              </span>
+            )}
+          </div>
+
+          {/* Amount */}
+          <span className={`text-base font-black tabular-nums shrink-0 ${amountColor}`}>
+            {isVoided ? '' : (isOut ? '−' : '+')}
+            {formatMoney(entry.amount, entry.currency || currency)}
+          </span>
         </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-bold text-gray-800">{title}</p>
-          {description && <p className="text-xs text-gray-400 mt-0.5">{description}</p>}
+
+        {/* Detail */}
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-gray-500">
+          {isPayment ? (
+            <>
+              <span className="font-medium text-gray-600">
+                {PAYMENT_METHOD_LABELS[entry.payment_method] || PAYMENT_METHOD_LABELS.other}
+              </span>
+              {(entry.reference || entry.notes) && (
+                <span className="text-gray-400">{entry.reference || entry.notes}</span>
+              )}
+            </>
+          ) : (
+            <>
+              {entry.reason && <span className="font-medium text-gray-600">{entry.reason}</span>}
+              {entry.category && <span className="text-gray-400">{getCashMovementCategoryLabel(entry.category)}</span>}
+              {entry.notes && <span className="text-gray-400">{entry.notes}</span>}
+            </>
+          )}
+          {isVoided && entry.void_reason && (
+            <span className="text-red-400">Motivo: {entry.void_reason}</span>
+          )}
         </div>
-        <Icon
-          name="ChevronDown"
-          size={17}
-          className={`text-gray-400 shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+
+        {/* Actions (on hover) */}
+        {!isVoided && (
+          <div className="mt-2 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+            {isPayment ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => onEditPayment?.(entry)}
+                  className="rounded-lg border border-gray-200 px-2.5 py-1 text-[11px] font-bold text-gray-600 hover:bg-gray-50 transition-colors"
+                >
+                  Editar
+                </button>
+                {sessionOpen ? (
+                  <button
+                    type="button"
+                    onClick={() => onVoidPayment?.(entry)}
+                    className="rounded-lg border border-red-200 px-2.5 py-1 text-[11px] font-bold text-red-500 hover:bg-red-50 transition-colors"
+                  >
+                    Anular
+                  </button>
+                ) : (
+                  <span
+                    title="No se pueden anular movimientos de una caja cerrada"
+                    className="cursor-not-allowed rounded-lg border border-gray-100 px-2.5 py-1 text-[11px] font-bold text-gray-300 select-none"
+                  >
+                    Anular
+                  </span>
+                )}
+              </>
+            ) : (
+              sessionOpen ? (
+                <button
+                  type="button"
+                  onClick={() => onVoidMovement?.(entry)}
+                  className="rounded-lg border border-red-200 px-2.5 py-1 text-[11px] font-bold text-red-500 hover:bg-red-50 transition-colors"
+                >
+                  Anular
+                </button>
+              ) : (
+                <span
+                  title="No se pueden anular movimientos de una caja cerrada"
+                  className="cursor-not-allowed rounded-lg border border-gray-100 px-2.5 py-1 text-[11px] font-bold text-gray-300 select-none"
+                >
+                  Anular
+                </span>
+              )
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CashTimeline({ payments, movements, currency, onEditPayment, onVoidPayment, onVoidMovement, sessionOpen }) {
+  const entries = mergeEntries(payments, movements);
+
+  if (entries.length === 0) {
+    return (
+      <div className="py-14 text-center">
+        <div className="w-14 h-14 rounded-2xl bg-gray-50 flex items-center justify-center mx-auto mb-4">
+          <Icon name="ReceiptText" size={24} className="text-gray-200" />
+        </div>
+        <p className="text-sm font-semibold text-gray-500">Sin movimientos en esta caja</p>
+        <p className="text-xs text-gray-400 mt-1">Los cobros y movimientos aparecerán aquí.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="px-1 pt-2">
+      {entries.map((entry, idx) => (
+        <TimelineEntry
+          key={entry.id}
+          entry={entry}
+          currency={currency}
+          onEditPayment={onEditPayment}
+          onVoidPayment={onVoidPayment}
+          onVoidMovement={onVoidMovement}
+          sessionOpen={sessionOpen}
+          isLast={idx === entries.length - 1}
         />
-      </button>
-      {open && (
-        <div className="border-t border-gray-100 px-5 py-4">
-          {children}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function MethodBreakdown({ summary, currency }) {
-  return (
-    <div className="grid grid-cols-1 gap-2 sm:grid-cols-5">
-      {METHOD_ORDER.map(method => (
-        <div key={method} className="rounded-xl border border-gray-100 bg-white p-3">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
-            {PAYMENT_METHOD_LABELS[method]}
-          </p>
-          <p className="mt-1 text-sm font-black text-gray-900">
-            {formatMoney(summary[method] || 0, currency)}
-          </p>
-        </div>
       ))}
     </div>
   );
 }
+
+// ─── Movements Table (used in history detail) ──────────────────────────────────
 
 function MovementsTable({ payments, movements, currency, onEditPayment, onVoidPayment, onVoidMovement, sessionOpen }) {
   const entries = mergeEntries(payments, movements);
@@ -498,7 +601,6 @@ function MovementsTable({ payments, movements, currency, onEditPayment, onVoidPa
 
               return (
                 <tr key={entry.id} className={isVoided ? 'bg-gray-50 opacity-60' : ''}>
-                  {/* Hora */}
                   <td className="whitespace-nowrap px-5 py-3 font-medium text-gray-700">
                     <div>{fmtTime(entry.created_at)}</div>
                     {isVoided && (
@@ -508,8 +610,6 @@ function MovementsTable({ payments, movements, currency, onEditPayment, onVoidPa
                       </span>
                     )}
                   </td>
-
-                  {/* Tipo */}
                   <td className="whitespace-nowrap px-5 py-3">
                     {isPayment ? (
                       <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700">
@@ -522,9 +622,7 @@ function MovementsTable({ payments, movements, currency, onEditPayment, onVoidPa
                           <Icon name="ArrowUpRight" size={11} />
                           Salida
                         </span>
-                        <div className="mt-0.5 text-[10px] text-gray-400">
-                          {getCashMovementCategoryLabel(entry.category)}
-                        </div>
+                        <div className="mt-0.5 text-[10px] text-gray-400">{getCashMovementCategoryLabel(entry.category)}</div>
                       </div>
                     ) : (
                       <div>
@@ -532,20 +630,14 @@ function MovementsTable({ payments, movements, currency, onEditPayment, onVoidPa
                           <Icon name="ArrowDownLeft" size={11} />
                           Entrada
                         </span>
-                        <div className="mt-0.5 text-[10px] text-gray-400">
-                          {getCashMovementCategoryLabel(entry.category)}
-                        </div>
+                        <div className="mt-0.5 text-[10px] text-gray-400">{getCashMovementCategoryLabel(entry.category)}</div>
                       </div>
                     )}
                   </td>
-
-                  {/* Detalle */}
                   <td className="px-5 py-3 text-gray-500">
                     {isPayment ? (
                       <>
-                        <div className="text-xs text-gray-500">
-                          {PAYMENT_METHOD_LABELS[entry.payment_method] || PAYMENT_METHOD_LABELS.other}
-                        </div>
+                        <div className="text-xs text-gray-500">{PAYMENT_METHOD_LABELS[entry.payment_method] || PAYMENT_METHOD_LABELS.other}</div>
                         <div className="text-gray-700">{entry.reference || entry.notes || '—'}</div>
                       </>
                     ) : (
@@ -558,13 +650,9 @@ function MovementsTable({ payments, movements, currency, onEditPayment, onVoidPa
                       <div className="mt-0.5 text-[11px] text-red-500">Motivo: {entry.void_reason}</div>
                     )}
                   </td>
-
-                  {/* Monto */}
                   <td className={`whitespace-nowrap px-5 py-3 text-right font-bold ${amountColor}`}>
                     {!isVoided && amountPrefix}{formatMoney(entry.amount, entry.currency || currency)}
                   </td>
-
-                  {/* Acción */}
                   <td className="whitespace-nowrap px-5 py-3 text-right">
                     {isVoided ? (
                       <span className="text-xs text-gray-400">—</span>
@@ -586,16 +674,12 @@ function MovementsTable({ payments, movements, currency, onEditPayment, onVoidPa
                             Anular
                           </button>
                         ) : (
-                          <span
-                            title="No se pueden anular movimientos de una caja cerrada"
-                            className="cursor-not-allowed rounded-lg border border-gray-100 bg-gray-50 px-3 py-1.5 text-xs font-bold text-gray-300 select-none"
-                          >
+                          <span className="cursor-not-allowed rounded-lg border border-gray-100 bg-gray-50 px-3 py-1.5 text-xs font-bold text-gray-300 select-none">
                             Anular
                           </span>
                         )}
                       </div>
                     ) : (
-                      /* Movimiento operativo — solo anular */
                       sessionOpen ? (
                         <button
                           type="button"
@@ -605,10 +689,7 @@ function MovementsTable({ payments, movements, currency, onEditPayment, onVoidPa
                           Anular
                         </button>
                       ) : (
-                        <span
-                          title="No se pueden anular movimientos de una caja cerrada"
-                          className="cursor-not-allowed rounded-lg border border-gray-100 bg-gray-50 px-3 py-1.5 text-xs font-bold text-gray-300 select-none"
-                        >
+                        <span className="cursor-not-allowed rounded-lg border border-gray-100 bg-gray-50 px-3 py-1.5 text-xs font-bold text-gray-300 select-none">
                           Anular
                         </span>
                       )
@@ -623,6 +704,25 @@ function MovementsTable({ payments, movements, currency, onEditPayment, onVoidPa
     </div>
   );
 }
+
+function MethodBreakdown({ summary, currency }) {
+  return (
+    <div className="grid grid-cols-1 gap-2 sm:grid-cols-5">
+      {METHOD_ORDER.map(method => (
+        <div key={method} className="rounded-xl border border-gray-100 bg-white p-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+            {PAYMENT_METHOD_LABELS[method]}
+          </p>
+          <p className="mt-1 text-sm font-black text-gray-900">
+            {formatMoney(summary[method] || 0, currency)}
+          </p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Modals (sin cambios) ──────────────────────────────────────────────────────
 
 function PaymentEditModal({ payment, currency, busy, onSubmit, onCancel, onEditSale }) {
   const [amount, setAmount] = useState(String(payment?.amount || ''));
@@ -642,10 +742,7 @@ function PaymentEditModal({ payment, currency, busy, onSubmit, onCancel, onEditS
   useEffect(() => {
     let cancelled = false;
     async function loadInvoiceItems() {
-      if (!payment?.invoice_id) {
-        setInvoiceItems([]);
-        return;
-      }
+      if (!payment?.invoice_id) { setInvoiceItems([]); return; }
       setLoadingItems(true);
       const { data } = await getCrmInvoice(payment.invoice_id);
       if (!cancelled) {
@@ -678,13 +775,11 @@ function PaymentEditModal({ payment, currency, busy, onSubmit, onCancel, onEditS
             <Icon name="X" size={17} />
           </button>
         </div>
-
         {payment.invoice_id && (
           <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
             Este pago esta asociado a una nota de venta. Cambiar el monto solo corrige la caja, no modifica el detalle del ticket.
           </div>
         )}
-
         <div className="space-y-3">
           <div>
             <label className="mb-1.5 block text-xs font-semibold text-gray-500">Monto</label>
@@ -699,7 +794,6 @@ function PaymentEditModal({ payment, currency, busy, onSubmit, onCancel, onEditS
               />
             </div>
           </div>
-
           <div>
             <label className="mb-1.5 block text-xs font-semibold text-gray-500">Metodo de pago</label>
             <select
@@ -712,7 +806,6 @@ function PaymentEditModal({ payment, currency, busy, onSubmit, onCancel, onEditS
               ))}
             </select>
           </div>
-
           <div>
             <label className="mb-1.5 block text-xs font-semibold text-gray-500">Referencia</label>
             <input
@@ -722,7 +815,6 @@ function PaymentEditModal({ payment, currency, busy, onSubmit, onCancel, onEditS
               className="w-full rounded-xl border border-gray-200 bg-white px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
             />
           </div>
-
           <div>
             <label className="mb-1.5 block text-xs font-semibold text-gray-500">Nota</label>
             <input
@@ -732,7 +824,6 @@ function PaymentEditModal({ payment, currency, busy, onSubmit, onCancel, onEditS
               className="w-full rounded-xl border border-gray-200 bg-white px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
             />
           </div>
-
           {payment.invoice_id && (
             <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
               <div className="mb-2 flex items-center justify-between gap-3">
@@ -762,13 +853,8 @@ function PaymentEditModal({ payment, currency, busy, onSubmit, onCancel, onEditS
             </div>
           )}
         </div>
-
         <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-50"
-          >
+          <button type="button" onClick={onCancel} className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-50">
             Cancelar
           </button>
           <button
@@ -806,7 +892,6 @@ function VoidPaymentModal({ payment, currency, busy, onConfirm, onCancel }) {
             <Icon name="X" size={17} />
           </button>
         </div>
-
         <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
           <p className="font-semibold">¿Anular este movimiento?</p>
           <p className="mt-1 text-red-700">
@@ -820,14 +905,12 @@ function VoidPaymentModal({ payment, currency, busy, onConfirm, onCancel }) {
             El movimiento quedará en el historial pero no contará en los totales.
           </p>
         </div>
-
         {payment.invoice_id && (
           <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
             <p className="font-semibold">⚠️ Movimiento asociado a una nota de venta</p>
             <p className="mt-1">La anulación solo afectará la caja. No modificará el documento ni el estado de la factura.</p>
           </div>
         )}
-
         <div>
           <label className="mb-1.5 block text-xs font-semibold text-gray-500">
             Motivo de anulación <span className="text-red-500">*</span>
@@ -842,13 +925,8 @@ function VoidPaymentModal({ payment, currency, busy, onConfirm, onCancel }) {
           />
           {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
         </div>
-
         <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-50"
-          >
+          <button type="button" onClick={onCancel} className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-50">
             Cancelar
           </button>
           <button
@@ -878,9 +956,7 @@ function CashMovementModal({ defaultDirection = 'out', busy, onSubmit, onCancel 
   const selectedCat   = categories.find(c => c.value === category);
   const canBeExpense  = direction === 'out' && (selectedCat?.isExpense ?? false);
 
-  // Resetear categoría al cambiar dirección
   useEffect(() => { setCategory(''); setIsExpense(false); setError(''); }, [direction]);
-  // Si la nueva categoría no puede ser gasto, desmarcar automáticamente
   useEffect(() => { if (!canBeExpense) setIsExpense(false); }, [canBeExpense]);
 
   const handleSubmit = (e) => {
@@ -909,8 +985,6 @@ function CashMovementModal({ defaultDirection = 'out', busy, onSubmit, onCancel 
             <Icon name="X" size={17} />
           </button>
         </div>
-
-        {/* Selector Entrada / Salida */}
         <div className="mb-4 flex rounded-xl border border-gray-200 overflow-hidden">
           <button
             type="button"
@@ -933,9 +1007,7 @@ function CashMovementModal({ defaultDirection = 'out', busy, onSubmit, onCancel 
             Salida
           </button>
         </div>
-
         <div className="space-y-3">
-          {/* Monto */}
           <div>
             <label className="mb-1.5 block text-xs font-semibold text-gray-500">
               Monto <span className="text-red-500">*</span>
@@ -955,8 +1027,6 @@ function CashMovementModal({ defaultDirection = 'out', busy, onSubmit, onCancel 
               />
             </div>
           </div>
-
-          {/* Categoría */}
           <div>
             <label className="mb-1.5 block text-xs font-semibold text-gray-500">
               Categoría <span className="text-red-500">*</span>
@@ -974,8 +1044,6 @@ function CashMovementModal({ defaultDirection = 'out', busy, onSubmit, onCancel 
               ))}
             </select>
           </div>
-
-          {/* Motivo */}
           <div>
             <label className="mb-1.5 block text-xs font-semibold text-gray-500">
               Motivo <span className="text-red-500">*</span>
@@ -990,8 +1058,6 @@ function CashMovementModal({ defaultDirection = 'out', busy, onSubmit, onCancel 
               }`}
             />
           </div>
-
-          {/* Registrar como gasto — solo visible para categorías que son gastos */}
           {canBeExpense && (
             <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-orange-200 bg-orange-50 px-3 py-3">
               <input
@@ -1008,8 +1074,6 @@ function CashMovementModal({ defaultDirection = 'out', busy, onSubmit, onCancel 
               </div>
             </label>
           )}
-
-          {/* Notas opcionales */}
           <div>
             <label className="mb-1.5 block text-xs font-semibold text-gray-500">Notas (opcional)</label>
             <input
@@ -1020,18 +1084,12 @@ function CashMovementModal({ defaultDirection = 'out', busy, onSubmit, onCancel 
               className="w-full rounded-xl border border-gray-200 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
             />
           </div>
-
           {error && (
             <p className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600 border border-red-200">{error}</p>
           )}
         </div>
-
         <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-50"
-          >
+          <button type="button" onClick={onCancel} className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-50">
             Cancelar
           </button>
           <button
@@ -1103,11 +1161,7 @@ function CashSessionForm({ title, initialValue = '', notesValue = '', busy, subm
           </div>
         </div>
         <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-50"
-          >
+          <button type="button" onClick={onCancel} className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-50">
             Cancelar
           </button>
           <button
@@ -1124,6 +1178,48 @@ function CashSessionForm({ title, initialValue = '', notesValue = '', busy, subm
   );
 }
 
+// ─── Tab bar ──────────────────────────────────────────────────────────────────
+
+const TABS = [
+  { id: 'movements', label: 'Movimientos', icon: 'ArrowLeftRight' },
+  { id: 'summary',   label: 'Resumen',     icon: 'PieChart'       },
+  { id: 'history',   label: 'Historial',   icon: 'History'        },
+];
+
+function TabBar({ activeTab, onChange }) {
+  return (
+    <div className="flex gap-1 border-b border-gray-100 mb-0">
+      {TABS.map(tab => {
+        const isActive = activeTab === tab.id;
+        return (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => onChange(tab.id)}
+            className={`relative flex items-center gap-2 px-4 py-3 text-sm font-bold transition-colors rounded-t-xl ${
+              isActive
+                ? 'text-gray-900'
+                : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            <Icon name={tab.icon} size={15} className={isActive ? 'text-emerald-500' : 'text-gray-300'} />
+            {tab.label}
+            {isActive && (
+              <motion.div
+                layoutId="tab-indicator"
+                className="absolute bottom-0 left-0 right-0 h-0.5 bg-emerald-500 rounded-full"
+                transition={{ type: 'spring', stiffness: 500, damping: 40 }}
+              />
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Main page ─────────────────────────────────────────────────────────────────
+
 export default function CrmCash() {
   const navigate = useNavigate();
   const { business, user } = useAuth();
@@ -1137,9 +1233,7 @@ export default function CrmCash() {
   const [showOpenForm, setShowOpenForm] = useState(false);
   const [editingSession, setEditingSession] = useState(null);
   const [detailSessionId, setDetailSessionId] = useState(null);
-  const [showDayBreakdown, setShowDayBreakdown] = useState(false);
-  const [showMovements, setShowMovements] = useState(false);
-  const [showHistory, setShowHistory] = useState(false);
+  const [activeTab, setActiveTab] = useState('movements');
   const [editingPayment, setEditingPayment] = useState(null);
   const [voidingPayment, setVoidingPayment] = useState(null);
   const [showMovementForm, setShowMovementForm] = useState(false);
@@ -1197,9 +1291,7 @@ export default function CrmCash() {
     setLoading(false);
   }, [business?.id, hasAccess, today]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useEffect(() => { load(); }, [load]);
 
   const currentSession  = openSession || sessions[0] || null;
   const currentPayments = currentSession ? (sessionPayments[currentSession.id] || []) : [];
@@ -1208,31 +1300,22 @@ export default function CrmCash() {
   const detailPayments  = detailSession ? (sessionPayments[detailSession.id] || []) : [];
   const detailMvts      = detailSession ? (sessionMovements[detailSession.id] || []) : [];
 
-  const daySummary        = useMemo(() => summarizePayments(dayPayments), [dayPayments]);
-  const dayTotal          = useMemo(() => totalPayments(dayPayments), [dayPayments]);
-  const dayOutflows       = useMemo(() => totalMovementsOut(dayMovements), [dayMovements]);
-  // Métricas de la sesión actual (cuadran exactamente con la tabla)
-  const sessionTotal      = useMemo(() => totalPayments(currentPayments), [currentPayments]);
-  const sessionOutflows   = useMemo(() => totalMovementsOut(currentMvts), [currentMvts]);
-  const sessionSummary    = useMemo(() => summarizePayments(currentPayments), [currentPayments]);
-  const currentBalance    = useMemo(() => calcSessionBalance(currentSession, currentPayments, currentMvts), [currentSession, currentPayments, currentMvts]);
-  const detailSummary     = useMemo(() => summarizePayments(detailPayments), [detailPayments]);
-  const detailBalance     = useMemo(() => calcSessionBalance(detailSession, detailPayments, detailMvts), [detailSession, detailPayments, detailMvts]);
+  const daySummary     = useMemo(() => summarizePayments(dayPayments), [dayPayments]);
+  const dayTotal       = useMemo(() => totalPayments(dayPayments), [dayPayments]);
+  const dayOutflows    = useMemo(() => totalMovementsOut(dayMovements), [dayMovements]);
+  const sessionTotal   = useMemo(() => totalPayments(currentPayments), [currentPayments]);
+  const sessionOutflows= useMemo(() => totalMovementsOut(currentMvts), [currentMvts]);
+  const currentBalance = useMemo(() => calcSessionBalance(currentSession, currentPayments, currentMvts), [currentSession, currentPayments, currentMvts]);
+  const detailSummary  = useMemo(() => summarizePayments(detailPayments), [detailPayments]);
+  const detailBalance  = useMemo(() => calcSessionBalance(detailSession, detailPayments, detailMvts), [detailSession, detailPayments, detailMvts]);
 
   const handleOpen = async ({ initialAmount, notes }) => {
     if (!business?.id) return;
     setBusy(true);
     setErrorMsg('');
-    const { error } = await openCashSession(business.id, {
-      initialAmount,
-      notes,
-      date: today,
-    });
+    const { error } = await openCashSession(business.id, { initialAmount, notes, date: today });
     setBusy(false);
-    if (error) {
-      setErrorMsg(error.message);
-      return;
-    }
+    if (error) { setErrorMsg(error.message); return; }
     setShowOpenForm(false);
     await load();
   };
@@ -1248,34 +1331,20 @@ export default function CrmCash() {
     if (!arqueoSession?.id) return;
     setBusy(true);
     setErrorMsg('');
-    const { error } = await closeCashSession(arqueoSession.id, {
-      expectedCash,
-      countedCash,
-      cashDifference,
-      closingNotes,
-    });
+    const { error } = await closeCashSession(arqueoSession.id, { expectedCash, countedCash, cashDifference, closingNotes });
     setBusy(false);
-    if (error) {
-      setErrorMsg(error.message);
-      return;
-    }
+    if (error) { setErrorMsg(error.message); return; }
     setArqueoSession(null);
     await load();
   };
 
   const handleReopen = async (sessionId) => {
-    if (openSession) {
-      setErrorMsg('Cierra la caja abierta antes de reabrir otra.');
-      return;
-    }
+    if (openSession) { setErrorMsg('Cierra la caja abierta antes de reabrir otra.'); return; }
     setBusy(true);
     setErrorMsg('');
     const { error } = await reopenCashSession(sessionId);
     setBusy(false);
-    if (error) {
-      setErrorMsg(error.message);
-      return;
-    }
+    if (error) { setErrorMsg(error.message); return; }
     await load();
   };
 
@@ -1283,15 +1352,9 @@ export default function CrmCash() {
     if (!editingSession?.id) return;
     setBusy(true);
     setErrorMsg('');
-    const { error } = await updateCashSession(editingSession.id, {
-      initial_amount: initialAmount,
-      notes,
-    });
+    const { error } = await updateCashSession(editingSession.id, { initial_amount: initialAmount, notes });
     setBusy(false);
-    if (error) {
-      setErrorMsg(error.message);
-      return;
-    }
+    if (error) { setErrorMsg(error.message); return; }
     setEditingSession(null);
     await load();
   };
@@ -1302,10 +1365,7 @@ export default function CrmCash() {
     setErrorMsg('');
     const { error } = await updateCrmPayment(editingPayment.id, fields);
     setBusy(false);
-    if (error) {
-      setErrorMsg(error.message);
-      return;
-    }
+    if (error) { setErrorMsg(error.message); return; }
     setEditingPayment(null);
     await load();
   };
@@ -1329,12 +1389,7 @@ export default function CrmCash() {
     setBusy(true);
     setErrorMsg('');
     const now = new Date();
-    const { error } = await createCashMovement(business.id, {
-      ...fields,
-      sessionId: currentSession.id,
-      month:     now.getMonth() + 1,
-      year:      now.getFullYear(),
-    });
+    const { error } = await createCashMovement(business.id, { ...fields, sessionId: currentSession.id, month: now.getMonth() + 1, year: now.getFullYear() });
     setBusy(false);
     if (error) { setErrorMsg(error.message); return; }
     setShowMovementForm(false);
@@ -1345,29 +1400,23 @@ export default function CrmCash() {
     if (!voidingMovement?.id) return;
     setBusy(true);
     setErrorMsg('');
-    const { error } = await voidCashMovement(voidingMovement.id, {
-      voidReason: reason,
-      voidedBy: business?.userId || null,
-    });
+    const { error } = await voidCashMovement(voidingMovement.id, { voidReason: reason, voidedBy: business?.userId || null });
     setBusy(false);
     if (error) { setErrorMsg(error.message); return; }
     setVoidingMovement(null);
     await load();
   };
 
-  const handleEditSale = (invoiceId) => {
-    navigate(`/crm/facturas/${invoiceId}`);
-  };
-
-  const openDetail = (sessionId) => {
-    setDetailSessionId(sessionId);
-    setShowHistory(true);
-  };
+  const handleEditSale = (invoiceId) => navigate(`/crm/facturas/${invoiceId}`);
+  const openDetail = (sessionId) => { setDetailSessionId(sessionId); setActiveTab('history'); };
 
   if (!hasAccess) {
     return (
       <DashboardAppShell>
-        <PanelHeader title={<><CrmBreadcrumb section="Caja diaria" /><h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Caja diaria</h1></>} subtitle="Pagos reales del negocio" />
+        <PanelHeader
+          title={<><CrmBreadcrumb section="Caja diaria" /><h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Caja diaria</h1></>}
+          subtitle={<p className="text-xs capitalize" style={{ color: 'var(--color-muted-foreground)' }}>{fmtDate(today)}</p>}
+        />
         <DashboardLayoutContent>
           <div className="flex flex-col items-center justify-center px-4 py-24 text-center">
             <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-50">
@@ -1375,10 +1424,7 @@ export default function CrmCash() {
             </div>
             <h3 className="mb-2 text-lg font-semibold text-gray-900">Funcionalidad Business</h3>
             <p className="max-w-sm text-sm text-gray-500">Caja diaria requiere plan Business/Full.</p>
-            <button
-              onClick={() => navigate('/planes')}
-              className="mt-5 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-emerald-700"
-            >
+            <button onClick={() => navigate('/planes')} className="mt-5 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-emerald-700">
               Ver planes
             </button>
           </div>
@@ -1394,51 +1440,14 @@ export default function CrmCash() {
           <><CrmBreadcrumb section="Caja diaria" /><h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Caja diaria</h1></>
         }
         subtitle={
-          <p className="text-xs capitalize" style={{ color: 'var(--color-muted-foreground)' }}>
-            {fmtDate(today)}
-          </p>
+          <p className="text-xs capitalize" style={{ color: 'var(--color-muted-foreground)' }}>{fmtDate(today)}</p>
         }
       />
 
       <DashboardLayoutContent>
-        <div className="mx-auto max-w-5xl space-y-5">
+        <div className="mx-auto max-w-5xl space-y-5 pb-10">
 
-          {/* Header con botones principales */}
-          {!loading && (
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-xs text-gray-400 capitalize">{fmtDate(today)}</p>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowHistory(v => !v)}
-                  className="flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50 transition-colors"
-                >
-                  <Icon name="History" size={14} />
-                  Historial
-                </button>
-                {!openSession ? (
-                  <button
-                    onClick={() => setShowOpenForm(true)}
-                    className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700 transition-colors shadow-sm shadow-emerald-200"
-                  >
-                    <Icon name="Plus" size={15} />
-                    Abrir nueva caja
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => handleClose(openSession.id)}
-                    disabled={busy}
-                    className="flex items-center gap-1.5 rounded-xl bg-gray-900 px-4 py-2 text-sm font-bold text-white hover:bg-gray-800 transition-colors disabled:opacity-50"
-                  >
-                    <Icon name="LockKeyhole" size={14} />
-                    Cerrar caja
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Errores */}
+          {/* ── Errores ──────────────────────────────────────────────────── */}
           {errorMsg === 'CASH_SESSION_REQUIRED' ? (
             <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 space-y-3">
               <div className="flex items-start gap-3 text-sm text-amber-800">
@@ -1448,7 +1457,7 @@ export default function CrmCash() {
                 <div className="flex-1">
                   <p className="font-semibold">Para anular un pago de una caja cerrada debes tener una caja abierta.</p>
                 </div>
-                <button onClick={() => setErrorMsg('')} className="text-amber-400 hover:text-amber-600 shrink-0" aria-label="Cerrar">
+                <button onClick={() => setErrorMsg('')} className="text-amber-400 hover:text-amber-600 shrink-0">
                   <Icon name="X" size={14} />
                 </button>
               </div>
@@ -1461,117 +1470,93 @@ export default function CrmCash() {
             <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
               <Icon name="AlertCircle" size={16} className="mt-0.5 shrink-0" />
               <span className="flex-1">{errorMsg}</span>
-              <button onClick={() => setErrorMsg('')} className="text-red-400 hover:text-red-600 shrink-0" aria-label="Cerrar error">
+              <button onClick={() => setErrorMsg('')} className="text-red-400 hover:text-red-600 shrink-0">
                 <Icon name="X" size={14} />
               </button>
             </div>
           ) : null}
 
           {loading ? (
-            <div className="flex flex-col items-center justify-center py-24 gap-3">
-              <div className="h-8 w-8 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
-              <p className="text-sm text-gray-400">Cargando caja…</p>
+            <div className="flex flex-col items-center justify-center py-32 gap-3">
+              <div className="h-10 w-10 animate-spin rounded-full border-[3px] border-emerald-500 border-t-transparent" />
+              <p className="text-sm font-medium text-gray-400">Cargando caja…</p>
             </div>
           ) : (
             <>
-              {/* ── Hero card de sesión ───────────────────────────────────────── */}
-              <div className="rounded-3xl border border-gray-100 bg-white p-6 shadow-sm">
-                {/* Badge de estado */}
-                <div className="mb-4">
-                  <span className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold ring-1 ${
-                    openSession
-                      ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
-                      : 'bg-gray-100 text-gray-600 ring-gray-200'
-                  }`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${openSession ? 'bg-emerald-500' : 'bg-gray-400'}`} />
-                    {openSession ? 'Caja abierta' : 'Caja cerrada'}
-                  </span>
-                </div>
-
-                <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-                  {/* Info de la sesión */}
+              {/* ── Hero Header ──────────────────────────────────────────────── */}
+              <div
+                className="rounded-3xl overflow-hidden border border-gray-100 shadow-sm"
+                style={{ background: 'linear-gradient(135deg, #f8fafc 0%, #ffffff 60%, #f0fdf4 100%)' }}
+              >
+                {/* Top bar */}
+                <div className="flex items-center justify-between gap-4 px-6 pt-6 pb-4">
+                  {/* Left: title + metadata */}
                   <div className="min-w-0 flex-1">
-                    {/* Fecha + turno */}
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-700 mb-2">
-                      <span className="flex items-center gap-1.5 font-semibold text-gray-800">
-                        <Icon name="Calendar" size={14} className="text-gray-400" />
-                        <span className="capitalize">{fmtDate(today)}</span>
+                    <div className="flex items-center gap-3 mb-2 flex-wrap">
+                      {/* Status badge */}
+                      <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ring-1 ${
+                        openSession
+                          ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
+                          : 'bg-gray-100 text-gray-500 ring-gray-200'
+                      }`}>
+                        <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${openSession ? 'bg-emerald-500' : 'bg-gray-400'}`} />
+                        {openSession ? 'Caja abierta' : 'Caja cerrada'}
                       </span>
                       {currentSession && (
-                        <>
-                          <span className="text-gray-300">·</span>
-                          <span className="font-semibold text-gray-600">{turnLabel(currentSession, sessions)}</span>
-                        </>
+                        <span className="text-sm font-semibold text-gray-600">
+                          {turnLabel(currentSession, sessions)}
+                        </span>
                       )}
                     </div>
 
-                    {/* Apertura + Responsable */}
-                    {currentSession && (
-                      <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-gray-400 mb-4">
-                        <span className="flex items-center gap-1.5">
-                          <Icon name="Clock" size={12} />
-                          Apertura: <strong className="text-gray-600 ml-0.5">{fmtTime(currentSession.opened_at)}</strong>
-                        </span>
-                        <span className="flex items-center gap-1.5">
-                          <Icon name="User" size={12} />
-                          Responsable:{' '}
-                          <strong className="text-gray-600 ml-0.5">
-                            {currentSession.opened_by === user?.id
-                              ? (user?.user_metadata?.name || user?.email || '—')
-                              : 'otro usuario'}
-                          </strong>
-                        </span>
-                      </div>
-                    )}
+                    <h2 className="text-3xl font-black text-gray-900 leading-none mb-2" style={{ letterSpacing: '-0.03em' }}>
+                      Caja diaria
+                    </h2>
 
-                    {/* Métricas de la sesión */}
-                    {currentSession && (
-                      <div className="flex flex-wrap items-center gap-x-6 gap-y-1.5 text-sm mb-4">
-                        {toNumber(currentSession.initial_amount) > 0 && (
-                          <div>
-                            <span className="text-gray-400">Fondo inicial: </span>
-                            <strong className="text-gray-700">{formatMoney(toNumber(currentSession.initial_amount), business?.currency)}</strong>
-                          </div>
-                        )}
-                        <div>
-                          <span className="text-gray-400">Cobros: </span>
-                          <strong className="text-emerald-700">{formatMoney(sessionTotal, business?.currency)}</strong>
-                        </div>
-                        {sessionOutflows > 0 && (
-                          <div>
-                            <span className="text-gray-400">Salidas: </span>
-                            <strong className="text-red-600">−{formatMoney(sessionOutflows, business?.currency)}</strong>
-                          </div>
-                        )}
-                        <div>
-                          <span className="text-gray-400">Saldo en caja: </span>
-                          <strong className="text-gray-900 text-base">{formatMoney(currentBalance, business?.currency)}</strong>
-                        </div>
-                      </div>
-                    )}
-
-                    <p className="text-xs text-gray-400 leading-relaxed">
-                      La caja registra pagos reales, no ventas pendientes.
-                      {' '}Puedes abrir más de una caja por día para cambios de turno.
-                    </p>
+                    {/* Metadata row */}
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-400">
+                      <span className="flex items-center gap-1.5 capitalize font-medium text-gray-600">
+                        <Icon name="Calendar" size={12} className="text-gray-300" />
+                        {fmtDate(today)}
+                      </span>
+                      {currentSession && (
+                        <>
+                          <span className="text-gray-200">·</span>
+                          <span className="flex items-center gap-1.5">
+                            <Icon name="Clock" size={12} className="text-gray-300" />
+                            Apertura: <strong className="text-gray-600 ml-0.5">{fmtTime(currentSession.opened_at)}</strong>
+                          </span>
+                          <span className="text-gray-200">·</span>
+                          <span className="flex items-center gap-1.5">
+                            <Icon name="User" size={12} className="text-gray-300" />
+                            <span className="text-gray-500">
+                              {currentSession.opened_by === user?.id
+                                ? (user?.user_metadata?.name || user?.email || '—')
+                                : 'otro usuario'}
+                            </span>
+                          </span>
+                        </>
+                      )}
+                    </div>
                   </div>
 
-                  {/* Botones de acción */}
-                  <div className="flex flex-wrap gap-2 lg:flex-col lg:items-stretch lg:w-44 lg:shrink-0">
+                  {/* Right: action buttons */}
+                  <div className="flex items-center gap-2 flex-wrap shrink-0">
                     {!openSession && (
                       <button
                         onClick={() => setShowOpenForm(true)}
-                        className="flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-700 transition-colors shadow-sm shadow-emerald-200"
+                        className="flex items-center gap-2 px-4 h-10 rounded-xl text-sm font-bold text-white transition-all hover:shadow-lg hover:-translate-y-0.5 active:scale-95"
+                        style={{ background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', boxShadow: '0 4px 16px rgba(16,185,129,0.30)' }}
                       >
-                        <Icon name="Landmark" size={15} />
-                        Abrir nueva caja
+                        <Icon name="Plus" size={15} />
+                        Abrir caja
                       </button>
                     )}
                     {openSession && (
                       <button
                         onClick={() => handleClose(openSession.id)}
                         disabled={busy}
-                        className="flex items-center justify-center gap-2 rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-bold text-white hover:bg-gray-800 transition-colors disabled:opacity-50"
+                        className="flex items-center gap-2 px-4 h-10 rounded-xl bg-gray-900 text-sm font-bold text-white hover:bg-gray-800 transition-all hover:-translate-y-0.5 active:scale-95 disabled:opacity-50"
                       >
                         <Icon name="LockKeyhole" size={14} />
                         Cerrar caja
@@ -1580,7 +1565,7 @@ export default function CrmCash() {
                     {currentSession && (
                       <button
                         onClick={() => setEditingSession(currentSession)}
-                        className="flex items-center justify-center gap-2 rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-bold text-gray-700 hover:bg-gray-50 transition-colors"
+                        className="flex items-center gap-2 px-4 h-10 rounded-xl border border-gray-200 bg-white text-sm font-bold text-gray-700 hover:bg-gray-50 transition-all hover:-translate-y-0.5 active:scale-95"
                       >
                         <Icon name="Pencil" size={14} />
                         Editar
@@ -1589,7 +1574,7 @@ export default function CrmCash() {
                     {currentSession?.status === 'closed' && (
                       <button
                         onClick={() => handleReopen(currentSession.id)}
-                        className="flex items-center justify-center gap-2 rounded-xl border border-emerald-200 px-4 py-2.5 text-sm font-bold text-emerald-700 hover:bg-emerald-50 transition-colors"
+                        className="flex items-center gap-2 px-4 h-10 rounded-xl border border-emerald-200 bg-emerald-50 text-sm font-bold text-emerald-700 hover:bg-emerald-100 transition-all hover:-translate-y-0.5 active:scale-95"
                       >
                         <Icon name="RotateCcw" size={14} />
                         Reabrir
@@ -1597,219 +1582,256 @@ export default function CrmCash() {
                     )}
                   </div>
                 </div>
-              </div>
 
-              {/* ── KPI Cards ──────────────────────────────────────────────────── */}
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-                <KpiCard
-                  label="Fondo inicial"
-                  value={formatMoney(toNumber(currentSession?.initial_amount), business?.currency)}
-                  icon="Wallet"
-                  palette="gray"
-                />
-                <KpiCard
-                  label="Cobros de la caja"
-                  value={formatMoney(sessionTotal, business?.currency)}
-                  icon="TrendingUp"
-                  palette="green"
-                />
-                <KpiCard
-                  label="Salidas de la caja"
-                  value={sessionOutflows > 0 ? `−${formatMoney(sessionOutflows, business?.currency)}` : '—'}
-                  icon="TrendingDown"
-                  palette="red"
-                />
-                <KpiCard
-                  label="Saldo de caja"
-                  value={formatMoney(currentBalance, business?.currency)}
-                  icon="CreditCard"
-                  palette="blue"
-                />
-                <KpiCard
-                  label="Cajas hoy"
-                  value={sessions.length}
-                  icon="CalendarDays"
-                  palette="violet"
-                />
-              </div>
-
-              {/* ── Acciones rápidas (solo caja abierta) ──────────────────────── */}
-              {openSession && (
-                <div className="flex justify-end">
-                  <button
-                    type="button"
-                    onClick={() => setShowMovementForm(true)}
-                    className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-bold text-gray-700 hover:bg-gray-50 transition-colors shadow-sm"
-                  >
-                    <Icon name="ArrowLeftRight" size={15} />
-                    Registrar movimiento
-                  </button>
-                </div>
-              )}
-
-              {/* ── Secciones colapsables ──────────────────────────────────────── */}
-              <div className="space-y-3">
-                {/* Ver movimientos */}
-                <AccordionSection
-                  icon="ArrowLeftRight"
-                  title="Ver movimientos"
-                  description="Revisa todas las entradas y salidas de esta caja"
-                  open={showMovements}
-                  onToggle={() => setShowMovements(v => !v)}
-                >
-                  {currentSession ? (
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between gap-3 pb-1">
-                        <div>
-                          <p className="text-sm font-bold text-gray-900">{turnLabel(currentSession, sessions)}</p>
-                          <p className="text-xs text-gray-400 mt-0.5">
-                            {turnTimeRange(currentSession)} · Saldo: {formatMoney(currentBalance, business?.currency)}
-                          </p>
-                        </div>
+                {/* Metrics strip */}
+                {currentSession && (
+                  <div className="flex flex-wrap gap-x-8 gap-y-2 px-6 pb-5 border-t border-gray-100/60 pt-4">
+                    {toNumber(currentSession.initial_amount) > 0 && (
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-0.5">Fondo inicial</p>
+                        <p className="text-xl font-black text-gray-700 tabular-nums">
+                          {formatMoney(toNumber(currentSession.initial_amount), business?.currency)}
+                        </p>
                       </div>
-                      <MovementsTable
-                        payments={currentPayments}
-                        movements={currentMvts}
-                        currency={business?.currency}
-                        onEditPayment={setEditingPayment}
-                        onVoidPayment={setVoidingPayment}
-                        onVoidMovement={setVoidingMovement}
-                        sessionOpen={currentSession?.status === 'open'}
-                      />
-                    </div>
-                  ) : (
-                    <p className="text-sm text-gray-400 text-center py-4">No hay caja activa hoy.</p>
-                  )}
-                </AccordionSection>
-
-                {/* Resumen del día */}
-                <AccordionSection
-                  icon="PieChart"
-                  title="Resumen del día completo"
-                  description="Resumen consolidado de todas las cajas del día"
-                  open={showDayBreakdown}
-                  onToggle={() => setShowDayBreakdown(v => !v)}
-                >
-                  <p className="mb-3 text-xs font-bold uppercase tracking-wide text-gray-400">
-                    Por método de pago
-                  </p>
-                  <MethodBreakdown summary={daySummary} currency={business?.currency} />
-                  <p className="mt-3 text-right text-xs text-gray-400">
-                    Total del día: <strong className="text-gray-700">{formatMoney(dayTotal, business?.currency)}</strong>
-                    {dayOutflows > 0 && (
-                      <> · Salidas: <strong className="text-red-600">−{formatMoney(dayOutflows, business?.currency)}</strong></>
                     )}
-                  </p>
-                </AccordionSection>
-
-                {/* Historial de cajas */}
-                <AccordionSection
-                  icon="History"
-                  title="Ver historial de cajas"
-                  description="Consulta el historial de cajas anteriores"
-                  open={showHistory}
-                  onToggle={() => setShowHistory(v => !v)}
-                >
-                  {sessions.length === 0 ? (
-                    <div className="py-8 text-center">
-                      <div className="w-12 h-12 rounded-2xl bg-gray-50 flex items-center justify-center mx-auto mb-3">
-                        <Icon name="Wallet" size={20} className="text-gray-300" />
-                      </div>
-                      <p className="text-sm text-gray-400">Todavía no hay cajas abiertas hoy.</p>
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-400 mb-0.5">Cobros</p>
+                      <p className="text-xl font-black text-emerald-600 tabular-nums">
+                        {formatMoney(sessionTotal, business?.currency)}
+                      </p>
                     </div>
-                  ) : (
-                    <div className="divide-y divide-gray-100">
-                      {sessions.map(session => {
-                        const payments  = sessionPayments[session.id] || [];
-                        const movements = sessionMovements[session.id] || [];
-                        const total     = calcSessionBalance(session, payments, movements);
-                        const isOpen    = session.status === 'open';
-                        return (
-                          <div key={session.id} className="flex flex-col gap-3 py-4 lg:flex-row lg:items-center lg:justify-between first:pt-0 last:pb-0">
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="font-bold text-sm text-gray-900">{turnLabel(session, sessions)}</span>
-                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ring-1 ${
-                                  isOpen ? 'bg-emerald-50 text-emerald-700 ring-emerald-200' : 'bg-gray-100 text-gray-500 ring-gray-200'
-                                }`}>
-                                  <span className={`w-1.5 h-1.5 rounded-full ${isOpen ? 'bg-emerald-500' : 'bg-gray-400'}`} />
-                                  {isOpen ? 'Abierta' : 'Cerrada'}
-                                </span>
-                              </div>
-                              <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-gray-400 mt-1">
-                                <span>{turnTimeRange(session)}</span>
-                                <span>Inicial: {formatMoney(toNumber(session.initial_amount), business?.currency)}</span>
-                                <span className="font-semibold text-gray-700">Saldo: {formatMoney(total, business?.currency)}</span>
-                              </div>
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                              <button
-                                onClick={() => openDetail(session.id)}
-                                className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold text-gray-700 hover:bg-gray-50 transition-colors"
-                              >
-                                Ver detalle
-                              </button>
-                              <button
-                                onClick={() => setEditingSession(session)}
-                                className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold text-gray-700 hover:bg-gray-50 transition-colors"
-                              >
-                                Editar
-                              </button>
-                              {isOpen ? (
-                                <button
-                                  onClick={() => handleClose(session.id)}
-                                  disabled={busy}
-                                  className="rounded-lg bg-gray-900 px-3 py-2 text-xs font-bold text-white hover:bg-gray-800 transition-colors disabled:opacity-50"
-                                >
-                                  Cerrar
-                                </button>
-                              ) : (
-                                <button
-                                  onClick={() => handleReopen(session.id)}
-                                  className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700 transition-colors"
-                                >
-                                  Reabrir
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-red-400 mb-0.5">Salidas</p>
+                      <p className="text-xl font-black text-red-500 tabular-nums">
+                        {sessionOutflows > 0 ? `−${formatMoney(sessionOutflows, business?.currency)}` : '—'}
+                      </p>
                     </div>
-                  )}
-
-                  {detailSession && (
-                    <div className="mt-4 space-y-3 border-t border-gray-100 pt-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-bold text-gray-900">{turnLabel(detailSession, sessions)}</p>
-                          <p className="mt-1 text-xs text-gray-400">
-                            {turnTimeRange(detailSession)} · Inicial: {formatMoney(toNumber(detailSession.initial_amount), business?.currency)} · Saldo: {formatMoney(detailBalance, business?.currency)}
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => setDetailSessionId(null)}
-                          className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold text-gray-600 hover:bg-gray-50 transition-colors"
-                        >
-                          Ocultar detalle
-                        </button>
-                      </div>
-                      <MethodBreakdown summary={detailSummary} currency={business?.currency} />
-                      <MovementsTable
-                        payments={detailPayments}
-                        movements={detailMvts}
-                        currency={business?.currency}
-                        onEditPayment={setEditingPayment}
-                        onVoidPayment={setVoidingPayment}
-                        onVoidMovement={setVoidingMovement}
-                        sessionOpen={detailSession?.status === 'open'}
-                      />
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-0.5">Saldo en caja</p>
+                      <p className="text-2xl font-black text-gray-900 tabular-nums" style={{ letterSpacing: '-0.02em' }}>
+                        {formatMoney(currentBalance, business?.currency)}
+                      </p>
                     </div>
-                  )}
-                </AccordionSection>
+                  </div>
+                )}
               </div>
 
-              {/* ── Info box ──────────────────────────────────────────────────── */}
+              {/* ── KPI Cards ──────────────────────────────────────────────── */}
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+                <KpiCard label="Fondo inicial" value={formatMoney(toNumber(currentSession?.initial_amount), business?.currency)} icon="Wallet" palette="gray" />
+                <KpiCard label="Cobros del turno" value={formatMoney(sessionTotal, business?.currency)} icon="TrendingUp" palette="green" />
+                <KpiCard label="Salidas" value={sessionOutflows > 0 ? `−${formatMoney(sessionOutflows, business?.currency)}` : '—'} icon="TrendingDown" palette="red" />
+                <KpiCard label="Saldo disponible" value={formatMoney(currentBalance, business?.currency)} icon="CreditCard" palette="blue" />
+                <KpiCard label="Cajas hoy" value={sessions.length} icon="CalendarDays" palette="violet" />
+              </div>
+
+              {/* ── Tab panel ──────────────────────────────────────────────── */}
+              <div className="rounded-2xl border border-gray-100 bg-white overflow-hidden shadow-sm">
+                {/* Tab header */}
+                <div className="flex items-center justify-between gap-3 px-4 pt-1 border-b border-gray-100">
+                  <TabBar activeTab={activeTab} onChange={setActiveTab} />
+
+                  {/* Registrar movimiento — only when caja open */}
+                  {openSession && activeTab === 'movements' && (
+                    <button
+                      type="button"
+                      onClick={() => setShowMovementForm(true)}
+                      className="flex items-center gap-1.5 rounded-xl border border-gray-200 px-3 py-2 text-xs font-bold text-gray-700 hover:bg-gray-50 transition-colors shrink-0"
+                    >
+                      <Icon name="ArrowLeftRight" size={13} />
+                      Registrar movimiento
+                    </button>
+                  )}
+                </div>
+
+                {/* Tab content */}
+                <div className="p-5">
+                  <AnimatePresence mode="wait">
+                    {activeTab === 'movements' && (
+                      <motion.div
+                        key="movements"
+                        initial={{ opacity: 0, y: 6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -6 }}
+                        transition={{ duration: 0.15 }}
+                      >
+                        {currentSession ? (
+                          <div className="space-y-3">
+                            <div className="flex items-center justify-between gap-3">
+                              <div>
+                                <p className="text-sm font-bold text-gray-900">{turnLabel(currentSession, sessions)}</p>
+                                <p className="text-xs text-gray-400 mt-0.5">
+                                  {turnTimeRange(currentSession)} · Saldo: {formatMoney(currentBalance, business?.currency)}
+                                </p>
+                              </div>
+                            </div>
+                            <CashTimeline
+                              payments={currentPayments}
+                              movements={currentMvts}
+                              currency={business?.currency}
+                              onEditPayment={setEditingPayment}
+                              onVoidPayment={setVoidingPayment}
+                              onVoidMovement={setVoidingMovement}
+                              sessionOpen={currentSession?.status === 'open'}
+                            />
+                          </div>
+                        ) : (
+                          <div className="py-12 text-center">
+                            <div className="w-12 h-12 rounded-2xl bg-gray-50 flex items-center justify-center mx-auto mb-3">
+                              <Icon name="Wallet" size={22} className="text-gray-200" />
+                            </div>
+                            <p className="text-sm font-semibold text-gray-500">No hay caja activa hoy</p>
+                            <button
+                              onClick={() => setShowOpenForm(true)}
+                              className="mt-4 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 text-sm font-bold text-white hover:bg-emerald-700 mx-auto transition-colors"
+                            >
+                              <Icon name="Plus" size={14} />
+                              Abrir caja
+                            </button>
+                          </div>
+                        )}
+                      </motion.div>
+                    )}
+
+                    {activeTab === 'summary' && (
+                      <motion.div
+                        key="summary"
+                        initial={{ opacity: 0, y: 6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -6 }}
+                        transition={{ duration: 0.15 }}
+                        className="space-y-4"
+                      >
+                        <p className="text-xs font-bold uppercase tracking-widest text-gray-400">Por método de pago — resumen del día</p>
+                        <MethodBreakdown summary={daySummary} currency={business?.currency} />
+                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-gray-50 px-4 py-3">
+                          <div>
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-0.5">Total cobrado hoy</p>
+                            <p className="text-2xl font-black text-gray-900 tabular-nums">{formatMoney(dayTotal, business?.currency)}</p>
+                          </div>
+                          {dayOutflows > 0 && (
+                            <div>
+                              <p className="text-[10px] font-bold uppercase tracking-widest text-red-400 mb-0.5">Salidas del día</p>
+                              <p className="text-2xl font-black text-red-600 tabular-nums">−{formatMoney(dayOutflows, business?.currency)}</p>
+                            </div>
+                          )}
+                        </div>
+                      </motion.div>
+                    )}
+
+                    {activeTab === 'history' && (
+                      <motion.div
+                        key="history"
+                        initial={{ opacity: 0, y: 6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -6 }}
+                        transition={{ duration: 0.15 }}
+                        className="space-y-4"
+                      >
+                        {sessions.length === 0 ? (
+                          <div className="py-12 text-center">
+                            <div className="w-12 h-12 rounded-2xl bg-gray-50 flex items-center justify-center mx-auto mb-3">
+                              <Icon name="Wallet" size={22} className="text-gray-200" />
+                            </div>
+                            <p className="text-sm text-gray-400">Todavía no hay cajas abiertas hoy.</p>
+                          </div>
+                        ) : (
+                          <div className="divide-y divide-gray-100">
+                            {sessions.map(session => {
+                              const payments  = sessionPayments[session.id] || [];
+                              const movements = sessionMovements[session.id] || [];
+                              const total     = calcSessionBalance(session, payments, movements);
+                              const isOpen    = session.status === 'open';
+                              return (
+                                <div key={session.id} className="flex flex-col gap-3 py-4 lg:flex-row lg:items-center lg:justify-between first:pt-0 last:pb-0">
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className="font-bold text-sm text-gray-900">{turnLabel(session, sessions)}</span>
+                                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ring-1 ${
+                                        isOpen ? 'bg-emerald-50 text-emerald-700 ring-emerald-200' : 'bg-gray-100 text-gray-500 ring-gray-200'
+                                      }`}>
+                                        <span className={`w-1.5 h-1.5 rounded-full ${isOpen ? 'bg-emerald-500' : 'bg-gray-400'}`} />
+                                        {isOpen ? 'Abierta' : 'Cerrada'}
+                                      </span>
+                                    </div>
+                                    <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-gray-400 mt-1">
+                                      <span>{turnTimeRange(session)}</span>
+                                      <span>Inicial: {formatMoney(toNumber(session.initial_amount), business?.currency)}</span>
+                                      <span className="font-semibold text-gray-700">Saldo: {formatMoney(total, business?.currency)}</span>
+                                    </div>
+                                  </div>
+                                  <div className="flex flex-wrap gap-2">
+                                    <button
+                                      onClick={() => openDetail(session.id)}
+                                      className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold text-gray-700 hover:bg-gray-50 transition-colors"
+                                    >
+                                      Ver detalle
+                                    </button>
+                                    <button
+                                      onClick={() => setEditingSession(session)}
+                                      className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold text-gray-700 hover:bg-gray-50 transition-colors"
+                                    >
+                                      Editar
+                                    </button>
+                                    {isOpen ? (
+                                      <button
+                                        onClick={() => handleClose(session.id)}
+                                        disabled={busy}
+                                        className="rounded-lg bg-gray-900 px-3 py-2 text-xs font-bold text-white hover:bg-gray-800 transition-colors disabled:opacity-50"
+                                      >
+                                        Cerrar
+                                      </button>
+                                    ) : (
+                                      <button
+                                        onClick={() => handleReopen(session.id)}
+                                        className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700 transition-colors"
+                                      >
+                                        Reabrir
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {/* Session detail */}
+                        {detailSession && (
+                          <div className="space-y-3 border-t border-gray-100 pt-4">
+                            <div className="flex items-center justify-between gap-3">
+                              <div>
+                                <p className="text-sm font-bold text-gray-900">{turnLabel(detailSession, sessions)}</p>
+                                <p className="mt-0.5 text-xs text-gray-400">
+                                  {turnTimeRange(detailSession)} · Inicial: {formatMoney(toNumber(detailSession.initial_amount), business?.currency)} · Saldo: {formatMoney(detailBalance, business?.currency)}
+                                </p>
+                              </div>
+                              <button
+                                onClick={() => setDetailSessionId(null)}
+                                className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold text-gray-600 hover:bg-gray-50 transition-colors"
+                              >
+                                Ocultar
+                              </button>
+                            </div>
+                            <MethodBreakdown summary={detailSummary} currency={business?.currency} />
+                            <MovementsTable
+                              payments={detailPayments}
+                              movements={detailMvts}
+                              currency={business?.currency}
+                              onEditPayment={setEditingPayment}
+                              onVoidPayment={setVoidingPayment}
+                              onVoidMovement={setVoidingMovement}
+                              sessionOpen={detailSession?.status === 'open'}
+                            />
+                          </div>
+                        )}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              </div>
+
+              {/* ── Info box ──────────────────────────────────────────────── */}
               <div className="rounded-2xl border border-blue-100 bg-[#EFF6FF] p-4 flex items-start gap-3">
                 <div className="w-8 h-8 rounded-xl bg-blue-100 flex items-center justify-center shrink-0 mt-0.5">
                   <Icon name="Info" size={15} className="text-blue-500" />
@@ -1822,7 +1844,7 @@ export default function CrmCash() {
                 </div>
               </div>
 
-              {/* ── Modales ───────────────────────────────────────────────────── */}
+              {/* ── Modales ───────────────────────────────────────────────── */}
               {showOpenForm && (
                 <CashSessionForm
                   title="Abrir nueva caja"
@@ -1832,7 +1854,6 @@ export default function CrmCash() {
                   onCancel={() => setShowOpenForm(false)}
                 />
               )}
-
               {editingSession && (
                 <CashSessionForm
                   title="Editar caja"
@@ -1844,7 +1865,6 @@ export default function CrmCash() {
                   onCancel={() => setEditingSession(null)}
                 />
               )}
-
               {arqueoSession && (
                 <ArqueoModal
                   session={arqueoSession}
@@ -1856,7 +1876,6 @@ export default function CrmCash() {
                   onCancel={() => setArqueoSession(null)}
                 />
               )}
-
               {editingPayment && (
                 <PaymentEditModal
                   payment={editingPayment}
@@ -1867,7 +1886,6 @@ export default function CrmCash() {
                   onEditSale={handleEditSale}
                 />
               )}
-
               {voidingPayment && (
                 <VoidPaymentModal
                   payment={voidingPayment}
@@ -1877,7 +1895,6 @@ export default function CrmCash() {
                   onCancel={() => setVoidingPayment(null)}
                 />
               )}
-
               {showMovementForm && (
                 <CashMovementModal
                   busy={busy}
@@ -1885,14 +1902,9 @@ export default function CrmCash() {
                   onCancel={() => setShowMovementForm(false)}
                 />
               )}
-
               {voidingMovement && (
                 <VoidPaymentModal
-                  payment={{
-                    ...voidingMovement,
-                    payment_method: 'cash',
-                    invoice_id: null,
-                  }}
+                  payment={{ ...voidingMovement, payment_method: 'cash', invoice_id: null }}
                   currency={business?.currency}
                   busy={busy}
                   onConfirm={handleVoidMovement}
