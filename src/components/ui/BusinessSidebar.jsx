@@ -7,6 +7,7 @@ import MobileBottomNav from 'components/MobileBottomNav';
 import FloatingActionButton from 'components/FloatingActionButton';
 import { useAuth } from '../../contexts/AuthContext';
 import { getPlanLabel } from '../../constants/plans';
+import { canAccessCrm, CRM_ADMIN_ONLY } from '../../config/crmConfig';
 import { buildWhatsAppUrl } from '../../utils/whatsapp';
 import { openWhatsAppUrl } from '../../utils/openWhatsAppUrl';
 import { SUPPORT_WHATSAPP_NUMBER } from '../../config/support';
@@ -20,13 +21,14 @@ const NAV_ITEMS = [
   { label: 'Diseño',             path: '/design',                 icon: 'Palette' },
   { label: 'Plan y facturación', path: '/planes',                 icon: 'CreditCard' },
   { label: 'Ayuda',              path: '/ayuda',                  icon: 'HelpCircle' },
-  { section: true, label: '—' },
+  { section: true, label: '—', crmGated: true },
   {
     label: 'CRM',
     path: '/crm',
     icon: 'Crown',
     badge: 'Premium',
     premiumGated: true,
+    crmGated: true,   // ocultar cuando CRM_ADMIN_ONLY=true y usuario no es admin
     subItems: [
       { label: 'Panel CRM',        path: '/crm' },
       { label: 'Clientes',         path: '/crm/clientes' },
@@ -169,7 +171,11 @@ Motivo (opcional):`;
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto overflow-x-hidden px-2 py-2.5" aria-label="Navegación principal">
         <ul className="space-y-0.5" role="list">
-          {NAV_ITEMS?.filter(item => !item?.adminOnly || isAdmin)?.map((item, idx) => {
+          {NAV_ITEMS?.filter(item =>
+            (!item?.adminOnly || isAdmin) &&
+            // Ocultar CRM completamente a no-admins mientras CRM_ADMIN_ONLY=true
+            !(item?.crmGated && !canAccessCrm(isAdmin, true))
+          )?.map((item, idx) => {
             if (item?.section) {
               if (collapsed) return null;
               return (

@@ -4,3 +4,20 @@
  * CRM_EARLY_ACCESS_MODE = false → re-enables plan checks (requires 'business' plan).
  */
 export const CRM_EARLY_ACCESS_MODE = false;
+
+// TEMPORAL: CRM en estabilización. Solo admins hasta validación final.
+// Para volver a habilitar por plan: cambiar CRM_ADMIN_ONLY a false.
+export const CRM_ADMIN_ONLY = true;
+
+/**
+ * Determina si un usuario puede acceder al CRM.
+ * Punto único de decisión — no dispersar la condición isAdmin en múltiples archivos.
+ *
+ * @param {boolean} isAdmin       - viene de useAuth().isAdmin
+ * @param {boolean} hasPlanAccess - viene de usePlanFeature('crmAccess')
+ * @returns {boolean}
+ */
+export function canAccessCrm(isAdmin, hasPlanAccess) {
+  if (CRM_ADMIN_ONLY) return isAdmin;
+  return isAdmin || hasPlanAccess;
+}
