@@ -86,6 +86,285 @@ function totalMovementsOut(movements = []) {
   return movements.filter(m => !m.voided_at && m.direction === 'out').reduce((s, m) => s + toNumber(m.amount), 0);
 }
 
+// Efectivo físico esperado al cierre:
+// solo cobros en efectivo + movimientos manuales de caja (sin método o método=cash).
+// Los cobros por tarjeta/transferencia NO afectan el efectivo físico.
+function computeExpectedCash(session, payments = [], movements = []) {
+  const initial    = toNumber(session?.initial_amount);
+  const cashIn     = payments
+    .filter(p => !p.voided_at && p.payment_method === 'cash')
+    .reduce((s, p) => s + toNumber(p.amount), 0);
+  const manualIn   = movements
+    .filter(m => !m.voided_at && m.direction === 'in' && (!m.payment_method || m.payment_method === 'cash'))
+    .reduce((s, m) => s + toNumber(m.amount), 0);
+  const manualOut  = movements
+    .filter(m => !m.voided_at && m.direction === 'out' && (!m.payment_method || m.payment_method === 'cash'))
+    .reduce((s, m) => s + toNumber(m.amount), 0);
+  return initial + cashIn + manualIn - manualOut;
+}
+
+// Pasos: 1=resumen, 2=conteo, 3=observacion, 4=confirmar
+function ArqueoModal({ session, payments, movements, currency, busy, onConfirm, onCancel }) {
+  const [step, setStep]           = useState(1);
+  const [counted, setCounted]     = useState('');
+  const [notes, setNotes]         = useState('');
+  const [saveError, setSaveError] = useState('');
+
+  const initial    = toNumber(session?.initial_amount);
+  const cashIn     = payments
+    .filter(p => !p.voided_at && p.payment_method === 'cash')
+    .reduce((s, p) => s + toNumber(p.amount), 0);
+  const otherIn    = payments
+    .filter(p => !p.voided_at && p.payment_method !== 'cash')
+    .reduce((s, p) => s + toNumber(p.amount), 0);
+  const manualIn   = movements
+    .filter(m => !m.voided_at && m.direction === 'in' && (!m.payment_method || m.payment_method === 'cash'))
+    .reduce((s, m) => s + toNumber(m.amount), 0);
+  const manualOut  = movements
+    .filter(m => !m.voided_at && m.direction === 'out' && (!m.payment_method || m.payment_method === 'cash'))
+    .reduce((s, m) => s + toNumber(m.amount), 0);
+  const expected   = initial + cashIn + manualIn - manualOut;
+
+  const countedNum = parseMoneyInput(counted);
+  const diff       = Number.isFinite(countedNum) ? countedNum - expected : null;
+
+  const diffColor = diff === null
+    ? 'text-gray-400'
+    : Math.abs(diff) < 1
+      ? 'text-emerald-600'
+      : Math.abs(diff) < expected * 0.05
+        ? 'text-amber-600'
+        : 'text-red-600';
+
+  const diffEmoji = diff === null ? '' : Math.abs(diff) < 1 ? '🟢' : Math.abs(diff) < expected * 0.05 ? '🟠' : '🔴';
+
+  const canStep2 = true;
+  const canStep3 = Number.isFinite(countedNum) && countedNum >= 0;
+  const needsNote = diff !== null && Math.abs(diff) >= 1;
+  const canFinish = canStep3 && (!needsNote || notes.trim().length >= 5);
+
+  const handleConfirm = () => {
+    setSaveError('');
+    if (!canFinish) {
+      setSaveError(needsNote && notes.trim().length < 5
+        ? 'La observación es obligatoria cuando hay diferencia.'
+        : 'Ingresa el monto contado.');
+      return;
+    }
+    onConfirm({
+      expectedCash:   expected,
+      countedCash:    countedNum,
+      cashDifference: diff,
+      closingNotes:   notes.trim() || null,
+    });
+  };
+
+  const fmt = (v) => formatMoney(v, currency);
+
+  return (
+    <div className="fixed inset-0 z-modal flex items-center justify-center bg-slate-900/50 px-4">
+      <div className="w-full max-w-lg rounded-2xl border border-gray-100 bg-white shadow-xl">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+          <div>
+            <h3 className="text-sm font-bold text-gray-900">Arqueo de caja</h3>
+            <p className="text-xs text-gray-400">Paso {step} de 4</p>
+          </div>
+          <button type="button" onClick={onCancel} className="text-gray-400 hover:text-gray-600">
+            <Icon name="X" size={17} />
+          </button>
+        </div>
+
+        {/* Progress */}
+        <div className="flex gap-1 px-5 pt-3">
+          {[1,2,3,4].map(s => (
+            <div key={s} className={`h-1 flex-1 rounded-full ${s <= step ? 'bg-gray-900' : 'bg-gray-100'}`} />
+          ))}
+        </div>
+
+        <div className="px-5 py-4">
+          {/* Step 1: Resumen automático */}
+          {step === 1 && (
+            <div className="space-y-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Resumen de la caja</p>
+              <div className="divide-y divide-gray-100 rounded-xl border border-gray-100">
+                <Row label="Fondo inicial" value={fmt(initial)} />
+                <Row label="Cobros en efectivo" value={fmt(cashIn)} color="text-emerald-700" />
+                {otherIn > 0 && <Row label="Otros cobros (no efectivo)" value={fmt(otherIn)} color="text-gray-400" note="no afectan caja física" />}
+                {manualIn > 0 && <Row label="Entradas manuales (caja)" value={fmt(manualIn)} color="text-emerald-700" />}
+                {manualOut > 0 && <Row label="Salidas manuales (caja)" value={`−${fmt(manualOut)}`} color="text-red-600" />}
+                <Row label="Efectivo esperado" value={fmt(expected)} bold />
+              </div>
+            </div>
+          )}
+
+          {/* Step 2: Conteo físico */}
+          {step === 2 && (
+            <div className="space-y-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Cuenta el efectivo físico</p>
+              <div className="relative">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">$</span>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  autoFocus
+                  value={fmtMoneyInput(counted)}
+                  onChange={e => setCounted(e.target.value.replace(/\D/g, ''))}
+                  placeholder="0"
+                  className="w-full rounded-xl border border-gray-200 py-3 pl-7 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                />
+              </div>
+              {Number.isFinite(countedNum) && (
+                <div className="rounded-xl bg-gray-50 px-4 py-3 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Esperado</span>
+                    <span className="font-bold text-gray-900">{fmt(expected)}</span>
+                  </div>
+                  <div className="mt-1 flex justify-between">
+                    <span className="text-gray-500">Contado</span>
+                    <span className="font-bold text-gray-900">{fmt(countedNum)}</span>
+                  </div>
+                  <div className="mt-2 flex justify-between border-t border-gray-200 pt-2">
+                    <span className="font-semibold text-gray-700">{diffEmoji} Diferencia</span>
+                    <span className={`font-black ${diffColor}`}>
+                      {diff > 0 ? '+' : ''}{fmt(diff ?? 0)}
+                      {diff > 0 ? ' (sobrante)' : diff < 0 ? ' (faltante)' : ' (cuadra)'}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Step 3: Observación */}
+          {step === 3 && (
+            <div className="space-y-3">
+              {needsNote ? (
+                <>
+                  <div className="flex items-start gap-3 rounded-xl bg-amber-50 px-4 py-3">
+                    <Icon name="AlertTriangle" size={18} className="mt-0.5 shrink-0 text-amber-600" />
+                    <div className="text-sm">
+                      <p className="font-semibold text-amber-800">Diferencia detectada: {diffEmoji} {diff > 0 ? '+' : ''}{fmt(diff)}</p>
+                      <p className="text-amber-700">Observación obligatoria.</p>
+                    </div>
+                  </div>
+                  <textarea
+                    autoFocus
+                    value={notes}
+                    onChange={e => setNotes(e.target.value)}
+                    placeholder="Explica la diferencia..."
+                    rows={3}
+                    className="w-full resize-none rounded-xl border border-gray-200 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  />
+                  {notes.trim().length > 0 && notes.trim().length < 5 && (
+                    <p className="text-xs text-red-500">Mínimo 5 caracteres.</p>
+                  )}
+                </>
+              ) : (
+                <div className="flex flex-col items-center gap-3 py-4 text-center">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50">
+                    <Icon name="CheckCircle" size={24} className="text-emerald-600" />
+                  </div>
+                  <p className="text-sm font-semibold text-gray-900">La caja cuadra perfectamente 🟢</p>
+                  <p className="text-xs text-gray-400">No se requiere observación.</p>
+                  <textarea
+                    value={notes}
+                    onChange={e => setNotes(e.target.value)}
+                    placeholder="Observación opcional..."
+                    rows={2}
+                    className="w-full resize-none rounded-xl border border-gray-200 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Step 4: Confirmación */}
+          {step === 4 && (
+            <div className="space-y-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Confirmar cierre</p>
+              <div className="divide-y divide-gray-100 rounded-xl border border-gray-100">
+                <Row label="Efectivo esperado" value={fmt(expected)} />
+                <Row label="Efectivo contado" value={fmt(countedNum)} />
+                <Row
+                  label={`Diferencia ${diffEmoji}`}
+                  value={`${diff > 0 ? '+' : ''}${fmt(diff ?? 0)}`}
+                  color={diffColor}
+                  bold
+                />
+                {notes.trim() && (
+                  <div className="flex justify-between px-4 py-2.5 text-sm">
+                    <span className="text-gray-500">Observación</span>
+                    <span className="max-w-[55%] text-right font-medium text-gray-700">{notes.trim()}</span>
+                  </div>
+                )}
+              </div>
+              <p className="text-xs text-gray-400">
+                Estos valores quedarán registrados de forma inmutable. No se pueden modificar después del cierre.
+              </p>
+              {saveError && <p className="text-xs text-red-500">{saveError}</p>}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex justify-between gap-2 border-t border-gray-100 px-5 py-4">
+          {step > 1 ? (
+            <button
+              type="button"
+              onClick={() => setStep(s => s - 1)}
+              className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-50"
+            >
+              Atrás
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onCancel}
+              className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-50"
+            >
+              Cancelar
+            </button>
+          )}
+          {step < 4 ? (
+            <button
+              type="button"
+              onClick={() => setStep(s => s + 1)}
+              disabled={step === 2 && !canStep3}
+              className="flex items-center gap-2 rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-bold text-white hover:bg-gray-800 disabled:opacity-40"
+            >
+              Siguiente
+              <Icon name="ChevronRight" size={15} />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleConfirm}
+              disabled={busy || !canFinish}
+              className="flex items-center gap-2 rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-bold text-white hover:bg-gray-800 disabled:opacity-40"
+            >
+              {busy && <Icon name="Loader2" size={15} className="animate-spin" />}
+              Cerrar caja
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Row({ label, value, color = 'text-gray-900', bold = false, note }) {
+  return (
+    <div className="flex items-center justify-between px-4 py-2.5 text-sm">
+      <span className="text-gray-500">
+        {label}
+        {note && <span className="ml-1 text-[10px] text-gray-400">({note})</span>}
+      </span>
+      <span className={`font-${bold ? 'black' : 'semibold'} ${color}`}>{value}</span>
+    </div>
+  );
+}
+
 // Mezcla pagos y movimientos en orden cronológico para la tabla unificada
 function mergeEntries(payments = [], movements = []) {
   return [
@@ -826,6 +1105,7 @@ export default function CrmCash() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [arqueoSession, setArqueoSession] = useState(null);
 
   const planSlug = getEffectivePlanSlug(
     business?.planSlug,
@@ -915,16 +1195,29 @@ export default function CrmCash() {
     await load();
   };
 
-  const handleClose = async (sessionId = openSession?.id) => {
+  const handleClose = (sessionId = openSession?.id) => {
     if (!sessionId) return;
+    const target = sessions.find(s => s.id === sessionId) || openSession;
+    if (!target) return;
+    setArqueoSession(target);
+  };
+
+  const handleArqueoConfirm = async ({ expectedCash, countedCash, cashDifference, closingNotes }) => {
+    if (!arqueoSession?.id) return;
     setBusy(true);
     setErrorMsg('');
-    const { error } = await closeCashSession(sessionId);
+    const { error } = await closeCashSession(arqueoSession.id, {
+      expectedCash,
+      countedCash,
+      cashDifference,
+      closingNotes,
+    });
     setBusy(false);
     if (error) {
       setErrorMsg(error.message);
       return;
     }
+    setArqueoSession(null);
     await load();
   };
 
@@ -1253,6 +1546,18 @@ export default function CrmCash() {
                   submitLabel="Guardar cambios"
                   onSubmit={handleUpdate}
                   onCancel={() => setEditingSession(null)}
+                />
+              )}
+
+              {arqueoSession && (
+                <ArqueoModal
+                  session={arqueoSession}
+                  payments={sessionPayments[arqueoSession.id] || []}
+                  movements={sessionMovements[arqueoSession.id] || []}
+                  currency={business?.currency}
+                  busy={busy}
+                  onConfirm={handleArqueoConfirm}
+                  onCancel={() => setArqueoSession(null)}
                 />
               )}
 

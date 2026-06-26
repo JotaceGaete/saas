@@ -1468,6 +1468,12 @@ export async function closeCashSession(sessionId, {
   cashDifference = null,
   closingNotes   = null,
 } = {}) {
+  if (countedCash == null || !Number.isFinite(Number(countedCash))) {
+    return { data: null, error: { message: 'El arqueo requiere ingresar el efectivo contado.' } };
+  }
+  if (cashDifference != null && Math.abs(Number(cashDifference)) >= 1 && !closingNotes?.trim()) {
+    return { data: null, error: { code: 'CLOSING_NOTES_REQUIRED', message: 'La observación es obligatoria cuando hay diferencia en el arqueo.' } };
+  }
   const { data: { user } } = await supabase.auth.getUser();
   const { data, error } = await supabase
     .from('crm_cash_sessions')
