@@ -650,42 +650,148 @@ function MovementPanel({ product, businessId, onDone }) {
   );
 }
 
-// ─── Stock mínimo inline ───────────────────────────────────────────────────────
+// ─── Panel de stock mínimo ────────────────────────────────────────────────────
 
-function MinimoEditor({ product, onSave }) {
-  const [editing, setEditing] = useState(false);
-  const [val,     setVal]     = useState('');
-  const [saving,  setSaving]  = useState(false);
+function MinimoPanel({ product, onSave }) {
+  const [editing,  setEditing]  = useState(false);
+  const [val,      setVal]      = useState('');
+  const [saving,   setSaving]   = useState(false);
+  const [error,    setError]    = useState('');
+  const [success,  setSuccess]  = useState(false);
 
-  const start  = () => { setVal(product.stock_minimo ?? ''); setEditing(true); };
-  const cancel = () => setEditing(false);
-  const save   = async () => {
+  const hasMinimo = product.stock_minimo != null;
+
+  const start = () => {
+    setVal(product.stock_minimo ?? '');
+    setError('');
+    setEditing(true);
+  };
+
+  const cancel = () => { setEditing(false); setError(''); };
+
+  const save = async () => {
+    const parsed = val === '' ? null : Number(val);
+    if (val !== '' && (isNaN(parsed) || parsed < 0)) {
+      setError('Ingresa un número válido (0 o mayor)');
+      return;
+    }
     setSaving(true);
-    await onSave(product.id, val === '' ? null : +val);
+    setError('');
+    await onSave(product.id, parsed);
+    setSaving(false);
+    setEditing(false);
+    setSuccess(true);
+    setTimeout(() => setSuccess(false), 2000);
+  };
+
+  const clear = async () => {
+    setSaving(true);
+    await onSave(product.id, null);
     setSaving(false);
     setEditing(false);
   };
 
-  if (!editing) return (
-    <button onClick={start} className={`text-sm underline underline-offset-2 tabular-nums ${product.stock_minimo != null ? 'text-gray-500 hover:text-blue-600' : 'text-gray-400 hover:text-blue-500 italic'}`}>
-      {product.stock_minimo != null ? product.stock_minimo : 'No configurado'}
-    </button>
-  );
-
   return (
-    <div className="flex items-center gap-1.5">
-      <input
-        type="number" min="0" step="1" autoFocus
-        value={val}
-        onChange={e => setVal(e.target.value)}
-        className="w-16 border border-blue-400 rounded-lg px-2 py-1 text-sm focus:outline-none text-center"
-      />
-      <button onClick={save} disabled={saving} className="p-1.5 rounded-lg text-green-600 hover:bg-green-50">
-        {saving ? <div className="w-3.5 h-3.5 border-2 border-green-500 border-t-transparent rounded-full animate-spin" /> : <Icon name="Check" size={14} />}
-      </button>
-      <button onClick={cancel} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100">
-        <Icon name="X" size={14} />
-      </button>
+    <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+      <div className="px-5 py-3.5 border-b border-gray-100 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Icon name="Bell" size={15} color="#6b7280" />
+          <p className="text-sm font-bold text-gray-800">Alerta de stock mínimo</p>
+        </div>
+        {success && (
+          <span className="flex items-center gap-1 text-xs text-green-600 font-semibold">
+            <Icon name="Check" size={13} />Guardado
+          </span>
+        )}
+      </div>
+
+      <div className="px-5 py-4">
+        {editing ? (
+          <div className="space-y-3">
+            <p className="text-xs text-gray-500 leading-relaxed">
+              Recibirás una alerta cuando el stock actual llegue a este nivel o por debajo.
+              Deja en blanco para desactivar el control.
+            </p>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min="0"
+                step="1"
+                autoFocus
+                value={val}
+                onChange={e => { setVal(e.target.value); setError(''); }}
+                onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') cancel(); }}
+                placeholder="Ej: 5"
+                className={`flex-1 border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 ${
+                  error ? 'border-red-300 focus:ring-red-400' : 'border-gray-200 focus:ring-blue-500'
+                }`}
+              />
+              <button
+                onClick={save}
+                disabled={saving}
+                className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-colors disabled:opacity-60 shrink-0"
+              >
+                {saving
+                  ? <div className="w-3.5 h-3.5 border-2 border-white/50 border-t-white rounded-full animate-spin" />
+                  : <Icon name="Check" size={14} />
+                }
+                Guardar
+              </button>
+              <button onClick={cancel} className="p-2.5 rounded-xl text-gray-400 hover:bg-gray-100 transition-colors shrink-0">
+                <Icon name="X" size={15} />
+              </button>
+            </div>
+            {error && <p className="text-xs text-red-600">{error}</p>}
+            {hasMinimo && (
+              <button
+                onClick={clear}
+                disabled={saving}
+                className="text-xs text-gray-400 hover:text-red-500 underline underline-offset-2 transition-colors"
+              >
+                Quitar alerta de stock mínimo
+              </button>
+            )}
+          </div>
+        ) : hasMinimo ? (
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-2xl font-black text-gray-800 tabular-nums">{product.stock_minimo}</span>
+                <span className="text-xs text-gray-400">unidades mínimas</span>
+              </div>
+              <p className="text-xs text-gray-400 mt-0.5">
+                {product.stock_actual != null
+                  ? product.stock_actual <= product.stock_minimo
+                    ? '⚠️ Stock actual por debajo del mínimo'
+                    : `Quedan ${product.stock_actual - product.stock_minimo} unidades sobre el mínimo`
+                  : 'Registra stock para activar el control'
+                }
+              </p>
+            </div>
+            <button
+              onClick={start}
+              className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 hover:text-blue-600 bg-gray-50 hover:bg-blue-50 px-3 py-2 rounded-xl transition-colors shrink-0"
+            >
+              <Icon name="Pencil" size={13} />
+              Editar
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm text-gray-400">
+              Sin alerta configurada.{' '}
+              <span className="text-gray-500">El stock no generará avisos.</span>
+            </p>
+            <button
+              onClick={start}
+              className="flex items-center gap-1.5 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded-xl transition-colors shrink-0 whitespace-nowrap"
+            >
+              <Icon name="Bell" size={13} />
+              Configurar
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -752,8 +858,8 @@ function ProductCard({ product, businessId, onBack, onMinimoSave, onMovementDone
           </div>
         </div>
 
-        {/* Stock metrics */}
-        <div className="border-t border-gray-100 px-5 py-4 grid grid-cols-3 gap-4">
+        {/* Stock metrics — 2 columnas: stock actual + estado */}
+        <div className="border-t border-gray-100 px-5 py-4 grid grid-cols-2 gap-4">
           <div className="text-center">
             <p className="text-xs text-gray-400 mb-1">Stock actual</p>
             {product.stock_actual != null ? (
@@ -769,23 +875,21 @@ function ProductCard({ product, businessId, onBack, onMinimoSave, onMovementDone
             )}
           </div>
           <div className="text-center">
-            <p className="text-xs text-gray-400 mb-1.5">Stock mínimo</p>
-            <MinimoEditor product={product} onSave={onMinimoSave} />
-          </div>
-          <div className="text-center">
             <p className="text-xs text-gray-400 mb-1.5">Estado</p>
             <StatusBadge status={status} />
           </div>
         </div>
-        {/* CAMBIO 4: CTA cuando no hay stock configurado */}
         {product.stock_actual == null && (
-          <div className="border-t border-dashed border-blue-100 px-5 py-3 bg-blue-50/40 flex items-center justify-between gap-3">
+          <div className="border-t border-dashed border-blue-100 px-5 py-3 bg-blue-50/40">
             <p className="text-xs text-blue-700 leading-snug">
               Registra una <strong>entrada</strong> abajo para configurar el stock inicial de este producto.
             </p>
           </div>
         )}
       </div>
+
+      {/* Panel de stock mínimo — separado, accionable */}
+      <MinimoPanel product={product} onSave={onMinimoSave} />
 
       {/* Panel de movimiento */}
       <MovementPanel product={product} businessId={businessId} onDone={onMovementDone} />
