@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import DashboardAppShell from 'components/ui/DashboardAppShell';
 import DashboardLayoutContent from 'components/ui/DashboardLayoutContent';
@@ -7,6 +7,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import {
   getCrmQuotes,
   updateCrmQuote,
+  rejectCrmQuote,
   duplicateCrmQuote,
   convertQuoteToInvoice,
   formatQuoteNumber,
@@ -27,22 +28,28 @@ import {
 } from '../../components/crm/DocListComponents';
 
 // ─── Status config ────────────────────────────────────────────────────────────
+// Estados persistentes: borrador | vigente | convertido | rechazado
+// Estados calculados (solo UI): vencido | vence_pronto
 
 const STATUS_CONFIG = {
-  borrador:  { label: 'Borrador',  dot: 'bg-gray-400',    badge: 'bg-gray-50 text-gray-600 ring-gray-200/60',    bar: 'bg-gray-200' },
-  enviado:   { label: 'Enviado',   dot: 'bg-blue-400',    badge: 'bg-blue-50 text-blue-700 ring-blue-200/60',    bar: 'bg-blue-400' },
-  aceptado:  { label: 'Aceptado', dot: 'bg-emerald-400', badge: 'bg-emerald-50 text-emerald-700 ring-emerald-200/60', bar: 'bg-emerald-500' },
-  rechazado: { label: 'Rechazado', dot: 'bg-red-400',     badge: 'bg-red-50 text-red-600 ring-red-200/60',       bar: 'bg-gray-300' },
+  borrador:   { label: 'Borrador',   dot: 'bg-gray-400',    badge: 'bg-gray-50 text-gray-600 ring-gray-200/60',       bar: 'bg-gray-200' },
+  vigente:    { label: 'Vigente',    dot: 'bg-blue-400',    badge: 'bg-blue-50 text-blue-700 ring-blue-200/60',       bar: 'bg-blue-400' },
+  convertido: { label: 'Convertido', dot: 'bg-emerald-400', badge: 'bg-emerald-50 text-emerald-700 ring-emerald-200/60', bar: 'bg-emerald-500' },
+  rechazado:  { label: 'Rechazado', dot: 'bg-red-300',     badge: 'bg-red-50 text-red-500 ring-red-200/60',          bar: 'bg-red-200' },
 };
 
-function getBarColor(q) {
-  if (q.converted_to_invoice_id) return 'bg-violet-400';
-  if (q.status === 'aceptado') return STATUS_CONFIG.aceptado.bar;
-  if (q.status === 'rechazado') return STATUS_CONFIG.rechazado.bar;
+// Calcula el estado visual (puede diferir del persistente por vencimiento)
+function getVisualStatus(q) {
+  if (q.status === 'convertido' || q.status === 'rechazado') return q.status;
   const days = getDaysUntil(q.valid_until);
-  if (days !== null && days < 0) return 'bg-red-400';
-  if (days !== null && days <= 7) return 'bg-amber-400';
-  return STATUS_CONFIG[q.status]?.bar || 'bg-gray-200';
+  if (days !== null && days < 0) return 'vencido';
+  return q.status;
+}
+
+function getBarColor(q) {
+  const vs = getVisualStatus(q);
+  if (vs === 'vencido') return 'bg-red-200';
+  return STATUS_CONFIG[vs]?.bar || 'bg-gray-200';
 }
 
 function fmtDate(d) {
@@ -50,54 +57,156 @@ function fmtDate(d) {
   return new Date(`${d}T12:00:00`).toLocaleDateString('es-CL', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
-const EDITABLE_QUOTE_STATUSES = new Set(['borrador', 'enviado', 'pendiente']);
+function fmtTs(d) {
+  if (!d) return null;
+  return new Date(d).toLocaleDateString('es-CL', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+// Statuses where financial fields are editable
+const FINANCIAL_EDITABLE_STATUSES = new Set(['borrador', 'vigente']);
+
+// ─── Rejection modal ──────────────────────────────────────────────────────────
+
+const REJECTION_OPTIONS = [
+  'Precio muy alto',
+  'Compró en otro lugar',
+  'Cliente canceló',
+  'Sin respuesta del cliente',
+  'Otro',
+];
+
+function RejectionModal({ quote, docLabel, busy, onConfirm, onCancel }) {
+  const [selected, setSelected] = useState('');
+  const [custom, setCustom]     = useState('');
+  const [error, setError]       = useState('');
+
+  const reason = selected === 'Otro' ? custom.trim() : selected;
+  const valid  = reason.length >= 3;
+
+  const handleSubmit = () => {
+    if (!valid) { setError('Selecciona o escribe el motivo.'); return; }
+    setError('');
+    onConfirm(reason);
+  };
+
+  return (
+    <div className="fixed inset-0 z-modal flex items-center justify-center bg-slate-900/50 px-4">
+      <div className="w-full max-w-md rounded-2xl border border-gray-100 bg-white shadow-xl">
+        <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+          <div>
+            <h3 className="text-sm font-bold text-gray-900">Rechazar presupuesto</h3>
+            <p className="text-xs text-gray-400">{docLabel?.singular ? `${docLabel.singular} ` : ''}{formatQuoteNumber(quote?.quote_number)}</p>
+          </div>
+          <button type="button" onClick={onCancel} className="text-gray-400 hover:text-gray-600">
+            <Icon name="X" size={17} />
+          </button>
+        </div>
+        <div className="px-5 py-4 space-y-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Motivo del rechazo</p>
+          <div className="space-y-2">
+            {REJECTION_OPTIONS.map(opt => (
+              <button
+                key={opt}
+                type="button"
+                onClick={() => { setSelected(opt); setError(''); }}
+                className={`flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-sm text-left transition-all ${
+                  selected === opt
+                    ? 'border-red-300 bg-red-50 font-semibold text-red-700'
+                    : 'border-gray-100 bg-white text-gray-700 hover:border-gray-200 hover:bg-gray-50'
+                }`}
+              >
+                <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 ${selected === opt ? 'border-red-500' : 'border-gray-300'}`}>
+                  {selected === opt && <span className="h-2 w-2 rounded-full bg-red-500" />}
+                </span>
+                {opt}
+              </button>
+            ))}
+          </div>
+          {selected === 'Otro' && (
+            <textarea
+              autoFocus
+              value={custom}
+              onChange={e => setCustom(e.target.value)}
+              placeholder="Describe el motivo…"
+              rows={2}
+              className="w-full resize-none rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-400"
+            />
+          )}
+          {error && <p className="text-xs text-red-500">{error}</p>}
+        </div>
+        <div className="flex justify-end gap-2 border-t border-gray-100 px-5 py-4">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={busy || !valid}
+            className="flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-40"
+          >
+            {busy && <Icon name="Loader2" size={14} className="animate-spin" />}
+            Registrar rechazo
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ─── Quote card ───────────────────────────────────────────────────────────────
 
-function QuoteCard({ q, busy, fmt, docLabel, onNavigate, onStatus, onDuplicate, onConvert }) {
-  const canEdit    = EDITABLE_QUOTE_STATUSES.has(q.status) && !q.converted_to_invoice_id;
-  const isConverted = !!q.converted_to_invoice_id;
-  const cfg        = STATUS_CONFIG[q.status] || STATUS_CONFIG.borrador;
-  const barColor   = getBarColor(q);
-  const days       = getDaysUntil(q.valid_until);
-  const isExpired  = days !== null && days < 0 && !['aceptado','rechazado'].includes(q.status);
+function QuoteCard({ q, busy, fmt, docLabel, onNavigate, onEmit, onConvert, onReject, onDuplicate }) {
+  const canEditFinancial = FINANCIAL_EDITABLE_STATUSES.has(q.status) && !q.converted_to_invoice_id;
+  const isConverted      = !!q.converted_to_invoice_id;
+  const visualStatus     = getVisualStatus(q);
+  const isVencido        = visualStatus === 'vencido';
+  const cfg              = STATUS_CONFIG[q.status] || STATUS_CONFIG.borrador;
+  const days             = getDaysUntil(q.valid_until);
+
+  // Badge to display (computed may override persistent)
+  const badgeLabel = isVencido ? 'Vencido' : cfg.label;
+  const badgeDot   = isVencido ? 'bg-red-300' : cfg.dot;
+  const badgeCls   = isVencido ? 'bg-red-50 text-red-500 ring-red-200/60' : cfg.badge;
 
   const menuItems = [
     { icon: 'Eye',      label: 'Ver presupuesto', onClick: onNavigate },
     { icon: 'FileText', label: 'Ver PDF',          onClick: onNavigate },
     { type: 'divider' },
     { icon: 'Copy',     label: 'Duplicar',         onClick: onDuplicate, disabled: !!busy },
-    { icon: 'Send',     label: 'Enviar',            soon: true },
-    { icon: 'Share2',   label: 'Compartir',         soon: true },
-    { icon: 'History',  label: 'Historial',         soon: true },
+    { icon: 'Send',     label: 'Enviar por email', soon: true },
+    { icon: 'Share2',   label: 'Compartir enlace', soon: true },
+    { icon: 'History',  label: 'Historial',        soon: true },
   ];
 
   if (q.status === 'borrador') {
     menuItems.push({ type: 'divider' });
-    menuItems.push({ icon: 'Send',      label: 'Marcar enviado',  onClick: () => onStatus(q.id, 'enviado'),   disabled: !!busy });
+    menuItems.push({ icon: 'CheckCircle', label: 'Emitir presupuesto', onClick: onEmit, disabled: !!busy });
+    menuItems.push({ icon: 'ThumbsDown', label: 'Rechazar',            onClick: onReject, red: true, disabled: !!busy });
   }
-  if (q.status === 'enviado') {
+  if (q.status === 'vigente') {
     menuItems.push({ type: 'divider' });
-    menuItems.push({ icon: 'ThumbsUp',   label: 'Marcar aceptado',  onClick: () => onStatus(q.id, 'aceptado'),  green: true, disabled: !!busy });
-    menuItems.push({ icon: 'ThumbsDown', label: 'Marcar rechazado', onClick: () => onStatus(q.id, 'rechazado'), red:   true, disabled: !!busy });
-  }
-  if (q.status === 'aceptado' && !isConverted) {
-    menuItems.push({ type: 'divider' });
-    menuItems.push({ icon: 'ArrowRightCircle', label: 'Convertir a factura', onClick: () => onConvert(q), green: true, disabled: !!busy });
+    menuItems.push({ icon: 'ArrowRightCircle', label: 'Convertir en nota de venta', onClick: onConvert, green: true, disabled: !!busy });
+    menuItems.push({ icon: 'ThumbsDown',       label: 'Rechazar',                   onClick: onReject,  red:   true, disabled: !!busy });
   }
 
   return (
     <div
       onClick={onNavigate}
-      className="group relative flex cursor-pointer overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition-all hover:-translate-y-px hover:border-gray-200 hover:shadow-md"
+      className={`group relative flex cursor-pointer overflow-hidden rounded-2xl border bg-white shadow-sm transition-all hover:-translate-y-px hover:shadow-md ${
+        isVencido ? 'border-gray-100 opacity-70 hover:opacity-100' : 'border-gray-100 hover:border-gray-200'
+      }`}
     >
       {/* Left color bar */}
-      <div className={`w-1 shrink-0 self-stretch ${barColor} transition-all group-hover:w-1.5`} />
+      <div className={`w-1 shrink-0 self-stretch ${getBarColor(q)} transition-all group-hover:w-1.5`} />
 
       <div className="flex min-w-0 flex-1 flex-col gap-3 p-4 sm:flex-row sm:items-center sm:gap-4 sm:p-5">
         {/* Col 1 — Identity */}
         <div className="flex min-w-0 flex-1 items-start gap-3">
-          <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-400">
+          <div className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${isVencido || q.status === 'rechazado' ? 'bg-gray-50 text-gray-300' : 'bg-blue-50 text-blue-400'}`}>
             <Icon name="FileText" size={17} />
           </div>
           <div className="min-w-0">
@@ -105,19 +214,15 @@ function QuoteCard({ q, busy, fmt, docLabel, onNavigate, onStatus, onDuplicate, 
               <span className="text-[15px] font-bold tracking-tight text-gray-900">
                 {formatQuoteNumber(q.quote_number, q._docTitleType)}
               </span>
-              <DocStatusBadge
-                label={isExpired ? 'Vencido' : (cfg.label)}
-                dot={isExpired ? 'bg-red-400' : cfg.dot}
-                badge={isExpired ? 'bg-red-50 text-red-600 ring-red-200/60' : cfg.badge}
-              />
+              <DocStatusBadge label={badgeLabel} dot={badgeDot} badge={badgeCls} />
               {isConverted && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2.5 py-1 text-[11px] font-semibold text-violet-700 ring-1 ring-violet-200/60">
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 ring-1 ring-emerald-200/60">
                   <Icon name="ArrowRightCircle" size={10} />
-                  Convertido
+                  Nota de venta vinculada
                 </span>
               )}
             </div>
-            <p className="truncate text-xs text-gray-400">
+            <p className="truncate text-xs">
               {q.wa_customers?.name
                 ? <span className="font-medium text-gray-600">{q.wa_customers.name}</span>
                 : <em className="text-gray-300">Sin cliente</em>}
@@ -125,26 +230,37 @@ function QuoteCard({ q, busy, fmt, docLabel, onNavigate, onStatus, onDuplicate, 
                 <span className="text-gray-400"> · {q.wa_customers.company}</span>
               )}
             </p>
-            {days !== null && !['aceptado','rechazado'].includes(q.status) && !isConverted && (
+
+            {/* Expiry indicator (only for active quotes) */}
+            {q.valid_until && ['borrador','vigente'].includes(q.status) && (
               <div className="mt-1">
                 <ExpiryPill days={days} />
               </div>
             )}
+
+            {/* Rejection reason */}
+            {q.status === 'rechazado' && q.rejection_reason && (
+              <p className="mt-0.5 text-[11px] text-gray-400">
+                <Icon name="MessageSquare" size={10} className="mr-0.5 inline" />
+                {q.rejection_reason}
+                {q.rejected_at && <span className="ml-1">· {fmtTs(q.rejected_at)}</span>}
+              </p>
+            )}
           </div>
         </div>
 
-        {/* Col 2 — Dates (hidden on mobile) */}
+        {/* Col 2 — Dates */}
         <div className="hidden w-36 shrink-0 space-y-1.5 sm:block">
           {q.created_at && (
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Emisión</p>
-              <p className="text-xs font-medium text-gray-700">{fmtDate(q.created_at?.slice(0,10))}</p>
+              <p className="text-xs font-medium text-gray-600">{fmtDate(q.created_at?.slice(0,10))}</p>
             </div>
           )}
           {q.valid_until && (
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Vencimiento</p>
-              <p className={`text-xs font-medium ${isExpired ? 'font-semibold text-red-500' : days !== null && days <= 7 ? 'font-semibold text-amber-600' : 'text-gray-700'}`}>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Vence</p>
+              <p className={`text-xs font-medium ${isVencido ? 'text-red-400' : days !== null && days <= 3 ? 'font-semibold text-amber-600' : 'text-gray-600'}`}>
                 {fmtDate(q.valid_until)}
               </p>
             </div>
@@ -153,27 +269,46 @@ function QuoteCard({ q, busy, fmt, docLabel, onNavigate, onStatus, onDuplicate, 
 
         {/* Col 3 — Amount */}
         <div className="shrink-0 text-right sm:w-28">
-          <p className="text-xl font-black tracking-tight text-gray-900">{fmt(q.total)}</p>
-          {q.valid_until && (
-            <p className="mt-0.5 text-[10px] text-gray-400 sm:hidden">
-              {isExpired ? `Venció ${fmtDate(q.valid_until)}` : `Vence ${fmtDate(q.valid_until)}`}
-            </p>
-          )}
+          <p className={`text-xl font-black tracking-tight ${isVencido || q.status === 'rechazado' ? 'text-gray-400' : 'text-gray-900'}`}>
+            {fmt(q.total)}
+          </p>
         </div>
 
         {/* Col 4 — Actions */}
-        <div
-          className="flex shrink-0 items-center gap-1"
-          onClick={e => e.stopPropagation()}
-        >
-          <button
-            type="button"
-            onClick={onNavigate}
-            className="hidden items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 sm:flex"
-          >
-            <Icon name="Eye" size={13} />
-            Ver
-          </button>
+        <div className="flex shrink-0 items-center gap-1" onClick={e => e.stopPropagation()}>
+          {/* Primary CTA based on status */}
+          {q.status === 'borrador' && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onEmit(); }}
+              disabled={!!busy}
+              className="hidden items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 hover:bg-blue-100 disabled:opacity-40 sm:flex"
+            >
+              <Icon name="CheckCircle" size={13} />
+              Emitir
+            </button>
+          )}
+          {q.status === 'vigente' && !isVencido && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onConvert(); }}
+              disabled={!!busy}
+              className="hidden items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 hover:bg-emerald-100 disabled:opacity-40 sm:flex"
+            >
+              <Icon name="ArrowRightCircle" size={13} />
+              Convertir
+            </button>
+          )}
+          {(q.status === 'convertido' || isVencido || q.status === 'rechazado') && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onNavigate(); }}
+              className="hidden items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-50 sm:flex"
+            >
+              <Icon name="Eye" size={13} />
+              Ver
+            </button>
+          )}
           <DocActionMenu items={menuItems} />
         </div>
       </div>
@@ -183,24 +318,32 @@ function QuoteCard({ q, busy, fmt, docLabel, onNavigate, onStatus, onDuplicate, 
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-const FILTER_KEYS = ['borrador', 'enviado', 'aceptado', 'rechazado', 'vencido', 'por_vencer'];
+// Virtual filter keys (vencido is computed, not stored)
+const FILTER_KEYS = ['borrador', 'vigente', 'convertido', 'rechazado', 'vencido'];
 
-function computeVirtual(q) {
-  const days = getDaysUntil(q.valid_until);
-  const active = !['aceptado','rechazado'].includes(q.status);
-  if (active && days !== null && days < 0)  return 'vencido';
-  if (active && days !== null && days <= 7) return 'por_vencer';
-  return q.status;
+const FILTER_LABELS = {
+  borrador:   { label: 'Borradores',  dot: STATUS_CONFIG.borrador.dot },
+  vigente:    { label: 'Vigentes',    dot: STATUS_CONFIG.vigente.dot },
+  convertido: { label: 'Convertidos', dot: STATUS_CONFIG.convertido.dot },
+  rechazado:  { label: 'Rechazados', dot: STATUS_CONFIG.rechazado.dot },
+  vencido:    { label: 'Vencidos',   dot: 'bg-red-300' },
+};
+
+function matchesFilter(q, filter) {
+  if (!filter) return true;
+  if (filter === 'vencido') return getVisualStatus(q) === 'vencido';
+  return q.status === filter;
 }
 
 export default function CrmQuotes() {
   const navigate = useNavigate();
   const { business } = useAuth();
-  const [quotes, setQuotes]           = useState([]);
-  const [loading, setLoading]         = useState(true);
-  const [busy, setBusy]               = useState('');
-  const [search, setSearch]           = useState('');
+  const [quotes, setQuotes]             = useState([]);
+  const [loading, setLoading]           = useState(true);
+  const [busy, setBusy]                 = useState('');
+  const [search, setSearch]             = useState('');
   const [statusFilter, setStatusFilter] = useState(null);
+  const [rejectingQuote, setRejectingQuote] = useState(null);
 
   const load = async () => {
     if (!business?.id) return;
@@ -215,52 +358,67 @@ export default function CrmQuotes() {
   const fmt      = (n) => formatMoney(n, business?.currency);
   const docLabel = getQuoteDocLabel(business?.documentTitleType);
 
-  // KPIs
+  // KPIs — based on what matters commercially
   const kpis = useMemo(() => {
-    const active = quotes.filter(q => q.status !== 'rechazado');
+    const active    = quotes.filter(q => ['borrador','vigente'].includes(q.status));
+    const vencidos  = active.filter(q => getVisualStatus(q) === 'vencido');
+    const vigentes  = quotes.filter(q => q.status === 'vigente' && getVisualStatus(q) !== 'vencido');
     return {
-      totalCotizado:  active.reduce((s, q) => s + (q.total || 0), 0),
-      aceptados:      quotes.filter(q => q.status === 'aceptado').length,
-      pendientes:     quotes.filter(q => ['borrador','enviado'].includes(q.status)).length,
-      vencidos:       quotes.filter(q => computeVirtual(q) === 'vencido').length,
+      totalActivo:   active.reduce((s, q) => s + (q.total || 0), 0),
+      vigentes:      vigentes.length,
+      convertidos:   quotes.filter(q => q.status === 'convertido').length,
+      vencidos:      vencidos.length,
     };
   }, [quotes]);
 
-  // Counts per filter
+  // Counts per filter chip
   const counts = useMemo(() => ({
     all:        quotes.length,
     borrador:   quotes.filter(q => q.status === 'borrador').length,
-    enviado:    quotes.filter(q => q.status === 'enviado').length,
-    aceptado:   quotes.filter(q => q.status === 'aceptado').length,
+    vigente:    quotes.filter(q => q.status === 'vigente' && getVisualStatus(q) !== 'vencido').length,
+    convertido: quotes.filter(q => q.status === 'convertido').length,
     rechazado:  quotes.filter(q => q.status === 'rechazado').length,
-    vencido:    quotes.filter(q => computeVirtual(q) === 'vencido').length,
-    por_vencer: quotes.filter(q => computeVirtual(q) === 'por_vencer').length,
+    vencido:    quotes.filter(q => getVisualStatus(q) === 'vencido').length,
   }), [quotes]);
 
   const filtered = useMemo(() => quotes.filter(q => {
-    if (statusFilter) {
-      if (['vencido','por_vencer'].includes(statusFilter)) {
-        if (computeVirtual(q) !== statusFilter) return false;
-      } else {
-        if (q.status !== statusFilter) return false;
-      }
-    }
+    if (!matchesFilter(q, statusFilter)) return false;
     if (search.trim()) {
       const qry = search.trim().toLowerCase();
       return (
         formatQuoteNumber(q.quote_number, business?.documentTitleType).toLowerCase().includes(qry) ||
         (q.wa_customers?.name || '').toLowerCase().includes(qry) ||
-        (q.created_at || '').slice(0,10).includes(qry)
+        (q.created_at || '').slice(0, 10).includes(qry)
       );
     }
     return true;
   }), [quotes, statusFilter, search, business?.documentTitleType]);
 
-  const handleStatus = async (id, status) => {
-    setBusy(id + status);
-    await updateCrmQuote(id, { status });
+  // ── Handlers ──────────────────────────────────────────────────────────────
+
+  const handleEmit = async (id) => {
+    setBusy(id + 'emit');
+    await updateCrmQuote(id, { status: 'vigente' });
     await load();
     setBusy('');
+  };
+
+  const handleConvert = async (q) => {
+    if (!window.confirm(`¿Convertir ${formatQuoteNumber(q.quote_number, business?.documentTitleType)} en nota de venta? Se creará automáticamente.`)) return;
+    setBusy(q.id + 'conv');
+    const { data, error } = await convertQuoteToInvoice(q.id);
+    setBusy('');
+    if (data?.id) navigate(`/crm/facturas/${data.id}`);
+    else if (error) alert('Error: ' + error.message);
+  };
+
+  const handleRejectConfirm = async (reason) => {
+    if (!rejectingQuote) return;
+    setBusy(rejectingQuote.id + 'reject');
+    await rejectCrmQuote(rejectingQuote.id, reason);
+    setBusy('');
+    setRejectingQuote(null);
+    await load();
   };
 
   const handleDuplicate = async (id) => {
@@ -271,25 +429,9 @@ export default function CrmQuotes() {
     else load();
   };
 
-  const handleConvert = async (q) => {
-    if (!window.confirm(`¿Convertir ${formatQuoteNumber(q.quote_number, business?.documentTitleType)} en factura interna?`)) return;
-    setBusy(q.id + 'conv');
-    const { data, error } = await convertQuoteToInvoice(q.id);
-    setBusy('');
-    if (data?.id) navigate(`/crm/facturas/${data.id}`);
-    else if (error) alert('Error: ' + error.message);
-  };
-
-  const FILTER_LABELS = {
-    borrador:   { label: 'Borradores',  dot: STATUS_CONFIG.borrador.dot },
-    enviado:    { label: 'Enviados',    dot: STATUS_CONFIG.enviado.dot },
-    aceptado:   { label: 'Aceptados',  dot: STATUS_CONFIG.aceptado.dot },
-    rechazado:  { label: 'Rechazados', dot: STATUS_CONFIG.rechazado.dot },
-    vencido:    { label: 'Vencidos',   dot: 'bg-red-400' },
-    por_vencer: { label: 'Por vencer', dot: 'bg-amber-400' },
-  };
-
-  const noun = loading ? '…' : `${quotes.length} ${quotes.length !== 1 ? docLabel.plural : docLabel.singular}`;
+  const noun = loading
+    ? '…'
+    : `${quotes.length} ${quotes.length !== 1 ? docLabel.plural : docLabel.singular}`;
 
   return (
     <DashboardAppShell>
@@ -306,30 +448,30 @@ export default function CrmQuotes() {
             loading={loading}
           />
 
-          {/* KPIs */}
           {!loading && quotes.length > 0 && (
             <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
               <KpiCard
                 icon="DollarSign"
-                label="Total cotizado"
-                value={fmt(kpis.totalCotizado)}
+                label="Valor activo cotizado"
+                value={fmt(kpis.totalActivo)}
                 color="blue"
               />
               <KpiCard
-                icon="ThumbsUp"
-                label="Aceptados"
-                value={kpis.aceptados}
+                icon="FileCheck"
+                label="Vigentes"
+                value={kpis.vigentes}
+                color="blue"
+                active={statusFilter === 'vigente'}
+                onClick={() => setStatusFilter(f => f === 'vigente' ? null : 'vigente')}
+                sub={kpis.vigentes > 0 ? 'Esperando respuesta' : null}
+              />
+              <KpiCard
+                icon="ArrowRightCircle"
+                label="Convertidos"
+                value={kpis.convertidos}
                 color="green"
-                active={statusFilter === 'aceptado'}
-                onClick={() => setStatusFilter(f => f === 'aceptado' ? null : 'aceptado')}
-              />
-              <KpiCard
-                icon="Clock"
-                label="Pendientes"
-                value={kpis.pendientes}
-                color="blue"
-                active={statusFilter === 'enviado'}
-                onClick={() => setStatusFilter(f => f === 'enviado' ? null : 'enviado')}
+                active={statusFilter === 'convertido'}
+                onClick={() => setStatusFilter(f => f === 'convertido' ? null : 'convertido')}
               />
               <KpiCard
                 icon="AlertCircle"
@@ -338,7 +480,7 @@ export default function CrmQuotes() {
                 color="red"
                 active={statusFilter === 'vencido'}
                 onClick={() => setStatusFilter(f => f === 'vencido' ? null : 'vencido')}
-                sub={kpis.vencidos > 0 ? 'Requieren atención' : null}
+                sub={kpis.vencidos > 0 ? 'Sin respuesta' : null}
               />
             </div>
           )}
@@ -368,7 +510,7 @@ export default function CrmQuotes() {
             <DocSearchBar
               value={search}
               onChange={setSearch}
-              placeholder={`Número, cliente o fecha…`}
+              placeholder="Número, cliente o fecha…"
             />
           </div>
         )}
@@ -402,12 +544,24 @@ export default function CrmQuotes() {
                 fmt={fmt}
                 docLabel={docLabel}
                 onNavigate={() => navigate(`/crm/presupuestos/${q.id}`)}
-                onStatus={handleStatus}
+                onEmit={() => handleEmit(q.id)}
+                onConvert={() => handleConvert(q)}
+                onReject={() => setRejectingQuote(q)}
                 onDuplicate={() => handleDuplicate(q.id)}
-                onConvert={handleConvert}
               />
             ))}
           </div>
+        )}
+
+        {/* ── Rejection modal ── */}
+        {rejectingQuote && (
+          <RejectionModal
+            quote={rejectingQuote}
+            docLabel={docLabel}
+            busy={!!busy}
+            onConfirm={handleRejectConfirm}
+            onCancel={() => setRejectingQuote(null)}
+          />
         )}
       </DashboardLayoutContent>
     </DashboardAppShell>

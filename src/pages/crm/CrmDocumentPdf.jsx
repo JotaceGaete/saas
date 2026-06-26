@@ -46,23 +46,32 @@ const C = {
 };
 
 const STATUS_COLORS = {
-  borrador:  { bg: C.gray100,    text: C.gray600 },
-  enviado:   { bg: C.blueSoft,   text: C.blue },
-  aceptado:  { bg: C.greenSoft,  text: C.green },
-  rechazado: { bg: C.redSoft,    text: C.red },
-  pendiente: { bg: C.yellowSoft, text: C.yellow },
-  pagada:    { bg: C.greenSoft,  text: C.green },
-  anulada:   { bg: C.redSoft,    text: C.red },
+  borrador:   { bg: C.gray100,    text: C.gray600 },
+  vigente:    { bg: C.blueSoft,   text: C.blue },
+  convertido: { bg: C.greenSoft,  text: C.green },
+  rechazado:  { bg: C.redSoft,    text: C.red },
+  pendiente:  { bg: C.yellowSoft, text: C.yellow },
+  pagada:     { bg: C.greenSoft,  text: C.green },
+  anulada:    { bg: C.redSoft,    text: C.red },
+  // Compatibilidad con registros anteriores al refactor
+  enviado:    { bg: C.blueSoft,   text: C.blue },
+  aceptado:   { bg: C.greenSoft,  text: C.green },
 };
 const STATUS_LABELS = {
-  borrador: 'BORRADOR', enviado: 'ENVIADO', aceptado: 'ACEPTADO', rechazado: 'RECHAZADO',
+  borrador: 'BORRADOR', vigente: 'VIGENTE', convertido: 'CONVERTIDO', rechazado: 'RECHAZADO',
   pendiente: 'PENDIENTE', pagada: 'PAGADA', anulada: 'ANULADA',
+  enviado: 'VIGENTE', aceptado: 'CONVERTIDO',
 };
 const STATUS_HTML = {
-  borrador: 'bg-gray-100 text-gray-600', enviado: 'bg-blue-100 text-blue-700',
-  aceptado: 'bg-green-100 text-green-700', rechazado: 'bg-red-100 text-red-700',
-  pendiente: 'bg-yellow-100 text-yellow-700', pagada: 'bg-green-100 text-green-700',
-  anulada: 'bg-red-100 text-red-700',
+  borrador:   'bg-gray-100 text-gray-600',
+  vigente:    'bg-blue-100 text-blue-700',
+  convertido: 'bg-green-100 text-green-700',
+  rechazado:  'bg-red-100 text-red-700',
+  pendiente:  'bg-yellow-100 text-yellow-700',
+  pagada:     'bg-green-100 text-green-700',
+  anulada:    'bg-red-100 text-red-700',
+  // Compatibilidad hacia atrás
+  enviado: 'bg-blue-100 text-blue-700', aceptado: 'bg-green-100 text-green-700',
 };
 
 // ─── Estilos PDF ───────────────────────────────────────────────────────────────

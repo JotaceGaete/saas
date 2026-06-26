@@ -54,10 +54,10 @@ const fieldClass =
 const fieldClassDisabled =
   'w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50';
 
-// borrador y enviado: edición financiera completa
-// aceptado: sólo admin (ítems y cliente bloqueados)
+// borrador y vigente: edición financiera completa
+// convertido: solo edición administrativa
 // rechazado: todo bloqueado
-const FINANCIAL_EDITABLE_STATUSES = new Set(['borrador', 'enviado']);
+const FINANCIAL_EDITABLE_STATUSES = new Set(['borrador', 'vigente']);
 
 export default function CrmQuoteEditor() {
   const { id } = useParams();
@@ -169,8 +169,8 @@ export default function CrmQuoteEditor() {
   }, 0);
 
   const canEditFinancial = isNew || (FINANCIAL_EDITABLE_STATUSES.has(saved?.status) && !saved?.converted_to_invoice_id);
-  // aceptado también permite edición administrativa (no rechazado, no convertido)
-  const canEditAdmin = !isNew && saved?.status !== 'rechazado' && !saved?.converted_to_invoice_id;
+  // convertido y rechazado bloquean todo
+  const canEditAdmin = !isNew && !['rechazado', 'convertido'].includes(saved?.status) && !saved?.converted_to_invoice_id;
 
   // Documento para vista previa
   const previewDoc = {
@@ -547,10 +547,10 @@ export default function CrmQuoteEditor() {
     }`}>
       <Icon name={canEditFinancial ? 'Info' : canEditAdmin ? 'PencilLine' : 'Lock'} size={16} />
       {canEditFinancial
-        ? `Puedes corregir este ${docLabel.singular} mientras esté en borrador o enviado.`
+        ? `Puedes corregir este ${docLabel.singular} mientras esté en borrador o vigente.`
         : canEditAdmin
           ? `Los ítems están bloqueados. Puedes actualizar la información administrativa.`
-          : `Este documento está rechazado o ya no puede modificarse.`}
+          : `Este documento está rechazado o convertido y ya no puede modificarse.`}
     </div>
   );
 

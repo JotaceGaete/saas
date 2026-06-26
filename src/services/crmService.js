@@ -630,7 +630,25 @@ export async function updateCrmInvoiceStatus(invoiceId, status) {
   return { data, error };
 }
 
-/** Convierte un presupuesto aceptado en factura interna */
+/** Rechaza un presupuesto registrando motivo, usuario y fecha. */
+export async function rejectCrmQuote(quoteId, reason) {
+  if (!reason?.trim()) return { error: { message: 'El motivo de rechazo es obligatorio.' } };
+  const { data: { user } } = await supabase.auth.getUser();
+  const { data, error } = await supabase
+    .from('crm_quotes')
+    .update({
+      status:           'rechazado',
+      rejection_reason: reason.trim(),
+      rejected_by:      user?.id || null,
+      rejected_at:      new Date().toISOString(),
+    })
+    .eq('id', quoteId)
+    .select()
+    .single();
+  return { data, error };
+}
+
+/** Convierte un presupuesto vigente en factura interna. */
 export async function convertQuoteToInvoice(quoteId) {
   const { data: quote, error } = await getCrmQuote(quoteId);
   if (error || !quote) return { data: null, error: error || new Error('Not found') };
@@ -653,7 +671,7 @@ export async function convertQuoteToInvoice(quoteId) {
 
   await supabase
     .from('crm_quotes')
-    .update({ converted_to_invoice_id: invoice.id, status: 'aceptado' })
+    .update({ converted_to_invoice_id: invoice.id, status: 'convertido' })
     .eq('id', quoteId);
 
   return { data: invoice, error: null };
@@ -1090,7 +1108,7 @@ export async function getCrmDashboardStats(businessId) {
       .from('crm_quotes')
       .select('total')
       .eq('business_id', businessId)
-      .in('status', ['enviado', 'aceptado'])
+      .in('status', ['vigente', 'convertido'])
       .gte('created_at', firstOfMonth),
     supabase
       .from('crm_invoices')
