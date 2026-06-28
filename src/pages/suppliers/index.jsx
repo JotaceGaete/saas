@@ -307,6 +307,224 @@ function MenuItemRow({ icon, label, onClick, danger }) {
   );
 }
 
+// ── Supplier table (list view) ────────────────────────────────────────────────
+
+function SupplierTable({ suppliers, debtsBySupplierId, onEdit, onDelete, onMarkPaid, navigateTo }) {
+  if (suppliers.length === 0) return null;
+
+  return (
+    <div className="rounded-2xl border border-gray-100 bg-white overflow-hidden shadow-sm">
+      <div className="overflow-x-auto">
+        <table className="min-w-full text-sm">
+          <thead>
+            <tr className="border-b border-gray-100 bg-gray-50/60">
+              <th className="px-4 py-3 text-left w-8" />
+              <th
+                className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest"
+                style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}
+              >
+                Proveedor
+              </th>
+              <th
+                className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest hidden md:table-cell"
+                style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}
+              >
+                Categoría
+              </th>
+              <th
+                className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest hidden lg:table-cell"
+                style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}
+              >
+                Teléfono
+              </th>
+              <th
+                className="px-4 py-3 text-right text-[11px] font-bold uppercase tracking-widest"
+                style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}
+              >
+                Pendiente
+              </th>
+              <th
+                className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest hidden lg:table-cell"
+                style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}
+              >
+                Vence
+              </th>
+              <th
+                className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest hidden xl:table-cell"
+                style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}
+              >
+                Último mov.
+              </th>
+              <th className="px-4 py-3 text-right w-8" />
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-50">
+            {suppliers.map((s) => {
+              const debts = debtsBySupplierId[s.id] ?? [];
+              const health = computeHealth(debts);
+              const h = HEALTH[health];
+              const pending = debts.filter((d) => d.status === 'pending');
+              const paid    = debts.filter((d) => d.status === 'paid');
+              const totalPending = pending.reduce((sum, d) => sum + (d.balance ?? d.amount), 0);
+              const lastPaid = paid.sort((a, b) => new Date(b.paidAt ?? 0) - new Date(a.paidAt ?? 0))[0];
+              const nextDue  = pending.filter((d) => d.dueDate).sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate))[0];
+              const firstDebt = pending[0];
+
+              const lastActivity = lastPaid?.paidAt ?? null;
+
+              return (
+                <tr
+                  key={s.id}
+                  className="group hover:bg-gray-50/60 transition-colors cursor-pointer"
+                  onClick={() => navigateTo(s.id)}
+                >
+                  {/* Estado dot */}
+                  <td className="px-4 py-3.5">
+                    <div className="flex items-center justify-center">
+                      <div
+                        className="w-2 h-2 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: h.dot }}
+                        title={h.label}
+                      />
+                    </div>
+                  </td>
+
+                  {/* Proveedor */}
+                  <td className="px-4 py-3.5">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="w-8 h-8 rounded-xl flex items-center justify-center text-xs font-black flex-shrink-0 select-none"
+                        style={{ background: `linear-gradient(135deg, ${h.bg} 0%, ${h.dot}40 100%)`, color: h.color }}
+                      >
+                        {s.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <p
+                          className="text-sm font-semibold truncate"
+                          style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
+                        >
+                          {s.name}
+                        </p>
+                        {s.contactName && (
+                          <p
+                            className="text-[11px] truncate"
+                            style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}
+                          >
+                            {s.contactName}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </td>
+
+                  {/* Categoría */}
+                  <td className="px-4 py-3.5 hidden md:table-cell">
+                    {s.supplierType && s.supplierType !== 'otros' ? (
+                      <span
+                        className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-gray-100 text-gray-500"
+                        style={{ fontFamily: 'var(--font-caption)' }}
+                      >
+                        {TYPE_LABELS[s.supplierType] ?? s.supplierType}
+                      </span>
+                    ) : (
+                      <span className="text-gray-300">—</span>
+                    )}
+                  </td>
+
+                  {/* Teléfono */}
+                  <td className="px-4 py-3.5 hidden lg:table-cell">
+                    {s.phone ? (
+                      <a
+                        href={`tel:${s.phone}`}
+                        className="text-xs text-gray-500 hover:text-gray-800 transition-colors"
+                        style={{ fontFamily: 'var(--font-caption)' }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {s.phone}
+                      </a>
+                    ) : (
+                      <span className="text-gray-300 text-xs">—</span>
+                    )}
+                  </td>
+
+                  {/* Pendiente */}
+                  <td className="px-4 py-3.5 text-right">
+                    {totalPending > 0 ? (
+                      <span
+                        className="text-sm font-black tabular-nums"
+                        style={{ color: health === 'critical' ? '#DC2626' : 'var(--color-foreground)', fontFamily: 'var(--font-stat)' }}
+                      >
+                        ${fmt(totalPending)}
+                      </span>
+                    ) : (
+                      <span className="text-gray-300 text-sm">—</span>
+                    )}
+                  </td>
+
+                  {/* Vence */}
+                  <td className="px-4 py-3.5 hidden lg:table-cell">
+                    {nextDue ? (
+                      <span
+                        className="text-xs font-medium"
+                        style={{ color: health === 'critical' ? '#DC2626' : '#D97706', fontFamily: 'var(--font-caption)' }}
+                      >
+                        {new Date(nextDue.dueDate).toLocaleDateString('es', { day: 'numeric', month: 'short' })}
+                      </span>
+                    ) : (
+                      <span className="text-gray-300 text-xs">—</span>
+                    )}
+                  </td>
+
+                  {/* Último mov */}
+                  <td className="px-4 py-3.5 hidden xl:table-cell">
+                    <span
+                      className="text-xs"
+                      style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}
+                    >
+                      {lastActivity ? timeAgo(lastActivity) : 'Nunca'}
+                    </span>
+                  </td>
+
+                  {/* Acciones */}
+                  <td className="px-4 py-3.5 text-right" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      {firstDebt && (
+                        <button
+                          onClick={() => onMarkPaid(firstDebt)}
+                          className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors"
+                          style={{ fontFamily: 'var(--font-caption)' }}
+                          title="Marcar deuda como pagada"
+                        >
+                          <Icon name="CheckCircle" size={11} color="#059669" />
+                          Pagar
+                        </button>
+                      )}
+                      <button
+                        onClick={() => onEdit(s)}
+                        className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors"
+                        title="Editar"
+                      >
+                        <Icon name="Edit2" size={13} color="currentColor" />
+                      </button>
+                      <button
+                        onClick={() => navigateTo(s.id)}
+                        className="p-1.5 rounded-lg text-gray-400 hover:bg-indigo-50 hover:text-indigo-600 transition-colors"
+                        title="Ver ficha"
+                      >
+                        <Icon name="ExternalLink" size={13} color="currentColor" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function SuppliersPage() {
   const navigate = useNavigate();
@@ -320,6 +538,9 @@ export default function SuppliersPage() {
   const [search, setSearch]         = useState('');
   const [filter, setFilter]         = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
+  const [view, setView] = useState(() => localStorage.getItem('crm.providers.view') || 'cards');
+
+  useEffect(() => { localStorage.setItem('crm.providers.view', view); }, [view]);
 
   const effectivePlan  = getEffectivePlanSlug(business?.planSlug, business?.planExpiresAt, business?.trialExpiresAt);
   const limits         = getPlanLimits(effectivePlan);
@@ -520,12 +741,31 @@ export default function SuppliersPage() {
                   )}
                 </div>
 
-                {/* Filter chips */}
-                <div className="flex gap-2 flex-wrap">
+                {/* Filter chips + view toggle */}
+                <div className="flex items-center gap-2 flex-wrap">
                   <FilterChip label="Todos"     count={countAll}      active={filter === 'all'}      onClick={() => setFilter('all')} />
                   <FilterChip label="Con deuda" count={countPending}  active={filter === 'pending'}  onClick={() => setFilter('pending')} />
                   <FilterChip label="Vencidos"  count={countCritical} active={filter === 'critical'} onClick={() => setFilter('critical')} />
                   <FilterChip label="Al día"    count={countHealthy}  active={filter === 'healthy'}  onClick={() => setFilter('healthy')} />
+                  {/* View toggle — hidden on mobile */}
+                  <div className="hidden sm:flex items-center gap-0.5 ml-1 p-1 rounded-xl border border-gray-200 bg-white">
+                    <button
+                      onClick={() => setView('cards')}
+                      title="Vista tarjetas"
+                      className="w-8 h-8 rounded-lg flex items-center justify-center transition-all"
+                      style={{ backgroundColor: view === 'cards' ? '#4F46E5' : 'transparent', color: view === 'cards' ? '#fff' : '#9CA3AF' }}
+                    >
+                      <Icon name="LayoutGrid" size={15} color="currentColor" />
+                    </button>
+                    <button
+                      onClick={() => setView('list')}
+                      title="Vista lista"
+                      className="w-8 h-8 rounded-lg flex items-center justify-center transition-all"
+                      style={{ backgroundColor: view === 'list' ? '#4F46E5' : 'transparent', color: view === 'list' ? '#fff' : '#9CA3AF' }}
+                    >
+                      <Icon name="List" size={15} color="currentColor" />
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -605,18 +845,47 @@ export default function SuppliersPage() {
                   {filter !== 'all' && ` · filtrado por ${filter === 'critical' ? 'vencidos' : filter === 'pending' ? 'con deuda' : 'al día'}`}
                 </p>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {filtered.map((s) => (
-                  <SupplierCard
-                    key={s.id}
-                    supplier={s}
-                    debts={debtsBySupplierId[s.id] ?? []}
+              {/* Mobile always cards; sm+ respects view state */}
+              <div className="sm:hidden">
+                <div className="grid grid-cols-1 gap-4">
+                  {filtered.map((s) => (
+                    <SupplierCard
+                      key={s.id}
+                      supplier={s}
+                      debts={debtsBySupplierId[s.id] ?? []}
+                      onEdit={(sup) => { setEditingSupplier(sup); setFormOpen(true); }}
+                      onDelete={handleDelete}
+                      onMarkPaid={handleMarkPaid}
+                      navigateTo={(id) => navigate(`/proveedores/${id}`)}
+                    />
+                  ))}
+                </div>
+              </div>
+              <div className="hidden sm:block">
+                {view === 'list' ? (
+                  <SupplierTable
+                    suppliers={filtered}
+                    debtsBySupplierId={debtsBySupplierId}
                     onEdit={(sup) => { setEditingSupplier(sup); setFormOpen(true); }}
                     onDelete={handleDelete}
                     onMarkPaid={handleMarkPaid}
                     navigateTo={(id) => navigate(`/proveedores/${id}`)}
                   />
-                ))}
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {filtered.map((s) => (
+                      <SupplierCard
+                        key={s.id}
+                        supplier={s}
+                        debts={debtsBySupplierId[s.id] ?? []}
+                        onEdit={(sup) => { setEditingSupplier(sup); setFormOpen(true); }}
+                        onDelete={handleDelete}
+                        onMarkPaid={handleMarkPaid}
+                        navigateTo={(id) => navigate(`/proveedores/${id}`)}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
             </>
           )}
