@@ -5,6 +5,7 @@ import {
   getLegacyBillingMarketCode,
 } from '../../config/countryPricing';
 import { PAYMENT_PROVIDERS } from './providers';
+import { COUNTRY_CONFIG } from '../../config/countryConfig';
 
 export const MARKET_CODES = Object.freeze({
   CL: 'CL',
@@ -105,10 +106,13 @@ export function getPaymentProvider({ marketCode, countryCode }) {
   return mapPricingProviderToPayment(getCountryPricingRow(iso));
 }
 
+// Derived from COUNTRY_CONFIG — single source of truth for decimal rules.
+const _zeroDecimalCurrencies = new Set(
+  Object.values(COUNTRY_CONFIG).filter(c => c.decimals === 0).map(c => c.currency),
+);
+
 function maxFractionDigitsForCurrency(currency) {
-  const c = String(currency || '').toUpperCase();
-  if (['CLP', 'ARS', 'COP', 'PYG', 'CRC', 'BOB', 'UYU', 'MXN', 'PEN', 'GTQ'].includes(c)) return 0;
-  return 2;
+  return _zeroDecimalCurrencies.has(String(currency || '').toUpperCase()) ? 0 : 2;
 }
 
 export function formatMoneyByMarket({ amount, marketCode, countryCode, currency, locale }) {

@@ -1,26 +1,31 @@
 /**
  * Formato de precios y montos por moneda/locale (Intl).
  * Nombre histórico "formatCLP": muchos imports siguen usando este archivo.
+ *
+ * Los mapas de locale y decimales se derivan de COUNTRY_CONFIG para mantener
+ * una única fuente de verdad. Agregar un nuevo país al config propaga
+ * automáticamente a todas las funciones de formato.
  */
 
-/** Monedas que no usan decimales en su uso comercial habitual (ARS lo define ISO con 2 pero no se usan). */
-const ZERO_DECIMAL_CURRENCIES = new Set(['CLP', 'ARS']);
+import { COUNTRY_CONFIG } from '../config/countryConfig';
 
-/** Si no se pasa locale, se infiere solo por código ISO de moneda (último recurso). */
-const FALLBACK_LOCALE_BY_CURRENCY = Object.freeze({
-  CLP: 'es-CL',
-  ARS: 'es-AR',
-  USD: 'en-US',
-  MXN: 'es-MX',
-  COP: 'es-CO',
-  PEN: 'es-PE',
-  EUR: 'es-ES',
-  BOB: 'es-BO',
-  CRC: 'es-CR',
-  GTQ: 'es-GT',
-  PYG: 'es-PY',
-  UYU: 'es-UY',
-});
+// Derive locale and zero-decimal rules from COUNTRY_CONFIG.
+// When multiple countries share a currency the first entry wins; USD is
+// overridden to 'en-US' explicitly so it doesn't pick up 'es-EC'.
+const _localeMap = Object.create(null);
+const _zeroDecimal = new Set();
+for (const cfg of Object.values(COUNTRY_CONFIG)) {
+  if (!cfg.currency) continue;
+  if (!(cfg.currency in _localeMap) && cfg.locale) _localeMap[cfg.currency] = cfg.locale;
+  if (cfg.decimals === 0) _zeroDecimal.add(cfg.currency);
+}
+_localeMap['USD'] = 'en-US';
+
+/** Locale BCP-47 inferido por código de moneda. Exportado para reutilización. */
+export const FALLBACK_LOCALE_BY_CURRENCY = Object.freeze({ ..._localeMap });
+
+/** Monedas sin decimales en su uso comercial habitual. Exportado para reutilización. */
+export const ZERO_DECIMAL_CURRENCIES = Object.freeze(_zeroDecimal);
 
 /**
  * @param {number|string} amount
@@ -33,7 +38,7 @@ export function formatCurrency(amount, currency, locale) {
   const loc = locale || FALLBACK_LOCALE_BY_CURRENCY[cur] || 'en-US';
   const n = Number(amount);
   const value = Number.isFinite(n) && n >= 0 ? n : 0;
-  const zeroDecimal = ZERO_DECIMAL_CURRENCIES.has(cur);
+  const zeroDecimal = _zeroDecimal.has(cur);
   const opts = {
     style: 'currency',
     currency: cur,
@@ -51,7 +56,7 @@ export function formatCurrency(amount, currency, locale) {
 }
 
 /**
- * Precios de suscripción en /planes: USD con prefijo "US$" explícito; CLP/ARS con Intl local.
+ * Precios de suscripción en /planes: USD con prefijo "US$" explícito; otras monedas con Intl local.
  * Evita confundir con símbolos de moneda local del país (ej. CRC) cuando el cobro es en USD.
  * @param {number|string} amount
  * @param {string} currencyCode
