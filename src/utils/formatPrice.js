@@ -48,7 +48,22 @@ export function formatPrice(amount, currency, countryCode) {
 
   if (symbol !== undefined) {
     const decimals = countryCfg?.decimals ?? currencyCfg?.decimals ?? 2;
-    const locale = countryCfg?.locale ?? currencyCfg?.locale ?? 'en-US';
+
+    // Number locale rules:
+    // • USD always uses en-US (comma-thousands, dot-decimal) regardless of country, because
+    //   USD is universally formatted that way even in Spanish-speaking USD economies (EC, PA).
+    // • Zero-decimal LATAM currencies use es-CL (dot-thousands) for consistency across markets —
+    //   same as the pre-refactor behavior: CLP, ARS, CRC, COP, etc. all produce "X 3.000".
+    // • Two-decimal non-USD currencies use their own locale (NIO→es-NI, PEN→es-PE, MXN→es-MX).
+    let locale;
+    if (cur === 'USD') {
+      locale = 'en-US';
+    } else if (decimals === 0) {
+      locale = 'es-CL';
+    } else {
+      locale = countryCfg?.locale ?? currencyCfg?.locale ?? 'en-US';
+    }
+
     const numStr = new Intl.NumberFormat(locale, {
       minimumFractionDigits: decimals,
       maximumFractionDigits: decimals,
