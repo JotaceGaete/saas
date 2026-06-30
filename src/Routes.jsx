@@ -57,6 +57,7 @@ import AdminConfigRubrosPage from './pages/admin/AdminConfigRubrosPage';
 import AdminPlanFeaturesPage from './pages/admin/AdminPlanFeaturesPage';
 import AdminCatalogTemplatesPage from './pages/admin/AdminCatalogTemplatesPage';
 import OnboardingPage from './pages/onboarding';
+import BusinessOsOnboarding from './pages/business-os/onboarding';
 import PlansPage from './pages/plans';
 import BillingSuccessPage from './pages/billing/BillingSuccessPage';
 import BillingCancelPage from './pages/billing/BillingCancelPage';
@@ -194,6 +195,7 @@ const Routes = () => {
             <Route path="/catalogo/:businessSlug/producto/:productSlug" element={<PublicProductPage />} />
             <Route path="/catalogo/:slug" element={<PublicCatalog />} />
             <Route path="/catalogo/:slug/checkout" element={<OrderConfirmation />} />
+            <Route path="/business-os/onboarding" element={<BusinessOsOnboarding />} />
             <Route path="/admin" element={<Navigate to="/admin/businesses" replace />} />
             <Route path="/admin/businesses" element={<RequireAdmin><AdminBusinessesPage /></RequireAdmin>} />
             <Route path="/admin/businesses/:businessId" element={<RequireAdmin><AdminBusinessDetailPage /></RequireAdmin>} />
