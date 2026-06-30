@@ -8,6 +8,7 @@ import FloatingActionButton from 'components/FloatingActionButton';
 import { useAuth } from '../../contexts/AuthContext';
 import { getPlanLabel } from '../../constants/plans';
 import { canAccessCrm, CRM_ADMIN_ONLY } from '../../config/crmConfig';
+import { usePlanFeature } from '../../hooks/usePlanFeature';
 import { buildWhatsAppUrl } from '../../utils/whatsapp';
 import { openWhatsAppUrl } from '../../utils/openWhatsAppUrl';
 import { SUPPORT_WHATSAPP_NUMBER } from '../../config/support';
@@ -47,6 +48,7 @@ export default function BusinessSidebar({ isCollapsed = false, onCollapsedChange
   const location = useLocation();
   const navigate = useNavigate();
   const { user, business, signOut, isAdmin, isImpersonating, stopImpersonation } = useAuth();
+  const hasCrmAccess = usePlanFeature('crmAccess');
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(isCollapsed);
   const [expandedItems, setExpandedItems] = useState({});
@@ -174,7 +176,7 @@ Motivo (opcional):`;
           {NAV_ITEMS?.filter(item =>
             (!item?.adminOnly || isAdmin) &&
             // Ocultar CRM completamente a no-admins mientras CRM_ADMIN_ONLY=true
-            !(item?.crmGated && !canAccessCrm(isAdmin, true))
+            !(item?.crmGated && !canAccessCrm(isAdmin, hasCrmAccess))
           )?.map((item, idx) => {
             if (item?.section) {
               if (collapsed) return null;

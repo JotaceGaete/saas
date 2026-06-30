@@ -5,9 +5,7 @@
  */
 export const CRM_EARLY_ACCESS_MODE = false;
 
-// TEMPORAL: CRM en estabilización. Solo admins hasta validación final.
-// Para volver a habilitar por plan: cambiar CRM_ADMIN_ONLY a false.
-export const CRM_ADMIN_ONLY = true;
+export const CRM_ADMIN_ONLY = false;
 
 /**
  * Determina si un usuario puede acceder al CRM.

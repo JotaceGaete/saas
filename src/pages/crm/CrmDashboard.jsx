@@ -255,8 +255,7 @@ export default function CrmDashboard() {
     business?.planExpiresAt,
     business?.trialExpiresAt
   );
-  // CRM está disponible desde Starter; hasCrmAccess siempre true para cualquier plan activo.
-  const hasCrmAccess = canUseFeature(effectivePlan, 'pos');
+  const hasCrmAccess = canUseFeature(effectivePlan, 'crmAccess');
   const stockAlertCount = stats?.stockBajo?.length || 0;
 
   return (
