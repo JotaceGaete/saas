@@ -464,7 +464,7 @@ function PaymentEditModal({ payment, currency, busy, onSubmit, onCancel, onEditS
   );
 }
 
-function VoidPaymentModal({ payment, currency, busy, onConfirm, onCancel }) {
+function VoidPaymentModal({ payment, currency, busy, submitError, onConfirm, onCancel }) {
   const [reason, setReason] = useState('');
   const [error, setError] = useState('');
 
@@ -485,6 +485,13 @@ function VoidPaymentModal({ payment, currency, busy, onConfirm, onCancel }) {
             <Icon name="X" size={17} />
           </button>
         </div>
+
+        {submitError && (
+          <div className="mb-4 rounded-xl border border-red-300 bg-red-100 p-3 text-sm text-red-800">
+            <p className="font-semibold">No se pudo anular el movimiento</p>
+            <p className="mt-1">{submitError}</p>
+          </div>
+        )}
 
         <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
           <p className="font-semibold">¿Anular este movimiento?</p>
@@ -823,6 +830,7 @@ export default function CrmCash() {
   const [voidingPayment, setVoidingPayment] = useState(null);
   const [showMovementForm, setShowMovementForm] = useState(false);
   const [voidingMovement, setVoidingMovement] = useState(null);
+  const [voidError, setVoidError] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -978,14 +986,14 @@ export default function CrmCash() {
   const handleVoidPayment = async (reason) => {
     if (!voidingPayment?.id) return;
     setBusy(true);
-    setErrorMsg('');
+    setVoidError('');
     const { error } = await voidCrmPayment(voidingPayment.id, {
       voidReason: reason,
-      voidedBy: business?.userId || null,
+      voidedBy: user?.id || null,
     });
     setBusy(false);
     if (error) {
-      setErrorMsg(error.message);
+      setVoidError(error.message);
       return;
     }
     setVoidingPayment(null);
@@ -1012,13 +1020,13 @@ export default function CrmCash() {
   const handleVoidMovement = async (reason) => {
     if (!voidingMovement?.id) return;
     setBusy(true);
-    setErrorMsg('');
+    setVoidError('');
     const { error } = await voidCashMovement(voidingMovement.id, {
       voidReason: reason,
-      voidedBy: business?.userId || null,
+      voidedBy: user?.id || null,
     });
     setBusy(false);
-    if (error) { setErrorMsg(error.message); return; }
+    if (error) { setVoidError(error.message); return; }
     setVoidingMovement(null);
     await load();
   };
@@ -1263,8 +1271,9 @@ export default function CrmCash() {
                   payment={voidingPayment}
                   currency={business?.currency}
                   busy={busy}
+                  submitError={voidError}
                   onConfirm={handleVoidPayment}
-                  onCancel={() => setVoidingPayment(null)}
+                  onCancel={() => { setVoidingPayment(null); setVoidError(''); }}
                 />
               )}
 
@@ -1285,8 +1294,9 @@ export default function CrmCash() {
                   }}
                   currency={business?.currency}
                   busy={busy}
+                  submitError={voidError}
                   onConfirm={handleVoidMovement}
-                  onCancel={() => setVoidingMovement(null)}
+                  onCancel={() => { setVoidingMovement(null); setVoidError(''); }}
                 />
               )}
 

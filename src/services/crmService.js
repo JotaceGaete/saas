@@ -1506,7 +1506,6 @@ export async function getCashSessionPayments(businessId, session) {
     .select(paymentSelect)
     .eq('business_id', businessId)
     .eq('payment_status', 'received')
-    .is('voided_at', null)
     .eq('cash_session_id', session.id)
     .neq('payment_method', 'credit');
 
@@ -1515,7 +1514,6 @@ export async function getCashSessionPayments(businessId, session) {
     .select(paymentSelect)
     .eq('business_id', businessId)
     .eq('payment_status', 'received')
-    .is('voided_at', null)
     .is('cash_session_id', null)
     .gte('created_at', session.opened_at)
     .lte('created_at', sessionEnd)
@@ -1546,7 +1544,6 @@ export async function getCashDayPayments(businessId, date = getLocalDateString()
     .eq('business_id', businessId)
     .eq('payment_date', date)
     .eq('payment_status', 'received')
-    .is('voided_at', null)
     .neq('payment_method', 'credit')
     .order('created_at', { ascending: false });
   return {
