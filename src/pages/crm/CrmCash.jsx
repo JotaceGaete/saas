@@ -814,6 +814,8 @@ function CashSessionForm({ title, initialValue = '', notesValue = '', busy, subm
 export default function CrmCash() {
   const navigate = useNavigate();
   const { business, user } = useAuth();
+  // eslint-disable-next-line no-console
+  console.log('[CrmCash MOUNT]', { businessId: business?.id, userId: user?.id });
   const today = getLocalDateString();
   const [openSession, setOpenSession] = useState(null);
   const [sessions, setSessions] = useState([]);
@@ -845,6 +847,8 @@ export default function CrmCash() {
   const hasAccess = canUseFeature(planSlug, 'cashRegister');
 
   const load = useCallback(async () => {
+    // eslint-disable-next-line no-console
+    console.log('[CrmCash load called]', { businessId: business?.id, hasAccess, today });
     if (!business?.id || !hasAccess) return;
     setLoading(true);
     setErrorMsg('');
@@ -1090,6 +1094,9 @@ export default function CrmCash() {
 
   return (
     <DashboardAppShell>
+      <div style={{ position: 'fixed', top: 8, right: 8, zIndex: 99999, background: 'red', color: 'white', padding: 8, fontSize: 12, fontFamily: 'monospace' }}>
+        DEBUG CAJA 64aa153 · biz:{business?.id?.slice(0,8)} · sessions:{sessions.length} · all:{allSessions.length}
+      </div>
       <PanelHeader
         title={
           <><CrmBreadcrumb section="Caja diaria" /><h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Caja diaria</h1></>
