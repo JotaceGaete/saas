@@ -882,6 +882,7 @@ export default function CrmCash() {
       })),
     ]);
 
+    const noSessionToday = sessionsList.length === 0 && !openRes.data;
     setOpenSession(openRes.data || null);
     setSessions(sessionsList);
     setAllSessions(recentList);
@@ -889,7 +890,9 @@ export default function CrmCash() {
     setSessionMovements(Object.fromEntries(movementsEntries));
     setDayPayments(dayPaymentsRes.data || []);
     setDayMovements(dayMovementsRes.data || []);
-    setShowOpenForm(sessionsList.length === 0 && !openRes.data);
+    setShowOpenForm(noSessionToday);
+    // When there's no session today, auto-expand history so past sessions are visible
+    if (noSessionToday && recentList.length > 0) setShowHistory(true);
     setLoading(false);
   }, [business?.id, hasAccess, today]);
 
