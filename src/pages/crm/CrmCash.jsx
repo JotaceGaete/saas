@@ -866,6 +866,19 @@ export default function CrmCash() {
 
     const sessionsList = sessionsRes.data || [];
     const recentList = recentRes.data || [];
+    const noSessionToday = sessionsList.length === 0 && !openRes.data;
+
+    // eslint-disable-next-line no-console
+    console.log('[CrmCash debug]', {
+      businessId: business?.id,
+      today,
+      openSession: openRes.data,
+      todaySessions: sessionsList,
+      recentSessions: recentList,
+      recentError: recentRes.error,
+      noSessionToday,
+      showHistoryNext: noSessionToday && recentList.length > 0,
+    });
 
     // Load payments and movements for all recent sessions (needed for history detail)
     const allUnique = recentList.filter(s => !sessionsList.some(t => t.id === s.id));
@@ -882,7 +895,6 @@ export default function CrmCash() {
       })),
     ]);
 
-    const noSessionToday = sessionsList.length === 0 && !openRes.data;
     setOpenSession(openRes.data || null);
     setSessions(sessionsList);
     setAllSessions(recentList);
