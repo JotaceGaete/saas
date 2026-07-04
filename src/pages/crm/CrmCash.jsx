@@ -20,6 +20,7 @@ import {
   getCashDayPayments,
   getCashSessionMovements,
   getCashSessionPayments,
+  getCashRecentSessions,
   getCashSessionsForDate,
   getCrmInvoice,
   getLocalDateString,
@@ -816,6 +817,7 @@ export default function CrmCash() {
   const today = getLocalDateString();
   const [openSession, setOpenSession] = useState(null);
   const [sessions, setSessions] = useState([]);
+  const [allSessions, setAllSessions] = useState([]);
   const [sessionPayments, setSessionPayments] = useState({});
   const [sessionMovements, setSessionMovements] = useState({});
   const [dayPayments, setDayPayments] = useState([]);
@@ -847,11 +849,12 @@ export default function CrmCash() {
     setLoading(true);
     setErrorMsg('');
 
-    const [openRes, sessionsRes, dayPaymentsRes, dayMovementsRes] = await Promise.all([
+    const [openRes, sessionsRes, dayPaymentsRes, dayMovementsRes, recentRes] = await Promise.all([
       getOpenCashSession(business.id),
       getCashSessionsForDate(business.id, today),
       getCashDayPayments(business.id, today),
       getCashDayMovements(business.id, today),
+      getCashRecentSessions(business.id),
     ]);
 
     const firstError = openRes.error || sessionsRes.error || dayPaymentsRes.error;
@@ -862,12 +865,18 @@ export default function CrmCash() {
     }
 
     const sessionsList = sessionsRes.data || [];
+    const recentList = recentRes.data || [];
+
+    // Load payments and movements for all recent sessions (needed for history detail)
+    const allUnique = recentList.filter(s => !sessionsList.some(t => t.id === s.id));
+    const historyLoad = allUnique.concat(sessionsList);
+
     const [paymentsEntries, movementsEntries] = await Promise.all([
-      Promise.all(sessionsList.map(async session => {
+      Promise.all(historyLoad.map(async session => {
         const res = await getCashSessionPayments(business.id, session);
         return [session.id, res.error ? [] : (res.data || [])];
       })),
-      Promise.all(sessionsList.map(async session => {
+      Promise.all(historyLoad.map(async session => {
         const res = await getCashSessionMovements(business.id, session.id);
         return [session.id, res.error ? [] : (res.data || [])];
       })),
@@ -875,6 +884,7 @@ export default function CrmCash() {
 
     setOpenSession(openRes.data || null);
     setSessions(sessionsList);
+    setAllSessions(recentList);
     setSessionPayments(Object.fromEntries(paymentsEntries));
     setSessionMovements(Object.fromEntries(movementsEntries));
     setDayPayments(dayPaymentsRes.data || []);
@@ -890,7 +900,7 @@ export default function CrmCash() {
   const currentSession  = openSession || sessions[0] || null;
   const currentPayments = currentSession ? (sessionPayments[currentSession.id] || []) : [];
   const currentMvts     = currentSession ? (sessionMovements[currentSession.id] || []) : [];
-  const detailSession   = detailSessionId ? sessions.find(s => s.id === detailSessionId) : null;
+  const detailSession   = detailSessionId ? allSessions.find(s => s.id === detailSessionId) : null;
   const detailPayments  = detailSession ? (sessionPayments[detailSession.id] || []) : [];
   const detailMvts      = detailSession ? (sessionMovements[detailSession.id] || []) : [];
 
@@ -1339,23 +1349,31 @@ export default function CrmCash() {
 
               {showHistory && (
                 <div className="rounded-2xl border border-gray-100 bg-white p-4">
-                  {sessions.length === 0 ? (
+                  {allSessions.length === 0 ? (
                     <div className="py-8 text-center">
                       <Icon name="Wallet" size={30} className="mx-auto mb-3 text-gray-200" />
-                      <p className="text-sm font-semibold text-gray-600">Todavia no hay cajas abiertas hoy.</p>
+                      <p className="text-sm font-semibold text-gray-600">Todavía no hay cajas registradas.</p>
                     </div>
                   ) : (
                     <div className="divide-y divide-gray-100">
-                      {sessions.map(session => {
+                      {allSessions.map(session => {
                         const payments  = sessionPayments[session.id] || [];
                         const movements = sessionMovements[session.id] || [];
                         const total     = calcSessionBalance(session, payments, movements);
+                        const isToday   = session.date === today;
                         return (
                           <div key={session.id} className="flex flex-col gap-3 py-3 lg:flex-row lg:items-center lg:justify-between">
                             <div className="min-w-0 text-sm text-gray-700">
-                              <span className="font-bold text-gray-900">{turnLabel(session, sessions)}</span>
+                              <span className="font-bold text-gray-900">{fmtDate(session.date)}</span>
+                              {!isToday && (
+                                <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500">
+                                  {session.date}
+                                </span>
+                              )}
                               <span className="mx-2 text-gray-300">|</span>
-                              <span>{session.status === 'open' ? 'Abierta' : 'Cerrada'}</span>
+                              <span className={session.status === 'open' ? 'font-semibold text-emerald-600' : ''}>
+                                {session.status === 'open' ? 'Abierta' : 'Cerrada'}
+                              </span>
                               <span className="mx-2 text-gray-300">|</span>
                               <span>{turnTimeRange(session)}</span>
                               <span className="mx-2 text-gray-300">|</span>

@@ -1379,6 +1379,17 @@ export async function getCashSessionsForDate(businessId, date = getLocalDateStri
   return { data: data || [], error };
 }
 
+export async function getCashRecentSessions(businessId, limit = 60) {
+  const { data, error } = await supabase
+    .from('crm_cash_sessions')
+    .select('*')
+    .eq('business_id', businessId)
+    .order('date', { ascending: false })
+    .order('opened_at', { ascending: false })
+    .limit(limit);
+  return { data: data || [], error };
+}
+
 export async function openCashSession(businessId, { openedBy, initialAmount = null, date = null, notes = null } = {}) {
   const openRes = await getOpenCashSession(businessId);
   if (openRes.error) return { data: null, error: openRes.error };
