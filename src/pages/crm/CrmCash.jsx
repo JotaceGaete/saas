@@ -928,6 +928,16 @@ export default function CrmCash() {
   const detailPayments  = detailSession ? (sessionPayments[detailSession.id] || []) : [];
   const detailMvts      = detailSession ? (sessionMovements[detailSession.id] || []) : [];
 
+  // eslint-disable-next-line no-console
+  console.log('[PROD CrmCash]', {
+    businessId: business?.id,
+    allSessions,
+    sessions,
+    currentSession,
+    detailSession,
+    sessionLoadErrors,
+  });
+
   const daySummary        = useMemo(() => summarizePayments(dayPayments), [dayPayments]);
   const dayTotal          = useMemo(() => totalPayments(dayPayments), [dayPayments]);
   const dayOutflows       = useMemo(() => totalMovementsOut(dayMovements), [dayMovements]);
@@ -1106,6 +1116,9 @@ export default function CrmCash() {
 
   return (
     <DashboardAppShell>
+      <div style={{ position: 'fixed', top: 8, right: 8, zIndex: 99999, background: 'green', color: 'white', padding: 8, fontSize: 12, fontFamily: 'monospace' }}>
+        PROD CAJA 3fc4df3
+      </div>
       <PanelHeader
         title={
           <><CrmBreadcrumb section="Caja diaria" /><h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Caja diaria</h1></>
