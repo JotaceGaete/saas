@@ -865,7 +865,10 @@ export default function CrmCash() {
     }
 
     const sessionsList = sessionsRes.data || [];
-    const recentList = recentRes.data || [];
+    // Fall back to today's sessions if the extended history query fails,
+    // so a transient error there doesn't wipe out the history panel entirely.
+    const recentList = recentRes.error ? sessionsList : (recentRes.data || []);
+    if (recentRes.error) setErrorMsg(recentRes.error.message);
     const noSessionToday = sessionsList.length === 0 && !openRes.data;
 
     // Load payments and movements for all recent sessions (needed for history detail)
