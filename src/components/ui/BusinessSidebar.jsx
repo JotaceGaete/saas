@@ -32,7 +32,7 @@ const NAV_ITEMS = [
       { label: 'Clientes',         path: '/crm/clientes' },
       { label: 'Presupuestos',     path: '/crm/presupuestos' },
       { label: 'Notas de venta',   path: '/crm/facturas' },
-      { label: 'TPV',              path: '/crm/terminal' },
+      { label: 'TPV',              path: '/crm/terminal', highlight: true },
       { label: 'Caja',             path: '/crm/caja' },
       { label: 'Centro de costos', path: '/crm/costos' },
       { label: 'Inventario',       path: '/crm/stock' },
@@ -228,6 +228,7 @@ Motivo (opcional):`;
                   <ul className="mt-0.5 ml-8 space-y-0.5" role="list">
                     {item?.subItems?.map((sub) => {
                       const subActive = isActive(sub?.path);
+                      const highlighted = !!sub?.highlight;
                       return (
                         <li key={sub?.path} role="listitem">
                           <button
@@ -236,7 +237,13 @@ Motivo (opcional):`;
                             className={[
                               'w-full text-left px-3 py-2 rounded-md text-xs transition-all duration-150',
                               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                              subActive ? 'text-white font-semibold bg-white/[0.09]' : 'text-slate-400 hover:text-white hover:bg-white/[0.06]',
+                              highlighted
+                                ? (subActive
+                                    ? 'bg-emerald-600 text-white font-semibold shadow-sm'
+                                    : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/20 hover:text-emerald-300')
+                                : (subActive
+                                    ? 'text-white font-semibold bg-white/[0.09]'
+                                    : 'text-slate-400 hover:text-white hover:bg-white/[0.06]'),
                             ]?.join(' ')}
                             style={{ fontFamily: 'var(--font-caption)' }}
                           >
