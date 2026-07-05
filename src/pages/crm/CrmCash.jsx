@@ -820,6 +820,7 @@ export default function CrmCash() {
   const [allSessions, setAllSessions] = useState([]);
   const [sessionPayments, setSessionPayments] = useState({});
   const [sessionMovements, setSessionMovements] = useState({});
+  const [sessionLoadErrors, setSessionLoadErrors] = useState({});
   const [dayPayments, setDayPayments] = useState([]);
   const [dayMovements, setDayMovements] = useState([]);
   const [showOpenForm, setShowOpenForm] = useState(false);
@@ -875,22 +876,39 @@ export default function CrmCash() {
     const allUnique = recentList.filter(s => !sessionsList.some(t => t.id === s.id));
     const historyLoad = allUnique.concat(sessionsList);
 
-    const [paymentsEntries, movementsEntries] = await Promise.all([
+    const [paymentsResults, movementsResults] = await Promise.all([
       Promise.all(historyLoad.map(async session => {
         const res = await getCashSessionPayments(business.id, session);
-        return [session.id, res.error ? [] : (res.data || [])];
+        if (res.error) {
+          // eslint-disable-next-line no-console
+          console.error('[CrmCash] getCashSessionPayments failed', { sessionId: session.id, date: session.date, error: res.error });
+        }
+        return { id: session.id, data: res.error ? [] : (res.data || []), error: res.error || null };
       })),
       Promise.all(historyLoad.map(async session => {
         const res = await getCashSessionMovements(business.id, session.id);
-        return [session.id, res.error ? [] : (res.data || [])];
+        if (res.error) {
+          // eslint-disable-next-line no-console
+          console.error('[CrmCash] getCashSessionMovements failed', { sessionId: session.id, date: session.date, error: res.error });
+        }
+        return { id: session.id, data: res.error ? [] : (res.data || []), error: res.error || null };
       })),
     ]);
+
+    const loadErrors = {};
+    for (const r of paymentsResults) {
+      if (r.error) loadErrors[r.id] = { ...(loadErrors[r.id] || {}), payments: r.error.message };
+    }
+    for (const r of movementsResults) {
+      if (r.error) loadErrors[r.id] = { ...(loadErrors[r.id] || {}), movements: r.error.message };
+    }
 
     setOpenSession(openRes.data || null);
     setSessions(sessionsList);
     setAllSessions(recentList);
-    setSessionPayments(Object.fromEntries(paymentsEntries));
-    setSessionMovements(Object.fromEntries(movementsEntries));
+    setSessionPayments(Object.fromEntries(paymentsResults.map(r => [r.id, r.data])));
+    setSessionMovements(Object.fromEntries(movementsResults.map(r => [r.id, r.data])));
+    setSessionLoadErrors(loadErrors);
     setDayPayments(dayPaymentsRes.data || []);
     setDayMovements(dayMovementsRes.data || []);
     setShowOpenForm(noSessionToday);
@@ -1052,6 +1070,13 @@ export default function CrmCash() {
   };
 
   const openDetail = (sessionId) => {
+    // eslint-disable-next-line no-console
+    console.log('[Cash movements debug]', {
+      currentSessionId: currentSession?.id,
+      detailSessionId: sessionId,
+      showMovements,
+      loadError: sessionLoadErrors[sessionId] || null,
+    });
     setDetailSessionId(sessionId);
     setShowHistory(true);
   };
@@ -1439,6 +1464,17 @@ export default function CrmCash() {
                           Ocultar detalle
                         </button>
                       </div>
+                      {sessionLoadErrors[detailSession.id] && (
+                        <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                          <p className="font-semibold">No se pudieron cargar todos los movimientos de esta caja</p>
+                          {sessionLoadErrors[detailSession.id].payments && (
+                            <p className="mt-1">Pagos: {sessionLoadErrors[detailSession.id].payments}</p>
+                          )}
+                          {sessionLoadErrors[detailSession.id].movements && (
+                            <p className="mt-1">Movimientos: {sessionLoadErrors[detailSession.id].movements}</p>
+                          )}
+                        </div>
+                      )}
                       <MethodBreakdown summary={detailSummary} currency={business?.currency} />
                       <MovementsTable
                         payments={detailPayments}
