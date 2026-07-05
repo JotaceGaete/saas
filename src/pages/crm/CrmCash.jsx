@@ -20,6 +20,7 @@ import {
   getCashDayPayments,
   getCashSessionMovements,
   getCashSessionPayments,
+  getCashRecentSessions,
   getCashSessionsForDate,
   getCrmInvoice,
   getLocalDateString,
@@ -464,7 +465,7 @@ function PaymentEditModal({ payment, currency, busy, onSubmit, onCancel, onEditS
   );
 }
 
-function VoidPaymentModal({ payment, currency, busy, onConfirm, onCancel }) {
+function VoidPaymentModal({ payment, currency, busy, submitError, onConfirm, onCancel }) {
   const [reason, setReason] = useState('');
   const [error, setError] = useState('');
 
@@ -485,6 +486,13 @@ function VoidPaymentModal({ payment, currency, busy, onConfirm, onCancel }) {
             <Icon name="X" size={17} />
           </button>
         </div>
+
+        {submitError && (
+          <div className="mb-4 rounded-xl border border-red-300 bg-red-100 p-3 text-sm text-red-800">
+            <p className="font-semibold">No se pudo anular el movimiento</p>
+            <p className="mt-1">{submitError}</p>
+          </div>
+        )}
 
         <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
           <p className="font-semibold">¿Anular este movimiento?</p>
@@ -809,8 +817,10 @@ export default function CrmCash() {
   const today = getLocalDateString();
   const [openSession, setOpenSession] = useState(null);
   const [sessions, setSessions] = useState([]);
+  const [allSessions, setAllSessions] = useState([]);
   const [sessionPayments, setSessionPayments] = useState({});
   const [sessionMovements, setSessionMovements] = useState({});
+  const [sessionLoadErrors, setSessionLoadErrors] = useState({});
   const [dayPayments, setDayPayments] = useState([]);
   const [dayMovements, setDayMovements] = useState([]);
   const [showOpenForm, setShowOpenForm] = useState(false);
@@ -823,6 +833,7 @@ export default function CrmCash() {
   const [voidingPayment, setVoidingPayment] = useState(null);
   const [showMovementForm, setShowMovementForm] = useState(false);
   const [voidingMovement, setVoidingMovement] = useState(null);
+  const [voidError, setVoidError] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -839,11 +850,12 @@ export default function CrmCash() {
     setLoading(true);
     setErrorMsg('');
 
-    const [openRes, sessionsRes, dayPaymentsRes, dayMovementsRes] = await Promise.all([
+    const [openRes, sessionsRes, dayPaymentsRes, dayMovementsRes, recentRes] = await Promise.all([
       getOpenCashSession(business.id),
       getCashSessionsForDate(business.id, today),
       getCashDayPayments(business.id, today),
       getCashDayMovements(business.id, today),
+      getCashRecentSessions(business.id),
     ]);
 
     const firstError = openRes.error || sessionsRes.error || dayPaymentsRes.error;
@@ -854,24 +866,54 @@ export default function CrmCash() {
     }
 
     const sessionsList = sessionsRes.data || [];
-    const [paymentsEntries, movementsEntries] = await Promise.all([
-      Promise.all(sessionsList.map(async session => {
+    // Fall back to today's sessions if the extended history query fails,
+    // so a transient error there doesn't wipe out the history panel entirely.
+    const recentList = recentRes.error ? sessionsList : (recentRes.data || []);
+    if (recentRes.error) setErrorMsg(recentRes.error.message);
+    const noSessionToday = sessionsList.length === 0 && !openRes.data;
+
+    // Load payments and movements for all recent sessions (needed for history detail)
+    const allUnique = recentList.filter(s => !sessionsList.some(t => t.id === s.id));
+    const historyLoad = allUnique.concat(sessionsList);
+
+    const [paymentsResults, movementsResults] = await Promise.all([
+      Promise.all(historyLoad.map(async session => {
         const res = await getCashSessionPayments(business.id, session);
-        return [session.id, res.error ? [] : (res.data || [])];
+        if (res.error) {
+          // eslint-disable-next-line no-console
+          console.error('[CrmCash] getCashSessionPayments failed', { sessionId: session.id, date: session.date, error: res.error });
+        }
+        return { id: session.id, data: res.error ? [] : (res.data || []), error: res.error || null };
       })),
-      Promise.all(sessionsList.map(async session => {
+      Promise.all(historyLoad.map(async session => {
         const res = await getCashSessionMovements(business.id, session.id);
-        return [session.id, res.error ? [] : (res.data || [])];
+        if (res.error) {
+          // eslint-disable-next-line no-console
+          console.error('[CrmCash] getCashSessionMovements failed', { sessionId: session.id, date: session.date, error: res.error });
+        }
+        return { id: session.id, data: res.error ? [] : (res.data || []), error: res.error || null };
       })),
     ]);
 
+    const loadErrors = {};
+    for (const r of paymentsResults) {
+      if (r.error) loadErrors[r.id] = { ...(loadErrors[r.id] || {}), payments: r.error.message };
+    }
+    for (const r of movementsResults) {
+      if (r.error) loadErrors[r.id] = { ...(loadErrors[r.id] || {}), movements: r.error.message };
+    }
+
     setOpenSession(openRes.data || null);
     setSessions(sessionsList);
-    setSessionPayments(Object.fromEntries(paymentsEntries));
-    setSessionMovements(Object.fromEntries(movementsEntries));
+    setAllSessions(recentList);
+    setSessionPayments(Object.fromEntries(paymentsResults.map(r => [r.id, r.data])));
+    setSessionMovements(Object.fromEntries(movementsResults.map(r => [r.id, r.data])));
+    setSessionLoadErrors(loadErrors);
     setDayPayments(dayPaymentsRes.data || []);
     setDayMovements(dayMovementsRes.data || []);
-    setShowOpenForm(sessionsList.length === 0 && !openRes.data);
+    setShowOpenForm(noSessionToday);
+    // When there's no session today, auto-expand history so past sessions are visible
+    if (noSessionToday && recentList.length > 0) setShowHistory(true);
     setLoading(false);
   }, [business?.id, hasAccess, today]);
 
@@ -882,7 +924,7 @@ export default function CrmCash() {
   const currentSession  = openSession || sessions[0] || null;
   const currentPayments = currentSession ? (sessionPayments[currentSession.id] || []) : [];
   const currentMvts     = currentSession ? (sessionMovements[currentSession.id] || []) : [];
-  const detailSession   = detailSessionId ? sessions.find(s => s.id === detailSessionId) : null;
+  const detailSession   = detailSessionId ? allSessions.find(s => s.id === detailSessionId) : null;
   const detailPayments  = detailSession ? (sessionPayments[detailSession.id] || []) : [];
   const detailMvts      = detailSession ? (sessionMovements[detailSession.id] || []) : [];
 
@@ -978,14 +1020,14 @@ export default function CrmCash() {
   const handleVoidPayment = async (reason) => {
     if (!voidingPayment?.id) return;
     setBusy(true);
-    setErrorMsg('');
+    setVoidError('');
     const { error } = await voidCrmPayment(voidingPayment.id, {
       voidReason: reason,
-      voidedBy: business?.userId || null,
+      voidedBy: user?.id || null,
     });
     setBusy(false);
     if (error) {
-      setErrorMsg(error.message);
+      setVoidError(error.message);
       return;
     }
     setVoidingPayment(null);
@@ -1012,13 +1054,13 @@ export default function CrmCash() {
   const handleVoidMovement = async (reason) => {
     if (!voidingMovement?.id) return;
     setBusy(true);
-    setErrorMsg('');
+    setVoidError('');
     const { error } = await voidCashMovement(voidingMovement.id, {
       voidReason: reason,
-      voidedBy: business?.userId || null,
+      voidedBy: user?.id || null,
     });
     setBusy(false);
-    if (error) { setErrorMsg(error.message); return; }
+    if (error) { setVoidError(error.message); return; }
     setVoidingMovement(null);
     await load();
   };
@@ -1028,6 +1070,13 @@ export default function CrmCash() {
   };
 
   const openDetail = (sessionId) => {
+    // eslint-disable-next-line no-console
+    console.log('[Cash movements debug]', {
+      currentSessionId: currentSession?.id,
+      detailSessionId: sessionId,
+      showMovements,
+      loadError: sessionLoadErrors[sessionId] || null,
+    });
     setDetailSessionId(sessionId);
     setShowHistory(true);
   };
@@ -1263,8 +1312,9 @@ export default function CrmCash() {
                   payment={voidingPayment}
                   currency={business?.currency}
                   busy={busy}
+                  submitError={voidError}
                   onConfirm={handleVoidPayment}
-                  onCancel={() => setVoidingPayment(null)}
+                  onCancel={() => { setVoidingPayment(null); setVoidError(''); }}
                 />
               )}
 
@@ -1285,8 +1335,9 @@ export default function CrmCash() {
                   }}
                   currency={business?.currency}
                   busy={busy}
+                  submitError={voidError}
                   onConfirm={handleVoidMovement}
-                  onCancel={() => setVoidingMovement(null)}
+                  onCancel={() => { setVoidingMovement(null); setVoidError(''); }}
                 />
               )}
 
@@ -1329,23 +1380,31 @@ export default function CrmCash() {
 
               {showHistory && (
                 <div className="rounded-2xl border border-gray-100 bg-white p-4">
-                  {sessions.length === 0 ? (
+                  {allSessions.length === 0 ? (
                     <div className="py-8 text-center">
                       <Icon name="Wallet" size={30} className="mx-auto mb-3 text-gray-200" />
-                      <p className="text-sm font-semibold text-gray-600">Todavia no hay cajas abiertas hoy.</p>
+                      <p className="text-sm font-semibold text-gray-600">Todavía no hay cajas registradas.</p>
                     </div>
                   ) : (
                     <div className="divide-y divide-gray-100">
-                      {sessions.map(session => {
+                      {allSessions.map(session => {
                         const payments  = sessionPayments[session.id] || [];
                         const movements = sessionMovements[session.id] || [];
                         const total     = calcSessionBalance(session, payments, movements);
+                        const isToday   = session.date === today;
                         return (
                           <div key={session.id} className="flex flex-col gap-3 py-3 lg:flex-row lg:items-center lg:justify-between">
                             <div className="min-w-0 text-sm text-gray-700">
-                              <span className="font-bold text-gray-900">{turnLabel(session, sessions)}</span>
+                              <span className="font-bold text-gray-900">{fmtDate(session.date)}</span>
+                              {!isToday && (
+                                <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500">
+                                  {session.date}
+                                </span>
+                              )}
                               <span className="mx-2 text-gray-300">|</span>
-                              <span>{session.status === 'open' ? 'Abierta' : 'Cerrada'}</span>
+                              <span className={session.status === 'open' ? 'font-semibold text-emerald-600' : ''}>
+                                {session.status === 'open' ? 'Abierta' : 'Cerrada'}
+                              </span>
                               <span className="mx-2 text-gray-300">|</span>
                               <span>{turnTimeRange(session)}</span>
                               <span className="mx-2 text-gray-300">|</span>
@@ -1405,6 +1464,17 @@ export default function CrmCash() {
                           Ocultar detalle
                         </button>
                       </div>
+                      {sessionLoadErrors[detailSession.id] && (
+                        <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                          <p className="font-semibold">No se pudieron cargar todos los movimientos de esta caja</p>
+                          {sessionLoadErrors[detailSession.id].payments && (
+                            <p className="mt-1">Pagos: {sessionLoadErrors[detailSession.id].payments}</p>
+                          )}
+                          {sessionLoadErrors[detailSession.id].movements && (
+                            <p className="mt-1">Movimientos: {sessionLoadErrors[detailSession.id].movements}</p>
+                          )}
+                        </div>
+                      )}
                       <MethodBreakdown summary={detailSummary} currency={business?.currency} />
                       <MovementsTable
                         payments={detailPayments}

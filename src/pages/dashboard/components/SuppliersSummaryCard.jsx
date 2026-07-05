@@ -1,12 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Icon from 'components/AppIcon';
+import { formatMoney } from '../../../utils/formatMoney';
 
-function fmt(n) {
-  return new Intl.NumberFormat('es', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n ?? 0);
-}
-
-export default function SuppliersSummaryCard({ businessId }) {
+export default function SuppliersSummaryCard({ businessId, currency = 'CLP' }) {
+  const fmt = (n) => formatMoney(n, currency);
   const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);

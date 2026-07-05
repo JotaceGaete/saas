@@ -1379,6 +1379,17 @@ export async function getCashSessionsForDate(businessId, date = getLocalDateStri
   return { data: data || [], error };
 }
 
+export async function getCashRecentSessions(businessId, limit = 60) {
+  const { data, error } = await supabase
+    .from('crm_cash_sessions')
+    .select('*')
+    .eq('business_id', businessId)
+    .order('date', { ascending: false })
+    .order('opened_at', { ascending: false })
+    .limit(limit);
+  return { data: data || [], error };
+}
+
 export async function openCashSession(businessId, { openedBy, initialAmount = null, date = null, notes = null } = {}) {
   const openRes = await getOpenCashSession(businessId);
   if (openRes.error) return { data: null, error: openRes.error };
@@ -1506,7 +1517,6 @@ export async function getCashSessionPayments(businessId, session) {
     .select(paymentSelect)
     .eq('business_id', businessId)
     .eq('payment_status', 'received')
-    .is('voided_at', null)
     .eq('cash_session_id', session.id)
     .neq('payment_method', 'credit');
 
@@ -1515,7 +1525,6 @@ export async function getCashSessionPayments(businessId, session) {
     .select(paymentSelect)
     .eq('business_id', businessId)
     .eq('payment_status', 'received')
-    .is('voided_at', null)
     .is('cash_session_id', null)
     .gte('created_at', session.opened_at)
     .lte('created_at', sessionEnd)
@@ -1546,7 +1555,6 @@ export async function getCashDayPayments(businessId, date = getLocalDateString()
     .eq('business_id', businessId)
     .eq('payment_date', date)
     .eq('payment_status', 'received')
-    .is('voided_at', null)
     .neq('payment_method', 'credit')
     .order('created_at', { ascending: false });
   return {

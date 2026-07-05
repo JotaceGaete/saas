@@ -26,7 +26,7 @@ const MONTHS = [
   'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre',
 ];
 
-const fmt = (n) => formatMoney(n, 'CLP');
+// fmt se inicializa en el componente raíz con la moneda del negocio
 function clamp(v, min, max) { return Math.min(max, Math.max(min, v)); }
 function dayFromDate(dateStr) { return dateStr ? parseInt(dateStr.slice(8, 10), 10) : null; }
 
@@ -552,7 +552,8 @@ function SettingsPanel({ center, businessId, month, year, onSave }) {
 
 // ─── Dashboard principal ──────────────────────────────────────────────────────
 
-function Dashboard({ center, costItems, sales, dailySales, purchaseTotals, purchases, month, year, onEditSettings, businessId, navigate }) {
+function Dashboard({ center, costItems, sales, dailySales, purchaseTotals, purchases, month, year, onEditSettings, businessId, navigate, currency }) {
+  const fmt = (n) => formatMoney(n, currency || 'CLP');
   const now = new Date();
   const isCurrentMonth = month === now.getMonth() + 1 && year === now.getFullYear();
   const today = now.toISOString().slice(0, 10);
@@ -745,6 +746,7 @@ export default function CrmCostCenter() {
             onEditSettings={(c) => setCenter(c)}
             businessId={business.id}
             navigate={navigate}
+            currency={business?.currency}
           />
         )}
       </DashboardLayoutContent>
