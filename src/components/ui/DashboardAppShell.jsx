@@ -1,10 +1,13 @@
 import React, { useState } from 'react';
 import BusinessSidebar from 'components/ui/BusinessSidebar';
+import GrowthNoticeModal from 'components/GrowthNoticeModal';
 import { useIsDesktop } from 'hooks/useMediaQuery';
+import { useAuth } from 'contexts/AuthContext';
 
 export default function DashboardAppShell({ children, backgroundColor = 'var(--color-background)' }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const isDesktop = useIsDesktop();
+  const { business, businessLoading } = useAuth();
   const sidebarWidth = sidebarCollapsed ? 'var(--sidebar-collapsed-width)' : 'var(--sidebar-width)';
   const mainWidth = isDesktop ? `calc(100% - ${sidebarWidth})` : '100%';
 
@@ -19,6 +22,7 @@ export default function DashboardAppShell({ children, backgroundColor = 'var(--c
           {children}
         </div>
       </main>
+      <GrowthNoticeModal ready={!!business && !businessLoading} />
     </div>
   );
 }
