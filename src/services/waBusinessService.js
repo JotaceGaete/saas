@@ -640,10 +640,38 @@ export const linkKoronelBusiness = async ({ koronelBusinessId, walinkaBusinessId
   if (!koronelBusinessId || !walinkaBusinessId) {
     return { data: null, error: { message: 'koronelBusinessId y walinkaBusinessId son requeridos' } };
   }
+
+  // TEMPORAL — diagnóstico del fallo "Authentication required" en request_business_walinka_link.
+  // Quitar este bloque una vez confirmada la causa.
+  if (typeof window !== 'undefined') {
+    const { data: { session } } = await supabase.auth.getSession();
+    console.info('[KORONEL_LINK_DEBUG] pre-rpc', {
+      koronelBusinessId,
+      walinkaBusinessId,
+      hasSession: !!session,
+      sessionUserId: session?.user?.id ?? null,
+      accessTokenPresent: !!session?.access_token,
+    });
+  }
+
   const { data, error } = await supabase.rpc('request_business_walinka_link', {
     p_koronel_business_id: koronelBusinessId,
     p_walinka_business_id: walinkaBusinessId,
   });
+
+  if (typeof window !== 'undefined') {
+    console.info('[KORONEL_LINK_DEBUG] post-rpc', {
+      koronelBusinessId,
+      walinkaBusinessId,
+      ok: !error,
+      errorMessage: error?.message ?? null,
+      errorCode: error?.code ?? null,
+      errorDetails: error?.details ?? null,
+      errorHint: error?.hint ?? null,
+      data,
+    });
+  }
+
   if (error) {
     console.warn('[waBusinessService] linkKoronelBusiness error:', error?.message);
     return { data: null, error };
