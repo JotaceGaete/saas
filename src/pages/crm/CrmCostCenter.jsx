@@ -27,6 +27,17 @@ const MONTHS = [
 ];
 
 // fmt se inicializa en el componente raíz con la moneda del negocio
+const DEFAULT_CURRENCY = 'CLP';
+
+function resolveCostCenterCurrency(currency) {
+  return String(currency || DEFAULT_CURRENCY).trim().toUpperCase() || DEFAULT_CURRENCY;
+}
+
+function createMoneyFormatter(currency) {
+  const currencyCode = resolveCostCenterCurrency(currency);
+  return (n) => formatMoney(n, currencyCode);
+}
+
 function clamp(v, min, max) { return Math.min(max, Math.max(min, v)); }
 function dayFromDate(dateStr) { return dateStr ? parseInt(dateStr.slice(8, 10), 10) : null; }
 
@@ -86,7 +97,8 @@ function AnimatedBar({ pct, colorClass, height = 'h-4' }) {
 
 // ─── Tarjeta héroe ────────────────────────────────────────────────────────────
 
-function HeroCard({ state, salesToday, dailyCost }) {
+function HeroCard({ state, salesToday, dailyCost, currency = DEFAULT_CURRENCY }) {
+  const fmt = createMoneyFormatter(currency);
   const s = STATE[state];
   const pct      = dailyCost > 0 ? Math.round((salesToday / dailyCost) * 100) : 0;
   const remaining = Math.max(0, dailyCost - salesToday);
@@ -155,7 +167,8 @@ function HeroCard({ state, salesToday, dailyCost }) {
 
 // ─── Hoyo financiero ──────────────────────────────────────────────────────────
 
-function HoyoCard({ totalCosts, salesMonth }) {
+function HoyoCard({ totalCosts, salesMonth, currency = DEFAULT_CURRENCY }) {
+  const fmt = createMoneyFormatter(currency);
   const gap     = totalCosts - salesMonth;
   const covered = gap <= 0;
   const pct     = totalCosts > 0 ? Math.min(100, Math.round((salesMonth / totalCosts) * 100)) : 0;
@@ -219,7 +232,8 @@ function HoyoCard({ totalCosts, salesMonth }) {
 
 // ─── Calendario GitHub-style ──────────────────────────────────────────────────
 
-function CalendarDot({ day, month, year, state, sales, varExp, dailyCost, isToday }) {
+function CalendarDot({ day, month, year, state, sales, varExp, dailyCost, isToday, currency = DEFAULT_CURRENCY }) {
+  const fmt = createMoneyFormatter(currency);
   const [showTip, setShowTip] = useState(false);
   const ref = useRef(null);
 
@@ -289,7 +303,7 @@ function CalendarDot({ day, month, year, state, sales, varExp, dailyCost, isToda
   );
 }
 
-function HealthCalendar({ month, year, dailySales, dailyCost, dailyVarExpenses }) {
+function HealthCalendar({ month, year, dailySales, dailyCost, dailyVarExpenses, currency = DEFAULT_CURRENCY }) {
   const now = new Date();
   const isCurrentMonth = month === now.getMonth() + 1 && year === now.getFullYear();
   const daysInMonth = new Date(year, month, 0).getDate();
@@ -328,6 +342,7 @@ function HealthCalendar({ month, year, dailySales, dailyCost, dailyVarExpenses }
             state={state} sales={sales} varExp={varExp}
             dailyCost={dailyCost}
             isToday={isCurrentMonth && d === todayDay}
+            currency={currency}
           />
         ))}
       </div>
@@ -339,7 +354,8 @@ function HealthCalendar({ month, year, dailySales, dailyCost, dailyVarExpenses }
 
 // ─── Widget Compras ───────────────────────────────────────────────────────────
 
-function ComprasWidget({ purchaseTotals, navigate }) {
+function ComprasWidget({ purchaseTotals, navigate, currency = DEFAULT_CURRENCY }) {
+  const fmt = createMoneyFormatter(currency);
   const mercaderiaTotal  = purchaseTotals?.totals?.mercaderia?.total  || 0;
   const operacionalTotal = purchaseTotals?.totalOperational           || 0;
   const hasData = mercaderiaTotal > 0 || operacionalTotal > 0;
@@ -383,7 +399,8 @@ function ComprasWidget({ purchaseTotals, navigate }) {
 
 // ─── Widget Costos fijos ──────────────────────────────────────────────────────
 
-function CostosWidget({ totalCostosFijos, navigate }) {
+function CostosWidget({ totalCostosFijos, navigate, currency = DEFAULT_CURRENCY }) {
+  const fmt = createMoneyFormatter(currency);
   return (
     <div className="bg-white rounded-2xl border border-gray-100 p-4 flex items-center justify-between gap-4">
       <div className="flex items-center gap-3 min-w-0">
@@ -412,7 +429,8 @@ function CostosWidget({ totalCostosFijos, navigate }) {
 
 // ─── Panel IVA estimado ───────────────────────────────────────────────────────
 
-function IvaSummaryPanel({ salesMonth, purchaseTotals, vatRate }) {
+function IvaSummaryPanel({ salesMonth, purchaseTotals, vatRate, currency = DEFAULT_CURRENCY }) {
+  const fmt = createMoneyFormatter(currency);
   const rate      = vatRate || 19;
   const ivaVentas = salesMonth > 0 ? +(salesMonth * rate / (100 + rate)).toFixed(0) : 0;
   const ivaCompras = purchaseTotals?.totalTaxCredit || 0;
@@ -553,7 +571,7 @@ function SettingsPanel({ center, businessId, month, year, onSave }) {
 // ─── Dashboard principal ──────────────────────────────────────────────────────
 
 function Dashboard({ center, costItems, sales, dailySales, purchaseTotals, purchases, month, year, onEditSettings, businessId, navigate, currency }) {
-  const fmt = (n) => formatMoney(n, currency || 'CLP');
+  const currencyCode = resolveCostCenterCurrency(currency);
   const now = new Date();
   const isCurrentMonth = month === now.getMonth() + 1 && year === now.getFullYear();
   const today = now.toISOString().slice(0, 10);
@@ -584,12 +602,14 @@ function Dashboard({ center, costItems, sales, dailySales, purchaseTotals, purch
         state={isCurrentMonth ? todayState : 'unconfigured'}
         salesToday={salesToday}
         dailyCost={dailyCost}
+        currency={currencyCode}
       />
 
       {/* Hoyo financiero */}
       <HoyoCard
         totalCosts={totalMes}
         salesMonth={salesMonth}
+        currency={currencyCode}
       />
 
       {/* Calendario */}
@@ -598,19 +618,21 @@ function Dashboard({ center, costItems, sales, dailySales, purchaseTotals, purch
         dailySales={dailySales}
         dailyCost={dailyCost}
         dailyVarExpenses={dailyVarExpenses}
+        currency={currencyCode}
       />
 
       {/* Enlace a costos fijos */}
-      <CostosWidget totalCostosFijos={totalCostosFijos} navigate={navigate} />
+      <CostosWidget totalCostosFijos={totalCostosFijos} navigate={navigate} currency={currencyCode} />
 
       {/* Widget de compras — fuente única de datos */}
-      <ComprasWidget purchaseTotals={purchaseTotals} navigate={navigate} />
+      <ComprasWidget purchaseTotals={purchaseTotals} navigate={navigate} currency={currencyCode} />
 
       {/* Resumen IVA */}
       <IvaSummaryPanel
         salesMonth={salesMonth}
         purchaseTotals={purchaseTotals}
         vatRate={center?.vat_rate || 19}
+        currency={currencyCode}
       />
 
       {/* Ajustes */}
