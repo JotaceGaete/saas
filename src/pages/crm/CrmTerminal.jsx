@@ -222,6 +222,9 @@ function CrmTerminalUI() {
   const [errorMsg, setErrorMsg] = useState(null);
   const [showManualModal, setShowManualModal] = useState(false);
   const [showNewCustomer, setShowNewCustomer] = useState(false);
+  const [payMode, setPayMode] = useState(false);
+  const [lastAddedKey, setLastAddedKey] = useState(null);
+  const cartListRef = useRef(null);
 
   // Ticket modal state — set after successful (or locally-fallback) sale
   const [ticketData, setTicketData] = useState(null);
@@ -345,8 +348,10 @@ function CrmTerminalUI() {
     setCart(prev => {
       const existing = prev.find(i => i._key === product.id);
       if (existing) {
+        setLastAddedKey(product.id);
         return prev.map(i => i._key === product.id ? { ...i, quantity: i.quantity + 1 } : i);
       }
+      setLastAddedKey(product.id);
       return [...prev, {
         _key: product.id,
         product_id: product.id,
@@ -359,8 +364,17 @@ function CrmTerminalUI() {
 
   const addManualItem = ({ name, unit_price, quantity, note }) => {
     const _key = `manual_${Date.now()}`;
+    setLastAddedKey(_key);
     setCart(prev => [...prev, { _key, product_id: null, name, unit_price, quantity, note: note || null }]);
   };
+
+  useEffect(() => {
+    if (!lastAddedKey) return;
+    const el = cartListRef.current?.querySelector(`[data-key="${lastAddedKey}"]`);
+    el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    const t = setTimeout(() => setLastAddedKey(null), 900);
+    return () => clearTimeout(t);
+  }, [lastAddedKey]);
 
   const updateQty = (_key, delta) => {
     setCart(prev =>
@@ -425,6 +439,8 @@ function CrmTerminalUI() {
     setSearch('');
     setActiveCategory('');
     setErrorMsg(null);
+    setPayMode(false);
+    setLastAddedKey(null);
     setTimeout(() => searchRef.current?.focus(), 50);
   };
 
@@ -918,10 +934,21 @@ function CrmTerminalUI() {
                         <p className="text-[11px] font-black uppercase tracking-wide text-gray-400">Total venta</p>
                         <p className="mt-1 truncate text-2xl font-black tracking-tight text-gray-950 xl:text-3xl">{fmt(total, business?.currency)}</p>
                       </div>
-                      <span className={`rounded-full px-2.5 py-1 text-xs font-black ${pendingBalance > 0 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
-                        {paymentStatusLabel}
-                      </span>
+                      {payMode ? (
+                        <button
+                          onClick={() => setPayMode(false)}
+                          className="flex items-center gap-1.5 rounded-xl border border-gray-200 bg-gray-50 px-2.5 py-1.5 text-xs font-bold text-gray-600 transition-colors hover:bg-gray-100"
+                        >
+                          <Icon name="ChevronLeft" size={13} />
+                          Editar
+                        </button>
+                      ) : (
+                        <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-black text-gray-600">
+                          {cartCount} art.
+                        </span>
+                      )}
                     </div>
+                    {payMode && (
                     <div className="mt-3 grid grid-cols-3 gap-1.5">
                       <div className="rounded-xl bg-gray-50 px-2.5 py-2">
                         <p className="text-[10px] font-bold uppercase text-gray-400">Items</p>
@@ -936,9 +963,10 @@ function CrmTerminalUI() {
                         <p className="truncate text-xs font-black text-amber-800 xl:text-sm">{fmt(pendingBalance, business?.currency)}</p>
                       </div>
                     </div>
+                    )}
                   </div>
 
-                  <div className="hidden">
+                  <div className={payMode ? 'mt-2.5 rounded-2xl border border-gray-200 bg-white p-3 shadow-sm lg:flex-none' : 'hidden'}>
                     <div className="flex items-center justify-between mb-1.5">
                       <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wide">Cliente</label>
                       <button
@@ -970,6 +998,7 @@ function CrmTerminalUI() {
                         items   → flex-1 min-h-0 overflow-y-auto
                       This is the key change: cart fills ALL available middle
                       space regardless of how many items are in it.             */}
+                  {!payMode && (
                   <div className="mt-2.5 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm
                                   lg:flex-1 lg:min-h-0 lg:flex lg:flex-col">
 
@@ -1002,13 +1031,20 @@ function CrmTerminalUI() {
                         <p className="text-gray-400 text-sm">Toca un producto para agregarlo</p>
                       </div>
                     ) : (
-                      <div className="divide-y divide-gray-100 max-h-52 overflow-y-auto
+                      <div
+                        ref={cartListRef}
+                        className="divide-y divide-gray-100 max-h-52 overflow-y-auto
                                       lg:flex-1 lg:min-h-0 lg:max-h-none lg:overflow-y-auto">
                         {cart.map(item => (
-                          <div key={item._key} className="px-3 py-2.5 flex items-center gap-2">
+                          <div
+                            key={item._key}
+                            data-key={item._key}
+                            className={`px-3 py-2.5 flex items-center gap-2 transition-colors duration-700 ${lastAddedKey === item._key ? 'bg-emerald-50' : ''}`}
+                          >
                             <div className="flex-1 min-w-0">
                               <p className="text-xs font-semibold text-gray-800 truncate leading-snug flex items-center gap-1">
                                 {item.product_id == null && <span className="text-[9px] bg-purple-100 text-purple-600 px-1 py-0.5 rounded font-bold shrink-0">M</span>}
+                                {lastAddedKey === item._key && <Icon name="Check" size={11} className="text-emerald-500 shrink-0" />}
                                 {item.name}
                               </p>
                               <p className="text-[11px] text-gray-400 mt-0.5">{fmt(item.unit_price, business?.currency)} c/u</p>
@@ -1052,6 +1088,7 @@ function CrmTerminalUI() {
                       </div>
                     )}
                   </div>
+                  )}
 
                   {/* ── Zone 3: Checkout controls ── flex-none ───────────────
                       Compacted to ~280px so the cart gets 200px+ on 768px.
@@ -1060,6 +1097,7 @@ function CrmTerminalUI() {
                   <div className="flex flex-col gap-2 mt-2.5 lg:flex-none lg:shrink-0">
 
                     {/* Discount + Notes — single compact row */}
+                    {!payMode && (
                     <div className="flex gap-2">
                       <div className="flex-1 relative">
                         <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none">$</span>
@@ -1076,13 +1114,15 @@ function CrmTerminalUI() {
                         type="text"
                         value={notes}
                         onChange={e => setNotes(e.target.value)}
-                        placeholder="Notas…"
+                        placeholder="Notas..."
                         className="flex-1 px-2.5 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                       />
                     </div>
+                    )}
 
                     {/* Payment method — 4 buttons in one row */}
-                    <div className="rounded-2xl border border-gray-200 bg-white p-2.5 space-y-2">
+                    {payMode && (
+                    <div className="rounded-2xl border border-gray-200 bg-white p-2.5 space-y-2 lg:max-h-[42vh] lg:overflow-y-auto">
                       {/* Atajo: Venta a crédito */}
                       <button
                         type="button"
@@ -1182,6 +1222,7 @@ function CrmTerminalUI() {
                         </div>
                       )}
                     </div>
+                    )}
 
                     {/* Pago recibido — solo efectivo */}
                     {/* Totals + Cobrar — desktop only; mobile uses fixed bar */}
@@ -1202,7 +1243,16 @@ function CrmTerminalUI() {
                         <span className="text-sm font-bold text-gray-300">Total</span>
                         <span className="truncate text-2xl font-black tracking-tight text-white xl:text-3xl">{fmt(total, business?.currency)}</span>
                       </div>
-                      {requiresCustomerForPending && !customerId ? (
+                      {!payMode ? (
+                        <button
+                          onClick={() => setPayMode(true)}
+                          disabled={cart.length === 0}
+                          className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-500 py-3.5 text-base font-black text-white shadow-lg shadow-emerald-950/30 transition-all hover:-translate-y-0.5 hover:bg-emerald-400 disabled:translate-y-0 disabled:bg-gray-800 disabled:text-gray-500 disabled:shadow-none xl:py-4 xl:text-lg"
+                        >
+                          <Icon name="CreditCard" size={18} />
+                          Cobrar
+                        </button>
+                      ) : requiresCustomerForPending && !customerId ? (
                         <div className="flex gap-2">
                           <button
                             disabled
@@ -1253,14 +1303,27 @@ function CrmTerminalUI() {
                   </p>
                 )}
                 <p className="truncate text-lg font-bold text-white leading-tight">{fmt(total, business?.currency)}</p>
+                {payMode ? (
                 <p className={`text-[10px] mt-0.5 ${isPaymentInvalid ? 'text-amber-400' : 'text-gray-400'}`}>
                   {requiresCustomerForPending && !customerId
                     ? `Faltan ${fmt(pendingBalance, business?.currency)} · selecciona cliente`
                     : `Pagado ${fmt(paidTotal, business?.currency)} · Pendiente ${fmt(pendingBalance, business?.currency)}`
                   }
                 </p>
+                ) : cartCount > 0 && (
+                  <p className="text-[10px] text-gray-400 mt-0.5">{cartCount} artículo{cartCount !== 1 ? 's' : ''}</p>
+                )}
               </div>
-              {requiresCustomerForPending && !customerId ? (
+              {!payMode ? (
+                <button
+                  onClick={() => setPayMode(true)}
+                  disabled={cart.length === 0}
+                  className="shrink-0 px-5 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:bg-gray-700 disabled:text-gray-500 text-white font-bold text-sm transition-colors flex items-center gap-2"
+                >
+                  <Icon name="CreditCard" size={16} />
+                  Cobrar
+                </button>
+              ) : requiresCustomerForPending && !customerId ? (
                 <button
                   type="button"
                   onClick={addPayment}
