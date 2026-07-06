@@ -14,6 +14,7 @@ import BusinessRegistration from './pages/business-registration';
 import LandingPage from './pages/landing-page';
 import BusinessConfiguration from './pages/business-configuration';
 import CompleteBusinessSetupPage from './pages/complete-business-setup';
+import KoronelConnect from './pages/koronel-connect';
 import ProductManagement from './pages/product-management';
 import Dashboard from './pages/dashboard';
 import ProductEditor from './pages/product-editor';
@@ -143,6 +144,7 @@ const Routes = () => {
             <Route path="/register" element={<BusinessRegistration />} />
             <Route path="/landing-page" element={<LandingPage />} />
             <Route path="/complete-business-setup" element={<RequireAuth><CompleteBusinessSetupPage /></RequireAuth>} />
+            <Route path="/koronel-connect" element={<RequireAuth><KoronelConnect /></RequireAuth>} />
             <Route path="/onboarding" element={<RequireAuth><OnboardingPage /></RequireAuth>} />
             {/* CRM — requiere plan Pro o superior (RequireCrm hace el bloqueo duro) */}
             <Route path="/crm"                    element={<RequireCrm><CrmDashboard /></RequireCrm>} />

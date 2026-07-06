@@ -3,24 +3,27 @@ import { useNavigate } from 'react-router-dom';
 import Icon from 'components/AppIcon';
 import PremiumLoader from 'components/ui/PremiumLoader';
 import { useAuth } from '../../../contexts/AuthContext';
-import { createBusiness } from '../../../services/waBusinessService';
+import { createBusiness, linkKoronelBusiness } from '../../../services/waBusinessService';
+import { clearKoronelHandoff } from '../../../utils/koronelHandoff';
 import WhatsAppField from './WhatsAppField';
 
 /**
  * Creación inicial de tienda: sin país ni moneda (se definen en Configuración).
  */
-export default function StoreCreationStep({ user, businessLoading }) {
+export default function StoreCreationStep({ user, businessLoading, koronelHandoff = null }) {
   const navigate = useNavigate();
   const { refreshBusiness } = useAuth();
 
   const [formData, setFormData] = useState({
-    businessName: user?.user_metadata?.name || '',
-    whatsapp: '',
+    businessName: koronelHandoff?.name || user?.user_metadata?.name || '',
+    whatsapp: koronelHandoff?.whatsapp || '',
     description: '',
   });
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
+  // 'success' | 'error' cuando venimos de Koronel y ya se intentó vincular el negocio recién creado.
+  const [koronelLinkStatus, setKoronelLinkStatus] = useState(null);
 
   const update = (field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -54,6 +57,8 @@ export default function StoreCreationStep({ user, businessLoading }) {
         name: formData.businessName.trim(),
         whatsapp: formData.whatsapp.trim(),
         description: formData.description.trim() || null,
+        address: koronelHandoff?.address || null,
+        city: koronelHandoff?.city || null,
       });
       if (error) {
         setSaveError(error.message || 'No se pudo crear el negocio. Intenta de nuevo.');
@@ -61,6 +66,24 @@ export default function StoreCreationStep({ user, businessLoading }) {
       }
       if (data) {
         await refreshBusiness();
+
+        // Fase 2 Koronel↔Walinka: completar el vínculo con el negocio recién creado.
+        // Si falla, no debe romper el onboarding — solo se informa y se continúa.
+        if (koronelHandoff?.koronelBusinessId) {
+          try {
+            const { error: linkError } = await linkKoronelBusiness({
+              koronelBusinessId: koronelHandoff.koronelBusinessId,
+              walinkaBusinessId: data?.id,
+            });
+            setKoronelLinkStatus(linkError ? 'error' : 'success');
+          } catch {
+            setKoronelLinkStatus('error');
+          } finally {
+            clearKoronelHandoff();
+          }
+          return;
+        }
+
         navigate('/onboarding', { replace: true });
       }
     } catch {
@@ -72,6 +95,41 @@ export default function StoreCreationStep({ user, businessLoading }) {
 
   if (businessLoading) {
     return <PremiumLoader fullScreen text="Verificando tu cuenta..." />;
+  }
+
+  if (koronelLinkStatus) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6" style={{ backgroundColor: 'var(--color-background)' }}>
+        <div className="w-full max-w-md text-center">
+          <div
+            className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4"
+            style={{ backgroundColor: koronelLinkStatus === 'success' ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)' }}
+          >
+            <Icon
+              name={koronelLinkStatus === 'success' ? 'CheckCircle2' : 'AlertCircle'}
+              size={26}
+              color={koronelLinkStatus === 'success' ? 'var(--color-success, #10b981)' : 'var(--color-error)'}
+            />
+          </div>
+          <h1 className="text-lg font-bold mb-2" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>
+            {koronelLinkStatus === 'success' ? 'Catálogo conectado con Koronel' : 'No se pudo conectar con Koronel'}
+          </h1>
+          <p className="text-sm mb-6" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+            {koronelLinkStatus === 'success'
+              ? 'Tu negocio en Koronel ya muestra este catálogo.'
+              : 'Puedes continuar igual — inténtalo de nuevo más tarde desde Koronel.'}
+          </p>
+          <button
+            type="button"
+            onClick={() => navigate('/onboarding', { replace: true })}
+            className="w-full h-12 rounded-lg font-semibold text-sm"
+            style={{ backgroundColor: 'var(--color-primary)', color: '#fff', fontFamily: 'var(--font-caption)' }}
+          >
+            Continuar
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (

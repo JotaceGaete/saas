@@ -12,6 +12,7 @@ const EXEMPT_PATHS = [
   '/auth/callback',
   '/auth-callback',
   '/logout',
+  '/koronel-connect',
 ];
 
 function normalizePathname(pathname) {

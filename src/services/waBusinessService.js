@@ -633,6 +633,24 @@ export const getMyBusiness = async () => {
   return { data: mapped, error: null };
 };
 
+// Fase 2 Koronel↔Walinka: llama a la RPC SECURITY DEFINER `request_business_walinka_link`
+// definida en la migración de Koronel (business_walinka_links). Ambas apps comparten el
+// mismo proyecto Supabase, por lo que se invoca directamente sin llamada cross-domain.
+export const linkKoronelBusiness = async ({ koronelBusinessId, walinkaBusinessId }) => {
+  if (!koronelBusinessId || !walinkaBusinessId) {
+    return { data: null, error: { message: 'koronelBusinessId y walinkaBusinessId son requeridos' } };
+  }
+  const { data, error } = await supabase.rpc('request_business_walinka_link', {
+    p_koronel_business_id: koronelBusinessId,
+    p_walinka_business_id: walinkaBusinessId,
+  });
+  if (error) {
+    console.warn('[waBusinessService] linkKoronelBusiness error:', error?.message);
+    return { data: null, error };
+  }
+  return { data: Array.isArray(data) ? (data?.[0] || null) : (data || null), error: null };
+};
+
 export const getBusinessByIdForAdmin = async (businessId) => {
   if (!businessId) return { data: null, error: { message: 'businessId required' } };
   const { data, error } = await supabase

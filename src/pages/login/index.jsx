@@ -5,6 +5,7 @@ import LoginBrandPanel from './components/LoginBrandPanel';
 import LoginForm from './components/LoginForm';
 import { collectVisitAttribution } from '../../utils/analytics';
 import { recordSiteVisit } from '../../services/waBusinessService';
+import { getKoronelHandoff } from '../../utils/koronelHandoff';
 import PremiumLoader from 'components/ui/PremiumLoader';
 
 export default function Login() {
@@ -32,6 +33,13 @@ export default function Login() {
 
     // Evita navegar a dashboard sin resolver primero si existe negocio.
     if (businessLoading) return;
+
+    // Fase 2 Koronel↔Walinka: si venimos con un handoff pendiente, lo priorizamos
+    // sobre el destino normal para completar el vínculo antes de seguir.
+    if (getKoronelHandoff()) {
+      navigate(business ? '/koronel-connect' : '/business-registration', { replace: true });
+      return;
+    }
 
     if (business) {
       navigate('/dashboard', { replace: true });

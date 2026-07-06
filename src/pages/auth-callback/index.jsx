@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { getMyBusiness } from '../../services/waBusinessService';
+import { getKoronelHandoff } from '../../utils/koronelHandoff';
 import { APP_ORIGIN, isCanonicalAppHostname } from '../../config/appUrl';
 import PremiumLoader from 'components/ui/PremiumLoader';
 
@@ -74,7 +75,9 @@ export default function AuthCallback() {
         }
 
         if (business) {
-          safeNavigate('/dashboard');
+          // Fase 2 Koronel↔Walinka: si venimos con un handoff pendiente (p. ej.
+          // login con Google desde Koronel), completar el vínculo antes de seguir.
+          safeNavigate(getKoronelHandoff() ? '/koronel-connect' : '/dashboard');
           return;
         }
 

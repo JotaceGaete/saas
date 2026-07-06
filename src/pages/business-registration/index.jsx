@@ -6,6 +6,7 @@ import { resolveCountryState, resolveBillingSetup, logCountryStateDebug } from '
 import { collectVisitAttribution } from '../../utils/analytics';
 import { recordSiteVisit } from '../../services/waBusinessService';
 import { trackLoopsEvent } from '../../services/loopsClient';
+import { getKoronelHandoff } from '../../utils/koronelHandoff';
 import AuthStep from './components/AuthStep';
 import ConfirmEmailStep from './components/ConfirmEmailStep';
 import StoreCreationStep from './components/StoreCreationStep';
@@ -106,10 +107,10 @@ export default function BusinessRegistration() {
     billingSetup.currency,
   ]);
 
-  // Si ya tiene negocio → dashboard
+  // Si ya tiene negocio → dashboard (o a completar el vínculo de Koronel, si aplica)
   useEffect(() => {
     if (!loading && !businessLoading && user && business) {
-      navigate('/dashboard', { replace: true });
+      navigate(getKoronelHandoff() ? '/koronel-connect' : '/dashboard', { replace: true });
     }
   }, [loading, businessLoading, user, business, navigate]);
 
@@ -225,6 +226,7 @@ export default function BusinessRegistration() {
     <StoreCreationStep
       user={user}
       businessLoading={businessLoading}
+      koronelHandoff={getKoronelHandoff()}
     />
   );
 }

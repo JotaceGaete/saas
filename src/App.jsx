@@ -6,9 +6,14 @@ import { CountryProvider } from './contexts/CountryContext';
 import EmailConfirmBanner from './components/EmailConfirmBanner';
 import SupportModeBanner from './components/SupportModeBanner';
 import { bootstrapManualMarketChoiceFromUrl } from './config/countryConfig';
+import { captureKoronelHandoff } from './utils/koronelHandoff';
 
 // Persistir elección manual (cl/ar/go) antes de que corran efectos de auth/routing.
 bootstrapManualMarketChoiceFromUrl();
+
+// Fase 2 Koronel↔Walinka: capturar source=koronel&koronel_business_id=... antes de
+// cualquier redirect (login, OAuth) para poder retomarlo después de autenticarse.
+captureKoronelHandoff();
 
 function App() {
   return (
