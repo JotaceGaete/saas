@@ -18,6 +18,38 @@ import { getBusinessLocale } from '../../lib/locale/businessLocale';
 import { formatBusinessCurrency } from '../../utils/formatPrice';
 import { isRestaurantBusiness } from '../../utils/businessType';
 
+const PRODUCT_DELETE_HISTORY_MESSAGE = 'No se puede eliminar este producto. Este producto ya tiene ventas registradas. Para conservar el historial, puedes desactivarlo u ocultarlo del catálogo.';
+
+function isForeignKeyDeleteError(error) {
+  const text = [
+    error?.code,
+    error?.message,
+    error?.details,
+    error?.hint,
+  ].filter(Boolean).join(' ').toLowerCase();
+
+  return (
+    text.includes('23503')
+    || text.includes('foreign key')
+    || text.includes('violates foreign key constraint')
+    || text.includes('wa_order_items_product_id_fkey')
+  );
+}
+
+function getFriendlyProductError(error, fallback = 'No se pudo completar la acción. Intenta de nuevo.') {
+  if (!error) return fallback;
+  if (isForeignKeyDeleteError(error)) return PRODUCT_DELETE_HISTORY_MESSAGE;
+
+  const raw = String(error?.message || '').trim();
+  const looksTechnical = /violates|constraint|foreign key|duplicate key|supabase|postgres|sql|235\d\d|wa_/i.test(raw);
+  if (!raw || looksTechnical) return fallback;
+  return raw;
+}
+
+function logProductManagementError(context, error) {
+  if (error) console.error(`[ProductManagement] ${context}`, error);
+}
+
 
 export default function ProductManagement() {
   const navigate = useNavigate();
@@ -52,9 +84,16 @@ export default function ProductManagement() {
     setLoading(true); setError(null);
     try {
       const { data, error: err } = await getProducts(business?.id);
-      if (err) { setError(err?.message); return; }
+      if (err) {
+        logProductManagementError('getProducts', err);
+        setError(getFriendlyProductError(err, 'No se pudieron cargar los productos.'));
+        return;
+      }
       setProducts(data || []);
-    } catch (e) { setError('Error al cargar productos'); }
+    } catch (e) {
+      logProductManagementError('getProducts unexpected', e);
+      setError('Error al cargar productos');
+    }
     finally { setLoading(false); }
   };
 
@@ -144,7 +183,8 @@ export default function ProductManagement() {
       guard.runIfConfirmed(async () => {
         const { error: err } = await updateProduct(id, payload);
         if (err) {
-          toast?.error(err?.message || 'No se pudo actualizar.');
+          logProductManagementError('updateProduct', err);
+          toast?.error(getFriendlyProductError(err, 'No se pudo actualizar el producto.'));
           return;
         }
         applyLocalState();
@@ -153,7 +193,8 @@ export default function ProductManagement() {
     }
     const { error: err } = await updateProduct(id, payload);
     if (err) {
-      toast?.error(err?.message || 'No se pudo actualizar.');
+      logProductManagementError('updateProduct', err);
+      toast?.error(getFriendlyProductError(err, 'No se pudo actualizar el producto.'));
       return;
     }
     applyLocalState();
@@ -166,7 +207,8 @@ export default function ProductManagement() {
     if (!product || !business?.id) return;
     const { data, error: err } = await createProduct(business?.id, { name: `${product?.name} (copia)`, description: product?.description, price: product?.price, imageUrl: product?.imageUrl, images: product?.images, isActive: false, sortOrder: product?.sortOrder });
     if (err) {
-      toast?.error(err?.message || 'No se pudo duplicar.');
+      logProductManagementError('createProduct duplicate', err);
+      toast?.error(getFriendlyProductError(err, 'No se pudo duplicar el producto.'));
       return;
     }
     if (data) setProducts(prev => [...prev, data]);
@@ -181,7 +223,11 @@ export default function ProductManagement() {
       if (deleteDialog?.isBulk) {
         const { error: err } = await deleteProducts(selectedIds);
         if (err) {
-          toast?.error('Error al eliminar: ' + (err?.message || 'Intenta de nuevo.'));
+          logProductManagementError('deleteProducts', err);
+          const message = isForeignKeyDeleteError(err)
+            ? 'No se pueden eliminar algunos productos. Uno o más productos ya tienen ventas registradas. Para conservar el historial, puedes desactivarlos u ocultarlos del catálogo.'
+            : getFriendlyProductError(err, 'No se pudieron eliminar los productos. Intenta de nuevo.');
+          toast?.error(message, 7000);
           setDeleteDialog({ open: false, isBulk: false, targetId: null });
           return;
         }
@@ -193,7 +239,8 @@ export default function ProductManagement() {
         if (!id) { setDeleteDialog({ open: false, isBulk: false, targetId: null }); return; }
         const { error: err } = await deleteProduct(id);
         if (err) {
-          toast?.error('Error al eliminar: ' + (err?.message || 'Intenta de nuevo.'));
+          logProductManagementError('deleteProduct', err);
+          toast?.error(getFriendlyProductError(err, 'No se pudo eliminar el producto. Intenta de nuevo.'), 7000);
           setDeleteDialog({ open: false, isBulk: false, targetId: null });
           return;
         }
