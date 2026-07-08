@@ -16,6 +16,7 @@ import VideoUploadSection from './components/VideoUploadSection';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUnsavedChangesGuard } from '../../hooks/useUnsavedChangesGuard';
 import { useLocalFormDraft } from '../../hooks/useLocalFormDraft';
+import { shouldOfferDraftRestore, shouldWithdrawDraftPrompt } from '../../lib/forms/draftPrompt';
 import ConfirmDialog from 'components/ui/ConfirmDialog';
 import {
   getProduct,
@@ -220,15 +221,28 @@ export default function ProductEditor() {
     enabled: isDirty,
   });
 
-  // Ofrece restaurar un borrador una sola vez, después de que termine de cargar el
-  // producto (si se está editando) para no pisar la carga con un prompt prematuro.
+  // Ofrece restaurar un borrador con un chequeo de UNA sola vez, apenas termina de cargar
+  // el producto (si se está editando) y antes de que el usuario empiece a interactuar.
+  // Si para cuando el borrador se detecta el usuario ya escribió algo (isDirty) o ya está
+  // enfocado en un campo a punto de escribir, la oferta se salta en silencio — nunca
+  // interrumpe a alguien que ya está trabajando.
   useEffect(() => {
-    if (pageLoading || draftPromptResolvedRef.current) return;
-    if (hasDraft) {
-      draftPromptResolvedRef.current = true;
+    if (draftPromptResolvedRef.current || pageLoading || !hasDraft) return;
+    const activeTag = document.activeElement?.tagName;
+    const isFieldFocused = activeTag === 'INPUT' || activeTag === 'TEXTAREA' || !!document.activeElement?.isContentEditable;
+    draftPromptResolvedRef.current = true; // decisión de una sola vez, se ofrezca o no
+    if (shouldOfferDraftRestore({ hasDraft, isDirty, isLoading: pageLoading, isFieldFocused })) {
       setShowDraftPrompt(true);
     }
-  }, [pageLoading, hasDraft]);
+  }, [pageLoading, hasDraft, isDirty]);
+
+  // Si de todas formas el formulario se ensucia mientras el diálogo está abierto, se
+  // retira solo — nunca bloquea la pantalla forzando una respuesta.
+  useEffect(() => {
+    if (shouldWithdrawDraftPrompt({ isPromptOpen: showDraftPrompt, isDirty })) {
+      setShowDraftPrompt(false);
+    }
+  }, [isDirty, showDraftPrompt]);
 
   const handleRestoreDraft = () => {
     const draftData = restoreDraft();
@@ -2266,9 +2280,9 @@ export default function ProductEditor() {
           isOpen={showDraftPrompt}
           variant="info"
           title="Encontramos un borrador sin guardar"
-          message={`Hay cambios sin guardar de una sesión anterior en este ${itemSingular}. ¿Quieres restaurarlos?`}
-          confirmLabel="Restaurar"
-          cancelLabel="Descartar"
+          message={`Hay cambios sin guardar de una sesión anterior en este ${itemSingular}. ¿Quieres usarlos?`}
+          confirmLabel="Usar borrador"
+          cancelLabel="Seguir con lo actual"
           confirmVariant="default"
           onConfirm={handleRestoreDraft}
           onCancel={handleDiscardDraft}
