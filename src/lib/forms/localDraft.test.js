@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { buildDraftKey, readDraft, writeDraft, removeDraft, shouldWriteDraftTick } from './localDraft';
+import { buildDraftKey, buildFormRecordScopeId, readDraft, writeDraft, removeDraft, shouldWriteDraftTick } from './localDraft';
 
 function createMemoryStorage() {
   const store = new Map();
@@ -24,6 +24,40 @@ describe('buildDraftKey', () => {
     const keyA = buildDraftKey('product-editor', 'biz1:prod-A');
     const keyB = buildDraftKey('product-editor', 'biz1:prod-B');
     expect(keyA).not.toBe(keyB);
+  });
+});
+
+describe('buildFormRecordScopeId', () => {
+  it('arma negocio:modo:registro', () => {
+    expect(buildFormRecordScopeId({ businessId: 'biz1', mode: 'edit', recordId: 'prod-A' }))
+      .toBe('biz1:edit:prod-A');
+  });
+
+  it('usa "new" como registro cuando no hay recordId (producto nuevo)', () => {
+    expect(buildFormRecordScopeId({ businessId: 'biz1', mode: 'new', recordId: null }))
+      .toBe('biz1:new:new');
+  });
+
+  it('el scope de "nuevo" nunca coincide con el de editar un registro puntual', () => {
+    const newScope  = buildFormRecordScopeId({ businessId: 'biz1', mode: 'new', recordId: null });
+    const editScope = buildFormRecordScopeId({ businessId: 'biz1', mode: 'edit', recordId: 'prod-A' });
+    expect(newScope).not.toBe(editScope);
+  });
+
+  it('registros distintos del mismo negocio y modo tienen scopes distintos', () => {
+    const scopeA = buildFormRecordScopeId({ businessId: 'biz1', mode: 'edit', recordId: 'prod-A' });
+    const scopeB = buildFormRecordScopeId({ businessId: 'biz1', mode: 'edit', recordId: 'prod-B' });
+    expect(scopeA).not.toBe(scopeB);
+  });
+
+  it('el mismo registro en negocios distintos tiene scopes distintos', () => {
+    const scopeBiz1 = buildFormRecordScopeId({ businessId: 'biz1', mode: 'edit', recordId: 'prod-A' });
+    const scopeBiz2 = buildFormRecordScopeId({ businessId: 'biz2', mode: 'edit', recordId: 'prod-A' });
+    expect(scopeBiz1).not.toBe(scopeBiz2);
+  });
+
+  it('devuelve null sin negocio (no hay dónde namespacear el borrador)', () => {
+    expect(buildFormRecordScopeId({ businessId: null, mode: 'new', recordId: null })).toBeNull();
   });
 });
 

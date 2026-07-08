@@ -17,7 +17,9 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useUnsavedChangesGuard } from '../../hooks/useUnsavedChangesGuard';
 import { useLocalFormDraft } from '../../hooks/useLocalFormDraft';
 import { shouldOfferDraftRestore, shouldWithdrawDraftPrompt } from '../../lib/forms/draftPrompt';
+import { buildFormRecordScopeId } from '../../lib/forms/localDraft';
 import ConfirmDialog from 'components/ui/ConfirmDialog';
+import DraftBanner from 'components/ui/DraftBanner';
 import {
   getProduct,
   createProduct,
@@ -213,7 +215,13 @@ export default function ProductEditor() {
   // a propósito, tanto del chequeo de "dirty" como del borrador local.
   const isDirty = !pageLoading && JSON.stringify(formData) !== JSON.stringify(baselineFormDataRef.current);
   const { guardedNavigate, confirmDialogProps: unsavedChangesDialogProps } = useUnsavedChangesGuard(isDirty);
-  const draftScopeId = business?.id ? `${business.id}:${effectiveProductId || 'new'}` : null;
+  // El borrador queda atado a negocio + modo + registro, para que un borrador de "Nuevo
+  // producto" jamás se confunda con el de editar un producto puntual (ni viceversa).
+  const draftScopeId = buildFormRecordScopeId({
+    businessId: business?.id,
+    mode: isEditingFlow ? 'edit' : 'new',
+    recordId: effectiveProductId,
+  });
   const { hasDraft, restoreDraft, discardDraft, clearDraft } = useLocalFormDraft({
     formName: 'product-editor',
     scopeId: draftScopeId,
@@ -226,6 +234,13 @@ export default function ProductEditor() {
   // Si para cuando el borrador se detecta el usuario ya escribió algo (isDirty) o ya está
   // enfocado en un campo a punto de escribir, la oferta se salta en silencio — nunca
   // interrumpe a alguien que ya está trabajando.
+  //
+  // Presentación según el modo (nunca un modal para "Nuevo producto"):
+  //  - Editando un producto puntual: hay evidencia clara de que es EL MISMO producto
+  //    (el borrador está scopeado a su productId) y la sesión pudo cortarse sin avisar
+  //    → tiene sentido preguntar con un modal.
+  //  - Producto nuevo: nunca hay "el mismo producto" que verificar (todavía no existe),
+  //    así que solo se muestra un banner chico e ignorable arriba del formulario.
   useEffect(() => {
     if (draftPromptResolvedRef.current || pageLoading || !hasDraft) return;
     const activeTag = document.activeElement?.tagName;
@@ -1282,6 +1297,18 @@ export default function ProductEditor() {
               {/* ── LEFT COLUMN: Form ── */}
               <div className="lg:col-span-2 space-y-5">
 
+                {/* Borrador de "Nuevo producto": aviso chico e ignorable, nunca un modal */}
+                {!isEditingFlow && (
+                  <DraftBanner
+                    isOpen={showDraftPrompt}
+                    message="Hay un borrador anterior disponible."
+                    restoreLabel="Restaurar borrador"
+                    discardLabel="Descartar"
+                    onRestore={handleRestoreDraft}
+                    onDiscard={handleDiscardDraft}
+                  />
+                )}
+
                 {/* Error banner */}
                 {Object.keys(errors)?.length > 0 && (
                   <div
@@ -2274,19 +2301,29 @@ export default function ProductEditor() {
           itemSingular={itemSingularCapitalized}
         />
 
-        <ConfirmDialog {...unsavedChangesDialogProps} />
-
         <ConfirmDialog
-          isOpen={showDraftPrompt}
-          variant="info"
-          title="Encontramos un borrador sin guardar"
-          message={`Hay cambios sin guardar de una sesión anterior en este ${itemSingular}. ¿Quieres usarlos?`}
-          confirmLabel="Usar borrador"
-          cancelLabel="Seguir con lo actual"
-          confirmVariant="default"
-          onConfirm={handleRestoreDraft}
-          onCancel={handleDiscardDraft}
+          {...unsavedChangesDialogProps}
+          onConfirm={() => {
+            // Salida deliberada y consciente ("Salir sin guardar") — no es una sesión
+            // cortada inesperadamente, así que no queda nada que ofrecer restaurar después.
+            clearDraft();
+            unsavedChangesDialogProps.onConfirm();
+          }}
         />
+
+        {isEditingFlow && (
+          <ConfirmDialog
+            isOpen={showDraftPrompt}
+            variant="info"
+            title="Encontramos un borrador sin guardar"
+            message={`Hay cambios sin guardar de una sesión anterior en este ${itemSingular}. ¿Quieres usarlos?`}
+            confirmLabel="Usar borrador"
+            cancelLabel="Seguir con lo actual"
+            confirmVariant="default"
+            onConfirm={handleRestoreDraft}
+            onCancel={handleDiscardDraft}
+          />
+        )}
     </DashboardAppShell>
   );
 }

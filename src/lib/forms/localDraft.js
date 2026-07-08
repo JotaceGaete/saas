@@ -11,6 +11,16 @@ export function buildDraftKey(formName, scopeId) {
   return `${DRAFT_KEY_PREFIX}:${formName}:${scopeId ?? 'anon'}`;
 }
 
+// Construye el scopeId de un formulario "registro" (producto, presupuesto, factura, etc.):
+// negocio + modo (nuevo/edición) + registro. El modo es explícito a propósito — así un
+// borrador de "nuevo" NUNCA se confunde con el de editar un registro puntual, aunque
+// ambos compartan negocio, y un registro nunca hereda el borrador de otro.
+// Devuelve null si no hay negocio (sin negocio no hay dónde namespacear el borrador).
+export function buildFormRecordScopeId({ businessId, mode, recordId }) {
+  if (!businessId) return null;
+  return `${businessId}:${mode}:${recordId || 'new'}`;
+}
+
 export function readDraft(storage, storageKey) {
   if (!storage || !storageKey) return null;
   try {
