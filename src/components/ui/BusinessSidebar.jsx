@@ -6,6 +6,7 @@ import VentalinkLogo from 'components/branding/VentalinkLogo';
 import MobileBottomNav from 'components/MobileBottomNav';
 import FloatingActionButton from 'components/FloatingActionButton';
 import { useAuth } from '../../contexts/AuthContext';
+import { useNavigationGuard } from '../../contexts/NavigationGuardContext';
 import { getPlanLabel } from '../../constants/plans';
 import { buildWhatsAppUrl } from '../../utils/whatsapp';
 import { openWhatsAppUrl } from '../../utils/openWhatsAppUrl';
@@ -44,6 +45,7 @@ const NAV_ITEMS = [
 export default function BusinessSidebar({ isCollapsed = false, onCollapsedChange }) {
   const location = useLocation();
   const navigate = useNavigate();
+  const { attemptLeave } = useNavigationGuard();
   const { user, business, signOut, isAdmin, isImpersonating, stopImpersonation } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(isCollapsed);
@@ -93,7 +95,7 @@ export default function BusinessSidebar({ isCollapsed = false, onCollapsedChange
   const handleGoTo = (path) => {
     setUserMenuOpen(false);
     setMobileOpen(false);
-    navigate(path);
+    attemptLeave(() => navigate(path));
   };
 
   const handleCancelRequest = () => {
@@ -129,14 +131,14 @@ Motivo (opcional):`;
 
   const handleNavClick = (item) => {
     if (item?.premiumGated && business?.planSlug === 'starter') {
-      navigate('/planes');
+      attemptLeave(() => navigate('/planes'));
       return;
     }
     if (item?.subItems) {
       setExpandedItems(prev => ({ ...prev, [item?.path]: !prev?.[item?.path] }));
       if (collapsed) { setCollapsed(false); onCollapsedChange?.(false); }
     } else {
-      navigate(item?.path);
+      attemptLeave(() => navigate(item?.path));
     }
   };
 
@@ -232,7 +234,7 @@ Motivo (opcional):`;
                       return (
                         <li key={sub?.path} role="listitem">
                           <button
-                            onClick={() => navigate(sub?.path)}
+                            onClick={() => attemptLeave(() => navigate(sub?.path))}
                             aria-current={subActive ? 'page' : undefined}
                             className={[
                               'w-full text-left px-3 py-2 rounded-md text-xs transition-all duration-150',
@@ -276,7 +278,7 @@ Motivo (opcional):`;
                 return (
                   <li key={item.path} role="listitem">
                     <button
-                      onClick={() => navigate(item.path)}
+                      onClick={() => attemptLeave(() => navigate(item.path))}
                       aria-current={active ? 'page' : undefined}
                       className={[
                         'nav-item w-full flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-[12.5px] font-medium',
@@ -311,7 +313,7 @@ Motivo (opcional):`;
                 return (
                   <li key={item.path} role="listitem">
                     <button
-                      onClick={() => navigate(item.path)}
+                      onClick={() => attemptLeave(() => navigate(item.path))}
                       aria-current={active ? 'page' : undefined}
                       className={[
                         'nav-item w-full flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-[12.5px] font-medium',
@@ -345,7 +347,7 @@ Motivo (opcional):`;
                 return (
                   <li key={item.path} role="listitem">
                     <button
-                      onClick={() => navigate(item.path)}
+                      onClick={() => attemptLeave(() => navigate(item.path))}
                       aria-current={active ? 'page' : undefined}
                       className={[
                         'nav-item w-full flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-[12.5px] font-medium',
