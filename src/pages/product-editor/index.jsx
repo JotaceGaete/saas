@@ -14,9 +14,12 @@ import SaveBar from './components/SaveBar';
 import ProductOptionsSection from './components/ProductOptionsSection';
 import VideoUploadSection from './components/VideoUploadSection';
 import UnsavedChangesDialog from 'components/ui/UnsavedChangesDialog';
+import LocalDraftBanner from 'components/ui/LocalDraftBanner';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNavigationGuard } from '../../contexts/NavigationGuardContext';
 import { createDirtyTracker } from '../../lib/formDirtyTracker';
+import { createDebouncer } from '../../lib/debounce';
+import { buildDraftKey, readDraft, removeDraft, persistDraftIfDirty } from '../../lib/formDraftStorage';
 import {
   getProduct,
   createProduct,
@@ -205,6 +208,14 @@ export default function ProductEditor() {
   if (!dirtyTrackerRef.current) dirtyTrackerRef.current = createDirtyTracker();
   const pendingLeaveActionRef = React.useRef(null);
   const { attemptLeave, setGuard, clearGuard } = useNavigationGuard();
+  const [localDraftBanner, setLocalDraftBanner] = useState(null);
+  const localDraftCheckedRef = React.useRef(false);
+  const localDraftDebouncerRef = React.useRef(null);
+  if (!localDraftDebouncerRef.current) localDraftDebouncerRef.current = createDebouncer(500);
+  const isDirtyRef = React.useRef(false);
+  const formDataRef = React.useRef(formData);
+  formDataRef.current = formData;
+  const localDraftKey = business?.id ? buildDraftKey(business.id, productId) : null;
   const toast = useToast();
   const effectiveProductId = currentProductId || productId || null;
   const isEditingFlow = !!effectiveProductId;
@@ -415,6 +426,59 @@ export default function ProductEditor() {
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [isDirty]);
+
+  useEffect(() => {
+    isDirtyRef.current = isDirty;
+  }, [isDirty]);
+
+  // V2: autoguardado local silencioso. Mientras isDirty=true, cada cambio de
+  // formData se persiste en localStorage con 500ms de debounce (Regla A).
+  useEffect(() => {
+    if (!isDirty || !localDraftKey) return;
+    localDraftDebouncerRef.current.schedule(() => {
+      persistDraftIfDirty({ isDirty: isDirtyRef.current, key: localDraftKey, formData: formDataRef.current });
+    });
+  }, [isDirty, localDraftKey, formData]);
+
+  // El guardado periódico se debounce, pero blur/visibilitychange(hidden)/
+  // beforeunload deben persistir de inmediato (Regla A) para no perder lo
+  // escrito justo antes de cambiar de pestaña o cerrarla.
+  useEffect(() => {
+    if (!localDraftKey) return;
+    const flushDraft = () => {
+      localDraftDebouncerRef.current.flush(() => {
+        persistDraftIfDirty({ isDirty: isDirtyRef.current, key: localDraftKey, formData: formDataRef.current });
+      });
+    };
+    const handleVisibility = () => { if (document.hidden) flushDraft(); };
+    window.addEventListener('blur', flushDraft);
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('beforeunload', flushDraft);
+    return () => {
+      window.removeEventListener('blur', flushDraft);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('beforeunload', flushDraft);
+    };
+  }, [localDraftKey]);
+
+  useEffect(() => () => { localDraftDebouncerRef.current.cancel(); }, []);
+
+  // Regla C/D: al abrir, si hay un draft local se ofrece por banner (nunca
+  // modal/popup). Solo se auto-restaura en el caso seguro de un producto
+  // nuevo cuyo formulario sigue vacío (Regla D); en cualquier otro caso
+  // queda a un clic de distancia en el banner.
+  useEffect(() => {
+    if (localDraftCheckedRef.current) return;
+    if (!localDraftKey) return;
+    if (isEditing && pageLoading) return;
+    localDraftCheckedRef.current = true;
+    const existingDraft = readDraft(localDraftKey);
+    if (!existingDraft) return;
+    if (!isEditing && !isDirty) {
+      applyLocalDraft(existingDraft);
+    }
+    setLocalDraftBanner({ draft: existingDraft });
+  }, [localDraftKey, isEditing, pageLoading, isDirty]);
 
   useEffect(() => {
     const previousImages = previousImagesRef.current || [];
@@ -1105,6 +1169,9 @@ export default function ProductEditor() {
       setIsSaving(false);
       setSaveSuccess(true);
       setIsDirty(false);
+      // Regla E: guardado correcto -> se elimina el borrador local.
+      localDraftDebouncerRef.current.cancel();
+      if (localDraftKey) removeDraft(localDraftKey);
       if (andNew) {
         dirtyTrackerRef.current.armSkip();
         setFormData({ ...EMPTY_FORM });
@@ -1140,6 +1207,9 @@ export default function ProductEditor() {
   const handleLeaveWithoutSaving = () => {
     setShowLeaveDialog(false);
     setIsDirty(false);
+    // Regla F: salir sin guardar -> se elimina el borrador local de este formulario.
+    localDraftDebouncerRef.current.cancel();
+    if (localDraftKey) removeDraft(localDraftKey);
     const action = pendingLeaveActionRef.current;
     pendingLeaveActionRef.current = null;
     action?.();
@@ -1149,6 +1219,24 @@ export default function ProductEditor() {
     setShowLeaveDialog(false);
     pendingLeaveActionRef.current = null;
     handleSave(false);
+  };
+
+  const applyLocalDraft = (draftToApply) => {
+    if (!draftToApply?.formData) return;
+    setFormData((prev) => ({ ...prev, ...draftToApply.formData }));
+  };
+
+  const handleRestoreLocalDraft = () => {
+    if (localDraftBanner?.draft) applyLocalDraft(localDraftBanner.draft);
+    setLocalDraftBanner(null);
+  };
+
+  const handleDismissLocalDraftBanner = () => setLocalDraftBanner(null);
+
+  const handleDeleteLocalDraft = () => {
+    if (localDraftKey) removeDraft(localDraftKey);
+    localDraftDebouncerRef.current.cancel();
+    setLocalDraftBanner(null);
   };
 
   if (pageLoading) {
@@ -1233,6 +1321,12 @@ export default function ProductEditor() {
 
         {/* Main content */}
         <DashboardLayoutContent className="page-enter lg:pb-0">
+            <LocalDraftBanner
+              visible={!!localDraftBanner}
+              onRestore={handleRestoreLocalDraft}
+              onDismiss={handleDismissLocalDraftBanner}
+              onDelete={handleDeleteLocalDraft}
+            />
             <section className="mb-7 sm:mb-9">
               <div className="flex flex-col gap-5 border-b pb-6 sm:flex-row sm:items-end sm:justify-between" style={{ borderColor: 'rgba(17,24,39,0.08)' }}>
                 <div className="max-w-2xl">
