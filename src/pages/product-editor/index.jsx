@@ -15,6 +15,7 @@ import ProductOptionsSection from './components/ProductOptionsSection';
 import VideoUploadSection from './components/VideoUploadSection';
 import UnsavedChangesDialog from 'components/ui/UnsavedChangesDialog';
 import LocalDraftBanner from 'components/ui/LocalDraftBanner';
+import LocalOnlyImagesNotice from 'components/ui/LocalOnlyImagesNotice';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNavigationGuard } from '../../contexts/NavigationGuardContext';
 import { createDirtyTracker } from '../../lib/formDirtyTracker';
@@ -215,6 +216,9 @@ export default function ProductEditor() {
   const isDirtyRef = React.useRef(false);
   const formDataRef = React.useRef(formData);
   formDataRef.current = formData;
+  const draftImagesRef = React.useRef(images);
+  draftImagesRef.current = images;
+  const [hasUnpersistedDraftImages, setHasUnpersistedDraftImages] = useState(false);
   const localDraftKey = business?.id ? buildDraftKey(business.id, productId) : null;
   const toast = useToast();
   const effectiveProductId = currentProductId || productId || null;
@@ -431,25 +435,32 @@ export default function ProductEditor() {
     isDirtyRef.current = isDirty;
   }, [isDirty]);
 
+  // Persiste formData + imágenes ya subidas (URL real, nunca File/blob) bajo
+  // la key del draft. Actualiza el aviso discreto cuando hubo imágenes locales
+  // que no se pudieron incluir (Regla 3 de la corrección de imágenes).
+  const persistLocalDraftNow = () => {
+    const snapshot = persistDraftIfDirty({
+      isDirty: isDirtyRef.current,
+      key: localDraftKey,
+      formData: formDataRef.current,
+      images: draftImagesRef.current,
+    });
+    if (snapshot) setHasUnpersistedDraftImages(snapshot.hasUnpersistedImages === true);
+  };
+
   // V2: autoguardado local silencioso. Mientras isDirty=true, cada cambio de
-  // formData se persiste en localStorage con 500ms de debounce (Regla A).
+  // formData/imágenes se persiste en localStorage con 500ms de debounce (Regla A).
   useEffect(() => {
     if (!isDirty || !localDraftKey) return;
-    localDraftDebouncerRef.current.schedule(() => {
-      persistDraftIfDirty({ isDirty: isDirtyRef.current, key: localDraftKey, formData: formDataRef.current });
-    });
-  }, [isDirty, localDraftKey, formData]);
+    localDraftDebouncerRef.current.schedule(persistLocalDraftNow);
+  }, [isDirty, localDraftKey, formData, images]);
 
   // El guardado periódico se debounce, pero blur/visibilitychange(hidden)/
   // beforeunload deben persistir de inmediato (Regla A) para no perder lo
   // escrito justo antes de cambiar de pestaña o cerrarla.
   useEffect(() => {
     if (!localDraftKey) return;
-    const flushDraft = () => {
-      localDraftDebouncerRef.current.flush(() => {
-        persistDraftIfDirty({ isDirty: isDirtyRef.current, key: localDraftKey, formData: formDataRef.current });
-      });
-    };
+    const flushDraft = () => localDraftDebouncerRef.current.flush(persistLocalDraftNow);
     const handleVisibility = () => { if (document.hidden) flushDraft(); };
     window.addEventListener('blur', flushDraft);
     document.addEventListener('visibilitychange', handleVisibility);
@@ -1169,9 +1180,10 @@ export default function ProductEditor() {
       setIsSaving(false);
       setSaveSuccess(true);
       setIsDirty(false);
-      // Regla E: guardado correcto -> se elimina el borrador local.
+      // Regla E: guardado correcto -> se elimina el borrador local (incluyendo URLs de imágenes).
       localDraftDebouncerRef.current.cancel();
       if (localDraftKey) removeDraft(localDraftKey);
+      setHasUnpersistedDraftImages(false);
       if (andNew) {
         dirtyTrackerRef.current.armSkip();
         setFormData({ ...EMPTY_FORM });
@@ -1210,6 +1222,7 @@ export default function ProductEditor() {
     // Regla F: salir sin guardar -> se elimina el borrador local de este formulario.
     localDraftDebouncerRef.current.cancel();
     if (localDraftKey) removeDraft(localDraftKey);
+    setHasUnpersistedDraftImages(false);
     const action = pendingLeaveActionRef.current;
     pendingLeaveActionRef.current = null;
     action?.();
@@ -1224,6 +1237,11 @@ export default function ProductEditor() {
   const applyLocalDraft = (draftToApply) => {
     if (!draftToApply?.formData) return;
     setFormData((prev) => ({ ...prev, ...draftToApply.formData }));
+    // Regla 4: solo restaura imágenes con URL válida; si no había ninguna
+    // persistible no se toca el estado actual de imágenes (no se inventan).
+    if (Array.isArray(draftToApply.images) && draftToApply.images.length > 0) {
+      setImages(draftToApply.images);
+    }
   };
 
   const handleRestoreLocalDraft = () => {
@@ -1427,6 +1445,7 @@ export default function ProductEditor() {
                     uploadMessage={imageUploading ? 'Subiendo imagen principal...' : ''}
                     uploadError={imageUploadError}
                   />
+                  <LocalOnlyImagesNotice visible={hasUnpersistedDraftImages} />
                 </div>
 
                 {/* Video */}
