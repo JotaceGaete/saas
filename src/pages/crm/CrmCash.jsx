@@ -9,7 +9,7 @@ import { useAuth } from 'contexts/AuthContext';
 import { canUseFeature } from 'config/planFeatures';
 import { getEffectivePlanSlug } from 'services/waBusinessService';
 import { formatMoney, fmtMoneyInput, parseMoneyInput } from 'utils/formatMoney';
-import { computeExpectedCash, isCashBalanced, classifyCashDifference } from 'lib/cash/arqueo';
+import { computeExpectedCash, isCashBalanced, classifyCashDifference, getArqueoSummary, recalcArqueoOnCorrection } from 'lib/cash/arqueo';
 import {
   PAYMENT_METHOD_LABELS,
   CASH_MOVEMENT_CATEGORIES_OUT,
@@ -30,6 +30,7 @@ import {
   reopenCashSession,
   updateCrmPayment,
   updateCashSession,
+  updateCashArqueo,
   voidCashMovement,
   voidCrmPayment,
 } from 'services/crmService';
@@ -330,6 +331,204 @@ function Row({ label, value, color = 'text-gray-900', bold = false, note }) {
         {note && <span className="ml-1 text-[10px] text-gray-400">({note})</span>}
       </span>
       <span className={`font-${bold ? 'black' : 'semibold'} ${color}`}>{value}</span>
+    </div>
+  );
+}
+
+const ARQUEO_STATUS_LABEL = { balanced: 'Cuadrada', sobrante: 'Sobrante', faltante: 'Faltante' };
+const ARQUEO_STATUS_CHIP_CLASS = {
+  balanced:  'bg-emerald-50 text-emerald-700',
+  sobrante:  'bg-amber-50 text-amber-700',
+  faltante:  'bg-red-50 text-red-700',
+};
+
+function arqueoStatusKey(summary) {
+  if (!summary) return null;
+  if (summary.balanced) return 'balanced';
+  return summary.diff > 0 ? 'sobrante' : 'faltante';
+}
+
+// Chip compacto de estado del arqueo (🟢 Cuadrada / 🟠 Sobrante / 🔴 Faltante) para listas.
+function ArqueoStatusChip({ session }) {
+  const summary = getArqueoSummary(session);
+  if (!summary) {
+    return (
+      <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-semibold text-gray-400">
+        Sin arqueo
+      </span>
+    );
+  }
+  const key = arqueoStatusKey(summary);
+  return (
+    <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${ARQUEO_STATUS_CHIP_CLASS[key]}`}>
+      {summary.emoji} {ARQUEO_STATUS_LABEL[key]}
+    </span>
+  );
+}
+
+// Resumen completo del arqueo de una caja cerrada: esperado, contado, diferencia y observación.
+function ArqueoSummary({ session, currency }) {
+  const summary = getArqueoSummary(session);
+  if (!summary) {
+    return (
+      <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-3 text-xs text-gray-400">
+        Esta caja se cerró antes de que existiera el registro de arqueo.
+      </div>
+    );
+  }
+  const key = arqueoStatusKey(summary);
+  const fmt = (v) => formatMoney(v, currency);
+  return (
+    <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <p className="text-xs font-bold uppercase tracking-wide text-gray-400">Arqueo de cierre</p>
+        <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${ARQUEO_STATUS_CHIP_CLASS[key]}`}>
+          {summary.emoji} {ARQUEO_STATUS_LABEL[key]}
+        </span>
+      </div>
+      <div className="divide-y divide-gray-200 rounded-lg bg-white">
+        <Row label="Efectivo esperado" value={fmt(summary.expected)} />
+        <Row label="Efectivo contado" value={fmt(summary.counted)} />
+        <Row
+          label="Diferencia"
+          value={`${summary.diff > 0 ? '+' : ''}${fmt(summary.diff)}`}
+          color={summary.color}
+          bold
+        />
+      </div>
+      {summary.balanced ? (
+        <p className="mt-2 text-xs font-semibold text-emerald-600">La caja cuadra perfectamente 🟢</p>
+      ) : summary.notes ? (
+        <p className="mt-2 text-xs text-gray-600">
+          <span className="font-semibold text-gray-500">Observación: </span>{summary.notes}
+        </p>
+      ) : (
+        <p className="mt-2 text-xs text-gray-400">Sin observación registrada.</p>
+      )}
+    </div>
+  );
+}
+
+// Corrección controlada del arqueo de una caja YA cerrada: solo counted_cash / closing_notes.
+// expected_cash es de solo lectura — nunca se recalcula ni se edita manualmente aquí.
+function EditArqueoModal({ session, currency, busy, onSubmit, onCancel }) {
+  const [counted, setCounted] = useState(String(session?.counted_cash ?? ''));
+  const [notes, setNotes]     = useState(session?.closing_notes || '');
+  const [saveError, setSaveError] = useState('');
+
+  const expected    = toNumber(session?.expected_cash);
+  const countedNum  = parseMoneyInput(counted);
+  const preview     = Number.isFinite(countedNum) ? recalcArqueoOnCorrection(expected, countedNum) : null;
+  const needsNote   = preview !== null && !preview.balanced;
+  const canSubmit   = Number.isFinite(countedNum) && countedNum >= 0 && (!needsNote || notes.trim().length >= 5);
+
+  const fmt = (v) => formatMoney(v, currency);
+
+  const handleSubmit = (event) => {
+    event.preventDefault();
+    setSaveError('');
+    if (!canSubmit) {
+      setSaveError(needsNote && notes.trim().length < 5
+        ? 'La observación es obligatoria cuando hay diferencia.'
+        : 'Ingresa el efectivo contado.');
+      return;
+    }
+    onSubmit({ countedCash: countedNum, closingNotes: notes.trim() || null });
+  };
+
+  return (
+    <div className="fixed inset-0 z-modal flex items-center justify-center bg-slate-900/50 px-4">
+      <form onSubmit={handleSubmit} className="w-full max-w-lg rounded-2xl border border-gray-100 bg-white p-5 shadow-xl">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-bold text-gray-900">Corregir arqueo</h3>
+            <p className="text-xs text-gray-400">Solo se corrige el conteo. Pagos, movimientos y stock no se modifican.</p>
+          </div>
+          <button type="button" onClick={onCancel} className="text-gray-400 hover:text-gray-600" aria-label="Cancelar">
+            <Icon name="X" size={17} />
+          </button>
+        </div>
+
+        <div className="space-y-3">
+          <div className="rounded-xl bg-gray-50 px-4 py-3 text-sm">
+            <div className="flex justify-between">
+              <span className="text-gray-500">Efectivo esperado</span>
+              <span className="font-bold text-gray-900">{fmt(expected)}</span>
+            </div>
+            <p className="mt-1 text-[11px] text-gray-400">
+              Fijo desde el cierre original (sale de los movimientos). No se puede editar aquí.
+            </p>
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-gray-500">Efectivo contado</label>
+            <div className="relative">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">$</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                autoFocus
+                value={fmtMoneyInput(counted)}
+                onChange={e => setCounted(e.target.value.replace(/\D/g, ''))}
+                placeholder="0"
+                className="w-full rounded-xl border border-gray-200 py-3 pl-7 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+              />
+            </div>
+          </div>
+
+          {preview && (
+            <div className="rounded-xl bg-gray-50 px-4 py-3 text-sm">
+              <div className="flex justify-between border-t border-gray-200 pt-0">
+                <span className="font-semibold text-gray-700">{preview.emoji} Diferencia</span>
+                <span className={`font-black ${preview.color}`}>
+                  {preview.diff > 0 ? '+' : ''}{fmt(preview.diff)}
+                  {preview.label && ` (${preview.label})`}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {preview?.balanced && (
+            <p className="text-sm font-semibold text-emerald-600">La caja cuadra perfectamente 🟢</p>
+          )}
+
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-gray-500">
+              Observación {needsNote ? '(obligatoria)' : '(opcional)'}
+            </label>
+            <textarea
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              placeholder={needsNote ? 'Explica la diferencia...' : 'Observación opcional...'}
+              rows={3}
+              className="w-full resize-none rounded-xl border border-gray-200 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+            />
+            {needsNote && notes.trim().length > 0 && notes.trim().length < 5 && (
+              <p className="mt-1 text-xs text-red-500">Mínimo 5 caracteres.</p>
+            )}
+          </div>
+
+          {saveError && <p className="text-xs text-red-500">{saveError}</p>}
+        </div>
+
+        <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-50"
+          >
+            Cancelar
+          </button>
+          <button
+            type="submit"
+            disabled={busy || !canSubmit}
+            className="flex items-center justify-center gap-2 rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-bold text-white hover:bg-gray-800 disabled:opacity-40"
+          >
+            {busy && <Icon name="Loader2" size={15} className="animate-spin" />}
+            Guardar corrección
+          </button>
+        </div>
+      </form>
     </div>
   );
 }
@@ -1085,6 +1284,7 @@ export default function CrmCash() {
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [arqueoSession, setArqueoSession] = useState(null);
+  const [editingArqueoSession, setEditingArqueoSession] = useState(null);
 
   const planSlug = getEffectivePlanSlug(
     business?.planSlug,
@@ -1271,6 +1471,30 @@ export default function CrmCash() {
       return;
     }
     setEditingSession(null);
+    await load();
+  };
+
+  // "Editar" en una caja abierta corrige fondo/notas; en una caja cerrada, solo corrige el arqueo
+  // (counted_cash / closing_notes) — nunca movimientos, pagos ni el fondo inicial.
+  const handleEditClick = (session) => {
+    if (session?.status === 'closed') {
+      setEditingArqueoSession(session);
+    } else {
+      setEditingSession(session);
+    }
+  };
+
+  const handleUpdateArqueo = async ({ countedCash, closingNotes }) => {
+    if (!editingArqueoSession?.id) return;
+    setBusy(true);
+    setErrorMsg('');
+    const { error } = await updateCashArqueo(editingArqueoSession.id, { countedCash, closingNotes });
+    setBusy(false);
+    if (error) {
+      setErrorMsg(error.message);
+      return;
+    }
+    setEditingArqueoSession(null);
     await load();
   };
 
@@ -1483,10 +1707,10 @@ export default function CrmCash() {
                     )}
                     {currentSession && (
                       <button
-                        onClick={() => setEditingSession(currentSession)}
+                        onClick={() => handleEditClick(currentSession)}
                         className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-bold text-gray-700 hover:bg-gray-50"
                       >
-                        Editar
+                        {currentSession.status === 'closed' ? 'Editar arqueo' : 'Editar'}
                       </button>
                     )}
                     {currentSession?.status === 'closed' && (
@@ -1499,6 +1723,11 @@ export default function CrmCash() {
                     )}
                   </div>
                 </div>
+                {currentSession?.status === 'closed' && (
+                  <div className="mt-4 border-t border-gray-100 pt-4">
+                    <ArqueoSummary session={currentSession} currency={business?.currency} />
+                  </div>
+                )}
               </div>
 
               <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
@@ -1579,6 +1808,16 @@ export default function CrmCash() {
                   busy={busy}
                   onConfirm={handleArqueoConfirm}
                   onCancel={() => setArqueoSession(null)}
+                />
+              )}
+
+              {editingArqueoSession && (
+                <EditArqueoModal
+                  session={editingArqueoSession}
+                  currency={business?.currency}
+                  busy={busy}
+                  onSubmit={handleUpdateArqueo}
+                  onCancel={() => setEditingArqueoSession(null)}
                 />
               )}
 
@@ -1697,6 +1936,12 @@ export default function CrmCash() {
                               <span className="text-gray-400">Inicial: {formatMoney(toNumber(session.initial_amount), business?.currency)}</span>
                               <span className="mx-2 text-gray-300">|</span>
                               <span className="font-bold text-gray-900">Saldo: {formatMoney(total, business?.currency)}</span>
+                              {session.status === 'closed' && (
+                                <>
+                                  <span className="mx-2 text-gray-300">|</span>
+                                  <ArqueoStatusChip session={session} />
+                                </>
+                              )}
                             </div>
                             <div className="flex flex-wrap gap-2">
                               <button
@@ -1706,10 +1951,10 @@ export default function CrmCash() {
                                 Ver detalle
                               </button>
                               <button
-                                onClick={() => setEditingSession(session)}
+                                onClick={() => handleEditClick(session)}
                                 className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold text-gray-700 hover:bg-gray-50"
                               >
-                                Editar
+                                {session.status === 'closed' ? 'Editar arqueo' : 'Editar'}
                               </button>
                               {session.status === 'open' ? (
                                 <button
@@ -1760,6 +2005,9 @@ export default function CrmCash() {
                             <p className="mt-1">Movimientos: {sessionLoadErrors[detailSession.id].movements}</p>
                           )}
                         </div>
+                      )}
+                      {detailSession.status === 'closed' && (
+                        <ArqueoSummary session={detailSession} currency={business?.currency} />
                       )}
                       <MethodBreakdown summary={detailSummary} currency={business?.currency} />
                       <MovementsTable

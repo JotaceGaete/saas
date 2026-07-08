@@ -40,3 +40,39 @@ export function classifyCashDifference(diff, expected) {
     label: diff > 0 ? 'sobrante' : diff < 0 ? 'faltante' : 'cuadra',
   };
 }
+
+// Resumen de arqueo de una caja ya cerrada, para mostrar en el detalle/historial.
+// Devuelve null si la caja se cerró antes de que existiera el arqueo (sin counted_cash registrado).
+export function getArqueoSummary(session) {
+  if (!session || session.counted_cash === null || session.counted_cash === undefined) {
+    return null;
+  }
+  const expected = toNumber(session.expected_cash);
+  const counted  = toNumber(session.counted_cash);
+  const diff     = session.cash_difference !== null && session.cash_difference !== undefined
+    ? toNumber(session.cash_difference)
+    : counted - expected;
+  return {
+    expected,
+    counted,
+    diff,
+    notes: session.closing_notes || null,
+    balanced: isCashBalanced(diff),
+    ...classifyCashDifference(diff, expected),
+  };
+}
+
+// Recalcula la diferencia al corregir el efectivo contado de una caja ya cerrada.
+// expected_cash nunca se recalcula: es la fotografía fija tomada en el cierre original.
+export function recalcArqueoOnCorrection(expectedCash, newCountedCash) {
+  const expected = toNumber(expectedCash);
+  const counted  = toNumber(newCountedCash);
+  const diff     = counted - expected;
+  return {
+    expected,
+    counted,
+    diff,
+    balanced: isCashBalanced(diff),
+    ...classifyCashDifference(diff, expected),
+  };
+}

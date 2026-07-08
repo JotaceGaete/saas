@@ -1500,6 +1500,42 @@ export async function closeCashSession(sessionId, {
   return { data, error };
 }
 
+// Corrige el conteo de una caja YA cerrada. Solo toca counted_cash / cash_difference /
+// closing_notes — nunca expected_cash (viene fijo del cierre original, calculado desde
+// los movimientos), ni initial_amount, ni pagos, ni movimientos.
+export async function updateCashArqueo(sessionId, { countedCash, closingNotes } = {}) {
+  if (countedCash == null || !Number.isFinite(Number(countedCash)) || Number(countedCash) < 0) {
+    return { data: null, error: { message: 'Ingresa el efectivo contado.' } };
+  }
+  const { data: current, error: fetchError } = await supabase
+    .from('crm_cash_sessions')
+    .select('status, expected_cash')
+    .eq('id', sessionId)
+    .single();
+  if (fetchError) return { data: null, error: fetchError };
+  if (current.status !== 'closed') {
+    return { data: null, error: { message: 'Solo se puede corregir el arqueo de una caja cerrada.' } };
+  }
+
+  const expectedCash   = Number(current.expected_cash) || 0;
+  const cashDifference = Number(countedCash) - expectedCash;
+  if (Math.abs(cashDifference) >= 1 && !closingNotes?.trim()) {
+    return { data: null, error: { code: 'CLOSING_NOTES_REQUIRED', message: 'La observación es obligatoria cuando hay diferencia en el arqueo.' } };
+  }
+
+  const { data, error } = await supabase
+    .from('crm_cash_sessions')
+    .update({
+      counted_cash:    Number(countedCash),
+      cash_difference: cashDifference,
+      closing_notes:   closingNotes || null,
+    })
+    .eq('id', sessionId)
+    .select()
+    .single();
+  return { data, error };
+}
+
 export async function getPaymentsForSession(businessId, sessionId) {
   const { data: session, error: sErr } = await supabase
     .from('crm_cash_sessions')
