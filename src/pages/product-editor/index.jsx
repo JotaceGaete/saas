@@ -13,7 +13,10 @@ import ProductPreview from './components/ProductPreview';
 import SaveBar from './components/SaveBar';
 import ProductOptionsSection from './components/ProductOptionsSection';
 import VideoUploadSection from './components/VideoUploadSection';
+import UnsavedChangesDialog from 'components/ui/UnsavedChangesDialog';
 import { useAuth } from '../../contexts/AuthContext';
+import { useNavigationGuard } from '../../contexts/NavigationGuardContext';
+import { createDirtyTracker } from '../../lib/formDirtyTracker';
 import {
   getProduct,
   createProduct,
@@ -196,6 +199,12 @@ export default function ProductEditor() {
   const [generatingBarcode, setGeneratingBarcode] = useState(false);
   const [cardImageUrl, setCardImageUrl] = useState(null);
   const [productSlug, setProductSlug] = useState('');
+  const [isDirty, setIsDirty] = useState(false);
+  const [showLeaveDialog, setShowLeaveDialog] = useState(false);
+  const dirtyTrackerRef = React.useRef(null);
+  if (!dirtyTrackerRef.current) dirtyTrackerRef.current = createDirtyTracker();
+  const pendingLeaveActionRef = React.useRef(null);
+  const { attemptLeave, setGuard, clearGuard } = useNavigationGuard();
   const toast = useToast();
   const effectiveProductId = currentProductId || productId || null;
   const isEditingFlow = !!effectiveProductId;
@@ -308,6 +317,7 @@ export default function ProductEditor() {
       try {
         const { data, error } = await getProduct(productId);
         if (error || !data) { navigate('/product-management'); return; }
+        dirtyTrackerRef.current.armSkip();
         setCurrentProductId(data?.id || productId);
         initialActivoRef.current = data?.isActive !== undefined ? data?.isActive : true;
         setFormData({
@@ -378,6 +388,33 @@ export default function ProductEditor() {
   useEffect(() => {
     if (saveSuccess) { const t = setTimeout(() => setSaveSuccess(false), 3000); return () => clearTimeout(t); }
   }, [saveSuccess]);
+
+  // Regla 1: la primera modificación real del formulario marca isDirty = true.
+  // dirtyTrackerRef ignora la escritura inmediatamente posterior a cargar el
+  // producto o a resetear el formulario tras "Guardar y crear otro".
+  useEffect(() => {
+    if (dirtyTrackerRef.current.onWatchedChange()) setIsDirty(true);
+  }, [formData, images, video, cardImageUrl]);
+
+  // Única función de la app para decidir si se puede abandonar la pantalla.
+  useEffect(() => {
+    setGuard((action) => {
+      if (!isDirty) { action(); return; }
+      pendingLeaveActionRef.current = action;
+      setShowLeaveDialog(true);
+    });
+    return () => clearGuard();
+  }, [isDirty, setGuard, clearGuard]);
+
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (!isDirty) return;
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isDirty]);
 
   useEffect(() => {
     const previousImages = previousImagesRef.current || [];
@@ -1067,7 +1104,9 @@ export default function ProductEditor() {
       setProductSlug(result?.data?.slug || slugifyProductName(result?.data?.name || formData?.nombre));
       setIsSaving(false);
       setSaveSuccess(true);
+      setIsDirty(false);
       if (andNew) {
+        dirtyTrackerRef.current.armSkip();
         setFormData({ ...EMPTY_FORM });
         setImages([]);
         setCurrentProductId(null);
@@ -1091,7 +1130,27 @@ export default function ProductEditor() {
     finally { setIsSaving(false); }
   };
 
-  const handleCancel = () => navigate('/product-management');
+  const handleCancel = () => attemptLeave(() => navigate('/product-management'));
+
+  const handleKeepEditing = () => {
+    setShowLeaveDialog(false);
+    pendingLeaveActionRef.current = null;
+  };
+
+  const handleLeaveWithoutSaving = () => {
+    setShowLeaveDialog(false);
+    setIsDirty(false);
+    const action = pendingLeaveActionRef.current;
+    pendingLeaveActionRef.current = null;
+    action?.();
+  };
+
+  const handleSaveAndLeave = () => {
+    setShowLeaveDialog(false);
+    pendingLeaveActionRef.current = null;
+    handleSave(false);
+  };
+
   if (pageLoading) {
     return <PremiumLoader fullScreen business={business} context="products" />;
   }
@@ -1119,9 +1178,9 @@ export default function ProductEditor() {
           )}
           subtitle={(
             <nav aria-label="Breadcrumb" className="hidden sm:flex items-center gap-1 mt-0.5">
-              <button onClick={() => navigate('/dashboard')} className="text-xs hover:underline" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Dashboard</button>
+              <button onClick={() => attemptLeave(() => navigate('/dashboard'))} className="text-xs hover:underline" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Dashboard</button>
               <Icon name="ChevronRight" size={11} color="var(--color-muted-foreground)" />
-              <button onClick={() => navigate('/product-management')} className="text-xs hover:underline" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>{collectionLabel}</button>
+              <button onClick={() => attemptLeave(() => navigate('/product-management'))} className="text-xs hover:underline" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>{collectionLabel}</button>
               <Icon name="ChevronRight" size={11} color="var(--color-muted-foreground)" />
               <span className="text-xs" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>{isEditingFlow ? 'Editar' : 'Nuevo'}</span>
             </nav>
@@ -1240,7 +1299,7 @@ export default function ProductEditor() {
                       {errors?.configPath && (
                         <button
                           type="button"
-                          onClick={() => navigate(errors.configPath)}
+                          onClick={() => attemptLeave(() => navigate(errors.configPath))}
                           className="mt-3 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors"
                           style={{ backgroundColor: 'var(--color-primary)', color: '#fff', fontFamily: 'var(--font-caption)' }}
                         >
@@ -1424,7 +1483,7 @@ export default function ProductEditor() {
                     </div>
                     <button
                       type="button"
-                      onClick={() => navigate('/crm/stock')}
+                      onClick={() => attemptLeave(() => navigate('/crm/stock'))}
                       className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition-colors"
                     >
                       <Icon name="ExternalLink" size={12} />
@@ -2208,6 +2267,14 @@ export default function ProductEditor() {
           onSaveAndNew={() => handleSave(true)}
           onCancel={handleCancel}
           itemSingular={itemSingularCapitalized}
+        />
+
+        <UnsavedChangesDialog
+          open={showLeaveDialog}
+          saving={isSaving}
+          onSaveAndLeave={handleSaveAndLeave}
+          onLeaveWithoutSaving={handleLeaveWithoutSaving}
+          onKeepEditing={handleKeepEditing}
         />
     </DashboardAppShell>
   );

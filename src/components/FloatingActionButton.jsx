@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import Icon from 'components/AppIcon';
+import { useNavigationGuard } from 'contexts/NavigationGuardContext';
 
 /**
  * FAB for primary action (e.g. Add product). Visible only on mobile.
@@ -13,12 +14,13 @@ export default function FloatingActionButton({
   icon = 'Plus',
 }) {
   const navigate = useNavigate();
+  const { attemptLeave } = useNavigationGuard();
 
   const handleClick = () => {
     if (onClick) {
       onClick();
     } else if (to) {
-      navigate(to);
+      attemptLeave(() => navigate(to));
     }
   };
 
