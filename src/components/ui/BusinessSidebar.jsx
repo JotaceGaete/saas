@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { useGuardedAppNavigate } from 'hooks/useGuardedAppNavigate';
 import Icon from 'components/AppIcon';
 import VCheckIsotype from 'components/branding/VCheckIsotype';
 import VentalinkLogo from 'components/branding/VentalinkLogo';
@@ -43,7 +44,8 @@ const NAV_ITEMS = [
 
 export default function BusinessSidebar({ isCollapsed = false, onCollapsedChange }) {
   const location = useLocation();
-  const navigate = useNavigate();
+  const navigate = useNavigate(); // raw — logout only, must never be intercepted by a form guard
+  const goToSection = useGuardedAppNavigate(); // section navigation — respects an active useUnsavedChangesGuard
   const { user, business, signOut, isAdmin, isImpersonating, stopImpersonation } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(isCollapsed);
@@ -93,7 +95,7 @@ export default function BusinessSidebar({ isCollapsed = false, onCollapsedChange
   const handleGoTo = (path) => {
     setUserMenuOpen(false);
     setMobileOpen(false);
-    navigate(path);
+    goToSection(path);
   };
 
   const handleCancelRequest = () => {
@@ -129,14 +131,14 @@ Motivo (opcional):`;
 
   const handleNavClick = (item) => {
     if (item?.premiumGated && business?.planSlug === 'starter') {
-      navigate('/planes');
+      goToSection('/planes');
       return;
     }
     if (item?.subItems) {
       setExpandedItems(prev => ({ ...prev, [item?.path]: !prev?.[item?.path] }));
       if (collapsed) { setCollapsed(false); onCollapsedChange?.(false); }
     } else {
-      navigate(item?.path);
+      goToSection(item?.path);
     }
   };
 
@@ -232,7 +234,7 @@ Motivo (opcional):`;
                       return (
                         <li key={sub?.path} role="listitem">
                           <button
-                            onClick={() => navigate(sub?.path)}
+                            onClick={() => goToSection(sub?.path)}
                             aria-current={subActive ? 'page' : undefined}
                             className={[
                               'w-full text-left px-3 py-2 rounded-md text-xs transition-all duration-150',
@@ -276,7 +278,7 @@ Motivo (opcional):`;
                 return (
                   <li key={item.path} role="listitem">
                     <button
-                      onClick={() => navigate(item.path)}
+                      onClick={() => goToSection(item.path)}
                       aria-current={active ? 'page' : undefined}
                       className={[
                         'nav-item w-full flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-[12.5px] font-medium',
@@ -311,7 +313,7 @@ Motivo (opcional):`;
                 return (
                   <li key={item.path} role="listitem">
                     <button
-                      onClick={() => navigate(item.path)}
+                      onClick={() => goToSection(item.path)}
                       aria-current={active ? 'page' : undefined}
                       className={[
                         'nav-item w-full flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-[12.5px] font-medium',
@@ -345,7 +347,7 @@ Motivo (opcional):`;
                 return (
                   <li key={item.path} role="listitem">
                     <button
-                      onClick={() => navigate(item.path)}
+                      onClick={() => goToSection(item.path)}
                       aria-current={active ? 'page' : undefined}
                       className={[
                         'nav-item w-full flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-[12.5px] font-medium',

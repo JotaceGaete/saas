@@ -14,6 +14,9 @@ import SaveBar from './components/SaveBar';
 import ProductOptionsSection from './components/ProductOptionsSection';
 import VideoUploadSection from './components/VideoUploadSection';
 import { useAuth } from '../../contexts/AuthContext';
+import { useUnsavedChangesGuard } from '../../hooks/useUnsavedChangesGuard';
+import { useLocalFormDraft } from '../../hooks/useLocalFormDraft';
+import ConfirmDialog from 'components/ui/ConfirmDialog';
 import {
   getProduct,
   createProduct,
@@ -196,9 +199,47 @@ export default function ProductEditor() {
   const [generatingBarcode, setGeneratingBarcode] = useState(false);
   const [cardImageUrl, setCardImageUrl] = useState(null);
   const [productSlug, setProductSlug] = useState('');
+  const [showDraftPrompt, setShowDraftPrompt] = useState(false);
+  const baselineFormDataRef = React.useRef({ ...EMPTY_FORM });
+  const draftPromptResolvedRef = React.useRef(false);
   const toast = useToast();
   const effectiveProductId = currentProductId || productId || null;
   const isEditingFlow = !!effectiveProductId;
+
+  // Anti-pérdida de datos: solo cubre los campos de texto/interruptores de `formData`.
+  // Imágenes y video tienen su propio flujo de subida inmediata a Supabase (con su propio
+  // estado de progreso/error) y no son serializables a JSON de forma útil — quedan fuera
+  // a propósito, tanto del chequeo de "dirty" como del borrador local.
+  const isDirty = !pageLoading && JSON.stringify(formData) !== JSON.stringify(baselineFormDataRef.current);
+  const { guardedNavigate, confirmDialogProps: unsavedChangesDialogProps } = useUnsavedChangesGuard(isDirty);
+  const draftScopeId = business?.id ? `${business.id}:${effectiveProductId || 'new'}` : null;
+  const { hasDraft, restoreDraft, discardDraft, clearDraft } = useLocalFormDraft({
+    formName: 'product-editor',
+    scopeId: draftScopeId,
+    data: formData,
+    enabled: isDirty,
+  });
+
+  // Ofrece restaurar un borrador una sola vez, después de que termine de cargar el
+  // producto (si se está editando) para no pisar la carga con un prompt prematuro.
+  useEffect(() => {
+    if (pageLoading || draftPromptResolvedRef.current) return;
+    if (hasDraft) {
+      draftPromptResolvedRef.current = true;
+      setShowDraftPrompt(true);
+    }
+  }, [pageLoading, hasDraft]);
+
+  const handleRestoreDraft = () => {
+    const draftData = restoreDraft();
+    if (draftData) setFormData((prev) => ({ ...prev, ...draftData }));
+    setShowDraftPrompt(false);
+  };
+
+  const handleDiscardDraft = () => {
+    discardDraft();
+    setShowDraftPrompt(false);
+  };
 
   const effectivePlan = getEffectivePlanSlug(business?.planSlug, business?.planExpiresAt, business?.trialExpiresAt);
   const canUseAi = effectivePlan === 'pro' || effectivePlan === 'business';
@@ -310,7 +351,7 @@ export default function ProductEditor() {
         if (error || !data) { navigate('/product-management'); return; }
         setCurrentProductId(data?.id || productId);
         initialActivoRef.current = data?.isActive !== undefined ? data?.isActive : true;
-        setFormData({
+        const loadedFormData = {
           nombre: data?.name || '',
           precio: data?.price != null ? Number(data.price) : '',
           descripcion: data?.description || '',
@@ -330,7 +371,11 @@ export default function ProductEditor() {
           optionsDescription: data?.optionsDescription || '',
           addOns: Array.isArray(data?.addOns) ? data.addOns : [],
           comboConfig: normalizeComboConfig(data?.comboConfig),
-        });
+        };
+        setFormData(loadedFormData);
+        // Referencia contra la que se compara `isDirty` — se actualiza recién cuando
+        // termina de cargar, para no marcar el formulario como "sucio" mientras carga.
+        baselineFormDataRef.current = loadedFormData;
         const loadedImages = Array.isArray(data?.images) && data.images.length > 0
           ? data.images.map((url, i) => ({
               id: `loaded-${i}-${url}`,
@@ -1067,7 +1112,11 @@ export default function ProductEditor() {
       setProductSlug(result?.data?.slug || slugifyProductName(result?.data?.name || formData?.nombre));
       setIsSaving(false);
       setSaveSuccess(true);
+      // Guardado con éxito: no hay nada que proteger ni ningún borrador que conservar.
+      clearDraft();
       if (andNew) {
+        baselineFormDataRef.current = { ...EMPTY_FORM };
+        draftPromptResolvedRef.current = false;
         setFormData({ ...EMPTY_FORM });
         setImages([]);
         setCurrentProductId(null);
@@ -1085,13 +1134,14 @@ export default function ProductEditor() {
         setSaveSuccess(false);
         window.scrollTo({ top: 0, behavior: 'smooth' });
       } else {
+        baselineFormDataRef.current = { ...formData };
         setTimeout(() => navigate('/product-management'), 1400);
       }
     } catch (e) { setErrors({ general: 'Error inesperado al guardar.' }); }
     finally { setIsSaving(false); }
   };
 
-  const handleCancel = () => navigate('/product-management');
+  const handleCancel = () => guardedNavigate('/product-management');
   if (pageLoading) {
     return <PremiumLoader fullScreen business={business} context="products" />;
   }
@@ -1119,9 +1169,9 @@ export default function ProductEditor() {
           )}
           subtitle={(
             <nav aria-label="Breadcrumb" className="hidden sm:flex items-center gap-1 mt-0.5">
-              <button onClick={() => navigate('/dashboard')} className="text-xs hover:underline" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Dashboard</button>
+              <button onClick={() => guardedNavigate('/dashboard')} className="text-xs hover:underline" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Dashboard</button>
               <Icon name="ChevronRight" size={11} color="var(--color-muted-foreground)" />
-              <button onClick={() => navigate('/product-management')} className="text-xs hover:underline" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>{collectionLabel}</button>
+              <button onClick={() => guardedNavigate('/product-management')} className="text-xs hover:underline" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>{collectionLabel}</button>
               <Icon name="ChevronRight" size={11} color="var(--color-muted-foreground)" />
               <span className="text-xs" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>{isEditingFlow ? 'Editar' : 'Nuevo'}</span>
             </nav>
@@ -1240,7 +1290,7 @@ export default function ProductEditor() {
                       {errors?.configPath && (
                         <button
                           type="button"
-                          onClick={() => navigate(errors.configPath)}
+                          onClick={() => guardedNavigate(errors.configPath)}
                           className="mt-3 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors"
                           style={{ backgroundColor: 'var(--color-primary)', color: '#fff', fontFamily: 'var(--font-caption)' }}
                         >
@@ -1424,7 +1474,7 @@ export default function ProductEditor() {
                     </div>
                     <button
                       type="button"
-                      onClick={() => navigate('/crm/stock')}
+                      onClick={() => guardedNavigate('/crm/stock')}
                       className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition-colors"
                     >
                       <Icon name="ExternalLink" size={12} />
@@ -2208,6 +2258,20 @@ export default function ProductEditor() {
           onSaveAndNew={() => handleSave(true)}
           onCancel={handleCancel}
           itemSingular={itemSingularCapitalized}
+        />
+
+        <ConfirmDialog {...unsavedChangesDialogProps} />
+
+        <ConfirmDialog
+          isOpen={showDraftPrompt}
+          variant="info"
+          title="Encontramos un borrador sin guardar"
+          message={`Hay cambios sin guardar de una sesión anterior en este ${itemSingular}. ¿Quieres restaurarlos?`}
+          confirmLabel="Restaurar"
+          cancelLabel="Descartar"
+          confirmVariant="default"
+          onConfirm={handleRestoreDraft}
+          onCancel={handleDiscardDraft}
         />
     </DashboardAppShell>
   );
