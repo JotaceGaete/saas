@@ -3,21 +3,22 @@ import { useNavigate } from 'react-router-dom';
 import { resolveGuardedDestination } from 'lib/forms/navigationGuard';
 import { registerActiveFormGuard } from 'lib/forms/navigationGuardRegistry';
 
-const DEFAULT_MESSAGE = 'Tienes cambios sin guardar. Si sales ahora, perderás la información ingresada.';
+const DEFAULT_MESSAGE = 'Si sales ahora perderás toda la información que has ingresado.';
 
 /**
- * Generic guard against losing unsaved form data. Framework-agnostic about the modal —
- * it exposes plain state/callbacks (same pattern as useOgGuard) so the caller renders
- * its own <ConfirmDialog {...confirmDialogProps} />.
+ * Generic guard against losing unsaved form data. Framework-agnostic about the dialog —
+ * it exposes plain state/callbacks (same pattern as useOgGuard) so the caller renders its
+ * own <UnsavedChangesDialog {...confirmDialogProps} />.
  *
- * Covers:
+ * The dialog only ever appears when the user actually TRIES to leave while dirty — never
+ * on entering the form, never while just editing normally. Covers:
  *  - Reload / close tab / typed URL / external link → native `beforeunload` prompt
  *    (browsers show their own fixed text here; the custom `message` only applies to the
- *    in-app ConfirmDialog below, not the native browser prompt — browsers do not allow
+ *    in-app dialog below, not the native browser prompt — browsers do not allow
  *    customizing that text for security reasons).
  *  - Clicking any in-app <a href> (breadcrumbs, real <Link> usages) while this hook is
- *    mounted and dirty → intercepted via a capture-phase click listener, shows the
- *    ConfirmDialog before navigating. This works because react-router's <Link> checks
+ *    mounted and dirty → intercepted via a capture-phase click listener, shows the dialog
+ *    before navigating. This works because react-router's <Link> checks
  *    `event.defaultPrevented` before calling navigate() — calling preventDefault() in our
  *    capture-phase listener (which runs before Link's own bubble-phase handler) reliably
  *    stops it.
@@ -41,13 +42,22 @@ const DEFAULT_MESSAGE = 'Tienes cambios sin guardar. Si sales ahora, perderás l
  * automatically once `isDirty` becomes false — e.g. right after a successful save, when
  * the caller resets its baseline to match the current values.
  *
+ * `options.onSaveAndLeave` (optional): if provided, the dialog offers a third, primary
+ * choice — "Guardar y salir". Clicking it closes the dialog and calls this function
+ * as-is; it should be THE SAME function the screen's own Save button already uses. This
+ * hook does not orchestrate save-then-navigate itself — whatever that function already
+ * does on success (e.g. navigate away) is exactly what happens here too. If omitted, the
+ * dialog only offers "Salir sin guardar" / "Seguir editando".
+ *
  * Usage:
- *   const { guardedNavigate, confirmDialogProps } = useUnsavedChangesGuard(isDirty);
- *   <ConfirmDialog {...confirmDialogProps} />
+ *   const { guardedNavigate, confirmDialogProps } = useUnsavedChangesGuard(isDirty, {
+ *     onSaveAndLeave: () => handleSave(false),
+ *   });
+ *   <UnsavedChangesDialog {...confirmDialogProps} />
  *   <button onClick={() => guardedNavigate('/crm')}>Cancelar</button>
  */
 export function useUnsavedChangesGuard(isDirty, options = {}) {
-  const { message = DEFAULT_MESSAGE } = options;
+  const { message = DEFAULT_MESSAGE, onSaveAndLeave } = options;
   const navigate = useNavigate();
   const isDirtyRef = useRef(isDirty);
   const [isPromptOpen, setIsPromptOpen] = useState(false);
@@ -113,31 +123,36 @@ export function useUnsavedChangesGuard(isDirty, options = {}) {
     return registerActiveFormGuard({ requestNavigation: guardedNavigate });
   }, [isDirty, guardedNavigate]);
 
-  const confirmLeave = useCallback(() => {
+  const handleLeaveWithoutSaving = useCallback(() => {
     setIsPromptOpen(false);
     const action = pendingActionRef.current;
     pendingActionRef.current = null;
     action?.();
   }, []);
 
-  const cancelLeave = useCallback(() => {
+  const handleKeepEditing = useCallback(() => {
     pendingActionRef.current = null;
     setIsPromptOpen(false);
   }, []);
+
+  // "Guardar y salir": just close the dialog and delegate to the screen's own save
+  // function — it already knows how to save and, on success, navigate away. We don't
+  // wait for it or navigate ourselves; whatever it normally does is exactly what happens.
+  const handleSaveAndLeave = useCallback(() => {
+    setIsPromptOpen(false);
+    pendingActionRef.current = null;
+    onSaveAndLeave?.();
+  }, [onSaveAndLeave]);
 
   return {
     guardedNavigate,
     isPromptOpen,
     confirmDialogProps: {
       isOpen: isPromptOpen,
-      title: 'Cambios sin guardar',
       message,
-      confirmLabel: 'Salir sin guardar',
-      cancelLabel: 'Seguir editando',
-      confirmVariant: 'destructive',
-      variant: 'warning',
-      onConfirm: confirmLeave,
-      onCancel: cancelLeave,
+      onSaveAndLeave: onSaveAndLeave ? handleSaveAndLeave : undefined,
+      onLeaveWithoutSaving: handleLeaveWithoutSaving,
+      onKeepEditing: handleKeepEditing,
     },
   };
 }

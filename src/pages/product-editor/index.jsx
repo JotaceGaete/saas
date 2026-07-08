@@ -16,10 +16,8 @@ import VideoUploadSection from './components/VideoUploadSection';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUnsavedChangesGuard } from '../../hooks/useUnsavedChangesGuard';
 import { useLocalFormDraft } from '../../hooks/useLocalFormDraft';
-import { shouldOfferDraftRestore, shouldWithdrawDraftPrompt } from '../../lib/forms/draftPrompt';
 import { buildFormRecordScopeId } from '../../lib/forms/localDraft';
-import ConfirmDialog from 'components/ui/ConfirmDialog';
-import DraftBanner from 'components/ui/DraftBanner';
+import UnsavedChangesDialog from 'components/ui/UnsavedChangesDialog';
 import {
   getProduct,
   createProduct,
@@ -202,9 +200,7 @@ export default function ProductEditor() {
   const [generatingBarcode, setGeneratingBarcode] = useState(false);
   const [cardImageUrl, setCardImageUrl] = useState(null);
   const [productSlug, setProductSlug] = useState('');
-  const [showDraftPrompt, setShowDraftPrompt] = useState(false);
   const baselineFormDataRef = React.useRef({ ...EMPTY_FORM });
-  const draftPromptResolvedRef = React.useRef(false);
   const toast = useToast();
   const effectiveProductId = currentProductId || productId || null;
   const isEditingFlow = !!effectiveProductId;
@@ -214,61 +210,28 @@ export default function ProductEditor() {
   // estado de progreso/error) y no son serializables a JSON de forma útil — quedan fuera
   // a propósito, tanto del chequeo de "dirty" como del borrador local.
   const isDirty = !pageLoading && JSON.stringify(formData) !== JSON.stringify(baselineFormDataRef.current);
-  const { guardedNavigate, confirmDialogProps: unsavedChangesDialogProps } = useUnsavedChangesGuard(isDirty);
-  // El borrador queda atado a negocio + modo + registro, para que un borrador de "Nuevo
-  // producto" jamás se confunda con el de editar un producto puntual (ni viceversa).
+  // El diálogo de "cambios sin guardar" SOLO aparece cuando el usuario intenta salir
+  // (cambiar de sección, volver atrás, cerrar pestaña, recargar, salir del editor) —
+  // nunca al entrar ni mientras edita con normalidad. "Guardar y salir" ejecuta
+  // literalmente la misma función que usa hoy el botón Guardar.
+  const { guardedNavigate, confirmDialogProps: unsavedChangesDialogProps } = useUnsavedChangesGuard(isDirty, {
+    onSaveAndLeave: () => handleSave(false),
+  });
+  // El borrador queda atado a negocio + modo + registro (nunca se confunde el de "Nuevo
+  // producto" con el de editar un producto puntual). Es puramente un respaldo interno por
+  // si el navegador se cierra inesperadamente — nunca se ofrece ni interrumpe al usuario;
+  // se limpia solo al guardar con éxito o al salir deliberadamente sin guardar.
   const draftScopeId = buildFormRecordScopeId({
     businessId: business?.id,
     mode: isEditingFlow ? 'edit' : 'new',
     recordId: effectiveProductId,
   });
-  const { hasDraft, restoreDraft, discardDraft, clearDraft } = useLocalFormDraft({
+  const { clearDraft } = useLocalFormDraft({
     formName: 'product-editor',
     scopeId: draftScopeId,
     data: formData,
     enabled: isDirty,
   });
-
-  // Ofrece restaurar un borrador con un chequeo de UNA sola vez, apenas termina de cargar
-  // el producto (si se está editando) y antes de que el usuario empiece a interactuar.
-  // Si para cuando el borrador se detecta el usuario ya escribió algo (isDirty) o ya está
-  // enfocado en un campo a punto de escribir, la oferta se salta en silencio — nunca
-  // interrumpe a alguien que ya está trabajando.
-  //
-  // Presentación según el modo (nunca un modal para "Nuevo producto"):
-  //  - Editando un producto puntual: hay evidencia clara de que es EL MISMO producto
-  //    (el borrador está scopeado a su productId) y la sesión pudo cortarse sin avisar
-  //    → tiene sentido preguntar con un modal.
-  //  - Producto nuevo: nunca hay "el mismo producto" que verificar (todavía no existe),
-  //    así que solo se muestra un banner chico e ignorable arriba del formulario.
-  useEffect(() => {
-    if (draftPromptResolvedRef.current || pageLoading || !hasDraft) return;
-    const activeTag = document.activeElement?.tagName;
-    const isFieldFocused = activeTag === 'INPUT' || activeTag === 'TEXTAREA' || !!document.activeElement?.isContentEditable;
-    draftPromptResolvedRef.current = true; // decisión de una sola vez, se ofrezca o no
-    if (shouldOfferDraftRestore({ hasDraft, isDirty, isLoading: pageLoading, isFieldFocused })) {
-      setShowDraftPrompt(true);
-    }
-  }, [pageLoading, hasDraft, isDirty]);
-
-  // Si de todas formas el formulario se ensucia mientras el diálogo está abierto, se
-  // retira solo — nunca bloquea la pantalla forzando una respuesta.
-  useEffect(() => {
-    if (shouldWithdrawDraftPrompt({ isPromptOpen: showDraftPrompt, isDirty })) {
-      setShowDraftPrompt(false);
-    }
-  }, [isDirty, showDraftPrompt]);
-
-  const handleRestoreDraft = () => {
-    const draftData = restoreDraft();
-    if (draftData) setFormData((prev) => ({ ...prev, ...draftData }));
-    setShowDraftPrompt(false);
-  };
-
-  const handleDiscardDraft = () => {
-    discardDraft();
-    setShowDraftPrompt(false);
-  };
 
   const effectivePlan = getEffectivePlanSlug(business?.planSlug, business?.planExpiresAt, business?.trialExpiresAt);
   const canUseAi = effectivePlan === 'pro' || effectivePlan === 'business';
@@ -1145,7 +1108,6 @@ export default function ProductEditor() {
       clearDraft();
       if (andNew) {
         baselineFormDataRef.current = { ...EMPTY_FORM };
-        draftPromptResolvedRef.current = false;
         setFormData({ ...EMPTY_FORM });
         setImages([]);
         setCurrentProductId(null);
@@ -1296,18 +1258,6 @@ export default function ProductEditor() {
 
               {/* ── LEFT COLUMN: Form ── */}
               <div className="lg:col-span-2 space-y-5">
-
-                {/* Borrador de "Nuevo producto": aviso chico e ignorable, nunca un modal */}
-                {!isEditingFlow && (
-                  <DraftBanner
-                    isOpen={showDraftPrompt}
-                    message="Hay un borrador anterior disponible."
-                    restoreLabel="Restaurar borrador"
-                    discardLabel="Descartar"
-                    onRestore={handleRestoreDraft}
-                    onDiscard={handleDiscardDraft}
-                  />
-                )}
 
                 {/* Error banner */}
                 {Object.keys(errors)?.length > 0 && (
@@ -2301,29 +2251,15 @@ export default function ProductEditor() {
           itemSingular={itemSingularCapitalized}
         />
 
-        <ConfirmDialog
+        <UnsavedChangesDialog
           {...unsavedChangesDialogProps}
-          onConfirm={() => {
-            // Salida deliberada y consciente ("Salir sin guardar") — no es una sesión
-            // cortada inesperadamente, así que no queda nada que ofrecer restaurar después.
+          onLeaveWithoutSaving={() => {
+            // Salida deliberada y consciente — no es una sesión cortada inesperadamente,
+            // así que no queda ningún respaldo local que conservar para la próxima vez.
             clearDraft();
-            unsavedChangesDialogProps.onConfirm();
+            unsavedChangesDialogProps.onLeaveWithoutSaving();
           }}
         />
-
-        {isEditingFlow && (
-          <ConfirmDialog
-            isOpen={showDraftPrompt}
-            variant="info"
-            title="Encontramos un borrador sin guardar"
-            message={`Hay cambios sin guardar de una sesión anterior en este ${itemSingular}. ¿Quieres usarlos?`}
-            confirmLabel="Usar borrador"
-            cancelLabel="Seguir con lo actual"
-            confirmVariant="default"
-            onConfirm={handleRestoreDraft}
-            onCancel={handleDiscardDraft}
-          />
-        )}
     </DashboardAppShell>
   );
 }
