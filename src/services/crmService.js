@@ -1470,10 +1470,30 @@ export async function updateCashSession(sessionId, fields = {}) {
   return { data, error };
 }
 
-export async function closeCashSession(sessionId) {
+export async function closeCashSession(sessionId, {
+  expectedCash   = null,
+  countedCash    = null,
+  cashDifference = null,
+  closingNotes   = null,
+} = {}) {
+  if (countedCash == null || !Number.isFinite(Number(countedCash))) {
+    return { data: null, error: { message: 'El arqueo requiere ingresar el efectivo contado.' } };
+  }
+  if (cashDifference != null && Math.abs(Number(cashDifference)) >= 1 && !closingNotes?.trim()) {
+    return { data: null, error: { code: 'CLOSING_NOTES_REQUIRED', message: 'La observación es obligatoria cuando hay diferencia en el arqueo.' } };
+  }
+  const { data: { user } } = await supabase.auth.getUser();
   const { data, error } = await supabase
     .from('crm_cash_sessions')
-    .update({ status: 'closed', closed_at: new Date().toISOString() })
+    .update({
+      status:          'closed',
+      closed_at:       new Date().toISOString(),
+      expected_cash:   expectedCash,
+      counted_cash:    countedCash,
+      cash_difference: cashDifference,
+      closing_notes:   closingNotes || null,
+      closed_by:       user?.id || null,
+    })
     .eq('id', sessionId)
     .select()
     .single();
