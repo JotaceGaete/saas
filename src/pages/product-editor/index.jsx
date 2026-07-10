@@ -43,7 +43,7 @@ import { supabase } from '../../lib/supabase';
 import { getBusinessLocale } from '../../lib/locale/businessLocale';
 import { resolveVentaAiProductDescriptionEndpoint } from '../../lib/ai/resolveVentaAiProductDescriptionUrl.js';
 import { appendCacheBust, uploadToMediaService } from '../../services/mediaUploadService';
-import { getPublicProductUrl } from '../../config/appUrl';
+import { getPublicProductUrl, getPublicCatalogUrl } from '../../config/appUrl';
 import { generateUniqueBarcode, saveProductBarcode } from '../../services/crmService';
 
 const EMPTY_FORM = {
@@ -231,6 +231,7 @@ export default function ProductEditor() {
     preferredCountryCode: user?.user_metadata?.country_code ?? null,
   });
   const initialActivoRef = React.useRef(null);
+  const saveRedirectTimerRef = React.useRef(null);
   const isRestaurant = isRestaurantBusiness(business);
   const itemSingular = isRestaurant ? 'plato' : 'producto';
   const itemSingularCapitalized = isRestaurant ? 'Plato' : 'Producto';
@@ -239,6 +240,7 @@ export default function ProductEditor() {
   const publicProductUrl = business?.slug && resolvedProductSlug
     ? getPublicProductUrl(business.slug, resolvedProductSlug)
     : '';
+  const catalogUrl = business?.slug ? getPublicCatalogUrl(business.slug) : '';
   const publicProductShareText = publicProductUrl
     ? `Mira este producto: ${publicProductUrl}`
     : '';
@@ -490,6 +492,10 @@ export default function ProductEditor() {
     }
     setLocalDraftBanner({ draft: existingDraft });
   }, [localDraftKey, isEditing, pageLoading, isDirty]);
+
+  useEffect(() => () => {
+    if (saveRedirectTimerRef.current) clearTimeout(saveRedirectTimerRef.current);
+  }, []);
 
   useEffect(() => {
     const previousImages = previousImagesRef.current || [];
@@ -1098,6 +1104,34 @@ export default function ProductEditor() {
     await doSave(andNew);
   };
 
+  const resetFormForNewProduct = () => {
+    dirtyTrackerRef.current.armSkip();
+    setFormData({ ...EMPTY_FORM });
+    setImages([]);
+    setCurrentProductId(null);
+    setImagePreviewUrl(null);
+    setImageUploading(false);
+    setImageUploadError('');
+    setVideo(null);
+    setPublicCode('');
+    setCardImageUrl(null);
+    setProductSlug('');
+    setAddonCreationMode(null);
+    setAddonSearchQuery('');
+    setManualAddonDraft({ emoji: '', label: '', price: '' });
+    setErrors({});
+    setSaveSuccess(false);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleContinueAdding = () => {
+    if (saveRedirectTimerRef.current) {
+      clearTimeout(saveRedirectTimerRef.current);
+      saveRedirectTimerRef.current = null;
+    }
+    resetFormForNewProduct();
+  };
+
   const doSave = async (andNew = false) => {
     if (hasPendingOrUploadingImages) {
       setErrors(prev => ({ ...prev, general: 'Espera a que terminen de subir todas las imágenes.' }));
@@ -1185,25 +1219,9 @@ export default function ProductEditor() {
       if (localDraftKey) removeDraft(localDraftKey);
       setHasUnpersistedDraftImages(false);
       if (andNew) {
-        dirtyTrackerRef.current.armSkip();
-        setFormData({ ...EMPTY_FORM });
-        setImages([]);
-        setCurrentProductId(null);
-        setImagePreviewUrl(null);
-        setImageUploading(false);
-        setImageUploadError('');
-        setVideo(null);
-        setPublicCode('');
-        setCardImageUrl(null);
-        setProductSlug('');
-        setAddonCreationMode(null);
-        setAddonSearchQuery('');
-        setManualAddonDraft({ emoji: '', label: '', price: '' });
-        setErrors({});
-        setSaveSuccess(false);
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        resetFormForNewProduct();
       } else {
-        setTimeout(() => navigate('/product-management'), 1400);
+        saveRedirectTimerRef.current = setTimeout(() => navigate('/product-management'), 2500);
       }
     } catch (e) { setErrors({ general: 'Error inesperado al guardar.' }); }
     finally { setIsSaving(false); }
@@ -2379,6 +2397,8 @@ export default function ProductEditor() {
           onSave={() => handleSave(false)}
           onSaveAndNew={() => handleSave(true)}
           onCancel={handleCancel}
+          onContinueAdding={handleContinueAdding}
+          catalogUrl={catalogUrl}
           itemSingular={itemSingularCapitalized}
         />
 
