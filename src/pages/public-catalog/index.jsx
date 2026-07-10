@@ -9,6 +9,7 @@ import Icon from '../../components/AppIcon';
 import { CartProvider, useCart } from '../../contexts/CartContext';
 import { formatPrice as formatPriceUtil, resolveCatalogCurrency } from '../../utils/formatPrice';
 import { getBusinessLocale } from '../../lib/locale/businessLocale';
+import { hasMoreCatalogProducts } from '../../lib/catalogPagination';
 import { useIsDesktop } from '../../hooks/useMediaQuery';
 import { useAuth } from '../../contexts/AuthContext';
 import PremiumLoader from '../../components/ui/PremiumLoader';
@@ -754,8 +755,7 @@ function CatalogInner({ slug }) {
     return sortedProducts.filter((product) => product?.id !== mainFeaturedProduct.id);
   }, [mainFeaturedProduct?.id, sortedProducts]);
   const visibleProducts = useMemo(() => gridProducts.slice(0, visibleCount), [gridProducts, visibleCount]);
-  // Si el plan tiene límite de productos, SQL ya entregó solo los permitidos — no hay "más" que mostrar
-  const hasMoreProducts = planProductLimit != null ? false : gridProducts.length > visibleCount;
+  const hasMoreProducts = hasMoreCatalogProducts(gridProducts.length, visibleCount);
 
   const totalGridProducts = useMemo(() => {
     if (!Array.isArray(products)) return 0;
