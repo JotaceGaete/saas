@@ -18,6 +18,7 @@ import { isRestaurantBusiness } from '../../utils/businessType';
 import { useLocalDraft } from '../../hooks/useLocalDraft';
 import { buildEditorDraftKey } from '../../lib/editorDraftKey';
 import { mergeDraftFormData } from '../../lib/editorDraftMerge';
+import { prewarmOgImage } from '../../utils/ogPrewarm';
 
 const DESIGN_DRAFT_IMAGE_FIELDS = ['logoUrl', 'headerImageUrl'];
 
@@ -73,6 +74,10 @@ export default function DesignPage() {
   const [showSaved, setShowSaved] = useState(false);
   const [toast, setToast] = useState(null);
   const showSavedTimerRef = useRef(null);
+  // 'idle' | 'preparing' | 'ready' — no-bloqueante: el botón de guardar/compartir
+  // nunca espera por esto, es solo un indicador discreto.
+  const [ogPrewarmStatus, setOgPrewarmStatus] = useState('idle');
+  const ogPrewarmStatusTimerRef = useRef(null);
   const locale = getBusinessLocale(business, {
     preferredCountryCode: user?.user_metadata?.country_code ?? null,
   });
@@ -177,6 +182,17 @@ export default function DesignPage() {
       showToast('¡Diseño guardado!', 'success');
       // Regla E: guardado correcto -> se elimina el borrador local.
       localDraft.clearDraft();
+      // Prewarm no bloqueante: calienta /api/og-catalog para que el primer
+      // scrape real (WhatsApp) encuentre el origen ya tibio. Nunca bloquea
+      // el guardado ni el botón de compartir — es solo un indicador discreto.
+      if (business?.slug) {
+        setOgPrewarmStatus('preparing');
+        if (ogPrewarmStatusTimerRef.current) clearTimeout(ogPrewarmStatusTimerRef.current);
+        prewarmOgImage(business.slug, Date.now()).finally(() => {
+          setOgPrewarmStatus('ready');
+          ogPrewarmStatusTimerRef.current = setTimeout(() => setOgPrewarmStatus('idle'), 4000);
+        });
+      }
       return true;
     } catch (e) {
       showToast(e?.message || 'Error inesperado', 'error');
@@ -224,8 +240,21 @@ export default function DesignPage() {
             <p className="mt-3 max-w-2xl text-sm leading-6 sm:text-base" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-body)' }}>
               {designSubtitle}
             </p>
-            <div className="mt-3">
+            <div className="mt-3 flex flex-wrap items-center gap-3">
               <DraftStatusIndicator status={localDraft.status} />
+              {ogPrewarmStatus !== 'idle' && (
+                <span
+                  role="status"
+                  className="inline-flex items-center gap-1.5 text-xs font-medium"
+                  style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}
+                >
+                  <span
+                    className={`inline-block h-1.5 w-1.5 rounded-full ${ogPrewarmStatus === 'preparing' ? 'animate-pulse' : ''}`}
+                    style={{ backgroundColor: ogPrewarmStatus === 'preparing' ? '#D97706' : '#059669' }}
+                  />
+                  {ogPrewarmStatus === 'preparing' ? 'Preparando vista previa…' : 'Vista previa lista'}
+                </span>
+              )}
             </div>
           </section>
 

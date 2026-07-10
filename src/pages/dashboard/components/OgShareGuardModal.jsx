@@ -3,15 +3,16 @@ import Icon from 'components/AppIcon';
 import Button from 'components/ui/Button';
 
 /**
- * Warning modal shown when the user tries to share the catalog via WhatsApp
- * but the business has no configured share image (shareImageUrl).
+ * Informational notice shown right after the user shares the catalog via
+ * WhatsApp when the business has no cover/logo/share image configured.
  *
- * Soft gate: the user can still share, but is clearly informed about the risk.
+ * Purely informational — sharing already happened by the time this renders
+ * (see useOgGuard.guardShare); there is nothing left to confirm here.
  *
  * Props mirror the shape returned by useOgGuard:
- *   isOpen, onConfirm, onDismiss, onGoToConfig
+ *   isOpen, onDismiss, onGoToConfig
  */
-export default function OgShareGuardModal({ isOpen, onConfirm, onDismiss, onGoToConfig }) {
+export default function OgShareGuardModal({ isOpen, onDismiss, onGoToConfig }) {
   useEffect(() => {
     if (!isOpen) return;
     const handler = (e) => { if (e.key === 'Escape') onDismiss?.(); };
@@ -55,13 +56,13 @@ export default function OgShareGuardModal({ isOpen, onConfirm, onDismiss, onGoTo
             className="text-base font-bold"
             style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}
           >
-            Tu catálogo aún no tiene imagen de vista previa
+            Tu catálogo aún no tiene una foto propia
           </h3>
           <p
             className="text-sm leading-relaxed"
             style={{ fontFamily: 'var(--font-body)', color: 'var(--color-muted-foreground)' }}
           >
-            Puedes compartirlo igual, pero podría verse sin banner o tardar en actualizarse en WhatsApp.
+            Ya lo compartiste — por ahora WhatsApp mostrará una tarjeta genérica en vez de una foto de tu negocio.
           </p>
           <div
             className="inline-flex items-start gap-2 px-3 py-2.5 rounded-xl text-left w-full"
@@ -72,7 +73,7 @@ export default function OgShareGuardModal({ isOpen, onConfirm, onDismiss, onGoTo
               className="text-xs leading-relaxed"
               style={{ fontFamily: 'var(--font-caption)', color: '#92400E' }}
             >
-              WhatsApp solo genera la vista previa <strong>una vez</strong>. Si compartes ahora sin imagen, no se actualizará después automáticamente.
+              WhatsApp guarda la vista previa la primera vez que alguien abre el link. Sube una portada o logo para que los próximos envíos ya se vean con tu imagen.
             </p>
           </div>
         </div>
@@ -86,14 +87,14 @@ export default function OgShareGuardModal({ isOpen, onConfirm, onDismiss, onGoTo
             iconPosition="left"
             onClick={onGoToConfig}
           >
-            Configurar ahora
+            Subir portada o logo
           </Button>
           <Button
             variant="ghost"
             fullWidth
-            onClick={onConfirm}
+            onClick={onDismiss}
           >
-            Compartir de todos modos
+            Entendido
           </Button>
         </div>
       </div>

@@ -8,18 +8,23 @@
  */
 
 /**
- * Returns true when the business has a dedicated share image configured.
+ * Returns true when the business has ANY source image that /api/og-catalog
+ * would use for a real (non-generic) preview — same priority order as the
+ * backend (api/og-catalog.js): explicit share image → cover → logo.
  *
- * We only check shareImageUrl because that is the image the user explicitly
- * configured for sharing — it is guaranteed to be properly sized (1200×630)
- * and safe for WhatsApp crawlers. Other images (cover, logo) may be large
- * raw uploads or wrong aspect ratios, and are handled as fallbacks by the
- * OG resolution layer, not as a "configured" state from the user's perspective.
+ * This does not gate whether sharing is possible: /api/og-catalog always
+ * returns a 200 PNG (falling back to a generic gradient card when none of
+ * these exist), so a false here just means "the first scrape may show the
+ * generic card instead of a photo," not "sharing will fail."
  *
  * @param {object|null|undefined} business  — mapped business object from AuthContext
  * @returns {boolean}
  */
 export function hasValidOgImage(business) {
   if (!business) return false;
-  return !!(business.designSettings?.shareImageUrl);
+  return !!(
+    business.designSettings?.shareImageUrl ||
+    business.coverImageUrl ||
+    business.logoUrl
+  );
 }

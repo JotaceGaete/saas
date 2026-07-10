@@ -1,25 +1,24 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { hasValidOgImage } from '../utils/ogImage';
 
 /**
- * Guards catalog-sharing actions behind an OG image check.
+ * Informs — never blocks — catalog-sharing actions about OG image readiness.
  *
- * If the business lacks a valid OG image, the share action is intercepted and
- * a warning modal is presented. The user can then:
- *   - Go to config to upload a cover image (recommended path)
- *   - Share anyway (soft gate — never blocks completely)
+ * /api/og-catalog always returns a 200 PNG (falling back to a generic
+ * gradient card when there's no cover/logo/share image), so there is nothing
+ * to "gate": share must never wait on or be prevented by this check. When the
+ * business has no real source image configured, guardShare still fires the
+ * share action immediately and additionally surfaces an informational notice
+ * (not a confirmation prompt) suggesting a cover for a better preview next time.
  *
  * Usage:
  *   const { guardShare, ogGuardState } = useOgGuard(business, navigate);
  *
- *   // Wrap any share action:
+ *   // Wrap any share action — always executes immediately:
  *   guardShare(() => window.open(whatsappUrl, '_blank'));
  *
- *   // Render the modal:
+ *   // Render the (dismiss-only, informational) modal:
  *   <OgShareGuardModal {...ogGuardState} />
- *
- * The hook is intentionally framework-agnostic regarding the modal:
- * it exposes plain state + callbacks so the modal stays a pure component.
  *
  * @param {object|null} business  — mapped business object from AuthContext
  * @param {function}    navigate  — react-router navigate() function
@@ -27,41 +26,27 @@ import { hasValidOgImage } from '../utils/ogImage';
  */
 export function useOgGuard(business, navigate) {
   const [isOpen, setIsOpen] = useState(false);
-  const pendingActionRef = useRef(null);
 
   /**
-   * Wraps a share action with the OG guard.
-   * If the business has a valid OG image, calls fn() immediately.
-   * Otherwise opens the warning modal and stores fn for later.
-   *
+   * Always executes fn() immediately. If the business has no real OG source
+   * image, additionally opens an informational (non-blocking) notice.
    * @param {function} fn — the actual share action to execute
    */
   const guardShare = useCallback((fn) => {
-    if (hasValidOgImage(business)) {
-      fn();
-      return;
+    fn?.();
+    if (!hasValidOgImage(business)) {
+      setIsOpen(true);
     }
-    pendingActionRef.current = fn;
-    setIsOpen(true);
   }, [business]);
 
-  /** User chose "Compartir igual" — execute the pending action and close. */
-  const handleConfirm = useCallback(() => {
-    pendingActionRef.current?.();
-    pendingActionRef.current = null;
-    setIsOpen(false);
-  }, []);
-
-  /** User dismissed the modal without acting. */
+  /** User dismissed the informational notice. */
   const handleDismiss = useCallback(() => {
-    pendingActionRef.current = null;
     setIsOpen(false);
   }, []);
 
   /** User chose "Subir portada" — navigate to config and close. */
   const handleGoToConfig = useCallback(() => {
     setIsOpen(false);
-    pendingActionRef.current = null;
     navigate('/business-configuration');
   }, [navigate]);
 
@@ -69,7 +54,6 @@ export function useOgGuard(business, navigate) {
     guardShare,
     ogGuardState: {
       isOpen,
-      onConfirm:    handleConfirm,
       onDismiss:    handleDismiss,
       onGoToConfig: handleGoToConfig,
     },
