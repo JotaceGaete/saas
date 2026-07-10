@@ -5,6 +5,9 @@ import DashboardAppShell from 'components/ui/DashboardAppShell';
 import DashboardLayoutContent from 'components/ui/DashboardLayoutContent';
 import PremiumLoader from 'components/ui/PremiumLoader';
 import Icon from 'components/AppIcon';
+import LocalDraftBanner from 'components/ui/LocalDraftBanner';
+import UnsavedChangesDialog from 'components/ui/UnsavedChangesDialog';
+import DraftStatusIndicator from 'components/ui/DraftStatusIndicator';
 import DesignCustomization from '../business-configuration/components/DesignCustomization';
 import MobilePreviewPanel from '../business-configuration/components/MobilePreviewPanel';
 import { useAuth } from '../../contexts/AuthContext';
@@ -12,6 +15,11 @@ import { getMyBusiness, updateBusiness, getProducts } from '../../services/waBus
 import { getCountryLabels } from '../../config/country';
 import { getBusinessLocale } from '../../lib/locale/businessLocale';
 import { isRestaurantBusiness } from '../../utils/businessType';
+import { useLocalDraft } from '../../hooks/useLocalDraft';
+import { buildEditorDraftKey } from '../../lib/editorDraftKey';
+import { mergeDraftFormData } from '../../lib/editorDraftMerge';
+
+const DESIGN_DRAFT_IMAGE_FIELDS = ['logoUrl', 'headerImageUrl'];
 
 const defaultDesign = {
   theme: 'minimal',
@@ -83,6 +91,15 @@ export default function DesignPage() {
     [draftDesign, design],
   );
 
+  const localDraft = useLocalDraft({
+    key: business?.id ? buildEditorDraftKey('design', business.id) : null,
+    isDirty,
+    data: draftDesign,
+    onApplyDraft: (draftFormData) => {
+      setDraftDesign((prev) => mergeDraftFormData(prev, draftFormData, DESIGN_DRAFT_IMAGE_FIELDS));
+    },
+  });
+
   useEffect(() => {
     if (ctxBusiness) setBusiness(ctxBusiness);
   }, [ctxBusiness]);
@@ -142,14 +159,14 @@ export default function DesignPage() {
   const handleSaveDesign = useCallback(async () => {
     if (!business?.id) {
       showToast('No se encontró el negocio.', 'error');
-      return;
+      return false;
     }
     setIsSaving(true);
     try {
       const { error } = await updateBusiness(business.id, { designSettings: draftDesign });
       if (error) {
         showToast('Error al guardar: ' + (error?.message || ''), 'error');
-        return;
+        return false;
       }
       patchBusiness({ ...business, designSettings: draftDesign });
       // Advance persisted baseline to match the saved draft.
@@ -158,18 +175,24 @@ export default function DesignPage() {
       if (showSavedTimerRef.current) clearTimeout(showSavedTimerRef.current);
       showSavedTimerRef.current = setTimeout(() => setShowSaved(false), 2500);
       showToast('¡Diseño guardado!', 'success');
+      // Regla E: guardado correcto -> se elimina el borrador local.
+      localDraft.clearDraft();
+      return true;
     } catch (e) {
       showToast(e?.message || 'Error inesperado', 'error');
+      return false;
     } finally {
       setIsSaving(false);
     }
-  }, [business, draftDesign, patchBusiness, showToast]);
+  }, [business, draftDesign, patchBusiness, showToast, localDraft]);
 
   // Discard draft, revert to the last-saved state.
   const handleReset = useCallback(() => {
     setDraftDesign(design);
     setShowSaved(false);
-  }, [design]);
+    // El usuario descartó explícitamente -> se elimina el borrador local.
+    localDraft.clearDraft();
+  }, [design, localDraft]);
 
   if (!user) return null;
 
@@ -201,7 +224,17 @@ export default function DesignPage() {
             <p className="mt-3 max-w-2xl text-sm leading-6 sm:text-base" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-body)' }}>
               {designSubtitle}
             </p>
+            <div className="mt-3">
+              <DraftStatusIndicator status={localDraft.status} />
+            </div>
           </section>
+
+          <LocalDraftBanner
+            visible={!!localDraft.draftBanner}
+            onRestore={localDraft.restoreDraft}
+            onDismiss={localDraft.dismissDraftBanner}
+            onDelete={localDraft.deleteDraft}
+          />
 
           {/* Grid de 2 columnas en desktop. Columna izquierda crece con el formulario;
               columna derecha hace sticky real: se queda visible mientras el usuario scrollea. */}
@@ -325,6 +358,14 @@ export default function DesignPage() {
         </button>
       
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+
+      <UnsavedChangesDialog
+        open={localDraft.showLeaveDialog}
+        saving={localDraft.isLeaveDialogSaving}
+        onSaveAndLeave={() => localDraft.handleSaveAndLeave(handleSaveDesign)}
+        onLeaveWithoutSaving={localDraft.handleLeaveWithoutSaving}
+        onKeepEditing={localDraft.handleKeepEditing}
+      />
     </DashboardAppShell>
   );
 }
