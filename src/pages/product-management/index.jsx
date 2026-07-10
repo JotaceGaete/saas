@@ -17,6 +17,7 @@ import { getProducts, updateProduct, deleteProduct, deleteProducts, createProduc
 import { getBusinessLocale } from '../../lib/locale/businessLocale';
 import { formatBusinessCurrency } from '../../utils/formatPrice';
 import { isRestaurantBusiness } from '../../utils/businessType';
+import { getPublicCatalogUrl } from '../../config/appUrl';
 
 
 export default function ProductManagement() {
@@ -110,6 +111,8 @@ export default function ProductManagement() {
   const emptyDescription = isRestaurant
     ? 'Agrega tu primer plato para comenzar a recibir pedidos.'
     : 'Agrega tu primer producto para empezar a vender por WhatsApp.';
+  const catalogUrl = useMemo(() => getPublicCatalogUrl(business?.slug ?? ''), [business?.slug]);
+  const showViewCatalogButton = Boolean(catalogUrl) && products?.length > 0;
   const formatProductPrice = useCallback(
     (n) => formatBusinessCurrency(n, business, bizLocale),
     [business, bizLocale],
@@ -219,6 +222,19 @@ export default function ProductManagement() {
       <span>Agregar {productNoun}</span>
     </button>
   );
+
+  const ViewCatalogButton = ({ className = '' }) => (
+    <a
+      href={catalogUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={`flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-700 transition-colors duration-150 hover:bg-slate-50 hover:border-slate-300 active:scale-[0.99] ${className}`}
+      style={{ fontFamily: 'var(--font-caption)' }}
+    >
+      <Icon name="Eye" size={18} color="currentColor" />
+      <span>Ver catálogo</span>
+    </a>
+  );
   return (
     <DashboardAppShell backgroundColor="var(--color-background)">
         <PanelHeader
@@ -226,6 +242,7 @@ export default function ProductManagement() {
           subtitle={<p className="text-xs hidden sm:block" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>{loading ? 'Cargando...' : `${stats?.total} ${productNounPlural} · ${stats?.available} disponibles · ${stats?.soldOut} agotados · ${stats?.hidden} ocultos`}</p>}
         >
           <div className="hidden 2xl:flex items-center gap-2 flex-shrink-0">
+            {showViewCatalogButton && <ViewCatalogButton className="px-4 py-2.5" />}
             <AddProductButton className="px-4 py-2.5" />
           </div>
         </PanelHeader>
@@ -255,7 +272,8 @@ export default function ProductManagement() {
                       {screenSubtitle}
                     </p>
                   </div>
-                  <div className="hidden shrink-0 md:block 2xl:hidden">
+                  <div className="hidden shrink-0 md:flex md:items-center md:gap-2 2xl:hidden">
+                    {showViewCatalogButton && <ViewCatalogButton className="px-4 py-2.5" />}
                     <AddProductButton className="px-4 py-2.5" />
                   </div>
                 </div>
@@ -276,8 +294,9 @@ export default function ProductManagement() {
                   }}
                 />
               </div>
-              <div className="flex w-full md:hidden">
-                <AddProductButton className="w-full px-4 py-3" />
+              <div className="flex w-full gap-2 md:hidden">
+                {showViewCatalogButton && <ViewCatalogButton className="flex-1 px-4 py-3" />}
+                <AddProductButton className={showViewCatalogButton ? 'flex-1 px-4 py-3' : 'w-full px-4 py-3'} />
               </div>
               {selectedIds?.length > 0 && (<div><BulkActionBar selectedCount={selectedIds?.length} onDelete={handleBulkDelete} onDeselect={() => setSelectedIds([])} /></div>)}
               <ProductTable products={filteredProducts} selectedIds={selectedIds} onSelectAll={handleSelectAll} onSelectOne={handleSelectOne} onChangeStatus={handleChangeStatus} onEdit={handleEdit} onDuplicate={handleDuplicate} onDeleteRequest={handleDeleteRequest} sortField={sortField} sortDir={sortDir} onSort={handleSort} formatPrice={formatProductPrice} hasProducts={products?.length > 0} emptyTitle={emptyTitle} emptyDescription={emptyDescription} filteredEmptyDescription="No encontramos ítems con estos filtros. Ajusta la búsqueda o vuelve a ver todo el catálogo." />

@@ -2,6 +2,7 @@ import React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import Icon from 'components/AppIcon';
 import { useAuth } from 'contexts/AuthContext';
+import { useNavigationGuard } from 'contexts/NavigationGuardContext';
 
 const ITEMS = [
   { label: 'Inicio', path: '/dashboard', icon: 'LayoutDashboard' },
@@ -15,6 +16,7 @@ const ADMIN_ITEM = { label: 'Admin', path: '/admin', icon: 'Shield' };
 export default function MobileBottomNav() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { attemptLeave } = useNavigationGuard();
   const { isAdmin } = useAuth();
   const items = isAdmin ? [...ITEMS, ADMIN_ITEM] : ITEMS;
 
@@ -40,7 +42,7 @@ export default function MobileBottomNav() {
             <button
               key={item.path}
               type="button"
-              onClick={() => navigate(item.path)}
+              onClick={() => attemptLeave(() => navigate(item.path))}
               className="flex flex-col items-center justify-center gap-1 px-3 py-2.5 rounded-xl transition-colors duration-200 min-w-[64px] min-h-[56px] touch-manipulation active:scale-[0.98]"
               style={{
                 color: active ? (isAdminTab ? 'var(--color-error)' : 'var(--color-primary)') : 'var(--color-muted-foreground)',

@@ -51,6 +51,8 @@
     "serve": "vite preview",
     "test:billing-pricing": "vitest run src/lib/billing/markets.test.js",
     "test:plan-preview": "vitest run supabase/functions/plan-change-preview/lib.test.ts",
+    "test:unsaved-changes-guard": "vitest run src/lib/navigationGuard.test.js src/lib/formDirtyTracker.test.js",
+    "test:local-draft-backup": "vitest run src/lib/formDraftStorage.test.js src/lib/debounce.test.js",
     "migrate:images-r2": "node scripts/migrate-images-to-r2.mjs",
     "backfill:product-thumbnails": "node scripts/backfill-product-thumbnails.mjs",
     "backfill:og-images": "node scripts/backfill-og-images.mjs",

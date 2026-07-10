@@ -3,19 +3,27 @@
  * HEAD — mismos headers que GET, sin cuerpo (probes de crawlers / WhatsApp).
  *
  * Determinismo: sin bitmaps remotos, el PNG depende solo de datos en BD (nombre, etc.).
- * Portada/logo se cargan en serie (no Promise.all), con timeout + magic bytes; si fallan o resvg
- * falla, se reintenta con layout solo vectorial (sin URLs externas). Para máxima estabilidad
- * entre requests: OG_CATALOG_VECTOR_ONLY=true (solo SVG interno, mismo slug → mismo resultado).
+ * Portada y logo se piden en PARALELO (nunca en serie) con una estrategia de carrera
+ * controlada (ver resolveOgSourceImage en src/lib/ogImagePipeline.js): la portada exitosa
+ * nunca espera al logo; solo si la portada falla o excede su timeout se recurre al logo,
+ * acotado siempre por el presupuesto total OG_TOTAL_BUDGET_MS. Si ambos fallan, se cae de
+ * inmediato al layout vectorial (sin URLs externas) — nunca se responde sin imagen.
+ * Para máxima estabilidad entre requests: OG_CATALOG_VECTOR_ONLY=true (solo SVG interno,
+ * mismo slug → mismo resultado).
  */
 
 import { createClient } from '@supabase/supabase-js';
 import { Resvg } from '@resvg/resvg-js';
+import { fetchImageBuffer, resolveOgSourceImage } from '../src/lib/ogImagePipeline.js';
 
 const OG_W = 1200;
 const OG_H = 630;
-const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
-/** Mismo timeout en cada request (sin carreras entre cover/logo). */
-const REMOTE_IMAGE_FETCH_MS = 10_000;
+/** Timeout por recurso remoto: corto a propósito — un crawler (WhatsApp) tiene mucha
+ *  menos paciencia que esto para el fetch de la imagen. */
+const REMOTE_IMAGE_FETCH_MS = 3_000;
+/** Presupuesto total de la resolución de imagen (portada + posible fallback a logo).
+ *  Nunca se excede, incluso si REMOTE_IMAGE_FETCH_MS se alcanza dos veces. */
+const OG_TOTAL_BUDGET_MS = 5_000;
 const OG_CATALOG_CACHE_CONTROL = 'public, max-age=0, must-revalidate';
 
 function logOgCatalog(event, payload) {
@@ -30,28 +38,6 @@ function logOgCatalog(event, payload) {
   } catch {
     console.log(`[og-catalog] ${event}`, payload);
   }
-}
-
-/** JPEG / PNG / GIF / WebP — evita data: inválidos que rompen resvg de forma intermitente. */
-function isSupportedRasterBuffer(ab) {
-  if (!ab || ab.byteLength < 12) return false;
-  const u = new Uint8Array(ab);
-  if (u[0] === 0xff && u[1] === 0xd8) return true;
-  if (u[0] === 0x89 && u[1] === 0x50 && u[2] === 0x4e && u[3] === 0x47) return true;
-  if (u[0] === 0x47 && u[1] === 0x49 && u[2] === 0x46) return true;
-  if (
-    u[0] === 0x52 &&
-    u[1] === 0x49 &&
-    u[2] === 0x46 &&
-    u[3] === 0x46 &&
-    u[8] === 0x57 &&
-    u[9] === 0x45 &&
-    u[10] === 0x42 &&
-    u[11] === 0x50
-  ) {
-    return true;
-  }
-  return false;
 }
 
 function escapeXml(input) {
@@ -135,90 +121,6 @@ function pickOgPreviewUrl(row, ds) {
   return null;
 }
 
-/**
- * Descarga una imagen remota y la devuelve como Buffer con su Content-Type.
- * Usado para servir og_image_url directamente (sin 302) — WhatsApp no sigue redirects.
- * @returns {{ ok: boolean, buffer: Buffer|null, contentType: string|null, reason: string }}
- */
-async function proxyImageAsBuffer(url) {
-  if (!url || !/^https?:\/\//i.test(url)) {
-    return { ok: false, buffer: null, contentType: null, reason: 'invalid_or_missing_url' };
-  }
-  const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), REMOTE_IMAGE_FETCH_MS);
-  try {
-    const res = await fetch(url, {
-      redirect: 'follow',
-      signal: controller.signal,
-      headers: { Accept: 'image/jpeg,image/png,image/webp,image/gif,*/*;q=0.8' },
-    });
-    if (!res.ok) return { ok: false, buffer: null, contentType: null, reason: `http_${res.status}` };
-    const len = res.headers.get('content-length');
-    if (len && Number(len) > MAX_IMAGE_BYTES) {
-      return { ok: false, buffer: null, contentType: null, reason: 'content_length_too_large' };
-    }
-    const ab = await res.arrayBuffer();
-    if (ab.byteLength === 0 || ab.byteLength > MAX_IMAGE_BYTES) {
-      return { ok: false, buffer: null, contentType: null, reason: 'body_size_invalid' };
-    }
-    if (!isSupportedRasterBuffer(ab)) {
-      return { ok: false, buffer: null, contentType: null, reason: 'unsupported_or_corrupt_image_magic' };
-    }
-    const ct = (res.headers.get('content-type') || 'image/jpeg').split(';')[0].trim().toLowerCase();
-    if (!ct.startsWith('image/')) {
-      return { ok: false, buffer: null, contentType: null, reason: 'not_image_content_type' };
-    }
-    return { ok: true, buffer: Buffer.from(ab), contentType: ct, reason: 'ok' };
-  } catch (e) {
-    return { ok: false, buffer: null, contentType: null, reason: e?.name === 'AbortError' ? 'timeout' : 'fetch_error' };
-  } finally {
-    clearTimeout(t);
-  }
-}
-
-/**
- * Carga una imagen remota de forma validada. Sin esto, resvg puede fallar o rasterizar mal con bytes corruptos.
- * @returns {{ ok: boolean, dataUri: string | null, reason?: string }}
- */
-async function loadImageDataUriValidated(url) {
-  if (!url || !/^https?:\/\//i.test(url)) {
-    return { ok: false, dataUri: null, reason: 'invalid_or_missing_url' };
-  }
-  const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), REMOTE_IMAGE_FETCH_MS);
-  try {
-    const res = await fetch(url, {
-      redirect: 'follow',
-      signal: controller.signal,
-      headers: { Accept: 'image/jpeg,image/png,image/webp,image/gif,*/*;q=0.8' },
-    });
-    if (!res.ok) {
-      return { ok: false, dataUri: null, reason: `http_${res.status}` };
-    }
-    const len = res.headers.get('content-length');
-    if (len && Number(len) > MAX_IMAGE_BYTES) {
-      return { ok: false, dataUri: null, reason: 'content_length_too_large' };
-    }
-    const ab = await res.arrayBuffer();
-    if (ab.byteLength > MAX_IMAGE_BYTES || ab.byteLength === 0) {
-      return { ok: false, dataUri: null, reason: 'body_size_invalid' };
-    }
-    if (!isSupportedRasterBuffer(ab)) {
-      return { ok: false, dataUri: null, reason: 'unsupported_or_corrupt_image_magic' };
-    }
-    const ct = (res.headers.get('content-type') || 'image/jpeg').split(';')[0].trim().toLowerCase();
-    if (!ct.startsWith('image/')) {
-      return { ok: false, dataUri: null, reason: 'not_image_content_type' };
-    }
-    const b64 = Buffer.from(ab).toString('base64');
-    return { ok: true, dataUri: `data:${ct};base64,${b64}`, reason: 'ok' };
-  } catch (e) {
-    const name = e?.name === 'AbortError' ? 'timeout' : 'fetch_error';
-    return { ok: false, dataUri: null, reason: name };
-  } finally {
-    clearTimeout(t);
-  }
-}
 
 /**
  * V-Check gradient def reusable por id.
@@ -431,8 +333,10 @@ function svgToPng(svg) {
 
 /**
  * Renderiza PNG: primero con bitmaps opcionales; si resvg falla, solo vectores (mismo slug → mismo layout estable sin URLs rotas).
+ * Mide el tiempo de render (resvg) por separado del tiempo de fetch de imágenes.
  */
 function pngFromOgPipeline(storeName, coverDataUri, logoDataUri, slug, logContext = {}) {
+  const renderT0 = Date.now();
   const tryVectorOnly = () => {
     const svg = buildCatalogOgSvg({
       storeName,
@@ -445,14 +349,14 @@ function pngFromOgPipeline(storeName, coverDataUri, logoDataUri, slug, logContex
   try {
     const svg = buildCatalogOgSvg({ storeName, logoDataUri, coverDataUri });
     try {
-      return { png: svgToPng(svg), mode: 'primary' };
+      return { png: svgToPng(svg), mode: 'primary', renderMs: Date.now() - renderT0 };
     } catch (resvgErr) {
       logOgCatalog('resvg_retry_vector_only', {
         slug,
         ...logContext,
         error: String(resvgErr?.message || resvgErr),
       });
-      return { png: tryVectorOnly(), mode: 'vector_only_after_resvg' };
+      return { png: tryVectorOnly(), mode: 'vector_only_after_resvg', renderMs: Date.now() - renderT0 };
     }
   } catch (buildErr) {
     logOgCatalog('svg_build_retry', {
@@ -461,15 +365,16 @@ function pngFromOgPipeline(storeName, coverDataUri, logoDataUri, slug, logContex
       error: String(buildErr?.message || buildErr),
     });
     try {
-      return { png: tryVectorOnly(), mode: 'vector_only_after_build' };
+      return { png: tryVectorOnly(), mode: 'vector_only_after_build', renderMs: Date.now() - renderT0 };
     } catch {
-      return { png: svgToPng(buildFallbackSvg(storeName)), mode: 'minimal_svg_fallback' };
+      return { png: svgToPng(buildFallbackSvg(storeName)), mode: 'minimal_svg_fallback', renderMs: Date.now() - renderT0 };
     }
   }
 }
 
 export async function GET(request) {
   let svgFallbackName = 'Catálogo';
+  const requestT0 = Date.now();
   try {
     const url = new URL(request.url);
     const slug = (url.searchParams.get('slug') || '').trim();
@@ -477,6 +382,8 @@ export async function GET(request) {
       logOgCatalog('render', {
         slug: slug || '(empty)',
         renderMode: 'reject_bad_slug',
+        fallbackUsed: 'generic',
+        totalMs: Date.now() - requestT0,
         coverUrl: null,
         logoUrl: null,
         coverOk: false,
@@ -501,6 +408,8 @@ export async function GET(request) {
       logOgCatalog('render', {
         slug,
         renderMode: 'missing_env',
+        fallbackUsed: 'generic',
+        totalMs: Date.now() - requestT0,
         coverUrl: null,
         logoUrl: null,
         coverOk: false,
@@ -531,6 +440,8 @@ export async function GET(request) {
         slug,
         renderMode: 'business_not_found',
         dbError: error?.message || null,
+        fallbackUsed: 'generic',
+        totalMs: Date.now() - requestT0,
         coverUrl: null,
         logoUrl: null,
         coverOk: false,
@@ -571,7 +482,7 @@ export async function GET(request) {
     // Si el proxy falla (timeout, imagen corrupta, etc.) cae al pipeline SVG→PNG.
     const ogPreviewUrl = pickOgPreviewUrl(row, ds);
     if (ogPreviewUrl) {
-      const proxy = await proxyImageAsBuffer(ogPreviewUrl);
+      const proxy = await fetchImageBuffer(ogPreviewUrl, { timeoutMs: REMOTE_IMAGE_FETCH_MS });
       if (proxy.ok) {
         logOgCatalog('render', {
           slug,
@@ -581,6 +492,11 @@ export async function GET(request) {
           ogPreviewUrl,
           contentType: proxy.contentType,
           bytes: proxy.buffer.length,
+          coverFetchMs: proxy.ms,
+          logoFetchMs: null,
+          renderMs: null,
+          totalMs: Date.now() - requestT0,
+          fallbackUsed: 'og_preview_proxy',
           coverOk: false,
           logoOk: false,
         });
@@ -598,6 +514,7 @@ export async function GET(request) {
         businessId: row.id,
         ogPreviewUrl,
         reason: proxy.reason,
+        ms: proxy.ms,
       });
       // Proxy falló: continuar con pipeline SVG→PNG usando portada/logo.
     }
@@ -611,25 +528,25 @@ export async function GET(request) {
 
     let coverDataUri = null;
     let logoDataUri = null;
-    let coverMeta = { ok: false, reason: vectorOnly ? 'vector_only_env' : 'no_url' };
-    let logoMeta = { ok: false, reason: vectorOnly ? 'vector_only_env' : 'no_url' };
+    let coverResult = { ok: false, reason: vectorOnly ? 'vector_only_env' : 'no_url', ms: 0 };
+    let logoResult = { ok: false, reason: vectorOnly ? 'vector_only_env' : 'no_url', ms: 0 };
+    let imageSource = 'none';
 
     if (!vectorOnly) {
-      if (coverUrl) {
-        coverMeta = await loadImageDataUriValidated(coverUrl);
-        if (coverMeta.ok) coverDataUri = coverMeta.dataUri;
-      } else {
-        coverMeta = { ok: false, reason: 'no_url' };
-      }
-      if (logoUrl) {
-        logoMeta = await loadImageDataUriValidated(logoUrl);
-        if (logoMeta.ok) logoDataUri = logoMeta.dataUri;
-      } else {
-        logoMeta = { ok: false, reason: 'no_url' };
-      }
+      const resolved = await resolveOgSourceImage({
+        coverUrl,
+        logoUrl,
+        perImageTimeoutMs: REMOTE_IMAGE_FETCH_MS,
+        totalBudgetMs: OG_TOTAL_BUDGET_MS,
+      });
+      coverResult = resolved.coverResult;
+      logoResult = resolved.logoResult ?? { ok: false, reason: 'not_attempted', ms: 0 };
+      coverDataUri = resolved.coverDataUri;
+      logoDataUri = resolved.logoDataUri;
+      imageSource = resolved.source;
     }
 
-    const { png, mode } = pngFromOgPipeline(storeName, coverDataUri, logoDataUri, slug, {
+    const { png, mode, renderMs } = pngFromOgPipeline(storeName, coverDataUri, logoDataUri, slug, {
       coverUrl: coverUrl || null,
       logoUrl: logoUrl || null,
     });
@@ -643,8 +560,13 @@ export async function GET(request) {
       logoUrl: logoUrl || null,
       coverOk: !!coverDataUri,
       logoOk: !!logoDataUri,
-      coverReason: coverMeta.reason ?? null,
-      logoReason: logoMeta.reason ?? null,
+      coverReason: coverResult.reason ?? null,
+      logoReason: logoResult.reason ?? null,
+      coverFetchMs: coverResult.ms ?? null,
+      logoFetchMs: logoResult.ms ?? null,
+      renderMs,
+      totalMs: Date.now() - requestT0,
+      fallbackUsed: vectorOnly ? 'vector_only_env' : imageSource,
       renderMode: mode,
     });
 
@@ -661,6 +583,8 @@ export async function GET(request) {
       slug: '(error)',
       renderMode: 'unhandled_exception',
       error: String(e?.message || e),
+      fallbackUsed: 'generic',
+      totalMs: Date.now() - requestT0,
       coverOk: false,
       logoOk: false,
     });

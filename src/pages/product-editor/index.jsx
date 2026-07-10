@@ -13,7 +13,14 @@ import ProductPreview from './components/ProductPreview';
 import SaveBar from './components/SaveBar';
 import ProductOptionsSection from './components/ProductOptionsSection';
 import VideoUploadSection from './components/VideoUploadSection';
+import UnsavedChangesDialog from 'components/ui/UnsavedChangesDialog';
+import LocalDraftBanner from 'components/ui/LocalDraftBanner';
+import LocalOnlyImagesNotice from 'components/ui/LocalOnlyImagesNotice';
 import { useAuth } from '../../contexts/AuthContext';
+import { useNavigationGuard } from '../../contexts/NavigationGuardContext';
+import { createDirtyTracker } from '../../lib/formDirtyTracker';
+import { createDebouncer } from '../../lib/debounce';
+import { buildDraftKey, readDraft, removeDraft, persistDraftIfDirty } from '../../lib/formDraftStorage';
 import {
   getProduct,
   createProduct,
@@ -36,7 +43,7 @@ import { supabase } from '../../lib/supabase';
 import { getBusinessLocale } from '../../lib/locale/businessLocale';
 import { resolveVentaAiProductDescriptionEndpoint } from '../../lib/ai/resolveVentaAiProductDescriptionUrl.js';
 import { appendCacheBust, uploadToMediaService } from '../../services/mediaUploadService';
-import { getPublicProductUrl } from '../../config/appUrl';
+import { getPublicProductUrl, getPublicCatalogUrl } from '../../config/appUrl';
 import { generateUniqueBarcode, saveProductBarcode } from '../../services/crmService';
 
 const EMPTY_FORM = {
@@ -196,6 +203,23 @@ export default function ProductEditor() {
   const [generatingBarcode, setGeneratingBarcode] = useState(false);
   const [cardImageUrl, setCardImageUrl] = useState(null);
   const [productSlug, setProductSlug] = useState('');
+  const [isDirty, setIsDirty] = useState(false);
+  const [showLeaveDialog, setShowLeaveDialog] = useState(false);
+  const dirtyTrackerRef = React.useRef(null);
+  if (!dirtyTrackerRef.current) dirtyTrackerRef.current = createDirtyTracker();
+  const pendingLeaveActionRef = React.useRef(null);
+  const { attemptLeave, setGuard, clearGuard } = useNavigationGuard();
+  const [localDraftBanner, setLocalDraftBanner] = useState(null);
+  const localDraftCheckedRef = React.useRef(false);
+  const localDraftDebouncerRef = React.useRef(null);
+  if (!localDraftDebouncerRef.current) localDraftDebouncerRef.current = createDebouncer(500);
+  const isDirtyRef = React.useRef(false);
+  const formDataRef = React.useRef(formData);
+  formDataRef.current = formData;
+  const draftImagesRef = React.useRef(images);
+  draftImagesRef.current = images;
+  const [hasUnpersistedDraftImages, setHasUnpersistedDraftImages] = useState(false);
+  const localDraftKey = business?.id ? buildDraftKey(business.id, productId) : null;
   const toast = useToast();
   const effectiveProductId = currentProductId || productId || null;
   const isEditingFlow = !!effectiveProductId;
@@ -207,6 +231,7 @@ export default function ProductEditor() {
     preferredCountryCode: user?.user_metadata?.country_code ?? null,
   });
   const initialActivoRef = React.useRef(null);
+  const saveRedirectTimerRef = React.useRef(null);
   const isRestaurant = isRestaurantBusiness(business);
   const itemSingular = isRestaurant ? 'plato' : 'producto';
   const itemSingularCapitalized = isRestaurant ? 'Plato' : 'Producto';
@@ -215,6 +240,7 @@ export default function ProductEditor() {
   const publicProductUrl = business?.slug && resolvedProductSlug
     ? getPublicProductUrl(business.slug, resolvedProductSlug)
     : '';
+  const catalogUrl = business?.slug ? getPublicCatalogUrl(business.slug) : '';
   const publicProductShareText = publicProductUrl
     ? `Mira este producto: ${publicProductUrl}`
     : '';
@@ -308,6 +334,7 @@ export default function ProductEditor() {
       try {
         const { data, error } = await getProduct(productId);
         if (error || !data) { navigate('/product-management'); return; }
+        dirtyTrackerRef.current.armSkip();
         setCurrentProductId(data?.id || productId);
         initialActivoRef.current = data?.isActive !== undefined ? data?.isActive : true;
         setFormData({
@@ -378,6 +405,97 @@ export default function ProductEditor() {
   useEffect(() => {
     if (saveSuccess) { const t = setTimeout(() => setSaveSuccess(false), 3000); return () => clearTimeout(t); }
   }, [saveSuccess]);
+
+  // Regla 1: la primera modificación real del formulario marca isDirty = true.
+  // dirtyTrackerRef ignora la escritura inmediatamente posterior a cargar el
+  // producto o a resetear el formulario tras "Guardar y crear otro".
+  useEffect(() => {
+    if (dirtyTrackerRef.current.onWatchedChange()) setIsDirty(true);
+  }, [formData, images, video, cardImageUrl]);
+
+  // Única función de la app para decidir si se puede abandonar la pantalla.
+  useEffect(() => {
+    setGuard((action) => {
+      if (!isDirty) { action(); return; }
+      pendingLeaveActionRef.current = action;
+      setShowLeaveDialog(true);
+    });
+    return () => clearGuard();
+  }, [isDirty, setGuard, clearGuard]);
+
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (!isDirty) return;
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isDirty]);
+
+  useEffect(() => {
+    isDirtyRef.current = isDirty;
+  }, [isDirty]);
+
+  // Persiste formData + imágenes ya subidas (URL real, nunca File/blob) bajo
+  // la key del draft. Actualiza el aviso discreto cuando hubo imágenes locales
+  // que no se pudieron incluir (Regla 3 de la corrección de imágenes).
+  const persistLocalDraftNow = () => {
+    const snapshot = persistDraftIfDirty({
+      isDirty: isDirtyRef.current,
+      key: localDraftKey,
+      formData: formDataRef.current,
+      images: draftImagesRef.current,
+    });
+    if (snapshot) setHasUnpersistedDraftImages(snapshot.hasUnpersistedImages === true);
+  };
+
+  // V2: autoguardado local silencioso. Mientras isDirty=true, cada cambio de
+  // formData/imágenes se persiste en localStorage con 500ms de debounce (Regla A).
+  useEffect(() => {
+    if (!isDirty || !localDraftKey) return;
+    localDraftDebouncerRef.current.schedule(persistLocalDraftNow);
+  }, [isDirty, localDraftKey, formData, images]);
+
+  // El guardado periódico se debounce, pero blur/visibilitychange(hidden)/
+  // beforeunload deben persistir de inmediato (Regla A) para no perder lo
+  // escrito justo antes de cambiar de pestaña o cerrarla.
+  useEffect(() => {
+    if (!localDraftKey) return;
+    const flushDraft = () => localDraftDebouncerRef.current.flush(persistLocalDraftNow);
+    const handleVisibility = () => { if (document.hidden) flushDraft(); };
+    window.addEventListener('blur', flushDraft);
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('beforeunload', flushDraft);
+    return () => {
+      window.removeEventListener('blur', flushDraft);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('beforeunload', flushDraft);
+    };
+  }, [localDraftKey]);
+
+  useEffect(() => () => { localDraftDebouncerRef.current.cancel(); }, []);
+
+  // Regla C/D: al abrir, si hay un draft local se ofrece por banner (nunca
+  // modal/popup). Solo se auto-restaura en el caso seguro de un producto
+  // nuevo cuyo formulario sigue vacío (Regla D); en cualquier otro caso
+  // queda a un clic de distancia en el banner.
+  useEffect(() => {
+    if (localDraftCheckedRef.current) return;
+    if (!localDraftKey) return;
+    if (isEditing && pageLoading) return;
+    localDraftCheckedRef.current = true;
+    const existingDraft = readDraft(localDraftKey);
+    if (!existingDraft) return;
+    if (!isEditing && !isDirty) {
+      applyLocalDraft(existingDraft);
+    }
+    setLocalDraftBanner({ draft: existingDraft });
+  }, [localDraftKey, isEditing, pageLoading, isDirty]);
+
+  useEffect(() => () => {
+    if (saveRedirectTimerRef.current) clearTimeout(saveRedirectTimerRef.current);
+  }, []);
 
   useEffect(() => {
     const previousImages = previousImagesRef.current || [];
@@ -986,6 +1104,34 @@ export default function ProductEditor() {
     await doSave(andNew);
   };
 
+  const resetFormForNewProduct = () => {
+    dirtyTrackerRef.current.armSkip();
+    setFormData({ ...EMPTY_FORM });
+    setImages([]);
+    setCurrentProductId(null);
+    setImagePreviewUrl(null);
+    setImageUploading(false);
+    setImageUploadError('');
+    setVideo(null);
+    setPublicCode('');
+    setCardImageUrl(null);
+    setProductSlug('');
+    setAddonCreationMode(null);
+    setAddonSearchQuery('');
+    setManualAddonDraft({ emoji: '', label: '', price: '' });
+    setErrors({});
+    setSaveSuccess(false);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleContinueAdding = () => {
+    if (saveRedirectTimerRef.current) {
+      clearTimeout(saveRedirectTimerRef.current);
+      saveRedirectTimerRef.current = null;
+    }
+    resetFormForNewProduct();
+  };
+
   const doSave = async (andNew = false) => {
     if (hasPendingOrUploadingImages) {
       setErrors(prev => ({ ...prev, general: 'Espera a que terminen de subir todas las imágenes.' }));
@@ -1067,31 +1213,68 @@ export default function ProductEditor() {
       setProductSlug(result?.data?.slug || slugifyProductName(result?.data?.name || formData?.nombre));
       setIsSaving(false);
       setSaveSuccess(true);
+      setIsDirty(false);
+      // Regla E: guardado correcto -> se elimina el borrador local (incluyendo URLs de imágenes).
+      localDraftDebouncerRef.current.cancel();
+      if (localDraftKey) removeDraft(localDraftKey);
+      setHasUnpersistedDraftImages(false);
       if (andNew) {
-        setFormData({ ...EMPTY_FORM });
-        setImages([]);
-        setCurrentProductId(null);
-        setImagePreviewUrl(null);
-        setImageUploading(false);
-        setImageUploadError('');
-        setVideo(null);
-        setPublicCode('');
-        setCardImageUrl(null);
-        setProductSlug('');
-        setAddonCreationMode(null);
-        setAddonSearchQuery('');
-        setManualAddonDraft({ emoji: '', label: '', price: '' });
-        setErrors({});
-        setSaveSuccess(false);
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        resetFormForNewProduct();
       } else {
-        setTimeout(() => navigate('/product-management'), 1400);
+        saveRedirectTimerRef.current = setTimeout(() => navigate('/product-management'), 2500);
       }
     } catch (e) { setErrors({ general: 'Error inesperado al guardar.' }); }
     finally { setIsSaving(false); }
   };
 
-  const handleCancel = () => navigate('/product-management');
+  const handleCancel = () => attemptLeave(() => navigate('/product-management'));
+
+  const handleKeepEditing = () => {
+    setShowLeaveDialog(false);
+    pendingLeaveActionRef.current = null;
+  };
+
+  const handleLeaveWithoutSaving = () => {
+    setShowLeaveDialog(false);
+    setIsDirty(false);
+    // Regla F: salir sin guardar -> se elimina el borrador local de este formulario.
+    localDraftDebouncerRef.current.cancel();
+    if (localDraftKey) removeDraft(localDraftKey);
+    setHasUnpersistedDraftImages(false);
+    const action = pendingLeaveActionRef.current;
+    pendingLeaveActionRef.current = null;
+    action?.();
+  };
+
+  const handleSaveAndLeave = () => {
+    setShowLeaveDialog(false);
+    pendingLeaveActionRef.current = null;
+    handleSave(false);
+  };
+
+  const applyLocalDraft = (draftToApply) => {
+    if (!draftToApply?.formData) return;
+    setFormData((prev) => ({ ...prev, ...draftToApply.formData }));
+    // Regla 4: solo restaura imágenes con URL válida; si no había ninguna
+    // persistible no se toca el estado actual de imágenes (no se inventan).
+    if (Array.isArray(draftToApply.images) && draftToApply.images.length > 0) {
+      setImages(draftToApply.images);
+    }
+  };
+
+  const handleRestoreLocalDraft = () => {
+    if (localDraftBanner?.draft) applyLocalDraft(localDraftBanner.draft);
+    setLocalDraftBanner(null);
+  };
+
+  const handleDismissLocalDraftBanner = () => setLocalDraftBanner(null);
+
+  const handleDeleteLocalDraft = () => {
+    if (localDraftKey) removeDraft(localDraftKey);
+    localDraftDebouncerRef.current.cancel();
+    setLocalDraftBanner(null);
+  };
+
   if (pageLoading) {
     return <PremiumLoader fullScreen business={business} context="products" />;
   }
@@ -1119,9 +1302,9 @@ export default function ProductEditor() {
           )}
           subtitle={(
             <nav aria-label="Breadcrumb" className="hidden sm:flex items-center gap-1 mt-0.5">
-              <button onClick={() => navigate('/dashboard')} className="text-xs hover:underline" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Dashboard</button>
+              <button onClick={() => attemptLeave(() => navigate('/dashboard'))} className="text-xs hover:underline" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Dashboard</button>
               <Icon name="ChevronRight" size={11} color="var(--color-muted-foreground)" />
-              <button onClick={() => navigate('/product-management')} className="text-xs hover:underline" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>{collectionLabel}</button>
+              <button onClick={() => attemptLeave(() => navigate('/product-management'))} className="text-xs hover:underline" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>{collectionLabel}</button>
               <Icon name="ChevronRight" size={11} color="var(--color-muted-foreground)" />
               <span className="text-xs" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>{isEditingFlow ? 'Editar' : 'Nuevo'}</span>
             </nav>
@@ -1174,6 +1357,12 @@ export default function ProductEditor() {
 
         {/* Main content */}
         <DashboardLayoutContent className="page-enter lg:pb-0">
+            <LocalDraftBanner
+              visible={!!localDraftBanner}
+              onRestore={handleRestoreLocalDraft}
+              onDismiss={handleDismissLocalDraftBanner}
+              onDelete={handleDeleteLocalDraft}
+            />
             <section className="mb-7 sm:mb-9">
               <div className="flex flex-col gap-5 border-b pb-6 sm:flex-row sm:items-end sm:justify-between" style={{ borderColor: 'rgba(17,24,39,0.08)' }}>
                 <div className="max-w-2xl">
@@ -1240,7 +1429,7 @@ export default function ProductEditor() {
                       {errors?.configPath && (
                         <button
                           type="button"
-                          onClick={() => navigate(errors.configPath)}
+                          onClick={() => attemptLeave(() => navigate(errors.configPath))}
                           className="mt-3 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors"
                           style={{ backgroundColor: 'var(--color-primary)', color: '#fff', fontFamily: 'var(--font-caption)' }}
                         >
@@ -1274,6 +1463,7 @@ export default function ProductEditor() {
                     uploadMessage={imageUploading ? 'Subiendo imagen principal...' : ''}
                     uploadError={imageUploadError}
                   />
+                  <LocalOnlyImagesNotice visible={hasUnpersistedDraftImages} />
                 </div>
 
                 {/* Video */}
@@ -1424,7 +1614,7 @@ export default function ProductEditor() {
                     </div>
                     <button
                       type="button"
-                      onClick={() => navigate('/crm/stock')}
+                      onClick={() => attemptLeave(() => navigate('/crm/stock'))}
                       className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition-colors"
                     >
                       <Icon name="ExternalLink" size={12} />
@@ -2207,7 +2397,17 @@ export default function ProductEditor() {
           onSave={() => handleSave(false)}
           onSaveAndNew={() => handleSave(true)}
           onCancel={handleCancel}
+          onContinueAdding={handleContinueAdding}
+          catalogUrl={catalogUrl}
           itemSingular={itemSingularCapitalized}
+        />
+
+        <UnsavedChangesDialog
+          open={showLeaveDialog}
+          saving={isSaving}
+          onSaveAndLeave={handleSaveAndLeave}
+          onLeaveWithoutSaving={handleLeaveWithoutSaving}
+          onKeepEditing={handleKeepEditing}
         />
     </DashboardAppShell>
   );

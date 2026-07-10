@@ -9,6 +9,7 @@ import Icon from '../../components/AppIcon';
 import { CartProvider, useCart } from '../../contexts/CartContext';
 import { formatPrice as formatPriceUtil, resolveCatalogCurrency } from '../../utils/formatPrice';
 import { getBusinessLocale } from '../../lib/locale/businessLocale';
+import { hasMoreCatalogProducts } from '../../lib/catalogPagination';
 import { useIsDesktop } from '../../hooks/useMediaQuery';
 import { useAuth } from '../../contexts/AuthContext';
 import PremiumLoader from '../../components/ui/PremiumLoader';
@@ -754,8 +755,7 @@ function CatalogInner({ slug }) {
     return sortedProducts.filter((product) => product?.id !== mainFeaturedProduct.id);
   }, [mainFeaturedProduct?.id, sortedProducts]);
   const visibleProducts = useMemo(() => gridProducts.slice(0, visibleCount), [gridProducts, visibleCount]);
-  // Si el plan tiene límite de productos, SQL ya entregó solo los permitidos — no hay "más" que mostrar
-  const hasMoreProducts = planProductLimit != null ? false : gridProducts.length > visibleCount;
+  const hasMoreProducts = hasMoreCatalogProducts(gridProducts.length, visibleCount);
 
   const totalGridProducts = useMemo(() => {
     if (!Array.isArray(products)) return 0;
@@ -1522,7 +1522,7 @@ function FloatingCartButton({ onOpen, formatPrice, theme }) {
   const primaryColor = theme?.primaryColor || '#25D366';
   const primaryColorDark = theme?.primaryColorDark || '#128C7E';
   const primaryRgba = theme?.primaryRgba || (() => 'rgba(37,211,102,0.45)');
-  const { itemCount, total } = useCart();
+  const { itemCount, total, hasHiddenPriceItems } = useCart();
   const [prevCount, setPrevCount] = useState(0);
   const [bump, setBump] = useState(false);
 
@@ -1586,7 +1586,9 @@ function FloatingCartButton({ onOpen, formatPrice, theme }) {
               bump ? 'scale-110' : 'scale-100'
             }`}
           >
-            <span className="text-[13px] font-black" style={{ color: primaryColorDark }}>{formatPrice(total)}</span>
+            <span className="text-[13px] font-black" style={{ color: primaryColorDark }}>
+              {hasHiddenPriceItems && total === 0 ? 'A consultar' : formatPrice(total)}
+            </span>
           </div>
         </button>
       </div>
@@ -1606,7 +1608,7 @@ function OrderPanel({ business, slug, formatPrice, onClose, theme }) {
   const primaryColor = theme?.primaryColor || '#25D366';
   const primaryColorDark = theme?.primaryColorDark || '#128C7E';
   const primaryRgba = theme?.primaryRgba || (() => 'rgba(37,211,102,0.35)');
-  const { items, updateQuantity, removeItem, total, clearCart } = useCart();
+  const { items, updateQuantity, removeItem, total, hasHiddenPriceItems, clearCart } = useCart();
   const [customerName, setCustomerName] = useState('');
   const [customerPhoneDigits, setCustomerPhoneDigits] = useState('');
   const [serviceType, setServiceType] = useState('mesa');
@@ -1684,6 +1686,10 @@ function OrderPanel({ business, slug, formatPrice, onClose, theme }) {
         subtotal: item?.price * item?.quantity,
         selectedOptions: item?.selectedOptions ?? [],
       }));
+      // El total del pedido en el registro interno del negocio siempre suma el precio
+      // real de todos los productos (incluidos los "Consultar precio"): `total` de
+      // useCart() es la versión apta para mostrar al cliente y excluye esos ítems.
+      const internalTotalAmount = orderItems?.reduce((sum, oi) => sum + (oi?.subtotal || 0), 0) ?? 0;
 
       const phoneForOrder = normalizeOptionalCustomerPhone(customerPhoneDigits);
 
@@ -1697,7 +1703,7 @@ function OrderPanel({ business, slug, formatPrice, onClose, theme }) {
         deliveryAddress: isRestaurant && serviceType === 'delivery'
           ? deliveryAddress?.trim()
           : null,
-        totalAmount: total,
+        totalAmount: internalTotalAmount,
         notes: notes?.trim() || null,
       }, orderItems);
 
@@ -1836,12 +1842,20 @@ function OrderPanel({ business, slug, formatPrice, onClose, theme }) {
                   {/* Info */}
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-gray-800 truncate">{item?.name}</p>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      {item?.quantity} × {formatPrice(item?.price)} c/u
-                    </p>
-                    <p className="text-sm font-bold text-gray-900 mt-0.5">
-                      {formatPrice(item?.price * item?.quantity)}
-                    </p>
+                    {item?.showPrice === false ? (
+                      <p className="text-sm font-bold text-gray-900 mt-0.5">
+                        {item?.quantity} × Consultar precio
+                      </p>
+                    ) : (
+                      <>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          {item?.quantity} × {formatPrice(item?.price)} c/u
+                        </p>
+                        <p className="text-sm font-bold text-gray-900 mt-0.5">
+                          {formatPrice(item?.price * item?.quantity)}
+                        </p>
+                      </>
+                    )}
                   </div>
                   {/* Quantity controls */}
                   <div className="flex items-center gap-2 flex-shrink-0">
@@ -1866,9 +1880,16 @@ function OrderPanel({ business, slug, formatPrice, onClose, theme }) {
           </div>
 
           {/* Total */}
-          <div className="flex items-center justify-between rounded-2xl px-4 py-3 border" style={{ backgroundColor: primaryRgba(0.08), borderColor: primaryRgba(0.25) }}>
-            <span className="text-sm font-semibold text-gray-700">Total estimado</span>
-            <span className="text-lg font-black" style={{ color: primaryColorDark }}>{formatPrice(total)}</span>
+          <div className="rounded-2xl px-4 py-3 border" style={{ backgroundColor: primaryRgba(0.08), borderColor: primaryRgba(0.25) }}>
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold text-gray-700">Total estimado</span>
+              <span className="text-lg font-black" style={{ color: primaryColorDark }}>
+                {hasHiddenPriceItems && total === 0 ? 'A consultar' : formatPrice(total)}
+              </span>
+            </div>
+            {hasHiddenPriceItems && total > 0 && (
+              <p className="text-xs text-gray-500 mt-1">+ productos a consultar precio por WhatsApp</p>
+            )}
           </div>
 
           {/* Customer name */}

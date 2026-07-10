@@ -34,6 +34,14 @@ import LocationPicker from './components/LocationPicker';
 import BusinessCategoriesManager from './components/BusinessCategoriesManager';
 import CustomDomainSettings from './components/CustomDomainSettings';
 import { BUSINESS_MODES, getRecommendedBusinessModeFromRubro } from '../../lib/business-mode';
+import LocalDraftBanner from 'components/ui/LocalDraftBanner';
+import UnsavedChangesDialog from 'components/ui/UnsavedChangesDialog';
+import DraftStatusIndicator from 'components/ui/DraftStatusIndicator';
+import { useLocalDraft } from '../../hooks/useLocalDraft';
+import { buildEditorDraftKey } from '../../lib/editorDraftKey';
+import { mergeDraftFormData } from '../../lib/editorDraftMerge';
+
+const BUSINESS_CONFIG_DESIGN_IMAGE_FIELDS = ['logoUrl', 'coverImageUrl', 'headerImageUrl'];
 
 const BUSINESS_DESCRIPTION_MAX = 280;
 const PRINT_LEGEND_MAX = 180;
@@ -335,19 +343,34 @@ export default function BusinessConfiguration() {
   const toastTimer = useRef(null);
   const [savedConfigSnapshot, setSavedConfigSnapshot] = useState('');
 
-  const currentConfigSnapshot = useMemo(
-    () =>
-      JSON.stringify({
-        form,
-        design,
-        orderMessageTemplate,
-        fullAddressInput,
-        uxCountry,
-      }),
+  const currentConfigData = useMemo(
+    () => ({ form, design, orderMessageTemplate, fullAddressInput, uxCountry }),
     [form, design, orderMessageTemplate, fullAddressInput, uxCountry],
+  );
+  const currentConfigSnapshot = useMemo(
+    () => JSON.stringify(currentConfigData),
+    [currentConfigData],
   );
 
   const isDirty = Boolean(business?.id && savedConfigSnapshot && currentConfigSnapshot !== savedConfigSnapshot);
+
+  const handleApplyConfigDraft = useCallback((draftFormData) => {
+    if (!draftFormData) return;
+    if (draftFormData.form) setForm((prev) => mergeDraftFormData(prev, draftFormData.form));
+    if (draftFormData.design) {
+      setDesign((prev) => mergeDraftFormData(prev, draftFormData.design, BUSINESS_CONFIG_DESIGN_IMAGE_FIELDS));
+    }
+    if (draftFormData.orderMessageTemplate != null) setOrderMessageTemplate(draftFormData.orderMessageTemplate);
+    if (draftFormData.fullAddressInput != null) setFullAddressInput(draftFormData.fullAddressInput);
+    if (draftFormData.uxCountry !== undefined) setUxCountry(draftFormData.uxCountry);
+  }, []);
+
+  const localDraft = useLocalDraft({
+    key: business?.id ? buildEditorDraftKey('business-config', business.id) : null,
+    isDirty,
+    data: currentConfigData,
+    onApplyDraft: handleApplyConfigDraft,
+  });
   const hasUnsavedCountryChange = (uxCountry ?? null) !== (businessCountry ?? null);
   /** Bloqueo solo si ya hay país guardado y hay suscripción activa, pedidos o trial iniciado. */
   const isCountryLocked =
@@ -671,13 +694,13 @@ export default function BusinessConfiguration() {
     const bizId = business?.id;
     if (!bizId) {
       showToast('No se encontró el negocio. Intenta recargar la página.', 'error');
-      return;
+      return false;
     }
 
     if (!form?.rubroId) {
       setRubroError('Selecciona un rubro principal para continuar.');
       document.getElementById('field-rubro-principal')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      return;
+      return false;
     }
     setRubroError(null);
 
@@ -734,7 +757,7 @@ export default function BusinessConfiguration() {
       const { data: updated, error } = await updateBusiness(bizId, payload);
       if (error) {
         showToast('No se pudo guardar la configuración. Intenta de nuevo.', 'error');
-        return;
+        return false;
       }
       if (updated) {
         patchBusiness(updated);
@@ -900,9 +923,13 @@ export default function BusinessConfiguration() {
       } else {
         showToast('¡Configuración guardada!', 'success');
       }
+      // Regla E: guardado correcto -> se elimina el borrador local.
+      localDraft.clearDraft();
+      return true;
     } catch (e) {
       console.error('[BusinessConfig] handleSaveSettings exception:', e);
       showToast('Error inesperado. Intenta de nuevo.', 'error');
+      return false;
     } finally {
       setIsSaving(false);
     }
@@ -962,7 +989,9 @@ export default function BusinessConfiguration() {
       }));
     }
     setSavedConfigSnapshot(buildSavedConfigSnapshotFromBusiness(business));
-  }, [business]);
+    // El usuario descartó explícitamente -> se elimina el borrador local.
+    localDraft.clearDraft();
+  }, [business, localDraft]);
 
   const isLoading = businessLoading || businessFetchLoading;
 
@@ -1081,8 +1110,18 @@ export default function BusinessConfiguration() {
                 <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 sm:text-base" style={{ fontFamily: 'var(--font-body)' }}>
                   Personaliza cómo los clientes ven y compran en tu {visibleCatalogSurface}. Mantén la identidad clara, el pedido simple y la información pública al día.
                 </p>
+                <div className="mt-3">
+                  <DraftStatusIndicator status={localDraft.status} />
+                </div>
               </div>
             </section>
+
+            <LocalDraftBanner
+              visible={!!localDraft.draftBanner}
+              onRestore={localDraft.restoreDraft}
+              onDismiss={localDraft.dismissDraftBanner}
+              onDelete={localDraft.deleteDraft}
+            />
 
             {onboardingMissingFields.length > 0 && (
               <OnboardingIncompleteBanner missingFields={onboardingMissingFields} />
@@ -1940,6 +1979,14 @@ export default function BusinessConfiguration() {
       {toast && (
         <Toast message={toast?.message} type={toast?.type} onClose={() => setToast(null)} />
       )}
+
+      <UnsavedChangesDialog
+        open={localDraft.showLeaveDialog}
+        saving={localDraft.isLeaveDialogSaving}
+        onSaveAndLeave={() => localDraft.handleSaveAndLeave(handleSaveSettings)}
+        onLeaveWithoutSaving={localDraft.handleLeaveWithoutSaving}
+        onKeepEditing={localDraft.handleKeepEditing}
+      />
     </DashboardAppShell>
   );
 }

@@ -3,6 +3,7 @@ import Routes from './Routes';
 import { ToastProvider } from './components/ui/Toast';
 import { AuthProvider } from './contexts/AuthContext';
 import { CountryProvider } from './contexts/CountryContext';
+import { NavigationGuardProvider } from './contexts/NavigationGuardContext';
 import EmailConfirmBanner from './components/EmailConfirmBanner';
 import SupportModeBanner from './components/SupportModeBanner';
 import { bootstrapManualMarketChoiceFromUrl } from './config/countryConfig';
@@ -18,7 +19,9 @@ function App() {
           <SupportModeBanner />
           <EmailConfirmBanner />
           <ToastProvider>
-            <Routes />
+            <NavigationGuardProvider>
+              <Routes />
+            </NavigationGuardProvider>
           </ToastProvider>
         </CountryProvider>
       </AuthProvider>
