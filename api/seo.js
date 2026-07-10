@@ -328,8 +328,9 @@ async function handleCatalogHtml(request) {
       ? `<meta property="og:image:secure_url" content="${escapeHtmlCatalog(ogImageHttps)}" />`
       : '';
 
-  const fbAppIdContent = fbAppId || '0';
-  const fbAppIdMeta = `<meta property="fb:app_id" content="${escapeHtmlCatalog(fbAppIdContent)}" />`;
+  // Sin ID configurado, no se emite la etiqueta — "0" no es un App ID válido
+  // y no hace falta tener una app de Facebook para que el OG funcione.
+  const fbAppIdMeta = fbAppId ? `<meta property="fb:app_id" content="${escapeHtmlCatalog(fbAppId)}" />` : '';
 
   const metaTags = [
     fbAppIdMeta,
@@ -379,7 +380,9 @@ async function handleCatalogHtml(request) {
     status: 200,
     headers: {
       'Content-Type': 'text/html; charset=utf-8',
-      'Cache-Control': 'public, s-maxage=120, stale-while-revalidate=600',
+      // Metadata social: prioriza frescura. Un s-maxage/SWR largo podía servir
+      // og:image de una portada anterior por hasta ~10 min tras guardar cambios.
+      'Cache-Control': 'public, s-maxage=15, stale-while-revalidate=30',
       'X-Catalog-Og-Source': 'seo-handler-v2',
       'X-Catalog-Slug': slug,
     },
@@ -530,7 +533,8 @@ async function handleProductHtml(request) {
     status: 200,
     headers: {
       'Content-Type': 'text/html; charset=utf-8',
-      'Cache-Control': 'public, s-maxage=120, stale-while-revalidate=600',
+      // Misma política que /catalogo/:slug — metadata social prioriza frescura.
+      'Cache-Control': 'public, s-maxage=15, stale-while-revalidate=30',
       'X-Catalog-Og-Source': 'seo-product-handler-v1',
       'X-Catalog-Slug': businessSlug,
       'X-Product-Slug': productSlug,
