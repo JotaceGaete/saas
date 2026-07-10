@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
+import { computeCartTotal, hasHiddenPriceItems as computeHasHiddenPriceItems } from '../lib/cartPricing';
 
 const CartContext = createContext(null);
 
@@ -29,11 +30,12 @@ export function CartProvider({ children }) {
 
   const clearCart = useCallback(() => setItems([]), []);
 
-  const total = items?.reduce((sum, i) => sum + i?.price * i?.quantity, 0);
+  const total = computeCartTotal(items);
+  const hasHiddenPriceItems = computeHasHiddenPriceItems(items);
   const itemCount = items?.reduce((sum, i) => sum + i?.quantity, 0);
 
   return (
-    <CartContext.Provider value={{ items, addItem, removeItem, updateQuantity, clearCart, total, itemCount }}>
+    <CartContext.Provider value={{ items, addItem, removeItem, updateQuantity, clearCart, total, hasHiddenPriceItems, itemCount }}>
       {children}
     </CartContext.Provider>
   );
