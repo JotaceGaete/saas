@@ -25,7 +25,8 @@ function OfferCard({ product, formatPrice, theme, onOpen }) {
   const cartItem = items?.find((i) => i?.id === product?.id);
   const qty = cartItem?.quantity || 0;
   const [bump, setBump] = useState(false);
-  const discount = getDiscountPercent(product?.price, product?.compareAtPrice);
+  const showPrice = product?.showPrice !== false;
+  const discount = showPrice ? getDiscountPercent(product?.price, product?.compareAtPrice) : null;
   const qtyTopClass = discount !== null ? 'top-[1.85rem]' : 'top-1';
 
   const handleAdd = (e) => {
@@ -109,7 +110,7 @@ function OfferCard({ product, formatPrice, theme, onOpen }) {
         <div className="flex w-full shrink-0 flex-col gap-2 pt-1">
           <div className="flex flex-col gap-0.5">
             <p className="shrink-0 text-xl font-bold leading-none tracking-tight text-gray-900">
-              {formatPrice(product?.price)}
+              {showPrice ? formatPrice(product?.price) : 'Consultar precio'}
             </p>
             {discount !== null && (
               <p className="text-xs leading-none text-gray-400 line-through">
@@ -158,7 +159,7 @@ function OfferCard({ product, formatPrice, theme, onOpen }) {
 }
 
 function CartBar({ business, formatPrice, offersUrl }) {
-  const { items, total, itemCount } = useCart();
+  const { items, total, hasHiddenPriceItems, itemCount } = useCart();
   const [sent, setSent] = useState(false);
 
   if (itemCount === 0) return null;
@@ -172,7 +173,9 @@ function CartBar({ business, formatPrice, offersUrl }) {
     let message = '';
     if (offersUrl) message += `${offersUrl}\n\n`;
     message += `Hola, me interesan estas ofertas de ${business.name}.\n\nPedido:\n${lines.join('\n')}`;
-    message += `\n\nTotal: ${formatPrice(total)}`;
+    // Los productos "Consultar precio" no tienen precio de cara al cliente: no
+    // incluir un total que solo sumaría los ítems con precio visible.
+    if (!hasHiddenPriceItems) message += `\n\nTotal: ${formatPrice(total)}`;
     openWhatsAppUrl(`https://wa.me/${business.whatsapp}?text=${encodeURIComponent(message)}`);
     setSent(true);
     setTimeout(() => setSent(false), 3000);
@@ -188,7 +191,9 @@ function CartBar({ business, formatPrice, offersUrl }) {
           <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-white/20 text-xs font-black text-white">
             {itemCount}
           </div>
-          <span className="truncate text-sm font-bold text-white">{formatPrice(total)}</span>
+          <span className="truncate text-sm font-bold text-white">
+            {hasHiddenPriceItems && total === 0 ? 'A consultar' : formatPrice(total)}
+          </span>
         </div>
         <button
           type="button"
@@ -313,7 +318,8 @@ function PublicOffersContent() {
   const buildSingleWhatsAppMessage = (product) => {
     if (!product) return '';
     const label = product.publicCode ? `${product.publicCode} - ${product.name}` : product.name || 'Producto';
-    let msg = `Hola, me interesa este producto en oferta de ${business?.name || 'la tienda'}:\n\n- ${label}\nPrecio: ${formatPrice(product.price)}`;
+    const priceLine = product?.showPrice !== false ? `\nPrecio: ${formatPrice(product.price)}` : '';
+    let msg = `Hola, me interesa este producto en oferta de ${business?.name || 'la tienda'}:\n\n- ${label}${priceLine}`;
     if (offersUrl) msg += `\n\n${offersUrl}`;
     return msg;
   };

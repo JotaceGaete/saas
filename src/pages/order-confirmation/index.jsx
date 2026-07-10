@@ -23,7 +23,7 @@ function isWhatsAppWebView() {
 export default function OrderConfirmation() {
   const { slug } = useParams();
   const navigate = useNavigate();
-  const { items, total, updateQuantity, removeItem, clearCart } = useCart();
+  const { items, total, hasHiddenPriceItems, updateQuantity, removeItem, clearCart } = useCart();
   const [customerName, setCustomerName] = useState('');
   const [customerPhoneDigits, setCustomerPhoneDigits] = useState('');
   const [serviceType, setServiceType] = useState('mesa');
@@ -136,6 +136,10 @@ export default function OrderConfirmation() {
         quantity: item?.quantity,
         subtotal: item?.price * item?.quantity,
       }));
+      // Registro interno del negocio: suma el precio real de todos los productos,
+      // incluidos los "Consultar precio" (total de useCart() es la versión apta
+      // para el cliente y excluye esos ítems).
+      const internalTotalAmount = orderItems?.reduce((sum, oi) => sum + (oi?.subtotal || 0), 0) ?? 0;
 
       const phoneForOrder = normalizeOptionalCustomerPhone(customerPhoneDigits);
 
@@ -149,7 +153,7 @@ export default function OrderConfirmation() {
         deliveryAddress: isRestaurantBusiness(biz) && serviceType === 'delivery'
           ? deliveryAddress?.trim()
           : null,
-        totalAmount: total,
+        totalAmount: internalTotalAmount,
         notes: notes?.trim() || null,
       }, orderItems);
 
@@ -246,7 +250,9 @@ export default function OrderConfirmation() {
                 )}
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold truncate" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>{item?.name}</p>
-                  <p className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-data)' }}>{formatPrice(item?.price)}</p>
+                  <p className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-data)' }}>
+                    {item?.showPrice === false ? 'Consultar precio' : formatPrice(item?.price)}
+                  </p>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <button onClick={() => updateQuantity(item?.id, item?.quantity - 1)} className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors" style={{ backgroundColor: 'var(--color-muted)', color: 'var(--color-foreground)' }}>
@@ -263,9 +269,18 @@ export default function OrderConfirmation() {
               </div>
             ))}
           </div>
-          <div className="px-4 py-3 border-t flex items-center justify-between" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface-subtle)' }}>
-            <span className="text-sm font-semibold" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}>Total</span>
-            <span className="text-lg font-bold" style={{ fontFamily: 'var(--font-data)', color: 'var(--color-primary)' }}>{formatPrice(total)}</span>
+          <div className="px-4 py-3 border-t" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface-subtle)' }}>
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}>Total</span>
+              <span className="text-lg font-bold" style={{ fontFamily: 'var(--font-data)', color: 'var(--color-primary)' }}>
+                {hasHiddenPriceItems && total === 0 ? 'A consultar' : formatPrice(total)}
+              </span>
+            </div>
+            {hasHiddenPriceItems && total > 0 && (
+              <p className="text-xs mt-1" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+                + productos a consultar precio por WhatsApp
+              </p>
+            )}
           </div>
         </div>
 

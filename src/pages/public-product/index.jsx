@@ -204,7 +204,7 @@ function PublicProductInner() {
       productUrl,
       '',
       `Hola! Me interesa este producto: ${product?.name || 'Producto'}`,
-      `Precio: ${formatPrice(product?.price)}`,
+      product?.showPrice !== false ? `Precio: ${formatPrice(product?.price)}` : null,
       business?.name ? `Tienda: ${business.name}` : '',
     ].filter(Boolean).join('\n');
     const branding = getOrderMessageBrandingSuffix(business);
@@ -217,7 +217,7 @@ function PublicProductInner() {
       .slice(0, 4)
   ), [product?.id, products]);
   const ogImage = activeImage || business?.ogImageUrl || business?.logoUrl || business?.coverImageUrl || '';
-  const priceLabel = product?.price != null ? formatPrice(product.price) : '';
+  const priceLabel = product?.price != null && product?.showPrice !== false ? formatPrice(product.price) : '';
   const shareText = productUrl ? `Mira este producto: ${productUrl}` : '';
   const shareWhatsAppUrl = shareText ? `https://wa.me/?text=${encodeURIComponent(shareText)}` : '';
 
@@ -498,7 +498,9 @@ function PublicProductInner() {
                       />
                       <div className="p-3">
                         <p className="line-clamp-2 text-sm font-bold text-gray-950">{item.name}</p>
-                        <p className="mt-1 text-sm font-black text-gray-900">{formatPrice(item.price)}</p>
+                        <p className="mt-1 text-sm font-black text-gray-900">
+                          {item?.showPrice !== false ? formatPrice(item.price) : 'Consultar precio'}
+                        </p>
                       </div>
                     </button>
                   );
