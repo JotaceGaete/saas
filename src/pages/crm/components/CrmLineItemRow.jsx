@@ -76,7 +76,6 @@ export function CrmLineItemReadOnly({ item, imageUrl, currency = 'CLP' }) {
         </div>
         <div className="min-w-0">
           <p className="text-sm text-gray-900 font-medium">{item.name}</p>
-          {item.description && <p className="text-xs text-gray-500">{item.description}</p>}
           <p className="text-xs text-gray-400 mt-0.5">
             {item.quantity} × {fmt(item.unit_price)}
             {discountLabel && ` (${discountLabel})`}
