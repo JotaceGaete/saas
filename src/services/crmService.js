@@ -533,85 +533,29 @@ export async function getCrmInvoice(id) {
 
 export async function createCrmInvoice(businessId, { customerId, issueDate, dueDate, notes, paymentTerms, deliveryDays, deliveryMethod, commercialNotes, items = [], quoteId, _planSlug } = {}) {
   assertFeature(_planSlug ?? 'business', 'invoices');
-  const { data: nextNum, error: numErr } = await supabase
-    .rpc('crm_next_invoice_number', { p_business_id: businessId });
-  if (numErr) return { data: null, error: numErr };
-
-  const mappedItems = items.map((it, idx) => ({
-    ...it,
-    discount_type: it.discount_type || 'percentage',
-    subtotal: calcItemSubtotal(it.unit_price, it.quantity, it.discount_pct || 0, it.discount_type || 'percentage'),
-    sort_order: idx,
-  }));
-  const totals = calcDocTotals(mappedItems);
-
-  const { data: invoice, error } = await supabase
-    .from('crm_invoices')
-    .insert({
-      business_id: businessId,
-      customer_id: customerId || null,
-      invoice_number: nextNum,
-      issue_date: issueDate || new Date().toISOString().slice(0, 10),
-      due_date: dueDate || null,
-      notes: notes || null,
-      payment_terms: paymentTerms || null,
-      delivery_days: deliveryDays || null,
-      delivery_method: deliveryMethod || null,
-      commercial_notes: commercialNotes || null,
-      quote_id: quoteId || null,
-      ...totals,
-    })
-    .select()
-    .single();
-  if (error) return { data: null, error };
-
-  if (mappedItems.length > 0) {
-    const { error: itemsErr } = await supabase
-      .from('crm_invoice_items')
-      .insert(mappedItems.map(it => ({ ...it, invoice_id: invoice.id })));
-    if (itemsErr) return { data: null, error: itemsErr };
-  }
-  return { data: invoice, error: null };
+  const { data, error } = await supabase.rpc('crm_create_invoice_document', {
+    p_business_id: businessId,
+    p_document: {
+      customer_id: customerId || null, issue_date: issueDate || null, due_date: dueDate || null,
+      notes: notes || null, payment_terms: paymentTerms || null, delivery_days: deliveryDays || null,
+      delivery_method: deliveryMethod || null, commercial_notes: commercialNotes || null,
+      quote_id: quoteId || null, source: 'crm', status: 'pendiente',
+    },
+    p_items: items,
+  }).single();
+  return { data, error };
 }
 
 export async function updateCrmInvoice(invoiceId, { customerId, issueDate, dueDate, notes, paymentTerms, deliveryDays, deliveryMethod, commercialNotes, items }) {
-  const updates = {};
-  if (customerId !== undefined) updates.customer_id = customerId;
-  if (issueDate !== undefined) updates.issue_date = issueDate;
-  if (dueDate !== undefined) updates.due_date = dueDate;
-  if (notes !== undefined) updates.notes = notes;
-  if (paymentTerms !== undefined) updates.payment_terms = paymentTerms;
-  if (deliveryDays !== undefined) updates.delivery_days = deliveryDays;
-  if (deliveryMethod !== undefined) updates.delivery_method = deliveryMethod;
-  if (commercialNotes !== undefined) updates.commercial_notes = commercialNotes;
-
-  if (items !== undefined) {
-    const mappedItems = items.map((it, idx) => ({
-      ...it,
-      discount_type: it.discount_type || 'percentage',
-      subtotal: calcItemSubtotal(it.unit_price, it.quantity, it.discount_pct || 0, it.discount_type || 'percentage'),
-      sort_order: idx,
-    }));
-    const totals = calcDocTotals(mappedItems);
-    Object.assign(updates, totals);
-
-    const { error: deleteErr } = await supabase.from('crm_invoice_items').delete().eq('invoice_id', invoiceId);
-    if (deleteErr) return { data: null, error: deleteErr };
-
-    if (mappedItems.length > 0) {
-      const { error: itemsErr } = await supabase
-        .from('crm_invoice_items')
-        .insert(mappedItems.map(it => ({ ...it, invoice_id: invoiceId })));
-      if (itemsErr) return { data: null, error: itemsErr };
-    }
-  }
-
-  const { data, error } = await supabase
-    .from('crm_invoices')
-    .update(updates)
-    .eq('id', invoiceId)
-    .select()
-    .single();
+  const { data, error } = await supabase.rpc('crm_update_invoice_document', {
+    p_invoice_id: invoiceId,
+    p_document: {
+      customer_id: customerId ?? null, issue_date: issueDate ?? null, due_date: dueDate ?? null,
+      notes: notes ?? null, payment_terms: paymentTerms ?? null, delivery_days: deliveryDays ?? null,
+      delivery_method: deliveryMethod ?? null, commercial_notes: commercialNotes ?? null,
+    },
+    p_items: items || [],
+  }).single();
   return { data, error };
 }
 
@@ -774,10 +718,6 @@ export async function createPosInvoice(businessId, {
   initialPaymentAmount = 0, initialPaymentMethod = 'cash',
   payments = null,
 }) {
-  const { data: nextNum, error: numErr } = await supabase
-    .rpc('crm_next_invoice_number', { p_business_id: businessId });
-  if (numErr) return { data: null, error: numErr };
-
   const localDate = getLocalDateString();
   const normalizedPaymentMethod = normalizePaymentMethod(paymentMethod);
 
@@ -878,30 +818,15 @@ export async function createPosInvoice(businessId, {
       : 'pendiente';
   const paidAt = invoiceStatus === 'pagada' ? new Date().toISOString() : null;
 
-  const { data: invoice, error } = await supabase
-    .from('crm_invoices')
-    .insert({
-      business_id: businessId,
-      customer_id: customerId || null,
-      invoice_number: nextNum,
-      issue_date: localDate,
-      status: invoiceStatus,
-      subtotal: +subtotal.toFixed(2),
-      discount_amount: discountAmount,
-      total,
-      notes: notes || null,
-      paid_at: paidAt,
-    })
-    .select()
-    .single();
+  const { data: invoice, error } = await supabase.rpc('crm_create_invoice_document', {
+    p_business_id: businessId,
+    p_document: {
+      customer_id: customerId || null, issue_date: localDate, status: invoiceStatus,
+      notes: notes || null, paid_at: paidAt, source: 'pos', overall_discount: discountAmount,
+    },
+    p_items: mappedItems,
+  }).single();
   if (error) return { data: null, error };
-
-  if (mappedItems.length > 0) {
-    const { error: itemsErr } = await supabase
-      .from('crm_invoice_items')
-      .insert(mappedItems.map(it => ({ ...it, invoice_id: invoice.id })));
-    if (itemsErr) return { data: null, error: itemsErr };
-  }
 
   if (paymentRows.length === 0) {
     return { data: invoice, error: null };
@@ -921,7 +846,7 @@ export async function createPosInvoice(businessId, {
       payment_status: 'received',
       payment_date: localDate,
       cash_session_id: openSession?.id || null,
-      reference: invoiceStatus === 'parcial' ? `Abono TPV ${formatInvoiceNumber(nextNum)}` : `TPV ${formatInvoiceNumber(nextNum)}`,
+      reference: invoiceStatus === 'parcial' ? `Abono TPV ${formatInvoiceNumber(invoice.invoice_number)}` : `TPV ${formatInvoiceNumber(invoice.invoice_number)}`,
       notes: notes || null,
       created_by: user?.id || null,
     })));
@@ -957,35 +882,9 @@ export async function createInvoiceFromOrder(businessId, order) {
   if (existing) {
     return { data: null, error: { message: 'Ya existe una nota de venta para este pedido.' } };
   }
-
-  const { data: nextNum, error: numErr } = await supabase
-    .rpc('crm_next_invoice_number', { p_business_id: businessId });
-  if (numErr) return { data: null, error: numErr };
-
   const localDate = getLocalDateString();
   const shortRef = order.id.slice(-6).toUpperCase();
-
-  const { data: invoice, error } = await supabase
-    .from('crm_invoices')
-    .insert({
-      business_id: businessId,
-      customer_id: order.customerId || null,
-      invoice_number: nextNum,
-      issue_date: localDate,
-      status: 'pendiente',
-      subtotal: +(order.subtotal ?? order.totalAmount ?? 0).toFixed(2),
-      discount_amount: 0,
-      total: +(order.totalAmount ?? 0).toFixed(2),
-      notes: `Pedido catálogo #${shortRef}${order.notes ? '\n' + order.notes : ''}`,
-      order_id: order.id,
-    })
-    .select()
-    .single();
-  if (error) return { data: null, error };
-
-  if (Array.isArray(order.items) && order.items.length > 0) {
-    const mappedItems = order.items.map((it, idx) => ({
-      invoice_id: invoice.id,
+  const mappedItems = (Array.isArray(order.items) ? order.items : []).map((it, idx) => ({
       product_id: it.productId || null,
       name: it.productName || it.name || 'Producto',
       description: null,
@@ -994,14 +893,20 @@ export async function createInvoiceFromOrder(businessId, order) {
       discount_pct: 0,
       subtotal: +(it.subtotal ?? 0).toFixed(2),
       sort_order: idx,
-    }));
-    const { error: itemsErr } = await supabase
-      .from('crm_invoice_items')
-      .insert(mappedItems);
-    if (itemsErr) return { data: null, error: itemsErr };
-  }
-
-  return { data: invoice, error: null };
+  }));
+  const expectedTotal = +(order.totalAmount ?? 0).toFixed(2);
+  const itemSubtotal = mappedItems.reduce((sum, item) => sum + item.unit_price * item.quantity, 0);
+  const { data, error } = await supabase.rpc('crm_create_invoice_document', {
+    p_business_id: businessId,
+    p_document: {
+      customer_id: order.customerId || null, issue_date: localDate, status: 'pendiente',
+      notes: `Pedido catálogo #${shortRef}${order.notes ? '\n' + order.notes : ''}`,
+      order_id: order.id, source: 'crm',
+      overall_discount: Math.max(0, itemSubtotal - expectedTotal),
+    },
+    p_items: mappedItems,
+  }).single();
+  return { data, error };
 }
 
 // Registra pago real: requiere caja abierta.

@@ -16,6 +16,7 @@ import {
 } from '../../services/crmService';
 import { getProducts } from '../../services/waBusinessService';
 import { listPaymentsByInvoice, createPayment } from '../../services/crmPaymentsService';
+import { isPersistedInvoiceInconsistent } from './invoiceIntegrity';
 import CrmDocumentPdf from './CrmDocumentPdf';
 import {
   CrmLineItemCard,
@@ -74,6 +75,7 @@ export default function CrmInvoiceEditor() {
   const [showPdf, setShowPdf] = useState(false);
   const [saved, setSaved] = useState(null);
   const [saveError, setSaveError] = useState('');
+  const [loadError, setLoadError] = useState('');
   const [showProductModal, setShowProductModal] = useState(false);
   const [showChargeMenu, setShowChargeMenu] = useState(false);
   const [showNewCustomer, setShowNewCustomer] = useState(false);
@@ -108,7 +110,11 @@ export default function CrmInvoiceEditor() {
     getProducts(business.id).then((r) => setProducts(r.data || []));
     if (!isNew) {
       getCrmInvoice(id).then(({ data, error }) => {
-        if (error || !data) { navigate('/crm/facturas'); return; }
+        if (error || !data) {
+          setLoadError(error?.message || 'No se pudo cargar la nota de venta.');
+          setPageLoading(false);
+          return;
+        }
         setSaved(data);
         setCustomerId(data.customer_id || '');
         setIssueDate(data.issue_date || new Date().toISOString().slice(0, 10));
@@ -168,7 +174,8 @@ export default function CrmInvoiceEditor() {
     if (i.discount_type === 'fixed') return s + Math.min(i.discount_pct || 0, b);
     return s + (b * (i.discount_pct || 0)) / 100;
   }, 0);
-  const canEdit = isNew || saved?.status === 'pendiente';
+  const isInconsistent = isPersistedInvoiceInconsistent(saved);
+  const canEdit = !loadError && !isInconsistent && (isNew || saved?.status === 'pendiente');
 
   // Documento para vista previa — funciona con o sin guardado previo
   const previewDoc = {
@@ -241,6 +248,10 @@ export default function CrmInvoiceEditor() {
 
   const handleSave = async () => {
     setSaveError('');
+    if (isInconsistent) {
+      setSaveError('Esta nota tiene una cabecera persistida sin ítems. No puede sobrescribirse desde el editor.');
+      return;
+    }
     if (!canEdit) {
       setSaveError(LOCKED_DOCUMENT_MESSAGE);
       return;
@@ -296,6 +307,32 @@ export default function CrmInvoiceEditor() {
         <div className="flex justify-center py-20">
           <Icon name="Loader2" size={32} className="animate-spin text-blue-500" />
         </div>
+      </DashboardAppShell>
+    );
+  }
+
+  if (loadError || isInconsistent) {
+    return (
+      <DashboardAppShell>
+        <DashboardLayoutContent>
+          <div className="max-w-xl mx-auto mt-12 bg-red-50 border border-red-200 rounded-xl p-6 text-center">
+            <Icon name="AlertTriangle" size={32} className="mx-auto mb-3 text-red-600" />
+            <h1 className="text-lg font-bold text-red-900">
+              {isInconsistent ? 'Nota de venta inconsistente' : 'Error al cargar la nota de venta'}
+            </h1>
+            <p className="mt-2 text-sm text-red-700">
+              {isInconsistent
+                ? 'La cabecera registra un total mayor que cero, pero no existen ítems asociados. El documento fue bloqueado para evitar sobrescribir información recuperable.'
+                : loadError}
+            </p>
+            <button
+              onClick={() => navigate('/crm/facturas')}
+              className="mt-5 px-5 py-2.5 rounded-lg bg-white border border-red-300 text-sm font-medium text-red-700 hover:bg-red-100"
+            >
+              Volver al listado
+            </button>
+          </div>
+        </DashboardLayoutContent>
       </DashboardAppShell>
     );
   }
