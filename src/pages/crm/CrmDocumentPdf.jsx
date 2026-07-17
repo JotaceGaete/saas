@@ -6,6 +6,7 @@ import {
 } from '@react-pdf/renderer';
 import Icon from 'components/AppIcon';
 import { formatQuoteNumber, formatInvoiceNumber, getQuoteDocLabel } from '../../services/crmService';
+import { getDocumentItemDetail } from './documentItemPresentation';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -216,7 +217,7 @@ function CrmPdfDocument({ type, document: doc, business, customer, extra = {} })
               <View key={idx} style={[S.trow, idx % 2 === 1 ? S.trowAlt : {}]} wrap={false}>
                 <View style={S.tdesc}>
                   <Text style={[S.tcell, { fontFamily: 'Helvetica-Bold' }]}>{item.name}</Text>
-                  {!isQuote && !!item.description && <Text style={S.descSub}>{item.description}</Text>}
+                  {!!getDocumentItemDetail(item) && <Text style={S.descSub}>{getDocumentItemDetail(item)}</Text>}
                 </View>
                 <Text style={[S.tcell, S.tqty]}>{item.quantity}</Text>
                 <Text style={[S.tcell, S.tprice]}>{fmtMoney(item.unit_price, currency)}</Text>
@@ -380,7 +381,7 @@ function HtmlDocumentPreview({ type, document: doc, business, customer, extra = 
                 <tr key={idx} className={idx % 2 === 1 ? 'bg-gray-50' : ''}>
                   <td className="px-3 py-2 border-b border-gray-100">
                     <p className="font-semibold text-gray-900">{item.name}</p>
-                    {!isQuote && item.description && <p className="text-[10px] text-gray-400 mt-0.5">{item.description}</p>}
+                    {!!getDocumentItemDetail(item) && <p className="text-[10px] text-gray-400 mt-0.5">{getDocumentItemDetail(item)}</p>}
                   </td>
                   <td className="text-center px-2 py-2 border-b border-gray-100 text-gray-700">{item.quantity}</td>
                   <td className="text-right px-2 py-2 border-b border-gray-100 text-gray-700">{fmtMoney(item.unit_price, currency)}</td>

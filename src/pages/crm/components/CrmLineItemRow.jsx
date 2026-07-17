@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import Icon from 'components/AppIcon';
 import { fmtCLP, fmtMoneyInput, parseMoneyInput, formatMoney } from '../../../utils/formatMoney';
+import { getDocumentItemDetail } from '../documentItemPresentation';
 
 export function calcItemSubtotal(unitPrice, quantity, discountPct, discountType = 'percentage') {
   const base = (unitPrice || 0) * (quantity || 1);
@@ -59,6 +60,7 @@ function DiscountTypeToggle({ value, onChange }) {
 
 // ─── Vista de solo lectura (facturas ya guardadas) ──────────────────────────
 export function CrmLineItemReadOnly({ item, imageUrl, currency = 'CLP' }) {
+  const detail = getDocumentItemDetail(item);
   const fmt = (n) => formatMoney(n, currency);
   const discountAmount = calcItemDiscountAmount(item);
   const discountLabel = item.discount_pct > 0
@@ -76,7 +78,7 @@ export function CrmLineItemReadOnly({ item, imageUrl, currency = 'CLP' }) {
         </div>
         <div className="min-w-0">
           <p className="text-sm text-gray-900 font-medium">{item.name}</p>
-          {item.description && <p className="text-xs text-gray-500">{item.description}</p>}
+          {detail && <p className="text-xs text-gray-500">{detail}</p>}
           <p className="text-xs text-gray-400 mt-0.5">
             {item.quantity} × {fmt(item.unit_price)}
             {discountLabel && ` (${discountLabel})`}
