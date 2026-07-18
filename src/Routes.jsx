@@ -4,8 +4,6 @@ import ScrollToTop from "components/ScrollToTop";
 import ErrorBoundary from "components/ErrorBoundary";
 import AnimatedLayout from "components/AnimatedLayout";
 import NotFound from "pages/NotFound";
-// TEMPORARY — remove along with the /debug/sentry route below once Sentry is verified in prod.
-import DebugSentry from "pages/DebugSentry";
 import RequireAdmin from "components/RequireAdmin";
 import RequireAuth from "components/RequireAuth";
 import RequireCrm from "components/RequireCrm";
@@ -139,8 +137,6 @@ const Routes = () => {
         <RouterRoutes>
           <Route element={<AnimatedLayout />}>
             <Route path="/billing/dlocal/return" element={<DLocalReturnPage />} />
-            {/* TEMPORARY — delete this route once the Sentry prod verification is done */}
-            <Route path="/debug/sentry" element={<DebugSentry />} />
 			<Route path="/" element={<GoRootEntry />} />
             <Route path="/elegir-pais" element={<CountrySelectPage />} />
             <Route path="/business-registration" element={<BusinessRegistration />} />
