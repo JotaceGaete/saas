@@ -1,4 +1,5 @@
 import React from 'react';
+import * as Sentry from '@sentry/react';
 import Routes from './Routes';
 import { ToastProvider } from './components/ui/Toast';
 import { AuthProvider } from './contexts/AuthContext';
@@ -41,8 +42,14 @@ function App() {
           >
             <button
               type="button"
-              onClick={() => {
-                throw new Error('Prueba manual de Sentry');
+              onClick={async () => {
+                const eventId = Sentry.captureException(
+                  new Error('Prueba manual de Sentry')
+                );
+
+                await Sentry.flush(3000);
+
+                alert(`Prueba enviada a Sentry\n\nEvent ID: ${eventId}`);
               }}
               style={{
                 padding: '10px 14px',
