@@ -1,6 +1,19 @@
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
+/**
+ * `date-fns`'s `format()` throws a RangeError on an invalid Date instead of
+ * returning null — a malformed/unparseable timestamp (e.g. one a particular
+ * browser's Date parser rejects) would otherwise crash the render. Guard it
+ * the same way the rest of this file already guards duration calculations.
+ */
+export function formatOrderDateLabel(iso, pattern) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return format(d, pattern, { locale: es });
+}
+
 const MIN_PER_HOUR = 60;
 const MIN_PER_DAY = 24 * MIN_PER_HOUR;
 
@@ -101,7 +114,10 @@ export function getOrderCardTimeCaption(order) {
   const s = order?.status || 'pedido';
   if (s === 'entregado') {
     if (order?.deliveredAt) {
-      const hm = format(new Date(order.deliveredAt), 'HH:mm', { locale: es });
+      const hm = formatOrderDateLabel(order.deliveredAt, 'HH:mm');
+      if (!hm) {
+        return { primary: 'Entregado (sin hora registrada)', durationLabel: null };
+      }
       return {
         primary: `Entregado ${hm}`,
         durationLabel: formatDeliveryDurationLabel(order),
@@ -114,8 +130,8 @@ export function getOrderCardTimeCaption(order) {
   }
 
   const iso = getOrderCardDisplayTimeIso(order);
-  if (!iso) return { primary: '', durationLabel: null };
-  const hm = format(new Date(iso), 'HH:mm', { locale: es });
+  const hm = formatOrderDateLabel(iso, 'HH:mm');
+  if (!hm) return { primary: '', durationLabel: null };
   if (s === 'enviado') return { primary: `Enviado ${hm}`, durationLabel: null };
   if (s === 'pedido') return { primary: `Pedido ${hm}`, durationLabel: null };
   if (s === 'en_preparacion') return { primary: hm, durationLabel: null };

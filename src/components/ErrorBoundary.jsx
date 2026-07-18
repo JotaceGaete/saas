@@ -1,5 +1,7 @@
 import React from "react";
+import * as Sentry from "@sentry/react";
 import Icon from "./AppIcon";
+import { getTempDeviceDiagnosticContext } from "../utils/tempDeviceDiagnostics";
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -13,8 +15,24 @@ class ErrorBoundary extends React.Component {
 
   componentDidCatch(error, errorInfo) {
     error.__ErrorBoundary = true;
+    // `window.__COMPONENT_ERROR__` never had a listener wired up anywhere in the
+    // app, so render errors caught here were never reported to Sentry. Report
+    // directly instead. TEMPORAL: incluye contexto de dispositivo/navegador para
+    // depurar un crash reportado solo en un Android — quitar `device` cuando ya
+    // no se necesite.
+    // eslint-disable-next-line no-console
+    console.error('[ErrorBoundary] uncaught render error', error, errorInfo?.componentStack);
+    try {
+      Sentry.captureException(error, {
+        contexts: {
+          react: { componentStack: errorInfo?.componentStack || null },
+          device: getTempDeviceDiagnosticContext(),
+        },
+      });
+    } catch (_e) {
+      // Nunca dejar que el reporte de errores rompa el propio ErrorBoundary.
+    }
     window.__COMPONENT_ERROR__?.(error, errorInfo);
-    // console.log("Error caught by ErrorBoundary:", error, errorInfo);
   }
 
   render() {

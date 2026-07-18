@@ -2,12 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Icon from 'components/AppIcon';
 import { getInvoiceByOrderId, createInvoiceFromOrder, registerOrderPayment } from '../../../services/crmService';
-import { format } from 'date-fns';
-import { es } from 'date-fns/locale';
 import {
   formatDeliveryDurationLabel,
   formatDeliverySegmentDurationLabel,
   formatPreparationDurationLabel,
+  formatOrderDateLabel,
 } from 'utils/orderDates';
 import { isOrdersDoubleFlickerDebug, ordersDoubleFlickerLog } from '../ordersDoubleFlickerLog';
 
@@ -80,17 +79,12 @@ export default function OrderDetailDrawer({
     }
   };
 
-  const formattedOrderDate = order?.createdAt
-    ? format(new Date(order.createdAt), "d 'de' MMMM yyyy, HH:mm", { locale: es })
-    : '—';
+  const formattedOrderDate = formatOrderDateLabel(order?.createdAt, "d 'de' MMMM yyyy, HH:mm") || '—';
   const sentIso = order?.sentAt || null;
-  const formattedSentDate = sentIso
-    ? format(new Date(sentIso), "d 'de' MMMM yyyy, HH:mm", { locale: es })
+  const formattedSentDate = formatOrderDateLabel(sentIso, "d 'de' MMMM yyyy, HH:mm");
+  const formattedDeliveredDate = order?.status === 'entregado'
+    ? formatOrderDateLabel(order?.deliveredAt, "d 'de' MMMM yyyy, HH:mm")
     : null;
-  const formattedDeliveredDate =
-    order?.status === 'entregado' && order?.deliveredAt
-      ? format(new Date(order.deliveredAt), "d 'de' MMMM yyyy, HH:mm", { locale: es })
-      : null;
 
   const preparationLabel = formatPreparationDurationLabel(order);
   const deliverySegmentLabel = formatDeliverySegmentDurationLabel(order);
