@@ -12,11 +12,47 @@ bootstrapManualMarketChoiceFromUrl();
 
 function App() {
   return (
-    <div className="app-shell min-w-0" style={{ width: '100%', maxWidth: '100%', overflowX: 'hidden', minHeight: '100vh' }}>
+    <div
+      className="app-shell min-w-0"
+      style={{
+        width: '100%',
+        maxWidth: '100%',
+        overflowX: 'hidden',
+        minHeight: '100vh',
+      }}
+    >
       <AuthProvider>
         <CountryProvider>
           <SupportModeBanner />
           <EmailConfirmBanner />
+
+          <div
+            style={{
+              position: 'fixed',
+              right: 16,
+              bottom: 16,
+              zIndex: 99999,
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => {
+                throw new Error('Prueba manual de Sentry');
+              }}
+              style={{
+                padding: '10px 14px',
+                borderRadius: 8,
+                border: '1px solid #dc2626',
+                background: '#dc2626',
+                color: '#ffffff',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              Probar Sentry
+            </button>
+          </div>
+
           <ToastProvider>
             <Routes />
           </ToastProvider>

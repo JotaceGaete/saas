@@ -12,6 +12,7 @@
     "@react-pdf/renderer": "^4.5.1",
     "@reduxjs/toolkit": "^2.6.1",
     "@resvg/resvg-js": "^2.6.2",
+    "@sentry/react": "^10.66.0",
     "@supabase/supabase-js": "^2.100.1",
     "@tailwindcss/forms": "^0.5.7",
     "@testing-library/jest-dom": "^5.15.1",
