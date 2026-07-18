@@ -12,6 +12,7 @@ import CrmThermalTicket from './components/CrmThermalTicket';
 import { QuickCustomerModal } from './components/QuickCustomerModal';
 import CrmBreadcrumb from 'components/ui/CrmBreadcrumb';
 import { formatMoney, fmtMoneyInput, parseMoneyInput } from '../../utils/formatMoney';
+import { withDiagnostic } from '../../utils/errorDiagnostic';
 
 const PAYMENT_METHODS = [
   { value: 'cash',          label: 'Efectivo',      icon: 'Banknote' },
@@ -507,7 +508,7 @@ function CrmTerminalUI() {
     setBusy(false);
 
     if (error) {
-      setErrorMsg(error.message || 'No se pudo registrar el pago de la venta.');
+      setErrorMsg(withDiagnostic(error.message || 'No se pudo registrar el pago de la venta.', error));
       return;
     }
 

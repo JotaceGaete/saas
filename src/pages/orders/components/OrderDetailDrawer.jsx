@@ -10,6 +10,7 @@ import {
   formatPreparationDurationLabel,
 } from 'utils/orderDates';
 import { isOrdersDoubleFlickerDebug, ordersDoubleFlickerLog } from '../ordersDoubleFlickerLog';
+import { withDiagnostic } from '../../../utils/errorDiagnostic';
 
 const PAYMENT_METHOD_OPTIONS = [
   { value: 'cash',          label: 'Efectivo' },
@@ -56,7 +57,7 @@ export default function OrderDetailDrawer({
     setCrmError(null);
     const { data, error } = await createInvoiceFromOrder(business.id, order);
     setGeneratingInvoice(false);
-    if (error) { setCrmError(error.message || 'No se pudo crear la nota de venta.'); return; }
+    if (error) { setCrmError(withDiagnostic(error.message || 'No se pudo crear la nota de venta.', error)); return; }
     setOrderInvoice(data);
   };
 

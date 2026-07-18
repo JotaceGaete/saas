@@ -25,6 +25,7 @@ import {
   EMPTY_ITEM,
 } from './components/CrmLineItemRow';
 import { formatMoney } from '../../utils/formatMoney';
+import { withDiagnostic } from '../../utils/errorDiagnostic';
 import { CrmProductSearchModal } from './components/CrmProductSearchModal';
 import { ChileanDateInput } from './components/ChileanDateInput';
 import { QuickCustomerModal } from './components/QuickCustomerModal';
@@ -276,7 +277,7 @@ export default function CrmInvoiceEditor() {
       ? await createCrmInvoice(business.id, payload)
       : await updateCrmInvoice(id, payload);
     setSaving(false);
-    if (error) { setSaveError(error.message || 'Error al guardar.'); return; }
+    if (error) { setSaveError(withDiagnostic(error.message || 'Error al guardar.', error)); return; }
     if (isNew) {
       navigate(`/crm/facturas/${data.id}`, { replace: true });
     } else {

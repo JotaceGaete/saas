@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/react';
 import { supabase } from '../lib/supabase';
 import { generateRawEan13 } from '../utils/barcode';
 import { hasPlanFeature } from '../config/planFeatures';
@@ -9,6 +10,41 @@ function assertFeature(planSlug, feature) {
   if (!hasPlanFeature(planSlug, feature)) {
     throw Object.assign(new Error(`Plan insuficiente para usar "${feature}". Actualiza tu plan.`), { code: 'PLAN_GATE', feature, statusCode: 403 });
   }
+}
+
+/**
+ * Reporta a Sentry un error real de Supabase (RPC/insert/update) en el flujo de
+ * notas de venta, que de otro modo solo se muestra como texto en un toast/estado
+ * y nunca llega a Sentry. Devuelve el error original más un `sentryEventId` para
+ * que la UI pueda mostrar una referencia que cruce con el evento reportado.
+ *
+ * Contexto acotado a propósito: nunca incluir nombre/RUT/email de clientes ni
+ * descripciones de ítems, solo metadata operacional para depurar.
+ */
+function reportInvoiceError(operation, supaError, { businessId, itemsCount, status, statusText } = {}) {
+  const message = supaError?.message || 'Error desconocido de Supabase';
+  const err = Object.assign(new Error(`[crm_invoices] ${operation}: ${message}`), { cause: supaError });
+  const eventId = Sentry.captureException(err, {
+    tags: { crm_operation: operation },
+    contexts: {
+      supabase: {
+        operation,
+        code: supaError?.code ?? null,
+        details: supaError?.details ?? null,
+        hint: supaError?.hint ?? null,
+        http_status: status ?? null,
+        http_status_text: statusText ?? null,
+        business_id: businessId ?? null,
+        items_count: itemsCount ?? null,
+        // Release real del bundle en ejecución (inyectado en build) — cross-check
+        // temporal contra el release configurado en Sentry para descartar un
+        // bundle viejo servido por un service worker/PWA residual.
+        release: (typeof window !== 'undefined' && window.SENTRY_RELEASE?.id) || null,
+        sw_controlled: typeof navigator !== 'undefined' ? Boolean(navigator.serviceWorker?.controller) : null,
+      },
+    },
+  });
+  return { ...supaError, message: supaError?.message, sentryEventId: eventId };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -533,9 +569,10 @@ export async function getCrmInvoice(id) {
 
 export async function createCrmInvoice(businessId, { customerId, issueDate, dueDate, notes, paymentTerms, deliveryDays, deliveryMethod, commercialNotes, items = [], quoteId, _planSlug } = {}) {
   assertFeature(_planSlug ?? 'business', 'invoices');
-  const { data: nextNum, error: numErr } = await supabase
+  const itemsCount = items.length;
+  const { data: nextNum, error: numErr, status: numStatus, statusText: numStatusText } = await supabase
     .rpc('crm_next_invoice_number', { p_business_id: businessId });
-  if (numErr) return { data: null, error: numErr };
+  if (numErr) return { data: null, error: reportInvoiceError('createCrmInvoice.next_invoice_number', numErr, { businessId, itemsCount, status: numStatus, statusText: numStatusText }) };
 
   const mappedItems = items.map((it, idx) => ({
     ...it,
@@ -545,7 +582,7 @@ export async function createCrmInvoice(businessId, { customerId, issueDate, dueD
   }));
   const totals = calcDocTotals(mappedItems);
 
-  const { data: invoice, error } = await supabase
+  const { data: invoice, error, status, statusText } = await supabase
     .from('crm_invoices')
     .insert({
       business_id: businessId,
@@ -563,13 +600,13 @@ export async function createCrmInvoice(businessId, { customerId, issueDate, dueD
     })
     .select()
     .single();
-  if (error) return { data: null, error };
+  if (error) return { data: null, error: reportInvoiceError('createCrmInvoice.insert_invoice', error, { businessId, itemsCount, status, statusText }) };
 
   if (mappedItems.length > 0) {
-    const { error: itemsErr } = await supabase
+    const { error: itemsErr, status: itemsStatus, statusText: itemsStatusText } = await supabase
       .from('crm_invoice_items')
       .insert(mappedItems.map(it => ({ ...it, invoice_id: invoice.id })));
-    if (itemsErr) return { data: null, error: itemsErr };
+    if (itemsErr) return { data: null, error: reportInvoiceError('createCrmInvoice.insert_items', itemsErr, { businessId, itemsCount, status: itemsStatus, statusText: itemsStatusText }) };
   }
   return { data: invoice, error: null };
 }
@@ -585,6 +622,8 @@ export async function updateCrmInvoice(invoiceId, { customerId, issueDate, dueDa
   if (deliveryMethod !== undefined) updates.delivery_method = deliveryMethod;
   if (commercialNotes !== undefined) updates.commercial_notes = commercialNotes;
 
+  const itemsCount = items !== undefined ? items.length : null;
+
   if (items !== undefined) {
     const mappedItems = items.map((it, idx) => ({
       ...it,
@@ -595,24 +634,25 @@ export async function updateCrmInvoice(invoiceId, { customerId, issueDate, dueDa
     const totals = calcDocTotals(mappedItems);
     Object.assign(updates, totals);
 
-    const { error: deleteErr } = await supabase.from('crm_invoice_items').delete().eq('invoice_id', invoiceId);
-    if (deleteErr) return { data: null, error: deleteErr };
+    const { error: deleteErr, status: delStatus, statusText: delStatusText } = await supabase.from('crm_invoice_items').delete().eq('invoice_id', invoiceId);
+    if (deleteErr) return { data: null, error: reportInvoiceError('updateCrmInvoice.delete_items', deleteErr, { itemsCount, status: delStatus, statusText: delStatusText }) };
 
     if (mappedItems.length > 0) {
-      const { error: itemsErr } = await supabase
+      const { error: itemsErr, status: itemsStatus, statusText: itemsStatusText } = await supabase
         .from('crm_invoice_items')
         .insert(mappedItems.map(it => ({ ...it, invoice_id: invoiceId })));
-      if (itemsErr) return { data: null, error: itemsErr };
+      if (itemsErr) return { data: null, error: reportInvoiceError('updateCrmInvoice.insert_items', itemsErr, { itemsCount, status: itemsStatus, statusText: itemsStatusText }) };
     }
   }
 
-  const { data, error } = await supabase
+  const { data, error, status, statusText } = await supabase
     .from('crm_invoices')
     .update(updates)
     .eq('id', invoiceId)
     .select()
     .single();
-  return { data, error };
+  if (error) return { data: null, error: reportInvoiceError('updateCrmInvoice.update_invoice', error, { itemsCount, status, statusText }) };
+  return { data, error: null };
 }
 
 export async function updateCrmInvoiceStatus(invoiceId, status) {
@@ -774,9 +814,10 @@ export async function createPosInvoice(businessId, {
   initialPaymentAmount = 0, initialPaymentMethod = 'cash',
   payments = null,
 }) {
-  const { data: nextNum, error: numErr } = await supabase
+  const itemsCount = items.length;
+  const { data: nextNum, error: numErr, status: numStatus, statusText: numStatusText } = await supabase
     .rpc('crm_next_invoice_number', { p_business_id: businessId });
-  if (numErr) return { data: null, error: numErr };
+  if (numErr) return { data: null, error: reportInvoiceError('createPosInvoice.next_invoice_number', numErr, { businessId, itemsCount, status: numStatus, statusText: numStatusText }) };
 
   const localDate = getLocalDateString();
   const normalizedPaymentMethod = normalizePaymentMethod(paymentMethod);
@@ -878,7 +919,7 @@ export async function createPosInvoice(businessId, {
       : 'pendiente';
   const paidAt = invoiceStatus === 'pagada' ? new Date().toISOString() : null;
 
-  const { data: invoice, error } = await supabase
+  const { data: invoice, error, status, statusText } = await supabase
     .from('crm_invoices')
     .insert({
       business_id: businessId,
@@ -894,13 +935,13 @@ export async function createPosInvoice(businessId, {
     })
     .select()
     .single();
-  if (error) return { data: null, error };
+  if (error) return { data: null, error: reportInvoiceError('createPosInvoice.insert_invoice', error, { businessId, itemsCount, status, statusText }) };
 
   if (mappedItems.length > 0) {
-    const { error: itemsErr } = await supabase
+    const { error: itemsErr, status: itemsStatus, statusText: itemsStatusText } = await supabase
       .from('crm_invoice_items')
       .insert(mappedItems.map(it => ({ ...it, invoice_id: invoice.id })));
-    if (itemsErr) return { data: null, error: itemsErr };
+    if (itemsErr) return { data: null, error: reportInvoiceError('createPosInvoice.insert_items', itemsErr, { businessId, itemsCount, status: itemsStatus, statusText: itemsStatusText }) };
   }
 
   if (paymentRows.length === 0) {
@@ -909,7 +950,7 @@ export async function createPosInvoice(businessId, {
 
   const { data: { user } } = await supabase.auth.getUser();
 
-  const { error: payErr } = await supabase
+  const { error: payErr, status: payStatus, statusText: payStatusText } = await supabase
     .from('crm_payments')
     .insert(paymentRows.map((payment) => ({
       business_id: businessId,
@@ -925,7 +966,7 @@ export async function createPosInvoice(businessId, {
       notes: notes || null,
       created_by: user?.id || null,
     })));
-  if (payErr) return { data: null, error: payErr };
+  if (payErr) return { data: null, error: reportInvoiceError('createPosInvoice.insert_payments', payErr, { businessId, itemsCount, status: payStatus, statusText: payStatusText }) };
 
   return { data: invoice, error: null };
 }
@@ -958,14 +999,15 @@ export async function createInvoiceFromOrder(businessId, order) {
     return { data: null, error: { message: 'Ya existe una nota de venta para este pedido.' } };
   }
 
-  const { data: nextNum, error: numErr } = await supabase
+  const itemsCount = Array.isArray(order.items) ? order.items.length : 0;
+  const { data: nextNum, error: numErr, status: numStatus, statusText: numStatusText } = await supabase
     .rpc('crm_next_invoice_number', { p_business_id: businessId });
-  if (numErr) return { data: null, error: numErr };
+  if (numErr) return { data: null, error: reportInvoiceError('createInvoiceFromOrder.next_invoice_number', numErr, { businessId, itemsCount, status: numStatus, statusText: numStatusText }) };
 
   const localDate = getLocalDateString();
   const shortRef = order.id.slice(-6).toUpperCase();
 
-  const { data: invoice, error } = await supabase
+  const { data: invoice, error, status, statusText } = await supabase
     .from('crm_invoices')
     .insert({
       business_id: businessId,
@@ -981,7 +1023,7 @@ export async function createInvoiceFromOrder(businessId, order) {
     })
     .select()
     .single();
-  if (error) return { data: null, error };
+  if (error) return { data: null, error: reportInvoiceError('createInvoiceFromOrder.insert_invoice', error, { businessId, itemsCount, status, statusText }) };
 
   if (Array.isArray(order.items) && order.items.length > 0) {
     const mappedItems = order.items.map((it, idx) => ({
@@ -995,10 +1037,10 @@ export async function createInvoiceFromOrder(businessId, order) {
       subtotal: +(it.subtotal ?? 0).toFixed(2),
       sort_order: idx,
     }));
-    const { error: itemsErr } = await supabase
+    const { error: itemsErr, status: itemsStatus, statusText: itemsStatusText } = await supabase
       .from('crm_invoice_items')
       .insert(mappedItems);
-    if (itemsErr) return { data: null, error: itemsErr };
+    if (itemsErr) return { data: null, error: reportInvoiceError('createInvoiceFromOrder.insert_items', itemsErr, { businessId, itemsCount, status: itemsStatus, statusText: itemsStatusText }) };
   }
 
   return { data: invoice, error: null };
