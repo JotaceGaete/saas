@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import * as Sentry from '@sentry/react';
 import { Link } from 'react-router-dom';
 import DashboardAppShell from 'components/ui/DashboardAppShell';
 import DashboardLayoutContent from 'components/ui/DashboardLayoutContent';
@@ -15,8 +16,6 @@ import {
 } from '../../services/waBusinessService';
 import { useToast } from '../../components/ui/Toast';
 import { supabase } from '../../lib/supabase';
-import { format } from 'date-fns';
-import { es } from 'date-fns/locale';
 import { getBusinessLocale } from '../../lib/locale/businessLocale';
 import { formatBusinessCurrency } from '../../utils/formatPrice';
 import OrderDetailDrawer from './components/OrderDetailDrawer';
@@ -25,7 +24,7 @@ import {
   ACTIVE_DELIVERED_VISIBILITY_MINUTES,
   isOrderVisibleOnActiveBoard,
 } from '../../constants/ordersBoard';
-import { filterDeliveredOrdersMissingDeliveredAt } from '../../utils/orderDates';
+import { filterDeliveredOrdersMissingDeliveredAt, formatOrderDateLabel } from '../../utils/orderDates';
 import {
   isOrdersDoubleFlickerDebug,
   ordersDoubleFlickerLog,
@@ -158,7 +157,7 @@ function PaymentStatusBadge({ paymentStatus }) {
 function CompactOrderCardStatic({ order, formatCLP: fmt, onOpenDetail, shortIdFn }) {
   const qty = (order?.items || []).reduce((acc, i) => acc + (Number(i?.quantity) || 0), 0) || (order?.items || []).length;
   const shortId = shortIdFn(order?.id);
-  const timeStr = order?.createdAt ? format(new Date(order.createdAt), 'HH:mm', { locale: es }) : '';
+  const timeStr = formatOrderDateLabel(order?.createdAt, 'HH:mm') || '';
   return (
     <button
       type="button"
@@ -213,6 +212,13 @@ export default function OrdersPage() {
   const setDetailOrderTracked = useCallback((nextOrUpdater, source = 'unknown') => {
     setDetailOrder((prev) => {
       const next = typeof nextOrUpdater === 'function' ? nextOrUpdater(prev) : nextOrUpdater;
+      // TEMPORAL: ver comentario en handleUpdate — mismo diagnóstico de crash móvil-only.
+      Sentry.addBreadcrumb({
+        category: 'orders',
+        message: 'setDetailOrder',
+        level: 'info',
+        data: { source, orderId: next?.id ? String(next.id) : null },
+      });
       if (isOrdersDoubleFlickerDebug()) {
         ordersDoubleFlickerLog('setDetailOrder', {
           source,
@@ -650,6 +656,16 @@ export default function OrdersPage() {
   }, [business?.id, toastError]);
 
   const handleUpdate = useCallback(async (orderId, updates) => {
+    // TEMPORAL: breadcrumb de diagnóstico para un crash móvil-only reportado en
+    // Pedidos — cubre el único punto de entrada de cambios de estado/pago
+    // (tarjeta kanban, toggle de pago, y el drawer de detalle). Quitar cuando
+    // ya no se necesite este diagnóstico.
+    Sentry.addBreadcrumb({
+      category: 'orders',
+      message: 'handleUpdate:start',
+      level: 'info',
+      data: { orderId: String(orderId), updates },
+    });
     return guard.runIfConfirmedAsync(async () => {
       const oid = String(orderId);
       const current = ordersRef.current?.find((x) => String(x?.id) === oid);
