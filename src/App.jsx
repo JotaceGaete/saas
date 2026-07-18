@@ -1,5 +1,4 @@
 import React from 'react';
-import * as Sentry from '@sentry/react';
 import Routes from './Routes';
 import { ToastProvider } from './components/ui/Toast';
 import { AuthProvider } from './contexts/AuthContext';
@@ -31,39 +30,6 @@ function App() {
         <CountryProvider>
           <SupportModeBanner />
           <EmailConfirmBanner />
-
-          <div
-            style={{
-              position: 'fixed',
-              right: 16,
-              bottom: 16,
-              zIndex: 99999,
-            }}
-          >
-            <button
-              type="button"
-              onClick={async () => {
-                const eventId = Sentry.captureException(
-                  new Error('Prueba manual de Sentry')
-                );
-
-                await Sentry.flush(3000);
-
-                alert(`Prueba enviada a Sentry\n\nEvent ID: ${eventId}`);
-              }}
-              style={{
-                padding: '10px 14px',
-                borderRadius: 8,
-                border: '1px solid #dc2626',
-                background: '#dc2626',
-                color: '#ffffff',
-                fontWeight: 600,
-                cursor: 'pointer',
-              }}
-            >
-              Probar Sentry
-            </button>
-          </div>
 
           <ToastProvider>
             <Routes />
