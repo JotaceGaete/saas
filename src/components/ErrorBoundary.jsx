@@ -2,6 +2,25 @@ import React from "react";
 import * as Sentry from "@sentry/react";
 import Icon from "./AppIcon";
 import { getTempDeviceDiagnosticContext } from "../utils/tempDeviceDiagnostics";
+import { getRouteBreadcrumb } from "../lib/routeBreadcrumb";
+
+/** Nombre del componente más profundo en el stack, ej. "in PlansPage (at plans/index.jsx:243)" -> "PlansPage". */
+function extractFailingComponentName(componentStack) {
+  const firstLine = componentStack?.trim()?.split("\n")?.[0] || "";
+  const match = firstLine.match(/^in (\S+)/);
+  return match?.[1] || null;
+}
+
+/** Heurística para detectar si Chrome Translate (u otra herramienta similar) mutó el DOM. */
+function isBrowserTranslationLikely() {
+  if (typeof document === "undefined") return false;
+  const html = document.documentElement;
+  return !!(
+    html?.classList?.contains("translated-ltr") ||
+    html?.classList?.contains("translated-rtl") ||
+    document.querySelector('font[style*="vertical-align"]')
+  );
+}
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -23,10 +42,17 @@ class ErrorBoundary extends React.Component {
     // eslint-disable-next-line no-console
     console.error('[ErrorBoundary] uncaught render error', error, errorInfo?.componentStack);
     try {
+      const { route, previousRoute } = getRouteBreadcrumb();
       Sentry.captureException(error, {
         contexts: {
           react: { componentStack: errorInfo?.componentStack || null },
           device: getTempDeviceDiagnosticContext(),
+        },
+        tags: {
+          route,
+          previous_route: previousRoute,
+          component: extractFailingComponentName(errorInfo?.componentStack),
+          browser_translation_possible: isBrowserTranslationLikely(),
         },
       });
     } catch (_e) {

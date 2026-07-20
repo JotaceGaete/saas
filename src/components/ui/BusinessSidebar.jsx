@@ -41,113 +41,40 @@ const NAV_ITEMS = [
   },
 ];
 
-export default function BusinessSidebar({ isCollapsed = false, onCollapsedChange }) {
-  const location = useLocation();
-  const navigate = useNavigate();
-  const { user, business, signOut, isAdmin, isImpersonating, stopImpersonation } = useAuth();
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const [collapsed, setCollapsed] = useState(isCollapsed);
-  const [expandedItems, setExpandedItems] = useState({});
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [profileOpen, setProfileOpen] = useState(false);
-  const userMenuRef = useRef(null);
-
-  useEffect(() => { setCollapsed(isCollapsed); }, [isCollapsed]);
-  useEffect(() => { setMobileOpen(false); }, [location?.pathname]);
-  useEffect(() => {
-    if (location?.pathname?.startsWith('/crm') || location?.pathname?.startsWith('/proveedores')) {
-      setExpandedItems(prev => ({ ...prev, '/crm': true }));
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  useEffect(() => {
-    const handleResize = () => { if (window.innerWidth >= 1024) setMobileOpen(false); };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-
-  useEffect(() => {
-    if (!userMenuOpen) return;
-    const handleClickOutside = (e) => {
-      if (userMenuRef?.current && !userMenuRef?.current?.contains(e?.target)) setUserMenuOpen(false);
-    };
-    const id = setTimeout(() => document.addEventListener('click', handleClickOutside), 0);
-    return () => {
-      clearTimeout(id);
-      document.removeEventListener('click', handleClickOutside);
-    };
-  }, [userMenuOpen]);
-
-  const handleLogout = async () => {
-    setUserMenuOpen(false);
-    setMobileOpen(false);
-    await signOut?.();
-    navigate('/login');
-  };
-
-  const handleOpenProfile = () => {
-    setUserMenuOpen(false);
-    setProfileOpen(true);
-  };
-
-  const handleGoTo = (path) => {
-    setUserMenuOpen(false);
-    setMobileOpen(false);
-    navigate(path);
-  };
-
-  const handleCancelRequest = () => {
-    const businessNameForMessage = business?.name != null ? String(business.name) : '';
-    const userEmailForMessage = user?.email != null ? String(user.email) : '';
-    const planForMessage = planLabel != null ? String(planLabel) : '';
-    const countryForMessage = business?.country != null ? String(business.country) : '';
-    const message = `Hola, quiero solicitar la cancelación de mi suscripción en Walinka.
-
-Negocio: ${businessNameForMessage}
-Email: ${userEmailForMessage}
-Plan: ${planForMessage}
-País: ${countryForMessage}
-
-Motivo (opcional):`;
-    const url = buildWhatsAppUrl(message, SUPPORT_WHATSAPP_NUMBER);
-    openWhatsAppUrl(url);
-    setUserMenuOpen(false);
-  };
-
-  const userInitial = business?.name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0)?.toUpperCase() || 'U';
-  const userLabel = business?.name || user?.email || 'Mi Negocio';
-  const userEmail = user?.email || 'Sin email';
-  const planLabel = getPlanLabel(business?.planSlug);
-  const businessWhatsApp = business?.whatsapp || '';
-  const businessCountry = business?.country || business?.countryCodeDb || '';
-
-  const handleCollapse = () => {
-    const next = !collapsed;
-    setCollapsed(next);
-    onCollapsedChange?.(next);
-  };
-
-  const handleNavClick = (item) => {
-    if (item?.premiumGated && business?.planSlug === 'starter') {
-      navigate('/planes');
-      return;
-    }
-    if (item?.subItems) {
-      setExpandedItems(prev => ({ ...prev, [item?.path]: !prev?.[item?.path] }));
-      if (collapsed) { setCollapsed(false); onCollapsedChange?.(false); }
-    } else {
-      navigate(item?.path);
-    }
-  };
-
-  const isActive = (path) => location?.pathname === path || location?.pathname?.startsWith(path + '/');
-  const isParentActive = (item) => {
-    if (isActive(item?.path)) return true;
-    if (item?.subItems) return item?.subItems?.some(sub => isActive(sub?.path));
-    return false;
-  };
-
-  const SidebarContent = () => (
+/**
+ * Contenido compartido entre el drawer móvil y el aside de escritorio.
+ * Declarado a nivel de módulo (no dentro de BusinessSidebar) para que React
+ * lo trate como el mismo tipo de componente entre renders: si se redefiniera
+ * en cada render de BusinessSidebar, React desmontaría y remontaría por
+ * completo este subárbol en cada re-render del padre (incluida cada
+ * navegación), lo que amplifica cualquier condición de carrera de DOM.
+ */
+function SidebarContent({
+  collapsed,
+  isAdmin,
+  expandedItems,
+  handleNavClick,
+  isParentActive,
+  isActive,
+  location,
+  navigate,
+  menuRef,
+  userMenuOpen,
+  setUserMenuOpen,
+  handleOpenProfile,
+  handleGoTo,
+  handleCancelRequest,
+  isImpersonating,
+  stopImpersonation,
+  handleLogout,
+  userInitial,
+  userLabel,
+  userEmail,
+  planLabel,
+  handleCollapse,
+  business,
+}) {
+  return (
     <div className="flex flex-col h-full" style={{ backgroundColor: '#0F1720', color: '#D1D5DB' }}>
       {/* Logo */}
       <div className={`sidebar-header ${collapsed ? 'justify-center' : ''}`}>
@@ -368,7 +295,7 @@ Motivo (opcional):`;
       </nav>
 
       {/* Footer — menú de usuario */}
-      <div className="p-2 border-t" style={{ borderColor: 'rgba(255,255,255,0.08)' }} ref={userMenuRef}>
+      <div className="p-2 border-t" style={{ borderColor: 'rgba(255,255,255,0.08)' }} ref={menuRef}>
         {!collapsed ? (
           <div className="relative">
             {userMenuOpen && (
@@ -549,46 +476,144 @@ Motivo (opcional):`;
           <Icon name={collapsed ? 'PanelLeftOpen' : 'PanelLeftClose'} size={15} color="currentColor" />
         </button>
       </div>
-      {profileOpen && (
-        <div
-          className="fixed inset-0 z-modal"
-          style={{ backgroundColor: 'rgba(15,23,42,0.45)' }}
-          onClick={() => setProfileOpen(false)}
-        >
-          <div className="w-full h-full flex items-center justify-center p-4">
-            <div
-              className="w-full max-w-md rounded-2xl border shadow-xl p-5"
-              style={{ backgroundColor: '#FFFFFF', borderColor: 'var(--color-border)', fontFamily: 'var(--font-caption)' }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-bold" style={{ color: 'var(--color-foreground)' }}>Perfil</h3>
-                <button
-                  type="button"
-                  onClick={() => setProfileOpen(false)}
-                  className="w-8 h-8 rounded-lg hover:bg-muted flex items-center justify-center transition-colors"
-                  aria-label="Cerrar perfil"
-                >
-                  <Icon name="X" size={15} color="var(--color-muted-foreground)" />
-                </button>
-              </div>
-              <div className="space-y-2 text-sm">
-                <p style={{ color: 'var(--color-foreground)' }}><span className="font-semibold">Negocio:</span> {userLabel}</p>
-                <p style={{ color: 'var(--color-foreground)' }}><span className="font-semibold">Email:</span> {userEmail}</p>
-                {businessWhatsApp ? (
-                  <p style={{ color: 'var(--color-foreground)' }}><span className="font-semibold">WhatsApp:</span> {businessWhatsApp}</p>
-                ) : null}
-                {businessCountry ? (
-                  <p style={{ color: 'var(--color-foreground)' }}><span className="font-semibold">País:</span> {businessCountry}</p>
-                ) : null}
-                <p style={{ color: 'var(--color-foreground)' }}><span className="font-semibold">Plan:</span> {planLabel}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
+}
+
+export default function BusinessSidebar({ isCollapsed = false, onCollapsedChange }) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { user, business, signOut, isAdmin, isImpersonating, stopImpersonation } = useAuth();
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(isCollapsed);
+  const [expandedItems, setExpandedItems] = useState({});
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const mobileMenuFooterRef = useRef(null);
+  const desktopMenuFooterRef = useRef(null);
+
+  useEffect(() => { setCollapsed(isCollapsed); }, [isCollapsed]);
+  useEffect(() => { setMobileOpen(false); }, [location?.pathname]);
+  useEffect(() => {
+    if (location?.pathname?.startsWith('/crm') || location?.pathname?.startsWith('/proveedores')) {
+      setExpandedItems(prev => ({ ...prev, '/crm': true }));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    const handleResize = () => { if (window.innerWidth >= 1024) setMobileOpen(false); };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
+    if (!userMenuOpen) return;
+    const handleClickOutside = (e) => {
+      const target = e?.target;
+      const insideMobile = mobileMenuFooterRef?.current?.contains(target);
+      const insideDesktop = desktopMenuFooterRef?.current?.contains(target);
+      if (!insideMobile && !insideDesktop) setUserMenuOpen(false);
+    };
+    const id = setTimeout(() => document.addEventListener('click', handleClickOutside), 0);
+    return () => {
+      clearTimeout(id);
+      document.removeEventListener('click', handleClickOutside);
+    };
+  }, [userMenuOpen]);
+
+  const handleLogout = async () => {
+    setUserMenuOpen(false);
+    setMobileOpen(false);
+    await signOut?.();
+    navigate('/login');
+  };
+
+  const handleOpenProfile = () => {
+    setUserMenuOpen(false);
+    setProfileOpen(true);
+  };
+
+  const handleGoTo = (path) => {
+    setUserMenuOpen(false);
+    setMobileOpen(false);
+    navigate(path);
+  };
+
+  const handleCancelRequest = () => {
+    const businessNameForMessage = business?.name != null ? String(business.name) : '';
+    const userEmailForMessage = user?.email != null ? String(user.email) : '';
+    const planForMessage = planLabel != null ? String(planLabel) : '';
+    const countryForMessage = business?.country != null ? String(business.country) : '';
+    const message = `Hola, quiero solicitar la cancelación de mi suscripción en Walinka.
+
+Negocio: ${businessNameForMessage}
+Email: ${userEmailForMessage}
+Plan: ${planForMessage}
+País: ${countryForMessage}
+
+Motivo (opcional):`;
+    const url = buildWhatsAppUrl(message, SUPPORT_WHATSAPP_NUMBER);
+    openWhatsAppUrl(url);
+    setUserMenuOpen(false);
+  };
+
+  const userInitial = business?.name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0)?.toUpperCase() || 'U';
+  const userLabel = business?.name || user?.email || 'Mi Negocio';
+  const userEmail = user?.email || 'Sin email';
+  const planLabel = getPlanLabel(business?.planSlug);
+  const businessWhatsApp = business?.whatsapp || '';
+  const businessCountry = business?.country || business?.countryCodeDb || '';
+
+  const handleCollapse = () => {
+    const next = !collapsed;
+    setCollapsed(next);
+    onCollapsedChange?.(next);
+  };
+
+  const handleNavClick = (item) => {
+    if (item?.premiumGated && business?.planSlug === 'starter') {
+      navigate('/planes');
+      return;
+    }
+    if (item?.subItems) {
+      setExpandedItems(prev => ({ ...prev, [item?.path]: !prev?.[item?.path] }));
+      if (collapsed) { setCollapsed(false); onCollapsedChange?.(false); }
+    } else {
+      navigate(item?.path);
+    }
+  };
+
+  const isActive = (path) => location?.pathname === path || location?.pathname?.startsWith(path + '/');
+  const isParentActive = (item) => {
+    if (isActive(item?.path)) return true;
+    if (item?.subItems) return item?.subItems?.some(sub => isActive(sub?.path));
+    return false;
+  };
+
+  const sidebarContentProps = {
+    collapsed,
+    isAdmin,
+    expandedItems,
+    handleNavClick,
+    isParentActive,
+    isActive,
+    location,
+    navigate,
+    userMenuOpen,
+    setUserMenuOpen,
+    handleOpenProfile,
+    handleGoTo,
+    handleCancelRequest,
+    isImpersonating,
+    stopImpersonation,
+    handleLogout,
+    userInitial,
+    userLabel,
+    userEmail,
+    planLabel,
+    handleCollapse,
+    business,
+  };
 
   return (
     <>
@@ -642,7 +667,7 @@ Motivo (opcional):`;
               <Icon name="X" size={16} color="#F9FAFB" />
             </button>
           </div>
-          <SidebarContent />
+          <SidebarContent {...sidebarContentProps} menuRef={mobileMenuFooterRef} />
         </aside>
       )}
 
@@ -658,13 +683,55 @@ Motivo (opcional):`;
         }}
         aria-label="Navegación lateral"
       >
-        <SidebarContent />
+        <SidebarContent {...sidebarContentProps} menuRef={desktopMenuFooterRef} />
       </aside>
 
       {/* Mobile bottom navigation */}
       <MobileBottomNav />
       {/* FAB: Add product — visible on mobile on main app pages */}
       <FloatingActionButton to="/product-editor" label="Agregar producto" icon="Plus" />
+
+      {/* Modal de perfil: se renderiza una sola vez aquí (no dentro de SidebarContent,
+          que se monta dos veces —drawer móvil y aside de escritorio— para evitar
+          overlays/handlers duplicados). */}
+      {profileOpen && (
+        <div
+          className="fixed inset-0 z-modal"
+          style={{ backgroundColor: 'rgba(15,23,42,0.45)' }}
+          onClick={() => setProfileOpen(false)}
+        >
+          <div className="w-full h-full flex items-center justify-center p-4">
+            <div
+              className="w-full max-w-md rounded-2xl border shadow-xl p-5"
+              style={{ backgroundColor: '#FFFFFF', borderColor: 'var(--color-border)', fontFamily: 'var(--font-caption)' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-bold" style={{ color: 'var(--color-foreground)' }}>Perfil</h3>
+                <button
+                  type="button"
+                  onClick={() => setProfileOpen(false)}
+                  className="w-8 h-8 rounded-lg hover:bg-muted flex items-center justify-center transition-colors"
+                  aria-label="Cerrar perfil"
+                >
+                  <Icon name="X" size={15} color="var(--color-muted-foreground)" />
+                </button>
+              </div>
+              <div className="space-y-2 text-sm">
+                <p style={{ color: 'var(--color-foreground)' }}><span className="font-semibold">Negocio:</span> {userLabel}</p>
+                <p style={{ color: 'var(--color-foreground)' }}><span className="font-semibold">Email:</span> {userEmail}</p>
+                {businessWhatsApp ? (
+                  <p style={{ color: 'var(--color-foreground)' }}><span className="font-semibold">WhatsApp:</span> {businessWhatsApp}</p>
+                ) : null}
+                {businessCountry ? (
+                  <p style={{ color: 'var(--color-foreground)' }}><span className="font-semibold">País:</span> {businessCountry}</p>
+                ) : null}
+                <p style={{ color: 'var(--color-foreground)' }}><span className="font-semibold">Plan:</span> {planLabel}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
