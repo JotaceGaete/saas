@@ -7,6 +7,7 @@ const LEGAL_LINKS = [
   { label: 'Terms of Service', path: '/terms' },
   { label: 'Privacy Policy', path: '/privacy' },
   { label: 'Refund Policy', path: '/refunds' },
+  { label: 'Support', path: '/support' },
 ];
 
 const APP_LINKS = [
