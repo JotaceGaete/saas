@@ -633,6 +633,30 @@ export const getMyBusiness = async () => {
   return { data: mapped, error: null };
 };
 
+/**
+ * true si el usuario autenticado tiene más de una fila en wa_businesses.
+ * getMyBusiness() resuelve una sola (la más antigua) para no romper el flujo
+ * normal, pero el callback de login no debe abrir el catálogo de "la que sea"
+ * cuando hay más de un negocio — debe mandar al usuario al dashboard.
+ * Solo lectura: no requiere migraciones ni cambios de RLS.
+ */
+export const hasMultipleBusinesses = async () => {
+  const { data: { session } } = await supabase?.auth?.getSession();
+  const user = session?.user;
+  if (!user) return { data: false, error: null };
+
+  const { count, error } = await supabase
+    ?.from('wa_businesses')
+    ?.select('id', { count: 'exact', head: true })
+    ?.eq('user_id', user?.id);
+
+  if (error) {
+    console.error('[waBusinessService] hasMultipleBusinesses error:', error);
+    return { data: false, error };
+  }
+  return { data: (count ?? 0) > 1, error: null };
+};
+
 export const getBusinessByIdForAdmin = async (businessId) => {
   if (!businessId) return { data: null, error: { message: 'businessId required' } };
   const { data, error } = await supabase

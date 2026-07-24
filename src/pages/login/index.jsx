@@ -5,6 +5,7 @@ import LoginBrandPanel from './components/LoginBrandPanel';
 import LoginForm from './components/LoginForm';
 import { collectVisitAttribution } from '../../utils/analytics';
 import { recordSiteVisit } from '../../services/waBusinessService';
+import { saveReturnTo } from '../../lib/authReturnTo';
 import PremiumLoader from 'components/ui/PremiumLoader';
 
 export default function Login() {
@@ -99,6 +100,15 @@ export default function Login() {
     setAuthError(null);
     setGoogleLoading(true);
     try {
+      // RequireAuth guarda la ruta protegida de origen en location.state.from
+      // (objeto Location). Se persiste en sessionStorage ANTES del redirect de
+      // página completa a Google, porque ese estado de React Router no sobrevive
+      // al viaje de ida y vuelta.
+      const from = location?.state?.from;
+      const fromPath = typeof from === 'string'
+        ? from
+        : (from?.pathname ? `${from.pathname}${from.search || ''}` : null);
+      if (fromPath) saveReturnTo(fromPath);
       const { error } = await signInWithGoogle();
       if (error) {
         setAuthError(error?.message || 'Error al iniciar sesión con Google.');

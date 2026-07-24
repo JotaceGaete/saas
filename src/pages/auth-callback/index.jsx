@@ -1,8 +1,10 @@
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
-import { getMyBusiness } from '../../services/waBusinessService';
+import { getMyBusiness, hasMultipleBusinesses } from '../../services/waBusinessService';
 import { APP_ORIGIN, isCanonicalAppHostname } from '../../config/appUrl';
+import { consumeReturnTo } from '../../lib/authReturnTo';
+import { resolvePostLoginDestination } from './resolvePostLoginDestination';
 import PremiumLoader from 'components/ui/PremiumLoader';
 
 function isLocalhostHost(hostname) {
@@ -73,12 +75,31 @@ export default function AuthCallback() {
           return;
         }
 
+        // Solo se consulta si hay negocio: sin negocio, resolvePostLoginDestination
+        // manda a /business-registration sin necesitar este dato.
+        let multipleBusinesses = false;
         if (business) {
-          safeNavigate('/dashboard');
+          const { data: multiple } = await hasMultipleBusinesses();
+          if (!isActive || hasRedirected) return;
+          multipleBusinesses = !!multiple;
+        }
+
+        const returnTo = consumeReturnTo(null);
+        const destination = resolvePostLoginDestination({
+          business,
+          hasMultipleBusinesses: multipleBusinesses,
+          returnTo,
+        });
+
+        if (!isActive || hasRedirected) return;
+
+        if (destination.type === 'external') {
+          hasRedirected = true;
+          window.location.href = destination.url;
           return;
         }
 
-        safeNavigate('/business-registration');
+        safeNavigate(destination.path);
       } catch (error) {
         console.error('[AuthCallback] Unexpected error:', error);
         safeNavigate('/login');
