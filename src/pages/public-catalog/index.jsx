@@ -41,6 +41,7 @@ import { getDiscountPercent } from '../../utils/offerHelpers';
 import { resolveCatalogTheme, hexToRgb, hexToRgba, darkenHex } from '../../utils/catalogTheme';
 import { openWhatsAppUrl } from '../../utils/openWhatsAppUrl';
 import CatalogStoreHeader from './CatalogStoreHeader';
+import { hasMoreCatalogProducts } from '../../lib/catalogPagination';
 
 function isWhatsAppWebView() {
   if (typeof navigator === 'undefined') return false;
@@ -754,8 +755,7 @@ function CatalogInner({ slug }) {
     return sortedProducts.filter((product) => product?.id !== mainFeaturedProduct.id);
   }, [mainFeaturedProduct?.id, sortedProducts]);
   const visibleProducts = useMemo(() => gridProducts.slice(0, visibleCount), [gridProducts, visibleCount]);
-  // Si el plan tiene límite de productos, SQL ya entregó solo los permitidos — no hay "más" que mostrar
-  const hasMoreProducts = planProductLimit != null ? false : gridProducts.length > visibleCount;
+  const hasMoreProducts = hasMoreCatalogProducts(gridProducts.length, visibleCount);
 
   const totalGridProducts = useMemo(() => {
     if (!Array.isArray(products)) return 0;

@@ -87,6 +87,7 @@
     "@tailwindcss/typography": "^0.5.16",
     "@vitejs/plugin-react": "4.3.4",
     "autoprefixer": "10.4.2",
+    "jsdom": "^30.0.1",
     "playwright": "1.60.0",
     "png-to-ico": "^3.0.1",
     "postcss": "8.4.8",
