@@ -30,6 +30,17 @@ function RouteGuardSpinner({ business }) {
 }
 
 /**
+ * Decide si se debe bloquear el render (reemplazar children por el spinner)
+ * mientras se carga el negocio. Solo la carga INICIAL (sin business todavía)
+ * debe bloquear — un refetch en segundo plano (p. ej. tras un TOKEN_REFRESHED
+ * tras volver de otra pestaña) con un business ya cargado no debe desmontar
+ * la página que el usuario ya está usando.
+ */
+export function shouldBlockForBusinessLoading(businessLoading, business) {
+  return businessLoading && !business;
+}
+
+/**
  * Redirige a /onboarding cuando el negocio existe pero el setup inicial no está completo.
  * Rutas exentas (incluyendo /onboarding y /business-configuration) no pasan esta validación.
  */
@@ -58,7 +69,7 @@ export default function RequireBusinessCountry({ children }) {
     return children;
   }
 
-  if (businessLoading) {
+  if (shouldBlockForBusinessLoading(businessLoading, business)) {
     return <RouteGuardSpinner business={business} />;
   }
 
