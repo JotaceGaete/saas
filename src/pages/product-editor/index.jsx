@@ -42,7 +42,7 @@ import { getPublicProductUrl } from '../../config/appUrl';
 import { generateUniqueBarcode, saveProductBarcode } from '../../services/crmService';
 import { createDirtyTracker } from '../../lib/formDirtyTracker';
 import { createDebouncer } from '../../lib/debounce';
-import { buildDraftKey, readDraft, removeDraft, persistDraftIfDirty } from '../../lib/formDraftStorage';
+import { buildDraftKey, readDraft, removeDraft, persistDraftIfDirty, isDraftNewerThanServer } from '../../lib/formDraftStorage';
 
 const EMPTY_FORM = {
   nombre: '',
@@ -214,6 +214,11 @@ export default function ProductEditor() {
   const draftImagesRef = React.useRef(images);
   draftImagesRef.current = images;
   const [hasUnpersistedDraftImages, setHasUnpersistedDraftImages] = useState(false);
+  // Timestamp real del producto cargado (data.updatedAt, mapeado desde la
+  // columna updated_at de Supabase — ver mapProductFromDb en waBusinessService.js).
+  // null para un producto nuevo: no hay nada guardado en el servidor todavía
+  // con qué comparar, así que cualquier borrador local es elegible.
+  const loadedProductUpdatedAtRef = React.useRef(null);
   const localDraftKey = business?.id ? buildDraftKey(business.id, productId) : null;
   const toast = useToast();
   const effectiveProductId = currentProductId || productId || null;
@@ -327,6 +332,7 @@ export default function ProductEditor() {
       try {
         const { data, error } = await getProduct(productId);
         if (error || !data) { navigate('/product-management'); return; }
+        loadedProductUpdatedAtRef.current = data?.updatedAt ?? null;
         dirtyTrackerRef.current.armSkip();
         setCurrentProductId(data?.id || productId);
         initialActivoRef.current = data?.isActive !== undefined ? data?.isActive : true;
@@ -439,6 +445,12 @@ export default function ProductEditor() {
     });
     if (snapshot) setHasUnpersistedDraftImages(snapshot.hasUnpersistedImages === true);
   };
+  // persistLocalDraftNow se recrea en cada render (cierra sobre localDraftKey,
+  // que también es un valor fresco de cada render). El efecto de desmontaje
+  // de más abajo necesita invocar siempre la versión más reciente sin volver
+  // a dispararse en cada render — de ahí esta ref, sincronizada en cada uno.
+  const persistLocalDraftNowRef = React.useRef(persistLocalDraftNow);
+  persistLocalDraftNowRef.current = persistLocalDraftNow;
 
   // Autoguardado con debounce de 500ms mientras el usuario escribe.
   useEffect(() => {
@@ -447,7 +459,10 @@ export default function ProductEditor() {
   }, [isDirty, localDraftKey, formData, images]);
 
   // Flush inmediato (sin esperar el debounce) al perder foco, ocultar la
-  // pestaña o cerrar/recargar — para no perder lo escrito justo antes.
+  // pestaña, cerrar/recargar, o cuando el navegador descarga la página al
+  // bfcache (pagehide) — para no perder lo escrito justo antes. Ninguno de
+  // estos cubre la navegación interna de React Router (no hay blur, no hay
+  // recarga): esa la cubre el efecto de desmontaje de abajo.
   useEffect(() => {
     if (!localDraftKey) return;
     const flushDraft = () => localDraftDebouncerRef.current.flush(persistLocalDraftNow);
@@ -455,14 +470,27 @@ export default function ProductEditor() {
     window.addEventListener('blur', flushDraft);
     document.addEventListener('visibilitychange', handleVisibility);
     window.addEventListener('beforeunload', flushDraft);
+    window.addEventListener('pagehide', flushDraft);
     return () => {
       window.removeEventListener('blur', flushDraft);
       document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('beforeunload', flushDraft);
+      window.removeEventListener('pagehide', flushDraft);
     };
   }, [localDraftKey]);
 
-  useEffect(() => () => { localDraftDebouncerRef.current.cancel(); }, []);
+  // Al desmontar (p. ej. navegación interna de React Router, que no dispara
+  // blur/visibilitychange/beforeunload): FLUSH, no cancel. Cancelar aquí
+  // descartaba silenciosamente cualquier escritura programada y aún no
+  // ejecutada, perdiendo la última edición si el usuario navegaba a otra
+  // sección antes de que pasaran los 500ms del debounce — la causa raíz de
+  // la regresión "escribí y cambié de pestaña: se perdió todo".
+  // Deps vacías a propósito: debe ejecutarse una única vez, al desmontaje
+  // real, nunca en cada render; por eso persistLocalDraftNow se invoca vía
+  // la ref sincronizada arriba en lugar de cerrar sobre la función directa.
+  useEffect(() => () => {
+    localDraftDebouncerRef.current.flush(() => persistLocalDraftNowRef.current());
+  }, []);
 
   // Al abrir, si hay un borrador local se ofrece por banner (nunca modal).
   // Solo se auto-restaura en el caso seguro de un producto nuevo cuyo
@@ -474,6 +502,17 @@ export default function ProductEditor() {
     localDraftCheckedRef.current = true;
     const existingDraft = readDraft(localDraftKey);
     if (!existingDraft) return;
+    // Nunca restaurar un borrador que no sea más reciente que el último
+    // guardado real en Supabase (p. ej. guardado desde otra pestaña o
+    // dispositivo después de que este borrador quedó en localStorage):
+    // se descarta en silencio en vez de arriesgarse a pisar datos del
+    // servidor con algo desactualizado. Para un producto nuevo no hay
+    // updatedAt del servidor con qué comparar (loadedProductUpdatedAtRef
+    // sigue en null), así que cualquier borrador es elegible.
+    if (isEditing && !isDraftNewerThanServer(existingDraft.savedAt, loadedProductUpdatedAtRef.current)) {
+      removeDraft(localDraftKey);
+      return;
+    }
     if (!isEditing && !isDirty) {
       applyLocalDraft(existingDraft);
     }

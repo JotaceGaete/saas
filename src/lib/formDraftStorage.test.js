@@ -8,6 +8,7 @@ import {
   writeDraft,
   removeDraft,
   persistDraftIfDirty,
+  isDraftNewerThanServer,
 } from './formDraftStorage';
 import { createDebouncer } from './debounce';
 
@@ -214,6 +215,47 @@ describe('restaura image URLs', () => {
     persistDraftIfDirty({ isDirty: true, key, formData: { nombre: 'Solo texto' }, images: [] });
     const restored = readDraft(key);
     expect(restored.images).toEqual([]);
+  });
+});
+
+describe('isDraftNewerThanServer: restaurar solo si el borrador es más reciente que el servidor', () => {
+  it('producto nuevo (sin updatedAt del servidor): cualquier borrador es elegible', () => {
+    expect(isDraftNewerThanServer(1000, null)).toBe(true);
+    expect(isDraftNewerThanServer(1000, undefined)).toBe(true);
+  });
+
+  it('respuesta del servidor más nueva que el borrador: NO debe restaurarse', () => {
+    const draftSavedAt = Date.parse('2026-08-01T10:00:00.000Z');
+    const serverUpdatedAt = '2026-08-01T12:00:00.000Z'; // el servidor se actualizó 2h después del draft
+    expect(isDraftNewerThanServer(draftSavedAt, serverUpdatedAt)).toBe(false);
+  });
+
+  it('borrador más nuevo que el servidor: SÍ debe restaurarse', () => {
+    const serverUpdatedAt = '2026-08-01T10:00:00.000Z';
+    const draftSavedAt = Date.parse('2026-08-01T12:00:00.000Z'); // el draft es 2h más nuevo
+    expect(isDraftNewerThanServer(draftSavedAt, serverUpdatedAt)).toBe(true);
+  });
+
+  it('borrador con timestamp inválido: se trata como no confiable, no se restaura', () => {
+    expect(isDraftNewerThanServer('no-es-un-numero', '2026-08-01T10:00:00.000Z')).toBe(false);
+    expect(isDraftNewerThanServer(NaN, '2026-08-01T10:00:00.000Z')).toBe(false);
+    expect(isDraftNewerThanServer(undefined, '2026-08-01T10:00:00.000Z')).toBe(false);
+  });
+
+  it('updatedAt del servidor con formato inválido: no bloquea (se ignora la comparación)', () => {
+    expect(isDraftNewerThanServer(Date.now(), 'fecha-invalida')).toBe(true);
+  });
+
+  it('acepta el updatedAt del servidor como Date o como número, no solo como string ISO', () => {
+    const draftSavedAt = Date.now();
+    expect(isDraftNewerThanServer(draftSavedAt, new Date(draftSavedAt - 1000))).toBe(true);
+    expect(isDraftNewerThanServer(draftSavedAt, draftSavedAt - 1000)).toBe(true);
+    expect(isDraftNewerThanServer(draftSavedAt, draftSavedAt + 1000)).toBe(false);
+  });
+
+  it('timestamps exactamente iguales: no se considera "más reciente" (usa > estricto, no >=)', () => {
+    const t = Date.now();
+    expect(isDraftNewerThanServer(t, t)).toBe(false);
   });
 });
 

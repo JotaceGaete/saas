@@ -93,3 +93,30 @@ export function persistDraftIfDirty({ isDirty, key, formData, images, write = wr
   write(key, snapshot);
   return snapshot;
 }
+
+/**
+ * Decides whether a local draft should be offered/restored, comparing it
+ * against the last known server save for the same record. A draft strictly
+ * older than (or equal to) the server's last update must never be applied —
+ * it would silently overwrite fresher data (saved from another tab/device,
+ * or by someone else) with stale local input.
+ *
+ * `serverUpdatedAt` is whatever the record's `updatedAt` field is: an ISO
+ * string from Supabase in practice, but this accepts a Date, a numeric
+ * timestamp, or null/undefined (new records with nothing saved yet — no
+ * server timestamp exists to compare against, so any draft is eligible).
+ * Any value that fails to parse into a finite timestamp is treated the same
+ * as "no server timestamp" rather than blocking the draft, since an invalid
+ * value carries no reliable ordering information to enforce.
+ */
+export function isDraftNewerThanServer(draftSavedAt, serverUpdatedAt) {
+  if (serverUpdatedAt == null) return true;
+  const serverMs = serverUpdatedAt instanceof Date
+    ? serverUpdatedAt.getTime()
+    : typeof serverUpdatedAt === 'number'
+      ? serverUpdatedAt
+      : Date.parse(serverUpdatedAt);
+  if (!Number.isFinite(serverMs)) return true;
+  if (typeof draftSavedAt !== 'number' || !Number.isFinite(draftSavedAt)) return false;
+  return draftSavedAt > serverMs;
+}
