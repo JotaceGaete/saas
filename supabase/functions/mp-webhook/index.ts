@@ -6,6 +6,7 @@
 // y legado (<businessId>:<planSlug>) para retrocompatibilidad.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { buildBillingSubscriptionUpsertPayload } from './lib.ts';
 
 const ALLOWED_PLANS = ['control', 'starter', 'pro', 'business'];
 const PLAN_DURATION_DAYS = 30;
@@ -401,6 +402,8 @@ Deno.serve(async (req) => {
     external_reference?: string;
     payment_type_id?: string;
     payment_method_id?: string;
+    transaction_amount?: number;
+    currency_id?: string;
   };
   try { payment = JSON.parse(mpApiBody); }
   catch {
@@ -634,18 +637,23 @@ Deno.serve(async (req) => {
       isUpgrade:        newOrder > currentOrder,
     });
 
-    // Sincronizar billing_subscriptions: actualización completa del estado activo.
+    // Sincronizar billing_subscriptions: upsert por business_id (misma estrategia que PayPal).
+    // No usamos .update(): si el negocio nunca tuvo fila (p.ej. signup actual no crea una),
+    // un UPDATE afecta 0 filas en silencio y billing_subscriptions queda sin sincronizar.
     const { error: subSyncError } = await db
       .from('billing_subscriptions')
-      .update({
-        plan_slug:                planSlug,
-        status:                   'active',
-        provider:                 'mercado_pago',
-        trial_ends_at:            null,
-        current_period_starts_at: now.toISOString(),
-        current_period_ends_at:   planExpiresAtIso,
-      })
-      .eq('business_id', businessId);
+      .upsert(
+        buildBillingSubscriptionUpsertPayload({
+          businessId,
+          planSlug,
+          payment,
+          mpStatus,
+          countryHint,
+          currentPeriodStartsAt: now.toISOString(),
+          currentPeriodEndsAt: planExpiresAtIso,
+        }),
+        { onConflict: 'business_id' },
+      );
     if (subSyncError) {
       console.error('[mp-webhook] billing_subscriptions sync failed (non-blocking):', subSyncError.message);
     }
