@@ -1229,6 +1229,24 @@ export const deleteProduct = async (productId) => {
   return { error: null };
 };
 
+// Used only when the Product Editor explicitly discards a locally-owned
+// temporary draft. The filters are part of the DELETE itself, so an active
+// product or a product from another business can never be removed by this flow.
+export const deleteTemporaryProductDraft = async (productId, businessId) => {
+  if (!productId || !businessId) {
+    return { deleted: false, error: { message: 'Falta identificar el borrador temporal.' } };
+  }
+  const { data, error } = await supabase
+    ?.from('wa_products')
+    ?.delete()
+    ?.eq('id', productId)
+    ?.eq('business_id', businessId)
+    ?.eq('is_draft', true)
+    ?.select('id');
+  if (error) return { deleted: false, error };
+  return { deleted: Array.isArray(data) && data.some((row) => row?.id === productId), error: null };
+};
+
 export const uploadProductImage = async (file, businessId, productId, index) => {
   if (!(file instanceof Blob)) {
     return { url: null, error: { message: 'Selecciona una imagen valida antes de subir.' } };

@@ -1,7 +1,7 @@
 import React from 'react';
 import Icon from 'components/AppIcon';
 
-export default function SaveBar({ isEditing, isSaving, saveSuccess, saveDisabled, onSave, onSaveAndNew, onCancel, itemSingular = 'producto' }) {
+export default function SaveBar({ isEditing, isSaving, saveSuccess, saveDisabled, onSave, onSaveAndNew, onCancel, onDiscardDraft, itemSingular = 'producto' }) {
   const saveButtonDisabled = isSaving || saveDisabled;
   const itemSingularLower = itemSingular.toLowerCase();
   return (
@@ -48,6 +48,16 @@ export default function SaveBar({ isEditing, isSaving, saveSuccess, saveDisabled
 
         {/* Right: actions */}
         <div className="flex items-center gap-2 flex-shrink-0">
+          {onDiscardDraft && (
+            <button
+              type="button"
+              onClick={onDiscardDraft}
+              disabled={isSaving}
+              className="hidden px-3 py-2 text-sm font-medium text-red-600 transition-opacity hover:opacity-75 disabled:opacity-40 sm:block"
+            >
+              Descartar borrador
+            </button>
+          )}
           <button
             onClick={onCancel}
             disabled={isSaving}

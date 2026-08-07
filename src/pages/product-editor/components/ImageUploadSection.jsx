@@ -15,6 +15,7 @@ export default function ImageUploadSection({
   onImagesChange,
   businessId,
   onUploadRequested,
+  onPersistLocalFile,
   disabled = false,
   uploadMessage = '',
   uploadError = '',
@@ -44,9 +45,11 @@ export default function ImageUploadSection({
     const newItems = toAdd.map((file, index) => {
       const id = `img-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 9)}`;
       const previewUrl = URL.createObjectURL(file);
+      const blobKey = onPersistLocalFile?.({ imageId: id, file }) || null;
       return {
         id,
         url: previewUrl,
+        blobKey,
         alt: `Imagen de producto: ${file?.name}`,
         name: file?.name,
         file,

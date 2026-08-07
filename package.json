@@ -87,6 +87,7 @@
     "@testing-library/react": "^14.2.1",
     "@vitejs/plugin-react": "4.3.4",
     "autoprefixer": "10.4.2",
+    "fake-indexeddb": "^6.2.5",
     "jsdom": "^25.0.0",
     "playwright": "1.60.0",
     "png-to-ico": "^3.0.1",

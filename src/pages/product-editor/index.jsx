@@ -13,12 +13,13 @@ import ProductPreview from './components/ProductPreview';
 import SaveBar from './components/SaveBar';
 import ProductOptionsSection from './components/ProductOptionsSection';
 import VideoUploadSection from './components/VideoUploadSection';
+import LocalDraftBanner from 'components/ui/LocalDraftBanner';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   getProduct,
   createProduct,
   createProductDraft,
-  deleteProduct,
+  deleteTemporaryProductDraft,
   updateProduct,
   uploadProductImage,
   uploadProductMainImage,
@@ -38,6 +39,21 @@ import { resolveVentaAiProductDescriptionEndpoint } from '../../lib/ai/resolveVe
 import { appendCacheBust, uploadToMediaService } from '../../services/mediaUploadService';
 import { getPublicProductUrl } from '../../config/appUrl';
 import { generateUniqueBarcode, saveProductBarcode } from '../../services/crmService';
+import { createDebouncer } from '../../lib/debounce';
+import { createDirtyTracker } from '../../lib/formDirtyTracker';
+import {
+  buildDraftBlobKey,
+  buildProductDraftKey,
+  buildProductDraftSnapshot,
+  clearProductDraft,
+  deleteDraftImageBlob,
+  isDraftNewerThanServer,
+  putDraftImageBlob,
+  readProductDraft,
+  removeProductDraft,
+  restoreDraftImages,
+  writeProductDraft,
+} from '../../lib/productDraftStorage';
 
 const EMPTY_FORM = {
   nombre: '',
@@ -196,6 +212,26 @@ export default function ProductEditor() {
   const [generatingBarcode, setGeneratingBarcode] = useState(false);
   const [cardImageUrl, setCardImageUrl] = useState(null);
   const [productSlug, setProductSlug] = useState('');
+  const [isDirty, setIsDirty] = useState(false);
+  const [localDraftBanner, setLocalDraftBanner] = useState(null);
+  const dirtyTrackerRef = React.useRef(null);
+  if (!dirtyTrackerRef.current) dirtyTrackerRef.current = createDirtyTracker();
+  const draftDebouncerRef = React.useRef(null);
+  if (!draftDebouncerRef.current) draftDebouncerRef.current = createDebouncer(400);
+  const isDirtyRef = React.useRef(false);
+  const formDataRef = React.useRef(formData);
+  const draftImagesRef = React.useRef(images);
+  const currentProductIdRef = React.useRef(currentProductId);
+  const temporaryProductDraftRef = React.useRef(false);
+  const loadedProductUpdatedAtRef = React.useRef(null);
+  const checkedDraftKeyRef = React.useRef(null);
+  const draftStorageWarningRef = React.useRef(false);
+  const restoredUploadIdsRef = React.useRef(new Set());
+  const ensureProductPromiseRef = React.useRef(null);
+  formDataRef.current = formData;
+  draftImagesRef.current = images;
+  currentProductIdRef.current = currentProductId;
+  const localDraftKey = business?.id ? buildProductDraftKey(business.id, productId) : null;
   const toast = useToast();
   const effectiveProductId = currentProductId || productId || null;
   const isEditingFlow = !!effectiveProductId;
@@ -301,6 +337,46 @@ export default function ProductEditor() {
     }
   }, []);
 
+  const persistLocalDraftNow = React.useCallback(() => {
+    if (!isDirtyRef.current || !localDraftKey) return false;
+    const persisted = writeProductDraft(localDraftKey, buildProductDraftSnapshot({
+      formData: formDataRef.current,
+      images: draftImagesRef.current,
+      currentProductId: currentProductIdRef.current,
+      temporaryProductDraft: temporaryProductDraftRef.current,
+    }));
+    if (!persisted && !draftStorageWarningRef.current) {
+      draftStorageWarningRef.current = true;
+      toast.error('El navegador no pudo guardar el borrador local. Revisa el espacio disponible.');
+    }
+    return persisted;
+  }, [localDraftKey, toast]);
+  const persistLocalDraftNowRef = React.useRef(persistLocalDraftNow);
+  persistLocalDraftNowRef.current = persistLocalDraftNow;
+
+  const flushLocalDraft = React.useCallback(() => {
+    draftDebouncerRef.current.flush(() => persistLocalDraftNowRef.current());
+  }, []);
+
+  const markDraftDirty = React.useCallback(() => {
+    isDirtyRef.current = true;
+    setIsDirty(true);
+  }, []);
+
+  const handlePersistLocalFile = React.useCallback(({ imageId, file }) => {
+    if (!localDraftKey || !imageId || !file) return null;
+    const blobKey = buildDraftBlobKey(localDraftKey, imageId);
+    // Intentionally fire immediately in the selection event. The UI/upload
+    // does not wait for IndexedDB, but the transaction starts before navigation.
+    putDraftImageBlob({ draftKey: localDraftKey, imageId, blob: file }).catch(() => {
+      if (!draftStorageWarningRef.current) {
+        draftStorageWarningRef.current = true;
+        toast.error('No se pudo respaldar una imagen local. El resto del borrador seguirá disponible.');
+      }
+    });
+    return blobKey;
+  }, [localDraftKey, toast]);
+
   useEffect(() => {
     if (!isEditing || !productId) return;
     const loadProduct = async () => {
@@ -308,6 +384,8 @@ export default function ProductEditor() {
       try {
         const { data, error } = await getProduct(productId);
         if (error || !data) { navigate('/product-management'); return; }
+        loadedProductUpdatedAtRef.current = data?.updatedAt ?? null;
+        dirtyTrackerRef.current.armSkip();
         setCurrentProductId(data?.id || productId);
         initialActivoRef.current = data?.isActive !== undefined ? data?.isActive : true;
         setFormData({
@@ -378,6 +456,50 @@ export default function ProductEditor() {
   useEffect(() => {
     if (saveSuccess) { const t = setTimeout(() => setSaveSuccess(false), 3000); return () => clearTimeout(t); }
   }, [saveSuccess]);
+
+  useEffect(() => {
+    if (dirtyTrackerRef.current.onWatchedChange()) markDraftDirty();
+  }, [formData, images, markDraftDirty]);
+
+  useEffect(() => {
+    isDirtyRef.current = isDirty;
+  }, [isDirty]);
+
+  useEffect(() => {
+    if (!isDirty || !localDraftKey) return;
+    draftDebouncerRef.current.schedule(() => persistLocalDraftNowRef.current());
+  }, [isDirty, localDraftKey, formData, images, currentProductId]);
+
+  useEffect(() => {
+    if (!localDraftKey) return;
+    const handleVisibility = () => { if (document.hidden) flushLocalDraft(); };
+    window.addEventListener('blur', flushLocalDraft);
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('beforeunload', flushLocalDraft);
+    window.addEventListener('pagehide', flushLocalDraft);
+    return () => {
+      window.removeEventListener('blur', flushLocalDraft);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('beforeunload', flushLocalDraft);
+      window.removeEventListener('pagehide', flushLocalDraft);
+    };
+  }, [flushLocalDraft, localDraftKey]);
+
+  useEffect(() => () => {
+    // React Router navigation only unmounts; it does not reliably emit blur,
+    // visibilitychange or beforeunload. Never replace this flush with cancel.
+    draftDebouncerRef.current.flush(() => persistLocalDraftNowRef.current());
+  }, []);
+
+  useEffect(() => {
+    if (!isDirty) return;
+    const warnBeforeUnload = (event) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warnBeforeUnload);
+    return () => window.removeEventListener('beforeunload', warnBeforeUnload);
+  }, [isDirty]);
 
   useEffect(() => {
     const previousImages = previousImagesRef.current || [];
@@ -465,6 +587,23 @@ export default function ProductEditor() {
     setFormData(prev => ({ ...prev, [field]: value }));
     if (errors?.[field]) setErrors(prev => { const e = { ...prev }; delete e?.[field]; return e; });
   };
+
+  const handleDraftImagesChange = React.useCallback((updater) => {
+    const previous = draftImagesRef.current || [];
+    const next = typeof updater === 'function' ? updater(previous) : updater;
+    const nextImages = Array.isArray(next) ? next : [];
+    const nextIds = new Set(nextImages.map((image) => image?.id));
+    previous.forEach((image) => {
+      if (image?.blobKey && !nextIds.has(image?.id)) {
+        deleteDraftImageBlob(image.blobKey).catch(() => {});
+      }
+    });
+    draftImagesRef.current = nextImages;
+    imagesRef.current = nextImages;
+    setImages(nextImages);
+    markDraftDirty();
+    queueMicrotask(() => flushLocalDraft());
+  }, [flushLocalDraft, markDraftDirty]);
 
   const updateAddOns = React.useCallback((updater) => {
     setFormData((prev) => {
@@ -746,23 +885,33 @@ export default function ProductEditor() {
   }), [formData, isRestaurant]);
 
   const ensureProductIdForMainImageUpload = React.useCallback(async () => {
-    if (currentProductId) {
-      return { productId: currentProductId, createdDraft: false };
+    if (currentProductIdRef.current) {
+      return { productId: currentProductIdRef.current, createdDraft: false };
     }
+    if (ensureProductPromiseRef.current) return ensureProductPromiseRef.current;
     if (!business?.id) {
       throw new Error('Negocio no cargado. Espera un momento o recarga la pagina.');
     }
-
-    const { data, error } = await createProductDraft(business.id, buildDraftPayload());
-    if (error || !data?.id) {
-      throw new Error(error?.message || `No se pudo crear el borrador del ${itemSingular} para subir la imagen.`);
+    ensureProductPromiseRef.current = (async () => {
+      const { data, error } = await createProductDraft(business.id, buildDraftPayload());
+      if (error || !data?.id) {
+        throw new Error(error?.message || `No se pudo crear el borrador del ${itemSingular} para subir la imagen.`);
+      }
+      setCurrentProductId(data.id);
+      currentProductIdRef.current = data.id;
+      temporaryProductDraftRef.current = true;
+      setProductSlug(data?.slug || slugifyProductName(data?.name || formData?.nombre));
+      initialActivoRef.current = data?.isActive !== undefined ? data.isActive : false;
+      markDraftDirty();
+      queueMicrotask(() => flushLocalDraft());
+      return { productId: data.id, createdDraft: true };
+    })();
+    try {
+      return await ensureProductPromiseRef.current;
+    } finally {
+      ensureProductPromiseRef.current = null;
     }
-
-    setCurrentProductId(data.id);
-    setProductSlug(data?.slug || slugifyProductName(data?.name || formData?.nombre));
-    initialActivoRef.current = data?.isActive !== undefined ? data.isActive : false;
-    return { productId: data.id, createdDraft: true };
-  }, [business?.id, buildDraftPayload, currentProductId, formData?.nombre]);
+  }, [business?.id, buildDraftPayload, currentProductId, flushLocalDraft, formData?.nombre, markDraftDirty]);
 
   const handleUploadRequested = React.useCallback(async (imageId, file) => {
     console.log('[ProductEditor] handleUploadRequested', { imageId, hasFile: !!file, businessId: business?.id ?? null, productId: productId ?? null });
@@ -813,9 +962,10 @@ export default function ProductEditor() {
       return;
     }
 
-    const isMainImage = meta?.isMainImage === true || imageId === (images?.[0]?.id || imageId);
-    const selectedImage = (images || []).find((img) => img?.id === imageId) || null;
-    const selectedImageIndex = Math.max(0, (images || []).findIndex((img) => img?.id === imageId));
+    const currentImages = draftImagesRef.current || [];
+    const isMainImage = meta?.isMainImage === true || imageId === (currentImages?.[0]?.id || imageId);
+    const selectedImage = currentImages.find((img) => img?.id === imageId) || null;
+    const selectedImageIndex = Math.max(0, currentImages.findIndex((img) => img?.id === imageId));
     const requestToken = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     uploadRequestTokensRef.current[imageId] = requestToken;
 
@@ -839,7 +989,6 @@ export default function ProductEditor() {
 
     let fileToUpload = file;
     let ensuredProductId = currentProductId;
-    let createdDraftForUpload = false;
     try {
       fileToUpload = await convertUnsupportedImageToJpeg(file);
     } catch (e) {
@@ -860,7 +1009,6 @@ export default function ProductEditor() {
       if (isMainImage) {
         const ensureResult = await ensureProductIdForMainImageUpload();
         ensuredProductId = ensureResult?.productId;
-        createdDraftForUpload = ensureResult?.createdDraft === true;
         const uploaded = await uploadProductMainImage({
           file: fileToUpload,
           businessId: business.id,
@@ -894,7 +1042,6 @@ export default function ProductEditor() {
           ? { productId: currentProductId, createdDraft: false }
           : await ensureProductIdForMainImageUpload();
         ensuredProductId = ensureResult?.productId;
-        createdDraftForUpload = ensureResult?.createdDraft === true;
         const galleryIndex = Math.max(0, selectedImageIndex - 1);
         const { url, error: uploadErr } = await uploadProductImage(fileToUpload, business.id, ensuredProductId, galleryIndex);
         if (uploadErr) {
@@ -928,14 +1075,6 @@ export default function ProductEditor() {
     } catch (e) {
       const shouldHandleLatest = uploadRequestTokensRef.current[imageId] === requestToken;
       const errMsg = e?.message || (e?.error?.message) || 'Error de conexion al subir la imagen.';
-      const shouldDeleteDraft = createdDraftForUpload && typeof ensuredProductId === 'string';
-      if (shouldDeleteDraft) {
-        const { error: deleteError } = await deleteProduct(ensuredProductId);
-        if (!deleteError) {
-          setCurrentProductId(null);
-          initialActivoRef.current = null;
-        }
-      }
       if (isMainImage && shouldHandleLatest) {
         setImageUploading(false);
         setImageUploadError(errMsg);
@@ -944,7 +1083,81 @@ export default function ProductEditor() {
         setImages(prev => prev?.map(img => img?.id === imageId ? { ...img, status: 'error', error: errMsg } : img));
       }
     }
-  }, [business?.id, currentProductId, ensureProductIdForMainImageUpload, images, revokeBlobUrl]);
+  }, [business?.id, currentProductId, ensureProductIdForMainImageUpload, revokeBlobUrl]);
+
+  const applyLocalDraft = React.useCallback(async (draft) => {
+    if (!draft?.formData) return;
+    const restored = await restoreDraftImages(draft.images);
+    if (restored.missingBlobKeys.length > 0) {
+      toast.error('Algunas imágenes locales ya no estaban disponibles; recuperamos el resto del borrador.');
+    }
+    const restoredProductId = draft.currentProductId || productId || null;
+    temporaryProductDraftRef.current = draft.temporaryProductDraft === true;
+    currentProductIdRef.current = restoredProductId;
+    draftImagesRef.current = restored.images;
+    imagesRef.current = restored.images;
+    setCurrentProductId(restoredProductId);
+    setFormData((previous) => ({ ...previous, ...draft.formData }));
+    setImages(restored.images);
+    isDirtyRef.current = true;
+    setIsDirty(true);
+
+    // A local file is durable again at this point. Retry asynchronously so
+    // currentProductId and the complete ordered image ref are already ready.
+    setTimeout(() => {
+      restored.images.forEach((image, index) => {
+        if (!image?.file || restoredUploadIdsRef.current.has(image.id)) return;
+        restoredUploadIdsRef.current.add(image.id);
+        handleMainAwareUploadRequested(image.id, image.file, { isMainImage: index === 0 });
+      });
+    }, 0);
+  }, [handleMainAwareUploadRequested, productId, toast]);
+
+  useEffect(() => {
+    if (!localDraftKey || checkedDraftKeyRef.current === localDraftKey) return;
+    if (isEditing && pageLoading) return;
+    checkedDraftKeyRef.current = localDraftKey;
+    const draft = readProductDraft(localDraftKey);
+    if (!draft) return;
+    if (isEditing && !isDraftNewerThanServer(draft.savedAt, loadedProductUpdatedAtRef.current)) {
+      removeProductDraft(localDraftKey);
+      clearProductDraft(localDraftKey).catch(() => {});
+      return;
+    }
+    setLocalDraftBanner({ draft, alreadyRestored: !isEditing });
+    if (!isEditing) applyLocalDraft(draft);
+  }, [applyLocalDraft, isEditing, localDraftKey, pageLoading]);
+
+  const handleRestoreLocalDraft = React.useCallback(async () => {
+    if (localDraftBanner?.draft) await applyLocalDraft(localDraftBanner.draft);
+    setLocalDraftBanner(null);
+  }, [applyLocalDraft, localDraftBanner]);
+
+  const handleDiscardDraft = React.useCallback(async () => {
+    const draft = localDraftBanner?.draft || readProductDraft(localDraftKey);
+    if (!draft && !isDirtyRef.current) return;
+    if (!window.confirm(`¿Descartar definitivamente este borrador de ${itemSingular}? Esta acción no se puede deshacer.`)) return;
+
+    draftDebouncerRef.current.cancel();
+    isDirtyRef.current = false;
+    setIsDirty(false);
+    const temporaryId = draft?.temporaryProductDraft === true
+      ? draft.currentProductId
+      : (temporaryProductDraftRef.current ? currentProductIdRef.current : null);
+    if (temporaryId && business?.id) {
+      const result = await deleteTemporaryProductDraft(temporaryId, business.id);
+      if (result?.error) {
+        isDirtyRef.current = true;
+        setIsDirty(true);
+        toast.error('No pudimos descartar el producto temporal. El borrador se conservará para que puedas reintentar.');
+        return;
+      }
+    }
+    await clearProductDraft(localDraftKey);
+    temporaryProductDraftRef.current = false;
+    setLocalDraftBanner(null);
+    navigate('/product-management');
+  }, [business?.id, itemSingular, localDraftBanner, localDraftKey, navigate, toast]);
 
   const hasPendingOrUploadingImages = (images || []).some(img =>
     img?.status === 'pending' || img?.status === 'uploading' || (img?.file && img?.status !== 'uploaded' && img?.status !== 'error')
@@ -1063,14 +1276,25 @@ export default function ProductEditor() {
       if (result?.error) { setErrors({ general: result?.error?.message || 'Error al guardar el producto.' }); return; }
       if (!currentProductId && result?.data?.id) {
         setCurrentProductId(result.data.id);
+        currentProductIdRef.current = result.data.id;
       }
       setProductSlug(result?.data?.slug || slugifyProductName(result?.data?.name || formData?.nombre));
       setIsSaving(false);
       setSaveSuccess(true);
+      draftDebouncerRef.current.cancel();
+      isDirtyRef.current = false;
+      setIsDirty(false);
+      temporaryProductDraftRef.current = false;
+      await clearProductDraft(localDraftKey);
+      (draftImagesRef.current || []).forEach((image) => revokeBlobUrl(image?.url));
       if (andNew) {
+        dirtyTrackerRef.current.armSkip();
         setFormData({ ...EMPTY_FORM });
         setImages([]);
+        draftImagesRef.current = [];
+        imagesRef.current = [];
         setCurrentProductId(null);
+        currentProductIdRef.current = null;
         setImagePreviewUrl(null);
         setImageUploading(false);
         setImageUploadError('');
@@ -1174,6 +1398,13 @@ export default function ProductEditor() {
 
         {/* Main content */}
         <DashboardLayoutContent className="page-enter lg:pb-0">
+            <LocalDraftBanner
+              visible={!!localDraftBanner}
+              alreadyRestored={localDraftBanner?.alreadyRestored === true}
+              onRestore={handleRestoreLocalDraft}
+              onDismiss={() => setLocalDraftBanner(null)}
+              onDelete={handleDiscardDraft}
+            />
             <section className="mb-7 sm:mb-9">
               <div className="flex flex-col gap-5 border-b pb-6 sm:flex-row sm:items-end sm:justify-between" style={{ borderColor: 'rgba(17,24,39,0.08)' }}>
                 <div className="max-w-2xl">
@@ -1267,9 +1498,10 @@ export default function ProductEditor() {
                   </div>
                   <ImageUploadSection
                     images={images}
-                    onImagesChange={setImages}
+                    onImagesChange={handleDraftImagesChange}
                     businessId={business?.id}
                     onUploadRequested={handleMainAwareUploadRequested}
+                    onPersistLocalFile={handlePersistLocalFile}
                     disabled={imageUploading}
                     uploadMessage={imageUploading ? 'Subiendo imagen principal...' : ''}
                     uploadError={imageUploadError}
@@ -2207,6 +2439,7 @@ export default function ProductEditor() {
           onSave={() => handleSave(false)}
           onSaveAndNew={() => handleSave(true)}
           onCancel={handleCancel}
+          onDiscardDraft={isDirty ? handleDiscardDraft : null}
           itemSingular={itemSingularCapitalized}
         />
     </DashboardAppShell>
