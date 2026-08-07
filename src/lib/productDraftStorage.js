@@ -1,3 +1,5 @@
+import { productEditorDiagnostic, summarizeProductDraft } from './productEditorDiagnostics';
+
 const DB_NAME = 'walinka-product-editor-drafts';
 const DB_VERSION = 1;
 const BLOB_STORE = 'image-blobs';
@@ -19,17 +21,26 @@ function getLocalStorage() {
 }
 
 export function readProductDraft(key) {
-  if (!key) return null;
+  if (!key) {
+    productEditorDiagnostic('storage.read.skipped', { key: null });
+    return null;
+  }
   try {
     const raw = getLocalStorage()?.getItem(key);
-    if (!raw) return null;
+    if (!raw) {
+      productEditorDiagnostic('storage.read.miss', { key });
+      return null;
+    }
     const parsed = JSON.parse(raw);
     if (!parsed || parsed.schemaVersion !== PRODUCT_DRAFT_SCHEMA_VERSION || !parsed.formData) {
+      productEditorDiagnostic('storage.read.invalid', { key, parsed: summarizeProductDraft(parsed) });
       removeProductDraft(key);
       return null;
     }
+    productEditorDiagnostic('storage.read.hit', { key, draft: summarizeProductDraft(parsed) });
     return parsed;
-  } catch {
+  } catch (error) {
+    productEditorDiagnostic('storage.read.error', { key, message: error?.message || String(error) });
     removeProductDraft(key);
     return null;
   }
@@ -39,8 +50,10 @@ export function writeProductDraft(key, snapshot) {
   if (!key || !snapshot) return false;
   try {
     getLocalStorage()?.setItem(key, JSON.stringify(snapshot));
+    productEditorDiagnostic('storage.write', { key, draft: summarizeProductDraft(snapshot) });
     return true;
-  } catch {
+  } catch (error) {
+    productEditorDiagnostic('storage.write.error', { key, message: error?.message || String(error) });
     return false;
   }
 }
@@ -48,10 +61,20 @@ export function writeProductDraft(key, snapshot) {
 export function removeProductDraft(key) {
   if (!key) return false;
   try {
+    productEditorDiagnostic('storage.remove', { key, existing: summarizeProductDraft(readProductDraftWithoutDiagnostics(key)) });
     getLocalStorage()?.removeItem(key);
     return true;
   } catch {
     return false;
+  }
+}
+
+function readProductDraftWithoutDiagnostics(key) {
+  try {
+    const raw = getLocalStorage()?.getItem(key);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
   }
 }
 
@@ -157,6 +180,14 @@ export async function putDraftImageBlob({ draftKey, imageId, blob }) {
     lastModified: Number(blob?.lastModified || 0) || null,
     savedAt: Date.now(),
   }));
+  productEditorDiagnostic('indexeddb.blob.write', {
+    draftKey,
+    imageId,
+    key,
+    name: typeof blob?.name === 'string' ? blob.name : '',
+    type: blob.type || '',
+    size: blob.size || 0,
+  });
   return key;
 }
 
@@ -203,6 +234,7 @@ export async function deleteDraftImageBlobs(draftKey) {
 }
 
 export async function restoreDraftImages(imageMetadata) {
+  productEditorDiagnostic('indexeddb.restore.start', { images: imageMetadata || [] });
   const restored = [];
   const missingBlobKeys = [];
   const sorted = [...(Array.isArray(imageMetadata) ? imageMetadata : [])]
@@ -232,15 +264,22 @@ export async function restoreDraftImages(imageMetadata) {
       missingBlobKeys.push(metadata.blobKey);
     }
   }
+  productEditorDiagnostic('indexeddb.restore.complete', {
+    restored: restored.map((image) => ({ id: image.id, blobKey: image.blobKey, status: image.status, hasFile: !!image.file, url: image.url || null })),
+    missingBlobKeys,
+  });
   return { images: restored, missingBlobKeys };
 }
 
 export async function clearProductDraft(key) {
+  productEditorDiagnostic('storage.clear.start', { key, existing: summarizeProductDraft(readProductDraftWithoutDiagnostics(key)) });
   removeProductDraft(key);
   try {
     await deleteDraftImageBlobs(key);
+    productEditorDiagnostic('storage.clear.complete', { key, blobsCleared: true });
     return true;
   } catch {
+    productEditorDiagnostic('storage.clear.complete', { key, blobsCleared: false });
     return false;
   }
 }

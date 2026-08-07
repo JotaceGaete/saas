@@ -41,6 +41,7 @@ import { getPublicProductUrl } from '../../config/appUrl';
 import { generateUniqueBarcode, saveProductBarcode } from '../../services/crmService';
 import { createDebouncer } from '../../lib/debounce';
 import { createDirtyTracker } from '../../lib/formDirtyTracker';
+import { productEditorDiagnostic, summarizeProductDraft } from '../../lib/productEditorDiagnostics';
 import {
   buildDraftBlobKey,
   buildProductDraftKey,
@@ -178,6 +179,8 @@ const cloneComboGroup = (group, { labelSuffix = '' } = {}) => {
 };
 
 export default function ProductEditor() {
+  const diagnosticInstanceRef = React.useRef(`pe-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+  const diagnosticInstance = diagnosticInstanceRef.current;
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const productId = searchParams?.get('id');
@@ -222,6 +225,8 @@ export default function ProductEditor() {
   const formDataRef = React.useRef(formData);
   const draftImagesRef = React.useRef(images);
   const currentProductIdRef = React.useRef(currentProductId);
+  const localDraftKeyRef = React.useRef(null);
+  const businessIdRef = React.useRef(business?.id || null);
   const temporaryProductDraftRef = React.useRef(false);
   const loadedProductUpdatedAtRef = React.useRef(null);
   const checkedDraftKeyRef = React.useRef(null);
@@ -232,6 +237,8 @@ export default function ProductEditor() {
   draftImagesRef.current = images;
   currentProductIdRef.current = currentProductId;
   const localDraftKey = business?.id ? buildProductDraftKey(business.id, productId) : null;
+  localDraftKeyRef.current = localDraftKey;
+  businessIdRef.current = business?.id || null;
   const toast = useToast();
   const effectiveProductId = currentProductId || productId || null;
   const isEditingFlow = !!effectiveProductId;
@@ -338,25 +345,71 @@ export default function ProductEditor() {
   }, []);
 
   const persistLocalDraftNow = React.useCallback(() => {
-    if (!isDirtyRef.current || !localDraftKey) return false;
-    const persisted = writeProductDraft(localDraftKey, buildProductDraftSnapshot({
+    if (!isDirtyRef.current || !localDraftKey) {
+      productEditorDiagnostic('draft.persist.skipped', { diagnosticInstance, isDirty: isDirtyRef.current, localDraftKey });
+      return false;
+    }
+    const snapshot = buildProductDraftSnapshot({
       formData: formDataRef.current,
       images: draftImagesRef.current,
       currentProductId: currentProductIdRef.current,
       temporaryProductDraft: temporaryProductDraftRef.current,
-    }));
+    });
+    productEditorDiagnostic('draft.persist.before', { diagnosticInstance, localDraftKey, draft: summarizeProductDraft(snapshot) });
+    const persisted = writeProductDraft(localDraftKey, snapshot);
     if (!persisted && !draftStorageWarningRef.current) {
       draftStorageWarningRef.current = true;
       toast.error('El navegador no pudo guardar el borrador local. Revisa el espacio disponible.');
     }
     return persisted;
-  }, [localDraftKey, toast]);
+  }, [diagnosticInstance, localDraftKey, toast]);
   const persistLocalDraftNowRef = React.useRef(persistLocalDraftNow);
   persistLocalDraftNowRef.current = persistLocalDraftNow;
 
   const flushLocalDraft = React.useCallback(() => {
+    productEditorDiagnostic('draft.flush', { diagnosticInstance, localDraftKey: localDraftKeyRef.current, currentProductId: currentProductIdRef.current, isDirty: isDirtyRef.current });
     draftDebouncerRef.current.flush(() => persistLocalDraftNowRef.current());
   }, []);
+
+  useEffect(() => {
+    productEditorDiagnostic('editor.mount', { diagnosticInstance, productId, businessId: business?.id || null, localDraftKey, currentProductId: currentProductIdRef.current });
+    return () => {
+      productEditorDiagnostic('editor.unmount', {
+        diagnosticInstance,
+        productId,
+        businessId: businessIdRef.current,
+        localDraftKey: localDraftKeyRef.current,
+        currentProductId: currentProductIdRef.current,
+        formData: formDataRef.current,
+        images: draftImagesRef.current,
+      });
+    };
+  }, [diagnosticInstance]);
+
+  useEffect(() => {
+    productEditorDiagnostic('editor.identity.commit', { diagnosticInstance, productId, businessId: business?.id || null, localDraftKey, currentProductId });
+  }, [business?.id, currentProductId, diagnosticInstance, localDraftKey, productId]);
+
+  useEffect(() => {
+    productEditorDiagnostic('editor.state.commit', {
+      diagnosticInstance,
+      productId,
+      businessId: business?.id || null,
+      localDraftKey,
+      currentProductId,
+      formData,
+      images: (images || []).map((image) => ({
+        id: image?.id,
+        blobKey: image?.blobKey || null,
+        url: image?.url || null,
+        persistedUrl: image?.persistedUrl || null,
+        status: image?.status || null,
+        hasFile: !!image?.file,
+      })),
+      isDirty,
+      pageLoading,
+    });
+  }, [business?.id, currentProductId, diagnosticInstance, formData, images, isDirty, localDraftKey, pageLoading, productId]);
 
   const markDraftDirty = React.useCallback(() => {
     isDirtyRef.current = true;
@@ -380,12 +433,24 @@ export default function ProductEditor() {
   useEffect(() => {
     if (!isEditing || !productId) return;
     const loadProduct = async () => {
+      productEditorDiagnostic('server.loadProduct.start', { diagnosticInstance, productId, localDraftKey });
       setPageLoading(true);
       try {
         const { data, error } = await getProduct(productId);
         if (error || !data) { navigate('/product-management'); return; }
         loadedProductUpdatedAtRef.current = data?.updatedAt ?? null;
         dirtyTrackerRef.current.armSkip();
+        productEditorDiagnostic('server.loadProduct.beforeSetState', {
+          diagnosticInstance,
+          productId,
+          localDraftKey,
+          serverUpdatedAt: data?.updatedAt || null,
+          formData: {
+            nombre: data?.name || '', precio: data?.price != null ? Number(data.price) : '', descripcion: data?.description || '',
+            longDescription: data?.longDescription || '', categoria: data?.category ?? '', sku: data?.sku || '', barcode: data?.barcode || '',
+          },
+          imageUrls: Array.isArray(data?.images) ? data.images : (data?.imageUrl ? [data.imageUrl] : []),
+        });
         setCurrentProductId(data?.id || productId);
         initialActivoRef.current = data?.isActive !== undefined ? data?.isActive : true;
         setFormData({
@@ -432,7 +497,12 @@ export default function ProductEditor() {
                   status: 'uploaded',
                 }]
               : []);
-        if (loadedImages.length) setImages(loadedImages);
+        if (loadedImages.length) {
+          productEditorDiagnostic('server.loadProduct.setImages', { diagnosticInstance, productId, images: loadedImages });
+          setImages(loadedImages);
+        } else {
+          productEditorDiagnostic('server.loadProduct.noImages', { diagnosticInstance, productId });
+        }
         setImagePreviewUrl(data?.imageUrl || loadedImages?.[0]?.url || null);
         setImageUploadError('');
         setImageUploading(false);
@@ -448,7 +518,10 @@ export default function ProductEditor() {
         setCardImageUrl(data?.cardImageUrl || data?.thumbnailUrl || null);
         setProductSlug(data?.slug || '');
       } catch (e) { navigate('/product-management'); }
-      finally { setPageLoading(false); }
+      finally {
+        productEditorDiagnostic('server.loadProduct.complete', { diagnosticInstance, productId, localDraftKey });
+        setPageLoading(false);
+      }
     };
     loadProduct();
   }, [productId, isEditing]);
@@ -488,6 +561,7 @@ export default function ProductEditor() {
   useEffect(() => () => {
     // React Router navigation only unmounts; it does not reliably emit blur,
     // visibilitychange or beforeunload. Never replace this flush with cancel.
+    productEditorDiagnostic('editor.unmount.flush', { diagnosticInstance, localDraftKey: localDraftKeyRef.current, businessId: businessIdRef.current, currentProductId: currentProductIdRef.current, formData: formDataRef.current, images: draftImagesRef.current });
     draftDebouncerRef.current.flush(() => persistLocalDraftNowRef.current());
   }, []);
 
@@ -893,6 +967,7 @@ export default function ProductEditor() {
       throw new Error('Negocio no cargado. Espera un momento o recarga la pagina.');
     }
     ensureProductPromiseRef.current = (async () => {
+      productEditorDiagnostic('temporaryProduct.create.start', { diagnosticInstance, businessId: business.id, localDraftKey, formData: formDataRef.current });
       const { data, error } = await createProductDraft(business.id, buildDraftPayload());
       if (error || !data?.id) {
         throw new Error(error?.message || `No se pudo crear el borrador del ${itemSingular} para subir la imagen.`);
@@ -900,6 +975,15 @@ export default function ProductEditor() {
       setCurrentProductId(data.id);
       currentProductIdRef.current = data.id;
       temporaryProductDraftRef.current = true;
+      productEditorDiagnostic('temporaryProduct.create.complete', {
+        diagnosticInstance,
+        businessId: business.id,
+        routeProductId: productId || null,
+        currentProductId: data.id,
+        localDraftKeyBefore: localDraftKey,
+        recomputedKeyFromRoute: buildProductDraftKey(business.id, productId),
+        hypotheticalKeyFromCurrentProduct: buildProductDraftKey(business.id, data.id),
+      });
       setProductSlug(data?.slug || slugifyProductName(data?.name || formData?.nombre));
       initialActivoRef.current = data?.isActive !== undefined ? data.isActive : false;
       markDraftDirty();
@@ -1087,6 +1171,7 @@ export default function ProductEditor() {
 
   const applyLocalDraft = React.useCallback(async (draft) => {
     if (!draft?.formData) return;
+    productEditorDiagnostic('draft.restore.start', { diagnosticInstance, localDraftKey, draft: summarizeProductDraft(draft) });
     const restored = await restoreDraftImages(draft.images);
     if (restored.missingBlobKeys.length > 0) {
       toast.error('Algunas imágenes locales ya no estaban disponibles; recuperamos el resto del borrador.');
@@ -1096,11 +1181,13 @@ export default function ProductEditor() {
     currentProductIdRef.current = restoredProductId;
     draftImagesRef.current = restored.images;
     imagesRef.current = restored.images;
+    productEditorDiagnostic('draft.restore.beforeSetState', { diagnosticInstance, localDraftKey, restoredProductId, formData: draft.formData, images: restored.images });
     setCurrentProductId(restoredProductId);
     setFormData((previous) => ({ ...previous, ...draft.formData }));
     setImages(restored.images);
     isDirtyRef.current = true;
     setIsDirty(true);
+    productEditorDiagnostic('draft.restore.setStateQueued', { diagnosticInstance, localDraftKey, restoredProductId });
 
     // A local file is durable again at this point. Retry asynchronously so
     // currentProductId and the complete ordered image ref are already ready.
@@ -1117,7 +1204,9 @@ export default function ProductEditor() {
     if (!localDraftKey || checkedDraftKeyRef.current === localDraftKey) return;
     if (isEditing && pageLoading) return;
     checkedDraftKeyRef.current = localDraftKey;
+    productEditorDiagnostic('draft.check', { diagnosticInstance, productId, businessId: business?.id || null, localDraftKey, pageLoading, isEditing });
     const draft = readProductDraft(localDraftKey);
+    productEditorDiagnostic('draft.check.result', { diagnosticInstance, localDraftKey, draft: summarizeProductDraft(draft) });
     if (!draft) return;
     if (isEditing && !isDraftNewerThanServer(draft.savedAt, loadedProductUpdatedAtRef.current)) {
       removeProductDraft(localDraftKey);
