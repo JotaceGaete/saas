@@ -109,5 +109,81 @@ END $$;
 
 DROP TRIGGER force_fail_before_update ON auth.users;
 
+-- ── Caso 3: fallo forzado del INSERT de billing_subscriptions ──────────────
+-- Demuestra la otra mitad de la garantía de PR-2: wa_businesses y
+-- billing_subscriptions siguen siendo atómicos entre sí (a propósito, no
+-- están en un sub-bloque aislado como sí lo está el UPDATE de auth.users).
+-- Un fallo acá DEBE revertir también el INSERT de wa_businesses que ya se
+-- había ejecutado momentos antes en la misma invocación.
+--
+-- Se intercepta por metadata_json->>'contact_email' (no por business_id,
+-- que es un UUID generado en runtime y no se puede conocer de antemano) —
+-- ese campo lo fija wa_handle_new_user_business() con NEW.email tal cual,
+-- así que matchea exactamente el email de prueba que insertamos abajo.
+
+CREATE OR REPLACE FUNCTION pg_temp.force_fail_on_test_billing_insert()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.metadata_json->>'contact_email' = 'forced-billing-failure-test@example.test' THEN
+    RAISE EXCEPTION 'FORCED_TEST_FAILURE: simulando fallo del INSERT de billing_subscriptions';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER force_fail_before_insert_billing
+  BEFORE INSERT ON public.billing_subscriptions
+  FOR EACH ROW
+  EXECUTE FUNCTION pg_temp.force_fail_on_test_billing_insert();
+
+INSERT INTO auth.users (id, email, raw_user_meta_data, created_at, aud, role)
+VALUES (
+  '00000000-0000-0000-0000-000000000003',
+  'forced-billing-failure-test@example.test',
+  '{"name": "Negocio Con Billing Forzado A Fallar"}'::jsonb,
+  now(),
+  'authenticated',
+  'authenticated'
+);
+
+DO $$
+DECLARE
+  v_biz_exists  BOOLEAN;
+  v_bill_exists BOOLEAN;
+  v_meta        JSONB;
+BEGIN
+  -- LA ASERCIÓN CLAVE: a diferencia del caso 2, acá wa_businesses NO debe
+  -- sobrevivir — el INSERT de billing_subscriptions falló dentro del mismo
+  -- bloque protegido por el EXCEPTION externo (no aislado), así que ese
+  -- EXCEPTION revierte todo lo que el bloque hizo hasta ahí, incluido el
+  -- INSERT de wa_businesses.
+  SELECT EXISTS (
+    SELECT 1 FROM public.wa_businesses WHERE user_id = '00000000-0000-0000-0000-000000000003'
+  ) INTO v_biz_exists;
+  ASSERT NOT v_biz_exists,
+    'FAIL: caso 3 — wa_businesses SÍ quedó creado a pesar del fallo forzado en billing_subscriptions (rompe la atomicidad negocio+billing)';
+
+  -- Por construcción no debería existir (no hay wa_businesses.id al cual
+  -- referenciar), pero lo confirmamos igual de forma independiente por el
+  -- email en metadata_json, sin asumir nada por la ausencia del negocio.
+  SELECT EXISTS (
+    SELECT 1 FROM public.billing_subscriptions
+    WHERE metadata_json->>'contact_email' = 'forced-billing-failure-test@example.test'
+  ) INTO v_bill_exists;
+  ASSERT NOT v_bill_exists,
+    'FAIL: caso 3 — billing_subscriptions SÍ quedó creada a pesar del fallo forzado';
+
+  -- Tampoco debería haberse alcanzado nunca el UPDATE de auth.users: el fallo
+  -- ocurre antes, en la misma invocación, y el EXCEPTION externo corta ahí.
+  SELECT raw_app_meta_data INTO v_meta FROM auth.users
+   WHERE id = '00000000-0000-0000-0000-000000000003';
+  ASSERT v_meta IS NULL OR v_meta->>'plan_slug' IS NULL,
+    'FAIL: caso 3 — raw_app_meta_data se actualizó igual; el fallo forzado no disparó donde se esperaba, el test es inválido';
+
+  RAISE NOTICE 'OK: caso 3 (fallo forzado en billing_subscriptions) — wa_businesses y billing_subscriptions SE REVIRTIERON juntos: siguen siendo atómicos entre sí';
+END $$;
+
+DROP TRIGGER force_fail_before_insert_billing ON public.billing_subscriptions;
+
 -- Revertir todo — este script nunca deja datos de prueba en la base.
 ROLLBACK;
