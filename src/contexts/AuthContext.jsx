@@ -55,7 +55,14 @@ export const AuthProvider = ({ children }) => {
   // or SIGNED_IN). Distinct from `loading` — guards against OAuth redirect races on mobile
   // where the page mounts before Supabase has exchanged the code for a session.
   const [sessionReady, setSessionReady] = useState(false)
-  const [businessLoading, setBusinessLoading] = useState(false)
+  // businessStatus: 'idle' (sin intento de carga aún) | 'loading' | 'loaded' | 'not_found'
+  // (consulta exitosa, el usuario genuinamente no tiene negocio) | 'error' (falló la consulta,
+  // no sabemos si tiene negocio o no — nunca debe tratarse como 'not_found').
+  const [businessStatus, setBusinessStatus] = useState('idle')
+  const [businessLoadError, setBusinessLoadError] = useState(null)
+  // Derivado por compatibilidad: todo el código existente que lee `businessLoading`
+  // sigue funcionando igual, sin cambios de contrato.
+  const businessLoading = businessStatus === 'loading'
   const [sessionExpiredMessage, setSessionExpiredMessage] = useState(null)
   const trackingSessionIdRef = useRef(null)
   const trackingCleanupRef = useRef(null)
@@ -64,9 +71,19 @@ export const AuthProvider = ({ children }) => {
   const businessOperations = {
     async load(userId) {
       if (!userId) return
-      setBusinessLoading(true)
+      setBusinessStatus('loading')
+      setBusinessLoadError(null)
       try {
-        const { data } = await getMyBusiness()
+        const { data, error } = await getMyBusiness()
+        if (error) {
+          // Fallo de red/consulta: NUNCA interpretar como "no tiene negocio".
+          // Conservamos el último `business` conocido (puede ser null si nunca cargó,
+          // o un objeto válido si esto fue un refresh que falló) sin tocarlo.
+          console.error('Business load error:', error)
+          setBusinessLoadError(error)
+          setBusinessStatus('error')
+          return
+        }
         if (data) {
           const isPaidOrTrial = data.planSlug === 'pro' || data.planSlug === 'business'
           const now = new Date()
@@ -77,26 +94,41 @@ export const AuthProvider = ({ children }) => {
 
           if (paidExpired || trialExpired) {
             await updateBusiness(data.id, { planSlug: 'starter', planExpiresAt: null, trialExpiresAt: null })
-            const { data: updated } = await getMyBusiness()
+            const { data: updated, error: reloadError } = await getMyBusiness()
+            if (reloadError) {
+              // No pudimos releer tras el downgrade: no perder el negocio que sí teníamos.
+              console.error('Business reload after downgrade failed:', reloadError)
+              setBusiness(data)
+              setBusinessStatus('loaded')
+              startSessionTracking(data?.id).catch(() => {})
+              return
+            }
             setBusiness(updated || data)
+            setBusinessStatus('loaded')
             startSessionTracking((updated || data)?.id).catch(() => {})
             if (typeof sessionStorage !== 'undefined') {
               sessionStorage.setItem(trialExpired ? 'showTrialExpiredBanner' : 'showPlanExpiredBanner', '1')
             }
           } else {
             setBusiness(data)
+            setBusinessStatus('loaded')
             startSessionTracking(data?.id).catch(() => {})
           }
+        } else {
+          // Consulta exitosa y sin error: el usuario genuinamente no tiene negocio.
+          setBusiness(null)
+          setBusinessStatus('not_found')
         }
       } catch (err) {
         console.error('Business load error:', err)
-      } finally {
-        setBusinessLoading(false)
+        setBusinessLoadError({ message: err?.message || 'Error inesperado al cargar el negocio' })
+        setBusinessStatus('error')
       }
     },
     clear() {
       setBusiness(null)
-      setBusinessLoading(false)
+      setBusinessStatus('idle')
+      setBusinessLoadError(null)
     }
   }
 
@@ -432,7 +464,10 @@ export const AuthProvider = ({ children }) => {
 
   /** Actualiza el negocio en memoria sin disparar businessLoading ni hacer fetch. */
   const patchBusiness = (data) => {
-    if (data) setBusiness(data)
+    if (data) {
+      setBusiness(data)
+      setBusinessStatus('loaded')
+    }
   }
 
   /** Refresca el usuario desde Supabase (útil tras confirmar email en otro tab o enlace). */
@@ -477,6 +512,8 @@ export const AuthProvider = ({ children }) => {
     loading,
     sessionReady,
     businessLoading,
+    businessStatus,
+    businessLoadError,
     sessionExpiredMessage,
     clearSessionExpiredMessage,
     signIn,

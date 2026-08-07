@@ -10,6 +10,61 @@ import AuthStep from './components/AuthStep';
 import ConfirmEmailStep from './components/ConfirmEmailStep';
 import StoreCreationStep from './components/StoreCreationStep';
 import PremiumLoader from 'components/ui/PremiumLoader';
+import Icon from 'components/AppIcon';
+
+/**
+ * Se muestra cuando la carga del negocio falló (red/backend) — nunca cuando
+ * simplemente no existe negocio. Evita ofrecer el formulario de creación
+ * (StoreCreationStep) sobre un negocio que en realidad sí existe pero no
+ * pudimos consultar en este intento.
+ */
+function BusinessLoadErrorScreen({ onRetry, retrying }) {
+  return (
+    <div className="min-h-screen flex items-center justify-center p-6" style={{ backgroundColor: 'var(--color-background)' }}>
+      <div className="w-full max-w-md text-center">
+        <div
+          className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4"
+          style={{ backgroundColor: 'rgba(239,68,68,0.08)' }}
+        >
+          <Icon name="AlertCircle" size={24} color="var(--color-error)" />
+        </div>
+        <h1 className="text-xl font-bold mb-2" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>
+          No pudimos cargar tu cuenta
+        </h1>
+        <p className="text-sm mb-6" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+          Ocurrió un problema al consultar tu negocio. No es necesario crear uno nuevo — intenta de nuevo en unos segundos.
+        </p>
+        <button
+          type="button"
+          onClick={onRetry}
+          disabled={retrying}
+          className="w-full h-12 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all"
+          style={{
+            backgroundColor: retrying ? 'rgba(124,58,237,0.7)' : 'var(--color-primary)',
+            color: '#fff',
+            fontFamily: 'var(--font-caption)',
+            cursor: retrying ? 'not-allowed' : 'pointer',
+          }}
+        >
+          {retrying ? (
+            <>
+              <svg className="animate-spin" width={16} height={16} viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,0.3)" strokeWidth="3" />
+                <path d="M12 2a10 10 0 0 1 10 10" stroke="#fff" strokeWidth="3" strokeLinecap="round" />
+              </svg>
+              Reintentando...
+            </>
+          ) : (
+            <>
+              <Icon name="RefreshCw" size={15} color="#fff" />
+              Reintentar
+            </>
+          )}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function normalizeAuthErrorMessage(raw) {
   const msg = String(raw || '').trim();
@@ -59,7 +114,8 @@ function normalizeAuthErrorMessage(raw) {
  */
 export default function BusinessRegistration() {
   const navigate = useNavigate();
-  const { user, business, loading, businessLoading, signUp, signIn, signInWithGoogle, resendConfirmationEmail, isEmailConfirmed } = useAuth();
+  const { user, business, loading, businessLoading, businessStatus, refreshBusiness, signUp, signIn, signInWithGoogle, resendConfirmationEmail, isEmailConfirmed } = useAuth();
+  const [retryingBusinessLoad, setRetryingBusinessLoad] = useState(false);
   const { countryCode } = useCountry();
   const countryState = resolveCountryState({
     businessCountryCode: business,
@@ -219,8 +275,24 @@ export default function BusinessRegistration() {
     );
   }
 
-  // ── PASO 2: Autenticado sin negocio → formulario de creación de tienda ───────
-  // businessLoading = true mientras se carga el negocio por primera vez
+  // ── PASO 2: Autenticado ───────────────────────────────────────────────────
+  // Un error de carga NUNCA debe mostrar el formulario de creación de negocio —
+  // podría existir y estar ocultándose por un problema transitorio de red/backend.
+  if (businessStatus === 'error') {
+    const handleRetry = async () => {
+      setRetryingBusinessLoad(true);
+      try {
+        await refreshBusiness();
+      } finally {
+        setRetryingBusinessLoad(false);
+      }
+    };
+    return <BusinessLoadErrorScreen onRetry={handleRetry} retrying={retryingBusinessLoad} />;
+  }
+
+  // businessLoading = true mientras se carga el negocio por primera vez.
+  // StoreCreationStep solo llega a mostrar el formulario real cuando
+  // businessStatus === 'not_found' (mientras carga, muestra su propio spinner).
   return (
     <StoreCreationStep
       user={user}
