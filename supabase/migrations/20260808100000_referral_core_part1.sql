@@ -322,7 +322,12 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.wa_get_or_create_my_referral_code() FROM PUBLIC;
+-- Supabase otorga EXECUTE por default a anon/authenticated/service_role de
+-- forma directa (ALTER DEFAULT PRIVILEGES a nivel de plataforma, fuera de
+-- este repo) sobre cada función nueva en el schema public -- no vía PUBLIC.
+-- Revocar solo de PUBLIC no alcanza para restringir el acceso real; hay que
+-- nombrar explícitamente los roles que Supabase ya le otorgó por su cuenta.
+REVOKE ALL ON FUNCTION public.wa_get_or_create_my_referral_code() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.wa_get_or_create_my_referral_code() TO authenticated;
 
 COMMENT ON FUNCTION public.wa_get_or_create_my_referral_code() IS
@@ -464,7 +469,9 @@ EXCEPTION
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.wa_attribute_referral(UUID, TEXT, TIMESTAMPTZ) FROM PUBLIC;
+-- Mismo motivo que wa_get_or_create_my_referral_code() más arriba: hay que
+-- nombrar anon explícitamente, PUBLIC no alcanza.
+REVOKE ALL ON FUNCTION public.wa_attribute_referral(UUID, TEXT, TIMESTAMPTZ) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.wa_attribute_referral(UUID, TEXT, TIMESTAMPTZ) TO authenticated;
 
 COMMENT ON FUNCTION public.wa_attribute_referral(UUID, TEXT, TIMESTAMPTZ) IS
@@ -537,7 +544,11 @@ EXCEPTION
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.wa_create_referral_commission_for_payment(UUID, TEXT, TEXT, NUMERIC, TEXT, NUMERIC, TEXT, UUID, INTEGER) FROM PUBLIC;
+-- Crítico: esta es la función que crea comisiones. PUBLIC no alcanza --
+-- Supabase ya le otorgó EXECUTE directo a anon Y a authenticated por su
+-- cuenta (mismo motivo documentado arriba); hay que revocárselo a ambos
+-- explícitamente, o cualquier cliente autenticado podría invocarla.
+REVOKE ALL ON FUNCTION public.wa_create_referral_commission_for_payment(UUID, TEXT, TEXT, NUMERIC, TEXT, NUMERIC, TEXT, UUID, INTEGER) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.wa_create_referral_commission_for_payment(UUID, TEXT, TEXT, NUMERIC, TEXT, NUMERIC, TEXT, UUID, INTEGER) TO service_role;
 
 COMMENT ON FUNCTION public.wa_create_referral_commission_for_payment(UUID, TEXT, TEXT, NUMERIC, TEXT, NUMERIC, TEXT, UUID, INTEGER) IS
