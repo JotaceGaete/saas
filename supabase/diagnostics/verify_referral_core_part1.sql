@@ -102,16 +102,33 @@ END $$;
 RESET ROLE;
 
 -- ── Caso 2: wa_resolve_referral_code() — resolución pública segura ─────────
+-- El código se obtiene ANTES de simular anon: referral_codes solo tiene
+-- políticas de SELECT "TO authenticated" (dueño/admin) -- a propósito, es
+-- justamente el motivo de que exista wa_resolve_referral_code() como bypass
+-- seguro para el público. Leerlo directo como anon devolvería 0 filas por
+-- RLS (no un error), no es lo que se quiere probar acá. Se pasa el código
+-- entre bloques via un GUC de sesión (mismo mecanismo que ya usa el script
+-- para request.jwt.claims), no hay forma de compartir variables plpgsql
+-- entre bloques DO distintos.
+
+DO $$
+DECLARE
+  v_code TEXT;
+BEGIN
+  SELECT code INTO v_code FROM public.referral_codes
+   WHERE business_id = (SELECT id FROM public.wa_businesses WHERE user_id = '00000000-0000-0000-0000-0000000000a1');
+  ASSERT v_code IS NOT NULL, 'FAIL: caso 2 (setup) — no se encontró el código creado en el caso 1';
+  PERFORM set_config('test.referrer_code', v_code, true);
+END $$;
 
 SET LOCAL ROLE anon;
 
 DO $$
 DECLARE
-  v_code   TEXT;
+  v_code   TEXT := current_setting('test.referrer_code', true);
   v_result JSONB;
 BEGIN
-  SELECT code INTO v_code FROM public.referral_codes
-   WHERE business_id = (SELECT id FROM public.wa_businesses WHERE user_id = '00000000-0000-0000-0000-0000000000a1');
+  ASSERT v_code IS NOT NULL AND v_code <> '', 'FAIL: caso 2 — no se pudo recuperar el código de prueba (bug del script, no de la RPC)';
 
   SELECT public.wa_resolve_referral_code(v_code) INTO v_result;
   ASSERT (v_result->>'valid')::boolean = true, 'FAIL: caso 2 — código válido resuelto como inválido';
