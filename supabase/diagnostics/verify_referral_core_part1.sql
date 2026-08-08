@@ -102,23 +102,38 @@ END $$;
 RESET ROLE;
 
 -- ── Caso 2: wa_resolve_referral_code() — resolución pública segura ─────────
--- El código se obtiene ANTES de simular anon: referral_codes solo tiene
--- políticas de SELECT "TO authenticated" (dueño/admin) -- a propósito, es
--- justamente el motivo de que exista wa_resolve_referral_code() como bypass
--- seguro para el público. Leerlo directo como anon devolvería 0 filas por
--- RLS (no un error), no es lo que se quiere probar acá. Se pasa el código
--- entre bloques via un GUC de sesión (mismo mecanismo que ya usa el script
--- para request.jwt.claims), no hay forma de compartir variables plpgsql
--- entre bloques DO distintos.
+-- El código Y el nombre real se obtienen ANTES de simular anon:
+--   - referral_codes solo tiene políticas de SELECT "TO authenticated"
+--     (dueño/admin) -- a propósito, es justamente el motivo de que exista
+--     wa_resolve_referral_code() como bypass seguro para el público. Leerlo
+--     directo como anon devolvería 0 filas por RLS (no un error).
+--   - El nombre esperado NO se hardcodea: el trigger real de R1
+--     (wa_handle_new_user_business) resuelve wa_businesses.name con su
+--     propia cadena de fallback (business_name -> full_name -> prefijo de
+--     email -> 'Mi negocio'), que no necesariamente coincide con la clave
+--     "name" que usa el fixture de este script en raw_user_meta_data. El
+--     valor correcto a comparar es el que R1 realmente escribió en
+--     wa_businesses, leído dinámicamente -- no lo que el fixture "quiso decir".
+-- Ambos se pasan al bloque anon via GUCs de sesión (mismo mecanismo que ya
+-- usa el script para request.jwt.claims), porque los bloques DO no comparten
+-- variables plpgsql entre sí.
 
 DO $$
 DECLARE
   v_code TEXT;
+  v_name TEXT;
 BEGIN
-  SELECT code INTO v_code FROM public.referral_codes
-   WHERE business_id = (SELECT id FROM public.wa_businesses WHERE user_id = '00000000-0000-0000-0000-0000000000a1');
+  SELECT rc.code, b.name INTO v_code, v_name
+  FROM public.referral_codes rc
+  JOIN public.wa_businesses b ON b.id = rc.business_id
+  WHERE rc.business_id = (SELECT id FROM public.wa_businesses WHERE user_id = '00000000-0000-0000-0000-0000000000a1');
+
   ASSERT v_code IS NOT NULL, 'FAIL: caso 2 (setup) — no se encontró el código creado en el caso 1';
+  ASSERT v_name IS NOT NULL AND v_name <> '', 'FAIL: caso 2 (setup) — wa_businesses.name vino vacío/nulo para el referidor';
+
   PERFORM set_config('test.referrer_code', v_code, true);
+  PERFORM set_config('test.referrer_name', v_name, true);
+  RAISE NOTICE 'OK: caso 2 (setup) — nombre real del referidor en wa_businesses: %', v_name;
 END $$;
 
 SET LOCAL ROLE anon;
@@ -126,20 +141,23 @@ SET LOCAL ROLE anon;
 DO $$
 DECLARE
   v_code   TEXT := current_setting('test.referrer_code', true);
+  v_name   TEXT := current_setting('test.referrer_name', true);
   v_result JSONB;
 BEGIN
   ASSERT v_code IS NOT NULL AND v_code <> '', 'FAIL: caso 2 — no se pudo recuperar el código de prueba (bug del script, no de la RPC)';
+  ASSERT v_name IS NOT NULL AND v_name <> '', 'FAIL: caso 2 — no se pudo recuperar el nombre real de prueba (bug del script, no de la RPC)';
 
   SELECT public.wa_resolve_referral_code(v_code) INTO v_result;
   ASSERT (v_result->>'valid')::boolean = true, 'FAIL: caso 2 — código válido resuelto como inválido';
-  ASSERT v_result->>'referrerName' = 'Negocio Referidor', 'FAIL: caso 2 — referrerName incorrecto: ' || (v_result->>'referrerName');
+  ASSERT v_result->>'referrerName' = v_name,
+    'FAIL: caso 2 — referrerName no coincide con wa_businesses.name real. esperado=' || v_name || ' obtenido=' || (v_result->>'referrerName');
   ASSERT NOT (v_result ? 'business_id') AND NOT (v_result ? 'email'),
     'FAIL: caso 2 — la resolución pública expone datos sensibles';
 
   SELECT public.wa_resolve_referral_code('no-existe-xyz') INTO v_result;
   ASSERT (v_result->>'valid')::boolean = false, 'FAIL: caso 2 — código inexistente resuelto como válido';
 
-  RAISE NOTICE 'OK: caso 2 — wa_resolve_referral_code() resuelve sin exponer datos sensibles, y anon puede llamarla';
+  RAISE NOTICE 'OK: caso 2 — wa_resolve_referral_code() resuelve el nombre real sin exponer datos sensibles, y anon puede llamarla';
 END $$;
 
 RESET ROLE;
