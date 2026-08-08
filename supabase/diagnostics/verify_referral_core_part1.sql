@@ -177,7 +177,11 @@ DECLARE
 BEGIN
   SELECT id INTO v_referred_biz FROM public.wa_businesses WHERE user_id = '00000000-0000-0000-0000-0000000000a2';
   SELECT id INTO v_referrer_biz FROM public.wa_businesses WHERE user_id = '00000000-0000-0000-0000-0000000000a1';
-  SELECT code INTO v_code FROM public.referral_codes WHERE business_id = v_referrer_biz;
+  -- a2 no es dueño del código de a1: leerlo directo de referral_codes daría
+  -- 0 filas por RLS. Se reutiliza el código real capturado en el setup del
+  -- caso 2 (GUC de sesión, sigue vigente durante toda la transacción).
+  v_code := current_setting('test.referrer_code', true);
+  ASSERT v_code IS NOT NULL AND v_code <> '', 'FAIL: caso 3 — no se pudo recuperar el código de prueba (bug del script, no de la RPC)';
 
   SELECT public.wa_attribute_referral(v_referred_biz, v_code) INTO v_result;
   ASSERT (v_result->>'attributed')::boolean = true, 'FAIL: caso 3 — atribución esperada no ocurrió: ' || v_result::text;
@@ -202,7 +206,7 @@ DECLARE
 BEGIN
   SELECT id INTO v_referred_biz FROM public.wa_businesses WHERE user_id = '00000000-0000-0000-0000-0000000000a2';
   SELECT id INTO v_referrer_biz FROM public.wa_businesses WHERE user_id = '00000000-0000-0000-0000-0000000000a1';
-  SELECT code INTO v_code FROM public.referral_codes WHERE business_id = v_referrer_biz;
+  v_code := current_setting('test.referrer_code', true); -- a2 no es dueño del código de a1 (ver caso 3)
 
   SELECT public.wa_attribute_referral(v_referred_biz, v_code) INTO v_result;
   ASSERT (v_result->>'attributed')::boolean = false, 'FAIL: caso 4 — el reintento debía ser rechazado';
@@ -224,7 +228,7 @@ DECLARE
 BEGIN
   -- Seguimos autenticados como a2 (referido), intentamos atribuir el negocio del referidor (a1).
   SELECT id INTO v_referrer_biz FROM public.wa_businesses WHERE user_id = '00000000-0000-0000-0000-0000000000a1';
-  SELECT code FROM public.referral_codes WHERE business_id = v_referrer_biz INTO v_code;
+  v_code := current_setting('test.referrer_code', true); -- a2 no es dueño del código de a1 (ver caso 3)
 
   BEGIN
     PERFORM public.wa_attribute_referral(v_referrer_biz, v_code);
@@ -281,7 +285,7 @@ DECLARE
 BEGIN
   SELECT id INTO v_dup_biz      FROM public.wa_businesses WHERE user_id = '00000000-0000-0000-0000-0000000000a3';
   SELECT id INTO v_referrer_biz FROM public.wa_businesses WHERE user_id = '00000000-0000-0000-0000-0000000000a1';
-  SELECT code INTO v_code FROM public.referral_codes WHERE business_id = v_referrer_biz;
+  v_code := current_setting('test.referrer_code', true); -- a3 no es dueño del código de a1 (ver caso 3)
 
   SELECT public.wa_attribute_referral(v_dup_biz, v_code) INTO v_result;
   ASSERT (v_result->>'attributed')::boolean = true, 'FAIL: caso 7 — la fila de trazabilidad no se creó: ' || v_result::text;
@@ -310,7 +314,7 @@ DECLARE
 BEGIN
   SELECT id INTO v_click_biz    FROM public.wa_businesses WHERE user_id = '00000000-0000-0000-0000-0000000000a5';
   SELECT id INTO v_referrer_biz FROM public.wa_businesses WHERE user_id = '00000000-0000-0000-0000-0000000000a1';
-  SELECT code INTO v_code FROM public.referral_codes WHERE business_id = v_referrer_biz;
+  v_code := current_setting('test.referrer_code', true); -- a5 no es dueño del código de a1 (ver caso 3)
 
   SELECT public.wa_attribute_referral(v_click_biz, v_code, now() + interval '2 hours') INTO v_result;
   ASSERT (v_result->>'attributed')::boolean = false, 'FAIL: caso 7b — un click_at futuro no debía atribuir';
@@ -332,7 +336,7 @@ DECLARE
 BEGIN
   SELECT id INTO v_click_biz    FROM public.wa_businesses WHERE user_id = '00000000-0000-0000-0000-0000000000a5';
   SELECT id INTO v_referrer_biz FROM public.wa_businesses WHERE user_id = '00000000-0000-0000-0000-0000000000a1';
-  SELECT code INTO v_code FROM public.referral_codes WHERE business_id = v_referrer_biz;
+  v_code := current_setting('test.referrer_code', true); -- a5 no es dueño del código de a1 (ver caso 3)
 
   SELECT public.wa_attribute_referral(v_click_biz, v_code, now() - interval '31 days') INTO v_result;
   ASSERT (v_result->>'attributed')::boolean = false, 'FAIL: caso 7c — un click_at de hace 31 días no debía atribuir';
@@ -354,7 +358,7 @@ DECLARE
 BEGIN
   SELECT id INTO v_click_biz    FROM public.wa_businesses WHERE user_id = '00000000-0000-0000-0000-0000000000a5';
   SELECT id INTO v_referrer_biz FROM public.wa_businesses WHERE user_id = '00000000-0000-0000-0000-0000000000a1';
-  SELECT code INTO v_code FROM public.referral_codes WHERE business_id = v_referrer_biz;
+  v_code := current_setting('test.referrer_code', true); -- a5 no es dueño del código de a1 (ver caso 3)
 
   SELECT public.wa_attribute_referral(v_click_biz, v_code, now() - interval '5 days') INTO v_result;
   ASSERT (v_result->>'attributed')::boolean = true, 'FAIL: caso 7d — un click_at válido debía atribuir: ' || v_result::text;
@@ -408,8 +412,14 @@ DO $$
 DECLARE
   v_second_referrer_code TEXT;
 BEGIN
+  -- El código se captura del valor de retorno de la RPC, no de una lectura
+  -- directa de referral_codes: eso no tiene problema de RLS (es la propia
+  -- función devolviendo el código del caller), pero de todos modos se guarda
+  -- en un GUC separado porque el siguiente bloque corre como a5, que no es
+  -- dueño del código de a7 y no podría leerlo directo de la tabla.
   SELECT public.wa_get_or_create_my_referral_code() INTO v_second_referrer_code;
   ASSERT v_second_referrer_code IS NOT NULL, 'FAIL: caso 7f — el segundo referidor no pudo crear su código';
+  PERFORM set_config('test.second_referrer_code', v_second_referrer_code, true);
   RAISE NOTICE 'OK: caso 7f (setup) — segundo referidor con código propio: %', v_second_referrer_code;
 END $$;
 
@@ -431,7 +441,10 @@ BEGIN
   SELECT id INTO v_click_biz           FROM public.wa_businesses WHERE user_id = '00000000-0000-0000-0000-0000000000a5';
   SELECT id INTO v_original_referrer   FROM public.wa_businesses WHERE user_id = '00000000-0000-0000-0000-0000000000a1';
   SELECT id INTO v_second_referrer_biz FROM public.wa_businesses WHERE user_id = '00000000-0000-0000-0000-0000000000a7';
-  SELECT code INTO v_second_code FROM public.referral_codes WHERE business_id = v_second_referrer_biz;
+  -- a5 no es dueño del código de a7: leerlo directo de referral_codes daría
+  -- 0 filas por RLS. Se reutiliza el código capturado en el setup de arriba.
+  v_second_code := current_setting('test.second_referrer_code', true);
+  ASSERT v_second_code IS NOT NULL AND v_second_code <> '', 'FAIL: caso 7f — no se pudo recuperar el segundo código de prueba (bug del script, no de la RPC)';
 
   -- v_click_biz (a5) ya está atribuido a v_original_referrer (a1) desde el caso 7d.
   SELECT public.wa_attribute_referral(v_click_biz, v_second_code) INTO v_result;
