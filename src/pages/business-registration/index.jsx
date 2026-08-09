@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useCountry } from '../../contexts/CountryContext';
 import { resolveCountryState, resolveBillingSetup, logCountryStateDebug } from '../../lib/country/state-model';
 import { collectVisitAttribution } from '../../utils/analytics';
+import { captureReferralCode } from '../../lib/referralCapture';
 import { recordSiteVisit } from '../../services/waBusinessService';
 import { trackLoopsEvent } from '../../services/loopsClient';
 import AuthStep from './components/AuthStep';
@@ -136,6 +137,17 @@ export default function BusinessRegistration() {
 
   useEffect(() => {
     recordSiteVisit({ path: '/register', attribution: collectVisitAttribution() }).catch(() => {});
+  }, []);
+
+  // Captura ?ref= (llega desde walinka.com) y lo persiste en sessionStorage.
+  // Se ejecuta en cada mount de esta página -- incluido el regreso desde
+  // /auth/callback tras Google OAuth, que también renderiza este componente
+  // pero sin ?ref= en la URL (AuthCallback navega a '/business-registration'
+  // a secas). Como no llega ref en ese caso, captureReferralCode() conserva
+  // el valor que ya se había guardado antes de salir a Google, en vez de
+  // borrarlo.
+  useEffect(() => {
+    captureReferralCode();
   }, []);
 
   useEffect(() => {

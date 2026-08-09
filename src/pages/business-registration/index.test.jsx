@@ -15,6 +15,7 @@ vi.mock('../../lib/country/state-model', () => ({
   logCountryStateDebug: () => {},
 }));
 vi.mock('../../utils/analytics', () => ({ collectVisitAttribution: () => ({}) }));
+vi.mock('../../lib/referralCapture', () => ({ captureReferralCode: vi.fn() }));
 vi.mock('../../services/waBusinessService', () => ({ recordSiteVisit: vi.fn(async () => ({})) }));
 vi.mock('../../services/loopsClient', () => ({ trackLoopsEvent: vi.fn(async () => ({})) }));
 vi.mock('./components/AuthStep', () => ({ default: () => <div>auth-step</div> }));
@@ -26,6 +27,7 @@ vi.mock('./components/StoreCreationStep', () => ({
 }));
 
 import { useAuth } from '../../contexts/AuthContext';
+import { captureReferralCode } from '../../lib/referralCapture';
 import BusinessRegistration from './index';
 
 const MOCK_USER = { id: 'user-1', email: 'test@example.com', email_confirmed_at: '2026-01-01T00:00:00Z' };
@@ -102,5 +104,23 @@ describe('BusinessRegistration — visibilidad de StoreCreationStep según busin
     expect(screen.getByText('auth-step')).toBeInTheDocument();
     expect(screen.queryByTestId('store-creation-step')).not.toBeInTheDocument();
     expect(screen.queryByText(/no pudimos cargar tu cuenta/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('BusinessRegistration — captura de ?ref= (handoff walinka.com → business-registration)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('llama a captureReferralCode() al montar, sin usuario autenticado (paso AuthStep)', () => {
+    setAuth({ user: null, businessStatus: 'idle' });
+    renderPage();
+    expect(captureReferralCode).toHaveBeenCalledTimes(1);
+  });
+
+  it('llama a captureReferralCode() al montar, con usuario autenticado (paso StoreCreationStep) — cubre el regreso desde /auth/callback tras Google OAuth', () => {
+    setAuth({ businessStatus: 'not_found', business: null });
+    renderPage();
+    expect(captureReferralCode).toHaveBeenCalledTimes(1);
   });
 });
