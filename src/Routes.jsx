@@ -19,6 +19,7 @@ import Dashboard from './pages/dashboard';
 import ProductEditor from './pages/product-editor';
 import DesignPage from './pages/design';
 import HelpPage from './pages/help';
+import AffiliatesPage from './pages/affiliates';
 import PublicCatalog, { CatalogForSlug } from './pages/public-catalog';
 import PublicOffers from './pages/public-offers';
 import PublicProductPage from './pages/public-product';
@@ -171,6 +172,10 @@ const Routes = () => {
             <Route path="/proveedores/:supplierId" element={<RequireAuth><SupplierDetail /></RequireAuth>} />
             <Route path="/design" element={<RequireAuth><DesignPage /></RequireAuth>} />
             <Route path="/ayuda" element={<RequireAuth><HelpPage /></RequireAuth>} />
+            {/* Rollout temporal: solo admins mientras el programa está en pruebas.
+                Reutiliza RequireAdmin (mismo mecanismo que /admin/*) -- cuando se
+                abra al público, este cambio es solo volver a RequireAuth. */}
+            <Route path="/afiliados" element={<RequireAdmin><AffiliatesPage /></RequireAdmin>} />
             <Route path="/login" element={<Login />} />
             <Route path="/verify-email" element={<VerifyEmailPage />} />
             <Route path="/auth/callback" element={<AuthCallback />} />

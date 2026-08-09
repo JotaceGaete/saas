@@ -20,6 +20,10 @@ const NAV_ITEMS = [
   { label: 'Diseño',             path: '/design',                 icon: 'Palette' },
   { label: 'Plan y facturación', path: '/planes',                 icon: 'CreditCard' },
   { label: 'Ayuda',              path: '/ayuda',                  icon: 'HelpCircle' },
+  // Rollout temporal: solo admins mientras el programa está en pruebas.
+  // Mismo mecanismo adminOnly que ya filtra los demás ítems administrativos
+  // más abajo -- cuando se abra al público, basta con quitar esta línea.
+  { label: 'Afiliados',          path: '/afiliados',              icon: 'Gift', adminOnly: true },
   { section: true, label: '—' },
   {
     label: 'CRM',
