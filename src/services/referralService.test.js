@@ -6,7 +6,7 @@ vi.mock('../lib/supabase', () => ({
   supabase: { rpc: (...args) => rpcMock(...args) },
 }));
 
-import { getMyReferralStats, listMyReferrals } from './referralService';
+import { attributeReferral, getMyReferralStats, listMyReferrals } from './referralService';
 
 beforeEach(() => {
   rpcMock.mockReset();
@@ -69,5 +69,25 @@ describe('listMyReferrals', () => {
   it('propaga el error de la RPC', async () => {
     rpcMock.mockResolvedValue({ data: null, error: { message: 'boom' } });
     await expect(listMyReferrals()).rejects.toEqual({ message: 'boom' });
+  });
+});
+
+describe('attributeReferral', () => {
+  it('llama a wa_attribute_referral con p_code/p_click_at y devuelve el payload', async () => {
+    const payload = { attributed: true, status: 'qualified', attributionId: 'attr-1' };
+    rpcMock.mockResolvedValue({ data: payload, error: null });
+
+    const result = await attributeReferral('jota-f92ee', '2026-08-12T10:00:00.000Z');
+
+    expect(rpcMock).toHaveBeenCalledWith('wa_attribute_referral', {
+      p_code: 'jota-f92ee',
+      p_click_at: '2026-08-12T10:00:00.000Z',
+    });
+    expect(result).toEqual(payload);
+  });
+
+  it('propaga el error de la RPC (p.ej. NOT_AUTHENTICATED)', async () => {
+    rpcMock.mockResolvedValue({ data: null, error: { message: 'NOT_AUTHENTICATED' } });
+    await expect(attributeReferral('jota-f92ee', null)).rejects.toEqual({ message: 'NOT_AUTHENTICATED' });
   });
 });

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { getMyBusiness } from '../../services/waBusinessService';
 import { APP_ORIGIN, isCanonicalAppHostname } from '../../config/appUrl';
+import { attemptPendingAttribution, isNewAccountFromTimestamps } from '../../utils/referralAttribution';
 import PremiumLoader from 'components/ui/PremiumLoader';
 
 function isLocalhostHost(hostname) {
@@ -62,6 +63,27 @@ export default function AuthCallback() {
           safeNavigate('/login?checkEmail=true');
           return;
         }
+
+        // Best-effort, en paralelo -- nunca debe demorar ni bloquear la
+        // redirección de abajo. Dos flujos aterrizan acá con sesión fresca:
+        //   - Google OAuth: provider='google' -> solo elegible si la CUENTA
+        //     (no la identidad) se acaba de crear (created_at/last_sign_in_at).
+        //   - Confirmación de email de un signUp(): provider='email' -- ya
+        //     sabemos que es un usuario nuevo por construcción (un login
+        //     nunca pasa por acá, signIn() siempre da sesión inmediata).
+        //
+        // Invariante de la que depende `provider === 'email' -> true`: hoy
+        // /auth/callback solo recibe provider='email' desde signup/confirmación
+        // de cuentas nuevas (signUp, resendConfirmationEmail, cambio de correo
+        // pre-confirmación en /verify-email) -- nunca desde un login de una
+        // cuenta ya existente, porque signIn() con email/password resuelve la
+        // sesión de forma síncrona y nunca redirige a esta página. Si en el
+        // futuro se agrega passwordless/magic-link u otro login por email para
+        // usuarios EXISTENTES que redirija acá, esta elegibilidad debe
+        // revisarse -- ya no sería seguro asumir "provider=email = siempre nuevo".
+        const provider = session.user?.app_metadata?.provider;
+        const isEligible = provider === 'google' ? isNewAccountFromTimestamps(session.user) : true;
+        attemptPendingAttribution({ userId: session.user?.id, isEligible }).catch(() => {});
 
         const { data: business, error: businessError } = await getMyBusiness();
 

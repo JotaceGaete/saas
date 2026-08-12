@@ -6,6 +6,7 @@ import { resolveCountryState, resolveBillingSetup, logCountryStateDebug } from '
 import { collectVisitAttribution } from '../../utils/analytics';
 import { recordSiteVisit } from '../../services/waBusinessService';
 import { trackLoopsEvent } from '../../services/loopsClient';
+import { captureReferralFromUrl, attemptPendingAttribution } from '../../utils/referralAttribution';
 import AuthStep from './components/AuthStep';
 import ConfirmEmailStep from './components/ConfirmEmailStep';
 import StoreCreationStep from './components/StoreCreationStep';
@@ -138,6 +139,13 @@ export default function BusinessRegistration() {
     recordSiteVisit({ path: '/register', attribution: collectVisitAttribution() }).catch(() => {});
   }, []);
 
+  // Captura ?ref= apenas se monta la página, sin importar si hay sesión o
+  // no todavía -- clickAt debe representar el momento real de llegada, no
+  // el momento posterior del signup.
+  useEffect(() => {
+    captureReferralFromUrl();
+  }, []);
+
   useEffect(() => {
     if (!signupCooldownActive) return;
     const t = setInterval(() => {
@@ -206,6 +214,12 @@ export default function BusinessRegistration() {
             console.log('[BusinessRegistration] signUp: email confirmation required', { email: data.user?.email });
           }
           setPendingConfirmation({ email: data.user?.email || email });
+          // Sin sesión todavía -- la atribución se intenta más adelante en
+          // /auth/callback cuando confirme el correo, nunca acá.
+        } else if (data?.session && data?.user) {
+          // Sesión inmediata (confirmación de email desactivada): signUp
+          // siempre es un usuario nuevo, sin necesitar ninguna heurística.
+          attemptPendingAttribution({ userId: data.user.id, isEligible: true }).catch(() => {});
         }
         trackLoopsEvent('user_registered', {
           email: data?.user?.email || email,
@@ -227,9 +241,13 @@ export default function BusinessRegistration() {
       setIsSubmitting(true);
       setAuthError(null);
       try {
-        const { error } = await signIn(email, password);
+        const { data, error } = await signIn(email, password);
         if (error) {
           setAuthError(normalizeAuthErrorMessage(error.message));
+        } else if (data?.user) {
+          // Login = usuario existente, nunca elegible. Limpia cualquier
+          // referral pendiente para que no siga intentando atribuirse.
+          attemptPendingAttribution({ userId: data.user.id, isEligible: false }).catch(() => {});
         }
         // Si no hay error, onAuthStateChange actualiza `user` automáticamente.
       } catch {
