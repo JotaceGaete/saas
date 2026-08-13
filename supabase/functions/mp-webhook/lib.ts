@@ -66,3 +66,51 @@ export function buildBillingSubscriptionUpsertPayload({
     current_period_ends_at: currentPeriodEndsAt,
   };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Affiliate Core (Fase 5A) — ¿esta aprobación de MP cuenta como un período
+// mensual realmente pagado para wa_register_referral_paid_period()?
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface ShouldRegisterReferralPaidPeriodInput {
+  mpStatus: string;
+  planSlug: string;
+  currentPlan: string;
+  transactionAmount: number | null | undefined;
+}
+
+/**
+ * true únicamente cuando el pago está aprobado, es exactamente el MISMO
+ * plan que el negocio ya tenía (comparación de slug, no de PLAN_ORDER:
+ * 'starter' y 'control' comparten orden pero son planes distintos -- un
+ * cambio lateral entre ellos NO debe contar como renovación), y hubo un
+ * cobro real (> 0). Excluye así, sin necesitar ninguna señal nueva:
+ * pagos no aprobados, upgrades, downgrades, y los ajustes internos de
+ * prorrateo a $0 (que además nunca llegan a mp-webhook -- se insertan
+ * directo en wa_payments desde create-mp-preference).
+ *
+ * No decide nada sobre consecutividad de meses -- eso es explícitamente
+ * de una fase posterior. Solo responde "¿este cobro es un mes real y
+ * completo del mismo plan?".
+ */
+export function shouldRegisterReferralPaidPeriod({
+  mpStatus,
+  planSlug,
+  currentPlan,
+  transactionAmount,
+}: ShouldRegisterReferralPaidPeriodInput): boolean {
+  if (mpStatus !== 'approved') return false;
+  if (planSlug !== currentPlan) return false;
+  if (typeof transactionAmount !== 'number' || transactionAmount <= 0) return false;
+  return true;
+}
+
+/**
+ * period_ref estable para Affiliate Core: derivado exclusivamente del
+ * mp_payment_id real de Mercado Pago (nunca de un timestamp ni de un UUID
+ * generado acá), para que dos notificaciones del mismo cobro produzcan
+ * siempre el mismo valor.
+ */
+export function buildReferralPeriodRef(mpPaymentId: string | number): string {
+  return `mp:${mpPaymentId}`;
+}

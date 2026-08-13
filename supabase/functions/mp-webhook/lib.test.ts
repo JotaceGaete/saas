@@ -19,7 +19,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { buildBillingSubscriptionUpsertPayload } from './lib';
+import { buildBillingSubscriptionUpsertPayload, buildReferralPeriodRef, shouldRegisterReferralPaidPeriod } from './lib';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const indexSource = readFileSync(join(__dirname, 'index.ts'), 'utf-8');
@@ -239,5 +239,166 @@ describe('index.ts — comportamiento preexistente que R2 no debe alterar', () =
 
   it('C5: el registro de auditoría en wa_payment_events (paso 5) sigue ejecutándose siempre, antes del branch de status', () => {
     expect(indexSource).toMatch(/wa_payment_events['"]\)\.insert\(/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// D. shouldRegisterReferralPaidPeriod (Fase 5A)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('shouldRegisterReferralPaidPeriod', () => {
+  const baseInput = {
+    mpStatus: 'approved',
+    planSlug: 'pro',
+    currentPlan: 'pro',
+    transactionAmount: 5990,
+  };
+
+  it('D1: renovación exacta + approved + monto > 0 -> true', () => {
+    expect(shouldRegisterReferralPaidPeriod(baseInput)).toBe(true);
+  });
+
+  it('D2: mismo plan pero pending -> false', () => {
+    expect(shouldRegisterReferralPaidPeriod({ ...baseInput, mpStatus: 'pending' })).toBe(false);
+  });
+
+  it('D3: mismo plan pero rejected -> false', () => {
+    expect(shouldRegisterReferralPaidPeriod({ ...baseInput, mpStatus: 'rejected' })).toBe(false);
+  });
+
+  it('D4: mismo plan pero in_process -> false', () => {
+    expect(shouldRegisterReferralPaidPeriod({ ...baseInput, mpStatus: 'in_process' })).toBe(false);
+  });
+
+  it('D5: mismo plan con monto 0 -> false (ajuste interno de prorrateo)', () => {
+    expect(shouldRegisterReferralPaidPeriod({ ...baseInput, transactionAmount: 0 })).toBe(false);
+  });
+
+  it('D6: monto negativo -> false', () => {
+    expect(shouldRegisterReferralPaidPeriod({ ...baseInput, transactionAmount: -10 })).toBe(false);
+  });
+
+  it('D7: sin transactionAmount (undefined) -> false', () => {
+    expect(shouldRegisterReferralPaidPeriod({ ...baseInput, transactionAmount: undefined })).toBe(false);
+  });
+
+  it('D8: upgrade (planSlug distinto, de mayor orden) -> false', () => {
+    expect(shouldRegisterReferralPaidPeriod({ ...baseInput, planSlug: 'business', currentPlan: 'pro' })).toBe(false);
+  });
+
+  it('D9: downgrade (planSlug distinto, de menor orden) -> false', () => {
+    expect(shouldRegisterReferralPaidPeriod({ ...baseInput, planSlug: 'pro', currentPlan: 'business' })).toBe(false);
+  });
+
+  it('D10: starter -> control -> false (mismo PLAN_ORDER, plan_slug distinto)', () => {
+    expect(shouldRegisterReferralPaidPeriod({ ...baseInput, planSlug: 'control', currentPlan: 'starter' })).toBe(false);
+  });
+
+  it('D11: control -> starter -> false (mismo PLAN_ORDER, plan_slug distinto)', () => {
+    expect(shouldRegisterReferralPaidPeriod({ ...baseInput, planSlug: 'starter', currentPlan: 'control' })).toBe(false);
+  });
+
+  it('D12: starter -> starter (renovación real de plan base) -> true', () => {
+    expect(shouldRegisterReferralPaidPeriod({ ...baseInput, planSlug: 'starter', currentPlan: 'starter' })).toBe(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// E. buildReferralPeriodRef (Fase 5A)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('buildReferralPeriodRef', () => {
+  it('E1: formato exacto mp:<mp_payment_id>', () => {
+    expect(buildReferralPeriodRef('123456789')).toBe('mp:123456789');
+  });
+
+  it('E2: acepta mp_payment_id numérico igual que string', () => {
+    expect(buildReferralPeriodRef(123456789)).toBe('mp:123456789');
+  });
+
+  it('E3: mismo mp_payment_id siempre produce el mismo period_ref (reproducible ante reintentos)', () => {
+    const first = buildReferralPeriodRef('987654321');
+    const second = buildReferralPeriodRef('987654321');
+    expect(first).toBe(second);
+  });
+
+  it('E4: mp_payment_id distinto produce period_ref distinto', () => {
+    expect(buildReferralPeriodRef('111')).not.toBe(buildReferralPeriodRef('222'));
+  });
+
+  it('E5: no contiene timestamps ni UUID (solo el prefijo fijo + el id tal cual)', () => {
+    const ref = buildReferralPeriodRef('42');
+    expect(ref).toBe('mp:42');
+    expect(ref).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// F. Integración en index.ts (Fase 5A) — verificado por inspección de fuente,
+// mismo motivo que la sección C: index.ts no se puede importar en Vitest.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('index.ts — integración de Affiliate Core (Fase 5A)', () => {
+  it('F1: llama wa_register_referral_paid_period vía RPC', () => {
+    expect(indexSource).toMatch(/\.rpc\(\s*['"]wa_register_referral_paid_period['"]/);
+  });
+
+  it('F2: el registro está condicionado por shouldRegisterReferralPaidPeriod', () => {
+    expect(indexSource).toMatch(/shouldRegisterReferralPaidPeriod\(/);
+  });
+
+  it('F3: referred_user_id proviene de bizRow.user_id, no de otra fuente', () => {
+    expect(indexSource).toMatch(/p_referred_user_id:\s*bizRow\.user_id/);
+  });
+
+  it('F4: period_ref se construye con buildReferralPeriodRef, no con Date.now()/UUID/business_id', () => {
+    expect(indexSource).toMatch(/p_period_ref:\s*buildReferralPeriodRef\(/);
+    // No debe existir un uso de Date.now()/crypto.randomUUID() para construir el period_ref.
+    const rpcCallIdx = indexSource.indexOf("'wa_register_referral_paid_period'");
+    const rpcCallBlock = indexSource.slice(rpcCallIdx, rpcCallIdx + 300);
+    expect(rpcCallBlock).not.toMatch(/Date\.now\(\)/);
+    expect(rpcCallBlock).not.toMatch(/randomUUID/);
+    expect(rpcCallBlock).not.toMatch(/businessId/);
+  });
+
+  it('F5: la llamada a la RPC está envuelta en try/catch (no puede tirar el webhook)', () => {
+    const rpcCallIdx = indexSource.indexOf("'wa_register_referral_paid_period'");
+    expect(rpcCallIdx).toBeGreaterThan(-1);
+    const before = indexSource.slice(Math.max(0, rpcCallIdx - 400), rpcCallIdx);
+    expect(before).toMatch(/try\s*\{/);
+  });
+
+  it('F6: un error de la RPC solo se loguea (console.warn), sin return ni throw', () => {
+    const rpcCallIdx = indexSource.indexOf("'wa_register_referral_paid_period'");
+    const after = indexSource.slice(rpcCallIdx, rpcCallIdx + 600);
+    expect(after).toMatch(/referralError/);
+    expect(after).toMatch(/console\.warn/);
+    // Dentro del bloque del error de la RPC no debe haber return/throw que corte el webhook.
+    const errorBlockStart = after.indexOf('if (referralError)');
+    const errorBlockEnd = after.indexOf('}', errorBlockStart);
+    const errorBlock = after.slice(errorBlockStart, errorBlockEnd);
+    expect(errorBlock).not.toMatch(/return /);
+    expect(errorBlock).not.toMatch(/throw /);
+  });
+
+  it('F7: no se agrega ningún SELECT nuevo para preguntar si el negocio fue referido antes de llamar la RPC', () => {
+    // El único SELECT relacionado a "referral"/"attribution" debe ser inexistente:
+    // wa_register_referral_paid_period ya resuelve internamente si hay atribución.
+    expect(indexSource).not.toMatch(/from\(['"]referral_attributions['"]\)/);
+    expect(indexSource).not.toMatch(/from\(['"]referral_codes['"]\)/);
+  });
+
+  it('F8: los logs de la integración no incluyen el UUID de bizRow.user_id', () => {
+    const rpcCallIdx = indexSource.indexOf("'wa_register_referral_paid_period'");
+    const around = indexSource.slice(Math.max(0, rpcCallIdx - 200), rpcCallIdx + 600);
+    expect(around).not.toMatch(/console\.(warn|log|error)\([^)]*bizRow\.user_id/);
+  });
+
+  it('F9 (Fase 5A.1): p_period_start es exactamente planActivatedAtIso -- no se recalcula, no Date.now(), no otra fuente temporal', () => {
+    const rpcCallIdx = indexSource.indexOf("'wa_register_referral_paid_period'");
+    const rpcCallBlock = indexSource.slice(rpcCallIdx, rpcCallIdx + 300);
+    expect(rpcCallBlock).toMatch(/p_period_start:\s*planActivatedAtIso/);
+    expect(rpcCallBlock).not.toMatch(/Date\.now\(\)/);
+    expect(rpcCallBlock).not.toMatch(/new Date\(\)/);
   });
 });
