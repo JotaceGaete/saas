@@ -6,7 +6,7 @@
 // y legado (<businessId>:<planSlug>) para retrocompatibilidad.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { buildBillingSubscriptionUpsertPayload } from './lib.ts';
+import { buildBillingSubscriptionUpsertPayload, buildReferralPeriodRef, shouldRegisterReferralPaidPeriod } from './lib.ts';
 
 const ALLOWED_PLANS = ['control', 'starter', 'pro', 'business'];
 const PLAN_DURATION_DAYS = 30;
@@ -656,6 +656,41 @@ Deno.serve(async (req) => {
       );
     if (subSyncError) {
       console.error('[mp-webhook] billing_subscriptions sync failed (non-blocking):', subSyncError.message);
+    }
+
+    // ── Affiliate Core (Fase 5A/5A.1): registrar período pagado, best-effort ─
+    // El pago ya está aprobado y el plan ya se aplicó arriba -- nada de lo que
+    // pase acá puede revertir eso ni afectar la respuesta al webhook. No se
+    // hace ningún SELECT previo para preguntar si el negocio fue referido:
+    // wa_register_referral_paid_period() ya resuelve internamente si existe
+    // una atribución válida. p_period_start es planActivatedAtIso -- la misma
+    // fecha ya calculada arriba para wa_payments.plan_activated_at, nunca un
+    // timestamp nuevo -- Affiliate Core deriva el mes calendario a partir de
+    // ella (idempotente por pago vía period_ref, y por mes vía period_start).
+    if (shouldRegisterReferralPaidPeriod({
+      mpStatus,
+      planSlug,
+      currentPlan,
+      transactionAmount: payment.transaction_amount,
+    })) {
+      try {
+        const { error: referralError } = await db.rpc('wa_register_referral_paid_period', {
+          p_referred_user_id: bizRow.user_id,
+          p_period_ref: buildReferralPeriodRef(dataId),
+          p_period_start: planActivatedAtIso,
+        });
+        if (referralError) {
+          console.warn('[mp-webhook] referral paid-period registration failed (non-blocking):', {
+            mp_payment_id: dataId,
+            message: referralError.message,
+          });
+        }
+      } catch (referralErr) {
+        console.warn('[mp-webhook] referral paid-period registration threw (non-blocking):', {
+          mp_payment_id: dataId,
+          message: (referralErr as Error)?.message ?? 'unknown_error',
+        });
+      }
     }
   } else {
     // DOWNGRADE con período activo → programar al vencimiento (trial o plan pagado).
