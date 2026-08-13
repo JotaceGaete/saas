@@ -14,6 +14,18 @@ import { attributeReferral } from '../services/referralService';
 const STORAGE_KEY = 'vtlk_pending_referral';
 
 /**
+ * DIAGNÓSTICO TEMPORAL -- instrumentación observacional para reproducir a
+ * mano un registro con enlace de afiliado y ver en qué paso exacto se
+ * pierde o completa la atribución. No decide nada, solo loguea. Sin PII:
+ * nunca userId, email, JWT, tokens ni claves de Supabase. El código de
+ * referido nunca se imprime completo -- solo `hasReferralCode`. Candidato
+ * a remover una vez completado el diagnóstico.
+ */
+function logAttribution(event, data) {
+  console.log(`[referralAttribution] ${event}`, data);
+}
+
+/**
  * Tolerancia para distinguir, en el flujo de Google OAuth, "esta cuenta se
  * acaba de crear" de "esta cuenta ya existía" -- comparando
  * user.created_at vs user.last_sign_in_at, ambos timestamps emitidos por
@@ -51,10 +63,16 @@ export function captureReferralFromUrl() {
   if (typeof window === 'undefined') return;
   const code = new URLSearchParams(window.location.search).get('ref');
   const trimmed = (code || '').trim();
-  if (!trimmed) return;
+  const hasReferralCode = Boolean(trimmed);
+  if (!hasReferralCode) {
+    logAttribution('capture_no_ref_param', { hasReferralCode: false });
+    return;
+  }
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ code: trimmed, clickAt: new Date().toISOString() }));
-  } catch {
+    logAttribution('capture_stored', { hasReferralCode: true, stored: true });
+  } catch (err) {
+    logAttribution('capture_store_failed', { hasReferralCode: true, stored: false, errorMessage: err?.message });
     // localStorage inaccesible (modo privado estricto, cuota, etc.) -- no bloquea nada más.
   }
 }
@@ -106,26 +124,52 @@ export function isNewAccountFromTimestamps(user) {
  *   - attributed:false con razón determinista  -> limpia (reintentar daría lo mismo)
  *   - la llamada lanza (red/Supabase caído)    -> NO limpia (reintento futuro)
  *
- * @param {{ userId: string|null|undefined, isEligible: boolean }} params
+ * @param {{ userId: string|null|undefined, isEligible: boolean, authPath?: string }} params
+ *   `authPath` es solo diagnóstico (identifica qué flujo llamó: registro con
+ *   sesión inmediata, login, callback de Google, callback de confirmación
+ *   de email) -- no participa en ninguna decisión.
  */
-export async function attemptPendingAttribution({ userId, isEligible }) {
-  if (!userId) return { attempted: false, reason: 'not_authenticated' };
+export async function attemptPendingAttribution({ userId, isEligible, authPath }) {
+  if (!userId) {
+    logAttribution('attribution_skipped', { authPath, reason: 'not_authenticated' });
+    return { attempted: false, reason: 'not_authenticated' };
+  }
 
   const pending = getStoredReferral();
-  if (!pending) return { attempted: false, reason: 'no_pending_referral' };
+  const hasPending = Boolean(pending);
+  logAttribution('attribution_start', { authPath, isEligible, hasPending });
+
+  if (!pending) {
+    return { attempted: false, reason: 'no_pending_referral' };
+  }
 
   if (!isEligible) {
     clearStoredReferral();
+    logAttribution('attribution_skipped', { authPath, reason: 'not_eligible_existing_user', pendingCleared: true });
     return { attempted: false, reason: 'not_eligible_existing_user' };
   }
 
   try {
+    logAttribution('attribution_rpc_call', { authPath, hasReferralCode: true });
     const result = await attributeReferral(pending.code, pending.clickAt);
-    if (result?.attributed === true || DETERMINISTIC_REJECT_REASONS.has(result?.reason)) {
+    const pendingCleared = result?.attributed === true || DETERMINISTIC_REJECT_REASONS.has(result?.reason);
+    if (pendingCleared) {
       clearStoredReferral();
     }
+    logAttribution('attribution_result', {
+      authPath,
+      attributed: result?.attributed ?? null,
+      reason: result?.reason ?? null,
+      pendingCleared,
+    });
     return { attempted: true, result };
   } catch (err) {
+    logAttribution('attribution_rpc_error', {
+      authPath,
+      errorMessage: err?.message,
+      errorCode: err?.code,
+      pendingCleared: false,
+    });
     console.warn(
       '[referralAttribution] attributeReferral falló (posible error transitorio), se conserva el referral guardado para reintentar:',
       err?.message

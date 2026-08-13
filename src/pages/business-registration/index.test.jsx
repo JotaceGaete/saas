@@ -142,7 +142,11 @@ describe('BusinessRegistration — captura y atribución de referral', () => {
     fireEvent.click(screen.getByText('do-register'));
 
     await waitFor(() =>
-      expect(attemptPendingAttribution).toHaveBeenCalledWith({ userId: 'user-new', isEligible: true })
+      expect(attemptPendingAttribution).toHaveBeenCalledWith({
+        userId: 'user-new',
+        isEligible: true,
+        authPath: 'register_immediate_session',
+      })
     );
   });
 
@@ -168,7 +172,11 @@ describe('BusinessRegistration — captura y atribución de referral', () => {
     fireEvent.click(screen.getByText('do-login'));
 
     await waitFor(() =>
-      expect(attemptPendingAttribution).toHaveBeenCalledWith({ userId: 'user-existing', isEligible: false })
+      expect(attemptPendingAttribution).toHaveBeenCalledWith({
+        userId: 'user-existing',
+        isEligible: false,
+        authPath: 'login_existing_user',
+      })
     );
   });
 

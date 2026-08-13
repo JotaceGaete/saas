@@ -235,7 +235,11 @@ describe('regresión — causa raíz: salto de pestaña/contexto (confirmación 
       attributeReferralMock.mockResolvedValue({ attributed: true, status: 'qualified' });
 
       // 5. ejecuta attemptPendingAttribution(), como haría /auth/callback en la pestaña nueva.
-      const result = await attemptPendingAttribution({ userId: 'user-nuevo', isEligible: true });
+      const result = await attemptPendingAttribution({
+        userId: 'user-nuevo',
+        isEligible: true,
+        authPath: 'auth_callback_email',
+      });
 
       // 6-7. attributeReferral() sí es llamado, con el código esperado.
       expect(attributeReferralMock).toHaveBeenCalledTimes(1);
@@ -246,6 +250,94 @@ describe('regresión — causa raíz: salto de pestaña/contexto (confirmación 
       expect(getStoredReferral()).toBeNull();
     }
   );
+});
+
+describe('instrumentación diagnóstica temporal (logAttribution) — solo observa, no cambia comportamiento', () => {
+  let consoleLogSpy;
+
+  beforeEach(() => {
+    consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    consoleLogSpy.mockRestore();
+  });
+
+  it('captureReferralFromUrl loguea hasReferralCode:true y stored:true, sin imprimir el código', () => {
+    setUrl('/business-registration?ref=jota-f92ee');
+    captureReferralFromUrl();
+
+    expect(consoleLogSpy).toHaveBeenCalledWith(
+      '[referralAttribution] capture_stored',
+      expect.objectContaining({ hasReferralCode: true, stored: true })
+    );
+    const loggedPayload = JSON.stringify(consoleLogSpy.mock.calls);
+    expect(loggedPayload).not.toContain('jota-f92ee');
+  });
+
+  it('captureReferralFromUrl sin ?ref= loguea hasReferralCode:false', () => {
+    captureReferralFromUrl();
+
+    expect(consoleLogSpy).toHaveBeenCalledWith(
+      '[referralAttribution] capture_no_ref_param',
+      expect.objectContaining({ hasReferralCode: false })
+    );
+  });
+
+  it('attemptPendingAttribution loguea hasPending e isEligible al comenzar, y el resultado sigue siendo el mismo', async () => {
+    setUrl('/business-registration?ref=jota-f92ee');
+    captureReferralFromUrl();
+    attributeReferralMock.mockResolvedValue({ attributed: true, status: 'qualified' });
+
+    const result = await attemptPendingAttribution({ userId: 'user-1', isEligible: true, authPath: 'auth_callback_google' });
+
+    expect(consoleLogSpy).toHaveBeenCalledWith(
+      '[referralAttribution] attribution_start',
+      expect.objectContaining({ authPath: 'auth_callback_google', isEligible: true, hasPending: true })
+    );
+    expect(consoleLogSpy).toHaveBeenCalledWith(
+      '[referralAttribution] attribution_result',
+      expect.objectContaining({ attributed: true, reason: null, pendingCleared: true })
+    );
+    // Mismo resultado que sin instrumentación -- el logging es puramente observacional.
+    expect(result).toEqual({ attempted: true, result: { attributed: true, status: 'qualified' } });
+  });
+
+  it('la RPC lanza: loguea errorMessage/errorCode sin exponer userId ni código completo, y no cambia el resultado', async () => {
+    setUrl('/business-registration?ref=jota-f92ee');
+    captureReferralFromUrl();
+    const rpcError = Object.assign(new Error('network error'), { code: 'ECONNREFUSED' });
+    attributeReferralMock.mockRejectedValue(rpcError);
+
+    const result = await attemptPendingAttribution({ userId: 'user-1', isEligible: true, authPath: 'register_immediate_session' });
+
+    expect(consoleLogSpy).toHaveBeenCalledWith(
+      '[referralAttribution] attribution_rpc_error',
+      expect.objectContaining({
+        authPath: 'register_immediate_session',
+        errorMessage: 'network error',
+        errorCode: 'ECONNREFUSED',
+        pendingCleared: false,
+      })
+    );
+    const loggedPayload = JSON.stringify(consoleLogSpy.mock.calls);
+    expect(loggedPayload).not.toContain('user-1');
+    expect(loggedPayload).not.toContain('jota-f92ee');
+    expect(result).toEqual({ attempted: true, error: rpcError });
+  });
+
+  it('isEligible=false: loguea el skip con pendingCleared:true, sin llamar la RPC', async () => {
+    setUrl('/business-registration?ref=jota-f92ee');
+    captureReferralFromUrl();
+
+    await attemptPendingAttribution({ userId: 'user-1', isEligible: false, authPath: 'login_existing_user' });
+
+    expect(attributeReferralMock).not.toHaveBeenCalled();
+    expect(consoleLogSpy).toHaveBeenCalledWith(
+      '[referralAttribution] attribution_skipped',
+      expect.objectContaining({ authPath: 'login_existing_user', reason: 'not_eligible_existing_user', pendingCleared: true })
+    );
+  });
 });
 
 describe('clearStoredReferral', () => {

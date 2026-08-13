@@ -219,7 +219,7 @@ export default function BusinessRegistration() {
         } else if (data?.session && data?.user) {
           // Sesión inmediata (confirmación de email desactivada): signUp
           // siempre es un usuario nuevo, sin necesitar ninguna heurística.
-          attemptPendingAttribution({ userId: data.user.id, isEligible: true }).catch(() => {});
+          attemptPendingAttribution({ userId: data.user.id, isEligible: true, authPath: 'register_immediate_session' }).catch(() => {});
         }
         trackLoopsEvent('user_registered', {
           email: data?.user?.email || email,
@@ -247,7 +247,7 @@ export default function BusinessRegistration() {
         } else if (data?.user) {
           // Login = usuario existente, nunca elegible. Limpia cualquier
           // referral pendiente para que no siga intentando atribuirse.
-          attemptPendingAttribution({ userId: data.user.id, isEligible: false }).catch(() => {});
+          attemptPendingAttribution({ userId: data.user.id, isEligible: false, authPath: 'login_existing_user' }).catch(() => {});
         }
         // Si no hay error, onAuthStateChange actualiza `user` automáticamente.
       } catch {

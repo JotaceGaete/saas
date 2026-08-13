@@ -83,7 +83,8 @@ export default function AuthCallback() {
         // revisarse -- ya no sería seguro asumir "provider=email = siempre nuevo".
         const provider = session.user?.app_metadata?.provider;
         const isEligible = provider === 'google' ? isNewAccountFromTimestamps(session.user) : true;
-        attemptPendingAttribution({ userId: session.user?.id, isEligible }).catch(() => {});
+        const authPath = provider === 'google' ? 'auth_callback_google' : 'auth_callback_email';
+        attemptPendingAttribution({ userId: session.user?.id, isEligible, authPath }).catch(() => {});
 
         const { data: business, error: businessError } = await getMyBusiness();
 
