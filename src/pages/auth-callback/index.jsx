@@ -83,7 +83,23 @@ export default function AuthCallback() {
         // revisarse -- ya no sería seguro asumir "provider=email = siempre nuevo".
         const provider = session.user?.app_metadata?.provider;
         const isEligible = provider === 'google' ? isNewAccountFromTimestamps(session.user) : true;
-        attemptPendingAttribution({ userId: session.user?.id, isEligible }).catch(() => {});
+
+        // Instrumentación observacional -- deltaMs se recalcula acá solo para
+        // el log; isEligible ya quedó decidido por isNewAccountFromTimestamps
+        // arriba y no depende de esta línea.
+        const createdAtMs = session.user?.created_at ? new Date(session.user.created_at).getTime() : NaN;
+        const lastSignInAtMs = session.user?.last_sign_in_at ? new Date(session.user.last_sign_in_at).getTime() : NaN;
+        const deltaMs = (!Number.isNaN(createdAtMs) && !Number.isNaN(lastSignInAtMs))
+          ? Math.abs(lastSignInAtMs - createdAtMs)
+          : null;
+        // eslint-disable-next-line no-console
+        console.info('[referral_debug]', { step: 'auth_callback', provider: provider ?? null, deltaMs, isEligible });
+
+        attemptPendingAttribution({
+          userId: session.user?.id,
+          isEligible,
+          source: provider === 'google' ? 'google_oauth' : 'email_confirmation_callback',
+        }).catch(() => {});
 
         const { data: business, error: businessError } = await getMyBusiness();
 

@@ -216,10 +216,12 @@ export default function BusinessRegistration() {
           setPendingConfirmation({ email: data.user?.email || email });
           // Sin sesión todavía -- la atribución se intenta más adelante en
           // /auth/callback cuando confirme el correo, nunca acá.
+          // eslint-disable-next-line no-console
+          console.info('[referral_debug]', { step: 'signup_deferred_confirmation', rpcCalled: false });
         } else if (data?.session && data?.user) {
           // Sesión inmediata (confirmación de email desactivada): signUp
           // siempre es un usuario nuevo, sin necesitar ninguna heurística.
-          attemptPendingAttribution({ userId: data.user.id, isEligible: true }).catch(() => {});
+          attemptPendingAttribution({ userId: data.user.id, isEligible: true, source: 'signup_immediate_session' }).catch(() => {});
         }
         trackLoopsEvent('user_registered', {
           email: data?.user?.email || email,
@@ -247,7 +249,7 @@ export default function BusinessRegistration() {
         } else if (data?.user) {
           // Login = usuario existente, nunca elegible. Limpia cualquier
           // referral pendiente para que no siga intentando atribuirse.
-          attemptPendingAttribution({ userId: data.user.id, isEligible: false }).catch(() => {});
+          attemptPendingAttribution({ userId: data.user.id, isEligible: false, source: 'login_existing_user' }).catch(() => {});
         }
         // Si no hay error, onAuthStateChange actualiza `user` automáticamente.
       } catch {

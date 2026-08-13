@@ -70,7 +70,7 @@ describe('AuthCallback — atribución de referral', () => {
     renderCallback();
 
     await waitFor(() =>
-      expect(attemptPendingAttributionMock).toHaveBeenCalledWith({ userId: 'user-google-new', isEligible: true })
+      expect(attemptPendingAttributionMock).toHaveBeenCalledWith({ userId: 'user-google-new', isEligible: true, source: 'google_oauth' })
     );
     expect(isNewAccountFromTimestampsMock).toHaveBeenCalledWith(user);
   });
@@ -88,7 +88,7 @@ describe('AuthCallback — atribución de referral', () => {
     renderCallback();
 
     await waitFor(() =>
-      expect(attemptPendingAttributionMock).toHaveBeenCalledWith({ userId: 'user-google-existing', isEligible: false })
+      expect(attemptPendingAttributionMock).toHaveBeenCalledWith({ userId: 'user-google-existing', isEligible: false, source: 'google_oauth' })
     );
   });
 
@@ -104,7 +104,7 @@ describe('AuthCallback — atribución de referral', () => {
     renderCallback();
 
     await waitFor(() =>
-      expect(attemptPendingAttributionMock).toHaveBeenCalledWith({ userId: 'user-email-confirmed', isEligible: true })
+      expect(attemptPendingAttributionMock).toHaveBeenCalledWith({ userId: 'user-email-confirmed', isEligible: true, source: 'email_confirmation_callback' })
     );
     expect(isNewAccountFromTimestampsMock).not.toHaveBeenCalled();
   });

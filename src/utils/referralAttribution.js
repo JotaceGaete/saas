@@ -49,12 +49,21 @@ export function captureReferralFromUrl() {
   if (typeof window === 'undefined') return;
   const code = new URLSearchParams(window.location.search).get('ref');
   const trimmed = (code || '').trim();
-  if (!trimmed) return;
+  const hasReferralCode = !!trimmed;
+  if (!trimmed) {
+    // eslint-disable-next-line no-console
+    console.info('[referral_debug]', { step: 'capture', hasReferralCode });
+    return;
+  }
+  let stored = false;
   try {
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ code: trimmed, clickAt: new Date().toISOString() }));
+    stored = true;
   } catch {
     // sessionStorage inaccesible (modo privado estricto, cuota, etc.) -- no bloquea nada más.
   }
+  // eslint-disable-next-line no-console
+  console.info('[referral_debug]', { step: 'capture', hasReferralCode, stored });
 }
 
 /** @returns {{code: string, clickAt: string} | null} */
@@ -104,30 +113,66 @@ export function isNewAccountFromTimestamps(user) {
  *   - attributed:false con razón determinista  -> limpia (reintentar daría lo mismo)
  *   - la llamada lanza (red/Supabase caído)    -> NO limpia (reintento futuro)
  *
- * @param {{ userId: string|null|undefined, isEligible: boolean }} params
+ * @param {{ userId: string|null|undefined, isEligible: boolean, source?: string }} params
+ * @param {string} [params.source] Etiqueta observacional del camino de auth que llama
+ *   (p.ej. 'signup_immediate_session', 'login_existing_user', 'google_oauth',
+ *   'email_confirmation_callback'). Solo para logging -- no afecta ninguna decisión.
  */
-export async function attemptPendingAttribution({ userId, isEligible }) {
-  if (!userId) return { attempted: false, reason: 'not_authenticated' };
+export async function attemptPendingAttribution({ userId, isEligible, source = 'unknown' }) {
+  if (!userId) {
+    // eslint-disable-next-line no-console
+    console.info('[referral_debug]', { step: 'attempt', source, hasPending: null, isEligible, rpcCalled: false, reason: 'not_authenticated' });
+    return { attempted: false, reason: 'not_authenticated' };
+  }
 
   const pending = getStoredReferral();
-  if (!pending) return { attempted: false, reason: 'no_pending_referral' };
+  const hasPending = !!pending;
+  if (!pending) {
+    // eslint-disable-next-line no-console
+    console.info('[referral_debug]', { step: 'attempt', source, hasPending, isEligible, rpcCalled: false, reason: 'no_pending_referral' });
+    return { attempted: false, reason: 'no_pending_referral' };
+  }
 
   if (!isEligible) {
     clearStoredReferral();
+    // eslint-disable-next-line no-console
+    console.info('[referral_debug]', { step: 'attempt', source, hasPending, isEligible, rpcCalled: false, pendingCleared: true, reason: 'not_eligible_existing_user' });
     return { attempted: false, reason: 'not_eligible_existing_user' };
   }
 
   try {
     const result = await attributeReferral(pending.code, pending.clickAt);
-    if (result?.attributed === true || DETERMINISTIC_REJECT_REASONS.has(result?.reason)) {
+    const pendingCleared = result?.attributed === true || DETERMINISTIC_REJECT_REASONS.has(result?.reason);
+    if (pendingCleared) {
       clearStoredReferral();
     }
+    // eslint-disable-next-line no-console
+    console.info('[referral_debug]', {
+      step: 'attempt',
+      source,
+      hasPending,
+      isEligible,
+      rpcCalled: true,
+      attributed: result?.attributed ?? null,
+      reason: result?.reason ?? null,
+      pendingCleared,
+    });
     return { attempted: true, result };
   } catch (err) {
     console.warn(
       '[referralAttribution] attributeReferral falló (posible error transitorio), se conserva el referral guardado para reintentar:',
       err?.message
     );
+    // eslint-disable-next-line no-console
+    console.info('[referral_debug]', {
+      step: 'attempt',
+      source,
+      hasPending,
+      isEligible,
+      rpcCalled: true,
+      rpcError: err?.message ?? 'unknown_error',
+      pendingCleared: false,
+    });
     return { attempted: true, error: err };
   }
 }
