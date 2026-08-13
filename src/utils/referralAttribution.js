@@ -1,11 +1,13 @@
 /**
  * Captura y resolución del código de referido (?ref=) hacia el Affiliate
- * Core de walinkaref (wa_attribute_referral). sessionStorage a propósito:
- * todo el tramo relevante (business-registration -> Google -> auth-callback)
- * ocurre en el mismo origen/pestaña de go.ventalink.app; nunca cruza
- * dominio y se autolimpia al cerrar la pestaña -- complementa, sin
- * duplicar, la ventana de 30 días que ya aplica wa_attribute_referral()
- * server-side sobre click_at.
+ * Core de walinkaref (wa_attribute_referral). localStorage a propósito:
+ * el tramo relevante (business-registration -> Google/confirmación de
+ * email -> auth-callback) puede aterrizar en una pestaña/ventana distinta
+ * de la que capturó el ?ref= -- el enlace de confirmación de email abre un
+ * contexto nuevo, y sessionStorage (aislado por pestaña) perdía el pending
+ * justo en ese salto. localStorage sigue siendo same-origin (nunca cruza
+ * dominio) y complementa, sin duplicar, la ventana de 30 días que ya
+ * aplica wa_attribute_referral() server-side sobre click_at.
  */
 import { attributeReferral } from '../services/referralService';
 
@@ -51,9 +53,9 @@ export function captureReferralFromUrl() {
   const trimmed = (code || '').trim();
   if (!trimmed) return;
   try {
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ code: trimmed, clickAt: new Date().toISOString() }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ code: trimmed, clickAt: new Date().toISOString() }));
   } catch {
-    // sessionStorage inaccesible (modo privado estricto, cuota, etc.) -- no bloquea nada más.
+    // localStorage inaccesible (modo privado estricto, cuota, etc.) -- no bloquea nada más.
   }
 }
 
@@ -61,7 +63,7 @@ export function captureReferralFromUrl() {
 export function getStoredReferral() {
   if (typeof window === 'undefined') return null;
   try {
-    const raw = sessionStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed?.code || !parsed?.clickAt) return null;
@@ -74,7 +76,7 @@ export function getStoredReferral() {
 export function clearStoredReferral() {
   if (typeof window === 'undefined') return;
   try {
-    sessionStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(STORAGE_KEY);
   } catch {
     // no-op
   }
@@ -98,7 +100,7 @@ export function isNewAccountFromTimestamps(user) {
  * Único punto que llama wa_attribute_referral(). Best-effort: nunca lanza
  * hacia el caller -- un fallo acá jamás debe romper signup/onboarding.
  *
- * Decide si limpiar sessionStorage según la respuesta real de la RPC:
+ * Decide si limpiar el pending guardado según la respuesta real de la RPC:
  *   - isEligible=false (usuario existente)     -> limpia, NUNCA llama la RPC
  *   - attributed:true                          -> limpia (ya quedó fila permanente)
  *   - attributed:false con razón determinista  -> limpia (reintentar daría lo mismo)

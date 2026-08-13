@@ -20,6 +20,7 @@ function setUrl(path) {
 
 beforeEach(() => {
   attributeReferralMock.mockReset();
+  localStorage.clear();
   sessionStorage.clear();
   setUrl('/business-registration');
 });
@@ -204,6 +205,47 @@ describe('attemptPendingAttribution', () => {
 
     expect(getStoredReferral()).toEqual(stored);
   });
+});
+
+describe('regresión — causa raíz: salto de pestaña/contexto (confirmación de email)', () => {
+  it(
+    'un pending capturado en la pestaña original sobrevive el salto a la pestaña nueva que abre el enlace ' +
+      'de confirmación de email: aunque esa pestaña nueva no tenga sessionStorage propio (aislado por pestaña, ' +
+      'siempre vacío ahí), sí comparte localStorage (same-origin, no por pestaña) -- por eso attemptPendingAttribution ' +
+      'debe seguir viendo el pending y completar la atribución. Con sessionStorage este test fallaría: ' +
+      'sessionStorage.clear() borraría el pending y attributeReferral() nunca se llamaría.',
+    async () => {
+      // 1. captura un ?ref= válido, en lo que sería la pestaña original de business-registration.
+      setUrl('/business-registration?ref=jota-f92ee');
+      captureReferralFromUrl();
+
+      // 2. confirma que queda almacenado.
+      const stored = getStoredReferral();
+      expect(stored).not.toBeNull();
+      expect(stored.code).toBe('jota-f92ee');
+
+      // 3. simula el salto a otra pestaña/contexto eliminando sessionStorage
+      //    (una pestaña nueva, abierta desde el enlace de confirmación de email,
+      //    nunca tuvo sessionStorage propio con este pending -- clear() lo replica).
+      sessionStorage.clear();
+
+      // 4. NO se toca localStorage -- es lo único que debe sobrevivir el salto.
+      expect(getStoredReferral()).toEqual(stored);
+
+      attributeReferralMock.mockResolvedValue({ attributed: true, status: 'qualified' });
+
+      // 5. ejecuta attemptPendingAttribution(), como haría /auth/callback en la pestaña nueva.
+      const result = await attemptPendingAttribution({ userId: 'user-nuevo', isEligible: true });
+
+      // 6-7. attributeReferral() sí es llamado, con el código esperado.
+      expect(attributeReferralMock).toHaveBeenCalledTimes(1);
+      expect(attributeReferralMock).toHaveBeenCalledWith('jota-f92ee', stored.clickAt);
+
+      // 8. attributed:true -> el pending queda eliminado.
+      expect(result).toEqual({ attempted: true, result: { attributed: true, status: 'qualified' } });
+      expect(getStoredReferral()).toBeNull();
+    }
+  );
 });
 
 describe('clearStoredReferral', () => {
