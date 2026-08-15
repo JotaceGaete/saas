@@ -6,7 +6,13 @@
 // y legado (<businessId>:<planSlug>) para retrocompatibilidad.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { buildBillingSubscriptionUpsertPayload, buildReferralPeriodRef, shouldRegisterReferralPaidPeriod } from './lib.ts';
+import {
+  buildBillingSubscriptionUpsertPayload,
+  buildReferralPeriodRef,
+  mapMpStatusToReversalReason,
+  mapMpStatusToWaPaymentStatus,
+  shouldRegisterReferralPaidPeriod,
+} from './lib.ts';
 
 const ALLOWED_PLANS = ['control', 'starter', 'pro', 'business'];
 const PLAN_DURATION_DAYS = 30;
@@ -469,13 +475,55 @@ Deno.serve(async (req) => {
         mp_status_detail: mpStatusDetail,
         mp_payment_type:  payment?.payment_type_id  ?? null,
         mp_payment_method: payment?.payment_method_id ?? null,
-        status: mpStatus === 'rejected' ? 'rejected'
-               : mpStatus === 'cancelled' ? 'cancelled'
-               : mpStatus === 'in_process' ? 'in_process'
-               : 'pending',
+        status: mapMpStatusToWaPaymentStatus(mpStatus),
         raw_mp_response: payment as Record<string, unknown>,
       }).eq('id', paymentId);
     }
+
+    // ── Affiliate Core (Fase 5B) — reversión, best-effort ──────────────────
+    // 'refunded'/'charged_back' son los únicos 2 status de MP que representan
+    // que el dinero de un pago YA APROBADO volvió. El period_ref es el mismo
+    // mp:<dataId> que se registró en la aprobación original -- MP no cambia
+    // el payment id al reportar un refund/chargeback sobre el mismo pago.
+    // wa_reverse_referral_paid_period() resuelve internamente si ese período
+    // afecta o no una recompensa vigente (racha todavía suficiente sin ese
+    // mes -> no la toca; ya 'paid' -> manual review, no la muta). Nada de lo
+    // que pase acá puede afectar la respuesta al webhook.
+    const reversalReason = mapMpStatusToReversalReason(mpStatus);
+    if (reversalReason && businessId) {
+      try {
+        const { data: reversalBizRow, error: reversalBizError } = await db
+          .from('wa_businesses')
+          .select('user_id')
+          .eq('id', businessId)
+          .single();
+
+        if (reversalBizError || !reversalBizRow?.user_id) {
+          console.warn('[mp-webhook] reversal: negocio no encontrado, se omite:', {
+            mp_payment_id: dataId,
+            message: reversalBizError?.message,
+          });
+        } else {
+          const { error: reversalError } = await db.rpc('wa_reverse_referral_paid_period', {
+            p_referred_user_id: reversalBizRow.user_id,
+            p_period_ref: buildReferralPeriodRef(dataId),
+            p_reason: reversalReason,
+          });
+          if (reversalError) {
+            console.warn('[mp-webhook] referral paid-period reversal failed (non-blocking):', {
+              mp_payment_id: dataId,
+              message: reversalError.message,
+            });
+          }
+        }
+      } catch (reversalErr) {
+        console.warn('[mp-webhook] referral paid-period reversal threw (non-blocking):', {
+          mp_payment_id: dataId,
+          message: (reversalErr as Error)?.message ?? 'unknown_error',
+        });
+      }
+    }
+
     return jsonResponse({ ok: true }, 200);
   }
 

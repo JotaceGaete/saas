@@ -19,7 +19,13 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { buildBillingSubscriptionUpsertPayload, buildReferralPeriodRef, shouldRegisterReferralPaidPeriod } from './lib';
+import {
+  buildBillingSubscriptionUpsertPayload,
+  buildReferralPeriodRef,
+  mapMpStatusToReversalReason,
+  mapMpStatusToWaPaymentStatus,
+  shouldRegisterReferralPaidPeriod,
+} from './lib';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const indexSource = readFileSync(join(__dirname, 'index.ts'), 'utf-8');
@@ -400,5 +406,147 @@ describe('index.ts — integración de Affiliate Core (Fase 5A)', () => {
     expect(rpcCallBlock).toMatch(/p_period_start:\s*planActivatedAtIso/);
     expect(rpcCallBlock).not.toMatch(/Date\.now\(\)/);
     expect(rpcCallBlock).not.toMatch(/new Date\(\)/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// G. mapMpStatusToWaPaymentStatus (Fase 5B)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('mapMpStatusToWaPaymentStatus', () => {
+  it('G1: rejected -> rejected', () => {
+    expect(mapMpStatusToWaPaymentStatus('rejected')).toBe('rejected');
+  });
+
+  it('G2: cancelled -> cancelled', () => {
+    expect(mapMpStatusToWaPaymentStatus('cancelled')).toBe('cancelled');
+  });
+
+  it('G3: in_process -> in_process', () => {
+    expect(mapMpStatusToWaPaymentStatus('in_process')).toBe('in_process');
+  });
+
+  it('G4 (Fase 5B): refunded -> refunded (antes caía en el bucket genérico "pending")', () => {
+    expect(mapMpStatusToWaPaymentStatus('refunded')).toBe('refunded');
+  });
+
+  it('G5 (Fase 5B): charged_back -> charged_back (antes caía en el bucket genérico "pending")', () => {
+    expect(mapMpStatusToWaPaymentStatus('charged_back')).toBe('charged_back');
+  });
+
+  it('G6: cualquier otro status (incluido pending real, o desconocido) -> pending', () => {
+    expect(mapMpStatusToWaPaymentStatus('pending')).toBe('pending');
+    expect(mapMpStatusToWaPaymentStatus('authorized')).toBe('pending');
+    expect(mapMpStatusToWaPaymentStatus('in_mediation')).toBe('pending');
+    expect(mapMpStatusToWaPaymentStatus('')).toBe('pending');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// H. mapMpStatusToReversalReason (Fase 5B)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('mapMpStatusToReversalReason', () => {
+  it('H1: refunded -> "refund"', () => {
+    expect(mapMpStatusToReversalReason('refunded')).toBe('refund');
+  });
+
+  it('H2: charged_back -> "chargeback"', () => {
+    expect(mapMpStatusToReversalReason('charged_back')).toBe('chargeback');
+  });
+
+  it('H3: los valores devueltos coinciden exactamente con referral_commissions_reversed_reason_check', () => {
+    expect(['refund', 'chargeback', 'fraud', 'manual']).toContain(mapMpStatusToReversalReason('refunded'));
+    expect(['refund', 'chargeback', 'fraud', 'manual']).toContain(mapMpStatusToReversalReason('charged_back'));
+  });
+
+  it('H4: approved -> null (nunca se dispara una reversión sobre un pago recién aprobado)', () => {
+    expect(mapMpStatusToReversalReason('approved')).toBeNull();
+  });
+
+  it('H5: pending/rejected/cancelled/in_process -> null (no representan que el dinero volvió)', () => {
+    expect(mapMpStatusToReversalReason('pending')).toBeNull();
+    expect(mapMpStatusToReversalReason('rejected')).toBeNull();
+    expect(mapMpStatusToReversalReason('cancelled')).toBeNull();
+    expect(mapMpStatusToReversalReason('in_process')).toBeNull();
+  });
+
+  it('H6: status vacío/desconocido -> null', () => {
+    expect(mapMpStatusToReversalReason('')).toBeNull();
+    expect(mapMpStatusToReversalReason('some_unknown_status')).toBeNull();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// I. Integración de reversión en index.ts (Fase 5B) — verificado por
+// inspección de fuente, mismo motivo que las secciones C y F: index.ts no
+// se puede importar en Vitest (depende de Deno/esm.sh).
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('index.ts — integración de reversión de Affiliate Core (Fase 5B)', () => {
+  it('I1: llama wa_reverse_referral_paid_period vía RPC', () => {
+    expect(indexSource).toMatch(/\.rpc\(\s*['"]wa_reverse_referral_paid_period['"]/);
+  });
+
+  it('I2: la reversión está condicionada por mapMpStatusToReversalReason, no por mpStatus directo', () => {
+    expect(indexSource).toMatch(/mapMpStatusToReversalReason\(/);
+    const reversalReasonIdx = indexSource.indexOf('const reversalReason = mapMpStatusToReversalReason(');
+    expect(reversalReasonIdx).toBeGreaterThan(-1);
+  });
+
+  it('I3: el status de wa_payments para no-aprobados usa mapMpStatusToWaPaymentStatus, no un ternario inline', () => {
+    expect(indexSource).toMatch(/status:\s*mapMpStatusToWaPaymentStatus\(mpStatus\)/);
+    // El viejo ternario inline (rejected/cancelled/in_process/pending) no debe seguir presente.
+    expect(indexSource).not.toMatch(/mpStatus === 'rejected' \? 'rejected'/);
+  });
+
+  it('I4: p_period_ref de la reversión usa buildReferralPeriodRef(dataId) -- mismo builder y mismo id que el registro original', () => {
+    const rpcCallIdx = indexSource.indexOf("'wa_reverse_referral_paid_period'");
+    const rpcCallBlock = indexSource.slice(rpcCallIdx, rpcCallIdx + 400);
+    expect(rpcCallBlock).toMatch(/p_period_ref:\s*buildReferralPeriodRef\(dataId\)/);
+  });
+
+  it('I5: p_reason viene de reversalReason (mapMpStatusToReversalReason), no de mpStatus crudo', () => {
+    const rpcCallIdx = indexSource.indexOf("'wa_reverse_referral_paid_period'");
+    const rpcCallBlock = indexSource.slice(rpcCallIdx, rpcCallIdx + 400);
+    expect(rpcCallBlock).toMatch(/p_reason:\s*reversalReason/);
+  });
+
+  it('I6: p_referred_user_id viene de una fila de wa_businesses resuelta por businessId, no de bizRow de la rama approved', () => {
+    const rpcCallIdx = indexSource.indexOf("'wa_reverse_referral_paid_period'");
+    const rpcCallBlock = indexSource.slice(rpcCallIdx, rpcCallIdx + 400);
+    expect(rpcCallBlock).toMatch(/p_referred_user_id:\s*reversalBizRow\.user_id/);
+  });
+
+  it('I7: la llamada a la RPC de reversión está envuelta en try/catch (no puede tirar el webhook)', () => {
+    const rpcCallIdx = indexSource.indexOf("'wa_reverse_referral_paid_period'");
+    expect(rpcCallIdx).toBeGreaterThan(-1);
+    const before = indexSource.slice(Math.max(0, rpcCallIdx - 600), rpcCallIdx);
+    expect(before).toMatch(/try\s*\{/);
+  });
+
+  it('I8: un error de la RPC de reversión solo se loguea (console.warn), sin return ni throw', () => {
+    const rpcCallIdx = indexSource.indexOf("'wa_reverse_referral_paid_period'");
+    const after = indexSource.slice(rpcCallIdx, rpcCallIdx + 500);
+    expect(after).toMatch(/reversalError/);
+    expect(after).toMatch(/console\.warn/);
+    const errorBlockStart = after.indexOf('if (reversalError)');
+    const errorBlockEnd = after.indexOf('}', errorBlockStart);
+    const errorBlock = after.slice(errorBlockStart, errorBlockEnd);
+    expect(errorBlock).not.toMatch(/return /);
+    expect(errorBlock).not.toMatch(/throw /);
+  });
+
+  it('I9: la rama no-aprobada sigue devolviendo { ok: true } al final, sin importar refunded/charged_back', () => {
+    const nonApprovedBranchIdx = indexSource.indexOf("mpStatus !== 'approved'");
+    const reversalIdx = indexSource.indexOf('reversalReason', nonApprovedBranchIdx);
+    const after = indexSource.slice(reversalIdx, reversalIdx + 2000);
+    expect(after).toMatch(/return jsonResponse\(\{ ok: true \}, 200\);/);
+  });
+
+  it('I10: si businessId es null (external_reference inválido/legado sin parsear), no se intenta la reversión', () => {
+    const reversalReasonIdx = indexSource.indexOf('const reversalReason = mapMpStatusToReversalReason(');
+    const after = indexSource.slice(reversalReasonIdx, reversalReasonIdx + 200);
+    expect(after).toMatch(/if\s*\(reversalReason\s*&&\s*businessId\)/);
   });
 });
