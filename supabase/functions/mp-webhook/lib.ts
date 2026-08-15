@@ -114,3 +114,56 @@ export function shouldRegisterReferralPaidPeriod({
 export function buildReferralPeriodRef(mpPaymentId: string | number): string {
   return `mp:${mpPaymentId}`;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Affiliate Core (Fase 5B) — reversión: ¿esta notificación de MP sobre un
+// pago ya procesado representa que el dinero volvió (refund/chargeback)?
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type WaPaymentNonApprovedStatus =
+  | 'pending'
+  | 'rejected'
+  | 'cancelled'
+  | 'in_process'
+  | 'refunded'
+  | 'charged_back';
+
+/**
+ * wa_payments.status para una notificación de MP con status != 'approved'.
+ * Antes de Fase 5B, 'refunded' y 'charged_back' (estados reales que MP
+ * puede reportar sobre un pago que YA fue aprobado antes) caían en el
+ * bucket genérico 'pending' -- mal etiquetados, indistinguibles de un pago
+ * que simplemente nunca se aprobó. Se agregan como valores explícitos,
+ * nunca se inventan valores nuevos para el resto (rejected/cancelled/
+ * in_process/pending sin cambios).
+ */
+export function mapMpStatusToWaPaymentStatus(mpStatus: string): WaPaymentNonApprovedStatus {
+  switch (mpStatus) {
+    case 'rejected':
+      return 'rejected';
+    case 'cancelled':
+      return 'cancelled';
+    case 'in_process':
+      return 'in_process';
+    case 'refunded':
+      return 'refunded';
+    case 'charged_back':
+      return 'charged_back';
+    default:
+      return 'pending';
+  }
+}
+
+/**
+ * Reason para wa_reverse_referral_paid_period() a partir del status de MP.
+ * Devuelve null para cualquier status que NO represente una reversión de
+ * dinero (pending/rejected/cancelled/in_process/approved) -- el llamador
+ * usa ese null como guarda para no invocar la RPC de reversión en absoluto.
+ * Los dos únicos valores devueltos ('refund'/'chargeback') coinciden
+ * exactamente con referral_commissions_reversed_reason_check.
+ */
+export function mapMpStatusToReversalReason(mpStatus: string): 'refund' | 'chargeback' | null {
+  if (mpStatus === 'refunded') return 'refund';
+  if (mpStatus === 'charged_back') return 'chargeback';
+  return null;
+}
