@@ -274,6 +274,7 @@ Motivo (opcional):`;
               {[
                 { label: 'Negocios',           path: '/admin/businesses', icon: 'Store',      match: (p) => p.startsWith('/admin/businesses') },
                 { label: 'Pagos y suscripciones', path: '/admin/payments', icon: 'CreditCard', match: (p) => p === '/admin/payments' },
+                { label: 'Retiros de afiliados', path: '/admin/affiliate-payouts', icon: 'Banknote', match: (p) => p === '/admin/affiliate-payouts' },
                 { label: 'Usuarios',           path: '/admin/users',     icon: 'Users',      match: (p) => p.startsWith('/admin/users') },
               ].map(item => {
                 const active = item.match(location?.pathname || '');

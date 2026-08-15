@@ -47,6 +47,7 @@ import AuthCallback from './pages/auth-callback';
 import ResetPassword from './pages/reset-password';
 import VerifyEmailPage from './pages/verify-email';
 import AdminPaymentsPage from './pages/admin/AdminPaymentsPage';
+import AdminAffiliatePayoutsPage from './pages/admin/AdminAffiliatePayoutsPage';
 import AdminUsersPage from './pages/admin/AdminUsersPage';
 import AdminBusinessesPage from './pages/admin/AdminBusinessesPage';
 import AdminBusinessDetailPage from './pages/admin/AdminBusinessDetailPage';
@@ -203,6 +204,7 @@ const Routes = () => {
             <Route path="/admin/businesses" element={<RequireAdmin><AdminBusinessesPage /></RequireAdmin>} />
             <Route path="/admin/businesses/:businessId" element={<RequireAdmin><AdminBusinessDetailPage /></RequireAdmin>} />
             <Route path="/admin/payments" element={<RequireAdmin><AdminPaymentsPage /></RequireAdmin>} />
+            <Route path="/admin/affiliate-payouts" element={<RequireAdmin><AdminAffiliatePayoutsPage /></RequireAdmin>} />
             <Route path="/admin/users" element={<RequireAdmin><AdminUsersPage /></RequireAdmin>} />
             <Route path="/admin/users/new" element={<RequireAdmin><AdminUserNewPage /></RequireAdmin>} />
             <Route path="/admin/users/:userId" element={<RequireAdmin><AdminUserDetailPage /></RequireAdmin>} />
