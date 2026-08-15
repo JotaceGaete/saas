@@ -193,6 +193,41 @@ END $$;
 
 RESET ROLE;
 
+-- 35) Las RPCs que reemplazan el acceso directo son SECURITY DEFINER,
+-- tienen search_path fijo y conservan los grants mínimos esperados.
+DO $$
+DECLARE
+  v_signature REGPROCEDURE;
+  v_signatures REGPROCEDURE[] := ARRAY[
+    'public.wa_get_my_referral_stats()'::regprocedure,
+    'public.wa_request_referral_payout(jsonb)'::regprocedure,
+    'public.wa_list_my_referral_payouts(integer,integer)'::regprocedure,
+    'public.wa_admin_list_referral_payouts(text,integer,integer)'::regprocedure,
+    'public.wa_admin_get_referral_payout_detail(uuid)'::regprocedure,
+    'public.wa_admin_mark_referral_payout_paid(uuid,text)'::regprocedure,
+    'public.wa_admin_reject_referral_payout(uuid,text)'::regprocedure
+  ];
+  v_prosecdef BOOLEAN;
+  v_proconfig TEXT[];
+  v_owner NAME;
+BEGIN
+  FOREACH v_signature IN ARRAY v_signatures LOOP
+    SELECT p.prosecdef, p.proconfig, r.rolname
+      INTO v_prosecdef, v_proconfig, v_owner
+    FROM pg_proc p
+    JOIN pg_roles r ON r.oid = p.proowner
+    WHERE p.oid = v_signature::oid;
+
+    ASSERT v_prosecdef, 'FAIL 35 — RPC debe ser SECURITY DEFINER: ' || v_signature::TEXT;
+    ASSERT v_proconfig @> ARRAY['search_path=public'], 'FAIL 35 — search_path inseguro: ' || v_signature::TEXT;
+    ASSERT v_owner NOT IN ('anon', 'authenticated'), 'FAIL 35 — owner cliente inseguro: ' || v_signature::TEXT;
+    ASSERT has_function_privilege('authenticated', v_signature, 'EXECUTE'), 'FAIL 35 — authenticated necesita EXECUTE: ' || v_signature::TEXT;
+    ASSERT NOT has_function_privilege('anon', v_signature, 'EXECUTE'), 'FAIL 35 — anon no debe tener EXECUTE: ' || v_signature::TEXT;
+  END LOOP;
+
+  RAISE NOTICE 'OK: test 35 — SECURITY DEFINER, search_path, owners y grants de EXECUTE correctos';
+END $$;
+
 DO $$
 BEGIN
   UPDATE public.referral_program_terms SET reward_currency = 'USD';
@@ -559,11 +594,27 @@ END $$;
 -- PERMISOS (tests 30-34).
 -- ══════════════════════════════════════════════════════════════════════════
 
--- 30,31) anon no puede ejecutar ninguna de las 3 RPCs.
+-- 30,31) anon no puede leer tablas ni ejecutar ninguna de las 3 RPCs.
 SET LOCAL ROLE anon;
 
 DO $$
 BEGIN
+  BEGIN
+    PERFORM 1 FROM public.referral_payout_requests LIMIT 1;
+    RAISE EXCEPTION 'FAIL 30-table-a — anon NO debía poder leer referral_payout_requests';
+  EXCEPTION
+    WHEN insufficient_privilege THEN
+      RAISE NOTICE 'OK: test 30-table-a — anon bloqueado en referral_payout_requests';
+  END;
+
+  BEGIN
+    PERFORM 1 FROM public.referral_payout_commissions LIMIT 1;
+    RAISE EXCEPTION 'FAIL 30-table-b — anon NO debía poder leer referral_payout_commissions';
+  EXCEPTION
+    WHEN insufficient_privilege THEN
+      RAISE NOTICE 'OK: test 30-table-b — anon bloqueado en referral_payout_commissions';
+  END;
+
   BEGIN
     PERFORM public.wa_list_my_referral_payouts(20, 0);
     RAISE EXCEPTION 'FAIL 30 — anon NO debía poder ejecutar wa_list_my_referral_payouts';
@@ -602,8 +653,27 @@ SELECT set_config('request.jwt.claims', json_build_object('sub','00000000-0000-0
 DO $$
 DECLARE v_list JSONB; v_result JSONB;
 BEGIN
+  BEGIN
+    PERFORM payout_method_snapshot FROM public.referral_payout_requests LIMIT 1;
+    RAISE EXCEPTION 'FAIL 32-table-a — authenticated NO debía poder leer payout_method_snapshot directamente';
+  EXCEPTION
+    WHEN insufficient_privilege THEN
+      RAISE NOTICE 'OK: test 32-table-a — authenticated sin lectura directa de payout_method_snapshot';
+  END;
+
+  BEGIN
+    PERFORM 1 FROM public.referral_payout_commissions LIMIT 1;
+    RAISE EXCEPTION 'FAIL 32-table-b — authenticated NO debía poder leer referral_payout_commissions directamente';
+  EXCEPTION
+    WHEN insufficient_privilege THEN
+      RAISE NOTICE 'OK: test 32-table-b — authenticated sin lectura directa de referral_payout_commissions';
+  END;
+
   SELECT public.wa_list_my_referral_payouts(5, 0) INTO v_list;
   ASSERT v_list IS NOT NULL, 'FAIL 32 — authenticated debía poder ejecutar wa_list_my_referral_payouts';
+  ASSERT v_list::TEXT NOT LIKE '%account_number%', 'FAIL 32 — self-service nunca debe devolver account_number';
+  ASSERT v_list::TEXT NOT LIKE '%holder_tax_id%', 'FAIL 32 — self-service nunca debe devolver holder_tax_id';
+  ASSERT v_list->0 ? 'maskedAccountNumber', 'FAIL 32 — self-service debe devolver maskedAccountNumber';
   RAISE NOTICE 'OK: test 32 — authenticated ejecuta self-service sin error';
 
   SELECT public.wa_admin_list_referral_payouts(NULL, 5, 0) INTO v_result;
@@ -616,8 +686,7 @@ END $$;
 -- con que la escritura directa no tenga efecto (RLS) -- se verifica
 -- explícitamente que anon/authenticated NO POSEEN el privilegio de tabla
 -- en absoluto (INSERT/UPDATE/DELETE), sobre las 2 tablas, y que
--- authenticated SÍ conserva SELECT (lo que las 4 policies de 5C
--- necesitan). Corre como postgres (dueño), sin SET ROLE -- has_table_
+-- authenticated tampoco conserva SELECT. Corre como postgres (dueño), sin SET ROLE -- has_table_
 -- privilege() consulta metadata, no requiere ser el rol consultado.
 DO $$
 BEGIN
@@ -635,15 +704,21 @@ BEGIN
   ASSERT has_table_privilege('authenticated', 'public.referral_payout_commissions', 'UPDATE') = false, 'FAIL 34 — authenticated NO debía tener UPDATE en referral_payout_commissions';
   ASSERT has_table_privilege('authenticated', 'public.referral_payout_commissions', 'DELETE') = false, 'FAIL 34 — authenticated NO debía tener DELETE en referral_payout_commissions';
 
-  ASSERT has_table_privilege('authenticated', 'public.referral_payout_requests', 'SELECT') = true, 'FAIL 34 — authenticated SÍ debía conservar SELECT en referral_payout_requests (lo necesitan las policies de 5C)';
-  ASSERT has_table_privilege('authenticated', 'public.referral_payout_commissions', 'SELECT') = true, 'FAIL 34 — authenticated SÍ debía conservar SELECT en referral_payout_commissions (lo necesitan las policies de 5C)';
+  ASSERT has_table_privilege('authenticated', 'public.referral_payout_requests', 'SELECT') = false, 'FAIL 34 — authenticated NO debe tener SELECT en referral_payout_requests';
+  ASSERT has_table_privilege('authenticated', 'public.referral_payout_commissions', 'SELECT') = false, 'FAIL 34 — authenticated NO debe tener SELECT en referral_payout_commissions';
 
   -- "Conserva únicamente SELECT para authenticated": anon NO debe tener
   -- SELECT tampoco -- ninguna policy de 5C es TO anon.
   ASSERT has_table_privilege('anon', 'public.referral_payout_requests', 'SELECT') = false, 'FAIL 34 — anon NO debía tener SELECT en referral_payout_requests';
   ASSERT has_table_privilege('anon', 'public.referral_payout_commissions', 'SELECT') = false, 'FAIL 34 — anon NO debía tener SELECT en referral_payout_commissions';
 
-  RAISE NOTICE 'OK: test 34 (privilegios) — anon/authenticated sin INSERT/UPDATE/DELETE en ninguna de las 2 tablas; authenticated conserva SELECT';
+  ASSERT NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename IN ('referral_payout_requests', 'referral_payout_commissions')
+  ), 'FAIL 34 — no debe quedar ninguna policy cliente sobre las tablas de payouts';
+
+  RAISE NOTICE 'OK: test 34 (privilegios) — anon/authenticated sin acceso directo y sin policies cliente en ambas tablas';
 END $$;
 
 -- Prueba de comportamiento real (se mantiene, ahora con el resultado
@@ -655,14 +730,7 @@ SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000d1
 SELECT set_config('request.jwt.claims', json_build_object('sub','00000000-0000-0000-0000-0000000000d1','role','authenticated')::text, true);
 
 DO $$
-DECLARE
-  v_status_before    TEXT;
-  v_status_after     TEXT;
-  v_released_before  TIMESTAMPTZ;
-  v_released_after   TIMESTAMPTZ;
 BEGIN
-  SELECT status INTO v_status_before FROM public.referral_payout_requests WHERE id = current_setting('test.p3_id', true)::uuid;
-
   BEGIN
     UPDATE public.referral_payout_requests SET status = 'paid' WHERE id = current_setting('test.p3_id', true)::uuid;
     RAISE EXCEPTION 'FAIL 34a — el UPDATE directo debía ser rechazado por el GRANT (permission denied), ya no debía llegar siquiera a evaluarse por RLS';
@@ -671,11 +739,7 @@ BEGIN
       NULL; -- esperado
   END;
 
-  SELECT status INTO v_status_after FROM public.referral_payout_requests WHERE id = current_setting('test.p3_id', true)::uuid;
-  ASSERT v_status_after = v_status_before, 'FAIL 34a — status NO debía cambiar tras el intento fallido; antes=' || v_status_before || ' después=' || v_status_after;
-  RAISE NOTICE 'OK: test 34a — UPDATE directo sobre referral_payout_requests bloqueado por GRANT (permission denied) -- ya no depende únicamente de RLS -- y ninguna fila cambió';
-
-  SELECT released_at INTO v_released_before FROM public.referral_payout_commissions WHERE payout_id = current_setting('test.p3_id', true)::uuid;
+  RAISE NOTICE 'OK: test 34a — UPDATE directo sobre referral_payout_requests bloqueado por GRANT';
 
   BEGIN
     UPDATE public.referral_payout_commissions SET released_at = now(), released_reason = 'manual' WHERE payout_id = current_setting('test.p3_id', true)::uuid;
@@ -685,9 +749,7 @@ BEGIN
       NULL; -- esperado
   END;
 
-  SELECT released_at INTO v_released_after FROM public.referral_payout_commissions WHERE payout_id = current_setting('test.p3_id', true)::uuid;
-  ASSERT v_released_after IS NOT DISTINCT FROM v_released_before, 'FAIL 34b — released_at NO debía cambiar tras el intento fallido';
-  RAISE NOTICE 'OK: test 34b — UPDATE directo sobre referral_payout_commissions bloqueado por GRANT (permission denied) -- ninguna fila cambió';
+  RAISE NOTICE 'OK: test 34b — UPDATE directo sobre referral_payout_commissions bloqueado por GRANT';
 END $$;
 
 RESET ROLE;
