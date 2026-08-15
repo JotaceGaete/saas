@@ -128,3 +128,34 @@ export async function getBillingSubscriptionByBusinessId(businessId) {
   }
   return enrichSubscriptionRow(data || null);
 }
+
+/**
+ * Fuente durable (Supabase real, tabla billing_subscriptions) para resolver
+ * una suscripción de un proveedor externo (ej. PayPal) a partir de su
+ * provider_subscription_id -- a diferencia de paypalSubscriptionRepository
+ * (JSON local, efímero en /tmp bajo Vercel entre invocaciones serverless),
+ * esta consulta siempre lee el mismo estado persistido, sin importar cuánto
+ * tiempo pasó desde que se creó la suscripción. Índice único ya existente:
+ * billing_subscriptions_provider_subscription_uq ON (provider,
+ * provider_subscription_id) WHERE provider_subscription_id IS NOT NULL
+ * (20260323170000_billing_subscriptions.sql) -- no hace falta ninguna
+ * migración nueva para que esta consulta sea eficiente.
+ * No resuelve wa_businesses.user_id: esta capa solo expone lo que vive en
+ * billing_subscriptions (business_id incluido en la fila devuelta).
+ */
+export async function getBillingSubscriptionByProviderSubscriptionId(provider, providerSubscriptionId) {
+  const providerValue = String(provider || '').trim();
+  const id = String(providerSubscriptionId || '').trim();
+  if (!providerValue || !id) return null;
+  const client = getAdminClient();
+  const { data, error } = await client
+    .from('billing_subscriptions')
+    .select('*')
+    .eq('provider', providerValue)
+    .eq('provider_subscription_id', id)
+    .maybeSingle();
+  if (error) {
+    throw new HttpError(503, `[billing-subscriptions] read by provider_subscription_id failed: ${error.message}`);
+  }
+  return enrichSubscriptionRow(data || null);
+}

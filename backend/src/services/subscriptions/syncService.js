@@ -11,6 +11,7 @@ import {
 } from './paypalStateMapper.js';
 import {
   getBillingSubscriptionByBusinessId,
+  getBillingSubscriptionByProviderSubscriptionId,
   upsertBillingSubscriptionByBusiness,
 } from '../../repositories/billingSubscriptionRepository.js';
 import { mapProviderStatus } from '../billing/billingStatusMapper.js';
@@ -31,6 +32,40 @@ function parseCustomId(rawCustomId) {
     return { userId: value.slice('user:'.length) || null, businessId: null, customId: value };
   }
   return { userId: null, businessId: null, customId: value };
+}
+
+/**
+ * Resuelve business_id de forma priorizada -- nunca depende únicamente del
+ * JSON local efímero (paypalSubscriptionRepository, /tmp bajo Vercel, no
+ * persiste entre invocaciones serverless):
+ *   1. custom_id del propio evento/API call actual (fuente más fresca).
+ *   2. billing_subscriptions (Supabase real, durable) por
+ *      (provider, provider_subscription_id) -- sobrevive a cualquier
+ *      cold start, es la fuente correcta para eventos que llegan mucho
+ *      después de la creación de la suscripción (ej. PAYMENT.SALE.COMPLETED
+ *      en una renovación, semanas/meses después).
+ *   3. JSON local -- último recurso, solo cache/compatibilidad, nunca
+ *      requisito.
+ * Fallos del lookup durable (red, Supabase caído) se registran y degradan
+ * al paso 3 -- nunca inventan ni asocian un business_id incorrecto.
+ */
+async function resolveBusinessId({ customBusinessId, paypalSubscriptionId, existingBusinessId }) {
+  if (customBusinessId) return customBusinessId;
+
+  const id = String(paypalSubscriptionId || '').trim();
+  if (id) {
+    try {
+      const durable = await getBillingSubscriptionByProviderSubscriptionId('paypal', id);
+      if (durable?.business_id) return durable.business_id;
+    } catch (error) {
+      console.warn('[sync-service] durable billing_subscriptions lookup failed', {
+        paypalSubscriptionId: id,
+        message: error?.message || 'unknown_error',
+      });
+    }
+  }
+
+  return existingBusinessId || null;
 }
 
 async function resolveInternalPlanSlug({ internalPlanSlug, paypalPlanId }) {
@@ -251,6 +286,11 @@ export async function applyEventSnapshot({
     paypalPlanId: paypalPlanId || existing?.paypalPlanId || null,
   });
   const custom = parseCustomId(customId || existing?.customId || null);
+  const resolvedBusinessId = await resolveBusinessId({
+    customBusinessId: custom.businessId,
+    paypalSubscriptionId,
+    existingBusinessId: existing?.businessId,
+  });
 
   const saved = await saveOrUpdateSubscriptionRecord(environment, {
     paypalSubscriptionId: String(paypalSubscriptionId || '').trim(),
@@ -260,7 +300,7 @@ export async function applyEventSnapshot({
     internalStatus: mapPaypalStatusToInternal(effectivePaypalStatus),
     customId: custom.customId,
     userId: custom.userId || existing?.userId || null,
-    businessId: custom.businessId || existing?.businessId || null,
+    businessId: resolvedBusinessId,
     subscriberEmail: String(subscriberEmail || '').trim() || existing?.subscriberEmail || null,
     lastEventType: normalizePaypalEventType(eventType),
   });
