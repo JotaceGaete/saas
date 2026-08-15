@@ -1,5 +1,5 @@
 // admin-users — Panel admin: listar, ver, crear, editar, suspender, habilitar, eliminar usuarios y asignar rol admin.
-// Solo usuarios con app_metadata.role === 'admin' (o user_metadata.role). Usa Auth Admin API con service_role.
+// Solo usuarios con app_metadata.role === 'admin'. Usa Auth Admin API con service_role.
 // debugVersion: "admin-users-search-v3-2026-06-02"
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -16,9 +16,13 @@ function jsonResponse(body: Record<string, unknown>, status: number) {
   });
 }
 
-function isAdminUser(user: { app_metadata?: Record<string, unknown>; user_metadata?: Record<string, unknown> } | null): boolean {
+// app_metadata is server-only (service role); user_metadata can be self-modified by users.
+// Never check user_metadata.role for privilege decisions -- this endpoint can grant
+// app_metadata.role='admin' itself (action='setRole'), so a vulnerable gate here would let
+// a user_metadata self-elevation become a real, permanent admin grant.
+function isAdminUser(user: { app_metadata?: Record<string, unknown> } | null): boolean {
   if (!user) return false;
-  return (user.app_metadata?.role as string) === 'admin' || (user.user_metadata?.role as string) === 'admin';
+  return (user.app_metadata?.role as string) === 'admin';
 }
 
 function isUuid(s: string) {
