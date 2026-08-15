@@ -70,21 +70,7 @@ import RefundsPage from './pages/legal/RefundsPage';
 import DLocalReturnPage from './pages/billing-dlocal-return';
 import { useAuth } from './contexts/AuthContext';
 import PremiumLoader from './components/ui/PremiumLoader';
-
-const PLATFORM_HOSTS = [
-  'ventalink.app',
-  'go.ventalink.app',
-  'cl.ventalink.app',
-  'miralatienda.de',
-  'www.miralatienda.de',
-];
-
-function isCustomDomain(hostname) {
-  if (!hostname || hostname === 'localhost') return false;
-  if (/^(127\.|192\.168\.|10\.|::1)/.test(hostname)) return false;
-  if (/\.vercel\.app$/i.test(hostname)) return false;
-  return !PLATFORM_HOSTS.some(h => hostname === h || hostname.endsWith(`.${h}`));
-}
+import { isCustomDomain } from './lib/platformHosts';
 
 /**
  * Raíz `/` en go.ventalink.app: sesión → dashboard; sin sesión → login (nunca apex/www).
