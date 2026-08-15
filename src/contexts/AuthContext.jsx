@@ -487,10 +487,11 @@ export const AuthProvider = ({ children }) => {
     }
   }
 
-  const isAdmin = !!(
-    user?.app_metadata?.role === 'admin' ||
-    user?.user_metadata?.role === 'admin'
-  )
+  // Nunca leer user_metadata.role: es editable por el propio usuario vía
+  // supabase.auth.updateUser(), sin privilegios especiales. app_metadata
+  // solo es escribible vía Auth Admin API con service_role -- fix de
+  // escalación de privilegios (2026-08-17).
+  const isAdmin = !!(user?.app_metadata?.role === 'admin')
 
   // Legacy: auto-redirect por mercado/subdominio (cl/ar/go). Ya no aplica: todo vive en go.ventalink.app.
   // Mantener solo carga de sesión y negocio, sin navegación cross-domain.

@@ -77,4 +77,19 @@ describe('RequireAdmin protegiendo /afiliados (rollout admin-only)', () => {
     await waitFor(() => expect(screen.getByText('login-page')).toBeInTheDocument());
     expect(screen.queryByTestId('shell')).not.toBeInTheDocument();
   });
+
+  it('usuario auto-elevado vía user_metadata.role=admin (sin app_metadata admin) NO entra: se redirige a /dashboard como usuario normal', async () => {
+    // AuthContext.jsx ya no computa isAdmin=true para este caso (ver
+    // AuthContext.test.jsx, fix de escalación de privilegios 2026-08-17) --
+    // isAdmin:false acá es exactamente lo que ese usuario recibiría del
+    // contexto real. Este test documenta que RequireAdmin actúa
+    // correctamente sobre ese resultado, no que RequireAdmin mismo lea
+    // metadata (no lo hace).
+    useAuth.mockReturnValue({ user: { id: 'u3' }, loading: false, isAdmin: false, isEmailConfirmed: true });
+
+    renderAffiliatesRoute();
+
+    await waitFor(() => expect(screen.getByText('dashboard-page')).toBeInTheDocument());
+    expect(screen.queryByTestId('shell')).not.toBeInTheDocument();
+  });
 });

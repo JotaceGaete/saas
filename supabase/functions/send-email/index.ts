@@ -505,7 +505,8 @@ async function verifyAdmin(
       const adminClient = createClient(supabaseUrl, sk);
       const { data: row, error: adminErr } = await adminClient.auth.admin.getUserById(user.id);
       if (!adminErr && row?.user) {
-        const role = row.user.app_metadata?.role ?? row.user.user_metadata?.role;
+        // Never fall back to user_metadata.role: it's self-modifiable by the user.
+        const role = row.user.app_metadata?.role;
         if (role === 'admin') {
           return { ok: true, userId: user.id };
         }

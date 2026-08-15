@@ -37,12 +37,13 @@ const MOCK_USER = { id: 'user-1', email: 'test@example.com', email_confirmed_at:
 const MOCK_SESSION = { user: MOCK_USER, access_token: 'tok', refresh_token: 'rtok' };
 
 function Harness() {
-  const { business, businessStatus, businessLoadError, refreshBusiness } = useAuth();
+  const { business, businessStatus, businessLoadError, refreshBusiness, isAdmin } = useAuth();
   return (
     <div>
       <span data-testid="status">{businessStatus}</span>
       <span data-testid="business-name">{business ? business.name : 'none'}</span>
       <span data-testid="error-message">{businessLoadError ? businessLoadError.message : 'none'}</span>
+      <span data-testid="is-admin">{String(isAdmin)}</span>
       <button onClick={() => refreshBusiness()}>retry</button>
     </div>
   );
@@ -68,6 +69,25 @@ async function renderWithSession() {
   );
   await waitFor(() => expect(supabase.auth.getSession).toHaveBeenCalled());
   return { ...utils, getOnChange: () => capturedOnChange };
+}
+
+/** Igual que renderWithSession, pero con un user de metadata custom (para casos de isAdmin). */
+async function renderWithSessionForUser(userExtra) {
+  const user = { ...MOCK_USER, ...userExtra };
+  const session = { user, access_token: 'tok', refresh_token: 'rtok' };
+  getMyBusiness.mockResolvedValue({ data: null, error: null });
+  supabase.auth.getSession.mockResolvedValue({ data: { session } });
+  supabase.auth.getUser.mockResolvedValue({ data: { user }, error: null });
+  supabase.auth.onAuthStateChange.mockImplementation(() => ({
+    data: { subscription: { unsubscribe: vi.fn() } },
+  }));
+  const utils = render(
+    <AuthProvider>
+      <Harness />
+    </AuthProvider>,
+  );
+  await waitFor(() => expect(supabase.auth.getSession).toHaveBeenCalled());
+  return utils;
 }
 
 describe('AuthContext — businessStatus', () => {
@@ -164,5 +184,28 @@ describe('AuthContext — businessStatus', () => {
     await renderWithSession();
     await waitFor(() => expect(screen.getByTestId('status').textContent).toBe('loaded'));
     expect(screen.getByTestId('business-name').textContent).toBe('Con Trial Vencido');
+  });
+});
+
+describe('AuthContext — isAdmin (fix de escalación de privilegios, 2026-08-17)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('app_metadata.role=admin → isAdmin=true', async () => {
+    await renderWithSessionForUser({ app_metadata: { role: 'admin' } });
+    await waitFor(() => expect(screen.getByTestId('is-admin').textContent).toBe('true'));
+  });
+
+  it('SOLO user_metadata.role=admin (sin app_metadata) → isAdmin=false', async () => {
+    await renderWithSessionForUser({ user_metadata: { role: 'admin' } });
+    await waitFor(() => expect(screen.getByTestId('status').textContent).toBe('not_found'));
+    expect(screen.getByTestId('is-admin').textContent).toBe('false');
+  });
+
+  it('sin ningún rol → isAdmin=false', async () => {
+    await renderWithSessionForUser({});
+    await waitFor(() => expect(screen.getByTestId('status').textContent).toBe('not_found'));
+    expect(screen.getByTestId('is-admin').textContent).toBe('false');
   });
 });

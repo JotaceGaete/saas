@@ -78,8 +78,10 @@ function buildTemplateKey(templateId: string, fileName: string, variant?: string
   return `catalog-templates/${safeTemplateId}/${safeVariant}-${unique}.${safeExt}`;
 }
 
-function isAdminUser(user: { app_metadata?: Record<string, unknown>; user_metadata?: Record<string, unknown> }): boolean {
-  return (user.app_metadata?.role as string) === 'admin' || (user.user_metadata?.role as string) === 'admin';
+// app_metadata is server-only (service role); user_metadata can be self-modified
+// by users. Never check user_metadata.role for privilege decisions.
+function isAdminUser(user: { app_metadata?: Record<string, unknown> }): boolean {
+  return (user.app_metadata?.role as string) === 'admin';
 }
 
 Deno.serve(async (req) => {
