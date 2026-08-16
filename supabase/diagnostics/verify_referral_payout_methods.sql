@@ -268,6 +268,22 @@ END $$;
 -- ══════════════════════════════════════════════════════════════════════════
 -- Fixture de payouts/comisiones históricos (independiente de
 -- referral_payout_methods) para probar los casos 11/12/13.
+--
+-- NOTA (post Fase C3, 2026-08-18): este fixture NO prueba
+-- wa_request_referral_payout() -- prueba que un payout_method_snapshot y
+-- una referral_commission YA EXISTENTES permanecen intactos ante
+-- guardar/reemplazar/eliminar métodos de referral_payout_methods. Antes
+-- de C3 se fabricaba llamando a wa_request_referral_payout() con un
+-- snapshot construido a mano; desde C3 esa RPC ignora por completo el
+-- parámetro y construye el snapshot server-side desde el método
+-- guardado del caller (d1 en este punto del script ya tiene un método
+-- CL guardado por el caso 9), así que ya no sirve para fabricar un
+-- snapshot con forma arbitraria. Se reemplaza por un INSERT directo
+-- privilegiado (como postgres, mismo patrón que el resto de fixtures de
+-- este repo que fabrican estado sin pasar por la RPC que no están
+-- probando), reproduciendo EXACTAMENTE la misma forma de snapshot y el
+-- mismo vínculo payout/comisión que la RPC creaba antes de C3 -- el
+-- propósito del caso 12/13 (¿permanece intacto?) no cambia en absoluto.
 -- ══════════════════════════════════════════════════════════════════════════
 
 DO $$
@@ -275,6 +291,7 @@ DECLARE
   v_code_id UUID;
   v_attribution_id UUID;
   v_commission_id UUID;
+  v_payout_id UUID;
 BEGIN
   INSERT INTO public.referral_codes (user_id, code, display_name)
   VALUES ('00000000-0000-0000-0000-0000000000d1', 'payout-method-diag', 'Diag')
@@ -289,27 +306,24 @@ BEGIN
   RETURNING id INTO v_commission_id;
 
   PERFORM set_config('test.fixture_commission_id', v_commission_id::text, true);
+
+  -- payout_method_snapshot histórico -- misma forma exacta que fabricaba
+  -- wa_request_referral_payout() antes de C3 (ver nota arriba).
+  INSERT INTO public.referral_payout_requests (referrer_user_id, requested_amount, currency, payout_method_snapshot)
+  VALUES (
+    '00000000-0000-0000-0000-0000000000d1', 5.00, 'USD',
+    jsonb_build_object(
+      'method', 'bank_transfer', 'country', 'CL', 'holder_name', 'Juan Perez Historico',
+      'bank_name', 'Banco Historico', 'account_type', 'checking', 'account_number', '111222333'
+    )
+  )
+  RETURNING id INTO v_payout_id;
+
+  INSERT INTO public.referral_payout_commissions (payout_id, commission_id, reward_amount_snapshot)
+  VALUES (v_payout_id, v_commission_id, 5.00);
+
+  PERFORM set_config('test.fixture_payout_id', v_payout_id::text, true);
 END $$;
-
-SET LOCAL ROLE authenticated;
-SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000d1', true);
-SELECT set_config('request.jwt.claims', json_build_object('sub','00000000-0000-0000-0000-0000000000d1','role','authenticated')::text, true);
-
-DO $$
-DECLARE
-  v_result JSONB;
-BEGIN
-  -- payout_method_snapshot histórico -- construido a mano, EXACTAMENTE
-  -- como lo sigue haciendo hoy el formulario real de WalinkaRef (Fase C2
-  -- no lo toca).
-  v_result := public.wa_request_referral_payout(jsonb_build_object(
-    'method', 'bank_transfer', 'country', 'CL', 'holder_name', 'Juan Perez Historico',
-    'bank_name', 'Banco Historico', 'account_type', 'checking', 'account_number', '111222333'
-  ));
-  PERFORM set_config('test.fixture_payout_id', (v_result->'payouts'->0->>'payoutId'), true);
-END $$;
-
-RESET ROLE;
 
 -- ══════════════════════════════════════════════════════════════════════════
 -- Caso 11 — DELETE elimina solo el propio método (d1), nunca el de d2.

@@ -18,6 +18,13 @@
 
 BEGIN;
 
+-- Secreto de Vault de PRUEBA (exclusivo de esta transacción, revertido
+-- por el ROLLBACK final) -- necesario desde Fase C2/C3: tanto
+-- wa_set_my_referral_payout_method() como wa_request_referral_payout()
+-- consultan wa_referral_payout_method_encryption_key(). Nunca el valor
+-- real de producción (mismo patrón que el resto de diagnósticos).
+SELECT vault.create_secret('diagnostic-only-test-key-never-used-in-production', 'referral_payout_method_encryption_key');
+
 -- ══════════════════════════════════════════════════════════════════════════
 -- Setup: usuarios + helpers.
 -- ══════════════════════════════════════════════════════════════════════════
@@ -118,7 +125,13 @@ SELECT set_config('request.jwt.claims', json_build_object('sub','00000000-0000-0
 DO $$
 DECLARE v_result JSONB;
 BEGIN
-  SELECT public.wa_request_referral_payout(pg_temp.valid_snapshot('P1 Holder')) INTO v_result;
+  -- Post-C3: el snapshot se construye server-side desde un método
+  -- guardado (Fase C2) -- se configura UNA vez para d1 acá; persiste
+  -- para P2/P3/P4 (misma transacción, mismo usuario).
+  PERFORM public.wa_set_my_referral_payout_method(
+    'CL', 'P1 Holder', '11.111.111-1', 'Banco Estado', 'checking', '1234567890', NULL
+  );
+  SELECT public.wa_request_referral_payout() INTO v_result;
   ASSERT (v_result->'payouts'->0->>'created')::boolean = true, 'FAIL setup P1 — debía crearse';
   PERFORM set_config('test.p1_id', v_result->'payouts'->0->>'payoutId', true);
 END $$;
@@ -139,7 +152,8 @@ SELECT set_config('request.jwt.claims', json_build_object('sub','00000000-0000-0
 DO $$
 DECLARE v_result JSONB;
 BEGIN
-  SELECT public.wa_request_referral_payout(pg_temp.valid_snapshot('P2 Holder')) INTO v_result;
+  -- d1 ya tiene un método guardado desde P1 (misma transacción).
+  SELECT public.wa_request_referral_payout() INTO v_result;
   ASSERT (v_result->'payouts'->0->>'created')::boolean = true, 'FAIL setup P2 — debía crearse';
   PERFORM set_config('test.p2_id', v_result->'payouts'->0->>'payoutId', true);
 END $$;
@@ -160,7 +174,8 @@ SELECT set_config('request.jwt.claims', json_build_object('sub','00000000-0000-0
 DO $$
 DECLARE v_result JSONB;
 BEGIN
-  SELECT public.wa_request_referral_payout(pg_temp.valid_snapshot('P3 Holder')) INTO v_result;
+  -- d1 ya tiene un método guardado desde P1 (misma transacción).
+  SELECT public.wa_request_referral_payout() INTO v_result;
   ASSERT (v_result->'payouts'->0->>'created')::boolean = true, 'FAIL setup P3 — debía crearse';
   PERFORM set_config('test.p3_id', v_result->'payouts'->0->>'payoutId', true);
 END $$;
@@ -185,7 +200,8 @@ SELECT set_config('request.jwt.claims', json_build_object('sub','00000000-0000-0
 DO $$
 DECLARE v_result JSONB;
 BEGIN
-  SELECT public.wa_request_referral_payout(pg_temp.valid_snapshot('P4 Holder')) INTO v_result;
+  -- d1 ya tiene un método guardado desde P1 (misma transacción).
+  SELECT public.wa_request_referral_payout() INTO v_result;
   ASSERT (v_result->'payouts'->0->>'created')::boolean = true, 'FAIL setup P4 — debía crearse';
   ASSERT (v_result->'payouts'->0->>'currency') = 'CLP', 'FAIL setup P4 — moneda esperada CLP';
   PERFORM set_config('test.p4_id', v_result->'payouts'->0->>'payoutId', true);
@@ -219,7 +235,18 @@ BEGIN
     WHERE p.oid = v_signature::oid;
 
     ASSERT v_prosecdef, 'FAIL 35 — RPC debe ser SECURITY DEFINER: ' || v_signature::TEXT;
-    ASSERT v_proconfig @> ARRAY['search_path=public'], 'FAIL 35 — search_path inseguro: ' || v_signature::TEXT;
+    -- Post-C3 (20260818120000): wa_request_referral_payout() necesita
+    -- 'extensions' en el search_path para invocar pgp_sym_decrypt() al
+    -- construir el snapshot desde el método guardado (Fase C2) -- ya
+    -- verificado explícitamente en verify_referral_payout_method_cutover.sql
+    -- (caso 22). Sigue siendo un search_path FIJO y explícito (nunca
+    -- mutable ni vacío) -- el resto de las RPCs de esta lista conserva la
+    -- exigencia estricta original de 'search_path=public' únicamente.
+    IF v_signature = 'public.wa_request_referral_payout(jsonb)'::regprocedure THEN
+      ASSERT v_proconfig @> ARRAY['search_path=public, extensions'], 'FAIL 35 — search_path inseguro: ' || v_signature::TEXT;
+    ELSE
+      ASSERT v_proconfig @> ARRAY['search_path=public'], 'FAIL 35 — search_path inseguro: ' || v_signature::TEXT;
+    END IF;
     ASSERT v_owner NOT IN ('anon', 'authenticated'), 'FAIL 35 — owner cliente inseguro: ' || v_signature::TEXT;
     ASSERT has_function_privilege('authenticated', v_signature, 'EXECUTE'), 'FAIL 35 — authenticated necesita EXECUTE: ' || v_signature::TEXT;
     ASSERT NOT has_function_privilege('anon', v_signature, 'EXECUTE'), 'FAIL 35 — anon no debe tener EXECUTE: ' || v_signature::TEXT;
@@ -247,7 +274,11 @@ SELECT set_config('request.jwt.claims', json_build_object('sub','00000000-0000-0
 DO $$
 DECLARE v_result JSONB;
 BEGIN
-  SELECT public.wa_request_referral_payout(pg_temp.valid_snapshot('D2 Holder')) INTO v_result;
+  -- d2 necesita su propio método guardado (usuario distinto de d1).
+  PERFORM public.wa_set_my_referral_payout_method(
+    'CL', 'D2 Holder', '22.222.222-2', 'Banco Santander', 'savings', '9988776655', NULL
+  );
+  SELECT public.wa_request_referral_payout() INTO v_result;
   ASSERT (v_result->'payouts'->0->>'created')::boolean = true, 'FAIL setup Pd2 — debía crearse';
   PERFORM set_config('test.pd2_id', v_result->'payouts'->0->>'payoutId', true);
 END $$;
@@ -512,10 +543,14 @@ BEGIN
   SELECT public.wa_admin_get_referral_payout_detail(v_p1_id) INTO v_result;
   ASSERT (v_result->>'ok')::boolean = true, 'FAIL 22 — admin debía obtener el detalle';
 
-  -- 25) snapshot completo disponible ÚNICAMENTE acá.
+  -- 25) snapshot completo disponible ÚNICAMENTE acá. Post-C3: el
+  -- snapshot se construye desde referral_payout_methods (Fase C2), que
+  -- normaliza el RUT al guardarlo (quita puntos) -- '11.111.111-1' ->
+  -- '11111111-1', mismo valor real, mismo comportamiento ya verificado
+  -- en verify_referral_payout_method_cutover.sql (caso 4).
   ASSERT (v_result->'payout' ? 'payoutMethodSnapshot'), 'FAIL 25 — el detalle SÍ debía traer el snapshot completo';
-  ASSERT (v_result->'payout'->'payoutMethodSnapshot'->>'holder_tax_id') = '11.111.111-1',
-    'FAIL 25 — holder_tax_id completo esperado en el snapshot del detalle';
+  ASSERT (v_result->'payout'->'payoutMethodSnapshot'->>'holder_tax_id') = '11111111-1',
+    'FAIL 25 — holder_tax_id completo (normalizado) esperado en el snapshot del detalle';
   ASSERT (v_result->'payout'->'payoutMethodSnapshot'->>'account_number') = '1234567890',
     'FAIL 25 — account_number SIN enmascarar esperado en el snapshot del detalle (el admin lo necesita para transferir)';
 

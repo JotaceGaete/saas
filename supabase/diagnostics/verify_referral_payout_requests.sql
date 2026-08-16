@@ -20,6 +20,15 @@
 
 BEGIN;
 
+-- Secreto de Vault de PRUEBA (exclusivo de esta transacción, revertido
+-- por el ROLLBACK final) -- necesario desde Fase C2/C3: tanto
+-- wa_set_my_referral_payout_method() como wa_request_referral_payout()
+-- consultan wa_referral_payout_method_encryption_key() para cifrar/
+-- descifrar el método de pago guardado del caller. Nunca el valor real
+-- de producción (mismo patrón que verify_referral_payout_methods.sql y
+-- verify_referral_payout_method_cutover.sql).
+SELECT vault.create_secret('diagnostic-only-test-key-never-used-in-production', 'referral_payout_method_encryption_key');
+
 -- ══════════════════════════════════════════════════════════════════════════
 -- Setup: usuarios + helpers.
 -- ══════════════════════════════════════════════════════════════════════════
@@ -124,6 +133,54 @@ BEGIN
   RAISE NOTICE 'OK: caso 0 — wa_validate_referral_payout_method_snapshot cubre válido/NULL/vacío/method incorrecto/campo requerido vacío/opcionales ausentes';
 END $$;
 
+-- ══════════════════════════════════════════════════════════════════════════
+-- Caso 0-AR (post Fase C3, 20260818115000): account_type pasa de
+-- obligatorio-incondicional a obligatorio-solo-para-CL. Ver Punto 4 del
+-- pedido: CL sin account_type sigue rechazado, CL con account_type sigue
+-- funcionando, AR sin account_type ahora es válido, y un snapshot
+-- histórico AR que SÍ traiga account_type (forma que pudo haber existido
+-- antes de esta fase) sigue siendo válido -- el campo nunca se prohíbe,
+-- solo deja de ser obligatorio para países distintos de CL.
+-- ══════════════════════════════════════════════════════════════════════════
+
+DO $$
+DECLARE
+  v_ar_snapshot JSONB;
+  v_ar_snapshot_con_account_type JSONB;
+BEGIN
+  v_ar_snapshot := jsonb_build_object(
+    'method', 'bank_transfer', 'country', 'AR', 'holder_name', 'Maria Lopez',
+    'holder_tax_id', '20123456783', 'bank_name', 'Banco Galicia',
+    'account_number', '0110599940000012345678'
+  );
+
+  -- AR sin account_type (ausente por completo) -> válido.
+  ASSERT public.wa_validate_referral_payout_method_snapshot(v_ar_snapshot) = true,
+    'FAIL c0-AR — snapshot AR sin account_type debía ser válido (CBU/CVU no tiene ese concepto)';
+
+  -- AR con account_type presente pero vacío -> sigue inválido (una cadena
+  -- en blanco nunca es una ausencia real, para ningún país).
+  ASSERT public.wa_validate_referral_payout_method_snapshot(v_ar_snapshot || jsonb_build_object('account_type', '')) = false,
+    'FAIL c0-AR — account_type presente pero vacío debía ser inválido incluso para AR';
+
+  -- Snapshot histórico AR que SÍ trae account_type (forma que pudo haber
+  -- existido si algún registro previo lo incluyó) -- sigue siendo válido,
+  -- el campo nunca pasa a estar prohibido, solo deja de ser obligatorio.
+  v_ar_snapshot_con_account_type := v_ar_snapshot || jsonb_build_object('account_type', 'cbu');
+  ASSERT public.wa_validate_referral_payout_method_snapshot(v_ar_snapshot_con_account_type) = true,
+    'FAIL c0-AR — un snapshot histórico AR que SÍ trae account_type debía seguir siendo válido';
+
+  -- CL sin account_type -> sigue rechazado (sin cambios de comportamiento).
+  ASSERT public.wa_validate_referral_payout_method_snapshot(pg_temp.valid_snapshot() - 'account_type') = false,
+    'FAIL c0-AR — CL sin account_type debía seguir siendo rechazado';
+
+  -- CL con account_type válido -> sigue funcionando (sin cambios).
+  ASSERT public.wa_validate_referral_payout_method_snapshot(pg_temp.valid_snapshot()) = true,
+    'FAIL c0-AR — CL con account_type válido debía seguir funcionando';
+
+  RAISE NOTICE 'OK: caso 0-AR — account_type condicional a country: AR sin account_type válido, AR con account_type histórico válido, CL sin account_type rechazado, CL con account_type funciona';
+END $$;
+
 -- INSERT directo (bypass de la RPC) con snapshot incompleto -> el CHECK de
 -- tabla debe rechazarlo igual.
 DO $$
@@ -171,16 +228,46 @@ DO $$
 DECLARE
   v_result JSONB;
 BEGIN
-  -- Snapshot inválido -> RPC rechaza SIN crear ningún retiro.
+  -- Post-C3 (20260818120000): el snapshot que el cliente envíe se ignora
+  -- por completo -- lo que determina el rechazo es la AUSENCIA de un
+  -- referral_payout_method guardado (Fase C2), no la forma del JSON. Se
+  -- preserva el MISMO invariante que probaba el caso original (rechazo
+  -- limpio, sin crear ningún retiro), adaptado a que la fuente de verdad
+  -- del snapshot ahora es server-side.
   SELECT public.wa_request_referral_payout('{"method":"bank_transfer","country":"CL"}'::jsonb) INTO v_result;
-  ASSERT (v_result->>'requested')::boolean = false, 'FAIL c1 — snapshot inválido debía rechazar la solicitud';
-  ASSERT v_result->>'reason' = 'invalid_payout_method_snapshot', 'FAIL c1 — reason esperado invalid_payout_method_snapshot';
+  ASSERT (v_result->>'requested')::boolean = false, 'FAIL c1 — sin método guardado debía rechazar la solicitud';
+  ASSERT v_result->>'reason' = 'payout_method_not_configured', 'FAIL c1 — reason esperado payout_method_not_configured';
+END $$;
+
+RESET ROLE;
+
+-- referral_payout_requests no tiene SELECT directo para authenticated
+-- (hardening de 20260818100000) -- esta verificación corre como
+-- postgres/superuser, después de RESET ROLE, mismo patrón que el resto
+-- de diagnósticos de Affiliate Core que inspeccionan filas crudas.
+DO $$
+BEGIN
   ASSERT NOT EXISTS (
     SELECT 1 FROM public.referral_payout_requests WHERE referrer_user_id = '00000000-0000-0000-0000-0000000000b1'
-  ), 'FAIL c1 — snapshot inválido NO debía crear ningún retiro';
+  ), 'FAIL c1 — sin método guardado NO debía crear ningún retiro';
+  RAISE NOTICE 'OK: caso 1 — sin método guardado rechazado sin crear nada';
+END $$;
 
-  -- Snapshot válido -> crea el retiro.
-  SELECT public.wa_request_referral_payout(pg_temp.valid_snapshot()) INTO v_result;
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000b1', true);
+SELECT set_config('request.jwt.claims', json_build_object('sub','00000000-0000-0000-0000-0000000000b1','role','authenticated')::text, true);
+
+DO $$
+DECLARE
+  v_result JSONB;
+BEGIN
+  -- Método guardado (Fase C2) -> crea el retiro. El snapshot ya no se
+  -- pasa como parámetro (se ignoraría igual) -- se construye server-side
+  -- desde el método recién guardado.
+  PERFORM public.wa_set_my_referral_payout_method(
+    'CL', 'Juan Perez', '11.111.111-1', 'Banco Estado', 'checking', '1234567890', NULL
+  );
+  SELECT public.wa_request_referral_payout() INTO v_result;
   ASSERT (v_result->>'requested')::boolean = true, 'FAIL c1 — solicitud válida debía aceptarse';
   ASSERT jsonb_array_length(v_result->'payouts') = 1, 'FAIL c1 — debía crearse exactamente 1 payout (1 sola moneda)';
   ASSERT (v_result->'payouts'->0->>'created')::boolean = true, 'FAIL c1 — el payout debía crearse';
@@ -188,7 +275,7 @@ BEGIN
 
   PERFORM set_config('test.c1_payout_id', v_result->'payouts'->0->>'payoutId', true);
 
-  RAISE NOTICE 'OK: caso 1 — snapshot inválido rechazado sin crear nada; snapshot válido crea el retiro';
+  RAISE NOTICE 'OK: caso 1 — con método guardado crea el retiro';
 END $$;
 
 RESET ROLE;
@@ -256,6 +343,19 @@ BEGIN
   RAISE NOTICE 'OK: caso 1-noadmin — RPCs admin invocadas por no-admin devuelven forbidden sin mutar nada';
 END $$;
 
+-- Lookup privilegiado (como postgres) del commission_id vinculado al
+-- payout, necesario más abajo -- referral_payout_commissions no tiene
+-- SELECT directo para authenticated (hardening de 20260818100000), así
+-- que esta lectura se hace ANTES de entrar al rol authenticated/admin.
+DO $$
+DECLARE
+  v_payout_id UUID := current_setting('test.c1_payout_id', true)::uuid;
+  v_commission_id UUID;
+BEGIN
+  SELECT commission_id INTO v_commission_id FROM public.referral_payout_commissions WHERE payout_id = v_payout_id;
+  PERFORM set_config('test.c1_commission_id', v_commission_id::text, true);
+END $$;
+
 -- Admin marca pagado: requestedAmount == payableAmount -> pago atómico exitoso.
 SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000ba', true);
@@ -264,12 +364,9 @@ SELECT set_config('request.jwt.claims', json_build_object('sub','00000000-0000-0
 DO $$
 DECLARE
   v_payout_id UUID := current_setting('test.c1_payout_id', true)::uuid;
-  v_commission_id UUID;
   v_result JSONB;
 BEGIN
   ASSERT public.wa_is_admin() = true, 'FAIL c1-admin — setup: wa_is_admin() debía ser true bajo este JWT simulado';
-
-  SELECT commission_id INTO v_commission_id FROM public.referral_payout_commissions WHERE payout_id = v_payout_id;
 
   -- Sin external_reference -> rechazado, nada mutado.
   SELECT public.wa_admin_mark_referral_payout_paid(v_payout_id, NULL) INTO v_result;
@@ -280,8 +377,6 @@ BEGIN
   ASSERT (v_result->>'ok')::boolean = true, 'FAIL c1-admin — el pago debía ser exitoso (requestedAmount == payableAmount)';
   ASSERT (v_result->>'commissionsPaid')::int = 1, 'FAIL c1-admin — debía pagar exactamente 1 comisión';
   ASSERT (v_result->>'paidAmount')::numeric = 5.00, 'FAIL c1-admin — paidAmount esperado 5.00';
-
-  PERFORM set_config('test.c1_commission_id', v_commission_id::text, true);
 
   -- Pago repetido del mismo payout -> no-op idempotente, NUNCA doble pago.
   SELECT public.wa_admin_mark_referral_payout_paid(v_payout_id, 'TXN-0002-DEBERIA-IGNORARSE') INTO v_result;
@@ -343,7 +438,11 @@ SELECT set_config('request.jwt.claims', json_build_object('sub','00000000-0000-0
 DO $$
 DECLARE v_result JSONB;
 BEGIN
-  SELECT public.wa_request_referral_payout(pg_temp.valid_snapshot()) INTO v_result;
+  -- Método guardado antes de reclamar (Fase C2) -- ver nota del caso 1.
+  PERFORM public.wa_set_my_referral_payout_method(
+    'CL', 'Juan Perez', '11.111.111-1', 'Banco Estado', 'checking', '1234567890', NULL
+  );
+  SELECT public.wa_request_referral_payout() INTO v_result;
   ASSERT (v_result->>'requested')::boolean = true, 'FAIL c2 — solicitud debía aceptarse';
   ASSERT jsonb_array_length(v_result->'payouts') = 1, 'FAIL c2 — debía crearse 1 solo payout (misma moneda)';
   ASSERT (v_result->'payouts'->0->>'amount')::numeric = 10.00, 'FAIL c2 — amount esperado 10.00 (2 x 5.00)';
@@ -381,9 +480,6 @@ DECLARE
   v_payout_id UUID := current_setting('test.c2_payout_id', true)::uuid;
   v_commission_id_1 UUID := current_setting('test.c2_commission_1', true)::uuid;
   v_result JSONB;
-  v_payout RECORD;
-  v_commission_1 RECORD;
-  v_commission_2 RECORD;
 BEGIN
   SELECT public.wa_admin_mark_referral_payout_paid(v_payout_id, 'TXN-DEBERIA-FALLAR') INTO v_result;
 
@@ -394,17 +490,38 @@ BEGIN
   ASSERT (v_result->'excludedCommissionIds') ? v_commission_id_1::text,
     'FAIL c2-pay — excludedCommissionIds debía incluir la comisión revertida';
 
+  RAISE NOTICE 'OK: caso 2-pay (rpc) — payout_amount_changed devuelto correctamente, pago parcial bloqueado';
+END $$;
+
+RESET ROLE;
+
+-- referral_payout_requests no tiene SELECT directo para authenticated
+-- (hardening de 20260818100000) -- verificación del estado final como
+-- postgres/superuser, después de RESET ROLE.
+DO $$
+DECLARE
+  v_payout_id UUID := current_setting('test.c2_payout_id', true)::uuid;
+  v_commission_id_1 UUID := current_setting('test.c2_commission_1', true)::uuid;
+  v_commission_id_2 UUID := current_setting('test.c2_commission_2', true)::uuid;
+  v_payout RECORD;
+  v_commission_1 RECORD;
+  v_commission_2 RECORD;
+BEGIN
   SELECT * INTO v_payout FROM public.referral_payout_requests WHERE id = v_payout_id;
   ASSERT v_payout.status = 'requested', 'FAIL c2-pay — el payout debía SEGUIR requested, sin mutar';
   ASSERT v_payout.paid_at IS NULL, 'FAIL c2-pay — paid_at debía seguir NULL';
 
   SELECT * INTO v_commission_1 FROM public.referral_commissions WHERE id = v_commission_id_1;
-  SELECT * INTO v_commission_2 FROM public.referral_commissions WHERE id = current_setting('test.c2_commission_2', true)::uuid;
+  SELECT * INTO v_commission_2 FROM public.referral_commissions WHERE id = v_commission_id_2;
   ASSERT v_commission_1.status = 'reversed' AND v_commission_1.paid_at IS NULL, 'FAIL c2-pay — comisión 1 debía seguir reversed, nunca paid';
   ASSERT v_commission_2.status = 'approved' AND v_commission_2.paid_at IS NULL, 'FAIL c2-pay — comisión 2 debía seguir approved, NO pagada parcialmente';
 
   RAISE NOTICE 'OK: caso 2-pay — payout_amount_changed, CERO comisiones pasan a paid (ni la reversa ni la sana), pago parcial explícitamente bloqueado';
 END $$;
+
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000ba', true);
+SELECT set_config('request.jwt.claims', json_build_object('sub','00000000-0000-0000-0000-0000000000ba','role','authenticated','app_metadata', json_build_object('role','admin'))::text, true);
 
 DO $$
 DECLARE
@@ -429,18 +546,33 @@ SELECT set_config('request.jwt.claims', json_build_object('sub','00000000-0000-0
 DO $$
 DECLARE
   v_result JSONB;
-  v_commission_id_1 UUID := current_setting('test.c2_commission_1', true)::uuid;
-  v_commission_id_2 UUID := current_setting('test.c2_commission_2', true)::uuid;
   v_new_payout_id UUID;
 BEGIN
-  SELECT public.wa_request_referral_payout(pg_temp.valid_snapshot()) INTO v_result;
+  -- b3 ya tiene un método guardado desde el caso 2 (misma transacción) --
+  -- no hace falta volver a configurarlo.
+  SELECT public.wa_request_referral_payout() INTO v_result;
   ASSERT (v_result->>'requested')::boolean = true, 'FAIL c2-reclaim — la nueva solicitud debía aceptarse';
   ASSERT jsonb_array_length(v_result->'payouts') = 1, 'FAIL c2-reclaim — debía crear 1 payout nuevo';
   ASSERT (v_result->'payouts'->0->>'amount')::numeric = 5.00, 'FAIL c2-reclaim — amount esperado 5.00 (solo la comisión 2 sana)';
   ASSERT (v_result->'payouts'->0->>'commissionCount')::int = 1, 'FAIL c2-reclaim — debía incluir exactamente 1 comisión';
 
   v_new_payout_id := (v_result->'payouts'->0->>'payoutId')::uuid;
+  PERFORM set_config('test.c2_new_payout_id', v_new_payout_id::text, true);
 
+  RAISE NOTICE 'OK: caso 2-reclaim (rpc) — la comisión approved liberada vuelve a estar disponible';
+END $$;
+
+RESET ROLE;
+
+-- referral_payout_commissions no tiene SELECT directo para authenticated
+-- (hardening de 20260818100000) -- verificación del vínculo como
+-- postgres/superuser, después de RESET ROLE.
+DO $$
+DECLARE
+  v_new_payout_id UUID := current_setting('test.c2_new_payout_id', true)::uuid;
+  v_commission_id_1 UUID := current_setting('test.c2_commission_1', true)::uuid;
+  v_commission_id_2 UUID := current_setting('test.c2_commission_2', true)::uuid;
+BEGIN
   ASSERT EXISTS (
     SELECT 1 FROM public.referral_payout_commissions
     WHERE payout_id = v_new_payout_id AND commission_id = v_commission_id_2
@@ -452,8 +584,6 @@ BEGIN
 
   RAISE NOTICE 'OK: caso 2-reclaim — la comisión approved liberada vuelve a estar disponible; la reversed nunca vuelve a aparecer';
 END $$;
-
-RESET ROLE;
 
 -- ══════════════════════════════════════════════════════════════════════════
 -- Caso 3: doble reclamo de la MISMA comisión -- backstop de esquema
@@ -514,22 +644,35 @@ SELECT set_config('request.jwt.claims', json_build_object('sub','00000000-0000-0
 DO $$
 DECLARE v_result JSONB;
 BEGIN
+  -- Método guardado antes de reclamar (Fase C2) -- ver nota del caso 1.
+  PERFORM public.wa_set_my_referral_payout_method(
+    'CL', 'Juan Perez', '11.111.111-1', 'Banco Estado', 'checking', '1234567890', NULL
+  );
+
   -- 5.00 disponible, min_payout_amount=100.00 -> no debe crear ningún payout.
-  SELECT public.wa_request_referral_payout(pg_temp.valid_snapshot()) INTO v_result;
+  SELECT public.wa_request_referral_payout() INTO v_result;
   ASSERT (v_result->>'requested')::boolean = true, 'FAIL c4 — la llamada debía responder ok igual (no es un error, es una regla de negocio)';
   ASSERT v_result->>'reason' = 'nothing_to_withdraw' OR (v_result->'payouts'->0->>'created')::boolean = false,
     'FAIL c4 — con min_payout_amount=100 no debía crearse ningún payout para un monto de 5.00';
   IF v_result->>'reason' IS DISTINCT FROM 'nothing_to_withdraw' THEN
     ASSERT v_result->'payouts'->0->>'reason' = 'below_minimum', 'FAIL c4 — reason esperado below_minimum';
   END IF;
-  ASSERT NOT EXISTS (
-    SELECT 1 FROM public.referral_payout_requests WHERE referrer_user_id = '00000000-0000-0000-0000-0000000000b8'
-  ), 'FAIL c4 — no debía crearse ninguna fila de payout para b8';
 
-  RAISE NOTICE 'OK: caso 4 — min_payout_amount bloquea la creación de retiros por debajo del mínimo configurado';
+  RAISE NOTICE 'OK: caso 4 (rpc) — min_payout_amount bloquea la creación de retiros por debajo del mínimo configurado';
 END $$;
 
 RESET ROLE;
+
+-- referral_payout_requests no tiene SELECT directo para authenticated
+-- (hardening de 20260818100000) -- verificación como postgres/superuser,
+-- después de RESET ROLE.
+DO $$
+BEGIN
+  ASSERT NOT EXISTS (
+    SELECT 1 FROM public.referral_payout_requests WHERE referrer_user_id = '00000000-0000-0000-0000-0000000000b8'
+  ), 'FAIL c4 — no debía crearse ninguna fila de payout para b8';
+  RAISE NOTICE 'OK: caso 4 — confirmado, ninguna fila de payout creada para b8 por debajo del mínimo';
+END $$;
 
 DO $$
 BEGIN
@@ -544,8 +687,9 @@ DO $$
 DECLARE v_result JSONB;
 BEGIN
   -- Con min_payout_amount de vuelta a 0, la MISMA comisión (nunca se tocó,
-  -- sigue approved y libre) ahora sí debe poder retirarse.
-  SELECT public.wa_request_referral_payout(pg_temp.valid_snapshot()) INTO v_result;
+  -- sigue approved y libre) ahora sí debe poder retirarse. b8 ya tiene un
+  -- método guardado desde el caso 4 anterior (misma transacción).
+  SELECT public.wa_request_referral_payout() INTO v_result;
   ASSERT (v_result->>'requested')::boolean = true, 'FAIL c4-restored — la solicitud debía aceptarse';
   ASSERT (v_result->'payouts'->0->>'created')::boolean = true, 'FAIL c4-restored — debía crear el payout ahora que min_payout_amount=0';
   ASSERT (v_result->'payouts'->0->>'amount')::numeric = 5.00, 'FAIL c4-restored — amount esperado 5.00';
