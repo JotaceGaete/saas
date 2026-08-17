@@ -5,10 +5,7 @@ import DashboardLayoutContent from 'components/ui/DashboardLayoutContent';
 import PanelHeader from 'components/ui/PanelHeader';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
-import { SUPPORT_WHATSAPP_NUMBER } from '../../config/support';
-
-const HELP_WHATSAPP_MESSAGE = 'Hola, necesito ayuda con mi tienda Walinka';
-const HELP_WHATSAPP_HREF = `https://wa.me/${SUPPORT_WHATSAPP_NUMBER}?text=${encodeURIComponent(HELP_WHATSAPP_MESSAGE)}`;
+import { SUPPORT_EMAIL } from '../../config/support';
 
 const DEMO_STORES = [
   {
@@ -259,38 +256,37 @@ export default function HelpPage() {
           <div className="flex items-center gap-3 mb-4">
             <div
               className="w-10 h-10 rounded-xl flex items-center justify-center"
-              style={{ backgroundColor: 'rgba(37,211,102,0.1)' }}
+              style={{ backgroundColor: 'rgba(124,58,237,0.1)' }}
             >
-              <Icon name="MessageCircle" size={20} color="#25D366" />
+              <Icon name="Mail" size={20} color="var(--color-primary)" />
             </div>
             <div>
               <h2 className="text-sm font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)' }}>
                 ¿Necesitas ayuda directa?
               </h2>
               <p className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-                El equipo Walinka te responde
+                Soporte oficial por correo electrónico, de lunes a viernes de 13:00 a 22:00 (GMT)
               </p>
             </div>
           </div>
           <div className="flex flex-col sm:flex-row gap-3">
             <a
-              href={HELP_WHATSAPP_HREF}
-              target="_blank"
-              rel="noopener noreferrer"
+              href={`mailto:${SUPPORT_EMAIL}`}
               className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all hover:opacity-90"
-              style={{ backgroundColor: '#25D366', color: '#ffffff', fontFamily: 'var(--font-caption)' }}
+              style={{ backgroundColor: 'var(--color-primary)', color: '#ffffff', fontFamily: 'var(--font-caption)' }}
             >
-              <Icon name="MessageCircle" size={16} color="#ffffff" />
-              Contactar por WhatsApp
+              <Icon name="Mail" size={16} color="#ffffff" />
+              Enviar correo
             </a>
-            <a
-              href="mailto:contacto@ventalink.app"
+            <button
+              type="button"
+              onClick={() => navigate('/support')}
               className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border transition-all hover:bg-muted"
               style={{ borderColor: 'var(--color-border)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}
             >
-              <Icon name="Mail" size={16} color="currentColor" />
-              Enviar correo
-            </a>
+              <Icon name="LifeBuoy" size={16} color="currentColor" />
+              Centro de soporte
+            </button>
           </div>
         </section>
 

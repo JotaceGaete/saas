@@ -67,6 +67,7 @@ import PublicPricingPage from './pages/legal/PublicPricingPage';
 import TermsPage from './pages/legal/TermsPage';
 import PrivacyPage from './pages/legal/PrivacyPage';
 import RefundsPage from './pages/legal/RefundsPage';
+import SupportPage from './pages/legal/SupportPage';
 import DLocalReturnPage from './pages/billing-dlocal-return';
 import { useAuth } from './contexts/AuthContext';
 import PremiumLoader from './components/ui/PremiumLoader';
@@ -179,6 +180,7 @@ const Routes = () => {
             <Route path="/terms" element={<TermsPage />} />
             <Route path="/privacy" element={<PrivacyPage />} />
             <Route path="/refunds" element={<RefundsPage />} />
+            <Route path="/support" element={<SupportPage />} />
             <Route path="/catalog/:slug" element={<PublicCatalog />} />
             <Route path="/catalog/:slug/checkout" element={<OrderConfirmation />} />
             <Route path="/catalogo/:slug/ofertas" element={<PublicOffers />} />
