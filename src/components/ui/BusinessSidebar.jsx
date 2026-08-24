@@ -26,13 +26,12 @@ const NAV_ITEMS = [
   { label: 'Afiliados',          path: '/afiliados',              icon: 'Gift', adminOnly: true },
   { section: true, label: '—' },
   {
-    label: 'CRM',
+    label: 'Gestión del negocio',
     path: '/crm',
     icon: 'Crown',
-    badge: 'Premium',
     premiumGated: true,
     subItems: [
-      { label: 'Panel CRM',        path: '/crm' },
+      { label: 'Resumen',          path: '/crm' },
       { label: 'Clientes',         path: '/crm/clientes' },
       { label: 'Presupuestos',     path: '/crm/presupuestos' },
       { label: 'Notas de venta',   path: '/crm/facturas' },
