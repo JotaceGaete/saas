@@ -2,6 +2,8 @@ import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { usePlanFeature } from '../hooks/usePlanFeature';
+import RestrictedAccessScreen from './RestrictedAccessScreen';
+import { isRestrictedAccessEnabled } from '../config/restrictedAccess';
 import PremiumLoader from './ui/PremiumLoader';
 import Icon from './AppIcon';
 
@@ -11,8 +13,9 @@ import Icon from './AppIcon';
  * Orden de verificación:
  *   1. Sesión activa (→ /login si no)
  *   2. Email confirmado (→ /verify-email si no)
- *   3. Admin Ventalink (bypass total)
- *   4. Plan Pro o superior con feature 'crmAccess' activa
+ *   3. Admin Ventalink (bypass total, incluye modo de acceso restringido)
+ *   4. Modo de acceso restringido (temporal, ver src/config/restrictedAccess.js)
+ *   5. Plan Pro o superior con feature 'crmAccess' activa
  *      Si no tiene plan: muestra pantalla de upgrade con CTA a /planes
  */
 export default function RequireCrm({ children }) {
@@ -34,6 +37,10 @@ export default function RequireCrm({ children }) {
 
   // Admins Ventalink tienen acceso sin restricción de plan
   if (isAdmin) return <>{children}</>;
+
+  if (isRestrictedAccessEnabled()) {
+    return <RestrictedAccessScreen />;
+  }
 
   if (!hasCrmAccess) {
     return <CrmUpgradeScreen />;

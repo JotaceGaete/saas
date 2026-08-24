@@ -1,5 +1,5 @@
 import React from 'react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
@@ -192,5 +192,60 @@ describe('BusinessRegistration — captura y atribución de referral', () => {
 
     await waitFor(() => expect(signUp).toHaveBeenCalledTimes(1));
     expect(attemptPendingAttribution).not.toHaveBeenCalled();
+  });
+});
+
+describe('BusinessRegistration — modo de acceso restringido (VITE_RESTRICTED_ACCESS)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.unstubAllEnvs();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('flag=true + sin sesión: no monta AuthStep y muestra la pantalla restringida', () => {
+    vi.stubEnv('VITE_RESTRICTED_ACCESS', 'true');
+    setAuth({ user: null, businessStatus: 'idle' });
+
+    renderPage();
+
+    expect(screen.queryByText('auth-step')).not.toBeInTheDocument();
+    expect(screen.getByText(/acceso temporalmente restringido/i)).toBeInTheDocument();
+  });
+
+  it('flag=true + usuario no admin sin negocio: no monta StoreCreationStep', () => {
+    vi.stubEnv('VITE_RESTRICTED_ACCESS', 'true');
+    setAuth({ businessStatus: 'not_found', business: null, isAdmin: false });
+
+    renderPage();
+
+    expect(screen.queryByTestId('store-creation-step')).not.toBeInTheDocument();
+    expect(screen.getByText(/acceso temporalmente restringido/i)).toBeInTheDocument();
+  });
+
+  it('flag=true + admin: no queda bloqueado por este mecanismo (StoreCreationStep se monta igual)', () => {
+    vi.stubEnv('VITE_RESTRICTED_ACCESS', 'true');
+    setAuth({ businessStatus: 'not_found', business: null, isAdmin: true });
+
+    renderPage();
+
+    expect(screen.getByTestId('store-creation-step')).toBeInTheDocument();
+    expect(screen.queryByText(/acceso temporalmente restringido/i)).not.toBeInTheDocument();
+  });
+
+  it('flag=false: flujo actual intacto (sin sesión → AuthStep; autenticado sin negocio → StoreCreationStep)', () => {
+    vi.stubEnv('VITE_RESTRICTED_ACCESS', 'false');
+    setAuth({ user: null, businessStatus: 'idle' });
+    const { unmount } = renderPage();
+    expect(screen.getByText('auth-step')).toBeInTheDocument();
+    expect(screen.queryByText(/acceso temporalmente restringido/i)).not.toBeInTheDocument();
+    unmount();
+
+    setAuth({ businessStatus: 'not_found', business: null, isAdmin: false });
+    renderPage();
+    expect(screen.getByTestId('store-creation-step')).toBeInTheDocument();
+    expect(screen.queryByText(/acceso temporalmente restringido/i)).not.toBeInTheDocument();
   });
 });

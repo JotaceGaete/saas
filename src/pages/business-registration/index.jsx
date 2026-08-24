@@ -10,6 +10,8 @@ import { captureReferralFromUrl, attemptPendingAttribution } from '../../utils/r
 import AuthStep from './components/AuthStep';
 import ConfirmEmailStep from './components/ConfirmEmailStep';
 import StoreCreationStep from './components/StoreCreationStep';
+import RestrictedAccessScreen from '../../components/RestrictedAccessScreen';
+import { isRestrictedAccessEnabled } from '../../config/restrictedAccess';
 import PremiumLoader from 'components/ui/PremiumLoader';
 import Icon from 'components/AppIcon';
 
@@ -115,7 +117,7 @@ function normalizeAuthErrorMessage(raw) {
  */
 export default function BusinessRegistration() {
   const navigate = useNavigate();
-  const { user, business, loading, businessLoading, businessStatus, refreshBusiness, signUp, signIn, signInWithGoogle, resendConfirmationEmail, isEmailConfirmed } = useAuth();
+  const { user, business, loading, businessLoading, businessStatus, refreshBusiness, signUp, signIn, signInWithGoogle, resendConfirmationEmail, isEmailConfirmed, isAdmin } = useAuth();
   const [retryingBusinessLoad, setRetryingBusinessLoad] = useState(false);
   const { countryCode } = useCountry();
   const countryState = resolveCountryState({
@@ -188,6 +190,14 @@ export default function BusinessRegistration() {
 
   // ── PASO 1: No autenticado → pantalla de login/registro ─────────────────────
   if (!user) {
+    // Modo de acceso restringido (temporal, ver src/config/restrictedAccess.js):
+    // ningún visitante público puede registrarse -- ni AuthStep (email/password
+    // ni Google) se monta, así que signUp()/signInWithGoogle() de registro no
+    // son alcanzables, no solo un botón oculto.
+    if (isRestrictedAccessEnabled()) {
+      return <RestrictedAccessScreen />;
+    }
+
     const handleRegister = async ({ email, password, businessName }) => {
       if (registerInFlightRef.current || signupCooldownActive) {
         setAuthError('Espera un minuto antes de intentarlo de nuevo.');
@@ -294,6 +304,13 @@ export default function BusinessRegistration() {
   }
 
   // ── PASO 2: Autenticado ───────────────────────────────────────────────────
+  // Modo de acceso restringido (temporal, ver src/config/restrictedAccess.js):
+  // un usuario autenticado sin negocio no puede crear uno nuevo si no es admin
+  // -- cubre también una cuenta Google recién creada que haya logrado autenticarse.
+  if (isRestrictedAccessEnabled() && !isAdmin) {
+    return <RestrictedAccessScreen />;
+  }
+
   // Un error de carga NUNCA debe mostrar el formulario de creación de negocio —
   // podría existir y estar ocultándose por un problema transitorio de red/backend.
   if (businessStatus === 'error') {
