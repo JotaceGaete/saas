@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
 vi.mock('contexts/AuthContext', () => ({
@@ -65,8 +65,50 @@ describe('BusinessSidebar — renombrado de "CRM" y remoción del badge "Premium
     expect(screen.queryByText('Premium')).not.toBeInTheDocument();
   });
 
-  it('muestra el nuevo label en lenguaje llano "Gestión del negocio"', () => {
+});
+
+describe('BusinessSidebar — reorden de la navegación (Paso 2)', () => {
+  it('ya no existe el grupo envoltorio "Gestión del negocio" del Paso 1', () => {
     renderSidebar(false);
-    expect(screen.getAllByText('Gestión del negocio').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Gestión del negocio')).not.toBeInTheDocument();
+  });
+
+  it('ya no muestra las etiquetas anteriores "Mi tienda" / "Productos" (renombradas) en el sidebar principal', () => {
+    // Alcance acotado al <nav> del sidebar: MobileBottomNav (otro componente,
+    // fuera de este paso) tiene su propio ítem "Productos" para /product-management.
+    renderSidebar(false);
+    const nav = screen.getByRole('navigation', { name: /navegación principal/i });
+    expect(within(nav).queryByText('Mi tienda')).not.toBeInTheDocument();
+    expect(within(nav).queryByText('Productos')).not.toBeInTheDocument();
+  });
+
+  it('muestra los nuevos ítems de primer nivel: Mi Negocio, Ventas, Clientes, Caja y Gastos, Inventario, Catálogo', () => {
+    renderSidebar(false);
+    ['Mi Negocio', 'Ventas', 'Clientes', 'Caja y Gastos', 'Inventario', 'Catálogo'].forEach((label) => {
+      expect(screen.getAllByText(label).length).toBeGreaterThan(0);
+    });
+  });
+
+  it('respeta el orden pedido: Mi Negocio, Ventas, Clientes, Caja y Gastos, Inventario, Catálogo, Pedidos, Historial pedidos, Configuración, Diseño, Plan y facturación, Ayuda', () => {
+    renderSidebar(false);
+    const nav = screen.getByRole('navigation', { name: /navegación principal/i });
+    const text = nav.textContent || '';
+    const order = [
+      'Mi Negocio', 'Ventas', 'Clientes', 'Caja y Gastos', 'Inventario',
+      'Catálogo', 'Pedidos', 'Historial pedidos',
+      'Configuración', 'Diseño', 'Plan y facturación', 'Ayuda',
+    ];
+    const indices = order.map((label) => text.indexOf(label));
+    indices.forEach((idx, i) => expect(idx, `"${order[i]}" debería estar presente`).toBeGreaterThan(-1));
+    for (let i = 1; i < indices.length; i++) {
+      expect(indices[i], `"${order[i]}" debería venir después de "${order[i - 1]}"`).toBeGreaterThan(indices[i - 1]);
+    }
+  });
+
+  it('Afiliados sigue siendo el último ítem visible para admin, después de Ayuda', () => {
+    renderSidebar(true);
+    const nav = screen.getByRole('navigation', { name: /navegación principal/i });
+    const text = nav.textContent || '';
+    expect(text.indexOf('Afiliados')).toBeGreaterThan(text.indexOf('Ayuda'));
   });
 });
