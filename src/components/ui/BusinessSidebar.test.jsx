@@ -52,3 +52,21 @@ describe('BusinessSidebar — ítem Afiliados (rollout admin-only)', () => {
     expect(screen.getAllByText('Ayuda').length).toBeGreaterThan(0);
   });
 });
+
+describe('BusinessSidebar — renombrado de "CRM" y remoción del badge "Premium" (Paso 1)', () => {
+  it('no muestra el texto "CRM" en ningún ítem de navegación', () => {
+    renderSidebar(false);
+    expect(screen.queryByText('CRM')).not.toBeInTheDocument();
+    expect(screen.queryByText('Panel CRM')).not.toBeInTheDocument();
+  });
+
+  it('no muestra el badge "Premium"', () => {
+    renderSidebar(false);
+    expect(screen.queryByText('Premium')).not.toBeInTheDocument();
+  });
+
+  it('muestra el nuevo label en lenguaje llano "Gestión del negocio"', () => {
+    renderSidebar(false);
+    expect(screen.getAllByText('Gestión del negocio').length).toBeGreaterThan(0);
+  });
+});

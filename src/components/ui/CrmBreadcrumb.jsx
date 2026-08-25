@@ -10,7 +10,7 @@ export default function CrmBreadcrumb({ section }) {
         className="text-[11px] font-medium hover:underline transition-colors"
         style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}
       >
-        CRM
+        Resumen
       </Link>
       <Icon name="ChevronRight" size={11} color="var(--color-muted-foreground)" />
       <span

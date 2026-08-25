@@ -415,10 +415,10 @@ export default function OrderDetailDrawer({
             </button>
           </div>
 
-          {/* ── Nota de Venta CRM ──────────────────────────────────────────── */}
+          {/* ── Nota de venta ──────────────────────────────────────────────── */}
           <div className="pt-3 border-t space-y-3" style={{ borderColor: 'var(--color-border)' }}>
             <p className="text-xs font-semibold" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-              Nota de Venta CRM
+              Nota de venta
             </p>
 
             {/* Error banner */}
