@@ -1,11 +1,21 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, within, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
 vi.mock('contexts/AuthContext', () => ({
   useAuth: vi.fn(),
 }));
+
+// Solo para el test de navegación de "Notas de venta": los subItems del
+// sidebar son <button onClick={() => navigate(sub.path)}>, no <a href>, así
+// que se verifica llamando al navigate real (mockeado) -- mismo patrón que
+// src/pages/auth-callback/index.test.jsx.
+const navigateMock = vi.fn();
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual('react-router-dom');
+  return { ...actual, useNavigate: () => navigateMock };
+});
 
 import { useAuth } from 'contexts/AuthContext';
 import BusinessSidebar from './BusinessSidebar';
@@ -110,5 +120,24 @@ describe('BusinessSidebar — reorden de la navegación (Paso 2)', () => {
     const nav = screen.getByRole('navigation', { name: /navegación principal/i });
     const text = nav.textContent || '';
     expect(text.indexOf('Afiliados')).toBeGreaterThan(text.indexOf('Ayuda'));
+  });
+});
+
+describe('BusinessSidebar — "Notas de venta" navegable dentro de Ventas (fix de regresión, Paso 2)', () => {
+  it('al expandir "Ventas" y hacer clic en "Notas de venta", navega a /crm/facturas', () => {
+    // Los subItems son <button onClick={() => navigate(sub.path)}>, no <a href>
+    // -- se verifica la navegación real (mockeada) en vez de un atributo href
+    // que este componente no usa.
+    renderSidebar(false);
+    fireEvent.click(screen.getByText('Ventas'));
+    fireEvent.click(screen.getByText('Notas de venta'));
+    expect(navigateMock).toHaveBeenCalledWith('/crm/facturas');
+  });
+
+  it('"Resumen" (/crm) sigue existiendo sin cambios junto al nuevo "Notas de venta"', () => {
+    renderSidebar(false);
+    fireEvent.click(screen.getByText('Ventas'));
+    expect(screen.getByText('Resumen')).toBeInTheDocument();
+    expect(screen.getByText('Notas de venta')).toBeInTheDocument();
   });
 });

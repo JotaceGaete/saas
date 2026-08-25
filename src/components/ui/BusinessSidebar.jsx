@@ -25,9 +25,10 @@ const NAV_ITEMS = [
     icon: 'Receipt',
     premiumGated: true,
     subItems: [
-      { label: 'Resumen',      path: '/crm' },
-      { label: 'Presupuestos', path: '/crm/presupuestos' },
-      { label: 'TPV',          path: '/crm/terminal', highlight: true },
+      { label: 'Resumen',        path: '/crm' },
+      { label: 'Notas de venta', path: '/crm/facturas' },
+      { label: 'Presupuestos',   path: '/crm/presupuestos' },
+      { label: 'TPV',            path: '/crm/terminal', highlight: true },
     ],
   },
   { label: 'Clientes',           path: '/crm/clientes',           icon: 'Users',   premiumGated: true },
