@@ -5,8 +5,26 @@ function getSupabaseUrl() {
   return String(process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '').trim().replace(/\/$/, '');
 }
 
-function getSupabaseAnonKey() {
-  return String(process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || '').trim();
+// Client API key para el userClient de validación de JWT (nunca usada como
+// Authorization — eso siempre es el bearer real del caller, ver
+// createAuthClient). Nueva publishable key con fallback temporal a las
+// legacy anon keys mientras se completa la migración backend.
+export function resolveSupabasePublishableKey({ publishableViteKey, publishableKey, legacyAnonViteKey, legacyAnonKey }) {
+  const candidates = [publishableViteKey, publishableKey, legacyAnonViteKey, legacyAnonKey];
+  for (const candidate of candidates) {
+    const trimmed = String(candidate ?? '').trim();
+    if (trimmed) return trimmed;
+  }
+  return '';
+}
+
+function getSupabasePublishableKey() {
+  return resolveSupabasePublishableKey({
+    publishableViteKey: process.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+    publishableKey: process.env.SUPABASE_PUBLISHABLE_KEY,
+    legacyAnonViteKey: process.env.VITE_SUPABASE_ANON_KEY,
+    legacyAnonKey: process.env.SUPABASE_ANON_KEY,
+  });
 }
 
 function getBearerToken(request) {
@@ -18,9 +36,9 @@ function getBearerToken(request) {
 
 function createAuthClient(token) {
   const url = getSupabaseUrl();
-  const anon = getSupabaseAnonKey();
+  const anon = getSupabasePublishableKey();
   if (!url || !anon) {
-    throw new HttpError(500, '[auth] Missing Supabase URL/ANON key for auth validation');
+    throw new HttpError(500, '[auth] Missing Supabase URL/publishable key for auth validation');
   }
 
   return createClient(url, anon, {
