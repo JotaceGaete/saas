@@ -2,6 +2,7 @@
 // Público (verify_jwt = false). Sin throttle server-side; el cliente gestiona duplicados.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { getSupabaseAdminKeyOrEmpty } from '../_shared/supabaseAdminKey.ts';
 
 const corsHeaders: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -48,7 +49,7 @@ Deno.serve(async (req) => {
   const userAgent   = req.headers.get('user-agent') || null;
 
   const supabaseUrl    = Deno.env.get('SUPABASE_URL')              ?? '';
-  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+  const serviceRoleKey = getSupabaseAdminKeyOrEmpty();
   if (!serviceRoleKey) return jsonResponse({ error: 'Server configuration error' }, 500);
 
   const db = createClient(supabaseUrl, serviceRoleKey);

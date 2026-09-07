@@ -4,6 +4,7 @@
 // Registra evento en wa_payment_events (provider=paddle, provider_payment_id=transaction id).
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { getSupabaseAdminKeyOrEmpty } from '../_shared/supabaseAdminKey.ts';
 
 const ALLOWED_PLANS = ['control', 'pro', 'business'];
 const PLAN_DURATION_DAYS = 30;
@@ -54,7 +55,7 @@ Deno.serve(async (req) => {
   }
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
-  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+  const serviceRoleKey = getSupabaseAdminKeyOrEmpty();
 
   if (!supabaseUrl || !serviceRoleKey) {
     console.error('[paddle-webhook] env: SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY no configurados');

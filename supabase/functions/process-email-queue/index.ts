@@ -8,6 +8,7 @@
 // Requiere secrets en vault: project_url, anon_key, email_function_secret (opcional).
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { getSupabaseAdminKeyOrEmpty } from '../_shared/supabaseAdminKey.ts';
 
 const BATCH_SIZE = 50; // máximo emails por ejecución
 
@@ -65,7 +66,7 @@ Deno.serve(async (req) => {
   }
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
-  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+  const serviceKey = getSupabaseAdminKeyOrEmpty();
   const emailSecret = Deno.env.get('EMAIL_FUNCTION_SECRET') ?? '';
   const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
 
