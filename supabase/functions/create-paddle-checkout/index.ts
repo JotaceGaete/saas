@@ -4,6 +4,7 @@
 // Persiste wa_payments (pending, provider=paddle) antes de llamar a Paddle.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { getSupabaseAdminKeyOrEmpty } from '../_shared/supabaseAdminKey.ts';
 
 const VALID_PLAN_SLUGS = ['starter', 'pro', 'business'];
 const PLAN_ORDER: Record<string, number> = { starter: 0, control: 0, pro: 1, business: 2 };
@@ -147,7 +148,7 @@ Deno.serve(async (req) => {
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
   const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
-  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+  const serviceRoleKey = getSupabaseAdminKeyOrEmpty();
   const paddleApiKey = Deno.env.get('PADDLE_API_KEY') ?? '';
   const paddleEnv = (Deno.env.get('PADDLE_ENV') ?? 'sandbox').toLowerCase();
   const paddleBase = paddleEnv === 'production' ? 'https://api.paddle.com' : 'https://sandbox-api.paddle.com';
