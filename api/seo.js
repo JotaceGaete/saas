@@ -35,6 +35,14 @@ const CATALOG_ORIGIN = normalizeUrlOrigin(
   process.env.VITE_PUBLIC_CATALOG_URL || process.env.CATALOG_ORIGIN || 'https://miralatienda.de',
 );
 
+// Client API key para los clientes anon-only de este archivo (lectura pública,
+// sin Authorization ni JWT de usuario). Nueva publishable key con fallback
+// temporal a la legacy anon key mientras se completa la migración backend.
+// No usar para el cliente admin (SUPABASE_SERVICE_ROLE_KEY, sin relación).
+function getSupabasePublishableKey() {
+  return process.env.VITE_SUPABASE_PUBLISHABLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
+}
+
 // --- Catálogo (antes catalog-html.js) ---
 
 /**
@@ -190,7 +198,7 @@ async function handleCatalogHtml(request) {
   const ua = request.headers.get('user-agent') || '';
 
   const supabaseUrl = (process.env.VITE_SUPABASE_URL || '').replace(/\/$/, '');
-  const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
+  const supabaseAnonKey = getSupabasePublishableKey();
   if (!supabaseUrl || !supabaseAnonKey) {
     return new Response('Missing Supabase config', { status: 500 });
   }
@@ -396,7 +404,7 @@ async function handleProductHtml(request) {
   }
 
   const supabaseUrl = (process.env.VITE_SUPABASE_URL || '').replace(/\/$/, '');
-  const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
+  const supabaseAnonKey = getSupabasePublishableKey();
   if (!supabaseUrl || !supabaseAnonKey) {
     return new Response('Missing Supabase config', { status: 500 });
   }
@@ -720,7 +728,7 @@ async function handleSitemap(request) {
   const isGoIntl = /(^|\.)go\.ventalink\.app$/i.test(host);
 
   const supabaseUrl = (process.env.VITE_SUPABASE_URL || '').replace(/\/$/, '');
-  const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
+  const supabaseAnonKey = getSupabasePublishableKey();
   if (!supabaseUrl || !supabaseAnonKey) {
     return new Response('Missing Supabase config', { status: 500 });
   }
