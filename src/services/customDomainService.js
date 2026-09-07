@@ -3,9 +3,10 @@
  * Todas las operaciones requieren JWT de usuario autenticado.
  */
 import { supabase } from '../lib/supabase';
+import { getSupabasePublishableKey } from '../lib/supabasePublishableKey';
 
 const SUPABASE_URL = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
-const ANON_KEY     = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
+const ANON_KEY     = getSupabasePublishableKey();
 const FUNCTION_URL = `${SUPABASE_URL}/functions/v1/manage-custom-domain`;
 
 async function getToken() {

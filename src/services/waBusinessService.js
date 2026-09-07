@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { getSupabasePublishableKey } from '../lib/supabasePublishableKey';
 import { compressImageForUpload, generateProductImageUploadSet } from '../utils/imageUploadUtils';
 import { getValidToken } from '../lib/auth/getValidToken';
 import { getPlanLimits } from '../constants/plans';
@@ -232,7 +233,7 @@ async function triggerOgImageGeneration(businessId, { force = false } = {}) {
 
   if (!businessId) return;
   const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
-  const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
+  const anonKey = getSupabasePublishableKey();
 
   if (!supabaseUrl || !anonKey) {
     console.warn('[waBusinessService] triggerOgImageGeneration missing config', { supabaseUrlPresent: !!supabaseUrl, anonKeyPresent: !!anonKey });
@@ -1999,7 +2000,7 @@ export const getDashboardAiInsights = async (businessId) => {
   if (aiInsightsSessionDisabled()) return { data: null, error: null };
 
   const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
-  const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
+  const anonKey = getSupabasePublishableKey();
   if (!supabaseUrl || !anonKey) {
     return { data: null, error: { message: 'Missing Supabase config' } };
   }
@@ -2142,13 +2143,13 @@ export async function recordCatalogVisit(slug, path, attribution = {}) {
   if (shouldThrottleVisit(slug)) return { recorded: false, throttled: true, error: null };
 
   const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
-  const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
+  const anonKey = getSupabasePublishableKey();
   if (!supabaseUrl) {
     console.warn('[record-catalog-visit] Missing VITE_SUPABASE_URL');
     return { recorded: false, error: { message: 'Missing Supabase URL' } };
   }
   if (!anonKey) {
-    console.warn('[record-catalog-visit] Missing VITE_SUPABASE_ANON_KEY');
+    console.warn('[record-catalog-visit] Missing VITE_SUPABASE_PUBLISHABLE_KEY / VITE_SUPABASE_ANON_KEY');
     return { recorded: false, error: { message: 'Missing Supabase API key' } };
   }
 
@@ -2199,13 +2200,13 @@ export async function recordCatalogWhatsAppClick(slug, path, source = 'unknown')
   if (!slug?.trim()) return { recorded: false, error: null };
 
   const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
-  const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
+  const anonKey = getSupabasePublishableKey();
   if (!supabaseUrl) {
     console.warn('[record-catalog-whatsapp-click] Missing VITE_SUPABASE_URL');
     return { recorded: false, error: { message: 'Missing Supabase URL' } };
   }
   if (!anonKey) {
-    console.warn('[record-catalog-whatsapp-click] Missing VITE_SUPABASE_ANON_KEY');
+    console.warn('[record-catalog-whatsapp-click] Missing VITE_SUPABASE_PUBLISHABLE_KEY / VITE_SUPABASE_ANON_KEY');
     return { recorded: false, error: { message: 'Missing Supabase API key' } };
   }
 
@@ -2285,7 +2286,7 @@ export async function recordSiteVisit({ path, hostname, attribution = {} } = {})
   }
 
   const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
-  const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
+  const anonKey = getSupabasePublishableKey();
   if (!supabaseUrl || !anonKey) return { recorded: false, error: { message: 'Missing Supabase config' } };
   if (trackingInflight.has(`site:${normalizedPath}`)) return { recorded: false, throttled: true, skipped: 'inflight' };
 

@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { getSupabasePublishableKey } from '../lib/supabasePublishableKey';
 import { APP_ORIGIN, getPublicCatalogUrl } from '../config/appUrl';
 
 // ---------------------------------------------------------------------------
@@ -141,7 +142,7 @@ export function buildBusinessOverrides(business) {
 // ---------------------------------------------------------------------------
 function getSupabaseUrlAndKey() {
   const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
-  const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
+  const anonKey = getSupabasePublishableKey();
   return { supabaseUrl, anonKey };
 }
 

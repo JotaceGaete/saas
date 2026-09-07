@@ -6,6 +6,7 @@
  * Las mutaciones (ban/unban/create/update/delete/setRole) siguen usando la Edge Function admin-users.
  */
 import { supabase } from '../lib/supabase';
+import { getSupabasePublishableKey } from '../lib/supabasePublishableKey';
 
 const VITE_SUPABASE_URL = import.meta.env?.VITE_SUPABASE_URL ?? '';
 const FUNCTIONS_BASE = `${VITE_SUPABASE_URL.replace(/\/$/, '')}/functions/v1/admin-users`;
@@ -14,7 +15,7 @@ const IMPERSONATE_URL = `${VITE_SUPABASE_URL.replace(/\/$/, '')}/functions/v1/ad
 async function getAuthHeaders() {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
-  const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
+  const anonKey = getSupabasePublishableKey();
   if (!token) return null;
   return {
     'Content-Type': 'application/json',
@@ -159,7 +160,7 @@ export async function setAdminUserRole(userId, isAdmin) {
 export async function impersonateUser(userId, redirectTo) {
   const headers = await getAuthHeaders();
   if (!headers) return { data: null, error: { message: 'No autenticado' } };
-  const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
+  const anonKey = getSupabasePublishableKey();
 
   const res = await fetch(IMPERSONATE_URL, {
     method: 'POST',

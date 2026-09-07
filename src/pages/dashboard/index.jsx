@@ -13,6 +13,7 @@ import GettingStartedSection from "./components/GettingStartedSection";
 import NewOrderToast from "./components/NewOrderToast";
 import NotificationBell from "./components/NotificationBell";
 import { useAuth } from "../../contexts/AuthContext";
+import { getSupabasePublishableKey } from "../../lib/supabasePublishableKey";
 import {
   getProducts,
   getOrders,
@@ -428,7 +429,7 @@ export default function Dashboard() {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token ?? '';
       const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
-      const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
+      const anonKey = getSupabasePublishableKey();
       const res = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
         method: 'POST',
         headers: {

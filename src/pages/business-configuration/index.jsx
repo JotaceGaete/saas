@@ -10,6 +10,7 @@ import { updateBusiness, getMyBusiness, getRubros, getEffectivePlanSlug } from '
 import { seedTemplateProductsIfEmpty } from '../../services/productTemplateService';
 import { DEMO_SOCIAL_LINKS, LEGACY_TEMPLATE_LOGO_PREFIX } from '../../utils/productTemplates';
 import { supabase } from '../../lib/supabase';
+import { getSupabasePublishableKey } from '../../lib/supabasePublishableKey';
 import StoreCreationStep from '../business-registration/components/StoreCreationStep';
 import WhatsAppMessageTemplate from './components/WhatsAppMessageTemplate';
 import DynamicWhatsAppField from 'components/DynamicWhatsAppField';
@@ -590,7 +591,7 @@ export default function BusinessConfiguration() {
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${session.access_token}`,
-          ...(useVentaAi ? {} : { apikey: import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '' }),
+          ...(useVentaAi ? {} : { apikey: getSupabasePublishableKey() }),
         },
         body: JSON.stringify(
           useVentaAi
