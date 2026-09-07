@@ -15,3 +15,17 @@ vite.config.*s.*
 .vercel
 .env*.local
 dist/
+
+# Seguridad: dumps de `vercel env pull` y variantes de .env por ambiente.
+# Ver incidente 2026-06-20 (commit 09bbfb0): .vercel-env-check/.vercel-env-production
+# quedaron trackeados porque ningún patrón los cubría. NO agregar *.sql aquí:
+# el repo trackea migraciones SQL legítimas en supabase/migrations/**, que deben
+# seguir versionadas.
+.vercel-env-*
+.env.production
+.env.development
+.env.staging
+*.dump
+*.bak
+*.sql.bak
+*.sql.dump
