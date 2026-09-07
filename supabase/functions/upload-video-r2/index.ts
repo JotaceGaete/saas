@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { getSupabaseAdminKeyOrEmpty } from '../_shared/supabaseAdminKey.ts';
 import { S3Client, PutObjectCommand } from 'npm:@aws-sdk/client-s3@3.700.0';
 import { getSignedUrl } from 'npm:@aws-sdk/s3-request-presigner@3.700.0';
 
@@ -92,7 +93,7 @@ Deno.serve(async (req) => {
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
     const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
-    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const serviceRoleKey = getSupabaseAdminKeyOrEmpty();
 
     if (!supabaseUrl || !anonKey || !serviceRoleKey) {
       return jsonResponse({ ok: false, error: 'Server configuration error' }, 500, corsHeaders);

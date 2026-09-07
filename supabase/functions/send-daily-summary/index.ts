@@ -3,6 +3,7 @@
 // Criterio: pedidos pagados con `paid_at` en el día (ingresos reconocidos; ver trigger wa_orders_set_paid_at).
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { getSupabaseAdminKeyOrEmpty } from '../_shared/supabaseAdminKey.ts';
 
 const corsHeaders: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -24,7 +25,7 @@ Deno.serve(async (req) => {
   }
 
   const supabaseUrl = (Deno.env.get('SUPABASE_URL') ?? '').replace(/\/$/, '');
-  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+  const serviceKey = getSupabaseAdminKeyOrEmpty();
   const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
   const appBaseUrl = (Deno.env.get('APP_BASE_URL') ?? 'https://go.ventalink.app').replace(/\/$/, '');
   const dashboardUrl = `${appBaseUrl}/dashboard`;

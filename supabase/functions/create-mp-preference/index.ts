@@ -3,6 +3,7 @@
 // Persiste wa_payments (pending) antes de llamar a MP. Idempotencia garantizada por wa_payments.id.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { getSupabaseAdminKeyOrEmpty } from '../_shared/supabaseAdminKey.ts';
 
 // Planes válidos actuales; legacy 'control' mapeado a starter para prorrateo.
 const VALID_PLAN_SLUGS = ['starter', 'pro', 'business'];
@@ -177,7 +178,7 @@ Deno.serve(async (req) => {
 
   const supabaseUrl      = Deno.env.get('SUPABASE_URL')              ?? '';
   const anonKey          = Deno.env.get('SUPABASE_ANON_KEY')         ?? '';
-  const serviceRoleKey   = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+  const serviceRoleKey   = getSupabaseAdminKeyOrEmpty();
   // Credenciales MP por país. Fallback a MP_ACCESS_TOKEN genérico para compatibilidad.
   const mpAccessTokenCl  = Deno.env.get('MP_ACCESS_TOKEN_CL') ?? Deno.env.get('MP_ACCESS_TOKEN') ?? '';
   const mpAccessTokenAr  = Deno.env.get('MP_ACCESS_TOKEN_AR') ?? Deno.env.get('MP_ACCESS_TOKEN') ?? '';

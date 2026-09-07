@@ -3,6 +3,7 @@
 // El cliente debe: 1) POST aquÃ­ con type, businessId, fileName, contentType â†’ obtener uploadUrl y publicUrl; 2) PUT el file a uploadUrl; 3) usar publicUrl en la app.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { getSupabaseAdminKeyOrEmpty } from '../_shared/supabaseAdminKey.ts';
 import { S3Client, PutObjectCommand } from 'npm:@aws-sdk/client-s3@3.700.0';
 import { getSignedUrl } from 'npm:@aws-sdk/s3-request-presigner@3.700.0';
 
@@ -143,7 +144,7 @@ Deno.serve(async (req) => {
     const productId = typeof body?.productId === 'string' ? body.productId.trim() || undefined : undefined;
     const variant = typeof body?.variant === 'string' ? body.variant.trim().toLowerCase() : undefined;
 
-    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const serviceRoleKey = getSupabaseAdminKeyOrEmpty();
     if (!serviceRoleKey) {
       console.error('[upload-image-r2] Missing SUPABASE_SERVICE_ROLE_KEY');
       return jsonResponse({ error: 'Server configuration error' }, 500, corsHeaders);

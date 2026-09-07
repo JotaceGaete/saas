@@ -6,6 +6,7 @@
 // y legado (<businessId>:<planSlug>) para retrocompatibilidad.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { getSupabaseAdminKeyOrEmpty } from '../_shared/supabaseAdminKey.ts';
 import {
   buildBillingSubscriptionUpsertPayload,
   buildReferralPeriodRef,
@@ -287,7 +288,7 @@ Deno.serve(async (req) => {
   const countryHint = (reqUrl.searchParams.get('country') ?? 'CL').toUpperCase();
 
   const supabaseUrl    = Deno.env.get('SUPABASE_URL')              ?? '';
-  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+  const serviceRoleKey = getSupabaseAdminKeyOrEmpty();
 
   if (!supabaseUrl || !serviceRoleKey) {
     console.error('[mp-webhook] env: SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY no configurados');

@@ -2,6 +2,7 @@
 // Público (verify_jwt = false). Anti-duplicado: mismo visitor_id + negocio en 30 min no se vuelve a contar.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { getSupabaseAdminKeyOrEmpty } from '../_shared/supabaseAdminKey.ts';
 
 const THROTTLE_MINUTES = 30;
 
@@ -45,7 +46,7 @@ Deno.serve(async (req) => {
   const userAgent = req.headers.get('user-agent') || null;
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
-  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+  const serviceRoleKey = getSupabaseAdminKeyOrEmpty();
   if (!serviceRoleKey) {
     return jsonResponse({ error: 'Server configuration error' }, 500);
   }

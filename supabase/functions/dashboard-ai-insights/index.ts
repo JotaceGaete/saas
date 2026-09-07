@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getSupabaseAdminKeyOrEmpty } from "../_shared/supabaseAdminKey.ts";
 
 /** CORS: * es suficiente para esta función (Bearer en header, sin cookies). */
 const corsHeaders: Record<string, string> = {
@@ -265,7 +266,7 @@ Deno.serve(async (req) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    const serviceRoleKey = getSupabaseAdminKeyOrEmpty();
     const openaiKey = Deno.env.get("OPENAI_API_KEY") ?? "";
     const missingEnv: string[] = [];
     if (!supabaseUrl) missingEnv.push("SUPABASE_URL");

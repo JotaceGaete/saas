@@ -2,6 +2,7 @@
 // Only the explicit WhatsApp share image is a valid OG source; cover/logo are not used.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getSupabaseAdminKeyOrEmpty } from "../_shared/supabaseAdminKey.ts";
 import { parseDesignSettingsSafe } from "../_shared/catalogOgRender.ts";
 
 const ALLOWED_ORIGINS = [
@@ -88,7 +89,7 @@ Deno.serve(async (req) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    const serviceRoleKey = getSupabaseAdminKeyOrEmpty();
     if (!supabaseUrl || !anonKey || !serviceRoleKey) {
       console.error(JSON.stringify({ event: "generate-og-image:error", error: "missing_env_vars", supabaseUrl: !!supabaseUrl, anonKey: !!anonKey, serviceRoleKey: !!serviceRoleKey }));
       return jsonResponse({ error: "Server configuration error" }, 500, corsHeaders);
