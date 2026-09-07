@@ -7,6 +7,25 @@ verify_jwt = false
 [functions.create-mp-preference]
 verify_jwt = false
 
+# MP-OAUTH-1: conexión OAuth de Mercado Pago por negocio (mp_connections),
+# completamente aislada del billing de plataforma de arriba (no comparte
+# tablas, tokens ni credenciales con create-mp-preference/mp-webhook).
+# mp-oauth-start / mp-oauth-disconnect: igual que create-mp-preference,
+# validan el JWT ellas mismas vía supabase.auth.getUser() (mismo motivo de
+# CORS preflight que admin-users/admin-impersonate más abajo: OPTIONS no
+# lleva Authorization, así que con verify_jwt=true el gateway respondería
+# 401 antes de que el handler pueda contestar el preflight).
+[functions.mp-oauth-start]
+verify_jwt = false
+
+[functions.mp-oauth-disconnect]
+verify_jwt = false
+
+# mp-oauth-callback: público, igual que mp-webhook — Mercado Pago redirige
+# el browser acá directamente, sin JWT de Walinka.
+[functions.mp-oauth-callback]
+verify_jwt = false
+
 # plan-change-preview: same, JWT validated inside for auth.uid().
 [functions.plan-change-preview]
 verify_jwt = false
