@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import Icon from 'components/AppIcon';
 import { isRestaurantBusiness } from '../../utils/businessType';
+import { getSupabasePublishableKey } from '../../lib/supabasePublishableKey';
 import DashboardAppShell from 'components/ui/DashboardAppShell';
 import DashboardLayoutContent from 'components/ui/DashboardLayoutContent';
 import PanelHeader from 'components/ui/PanelHeader';
@@ -815,7 +816,7 @@ export default function ProductEditor() {
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${session.access_token}`,
-          ...(useVentaAi ? {} : { apikey: import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '' }),
+          ...(useVentaAi ? {} : { apikey: getSupabasePublishableKey() }),
         },
         body: JSON.stringify(
           useVentaAi

@@ -1,4 +1,5 @@
 import { getValidToken } from '../lib/auth/getValidToken';
+import { getSupabasePublishableKey } from '../lib/supabasePublishableKey';
 import { compressImageForUpload } from '../utils/imageUploadUtils';
 
 const DEFAULT_UPLOAD_TIMEOUT_MS = 30000;
@@ -13,9 +14,9 @@ function getSupabaseFunctionUrl(functionName) {
 }
 
 function getSupabaseAnonKey() {
-  const anonKey = String(import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
+  const anonKey = getSupabasePublishableKey();
   if (!anonKey) {
-    throw new Error('Falta configurar VITE_SUPABASE_ANON_KEY para subir imagenes.');
+    throw new Error('Falta configurar VITE_SUPABASE_PUBLISHABLE_KEY (o VITE_SUPABASE_ANON_KEY) para subir imagenes.');
   }
   return anonKey;
 }

@@ -8,6 +8,7 @@ import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
 import { useConfirmedEmailGuard } from '../../hooks/useConfirmedEmailGuard';
 import { supabase } from '../../lib/supabase';
+import { getSupabasePublishableKey } from '../../lib/supabasePublishableKey';
 import { getAppBaseUrl } from '../../config/appUrl';
 import { formatSubscriptionPlanPrice } from '../../utils/formatCLP';
 import {
@@ -627,7 +628,7 @@ export default function PlansPage() {
     const token = await getValidAccessToken();
     if (!token) return null;
     const supabaseUrl = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
-    const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
+    const anonKey = getSupabasePublishableKey();
     const body = { targetPlanSlug, provider: checkoutProvider };
     const res = await fetch(`${supabaseUrl}/functions/v1/plan-change-preview`, {
       method: 'POST',
@@ -728,7 +729,7 @@ export default function PlansPage() {
         navigate('/login');
         return;
       }
-      const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
+      const anonKey = getSupabasePublishableKey();
       if (!!anonKey && token === anonKey) {
         toast.error('Error de autenticación: token inválido.');
         return;
@@ -863,7 +864,7 @@ export default function PlansPage() {
         navigate('/login');
         return;
       }
-      const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
+      const anonKey = getSupabasePublishableKey();
       console.info(PAYMENT_DEBUG_PREFIX, {
         event: 'create_mp_preference_request',
         hasAuthorizationHeader: !!token,

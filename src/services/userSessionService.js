@@ -4,6 +4,7 @@
  * All failures are non-fatal — they log a warning and continue.
  */
 import { supabase } from '../lib/supabase';
+import { getSupabasePublishableKey } from '../lib/supabasePublishableKey';
 
 const SESSION_KEY = 'walinka_user_session_id';
 const TOUCH_INTERVAL_MS = 60_000;
@@ -128,20 +129,35 @@ export function registerActivityListeners(sessionId) {
   };
 }
 
+// NOTA (migración anon key -> publishable key): esta llamada NUNCA debe
+// enviar la client API key (anon/publishable) como `Authorization: Bearer`.
+// Las nuevas publishable keys no son JWT, así que si se envían en
+// Authorization, el gateway intenta decodificarlas como JWT y rechaza la
+// petición con "Invalid JWT" (ver docs oficiales de Supabase). Por eso aquí
+// solo se manda `apikey`.
+//
+// Esto NO repara `end_user_session`: esa función es SECURITY DEFINER,
+// depende de auth.uid() y solo tiene GRANT EXECUTE a `authenticated`. Sin un
+// JWT real de usuario en Authorization, el rol resuelto es `anon` y la
+// llamada no tiene permiso para ejecutarla — igual que ocurría antes de
+// este cambio (el error ya quedaba absorbido por el .catch() de abajo).
+// Arreglarlo de verdad requeriría cachear el access_token real de forma
+// síncrona (p. ej. vía supabase.auth.onAuthStateChange) para poder usarlo
+// en beforeunload — eso es un cambio de lógica de sesión/auth, deliberadamente
+// fuera de alcance de esta migración.
 export function registerUnloadHandler(sessionId) {
   const handler = () => {
     const id = sessionId || getCurrentSessionId();
     if (!id) return;
     try {
       const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL ?? '';
-      const anonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
-      if (!supabaseUrl || !anonKey) return;
+      const clientApiKey = getSupabasePublishableKey();
+      if (!supabaseUrl || !clientApiKey) return;
       fetch(`${supabaseUrl}/rest/v1/rpc/end_user_session`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          apikey: anonKey,
-          Authorization: `Bearer ${anonKey}`,
+          apikey: clientApiKey,
         },
         body: JSON.stringify({ p_session_id: id }),
         keepalive: true,
