@@ -4,6 +4,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { getSupabaseAdminKeyOrEmpty } from '../_shared/supabaseAdminKey.ts';
+import { getSupabasePublishableKeyOrEmpty } from '../_shared/supabasePublishableKey.ts';
 
 // Planes válidos actuales; legacy 'control' mapeado a starter para prorrateo.
 const VALID_PLAN_SLUGS = ['starter', 'pro', 'business'];
@@ -177,7 +178,7 @@ Deno.serve(async (req) => {
   }
 
   const supabaseUrl      = Deno.env.get('SUPABASE_URL')              ?? '';
-  const anonKey          = Deno.env.get('SUPABASE_ANON_KEY')         ?? '';
+  const anonKey          = getSupabasePublishableKeyOrEmpty();
   const serviceRoleKey   = getSupabaseAdminKeyOrEmpty();
   // Credenciales MP por país. Fallback a MP_ACCESS_TOKEN genérico para compatibilidad.
   const mpAccessTokenCl  = Deno.env.get('MP_ACCESS_TOKEN_CL') ?? Deno.env.get('MP_ACCESS_TOKEN') ?? '';
