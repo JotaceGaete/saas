@@ -3,12 +3,20 @@ import { DollarSign, Check, Loader2 } from 'lucide-react';
 
 /**
  * Conciliación de caja: verde = dinero registrado como ingresado; gris = aún no conciliado.
- * Persiste en `wa_orders.payment_status` (`pendiente` | `pagado`) vía `onUpdate` → `updateOrder`.
+ * pagado -> pendiente sigue siendo un UPDATE directo vía `onUpdate` (revertir
+ * una conciliación manual mal marcada). pendiente -> pagado NUNCA lo es
+ * (MP-PAYMENT-DETAIL-2): abre el detalle del pedido, único lugar donde vive
+ * el flujo que exige método (modal de pago manual /
+ * wa_register_manual_order_payment) -- "pagado sin método" queda
+ * estructuralmente imposible también desde la tarjeta del kanban, no solo
+ * desde el drawer.
  */
 export default function PaymentStatusToggle({
   orderId,
+  order,
   paymentStatus,
   onUpdate,
+  onOpenDetail,
   disabled = false,
 }) {
   const [loading, setLoading] = useState(false);
@@ -31,10 +39,15 @@ export default function PaymentStatusToggle({
     e.preventDefault();
     e.stopPropagation();
     if (disabled || loading || !orderId) return;
-    const next = isPaid ? 'pendiente' : 'pagado';
+    if (!isPaid) {
+      // pendiente -> pagado SIEMPRE requiere método (MP-PAYMENT-DETAIL-2):
+      // nunca un UPDATE directo desde acá, abre el detalle del pedido.
+      onOpenDetail?.(order);
+      return;
+    }
     setLoading(true);
     try {
-      const out = onUpdate?.(orderId, { paymentStatus: next });
+      const out = onUpdate?.(orderId, { paymentStatus: 'pendiente' });
       if (out && typeof out.then === 'function') await out;
     } finally {
       setLoading(false);
@@ -72,7 +85,7 @@ export default function PaymentStatusToggle({
       type="button"
       onClick={handleClick}
       disabled={busy}
-      title="Marcar cuando el pago ya ingresó a tu banco / caja"
+      title="Abrir pedido para registrar el pago"
       className={[
         'inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors shrink-0',
         busy ? 'opacity-60 cursor-wait' : 'hover:bg-gray-100',

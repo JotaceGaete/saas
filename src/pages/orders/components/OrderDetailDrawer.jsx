@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Icon from 'components/AppIcon';
 import { getInvoiceByOrderId, createInvoiceFromOrder, registerOrderPayment } from '../../../services/crmService';
+import { getOrderPayment } from '../../../services/orderPaymentService';
+import OrderPaymentDetail from './OrderPaymentDetail';
+import ManualPaymentModal from './ManualPaymentModal';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import {
@@ -49,6 +52,35 @@ export default function OrderDetailDrawer({
     setCrmError(null);
     getInvoiceByOrderId(order.id).then(({ data }) => setOrderInvoice(data ?? null));
   }, [order?.id]);
+
+  // ── wa_order_payments (MP-PAYMENT-DETAIL-2) ──────────────────────────────
+  // Fuente normalizada de "cómo se pagó este pedido" -- SELECT directo
+  // (RLS owner-only), nunca wa_merchant_payment_events desde el frontend.
+  // localPaymentPatch refleja de inmediato el éxito de un pago manual sin
+  // esperar el round-trip de realtime ni escribir payment_status desde acá
+  // (eso ya lo hizo la RPC, server-side).
+  const [orderPayment, setOrderPayment] = useState(undefined); // undefined = loading
+  const [localPaymentPatch, setLocalPaymentPatch] = useState(null);
+  const [showManualPaymentModal, setShowManualPaymentModal] = useState(false);
+
+  useEffect(() => {
+    if (!order?.id) return;
+    setOrderPayment(undefined);
+    setLocalPaymentPatch(null);
+    getOrderPayment(order.id).then(({ data }) => setOrderPayment(data ?? null));
+  }, [order?.id]);
+
+  const refreshOrderPayment = async () => {
+    if (!order?.id) return;
+    const { data } = await getOrderPayment(order.id);
+    setOrderPayment(data ?? null);
+  };
+
+  const handleManualPaymentSuccess = async () => {
+    setLocalPaymentPatch({ paymentStatus: 'pagado' });
+    setShowManualPaymentModal(false);
+    await refreshOrderPayment();
+  };
 
   const handleGenerateInvoice = async () => {
     if (!order || !business?.id) return;
@@ -103,7 +135,11 @@ export default function OrderDetailDrawer({
     : null;
 
   const currentOrderStatus = order?.status || 'pedido';
-  const currentPaymentStatus = order?.paymentStatus || 'pendiente';
+  // MP-PAYMENT-DETAIL-2: localPaymentPatch refleja de inmediato el éxito de
+  // un pago manual (ver handleManualPaymentSuccess) sin esperar el
+  // round-trip de realtime -- el pedido real ya quedó 'pagado' server-side
+  // dentro de la RPC, esto es solo la vista local mientras converge.
+  const currentPaymentStatus = localPaymentPatch?.paymentStatus ?? (order?.paymentStatus || 'pendiente');
   const currentOrderStatusLabel =
     statusOptions.find((option) => option?.key === currentOrderStatus)?.label || 'Pedido';
   const currentPaymentStatusLabel =
@@ -127,7 +163,17 @@ export default function OrderDetailDrawer({
     setSavingStatus(false);
   };
 
+  // MP-PAYMENT-DETAIL-2: pasar a 'pagado' NUNCA es un UPDATE directo desde
+  // acá -- estructuralmente imposible por diseño (guard explícito abajo),
+  // no solo "porque ningún botón lo llama así hoy". El único camino para
+  // pasar a 'pagado' es el pago automático de Mercado Pago (webhook) o el
+  // modal de pago manual (handleOpenManualPayment -> ManualPaymentModal ->
+  // wa_register_manual_order_payment). pendiente/anulado sí siguen siendo
+  // transiciones directas válidas (revertir un pago manual mal registrado,
+  // anular un pedido) -- lo que se elimina es "pagado sin método", no toda
+  // edición manual del estado de pago.
   const handlePaymentStatusChange = async (newPaymentStatus) => {
+    if (newPaymentStatus === 'pagado') return;
     if (newPaymentStatus === currentPaymentStatus) return;
     if (isOrdersDoubleFlickerDebug()) {
       ordersDoubleFlickerLog('setSavingPayment', { value: true, prevValue: savingPayment, changedValue: savingPayment !== true });
@@ -140,17 +186,9 @@ export default function OrderDetailDrawer({
     setSavingPayment(false);
   };
 
-  const handleMarkAsPaid = async () => {
+  const handleOpenManualPayment = () => {
     if (currentPaymentStatus === 'pagado') return;
-    if (isOrdersDoubleFlickerDebug()) {
-      ordersDoubleFlickerLog('setSavingPayment', { value: true, prevValue: savingPayment, changedValue: savingPayment !== true });
-    }
-    setSavingPayment(true);
-    await onUpdate(order?.id, { paymentStatus: 'pagado' });
-    if (isOrdersDoubleFlickerDebug()) {
-      ordersDoubleFlickerLog('setSavingPayment', { value: false, prevValue: true, changedValue: true });
-    }
-    setSavingPayment(false);
+    setShowManualPaymentModal(true);
   };
 
   return (
@@ -346,7 +384,11 @@ export default function OrderDetailDrawer({
                   key={s.key}
                   type="button"
                   disabled={savingPayment}
-                  onClick={() => handlePaymentStatusChange(s.key)}
+                  // MP-PAYMENT-DETAIL-2: pasar a "pagado" SIEMPRE abre el
+                  // modal de pago manual (exige método) -- nunca
+                  // handlePaymentStatusChange directo, que además lo
+                  // rechaza explícitamente como defensa en profundidad.
+                  onClick={() => (s.key === 'pagado' ? handleOpenManualPayment() : handlePaymentStatusChange(s.key))}
                   className="px-3 py-1.5 rounded-lg text-xs font-medium border transition-all disabled:opacity-50"
                   style={{
                     borderColor: currentPaymentStatus === s.key ? s.color : 'var(--color-border)',
@@ -358,19 +400,19 @@ export default function OrderDetailDrawer({
                   {s.label}
                 </button>
               ))}
-              {currentPaymentStatus !== 'pagado' && (
-                <button
-                  type="button"
-                  disabled={savingPayment}
-                  onClick={handleMarkAsPaid}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all disabled:opacity-50"
-                  style={{ backgroundColor: 'rgba(16,185,129,0.12)', color: '#059669', fontFamily: 'var(--font-caption)' }}
-                >
-                  Marcar como pagado
-                </button>
-              )}
             </div>
             <p className="text-xs mt-2" style={{ color: 'var(--color-muted-foreground)' }}>Actual: {PaymentStatusBadge && <PaymentStatusBadge paymentStatus={currentPaymentStatus} />}</p>
+          </div>
+
+          {/* ── Pago (MP-PAYMENT-DETAIL-2) ──────────────────────────────── */}
+          <div>
+            <p className="text-xs font-semibold mb-2" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Pago</p>
+            <OrderPaymentDetail
+              orderPayment={orderPayment}
+              paymentStatus={currentPaymentStatus}
+              business={business}
+              formatCLP={formatCLP}
+            />
           </div>
 
           <div>
@@ -586,6 +628,15 @@ export default function OrderDetailDrawer({
           </div>
         </div>
       </div>
+
+      {showManualPaymentModal && (
+        <ManualPaymentModal
+          order={order}
+          formatCLP={formatCLP}
+          onClose={() => setShowManualPaymentModal(false)}
+          onSuccess={handleManualPaymentSuccess}
+        />
+      )}
     </>
   );
 }

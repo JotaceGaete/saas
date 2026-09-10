@@ -193,8 +193,10 @@ function KanbanOrderCardView({
           {showPayToggle ? (
             <PaymentStatusToggle
               orderId={order.id}
+              order={order}
               paymentStatus={order?.paymentStatus}
               onUpdate={onUpdate}
+              onOpenDetail={onOpenDetail}
               disabled={false}
             />
           ) : null}
