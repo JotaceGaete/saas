@@ -29,6 +29,7 @@ import {
   amountsMatch,
   isNonRetryableRpcError,
   toCents,
+  resolvePaidAt,
 } from './lib.ts';
 
 const MP_PAYMENT_URL = 'https://api.mercadopago.com/v1/payments';
@@ -168,6 +169,7 @@ Deno.serve(async (req) => {
     transaction_amount?: number;
     currency_id?: string;
     external_reference?: string;
+    date_approved?: string;
   };
   try {
     payment = JSON.parse(mpBodyText);
@@ -181,6 +183,10 @@ Deno.serve(async (req) => {
   const transactionAmount = Number(payment?.transaction_amount);
   const currencyId = String(payment?.currency_id ?? '');
   const externalRefRaw = payment?.external_reference != null ? String(payment.external_reference) : null;
+  // MP-PAYMENT-DETAIL-1 -- paid_at de wa_order_payments. Viene SIEMPRE de
+  // `payment` (la respuesta ya verificada), nunca del body del webhook.
+  // Ver resolvePaidAt() en lib.ts para el criterio exacto de fallback.
+  const paidAt = resolvePaidAt(payment?.date_approved ?? null);
 
   if (!isKnownMpPaymentStatus(mpStatus)) {
     console.warn('[merchant-mp-webhook] status desconocido de Mercado Pago, ignorado', { mpStatus });
@@ -247,6 +253,7 @@ Deno.serve(async (req) => {
     p_currency: currencyId,
     p_external_reference: externalRefRaw,
     p_walinka_fee: walinkaFee,
+    p_paid_at: paidAt,
   });
 
   if (rpcError) {
@@ -267,6 +274,7 @@ Deno.serve(async (req) => {
     appliedNow: result?.applied_now ?? null,
     alreadyProcessed: result?.already_processed ?? null,
     walinkaFee,
+    paidAt,
   });
 
   return jsonResponse({ ok: true }, 200);

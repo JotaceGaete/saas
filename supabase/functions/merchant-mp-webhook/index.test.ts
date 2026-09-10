@@ -135,7 +135,35 @@ describe('merchant-mp-webhook — walinka_fee calculado server-side, nunca desde
   });
 
   it('nunca loguea ni devuelve walinkaFee de forma que reemplace/oculte los demás campos de auditoría del evento', () => {
-    expect(indexSource).toMatch(/payment_event_processed/);
-    expect(indexSource).toMatch(/walinkaFee,?\s*\n\s*\}\);/);
+    const logMatch = indexSource.match(/console\.log\('\[merchant-mp-webhook\] payment_event_processed', \{[\s\S]*?\}\);/);
+    expect(logMatch).not.toBeNull();
+    expect(logMatch![0]).toMatch(/walinkaFee,/);
+    expect(logMatch![0]).toMatch(/appliedNow: result\?\.\s*applied_now/);
+  });
+});
+
+// ─── MP-PAYMENT-DETAIL-1 — paid_at para wa_order_payments ─────────────────
+describe('merchant-mp-webhook — paid_at derivado SIEMPRE de la respuesta verificada de MP', () => {
+  it('usa resolvePaidAt(payment?.date_approved), nunca un valor del body del webhook', () => {
+    expect(indexSource).toMatch(/const paidAt = resolvePaidAt\(payment\?\.\s*date_approved \?\? null\)/);
+    expect(indexSource).not.toMatch(/resolvePaidAt\([^)]*body\?/);
+  });
+
+  it('paidAt se calcula DESPUÉS de parsear `payment` pero se pasa a la RPC junto al resto de campos ya validados', () => {
+    const paidAtIdx = indexSource.indexOf('const paidAt = resolvePaidAt');
+    const rpcIdx = indexSource.indexOf("admin.rpc('wa_process_merchant_payment_event'");
+    expect(paidAtIdx).toBeGreaterThan(-1);
+    expect(rpcIdx).toBeGreaterThan(-1);
+    expect(paidAtIdx).toBeLessThan(rpcIdx);
+  });
+
+  it('paidAt se pasa como p_paid_at a wa_process_merchant_payment_event', () => {
+    expect(indexSource).toMatch(/p_paid_at: paidAt,/);
+  });
+
+  it('el tipo `payment` declara date_approved -- el campo se extrae del payload ya verificado, no se inventa', () => {
+    const paymentTypeMatch = indexSource.match(/let payment: \{[\s\S]*?\};/);
+    expect(paymentTypeMatch).not.toBeNull();
+    expect(paymentTypeMatch![0]).toMatch(/date_approved\?:\s*string;/);
   });
 });

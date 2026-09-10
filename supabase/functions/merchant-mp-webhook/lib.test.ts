@@ -11,6 +11,7 @@ import {
   validateReferenceMatch,
   amountsMatch,
   isNonRetryableRpcError,
+  resolvePaidAt,
 } from './lib';
 
 const BUSINESS_ID = '22222222-2222-2222-2222-222222222222';
@@ -114,6 +115,28 @@ describe('amountsMatch — sin drift de punto flotante', () => {
   });
   it('suma de decimales que en float puro fallaría (0.1+0.2 style) -> compara correctamente', () => {
     expect(amountsMatch(0.1 + 0.2, 0.3)).toBe(true);
+  });
+});
+
+describe('resolvePaidAt — MP-PAYMENT-DETAIL-1', () => {
+  const now = new Date('2026-09-10T18:00:00.000Z');
+
+  it('usa date_approved cuando está presente y es válida', () => {
+    expect(resolvePaidAt('2026-09-10T17:55:30.000Z', now)).toBe('2026-09-10T17:55:30.000Z');
+  });
+  it('normaliza date_approved a ISO (formato con offset distinto de Z)', () => {
+    expect(resolvePaidAt('2026-09-10T14:55:30.000-03:00', now)).toBe('2026-09-10T17:55:30.000Z');
+  });
+  it('ausente (null/undefined) -> fallback a now', () => {
+    expect(resolvePaidAt(null, now)).toBe(now.toISOString());
+    expect(resolvePaidAt(undefined, now)).toBe(now.toISOString());
+  });
+  it('vacío/solo espacios -> fallback a now', () => {
+    expect(resolvePaidAt('', now)).toBe(now.toISOString());
+    expect(resolvePaidAt('   ', now)).toBe(now.toISOString());
+  });
+  it('fecha inválida (no parseable) -> fallback a now, nunca "Invalid Date"', () => {
+    expect(resolvePaidAt('no-es-una-fecha', now)).toBe(now.toISOString());
   });
 });
 

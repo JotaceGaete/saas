@@ -96,6 +96,25 @@ export function amountsMatch(a: number, b: number): boolean {
   return toCents(a) === toCents(b);
 }
 
+// ── paid_at (MP-PAYMENT-DETAIL-1) -- SIEMPRE a partir de `payment`, la
+//    respuesta YA verificada de GET /v1/payments/:id (nunca del body
+//    del webhook). Usa payment.date_approved cuando está presente y es
+//    una fecha válida -- para status='approved' Mercado Pago siempre
+//    debería incluirla, pero se maneja defensivamente por si no fuera
+//    así. Si falta o es inválida, usa el momento en que este webhook
+//    confirmó el evento (fallback documentado, nunca una fecha
+//    inventada) -- normalmente segundos después de la aprobación real,
+//    dado que Checkout Pro notifica casi de inmediato. ─────────────────
+export function resolvePaidAt(dateApprovedRaw: string | null | undefined, now: Date = new Date()): string {
+  if (typeof dateApprovedRaw === 'string' && dateApprovedRaw.trim()) {
+    const parsed = new Date(dateApprovedRaw);
+    if (Number.isFinite(parsed.getTime())) {
+      return parsed.toISOString();
+    }
+  }
+  return now.toISOString();
+}
+
 // ── Excepciones de la RPC que deben tratarse como "evento inválido,
 //    sin reintento útil" en vez de un 500 genérico -- estructuralmente
 //    no deberían ocurrir nunca (el caller ya validó amount/currency/
