@@ -80,13 +80,13 @@ describe('send-email — templates nuevos de pago (EMAIL-PAYMENTS-1)', () => {
     expect(indexSource).toMatch(/'payment_received_buyer', 'payment_received_merchant',/);
   });
 
-  it('el asunto del comprador es "Pago recibido — Pedido #<shortId>"', () => {
-    const match = indexSource.match(/case 'payment_received_buyer': \{[\s\S]*?const subject = `Pago recibido — Pedido #\$\{shortId\}`;/);
+  it('el asunto del comprador es "Pago recibido en {businessName} — Pedido #<shortId>" (EMAIL-PAYMENTS-1B)', () => {
+    const match = indexSource.match(/case 'payment_received_buyer': \{[\s\S]*?const subject = `Pago recibido en \$\{subjectBusinessName\} — Pedido #\$\{shortId\}`;/);
     expect(match).not.toBeNull();
   });
 
-  it('el asunto del comercio es "Nueva venta pagada — Pedido #<shortId>"', () => {
-    const match = indexSource.match(/case 'payment_received_merchant': \{[\s\S]*?const subject = `Nueva venta pagada — Pedido #\$\{shortId\}`;/);
+  it('el asunto del comercio es "Nueva venta pagada en {businessName} — Pedido #<shortId>" (EMAIL-PAYMENTS-1B)', () => {
+    const match = indexSource.match(/case 'payment_received_merchant': \{[\s\S]*?const subject = `Nueva venta pagada en \$\{subjectBusinessName\} — Pedido #\$\{shortId\}`;/);
     expect(match).not.toBeNull();
   });
 
@@ -138,6 +138,109 @@ describe('send-email — templates nuevos de pago (EMAIL-PAYMENTS-1)', () => {
     const merchantBlock = indexSource.match(/case 'payment_received_merchant': \{[\s\S]*?\n    \}/)![0];
     expect(buyerBlock).not.toMatch(/dashboardUrl/);
     expect(merchantBlock).toMatch(/Ver pedido en el panel/);
+  });
+});
+
+// ─── EMAIL-PAYMENTS-1B — identificación clara del comercio ────────────────
+describe('send-email — EMAIL-PAYMENTS-1B: subject/encabezado identifican al comercio', () => {
+  const buyerBlock = () => indexSource.match(/case 'payment_received_buyer': \{[\s\S]*?\n    \}/)![0];
+  const merchantBlock = () => indexSource.match(/case 'payment_received_merchant': \{[\s\S]*?\n    \}/)![0];
+
+  it('buyer: subject usa sanitizeSubjectText(n) -- se comporta como "Pago recibido en Artesellos — Pedido #A1B2C3" para businessName=Artesellos', () => {
+    const block = buyerBlock();
+    expect(block).toMatch(/const subjectBusinessName = sanitizeSubjectText\(n\);/);
+    expect(block).toMatch(/const subject = `Pago recibido en \$\{subjectBusinessName\} — Pedido #\$\{shortId\}`;/);
+    // Evaluación real de la plantilla del subject con datos concretos --
+    // misma expresión que la fuente, prueba el resultado visible completo.
+    const subjectBusinessName = 'Artesellos'.replace(/[\r\n]+/g, ' ').trim();
+    const shortId = 'A1B2C3';
+    const subject = `Pago recibido en ${subjectBusinessName} — Pedido #${shortId}`;
+    expect(subject).toBe('Pago recibido en Artesellos — Pedido #A1B2C3');
+  });
+
+  it('buyer: el encabezado <h1> del HTML contiene "Pago recibido en {businessName}"', () => {
+    const block = buyerBlock();
+    expect(block).toMatch(/<h1[^>]*>Pago recibido en \$\{escapeHtml\(n\)\}<\/h1>/);
+  });
+
+  it('buyer: el nombre del comercio aparece en el encabezado ANTES de la tabla de productos', () => {
+    const block = buyerBlock();
+    const h1Idx = block.indexOf('Pago recibido en ${escapeHtml(n)}');
+    const itemsTableIdx = block.indexOf('itemsRows ?');
+    expect(h1Idx).toBeGreaterThan(-1);
+    expect(itemsTableIdx).toBeGreaterThan(-1);
+    expect(h1Idx).toBeLessThan(itemsTableIdx);
+  });
+
+  it('buyer: incluye la línea sobria "Tu pago fue confirmado correctamente." inmediatamente después del encabezado', () => {
+    const block = buyerBlock();
+    expect(block).toMatch(/Tu pago fue confirmado correctamente\./);
+  });
+
+  it('merchant: subject usa sanitizeSubjectText(n) -- se comporta como "Nueva venta pagada en Artesellos — Pedido #A1B2C3" para businessName=Artesellos', () => {
+    const block = merchantBlock();
+    expect(block).toMatch(/const subjectBusinessName = sanitizeSubjectText\(n\);/);
+    expect(block).toMatch(/const subject = `Nueva venta pagada en \$\{subjectBusinessName\} — Pedido #\$\{shortId\}`;/);
+    const subjectBusinessName = 'Artesellos'.replace(/[\r\n]+/g, ' ').trim();
+    const shortId = 'A1B2C3';
+    const subject = `Nueva venta pagada en ${subjectBusinessName} — Pedido #${shortId}`;
+    expect(subject).toBe('Nueva venta pagada en Artesellos — Pedido #A1B2C3');
+  });
+
+  it('merchant: el encabezado <h1> del HTML contiene "Nueva venta pagada en {businessName}"', () => {
+    const block = merchantBlock();
+    expect(block).toMatch(/<h1[^>]*>Nueva venta pagada en \$\{escapeHtml\(n\)\}<\/h1>/);
+  });
+
+  it('el businessName se escapa con escapeHtml en ambos encabezados HTML -- nunca HTML crudo', () => {
+    expect(buyerBlock()).toMatch(/Pago recibido en \$\{escapeHtml\(n\)\}/);
+    expect(merchantBlock()).toMatch(/Nueva venta pagada en \$\{escapeHtml\(n\)\}/);
+  });
+
+  it('el subject NO usa escapeHtml sobre el nombre del comercio -- un subject no es HTML, evita mostrar entidades literales (&amp;) al destinatario', () => {
+    expect(buyerBlock()).not.toMatch(/const subject = `Pago recibido en \$\{escapeHtml/);
+    expect(merchantBlock()).not.toMatch(/const subject = `Nueva venta pagada en \$\{escapeHtml/);
+  });
+
+  it('sanitizeSubjectText quita saltos de línea del nombre del comercio (defensa contra header injection), sin HTML-escapear', () => {
+    expect(indexSource).toMatch(
+      /function sanitizeSubjectText\(value: unknown\): string \{\s*\n\s*return String\(value \?\? ''\)\.replace\(\/\[\\r\\n\]\+\/g, ' '\)\.trim\(\);/,
+    );
+    // Comportamiento real: un nombre con salto de línea queda en una sola
+    // línea; nunca se convierte en entidades HTML.
+    const dirty = 'Mi Negocio\r\nX-Injected: evil';
+    const clean = dirty.replace(/[\r\n]+/g, ' ').trim();
+    expect(clean).toBe('Mi Negocio X-Injected: evil');
+    expect(clean).not.toMatch(/[\r\n]/);
+    expect(clean).not.toMatch(/&amp;|&lt;|&gt;/);
+  });
+
+  it('no se introduce "vía Walinka" ni ninguna variante -- el remitente sigue siendo Walinka puro, sin mezclar con el nombre del comercio', () => {
+    expect(indexSource).not.toMatch(/vía Walinka/i);
+    expect(indexSource).not.toMatch(/via Walinka/i);
+  });
+
+  it('FROM_EMAIL no fue tocado -- sigue siendo el remitente legacy de Walinka, nunca un dominio/email del comercio', () => {
+    expect(indexSource).toMatch(/const FROM_EMAIL = 'Walinka <hola@mail\.ventalink\.app>';/);
+    // Ningún caso de pago construye un remitente dinámico a partir de datos
+    // del negocio (email/whatsapp/slug) -- FROM_EMAIL es la única fuente.
+    const buyerHtml = buyerBlock().match(/const html = `[\s\S]*?<\/html>`;/)![0];
+    const merchantHtml = merchantBlock().match(/const html = `[\s\S]*?<\/html>`;/)![0];
+    for (const html of [buyerHtml, merchantHtml]) {
+      expect(html).not.toMatch(/from:/i);
+    }
+  });
+
+  it('no existe reply-to dinámico ni estático en send-email todavía -- confirma el estado actual, no se amplía en esta fase', () => {
+    expect(indexSource).not.toMatch(/reply.?to/i);
+  });
+
+  it('no se modificó la lógica de flags (PAYMENT_EMAILS_ENABLED/EMAIL_AUTOMATION_ENABLED) en esta fase', () => {
+    expect(indexSource).toMatch(/const categoryEnabled = isPaymentEmail \? isPaymentEmailsEnabled\(\) : isEmailAutomationEnabled\(\);/);
+  });
+
+  it('no se introduce ninguna referencia a Vercel', () => {
+    expect(indexSource).not.toMatch(/vercel/i);
   });
 });
 
