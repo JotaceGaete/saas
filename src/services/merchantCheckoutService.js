@@ -77,11 +77,11 @@ export async function getMerchantMpAvailability(businessSlug) {
 /**
  * Crea el checkout Mercado Pago del comercio. Envía únicamente
  * intención mínima -- businessSlug + items [{productId, quantity}] +
- * customer {name, phone?} + serviceType/deliveryAddress/notes
+ * customer {name, phone?, email?} + serviceType/deliveryAddress/notes
  * opcionales. NUNCA envía price/subtotal/total/currency/business_id/
  * external_reference como si fueran confiables (el backend los
  * ignora de todos modos, pero tampoco se construyen acá).
- * @param {{businessSlug: string, items: Array<{productId: string, quantity: number}>, customer: {name: string, phone?: string|null}, serviceType?: string|null, deliveryAddress?: string|null, notes?: string|null}} input
+ * @param {{businessSlug: string, items: Array<{productId: string, quantity: number}>, customer: {name: string, phone?: string|null, email?: string|null}, serviceType?: string|null, deliveryAddress?: string|null, notes?: string|null}} input
  * @returns {Promise<{data: {initPoint: string, orderId: string, preferenceId: string|null}|null, error: (Error & {reason?: string})|null}>}
  */
 export async function createMerchantMpCheckout({ businessSlug, items, customer, serviceType, deliveryAddress, notes }) {

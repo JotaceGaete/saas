@@ -149,6 +149,60 @@ describe('OrderPanel — MP no conectado: sin CTA de WhatsApp engañoso, comport
   });
 });
 
+// ─── EMAIL-PAYMENTS-2 — email opcional del comprador, exclusivo del
+// checkout Mercado Pago. Nunca se vuelve requisito para WhatsApp.
+describe('OrderPanel — customer.email opcional en el payload de Mercado Pago', () => {
+  const mpFnMatch = indexSource.match(/const payWithMercadoPago = async \(\) => \{[\s\S]*?\n  \};/);
+
+  it('el customer enviado a createMerchantMpCheckout incluye email (trimmed) solo cuando fue ingresado', () => {
+    expect(mpFnMatch).not.toBeNull();
+    expect(mpFnMatch[0]).toMatch(
+      /customer: \{ name: customerName\?\.\s*trim\(\), phone: phoneForOrder \|\| undefined, email: trimmedEmail \|\| undefined \}/,
+    );
+  });
+
+  it('el email se normaliza con trim antes de validar/enviar (normalizeCustomerEmailInput)', () => {
+    expect(mpFnMatch[0]).toMatch(/const trimmedEmail = normalizeCustomerEmailInput\(customerEmail\)/);
+  });
+
+  it('email vacío NUNCA bloquea el inicio del pago -- la validación de formato solo corre si trimmedEmail es truthy', () => {
+    expect(mpFnMatch[0]).toMatch(/if \(trimmedEmail && !isValidCustomerEmail\(trimmedEmail\)\) nextErrors\.customerEmail/);
+  });
+
+  it('email inválido sí bloquea el inicio del pago (agrega a nextErrors, mismo mecanismo que customerName/tableReference/deliveryAddress)', () => {
+    expect(mpFnMatch[0]).toMatch(/nextErrors\.customerEmail = 'Ingresa un correo electrónico válido\.'/);
+    expect(mpFnMatch[0]).toMatch(/setFieldErrors\(nextErrors\)/);
+    expect(mpFnMatch[0]).toMatch(/if \(Object\.keys\(nextErrors\)\.length > 0\) return;/);
+  });
+});
+
+describe('OrderPanel — WhatsApp (sendWhatsApp / consultWhatsApp) nunca exige ni valida email', () => {
+  const sendFnMatch = indexSource.match(/const sendWhatsApp = async \(\) => \{[\s\S]*?\n  \};/);
+  const consultFnMatch = indexSource.match(/const consultWhatsApp = \(\) => \{[\s\S]*?\n  \};/);
+
+  it('sendWhatsApp no referencia customerEmail/isValidCustomerEmail -- el email no es requisito para el flujo WhatsApp existente', () => {
+    expect(sendFnMatch).not.toBeNull();
+    expect(sendFnMatch[0]).not.toMatch(/customerEmail/);
+    expect(sendFnMatch[0]).not.toMatch(/isValidCustomerEmail/);
+  });
+
+  it('consultWhatsApp no referencia customerEmail/isValidCustomerEmail -- sigue sin validar ningún campo', () => {
+    expect(consultFnMatch).not.toBeNull();
+    expect(consultFnMatch[0]).not.toMatch(/customerEmail/);
+    expect(consultFnMatch[0]).not.toMatch(/isValidCustomerEmail/);
+  });
+});
+
+describe('OrderPanel — CheckoutEmailOptional se renderiza inmediatamente después de CheckoutPhoneOptional', () => {
+  it('el JSX incluye <CheckoutEmailOptional ... /> después de <CheckoutPhoneOptional ... />', () => {
+    const phoneIdx = indexSource.indexOf('<CheckoutPhoneOptional');
+    const emailIdx = indexSource.indexOf('<CheckoutEmailOptional');
+    expect(phoneIdx).toBeGreaterThan(-1);
+    expect(emailIdx).toBeGreaterThan(-1);
+    expect(emailIdx).toBeGreaterThan(phoneIdx);
+  });
+});
+
 describe('ProductModal / CTAs de compra rápida — solo reetiquetado, nunca crean orden', () => {
   it('el CTA "Pedir por WhatsApp" de ProductModal se reetiqueta a "Consultar por WhatsApp" cuando mpAvailable=true', () => {
     const occurrences = indexSource.match(/\{mpAvailable \? 'Consultar por WhatsApp' : 'Pedir por WhatsApp'\}/g);

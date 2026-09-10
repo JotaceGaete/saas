@@ -100,6 +100,67 @@ describe('OrderConfirmation — consultWhatsApp NUNCA crea una orden', () => {
   });
 });
 
+// ─── EMAIL-PAYMENTS-2 — email opcional del comprador, exclusivo del
+// checkout Mercado Pago. Mismo comportamiento que public-catalog/index.jsx
+// -- nunca se vuelve requisito para WhatsApp (handleConfirm/consultWhatsApp).
+describe('OrderConfirmation — customer.email opcional en el payload de Mercado Pago', () => {
+  const mpFnMatch = indexSource.match(/const payWithMercadoPago = async \(\) => \{[\s\S]*?\n  \};/);
+
+  it('el customer enviado a createMerchantMpCheckout incluye email (trimmed) solo cuando fue ingresado', () => {
+    expect(mpFnMatch).not.toBeNull();
+    expect(mpFnMatch[0]).toMatch(
+      /customer: \{ name: customerName\?\.\s*trim\(\), phone: phoneForOrder \|\| undefined, email: trimmedEmail \|\| undefined \}/,
+    );
+  });
+
+  it('el email se normaliza con trim antes de validar/enviar (normalizeCustomerEmailInput)', () => {
+    expect(mpFnMatch[0]).toMatch(/const trimmedEmail = normalizeCustomerEmailInput\(customerEmail\)/);
+  });
+
+  it('email vacío NUNCA bloquea el inicio del pago -- la validación de formato solo corre si trimmedEmail es truthy', () => {
+    expect(mpFnMatch[0]).toMatch(/if \(trimmedEmail && !isValidCustomerEmail\(trimmedEmail\)\) errs\.customerEmail/);
+  });
+
+  it('email inválido sí bloquea el inicio del pago (se agrega a errs junto con el resto de validate())', () => {
+    expect(mpFnMatch[0]).toMatch(/errs\.customerEmail = 'Ingresa un correo electrónico válido\.'/);
+    expect(mpFnMatch[0]).toMatch(/if \(Object\.keys\(errs\)\?\.\s*length > 0\) \{ setErrors\(errs\); return; \}/);
+  });
+
+  it('la validación de email vive SOLO en payWithMercadoPago, no dentro de validate() -- así handleConfirm (WhatsApp) nunca la hereda', () => {
+    const validateFnMatch = indexSource.match(/const validate = \(\) => \{[\s\S]*?\n  \};/);
+    expect(validateFnMatch).not.toBeNull();
+    expect(validateFnMatch[0]).not.toMatch(/customerEmail/);
+    expect(validateFnMatch[0]).not.toMatch(/isValidCustomerEmail/);
+  });
+});
+
+describe('OrderConfirmation — WhatsApp (handleConfirm / consultWhatsApp) nunca exige ni valida email', () => {
+  const handleConfirmMatch = indexSource.match(/const handleConfirm = async \(\) => \{[\s\S]*?\n  \};/);
+  const consultFnMatch = indexSource.match(/const consultWhatsApp = \(\) => \{[\s\S]*?\n  \};/);
+
+  it('handleConfirm no referencia customerEmail/isValidCustomerEmail -- el email no es requisito para el flujo WhatsApp existente', () => {
+    expect(handleConfirmMatch).not.toBeNull();
+    expect(handleConfirmMatch[0]).not.toMatch(/customerEmail/);
+    expect(handleConfirmMatch[0]).not.toMatch(/isValidCustomerEmail/);
+  });
+
+  it('consultWhatsApp no referencia customerEmail/isValidCustomerEmail -- sigue sin validar ningún campo', () => {
+    expect(consultFnMatch).not.toBeNull();
+    expect(consultFnMatch[0]).not.toMatch(/customerEmail/);
+    expect(consultFnMatch[0]).not.toMatch(/isValidCustomerEmail/);
+  });
+});
+
+describe('OrderConfirmation — CheckoutEmailOptional se renderiza inmediatamente después de CheckoutPhoneOptional', () => {
+  it('el JSX incluye <CheckoutEmailOptional ... /> después de <CheckoutPhoneOptional ... />', () => {
+    const phoneIdx = indexSource.indexOf('<CheckoutPhoneOptional');
+    const emailIdx = indexSource.indexOf('<CheckoutEmailOptional');
+    expect(phoneIdx).toBeGreaterThan(-1);
+    expect(emailIdx).toBeGreaterThan(-1);
+    expect(emailIdx).toBeGreaterThan(phoneIdx);
+  });
+});
+
 describe('OrderConfirmation — MP no conectado: sin CTA de WhatsApp engañoso, comportamiento previo intacto', () => {
   it('con mpAvailable=false, el botón sigue siendo handleConfirm (crea la orden real, como antes de MP-CHECKOUT-3B)', () => {
     expect(indexSource).toMatch(/onClick=\{handleConfirm\}/);

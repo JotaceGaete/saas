@@ -108,6 +108,24 @@ describe('createMerchantMpCheckout', () => {
     // carrito (ver public-catalog/index.jsx), no de este servicio.
   });
 
+  it('customer.email llega en el body cuando está presente (EMAIL-PAYMENTS-2, passthrough puro)', async () => {
+    global.fetch.mockResolvedValue({ ok: true, json: async () => ({ ok: true, init_point: 'https://mp/x' }) });
+    await createMerchantMpCheckout({ ...baseInput, customer: { ...baseInput.customer, email: 'comprador@example.com' } });
+    const [, options] = global.fetch.mock.calls[0];
+    const sentBody = JSON.parse(options.body);
+    expect(sentBody.customer).toEqual({ name: 'Juan Perez', phone: '+56911112222', email: 'comprador@example.com' });
+  });
+
+  it('sin customer.email -- el checkout sigue funcionando igual que antes (ausencia no rompe el flujo)', async () => {
+    global.fetch.mockResolvedValue({ ok: true, json: async () => ({ ok: true, init_point: 'https://mp/x' }) });
+    const result = await createMerchantMpCheckout(baseInput);
+    const [, options] = global.fetch.mock.calls[0];
+    const sentBody = JSON.parse(options.body);
+    expect(sentBody.customer).toEqual({ name: 'Juan Perez', phone: '+56911112222' });
+    expect(sentBody.customer).not.toHaveProperty('email');
+    expect(result).toEqual({ data: { initPoint: 'https://mp/x', orderId: null, preferenceId: null }, error: null });
+  });
+
   it('serviceType/deliveryAddress/notes se incluyen solo si están presentes', async () => {
     global.fetch.mockResolvedValue({ ok: true, json: async () => ({ ok: true, init_point: 'https://mp/x' }) });
     await createMerchantMpCheckout({ ...baseInput, serviceType: 'delivery', deliveryAddress: 'Av. Siempre Viva 742', notes: 'sin cebolla' });
