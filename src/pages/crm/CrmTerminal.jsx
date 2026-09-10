@@ -12,6 +12,15 @@ import CrmThermalTicket from './components/CrmThermalTicket';
 import { QuickCustomerModal } from './components/QuickCustomerModal';
 import CrmBreadcrumb from 'components/ui/CrmBreadcrumb';
 import { formatMoney, fmtMoneyInput, parseMoneyInput } from '../../utils/formatMoney';
+import { createDebouncer } from '../../lib/debounce';
+import {
+  buildPosTerminalDraftKey,
+  readPosTerminalDraft,
+  writePosTerminalDraft,
+  removePosTerminalDraft,
+  buildPosTerminalDraftSnapshot,
+  isDraftFromToday,
+} from '../../lib/posTerminalDraftStorage';
 
 const PAYMENT_METHODS = [
   { value: 'cash',          label: 'Efectivo',      icon: 'Banknote' },
@@ -240,6 +249,18 @@ function CrmTerminalUI() {
     }
     return saleIdempotencyKeyRef.current;
   };
+
+  // TPV-CORE-2: borrador local de la venta en curso -- puramente UI, ver
+  // src/lib/posTerminalDraftStorage.js. Nunca crea efectos reales (eso solo
+  // lo hace crm_create_pos_sale al completar).
+  const draftKey = useMemo(() => buildPosTerminalDraftKey(business?.id), [business?.id]);
+  const [draftNotice, setDraftNotice] = useState(null); // 'restored' | { savedAt } (pendiente de decisión) | null
+  const [customerRemovedNotice, setCustomerRemovedNotice] = useState(false);
+  const [customersLoaded, setCustomersLoaded] = useState(false);
+  const restoreCheckedRef = useRef(false); // true una vez que ya se intentó restaurar (o no había nada que restaurar)
+  const draftDebouncerRef = useRef(null);
+  if (!draftDebouncerRef.current) draftDebouncerRef.current = createDebouncer(400);
+  const cartSectionRef = useRef(null);
   const [showManualModal, setShowManualModal] = useState(false);
   const [showNewCustomer, setShowNewCustomer] = useState(false);
 
@@ -301,6 +322,7 @@ function CrmTerminalUI() {
     getCrmCustomers(business.id).then(({ data }) => {
       customers.current = data || [];
       setCustomersDisplay(data || []);
+      setCustomersLoaded(true);
     });
   }, [business?.id, hasAccess]);
 
@@ -363,6 +385,7 @@ function CrmTerminalUI() {
 
   const addToCart = (product) => {
     setCart(prev => {
+      if (prev.length === 0) getOrCreateSaleIdempotencyKey();
       const existing = prev.find(i => i._key === product.id);
       if (existing) {
         return prev.map(i => i._key === product.id ? { ...i, quantity: i.quantity + 1 } : i);
@@ -379,7 +402,10 @@ function CrmTerminalUI() {
 
   const addManualItem = ({ name, unit_price, quantity, note }) => {
     const _key = `manual_${Date.now()}`;
-    setCart(prev => [...prev, { _key, product_id: null, name, unit_price, quantity, note: note || null }]);
+    setCart(prev => {
+      if (prev.length === 0) getOrCreateSaleIdempotencyKey();
+      return [...prev, { _key, product_id: null, name, unit_price, quantity, note: note || null }];
+    });
   };
 
   const updateQty = (_key, delta) => {
@@ -441,6 +467,10 @@ function CrmTerminalUI() {
     // generar una idempotency key nueva, nunca reutilizar la del intento
     // anterior (ya completado o descartado).
     saleIdempotencyKeyRef.current = null;
+    draftDebouncerRef.current.cancel();
+    if (draftKey) removePosTerminalDraft(draftKey);
+    setDraftNotice(null);
+    setCustomerRemovedNotice(false);
     setCart([]);
     setCustomerId('');
     setDiscount('');
@@ -471,6 +501,117 @@ function CrmTerminalUI() {
       return next.length > 0 ? next : [{ id: `payment_${Date.now()}`, method: 'cash', amount: '' }];
     });
   };
+
+  // ── TPV-CORE-2: borrador local de la venta en curso ──────────────────────
+  const checkedDraftKeyRef = useRef(null);
+
+  const applyDraft = useCallback((draft) => {
+    setCart(draft.cart);
+    setCustomerId(draft.customerId || '');
+    setDiscount(draft.discount || '');
+    setNotes(draft.notes || '');
+    if (draft.payments.length > 0) setPayments(draft.payments);
+    // Restaurar EXACTAMENTE la key del borrador -- nunca generar una nueva
+    // acá, o un reintento después de restaurar duplicaría la venta.
+    saleIdempotencyKeyRef.current = draft.idempotencyKey;
+  }, []);
+
+  // Restauración al montar -- una sola vez por businessId/draftKey. Si el
+  // borrador es del mismo día local, se restaura solo con aviso discreto;
+  // si es de otro día, se pide una decisión explícita (nunca en silencio).
+  useEffect(() => {
+    if (!draftKey) return;
+    if (checkedDraftKeyRef.current === draftKey) return;
+    checkedDraftKeyRef.current = draftKey;
+
+    const draft = readPosTerminalDraft(draftKey);
+    if (!draft) {
+      restoreCheckedRef.current = true;
+      return;
+    }
+    if (isDraftFromToday(draft.savedAt)) {
+      applyDraft(draft);
+      setDraftNotice('restored');
+      restoreCheckedRef.current = true;
+    } else {
+      setDraftNotice({ pending: draft });
+      // restoreCheckedRef solo se marca cuando el usuario decide -- así el
+      // autosave no puede pisar un borrador todavía no confirmado.
+    }
+  }, [draftKey, applyDraft]);
+
+  const handleRecoverStaleDraft = () => {
+    if (!draftNotice?.pending) return;
+    applyDraft(draftNotice.pending);
+    setDraftNotice('restored');
+    restoreCheckedRef.current = true;
+  };
+
+  const handleDiscardStaleDraft = () => {
+    if (draftKey) removePosTerminalDraft(draftKey);
+    setDraftNotice(null);
+    restoreCheckedRef.current = true;
+  };
+
+  // Cliente eliminado: si el customerId restaurado ya no existe entre los
+  // clientes del negocio, se limpia sin crashear y sin convertir en
+  // silencio a consumidor final -- se informa explícitamente.
+  useEffect(() => {
+    if (!customersLoaded || !customerId) return;
+    const exists = customersDisplay.some((c) => c.id === customerId);
+    if (!exists) {
+      setCustomerId('');
+      setCustomerRemovedNotice(true);
+    }
+  }, [customersLoaded, customersDisplay, customerId]);
+
+  const persistDraftNow = useCallback(() => {
+    if (!draftKey || cart.length === 0) return;
+    const snapshot = buildPosTerminalDraftSnapshot({
+      cart,
+      customerId,
+      discount,
+      notes,
+      payments,
+      idempotencyKey: saleIdempotencyKeyRef.current,
+    });
+    writePosTerminalDraft(draftKey, snapshot);
+  }, [draftKey, cart, customerId, discount, notes, payments]);
+
+  const persistDraftNowRef = useRef(persistDraftNow);
+  persistDraftNowRef.current = persistDraftNow;
+
+  const flushDraft = useCallback(() => {
+    draftDebouncerRef.current.flush(() => persistDraftNowRef.current());
+  }, []);
+
+  // Autosave debounced. Doble gate: restoreCheckedRef (nunca pisar un
+  // borrador todavía no decidido por el usuario) y !ticketData (no
+  // reprogramar mientras se muestra el ticket de una venta ya completada).
+  useEffect(() => {
+    if (!restoreCheckedRef.current || ticketData) return;
+    draftDebouncerRef.current.schedule(() => persistDraftNowRef.current());
+  }, [cart, customerId, discount, notes, payments, ticketData]);
+
+  useEffect(() => {
+    if (!draftKey) return;
+    const handleVisibility = () => { if (document.hidden) flushDraft(); };
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('beforeunload', flushDraft);
+    window.addEventListener('pagehide', flushDraft);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('beforeunload', flushDraft);
+      window.removeEventListener('pagehide', flushDraft);
+    };
+  }, [draftKey, flushDraft]);
+
+  useEffect(() => () => {
+    // React Router navigation solo desmonta el componente -- no dispara de
+    // forma confiable blur/visibilitychange/beforeunload. Nunca reemplazar
+    // este flush por un cancel() o se pierde el último cambio sin guardar.
+    draftDebouncerRef.current.flush(() => persistDraftNowRef.current());
+  }, []);
 
   const handleRegister = async () => {
     // Lock síncrono -- ver comentario junto a la declaración de
@@ -538,6 +679,11 @@ function CrmTerminalUI() {
         return;
       }
 
+      // Venta completada -- el borrador ya no representa nada en curso.
+      // Ver nota en el efecto de autosave: mientras ticketData esté seteado
+      // no se vuelve a programar una escritura de borrador.
+      draftDebouncerRef.current.cancel();
+      if (draftKey) removePosTerminalDraft(draftKey);
       setTicketData({ sale: data, ...saleSnapshot });
     } finally {
       submitLockRef.current = false;
@@ -646,8 +792,13 @@ function CrmTerminalUI() {
             <div className="w-full px-4 py-4 pb-24 sm:px-5 md:px-6 lg:px-8 lg:pb-8">
               <div className="grid w-full gap-4 lg:grid-cols-[minmax(0,65fr)_minmax(340px,35fr)] lg:items-start xl:gap-5">
 
-                {/* ── LEFT: search + categories + products ── */}
-                <div className="min-w-0 flex flex-col gap-2.5">
+                {/* ── LEFT: search + categories + products ──
+                    Con carrito no vacío, en mobile pasa después del carrito
+                    (order-2) para que el carrito sea lo primero visible sin
+                    duplicar JSX; en desktop el orden visual no cambia
+                    (lg:order-1) porque el layout de 2 columnas ya lo deja
+                    visible en la columna derecha sticky.                    */}
+                <div className={`min-w-0 flex flex-col gap-2.5 ${cart.length > 0 ? 'order-2' : 'order-1'} lg:order-1`}>
 
                   {/* ── Panel de diagnóstico — solo en entorno de desarrollo ── */}
                   {import.meta.env.DEV && diagVisible && (
@@ -686,6 +837,50 @@ function CrmTerminalUI() {
                           </ul>
                         </details>
                       )}
+                    </div>
+                  )}
+
+                  {/* TPV-CORE-2: borrador restaurado / pendiente de decisión */}
+                  {draftNotice === 'restored' && (
+                    <div className="flex items-center gap-2 p-3 rounded-xl bg-blue-50 border border-blue-100 text-sm text-blue-700">
+                      <Icon name="History" size={15} color="currentColor" className="shrink-0" />
+                      <span>Venta en curso recuperada.</span>
+                      <button onClick={() => setDraftNotice(null)} className="ml-auto shrink-0 text-blue-400 hover:text-blue-600">
+                        <Icon name="X" size={14} color="currentColor" />
+                      </button>
+                    </div>
+                  )}
+                  {draftNotice?.pending && (
+                    <div className="flex flex-col gap-2 p-4 rounded-xl bg-amber-50 border border-amber-200 text-sm text-amber-800">
+                      <div className="flex items-start gap-2">
+                        <Icon name="AlertTriangle" size={16} color="currentColor" className="shrink-0 mt-0.5" />
+                        <span className="font-semibold">
+                          Tienes una venta pendiente del {new Date(draftNotice.pending.savedAt).toLocaleDateString('es-CL')}.
+                        </span>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={handleRecoverStaleDraft}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold transition-colors"
+                        >
+                          Recuperar venta
+                        </button>
+                        <button
+                          onClick={handleDiscardStaleDraft}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-amber-300 bg-white hover:bg-amber-100 text-amber-700 text-xs font-semibold transition-colors"
+                        >
+                          Descartar
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {customerRemovedNotice && (
+                    <div className="flex items-center gap-2 p-3 rounded-xl bg-amber-50 border border-amber-200 text-sm text-amber-800">
+                      <Icon name="UserX" size={15} color="currentColor" className="shrink-0" />
+                      <span>El cliente de esta venta ya no está disponible.</span>
+                      <button onClick={() => setCustomerRemovedNotice(false)} className="ml-auto shrink-0 text-amber-400 hover:text-amber-600">
+                        <Icon name="X" size={14} color="currentColor" />
+                      </button>
                     </div>
                   )}
 
@@ -939,8 +1134,10 @@ function CrmTerminalUI() {
                     never compress it. Compacted to ~280px leaving ~200px+
                     for the cart on 768px screens.
 
-                    Mobile: normal flow; fixed bottom bar handles cobrar.        */}
-                <div className="w-full min-w-0 lg:sticky lg:top-4 lg:flex lg:h-[calc(100vh-5rem)] lg:flex-col">
+                    Mobile: normal flow; fixed bottom bar handles cobrar.
+                    Con carrito no vacío pasa primero (order-1) en mobile,
+                    ver nota en la columna izquierda.                       */}
+                <div className={`w-full min-w-0 lg:sticky lg:top-4 lg:flex lg:h-[calc(100vh-5rem)] lg:flex-col ${cart.length > 0 ? 'order-1' : 'order-2'} lg:order-2`}>
 
                   {/* ── Zone 1: Customer ── flex-none ─────────────────────── */}
                   <div className="rounded-2xl border border-gray-200 bg-white p-3.5 shadow-sm lg:flex-none">
@@ -1001,8 +1198,11 @@ function CrmTerminalUI() {
                         items   → flex-1 min-h-0 overflow-y-auto
                       This is the key change: cart fills ALL available middle
                       space regardless of how many items are in it.             */}
-                  <div className="mt-2.5 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm
-                                  lg:flex-1 lg:min-h-0 lg:flex lg:flex-col">
+                  <div
+                    ref={cartSectionRef}
+                    className="mt-2.5 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm
+                                  lg:flex-1 lg:min-h-[160px] lg:flex lg:flex-col"
+                  >
 
                     {/* Cart header — flex-none */}
                     <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50 px-4 py-3 lg:flex-none">
@@ -1049,7 +1249,7 @@ function CrmTerminalUI() {
                               <button
                                 onClick={() => updateQty(item._key, -1)}
                                 title={item.quantity === 1 ? 'Quitar del carrito' : 'Reducir cantidad'}
-                                className="w-7 h-7 rounded-lg bg-gray-100 hover:bg-red-50 hover:text-red-500 flex items-center justify-center transition-colors text-gray-600"
+                                className="w-11 h-11 rounded-lg bg-gray-100 hover:bg-red-50 hover:text-red-500 flex items-center justify-center transition-colors text-gray-600"
                               >
                                 {item.quantity === 1
                                   ? <Icon name="Trash2" size={12} color="currentColor" />
@@ -1060,7 +1260,7 @@ function CrmTerminalUI() {
                               <button
                                 onClick={() => updateQty(item._key, 1)}
                                 title="Aumentar cantidad"
-                                className="w-7 h-7 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors text-gray-600"
+                                className="w-11 h-11 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors text-gray-600"
                               >
                                 <Icon name="Plus" size={12} color="currentColor" />
                               </button>
@@ -1073,7 +1273,7 @@ function CrmTerminalUI() {
                                 onClick={() => removeItem(item._key)}
                                 title="Eliminar producto"
                                 aria-label="Eliminar producto del carrito"
-                                className="w-7 h-7 rounded-lg bg-red-50 hover:bg-red-100 flex items-center justify-center transition-colors text-red-400 hover:text-red-600"
+                                className="w-11 h-11 rounded-lg bg-red-50 hover:bg-red-100 flex items-center justify-center transition-colors text-red-400 hover:text-red-600"
                               >
                                 <Icon name="Trash2" size={13} color="currentColor" />
                               </button>
@@ -1143,7 +1343,7 @@ function CrmTerminalUI() {
                         </button>
                       </div>
 
-                      <div className="space-y-1.5">
+                      <div className="space-y-1.5 max-h-[168px] overflow-y-auto pr-0.5">
                         {payments.map((payment) => (
                           <div key={payment.id} className="flex items-center gap-1.5">
                             <select
@@ -1276,8 +1476,19 @@ function CrmTerminalUI() {
             {/* ── Mobile sticky bottom bar ────────────────────────────────────
                 Fixed at viewport bottom on small screens (lg:hidden).
                 pb-24 on outer container prevents overlap with content.          */}
-            <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-800 shadow-2xl px-3 py-2.5 flex items-center gap-3" style={{ zIndex: 150 }}>
-              <div className="flex-1 min-w-0">
+            <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-800 shadow-2xl" style={{ zIndex: 150 }}>
+              {cart.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => cartSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                  className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 border-b border-gray-800 text-xs font-bold text-gray-300 hover:text-white transition-colors"
+                >
+                  <Icon name="ShoppingCart" size={13} color="currentColor" />
+                  Ver carrito ({cartCount})
+                </button>
+              )}
+              <div className="px-3 py-2.5 flex items-center gap-3">
+                <div className="flex-1 min-w-0">
                 {discountAmount > 0 && (
                   <p className="text-[10px] text-gray-500 line-through leading-none mb-0.5">
                     {fmt(subtotal, business?.currency)}
@@ -1312,6 +1523,7 @@ function CrmTerminalUI() {
                   }
                 </button>
               )}
+              </div>
             </div>
 
           </>
