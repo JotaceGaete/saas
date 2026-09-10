@@ -253,10 +253,22 @@ Deno.serve(async (req) => {
   const appBaseUrl = (Deno.env.get('APP_BASE_URL') ?? DEFAULT_APP_BASE_URL).replace(/\/$/, '');
   const backUrls = buildBackUrls(appBaseUrl, businessSlug);
 
-  // notification_url -- URL final prevista para merchant-mp-webhook
-  // (MP-CHECKOUT-2). Opcional: si no está configurada todavía, se omite
-  // del payload (mismo patrón que create-mp-preference).
-  const notificationUrl = Deno.env.get('MERCHANT_MP_WEBHOOK_URL') ?? '';
+  // notification_url -- merchant-mp-webhook (MP-CHECKOUT-2). Opcional: si
+  // no está configurada, se omite del payload (mismo patrón que
+  // create-mp-preference). Cuando SÍ está configurada, se le agrega
+  // ?order_id=<uuid> -- mismo mecanismo exacto que create-mp-preference ya
+  // usa (?country=CL) para resolver, en el webhook, CUÁL conexión/token
+  // probar antes de poder consultar a Mercado Pago (el webhook solo recibe
+  // un payment_id desatado de contexto; a diferencia de billing, acá cada
+  // comercio tiene su PROPIO token, así que no hay un conjunto fijo de
+  // credenciales que probar). Es solo una pista para elegir el token --
+  // merchant-mp-webhook nunca la trata como fuente de verdad: siempre
+  // reconfirma la identidad real contra el external_reference que devuelve
+  // la propia API de Mercado Pago.
+  const notificationUrlBase = Deno.env.get('MERCHANT_MP_WEBHOOK_URL') ?? '';
+  const notificationUrl = notificationUrlBase
+    ? `${notificationUrlBase}${notificationUrlBase.includes('?') ? '&' : '?'}order_id=${orderId}`
+    : '';
 
   const preferencePayload = buildPreferencePayload({
     lines: cartValidation.lines,

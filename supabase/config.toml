@@ -36,6 +36,16 @@ verify_jwt = false
 [functions.create-merchant-mp-checkout]
 verify_jwt = false
 
+# MP-CHECKOUT-2: confirmación server-side de pagos del checkout de
+# comercio de arriba -- público, igual que mp-webhook de billing:
+# Mercado Pago llama a este endpoint directamente desde sus
+# servidores, sin JWT de Walinka. El webhook nunca es la fuente de
+# verdad (nunca confía en status/amount/currency/business_id/order_id
+# del payload recibido) -- siempre re-consulta la API de Mercado Pago
+# con el token del comercio antes de aplicar cualquier cambio.
+[functions.merchant-mp-webhook]
+verify_jwt = false
+
 # plan-change-preview: same, JWT validated inside for auth.uid().
 [functions.plan-change-preview]
 verify_jwt = false
