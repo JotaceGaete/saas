@@ -123,7 +123,11 @@ export default {
     }
 
     const supabaseUrl = (env?.SUPABASE_URL || '').replace(/\/$/, '');
-    const supabaseKey = env?.SUPABASE_ANON_KEY || '';
+    // Publishable key nueva, con fallback temporal al binding legacy SUPABASE_ANON_KEY
+    // mientras se configura SUPABASE_PUBLISHABLE_KEY en Cloudflare (ver Fase C).
+    // Usada SOLO como apikey -- nunca como Authorization: las publishable keys no
+    // son JWT y PostgREST rechaza con "Invalid JWT" si se envían como Bearer.
+    const supabaseKey = env?.SUPABASE_PUBLISHABLE_KEY || env?.SUPABASE_ANON_KEY || '';
     const origin = url.origin;
     const canonicalUrl = `${CATALOG_ORIGIN}/catalogo/${slug}`;
 
@@ -156,7 +160,6 @@ export default {
             headers: {
               Accept: 'application/json',
               apikey: supabaseKey,
-              Authorization: `Bearer ${supabaseKey}`,
             },
           }
         );
