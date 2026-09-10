@@ -154,3 +154,20 @@ describe('acceso directo a la tabla mp_connections', () => {
     expect(mpConnectionServiceSource).not.toMatch(/\.from\(\s*['"]mp_connections['"]/);
   });
 });
+
+describe('mpConnectionService — alineado con la arquitectura de publishable key', () => {
+  it('no lee VITE_SUPABASE_ANON_KEY directamente -- reutiliza el resolver de FASE A', () => {
+    expect(mpConnectionServiceSource).not.toMatch(/import\.meta\.env\?\.VITE_SUPABASE_ANON_KEY/);
+    expect(mpConnectionServiceSource).toMatch(/import \{ getSupabasePublishableKey \} from ['"]\.\.\/lib\/supabasePublishableKey['"]/);
+    expect(mpConnectionServiceSource).toMatch(/getSupabasePublishableKey\(\)/);
+  });
+
+  it('la client key resuelta solo se usa como header apikey, nunca como Authorization', () => {
+    expect(mpConnectionServiceSource).toMatch(/apikey: ANON_KEY/);
+    expect(mpConnectionServiceSource).not.toMatch(/Authorization:\s*`Bearer \$\{ANON_KEY\}`/);
+  });
+
+  it('el JWT real de sesión (token) sigue siendo lo único que va en Authorization', () => {
+    expect(mpConnectionServiceSource).toMatch(/Authorization: `Bearer \$\{token\}`/);
+  });
+});

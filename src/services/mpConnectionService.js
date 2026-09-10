@@ -12,9 +12,10 @@
  * que ya filtra qué campos son seguros de devolver.
  */
 import { supabase } from '../lib/supabase';
+import { getSupabasePublishableKey } from '../lib/supabasePublishableKey';
 
 const SUPABASE_URL = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
-const ANON_KEY     = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? '';
+const ANON_KEY     = getSupabasePublishableKey();
 const START_URL      = `${SUPABASE_URL}/functions/v1/mp-oauth-start`;
 const DISCONNECT_URL = `${SUPABASE_URL}/functions/v1/mp-oauth-disconnect`;
 

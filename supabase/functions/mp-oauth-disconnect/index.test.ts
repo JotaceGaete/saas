@@ -42,3 +42,20 @@ describe('mp-oauth-disconnect — elimina la conexión de forma segura e idempot
     expect(indexSource).toMatch(/jsonResponse\(\{ connected: false \}, 200\)/);
   });
 });
+
+describe('mp-oauth-disconnect — alineado con la arquitectura de publishable key', () => {
+  it('no lee SUPABASE_ANON_KEY directamente -- usa el helper compartido', () => {
+    expect(indexSource).not.toMatch(/Deno\.env\.get\(['"]SUPABASE_ANON_KEY['"]\)/);
+    expect(indexSource).toMatch(/import \{ getSupabasePublishableKeyOrEmpty \} from ['"]\.\.\/_shared\/supabasePublishableKey\.ts['"]/);
+    expect(indexSource).toMatch(/getSupabasePublishableKeyOrEmpty\(\)/);
+  });
+
+  it('la client key resuelta solo se usa como 2º argumento de createClient(), nunca como Authorization', () => {
+    expect(indexSource).toMatch(/createClient\(supabaseUrl, anonKey, \{/);
+    expect(indexSource).not.toMatch(/Authorization:\s*`Bearer \$\{anonKey\}`/);
+  });
+
+  it('el JWT real del caller (authHeader) sigue siendo lo único que va en Authorization', () => {
+    expect(indexSource).toMatch(/Authorization: authHeader/);
+  });
+});

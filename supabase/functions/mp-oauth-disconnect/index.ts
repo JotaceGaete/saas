@@ -25,6 +25,7 @@
 // deja una fila en la que observarlas como 'disconnected'.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { getSupabasePublishableKeyOrEmpty } from '../_shared/supabasePublishableKey.ts';
 import { resolveBusinessForOAuth, type BusinessRow } from '../mp-oauth-start/lib.ts';
 
 const corsHeaders = {
@@ -57,7 +58,7 @@ Deno.serve(async (req) => {
   }
 
   const supabaseUrl    = Deno.env.get('SUPABASE_URL')              ?? '';
-  const anonKey        = Deno.env.get('SUPABASE_ANON_KEY')         ?? '';
+  const anonKey        = getSupabasePublishableKeyOrEmpty();
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 
   if (!serviceRoleKey) {
