@@ -65,6 +65,17 @@ function escapeHtml(s: unknown): string {
     .replace(/'/g, '&#39;');
 }
 
+// EMAIL-PAYMENTS-1B -- sanitiza texto para ir en un header Subject (nunca
+// HTML): quita saltos de línea/retorno de carro (defensa contra header
+// injection si un nombre de negocio llegara a contenerlos) sin
+// HTML-escapear, porque el Subject no se renderiza como HTML -- escapeHtml
+// ahí produciría entidades literales visibles ("Bob &amp; Sons") en el
+// asunto. No reemplaza escapeHtml para el HTML del cuerpo, que sigue
+// aplicándose donde corresponde.
+function sanitizeSubjectText(value: unknown): string {
+  return String(value ?? '').replace(/[\r\n]+/g, ' ').trim();
+}
+
 function formatCurrency(value: number, currency = 'CLP'): string {
   if (!Number.isFinite(value)) return '—';
   return new Intl.NumberFormat('es-CL', {
@@ -442,7 +453,14 @@ function renderTemplate(type: string, data: TemplateData): { subject: string; ht
       const itemsRows = renderOrderItemsRows(d.items, orderCurrency);
       const methodLabel = paymentMethodLabel(d.paymentMethod);
       const paidAtLabel = formatDateTimeEs(d.paidAt);
-      const subject = `Pago recibido — Pedido #${shortId}`;
+      // EMAIL-PAYMENTS-1B -- identidad del comercio clara en subject y
+      // encabezado, remitente sigue siendo Walinka (FROM_EMAIL sin
+      // cambios). businessName viene de `n`, que ya resuelve
+      // d.businessName || d.name || 'Tu negocio' -- ambos leídos
+      // server-side de wa_businesses.name en process-email-queue, nunca
+      // del browser.
+      const subjectBusinessName = sanitizeSubjectText(n);
+      const subject = `Pago recibido en ${subjectBusinessName} — Pedido #${shortId}`;
       const html = `<!doctype html>
 <html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/></head>
 <body style="margin:0;padding:0;background:#f5f3ff;font-family:Arial,Helvetica,sans-serif;">
@@ -450,11 +468,11 @@ function renderTemplate(type: string, data: TemplateData): { subject: string; ht
     <tr><td align="center">
       <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;background:#ffffff;border-radius:14px;overflow:hidden;">
         <tr><td style="background:#059669;padding:22px 24px;color:#ffffff;">
-          <p style="margin:0 0 4px;font-size:12px;opacity:.85;">${escapeHtml(n)}</p>
-          <h1 style="margin:0;font-size:22px;line-height:1.25;">Pago recibido — Pedido #${shortId}</h1>
+          <h1 style="margin:0 0 4px;font-size:22px;line-height:1.25;">Pago recibido en ${escapeHtml(n)}</h1>
+          <p style="margin:0;font-size:13px;opacity:.9;">Pedido #${shortId}</p>
         </td></tr>
         <tr><td style="padding:24px;color:#1f2937;">
-          <p style="margin:0 0 16px;font-size:15px;line-height:1.6;">Confirmamos que recibimos tu pago. Este es el resumen de tu pedido:</p>
+          <p style="margin:0 0 16px;font-size:15px;line-height:1.6;">Tu pago fue confirmado correctamente. Este es el resumen de tu pedido:</p>
           <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
             <tr><th style="text-align:left;padding:8px 12px;background:#f3f4f6">Estado</th><td style="padding:8px 12px"><strong>Pago confirmado</strong></td></tr>
             <tr><th style="text-align:left;padding:8px 12px;background:#f3f4f6">Método de pago</th><td style="padding:8px 12px">${escapeHtml(methodLabel)}</td></tr>
@@ -488,7 +506,11 @@ function renderTemplate(type: string, data: TemplateData): { subject: string; ht
       // que OrderPaymentDetail.jsx (MP-PAYMENT-DETAIL-2), nunca inventar.
       const mpFee = d.mpFee != null && d.mpFee !== '' ? Number(d.mpFee) : null;
       const netAmount = d.netAmount != null && d.netAmount !== '' ? Number(d.netAmount) : null;
-      const subject = `Nueva venta pagada — Pedido #${shortId}`;
+      // EMAIL-PAYMENTS-1B -- mismo criterio que payment_received_buyer:
+      // identidad del comercio en subject/encabezado, importante para
+      // comerciantes que en el futuro administren más de un negocio.
+      const subjectBusinessName = sanitizeSubjectText(n);
+      const subject = `Nueva venta pagada en ${subjectBusinessName} — Pedido #${shortId}`;
       const html = `<!doctype html>
 <html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/></head>
 <body style="margin:0;padding:0;background:#f5f3ff;font-family:Arial,Helvetica,sans-serif;">
@@ -496,7 +518,8 @@ function renderTemplate(type: string, data: TemplateData): { subject: string; ht
     <tr><td align="center">
       <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;background:#ffffff;border-radius:14px;overflow:hidden;">
         <tr><td style="background:#7c3aed;padding:22px 24px;color:#ffffff;">
-          <h1 style="margin:0;font-size:22px;line-height:1.25;">Nueva venta pagada — Pedido #${shortId}</h1>
+          <h1 style="margin:0 0 4px;font-size:22px;line-height:1.25;">Nueva venta pagada en ${escapeHtml(n)}</h1>
+          <p style="margin:0;font-size:13px;opacity:.9;">Pedido #${shortId}</p>
         </td></tr>
         <tr><td style="padding:24px;color:#1f2937;">
           <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
