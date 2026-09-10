@@ -5,6 +5,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { getSupabaseAdminKeyOrEmpty } from '../_shared/supabaseAdminKey.ts';
+import { getSupabasePublishableKeyOrEmpty } from '../_shared/supabasePublishableKey.ts';
 
 const RESEND_API_URL = 'https://api.resend.com/emails';
 const EMAIL_AUTOMATION_DISABLED_REASON = 'EMAIL_AUTOMATION_DISABLED';
@@ -530,7 +531,7 @@ Deno.serve(async (req) => {
   }
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
-  const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+  const anonKey = getSupabasePublishableKeyOrEmpty();
   const serviceKey = getSupabaseAdminKeyOrEmpty();
 
   let body: Record<string, unknown>;

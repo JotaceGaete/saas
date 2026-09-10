@@ -5,6 +5,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { getSupabaseAdminKeyOrEmpty } from '../_shared/supabaseAdminKey.ts';
+import { getSupabasePublishableKeyOrEmpty } from '../_shared/supabasePublishableKey.ts';
 
 const VALID_PLAN_SLUGS = ['starter', 'pro', 'business'];
 const PLAN_ORDER: Record<string, number> = { starter: 0, control: 0, pro: 1, business: 2 };
@@ -147,7 +148,7 @@ Deno.serve(async (req) => {
   }
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
-  const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+  const anonKey = getSupabasePublishableKeyOrEmpty();
   const serviceRoleKey = getSupabaseAdminKeyOrEmpty();
   const paddleApiKey = Deno.env.get('PADDLE_API_KEY') ?? '';
   const paddleEnv = (Deno.env.get('PADDLE_ENV') ?? 'sandbox').toLowerCase();

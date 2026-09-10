@@ -3,6 +3,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getSupabaseAdminKeyOrEmpty } from "../_shared/supabaseAdminKey.ts";
+import { getSupabasePublishableKeyOrEmpty } from "../_shared/supabasePublishableKey.ts";
 import { parseDesignSettingsSafe } from "../_shared/catalogOgRender.ts";
 
 const ALLOWED_ORIGINS = [
@@ -88,7 +89,7 @@ Deno.serve(async (req) => {
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
-    const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+    const anonKey = getSupabasePublishableKeyOrEmpty();
     const serviceRoleKey = getSupabaseAdminKeyOrEmpty();
     if (!supabaseUrl || !anonKey || !serviceRoleKey) {
       console.error(JSON.stringify({ event: "generate-og-image:error", error: "missing_env_vars", supabaseUrl: !!supabaseUrl, anonKey: !!anonKey, serviceRoleKey: !!serviceRoleKey }));

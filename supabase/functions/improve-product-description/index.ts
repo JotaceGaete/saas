@@ -3,6 +3,7 @@
 // Entrada máx. 300 caracteres. Salida JSON: { title, description }.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { getSupabasePublishableKeyOrEmpty } from '../_shared/supabasePublishableKey.ts';
 
 const MAX_INPUT_LENGTH = 300;
 /** Por defecto: descripción del negocio en configuración / cabecera catálogo. */
@@ -109,7 +110,7 @@ Deno.serve(async (req) => {
     }
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
-    const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+    const anonKey = getSupabasePublishableKeyOrEmpty();
     const openaiKey = Deno.env.get('OPENAI_API_KEY') ?? '';
     const keyPresent = !!openaiKey;
     const keyHint = keyPresent ? openaiKey.slice(0, 7) + '...' : '(vacía)';
