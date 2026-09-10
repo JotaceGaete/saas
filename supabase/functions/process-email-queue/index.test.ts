@@ -122,6 +122,22 @@ describe('process-email-queue — payment_received_buyer/merchant: relee todo se
     const fnMatch = indexSource.match(/async function processPaymentRow\([\s\S]*?\n\}\n?$/)![0];
     expect(fnMatch).toMatch(/const idempotencyKey = row\.event_key \|\| /);
   });
+
+  // EMAIL-PAYMENTS-2A: el fix de compatibilidad legacy de email_queue
+  // (20260910200000) agrega to_email/template al INSERT del enqueue
+  // ÚNICAMENTE para satisfacer el NOT NULL real de producción -- nunca
+  // como una fuente de la que este processor deba empezar a leer. Este
+  // test fija esa garantía: si algún día alguien "simplifica" el
+  // processor para leer row.to_email/row.template en vez de releer
+  // fresco, este test debe romperse.
+  it('nunca lee row.to_email ni row.template -- to_email/template del INSERT son solo compat de schema, no la fuente de verdad del envío', () => {
+    const fnMatch = indexSource.match(/async function processPaymentRow\([\s\S]*?\n\}\n?$/)![0];
+    expect(fnMatch).not.toMatch(/row\.to_email/);
+    expect(fnMatch).not.toMatch(/row\.template/);
+    // Confirma que sigue resolviendo `to` desde order/business releídos, no desde la fila.
+    expect(fnMatch).toMatch(/to = order\.customer_email/);
+    expect(fnMatch).toMatch(/to = business\.email/);
+  });
 });
 
 describe('process-email-queue — separación de flags: PAYMENT_EMAILS_ENABLED vs EMAIL_AUTOMATION_ENABLED', () => {
