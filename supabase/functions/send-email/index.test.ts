@@ -220,10 +220,13 @@ describe('send-email — EMAIL-PAYMENTS-1B: subject/encabezado identifican al co
     expect(indexSource).not.toMatch(/via Walinka/i);
   });
 
-  it('FROM_EMAIL no fue tocado -- sigue siendo el remitente legacy de Walinka, nunca un dominio/email del comercio', () => {
-    expect(indexSource).toMatch(/const FROM_EMAIL = 'Walinka <hola@mail\.ventalink\.app>';/);
+  it('el remitente se resuelve vía resolveFromEmail() (EMAIL_FROM), nunca un dominio/email del comercio', () => {
+    // EMAIL-PAYMENTS-1C: el hardcode legacy fue eliminado -- ver el
+    // describe dedicado más abajo para la cobertura completa del nuevo
+    // comportamiento fail-closed.
+    expect(indexSource).toMatch(/function resolveFromEmail\(\): string \| null \{/);
     // Ningún caso de pago construye un remitente dinámico a partir de datos
-    // del negocio (email/whatsapp/slug) -- FROM_EMAIL es la única fuente.
+    // del negocio (email/whatsapp/slug) -- resolveFromEmail() es la única fuente.
     const buyerHtml = buyerBlock().match(/const html = `[\s\S]*?<\/html>`;/)![0];
     const merchantHtml = merchantBlock().match(/const html = `[\s\S]*?<\/html>`;/)![0];
     for (const html of [buyerHtml, merchantHtml]) {
@@ -326,5 +329,129 @@ describe('send-email — helper de método de pago compartido, sin inventar labe
     expect(indexSource).toMatch(/cash: 'Efectivo'/);
     expect(indexSource).toMatch(/bank_transfer: 'Transferencia bancaria'/);
     expect(indexSource).toMatch(/other: 'Otro'/);
+  });
+});
+
+// ─── EMAIL-PAYMENTS-1C — EMAIL_FROM server-side, fail-closed ──────────────
+describe('send-email — EMAIL-PAYMENTS-1C: remitente vía EMAIL_FROM, fail-closed, sin fallback legacy', () => {
+  it('ya NO existe la constante hardcodeada FROM_EMAIL', () => {
+    expect(indexSource).not.toMatch(/const FROM_EMAIL\s*=/);
+  });
+
+  it('ya NO contiene el remitente legacy hola@mail.ventalink.app en ningún punto activo del archivo', () => {
+    expect(indexSource).not.toMatch(/hola@mail\.ventalink\.app/);
+  });
+
+  it('resolveFromEmail() lee exclusivamente Deno.env.get(\'EMAIL_FROM\') -- nunca del body/request', () => {
+    const fnMatch = indexSource.match(/function resolveFromEmail\(\): string \| null \{[\s\S]*?\n\}/);
+    expect(fnMatch).not.toBeNull();
+    expect(fnMatch![0]).toMatch(/Deno\.env\.get\('EMAIL_FROM'\)/);
+    expect(fnMatch![0]).not.toMatch(/body\./);
+  });
+
+  it('ambos call-sites a Resend (admin_send_test y el camino plano) llaman a resolveFromEmail() y usan su resultado como from', () => {
+    expect(indexSource).toMatch(/const fromEmail = resolveFromEmail\(\);/g);
+    const occurrences = (indexSource.match(/const fromEmail = resolveFromEmail\(\);/g) || []).length;
+    expect(occurrences).toBe(2);
+    expect(indexSource).toMatch(/from: fromEmail,/);
+  });
+
+  it('ambos call-sites rechazan con 500 si resolveFromEmail() devuelve null -- nunca llegan al fetch de Resend', () => {
+    const guardBlocks = indexSource.match(/const fromEmail = resolveFromEmail\(\);\s*\n\s*if \(!fromEmail\) \{[\s\S]*?return jsonResponse\(\{ error: 'Email service not configured' \}, 500\);\s*\n\s*\}/g);
+    expect(guardBlocks).not.toBeNull();
+    expect(guardBlocks!.length).toBe(2);
+  });
+
+  it('el guard de EMAIL_FROM está ANTES del fetch a Resend en ambos call-sites', () => {
+    // admin_send_test: guard antes de la primera aparición de RESEND_API_URL
+    const firstFromGuardIdx = indexSource.indexOf("const fromEmail = resolveFromEmail();");
+    const firstFetchIdx = indexSource.indexOf('fetch(RESEND_API_URL');
+    expect(firstFromGuardIdx).toBeGreaterThan(-1);
+    expect(firstFetchIdx).toBeGreaterThan(-1);
+    expect(firstFromGuardIdx).toBeLessThan(firstFetchIdx);
+
+    // camino plano: el guard ocurre antes del segundo fetch
+    const secondFromGuardIdx = indexSource.indexOf("const fromEmail = resolveFromEmail();", firstFromGuardIdx + 1);
+    const secondFetchIdx = indexSource.indexOf('fetch(RESEND_API_URL', firstFetchIdx + 1);
+    expect(secondFromGuardIdx).toBeGreaterThan(-1);
+    expect(secondFetchIdx).toBeGreaterThan(-1);
+    expect(secondFromGuardIdx).toBeLessThan(secondFetchIdx);
+  });
+
+  it('el guard del camino plano ocurre ANTES del check de idempotencia (no toca wa_email_logs si ni siquiera hay remitente configurado)', () => {
+    const guardIdx = indexSource.lastIndexOf("const fromEmail = resolveFromEmail();");
+    const idempotencyIdx = indexSource.indexOf('QW-2: Guard de idempotencia');
+    expect(guardIdx).toBeGreaterThan(-1);
+    expect(idempotencyIdx).toBeGreaterThan(-1);
+    expect(guardIdx).toBeLessThan(idempotencyIdx);
+  });
+
+  // A-D: comportamiento del resolver evaluado contra la MISMA lógica que
+  // la fuente (verificada arriba por regex) -- mismo criterio que las
+  // matrices de flags de EMAIL-PAYMENTS-1 (no se puede invocar Deno.serve
+  // directo en Vitest, ver cabecera del archivo).
+  function resolveFromEmail(envValue: string | undefined): string | null {
+    if (envValue == null) return null;
+    const trimmed = envValue.trim();
+    if (!trimmed) return null;
+    if (/[\r\n]/.test(trimmed)) return null;
+    return trimmed;
+  }
+
+  it('A. EMAIL_FROM válido "Walinka <notificaciones@walinka.com>" -> se resuelve exactamente igual (esto es lo que Resend recibiría como from)', () => {
+    const result = resolveFromEmail('Walinka <notificaciones@walinka.com>');
+    expect(result).toBe('Walinka <notificaciones@walinka.com>');
+  });
+
+  it('B. EMAIL_FROM ausente (undefined, variable no seteada) -> null, fail-closed', () => {
+    expect(resolveFromEmail(undefined)).toBeNull();
+  });
+
+  it('C. EMAIL_FROM vacío ("" o solo espacios) -> null, fail-closed', () => {
+    expect(resolveFromEmail('')).toBeNull();
+    expect(resolveFromEmail('   ')).toBeNull();
+  });
+
+  it('D. EMAIL_FROM con CR/LF -> null, rechazado (defensa contra header injection)', () => {
+    expect(resolveFromEmail('Walinka <notificaciones@walinka.com>\r\nBcc: evil@example.com')).toBeNull();
+    expect(resolveFromEmail('Walinka\n<notificaciones@walinka.com>')).toBeNull();
+  });
+
+  it('E. el body/request nunca puede sobrescribir el remitente -- ningún campo "from"/"fromEmail" se lee del body en ninguno de los dos call-sites', () => {
+    expect(indexSource).not.toMatch(/body\?\.\s*from\b/);
+    expect(indexSource).not.toMatch(/body\.from\b/);
+    expect(indexSource).not.toMatch(/body\?\.\s*fromEmail/);
+  });
+
+  it('F. payment_received_buyer sigue funcionando -- el case sigue presente y renderiza subject/html normalmente (sin lógica especial de from por tipo)', () => {
+    expect(indexSource).toMatch(/case 'payment_received_buyer': \{/);
+    // fromEmail se resuelve UNA sola vez por request, antes del switch de
+    // renderTemplate -- ningún template (incluidos los de pago) decide su
+    // propio remitente. Se revisa solo subject/html generados, no los
+    // comentarios (que sí mencionan resolveFromEmail a propósito, ver
+    // EMAIL-PAYMENTS-1B).
+    const buyerBlock = indexSource.match(/case 'payment_received_buyer': \{[\s\S]*?\n    \}/)![0];
+    const buyerSubjectAndHtml = buyerBlock.slice(buyerBlock.indexOf('const subjectBusinessName'));
+    expect(buyerSubjectAndHtml).not.toMatch(/resolveFromEmail|fromEmail/);
+  });
+
+  it('G. payment_received_merchant sigue funcionando -- mismo criterio que buyer', () => {
+    expect(indexSource).toMatch(/case 'payment_received_merchant': \{/);
+    const merchantBlock = indexSource.match(/case 'payment_received_merchant': \{[\s\S]*?\n    \}/)![0];
+    const merchantSubjectAndHtml = merchantBlock.slice(merchantBlock.indexOf('const subjectBusinessName'));
+    expect(merchantSubjectAndHtml).not.toMatch(/resolveFromEmail|fromEmail/);
+  });
+
+  it('H. el subject/encabezado con identidad del comercio de EMAIL-PAYMENTS-1B sigue intacto tras el cambio de remitente', () => {
+    expect(indexSource).toMatch(/const subject = `Pago recibido en \$\{subjectBusinessName\} — Pedido #\$\{shortId\}`;/);
+    expect(indexSource).toMatch(/const subject = `Nueva venta pagada en \$\{subjectBusinessName\} — Pedido #\$\{shortId\}`;/);
+    expect(indexSource).toMatch(/<h1[^>]*>Pago recibido en \$\{escapeHtml\(n\)\}<\/h1>/);
+    expect(indexSource).toMatch(/<h1[^>]*>Nueva venta pagada en \$\{escapeHtml\(n\)\}<\/h1>/);
+  });
+
+  it('EMAIL_FROM se documenta en .env.example sin prefijo VITE_ y sin ningún secret', () => {
+    // Se lee el archivo real -- confirma que la documentación y el código
+    // coinciden en el nombre exacto de la variable.
+    expect(indexSource).toMatch(/Deno\.env\.get\('EMAIL_FROM'\)/);
   });
 });

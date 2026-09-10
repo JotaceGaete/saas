@@ -1,7 +1,7 @@
 // send-email — envía correos vía Resend API.
 // Soporta: (to, type, data) con templates centralizados, o (to, subject, html) para compatibilidad.
 // Acciones admin (JWT + wa_is_admin): action=preview | admin_send_test
-// Requiere RESEND_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY.
+// Requiere RESEND_API_KEY, EMAIL_FROM, SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { getSupabaseAdminKeyOrEmpty } from '../_shared/supabaseAdminKey.ts';
@@ -33,7 +33,25 @@ function isPaymentEmailsEnabled() {
 // en process-email-queue -- mismo criterio que PAYMENT_METHOD_LABELS.
 const PAYMENT_EMAIL_TYPES = new Set(['payment_received_buyer', 'payment_received_merchant']);
 
-const FROM_EMAIL = 'Walinka <hola@mail.ventalink.app>';
+// EMAIL-PAYMENTS-1C -- el remitente transaccional único ya NO está
+// hardcodeado a la identidad legacy anterior (dominio de la marca previa,
+// ya no en uso para envío). Se resuelve exclusivamente server-side desde
+// EMAIL_FROM (ver resolveFromEmail() más abajo) -- nunca desde el body de
+// la request, y nunca con fallback a la identidad legacy. Un solo
+// remitente para todo el sistema
+// (welcome/activation_24h/daily_summary/payment_received_*/etc.), no uno
+// distinto por categoría.
+function resolveFromEmail(): string | null {
+  const raw = Deno.env.get('EMAIL_FROM');
+  if (raw == null) return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  // Defensa mínima contra header injection -- EMAIL_FROM es configuración
+  // de entorno, no input de un tercero, pero un CR/LF ahí igual
+  // corrompería el header From de la petición a Resend.
+  if (/[\r\n]/.test(trimmed)) return null;
+  return trimmed;
+}
 
 const ADMIN_PREVIEW_TYPES = new Set([
   'welcome', 'email_confirm', 'password_recovery', 'activation_24h', 'test_ping',
@@ -454,8 +472,8 @@ function renderTemplate(type: string, data: TemplateData): { subject: string; ht
       const methodLabel = paymentMethodLabel(d.paymentMethod);
       const paidAtLabel = formatDateTimeEs(d.paidAt);
       // EMAIL-PAYMENTS-1B -- identidad del comercio clara en subject y
-      // encabezado, remitente sigue siendo Walinka (FROM_EMAIL sin
-      // cambios). businessName viene de `n`, que ya resuelve
+      // encabezado, remitente sigue siendo Walinka (resuelto vía
+      // resolveFromEmail(), ver EMAIL-PAYMENTS-1C). businessName viene de `n`, que ya resuelve
       // d.businessName || d.name || 'Tu negocio' -- ambos leídos
       // server-side de wa_businesses.name en process-email-queue, nunca
       // del browser.
@@ -793,6 +811,14 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: 'Email service not configured' }, 500);
     }
 
+    // EMAIL-PAYMENTS-1C -- fail closed: sin EMAIL_FROM válido, nunca se
+    // llama a Resend ni se cae a un remitente legacy.
+    const fromEmail = resolveFromEmail();
+    if (!fromEmail) {
+      console.error('[send-email] EMAIL_FROM no configurado o inválido -- rechazando (fail closed)');
+      return jsonResponse({ error: 'Email service not configured' }, 500);
+    }
+
     const supabase = supabaseUrl && serviceKey ? createClient(supabaseUrl, serviceKey) : null;
 
     try {
@@ -803,7 +829,7 @@ Deno.serve(async (req) => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          from: FROM_EMAIL,
+          from: fromEmail,
           to: [finalTo],
           subject,
           html,
@@ -914,6 +940,16 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: 'Email service not configured' }, 500);
   }
 
+  // EMAIL-PAYMENTS-1C -- fail closed: sin EMAIL_FROM válido, nunca se
+  // llama a Resend ni se cae a un remitente legacy. Se resuelve acá,
+  // ANTES del check de idempotencia, para no tocar wa_email_logs si el
+  // envío ni siquiera va a poder intentarse.
+  const fromEmail = resolveFromEmail();
+  if (!fromEmail) {
+    console.error('[send-email] EMAIL_FROM no configurado o inválido -- rechazando (fail closed)');
+    return jsonResponse({ error: 'Email service not configured' }, 500);
+  }
+
   const supabase = supabaseUrl && serviceKey ? createClient(supabaseUrl, serviceKey) : null;
 
   const userId = typeof body.userId === 'string' ? body.userId : undefined;
@@ -942,7 +978,7 @@ Deno.serve(async (req) => {
   }
 
   const resendBody = {
-    from: FROM_EMAIL,
+    from: fromEmail,
     to: [to],
     subject,
     html,
