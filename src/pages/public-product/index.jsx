@@ -18,6 +18,7 @@ import { resolveCatalogTheme } from '../../utils/catalogTheme';
 import { cfImageUrl, isCfTransformableUrl } from '../../utils/cloudflareImage';
 import { openWhatsAppUrl } from '../../utils/openWhatsAppUrl';
 import { getProductImages, ProductModal } from '../public-catalog';
+import { getMerchantMpAvailability } from '../../services/merchantCheckoutService';
 
 function getProductCommercialState(product) {
   if (product?.isActive === false) return 'hidden';
@@ -94,6 +95,18 @@ function PublicProductInner() {
   const [showOptionsModal, setShowOptionsModal] = useState(false);
   const touchStartX = useRef(0);
   const touchEndX = useRef(0);
+
+  // MP-CHECKOUT-3B — disponibilidad sanitizada de Mercado Pago DEL
+  // COMERCIO: con MP disponible, "Pedir"/WhatsApp deja de ser un
+  // checkout paralelo y pasa a ser consulta -- ver public-catalog para
+  // la explicación completa del cambio de modelo comercial.
+  const [mpAvailable, setMpAvailable] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    if (!businessSlug) return;
+    getMerchantMpAvailability(businessSlug).then((available) => { if (!cancelled) setMpAvailable(available); });
+    return () => { cancelled = true; };
+  }, [businessSlug]);
 
   useEffect(() => {
     let cancelled = false;
@@ -200,16 +213,19 @@ function PublicProductInner() {
   ).replace(/\s+/g, ' ').trim();
   const metaDescription = plainDescription.slice(0, 160);
   const whatsAppMessage = useMemo(() => {
+    const opener = mpAvailable
+      ? `Hola! Tengo una consulta sobre este producto: ${product?.name || 'Producto'}`
+      : `Hola! Me interesa este producto: ${product?.name || 'Producto'}`;
     const body = [
       productUrl,
       '',
-      `Hola! Me interesa este producto: ${product?.name || 'Producto'}`,
+      opener,
       `Precio: ${formatPrice(product?.price)}`,
       business?.name ? `Tienda: ${business.name}` : '',
     ].filter(Boolean).join('\n');
     const branding = getOrderMessageBrandingSuffix(business);
     return branding ? `${body}\n\n${branding}` : body;
-  }, [business, formatPrice, product?.name, product?.price, productUrl]);
+  }, [business, formatPrice, mpAvailable, product?.name, product?.price, productUrl]);
   const whatsAppUrl = phone ? `https://wa.me/${phone}?text=${encodeURIComponent(whatsAppMessage)}` : '';
   const relatedProducts = useMemo(() => (
     (Array.isArray(products) ? products : [])
@@ -523,7 +539,7 @@ function PublicProductInner() {
             style={{ backgroundColor: isSoldOut || (!hasOptions && !whatsAppUrl) ? undefined : theme.primaryColor }}
           >
             <Icon name={hasOptions ? 'ShoppingBag' : 'MessageCircle'} size={18} />
-            {isSoldOut ? 'Agotado' : hasOptions ? 'Ver opciones' : 'Pedir'}
+            {isSoldOut ? 'Agotado' : hasOptions ? 'Ver opciones' : (mpAvailable ? 'Consultar' : 'Pedir')}
           </button>
         </div>
       </div>
@@ -541,6 +557,7 @@ function PublicProductInner() {
           theme={theme}
           cardSettings={cardSettings}
           useCategories={design?.useCategories === true}
+          mpAvailable={mpAvailable}
         />
       )}
     </div>

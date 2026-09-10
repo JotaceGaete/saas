@@ -24,6 +24,7 @@ import PublicCatalog, { CatalogForSlug } from './pages/public-catalog';
 import PublicOffers from './pages/public-offers';
 import PublicProductPage from './pages/public-product';
 import OrderConfirmation from './pages/order-confirmation';
+import CatalogPaymentReturn from './pages/catalog-payment-return';
 import Orders from './pages/orders';
 import OrdersHistory from './pages/orders-history';
 import CustomerPage from './pages/customers';
@@ -181,11 +182,13 @@ const Routes = () => {
             <Route path="/refunds" element={<RefundsPage />} />
             <Route path="/catalog/:slug" element={<PublicCatalog />} />
             <Route path="/catalog/:slug/checkout" element={<OrderConfirmation />} />
+            <Route path="/catalog/:slug/pago/:status" element={<CatalogPaymentReturn />} />
             <Route path="/catalogo/:slug/ofertas" element={<PublicOffers />} />
             <Route path="/p/:businessSlug/:productSlug" element={<PublicProductPage />} />
             <Route path="/catalogo/:businessSlug/producto/:productSlug" element={<PublicProductPage />} />
             <Route path="/catalogo/:slug" element={<PublicCatalog />} />
             <Route path="/catalogo/:slug/checkout" element={<OrderConfirmation />} />
+            <Route path="/catalogo/:slug/pago/:status" element={<CatalogPaymentReturn />} />
             <Route path="/admin" element={<Navigate to="/admin/businesses" replace />} />
             <Route path="/admin/businesses" element={<RequireAdmin><AdminBusinessesPage /></RequireAdmin>} />
             <Route path="/admin/businesses/:businessId" element={<RequireAdmin><AdminBusinessDetailPage /></RequireAdmin>} />
