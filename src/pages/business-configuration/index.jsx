@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import PanelHeader from 'components/ui/PanelHeader';
 import DashboardAppShell from 'components/ui/DashboardAppShell';
 import DashboardLayoutContent from 'components/ui/DashboardLayoutContent';
@@ -17,7 +17,7 @@ import DynamicWhatsAppField from 'components/DynamicWhatsAppField';
 import { getCountryLabels, getCountryCode } from '../../config/country';
 import InstallAppBlock from './components/InstallAppBlock';
 import SettingsSwitch from './components/SettingsSwitch';
-import { Building2, CreditCard, Palette, Sparkles } from 'lucide-react';
+import { Building2, CreditCard, Palette, Sparkles, Wallet } from 'lucide-react';
 import { truncateAtWordBoundary } from '../../utils/textTruncate';
 import CountryIsoSelect from '../../components/country/CountryIsoSelect';
 import {
@@ -34,6 +34,7 @@ import RubroPrincipalSelector from './components/RubroPrincipalSelector';
 import LocationPicker from './components/LocationPicker';
 import BusinessCategoriesManager from './components/BusinessCategoriesManager';
 import CustomDomainSettings from './components/CustomDomainSettings';
+import MercadoPagoConnect from './components/MercadoPagoConnect';
 import { BUSINESS_MODES, getRecommendedBusinessModeFromRubro } from '../../lib/business-mode';
 
 const BUSINESS_DESCRIPTION_MAX = 280;
@@ -216,6 +217,7 @@ function OnboardingIncompleteBanner({ missingFields }) {
 export default function BusinessConfiguration() {
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user, loading, business: ctxBusiness, businessLoading, refreshBusiness, patchBusiness } = useAuth();
   const [isSaving, setIsSaving] = useState(false);
   const [toast, setToast] = useState(null);
@@ -545,6 +547,27 @@ export default function BusinessConfiguration() {
     setToast({ message, type });
     toastTimer.current = setTimeout(() => setToast(null), 3500);
   };
+
+  // MP-OAUTH-1: retorno de mp-oauth-callback (?tab=mercadopago&mp=connected|error).
+  // Mismo patrón que el retorno de pago en src/pages/plans/index.jsx: interpretar
+  // una sola vez y limpiar los query params con replace para no repetir el toast
+  // ni la interpretación al refrescar la página.
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    const mpParam  = searchParams.get('mp');
+    if (!tabParam && !mpParam) return;
+
+    if (tabParam === 'mercadopago') {
+      setSettingsTab('mercadopago');
+    }
+    if (mpParam === 'connected') {
+      showToast('Mercado Pago conectado correctamente.', 'success');
+    } else if (mpParam === 'error') {
+      showToast('No se pudo conectar Mercado Pago. Intenta nuevamente.', 'error');
+    }
+    setSearchParams({}, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, setSearchParams]);
 
   const handleFormChange = (field, value) => {
     setForm(prev => ({ ...prev, [field]: value }));
@@ -1000,6 +1023,12 @@ export default function BusinessConfiguration() {
       label: 'Pedidos',
       description: 'Envios, retiro y mensaje de WhatsApp',
       Icon: CreditCard,
+    },
+    {
+      id: 'mercadopago',
+      label: 'Pagos',
+      description: 'Conecta tu cuenta de Mercado Pago',
+      Icon: Wallet,
     },
   ];
 
@@ -1857,6 +1886,21 @@ export default function BusinessConfiguration() {
                   onSave={handleSaveSettings}
                 />
 
+              </div>
+            )}
+
+            {settingsTab === 'mercadopago' && business?.id && (
+              <div className={`${cardClass} mb-8`}>
+                <div className="flex items-center gap-3 mb-5">
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(2,132,199,0.1)' }}>
+                    <Icon name="Wallet" size={18} color="#0284c7" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-text-primary)' }}>Mercado Pago</h2>
+                    <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Conecta tu propia cuenta para recibir pagos</p>
+                  </div>
+                </div>
+                <MercadoPagoConnect />
               </div>
             )}
 
