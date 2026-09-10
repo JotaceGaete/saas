@@ -12,15 +12,29 @@
 -- Requiere (fuera del alcance de esta fase, documentado para cuando
 -- corresponda):
 --   1. Secrets en Supabase Vault: project_url, anon_key (ya deberían
---      existir de 20260317000001_cron_daily_summary.sql).
+--      existir de 20260317000001_cron_daily_summary.sql) Y
+--      email_function_secret (mismo secret ya usado por
+--      wa_send_welcome_email_on_signup en 20260402000000_email_idempotency_and_hardening.sql --
+--      NO se crea acá, se reutiliza el mismo nombre/valor).
 --   2. EMAIL_FUNCTION_SECRET configurado como env var en send-email Y
 --      process-email-queue (Edge Functions Dashboard) -- OBLIGATORIO
 --      ahora, no opcional (ver el hardening de seguridad de send-email/
 --      process-email-queue en esta misma fase). Sin esto, send-email
 --      rechaza con 401 cualquier llamada no-admin, incluida la de
 --      process-email-queue -- el cron correría pero nunca lograría
---      enviar nada.
---   3. Al menos uno de los dos flags de categoría en 'true' --
+--      enviar nada. DEBE contener EXACTAMENTE el mismo valor que el
+--      secret email_function_secret del Vault (punto 1) -- son la misma
+--      credencial en dos lugares distintos (env var de la Edge Function
+--      vs. Vault para que el cron SQL pueda leerla), no dos secrets
+--      independientes.
+--   3. process-email-queue exige su propio header x-email-secret (además
+--      de que el gateway ya no exige JWT -- ver
+--      supabase/config.toml [functions.process-email-queue],
+--      EMAIL-PAYMENTS-1D). El net.http_post de más abajo YA incluye ese
+--      header, leyendo email_function_secret desde el Vault -- sin él,
+--      process-email-queue respondería 401 en cada ejecución del cron,
+--      igual que send-email lo haría sin EMAIL_FUNCTION_SECRET (punto 2).
+--   4. Al menos uno de los dos flags de categoría en 'true' --
 --      EMAIL_AUTOMATION_ENABLED (welcome/activation_24h) y/o
 --      PAYMENT_EMAILS_ENABLED (payment_received_buyer/merchant), ambos
 --      independientes (ver la separación de flags de esta misma fase). El
@@ -74,7 +88,8 @@
 --     headers := jsonb_build_object(
 --       'Content-Type',  'application/json',
 --       'Authorization', 'Bearer ' || (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'anon_key'),
---       'apikey',        (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'anon_key')
+--       'apikey',        (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'anon_key'),
+--       'x-email-secret', (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'email_function_secret')
 --     ),
 --     body    := '{}'::jsonb
 --   ) AS request_id;
