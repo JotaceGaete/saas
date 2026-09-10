@@ -4,6 +4,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { getSupabaseAdminKeyOrEmpty } from '../_shared/supabaseAdminKey.ts';
+import { getSupabasePublishableKeyOrEmpty } from '../_shared/supabasePublishableKey.ts';
 
 const corsHeaders: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -26,7 +27,7 @@ Deno.serve(async (req) => {
 
   const supabaseUrl = (Deno.env.get('SUPABASE_URL') ?? '').replace(/\/$/, '');
   const serviceKey = getSupabaseAdminKeyOrEmpty();
-  const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+  const anonKey = getSupabasePublishableKeyOrEmpty();
   const appBaseUrl = (Deno.env.get('APP_BASE_URL') ?? 'https://go.ventalink.app').replace(/\/$/, '');
   const dashboardUrl = `${appBaseUrl}/dashboard`;
 
@@ -34,8 +35,6 @@ Deno.serve(async (req) => {
     console.error('[send-daily-summary] missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
     return jsonResponse({ error: 'Server configuration error' }, 500);
   }
-  // Docs: use anon key for function-to-function calls, not service_role
-  const invokeToken = anonKey || serviceKey;
 
   let targetDate: Date;
   try {
@@ -173,11 +172,13 @@ Deno.serve(async (req) => {
     };
 
     try {
+      // Server-to-server (sin usuario): solo apikey, nunca Authorization con la
+      // client key -- send-email no la usa para este payload (sin `action`), y
+      // una publishable key no es JWT, así que no debe ir como Bearer.
       const res = await fetch(sendEmailUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${invokeToken}`,
           apikey: anonKey || serviceKey,
         },
         body: JSON.stringify(payload),

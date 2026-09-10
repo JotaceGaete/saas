@@ -9,6 +9,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { getSupabaseAdminKeyOrEmpty } from '../_shared/supabaseAdminKey.ts';
+import { getSupabasePublishableKeyOrEmpty } from '../_shared/supabasePublishableKey.ts';
 
 const BATCH_SIZE = 50; // máximo emails por ejecución
 
@@ -68,7 +69,7 @@ Deno.serve(async (req) => {
   const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
   const serviceKey = getSupabaseAdminKeyOrEmpty();
   const emailSecret = Deno.env.get('EMAIL_FUNCTION_SECRET') ?? '';
-  const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+  const anonKey = getSupabasePublishableKeyOrEmpty();
 
   // Guard: si EMAIL_FUNCTION_SECRET está configurado, solo el cron (que lo conoce) puede invocar este endpoint.
   if (emailSecret) {
@@ -165,10 +166,12 @@ async function processRow(
   const catalogUrl = `https://miralatienda.de/${business.slug}`;
 
   // 5. Llamar a send-email con el template activation_24h
+  // Server-to-server (sin usuario): solo apikey, nunca Authorization con la
+  // client key -- send-email no la usa para este payload (sin `action`), y
+  // una publishable key no es JWT, así que no debe ir como Bearer.
   const sendEmailUrl = `${supabaseUrl.replace(/\/$/, '')}/functions/v1/send-email`;
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    'Authorization': `Bearer ${anonKey}`,
     'apikey': anonKey,
   };
   if (emailSecret) {
