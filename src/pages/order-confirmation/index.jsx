@@ -9,7 +9,9 @@ import { getPublicCatalogRelativePath, getWhatsAppOrderCatalogUrl } from '../../
 import { getBrandingMessage } from '../../utils/branding';
 import { isRestaurantBusiness } from '../../utils/businessType';
 import { normalizeOptionalCustomerPhone } from '../../utils/customerPhone';
+import { normalizeCustomerEmailInput, isValidCustomerEmail } from '../../utils/customerEmail';
 import CheckoutPhoneOptional from '../../components/checkout/CheckoutPhoneOptional';
+import CheckoutEmailOptional from '../../components/checkout/CheckoutEmailOptional';
 import { buildCfImageErrorHandler, cfImageUrl } from '../../utils/cloudflareImage';
 import { getCountryLabels, DELIVERY_ADDRESS_FIELD_HINT } from '../../config/country';
 import { openWhatsAppUrl } from '../../utils/openWhatsAppUrl';
@@ -27,6 +29,7 @@ export default function OrderConfirmation() {
   const { items, total, updateQuantity, removeItem, clearCart } = useCart();
   const [customerName, setCustomerName] = useState('');
   const [customerPhoneDigits, setCustomerPhoneDigits] = useState('');
+  const [customerEmail, setCustomerEmail] = useState('');
   const [serviceType, setServiceType] = useState('mesa');
   const [tableReference, setTableReference] = useState('');
   const [deliveryAddress, setDeliveryAddress] = useState('');
@@ -253,6 +256,8 @@ export default function OrderConfirmation() {
   const payWithMercadoPago = async () => {
     if (mpSubmitLockRef.current || submitLockRef.current) return;
     const errs = validate();
+    const trimmedEmail = normalizeCustomerEmailInput(customerEmail);
+    if (trimmedEmail && !isValidCustomerEmail(trimmedEmail)) errs.customerEmail = 'Ingresa un correo electrónico válido.';
     if (Object.keys(errs)?.length > 0) { setErrors(errs); return; }
 
     mpSubmitLockRef.current = true;
@@ -265,7 +270,7 @@ export default function OrderConfirmation() {
       const { data, error } = await createMerchantMpCheckout({
         businessSlug: slug,
         items: items?.map((item) => ({ productId: item?.id, quantity: item?.quantity })),
-        customer: { name: customerName?.trim(), phone: phoneForOrder || undefined },
+        customer: { name: customerName?.trim(), phone: phoneForOrder || undefined, email: trimmedEmail || undefined },
         serviceType: isRestaurant ? serviceType : undefined,
         deliveryAddress: isRestaurant && serviceType === 'delivery' ? deliveryAddress?.trim() : undefined,
         notes: notes?.trim() || undefined,
@@ -381,6 +386,15 @@ export default function OrderConfirmation() {
               variant="order"
               digits={customerPhoneDigits}
               onDigitsChange={setCustomerPhoneDigits}
+            />
+            <CheckoutEmailOptional
+              variant="order"
+              value={customerEmail}
+              onValueChange={(v) => {
+                setCustomerEmail(v);
+                setErrors(prev => ({ ...prev, customerEmail: '' }));
+              }}
+              error={errors?.customerEmail}
             />
             {isRestaurant && (
               <>

@@ -23,8 +23,10 @@ import CatalogImage from '../../components/CatalogImage';
 import { hasViralBranding, getOrderMessageBrandingSuffix } from '../../utils/branding';
 import { isRestaurantBusiness } from '../../utils/businessType';
 import { normalizeOptionalCustomerPhone } from '../../utils/customerPhone';
+import { normalizeCustomerEmailInput, isValidCustomerEmail } from '../../utils/customerEmail';
 import { cfImageUrl, isCfTransformableUrl } from '../../utils/cloudflareImage';
 import CheckoutPhoneOptional from '../../components/checkout/CheckoutPhoneOptional';
+import CheckoutEmailOptional from '../../components/checkout/CheckoutEmailOptional';
 import { getCountryLabels, DELIVERY_ADDRESS_FIELD_HINT } from '../../config/country';
 import { resolveCatalogSeoContent } from '../../utils/catalogDynamicSeo';
 import {
@@ -1635,6 +1637,7 @@ function OrderPanel({ business, slug, formatPrice, onClose, theme, mpAvailable }
   const { items, updateQuantity, removeItem, total, clearCart } = useCart();
   const [customerName, setCustomerName] = useState('');
   const [customerPhoneDigits, setCustomerPhoneDigits] = useState('');
+  const [customerEmail, setCustomerEmail] = useState('');
   const [serviceType, setServiceType] = useState('mesa');
   const [tableReference, setTableReference] = useState('');
   const [deliveryAddress, setDeliveryAddress] = useState('');
@@ -1858,6 +1861,8 @@ function OrderPanel({ business, slug, formatPrice, onClose, theme, mpAvailable }
     if (!customerName?.trim()) nextErrors.customerName = 'Por favor ingresa tu nombre.';
     if (requiresTable && !tableReference?.trim()) nextErrors.tableReference = 'Por favor ingresa tu mesa.';
     if (requiresDeliveryAddress && !deliveryAddress?.trim()) nextErrors.deliveryAddress = 'Por favor ingresa la dirección de entrega.';
+    const trimmedEmail = normalizeCustomerEmailInput(customerEmail);
+    if (trimmedEmail && !isValidCustomerEmail(trimmedEmail)) nextErrors.customerEmail = 'Ingresa un correo electrónico válido.';
     setFieldErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
 
@@ -1871,7 +1876,7 @@ function OrderPanel({ business, slug, formatPrice, onClose, theme, mpAvailable }
       const { data, error } = await createMerchantMpCheckout({
         businessSlug: slug,
         items: items?.map((item) => ({ productId: item?.id, quantity: item?.quantity })),
-        customer: { name: customerName?.trim(), phone: phoneForOrder || undefined },
+        customer: { name: customerName?.trim(), phone: phoneForOrder || undefined, email: trimmedEmail || undefined },
         serviceType: isRestaurant ? serviceType : undefined,
         deliveryAddress: isRestaurant && serviceType === 'delivery' ? deliveryAddress?.trim() : undefined,
         notes: notes?.trim() || undefined,
@@ -2019,6 +2024,19 @@ function OrderPanel({ business, slug, formatPrice, onClose, theme, mpAvailable }
             onDigitsChange={setCustomerPhoneDigits}
             focusRingColor={primaryColor}
             uxCountry={checkoutUxCountry}
+          />
+
+          <CheckoutEmailOptional
+            variant="catalog"
+            value={customerEmail}
+            onValueChange={(v) => {
+              setCustomerEmail(v);
+              if (fieldErrors?.customerEmail) {
+                setFieldErrors((prev) => ({ ...prev, customerEmail: undefined }));
+              }
+            }}
+            focusRingColor={primaryColor}
+            error={fieldErrors?.customerEmail}
           />
 
           {isRestaurant && (
