@@ -13,6 +13,7 @@ import CheckoutPhoneOptional from '../../components/checkout/CheckoutPhoneOption
 import { buildCfImageErrorHandler, cfImageUrl } from '../../utils/cloudflareImage';
 import { getCountryLabels, DELIVERY_ADDRESS_FIELD_HINT } from '../../config/country';
 import { openWhatsAppUrl } from '../../utils/openWhatsAppUrl';
+import { getMerchantMpAvailability, createMerchantMpCheckout, getMerchantMpCheckoutErrorMessage } from '../../services/merchantCheckoutService';
 
 function isWhatsAppWebView() {
   if (typeof navigator === 'undefined') return false;
@@ -39,6 +40,13 @@ export default function OrderConfirmation() {
   const [business, setBusiness] = useState(null);
   const submitLockRef = useRef(false);
 
+  // MP-CHECKOUT-3 — disponibilidad sanitizada (solo un booleano, nunca
+  // tokens/business_id) del checkout Mercado Pago del comercio.
+  const [mpAvailable, setMpAvailable] = useState(false);
+  const [mpSending, setMpSending] = useState(false);
+  const [mpError, setMpError] = useState(null);
+  const mpSubmitLockRef = useRef(false);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -46,6 +54,13 @@ export default function OrderConfirmation() {
       const { data } = await getBusinessBySlug(slug);
       if (!cancelled) setBusiness(data || null);
     })();
+    return () => { cancelled = true; };
+  }, [slug]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!slug) return;
+    getMerchantMpAvailability(slug).then((available) => { if (!cancelled) setMpAvailable(available); });
     return () => { cancelled = true; };
   }, [slug]);
 
@@ -195,6 +210,81 @@ export default function OrderConfirmation() {
       setSubmitError('No pudimos guardar tu pedido. Intenta nuevamente.');
     } finally {
       submitLockRef.current = false;
+    }
+  };
+
+  // MP-CHECKOUT-3B — consultar por WhatsApp cuando Mercado Pago está
+  // disponible: WhatsApp deja de ser una vía paralela de checkout
+  // gratuito. NUNCA llama a createOrder(): no crea wa_orders/
+  // wa_order_items, no marca venta, no toca stock. El mensaje queda
+  // redactado explícitamente como consulta, nunca como pedido
+  // confirmado. El carrito NO se vacía -- la compra real sigue
+  // pendiente de completarse por Mercado Pago.
+  const consultWhatsApp = () => {
+    if (submitLockRef.current || mpSubmitLockRef.current) return;
+    const whatsappNumber = business?.whatsapp?.replace(/\D/g, '');
+    if (!whatsappNumber) return;
+
+    const lines = items?.map((i) => `- ${i?.quantity} ${i?.name}`);
+    const catalogUrl = slug ? getWhatsAppOrderCatalogUrl(slug) : '';
+    const body = [
+      'Hola, tengo una consulta sobre estos productos:',
+      '',
+      ...(lines || []),
+      customerName?.trim() ? `\nMi nombre: ${customerName.trim()}` : '',
+      notes?.trim() ? `\n${notes.trim()}` : '',
+      '\n¿Podrían darme más información?',
+    ].filter(Boolean).join('\n');
+    let message = catalogUrl ? `${catalogUrl}\n\n${body}` : body;
+    const branding = getBrandingMessage(business);
+    if (branding) message += `\n\n\n${branding}`;
+
+    const url = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`;
+    if (isWhatsAppWebView()) {
+      setSubmitInfo('No podemos abrir WhatsApp desde aquí. Abre este catálogo en Safari o Chrome para consultar.');
+      return;
+    }
+    openWhatsAppUrl(url);
+    navigate(getPublicCatalogRelativePath(slug));
+  };
+
+  // MP-CHECKOUT-3 — pagar con Mercado Pago del comercio. Envía únicamente
+  // intención mínima -- el backend recalcula todo server-side.
+  const payWithMercadoPago = async () => {
+    if (mpSubmitLockRef.current || submitLockRef.current) return;
+    const errs = validate();
+    if (Object.keys(errs)?.length > 0) { setErrors(errs); return; }
+
+    mpSubmitLockRef.current = true;
+    setMpError(null);
+    setSubmitError(null);
+    setMpSending(true);
+
+    try {
+      const phoneForOrder = normalizeOptionalCustomerPhone(customerPhoneDigits);
+      const { data, error } = await createMerchantMpCheckout({
+        businessSlug: slug,
+        items: items?.map((item) => ({ productId: item?.id, quantity: item?.quantity })),
+        customer: { name: customerName?.trim(), phone: phoneForOrder || undefined },
+        serviceType: isRestaurant ? serviceType : undefined,
+        deliveryAddress: isRestaurant && serviceType === 'delivery' ? deliveryAddress?.trim() : undefined,
+        notes: notes?.trim() || undefined,
+      });
+
+      if (error || !data?.initPoint) {
+        console.error('[mp-checkout] error creating checkout', error?.reason || error?.message || error);
+        setMpError(getMerchantMpCheckoutErrorMessage(error?.reason));
+        return;
+      }
+
+      clearCart();
+      window.location.assign(data.initPoint);
+    } catch (e) {
+      console.error('[mp-checkout] unexpected error', e?.message || e);
+      setMpError(getMerchantMpCheckoutErrorMessage(undefined));
+    } finally {
+      mpSubmitLockRef.current = false;
+      setMpSending(false);
     }
   };
 
@@ -365,6 +455,12 @@ export default function OrderConfirmation() {
       {/* Fixed Bottom CTA */}
       <div className="fixed bottom-0 left-0 right-0 z-50 p-4" style={{ backgroundColor: 'var(--color-background)', borderTop: '1px solid var(--color-border)' }}>
         <div className="max-w-lg mx-auto">
+          {mpError && (
+            <div className="mb-3 flex items-center gap-2 px-3 py-2.5 rounded-xl border bg-red-50" style={{ borderColor: 'var(--color-error)' }}>
+              <Icon name="AlertCircle" size={18} style={{ color: 'var(--color-error)', flexShrink: 0 }} />
+              <p className="text-sm font-medium" style={{ color: 'var(--color-error)', fontFamily: 'var(--font-caption)' }}>{mpError}</p>
+            </div>
+          )}
           {(submitError || submitInfo) && (
             <div className="mb-3 flex items-center gap-2 px-3 py-2.5 rounded-xl border bg-red-50" style={{ borderColor: 'var(--color-error)' }}>
               <Icon
@@ -390,21 +486,52 @@ export default function OrderConfirmation() {
               {copiedMessage ? 'Mensaje copiado' : 'Copiar mensaje'}
             </button>
           )}
-          <button
-            onClick={handleConfirm}
-            disabled={loading}
-            className="w-full py-4 rounded-2xl text-sm font-bold text-white flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98] disabled:opacity-60"
-            style={{ backgroundColor: '#25D366', boxShadow: '0 4px 20px rgba(37,211,102,0.35)', fontFamily: 'var(--font-caption)' }}
-          >
-            {loading ? (
-              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            ) : (
-              <>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-                Confirmar y enviar por WhatsApp
-              </>
-            )}
-          </button>
+          {mpAvailable && (
+            <button
+              type="button"
+              onClick={payWithMercadoPago}
+              disabled={mpSending || loading}
+              className="w-full mb-2 py-4 rounded-2xl text-sm font-bold text-white flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98] disabled:opacity-60"
+              style={{ background: 'linear-gradient(135deg, #00B1EA 0%, #009EE3 100%)', boxShadow: '0 4px 20px rgba(0,158,227,0.35)', fontFamily: 'var(--font-caption)' }}
+            >
+              {mpSending ? (
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <>
+                  <Icon name="CreditCard" size={18} color="#FFFFFF" />
+                  Pagar con Mercado Pago
+                </>
+              )}
+            </button>
+          )}
+          {mpAvailable ? (
+            <button
+              type="button"
+              onClick={consultWhatsApp}
+              disabled={loading || mpSending}
+              className="w-full py-4 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98] disabled:opacity-60 border"
+              style={{ borderColor: 'var(--color-border)', color: 'var(--color-foreground)', backgroundColor: '#fff', fontFamily: 'var(--font-caption)' }}
+            >
+              <Icon name="MessageCircle" size={18} color="#25D366" />
+              Consultar por WhatsApp
+            </button>
+          ) : (
+            <button
+              onClick={handleConfirm}
+              disabled={loading || mpSending}
+              className="w-full py-4 rounded-2xl text-sm font-bold text-white flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98] disabled:opacity-60"
+              style={{ backgroundColor: '#25D366', boxShadow: '0 4px 20px rgba(37,211,102,0.35)', fontFamily: 'var(--font-caption)' }}
+            >
+              {loading ? (
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                  Confirmar y enviar por WhatsApp
+                </>
+              )}
+            </button>
+          )}
         </div>
       </div>
     </div>
