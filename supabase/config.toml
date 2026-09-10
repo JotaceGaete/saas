@@ -26,6 +26,16 @@ verify_jwt = false
 [functions.mp-oauth-callback]
 verify_jwt = false
 
+# MP-CHECKOUT-1: checkout de Mercado Pago DEL COMERCIO (paga el cliente
+# final del catálogo, no Walinka) -- completamente aislado de MP-OAUTH-1
+# de arriba (no comparte tokens) y de create-mp-preference/mp-webhook
+# (billing de plataforma). create-merchant-mp-checkout es público a
+# propósito: el comprador del catálogo NO tiene sesión Walinka, así que
+# no hay JWT que validar. "Público" no significa "confiable" -- toda
+# validación de negocio/precio ocurre server-side dentro de la función.
+[functions.create-merchant-mp-checkout]
+verify_jwt = false
+
 # plan-change-preview: same, JWT validated inside for auth.uid().
 [functions.plan-change-preview]
 verify_jwt = false
