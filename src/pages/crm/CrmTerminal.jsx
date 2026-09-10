@@ -220,6 +220,26 @@ function CrmTerminalUI() {
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
+  // TPV-CORE-1: lock síncrono contra doble submit (busy es un useState, se
+  // re-renderiza de forma asíncrona -- un doble click a pocos ms de
+  // distancia podría disparar handleRegister dos veces antes de que React
+  // comprometa disabled=busy). Es solo UX: la protección autoritativa real
+  // es la idempotencia de crm_create_pos_sale en la base de datos.
+  const submitLockRef = useRef(false);
+  // Idempotency key estable por intento de venta: se genera una sola vez,
+  // se reenvía sin cambios en cualquier reintento del MISMO intento (error
+  // de red, error del servidor, doble click), y solo se renueva después de
+  // una venta completada con éxito o de un reset real del formulario --
+  // nunca por un timeout ambiguo antes de saber si la venta se creó.
+  const saleIdempotencyKeyRef = useRef(null);
+  const getOrCreateSaleIdempotencyKey = () => {
+    if (!saleIdempotencyKeyRef.current) {
+      saleIdempotencyKeyRef.current = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+        ? crypto.randomUUID()
+        : `pos_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    }
+    return saleIdempotencyKeyRef.current;
+  };
   const [showManualModal, setShowManualModal] = useState(false);
   const [showNewCustomer, setShowNewCustomer] = useState(false);
 
@@ -417,6 +437,10 @@ function CrmTerminalUI() {
     .map((payment) => ({ ...payment, amount: +payment.amount.toFixed(2) }));
 
   const resetForm = () => {
+    // Reset real de intento de venta: la próxima "Completar venta" debe
+    // generar una idempotency key nueva, nunca reutilizar la del intento
+    // anterior (ya completado o descartado).
+    saleIdempotencyKeyRef.current = null;
     setCart([]);
     setCustomerId('');
     setDiscount('');
@@ -449,69 +473,76 @@ function CrmTerminalUI() {
   };
 
   const handleRegister = async () => {
+    // Lock síncrono -- ver comentario junto a la declaración de
+    // submitLockRef. disabled={busy} en el botón ya cubre el caso normal;
+    // esto cubre la ventana de un doble click antes del re-render.
+    if (submitLockRef.current) return;
     if (cart.length === 0) return;
+    submitLockRef.current = true;
     setBusy(true);
     setErrorMsg(null);
 
-    if (hasNonCashOverpay) {
-      setBusy(false);
-      setErrorMsg('Solo el efectivo puede generar vuelto.');
-      return;
-    }
-
-    // El saldo pendiente pasa a cuenta corriente y requiere cliente registrado.
-    if (requiresCustomerForPending && !customerId) {
-      setBusy(false);
-      setErrorMsg('CREDIT_NO_CUSTOMER');
-      return;
-    }
-
-    // Guard: real payments require open cash session. Pure current account does not touch caja.
-    if (appliedPayments.length > 0) {
-      const { data: openSession } = await getOpenCashSession(business.id);
-      if (!openSession) {
-        setBusy(false);
-        setErrorMsg('NO_OPEN_CASH');
+    try {
+      if (hasNonCashOverpay) {
+        setErrorMsg('Solo el efectivo puede generar vuelto.');
         return;
       }
+
+      // El saldo pendiente pasa a cuenta corriente y requiere cliente registrado.
+      if (requiresCustomerForPending && !customerId) {
+        setErrorMsg('CREDIT_NO_CUSTOMER');
+        return;
+      }
+
+      // Guard: real payments require open cash session. Pure current account does not touch caja.
+      // Chequeo rápido client-side para feedback inmediato -- crm_create_pos_sale
+      // vuelve a validarlo server-side de todos modos (autoridad real).
+      if (appliedPayments.length > 0) {
+        const { data: openSession } = await getOpenCashSession(business.id);
+        if (!openSession) {
+          setErrorMsg('NO_OPEN_CASH');
+          return;
+        }
+      }
+
+      const saleSnapshot = {
+        items: [...cart],
+        customer: selectedCustomer,
+        paymentMethod: pendingBalance > 0 ? 'credit' : (appliedPayments[0]?.method || 'credit'),
+        payments: appliedPayments,
+        discountAmount,
+        subtotal,
+        total,
+        amountReceived: cashTendered > 0 ? cashTendered : null,
+        change: change > 0 ? change : null,
+        initialPaymentAmount: pendingBalance > 0 && paidTotal > 0 ? paidTotal : null,
+        initialPaymentMethod: pendingBalance > 0 ? (appliedPayments[0]?.method || null) : null,
+        pendingBalance,
+        paymentStatus: paymentStatusLabel,
+        notes: notes || null,
+        createdAt: new Date().toISOString(),
+      };
+
+      const { data, error } = await createPosInvoice(business.id, {
+        customerId: customerId || null,
+        items: cart,
+        discount: discountAmount,
+        notes: notes || null,
+        currency: business?.currency || 'CLP',
+        payments: appliedPayments,
+        idempotencyKey: getOrCreateSaleIdempotencyKey(),
+      });
+
+      if (error) {
+        setErrorMsg(error.message || 'No se pudo registrar el pago de la venta.');
+        return;
+      }
+
+      setTicketData({ sale: data, ...saleSnapshot });
+    } finally {
+      submitLockRef.current = false;
+      setBusy(false);
     }
-
-    const saleSnapshot = {
-      items: [...cart],
-      customer: selectedCustomer,
-      paymentMethod: pendingBalance > 0 ? 'credit' : (appliedPayments[0]?.method || 'credit'),
-      payments: appliedPayments,
-      discountAmount,
-      subtotal,
-      total,
-      amountReceived: cashTendered > 0 ? cashTendered : null,
-      change: change > 0 ? change : null,
-      initialPaymentAmount: pendingBalance > 0 && paidTotal > 0 ? paidTotal : null,
-      initialPaymentMethod: pendingBalance > 0 ? (appliedPayments[0]?.method || null) : null,
-      pendingBalance,
-      paymentStatus: paymentStatusLabel,
-      notes: notes || null,
-      createdAt: new Date().toISOString(),
-    };
-
-    const { data, error } = await createPosInvoice(business.id, {
-      customerId: customerId || null,
-      items: cart,
-      discount: discountAmount,
-      paymentMethod: pendingBalance > 0 ? 'credit' : (appliedPayments[0]?.method || 'credit'),
-      notes: notes || null,
-      currency: business?.currency || 'CLP',
-      payments: appliedPayments,
-    });
-
-    setBusy(false);
-
-    if (error) {
-      setErrorMsg(error.message || 'No se pudo registrar el pago de la venta.');
-      return;
-    }
-
-    setTicketData({ sale: data, ...saleSnapshot });
   };
 
   const handleCloseTicket = () => {

@@ -768,165 +768,85 @@ export async function updateStockMinimo(productId, stockMinimo) {
 // TERMINAL DE VENTAS (POS)
 // ─────────────────────────────────────────────────────────────────────────────
 
+// TPV-CORE-1: códigos crudos de crm_create_pos_sale que CrmTerminal ya
+// renderiza con su propia UI especial (botón "Ir a caja", selector de
+// cliente, etc.) -- se preservan tal cual, sin traducir a texto, para no
+// romper ese manejo existente.
+const POS_SALE_PRESERVED_ERROR_CODES = new Set(['NO_OPEN_CASH', 'CREDIT_NO_CUSTOMER']);
+
+// Resto de códigos de crm_create_pos_sale -- se traducen a un mensaje
+// legible. Nunca se muestra un error SQL crudo al usuario.
+const POS_SALE_ERROR_MESSAGES = {
+  STOCK_INSUFFICIENT: 'No hay stock suficiente para completar la venta.',
+  PRODUCT_NOT_FOUND: 'Uno de los productos ya no está disponible.',
+  CUSTOMER_NOT_FOUND: 'El cliente seleccionado ya no está disponible.',
+  INVALID_PAYMENT: 'Revisa los métodos de pago ingresados.',
+  INVALID_ITEMS: 'Revisa los productos de la venta.',
+  NOT_AUTHENTICATED: 'Tu sesión expiró. Inicia sesión nuevamente.',
+};
+
+function mapPosSaleError(error) {
+  const raw = String(error?.message || '');
+  const code = [...POS_SALE_PRESERVED_ERROR_CODES, ...Object.keys(POS_SALE_ERROR_MESSAGES)]
+    .find((key) => raw.includes(key));
+  if (!code) return { message: 'No se pudo registrar la venta. Intenta nuevamente.' };
+  if (POS_SALE_PRESERVED_ERROR_CODES.has(code)) return { message: code };
+  return { message: POS_SALE_ERROR_MESSAGES[code] };
+}
+
+/**
+ * Crea una venta de TPV atómicamente (invoice + items + payments + stock
+ * movements) vía la RPC crm_create_pos_sale -- wrapper delgado, toda la
+ * validación/lógica de negocio vive server-side (TPV-CORE-1).
+ *
+ * idempotencyKey es OBLIGATORIO: identifica un único intento de "Completar
+ * venta" en CrmTerminal. Reenviar la misma key (retry de red, doble click,
+ * doble submit) nunca duplica la venta -- la RPC devuelve la ya creada.
+ *
+ * @param {string} businessId
+ * @param {{customerId?: string|null, items: Array<{product_id?: string|null, name: string, unit_price: number, quantity: number, note?: string|null}>, discount?: number, payments?: Array<{method?: string, payment_method?: string, amount: number}>, notes?: string|null, currency?: string, idempotencyKey: string}} input
+ */
 export async function createPosInvoice(businessId, {
-  customerId, items = [], discount = 0, paymentMethod = 'cash',
-  notes, currency = 'CLP',
-  initialPaymentAmount = 0, initialPaymentMethod = 'cash',
-  payments = null,
+  customerId, items = [], discount = 0, notes, currency = 'CLP',
+  payments = [], idempotencyKey,
 }) {
-  const { data: nextNum, error: numErr } = await supabase
-    .rpc('crm_next_invoice_number', { p_business_id: businessId });
-  if (numErr) return { data: null, error: numErr };
+  if (!idempotencyKey) {
+    return { data: null, error: { message: 'Falta idempotencyKey para registrar la venta.' } };
+  }
+  if (!Array.isArray(items) || items.length === 0) {
+    return { data: null, error: { message: 'El carrito está vacío.' } };
+  }
 
-  const localDate = getLocalDateString();
-  const normalizedPaymentMethod = normalizePaymentMethod(paymentMethod);
-
-  const mappedItems = items.map((it, idx) => ({
+  const mappedItems = items.map((it) => ({
     product_id: it.product_id || null,
     name: it.name,
-    description: it.note || null,
     unit_price: it.unit_price,
     quantity: it.quantity,
-    discount_pct: 0,
-    subtotal: +(it.unit_price * it.quantity).toFixed(2),
-    sort_order: idx,
+    note: it.note || null,
   }));
 
-  const subtotal = mappedItems.reduce((s, i) => s + i.subtotal, 0);
-  const discountAmount = +Math.min(discount, subtotal).toFixed(2);
-  const total = +(subtotal - discountAmount).toFixed(2);
-  const usesPaymentDetails = Array.isArray(payments);
-  let openSession = null;
-  let paymentRows = [];
-  let paidTotal = 0;
+  const mappedPayments = (Array.isArray(payments) ? payments : [])
+    .map((payment) => ({
+      method: normalizePaymentMethod(payment.payment_method || payment.method),
+      amount: Math.max(0, Number(payment.amount || 0)),
+    }))
+    .filter((payment) => payment.amount > 0);
 
-  if (usesPaymentDetails) {
-    const incomingPayments = payments
-      .map((payment) => ({
-        method: normalizePaymentMethod(payment.payment_method || payment.method),
-        amount: Math.max(0, Number(payment.amount || 0)),
-      }))
-      .filter((payment) => payment.amount > 0);
+  const { data, error } = await supabase.rpc('crm_create_pos_sale', {
+    p_business_id: businessId,
+    p_idempotency_key: idempotencyKey,
+    p_items: mappedItems,
+    p_issue_date: getLocalDateString(),
+    p_customer_id: customerId || null,
+    p_discount: Math.max(0, Number(discount) || 0),
+    p_payments: mappedPayments,
+    p_notes: notes || null,
+    p_currency: currency || 'CLP',
+  });
 
-    const nonCashTotal = incomingPayments
-      .filter((payment) => payment.method !== 'cash')
-      .reduce((sum, payment) => sum + payment.amount, 0);
+  if (error) return { data: null, error: mapPosSaleError(error) };
 
-    if (incomingPayments.some((payment) => !REAL_PAYMENT_METHODS.includes(payment.method))) {
-      return { data: null, error: { message: 'Medio de pago no permitido para TPV.' } };
-    }
-
-    if (nonCashTotal > total) {
-      return { data: null, error: { message: 'Solo el efectivo puede generar vuelto.' } };
-    }
-
-    let remainingForCash = Math.max(0, total - nonCashTotal);
-    paymentRows = incomingPayments
-      .map((payment) => {
-        if (payment.method !== 'cash') return payment;
-        const appliedAmount = Math.min(payment.amount, remainingForCash);
-        remainingForCash = Math.max(0, remainingForCash - appliedAmount);
-        return { ...payment, amount: appliedAmount };
-      })
-      .filter((payment) => payment.amount > 0)
-      .map((payment) => ({ ...payment, amount: +payment.amount.toFixed(2) }));
-
-    paidTotal = +paymentRows.reduce((sum, payment) => sum + payment.amount, 0).toFixed(2);
-
-    if (paidTotal < total && !customerId) {
-      return { data: null, error: { message: 'Selecciona un cliente para dejar saldo en cuenta corriente.' } };
-    }
-
-    if (paymentRows.length > 0) {
-      const { data } = await getOpenCashSession(businessId);
-      openSession = data;
-      if (!openSession) {
-        return { data: null, error: { message: 'No hay caja abierta. Abre caja antes de registrar una venta.' } };
-      }
-    }
-  } else {
-    const isCredit = IS_CREDIT_METHOD(paymentMethod);
-    const abonoAmount = isCredit ? Math.max(0, +initialPaymentAmount || 0) : 0;
-    const hasAbono = abonoAmount > 0;
-
-    // Require open cash session for real payments and for credit with abono.
-    if (!isCredit || hasAbono) {
-      const { data } = await getOpenCashSession(businessId);
-      openSession = data;
-      if (!openSession) {
-        return { data: null, error: { message: 'No hay caja abierta. Abre caja antes de registrar una venta.' } };
-      }
-    }
-
-    if (isCredit && abonoAmount > total) {
-      return { data: null, error: { message: 'El abono inicial no puede superar el total de la venta.' } };
-    }
-
-    if (!isCredit || hasAbono) {
-      paymentRows = [{
-        method: isCredit ? normalizePaymentMethod(initialPaymentMethod) : normalizedPaymentMethod,
-        amount: +(isCredit ? abonoAmount : total).toFixed(2),
-      }];
-      paidTotal = paymentRows[0].amount;
-    }
-  }
-
-  const invoiceStatus = paidTotal >= total
-    ? 'pagada'
-    : paidTotal > 0
-      ? 'parcial'
-      : 'pendiente';
-  const paidAt = invoiceStatus === 'pagada' ? new Date().toISOString() : null;
-
-  const { data: invoice, error } = await supabase
-    .from('crm_invoices')
-    .insert({
-      business_id: businessId,
-      customer_id: customerId || null,
-      invoice_number: nextNum,
-      issue_date: localDate,
-      status: invoiceStatus,
-      subtotal: +subtotal.toFixed(2),
-      discount_amount: discountAmount,
-      total,
-      notes: notes || null,
-      paid_at: paidAt,
-    })
-    .select()
-    .single();
-  if (error) return { data: null, error };
-
-  if (mappedItems.length > 0) {
-    const { error: itemsErr } = await supabase
-      .from('crm_invoice_items')
-      .insert(mappedItems.map(it => ({ ...it, invoice_id: invoice.id })));
-    if (itemsErr) return { data: null, error: itemsErr };
-  }
-
-  if (paymentRows.length === 0) {
-    return { data: invoice, error: null };
-  }
-
-  const { data: { user } } = await supabase.auth.getUser();
-
-  const { error: payErr } = await supabase
-    .from('crm_payments')
-    .insert(paymentRows.map((payment) => ({
-      business_id: businessId,
-      invoice_id: invoice.id,
-      customer_id: customerId || null,
-      amount: payment.amount,
-      currency: currency || 'CLP',
-      payment_method: payment.method,
-      payment_status: 'received',
-      payment_date: localDate,
-      cash_session_id: openSession?.id || null,
-      reference: invoiceStatus === 'parcial' ? `Abono TPV ${formatInvoiceNumber(nextNum)}` : `TPV ${formatInvoiceNumber(nextNum)}`,
-      notes: notes || null,
-      created_by: user?.id || null,
-    })));
-  if (payErr) return { data: null, error: payErr };
-
+  const invoice = Array.isArray(data) ? data[0] : data;
   return { data: invoice, error: null };
 }
 
