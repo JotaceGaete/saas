@@ -9,15 +9,36 @@ import { getSupabasePublishableKeyOrEmpty } from '../_shared/supabasePublishable
 
 const RESEND_API_URL = 'https://api.resend.com/emails';
 const EMAIL_AUTOMATION_DISABLED_REASON = 'EMAIL_AUTOMATION_DISABLED';
+const PAYMENT_EMAILS_DISABLED_REASON = 'PAYMENT_EMAILS_DISABLED';
 
 function isEmailAutomationEnabled() {
   return Deno.env.get('EMAIL_AUTOMATION_ENABLED') === 'true';
 }
+
+// EMAIL-PAYMENTS-1 (flag separation): payment_received_buyer/merchant se
+// habilitan con su PROPIO flag, independiente de EMAIL_AUTOMATION_ENABLED
+// (que sigue controlando welcome/activation_24h/daily_summary/etc. -- la
+// automatización histórica). El objetivo explícito de producción es poder
+// tener EMAIL_AUTOMATION_ENABLED=false y PAYMENT_EMAILS_ENABLED=true al
+// mismo tiempo, sin que uno dependa ni implique el otro.
+function isPaymentEmailsEnabled() {
+  return Deno.env.get('PAYMENT_EMAILS_ENABLED') === 'true';
+}
+
+// Único lugar del proyecto donde se enumeran los tipos de email de pago --
+// send-email, process-email-queue y merchant-mp-webhook comparten el mismo
+// vocabulario ('payment_received_buyer' | 'payment_received_merchant'),
+// pero cada archivo Deno es un módulo aislado (no hay un import compartido
+// entre Edge Functions en este repo), así que la constante se repite acá y
+// en process-email-queue -- mismo criterio que PAYMENT_METHOD_LABELS.
+const PAYMENT_EMAIL_TYPES = new Set(['payment_received_buyer', 'payment_received_merchant']);
+
 const FROM_EMAIL = 'Walinka <hola@mail.ventalink.app>';
 
 const ADMIN_PREVIEW_TYPES = new Set([
   'welcome', 'email_confirm', 'password_recovery', 'activation_24h', 'test_ping',
   'trial_expiring', 'payment_confirmed', 'plan_changed', 'new_order', 'daily_summary', 'weekly_summary',
+  'payment_received_buyer', 'payment_received_merchant',
 ]);
 
 const corsHeaders: Record<string, string> = {
@@ -51,6 +72,55 @@ function formatCurrency(value: number, currency = 'CLP'): string {
     currency: currency === 'ARS' ? 'ARS' : currency === 'USD' ? 'USD' : 'CLP',
     minimumFractionDigits: 0,
   }).format(value);
+}
+
+// EMAIL-PAYMENTS-1: mismo mapa que METHOD_LABELS en
+// src/pages/orders/components/OrderPaymentDetail.jsx -- mantener sincronizados
+// (mismo criterio que activation_24h más abajo, que ya replica un template
+// en dos lugares).
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  checkout_pro: 'Checkout Pro',
+  point: 'Point',
+  qr: 'QR',
+  cash: 'Efectivo',
+  bank_transfer: 'Transferencia bancaria',
+  other: 'Otro',
+};
+
+function paymentMethodLabel(method: unknown): string {
+  const key = String(method || '');
+  return PAYMENT_METHOD_LABELS[key] || key || 'No especificado';
+}
+
+/** Mismo criterio que orderShortIdLocal en KanbanOrderCardView.jsx. */
+function orderShortId(orderId: unknown): string {
+  const id = String(orderId || '');
+  return id ? id.slice(0, 8).toUpperCase() : '—';
+}
+
+function formatDateTimeEs(iso: unknown): string {
+  const value = typeof iso === 'string' ? iso : '';
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return new Intl.DateTimeFormat('es-CL', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+    timeZone: 'America/Santiago',
+  }).format(date);
+}
+
+function renderOrderItemsRows(items: unknown, currency: string): string {
+  const list = Array.isArray(items) ? (items as Array<Record<string, unknown>>) : [];
+  if (!list.length) return '';
+  return list
+    .map((item) => {
+      const name = escapeHtml(item?.name ?? item?.productName ?? 'Producto');
+      const qty = Number(item?.quantity) || 0;
+      const subtotal = Number(item?.subtotal) || 0;
+      return `<tr><td style="padding:6px 12px">${name}</td><td style="padding:6px 12px;text-align:center">${qty}</td><td style="padding:6px 12px;text-align:right">${formatCurrency(subtotal, currency)}</td></tr>`;
+    })
+    .join('');
 }
 
 type TemplateData = Record<string, unknown>;
@@ -360,6 +430,96 @@ function renderTemplate(type: string, data: TemplateData): { subject: string; ht
       const html = `<p>Hola ${escapeHtml(n)},</p><p>Recibiste un nuevo pedido de ${escapeHtml(customerName)} por ${fmt(total)}.</p>${dashboardUrl ? `<p><a href="${escapeHtml(dashboardUrl)}/orders">Ver pedidos</a></p>` : ''}<p>— Walinka</p>`;
       return { subject, html };
     }
+    case 'payment_received_buyer': {
+      // EMAIL-PAYMENTS-1 -- transaccional puro: sin promociones, sin
+      // tracking, sin CTAs de marketing. Todos los datos vienen de
+      // process-email-queue, que los releyó server-side de
+      // wa_orders/wa_order_items/wa_order_payments -- nunca se confía en
+      // nada que pudiera venir de un cliente/frontend.
+      const orderCurrency = (d.currency as string) || 'CLP';
+      const total = Number(d.total) || 0;
+      const shortId = orderShortId(d.orderId);
+      const itemsRows = renderOrderItemsRows(d.items, orderCurrency);
+      const methodLabel = paymentMethodLabel(d.paymentMethod);
+      const paidAtLabel = formatDateTimeEs(d.paidAt);
+      const subject = `Pago recibido — Pedido #${shortId}`;
+      const html = `<!doctype html>
+<html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/></head>
+<body style="margin:0;padding:0;background:#f5f3ff;font-family:Arial,Helvetica,sans-serif;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f5f3ff;padding:24px 12px;">
+    <tr><td align="center">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;background:#ffffff;border-radius:14px;overflow:hidden;">
+        <tr><td style="background:#059669;padding:22px 24px;color:#ffffff;">
+          <p style="margin:0 0 4px;font-size:12px;opacity:.85;">${escapeHtml(n)}</p>
+          <h1 style="margin:0;font-size:22px;line-height:1.25;">Pago recibido — Pedido #${shortId}</h1>
+        </td></tr>
+        <tr><td style="padding:24px;color:#1f2937;">
+          <p style="margin:0 0 16px;font-size:15px;line-height:1.6;">Confirmamos que recibimos tu pago. Este es el resumen de tu pedido:</p>
+          <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
+            <tr><th style="text-align:left;padding:8px 12px;background:#f3f4f6">Estado</th><td style="padding:8px 12px"><strong>Pago confirmado</strong></td></tr>
+            <tr><th style="text-align:left;padding:8px 12px;background:#f3f4f6">Método de pago</th><td style="padding:8px 12px">${escapeHtml(methodLabel)}</td></tr>
+            <tr><th style="text-align:left;padding:8px 12px;background:#f3f4f6">Fecha</th><td style="padding:8px 12px">${escapeHtml(paidAtLabel)}</td></tr>
+          </table>
+          ${itemsRows ? `<table style="width:100%;border-collapse:collapse;margin-bottom:16px"><thead><tr><th style="text-align:left;padding:6px 12px">Producto</th><th style="text-align:center;padding:6px 12px">Cant.</th><th style="text-align:right;padding:6px 12px">Subtotal</th></tr></thead><tbody>${itemsRows}</tbody></table>` : ''}
+          <table style="width:100%;border-collapse:collapse;">
+            <tr><th style="text-align:left;padding:8px 12px;background:#f3f4f6">Total</th><td style="padding:8px 12px"><strong>${fmt(total)}</strong></td></tr>
+          </table>
+        </td></tr>
+        <tr><td style="padding:14px 24px 20px;border-top:1px solid #ede9fe;">
+          <p style="margin:0 0 6px;font-size:12px;color:#6b7280;">${escapeHtml(n)}${d.businessWhatsapp ? ` — WhatsApp: ${escapeHtml(d.businessWhatsapp as string)}` : ''}</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+      return { subject, html };
+    }
+    case 'payment_received_merchant': {
+      const orderCurrency = (d.currency as string) || 'CLP';
+      const total = Number(d.total) || 0;
+      const shortId = orderShortId(d.orderId);
+      const itemsRows = renderOrderItemsRows(d.items, orderCurrency);
+      const methodLabel = paymentMethodLabel(d.method);
+      const paidAtLabel = formatDateTimeEs(d.paidAt);
+      const customerName = (d.customerName as string) || 'Cliente';
+      const walinkaFee = Number(d.walinkaFee) || 0;
+      const providerPaymentId = d.providerPaymentId != null ? String(d.providerPaymentId) : '';
+      // mp_fee/net_amount: NUNCA se muestran si son NULL -- mismo criterio
+      // que OrderPaymentDetail.jsx (MP-PAYMENT-DETAIL-2), nunca inventar.
+      const mpFee = d.mpFee != null && d.mpFee !== '' ? Number(d.mpFee) : null;
+      const netAmount = d.netAmount != null && d.netAmount !== '' ? Number(d.netAmount) : null;
+      const subject = `Nueva venta pagada — Pedido #${shortId}`;
+      const html = `<!doctype html>
+<html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/></head>
+<body style="margin:0;padding:0;background:#f5f3ff;font-family:Arial,Helvetica,sans-serif;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f5f3ff;padding:24px 12px;">
+    <tr><td align="center">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;background:#ffffff;border-radius:14px;overflow:hidden;">
+        <tr><td style="background:#7c3aed;padding:22px 24px;color:#ffffff;">
+          <h1 style="margin:0;font-size:22px;line-height:1.25;">Nueva venta pagada — Pedido #${shortId}</h1>
+        </td></tr>
+        <tr><td style="padding:24px;color:#1f2937;">
+          <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
+            <tr><th style="text-align:left;padding:8px 12px;background:#f3f4f6">Comprador</th><td style="padding:8px 12px">${escapeHtml(customerName)}</td></tr>
+            <tr><th style="text-align:left;padding:8px 12px;background:#f3f4f6">Método de pago</th><td style="padding:8px 12px">${escapeHtml(methodLabel)}</td></tr>
+            <tr><th style="text-align:left;padding:8px 12px;background:#f3f4f6">Fecha</th><td style="padding:8px 12px">${escapeHtml(paidAtLabel)}</td></tr>
+            ${providerPaymentId ? `<tr><th style="text-align:left;padding:8px 12px;background:#f3f4f6">ID de pago (Mercado Pago)</th><td style="padding:8px 12px">${escapeHtml(providerPaymentId)}</td></tr>` : ''}
+          </table>
+          ${itemsRows ? `<table style="width:100%;border-collapse:collapse;margin-bottom:16px"><thead><tr><th style="text-align:left;padding:6px 12px">Producto</th><th style="text-align:center;padding:6px 12px">Cant.</th><th style="text-align:right;padding:6px 12px">Subtotal</th></tr></thead><tbody>${itemsRows}</tbody></table>` : ''}
+          <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
+            <tr><th style="text-align:left;padding:8px 12px;background:#f3f4f6">Total</th><td style="padding:8px 12px"><strong>${fmt(total)}</strong></td></tr>
+            <tr><th style="text-align:left;padding:8px 12px;background:#f3f4f6">Comisión Walinka</th><td style="padding:8px 12px">${formatCurrency(walinkaFee, orderCurrency)}</td></tr>
+            ${mpFee !== null ? `<tr><th style="text-align:left;padding:8px 12px;background:#f3f4f6">Comisión Mercado Pago</th><td style="padding:8px 12px">${formatCurrency(mpFee, orderCurrency)}</td></tr>` : ''}
+            ${netAmount !== null ? `<tr><th style="text-align:left;padding:8px 12px;background:#f3f4f6">Neto comercio</th><td style="padding:8px 12px">${formatCurrency(netAmount, orderCurrency)}</td></tr>` : ''}
+          </table>
+          ${dashboardUrl ? `<p style="margin:0"><a href="${escapeHtml(dashboardUrl)}/orders" style="color:#7c3aed;text-decoration:none;font-weight:600">Ver pedido en el panel →</a></p>` : ''}
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+      return { subject, html };
+    }
     case 'activation_24h': {
       // Template replicado en src/emails/activation24hEmail.js — mantener sincronizados.
       const catalogUrl = String(d.catalogUrl || d.catalog_url || '');
@@ -543,17 +703,26 @@ Deno.serve(async (req) => {
 
   const action = typeof body?.action === 'string' ? body.action.trim() : '';
 
-  // QW-4: validar x-email-secret para requests no-admin.
-  // Solo se aplica si EMAIL_FUNCTION_SECRET está configurado como env var en la Edge Function.
-  // Mientras no esté configurado, el endpoint funciona igual que antes (sin validación adicional).
+  // EMAIL-PAYMENTS-1 (hardening): x-email-secret es OBLIGATORIO para todo
+  // request no-admin, no opcional. Antes, si EMAIL_FUNCTION_SECRET no
+  // estaba configurado, el endpoint aceptaba el envío sin validación
+  // alguna -- con EMAIL_AUTOMATION_ENABLED=true eso convertía a send-email
+  // en un relay público (cualquiera en internet, con o sin sesión, podía
+  // mandar HTML arbitrario desde el dominio verificado de Walinka). Ahora:
+  // sin el secret configurado server-side, el endpoint se niega a operar
+  // (fail closed) en vez de aceptar sin validar (fail open). Los flujos
+  // admin (preview/admin_send_test) no pasan por acá -- siguen protegidos
+  // exclusivamente por JWT + wa_is_admin(), sin cambios.
   if (action !== 'preview' && action !== 'admin_send_test') {
     const functionSecret = Deno.env.get('EMAIL_FUNCTION_SECRET') ?? '';
-    if (functionSecret) {
-      const requestSecret = req.headers.get('x-email-secret') ?? '';
-      if (requestSecret !== functionSecret) {
-        console.warn('[send-email] unauthorized: x-email-secret inválido o ausente');
-        return jsonResponse({ error: 'Unauthorized' }, 401);
-      }
+    if (!functionSecret) {
+      console.error('[send-email] EMAIL_FUNCTION_SECRET no configurado -- rechazando request no-admin (fail closed)');
+      return jsonResponse({ error: 'Server configuration error' }, 500);
+    }
+    const requestSecret = req.headers.get('x-email-secret') ?? '';
+    if (requestSecret !== functionSecret) {
+      console.warn('[send-email] unauthorized: x-email-secret inválido o ausente');
+      return jsonResponse({ error: 'Unauthorized' }, 401);
     }
   }
 
@@ -677,12 +846,20 @@ Deno.serve(async (req) => {
   const emailType = typeof body?.type === 'string' ? body.type.trim() : '';
   const data = buildTemplateDataFromBody(body);
 
-  if (!isEmailAutomationEnabled()) {
-    console.log('[send-email] skipped: EMAIL_AUTOMATION_DISABLED', {
+  // EMAIL-PAYMENTS-1 (flag separation): payment_received_buyer/merchant se
+  // gatean con PAYMENT_EMAILS_ENABLED; todo lo demás (welcome,
+  // activation_24h, daily_summary, custom sin type, etc.) sigue gateado
+  // por EMAIL_AUTOMATION_ENABLED, exactamente como antes. Ninguno de los
+  // dos flags implica ni requiere el otro.
+  const isPaymentEmail = PAYMENT_EMAIL_TYPES.has(emailType);
+  const categoryEnabled = isPaymentEmail ? isPaymentEmailsEnabled() : isEmailAutomationEnabled();
+  if (!categoryEnabled) {
+    const reason = isPaymentEmail ? PAYMENT_EMAILS_DISABLED_REASON : EMAIL_AUTOMATION_DISABLED_REASON;
+    console.log(`[send-email] skipped: ${reason}`, {
       type: emailType || 'custom',
       source: typeof body?.source === 'string' ? body.source.trim() || null : null,
     });
-    return jsonResponse({ skipped: true, reason: EMAIL_AUTOMATION_DISABLED_REASON }, 200);
+    return jsonResponse({ skipped: true, reason }, 200);
   }
 
   console.log('[send-email] Request received:', { to, type: emailType, hasData: Object.keys(data).length > 0 });

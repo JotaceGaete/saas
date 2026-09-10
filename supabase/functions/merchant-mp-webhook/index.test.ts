@@ -167,3 +167,47 @@ describe('merchant-mp-webhook — paid_at derivado SIEMPRE de la respuesta verif
     expect(paymentTypeMatch![0]).toMatch(/date_approved\?:\s*string;/);
   });
 });
+
+// ─── EMAIL-PAYMENTS-1 — encolado de emails de confirmación de pago ────────
+describe('merchant-mp-webhook — encola emails de pago SOLO en applied_now, nunca síncrono con Resend', () => {
+  it('llama a wa_enqueue_payment_confirmation_emails solo dentro de un if (result?.applied_now)', () => {
+    const guardMatch = indexSource.match(/if \(result\?\.\s*applied_now\) \{[\s\S]*?\n  \}/);
+    expect(guardMatch).not.toBeNull();
+    expect(guardMatch![0]).toMatch(/admin\.rpc\('wa_enqueue_payment_confirmation_emails', \{/);
+    expect(guardMatch![0]).toMatch(/p_order_id: orderRow\.id,/);
+  });
+
+  it('el enqueue está envuelto en try/catch propio -- un fallo ahí nunca revierte ni bloquea la respuesta 200 ok:true', () => {
+    const guardMatch = indexSource.match(/if \(result\?\.\s*applied_now\) \{[\s\S]*?\n  \}/)![0];
+    expect(guardMatch).toMatch(/try \{[\s\S]*?catch \(err\) \{/);
+    expect(guardMatch).not.toMatch(/return /);
+  });
+
+  it('el enqueue ocurre DESPUÉS de la RPC de transición de pago (el pago ya está confirmado antes de intentar encolar)', () => {
+    const rpcIdx = indexSource.indexOf("admin.rpc('wa_process_merchant_payment_event'");
+    const enqueueIdx = indexSource.indexOf("admin.rpc('wa_enqueue_payment_confirmation_emails'");
+    expect(rpcIdx).toBeGreaterThan(-1);
+    expect(enqueueIdx).toBeGreaterThan(-1);
+    expect(rpcIdx).toBeLessThan(enqueueIdx);
+  });
+
+  it('nunca llama a Resend, send-email, ni ningún endpoint /api de Vercel directamente desde este archivo', () => {
+    // Solo se revisan llamadas reales, no comentarios (el archivo SÍ
+    // menciona "Resend" en un comentario explicando por qué no se llama
+    // síncronamente -- eso es intencional, no una violación).
+    expect(indexSource).not.toMatch(/api\.resend\.com/);
+    expect(indexSource).not.toMatch(/from ['"]resend['"]/);
+    expect(indexSource).not.toMatch(/new Resend\(/);
+    expect(indexSource).not.toMatch(/functions\/v1\/send-email/);
+    expect(indexSource).not.toMatch(/\/api\/cron\//);
+    expect(indexSource).not.toMatch(/process-email-queue\.js/);
+  });
+
+  it('el response final sigue siendo exactamente { ok: true } 200, sin importar el resultado del enqueue', () => {
+    const afterEnqueueIdx = indexSource.indexOf("admin.rpc('wa_enqueue_payment_confirmation_emails'");
+    const finalReturnIdx = indexSource.indexOf('return jsonResponse({ ok: true }, 200);');
+    expect(afterEnqueueIdx).toBeGreaterThan(-1);
+    expect(finalReturnIdx).toBeGreaterThan(-1);
+    expect(afterEnqueueIdx).toBeLessThan(finalReturnIdx);
+  });
+});

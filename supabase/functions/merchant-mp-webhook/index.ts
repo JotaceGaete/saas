@@ -277,5 +277,31 @@ Deno.serve(async (req) => {
     paidAt,
   });
 
+  // ── 8. Encolar emails de confirmación de pago (EMAIL-PAYMENTS-1) ────────
+  // SOLO en el momento en que el pago se aplica por primera vez
+  // (applied_now) -- un reintento del webhook que ya encontró
+  // already_processed=true no vuelve a intentar encolar (ahorra trabajo;
+  // wa_enqueue_payment_confirmation_emails ya es idempotente por
+  // event_key igual, defensa en profundidad, no la única barrera).
+  // Nunca síncrono con Resend: esto solo hace un INSERT en email_queue.
+  // Un fallo acá (RPC caída, insert rechazado) se loguea y se ignora --
+  // el pago YA quedó confirmado arriba, el stock YA se aplicó, y este
+  // webhook NUNCA revierte esa transición por un problema en el enqueue
+  // de emails. El envío real ocurre después, de forma completamente
+  // desacoplada, en process-email-queue -- Vercel no participa en nada de
+  // este flujo.
+  if (result?.applied_now) {
+    try {
+      const { error: enqueueError } = await admin.rpc('wa_enqueue_payment_confirmation_emails', {
+        p_order_id: orderRow.id,
+      });
+      if (enqueueError) {
+        console.error('[merchant-mp-webhook] no se pudo encolar emails de confirmación de pago (no bloquea el pago ya confirmado):', enqueueError.message, { orderId: orderRow.id });
+      }
+    } catch (err) {
+      console.error('[merchant-mp-webhook] enqueue de emails lanzó una excepción (no bloquea el pago ya confirmado):', (err as Error)?.message, { orderId: orderRow.id });
+    }
+  }
+
   return jsonResponse({ ok: true }, 200);
 });
