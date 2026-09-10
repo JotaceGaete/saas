@@ -47,7 +47,11 @@ export default function MercadoPagoConnect() {
     // si volvemos a este punto con error, la navegación no llegó a ocurrir.
     if (err) {
       setConnecting(false);
-      setError('No se pudo iniciar la conexión con Mercado Pago. Intenta nuevamente.');
+      setError(
+        err.reason === 'MP_COUNTRY_NOT_SUPPORTED'
+          ? 'Mercado Pago aún no está disponible para tu país.'
+          : 'No se pudo iniciar la conexión con Mercado Pago. Intenta nuevamente.',
+      );
     }
   };
 
