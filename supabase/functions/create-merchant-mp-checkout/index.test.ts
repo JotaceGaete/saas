@@ -7,6 +7,17 @@
 import { describe, it, expect } from 'vitest';
 import indexSource from './index.ts?raw';
 
+describe('create-merchant-mp-checkout — notification_url lleva el order_id hint para merchant-mp-webhook', () => {
+  it('agrega ?order_id=<uuid> a MERCHANT_MP_WEBHOOK_URL cuando está configurada', () => {
+    expect(indexSource).toMatch(/notificationUrlBase\.includes\('\?'\) \? '&' : '\?'/);
+    expect(indexSource).toMatch(/order_id=\$\{orderId\}/);
+  });
+
+  it('sin MERCHANT_MP_WEBHOOK_URL configurada, notification_url sigue vacía (no se inventa un order_id suelto)', () => {
+    expect(indexSource).toMatch(/const notificationUrl = notificationUrlBase\s*\n\s*\? `\$\{notificationUrlBase\}[^`]*`\s*\n\s*: '';/);
+  });
+});
+
 describe('create-merchant-mp-checkout — endpoint público pero no confiable', () => {
   it('no valida ningún JWT (comprador del catálogo sin sesión Walinka) -- consistente con verify_jwt=false', () => {
     expect(indexSource).not.toMatch(/auth\.getUser\(/);

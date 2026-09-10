@@ -1,0 +1,97 @@
+/**
+ * merchant-mp-webhook/index.ts — tests estáticos (source-scan) de las
+ * invariantes de seguridad que lib.test.ts no puede cubrir (index.ts
+ * toca Deno.serve/Deno.env a nivel de módulo, así que no se importa/
+ * ejecuta directamente en Vitest).
+ */
+import { describe, it, expect } from 'vitest';
+import indexSource from './index.ts?raw';
+
+describe('merchant-mp-webhook — nunca confía en el body del webhook', () => {
+  it('no lee status/amount/currency/business_id/order_id/external_reference del body recibido -- solo type/data.id', () => {
+    expect(indexSource).toMatch(/parseWebhookNotification\(body\)/);
+    expect(indexSource).not.toMatch(/body\??\.\s*(status|amount|currency|business_id|order_id|external_reference)\b/);
+  });
+
+  it('no valida ningún JWT -- público, igual que mp-webhook de billing', () => {
+    expect(indexSource).not.toMatch(/auth\.getUser\(/);
+  });
+});
+
+describe('merchant-mp-webhook — SIEMPRE re-consulta Mercado Pago', () => {
+  it('hace GET a v1/payments/:id usando el token del comercio resuelto server-side', () => {
+    expect(indexSource).toMatch(/MP_PAYMENT_URL/);
+    expect(indexSource).toMatch(/Authorization: `Bearer \$\{mpAccessToken\}`/);
+  });
+
+  it('mpStatus/mpStatusDetail/transactionAmount/currencyId/externalRefRaw vienen SIEMPRE del payment parseado de la respuesta de MP, nunca del body original', () => {
+    expect(indexSource).toMatch(/const mpStatus = String\(payment\?\.\s*status/);
+    expect(indexSource).toMatch(/const transactionAmount = Number\(payment\?\.\s*transaction_amount/);
+    expect(indexSource).toMatch(/const currencyId = String\(payment\?\.\s*currency_id/);
+    expect(indexSource).toMatch(/const externalRefRaw = payment\?\.\s*external_reference/);
+  });
+});
+
+describe('merchant-mp-webhook — order_id hint solo para elegir token, nunca fuente de verdad', () => {
+  it('usa wa_get_mp_connection_for_checkout con el business_id resuelto de wa_orders, nunca de un valor del body', () => {
+    expect(indexSource).toMatch(/wa_get_mp_connection_for_checkout/);
+    expect(indexSource).toMatch(/p_business_id: orderRow\.business_id/);
+  });
+
+  it('re-confirma la identidad real vía validateReferenceMatch contra el external_reference de MP, no contra el hint solo', () => {
+    expect(indexSource).toMatch(/validateReferenceMatch\(parsedRef, orderRow\.business_id/);
+  });
+
+  it('nunca lee MP_ACCESS_TOKEN_CL/MP_ACCESS_TOKEN_AR', () => {
+    expect(indexSource).not.toMatch(/Deno\.env\.get\(['"]MP_ACCESS_TOKEN_(CL|AR)['"]\)/);
+  });
+});
+
+describe('merchant-mp-webhook — validaciones obligatorias antes de marcar pagado', () => {
+  it('valida external_reference, match de negocio/pedido, amount y currency ANTES de invocar la RPC de transición', () => {
+    const refIdx = indexSource.indexOf('parseExternalReference(externalRefRaw)');
+    const matchIdx = indexSource.indexOf('validateReferenceMatch(parsedRef');
+    const amountIdx = indexSource.indexOf('amountsMatch(transactionAmount');
+    const currencyIdx = indexSource.indexOf("currencyId !== orderRow.currency");
+    const rpcIdx = indexSource.indexOf("admin.rpc('wa_process_merchant_payment_event'");
+    expect(refIdx).toBeGreaterThan(-1);
+    expect(matchIdx).toBeGreaterThan(-1);
+    expect(amountIdx).toBeGreaterThan(-1);
+    expect(currencyIdx).toBeGreaterThan(-1);
+    expect(rpcIdx).toBeGreaterThan(-1);
+    expect(refIdx).toBeLessThan(rpcIdx);
+    expect(matchIdx).toBeLessThan(rpcIdx);
+    expect(amountIdx).toBeLessThan(rpcIdx);
+    expect(currencyIdx).toBeLessThan(rpcIdx);
+  });
+});
+
+describe('merchant-mp-webhook — respuestas nunca exponen secretos/internals', () => {
+  it('nunca loguea ni devuelve el access_token', () => {
+    expect(indexSource).not.toMatch(/console\.(log|warn|error|info|debug)\([^)]*mpAccessToken/);
+    expect(indexSource).not.toMatch(/jsonResponse\(\{[^}]*access_token/);
+  });
+
+  it('errores de MP solo loguean status, nunca el body completo de la respuesta', () => {
+    expect(indexSource).toMatch(/nunca el body completo/);
+  });
+
+  it('eventos no accionables responden 200 ok:true,ignored:true -- nunca piden reintento infinito a Mercado Pago', () => {
+    expect(indexSource).toMatch(/function ignoredResponse/);
+    expect(indexSource).toMatch(/ok: true, ignored: true/);
+  });
+
+  it('fallos internos/transitorios (fetch, DB, RPC no reconocida) responden 5xx para permitir retry de Mercado Pago', () => {
+    expect(indexSource).toMatch(/502/);
+    expect(indexSource).toMatch(/jsonResponse\(\{ ok: false, error: 'internal_error' \}, 500\)/);
+  });
+});
+
+describe('merchant-mp-webhook — aislamiento de billing Walinka', () => {
+  it('no tiene ningún import/llamada real a mp-webhook, create-mp-preference, wa_payments, wa_payment_events ni billing_subscriptions', () => {
+    expect(indexSource).not.toMatch(/from ['"]\.\.\/mp-webhook/);
+    expect(indexSource).not.toMatch(/from ['"]\.\.\/create-mp-preference/);
+    expect(indexSource).not.toMatch(/\.from\(['"](wa_payments|wa_payment_events|billing_subscriptions|crm_payments)['"]\)/);
+    expect(indexSource).not.toMatch(/\.rpc\(['"][^'"]*(wa_payments|wa_payment_events|billing_subscriptions)/);
+  });
+});
