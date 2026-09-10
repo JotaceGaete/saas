@@ -1,0 +1,86 @@
+-- ============================================================
+-- EMAIL-PAYMENTS-1 — reactivación del pg_cron de process-email-queue.
+--
+-- *** ESTA MIGRACIÓN SE ENTREGA PREPARADA, NO APLICADA ***
+-- Sección 11 del pedido: "Preparar migración para reactivar únicamente el
+-- procesador Supabase de email_queue. NO ejecutar la migración."
+--
+-- No se ha corrido `supabase db push` en esta fase -- este archivo
+-- simplemente queda listo en el repo para cuando se autorice
+-- explícitamente activar automatización de emails en producción.
+--
+-- Requiere (fuera del alcance de esta fase, documentado para cuando
+-- corresponda):
+--   1. Secrets en Supabase Vault: project_url, anon_key (ya deberían
+--      existir de 20260317000001_cron_daily_summary.sql).
+--   2. EMAIL_FUNCTION_SECRET configurado como env var en send-email Y
+--      process-email-queue (Edge Functions Dashboard) -- OBLIGATORIO
+--      ahora, no opcional (ver el hardening de seguridad de send-email/
+--      process-email-queue en esta misma fase). Sin esto, send-email
+--      rechaza con 401 cualquier llamada no-admin, incluida la de
+--      process-email-queue -- el cron correría pero nunca lograría
+--      enviar nada.
+--   3. Al menos uno de los dos flags de categoría en 'true' --
+--      EMAIL_AUTOMATION_ENABLED (welcome/activation_24h) y/o
+--      PAYMENT_EMAILS_ENABLED (payment_received_buyer/merchant), ambos
+--      independientes (ver la separación de flags de esta misma fase). El
+--      objetivo de producción documentado es específicamente
+--      EMAIL_AUTOMATION_ENABLED=false + PAYMENT_EMAILS_ENABLED=true --
+--      pagos activos sin reactivar welcome/activation_24h. Con ambos en
+--      false, process-email-queue ni siquiera reclama un lote
+--      ({skipped:true}); con uno solo activo, el claim solo trae filas de
+--      esa categoría (wa_claim_email_queue_batch filtra por
+--      p_include_payment_types/p_include_legacy_types).
+--
+-- ── FRECUENCIA: cada 2 minutos, no cada hora ───────────────────────────
+-- El job hourly original (20260405000000_email_queue_activation24h.sql)
+-- tenía sentido para activation_24h (una demora de hasta 1h sobre un
+-- envío ya diferido 24h es imperceptible). Para "pago confirmado", el
+-- comprador espera un correo casi inmediato -- una hora de demora es
+-- inaceptable para ese caso de uso.
+--
+-- 2 minutos es el punto elegido porque:
+--   - Es holgadamente compatible con el mínimo típico de pg_cron en
+--     Supabase (1 minuto) sin quedar al límite.
+--   - Cada corrida sin trabajo pendiente es barata: wa_claim_email_queue_batch
+--     hace UN SELECT con LIMIT + FOR UPDATE SKIP LOCKED sobre un índice
+--     parcial (idx_email_queue_next_attempt_status) -- si no hay filas
+--     'pending'/'failed' listas ni 'processing' abandonadas, el UPDATE no
+--     toca ninguna fila y la función retorna inmediatamente. No hay
+--     llamada a Resend, a send-email, ni a ningún servicio externo si el
+--     lote viene vacío.
+--   - Con retry linear backoff (30/60min), 2 minutos de granularidad no
+--     agrega carga extra a esos reintentos -- solo reduce la demora del
+--     primer intento, que es el caso que más le importa a "pago
+--     confirmado".
+--
+-- Para cambiar la frecuencia más adelante: SELECT cron.alter_job(...) o
+-- unschedule + schedule de nuevo con otro cron expression.
+
+-- CREATE EXTENSION IF NOT EXISTS pg_cron WITH SCHEMA pg_catalog;
+-- CREATE EXTENSION IF NOT EXISTS pg_net  WITH SCHEMA extensions;
+--
+-- SELECT cron.unschedule('process-email-queue') WHERE EXISTS (
+--   SELECT 1 FROM cron.job WHERE jobname = 'process-email-queue'
+-- );
+--
+-- SELECT cron.schedule(
+--   'process-email-queue',
+--   '*/2 * * * *',   -- cada 2 minutos
+--   $$
+--   SELECT net.http_post(
+--     url     := trim(trailing '/' from (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'project_url'))
+--                || '/functions/v1/process-email-queue',
+--     headers := jsonb_build_object(
+--       'Content-Type',  'application/json',
+--       'Authorization', 'Bearer ' || (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'anon_key'),
+--       'apikey',        (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'anon_key')
+--     ),
+--     body    := '{}'::jsonb
+--   ) AS request_id;
+--   $$
+-- );
+--
+-- COMMENT ON EXTENSION pg_cron IS 'Cron jobs. process-email-queue: cada 2 minutos (EMAIL-PAYMENTS-1).';
+--
+-- NOTIFY pgrst, 'reload schema';
