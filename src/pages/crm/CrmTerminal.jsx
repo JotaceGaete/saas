@@ -229,6 +229,11 @@ function CrmTerminalUI() {
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
+  // TPV-CORE-3: paso del flujo de checkout -- puramente de interfaz, nunca
+  // representa una venta registrada ni se persiste en el draft (ver
+  // efecto de restauración más abajo: tras refresh siempre vuelve a
+  // 'sale', incluso si el carrito se restaura).
+  const [checkoutStep, setCheckoutStep] = useState('sale'); // 'sale' | 'payment'
   // TPV-CORE-1: lock síncrono contra doble submit (busy es un useState, se
   // re-renderiza de forma asíncrona -- un doble click a pocos ms de
   // distancia podría disparar handleRegister dos veces antes de que React
@@ -471,6 +476,7 @@ function CrmTerminalUI() {
     if (draftKey) removePosTerminalDraft(draftKey);
     setDraftNotice(null);
     setCustomerRemovedNotice(false);
+    setCheckoutStep('sale');
     setCart([]);
     setCustomerId('');
     setDiscount('');
@@ -500,6 +506,18 @@ function CrmTerminalUI() {
       const next = prev.filter((payment) => payment.id !== id);
       return next.length > 0 ? next : [{ id: `payment_${Date.now()}`, method: 'cash', amount: '' }];
     });
+  };
+
+  // ── TPV-CORE-3: flujo de checkout en dos etapas ───────────────────────────
+  // Estado puramente de UI -- no crea ni modifica ningún registro. Nunca
+  // borra carrito/cliente/descuento/notas/pagos/idempotency key/draft.
+  const handleGoToPayment = () => {
+    if (cart.length === 0) return;
+    setCheckoutStep('payment');
+  };
+
+  const handleBackToSale = () => {
+    setCheckoutStep('sale');
   };
 
   // ── TPV-CORE-2: borrador local de la venta en curso ──────────────────────
@@ -1139,31 +1157,56 @@ function CrmTerminalUI() {
                     ver nota en la columna izquierda.                       */}
                 <div className={`w-full min-w-0 lg:sticky lg:top-4 lg:flex lg:h-[calc(100vh-5rem)] lg:flex-col ${cart.length > 0 ? 'order-1' : 'order-2'} lg:order-2`}>
 
-                  {/* ── Zone 1: Customer ── flex-none ─────────────────────── */}
+                  {/* ── Zone 1: header ── flex-none ───────────────────────────
+                      TPV-CORE-3: en 'sale' prioriza el total + cantidad de
+                      artículos, sin adelantar información de pago (aún no
+                      hay cobro en curso). En 'payment' muestra el resumen
+                      completo (estado, items/pagado/pendiente) y, si
+                      corresponde, el cliente seleccionado -- reutilizando
+                      selectedCustomer, sin duplicar estado (sección 9).    */}
                   <div className="rounded-2xl border border-gray-200 bg-white p-3.5 shadow-sm lg:flex-none">
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <p className="text-[11px] font-black uppercase tracking-wide text-gray-400">Total venta</p>
+                        <p className="text-[11px] font-black uppercase tracking-wide text-gray-400">
+                          {checkoutStep === 'payment' ? 'Cobrar' : 'Total venta'}
+                        </p>
                         <p className="mt-1 truncate text-2xl font-black tracking-tight text-gray-950 xl:text-3xl">{fmt(total, business?.currency)}</p>
                       </div>
-                      <span className={`rounded-full px-2.5 py-1 text-xs font-black ${pendingBalance > 0 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
-                        {paymentStatusLabel}
-                      </span>
+                      {checkoutStep === 'payment' && (
+                        <span className={`rounded-full px-2.5 py-1 text-xs font-black ${pendingBalance > 0 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                          {paymentStatusLabel}
+                        </span>
+                      )}
                     </div>
-                    <div className="mt-3 grid grid-cols-3 gap-1.5">
-                      <div className="rounded-xl bg-gray-50 px-2.5 py-2">
-                        <p className="text-[10px] font-bold uppercase text-gray-400">Items</p>
-                        <p className="text-lg font-black text-gray-900">{cartCount}</p>
+                    {checkoutStep === 'sale' ? (
+                      <div className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-gray-50 px-2.5 py-2">
+                        <Icon name="ShoppingCart" size={12} className="text-gray-400" />
+                        <span className="text-xs font-bold text-gray-600">{cartCount} {cartCount === 1 ? 'artículo' : 'artículos'}</span>
                       </div>
-                      <div className="rounded-xl bg-emerald-50 px-2.5 py-2">
-                        <p className="text-[10px] font-bold uppercase text-emerald-600">Pagado</p>
-                        <p className="truncate text-xs font-black text-emerald-800 xl:text-sm">{fmt(paidTotal, business?.currency)}</p>
-                      </div>
-                      <div className="rounded-xl bg-amber-50 px-2.5 py-2">
-                        <p className="text-[10px] font-bold uppercase text-amber-600">Pendiente</p>
-                        <p className="truncate text-xs font-black text-amber-800 xl:text-sm">{fmt(pendingBalance, business?.currency)}</p>
-                      </div>
-                    </div>
+                    ) : (
+                      <>
+                        <div className="mt-3 grid grid-cols-3 gap-1.5">
+                          <div className="rounded-xl bg-gray-50 px-2.5 py-2">
+                            <p className="text-[10px] font-bold uppercase text-gray-400">Items</p>
+                            <p className="text-lg font-black text-gray-900">{cartCount}</p>
+                          </div>
+                          <div className="rounded-xl bg-emerald-50 px-2.5 py-2">
+                            <p className="text-[10px] font-bold uppercase text-emerald-600">Pagado</p>
+                            <p className="truncate text-xs font-black text-emerald-800 xl:text-sm">{fmt(paidTotal, business?.currency)}</p>
+                          </div>
+                          <div className="rounded-xl bg-amber-50 px-2.5 py-2">
+                            <p className="text-[10px] font-bold uppercase text-amber-600">Pendiente</p>
+                            <p className="truncate text-xs font-black text-amber-800 xl:text-sm">{fmt(pendingBalance, business?.currency)}</p>
+                          </div>
+                        </div>
+                        {selectedCustomer && (
+                          <div className="mt-2 flex items-center gap-1.5 text-xs text-gray-500">
+                            <Icon name="UserRound" size={12} className="text-gray-400" />
+                            <span className="truncate">{selectedCustomer.name}{selectedCustomer.company ? ` · ${selectedCustomer.company}` : ''}</span>
+                          </div>
+                        )}
+                      </>
+                    )}
                   </div>
 
                   <div className="hidden">
@@ -1226,11 +1269,20 @@ function CrmTerminalUI() {
                     </div>
 
                     {/* Cart items — flex-1 min-h-0 overflow-y-auto on desktop;
-                        max-h cap on mobile so the page doesn't get too long.   */}
+                        max-h cap on mobile so the page doesn't get too long.
+                        TPV-CORE-3: en 'payment' se reemplaza por un resumen
+                        compacto (sección 5) -- el detalle artículo por
+                        artículo es responsabilidad de la etapa 'sale'; el
+                        cajero vuelve con "Volver a la venta" para editarlo. */}
                     {cart.length === 0 ? (
                       <div className="px-4 py-10 text-center lg:flex-1 lg:flex lg:flex-col lg:items-center lg:justify-center">
                         <Icon name="ShoppingCart" size={32} className="mx-auto mb-2 text-gray-200" />
                         <p className="text-gray-400 text-sm">Toca un producto para agregarlo</p>
+                      </div>
+                    ) : checkoutStep === 'payment' ? (
+                      <div className="px-4 py-3 text-xs text-gray-500">
+                        <span className="font-bold text-gray-700">{cartCount}</span> {cartCount === 1 ? 'artículo' : 'artículos'} · Subtotal {fmt(subtotal, business?.currency)}
+                        {discountAmount > 0 && <> · Descuento −{fmt(discountAmount, business?.currency)}</>}
                       </div>
                     ) : (
                       <div className="divide-y divide-gray-100 max-h-52 overflow-y-auto
@@ -1285,187 +1337,234 @@ function CrmTerminalUI() {
                   </div>
 
                   {/* ── Zone 3: Checkout controls ── flex-none ───────────────
-                      Compacted to ~280px so the cart gets 200px+ on 768px.
-                      Discount + Notes in one row. Payment as 4-button row.
-                      Desktop totals+cobrar block is hidden on mobile.          */}
+                      TPV-CORE-3: flujo en dos etapas. En 'sale' solo se
+                      muestran descuento/notas + el CTA "Cobrar $X" -- todo
+                      el bloque de pagos queda oculto para dejarle el
+                      espacio vertical al carrito (Zone 2). Al presionar
+                      Cobrar se pasa a 'payment', que reutiliza EXACTAMENTE
+                      el mismo JSX/estado de pagos que ya existía (ninguna
+                      lógica de pagos se reimplementa, solo se reordena su
+                      visibilidad) y agrega "Volver a la venta", que jamás
+                      borra carrito/cliente/descuento/notas/pagos/key/draft.*/}
                   <div className="flex flex-col gap-2 mt-2.5 lg:flex-none lg:shrink-0">
 
-                    {/* Discount + Notes — single compact row */}
-                    <div className="flex gap-2">
-                      <div className="flex-1 relative">
-                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none">$</span>
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          value={fmtMoneyInput(discount)}
-                          onChange={e => setDiscount(e.target.value.replace(/\D/g, ''))}
-                          placeholder="Descuento"
-                          className="w-full pl-6 pr-2 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                        />
-                      </div>
-                      <input
-                        type="text"
-                        value={notes}
-                        onChange={e => setNotes(e.target.value)}
-                        placeholder="Notas…"
-                        className="flex-1 px-2.5 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                      />
-                    </div>
-
-                    {/* Payment method — 4 buttons in one row */}
-                    <div className="rounded-2xl border border-gray-200 bg-white p-2.5 space-y-2">
-                      {/* Atajo: Venta a crédito */}
-                      <button
-                        type="button"
-                        onClick={() => setPayments(prev => prev.map(p => ({ ...p, amount: '' })))}
-                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-dashed border-amber-300 bg-amber-50 hover:bg-amber-100 transition-colors text-left"
-                      >
-                        <span className="w-7 h-7 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
-                          <Icon name="BookUser" size={14} className="text-amber-600" />
-                        </span>
-                        <span className="min-w-0">
-                          <span className="block text-xs font-bold text-amber-800 leading-tight">Vender a cuenta corriente</span>
-                          <span className="block text-[10px] text-amber-600 leading-tight mt-0.5">Deja el total como pendiente · requiere cliente registrado</span>
-                        </span>
-                      </button>
-
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-xs font-bold text-gray-800">Pagos</p>
-                          <p className="text-[11px] text-gray-500">Total: {fmt(total, business?.currency)}</p>
+                    {checkoutStep === 'sale' && (
+                      <>
+                        {/* Discount + Notes — single compact row */}
+                        <div className="flex gap-2">
+                          <div className="flex-1 relative">
+                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none">$</span>
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              value={fmtMoneyInput(discount)}
+                              onChange={e => setDiscount(e.target.value.replace(/\D/g, ''))}
+                              placeholder="Descuento"
+                              className="w-full pl-6 pr-2 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                            />
+                          </div>
+                          <input
+                            type="text"
+                            value={notes}
+                            onChange={e => setNotes(e.target.value)}
+                            placeholder="Notas…"
+                            className="flex-1 px-2.5 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                          />
                         </div>
-                        <button
-                          onClick={addPayment}
-                          className="h-8 px-2.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold flex items-center gap-1"
-                        >
-                          <Icon name="Plus" size={13} />
-                          Agregar
-                        </button>
-                      </div>
 
-                      <div className="space-y-1.5 max-h-[168px] overflow-y-auto pr-0.5">
-                        {payments.map((payment) => (
-                          <div key={payment.id} className="flex items-center gap-1.5">
-                            <select
-                              value={payment.method}
-                              onChange={(e) => updatePayment(payment.id, { method: e.target.value })}
-                              className="w-[116px] border border-gray-200 rounded-lg px-2 py-2 text-xs bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            >
-                              {REAL_PAYMENT_METHODS.map((method) => (
-                                <option key={method.value} value={method.value}>{method.label}</option>
-                              ))}
-                            </select>
-                            <div className="relative flex-1 min-w-0">
-                              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none">$</span>
-                              <input
-                                type="text"
-                                inputMode="numeric"
-                                value={fmtMoneyInput(payment.amount)}
-                                onChange={(e) => updatePayment(payment.id, { amount: e.target.value.replace(/\D/g, '') })}
-                                placeholder="Monto"
-                                className="w-full pl-5 pr-2 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
-                              />
+                        {/* CTA "Cobrar" — desktop only; mobile usa la barra fija
+                            para no duplicar el mismo CTA dos veces en pantalla. */}
+                        <div className="hidden lg:flex flex-col gap-2.5 rounded-2xl bg-gray-950 px-4 py-4 shadow-xl">
+                          <div className="flex justify-between items-end">
+                            <span className="text-sm font-bold text-gray-300">Total</span>
+                            <span className="truncate text-2xl font-black tracking-tight text-white xl:text-3xl">{fmt(total, business?.currency)}</span>
+                          </div>
+                          <button
+                            onClick={handleGoToPayment}
+                            disabled={cart.length === 0}
+                            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-500 py-3.5 text-base font-black text-white shadow-lg shadow-emerald-950/30 transition-all hover:-translate-y-0.5 hover:bg-emerald-400 disabled:translate-y-0 disabled:bg-gray-800 disabled:text-gray-500 disabled:shadow-none xl:py-4 xl:text-lg min-h-[44px]"
+                          >
+                            <Icon name="Wallet" size={18} />
+                            Cobrar {fmt(total, business?.currency)}
+                          </button>
+                        </div>
+                      </>
+                    )}
+
+                    {checkoutStep === 'payment' && (
+                      <>
+                        {/* Payment method — reutiliza exactamente el mismo
+                            estado/lógica de payments/cuenta corriente que
+                            existía antes de TPV-CORE-3; solo cambió CUÁNDO
+                            se muestra, no CÓMO funciona. */}
+                        <div className="rounded-2xl border border-gray-200 bg-white p-2.5 space-y-2">
+                          {/* Atajo: Venta a crédito */}
+                          <button
+                            type="button"
+                            onClick={() => setPayments(prev => prev.map(p => ({ ...p, amount: '' })))}
+                            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-dashed border-amber-300 bg-amber-50 hover:bg-amber-100 transition-colors text-left"
+                          >
+                            <span className="w-7 h-7 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
+                              <Icon name="BookUser" size={14} className="text-amber-600" />
+                            </span>
+                            <span className="min-w-0">
+                              <span className="block text-xs font-bold text-amber-800 leading-tight">Vender a cuenta corriente</span>
+                              <span className="block text-[10px] text-amber-600 leading-tight mt-0.5">Deja el total como pendiente · requiere cliente registrado</span>
+                            </span>
+                          </button>
+
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-xs font-bold text-gray-800">Pagos</p>
+                              <p className="text-[11px] text-gray-500">Total: {fmt(total, business?.currency)}</p>
                             </div>
                             <button
-                              onClick={() => removePayment(payment.id)}
-                              title="Eliminar pago"
-                              aria-label="Eliminar pago"
-                              className="w-8 h-8 rounded-lg bg-red-50 hover:bg-red-100 flex items-center justify-center text-red-500"
+                              onClick={addPayment}
+                              className="h-8 px-2.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold flex items-center gap-1"
                             >
-                              <Icon name="Trash2" size={13} />
+                              <Icon name="Plus" size={13} />
+                              Agregar
                             </button>
                           </div>
-                        ))}
-                      </div>
 
-                      <div className="grid grid-cols-3 gap-1.5 pt-1">
-                        <div className="rounded-lg bg-emerald-50 px-2 py-1.5">
-                          <p className="text-[10px] text-emerald-700 font-semibold">Pagado</p>
-                          <p className="text-xs font-bold text-emerald-800">{fmt(paidTotal, business?.currency)}</p>
-                        </div>
-                        <div className={`rounded-lg px-2 py-1.5 ${pendingBalance > 0 ? 'bg-amber-50' : 'bg-gray-50'}`}>
-                          <p className={`text-[10px] font-semibold ${pendingBalance > 0 ? 'text-amber-700' : 'text-gray-500'}`}>Pendiente</p>
-                          <p className={`text-xs font-bold ${pendingBalance > 0 ? 'text-amber-800' : 'text-gray-700'}`}>{fmt(pendingBalance, business?.currency)}</p>
-                        </div>
-                        <div className={`rounded-lg px-2 py-1.5 ${change > 0 ? 'bg-blue-50' : 'bg-gray-50'}`}>
-                          <p className={`text-[10px] font-semibold ${change > 0 ? 'text-blue-700' : 'text-gray-500'}`}>Vuelto</p>
-                          <p className={`text-xs font-bold ${change > 0 ? 'text-blue-800' : 'text-gray-700'}`}>{fmt(change, business?.currency)}</p>
-                        </div>
-                      </div>
-
-                      {hasNonCashOverpay && (
-                        <p className="text-xs font-semibold text-red-600">Solo efectivo puede generar vuelto.</p>
-                      )}
-                      {requiresCustomerForPending && !customerId && (
-                        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 space-y-2">
-                          <p className="text-xs font-semibold text-amber-800 leading-snug">
-                            Faltan <strong>{fmt(pendingBalance, business?.currency)}</strong> por pagar.
-                            Agrega otro medio de pago o selecciona un cliente para vender a cuenta corriente.
-                          </p>
-                          <button
-                            type="button"
-                            onClick={addPayment}
-                            className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg px-2.5 py-1.5 transition-colors"
-                          >
-                            <Icon name="Plus" size={12} />
-                            Agregar medio de pago
-                          </button>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Pago recibido — solo efectivo */}
-                    {/* Totals + Cobrar — desktop only; mobile uses fixed bar */}
-                    <div className="hidden lg:flex flex-col gap-2.5 rounded-2xl bg-gray-950 px-4 py-4 shadow-xl">
-                      <div className="space-y-1">
-                        <div className="flex justify-between text-xs text-gray-400">
-                          <span>Subtotal</span>
-                          <span>{fmt(subtotal, business?.currency)}</span>
-                        </div>
-                        {discountAmount > 0 && (
-                          <div className="flex justify-between text-xs text-red-400">
-                            <span>Descuento</span>
-                            <span>-{fmt(discountAmount, business?.currency)}</span>
+                          <div className="space-y-1.5 max-h-[168px] overflow-y-auto pr-0.5">
+                            {payments.map((payment) => (
+                              <div key={payment.id} className="flex items-center gap-1.5">
+                                <select
+                                  value={payment.method}
+                                  onChange={(e) => updatePayment(payment.id, { method: e.target.value })}
+                                  className="w-[116px] border border-gray-200 rounded-lg px-2 py-2 text-xs bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                >
+                                  {REAL_PAYMENT_METHODS.map((method) => (
+                                    <option key={method.value} value={method.value}>{method.label}</option>
+                                  ))}
+                                </select>
+                                <div className="relative flex-1 min-w-0">
+                                  <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none">$</span>
+                                  <input
+                                    type="text"
+                                    inputMode="numeric"
+                                    value={fmtMoneyInput(payment.amount)}
+                                    onChange={(e) => updatePayment(payment.id, { amount: e.target.value.replace(/\D/g, '') })}
+                                    placeholder="Monto"
+                                    className="w-full pl-5 pr-2 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
+                                  />
+                                </div>
+                                <button
+                                  onClick={() => removePayment(payment.id)}
+                                  title="Eliminar pago"
+                                  aria-label="Eliminar pago"
+                                  className="w-8 h-8 rounded-lg bg-red-50 hover:bg-red-100 flex items-center justify-center text-red-500"
+                                >
+                                  <Icon name="Trash2" size={13} />
+                                </button>
+                              </div>
+                            ))}
                           </div>
-                        )}
-                      </div>
-                      <div className="flex justify-between items-end border-t border-gray-800 pt-3">
-                        <span className="text-sm font-bold text-gray-300">Total</span>
-                        <span className="truncate text-2xl font-black tracking-tight text-white xl:text-3xl">{fmt(total, business?.currency)}</span>
-                      </div>
-                      {requiresCustomerForPending && !customerId ? (
-                        <div className="flex gap-2">
-                          <button
-                            disabled
-                            className="flex-1 flex items-center justify-center gap-2 rounded-2xl bg-gray-800 py-3.5 text-sm font-black text-gray-500 shadow-none cursor-not-allowed xl:py-4"
-                          >
-                            <Icon name="AlertCircle" size={16} />
-                            Falta pagar {fmt(pendingBalance, business?.currency)}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={addPayment}
-                            className="shrink-0 flex items-center justify-center gap-1.5 rounded-2xl bg-blue-600 hover:bg-blue-700 px-3.5 py-3.5 text-xs font-bold text-white transition-colors xl:py-4"
-                            title="Agregar pago"
-                          >
-                            <Icon name="Plus" size={15} />
-                            <span className="hidden xl:inline">Agregar pago</span>
-                          </button>
+
+                          <div className="grid grid-cols-3 gap-1.5 pt-1">
+                            <div className="rounded-lg bg-emerald-50 px-2 py-1.5">
+                              <p className="text-[10px] text-emerald-700 font-semibold">Pagado</p>
+                              <p className="text-xs font-bold text-emerald-800">{fmt(paidTotal, business?.currency)}</p>
+                            </div>
+                            <div className={`rounded-lg px-2 py-1.5 ${pendingBalance > 0 ? 'bg-amber-50' : 'bg-gray-50'}`}>
+                              <p className={`text-[10px] font-semibold ${pendingBalance > 0 ? 'text-amber-700' : 'text-gray-500'}`}>Pendiente</p>
+                              <p className={`text-xs font-bold ${pendingBalance > 0 ? 'text-amber-800' : 'text-gray-700'}`}>{fmt(pendingBalance, business?.currency)}</p>
+                            </div>
+                            <div className={`rounded-lg px-2 py-1.5 ${change > 0 ? 'bg-blue-50' : 'bg-gray-50'}`}>
+                              <p className={`text-[10px] font-semibold ${change > 0 ? 'text-blue-700' : 'text-gray-500'}`}>Vuelto</p>
+                              <p className={`text-xs font-bold ${change > 0 ? 'text-blue-800' : 'text-gray-700'}`}>{fmt(change, business?.currency)}</p>
+                            </div>
+                          </div>
+
+                          {hasNonCashOverpay && (
+                            <p className="text-xs font-semibold text-red-600">Solo efectivo puede generar vuelto.</p>
+                          )}
+                          {requiresCustomerForPending && !customerId && (
+                            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 space-y-2">
+                              <p className="text-xs font-semibold text-amber-800 leading-snug">
+                                Faltan <strong>{fmt(pendingBalance, business?.currency)}</strong> por pagar.
+                                Agrega otro medio de pago o selecciona un cliente para vender a cuenta corriente.
+                              </p>
+                              <button
+                                type="button"
+                                onClick={addPayment}
+                                className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg px-2.5 py-1.5 transition-colors"
+                              >
+                                <Icon name="Plus" size={12} />
+                                Agregar medio de pago
+                              </button>
+                            </div>
+                          )}
                         </div>
-                      ) : (
+
+                        {/* Pago recibido — solo efectivo */}
+                        {/* Totals + Confirmar venta — desktop only; mobile uses fixed bar */}
+                        <div className="hidden lg:flex flex-col gap-2.5 rounded-2xl bg-gray-950 px-4 py-4 shadow-xl">
+                          <div className="space-y-1">
+                            <div className="flex justify-between text-xs text-gray-400">
+                              <span>Subtotal</span>
+                              <span>{fmt(subtotal, business?.currency)}</span>
+                            </div>
+                            {discountAmount > 0 && (
+                              <div className="flex justify-between text-xs text-red-400">
+                                <span>Descuento</span>
+                                <span>-{fmt(discountAmount, business?.currency)}</span>
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex justify-between items-end border-t border-gray-800 pt-3">
+                            <span className="text-sm font-bold text-gray-300">Total</span>
+                            <span className="truncate text-2xl font-black tracking-tight text-white xl:text-3xl">{fmt(total, business?.currency)}</span>
+                          </div>
+                          {requiresCustomerForPending && !customerId ? (
+                            <div className="flex gap-2">
+                              <button
+                                disabled
+                                className="flex-1 flex items-center justify-center gap-2 rounded-2xl bg-gray-800 py-3.5 text-sm font-black text-gray-500 shadow-none cursor-not-allowed xl:py-4"
+                              >
+                                <Icon name="AlertCircle" size={16} />
+                                Falta pagar {fmt(pendingBalance, business?.currency)}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={addPayment}
+                                className="shrink-0 flex items-center justify-center gap-1.5 rounded-2xl bg-blue-600 hover:bg-blue-700 px-3.5 py-3.5 text-xs font-bold text-white transition-colors xl:py-4"
+                                title="Agregar pago"
+                              >
+                                <Icon name="Plus" size={15} />
+                                <span className="hidden xl:inline">Agregar pago</span>
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={handleRegister}
+                              disabled={cart.length === 0 || busy || isPaymentInvalid}
+                              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-500 py-3.5 text-base font-black text-white shadow-lg shadow-emerald-950/30 transition-all hover:-translate-y-0.5 hover:bg-emerald-400 disabled:translate-y-0 disabled:bg-gray-800 disabled:text-gray-500 disabled:shadow-none xl:py-4 xl:text-lg"
+                            >
+                              {busy
+                                ? <><Icon name="Loader2" size={18} className="animate-spin" />Registrando…</>
+                                : <><Icon name={pendingBalance > 0 ? 'BookUser' : 'Zap'} size={18} />Confirmar venta</>
+                              }
+                            </button>
+                          )}
+                          <p className="text-center text-xs text-gray-400">{paymentStatusLabel}</p>
+                        </div>
+
+                        {/* Volver a la venta — desktop only; el propio flujo
+                            mobile ya ofrece "Volver a la venta" en la barra
+                            fija (sección 14), así que este botón no se
+                            duplica ahí. Nunca borra carrito/pagos/key/draft. */}
                         <button
-                          onClick={handleRegister}
-                          disabled={cart.length === 0 || busy || isPaymentInvalid}
-                          className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-500 py-3.5 text-base font-black text-white shadow-lg shadow-emerald-950/30 transition-all hover:-translate-y-0.5 hover:bg-emerald-400 disabled:translate-y-0 disabled:bg-gray-800 disabled:text-gray-500 disabled:shadow-none xl:py-4 xl:text-lg"
+                          type="button"
+                          onClick={handleBackToSale}
+                          className="hidden lg:flex w-full items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white py-3 text-sm font-bold text-gray-600 hover:bg-gray-50 transition-colors min-h-[44px]"
                         >
-                          {busy
-                            ? <><Icon name="Loader2" size={18} className="animate-spin" />Registrando…</>
-                            : <><Icon name={pendingBalance > 0 ? 'BookUser' : 'Zap'} size={18} />Completar venta</>
-                          }
+                          <Icon name="ArrowLeft" size={16} />
+                          Volver a la venta
                         </button>
-                      )}
-                      <p className="text-center text-xs text-gray-400">{paymentStatusLabel}</p>
-                    </div>
+                      </>
+                    )}
 
                   </div>{/* end zone 3 */}
 
@@ -1475,9 +1574,26 @@ function CrmTerminalUI() {
 
             {/* ── Mobile sticky bottom bar ────────────────────────────────────
                 Fixed at viewport bottom on small screens (lg:hidden).
-                pb-24 on outer container prevents overlap with content.          */}
+                pb-24 on outer container prevents overlap with content.
+                TPV-CORE-3: la franja superior se adapta según checkoutStep
+                en vez de duplicar JSX del carrito -- en 'sale' es "Ver
+                carrito (N)" (scroll a Zone 2, comportamiento de TPV-CORE-2
+                sin cambios); en 'payment' se reemplaza por "Volver a la
+                venta" en el MISMO lugar, evitando dos CTA distintos a la
+                vez. El CTA principal (fila inferior) también cambia:
+                "Cobrar" en 'sale', "+Pago"/"Confirmar" en 'payment' (igual
+                que antes) -- nunca ambos simultáneamente.                   */}
             <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-800 shadow-2xl" style={{ zIndex: 150 }}>
-              {cart.length > 0 && (
+              {checkoutStep === 'payment' ? (
+                <button
+                  type="button"
+                  onClick={handleBackToSale}
+                  className="w-full flex items-center justify-center gap-1.5 px-3 py-2.5 border-b border-gray-800 text-xs font-bold text-gray-300 hover:text-white transition-colors min-h-[44px]"
+                >
+                  <Icon name="ArrowLeft" size={13} color="currentColor" />
+                  Volver a la venta
+                </button>
+              ) : cart.length > 0 && (
                 <button
                   type="button"
                   onClick={() => cartSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
@@ -1495,14 +1611,26 @@ function CrmTerminalUI() {
                   </p>
                 )}
                 <p className="truncate text-lg font-bold text-white leading-tight">{fmt(total, business?.currency)}</p>
-                <p className={`text-[10px] mt-0.5 ${isPaymentInvalid ? 'text-amber-400' : 'text-gray-400'}`}>
-                  {requiresCustomerForPending && !customerId
-                    ? `Faltan ${fmt(pendingBalance, business?.currency)} · selecciona cliente`
-                    : `Pagado ${fmt(paidTotal, business?.currency)} · Pendiente ${fmt(pendingBalance, business?.currency)}`
-                  }
-                </p>
+                {checkoutStep === 'payment' && (
+                  <p className={`text-[10px] mt-0.5 ${isPaymentInvalid ? 'text-amber-400' : 'text-gray-400'}`}>
+                    {requiresCustomerForPending && !customerId
+                      ? `Faltan ${fmt(pendingBalance, business?.currency)} · selecciona cliente`
+                      : `Pagado ${fmt(paidTotal, business?.currency)} · Pendiente ${fmt(pendingBalance, business?.currency)}`
+                    }
+                  </p>
+                )}
               </div>
-              {requiresCustomerForPending && !customerId ? (
+              {checkoutStep === 'sale' ? (
+                <button
+                  type="button"
+                  onClick={handleGoToPayment}
+                  disabled={cart.length === 0}
+                  className="shrink-0 px-4 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:bg-gray-700 disabled:text-gray-500 text-white font-bold text-sm transition-colors flex items-center gap-2 min-h-[44px]"
+                >
+                  <Icon name="Wallet" size={16} />
+                  Cobrar
+                </button>
+              ) : requiresCustomerForPending && !customerId ? (
                 <button
                   type="button"
                   onClick={addPayment}
@@ -1519,7 +1647,7 @@ function CrmTerminalUI() {
                 >
                   {busy
                     ? <><Icon name="Loader2" size={16} className="animate-spin" />Procesando…</>
-                    : <><Icon name={pendingBalance > 0 ? 'BookUser' : 'Zap'} size={16} />Completar</>
+                    : <><Icon name={pendingBalance > 0 ? 'BookUser' : 'Zap'} size={16} />Confirmar</>
                   }
                 </button>
               )}
