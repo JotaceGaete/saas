@@ -94,8 +94,8 @@ export interface BusinessRow {
   user_id: string;
 }
 
-export type ResolveBusinessResult =
-  | { ok: true; business: BusinessRow }
+export type ResolveBusinessResult<T extends BusinessRow = BusinessRow> =
+  | { ok: true; business: T }
   | { ok: false; reason: 'no_business' | 'multiple_businesses' | 'ownership_mismatch' };
 
 /**
@@ -105,11 +105,19 @@ export type ResolveBusinessResult =
  * función no tiene NINGÚN parámetro para un business_id de cliente, a
  * propósito: estructuralmente no puede "elegir" el negocio de otro
  * usuario, sin importar qué venga en el body de la request.
+ *
+ * Genérica sobre `T extends BusinessRow` para que un llamador que
+ * seleccionó columnas adicionales (p. ej. mp-oauth-start selecciona
+ * también `country_code` para enrutar credenciales MP por país) reciba
+ * ese mismo shape de vuelta en `business`, sin duplicar esta lógica de
+ * aislamiento de tenant. Los llamadores que solo necesitan {id,user_id}
+ * (mp-oauth-disconnect) siguen funcionando exactamente igual -- T se
+ * infiere como BusinessRow por defecto.
  */
-export function resolveBusinessForOAuth(
-  businesses: BusinessRow[],
+export function resolveBusinessForOAuth<T extends BusinessRow>(
+  businesses: T[],
   authenticatedUserId: string,
-): ResolveBusinessResult {
+): ResolveBusinessResult<T> {
   if (businesses.length === 0) return { ok: false, reason: 'no_business' };
   if (businesses.length > 1) return { ok: false, reason: 'multiple_businesses' };
   const business = businesses[0];

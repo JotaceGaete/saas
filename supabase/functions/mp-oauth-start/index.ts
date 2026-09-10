@@ -13,6 +13,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { getSupabasePublishableKeyOrEmpty } from '../_shared/supabasePublishableKey.ts';
+import { getMpOauthCredentials } from '../_shared/mpOauthCredentials.ts';
 import {
   generateCodeVerifier,
   generateState,
@@ -22,6 +23,8 @@ import {
   resolveBusinessForOAuth,
   type BusinessRow,
 } from './lib.ts';
+
+type BusinessRowWithCountry = BusinessRow & { country_code: string | null };
 
 const MP_AUTHORIZATION_BASE_URL = 'https://auth.mercadopago.com/authorization';
 const STATE_TTL_SECONDS = 600; // 10 minutos
@@ -58,11 +61,10 @@ Deno.serve(async (req) => {
   const supabaseUrl    = Deno.env.get('SUPABASE_URL')              ?? '';
   const anonKey        = getSupabasePublishableKeyOrEmpty();
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-  const mpClientId     = Deno.env.get('MP_CLIENT_ID')              ?? '';
   const redirectUri    = Deno.env.get('MP_OAUTH_REDIRECT_URI')     ?? '';
 
-  if (!serviceRoleKey || !mpClientId || !redirectUri) {
-    console.error('[mp-oauth-start] server configuration missing (SUPABASE_SERVICE_ROLE_KEY / MP_CLIENT_ID / MP_OAUTH_REDIRECT_URI)');
+  if (!serviceRoleKey || !redirectUri) {
+    console.error('[mp-oauth-start] server configuration missing (SUPABASE_SERVICE_ROLE_KEY / MP_OAUTH_REDIRECT_URI)');
     return jsonResponse({ error: 'Server configuration error' }, 500);
   }
 
@@ -85,10 +87,13 @@ Deno.serve(async (req) => {
   }
 
   // ── 3. Resolver negocio con SERVICE_ROLE (sin RLS, sin ambigüedad) ─────────
+  // Se selecciona country_code además de id/user_id: MP-OAUTH enruta
+  // credenciales por país (CL/AR), y ese país se deriva SIEMPRE del
+  // negocio ya resuelto server-side -- nunca de un valor del body.
   const adminClient = createClient(supabaseUrl, serviceRoleKey);
   const { data: businesses, error: bizError } = await adminClient
     .from('wa_businesses')
-    .select('id, user_id')
+    .select('id, user_id, country_code')
     .eq('user_id', user.id);
 
   if (bizError) {
@@ -96,7 +101,7 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: 'Business not found for user' }, 404);
   }
 
-  const resolution = resolveBusinessForOAuth((businesses ?? []) as BusinessRow[], user.id);
+  const resolution = resolveBusinessForOAuth((businesses ?? []) as BusinessRowWithCountry[], user.id);
   if (!resolution.ok) {
     console.error('[mp-oauth-start] business resolution failed:', resolution.reason);
     return jsonResponse(
@@ -105,6 +110,22 @@ Deno.serve(async (req) => {
     );
   }
   const business = resolution.business;
+
+  // ── 3b. Seleccionar credenciales MP por país -- ANTES de crear el state:
+  //       si el país no está soportado o no está configurado, no se debe
+  //       persistir ningún intento de conexión.
+  const credentialsResult = getMpOauthCredentials(business.country_code);
+  if (!credentialsResult.ok) {
+    console.warn('[mp-oauth-start] país no disponible para MP-OAUTH', {
+      businessId: business.id,
+      reason: credentialsResult.reason,
+    });
+    return jsonResponse(
+      { error: 'Mercado Pago aún no está disponible para tu país', reason: 'MP_COUNTRY_NOT_SUPPORTED' },
+      422,
+    );
+  }
+  const mpClientId = credentialsResult.credentials.clientId;
 
   // ── 4. Generar state + PKCE ─────────────────────────────────────────────────
   const state        = generateState();

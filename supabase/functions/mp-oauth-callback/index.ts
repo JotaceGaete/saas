@@ -10,6 +10,7 @@
 // ?tab=mercadopago&mp=connected|error -- nada sensible en la URL.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { getMpOauthCredentials } from '../_shared/mpOauthCredentials.ts';
 import {
   hashState,
   buildTokenExchangeBody,
@@ -32,13 +33,11 @@ Deno.serve(async (req) => {
 
   const supabaseUrl      = Deno.env.get('SUPABASE_URL')              ?? '';
   const serviceRoleKey   = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-  const mpClientId       = Deno.env.get('MP_CLIENT_ID')              ?? '';
-  const mpClientSecret   = Deno.env.get('MP_CLIENT_SECRET')          ?? '';
   const redirectUri      = Deno.env.get('MP_OAUTH_REDIRECT_URI')     ?? '';
   const appReturnBaseUrl = Deno.env.get('MP_OAUTH_APP_RETURN_URL')   ?? DEFAULT_APP_RETURN_URL;
 
-  if (!serviceRoleKey || !mpClientId || !mpClientSecret || !redirectUri) {
-    console.error('[mp-oauth-callback] server configuration missing (service role / MP_CLIENT_ID / MP_CLIENT_SECRET / MP_OAUTH_REDIRECT_URI)');
+  if (!serviceRoleKey || !redirectUri) {
+    console.error('[mp-oauth-callback] server configuration missing (service role / MP_OAUTH_REDIRECT_URI)');
     return redirectResponse(buildCallbackRedirectUrl({ appReturnBaseUrl, status: 'error' }));
   }
 
@@ -78,6 +77,30 @@ Deno.serve(async (req) => {
 
   const businessId   = consumed.business_id as string;
   const codeVerifier = consumed.code_verifier as string;
+
+  // ── 6b. Seleccionar credenciales MP por país -- derivado del NEGOCIO
+  //       asociado al state ya consumido, nunca de un valor recibido del
+  //       browser (el callback no recibe ni lee ningún parámetro de país).
+  const { data: bizRow, error: bizError } = await db
+    .from('wa_businesses')
+    .select('country_code')
+    .eq('id', businessId)
+    .maybeSingle();
+
+  if (bizError) {
+    console.error('[mp-oauth-callback] error consultando country_code del negocio:', bizError.message);
+    return redirectResponse(buildCallbackRedirectUrl({ appReturnBaseUrl, status: 'error' }));
+  }
+
+  const credentialsResult = getMpOauthCredentials(bizRow?.country_code ?? null);
+  if (!credentialsResult.ok) {
+    console.warn('[mp-oauth-callback] país no disponible para MP-OAUTH', {
+      businessId,
+      reason: credentialsResult.reason,
+    });
+    return redirectResponse(buildCallbackRedirectUrl({ appReturnBaseUrl, status: 'error' }));
+  }
+  const { clientId: mpClientId, clientSecret: mpClientSecret } = credentialsResult.credentials;
 
   // ── 7. Intercambiar code por tokens — solo los parámetros documentados ─────
   const tokenBody = buildTokenExchangeBody({

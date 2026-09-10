@@ -44,6 +44,41 @@ describe('mp-oauth-start — nunca expone secretos', () => {
   });
 });
 
+describe('mp-oauth-start — credenciales MP enrutadas por país (CL/AR)', () => {
+  it('resuelve las credenciales vía getMpOauthCredentials(business.country_code), nunca lee MP_CLIENT_ID/MP_CLIENT_SECRET directo', () => {
+    expect(indexSource).toMatch(/import \{ getMpOauthCredentials \} from ['"]\.\.\/_shared\/mpOauthCredentials\.ts['"]/);
+    expect(indexSource).toMatch(/getMpOauthCredentials\(business\.country_code\)/);
+    expect(indexSource).not.toMatch(/Deno\.env\.get\(['"]MP_CLIENT_ID['"]\)/);
+    expect(indexSource).not.toMatch(/Deno\.env\.get\(['"]MP_CLIENT_SECRET['"]\)/);
+  });
+
+  it('selecciona wa_businesses.country_code server-side, nunca acepta country del body', () => {
+    expect(indexSource).toMatch(/\.select\('id, user_id, country_code'\)/);
+    expect(indexSource).not.toMatch(/body\??\.\s*country/i);
+  });
+
+  it('país no soportado/no configurado responde 422 con reason MP_COUNTRY_NOT_SUPPORTED, sin crear state', () => {
+    const failBlockMatch = indexSource.match(/if \(!credentialsResult\.ok\) \{[\s\S]*?\n  \}/);
+    expect(failBlockMatch).not.toBeNull();
+    const failBlock = failBlockMatch![0];
+    expect(failBlock).toMatch(/MP_COUNTRY_NOT_SUPPORTED/);
+    expect(failBlock).toMatch(/422/);
+    expect(failBlock).not.toMatch(/wa_create_mp_oauth_state/);
+  });
+
+  it('la selección de credenciales ocurre ANTES de crear el state (wa_create_mp_oauth_state)', () => {
+    const credIdx = indexSource.indexOf('getMpOauthCredentials(business.country_code)');
+    const stateIdx = indexSource.indexOf('wa_create_mp_oauth_state');
+    expect(credIdx).toBeGreaterThan(-1);
+    expect(stateIdx).toBeGreaterThan(-1);
+    expect(credIdx).toBeLessThan(stateIdx);
+  });
+
+  it('nunca loguea clientId/clientSecret -- solo businessId y el reason interno', () => {
+    expect(indexSource).not.toMatch(/console\.(log|warn|error|info|debug)\([^)]*client(Id|Secret)/);
+  });
+});
+
 describe('mp-oauth-start — alineado con la arquitectura de publishable key', () => {
   it('no lee SUPABASE_ANON_KEY directamente -- usa el helper compartido', () => {
     expect(indexSource).not.toMatch(/Deno\.env\.get\(['"]SUPABASE_ANON_KEY['"]\)/);

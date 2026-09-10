@@ -58,7 +58,10 @@ export async function getMercadoPagoConnectionStatus() {
  * + PKCE generados y persistidos server-side) y navega el browser hacia
  * Mercado Pago. No recibe ni maneja ningún dato sensible -- la función
  * Edge nunca devuelve más que { authorizationUrl }.
- * @returns {Promise<{error: Error|null}>}
+ * `error.reason` propaga el `reason` que devuelve la Edge Function (p. ej.
+ * `MP_COUNTRY_NOT_SUPPORTED`) para que la UI pueda mostrar un mensaje
+ * específico sin tener que interpretar el texto de `error`.
+ * @returns {Promise<{error: (Error & {reason?: string})|null}>}
  */
 export async function startMercadoPagoOAuth() {
   const token = await getToken();
@@ -67,7 +70,9 @@ export async function startMercadoPagoOAuth() {
     const res = await fetch(START_URL, { method: 'POST', headers: authHeaders(token), body: JSON.stringify({}) });
     const body = await res.json().catch(() => ({}));
     if (!res.ok || !body?.authorizationUrl) {
-      return { error: new Error(body?.error ?? `HTTP ${res.status}`) };
+      const err = new Error(body?.error ?? `HTTP ${res.status}`);
+      if (body?.reason) err.reason = body.reason;
+      return { error: err };
     }
     window.location.assign(body.authorizationUrl);
     return { error: null };
