@@ -18,6 +18,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { getSupabaseAdminKeyOrEmpty } from '../_shared/supabaseAdminKey.ts';
+import { computeWalinkaMarketplaceFee } from '../_shared/walinkaMarketplaceFee.ts';
 import {
   MAX_BODY_BYTES,
   MAX_ADDRESS_LENGTH,
@@ -60,9 +61,15 @@ function errorResponse(error: string, reason: string, status: number) {
 
 // Campos que el frontend puede enviar pero que NUNCA son autoridad --
 // se ignoran explícitamente, nunca se leen para ninguna decisión.
+// MP-MARKETPLACE-1: marketplace_fee/fee/walinka_fee/commission/
+// commission_rate/percentage se suman acá por el mismo motivo -- el 1%
+// (WALINKA_MARKETPLACE_FEE_BPS) y el monto resultante SIEMPRE se
+// calculan server-side (computeWalinkaMarketplaceFee), nunca se aceptan
+// del body.
 const IGNORED_UNTRUSTED_FIELDS = [
   'businessId', 'price', 'unit_price', 'subtotal', 'total', 'currency',
   'productName', 'access_token', 'preference_id', 'external_reference',
+  'marketplace_fee', 'fee', 'walinka_fee', 'commission', 'commission_rate', 'percentage',
 ] as const;
 
 const CART_VALIDATION_STATUS: Record<string, number> = {
@@ -201,6 +208,22 @@ Deno.serve(async (req) => {
 
   const totals = computeOrderTotals(cartValidation.lines);
 
+  // ── 6.1. Comisión Walinka (MP-MARKETPLACE-1) -- SIEMPRE calculada
+  //      server-side sobre totals.totalCents (recién recalculado desde
+  //      DB en el paso anterior), NUNCA desde un valor del body (ver
+  //      IGNORED_UNTRUSTED_FIELDS). marketplace_fee es la comisión de
+  //      PLATAFORMA descontada de la liquidación del VENDEDOR -- NO es
+  //      un recargo al comprador, que sigue pagando exactamente el
+  //      total de `items` (ver buildPreferencePayload). currencyResult
+  //      ya garantiza CLP/ARS acá, así que esto solo puede fallar en un
+  //      estado inconsistente -- se trata como error de configuración,
+  //      nunca se procede sin comisión calculada.
+  const feeResult = computeWalinkaMarketplaceFee(totals.totalCents, currencyResult.currency);
+  if (!feeResult.ok) {
+    console.error('[create-merchant-mp-checkout] no se pudo calcular la comisión Walinka:', feeResult.reason, { businessId: business.id });
+    return jsonResponse({ error: 'Server configuration error' }, 500);
+  }
+
   // ── 7. Conexión Mercado Pago DEL COMERCIO -- nunca MP_ACCESS_TOKEN_CL/AR ─
   const { data: connectionRows, error: connError } = await admin.rpc('wa_get_mp_connection_for_checkout', {
     p_business_id: business.id,
@@ -278,6 +301,7 @@ Deno.serve(async (req) => {
     notificationUrl: notificationUrl || undefined,
     payerName: customerResult.customer.name,
     payerEmail: customerResult.customer.email,
+    marketplaceFee: feeResult.fee,
   });
 
   // ── 11. Crear preferencia en Mercado Pago -- token DEL COMERCIO ──────────

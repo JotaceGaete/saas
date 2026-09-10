@@ -285,6 +285,7 @@ export interface BuildPreferencePayloadInput {
   notificationUrl?: string;
   payerName: string;
   payerEmail: string | null;
+  marketplaceFee: number;
 }
 
 export function buildPreferencePayload({
@@ -295,6 +296,7 @@ export function buildPreferencePayload({
   notificationUrl,
   payerName,
   payerEmail,
+  marketplaceFee,
 }: BuildPreferencePayloadInput): Record<string, unknown> {
   return {
     items: lines.map((line) => ({
@@ -307,6 +309,11 @@ export function buildPreferencePayload({
     auto_return: 'approved' as const,
     external_reference: externalReference,
     payer: { name: payerName, ...(payerEmail ? { email: payerEmail } : {}) },
+    // MP-MARKETPLACE-1 — comisión de PLATAFORMA (Walinka) descontada de
+    // la liquidación del VENDEDOR vía Split Payments 1:1 de Mercado
+    // Pago. NUNCA un recargo al comprador: el comprador sigue pagando
+    // exactamente la suma de `items` de arriba, sin cambios.
+    marketplace_fee: marketplaceFee,
     ...(notificationUrl && { notification_url: notificationUrl }),
   };
 }

@@ -18,6 +18,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { getSupabaseAdminKeyOrEmpty } from '../_shared/supabaseAdminKey.ts';
+import { computeWalinkaMarketplaceFee } from '../_shared/walinkaMarketplaceFee.ts';
 import {
   MAX_BODY_BYTES,
   parseWebhookNotification,
@@ -27,6 +28,7 @@ import {
   validateReferenceMatch,
   amountsMatch,
   isNonRetryableRpcError,
+  toCents,
 } from './lib.ts';
 
 const MP_PAYMENT_URL = 'https://api.mercadopago.com/v1/payments';
@@ -211,6 +213,29 @@ Deno.serve(async (req) => {
     return ignoredResponse('currency_mismatch');
   }
 
+  // ── 6.1. Comisión Walinka (MP-MARKETPLACE-1) -- RE-calculada acá de
+  //      forma determinista a partir de wa_orders.total_amount/currency
+  //      (orderRow, ya validado arriba contra la respuesta fresca de
+  //      MP) -- NUNCA leída de `payment` ni de ningún valor que venga
+  //      del webhook. Es la MISMA función pura que usó
+  //      create-merchant-mp-checkout al crear la preferencia, así que
+  //      sobre el mismo total/moneda produce el mismo resultado
+  //      determinista. Si Mercado Pago llegara a incluir información
+  //      propia de marketplace_fee en la respuesta, no se usa como
+  //      fuente aquí (mantiene esta fase mínima, ver auditoría
+  //      MP-MARKETPLACE-0) -- el cálculo server-side sobre el total de
+  //      la orden es siempre la fuente primaria, nunca se debilitan las
+  //      validaciones de amount/currency/reference ya hechas arriba. Un
+  //      fallo acá (no debería ocurrir: orderRow.currency ya viene de
+  //      resolveCheckoutCurrency en creación) no bloquea la
+  //      confirmación del pago/stock -- solo se registra walinka_fee=0
+  //      y se loguea para reconciliación manual.
+  const feeResult = computeWalinkaMarketplaceFee(toCents(Number(orderRow.total_amount)), orderRow.currency as string);
+  if (!feeResult.ok) {
+    console.error('[merchant-mp-webhook] no se pudo calcular la comisión Walinka esperada, se persiste 0 para reconciliación manual:', feeResult.reason, { orderId: orderRow.id });
+  }
+  const walinkaFee = feeResult.ok ? feeResult.fee : 0;
+
   // ── 7. Transición atómica -- idempotente, stock aplicado a lo sumo 1 vez ─
   const { data: rpcRows, error: rpcError } = await admin.rpc('wa_process_merchant_payment_event', {
     p_business_id: orderRow.business_id,
@@ -221,6 +246,7 @@ Deno.serve(async (req) => {
     p_amount: transactionAmount,
     p_currency: currencyId,
     p_external_reference: externalRefRaw,
+    p_walinka_fee: walinkaFee,
   });
 
   if (rpcError) {
@@ -240,6 +266,7 @@ Deno.serve(async (req) => {
     mpStatus,
     appliedNow: result?.applied_now ?? null,
     alreadyProcessed: result?.already_processed ?? null,
+    walinkaFee,
   });
 
   return jsonResponse({ ok: true }, 200);
