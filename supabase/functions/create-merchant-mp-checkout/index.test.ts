@@ -137,3 +137,56 @@ describe('create-merchant-mp-checkout — CORS/abuse (sección 19)', () => {
     expect(indexSource).toMatch(/MAX_BODY_BYTES/);
   });
 });
+
+// ─── MP-MARKETPLACE-1 — comisión Walinka (marketplace_fee) ────────────────
+describe('create-merchant-mp-checkout — marketplace_fee nunca se acepta del frontend', () => {
+  it('ignora explícitamente marketplace_fee/fee/walinka_fee/commission/commission_rate/percentage del body', () => {
+    for (const field of ['marketplace_fee', 'fee', 'walinka_fee', 'commission', 'commission_rate', 'percentage']) {
+      expect(indexSource).toMatch(new RegExp(`'${field}'`));
+    }
+  });
+
+  it('esos campos están en el mismo array IGNORED_UNTRUSTED_FIELDS que ya cubre price/total/currency', () => {
+    const arrayMatch = indexSource.match(/const IGNORED_UNTRUSTED_FIELDS = \[([\s\S]*?)\] as const;/);
+    expect(arrayMatch).not.toBeNull();
+    for (const field of ['price', 'total', 'currency', 'marketplace_fee', 'fee', 'walinka_fee', 'commission', 'commission_rate', 'percentage']) {
+      expect(arrayMatch![1]).toMatch(new RegExp(`'${field}'`));
+    }
+  });
+});
+
+describe('create-merchant-mp-checkout — el fee se calcula server-side sobre el total recalculado desde DB', () => {
+  it('computeWalinkaMarketplaceFee se llama DESPUÉS de computeOrderTotals y ANTES de buildPreferencePayload', () => {
+    const totalsIdx = indexSource.indexOf('computeOrderTotals(cartValidation.lines)');
+    const feeIdx = indexSource.indexOf('computeWalinkaMarketplaceFee(totals.totalCents');
+    const payloadIdx = indexSource.indexOf('buildPreferencePayload({');
+    expect(totalsIdx).toBeGreaterThan(-1);
+    expect(feeIdx).toBeGreaterThan(-1);
+    expect(payloadIdx).toBeGreaterThan(-1);
+    expect(totalsIdx).toBeLessThan(feeIdx);
+    expect(feeIdx).toBeLessThan(payloadIdx);
+  });
+
+  it('el fee se calcula sobre totals.totalCents (recalculado desde wa_products.price vía validateCart), nunca sobre un valor del body', () => {
+    expect(indexSource).toMatch(/computeWalinkaMarketplaceFee\(totals\.totalCents, currencyResult\.currency\)/);
+  });
+
+  it('un fallo de cálculo del fee responde 500 sin exponer detalle interno, nunca continúa sin comisión calculada', () => {
+    const feeBlockMatch = indexSource.match(/const feeResult = computeWalinkaMarketplaceFee\([\s\S]*?\n  \}/);
+    expect(feeBlockMatch).not.toBeNull();
+    expect(feeBlockMatch![0]).toMatch(/if \(!feeResult\.ok\)/);
+    expect(feeBlockMatch![0]).toMatch(/jsonResponse\(\{ error: 'Server configuration error' \}, 500\)/);
+  });
+
+  it('el resultado (feeResult.fee) se pasa a buildPreferencePayload como marketplaceFee', () => {
+    expect(indexSource).toMatch(/marketplaceFee: feeResult\.fee,/);
+  });
+});
+
+describe('create-merchant-mp-checkout — marketplace_fee no altera lo que paga el comprador', () => {
+  it('el total enviado a wa_create_merchant_checkout_order sigue viniendo exclusivamente de computeOrderTotals, sin sumar el fee', () => {
+    expect(indexSource).toMatch(/p_total_amount: fromCents\(totals\.totalCents\),/);
+    expect(indexSource).not.toMatch(/p_total_amount:[^,]*feeResult/);
+    expect(indexSource).not.toMatch(/p_total_amount:[^,]*marketplaceFee/);
+  });
+});

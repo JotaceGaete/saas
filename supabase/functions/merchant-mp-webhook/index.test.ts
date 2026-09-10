@@ -95,3 +95,47 @@ describe('merchant-mp-webhook — aislamiento de billing Walinka', () => {
     expect(indexSource).not.toMatch(/\.rpc\(['"][^'"]*(wa_payments|wa_payment_events|billing_subscriptions)/);
   });
 });
+
+// ─── MP-MARKETPLACE-1 — comisión Walinka (walinka_fee) ────────────────────
+describe('merchant-mp-webhook — walinka_fee calculado server-side, nunca desde el body/payment de MP', () => {
+  it('usa computeWalinkaMarketplaceFee sobre orderRow.total_amount/orderRow.currency, nunca sobre `payment` (respuesta de MP) ni `body` (webhook)', () => {
+    expect(indexSource).toMatch(/computeWalinkaMarketplaceFee\(toCents\(Number\(orderRow\.total_amount\)\), orderRow\.currency as string\)/);
+    expect(indexSource).not.toMatch(/computeWalinkaMarketplaceFee\([^)]*payment\?/);
+    expect(indexSource).not.toMatch(/computeWalinkaMarketplaceFee\([^)]*body\?/);
+  });
+
+  it('no lee ningún campo de marketplace_fee/fee_details desde la respuesta de Mercado Pago -- el cálculo es la única fuente', () => {
+    expect(indexSource).not.toMatch(/payment\?\.\s*marketplace_fee/);
+    expect(indexSource).not.toMatch(/payment\?\.\s*fee_details/);
+  });
+
+  it('el fee se calcula DESPUÉS de que amount/currency/reference ya fueron validados contra la respuesta fresca de MP (no reemplaza esas validaciones)', () => {
+    const amountIdx = indexSource.indexOf('amountsMatch(transactionAmount');
+    const currencyIdx = indexSource.indexOf('currencyId !== orderRow.currency');
+    const feeIdx = indexSource.indexOf('computeWalinkaMarketplaceFee(toCents');
+    const rpcIdx = indexSource.indexOf("admin.rpc('wa_process_merchant_payment_event'");
+    expect(amountIdx).toBeGreaterThan(-1);
+    expect(currencyIdx).toBeGreaterThan(-1);
+    expect(feeIdx).toBeGreaterThan(-1);
+    expect(rpcIdx).toBeGreaterThan(-1);
+    expect(amountIdx).toBeLessThan(feeIdx);
+    expect(currencyIdx).toBeLessThan(feeIdx);
+    expect(feeIdx).toBeLessThan(rpcIdx);
+  });
+
+  it('un fallo de cálculo NO bloquea la confirmación del pago/stock -- se persiste 0 y se loguea para reconciliación, sin debilitar amount/currency/reference', () => {
+    const feeBlockMatch = indexSource.match(/const feeResult = computeWalinkaMarketplaceFee\([\s\S]*?const walinkaFee = feeResult\.ok \? feeResult\.fee : 0;/);
+    expect(feeBlockMatch).not.toBeNull();
+    expect(feeBlockMatch![0]).toMatch(/console\.error/);
+    expect(feeBlockMatch![0]).not.toMatch(/return /);
+  });
+
+  it('walinkaFee se pasa como p_walinka_fee a wa_process_merchant_payment_event', () => {
+    expect(indexSource).toMatch(/p_walinka_fee: walinkaFee,/);
+  });
+
+  it('nunca loguea ni devuelve walinkaFee de forma que reemplace/oculte los demás campos de auditoría del evento', () => {
+    expect(indexSource).toMatch(/payment_event_processed/);
+    expect(indexSource).toMatch(/walinkaFee,?\s*\n\s*\}\);/);
+  });
+});

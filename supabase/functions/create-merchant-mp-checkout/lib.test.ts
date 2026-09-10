@@ -23,6 +23,7 @@ import {
   MAX_ITEM_QUANTITY,
   type ProductRow,
 } from './lib';
+import { computeWalinkaMarketplaceFee } from '../_shared/walinkaMarketplaceFee';
 
 const PRODUCT_A: ProductRow = {
   id: '33333333-3333-3333-3333-333333333333',
@@ -328,10 +329,11 @@ describe('buildPreferencePayload', () => {
   const lines = [{ productId: PRODUCT_A.id, productName: 'Producto A', unitPriceCents: 199000, quantity: 2, subtotalCents: 398000 }];
   const backUrls = { success: 's', pending: 'p', failure: 'f' };
 
-  it('incluye solo los campos documentados, con datos server-side', () => {
+  it('incluye solo los campos documentados, con datos server-side, incluido marketplace_fee a nivel raíz', () => {
     const payload = buildPreferencePayload({
       lines, currency: 'CLP', externalReference: 'walinka:merchant:biz-1:order-1', backUrls,
       notificationUrl: 'https://x/merchant-mp-webhook', payerName: 'Juan', payerEmail: 'juan@example.com',
+      marketplaceFee: 40,
     });
     expect(payload).toEqual({
       items: [{ title: 'Producto A', quantity: 2, unit_price: 1990, currency_id: 'CLP' }],
@@ -339,30 +341,71 @@ describe('buildPreferencePayload', () => {
       auto_return: 'approved',
       external_reference: 'walinka:merchant:biz-1:order-1',
       payer: { name: 'Juan', email: 'juan@example.com' },
+      marketplace_fee: 40,
       notification_url: 'https://x/merchant-mp-webhook',
     });
   });
 
   it('sin email -> payer solo con name (nunca se inventa un email)', () => {
     const payload = buildPreferencePayload({
-      lines, currency: 'CLP', externalReference: 'ref', backUrls, payerName: 'Juan', payerEmail: null,
+      lines, currency: 'CLP', externalReference: 'ref', backUrls, payerName: 'Juan', payerEmail: null, marketplaceFee: 0,
     });
     expect((payload as { payer: unknown }).payer).toEqual({ name: 'Juan' });
   });
 
   it('sin notificationUrl -> la key notification_url ni siquiera aparece', () => {
     const payload = buildPreferencePayload({
-      lines, currency: 'CLP', externalReference: 'ref', backUrls, payerName: 'Juan', payerEmail: null,
+      lines, currency: 'CLP', externalReference: 'ref', backUrls, payerName: 'Juan', payerEmail: null, marketplaceFee: 0,
     });
     expect(Object.prototype.hasOwnProperty.call(payload, 'notification_url')).toBe(false);
   });
 
   it('nunca incluye phone/address/notes -- payer solo tiene name/email', () => {
     const payload = buildPreferencePayload({
-      lines, currency: 'CLP', externalReference: 'ref', backUrls, payerName: 'Juan', payerEmail: null,
+      lines, currency: 'CLP', externalReference: 'ref', backUrls, payerName: 'Juan', payerEmail: null, marketplaceFee: 0,
     });
     const payer = (payload as { payer: Record<string, unknown> }).payer;
     expect(Object.keys(payer).sort()).toEqual(['name']);
+  });
+});
+
+// ─── MP-MARKETPLACE-1 — comisión Walinka (marketplace_fee) ────────────────
+describe('buildPreferencePayload — marketplace_fee (MP-MARKETPLACE-1)', () => {
+  const lines = [{ productId: PRODUCT_A.id, productName: 'Producto A', unitPriceCents: 1000000, quantity: 1, subtotalCents: 1000000 }];
+  const backUrls = { success: 's', pending: 'p', failure: 'f' };
+
+  it('marketplace_fee va a nivel RAÍZ de la preferencia, no dentro de items/payer', () => {
+    const payload = buildPreferencePayload({
+      lines, currency: 'CLP', externalReference: 'ref', backUrls, payerName: 'Juan', payerEmail: null, marketplaceFee: 100,
+    }) as Record<string, unknown>;
+    expect(payload.marketplace_fee).toBe(100);
+    expect(Object.prototype.hasOwnProperty.call(payload, 'marketplace_fee')).toBe(true);
+    const items = payload.items as Array<Record<string, unknown>>;
+    for (const item of items) {
+      expect(Object.prototype.hasOwnProperty.call(item, 'marketplace_fee')).toBe(false);
+    }
+    expect(Object.prototype.hasOwnProperty.call(payload.payer as object, 'marketplace_fee')).toBe(false);
+  });
+
+  it('marketplace_fee NUNCA se suma a unit_price/items -- el comprador paga exactamente lo mismo con o sin fee', () => {
+    const withoutFee = buildPreferencePayload({
+      lines, currency: 'CLP', externalReference: 'ref', backUrls, payerName: 'Juan', payerEmail: null, marketplaceFee: 0,
+    }) as { items: unknown };
+    const withFee = buildPreferencePayload({
+      lines, currency: 'CLP', externalReference: 'ref', backUrls, payerName: 'Juan', payerEmail: null, marketplaceFee: 10000,
+    }) as { items: unknown };
+    expect(withFee.items).toEqual(withoutFee.items);
+  });
+
+  it('el fee real que se envía a Mercado Pago viene de computeWalinkaMarketplaceFee, coherente con el total de las líneas', () => {
+    const totalCents = lines.reduce((sum, l) => sum + l.subtotalCents, 0);
+    const feeResult = computeWalinkaMarketplaceFee(totalCents, 'CLP');
+    expect(feeResult).toEqual({ ok: true, feeCents: 10000, fee: 100 });
+    const payload = buildPreferencePayload({
+      lines, currency: 'CLP', externalReference: 'ref', backUrls, payerName: 'Juan', payerEmail: null,
+      marketplaceFee: feeResult.ok ? feeResult.fee : 0,
+    }) as Record<string, unknown>;
+    expect(payload.marketplace_fee).toBe(100);
   });
 });
 
