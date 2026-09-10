@@ -79,6 +79,17 @@ verify_jwt = false
 [functions.send-email]
 verify_jwt = false
 
+# EMAIL-PAYMENTS-1D: process-email-queue se invoca desde pg_cron (net.http_post
+# con anon_key/apikey, nunca un JWT de usuario) -- con verify_jwt=true (el
+# default de la plataforma cuando no hay entrada acá) el gateway devolvería
+# 401 antes de que el handler pudiera ejecutarse. NO es una función pública
+# sin protección: exige su propio header x-email-secret, comparado
+# server-side contra EMAIL_FUNCTION_SECRET (ver supabase/functions/process-email-queue/index.ts) --
+# esa validación interna no se debilita ni se reemplaza por esto, es la capa
+# de auth real de esta función.
+[functions.process-email-queue]
+verify_jwt = false
+
 # send-daily-summary: llamado por cron (pg_cron); sin JWT de usuario.
 [functions.send-daily-summary]
 verify_jwt = false
