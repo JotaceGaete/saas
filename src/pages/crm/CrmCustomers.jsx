@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import DashboardAppShell from 'components/ui/DashboardAppShell';
 import DashboardLayoutContent from 'components/ui/DashboardLayoutContent';
 import PanelHeader from 'components/ui/PanelHeader';
@@ -246,6 +246,199 @@ function CustomerCard({ c, balance, onView, onEdit, onDelete, deleting, currency
   );
 }
 
+// ─── Tabla lineal (desktop/tablet) ─────────────────────────────────────────────
+
+function RowMenu({ onEdit, onDelete, deleting }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        title="Más acciones"
+        aria-label="Más acciones"
+        aria-haspopup="true"
+        aria-expanded={open}
+        className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+      >
+        <Icon name="MoreVertical" size={15} />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 w-36 rounded-xl border border-gray-200 bg-white shadow-lg z-20 overflow-hidden py-1">
+          <button
+            type="button"
+            onClick={() => { setOpen(false); onEdit(); }}
+            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 text-left"
+          >
+            <Icon name="Pencil" size={13} className="text-gray-400" />
+            Editar
+          </button>
+          <button
+            type="button"
+            disabled={deleting}
+            onClick={() => { setOpen(false); onDelete(); }}
+            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-600 hover:bg-red-50 text-left disabled:opacity-60"
+          >
+            {deleting ? <Icon name="Loader2" size={13} className="animate-spin" /> : <Icon name="Trash2" size={13} />}
+            Eliminar
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CustomerTableRow({ c, balance, onView, onCobrar, onEdit, onDelete, deleting, fmt }) {
+  const waNumber = cleanPhone(c.whatsapp || c.phone);
+  const hasWa    = waNumber.length >= 7;
+  const hasContact = !!(c.phone || c.whatsapp || c.email);
+  const debt     = balance ?? 0;
+  const hasDebt  = debt > 0;
+
+  return (
+    <tr
+      onClick={onView}
+      className={`border-t border-gray-100 cursor-pointer transition-colors ${
+        hasDebt ? 'bg-red-50/10 hover:bg-red-50/40' : 'hover:bg-gray-50'
+      }`}
+    >
+      {/* Cliente / Razón Social */}
+      <td className="px-4 py-3 align-middle">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className={`w-8 h-8 rounded-full ${avatarColor(c.name)} flex items-center justify-center text-[11px] font-bold text-white shrink-0`}>
+            {initials(c.name)}
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-gray-900 truncate">{c.name || 'Sin nombre'}</p>
+            <p className="text-xs text-gray-400 truncate">
+              {hasCompany(c) ? c.company : 'Persona natural'}
+            </p>
+          </div>
+        </div>
+      </td>
+
+      {/* Tipo / Identificación */}
+      <td className="px-4 py-3 align-middle">
+        <span className="text-xs font-mono text-gray-500">{c.rut || '-'}</span>
+      </td>
+
+      {/* Contacto */}
+      <td className="px-4 py-3 align-middle">
+        {hasContact ? (
+          <div className="text-xs text-gray-600 space-y-0.5 min-w-0">
+            {(c.whatsapp || c.phone) && <p className="truncate">{c.whatsapp || c.phone}</p>}
+            {c.email && <p className="truncate text-gray-400">{c.email}</p>}
+          </div>
+        ) : (
+          <span className="text-xs text-gray-400">Sin contacto registrado</span>
+        )}
+      </td>
+
+      {/* Estado financiero */}
+      <td className="px-4 py-3 align-middle">
+        {hasDebt ? (
+          <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-red-700 bg-red-50 border border-red-100 rounded-full px-2.5 py-1 whitespace-nowrap">
+            <span aria-hidden="true">●</span> Con deuda
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-full px-2.5 py-1 whitespace-nowrap">
+            <Icon name="Check" size={11} /> Al día
+          </span>
+        )}
+      </td>
+
+      {/* Saldo pendiente */}
+      <td className="px-4 py-3 align-middle text-right">
+        <span className={hasDebt ? 'text-sm font-bold text-red-600 whitespace-nowrap' : 'text-sm text-gray-400 whitespace-nowrap'}>
+          {fmt(debt)}
+        </span>
+      </td>
+
+      {/* Acciones rápidas */}
+      <td className="px-4 py-3 align-middle" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-end gap-1">
+          {hasWa && (
+            <a
+              href={`https://wa.me/${waNumber}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Enviar WhatsApp"
+              aria-label="Enviar WhatsApp"
+              className="p-1.5 rounded-lg text-[#25D366] hover:bg-green-50 transition-colors"
+            >
+              <Icon name="MessageCircle" size={15} />
+            </a>
+          )}
+          {hasDebt && (
+            <button
+              type="button"
+              onClick={onCobrar}
+              title="Cobrar saldo pendiente"
+              aria-label="Cobrar saldo pendiente"
+              className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold text-white bg-red-600 hover:bg-red-700 transition-colors whitespace-nowrap"
+            >
+              Cobrar
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onView}
+            title="Ver ficha"
+            aria-label="Ver ficha"
+            className="p-1.5 rounded-lg text-gray-400 hover:text-blue-500 hover:bg-blue-50 transition-colors"
+          >
+            <Icon name="Eye" size={15} />
+          </button>
+          <RowMenu onEdit={onEdit} onDelete={onDelete} deleting={deleting} />
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function CustomerTable({ customers, balanceMap, onView, onCobrar, onEdit, onDelete, deletingId, fmt }) {
+  return (
+    <div className="hidden lg:block bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
+      <table className="w-full text-left border-collapse">
+        <thead className="bg-gray-50">
+          <tr>
+            <th scope="col" className="px-4 py-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Cliente / Razón Social</th>
+            <th scope="col" className="px-4 py-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Tipo / Identificación</th>
+            <th scope="col" className="px-4 py-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Contacto</th>
+            <th scope="col" className="px-4 py-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Estado Financiero</th>
+            <th scope="col" className="px-4 py-3 text-right text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Saldo Pendiente</th>
+            <th scope="col" className="px-4 py-3 text-right text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Acciones Rápidas</th>
+          </tr>
+        </thead>
+        <tbody>
+          {customers.map((c) => (
+            <CustomerTableRow
+              key={c.id}
+              c={c}
+              balance={balanceMap[c.id] ?? 0}
+              onView={() => onView(c)}
+              onCobrar={() => onCobrar(c)}
+              onEdit={() => onEdit(c)}
+              onDelete={() => onDelete(c.id)}
+              deleting={deletingId === c.id}
+              fmt={fmt}
+            />
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 // ─── Drawer "Ver cliente" — ficha completa + cuenta corriente ─────────────────
 
 const FIELD_ROWS = [
@@ -262,7 +455,7 @@ const METHOD_LABELS = {
   check: 'Cheque', credit: 'Cta. cte.', other: 'Otro',
 };
 
-function CustomerDetailDrawer({ customer, business, balance, fmt, onClose, onEdit }) {
+function CustomerDetailDrawer({ customer, business, balance, fmt, onClose, onEdit, initialTab = 'perfil' }) {
   const [invoices,    setInvoices]    = useState([]);
   const [loadingInv,  setLoadingInv]  = useState(true);
   const [history,     setHistory]     = useState([]);
@@ -273,7 +466,10 @@ function CustomerDetailDrawer({ customer, business, balance, fmt, onClose, onEdi
   const [saving,      setSaving]      = useState(false);
   const [error,       setError]       = useState(null);
   const [success,     setSuccess]     = useState(null);
-  const [tab,         setTab]         = useState('perfil'); // 'perfil' | 'cuenta'
+  // CLIENTES-UI-1: "Cobrar" en la tabla abre la ficha directo en la pestaña
+  // de cuenta corriente -- mismo flujo real de abono (registerCustomerAbono)
+  // que ya existía acá, sin modal nuevo.
+  const [tab,         setTab]         = useState(initialTab); // 'perfil' | 'cuenta'
 
   const waNumber = cleanPhone(customer.whatsapp || customer.phone);
   const hasWa    = waNumber.length >= 7;
@@ -349,7 +545,7 @@ function CustomerDetailDrawer({ customer, business, balance, fmt, onClose, onEdi
             <button onClick={onEdit} className="p-2 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600" title="Editar">
               <Icon name="Pencil" size={15} />
             </button>
-            <button onClick={onClose} className="p-2 rounded-lg text-gray-400 hover:bg-gray-100">
+            <button onClick={onClose} className="p-2 rounded-lg text-gray-400 hover:bg-gray-100" title="Cerrar" aria-label="Cerrar ficha">
               <Icon name="X" size={18} />
             </button>
           </div>
@@ -768,6 +964,7 @@ export default function CrmCustomers() {
   const [balanceMap, setBalanceMap] = useState({});
   const [creditSummary, setCreditSummary] = useState({ clientesConDeuda: 0, totalPorCobrar: 0 });
   const [viewDrawer, setViewDrawer] = useState(null); // customer object para ver ficha
+  const [viewDrawerTab, setViewDrawerTab] = useState('perfil'); // pestaña con la que abre la ficha
 
   const load = async () => {
     if (!business?.id) return;
@@ -798,6 +995,13 @@ export default function CrmCustomers() {
     await deleteCrmCustomer(id);
     setDeleting(null);
     load();
+  };
+
+  // Abre la ficha existente (CustomerDetailDrawer) en la pestaña indicada.
+  // "Cobrar" reutiliza este mismo flujo -- ninguna acción financiera nueva.
+  const openFicha = (c, tab = 'perfil') => {
+    setViewDrawer(c);
+    setViewDrawerTab(tab);
   };
 
   const filtered = useMemo(() => customers.filter(c =>
@@ -922,20 +1126,35 @@ export default function CrmCustomers() {
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-            {filtered.map(c => (
-              <CustomerCard
-                key={c.id}
-                c={c}
-                balance={balanceMap[c.id] ?? 0}
-                onView={() => setViewDrawer(c)}
-                onEdit={() => setModal(c)}
-                onDelete={() => handleDelete(c.id)}
-                deleting={deleting === c.id}
-                currency={business?.currency}
-              />
-            ))}
-          </div>
+          <>
+            {/* Mobile/tablet angosto: cards (ya responsive) */}
+            <div className="lg:hidden grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {filtered.map(c => (
+                <CustomerCard
+                  key={c.id}
+                  c={c}
+                  balance={balanceMap[c.id] ?? 0}
+                  onView={() => openFicha(c, 'perfil')}
+                  onEdit={() => setModal(c)}
+                  onDelete={() => handleDelete(c.id)}
+                  deleting={deleting === c.id}
+                  currency={business?.currency}
+                />
+              ))}
+            </div>
+
+            {/* Desktop/tablet ancho: tabla lineal */}
+            <CustomerTable
+              customers={filtered}
+              balanceMap={balanceMap}
+              onView={(c) => openFicha(c, 'perfil')}
+              onCobrar={(c) => openFicha(c, 'cuenta')}
+              onEdit={(c) => setModal(c)}
+              onDelete={(id) => handleDelete(id)}
+              deletingId={deleting}
+              fmt={fmt}
+            />
+          </>
         )}
       </DashboardLayoutContent>
 
@@ -952,6 +1171,7 @@ export default function CrmCustomers() {
           business={business}
           balance={balanceMap[viewDrawer.id] ?? 0}
           fmt={fmt}
+          initialTab={viewDrawerTab}
           onClose={() => { setViewDrawer(null); load(); }}
           onEdit={() => { setViewDrawer(null); setModal(viewDrawer); }}
         />
