@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Icon from 'components/AppIcon';
 import BusinessSidebar from 'components/ui/BusinessSidebar';
@@ -11,11 +11,6 @@ import SupplierFormModal from '../../components/SupplierFormModal';
 import SupplierPaymentModal from '../../components/SupplierPaymentModal';
 import UpcomingDueBanner from '../../components/UpcomingDueBanner';
 
-// ── Estado del proveedor (PROVEEDORES-CORE-3 §5) ────────────────────────
-// Vencido: tiene alguna factura con balance > 0 e is_overdue = true.
-// Con deuda: balance agregado > 0, sin ninguna vencida.
-// Al día: balance agregado = 0 (o sin facturas).
-// Nunca se persiste -- se deriva siempre de las facturas ya cargadas.
 function computeSupplierState(invoices) {
   const withBalance = invoices.filter((inv) => inv.balance > 0);
   if (withBalance.length === 0) return 'healthy';
@@ -23,14 +18,14 @@ function computeSupplierState(invoices) {
   return 'pending';
 }
 
-// PROVEEDORES-CORE-3 review fix: búsqueda case-insensitive y null-tolerant
-// sobre name/contactName/rut/legalName -- ninguno de estos campos es
-// obligatorio en wa_suppliers, así que cada uno se coalesce a '' antes de
-// comparar.
 function matchesSearch(supplier, query) {
   const q = query.toLowerCase();
   return [supplier.name, supplier.contactName, supplier.rut, supplier.legalName]
     .some((field) => (field ?? '').toLowerCase().includes(q));
+}
+
+function cleanPhone(value = '') {
+  return String(value).replace(/\D/g, '');
 }
 
 const HEALTH = {
@@ -44,7 +39,6 @@ const TYPE_LABELS = {
   transporte: 'Transporte', arriendo: 'Arriendo', marketing: 'Marketing', otros: 'Otros',
 };
 
-// ── Supplier card ────────────────────────────────────────────────
 function SupplierCard({ supplier, invoices, onEdit, onDelete, onPay, navigateTo, fmt }) {
   const state = computeSupplierState(invoices);
   const h = HEALTH[state];
@@ -58,7 +52,7 @@ function SupplierCard({ supplier, invoices, onEdit, onDelete, onPay, navigateTo,
   return (
     <div
       className="group relative rounded-2xl border transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 cursor-pointer overflow-hidden"
-      style={{ backgroundColor: '#FFFFFF', borderColor: state === 'critical' ? '#FECACA' : state === 'pending' ? 'var(--color-border)' : 'var(--color-border)', borderLeftWidth: '4px', borderLeftColor: h.dot }}
+      style={{ backgroundColor: '#FFFFFF', borderColor: state === 'critical' ? '#FECACA' : 'var(--color-border)', borderLeftWidth: '4px', borderLeftColor: h.dot }}
       onClick={() => navigateTo(supplier.id)}
     >
       <div className="p-4">
@@ -68,13 +62,9 @@ function SupplierCard({ supplier, invoices, onEdit, onDelete, onPay, navigateTo,
               {supplier.name.charAt(0).toUpperCase()}
             </div>
             <div className="min-w-0">
-              <p className="font-bold text-sm leading-tight truncate" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>
-                {supplier.name}
-              </p>
+              <p className="font-bold text-sm leading-tight truncate" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>{supplier.name}</p>
               <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                {supplier.rut && (
-                  <span className="text-xs truncate" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>{supplier.rut}</span>
-                )}
+                {supplier.rut && <span className="text-xs truncate" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>{supplier.rut}</span>}
                 {supplier.supplierType && supplier.supplierType !== 'otros' && (
                   <span className="text-[10px] px-1.5 py-0 rounded-full font-medium" style={{ backgroundColor: '#F3F4F6', color: '#6B7280', fontFamily: 'var(--font-caption)' }}>
                     {TYPE_LABELS[supplier.supplierType] ?? supplier.supplierType}
@@ -83,7 +73,6 @@ function SupplierCard({ supplier, invoices, onEdit, onDelete, onPay, navigateTo,
               </div>
             </div>
           </div>
-
           <div className="flex items-center gap-1.5 flex-shrink-0">
             <div className="text-right">
               <div className="flex items-center gap-1 justify-end">
@@ -110,9 +99,7 @@ function SupplierCard({ supplier, invoices, onEdit, onDelete, onPay, navigateTo,
           <div>
             {totalPending > 0 ? (
               <>
-                <p className="text-2xl font-black leading-none" style={{ color: state === 'critical' ? '#EF4444' : 'var(--color-foreground)', fontFamily: 'var(--font-stat)' }}>
-                  $ {fmt(totalPending)}
-                </p>
+                <p className="text-2xl font-black leading-none" style={{ color: state === 'critical' ? '#EF4444' : 'var(--color-foreground)', fontFamily: 'var(--font-stat)' }}>$ {fmt(totalPending)}</p>
                 <p className="text-xs mt-1" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
                   {pending.length} factura{pending.length > 1 ? 's' : ''} pendiente{pending.length > 1 ? 's' : ''}
                 </p>
@@ -167,6 +154,158 @@ function MenuItem({ icon, label, onClick, danger }) {
   );
 }
 
+function RowMenu({ supplier, onEdit, onDelete }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onMouseDown = (event) => {
+      if (ref.current && !ref.current.contains(event.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onMouseDown);
+    return () => document.removeEventListener('mousedown', onMouseDown);
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        title="Más acciones"
+        aria-label="Más acciones"
+        aria-haspopup="true"
+        aria-expanded={open}
+        className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+      >
+        <Icon name="MoreVertical" size={15} />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 w-36 rounded-xl border border-gray-200 bg-white shadow-lg z-20 overflow-hidden py-1">
+          <button type="button" onClick={() => { setOpen(false); onEdit(supplier); }} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 text-left">
+            <Icon name="Pencil" size={13} className="text-gray-400" />
+            Editar
+          </button>
+          <button type="button" onClick={() => { setOpen(false); onDelete(supplier); }} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-600 hover:bg-red-50 text-left">
+            <Icon name="Trash2" size={13} />
+            Eliminar
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SupplierTableRow({ supplier, invoices, fmt, onView, onPay, onEdit, onDelete }) {
+  const state = computeSupplierState(invoices);
+  const pending = invoices.filter((inv) => inv.balance > 0);
+  const totalPending = pending.reduce((sum, inv) => sum + inv.balance, 0);
+  const hasDebt = totalPending > 0;
+  const isOverdue = state === 'critical';
+  const waNumber = cleanPhone(supplier.phone);
+  const hasWa = waNumber.length >= 7;
+  const hasContact = !!(supplier.phone || supplier.email);
+  const subtitle = supplier.legalName || TYPE_LABELS[supplier.supplierType] || 'Otros';
+
+  return (
+    <tr
+      onClick={() => onView(supplier.id)}
+      className={`border-t border-gray-100 cursor-pointer transition-colors ${hasDebt ? 'bg-red-50/10 hover:bg-red-50/40' : 'hover:bg-gray-50'}`}
+    >
+      <td className="px-4 py-3 align-middle">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[11px] font-bold shrink-0">
+            {(supplier.name || '?').slice(0, 2).toUpperCase()}
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-gray-900 truncate">{supplier.name || 'Sin nombre'}</p>
+            <p className="text-xs text-gray-400 truncate">{subtitle}</p>
+          </div>
+        </div>
+      </td>
+      <td className="px-4 py-3 align-middle">
+        <span className="text-xs font-mono text-gray-500">{supplier.rut || '-'}</span>
+      </td>
+      <td className="px-4 py-3 align-middle">
+        {hasContact ? (
+          <div className="text-xs text-gray-600 space-y-0.5 min-w-0">
+            {supplier.phone && <p className="truncate">{supplier.phone}</p>}
+            {supplier.email && <p className="truncate text-gray-400">{supplier.email}</p>}
+          </div>
+        ) : <span className="text-xs text-gray-400">Sin contacto registrado</span>}
+      </td>
+      <td className="px-4 py-3 align-middle">
+        <div className="flex items-center gap-2 flex-wrap">
+          {hasDebt ? (
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-red-700 bg-red-50 border border-red-100 rounded-full px-2.5 py-1 whitespace-nowrap">
+              <span aria-hidden="true">●</span> Con deuda
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-full px-2.5 py-1 whitespace-nowrap">
+              <Icon name="Check" size={11} /> Al día
+            </span>
+          )}
+          {isOverdue && <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-100 rounded-full px-2 py-1">Vencido</span>}
+        </div>
+      </td>
+      <td className="px-4 py-3 align-middle text-right">
+        <span className={hasDebt ? 'text-sm font-bold text-red-600 whitespace-nowrap' : 'text-sm text-gray-400 whitespace-nowrap'}>{fmt(totalPending)}</span>
+      </td>
+      <td className="px-4 py-3 align-middle" onClick={(event) => event.stopPropagation()}>
+        <div className="flex items-center justify-end gap-1">
+          {hasWa && (
+            <a href={`https://wa.me/${waNumber}`} target="_blank" rel="noopener noreferrer" title="Enviar WhatsApp" aria-label="Enviar WhatsApp" className="p-1.5 rounded-lg text-[#25D366] hover:bg-green-50 transition-colors">
+              <Icon name="MessageCircle" size={15} />
+            </a>
+          )}
+          {pending.length > 0 && (
+            <button type="button" onClick={() => onPay(supplier, pending)} title="Registrar pago" aria-label="Registrar pago" className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold text-white bg-red-600 hover:bg-red-700 transition-colors whitespace-nowrap">
+              Pagar
+            </button>
+          )}
+          <button type="button" onClick={() => onView(supplier.id)} title="Ver ficha" aria-label="Ver ficha" className="p-1.5 rounded-lg text-gray-400 hover:text-blue-500 hover:bg-blue-50 transition-colors">
+            <Icon name="Eye" size={15} />
+          </button>
+          <RowMenu supplier={supplier} onEdit={onEdit} onDelete={onDelete} />
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function SupplierTable({ suppliers, invoicesBySupplierId, fmt, onView, onPay, onEdit, onDelete }) {
+  return (
+    <div className="hidden lg:block bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
+      <table className="w-full text-left border-collapse">
+        <thead className="bg-gray-50">
+          <tr>
+            <th scope="col" className="px-4 py-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Proveedor / Razón Social</th>
+            <th scope="col" className="px-4 py-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Tipo / Identificación</th>
+            <th scope="col" className="px-4 py-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Contacto</th>
+            <th scope="col" className="px-4 py-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Estado Financiero</th>
+            <th scope="col" className="px-4 py-3 text-right text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Saldo por Pagar</th>
+            <th scope="col" className="px-4 py-3 text-right text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Acciones Rápidas</th>
+          </tr>
+        </thead>
+        <tbody>
+          {suppliers.map((supplier) => (
+            <SupplierTableRow
+              key={supplier.id}
+              supplier={supplier}
+              invoices={invoicesBySupplierId[supplier.id] ?? []}
+              fmt={fmt}
+              onView={onView}
+              onPay={onPay}
+              onEdit={onEdit}
+              onDelete={onDelete}
+            />
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function StatCard({ icon, label, value, color, bg, sub }) {
   return (
     <div className="rounded-2xl border p-4 flex items-center gap-3" style={{ backgroundColor: '#FFFFFF', borderColor: 'var(--color-border)' }}>
@@ -182,7 +321,6 @@ function StatCard({ icon, label, value, color, bg, sub }) {
   );
 }
 
-// ── Page ─────────────────────────────────────────────────────────
 export default function SuppliersPage() {
   const navigate = useNavigate();
   const { business } = useAuth();
@@ -194,7 +332,7 @@ export default function SuppliersPage() {
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState(null);
-  const [paymentTarget, setPaymentTarget] = useState(null); // { supplier, invoices }
+  const [paymentTarget, setPaymentTarget] = useState(null);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
@@ -235,8 +373,6 @@ export default function SuppliersPage() {
     if (!window.confirm(`¿Eliminar a "${supplier.name}"?`)) return;
     const { error } = await deleteSupplier(supplier.id);
     if (error) {
-      // Un proveedor con facturas nunca se puede borrar (FK RESTRICT) --
-      // nunca fingir éxito ni recargar como si hubiese desaparecido.
       window.alert(error.message ?? 'No se pudo eliminar el proveedor.');
       return;
     }
@@ -256,9 +392,6 @@ export default function SuppliersPage() {
   }, {});
 
   const today = new Date(); today.setHours(0, 0, 0, 0);
-  // Total pendiente y Deudas vencidas: agregados sobre TODAS las facturas
-  // del negocio -- nunca recalculados a mano, balance/isOverdue ya vienen
-  // derivados de wa_supplier_invoice_balances.
   const totalPending = allInvoices.reduce((s, inv) => s + (inv.balance > 0 ? inv.balance : 0), 0);
   const overdueCount = allInvoices.filter((inv) => inv.isOverdue).length;
   const paidThisMonth = allPayments.filter((p) => {
@@ -268,7 +401,6 @@ export default function SuppliersPage() {
   const healthyCount = suppliers.filter((s) => computeSupplierState(invoicesBySupplierId[s.id] ?? []) === 'healthy').length;
 
   const usedTypes = [...new Set(suppliers.map((s) => s.supplierType).filter(Boolean))];
-
   const filtered = suppliers.filter((s) => {
     if (search && !matchesSearch(s, search)) return false;
     const state = computeSupplierState(invoicesBySupplierId[s.id] ?? []);
@@ -286,15 +418,10 @@ export default function SuppliersPage() {
       <BusinessSidebar isCollapsed={sidebarCollapsed} onCollapsedChange={setSidebarCollapsed} />
       <main className="transition-all duration-200" style={{ paddingLeft: sidebarWidth, paddingBottom: '80px' }}>
         <div className="max-w-4xl mx-auto px-4 py-6 lg:px-6">
-
           <div className="flex items-start justify-between mb-6 gap-3">
             <div>
-              <h1 className="text-xl font-bold" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-heading)' }}>
-                Proveedores y Cuentas por Pagar
-              </h1>
-              <p className="text-sm mt-0.5" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-                Controlá facturas, vencimientos y pagos
-              </p>
+              <h1 className="text-xl font-bold" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-heading)' }}>Proveedores y Cuentas por Pagar</h1>
+              <p className="text-sm mt-0.5" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Controlá facturas, vencimientos y pagos</p>
             </div>
             <div className="flex flex-col items-end gap-1">
               <button
@@ -309,11 +436,7 @@ export default function SuppliersPage() {
                 <span className="hidden sm:inline">Nuevo proveedor</span>
                 <span className="sm:hidden">Nuevo</span>
               </button>
-              {supplierLimit !== null && (
-                <p className="text-[11px]" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-                  {suppliers.length}/{supplierLimit} en plan Starter
-                </p>
-              )}
+              {supplierLimit !== null && <p className="text-[11px]" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>{suppliers.length}/{supplierLimit} en plan Starter</p>}
             </div>
           </div>
 
@@ -333,38 +456,19 @@ export default function SuppliersPage() {
               <div className="flex flex-col sm:flex-row gap-2">
                 <div className="relative flex-1">
                   <Icon name="Search" size={14} color="var(--color-muted-foreground)" className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                  <input
-                    type="text" value={search} onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Buscar proveedor..."
-                    className="w-full pl-8 pr-3 py-2 rounded-xl border text-sm focus:outline-none focus:ring-2"
-                    style={{ borderColor: 'var(--color-border)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)', backgroundColor: '#FFFFFF' }}
-                  />
+                  <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar proveedor..." className="w-full pl-8 pr-3 py-2 rounded-xl border text-sm focus:outline-none focus:ring-2" style={{ borderColor: 'var(--color-border)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)', backgroundColor: '#FFFFFF' }} />
                 </div>
                 <div className="flex gap-1 flex-wrap">
-                  {[
-                    { key: 'all', label: 'Todos' },
-                    { key: 'critical', label: '🔴 Vencidos' },
-                    { key: 'pending', label: '🔵 Con deuda' },
-                    { key: 'healthy', label: '🟢 Al día' },
-                  ].map((f) => (
-                    <button key={f.key} onClick={() => setFilter(f.key)} className="px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors whitespace-nowrap"
-                      style={{ fontFamily: 'var(--font-caption)', backgroundColor: filter === f.key ? 'var(--color-primary)' : '#FFFFFF', color: filter === f.key ? '#fff' : 'var(--color-muted-foreground)', border: `1px solid ${filter === f.key ? 'transparent' : 'var(--color-border)'}` }}>
-                      {f.label}
-                    </button>
+                  {[{ key: 'all', label: 'Todos' }, { key: 'critical', label: '🔴 Vencidos' }, { key: 'pending', label: '🔵 Con deuda' }, { key: 'healthy', label: '🟢 Al día' }].map((f) => (
+                    <button key={f.key} onClick={() => setFilter(f.key)} className="px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors whitespace-nowrap" style={{ fontFamily: 'var(--font-caption)', backgroundColor: filter === f.key ? 'var(--color-primary)' : '#FFFFFF', color: filter === f.key ? '#fff' : 'var(--color-muted-foreground)', border: `1px solid ${filter === f.key ? 'transparent' : 'var(--color-border)'}` }}>{f.label}</button>
                   ))}
                 </div>
               </div>
               {usedTypes.length > 1 && (
                 <div className="flex gap-1 flex-wrap">
-                  <button onClick={() => setTypeFilter('all')} className="px-2.5 py-1 rounded-lg text-xs transition-colors"
-                    style={{ fontFamily: 'var(--font-caption)', backgroundColor: typeFilter === 'all' ? '#F3F4F6' : 'transparent', color: typeFilter === 'all' ? '#374151' : 'var(--color-muted-foreground)', fontWeight: typeFilter === 'all' ? '600' : '400' }}>
-                    Todos los tipos
-                  </button>
+                  <button onClick={() => setTypeFilter('all')} className="px-2.5 py-1 rounded-lg text-xs transition-colors" style={{ fontFamily: 'var(--font-caption)', backgroundColor: typeFilter === 'all' ? '#F3F4F6' : 'transparent', color: typeFilter === 'all' ? '#374151' : 'var(--color-muted-foreground)', fontWeight: typeFilter === 'all' ? '600' : '400' }}>Todos los tipos</button>
                   {usedTypes.map((t) => (
-                    <button key={t} onClick={() => setTypeFilter(t === typeFilter ? 'all' : t)} className="px-2.5 py-1 rounded-lg text-xs transition-colors"
-                      style={{ fontFamily: 'var(--font-caption)', backgroundColor: typeFilter === t ? '#6366F1' : '#F3F4F6', color: typeFilter === t ? '#fff' : '#6B7280', fontWeight: '500' }}>
-                      {TYPE_LABELS[t] ?? t}
-                    </button>
+                    <button key={t} onClick={() => setTypeFilter(t === typeFilter ? 'all' : t)} className="px-2.5 py-1 rounded-lg text-xs transition-colors" style={{ fontFamily: 'var(--font-caption)', backgroundColor: typeFilter === t ? '#6366F1' : '#F3F4F6', color: typeFilter === t ? '#fff' : '#6B7280', fontWeight: '500' }}>{TYPE_LABELS[t] ?? t}</button>
                   ))}
                 </div>
               )}
@@ -372,9 +476,7 @@ export default function SuppliersPage() {
           )}
 
           {loading ? (
-            <div className="flex items-center justify-center py-16">
-              <div className="w-6 h-6 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: 'var(--color-primary)' }} />
-            </div>
+            <div className="flex items-center justify-center py-16"><div className="w-6 h-6 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: 'var(--color-primary)' }} /></div>
           ) : suppliers.length === 0 ? (
             <EmptyState onAdd={() => { setEditingSupplier(null); setFormOpen(true); }} />
           ) : filtered.length === 0 ? (
@@ -383,37 +485,28 @@ export default function SuppliersPage() {
               <p className="text-sm">Sin resultados para "{search}"</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {filtered.map((s) => (
-                <SupplierCard
-                  key={s.id}
-                  supplier={s}
-                  invoices={invoicesBySupplierId[s.id] ?? []}
-                  fmt={fmt}
-                  onEdit={(sup) => { setEditingSupplier(sup); setFormOpen(true); }}
-                  onDelete={handleDelete}
-                  onPay={(supplier, invoices) => setPaymentTarget({ supplier, invoices })}
-                  navigateTo={(id) => navigate(`/proveedores/${id}`)}
-                />
-              ))}
-            </div>
+            <>
+              <div className="lg:hidden grid grid-cols-1 md:grid-cols-2 gap-3">
+                {filtered.map((s) => (
+                  <SupplierCard key={s.id} supplier={s} invoices={invoicesBySupplierId[s.id] ?? []} fmt={fmt} onEdit={(sup) => { setEditingSupplier(sup); setFormOpen(true); }} onDelete={handleDelete} onPay={(supplier, invoices) => setPaymentTarget({ supplier, invoices })} navigateTo={(id) => navigate(`/proveedores/${id}`)} />
+                ))}
+              </div>
+              <SupplierTable
+                suppliers={filtered}
+                invoicesBySupplierId={invoicesBySupplierId}
+                fmt={fmt}
+                onView={(id) => navigate(`/proveedores/${id}`)}
+                onPay={(supplier, invoices) => setPaymentTarget({ supplier, invoices })}
+                onEdit={(sup) => { setEditingSupplier(sup); setFormOpen(true); }}
+                onDelete={handleDelete}
+              />
+            </>
           )}
         </div>
       </main>
 
-      <SupplierFormModal
-        open={formOpen}
-        onClose={() => setFormOpen(false)}
-        onSave={handleSave}
-        supplier={editingSupplier}
-      />
-      <SupplierPaymentModal
-        open={!!paymentTarget}
-        onClose={() => setPaymentTarget(null)}
-        onSave={handleRegisterPayment}
-        supplier={paymentTarget?.supplier}
-        invoices={paymentTarget?.invoices ?? []}
-      />
+      <SupplierFormModal open={formOpen} onClose={() => setFormOpen(false)} onSave={handleSave} supplier={editingSupplier} />
+      <SupplierPaymentModal open={!!paymentTarget} onClose={() => setPaymentTarget(null)} onSave={handleRegisterPayment} supplier={paymentTarget?.supplier} invoices={paymentTarget?.invoices ?? []} />
     </div>
   );
 }
@@ -425,60 +518,39 @@ function EmptyState({ onAdd }) {
       <div className="w-20 h-20 rounded-3xl flex items-center justify-center mb-5 shadow-lg" style={{ background: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)' }}>
         <Icon name="Truck" size={36} color="#fff" />
       </div>
-      <h3 className="text-lg font-bold mb-2" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-heading)' }}>
-        Controlá tus compras y pagos pendientes
-      </h3>
-      <p className="text-sm mb-5 leading-relaxed" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-        Registrá proveedores, facturas y pagos, y recibí alertas antes de que una factura venza.
-      </p>
-
+      <h3 className="text-lg font-bold mb-2" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-heading)' }}>Controlá tus compras y pagos pendientes</h3>
+      <p className="text-sm mb-5 leading-relaxed" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Registrá proveedores, facturas y pagos, y recibí alertas antes de que una factura venza.</p>
       <div className="w-full text-left mb-6 space-y-2">
         {[
           { icon: 'DollarSign', text: 'Control de facturas y saldos', color: '#6366F1', bg: '#EEF2FF' },
-          { icon: 'Bell',       text: 'Alertas de vencimiento',      color: '#F59E0B', bg: '#FFFBEB' },
-          { icon: 'Clock',      text: 'Historial de pagos',          color: '#10B981', bg: '#ECFDF5' },
-          { icon: 'BarChart2',  text: 'Salud financiera del negocio', color: '#3B82F6', bg: '#EFF6FF' },
+          { icon: 'Bell', text: 'Alertas de vencimiento', color: '#F59E0B', bg: '#FFFBEB' },
+          { icon: 'Clock', text: 'Historial de pagos', color: '#10B981', bg: '#ECFDF5' },
+          { icon: 'BarChart2', text: 'Salud financiera del negocio', color: '#3B82F6', bg: '#EFF6FF' },
         ].map((b) => (
           <div key={b.text} className="flex items-center gap-3 px-3 py-2 rounded-xl" style={{ backgroundColor: b.bg }}>
-            <div className="w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: b.color + '22' }}>
-              <Icon name={b.icon} size={13} color={b.color} />
-            </div>
+            <div className="w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: b.color + '22' }}><Icon name={b.icon} size={13} color={b.color} /></div>
             <span className="text-xs font-medium" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>✓ {b.text}</span>
           </div>
         ))}
       </div>
-
       <div className="flex gap-2 w-full">
-        <button onClick={onAdd} className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all hover:opacity-90 active:scale-95 shadow-md"
-          style={{ background: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)', color: '#fff', fontFamily: 'var(--font-caption)' }}>
+        <button onClick={onAdd} className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all hover:opacity-90 active:scale-95 shadow-md" style={{ background: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)', color: '#fff', fontFamily: 'var(--font-caption)' }}>
           <Icon name="Plus" size={16} color="#fff" />
           Agregar primer proveedor
         </button>
-        <button onClick={() => setShowExample(true)} className="px-4 py-2.5 rounded-xl text-sm font-medium border transition-colors hover:bg-muted"
-          style={{ borderColor: 'var(--color-border)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>
-          Ver ejemplo
-        </button>
+        <button onClick={() => setShowExample(true)} className="px-4 py-2.5 rounded-xl text-sm font-medium border transition-colors hover:bg-muted" style={{ borderColor: 'var(--color-border)', color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>Ver ejemplo</button>
       </div>
-
       {showExample && (
         <div className="mt-4 w-full rounded-2xl border overflow-hidden shadow-sm" style={{ borderColor: 'var(--color-border)', borderLeftWidth: '4px', borderLeftColor: '#F59E0B' }}>
           <div className="p-4 bg-white">
             <div className="flex items-center gap-3 mb-3">
               <div className="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm" style={{ background: '#FFFBEB', color: '#F59E0B' }}>D</div>
-              <div>
-                <p className="font-bold text-sm" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>Distribuidora Norte</p>
-                <p className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Juan Pérez · Mercadería</p>
-              </div>
-              <div className="ml-auto flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#F59E0B' }} />
-                <span className="text-xs font-semibold" style={{ color: '#F59E0B', fontFamily: 'var(--font-caption)' }}>Con deuda</span>
-              </div>
+              <div><p className="font-bold text-sm" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-caption)' }}>Distribuidora Norte</p><p className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Juan Pérez · Mercadería</p></div>
+              <div className="ml-auto flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#F59E0B' }} /><span className="text-xs font-semibold" style={{ color: '#F59E0B', fontFamily: 'var(--font-caption)' }}>Con deuda</span></div>
             </div>
             <p className="text-2xl font-black" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-stat)' }}>$ 120.000</p>
             <p className="text-xs mb-2" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>1 factura pendiente</p>
-            <div className="flex items-center gap-2 text-[11px] border-t pt-2" style={{ borderColor: 'var(--color-border)' }}>
-              <span style={{ color: '#F59E0B', fontFamily: 'var(--font-caption)' }}>📅 Vence 15 jun</span>
-            </div>
+            <div className="flex items-center gap-2 text-[11px] border-t pt-2" style={{ borderColor: 'var(--color-border)' }}><span style={{ color: '#F59E0B', fontFamily: 'var(--font-caption)' }}>📅 Vence 15 jun</span></div>
           </div>
         </div>
       )}
