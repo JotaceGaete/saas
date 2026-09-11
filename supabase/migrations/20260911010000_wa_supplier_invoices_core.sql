@@ -119,7 +119,7 @@ CREATE POLICY "wa_supplier_invoices_owner" ON public.wa_supplier_invoices
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.wa_supplier_invoices TO authenticated;
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- 3. wa_supplier_payments — pago real (puede cubrir 0..N facturas)
+-- 3. wa_supplier_payments — pago real (puede cubrir 1..N facturas)
 -- ─────────────────────────────────────────────────────────────────────────────
 --
 -- Deliberadamente SIN funding_source / cash_session_id / cash_movement_id
