@@ -17,18 +17,18 @@ import { getSupplierPurchaseTotalsForPeriod } from 'services/supplierInvoiceServ
 import { getEffectivePlanSlug } from 'services/waBusinessService';
 
 const MONTHS = [
-  'Enero','Febrero','Marzo','Abril','Mayo','Junio',
-  'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre',
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
 ];
 
 const CATEGORIES = [
-  { value: 'rent',      label: 'Arriendo' },
-  { value: 'salaries',  label: 'Sueldos' },
+  { value: 'rent', label: 'Arriendo' },
+  { value: 'salaries', label: 'Sueldos' },
   { value: 'utilities', label: 'Servicios básicos' },
-  { value: 'services',  label: 'Servicios / Software' },
-  { value: 'taxes',     label: 'Impuestos / Contabilidad' },
-  { value: 'supplies',  label: 'Insumos' },
-  { value: 'other',     label: 'Otros gastos' },
+  { value: 'services', label: 'Servicios / Software' },
+  { value: 'taxes', label: 'Impuestos / Contabilidad' },
+  { value: 'supplies', label: 'Insumos' },
+  { value: 'other', label: 'Otros gastos' },
 ];
 
 const CATEGORY_LABELS = Object.fromEntries(CATEGORIES.map(c => [c.value, c.label]));
@@ -40,10 +40,10 @@ const fmt = (n, currency = 'CLP') => formatMoney(n, currency);
 function CostItemModal({ item, businessId, month, year, onClose, onSaved }) {
   const isEdit = !!item?.id;
   const [category, setCategory] = useState(item?.category || 'rent');
-  const [label,    setLabel]    = useState(item?.name || '');
-  const [amount,   setAmount]   = useState(item?.amount?.toString() || '');
-  const [saving,   setSaving]   = useState(false);
-  const [error,    setError]    = useState('');
+  const [label, setLabel] = useState(item?.name || '');
+  const [amount, setAmount] = useState(item?.amount?.toString() || '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
 
   const save = async () => {
     const amt = parseFloat(amount);
@@ -69,57 +69,57 @@ function CostItemModal({ item, businessId, month, year, onClose, onSaved }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-5 space-y-4">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4">
+      <div className="w-full space-y-4 rounded-t-2xl bg-white p-5 sm:max-w-md sm:rounded-2xl">
         <div className="flex items-center justify-between">
-          <h3 className="text-base font-bold text-gray-900">{isEdit ? 'Editar costo' : 'Agregar costo fijo'}</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+          <h3 className="text-base font-bold text-slate-900">{isEdit ? 'Editar costo' : 'Agregar costo fijo'}</h3>
+          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600">
             <Icon name="X" size={18} />
           </button>
         </div>
 
         <div>
-          <label className="text-xs text-gray-500 block mb-1">Categoría</label>
+          <label className="mb-1 block text-xs text-slate-500">Categoría</label>
           <select
             value={category}
             onChange={e => { setCategory(e.target.value); if (!label) setLabel(''); }}
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-500"
           >
             {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
           </select>
         </div>
 
         <div>
-          <label className="text-xs text-gray-500 block mb-1">Descripción (opcional)</label>
+          <label className="mb-1 block text-xs text-slate-500">Descripción (opcional)</label>
           <input
             type="text"
             value={label}
             onChange={e => setLabel(e.target.value)}
             placeholder={CATEGORY_LABELS[category] || 'Descripción'}
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-500"
           />
         </div>
 
         <div>
-          <label className="text-xs text-gray-500 block mb-1">Monto mensual</label>
+          <label className="mb-1 block text-xs text-slate-500">Monto mensual</label>
           <input
             type="number"
             min="0"
             value={amount}
             onChange={e => setAmount(e.target.value)}
             placeholder="0"
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-500"
           />
         </div>
 
-        {error && <p className="text-xs text-red-500">{error}</p>}
+        {error && <p className="text-xs text-rose-500">{error}</p>}
 
         <div className="flex gap-2 pt-1">
-          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50">
+          <button type="button" onClick={onClose} className="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50">
             Cancelar
           </button>
-          <button onClick={save} disabled={saving}
-            className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-semibold">
+          <button type="button" onClick={save} disabled={saving}
+            className="flex-1 rounded-xl bg-slate-900 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50">
             {saving ? 'Guardando...' : isEdit ? 'Guardar' : 'Agregar'}
           </button>
         </div>
@@ -130,9 +130,8 @@ function CostItemModal({ item, businessId, month, year, onClose, onSaved }) {
 
 // ─── Fila de costo fijo ───────────────────────────────────────────────────────
 
-function CostRow({ item, onEdit, onDelete, currency = 'CLP' }) {
+function CostRow({ item, onEdit, onDelete, currency }) {
   const [confirming, setConfirming] = useState(false);
-  const fromCash = item.source === 'cash_outflow';
 
   const handleDelete = async () => {
     if (!confirming) { setConfirming(true); return; }
@@ -141,106 +140,104 @@ function CostRow({ item, onEdit, onDelete, currency = 'CLP' }) {
   };
 
   return (
-    <div className={`flex items-center justify-between gap-3 py-3 border-b border-gray-50 last:border-0 ${fromCash ? 'opacity-90' : ''}`}>
-      <div className="flex items-center gap-2.5 min-w-0">
-        <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${fromCash ? 'bg-orange-50' : 'bg-blue-50'}`}>
-          <Icon name={fromCash ? 'Wallet' : 'Tag'} size={13} color={fromCash ? '#ea580c' : '#2563eb'} />
-        </div>
+    <div className="flex items-center justify-between gap-3 border-b border-slate-100 py-3 last:border-0">
+      <div className="flex min-w-0 items-center gap-2.5">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
+          <Icon name="Tag" size={13} />
+        </span>
         <div className="min-w-0">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <p className="text-sm font-medium text-gray-800 truncate">{item.name || CATEGORY_LABELS[item.category] || 'Costo'}</p>
-            {fromCash && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-1.5 py-0.5 text-[10px] font-bold text-orange-700">
-                <Icon name="Wallet" size={9} />
-                Desde caja
-              </span>
-            )}
-          </div>
-          <p className="text-[11px] text-gray-400">{CATEGORY_LABELS[item.category] || item.category}</p>
+          <p className="truncate text-sm font-medium text-slate-800">{item.name || CATEGORY_LABELS[item.category] || 'Costo'}</p>
+          <p className="text-[11px] text-slate-400">{CATEGORY_LABELS[item.category] || item.category}</p>
         </div>
       </div>
-      <div className="flex items-center gap-2 shrink-0">
-        <span className="text-sm font-bold text-gray-800">{fmt(item.amount, currency)}</span>
-        {fromCash ? (
-          <span
-            title="Registrado desde Caja — editar desde el módulo de Caja"
-            className="p-1.5 text-gray-300 cursor-not-allowed select-none"
-          >
-            <Icon name="Lock" size={13} />
-          </span>
-        ) : (
-          <>
-            <button onClick={() => onEdit(item)} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600">
-              <Icon name="Pencil" size={13} />
-            </button>
-            <button
-              onClick={handleDelete}
-              className={`p-1.5 rounded-lg text-sm font-medium transition-colors ${
-                confirming ? 'bg-red-100 text-red-600 hover:bg-red-200' : 'text-gray-400 hover:bg-gray-100 hover:text-red-500'
-              }`}
-              title={confirming ? 'Confirmar eliminar' : 'Eliminar'}
-            >
-              {confirming ? <Icon name="Check" size={13} /> : <Icon name="Trash2" size={13} />}
-            </button>
-          </>
-        )}
+      <div className="flex shrink-0 items-center gap-2">
+        <span className="text-sm font-bold tabular-nums text-slate-800">{fmt(item.amount, currency)}</span>
+        <button type="button" onClick={() => onEdit(item)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600" aria-label="Editar">
+          <Icon name="Pencil" size={13} />
+        </button>
+        <button
+          type="button"
+          onClick={handleDelete}
+          className={`rounded-lg p-1.5 text-sm font-medium transition-colors ${confirming ? 'bg-rose-100 text-rose-600 hover:bg-rose-200' : 'text-slate-400 hover:bg-slate-100 hover:text-rose-500'}`}
+          title={confirming ? 'Confirmar eliminar' : 'Eliminar'}
+          aria-label={confirming ? 'Confirmar eliminar' : 'Eliminar'}
+        >
+          {confirming ? <Icon name="Check" size={13} /> : <Icon name="Trash2" size={13} />}
+        </button>
       </div>
     </div>
   );
 }
 
-// ─── Panel costos fijos ───────────────────────────────────────────────────────
+// ─── Panel: Costos Fijos Mensuales ─────────────────────────────────────────────
 
-function FixedCostsPanel({ items, businessId, month, year, onReload, currency = 'CLP' }) {
+function FixedCostsPanel({ items, businessId, month, year, onReload, currency }) {
   const [showModal, setShowModal] = useState(false);
-  const [editItem, setEditItem]   = useState(null);
-  const total = items.reduce((s, i) => s + (i.amount || 0), 0);
+  const [editItem, setEditItem] = useState(null);
+  // Este panel representa exclusivamente costos fijos configurados manualmente;
+  // los variables (incluidos los sincronizados desde Caja) tienen su propio
+  // tratamiento en el Termómetro y no deben aparecer acá.
+  const fixedItems = items.filter(item => item.type === 'fixed' && item.source !== 'cash_outflow');
+  const total = fixedItems.reduce((s, i) => s + (i.amount || 0), 0);
 
-  const handleEdit = (item) => { setEditItem(item); setShowModal(true); };
+  const openCreate = () => { setEditItem(null); setShowModal(true); };
+  const handleEdit = item => { setEditItem(item); setShowModal(true); };
   const handleClose = () => { setShowModal(false); setEditItem(null); };
   const handleSaved = () => { handleClose(); onReload(); };
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-      <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+    <section aria-label="Costos Fijos Mensuales" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-xl bg-blue-100 flex items-center justify-center">
-            <Icon name="Building2" size={15} color="#2563eb" />
-          </div>
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700">
+            <Icon name="Building2" size={16} />
+          </span>
           <div>
-            <p className="text-sm font-bold text-gray-800">Costos fijos mensuales</p>
-            <p className="text-[11px] text-gray-400">Arriendo, sueldos, servicios, etc.</p>
+            <h2 className="text-sm font-bold text-slate-900">Costos Fijos Mensuales</h2>
+            <p className="text-xs text-slate-500">Arriendo, sueldos, servicios y más</p>
           </div>
         </div>
         <button
-          onClick={() => { setEditItem(null); setShowModal(true); }}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold"
+          type="button"
+          onClick={openCreate}
+          className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500"
         >
-          <Icon name="Plus" size={12} />
-          Agregar
+          <Icon name="Plus" size={13} />Agregar
         </button>
       </div>
 
-      <div className="px-5">
-        {items.length === 0 ? (
+      <div className="mt-4 flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2.5">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Total presupuestado</p>
+          <p className="text-lg font-bold tabular-nums text-slate-900">{fmt(total, currency)}</p>
+        </div>
+        <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+          {fixedItems.length} ítems
+        </span>
+      </div>
+
+      <div className="mt-3">
+        {fixedItems.length === 0 ? (
           <div className="py-8 text-center">
-            <Icon name="Building2" size={28} color="#d1d5db" className="mx-auto mb-2" />
-            <p className="text-sm text-gray-400">Sin costos fijos registrados</p>
-            <p className="text-xs text-gray-300 mt-0.5">Agrega arriendo, sueldos, servicios básicos, etc.</p>
+            <Icon name="Building2" size={26} className="mx-auto mb-2 text-slate-300" />
+            <p className="text-sm font-semibold text-slate-500">Sin costos fijos configurados</p>
+            <p className="mx-auto mt-1 max-w-xs text-xs text-slate-400">
+              Registra tus gastos recurrentes para calcular automáticamente tu punto de equilibrio diario.
+            </p>
+            <button
+              type="button"
+              onClick={openCreate}
+              className="mt-3 inline-flex items-center gap-1.5 rounded-xl border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              <Icon name="Plus" size={13} />Agregar
+            </button>
           </div>
         ) : (
-          items.map(item => (
+          fixedItems.map(item => (
             <CostRow key={item.id} item={item} onEdit={handleEdit} onDelete={onReload} currency={currency} />
           ))
         )}
       </div>
-
-      {items.length > 0 && (
-        <div className="px-5 py-3 bg-blue-50 border-t border-blue-100 flex justify-between items-center">
-          <span className="text-xs font-semibold text-blue-700">Total costos fijos</span>
-          <span className="text-base font-black text-blue-900">{fmt(total, currency)}</span>
-        </div>
-      )}
 
       {showModal && (
         <CostItemModal
@@ -252,75 +249,133 @@ function FixedCostsPanel({ items, businessId, month, year, onReload, currency = 
           onSaved={handleSaved}
         />
       )}
+    </section>
+  );
+}
+
+// ─── Panel: Compras y Facturas ─────────────────────────────────────────────────
+
+function PurchaseLine({ dot, label, value }) {
+  return (
+    <div className="flex items-center justify-between">
+      <span className="flex items-center gap-2 text-xs text-slate-500"><span className={`h-2 w-2 rounded-full ${dot}`} />{label}</span>
+      <span className="text-sm font-semibold tabular-nums text-slate-700">{value}</span>
     </div>
   );
 }
 
-// ─── Widget Compras (link) ────────────────────────────────────────────────────
-
-function ComprasLinkPanel({ purchaseTotals, navigate, currency = 'CLP' }) {
+function PurchasesPanel({ purchaseTotals, navigate, currency }) {
   const hasError = Boolean(purchaseTotals?.error);
-  const mercaderiaTotal  = purchaseTotals?.totals?.mercaderia?.total  || 0;
-  const operacionalTotal = purchaseTotals?.totalOperational           || 0;
-  const otherTotal       = purchaseTotals?.totals?.other?.total       || 0;
-  const hasData = mercaderiaTotal > 0 || operacionalTotal > 0 || otherTotal > 0;
+  const mercaderiaTotal = purchaseTotals?.totals?.mercaderia?.total || 0;
+  const operacionalTotal = purchaseTotals?.totalOperational || 0;
+  const otherTotal = purchaseTotals?.totals?.other?.total || 0;
+  // Suma informativa de todo lo registrado en el período (mercadería + gastos
+  // con y sin IVA + otros/pendientes). No reemplaza ni reinterpreta las reglas
+  // del Termómetro: totalOperational sigue siendo la única cifra "operativa".
+  const totalRegistrado = purchaseTotals?.totalAmountAll || 0;
+  const hasData = totalRegistrado > 0;
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-      <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
-        <div className="w-8 h-8 rounded-xl bg-rose-50 flex items-center justify-center">
-          <Icon name="FileInput" size={15} color="#e11d48" />
+    <section aria-label="Compras y Facturas" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-rose-50 text-rose-600">
+            <Icon name="FileInput" size={16} />
+          </span>
+          <div>
+            <h2 className="text-sm font-bold text-slate-900">Compras y Facturas</h2>
+            <p className="text-xs text-slate-500">Mercadería e insumos del período</p>
+          </div>
         </div>
-        <div>
-          <p className="text-sm font-bold text-gray-800">Compras y Facturas recibidas</p>
-          <p className="text-[11px] text-gray-400">Mercadería, gastos con y sin IVA</p>
-        </div>
+        <button
+          type="button"
+          onClick={() => navigate('/proveedores')}
+          className="inline-flex items-center gap-1.5 rounded-xl bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
+        >
+          <Icon name="Plus" size={13} />Cargar
+        </button>
       </div>
 
-      <div className="px-5 py-4">
-        {hasError ? (
-          <p className="text-sm text-red-500 mb-4">No se pudieron cargar las compras del período.</p>
-        ) : hasData ? (
-          <div className="space-y-2 mb-4">
-            {mercaderiaTotal > 0 && (
-              <div className="flex justify-between items-center">
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-blue-400 shrink-0" />
-                  <span className="text-xs text-gray-500">Mercadería</span>
-                </div>
-                <span className="text-sm font-semibold text-gray-700">{fmt(mercaderiaTotal, currency)}</span>
+      {hasError ? (
+        <div className="mt-4 flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
+          <Icon name="AlertTriangle" size={14} className="mt-0.5 shrink-0" />
+          <span>No se pudieron cargar las compras del período.</span>
+        </div>
+      ) : (
+        <>
+          <div className="mt-4 flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2.5">
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Total registrado en compras</p>
+              <p className="text-lg font-bold tabular-nums text-slate-900">{fmt(totalRegistrado, currency)}</p>
+            </div>
+            <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+              {hasData ? 'Con facturas' : 'Sin facturas'}
+            </span>
+          </div>
+
+          <div className="mt-3">
+            {hasData ? (
+              <div className="space-y-2">
+                {mercaderiaTotal > 0 && <PurchaseLine dot="bg-blue-400" label="Mercadería" value={fmt(mercaderiaTotal, currency)} />}
+                {operacionalTotal > 0 && <PurchaseLine dot="bg-amber-400" label="Gastos operativos" value={fmt(operacionalTotal, currency)} />}
+                {otherTotal > 0 && <PurchaseLine dot="bg-slate-400" label="Otros / Servicios / pendientes" value={fmt(otherTotal, currency)} />}
               </div>
-            )}
-            {operacionalTotal > 0 && (
-              <div className="flex justify-between items-center">
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
-                  <span className="text-xs text-gray-500">Gastos operativos</span>
-                </div>
-                <span className="text-sm font-semibold text-gray-700">{fmt(operacionalTotal, currency)}</span>
-              </div>
-            )}
-            {otherTotal > 0 && (
-              <div className="flex justify-between items-center">
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-gray-400 shrink-0" />
-                  <span className="text-xs text-gray-500">Otros / Servicios</span>
-                </div>
-                <span className="text-sm font-semibold text-gray-700">{fmt(otherTotal, currency)}</span>
+            ) : (
+              <div className="py-8 text-center">
+                <Icon name="FileInput" size={26} className="mx-auto mb-2 text-slate-300" />
+                <p className="text-sm font-semibold text-slate-500">Sin compras en este período</p>
+                <p className="mx-auto mt-1 max-w-xs text-xs text-slate-400">
+                  Ingresa tus facturas para mantener actualizado el control de compras y proveedores.
+                </p>
               </div>
             )}
           </div>
-        ) : (
-          <p className="text-sm text-gray-400 mb-4">Sin compras registradas este período</p>
-        )}
-        <button
-          onClick={() => navigate('/proveedores')}
-          className="w-full py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold transition-colors flex items-center justify-center gap-2"
+        </>
+      )}
+
+      <button
+        type="button"
+        onClick={() => navigate('/proveedores')}
+        className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+      >
+        Ir al módulo completo de Compras
+        <Icon name="ArrowRight" size={14} />
+      </button>
+    </section>
+  );
+}
+
+// ─── Header: selector de período + acceso al Termómetro ───────────────────────
+
+function HeaderActions({ month, year, onMonth, onYear, navigate }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-2.5 py-1.5">
+        <Icon name="Calendar" size={14} className="text-slate-400" />
+        <select
+          aria-label="Mes"
+          value={month}
+          onChange={e => onMonth(+e.target.value)}
+          className="border-0 bg-transparent pr-1 text-sm text-slate-700 focus:outline-none"
         >
-          <Icon name="ExternalLink" size={14} />
-          Ir a Compras y Facturas
-        </button>
+          {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+        </select>
+        <select
+          aria-label="Año"
+          value={year}
+          onChange={e => onYear(+e.target.value)}
+          className="border-0 bg-transparent pr-1 text-sm text-slate-700 focus:outline-none"
+        >
+          {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+        </select>
       </div>
+      <button
+        type="button"
+        onClick={() => navigate('/crm/cost-center')}
+        className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+      >
+        <Icon name="BarChart3" size={13} />Ver Termómetro
+      </button>
     </div>
   );
 }
@@ -337,18 +392,18 @@ export default function CrmCostos() {
 
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth() + 1);
-  const [year,  setYear]  = useState(now.getFullYear());
+  const [year, setYear] = useState(now.getFullYear());
 
-  const [costItems,      setCostItems]      = useState([]);
+  const [costItems, setCostItems] = useState([]);
   const [purchaseTotals, setPurchaseTotals] = useState(null);
-  const [loading,        setLoading]        = useState(true);
+  const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     if (!business?.id) return;
     setLoading(true);
     // Mismo rango [from, to) que usaba crmService.getPurchaseTotalsForPeriod.
     const from = `${year}-${String(month).padStart(2, '0')}-01`;
-    const to   = new Date(year, month, 1).toISOString().slice(0, 10);
+    const to = new Date(year, month, 1).toISOString().slice(0, 10);
     const [items, pt] = await Promise.all([
       getCostItems(business.id, month, year),
       getSupplierPurchaseTotalsForPeriod(business.id, from, to),
@@ -360,21 +415,17 @@ export default function CrmCostos() {
 
   useEffect(() => { load(); }, [load]);
 
-  const totalFijos      = costItems.reduce((s, i) => s + (i.amount || 0), 0);
-  const totalOperacional = purchaseTotals?.totalOperational || 0;
-  const totalMes         = totalFijos + totalOperacional;
-
   if (!isPro) {
     return (
       <DashboardAppShell>
         <PanelHeader title="Costos" subtitle="Gestión de costos fijos y compras" />
         <DashboardLayoutContent>
-          <div className="flex flex-col items-center justify-center py-24 px-4 text-center">
-            <div className="w-14 h-14 bg-blue-50 rounded-2xl flex items-center justify-center mb-4">
-              <Icon name="Calculator" size={24} color="#2563eb" />
+          <div className="flex flex-col items-center justify-center px-4 py-24 text-center">
+            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100">
+              <Icon name="BarChart3" size={24} className="text-slate-600" />
             </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Funcionalidad Business</h3>
-            <p className="text-sm text-gray-500 max-w-sm">Requiere el plan Business.</p>
+            <h3 className="mb-2 text-lg font-semibold text-slate-900">Funcionalidad Business</h3>
+            <p className="max-w-sm text-sm text-slate-500">Requiere el plan Business.</p>
           </div>
         </DashboardLayoutContent>
       </DashboardAppShell>
@@ -385,82 +436,29 @@ export default function CrmCostos() {
     <DashboardAppShell>
       <PanelHeader
         title={
-          <h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>
-            Costos
-          </h1>
+          <div className="flex items-center gap-2">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white">
+              <Icon name="BarChart3" size={16} />
+            </span>
+            <h1 className="text-base font-bold text-slate-900">Centro de Costos y Egresos</h1>
+          </div>
         }
         subtitle={
-          <p className="text-xs" style={{ color: 'var(--color-muted-foreground)' }}>
-            {MONTHS[month - 1]} {year}
-          </p>
+          <p className="text-xs text-slate-500">Gestión de gastos fijos y facturación de proveedores</p>
         }
-      />
+        mobileActions={<HeaderActions month={month} year={year} onMonth={setMonth} onYear={setYear} navigate={navigate} />}
+      >
+        <HeaderActions month={month} year={year} onMonth={setMonth} onYear={setYear} navigate={navigate} />
+      </PanelHeader>
 
-      <DashboardLayoutContent>
-        {/* Selector de período */}
-        <div className="flex items-center gap-2 mb-5 max-w-lg mx-auto flex-wrap">
-          <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-xl px-3 py-2">
-            <Icon name="Calendar" size={14} color="#9ca3af" />
-            <select value={month} onChange={e => setMonth(+e.target.value)}
-              className="text-sm text-gray-700 border-0 focus:outline-none bg-transparent pr-1">
-              {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-            </select>
-            <select value={year} onChange={e => setYear(+e.target.value)}
-              className="text-sm text-gray-700 border-0 focus:outline-none bg-transparent pr-1">
-              {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
-            </select>
-          </div>
-
-          {/* Link al Termómetro */}
-          <button
-            onClick={() => navigate('/crm/cost-center')}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold border border-indigo-200 transition-colors"
-          >
-            <Icon name="BarChart2" size={13} />
-            Ver Termómetro
-          </button>
-        </div>
-
+      <DashboardLayoutContent innerClassName="lg:max-w-5xl">
         {loading ? (
-          <div className="flex items-center justify-center py-16">
-            <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+          <div className="flex items-center justify-center py-16" role="status">
+            <Icon name="Loader2" size={24} className="animate-spin text-slate-400" />
+            <span className="sr-only">Cargando costos</span>
           </div>
         ) : (
-          <div className="space-y-4 max-w-lg mx-auto">
-
-            {purchaseTotals?.error && (
-              <div className="flex items-start gap-2 rounded-2xl border border-red-200 bg-red-50 p-4 text-xs text-red-600">
-                <Icon name="AlertTriangle" size={16} className="shrink-0 mt-0.5" />
-                <span>
-                  No se pudieron cargar las compras del período. El total de costos del mes y el
-                  desglose de compras/gastos pueden estar incompletos.
-                </span>
-              </div>
-            )}
-
-            {/* Resumen total del mes */}
-            {totalMes > 0 && (
-              <div className="rounded-2xl bg-gradient-to-r from-slate-800 to-slate-700 p-4 text-white">
-                <p className="text-white/60 text-xs font-semibold uppercase tracking-widest mb-1">Total costos del mes</p>
-                <p className="text-3xl font-black tabular-nums">{fmt(totalMes, business?.currency)}</p>
-                <div className="mt-3 flex gap-4 flex-wrap">
-                  {totalFijos > 0 && (
-                    <div>
-                      <p className="text-white/50 text-[10px] uppercase tracking-wide">Fijos</p>
-                      <p className="text-white/90 text-sm font-bold">{fmt(totalFijos, business?.currency)}</p>
-                    </div>
-                  )}
-                  {totalOperacional > 0 && (
-                    <div>
-                      <p className="text-white/50 text-[10px] uppercase tracking-wide">Compras/Gastos</p>
-                      <p className="text-white/90 text-sm font-bold">{fmt(totalOperacional, business?.currency)}</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Panel costos fijos */}
+          <div className="grid gap-4 lg:grid-cols-2">
             <FixedCostsPanel
               items={costItems}
               businessId={business.id}
@@ -469,10 +467,7 @@ export default function CrmCostos() {
               onReload={load}
               currency={business?.currency}
             />
-
-            {/* Link a Compras */}
-            <ComprasLinkPanel purchaseTotals={purchaseTotals} navigate={navigate} currency={business?.currency} />
-
+            <PurchasesPanel purchaseTotals={purchaseTotals} navigate={navigate} currency={business?.currency} />
           </div>
         )}
       </DashboardLayoutContent>
