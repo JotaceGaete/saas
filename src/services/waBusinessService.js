@@ -2833,6 +2833,13 @@ export const updateSupplier = async (id, payload) => {
 
 export const deleteSupplier = async (id) => {
   const { error } = await supabase?.from('wa_suppliers')?.delete()?.eq('id', id);
+  // wa_supplier_invoices.supplier_id -> wa_suppliers(id) ON DELETE RESTRICT
+  // (PROVEEDORES-CORE-2): un proveedor con facturas nunca se puede borrar --
+  // se traduce el 23503 a un mensaje legible acá, para que la página nunca
+  // tenga que mostrar el error de Postgres crudo.
+  if (error?.code === '23503') {
+    return { error: new Error('No se puede eliminar este proveedor porque tiene facturas registradas.') };
+  }
   if (error) return { error };
   return { error: null };
 };

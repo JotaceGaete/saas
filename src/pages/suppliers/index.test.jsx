@@ -4,7 +4,7 @@
  */
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, within, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
 vi.mock('components/ui/BusinessSidebar', () => ({ default: () => <div data-testid="sidebar-stub" /> }));
@@ -59,6 +59,7 @@ import SuppliersPage from './index';
 const SUPPLIER_HEALTHY = { id: 's-healthy', businessId: 'biz1', name: 'Proveedor Al Día', supplierType: 'otros' };
 const SUPPLIER_PENDING = { id: 's-pending', businessId: 'biz1', name: 'Proveedor Con Deuda', supplierType: 'otros' };
 const SUPPLIER_CRITICAL = { id: 's-critical', businessId: 'biz1', name: 'Proveedor Vencido', supplierType: 'otros' };
+const SUPPLIER_WITH_RUT = { id: 's-rut', businessId: 'biz1', name: 'Ferretería Andina', rut: '76.543.210-K', legalName: 'Ferretería Andina SpA', supplierType: 'otros' };
 
 beforeEach(() => {
   [getSuppliersMock, createSupplierMock, updateSupplierMock, deleteSupplierMock,
@@ -125,5 +126,79 @@ describe('Escenario 15 — /proveedores ya no llama a ninguna función legacy de
     expect(getSuppliersMock).toHaveBeenCalledWith('biz1');
     expect(getSupplierInvoicesMock).toHaveBeenCalledWith('biz1');
     expect(getBusinessSupplierPaymentsMock).toHaveBeenCalledWith('biz1');
+  });
+});
+
+describe('Review fix 1 — eliminar proveedor con facturas: error visible, sin éxito silencioso', () => {
+  it('cuando deleteSupplier devuelve error, se muestra un mensaje al usuario y el proveedor NO desaparece de la lista', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+    deleteSupplierMock.mockResolvedValue({ error: new Error('No se puede eliminar este proveedor porque tiene facturas registradas.') });
+
+    renderPage();
+    const card = (await screen.findByText('Proveedor Con Deuda')).closest('div.group');
+    fireEvent.click(within(card).getByLabelText('Opciones'));
+    fireEvent.click(within(card).getByText('Eliminar'));
+
+    // deleteSupplier fue invocado y devolvió error -- nunca se debe fingir
+    // éxito: se avisa al usuario y el proveedor sigue en pantalla.
+    expect(deleteSupplierMock).toHaveBeenCalledWith('s-pending');
+    await waitFor(() => expect(alertSpy).toHaveBeenCalledWith('No se puede eliminar este proveedor porque tiene facturas registradas.'));
+    expect(screen.getByText('Proveedor Con Deuda')).toBeInTheDocument();
+    // No hay éxito silencioso: getSuppliers no se vuelve a llamar (load()
+    // solo se dispara tras un éxito real) -- sigue en su única llamada del montaje.
+    expect(getSuppliersMock).toHaveBeenCalledTimes(1);
+
+    confirmSpy.mockRestore();
+    alertSpy.mockRestore();
+  });
+
+  it('cuando deleteSupplier tiene éxito, sí se recarga la lista (comportamiento normal preservado)', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    deleteSupplierMock.mockResolvedValue({ error: null });
+
+    renderPage();
+    const card = (await screen.findByText('Proveedor Al Día')).closest('div.group');
+    fireEvent.click(within(card).getByLabelText('Opciones'));
+    fireEvent.click(within(card).getByText('Eliminar'));
+
+    expect(deleteSupplierMock).toHaveBeenCalledWith('s-healthy');
+    // Éxito real -- load() sí se dispara de nuevo (llamada inicial + esta).
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(getSuppliersMock).toHaveBeenCalledTimes(2);
+
+    confirmSpy.mockRestore();
+  });
+});
+
+describe('Review fix 2 — búsqueda también por RUT y razón social', () => {
+  beforeEach(() => {
+    getSuppliersMock.mockResolvedValue({ data: [SUPPLIER_HEALTHY, SUPPLIER_WITH_RUT], error: null });
+    getSupplierInvoicesMock.mockResolvedValue({ data: [], error: null });
+  });
+
+  it('buscar por RUT encuentra al proveedor (case-insensitive)', async () => {
+    renderPage();
+    await screen.findByText('Proveedor Al Día');
+    fireEvent.change(screen.getByPlaceholderText('Buscar proveedor...'), { target: { value: '76.543.210-k' } });
+    expect(screen.getByText('Ferretería Andina')).toBeInTheDocument();
+    expect(screen.queryByText('Proveedor Al Día')).not.toBeInTheDocument();
+  });
+
+  it('buscar por razón social encuentra al proveedor (case-insensitive)', async () => {
+    renderPage();
+    await screen.findByText('Proveedor Al Día');
+    fireEvent.change(screen.getByPlaceholderText('Buscar proveedor...'), { target: { value: 'andina spa' } });
+    expect(screen.getByText('Ferretería Andina')).toBeInTheDocument();
+    expect(screen.queryByText('Proveedor Al Día')).not.toBeInTheDocument();
+  });
+
+  it('un proveedor sin rut/legalName (null) nunca rompe la búsqueda', async () => {
+    renderPage();
+    await screen.findByText('Proveedor Al Día');
+    // SUPPLIER_HEALTHY no tiene rut ni legalName -- buscar cualquier cosa
+    // no debe lanzar, y simplemente no debe matchear ese proveedor.
+    fireEvent.change(screen.getByPlaceholderText('Buscar proveedor...'), { target: { value: 'ferreteria' } });
+    expect(screen.queryByText('Proveedor Al Día')).not.toBeInTheDocument();
   });
 });

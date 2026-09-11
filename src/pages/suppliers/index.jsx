@@ -23,6 +23,16 @@ function computeSupplierState(invoices) {
   return 'pending';
 }
 
+// PROVEEDORES-CORE-3 review fix: búsqueda case-insensitive y null-tolerant
+// sobre name/contactName/rut/legalName -- ninguno de estos campos es
+// obligatorio en wa_suppliers, así que cada uno se coalesce a '' antes de
+// comparar.
+function matchesSearch(supplier, query) {
+  const q = query.toLowerCase();
+  return [supplier.name, supplier.contactName, supplier.rut, supplier.legalName]
+    .some((field) => (field ?? '').toLowerCase().includes(q));
+}
+
 const HEALTH = {
   healthy:  { label: 'Al día',   desc: 'Sin deuda pendiente',    color: '#10B981', bg: '#ECFDF5', dot: '#10B981' },
   pending:  { label: 'Con deuda', desc: 'Tiene facturas pendientes', color: '#6366F1', bg: '#EEF2FF', dot: '#6366F1' },
@@ -223,7 +233,13 @@ export default function SuppliersPage() {
 
   const handleDelete = async (supplier) => {
     if (!window.confirm(`¿Eliminar a "${supplier.name}"?`)) return;
-    await deleteSupplier(supplier.id);
+    const { error } = await deleteSupplier(supplier.id);
+    if (error) {
+      // Un proveedor con facturas nunca se puede borrar (FK RESTRICT) --
+      // nunca fingir éxito ni recargar como si hubiese desaparecido.
+      window.alert(error.message ?? 'No se pudo eliminar el proveedor.');
+      return;
+    }
     await load();
   };
 
@@ -254,7 +270,7 @@ export default function SuppliersPage() {
   const usedTypes = [...new Set(suppliers.map((s) => s.supplierType).filter(Boolean))];
 
   const filtered = suppliers.filter((s) => {
-    if (search && !s.name.toLowerCase().includes(search.toLowerCase()) && !(s.contactName ?? '').toLowerCase().includes(search.toLowerCase())) return false;
+    if (search && !matchesSearch(s, search)) return false;
     const state = computeSupplierState(invoicesBySupplierId[s.id] ?? []);
     if (filter === 'pending') return state !== 'healthy';
     if (filter === 'healthy') return state === 'healthy';
