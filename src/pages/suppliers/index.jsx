@@ -4,37 +4,29 @@ import Icon from 'components/AppIcon';
 import BusinessSidebar from 'components/ui/BusinessSidebar';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatMoney } from '../../utils/formatMoney';
-import {
-  getSuppliers,
-  getAllBusinessDebts,
-  createSupplier,
-  updateSupplier,
-  deleteSupplier,
-  markDebtAsPaid,
-} from '../../services/waBusinessService';
-import { getEffectivePlanSlug } from '../../services/waBusinessService';
+import { getSuppliers, createSupplier, updateSupplier, deleteSupplier, getEffectivePlanSlug } from '../../services/waBusinessService';
+import { getSupplierInvoices, getBusinessSupplierPayments, registerSupplierPayment } from '../../services/supplierInvoiceService';
 import { getPlanLimits } from '../../constants/plans';
 import SupplierFormModal from '../../components/SupplierFormModal';
+import SupplierPaymentModal from '../../components/SupplierPaymentModal';
 import UpcomingDueBanner from '../../components/UpcomingDueBanner';
 
-// ── Health score ─────────────────────────────────────────────────
-function computeHealth(debts) {
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const in7 = new Date(today); in7.setDate(in7.getDate() + 7);
-  const pending = debts.filter((d) => d.status === 'pending');
-  if (pending.length === 0) return 'healthy';
-  const hasOverdue = pending.some((d) => d.dueDate && new Date(d.dueDate) < today);
-  if (hasOverdue) return 'critical';
-  const hasSoon = pending.some((d) => d.dueDate && new Date(d.dueDate) <= in7);
-  if (hasSoon) return 'warning';
+// ── Estado del proveedor (PROVEEDORES-CORE-3 §5) ────────────────────────
+// Vencido: tiene alguna factura con balance > 0 e is_overdue = true.
+// Con deuda: balance agregado > 0, sin ninguna vencida.
+// Al día: balance agregado = 0 (o sin facturas).
+// Nunca se persiste -- se deriva siempre de las facturas ya cargadas.
+function computeSupplierState(invoices) {
+  const withBalance = invoices.filter((inv) => inv.balance > 0);
+  if (withBalance.length === 0) return 'healthy';
+  if (withBalance.some((inv) => inv.isOverdue)) return 'critical';
   return 'pending';
 }
 
 const HEALTH = {
-  healthy:  { label: 'Excelente',    desc: 'Sin deudas pendientes',   color: '#10B981', bg: '#ECFDF5', dot: '#10B981', emoji: '🟢' },
-  pending:  { label: 'Con deuda',    desc: 'Tiene deudas sin vencer', color: '#6366F1', bg: '#EEF2FF', dot: '#6366F1', emoji: '🔵' },
-  warning:  { label: 'Atención',     desc: 'Vence esta semana',       color: '#F59E0B', bg: '#FFFBEB', dot: '#F59E0B', emoji: '🟡' },
-  critical: { label: 'Vencido',      desc: 'Tiene deudas vencidas',   color: '#EF4444', bg: '#FEF2F2', dot: '#EF4444', emoji: '🔴' },
+  healthy:  { label: 'Al día',   desc: 'Sin deuda pendiente',    color: '#10B981', bg: '#ECFDF5', dot: '#10B981' },
+  pending:  { label: 'Con deuda', desc: 'Tiene facturas pendientes', color: '#6366F1', bg: '#EEF2FF', dot: '#6366F1' },
+  critical: { label: 'Vencido',  desc: 'Tiene facturas vencidas', color: '#EF4444', bg: '#FEF2F2', dot: '#EF4444' },
 };
 
 const TYPE_LABELS = {
@@ -42,42 +34,24 @@ const TYPE_LABELS = {
   transporte: 'Transporte', arriendo: 'Arriendo', marketing: 'Marketing', otros: 'Otros',
 };
 
-// fmt se inicializa con la moneda del negocio en el componente raíz
-
-function timeAgo(dateStr) {
-  if (!dateStr) return null;
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const days = Math.floor(diff / 86400000);
-  if (days === 0) return 'hoy';
-  if (days === 1) return 'ayer';
-  if (days < 30) return `hace ${days} días`;
-  const months = Math.floor(days / 30);
-  return `hace ${months} mes${months > 1 ? 'es' : ''}`;
-}
-
 // ── Supplier card ────────────────────────────────────────────────
-function SupplierCard({ supplier, debts, onEdit, onDelete, onMarkPaid, navigateTo }) {
-  const health = computeHealth(debts);
-  const h = HEALTH[health];
-  const pending = debts.filter((d) => d.status === 'pending');
-  const paid = debts.filter((d) => d.status === 'paid');
-  const totalPending = pending.reduce((s, d) => s + (d.balance ?? d.amount), 0);
-  const lastPaid = paid.sort((a, b) => new Date(b.paidAt ?? 0) - new Date(a.paidAt ?? 0))[0];
+function SupplierCard({ supplier, invoices, onEdit, onDelete, onPay, navigateTo, fmt }) {
+  const state = computeSupplierState(invoices);
+  const h = HEALTH[state];
+  const pending = invoices.filter((inv) => inv.balance > 0);
+  const totalPending = pending.reduce((s, inv) => s + inv.balance, 0);
   const nextDue = pending
-    .filter((d) => d.dueDate)
+    .filter((inv) => inv.dueDate)
     .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate))[0];
   const [menuOpen, setMenuOpen] = useState(false);
-  const firstDebt = pending[0];
-  const today = new Date(); today.setHours(0, 0, 0, 0);
 
   return (
     <div
       className="group relative rounded-2xl border transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 cursor-pointer overflow-hidden"
-      style={{ backgroundColor: '#FFFFFF', borderColor: health === 'critical' ? '#FECACA' : health === 'warning' ? '#FDE68A' : 'var(--color-border)', borderLeftWidth: '4px', borderLeftColor: h.dot }}
+      style={{ backgroundColor: '#FFFFFF', borderColor: state === 'critical' ? '#FECACA' : state === 'pending' ? 'var(--color-border)' : 'var(--color-border)', borderLeftWidth: '4px', borderLeftColor: h.dot }}
       onClick={() => navigateTo(supplier.id)}
     >
       <div className="p-4">
-        {/* Top row */}
         <div className="flex items-start justify-between gap-2 mb-3">
           <div className="flex items-center gap-3 min-w-0">
             <div className="flex-shrink-0 w-11 h-11 rounded-xl flex items-center justify-center text-base font-bold shadow-sm" style={{ background: `linear-gradient(135deg, ${h.bg} 0%, ${h.dot}22 100%)`, color: h.color }}>
@@ -88,8 +62,8 @@ function SupplierCard({ supplier, debts, onEdit, onDelete, onMarkPaid, navigateT
                 {supplier.name}
               </p>
               <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                {supplier.contactName && (
-                  <span className="text-xs truncate" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>{supplier.contactName}</span>
+                {supplier.rut && (
+                  <span className="text-xs truncate" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>{supplier.rut}</span>
                 )}
                 {supplier.supplierType && supplier.supplierType !== 'otros' && (
                   <span className="text-[10px] px-1.5 py-0 rounded-full font-medium" style={{ backgroundColor: '#F3F4F6', color: '#6B7280', fontFamily: 'var(--font-caption)' }}>
@@ -100,7 +74,6 @@ function SupplierCard({ supplier, debts, onEdit, onDelete, onMarkPaid, navigateT
             </div>
           </div>
 
-          {/* Health badge + menu */}
           <div className="flex items-center gap-1.5 flex-shrink-0">
             <div className="text-right">
               <div className="flex items-center gap-1 justify-end">
@@ -123,31 +96,30 @@ function SupplierCard({ supplier, debts, onEdit, onDelete, onMarkPaid, navigateT
           </div>
         </div>
 
-        {/* Main amount */}
         <div className="flex items-end justify-between gap-2 mb-3">
           <div>
             {totalPending > 0 ? (
               <>
-                <p className="text-2xl font-black leading-none" style={{ color: health === 'critical' ? '#EF4444' : 'var(--color-foreground)', fontFamily: 'var(--font-stat)' }}>
+                <p className="text-2xl font-black leading-none" style={{ color: state === 'critical' ? '#EF4444' : 'var(--color-foreground)', fontFamily: 'var(--font-stat)' }}>
                   $ {fmt(totalPending)}
                 </p>
                 <p className="text-xs mt-1" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-                  {pending.length} deuda{pending.length > 1 ? 's' : ''} activa{pending.length > 1 ? 's' : ''}
+                  {pending.length} factura{pending.length > 1 ? 's' : ''} pendiente{pending.length > 1 ? 's' : ''}
                 </p>
               </>
             ) : (
               <div>
-                <p className="text-sm font-bold" style={{ color: '#10B981', fontFamily: 'var(--font-caption)' }}>Sin deudas pendientes</p>
-                <p className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>{debts.length} operacion{debts.length !== 1 ? 'es' : ''} registrada{debts.length !== 1 ? 's' : ''}</p>
+                <p className="text-sm font-bold" style={{ color: '#10B981', fontFamily: 'var(--font-caption)' }}>Sin facturas pendientes</p>
+                <p className="text-xs" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>{invoices.length} factura{invoices.length !== 1 ? 's' : ''} registrada{invoices.length !== 1 ? 's' : ''}</p>
               </div>
             )}
           </div>
-          {firstDebt && (
+          {pending.length > 0 && (
             <button
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all hover:scale-105 active:scale-95 shadow-sm"
               style={{ backgroundColor: '#ECFDF5', color: '#059669', fontFamily: 'var(--font-caption)' }}
-              onClick={(e) => { e.stopPropagation(); onMarkPaid(firstDebt); }}
-              title={`Marcar "${firstDebt.description}" como pagada`}
+              onClick={(e) => { e.stopPropagation(); onPay(supplier, pending); }}
+              title="Registrar pago"
             >
               <Icon name="CheckCircle" size={13} color="#059669" />
               Pagar
@@ -155,21 +127,12 @@ function SupplierCard({ supplier, debts, onEdit, onDelete, onMarkPaid, navigateT
           )}
         </div>
 
-        {/* Meta row */}
         <div className="flex items-center gap-3 flex-wrap border-t pt-2.5" style={{ borderColor: 'var(--color-border)' }}>
           {nextDue && (
             <div className="flex items-center gap-1" style={{ fontFamily: 'var(--font-caption)' }}>
-              <Icon name="Calendar" size={11} color={health === 'critical' ? '#EF4444' : '#F59E0B'} />
-              <span className="text-[11px] font-medium" style={{ color: health === 'critical' ? '#EF4444' : '#D97706' }}>
+              <Icon name="Calendar" size={11} color={state === 'critical' ? '#EF4444' : '#F59E0B'} />
+              <span className="text-[11px] font-medium" style={{ color: state === 'critical' ? '#EF4444' : '#D97706' }}>
                 Vence {new Date(nextDue.dueDate).toLocaleDateString('es', { day: 'numeric', month: 'short' })}
-              </span>
-            </div>
-          )}
-          {lastPaid && (
-            <div className="flex items-center gap-1" style={{ fontFamily: 'var(--font-caption)' }}>
-              <Icon name="CheckCircle2" size={11} color="#10B981" />
-              <span className="text-[11px]" style={{ color: '#10B981' }}>
-                Último pago {timeAgo(lastPaid.paidAt)}
               </span>
             </div>
           )}
@@ -216,10 +179,12 @@ export default function SuppliersPage() {
   const fmt = (n) => formatMoney(n, business?.currency);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [suppliers, setSuppliers] = useState([]);
-  const [allDebts, setAllDebts] = useState([]);
+  const [allInvoices, setAllInvoices] = useState([]);
+  const [allPayments, setAllPayments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState(null);
+  const [paymentTarget, setPaymentTarget] = useState(null); // { supplier, invoices }
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
@@ -232,12 +197,14 @@ export default function SuppliersPage() {
   const load = useCallback(async () => {
     if (!business?.id) return;
     setLoading(true);
-    const [{ data: sData }, { data: dData }] = await Promise.all([
+    const [{ data: sData }, { data: iData }, { data: pData }] = await Promise.all([
       getSuppliers(business.id),
-      getAllBusinessDebts(business.id),
+      getSupplierInvoices(business.id),
+      getBusinessSupplierPayments(business.id),
     ]);
     setSuppliers(sData ?? []);
-    setAllDebts(dData ?? []);
+    setAllInvoices(iData ?? []);
+    setAllPayments(pData ?? []);
     setLoading(false);
   }, [business?.id]);
 
@@ -255,39 +222,43 @@ export default function SuppliersPage() {
   };
 
   const handleDelete = async (supplier) => {
-    if (!window.confirm(`¿Eliminar a "${supplier.name}"? Se borrarán todas sus deudas.`)) return;
+    if (!window.confirm(`¿Eliminar a "${supplier.name}"?`)) return;
     await deleteSupplier(supplier.id);
     await load();
   };
 
-  const handleMarkPaid = async (debt) => {
-    await markDebtAsPaid(debt.id, debt.amount);
+  const handleRegisterPayment = async (payload) => {
+    const { error } = await registerSupplierPayment(business.id, paymentTarget.supplier.id, payload);
+    if (error) throw error;
     await load();
   };
 
-  const debtsBySupplierId = allDebts.reduce((acc, d) => {
-    if (!acc[d.supplierId]) acc[d.supplierId] = [];
-    acc[d.supplierId].push(d);
+  const invoicesBySupplierId = allInvoices.reduce((acc, inv) => {
+    if (!acc[inv.supplierId]) acc[inv.supplierId] = [];
+    acc[inv.supplierId].push(inv);
     return acc;
   }, {});
 
   const today = new Date(); today.setHours(0, 0, 0, 0);
-  const totalPending = allDebts.filter((d) => d.status === 'pending').reduce((s, d) => s + (d.balance ?? d.amount), 0);
-  const overdueCount = suppliers.filter((s) => computeHealth(debtsBySupplierId[s.id] ?? []) === 'critical').length;
-  const paidThisMonth = allDebts.filter((d) => {
-    if (d.status !== 'paid' || !d.paidAt) return false;
-    const p = new Date(d.paidAt);
-    return p.getFullYear() === today.getFullYear() && p.getMonth() === today.getMonth();
-  }).reduce((s, d) => s + d.amount, 0);
-  const healthyCount = suppliers.filter((s) => computeHealth(debtsBySupplierId[s.id] ?? []) === 'healthy').length;
+  // Total pendiente y Deudas vencidas: agregados sobre TODAS las facturas
+  // del negocio -- nunca recalculados a mano, balance/isOverdue ya vienen
+  // derivados de wa_supplier_invoice_balances.
+  const totalPending = allInvoices.reduce((s, inv) => s + (inv.balance > 0 ? inv.balance : 0), 0);
+  const overdueCount = allInvoices.filter((inv) => inv.isOverdue).length;
+  const paidThisMonth = allPayments.filter((p) => {
+    const d = new Date(p.paymentDate);
+    return d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth();
+  }).reduce((s, p) => s + p.amount, 0);
+  const healthyCount = suppliers.filter((s) => computeSupplierState(invoicesBySupplierId[s.id] ?? []) === 'healthy').length;
 
   const usedTypes = [...new Set(suppliers.map((s) => s.supplierType).filter(Boolean))];
 
   const filtered = suppliers.filter((s) => {
     if (search && !s.name.toLowerCase().includes(search.toLowerCase()) && !(s.contactName ?? '').toLowerCase().includes(search.toLowerCase())) return false;
-    if (filter === 'pending') return computeHealth(debtsBySupplierId[s.id] ?? []) !== 'healthy';
-    if (filter === 'healthy') return computeHealth(debtsBySupplierId[s.id] ?? []) === 'healthy';
-    if (filter === 'critical') return computeHealth(debtsBySupplierId[s.id] ?? []) === 'critical';
+    const state = computeSupplierState(invoicesBySupplierId[s.id] ?? []);
+    if (filter === 'pending') return state !== 'healthy';
+    if (filter === 'healthy') return state === 'healthy';
+    if (filter === 'critical') return state === 'critical';
     if (typeFilter !== 'all' && s.supplierType !== typeFilter) return false;
     return true;
   }).filter((s) => typeFilter === 'all' || s.supplierType === typeFilter);
@@ -300,14 +271,13 @@ export default function SuppliersPage() {
       <main className="transition-all duration-200" style={{ paddingLeft: sidebarWidth, paddingBottom: '80px' }}>
         <div className="max-w-4xl mx-auto px-4 py-6 lg:px-6">
 
-          {/* Header */}
           <div className="flex items-start justify-between mb-6 gap-3">
             <div>
               <h1 className="text-xl font-bold" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-heading)' }}>
                 Proveedores y Cuentas por Pagar
               </h1>
               <p className="text-sm mt-0.5" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-                Controlá deudas, vencimientos y pagos
+                Controlá facturas, vencimientos y pagos
               </p>
             </div>
             <div className="flex flex-col items-end gap-1">
@@ -331,20 +301,17 @@ export default function SuppliersPage() {
             </div>
           </div>
 
-          {/* Stats */}
           {!loading && suppliers.length > 0 && (
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
               <StatCard icon="TrendingDown" label="Total pendiente" value={`$ ${fmt(totalPending)}`} color="#6366F1" bg="#EEF2FF" sub={`${suppliers.length - healthyCount} proveedor${suppliers.length - healthyCount !== 1 ? 'es' : ''} con deuda`} />
               <StatCard icon="AlertCircle" label="Deudas vencidas" value={overdueCount} color={overdueCount > 0 ? '#EF4444' : '#10B981'} bg={overdueCount > 0 ? '#FEF2F2' : '#ECFDF5'} sub={overdueCount > 0 ? 'Requieren atención' : 'Todo al día ✓'} />
               <StatCard icon="CheckCircle2" label="Pagado este mes" value={`$ ${fmt(paidThisMonth)}`} color="#10B981" bg="#ECFDF5" />
-              <StatCard icon="Users" label="Proveedores al día" value={`${healthyCount}/${suppliers.length}`} color="#10B981" bg="#ECFDF5" sub="Sin deudas pendientes" />
+              <StatCard icon="Users" label="Proveedores al día" value={`${healthyCount}/${suppliers.length}`} color="#10B981" bg="#ECFDF5" sub="Sin facturas pendientes" />
             </div>
           )}
 
-          {/* Banner contextual */}
-          {!loading && <UpcomingDueBanner debts={allDebts} suppliers={suppliers} />}
+          {!loading && <UpcomingDueBanner invoices={allInvoices} suppliers={suppliers} payments={allPayments} />}
 
-          {/* Filtros */}
           {!loading && suppliers.length > 0 && (
             <div className="space-y-2 mb-4">
               <div className="flex flex-col sm:flex-row gap-2">
@@ -371,7 +338,6 @@ export default function SuppliersPage() {
                   ))}
                 </div>
               </div>
-              {/* Filtro por tipo */}
               {usedTypes.length > 1 && (
                 <div className="flex gap-1 flex-wrap">
                   <button onClick={() => setTypeFilter('all')} className="px-2.5 py-1 rounded-lg text-xs transition-colors"
@@ -389,7 +355,6 @@ export default function SuppliersPage() {
             </div>
           )}
 
-          {/* Lista */}
           {loading ? (
             <div className="flex items-center justify-center py-16">
               <div className="w-6 h-6 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: 'var(--color-primary)' }} />
@@ -407,10 +372,11 @@ export default function SuppliersPage() {
                 <SupplierCard
                   key={s.id}
                   supplier={s}
-                  debts={debtsBySupplierId[s.id] ?? []}
+                  invoices={invoicesBySupplierId[s.id] ?? []}
+                  fmt={fmt}
                   onEdit={(sup) => { setEditingSupplier(sup); setFormOpen(true); }}
                   onDelete={handleDelete}
-                  onMarkPaid={handleMarkPaid}
+                  onPay={(supplier, invoices) => setPaymentTarget({ supplier, invoices })}
                   navigateTo={(id) => navigate(`/proveedores/${id}`)}
                 />
               ))}
@@ -424,6 +390,13 @@ export default function SuppliersPage() {
         onClose={() => setFormOpen(false)}
         onSave={handleSave}
         supplier={editingSupplier}
+      />
+      <SupplierPaymentModal
+        open={!!paymentTarget}
+        onClose={() => setPaymentTarget(null)}
+        onSave={handleRegisterPayment}
+        supplier={paymentTarget?.supplier}
+        invoices={paymentTarget?.invoices ?? []}
       />
     </div>
   );
@@ -440,15 +413,14 @@ function EmptyState({ onAdd }) {
         Controlá tus compras y pagos pendientes
       </h3>
       <p className="text-sm mb-5 leading-relaxed" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-        Registrá proveedores, controlá cuánto debés y recibí alertas antes de que una deuda venza.
+        Registrá proveedores, facturas y pagos, y recibí alertas antes de que una factura venza.
       </p>
 
-      {/* Beneficios */}
       <div className="w-full text-left mb-6 space-y-2">
         {[
-          { icon: 'DollarSign', text: 'Control de deudas y saldos', color: '#6366F1', bg: '#EEF2FF' },
-          { icon: 'Bell',       text: 'Alertas de vencimiento',     color: '#F59E0B', bg: '#FFFBEB' },
-          { icon: 'Clock',      text: 'Historial de pagos',         color: '#10B981', bg: '#ECFDF5' },
+          { icon: 'DollarSign', text: 'Control de facturas y saldos', color: '#6366F1', bg: '#EEF2FF' },
+          { icon: 'Bell',       text: 'Alertas de vencimiento',      color: '#F59E0B', bg: '#FFFBEB' },
+          { icon: 'Clock',      text: 'Historial de pagos',          color: '#10B981', bg: '#ECFDF5' },
           { icon: 'BarChart2',  text: 'Salud financiera del negocio', color: '#3B82F6', bg: '#EFF6FF' },
         ].map((b) => (
           <div key={b.text} className="flex items-center gap-3 px-3 py-2 rounded-xl" style={{ backgroundColor: b.bg }}>
@@ -483,14 +455,13 @@ function EmptyState({ onAdd }) {
               </div>
               <div className="ml-auto flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#F59E0B' }} />
-                <span className="text-xs font-semibold" style={{ color: '#F59E0B', fontFamily: 'var(--font-caption)' }}>Atención</span>
+                <span className="text-xs font-semibold" style={{ color: '#F59E0B', fontFamily: 'var(--font-caption)' }}>Con deuda</span>
               </div>
             </div>
             <p className="text-2xl font-black" style={{ color: 'var(--color-foreground)', fontFamily: 'var(--font-stat)' }}>$ 120.000</p>
-            <p className="text-xs mb-2" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>3 deudas activas</p>
+            <p className="text-xs mb-2" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>1 factura pendiente</p>
             <div className="flex items-center gap-2 text-[11px] border-t pt-2" style={{ borderColor: 'var(--color-border)' }}>
               <span style={{ color: '#F59E0B', fontFamily: 'var(--font-caption)' }}>📅 Vence 15 jun</span>
-              <span style={{ color: '#10B981', fontFamily: 'var(--font-caption)' }}>✓ Último pago hace 5 días</span>
             </div>
           </div>
         </div>

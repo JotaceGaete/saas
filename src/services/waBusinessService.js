@@ -2753,6 +2753,9 @@ const mapSupplierFromDb = (row) => ({
   id: row?.id,
   businessId: row?.business_id,
   name: row?.name,
+  rut: row?.rut,
+  legalName: row?.legal_name,
+  address: row?.address,
   contactName: row?.contact_name,
   phone: row?.phone,
   email: row?.email,
@@ -2797,12 +2800,16 @@ export const createSupplier = async (businessId, payload) => {
   const { data, error } = await supabase?.from('wa_suppliers')?.insert({
     business_id: businessId,
     name: payload?.name,
+    rut: payload?.rut ?? null,
+    legal_name: payload?.legalName ?? null,
+    address: payload?.address ?? null,
     contact_name: payload?.contactName ?? null,
     phone: payload?.phone ?? null,
     email: payload?.email ?? null,
     notes: payload?.notes ?? null,
     supplier_type: payload?.supplierType ?? 'otros',
   })?.select()?.single();
+  if (error?.code === '23505') return { data: null, error: new Error('Ya existe un proveedor con ese RUT en este negocio.') };
   if (error) return { data: null, error };
   return { data: mapSupplierFromDb(data), error: null };
 };
@@ -2810,12 +2817,16 @@ export const createSupplier = async (businessId, payload) => {
 export const updateSupplier = async (id, payload) => {
   const db = {};
   if (payload?.name !== undefined) db.name = payload.name;
+  if (payload?.rut !== undefined) db.rut = payload.rut;
+  if (payload?.legalName !== undefined) db.legal_name = payload.legalName;
+  if (payload?.address !== undefined) db.address = payload.address;
   if (payload?.contactName !== undefined) db.contact_name = payload.contactName;
   if (payload?.phone !== undefined) db.phone = payload.phone;
   if (payload?.email !== undefined) db.email = payload.email;
   if (payload?.notes !== undefined) db.notes = payload.notes;
   if (payload?.supplierType !== undefined) db.supplier_type = payload.supplierType;
   const { data, error } = await supabase?.from('wa_suppliers')?.update(db)?.eq('id', id)?.select()?.single();
+  if (error?.code === '23505') return { data: null, error: new Error('Ya existe un proveedor con ese RUT en este negocio.') };
   if (error) return { data: null, error };
   return { data: mapSupplierFromDb(data), error: null };
 };
