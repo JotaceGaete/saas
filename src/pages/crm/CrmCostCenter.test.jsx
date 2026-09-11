@@ -101,16 +101,29 @@ describe('cálculo operativo', () => {
     expect(result.daily(5).result).toBe(750);
   });
 
-  it('clasifica ganancia, equilibrio, pérdida y futuro con tolerancia monetaria', () => {
+  it('clasifica ganancia, equilibrio y pérdida con tolerancia monetaria', () => {
     expect(classifyDailyResult({ result: 2, tolerance: 1 })).toBe('winning');
     expect(classifyDailyResult({ result: 1, tolerance: 1 })).toBe('breaking');
     expect(classifyDailyResult({ result: -2, tolerance: 1 })).toBe('losing');
-    expect(classifyDailyResult({ result: 100, tolerance: 1, future: true })).toBe('nodata');
     expect(monetaryTolerance('CLP')).toBe(1);
     expect(monetaryTolerance('USD')).toBe(0.01);
   });
 
-  it('día pasado sin ventas y con costo fijo es pérdida', () => {
+  it('día pasado sin ventas, sin gastos y sin costo fijo queda sin actividad', () => {
+    expect(classifyDailyResult({ result: 0, tolerance: 1, future: false, calculable: true, hasData: false })).toBe('inactive');
+  });
+
+  it('día futuro nunca es "Sin datos", se marca como próximo', () => {
+    expect(classifyDailyResult({ result: 100, tolerance: 1, future: true })).toBe('future');
+    expect(classifyDailyResult({ result: 100, tolerance: 1, future: true, hasData: false })).toBe('future');
+  });
+
+  it('un error real de carga es "Sin datos"', () => {
+    expect(classifyDailyResult({ result: 0, tolerance: 1, calculable: false })).toBe('nodata');
+    expect(classifyDailyResult({ result: 0, tolerance: 1, calculable: false, hasData: false })).toBe('nodata');
+  });
+
+  it('día pasado sin ventas y con costo fijo es pérdida (rojo)', () => {
     const result = calculateOperatingSnapshot({ month: 9, year: 2026, dailySales: {}, costItems: [{ type: 'fixed', amount: 300 }] });
     expect(classifyDailyResult({ result: result.daily(2).result, tolerance: 1, hasData: true })).toBe('losing');
   });
@@ -166,5 +179,51 @@ describe('pantalla', () => {
     expect(within(kpis).getByText('$300')).toBeInTheDocument();
     expect(within(kpis).getByText('$20')).toBeInTheDocument();
     expect(within(kpis).getAllByText('No disponible')).toHaveLength(2);
+  });
+
+  it('un error real de carga marca el resultado del período como "Sin datos"', async () => {
+    getOperatingSalesMock.mockResolvedValue({ ...salesOk, salesMonth: 0, errors: { crm: { message: 'boom' }, catalog: null } });
+    render(<CrmCostCenter />);
+    await screen.findByText('No se pudieron cargar las ventas CRM/TPV.');
+    const kpis = screen.getByRole('region', { name: 'Indicadores del período' });
+    expect(within(kpis).getByText('Sin datos')).toBeInTheDocument();
+  });
+
+  it('un día pasado sin ventas, gastos ni costo fijo se marca "Sin actividad"', async () => {
+    render(<CrmCostCenter />);
+    await screen.findByRole('region', { name: 'Indicadores del período' });
+    expect(await screen.findByRole('button', { name: '2: Sin actividad' })).toBeInTheDocument();
+  });
+
+  it('un día futuro nunca se marca "Sin datos": se marca "Próximo" y queda deshabilitado', async () => {
+    render(<CrmCostCenter />);
+    await screen.findByRole('region', { name: 'Indicadores del período' });
+    const futureButtons = screen.getAllByRole('button', { name: /: Próximo$/ });
+    expect(futureButtons.length).toBeGreaterThan(0);
+    expect(futureButtons[0]).toBeDisabled();
+    expect(screen.queryAllByRole('button', { name: /: Sin datos$/ })).toHaveLength(0);
+  });
+
+  it('con costo fijo, un día pasado sin ventas queda en rojo (bajo equilibrio)', async () => {
+    getOperatingCostsMock.mockResolvedValue({ data: [{ type: 'fixed', amount: 3000 }], error: null });
+    render(<CrmCostCenter />);
+    const button = await screen.findByRole('button', { name: '2: Bajo equilibrio' });
+    expect(button.className).toMatch(/border-rose/);
+  });
+
+  it('con ventas y cero costos registrados, el KPI advierte en vez de mostrar sólo "Rentable"', async () => {
+    render(<CrmCostCenter />);
+    const kpis = await screen.findByRole('region', { name: 'Indicadores del período' });
+    expect(within(kpis).getByText('Sin costos registrados este mes')).toBeInTheDocument();
+    expect(within(kpis).queryByText('Rentable')).not.toBeInTheDocument();
+    expect(within(kpis).getByText(/\+\$300\.000/)).toBeInTheDocument();
+  });
+
+  it('con ventas, costos registrados y resultado positivo, el KPI muestra "Rentable"', async () => {
+    getOperatingCostsMock.mockResolvedValue({ data: [{ type: 'fixed', amount: 1000 }], error: null });
+    render(<CrmCostCenter />);
+    const kpis = await screen.findByRole('region', { name: 'Indicadores del período' });
+    expect(within(kpis).getByText('Rentable')).toBeInTheDocument();
+    expect(within(kpis).queryByText('Sin costos registrados este mes')).not.toBeInTheDocument();
   });
 });

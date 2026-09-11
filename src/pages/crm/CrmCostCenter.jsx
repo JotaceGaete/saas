@@ -20,7 +20,9 @@ export function monetaryTolerance(currency) {
 }
 
 export function classifyDailyResult({ result, tolerance, future = false, calculable = true, hasData = true }) {
-  if (future || !calculable || !hasData) return 'nodata';
+  if (!calculable) return 'nodata';
+  if (future) return 'future';
+  if (!hasData) return 'inactive';
   if (result > tolerance) return 'winning';
   if (result < -tolerance) return 'losing';
   return 'breaking';
@@ -102,8 +104,11 @@ const DAY_STATE = {
   winning: { label: 'Rentable', cell: 'border-emerald-200 bg-emerald-50 text-emerald-800', result: 'text-emerald-700' },
   breaking: { label: 'En equilibrio', cell: 'border-amber-200 bg-amber-50 text-amber-800', result: 'text-amber-700' },
   losing: { label: 'Bajo equilibrio', cell: 'border-rose-200 bg-rose-50 text-rose-800', result: 'text-rose-700' },
+  inactive: { label: 'Sin actividad', cell: 'border-slate-200 bg-slate-50 text-slate-400', result: 'text-slate-400' },
+  future: { label: 'Próximo', cell: 'border-slate-100 bg-slate-50/60 text-slate-300 cursor-not-allowed', result: 'text-slate-300' },
   nodata: { label: 'Sin datos', cell: 'border-slate-200 bg-slate-50 text-slate-400', result: 'text-slate-400' },
 };
+const DAY_STATE_WITH_AMOUNT = new Set(['winning', 'breaking', 'losing']);
 
 function DayDetail({ day, values, state, fmt }) {
   const rows = [['Ventas', values.sales], ['Gastos directos de proveedor', -values.supplier], ['Otros gastos variables', -values.variable], ['Costo fijo prorrateado', -values.fixed]];
@@ -135,14 +140,14 @@ function OperatingCalendar({ month, year, snapshot, calculable, tolerance, fmt }
 
   return <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-      <div><h2 className="font-bold text-slate-900">Resultado diario</h2><p className="text-xs text-slate-500">Ventas menos gastos del día y costo fijo prorrateado.</p></div>
+      <div><h2 className="text-sm font-bold text-slate-900">Resultado diario</h2><p className="text-xs text-slate-500">Ventas menos gastos del día y costo fijo prorrateado.</p></div>
       <div className="flex flex-wrap gap-3 text-xs text-slate-500">{Object.entries(DAY_STATE).map(([key, value]) => <span key={key} className="inline-flex items-center gap-1"><span className={`h-2.5 w-2.5 rounded-full border ${value.cell}`} />{value.label}</span>)}</div>
     </div>
     <div className="mt-5 grid grid-cols-7 gap-1.5 sm:gap-2">
       {['L', 'M', 'X', 'J', 'V', 'S', 'D'].map(label => <div key={label} className="pb-1 text-center text-xs font-semibold text-slate-400">{label}</div>)}
       {Array.from({ length: offset }, (_, index) => <div key={`offset-${index}`} />)}
-      {days.map(({ day, values, state, future }) => <button key={day} type="button" disabled={future || !calculable} onClick={() => setSelectedDay(day)} aria-label={`${day}: ${DAY_STATE[state].label}`} aria-pressed={selectedDay === day} className={`min-h-16 rounded-xl border p-1.5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 sm:min-h-20 sm:p-2 ${DAY_STATE[state].cell} ${selectedDay === day ? 'ring-2 ring-blue-500' : ''}`}>
-        <span className="block text-xs font-bold">{day}</span><span className={`mt-1 block truncate text-[10px] font-semibold tabular-nums sm:text-xs ${DAY_STATE[state].result}`}>{state === 'nodata' ? '—' : `${values.result > 0 ? '+' : values.result < 0 ? '−' : ''}${fmt(Math.abs(values.result))}`}</span><span className="mt-1 hidden text-[10px] sm:block">{DAY_STATE[state].label}</span>
+      {days.map(({ day, values, state, future }) => <button key={day} type="button" disabled={future || !calculable} onClick={() => setSelectedDay(day)} aria-label={`${day}: ${DAY_STATE[state].label}`} aria-pressed={selectedDay === day} className={`min-h-[54px] rounded-xl border p-1.5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 sm:min-h-[66px] sm:p-2 ${DAY_STATE[state].cell} ${selectedDay === day ? 'ring-2 ring-blue-500' : ''}`}>
+        <span className="block text-xs font-bold">{day}</span><span className={`mt-1 block truncate text-[10px] font-semibold tabular-nums sm:text-xs ${DAY_STATE[state].result}`}>{DAY_STATE_WITH_AMOUNT.has(state) ? `${values.result > 0 ? '+' : values.result < 0 ? '−' : ''}${fmt(Math.abs(values.result))}` : '—'}</span><span className="mt-1 hidden text-[10px] sm:block">{DAY_STATE[state].label}</span>
       </button>)}
     </div>
     {selected && <DayDetail day={selected.day} values={selected.values} state={selected.state} fmt={fmt} />}
@@ -195,7 +200,16 @@ export default function CrmCostCenter() {
   const result = salesMonth - snapshot.fixedCosts - snapshot.directExpenses;
   const tolerance = monetaryTolerance(business?.currency);
   const hasPeriodData = salesMonth > 0 || snapshot.fixedCosts > 0 || snapshot.directExpenses > 0 || snapshot.merchandise > 0 || snapshot.pendingClassification > 0;
-  const resultState = !calculable || !hasPeriodData ? 'Sin datos' : result > tolerance ? 'Rentable' : result < -tolerance ? 'Bajo equilibrio' : 'En equilibrio';
+  const noCostsRegistered = salesMonth > 0 && snapshot.fixedCosts === 0 && snapshot.directExpenses === 0;
+  const resultState = !calculable || !hasPeriodData
+    ? 'Sin datos'
+    : noCostsRegistered
+      ? 'Sin costos registrados este mes'
+      : result > tolerance
+        ? 'Rentable'
+        : result < -tolerance
+          ? 'Bajo equilibrio'
+          : 'En equilibrio';
   const fmt = value => formatMoney(value, business?.currency || 'CLP');
 
   const changeMonth = delta => {
@@ -227,7 +241,7 @@ export default function CrmCostCenter() {
           <KpiCard label="Ventas del mes" value={fmt(salesMonth)} available={salesAvailable} tone="blue" note={salesAvailable ? `CRM/TPV ${fmt(sales.crmTotal)} · Catálogo ${fmt(sales.catalogTotal)}` : undefined} />
           <KpiCard label="Costos fijos" value={fmt(snapshot.fixedCosts)} available={costsAvailable} tone="amber" note="Solo partidas configuradas como fijas." />
           <KpiCard label="Gastos directos" value={fmt(snapshot.directExpenses)} available={costsAvailable && purchasesAvailable} tone="rose" note="Proveedor reconocido + otros gastos variables." />
-          <KpiCard label="Resultado operativo estimado" value={`${result > 0 ? '+' : result < 0 ? '−' : ''}${fmt(Math.abs(result))}`} available={calculable} tone={result > tolerance ? 'emerald' : result < -tolerance ? 'rose' : 'amber'} note={resultState} />
+          <KpiCard label="Resultado operativo estimado" value={`${result > 0 ? '+' : result < 0 ? '−' : ''}${fmt(Math.abs(result))}`} available={calculable} tone={noCostsRegistered ? 'amber' : result > tolerance ? 'emerald' : result < -tolerance ? 'rose' : 'amber'} note={resultState} />
         </section>
 
         <OperatingCalendar month={month} year={year} snapshot={snapshot} calculable={calculable} tolerance={tolerance} fmt={fmt} />
