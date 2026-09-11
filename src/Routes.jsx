@@ -40,7 +40,6 @@ import CrmStock from './pages/crm/CrmStock';
 import CrmTerminal from './pages/crm/CrmTerminal';
 import CrmCash from './pages/crm/CrmCash';
 import CrmCostCenter from './pages/crm/CrmCostCenter';
-import CrmPurchases from './pages/crm/CrmPurchases';
 import CrmCostos from './pages/crm/CrmCostos';
 import CrmBarcodes from './pages/crm/CrmBarcodes';
 import Login from './pages/login';
@@ -146,7 +145,12 @@ const Routes = () => {
             <Route path="/crm/facturas"           element={<RequireCrm><FeatureGate feature="invoices"><CrmInvoices /></FeatureGate></RequireCrm>} />
             <Route path="/crm/facturas/nueva"     element={<RequireCrm><FeatureGate feature="invoices"><CrmInvoiceEditor /></FeatureGate></RequireCrm>} />
             <Route path="/crm/facturas/:id"       element={<RequireCrm><FeatureGate feature="invoices"><CrmInvoiceEditor /></FeatureGate></RequireCrm>} />
-            <Route path="/crm/compras"            element={<RequireCrm><FeatureGate feature="purchaseInvoices"><CrmPurchases /></FeatureGate></RequireCrm>} />
+            {/* PROVEEDORES-CORE-4B: /crm/compras deja de ser un módulo independiente --
+                Proveedores es ahora el único lugar operativo para compras/facturas de
+                proveedor. Se mantiene el redirect (sin RequireCrm ni FeatureGate) para
+                no romper bookmarks/enlaces antiguos ni bloquear a usuarios que sí tienen
+                acceso a /proveedores pero no al plan que exigía "purchaseInvoices". */}
+            <Route path="/crm/compras"            element={<RequireAuth><Navigate to="/proveedores" replace /></RequireAuth>} />
             <Route path="/crm/costos"             element={<RequireCrm><FeatureGate feature="fixedCosts"><CrmCostos /></FeatureGate></RequireCrm>} />
             <Route path="/crm/barcodes"           element={<RequireCrm><FeatureGate feature="barcodePrinting"><CrmBarcodes /></FeatureGate></RequireCrm>} />
             <Route path="/business-configuration" element={<RequireAuth><BusinessConfiguration /></RequireAuth>} />

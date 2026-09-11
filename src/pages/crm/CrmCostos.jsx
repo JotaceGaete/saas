@@ -12,8 +12,8 @@ import {
   createCostItem,
   updateCostItem,
   deleteCostItem,
-  getPurchaseTotalsForPeriod,
 } from 'services/crmService';
+import { getSupplierPurchaseTotalsForPeriod } from 'services/supplierInvoiceService';
 import { getEffectivePlanSlug } from 'services/waBusinessService';
 
 const MONTHS = [
@@ -259,9 +259,11 @@ function FixedCostsPanel({ items, businessId, month, year, onReload, currency = 
 // ─── Widget Compras (link) ────────────────────────────────────────────────────
 
 function ComprasLinkPanel({ purchaseTotals, navigate, currency = 'CLP' }) {
+  const hasError = Boolean(purchaseTotals?.error);
   const mercaderiaTotal  = purchaseTotals?.totals?.mercaderia?.total  || 0;
   const operacionalTotal = purchaseTotals?.totalOperational           || 0;
-  const hasData = mercaderiaTotal > 0 || operacionalTotal > 0;
+  const otherTotal       = purchaseTotals?.totals?.other?.total       || 0;
+  const hasData = mercaderiaTotal > 0 || operacionalTotal > 0 || otherTotal > 0;
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
@@ -276,7 +278,9 @@ function ComprasLinkPanel({ purchaseTotals, navigate, currency = 'CLP' }) {
       </div>
 
       <div className="px-5 py-4">
-        {hasData ? (
+        {hasError ? (
+          <p className="text-sm text-red-500 mb-4">No se pudieron cargar las compras del período.</p>
+        ) : hasData ? (
           <div className="space-y-2 mb-4">
             {mercaderiaTotal > 0 && (
               <div className="flex justify-between items-center">
@@ -296,12 +300,21 @@ function ComprasLinkPanel({ purchaseTotals, navigate, currency = 'CLP' }) {
                 <span className="text-sm font-semibold text-gray-700">{fmt(operacionalTotal, currency)}</span>
               </div>
             )}
+            {otherTotal > 0 && (
+              <div className="flex justify-between items-center">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-gray-400 shrink-0" />
+                  <span className="text-xs text-gray-500">Otros / Servicios</span>
+                </div>
+                <span className="text-sm font-semibold text-gray-700">{fmt(otherTotal, currency)}</span>
+              </div>
+            )}
           </div>
         ) : (
           <p className="text-sm text-gray-400 mb-4">Sin compras registradas este período</p>
         )}
         <button
-          onClick={() => navigate('/crm/compras')}
+          onClick={() => navigate('/proveedores')}
           className="w-full py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold transition-colors flex items-center justify-center gap-2"
         >
           <Icon name="ExternalLink" size={14} />
@@ -333,9 +346,12 @@ export default function CrmCostos() {
   const load = useCallback(async () => {
     if (!business?.id) return;
     setLoading(true);
+    // Mismo rango [from, to) que usaba crmService.getPurchaseTotalsForPeriod.
+    const from = `${year}-${String(month).padStart(2, '0')}-01`;
+    const to   = new Date(year, month, 1).toISOString().slice(0, 10);
     const [items, pt] = await Promise.all([
       getCostItems(business.id, month, year),
-      getPurchaseTotalsForPeriod(business.id, month, year),
+      getSupplierPurchaseTotalsForPeriod(business.id, from, to),
     ]);
     setCostItems(items || []);
     setPurchaseTotals(pt);
@@ -411,6 +427,16 @@ export default function CrmCostos() {
           </div>
         ) : (
           <div className="space-y-4 max-w-lg mx-auto">
+
+            {purchaseTotals?.error && (
+              <div className="flex items-start gap-2 rounded-2xl border border-red-200 bg-red-50 p-4 text-xs text-red-600">
+                <Icon name="AlertTriangle" size={16} className="shrink-0 mt-0.5" />
+                <span>
+                  No se pudieron cargar las compras del período. El total de costos del mes y el
+                  desglose de compras/gastos pueden estar incompletos.
+                </span>
+              </div>
+            )}
 
             {/* Resumen total del mes */}
             {totalMes > 0 && (

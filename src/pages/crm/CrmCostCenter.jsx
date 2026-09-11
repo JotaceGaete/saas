@@ -13,9 +13,11 @@ import {
   getCostItems,
   getCrmSalesTotalsForPeriod,
   getCrmDailySalesForPeriod,
-  getPurchaseTotalsForPeriod,
-  getPurchaseInvoices,
 } from 'services/crmService';
+import {
+  getSupplierPurchaseTotalsForPeriod,
+  getSupplierInvoicesForPeriod,
+} from 'services/supplierInvoiceService';
 import { getEffectivePlanSlug } from 'services/waBusinessService';
 import BusinessStatusAvatar from 'components/business-status-avatar/BusinessStatusAvatar';
 
@@ -86,7 +88,7 @@ function AnimatedBar({ pct, colorClass, height = 'h-4' }) {
 
 // ─── Tarjeta héroe ────────────────────────────────────────────────────────────
 
-function HeroCard({ state, salesToday, dailyCost }) {
+function HeroCard({ state, salesToday, dailyCost, fmt }) {
   const s = STATE[state];
   const pct      = dailyCost > 0 ? Math.round((salesToday / dailyCost) * 100) : 0;
   const remaining = Math.max(0, dailyCost - salesToday);
@@ -155,7 +157,7 @@ function HeroCard({ state, salesToday, dailyCost }) {
 
 // ─── Hoyo financiero ──────────────────────────────────────────────────────────
 
-function HoyoCard({ totalCosts, salesMonth }) {
+function HoyoCard({ totalCosts, salesMonth, fmt }) {
   const gap     = totalCosts - salesMonth;
   const covered = gap <= 0;
   const pct     = totalCosts > 0 ? Math.min(100, Math.round((salesMonth / totalCosts) * 100)) : 0;
@@ -219,7 +221,7 @@ function HoyoCard({ totalCosts, salesMonth }) {
 
 // ─── Calendario GitHub-style ──────────────────────────────────────────────────
 
-function CalendarDot({ day, month, year, state, sales, varExp, dailyCost, isToday }) {
+function CalendarDot({ day, month, year, state, sales, varExp, dailyCost, isToday, fmt }) {
   const [showTip, setShowTip] = useState(false);
   const ref = useRef(null);
 
@@ -289,7 +291,7 @@ function CalendarDot({ day, month, year, state, sales, varExp, dailyCost, isToda
   );
 }
 
-function HealthCalendar({ month, year, dailySales, dailyCost, dailyVarExpenses }) {
+function HealthCalendar({ month, year, dailySales, dailyCost, dailyVarExpenses, fmt }) {
   const now = new Date();
   const isCurrentMonth = month === now.getMonth() + 1 && year === now.getFullYear();
   const daysInMonth = new Date(year, month, 0).getDate();
@@ -328,6 +330,7 @@ function HealthCalendar({ month, year, dailySales, dailyCost, dailyVarExpenses }
             state={state} sales={sales} varExp={varExp}
             dailyCost={dailyCost}
             isToday={isCurrentMonth && d === todayDay}
+            fmt={fmt}
           />
         ))}
       </div>
@@ -339,10 +342,12 @@ function HealthCalendar({ month, year, dailySales, dailyCost, dailyVarExpenses }
 
 // ─── Widget Compras ───────────────────────────────────────────────────────────
 
-function ComprasWidget({ purchaseTotals, navigate }) {
+function ComprasWidget({ purchaseTotals, navigate, fmt }) {
+  const hasError = Boolean(purchaseTotals?.error);
   const mercaderiaTotal  = purchaseTotals?.totals?.mercaderia?.total  || 0;
   const operacionalTotal = purchaseTotals?.totalOperational           || 0;
-  const hasData = mercaderiaTotal > 0 || operacionalTotal > 0;
+  const otherTotal       = purchaseTotals?.totals?.other?.total       || 0;
+  const hasData = mercaderiaTotal > 0 || operacionalTotal > 0 || otherTotal > 0;
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 p-4 flex items-center justify-between gap-4">
@@ -352,7 +357,9 @@ function ComprasWidget({ purchaseTotals, navigate }) {
         </div>
         <div className="min-w-0">
           <p className="text-sm font-bold text-gray-800">Compras del período</p>
-          {hasData ? (
+          {hasError ? (
+            <p className="text-xs text-red-500">No se pudieron cargar las compras del período.</p>
+          ) : hasData ? (
             <div className="flex gap-3 flex-wrap mt-0.5">
               {mercaderiaTotal > 0 && (
                 <span className="text-xs text-blue-600">
@@ -364,6 +371,11 @@ function ComprasWidget({ purchaseTotals, navigate }) {
                   Gastos: <strong>{fmt(operacionalTotal)}</strong>
                 </span>
               )}
+              {otherTotal > 0 && (
+                <span className="text-xs text-gray-500">
+                  Otros / Servicios: <strong>{fmt(otherTotal)}</strong>
+                </span>
+              )}
             </div>
           ) : (
             <p className="text-xs text-gray-400">Sin compras registradas este período</p>
@@ -371,7 +383,7 @@ function ComprasWidget({ purchaseTotals, navigate }) {
         </div>
       </div>
       <button
-        onClick={() => navigate('/crm/compras')}
+        onClick={() => navigate('/proveedores')}
         className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold transition-colors"
       >
         <Icon name="Plus" size={12} />
@@ -383,7 +395,7 @@ function ComprasWidget({ purchaseTotals, navigate }) {
 
 // ─── Widget Costos fijos ──────────────────────────────────────────────────────
 
-function CostosWidget({ totalCostosFijos, navigate }) {
+function CostosWidget({ totalCostosFijos, navigate, fmt }) {
   return (
     <div className="bg-white rounded-2xl border border-gray-100 p-4 flex items-center justify-between gap-4">
       <div className="flex items-center gap-3 min-w-0">
@@ -412,12 +424,24 @@ function CostosWidget({ totalCostosFijos, navigate }) {
 
 // ─── Panel IVA estimado ───────────────────────────────────────────────────────
 
-function IvaSummaryPanel({ salesMonth, purchaseTotals, vatRate }) {
+function IvaSummaryPanel({ salesMonth, purchaseTotals, vatRate, fmt }) {
+  const hasError  = Boolean(purchaseTotals?.error);
   const rate      = vatRate || 19;
   const ivaVentas = salesMonth > 0 ? +(salesMonth * rate / (100 + rate)).toFixed(0) : 0;
   const ivaCompras = purchaseTotals?.totalTaxCredit || 0;
   const ivaNeto    = ivaVentas - ivaCompras;
   const aPagar     = ivaNeto > 0;
+
+  if (hasError) {
+    return (
+      <div className="bg-white rounded-2xl border border-red-100 p-4">
+        <p className="text-sm font-bold text-gray-800 mb-1">IVA estimado del período</p>
+        <p className="text-xs text-red-500">
+          No se pudo calcular el IVA compras: hubo un error al cargar las compras del período.
+        </p>
+      </div>
+    );
+  }
 
   if (!ivaVentas && !ivaCompras) return null;
 
@@ -564,32 +588,45 @@ function Dashboard({ center, costItems, sales, dailySales, purchaseTotals, purch
   const totalMes          = totalCostosFijos + totalOperacional;
   const dailyCost         = openDays > 0 && totalMes > 0 ? totalMes / openDays : 0;
 
-  // Mapa día → gastos operativos (gasto_con_iva + gasto_sin_iva) para el calendario
+  // Mapa día → gastos operativos (todo lo que no sea mercadería) para el calendario
   const dailyVarExpenses = {};
   for (const p of (purchases || [])) {
-    if (p.purchase_type === 'mercaderia') continue;
-    const d = dayFromDate(p.invoice_date);
-    if (d) dailyVarExpenses[d] = (dailyVarExpenses[d] || 0) + (p.total_amount || 0);
+    if (p.purchaseType === 'mercaderia') continue;
+    const d = dayFromDate(p.issueDate);
+    if (d) dailyVarExpenses[d] = (dailyVarExpenses[d] || 0) + (p.totalAmount || 0);
   }
 
   const salesToday  = isCurrentMonth ? sales.salesToday  : 0;
   const salesMonth  = sales.salesMonth;
   const todayState  = getState(salesToday, dailyCost);
+  const purchaseTotalsError = Boolean(purchaseTotals?.error);
 
   return (
     <div className="space-y-4 max-w-lg mx-auto">
+
+      {purchaseTotalsError && (
+        <div className="flex items-start gap-2 rounded-2xl border border-red-200 bg-red-50 p-4 text-xs text-red-600">
+          <Icon name="AlertTriangle" size={16} className="shrink-0 mt-0.5" />
+          <span>
+            No se pudieron cargar las compras del período. Los costos operativos, el IVA y el
+            termómetro de hoy pueden estar incompletos hasta que se resuelva el error.
+          </span>
+        </div>
+      )}
 
       {/* Tarjeta héroe */}
       <HeroCard
         state={isCurrentMonth ? todayState : 'unconfigured'}
         salesToday={salesToday}
         dailyCost={dailyCost}
+        fmt={fmt}
       />
 
       {/* Hoyo financiero */}
       <HoyoCard
         totalCosts={totalMes}
         salesMonth={salesMonth}
+        fmt={fmt}
       />
 
       {/* Calendario */}
@@ -598,19 +635,21 @@ function Dashboard({ center, costItems, sales, dailySales, purchaseTotals, purch
         dailySales={dailySales}
         dailyCost={dailyCost}
         dailyVarExpenses={dailyVarExpenses}
+        fmt={fmt}
       />
 
       {/* Enlace a costos fijos */}
-      <CostosWidget totalCostosFijos={totalCostosFijos} navigate={navigate} />
+      <CostosWidget totalCostosFijos={totalCostosFijos} navigate={navigate} fmt={fmt} />
 
       {/* Widget de compras — fuente única de datos */}
-      <ComprasWidget purchaseTotals={purchaseTotals} navigate={navigate} />
+      <ComprasWidget purchaseTotals={purchaseTotals} navigate={navigate} fmt={fmt} />
 
       {/* Resumen IVA */}
       <IvaSummaryPanel
         salesMonth={salesMonth}
         purchaseTotals={purchaseTotals}
         vatRate={center?.vat_rate || 19}
+        fmt={fmt}
       />
 
       {/* Ajustes */}
@@ -644,13 +683,16 @@ export default function CrmCostCenter() {
   const load = useCallback(async () => {
     if (!business?.id) return;
     setLoading(true);
+    // Mismo rango [from, to) que usaba crmService.getPurchaseTotalsForPeriod.
+    const from = `${year}-${String(month).padStart(2, '0')}-01`;
+    const to   = new Date(year, month, 1).toISOString().slice(0, 10);
     const [c, ci, s, ds, pt, pr] = await Promise.all([
       getCostCenter(business.id, month, year),
       getCostItems(business.id, month, year),
       getCrmSalesTotalsForPeriod(business.id, month, year),
       getCrmDailySalesForPeriod(business.id, month, year),
-      getPurchaseTotalsForPeriod(business.id, month, year),
-      getPurchaseInvoices(business.id, { month, year }),
+      getSupplierPurchaseTotalsForPeriod(business.id, from, to),
+      getSupplierInvoicesForPeriod(business.id, from, to),
     ]);
     setCenter(c);
     setCostItems(ci || []);

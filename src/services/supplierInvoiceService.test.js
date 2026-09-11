@@ -43,6 +43,7 @@ import {
   getSupplierPayments,
   getBusinessSupplierPayments,
   getSupplierPurchaseTotalsForPeriod,
+  getSupplierInvoicesForPeriod,
 } from './supplierInvoiceService';
 
 beforeEach(() => {
@@ -555,6 +556,65 @@ describe('PROVEEDORES-CORE-4A review fix — servicio/otros/NULL nunca desaparec
   });
 });
 
+describe('getSupplierInvoicesForPeriod — PROVEEDORES-CORE-4B (desglose por día del Termómetro)', () => {
+  it('consulta wa_supplier_invoices (no crm_purchase_invoices)', async () => {
+    fromMock.mockImplementation((table) => chainable({ data: [], error: null }));
+    await getSupplierInvoicesForPeriod('biz1', '2026-09-01', '2026-10-01');
+    expect(fromMock).toHaveBeenCalledWith('wa_supplier_invoices');
+    expect(fromMock).not.toHaveBeenCalledWith('crm_purchase_invoices');
+  });
+
+  it('filtra por business_id', async () => {
+    let capturedBusinessId;
+    fromMock.mockImplementation(() => {
+      const builder = {
+        select: () => builder,
+        eq: (col, val) => { if (col === 'business_id') capturedBusinessId = val; return builder; },
+        gte: () => builder,
+        lt: () => builder,
+        order: () => Promise.resolve({ data: [], error: null }),
+      };
+      return builder;
+    });
+    await getSupplierInvoicesForPeriod('biz-xyz', '2026-09-01', '2026-10-01');
+    expect(capturedBusinessId).toBe('biz-xyz');
+  });
+
+  it('filtra por rango de fechas (issue_date >= startDate, < endDate)', async () => {
+    let capturedGte, capturedLt;
+    fromMock.mockImplementation(() => {
+      const builder = {
+        select: () => builder,
+        eq: () => builder,
+        gte: (col, val) => { capturedGte = [col, val]; return builder; },
+        lt: (col, val) => { capturedLt = [col, val]; return builder; },
+        order: () => Promise.resolve({ data: [], error: null }),
+      };
+      return builder;
+    });
+    await getSupplierInvoicesForPeriod('biz1', '2026-09-01', '2026-10-01');
+    expect(capturedGte).toEqual(['issue_date', '2026-09-01']);
+    expect(capturedLt).toEqual(['issue_date', '2026-10-01']);
+  });
+
+  it('mapea purchase_type/issue_date/total_amount a camelCase', async () => {
+    fromMock.mockImplementation(() => chainable({
+      data: [{ purchase_type: 'gasto_con_iva', issue_date: '2026-09-05', total_amount: 25000 }],
+      error: null,
+    }));
+    const { data, error } = await getSupplierInvoicesForPeriod('biz1', '2026-09-01', '2026-10-01');
+    expect(error).toBeNull();
+    expect(data).toEqual([{ purchaseType: 'gasto_con_iva', issueDate: '2026-09-05', totalAmount: 25000 }]);
+  });
+
+  it('propaga el error de Supabase en vez de esconderlo detrás de una lista vacía', async () => {
+    fromMock.mockImplementation(() => chainable({ data: null, error: { message: 'boom' } }));
+    const { data, error } = await getSupplierInvoicesForPeriod('biz1', '2026-09-01', '2026-10-01');
+    expect(data).toBeNull();
+    expect(error).toEqual({ message: 'boom' });
+  });
+});
+
 describe('10. supplierInvoiceService.js nunca escribe en crm_purchase_invoices (tabla legacy congelada)', () => {
   it('ejercitando todas las funciones exportadas, fromMock nunca se llama con crm_purchase_invoices', async () => {
     fromMock.mockImplementation(() => chainable({ data: [], error: null }));
@@ -569,6 +629,7 @@ describe('10. supplierInvoiceService.js nunca escribe en crm_purchase_invoices (
     await getSupplierPayments('sup1');
     await getBusinessSupplierPayments('biz1');
     await getSupplierPurchaseTotalsForPeriod('biz1', '2026-09-01', '2026-10-01');
+    await getSupplierInvoicesForPeriod('biz1', '2026-09-01', '2026-10-01');
 
     for (const call of fromMock.mock.calls) {
       expect(call[0]).not.toBe('crm_purchase_invoices');
