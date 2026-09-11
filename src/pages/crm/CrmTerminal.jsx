@@ -234,6 +234,17 @@ function CrmTerminalUI() {
   // efecto de restauración más abajo: tras refresh siempre vuelve a
   // 'sale', incluso si el carrito se restaura).
   const [checkoutStep, setCheckoutStep] = useState('sale'); // 'sale' | 'payment'
+  // TPV-CORE-4: secciones expandibles del panel de operación -- puramente
+  // de presentación (nunca estado de negocio), nunca persistidas en el
+  // draft. Se inicializan en los defaults de 'sale' porque el componente
+  // siempre monta en checkoutStep='sale' -- ver el efecto de
+  // restauración: el draft nunca las toca, así que un refresh/restore
+  // siempre vuelve a estos mismos valores por defecto, carrito con
+  // insuficiencia de stock incluido (sección 9/10). Independientes entre
+  // sí a propósito: el usuario puede tener ambas abiertas o ambas
+  // cerradas, nunca se fuerza exclusividad.
+  const [cartExpanded, setCartExpanded] = useState(true);
+  const [paymentsExpanded, setPaymentsExpanded] = useState(false);
   // TPV-CORE-1: lock síncrono contra doble submit (busy es un useState, se
   // re-renderiza de forma asíncrona -- un doble click a pocos ms de
   // distancia podría disparar handleRegister dos veces antes de que React
@@ -550,6 +561,27 @@ function CrmTerminalUI() {
     }, [])
     .map((payment) => ({ ...payment, amount: +payment.amount.toFixed(2) }));
 
+  // TPV-CORE-4: resumen Pagado/Pendiente/Vuelto -- un único nodo JSX
+  // reutilizado tanto en la vista expandida de Pagos (donde ya vivía)
+  // como en la colapsada (sección 7: "NO duplicar lógica ni JSX de
+  // cálculo"), en vez de repetir estos tres <div> en dos lugares.
+  const paymentSummaryGrid = (
+    <div className="grid grid-cols-3 gap-1.5 pt-1">
+      <div className="rounded-lg bg-emerald-50 px-2 py-1.5">
+        <p className="text-[10px] text-emerald-700 font-semibold">Pagado</p>
+        <p className="text-xs font-bold text-emerald-800">{fmt(paidTotal, business?.currency)}</p>
+      </div>
+      <div className={`rounded-lg px-2 py-1.5 ${pendingBalance > 0 ? 'bg-amber-50' : 'bg-gray-50'}`}>
+        <p className={`text-[10px] font-semibold ${pendingBalance > 0 ? 'text-amber-700' : 'text-gray-500'}`}>Pendiente</p>
+        <p className={`text-xs font-bold ${pendingBalance > 0 ? 'text-amber-800' : 'text-gray-700'}`}>{fmt(pendingBalance, business?.currency)}</p>
+      </div>
+      <div className={`rounded-lg px-2 py-1.5 ${change > 0 ? 'bg-blue-50' : 'bg-gray-50'}`}>
+        <p className={`text-[10px] font-semibold ${change > 0 ? 'text-blue-700' : 'text-gray-500'}`}>Vuelto</p>
+        <p className={`text-xs font-bold ${change > 0 ? 'text-blue-800' : 'text-gray-700'}`}>{fmt(change, business?.currency)}</p>
+      </div>
+    </div>
+  );
+
   const resetForm = () => {
     // Reset real de intento de venta: la próxima "Completar venta" debe
     // generar una idempotency key nueva, nunca reutilizar la del intento
@@ -560,6 +592,8 @@ function CrmTerminalUI() {
     setDraftNotice(null);
     setCustomerRemovedNotice(false);
     setCheckoutStep('sale');
+    setCartExpanded(true);
+    setPaymentsExpanded(false);
     setCart([]);
     setCustomerId('');
     setDiscount('');
@@ -602,10 +636,16 @@ function CrmTerminalUI() {
     // que el resto del componente usa junto a cada disabled=.
     if (hasStockIssues) return;
     setCheckoutStep('payment');
+    // TPV-CORE-4: defaults SOLO en esta transición -- después el usuario
+    // puede volver a abrir/cerrar cualquiera de las dos libremente, sin
+    // que ningún render posterior los vuelva a forzar (sección 5).
+    setCartExpanded(false);
+    setPaymentsExpanded(true);
   };
 
   const handleBackToSale = () => {
     setCheckoutStep('sale');
+    setCartExpanded(true);
   };
 
   // ── TPV-CORE-2: borrador local de la venta en curso ──────────────────────
@@ -725,6 +765,11 @@ function CrmTerminalUI() {
     // esto cubre la ventana de un doble click antes del re-render.
     if (submitLockRef.current) return;
     if (cart.length === 0) return;
+    // TPV-CORE-4B: el carrito sigue editable en 'payment' -- si esa
+    // edición dejó una línea sin stock suficiente, nunca enviar la venta
+    // (mismo guard defense-in-depth que handleGoToPayment; el disabled=
+    // del botón ya cubre el caso normal, esto cubre una llamada directa).
+    if (hasStockIssues) return;
     submitLockRef.current = true;
     setBusy(true);
     setErrorMsg(null);
@@ -795,6 +840,12 @@ function CrmTerminalUI() {
           const productName = cart.find((i) => i.product_id === productId)?.name || 'un producto';
           setErrorMsg(`Stock insuficiente para ${productName}. Solicitado: ${requested} · Disponible: ${available}.`);
           setCheckoutStep('sale');
+          // TPV-CORE-4 sección 9: nunca esconder un error de stock dentro
+          // de una sección cerrada -- el carrito se expande para mostrar
+          // directamente la línea problemática (ya trae su propio aviso
+          // inline "Stock disponible/En carrito", ver TPV-STOCK-UX-1).
+          setCartExpanded(true);
+          cartSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
           refreshProducts();
         } else {
           setErrorMsg(error.message || 'No se pudo registrar el pago de la venta.');
@@ -1044,6 +1095,26 @@ function CrmTerminalUI() {
                       </button>
                     </div>
                   ) : null}
+
+                  {/* TPV-CORE-4B: en mobile, con carrito no vacío la columna
+                      izquierda queda debajo de la derecha (order-2, ver más
+                      abajo) -- "Agregar producto" trae al operador hasta
+                      acá sin salir de payment. Este aviso es la forma
+                      clara de volver, sin obligarlo a usar "Volver a la
+                      venta" (sección 9: esa sigue siendo una opción, no la
+                      única). Solo mobile -- en desktop la columna derecha
+                      (carrito + cobro) ya está siempre visible al lado,
+                      sin necesidad de scroll (sección 12).               */}
+                  {checkoutStep === 'payment' && (
+                    <button
+                      type="button"
+                      onClick={() => cartSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                      className="lg:hidden flex items-center justify-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5 min-h-[44px] text-xs font-bold text-blue-700"
+                    >
+                      <Icon name="ArrowLeft" size={13} />
+                      Volver a Cobro
+                    </button>
+                  )}
 
                   {/* Search */}
                   <div className="relative rounded-2xl border border-gray-200 bg-white p-2 shadow-sm">
@@ -1372,21 +1443,36 @@ function CrmTerminalUI() {
                                   lg:flex-1 lg:min-h-[160px] lg:flex lg:flex-col"
                   >
 
-                    {/* Cart header — flex-none */}
-                    <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50 px-4 py-3 lg:flex-none">
-                      <div className="flex items-center gap-2">
-                        <Icon name="ShoppingCart" size={14} className="text-gray-500" />
+                    {/* Cart header — flex-none. TPV-CORE-4: cabecera
+                        clickeable e independiente del checkoutStep --
+                        expande/colapsa el detalle del carrito sin afectar
+                        el estado de Pagos. Botón real (no div onClick),
+                        aria-expanded/aria-controls, target táctil ≥44px. */}
+                    <div className="flex items-center border-b border-gray-100 bg-gray-50 lg:flex-none">
+                      <button
+                        type="button"
+                        onClick={() => setCartExpanded((v) => !v)}
+                        aria-expanded={cartExpanded}
+                        aria-controls="tpv-cart-panel"
+                        className="flex flex-1 min-w-0 items-center gap-2 px-4 py-3 min-h-[44px] text-left"
+                      >
+                        <Icon name="ShoppingCart" size={14} className="text-gray-500 shrink-0" />
                         <span className="text-sm font-bold text-gray-700">
                           Carrito
                           {cartCount > 0 && (
                             <span className="ml-1.5 bg-blue-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{cartCount}</span>
                           )}
                         </span>
-                      </div>
+                        <Icon
+                          name="ChevronDown"
+                          size={16}
+                          className={`ml-auto shrink-0 text-gray-400 transition-transform ${cartExpanded ? 'rotate-180' : ''}`}
+                        />
+                      </button>
                       {cart.length > 0 && (
                         <button
                           onClick={resetForm}
-                          className="text-xs text-red-400 hover:text-red-600 flex items-center gap-1"
+                          className="shrink-0 px-3 py-3 min-h-[44px] text-xs text-red-400 hover:text-red-600 flex items-center gap-1"
                         >
                           <Icon name="Trash2" size={11} />Vaciar
                         </button>
@@ -1395,21 +1481,24 @@ function CrmTerminalUI() {
 
                     {/* Cart items — flex-1 min-h-0 overflow-y-auto on desktop;
                         max-h cap on mobile so the page doesn't get too long.
-                        TPV-CORE-3: en 'payment' se reemplaza por un resumen
-                        compacto (sección 5) -- el detalle artículo por
-                        artículo es responsabilidad de la etapa 'sale'; el
-                        cajero vuelve con "Volver a la venta" para editarlo. */}
+                        TPV-CORE-4: gateado por cartExpanded (estado de UI,
+                        independiente de checkoutStep) -- colapsado muestra
+                        el mismo resumen compacto de siempre; expandido
+                        reutiliza EXACTAMENTE el cart.map existente, nunca
+                        una segunda versión del carrito. */}
+                    <div id="tpv-cart-panel" className="contents">
                     {cart.length === 0 ? (
                       <div className="px-4 py-10 text-center lg:flex-1 lg:flex lg:flex-col lg:items-center lg:justify-center">
                         <Icon name="ShoppingCart" size={32} className="mx-auto mb-2 text-gray-200" />
                         <p className="text-gray-400 text-sm">Toca un producto para agregarlo</p>
                       </div>
-                    ) : checkoutStep === 'payment' ? (
+                    ) : !cartExpanded ? (
                       <div className="px-4 py-3 text-xs text-gray-500">
                         <span className="font-bold text-gray-700">{cartCount}</span> {cartCount === 1 ? 'artículo' : 'artículos'} · Subtotal {fmt(subtotal, business?.currency)}
                         {discountAmount > 0 && <> · Descuento −{fmt(discountAmount, business?.currency)}</>}
                       </div>
                     ) : (
+                      <>
                       <div className="divide-y divide-gray-100 max-h-52 overflow-y-auto
                                       lg:flex-1 lg:min-h-0 lg:max-h-none lg:overflow-y-auto">
                         {cart.map(item => {
@@ -1500,7 +1589,32 @@ function CrmTerminalUI() {
                           );
                         })}
                       </div>
+                      {/* TPV-CORE-4B: dentro de payment, el carrito
+                          expandido debe seguir siendo el lugar para
+                          agregar productos sin abandonar el cobro --
+                          nunca fuerza checkoutStep='sale' ni toca
+                          payments/customerId/discount/notes/idempotency
+                          key. Reutiliza el buscador/grilla de la columna
+                          izquierda YA existente (searchRef ya apunta al
+                          input) en vez de construir un catálogo/modal
+                          duplicado (sección 3). En 'sale' no hace falta:
+                          el buscador ya está a un scroll natural.        */}
+                      {checkoutStep === 'payment' && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            searchRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            searchRef.current?.focus();
+                          }}
+                          className="flex items-center justify-center gap-1.5 mx-2 my-2 py-2.5 min-h-[44px] rounded-xl border border-dashed border-blue-200 bg-blue-50 hover:bg-blue-100 text-xs font-bold text-blue-700 transition-colors lg:flex-none"
+                        >
+                          <Icon name="Plus" size={14} />
+                          Agregar producto
+                        </button>
+                      )}
+                      </>
                     )}
+                    </div>
                   </div>
 
                   {/* ── Zone 3: Checkout controls ── flex-none ───────────────
@@ -1568,104 +1682,121 @@ function CrmTerminalUI() {
                         {/* Payment method — reutiliza exactamente el mismo
                             estado/lógica de payments/cuenta corriente que
                             existía antes de TPV-CORE-3; solo cambió CUÁNDO
-                            se muestra, no CÓMO funciona. */}
-                        <div className="rounded-2xl border border-gray-200 bg-white p-2.5 space-y-2">
-                          {/* Atajo: Venta a crédito */}
+                            se muestra, no CÓMO funciona. TPV-CORE-4: ahora
+                            vive dentro de una sección colapsable propia,
+                            independiente del carrito (sección 7). */}
+                        <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
                           <button
                             type="button"
-                            onClick={() => setPayments(prev => prev.map(p => ({ ...p, amount: '' })))}
-                            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-dashed border-amber-300 bg-amber-50 hover:bg-amber-100 transition-colors text-left"
+                            onClick={() => setPaymentsExpanded((v) => !v)}
+                            aria-expanded={paymentsExpanded}
+                            aria-controls="tpv-payments-panel"
+                            className="w-full flex items-center justify-between gap-2 px-3 py-2.5 min-h-[44px] text-left"
                           >
-                            <span className="w-7 h-7 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
-                              <Icon name="BookUser" size={14} className="text-amber-600" />
-                            </span>
-                            <span className="min-w-0">
-                              <span className="block text-xs font-bold text-amber-800 leading-tight">Vender a cuenta corriente</span>
-                              <span className="block text-[10px] text-amber-600 leading-tight mt-0.5">Deja el total como pendiente · requiere cliente registrado</span>
-                            </span>
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold text-gray-800">Pagos</p>
+                              <p className="text-[11px] text-gray-500 truncate">
+                                Pagado {fmt(paidTotal, business?.currency)} · Pendiente {fmt(pendingBalance, business?.currency)}
+                              </p>
+                            </div>
+                            <Icon
+                              name="ChevronDown"
+                              size={16}
+                              className={`shrink-0 text-gray-400 transition-transform ${paymentsExpanded ? 'rotate-180' : ''}`}
+                            />
                           </button>
 
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="text-xs font-bold text-gray-800">Pagos</p>
-                              <p className="text-[11px] text-gray-500">Total: {fmt(total, business?.currency)}</p>
-                            </div>
-                            <button
-                              onClick={addPayment}
-                              className="h-8 px-2.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold flex items-center gap-1"
-                            >
-                              <Icon name="Plus" size={13} />
-                              Agregar
-                            </button>
-                          </div>
-
-                          <div className="space-y-1.5 max-h-[168px] overflow-y-auto pr-0.5">
-                            {payments.map((payment) => (
-                              <div key={payment.id} className="flex items-center gap-1.5">
-                                <select
-                                  value={payment.method}
-                                  onChange={(e) => updatePayment(payment.id, { method: e.target.value })}
-                                  className="w-[116px] border border-gray-200 rounded-lg px-2 py-2 text-xs bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                >
-                                  {REAL_PAYMENT_METHODS.map((method) => (
-                                    <option key={method.value} value={method.value}>{method.label}</option>
-                                  ))}
-                                </select>
-                                <div className="relative flex-1 min-w-0">
-                                  <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none">$</span>
-                                  <input
-                                    type="text"
-                                    inputMode="numeric"
-                                    value={fmtMoneyInput(payment.amount)}
-                                    onChange={(e) => updatePayment(payment.id, { amount: e.target.value.replace(/\D/g, '') })}
-                                    placeholder="Monto"
-                                    className="w-full pl-5 pr-2 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
-                                  />
-                                </div>
-                                <button
-                                  onClick={() => removePayment(payment.id)}
-                                  title="Eliminar pago"
-                                  aria-label="Eliminar pago"
-                                  className="w-8 h-8 rounded-lg bg-red-50 hover:bg-red-100 flex items-center justify-center text-red-500"
-                                >
-                                  <Icon name="Trash2" size={13} />
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-
-                          <div className="grid grid-cols-3 gap-1.5 pt-1">
-                            <div className="rounded-lg bg-emerald-50 px-2 py-1.5">
-                              <p className="text-[10px] text-emerald-700 font-semibold">Pagado</p>
-                              <p className="text-xs font-bold text-emerald-800">{fmt(paidTotal, business?.currency)}</p>
-                            </div>
-                            <div className={`rounded-lg px-2 py-1.5 ${pendingBalance > 0 ? 'bg-amber-50' : 'bg-gray-50'}`}>
-                              <p className={`text-[10px] font-semibold ${pendingBalance > 0 ? 'text-amber-700' : 'text-gray-500'}`}>Pendiente</p>
-                              <p className={`text-xs font-bold ${pendingBalance > 0 ? 'text-amber-800' : 'text-gray-700'}`}>{fmt(pendingBalance, business?.currency)}</p>
-                            </div>
-                            <div className={`rounded-lg px-2 py-1.5 ${change > 0 ? 'bg-blue-50' : 'bg-gray-50'}`}>
-                              <p className={`text-[10px] font-semibold ${change > 0 ? 'text-blue-700' : 'text-gray-500'}`}>Vuelto</p>
-                              <p className={`text-xs font-bold ${change > 0 ? 'text-blue-800' : 'text-gray-700'}`}>{fmt(change, business?.currency)}</p>
-                            </div>
-                          </div>
-
-                          {hasNonCashOverpay && (
-                            <p className="text-xs font-semibold text-red-600">Solo efectivo puede generar vuelto.</p>
-                          )}
-                          {requiresCustomerForPending && !customerId && (
-                            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 space-y-2">
-                              <p className="text-xs font-semibold text-amber-800 leading-snug">
-                                Faltan <strong>{fmt(pendingBalance, business?.currency)}</strong> por pagar.
-                                Agrega otro medio de pago o selecciona un cliente para vender a cuenta corriente.
-                              </p>
+                          {paymentsExpanded ? (
+                            <div id="tpv-payments-panel" className="px-2.5 pb-2.5 space-y-2 border-t border-gray-100 pt-2.5">
+                              {/* Atajo: Venta a crédito */}
                               <button
                                 type="button"
-                                onClick={addPayment}
-                                className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg px-2.5 py-1.5 transition-colors"
+                                onClick={() => setPayments(prev => prev.map(p => ({ ...p, amount: '' })))}
+                                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-dashed border-amber-300 bg-amber-50 hover:bg-amber-100 transition-colors text-left"
                               >
-                                <Icon name="Plus" size={12} />
-                                Agregar medio de pago
+                                <span className="w-7 h-7 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
+                                  <Icon name="BookUser" size={14} className="text-amber-600" />
+                                </span>
+                                <span className="min-w-0">
+                                  <span className="block text-xs font-bold text-amber-800 leading-tight">Vender a cuenta corriente</span>
+                                  <span className="block text-[10px] text-amber-600 leading-tight mt-0.5">Deja el total como pendiente · requiere cliente registrado</span>
+                                </span>
                               </button>
+
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <p className="text-xs font-bold text-gray-800">Pagos</p>
+                                  <p className="text-[11px] text-gray-500">Total: {fmt(total, business?.currency)}</p>
+                                </div>
+                                <button
+                                  onClick={addPayment}
+                                  className="h-8 px-2.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold flex items-center gap-1"
+                                >
+                                  <Icon name="Plus" size={13} />
+                                  Agregar
+                                </button>
+                              </div>
+
+                              <div className="space-y-1.5 max-h-[168px] overflow-y-auto pr-0.5">
+                                {payments.map((payment) => (
+                                  <div key={payment.id} className="flex items-center gap-1.5">
+                                    <select
+                                      value={payment.method}
+                                      onChange={(e) => updatePayment(payment.id, { method: e.target.value })}
+                                      className="w-[116px] border border-gray-200 rounded-lg px-2 py-2 text-xs bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    >
+                                      {REAL_PAYMENT_METHODS.map((method) => (
+                                        <option key={method.value} value={method.value}>{method.label}</option>
+                                      ))}
+                                    </select>
+                                    <div className="relative flex-1 min-w-0">
+                                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none">$</span>
+                                      <input
+                                        type="text"
+                                        inputMode="numeric"
+                                        value={fmtMoneyInput(payment.amount)}
+                                        onChange={(e) => updatePayment(payment.id, { amount: e.target.value.replace(/\D/g, '') })}
+                                        placeholder="Monto"
+                                        className="w-full pl-5 pr-2 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
+                                      />
+                                    </div>
+                                    <button
+                                      onClick={() => removePayment(payment.id)}
+                                      title="Eliminar pago"
+                                      aria-label="Eliminar pago"
+                                      className="w-8 h-8 rounded-lg bg-red-50 hover:bg-red-100 flex items-center justify-center text-red-500"
+                                    >
+                                      <Icon name="Trash2" size={13} />
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+
+                              {paymentSummaryGrid}
+
+                              {hasNonCashOverpay && (
+                                <p className="text-xs font-semibold text-red-600">Solo efectivo puede generar vuelto.</p>
+                              )}
+                              {requiresCustomerForPending && !customerId && (
+                                <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 space-y-2">
+                                  <p className="text-xs font-semibold text-amber-800 leading-snug">
+                                    Faltan <strong>{fmt(pendingBalance, business?.currency)}</strong> por pagar.
+                                    Agrega otro medio de pago o selecciona un cliente para vender a cuenta corriente.
+                                  </p>
+                                  <button
+                                    type="button"
+                                    onClick={addPayment}
+                                    className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg px-2.5 py-1.5 transition-colors"
+                                  >
+                                    <Icon name="Plus" size={12} />
+                                    Agregar medio de pago
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div id="tpv-payments-panel" className="px-3 pb-2.5">
+                              {paymentSummaryGrid}
                             </div>
                           )}
                         </div>
@@ -1689,6 +1820,17 @@ function CrmTerminalUI() {
                             <span className="text-sm font-bold text-gray-300">Total</span>
                             <span className="truncate text-2xl font-black tracking-tight text-white xl:text-3xl">{fmt(total, business?.currency)}</span>
                           </div>
+                          {/* TPV-CORE-4B: el carrito ahora se puede seguir
+                              editando en payment -- si esa edición deja una
+                              línea sin stock suficiente, Confirmar venta
+                              debe bloquearse igual que Cobrar ya lo hacía
+                              (sección 7), nunca dejar avanzar hasta que la
+                              RPC lo rechace. */}
+                          {hasStockIssues && (
+                            <p className="text-center text-xs font-semibold text-red-400">
+                              Revisa {cartStockIssues.size} producto{cartStockIssues.size === 1 ? '' : 's'} sin stock suficiente.
+                            </p>
+                          )}
                           {requiresCustomerForPending && !customerId ? (
                             <div className="flex gap-2">
                               <button
@@ -1711,7 +1853,7 @@ function CrmTerminalUI() {
                           ) : (
                             <button
                               onClick={handleRegister}
-                              disabled={cart.length === 0 || busy || isPaymentInvalid}
+                              disabled={cart.length === 0 || busy || isPaymentInvalid || hasStockIssues}
                               className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-500 py-3.5 text-base font-black text-white shadow-lg shadow-emerald-950/30 transition-all hover:-translate-y-0.5 hover:bg-emerald-400 disabled:translate-y-0 disabled:bg-gray-800 disabled:text-gray-500 disabled:shadow-none xl:py-4 xl:text-lg"
                             >
                               {busy
@@ -1768,7 +1910,12 @@ function CrmTerminalUI() {
               ) : cart.length > 0 && (
                 <button
                   type="button"
-                  onClick={() => cartSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                  onClick={() => {
+                    // TPV-CORE-4: "Ver carrito" debe mostrar el carrito de
+                    // verdad, no solo desplazar hasta un resumen colapsado.
+                    setCartExpanded(true);
+                    cartSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  }}
                   className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 border-b border-gray-800 text-xs font-bold text-gray-300 hover:text-white transition-colors"
                 >
                   <Icon name="ShoppingCart" size={13} color="currentColor" />
@@ -1784,12 +1931,22 @@ function CrmTerminalUI() {
                 )}
                 <p className="truncate text-lg font-bold text-white leading-tight">{fmt(total, business?.currency)}</p>
                 {checkoutStep === 'payment' ? (
-                  <p className={`text-[10px] mt-0.5 ${isPaymentInvalid ? 'text-amber-400' : 'text-gray-400'}`}>
-                    {requiresCustomerForPending && !customerId
-                      ? `Faltan ${fmt(pendingBalance, business?.currency)} · selecciona cliente`
-                      : `Pagado ${fmt(paidTotal, business?.currency)} · Pendiente ${fmt(pendingBalance, business?.currency)}`
-                    }
-                  </p>
+                  hasStockIssues ? (
+                    // TPV-CORE-4B: el carrito sigue editable en payment --
+                    // si esa edición deja stock insuficiente, avisar acá
+                    // tiene prioridad sobre el resumen pagado/pendiente
+                    // (mismo criterio que bloquear el CTA más abajo).
+                    <p className="text-[10px] mt-0.5 text-red-400">
+                      Revisa {cartStockIssues.size} producto{cartStockIssues.size === 1 ? '' : 's'} sin stock suficiente.
+                    </p>
+                  ) : (
+                    <p className={`text-[10px] mt-0.5 ${isPaymentInvalid ? 'text-amber-400' : 'text-gray-400'}`}>
+                      {requiresCustomerForPending && !customerId
+                        ? `Faltan ${fmt(pendingBalance, business?.currency)} · selecciona cliente`
+                        : `Pagado ${fmt(paidTotal, business?.currency)} · Pendiente ${fmt(pendingBalance, business?.currency)}`
+                      }
+                    </p>
+                  )
                 ) : hasStockIssues && (
                   <p className="text-[10px] mt-0.5 text-red-400">
                     Revisa {cartStockIssues.size} producto{cartStockIssues.size === 1 ? '' : 's'} sin stock suficiente.
@@ -1818,7 +1975,7 @@ function CrmTerminalUI() {
               ) : (
                 <button
                   onClick={handleRegister}
-                  disabled={cart.length === 0 || busy || isPaymentInvalid}
+                  disabled={cart.length === 0 || busy || isPaymentInvalid || hasStockIssues}
                   className="shrink-0 px-4 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:bg-gray-700 disabled:text-gray-500 text-white font-bold text-sm transition-colors flex items-center gap-2"
                 >
                   {busy
