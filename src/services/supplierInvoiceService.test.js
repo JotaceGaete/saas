@@ -615,6 +615,25 @@ describe('getSupplierInvoicesForPeriod — PROVEEDORES-CORE-4B (desglose por dí
   });
 });
 
+describe('clasificación operativa del Termómetro', () => {
+  it('una nota de crédito queda pendiente y nunca infla el gasto operativo', async () => {
+    fromMock.mockReturnValue(chainable({ data: [
+      { document_type: 'nota_credito', purchase_type: 'gasto_con_iva', net_amount: 100, tax_amount: 19, total_amount: 119 },
+      { document_type: 'factura', purchase_type: 'gasto_sin_iva', net_amount: 50, tax_amount: 0, total_amount: 50 },
+    ], error: null }));
+    const result = await getSupplierPurchaseTotalsForPeriod('biz1', '2026-09-01', '2026-10-01');
+    expect(result.totalOperational).toBe(50);
+    expect(result.pendingClassification).toBe(119);
+    expect(result.totalAmountAll).toBe(169);
+  });
+
+  it('el listado diario expone documentType para excluir notas de crédito', async () => {
+    fromMock.mockReturnValue(chainable({ data: [{ document_type: 'nota_credito', purchase_type: 'otros', issue_date: '2026-09-08', total_amount: 20 }], error: null }));
+    const { data } = await getSupplierInvoicesForPeriod('biz1', '2026-09-01', '2026-10-01');
+    expect(data[0]).toMatchObject({ documentType: 'nota_credito', purchaseType: 'otros', issueDate: '2026-09-08', totalAmount: 20 });
+  });
+});
+
 describe('10. supplierInvoiceService.js nunca escribe en crm_purchase_invoices (tabla legacy congelada)', () => {
   it('ejercitando todas las funciones exportadas, fromMock nunca se llama con crm_purchase_invoices', async () => {
     fromMock.mockImplementation(() => chainable({ data: [], error: null }));

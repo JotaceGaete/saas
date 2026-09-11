@@ -12,18 +12,31 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const rpcMock = vi.fn();
+const fromMock = vi.fn();
 
 vi.mock('../lib/supabase', () => ({
   supabase: {
     rpc: (...args) => rpcMock(...args),
+    from: (...args) => fromMock(...args),
   },
 }));
 
-import { createPosInvoice } from './crmService';
+import { createPosInvoice, getOperatingCostItemsForPeriod, getOperatingSalesForPeriod } from './crmService';
 
 beforeEach(() => {
   rpcMock.mockReset();
+  fromMock.mockReset();
 });
+
+function queryResult(result, calls = []) {
+  const proxy = new Proxy(() => {}, {
+    get(_target, prop) {
+      if (prop === 'then') return (resolve, reject) => Promise.resolve(result).then(resolve, reject);
+      return (...args) => { calls.push([prop, ...args]); return proxy; };
+    },
+  });
+  return proxy;
+}
 
 const baseInput = {
   customerId: null,
@@ -101,6 +114,152 @@ describe('createPosInvoice — contrato del wrapper', () => {
     const result = await createPosInvoice('biz1', baseInput);
     expect(result.error).toBeNull();
     expect(result.data).toEqual({ id: 'inv1', status: 'pagada' });
+  });
+});
+
+describe('getOperatingSalesForPeriod — ventas CRM/TPV + catálogo', () => {
+  it('cuenta factura CRM normal, exige order_id NULL y suma catálogo pagado una sola vez', async () => {
+    const crmCalls = [];
+    const orderCalls = [];
+    fromMock.mockImplementation(table => {
+      if (table === 'crm_invoices') return queryResult({ data: [{ total: 100, issue_date: '2026-09-05' }], error: null }, crmCalls);
+      if (table === 'wa_orders') return queryResult({ data: [{ total_amount: 80, currency: 'CLP', paid_at: '2026-09-05T15:00:00Z', updated_at: '2026-09-05T15:00:00Z' }], error: null }, orderCalls);
+      throw new Error(`tabla inesperada: ${table}`);
+    });
+
+    const result = await getOperatingSalesForPeriod('biz1', 9, 2026, 'CLP');
+    expect(result).toMatchObject({ crmTotal: 100, catalogTotal: 80, salesMonth: 180 });
+    expect(result.dailySales[5]).toBe(180);
+    expect(crmCalls).toContainEqual(['is', 'order_id', null]);
+    expect(orderCalls).toContainEqual(['eq', 'payment_status', 'pagado']);
+  });
+
+  it('fallback legacy usa updated_at explícitamente', async () => {
+    fromMock.mockImplementation(table => queryResult(table === 'crm_invoices'
+      ? { data: [], error: null }
+      : { data: [{ total_amount: 50, currency: 'CLP', paid_at: null, updated_at: '2026-09-07T12:00:00Z' }], error: null }));
+    const result = await getOperatingSalesForPeriod('biz1', 9, 2026, 'CLP');
+    expect(result.catalogTotal).toBe(50);
+    expect(result.legacyCatalogRows).toBe(1);
+    expect(result.dailySales[7]).toBe(50);
+  });
+
+  it('no mezcla moneda incompatible y conserva el error por fuente', async () => {
+    fromMock.mockImplementation(table => queryResult(table === 'crm_invoices'
+      ? { data: null, error: { message: 'crm down' } }
+      : { data: [{ total_amount: 999, currency: 'USD', paid_at: '2026-09-08T12:00:00Z' }], error: null }));
+    const result = await getOperatingSalesForPeriod('biz1', 9, 2026, 'CLP');
+    expect(result.salesMonth).toBe(0);
+    expect(result.incompatibleCurrencyRows).toBe(1);
+    expect(result.errors.crm).toEqual({ message: 'crm down' });
+  });
+
+  it('conserva las ventas válidas y reporta por separado las operaciones de moneda incompatible', async () => {
+    fromMock.mockImplementation(table => queryResult(table === 'crm_invoices'
+      ? { data: [{ total: 100, issue_date: '2026-09-08' }], error: null }
+      : { data: [
+        { total_amount: 80, currency: 'CLP', paid_at: '2026-09-08T12:00:00Z' },
+        { total_amount: 999, currency: 'USD', paid_at: '2026-09-08T13:00:00Z' },
+      ], error: null }));
+    const result = await getOperatingSalesForPeriod('biz1', 9, 2026, 'CLP');
+    expect(result).toMatchObject({ crmTotal: 100, catalogTotal: 80, salesMonth: 180, incompatibleCurrencyRows: 1 });
+    expect(result.dailySales[8]).toBe(180);
+  });
+
+  it('A) wa_order pagada sin crm_invoice se cuenta exactamente una vez', async () => {
+    fromMock.mockImplementation(table => queryResult(table === 'crm_invoices'
+      ? { data: [], error: null }
+      : { data: [{ total_amount: 80, currency: 'CLP', paid_at: '2026-09-05T15:00:00Z' }], error: null }));
+    const result = await getOperatingSalesForPeriod('biz1', 9, 2026, 'CLP');
+    expect(result).toMatchObject({ crmTotal: 0, catalogTotal: 80, salesMonth: 80 });
+  });
+
+  it('B) wa_order pagada con crm_invoice vinculada se cuenta una vez mediante el filtro order_id IS NULL', async () => {
+    const crmCalls = [];
+    fromMock.mockImplementation(table => table === 'crm_invoices'
+      ? queryResult({ data: [], error: null }, crmCalls)
+      : queryResult({ data: [{ total_amount: 80, currency: 'CLP', paid_at: '2026-09-05T15:00:00Z' }], error: null }));
+    const result = await getOperatingSalesForPeriod('biz1', 9, 2026, 'CLP');
+    expect(crmCalls).toContainEqual(['is', 'order_id', null]);
+    expect(result.salesMonth).toBe(80);
+  });
+
+  it('C) crm_invoice normal con order_id NULL se cuenta exactamente una vez', async () => {
+    fromMock.mockImplementation(table => queryResult(table === 'crm_invoices'
+      ? { data: [{ total: 100, issue_date: '2026-09-05' }], error: null }
+      : { data: [], error: null }));
+    const result = await getOperatingSalesForPeriod('biz1', 9, 2026, 'CLP');
+    expect(result).toMatchObject({ crmTotal: 100, catalogTotal: 0, salesMonth: 100 });
+  });
+
+  it('D) crm_invoice anulada se excluye mediante status <> anulada', async () => {
+    const crmCalls = [];
+    fromMock.mockImplementation(table => table === 'crm_invoices'
+      ? queryResult({ data: [], error: null }, crmCalls)
+      : queryResult({ data: [], error: null }));
+    const result = await getOperatingSalesForPeriod('biz1', 9, 2026, 'CLP');
+    expect(crmCalls).toContainEqual(['neq', 'status', 'anulada']);
+    expect(result.salesMonth).toBe(0);
+  });
+
+  it('E) wa_order no pagada se excluye mediante payment_status = pagado', async () => {
+    const orderCalls = [];
+    fromMock.mockImplementation(table => table === 'crm_invoices'
+      ? queryResult({ data: [], error: null })
+      : queryResult({ data: [], error: null }, orderCalls));
+    const result = await getOperatingSalesForPeriod('biz1', 9, 2026, 'CLP');
+    expect(orderCalls).toContainEqual(['eq', 'payment_status', 'pagado']);
+    expect(result.salesMonth).toBe(0);
+  });
+});
+
+describe('getOperatingCostItemsForPeriod', () => {
+  it('solo consulta Caja para movimientos enlazados y conserva fixed/variable', async () => {
+    const movementCalls = [];
+    fromMock.mockImplementation(table => {
+      if (table === 'crm_cost_items') return queryResult({ data: [
+        { id: 'f', type: 'fixed', amount: '300', source: 'manual', source_movement_id: null, created_at: '2026-09-01T00:00:00Z' },
+        { id: 'v', type: 'variable', amount: '40', source: 'cash_outflow', source_movement_id: 'm1', created_at: '2026-09-03T00:00:00Z' },
+      ], error: null });
+      if (table === 'crm_cash_movements') return queryResult({ data: [{ id: 'm1', movement_date: '2026-09-04' }], error: null }, movementCalls);
+      throw new Error(`tabla inesperada: ${table}`);
+    });
+    const { data, error } = await getOperatingCostItemsForPeriod('biz1', 9, 2026);
+    expect(error).toBeNull();
+    expect(data).toEqual([
+      expect.objectContaining({ id: 'f', type: 'fixed', amount: 300 }),
+      expect.objectContaining({ id: 'v', type: 'variable', amount: 40, economicDate: '2026-09-04' }),
+    ]);
+    expect(movementCalls).toContainEqual(['select', 'id, movement_date']);
+  });
+
+  it('Caja no decide si el costo canónico se incluye', async () => {
+    fromMock.mockImplementation(table => queryResult(table === 'crm_cost_items'
+      ? { data: [{ id: 'v', type: 'variable', amount: 40, source: 'cash_outflow', source_movement_id: 'm1' }], error: null }
+      : { data: [{ id: 'm1', movement_date: '2026-09-04', is_expense: true, voided_at: '2026-09-05T00:00:00Z' }], error: null }));
+    const { data } = await getOperatingCostItemsForPeriod('biz1', 9, 2026);
+    expect(data[0]).toMatchObject({ id: 'v', amount: 40, economicDate: '2026-09-04' });
+    expect(data[0].excluded).toBeUndefined();
+  });
+
+  it('un cash_outflow vinculado conserva una sola fila y toma el monto únicamente de crm_cost_items', async () => {
+    fromMock.mockImplementation(table => queryResult(table === 'crm_cost_items'
+      ? { data: [{ id: 'v', type: 'variable', amount: 40, source: 'cash_outflow', source_movement_id: 'm1' }], error: null }
+      : { data: [{ id: 'm1', amount: 999, movement_date: '2026-09-04', is_expense: true, voided_at: null }], error: null }));
+    const { data } = await getOperatingCostItemsForPeriod('biz1', 9, 2026);
+    expect(data).toHaveLength(1);
+    expect(data[0]).toMatchObject({ id: 'v', amount: 40, economicDate: '2026-09-04' });
+    expect(data[0].excluded).toBeUndefined();
+  });
+
+  it('un movimiento de Caja sin crm_cost_item no se consulta ni genera gasto', async () => {
+    fromMock.mockImplementation(table => {
+      expect(table).toBe('crm_cost_items');
+      return queryResult({ data: [], error: null });
+    });
+    const { data } = await getOperatingCostItemsForPeriod('biz1', 9, 2026);
+    expect(data).toEqual([]);
+    expect(fromMock).toHaveBeenCalledTimes(1);
   });
 });
 

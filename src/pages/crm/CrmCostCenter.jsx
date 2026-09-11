@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from 'contexts/AuthContext';
 import { canUseFeature } from 'config/planFeatures';
@@ -7,791 +7,252 @@ import DashboardLayoutContent from 'components/ui/DashboardLayoutContent';
 import DashboardAppShell from 'components/ui/DashboardAppShell';
 import PanelHeader from 'components/ui/PanelHeader';
 import Icon from 'components/AppIcon';
-import {
-  getCostCenter,
-  upsertCostCenter,
-  getCostItems,
-  getCrmSalesTotalsForPeriod,
-  getCrmDailySalesForPeriod,
-} from 'services/crmService';
-import {
-  getSupplierPurchaseTotalsForPeriod,
-  getSupplierInvoicesForPeriod,
-} from 'services/supplierInvoiceService';
+import { getOperatingCostItemsForPeriod, getOperatingSalesForPeriod } from 'services/crmService';
+import { getSupplierInvoicesForPeriod } from 'services/supplierInvoiceService';
 import { getEffectivePlanSlug } from 'services/waBusinessService';
-import BusinessStatusAvatar from 'components/business-status-avatar/BusinessStatusAvatar';
 
-// ─── Constantes ───────────────────────────────────────────────────────────────
+const MONTHS = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+const RECOGNIZED_EXPENSE_TYPES = new Set(['gasto_con_iva', 'gasto_sin_iva']);
+const ZERO_DECIMAL_CURRENCIES = new Set(['CLP', 'ARS', 'CRC', 'COP', 'GTQ', 'PYG', 'UYU', 'BOB']);
 
-const MONTHS = [
-  'Enero','Febrero','Marzo','Abril','Mayo','Junio',
-  'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre',
-];
-
-// fmt se inicializa en el componente raíz con la moneda del negocio
-function clamp(v, min, max) { return Math.min(max, Math.max(min, v)); }
-function dayFromDate(dateStr) { return dateStr ? parseInt(dateStr.slice(8, 10), 10) : null; }
-
-// ─── Estado del negocio ───────────────────────────────────────────────────────
-
-function getState(salesToday, dailyCost) {
-  if (dailyCost <= 0) return 'unconfigured';
-  if (salesToday >= dailyCost) return 'winning';
-  if (salesToday >= dailyCost * 0.75) return 'breaking';
-  return 'losing';
+export function monetaryTolerance(currency) {
+  return ZERO_DECIMAL_CURRENCIES.has(String(currency || 'CLP').toUpperCase()) ? 1 : 0.01;
 }
 
-const STATE = {
-  winning: {
-    avatarStatus: 'success',
-    label: 'Hoy vas ganando',
-    bg: 'from-green-500 to-emerald-600',
-    badge: 'bg-green-600/30 text-white',
-  },
-  breaking: {
-    avatarStatus: 'warning',
-    label: 'Estás cerca del equilibrio',
-    bg: 'from-yellow-400 to-amber-500',
-    badge: 'bg-yellow-600/30 text-white',
-  },
-  losing: {
-    avatarStatus: 'danger',
-    label: 'Hoy estás perdiendo dinero',
-    bg: 'from-red-500 to-rose-600',
-    badge: 'bg-red-600/30 text-white',
-  },
-  unconfigured: {
-    avatarStatus: null,
-    label: 'Sin datos de gastos aún',
-    bg: 'from-blue-500 to-blue-600',
-    badge: 'bg-blue-600/30 text-white',
-  },
-};
-
-// ─── Barra animada ────────────────────────────────────────────────────────────
-
-function AnimatedBar({ pct, colorClass, height = 'h-4' }) {
-  const [width, setWidth] = useState(0);
-  useEffect(() => {
-    const t = setTimeout(() => setWidth(Math.min(100, pct)), 80);
-    return () => clearTimeout(t);
-  }, [pct]);
-  return (
-    <div className={`w-full ${height} bg-white/20 rounded-full overflow-hidden`}>
-      <div
-        className={`h-full rounded-full ${colorClass} transition-all duration-700 ease-out`}
-        style={{ width: `${width}%` }}
-      />
-    </div>
-  );
+export function classifyDailyResult({ result, tolerance, future = false, calculable = true, hasData = true }) {
+  if (!calculable) return 'nodata';
+  if (future) return 'future';
+  if (!hasData) return 'inactive';
+  if (result > tolerance) return 'winning';
+  if (result < -tolerance) return 'losing';
+  return 'breaking';
 }
 
-// ─── Tarjeta héroe ────────────────────────────────────────────────────────────
-
-function HeroCard({ state, salesToday, dailyCost, fmt }) {
-  const s = STATE[state];
-  const pct      = dailyCost > 0 ? Math.round((salesToday / dailyCost) * 100) : 0;
-  const remaining = Math.max(0, dailyCost - salesToday);
-  const surplus   = Math.max(0, salesToday - dailyCost);
-
-  const subText = {
-    winning:      `Ya cubriste el costo de hoy.\nTodo lo que vendas ahora es ganancia.`,
-    breaking:     `Casi llegas — te faltan ${fmt(Math.ceil(remaining))} más para cubrir el día.`,
-    losing:       `Todavía no cubres los gastos de hoy.\nTe faltan ${fmt(Math.ceil(remaining))}.`,
-    unconfigured: 'Registra compras en la sección "Compras" para activar el termómetro.',
-  }[state] || '';
-
-  return (
-    <div className={`rounded-2xl bg-gradient-to-br ${s.bg} p-5 sm:p-7 shadow-lg select-none`}>
-      {/* Header: texto + avatar */}
-      <div className="flex items-start justify-between mb-5 gap-3">
-        <div className="flex-1 min-w-0">
-          <p className="text-white/60 text-xs font-semibold uppercase tracking-widest mb-2">Estado hoy</p>
-          <p className="text-2xl sm:text-3xl font-black leading-tight text-white">{s.label}</p>
-          <p className="text-white/80 text-sm mt-2 leading-relaxed whitespace-pre-line">{subText}</p>
-        </div>
-        {/* Avatar Lottie animado — 80x80, sin bloquear render */}
-        <div className="w-20 h-20 shrink-0 drop-shadow-lg">
-          {s.avatarStatus
-            ? <BusinessStatusAvatar status={s.avatarStatus} />
-            : <span className="text-5xl leading-none flex items-center justify-center w-full h-full">🏪</span>
-          }
-        </div>
-      </div>
-
-      {dailyCost > 0 && (
-        <>
-          {/* Barra de progreso con porcentaje */}
-          <div className="mb-2">
-            <div className="flex justify-between items-baseline mb-1.5">
-              <span className="text-white/70 text-xs font-semibold">Meta diaria</span>
-              <span className="text-white font-bold text-sm tabular-nums">{pct}%</span>
-            </div>
-            <AnimatedBar pct={pct} colorClass="bg-white/80" height="h-3" />
-          </div>
-
-          {/* Montos */}
-          <div className="flex justify-between items-baseline mt-3">
-            <span className="font-black text-white text-2xl tabular-nums">{fmt(salesToday)}</span>
-            <span className="text-white/60 text-sm">de {fmt(Math.ceil(dailyCost))} hoy</span>
-          </div>
-
-          {surplus > 0 && (
-            <div className={`mt-4 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-bold ${s.badge}`}>
-              <Icon name="TrendingUp" size={13} />
-              Vas {fmt(Math.floor(surplus))} arriba 🎯
-            </div>
-          )}
-
-          <div className="mt-4 pt-4 border-t border-white/20">
-            <div className="flex items-center justify-between">
-              <p className="text-white/60 text-xs">Costo diario promedio</p>
-              <p className="text-white/80 text-sm font-semibold">{fmt(Math.ceil(dailyCost))}</p>
-            </div>
-          </div>
-        </>
-      )}
-    </div>
-  );
+function dayOf(date) {
+  const value = String(date || '');
+  return /^\d{4}-\d{2}-\d{2}/.test(value) ? Number(value.slice(8, 10)) : null;
 }
 
-// ─── Hoyo financiero ──────────────────────────────────────────────────────────
-
-function HoyoCard({ totalCosts, salesMonth, fmt }) {
-  const gap     = totalCosts - salesMonth;
-  const covered = gap <= 0;
-  const pct     = totalCosts > 0 ? Math.min(100, Math.round((salesMonth / totalCosts) * 100)) : 0;
-  const close   = !covered && pct >= 80;
-  const [barWidth, setBarWidth] = useState(0);
-  useEffect(() => { const t = setTimeout(() => setBarWidth(pct), 120); return () => clearTimeout(t); }, [pct]);
-
-  if (totalCosts === 0) return null;
-
-  return (
-    <div className={`rounded-2xl border-2 p-5 transition-colors ${
-      covered ? 'bg-green-50 border-green-200' :
-      close   ? 'bg-yellow-50 border-yellow-200' :
-                'bg-white border-gray-200'
-    }`}>
-      <p className={`text-xs font-semibold uppercase tracking-widest mb-3 ${
-        covered ? 'text-green-500' : close ? 'text-yellow-500' : 'text-gray-400'
-      }`}>
-        {covered ? '🎉 ¡Saliste del agua!' : 'Lo que te falta para salir del agua'}
-      </p>
-
-      <div className="mb-1">
-        <p className={`text-5xl font-black leading-none tabular-nums ${
-          covered ? 'text-green-600' : close ? 'text-yellow-600' : 'text-red-600'
-        }`}>
-          {covered ? '+' : '-'}{fmt(Math.abs(gap))}
-        </p>
-      </div>
-      <p className={`text-sm mb-4 ${covered ? 'text-green-700 font-semibold' : 'text-gray-500'}`}>
-        {covered
-          ? 'Ya cubriste todos los gastos del mes.'
-          : `Te faltan ${fmt(Math.abs(gap))} para cubrir los gastos del mes.`}
-      </p>
-
-      <div className="space-y-2">
-        <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
-          <div
-            className={`h-full rounded-full transition-all duration-700 ease-out ${
-              covered ? 'bg-green-500' : close ? 'bg-yellow-400' : 'bg-red-400'
-            }`}
-            style={{ width: `${barWidth}%` }}
-          />
-        </div>
-        <div className="flex justify-between text-xs text-gray-400">
-          <span>Ventas: <span className="font-semibold text-gray-600">{fmt(salesMonth)}</span></span>
-          <span>{pct}% de {fmt(totalCosts)}</span>
-        </div>
-      </div>
-
-      {covered && (
-        <p className="text-sm text-green-600 mt-3">
-          Desde este momento cada venta suma directamente a tu utilidad. 💪
-        </p>
-      )}
-      {!covered && close && (
-        <p className="text-sm text-yellow-700 font-medium mt-3">Vas muy bien — casi llegas 💪</p>
-      )}
-    </div>
-  );
-}
-
-// ─── Calendario GitHub-style ──────────────────────────────────────────────────
-
-function CalendarDot({ day, month, year, state, sales, varExp, dailyCost, isToday, fmt }) {
-  const [showTip, setShowTip] = useState(false);
-  const ref = useRef(null);
-
-  useEffect(() => {
-    if (!showTip) return;
-    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setShowTip(false); };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [showTip]);
-
-  const DOT_COLOR = {
-    winning:      'bg-green-500 hover:bg-green-400',
-    breaking:     'bg-yellow-400 hover:bg-yellow-300',
-    losing:       'bg-red-400 hover:bg-red-300',
-    future:       'bg-gray-100',
-    nodata:       'bg-gray-200 hover:bg-gray-300',
-    unconfigured: 'bg-gray-100',
-  };
-
-  const isFuture = state === 'future' || state === 'unconfigured';
-  const diff = dailyCost > 0 ? (sales || 0) - dailyCost : null;
-  const dateLabel = new Date(year, month - 1, day).toLocaleDateString('es-CL', { day: 'numeric', month: 'long' });
-
-  return (
-    <div ref={ref} className="relative flex items-center justify-center aspect-square">
-      <button
-        type="button"
-        disabled={isFuture}
-        onClick={() => !isFuture && setShowTip(v => !v)}
-        className={`w-full h-full rounded-md transition-colors ${DOT_COLOR[state] || 'bg-gray-100'} ${
-          isToday ? 'ring-2 ring-blue-500 ring-offset-1' : ''
-        } ${isFuture ? 'cursor-default' : 'cursor-pointer'}`}
-      />
-      {showTip && (
-        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-30 bg-gray-900 text-white text-xs rounded-xl px-3 py-2.5 shadow-xl min-w-36">
-          <p className="font-bold mb-1.5 text-white capitalize">{dateLabel}</p>
-          <div className="space-y-0.5">
-            <div className="flex justify-between gap-4">
-              <span className="text-gray-400">Ventas</span>
-              <span className="font-semibold">{fmt(sales || 0)}</span>
-            </div>
-            {dailyCost > 0 && (
-              <div className="flex justify-between gap-4">
-                <span className="text-gray-400">Meta diaria</span>
-                <span className="font-semibold">{fmt(Math.ceil(dailyCost))}</span>
-              </div>
-            )}
-            {varExp > 0 && (
-              <div className="flex justify-between gap-4">
-                <span className="text-gray-400">Gastos día</span>
-                <span className="font-semibold">{fmt(varExp)}</span>
-              </div>
-            )}
-            {diff !== null && (
-              <div className="flex justify-between gap-4 pt-1 border-t border-gray-700 mt-1">
-                <span className="text-gray-400">Resultado</span>
-                <span className={`font-bold ${diff >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                  {diff >= 0 ? '+' : ''}{fmt(Math.round(diff))}
-                </span>
-              </div>
-            )}
-          </div>
-          <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900" />
-        </div>
-      )}
-    </div>
-  );
-}
-
-function HealthCalendar({ month, year, dailySales, dailyCost, dailyVarExpenses, fmt }) {
-  const now = new Date();
-  const isCurrentMonth = month === now.getMonth() + 1 && year === now.getFullYear();
+export function calculateOperatingSnapshot({ costItems = [], purchases = [], dailySales = {}, month, year }) {
   const daysInMonth = new Date(year, month, 0).getDate();
-  const todayDay = isCurrentMonth ? now.getDate() : daysInMonth;
-  const firstDow = new Date(year, month - 1, 1).getDay();
-  const offset = firstDow === 0 ? 6 : firstDow - 1;
+  const fixedItems = costItems.filter(item => item.type === 'fixed' && !item.excluded);
+  const variableItems = costItems.filter(item => item.type === 'variable' && !item.excluded);
+  const fixedCosts = fixedItems.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const variableExpenses = variableItems.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  let supplierExpenses = 0;
+  let merchandise = 0;
+  let pendingClassification = 0;
+  const supplierByDay = {};
 
-  const days = Array.from({ length: daysInMonth }, (_, i) => {
-    const d = i + 1;
-    if (d > todayDay) return { d, state: 'future', sales: 0, varExp: 0 };
-    const sales  = dailySales[d] || 0;
-    const varExp = (dailyVarExpenses || {})[d] || 0;
-    if (dailyCost <= 0) return { d, state: 'nodata', sales, varExp };
-    return { d, state: getState(sales, dailyCost), sales, varExp };
-  });
-
-  return (
-    <div className="bg-white rounded-2xl border border-gray-100 p-5">
-      <div className="flex items-center justify-between mb-4">
-        <p className="text-sm font-bold text-gray-800">Historial del mes</p>
-        <div className="flex items-center gap-3 text-xs text-gray-400">
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-green-500 inline-block" />Ganó</span>
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-yellow-400 inline-block" />Empató</span>
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-red-400 inline-block" />Perdió</span>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-7 gap-1.5">
-        {['L','M','X','J','V','S','D'].map(d => (
-          <div key={d} className="text-center text-xs text-gray-300 font-medium pb-0.5">{d}</div>
-        ))}
-        {Array.from({ length: offset }, (_, i) => <div key={`off-${i}`} />)}
-        {days.map(({ d, state, sales, varExp }) => (
-          <CalendarDot
-            key={d} day={d} month={month} year={year}
-            state={state} sales={sales} varExp={varExp}
-            dailyCost={dailyCost}
-            isToday={isCurrentMonth && d === todayDay}
-            fmt={fmt}
-          />
-        ))}
-      </div>
-
-      <p className="text-xs text-gray-400 text-center mt-3">Toca un día para ver detalles</p>
-    </div>
-  );
-}
-
-// ─── Widget Compras ───────────────────────────────────────────────────────────
-
-function ComprasWidget({ purchaseTotals, navigate, fmt }) {
-  const hasError = Boolean(purchaseTotals?.error);
-  const mercaderiaTotal  = purchaseTotals?.totals?.mercaderia?.total  || 0;
-  const operacionalTotal = purchaseTotals?.totalOperational           || 0;
-  const otherTotal       = purchaseTotals?.totals?.other?.total       || 0;
-  const hasData = mercaderiaTotal > 0 || operacionalTotal > 0 || otherTotal > 0;
-
-  return (
-    <div className="bg-white rounded-2xl border border-gray-100 p-4 flex items-center justify-between gap-4">
-      <div className="flex items-center gap-3 min-w-0">
-        <div className="w-9 h-9 rounded-xl bg-rose-50 flex items-center justify-center shrink-0">
-          <Icon name="FileInput" size={16} color="#e11d48" />
-        </div>
-        <div className="min-w-0">
-          <p className="text-sm font-bold text-gray-800">Compras del período</p>
-          {hasError ? (
-            <p className="text-xs text-red-500">No se pudieron cargar las compras del período.</p>
-          ) : hasData ? (
-            <div className="flex gap-3 flex-wrap mt-0.5">
-              {mercaderiaTotal > 0 && (
-                <span className="text-xs text-blue-600">
-                  Mercadería: <strong>{fmt(mercaderiaTotal)}</strong>
-                </span>
-              )}
-              {operacionalTotal > 0 && (
-                <span className="text-xs text-amber-600">
-                  Gastos: <strong>{fmt(operacionalTotal)}</strong>
-                </span>
-              )}
-              {otherTotal > 0 && (
-                <span className="text-xs text-gray-500">
-                  Otros / Servicios: <strong>{fmt(otherTotal)}</strong>
-                </span>
-              )}
-            </div>
-          ) : (
-            <p className="text-xs text-gray-400">Sin compras registradas este período</p>
-          )}
-        </div>
-      </div>
-      <button
-        onClick={() => navigate('/proveedores')}
-        className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold transition-colors"
-      >
-        <Icon name="Plus" size={12} />
-        Registrar
-      </button>
-    </div>
-  );
-}
-
-// ─── Widget Costos fijos ──────────────────────────────────────────────────────
-
-function CostosWidget({ totalCostosFijos, navigate, fmt }) {
-  return (
-    <div className="bg-white rounded-2xl border border-gray-100 p-4 flex items-center justify-between gap-4">
-      <div className="flex items-center gap-3 min-w-0">
-        <div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center shrink-0">
-          <Icon name="Building2" size={16} color="#2563eb" />
-        </div>
-        <div className="min-w-0">
-          <p className="text-sm font-bold text-gray-800">Costos fijos del período</p>
-          {totalCostosFijos > 0 ? (
-            <p className="text-xs text-blue-600 mt-0.5">Total: <strong>{fmt(totalCostosFijos)}</strong></p>
-          ) : (
-            <p className="text-xs text-gray-400">Sin costos fijos registrados</p>
-          )}
-        </div>
-      </div>
-      <button
-        onClick={() => navigate('/crm/costos')}
-        className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition-colors"
-      >
-        <Icon name="Pencil" size={12} />
-        Editar
-      </button>
-    </div>
-  );
-}
-
-// ─── Panel IVA estimado ───────────────────────────────────────────────────────
-
-function IvaSummaryPanel({ salesMonth, purchaseTotals, vatRate, fmt }) {
-  const hasError  = Boolean(purchaseTotals?.error);
-  const rate      = vatRate || 19;
-  const ivaVentas = salesMonth > 0 ? +(salesMonth * rate / (100 + rate)).toFixed(0) : 0;
-  const ivaCompras = purchaseTotals?.totalTaxCredit || 0;
-  const ivaNeto    = ivaVentas - ivaCompras;
-  const aPagar     = ivaNeto > 0;
-
-  if (hasError) {
-    return (
-      <div className="bg-white rounded-2xl border border-red-100 p-4">
-        <p className="text-sm font-bold text-gray-800 mb-1">IVA estimado del período</p>
-        <p className="text-xs text-red-500">
-          No se pudo calcular el IVA compras: hubo un error al cargar las compras del período.
-        </p>
-      </div>
-    );
+  for (const purchase of purchases) {
+    const amount = Number(purchase.totalAmount || 0);
+    const ambiguous = !RECOGNIZED_EXPENSE_TYPES.has(purchase.purchaseType) && purchase.purchaseType !== 'mercaderia';
+    if (purchase.documentType === 'nota_credito' || ambiguous) {
+      pendingClassification += amount;
+      continue;
+    }
+    if (purchase.purchaseType === 'mercaderia') {
+      merchandise += amount;
+      continue;
+    }
+    supplierExpenses += amount;
+    const day = dayOf(purchase.issueDate);
+    if (day) supplierByDay[day] = (supplierByDay[day] || 0) + amount;
   }
 
-  if (!ivaVentas && !ivaCompras) return null;
+  const variableByDay = {};
+  for (const item of variableItems) {
+    const day = dayOf(item.economicDate);
+    if (day) variableByDay[day] = (variableByDay[day] || 0) + Number(item.amount || 0);
+  }
 
-  return (
-    <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-      <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
-        <div className="w-8 h-8 rounded-xl bg-indigo-100 flex items-center justify-center">
-          <Icon name="Percent" size={15} color="#4f46e5" />
-        </div>
-        <div>
-          <p className="text-sm font-bold text-gray-800">IVA estimado del período</p>
-          <p className="text-[10px] text-gray-400">Tasa {rate}% · Cálculo referencial</p>
-        </div>
-      </div>
-
-      <div className="px-5 py-4 space-y-0">
-        {/* IVA ventas */}
-        <div className="flex justify-between items-center py-2.5 border-b border-gray-100">
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0" />
-            <span className="text-sm text-gray-600">IVA ventas</span>
-          </div>
-          <span className="text-sm font-bold text-emerald-700">+ {fmt(ivaVentas)}</span>
-        </div>
-
-        {/* IVA compras */}
-        <div className="flex justify-between items-center py-2.5 border-b border-gray-100">
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-blue-400 shrink-0" />
-            <span className="text-sm text-gray-600">IVA compras (crédito fiscal)</span>
-          </div>
-          <span className="text-sm font-bold text-blue-700">− {fmt(ivaCompras)}</span>
-        </div>
-
-        {/* Resultado */}
-        <div className={`mt-3 rounded-xl px-4 py-3.5 flex justify-between items-center ${
-          aPagar ? 'bg-amber-50 border border-amber-200' : 'bg-green-50 border border-green-200'
-        }`}>
-          <div>
-            <p className={`text-xs font-semibold uppercase tracking-wide ${aPagar ? 'text-amber-600' : 'text-green-600'}`}>
-              {aPagar ? 'IVA estimado a pagar' : 'Crédito fiscal estimado'}
-            </p>
-            <p className="text-[10px] text-gray-400 mt-0.5">
-              {aPagar ? 'Débito fiscal − crédito fiscal' : 'Tus compras superan el IVA de ventas'}
-            </p>
-          </div>
-          <span className={`text-2xl font-black tabular-nums ${aPagar ? 'text-amber-700' : 'text-green-700'}`}>
-            {fmt(Math.abs(ivaNeto))}
-          </span>
-        </div>
-
-        <p className="text-[10px] text-gray-400 pt-3">
-          ⚠️ Estimación referencial. No reemplaza la declaración tributaria oficial.
-        </p>
-      </div>
-    </div>
-  );
-}
-
-// ─── Panel de ajustes ─────────────────────────────────────────────────────────
-
-function SettingsPanel({ center, businessId, month, year, onSave }) {
-  const [open, setOpen]     = useState(false);
-  const [openDays, setOpenDays] = useState(center?.open_days ?? 22);
-  const [vatRate,  setVatRate]  = useState(center?.vat_rate  ?? 19);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved]   = useState(false);
-
-  const save = async () => {
-    setSaving(true);
-    const c = await upsertCostCenter(businessId, month, year, {
-      open_days: clamp(+openDays || 22, 1, 31),
-      vat_rate:  clamp(+vatRate  || 19, 0, 100),
-      uses_vat: true,
-      profit_goal: null,
-      onboarding_done: true,
-    });
-    setSaving(false); setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-    onSave(c);
+  const fixedDaily = fixedCosts / daysInMonth;
+  const directExpenses = supplierExpenses + variableExpenses;
+  return {
+    fixedCosts, variableExpenses, supplierExpenses, directExpenses,
+    merchandise, pendingClassification, fixedDaily,
+    daily(day) {
+      const sales = Number(dailySales[day] || 0);
+      const supplier = Number(supplierByDay[day] || 0);
+      const variable = Number(variableByDay[day] || 0);
+      return { sales, supplier, variable, fixed: fixedDaily, result: sales - supplier - variable - fixedDaily };
+    },
   };
-
-  return (
-    <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-      <button type="button" onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50/50 transition-colors">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-xl bg-gray-100 flex items-center justify-center">
-            <Icon name="Settings" size={15} color="#6b7280" />
-          </div>
-          <p className="text-sm font-bold text-gray-800">Ajustes</p>
-        </div>
-        <Icon name={open ? 'ChevronUp' : 'ChevronDown'} size={16} color="#9ca3af" />
-      </button>
-
-      {open && (
-        <div className="border-t border-gray-100 px-5 pb-5 pt-4 space-y-4">
-          <div>
-            <label className="text-xs text-gray-500 block mb-1.5">Días hábiles del mes</label>
-            <div className="flex items-center gap-3">
-              <div className="flex items-center border border-gray-200 rounded-xl overflow-hidden bg-white">
-                <button type="button" onClick={() => setOpenDays(d => Math.max(1, +d - 1))}
-                  className="w-9 h-9 flex items-center justify-center text-gray-500 hover:bg-gray-50 font-medium">−</button>
-                <span className="w-10 text-center text-sm font-bold text-gray-900">{openDays}</span>
-                <button type="button" onClick={() => setOpenDays(d => Math.min(31, +d + 1))}
-                  className="w-9 h-9 flex items-center justify-center text-gray-500 hover:bg-gray-50 font-medium">+</button>
-              </div>
-              <span className="text-sm text-gray-500">días</span>
-            </div>
-          </div>
-          <div>
-            <label className="text-xs text-gray-500 block mb-1.5">Tasa IVA (%)</label>
-            <div className="flex items-center gap-2">
-              <input
-                type="number" min="0" max="100" step="0.5"
-                value={vatRate}
-                onChange={e => setVatRate(e.target.value)}
-                className="w-20 border border-gray-200 rounded-lg px-3 py-2 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <span className="text-sm text-gray-400">% (Chile 19%, Argentina 21%)</span>
-            </div>
-          </div>
-          <button onClick={save} disabled={saving}
-            className="text-sm bg-blue-600 text-white px-5 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium">
-            {saving ? 'Guardando...' : saved ? '✓ Guardado' : 'Guardar'}
-          </button>
-        </div>
-      )}
-    </div>
-  );
 }
 
-// ─── Dashboard principal ──────────────────────────────────────────────────────
+function HeaderActions({ navigate }) {
+  return <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+    <button type="button" onClick={() => navigate('/crm/costos')} className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+      <Icon name="Settings" size={15} />Configurar costos fijos
+    </button>
+    <button type="button" onClick={() => navigate('/proveedores')} className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+      <Icon name="Plus" size={15} />Registrar gasto / compra
+    </button>
+  </div>;
+}
 
-function Dashboard({ center, costItems, sales, dailySales, purchaseTotals, purchases, month, year, onEditSettings, businessId, navigate, currency }) {
-  const fmt = (n) => formatMoney(n, currency || 'CLP');
+function KpiCard({ label, value, available = true, tone = 'slate', note }) {
+  const colors = { blue: 'bg-blue-50 text-blue-700', amber: 'bg-amber-50 text-amber-700', rose: 'bg-rose-50 text-rose-700', emerald: 'bg-emerald-50 text-emerald-700', slate: 'bg-slate-50 text-slate-700' };
+  return <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</p>
+    <p className={`mt-2 inline-block rounded-lg px-2 py-1 text-xl font-bold tabular-nums sm:text-2xl ${available ? colors[tone] : 'bg-slate-100 text-slate-500'}`}>{available ? value : 'No disponible'}</p>
+    {note && <p className="mt-2 text-xs text-slate-500">{note}</p>}
+  </div>;
+}
+
+const DAY_STATE = {
+  winning: { label: 'Rentable', cell: 'border-emerald-200 bg-emerald-50 text-emerald-800', result: 'text-emerald-700' },
+  breaking: { label: 'En equilibrio', cell: 'border-amber-200 bg-amber-50 text-amber-800', result: 'text-amber-700' },
+  losing: { label: 'Bajo equilibrio', cell: 'border-rose-200 bg-rose-50 text-rose-800', result: 'text-rose-700' },
+  inactive: { label: 'Sin actividad', cell: 'border-slate-200 bg-slate-50 text-slate-400', result: 'text-slate-400' },
+  future: { label: 'Próximo', cell: 'border-slate-100 bg-slate-50/60 text-slate-300 cursor-not-allowed', result: 'text-slate-300' },
+  nodata: { label: 'Sin datos', cell: 'border-slate-200 bg-slate-50 text-slate-400', result: 'text-slate-400' },
+};
+const DAY_STATE_WITH_AMOUNT = new Set(['winning', 'breaking', 'losing']);
+
+function DayDetail({ day, values, state, fmt }) {
+  const rows = [['Ventas', values.sales], ['Gastos directos de proveedor', -values.supplier], ['Otros gastos variables', -values.variable], ['Costo fijo prorrateado', -values.fixed]];
+  return <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4" aria-live="polite">
+    <div className="flex items-center justify-between gap-3"><p className="font-semibold text-slate-900">Detalle del día {day}</p><span className="text-xs font-semibold text-slate-600">{DAY_STATE[state].label}</span></div>
+    <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+      {rows.map(([label, amount]) => <div key={label} className="flex justify-between gap-3"><dt className="text-slate-500">{label}</dt><dd className="font-medium tabular-nums text-slate-800">{amount > 0 ? '+' : amount < 0 ? '−' : ''}{fmt(Math.abs(amount))}</dd></div>)}
+      <div className="flex justify-between gap-3 border-t border-slate-200 pt-2 sm:col-span-2"><dt className="font-semibold text-slate-700">Resultado operativo estimado</dt><dd className={`font-bold tabular-nums ${DAY_STATE[state].result}`}>{values.result > 0 ? '+' : values.result < 0 ? '−' : ''}{fmt(Math.abs(values.result))}</dd></div>
+    </dl>
+  </div>;
+}
+
+function OperatingCalendar({ month, year, snapshot, calculable, tolerance, fmt }) {
   const now = new Date();
-  const isCurrentMonth = month === now.getMonth() + 1 && year === now.getFullYear();
-  const today = now.toISOString().slice(0, 10);
+  const currentMonth = month === now.getMonth() + 1 && year === now.getFullYear();
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const firstDay = new Date(year, month - 1, 1).getDay();
+  const offset = firstDay === 0 ? 6 : firstDay - 1;
+  const [selectedDay, setSelectedDay] = useState(null);
+  const days = Array.from({ length: daysInMonth }, (_, index) => {
+    const day = index + 1;
+    const future = currentMonth && day > now.getDate();
+    const values = snapshot.daily(day);
+    const hasData = snapshot.fixedCosts > 0 || values.sales > 0 || values.supplier > 0 || values.variable > 0;
+    const state = classifyDailyResult({ result: values.result, tolerance, future, calculable, hasData });
+    return { day, values, state, future };
+  });
+  const selected = days.find(item => item.day === selectedDay);
 
-  const openDays          = center?.open_days || 22;
-  const totalCostosFijos  = (costItems || []).reduce((s, i) => s + (i.amount || 0), 0);
-  const totalOperacional  = purchaseTotals?.totalOperational || 0;
-  const totalMes          = totalCostosFijos + totalOperacional;
-  const dailyCost         = openDays > 0 && totalMes > 0 ? totalMes / openDays : 0;
-
-  // Mapa día → gastos operativos (todo lo que no sea mercadería) para el calendario
-  const dailyVarExpenses = {};
-  for (const p of (purchases || [])) {
-    if (p.purchaseType === 'mercaderia') continue;
-    const d = dayFromDate(p.issueDate);
-    if (d) dailyVarExpenses[d] = (dailyVarExpenses[d] || 0) + (p.totalAmount || 0);
-  }
-
-  const salesToday  = isCurrentMonth ? sales.salesToday  : 0;
-  const salesMonth  = sales.salesMonth;
-  const todayState  = getState(salesToday, dailyCost);
-  const purchaseTotalsError = Boolean(purchaseTotals?.error);
-
-  return (
-    <div className="space-y-4 max-w-lg mx-auto">
-
-      {purchaseTotalsError && (
-        <div className="flex items-start gap-2 rounded-2xl border border-red-200 bg-red-50 p-4 text-xs text-red-600">
-          <Icon name="AlertTriangle" size={16} className="shrink-0 mt-0.5" />
-          <span>
-            No se pudieron cargar las compras del período. Los costos operativos, el IVA y el
-            termómetro de hoy pueden estar incompletos hasta que se resuelva el error.
-          </span>
-        </div>
-      )}
-
-      {/* Tarjeta héroe */}
-      <HeroCard
-        state={isCurrentMonth ? todayState : 'unconfigured'}
-        salesToday={salesToday}
-        dailyCost={dailyCost}
-        fmt={fmt}
-      />
-
-      {/* Hoyo financiero */}
-      <HoyoCard
-        totalCosts={totalMes}
-        salesMonth={salesMonth}
-        fmt={fmt}
-      />
-
-      {/* Calendario */}
-      <HealthCalendar
-        month={month} year={year}
-        dailySales={dailySales}
-        dailyCost={dailyCost}
-        dailyVarExpenses={dailyVarExpenses}
-        fmt={fmt}
-      />
-
-      {/* Enlace a costos fijos */}
-      <CostosWidget totalCostosFijos={totalCostosFijos} navigate={navigate} fmt={fmt} />
-
-      {/* Widget de compras — fuente única de datos */}
-      <ComprasWidget purchaseTotals={purchaseTotals} navigate={navigate} fmt={fmt} />
-
-      {/* Resumen IVA */}
-      <IvaSummaryPanel
-        salesMonth={salesMonth}
-        purchaseTotals={purchaseTotals}
-        vatRate={center?.vat_rate || 19}
-        fmt={fmt}
-      />
-
-      {/* Ajustes */}
-      <SettingsPanel center={center} businessId={businessId} month={month} year={year} onSave={onEditSettings} />
+  return <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div><h2 className="text-sm font-bold text-slate-900">Resultado diario</h2><p className="text-xs text-slate-500">Ventas menos gastos del día y costo fijo prorrateado.</p></div>
+      <div className="flex flex-wrap gap-3 text-xs text-slate-500">{Object.entries(DAY_STATE).map(([key, value]) => <span key={key} className="inline-flex items-center gap-1"><span className={`h-2.5 w-2.5 rounded-full border ${value.cell}`} />{value.label}</span>)}</div>
     </div>
-  );
+    <div className="mt-5 grid grid-cols-7 gap-1.5 sm:gap-2">
+      {['L', 'M', 'X', 'J', 'V', 'S', 'D'].map(label => <div key={label} className="pb-1 text-center text-xs font-semibold text-slate-400">{label}</div>)}
+      {Array.from({ length: offset }, (_, index) => <div key={`offset-${index}`} />)}
+      {days.map(({ day, values, state, future }) => <button key={day} type="button" disabled={future || !calculable} onClick={() => setSelectedDay(day)} aria-label={`${day}: ${DAY_STATE[state].label}`} aria-pressed={selectedDay === day} className={`min-h-[54px] rounded-xl border p-1.5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 sm:min-h-[66px] sm:p-2 ${DAY_STATE[state].cell} ${selectedDay === day ? 'ring-2 ring-blue-500' : ''}`}>
+        <span className="block text-xs font-bold">{day}</span><span className={`mt-1 block truncate text-[10px] font-semibold tabular-nums sm:text-xs ${DAY_STATE[state].result}`}>{DAY_STATE_WITH_AMOUNT.has(state) ? `${values.result > 0 ? '+' : values.result < 0 ? '−' : ''}${fmt(Math.abs(values.result))}` : '—'}</span><span className="mt-1 hidden text-[10px] sm:block">{DAY_STATE[state].label}</span>
+      </button>)}
+    </div>
+    {selected && <DayDetail day={selected.day} values={selected.values} state={selected.state} fmt={fmt} />}
+  </section>;
 }
 
-// ─── Página principal ─────────────────────────────────────────────────────────
+function SummaryBlock({ icon, title, amount, description, tone = 'slate' }) {
+  const colors = { blue: 'bg-blue-50 text-blue-700', rose: 'bg-rose-50 text-rose-700', amber: 'bg-amber-50 text-amber-700', slate: 'bg-slate-100 text-slate-700' };
+  return <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="flex items-start gap-3"><span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${colors[tone]}`}><Icon name={icon} size={16} /></span><div><h3 className="text-sm font-bold text-slate-900">{title}</h3><p className="mt-1 text-xl font-bold tabular-nums text-slate-900">{amount}</p><p className="mt-1 text-xs leading-relaxed text-slate-500">{description}</p></div></div></div>;
+}
 
 export default function CrmCostCenter() {
   const { business } = useAuth();
   const navigate = useNavigate();
-  const planSlug = getEffectivePlanSlug(
-    business?.planSlug, business?.planExpiresAt, business?.trialExpiresAt
-  );
+  const planSlug = getEffectivePlanSlug(business?.planSlug, business?.planExpiresAt, business?.trialExpiresAt);
   const isPro = canUseFeature(planSlug, 'costCenter');
-
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth() + 1);
-  const [year,  setYear]  = useState(now.getFullYear());
-
-  const [center,         setCenter]         = useState(null);
-  const [costItems,      setCostItems]      = useState([]);
-  const [sales,          setSales]          = useState({ salesMonth: 0, salesToday: 0 });
-  const [dailySales,     setDailySales]     = useState({});
-  const [purchaseTotals, setPurchaseTotals] = useState(null);
-  const [purchases,      setPurchases]      = useState([]);
-  const [loading,        setLoading]        = useState(true);
+  const [year, setYear] = useState(now.getFullYear());
+  const [sales, setSales] = useState(null);
+  const [costs, setCosts] = useState(null);
+  const [purchases, setPurchases] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     if (!business?.id) return;
     setLoading(true);
-    // Mismo rango [from, to) que usaba crmService.getPurchaseTotalsForPeriod.
     const from = `${year}-${String(month).padStart(2, '0')}-01`;
-    const to   = new Date(year, month, 1).toISOString().slice(0, 10);
-    const [c, ci, s, ds, pt, pr] = await Promise.all([
-      getCostCenter(business.id, month, year),
-      getCostItems(business.id, month, year),
-      getCrmSalesTotalsForPeriod(business.id, month, year),
-      getCrmDailySalesForPeriod(business.id, month, year),
-      getSupplierPurchaseTotalsForPeriod(business.id, from, to),
+    const to = month === 12 ? `${year + 1}-01-01` : `${year}-${String(month + 1).padStart(2, '0')}-01`;
+    const [salesResult, costResult, purchaseResult] = await Promise.allSettled([
+      getOperatingSalesForPeriod(business.id, month, year, business.currency),
+      getOperatingCostItemsForPeriod(business.id, month, year),
       getSupplierInvoicesForPeriod(business.id, from, to),
     ]);
-    setCenter(c);
-    setCostItems(ci || []);
-    setSales(s);
-    setDailySales(ds);
-    setPurchaseTotals(pt);
-    setPurchases(pr.data || []);
+    setSales(salesResult.status === 'fulfilled' ? salesResult.value : { salesMonth: 0, dailySales: {}, crmTotal: 0, catalogTotal: 0, legacyCatalogRows: 0, incompatibleCurrencyRows: 0, errors: { crm: salesResult.reason || new Error('Error de ventas'), catalog: null } });
+    setCosts(costResult.status === 'fulfilled' ? costResult.value : { data: null, error: costResult.reason || new Error('Error de costos') });
+    setPurchases(purchaseResult.status === 'fulfilled' ? purchaseResult.value : { data: null, error: purchaseResult.reason || new Error('Error de compras') });
     setLoading(false);
-  }, [business?.id, month, year]);
+  }, [business?.id, business?.currency, month, year]);
 
   useEffect(() => { load(); }, [load]);
+  const costItems = costs?.data || [];
+  const purchaseRows = purchases?.data || [];
+  const snapshot = useMemo(() => calculateOperatingSnapshot({ costItems, purchases: purchaseRows, dailySales: sales?.dailySales || {}, month, year }), [costItems, purchaseRows, sales, month, year]);
+  const salesAvailable = Boolean(sales) && !sales.errors.crm && !sales.errors.catalog && sales.incompatibleCurrencyRows === 0;
+  const costsAvailable = Boolean(costs) && !costs.error;
+  const purchasesAvailable = Boolean(purchases) && !purchases.error;
+  const calculable = salesAvailable && costsAvailable && purchasesAvailable;
+  const salesMonth = Number(sales?.salesMonth || 0);
+  const result = salesMonth - snapshot.fixedCosts - snapshot.directExpenses;
+  const tolerance = monetaryTolerance(business?.currency);
+  const hasPeriodData = salesMonth > 0 || snapshot.fixedCosts > 0 || snapshot.directExpenses > 0 || snapshot.merchandise > 0 || snapshot.pendingClassification > 0;
+  const noCostsRegistered = salesMonth > 0 && snapshot.fixedCosts === 0 && snapshot.directExpenses === 0;
+  const resultState = !calculable || !hasPeriodData
+    ? 'Sin datos'
+    : noCostsRegistered
+      ? 'Sin costos registrados este mes'
+      : result > tolerance
+        ? 'Rentable'
+        : result < -tolerance
+          ? 'Bajo equilibrio'
+          : 'En equilibrio';
+  const fmt = value => formatMoney(value, business?.currency || 'CLP');
 
-  if (!isPro) {
-    return (
-      <DashboardAppShell>
-        <PanelHeader title="Termómetro del negocio" subtitle="Salud financiera diaria" />
-        <DashboardLayoutContent>
-          <div className="flex flex-col items-center justify-center py-24 px-4 text-center">
-            <div className="w-14 h-14 bg-blue-50 rounded-2xl flex items-center justify-center mb-4">
-              <Icon name="BarChart2" size={24} color="#2563eb" />
-            </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Funcionalidad Business</h3>
-            <p className="text-sm text-gray-500 max-w-sm">Requiere el plan Business.</p>
-          </div>
-        </DashboardLayoutContent>
-      </DashboardAppShell>
-    );
-  }
+  const changeMonth = delta => {
+    let nextMonth = month + delta, nextYear = year;
+    if (nextMonth < 1) { nextMonth = 12; nextYear -= 1; }
+    if (nextMonth > 12) { nextMonth = 1; nextYear += 1; }
+    setMonth(nextMonth); setYear(nextYear);
+  };
 
-  return (
-    <DashboardAppShell>
-      <PanelHeader
-        title={
-          <h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>
-            Termómetro del negocio
-          </h1>
-        }
-        subtitle={
-          <p className="text-xs" style={{ color: 'var(--color-muted-foreground)' }}>
-            {MONTHS[month - 1]} {year}
-          </p>
-        }
-      />
+  if (!isPro) return <DashboardAppShell><PanelHeader title="Termómetro del negocio" subtitle="Ventas, costos y resultado operativo del período." /><DashboardLayoutContent><div className="py-24 text-center"><h2 className="font-semibold text-slate-900">Funcionalidad Business</h2><p className="mt-2 text-sm text-slate-500">Requiere el plan Business.</p></div></DashboardLayoutContent></DashboardAppShell>;
 
-      <DashboardLayoutContent>
-        {/* Selector de período — navegación con flechas */}
-        {!loading && (
-          <div className="flex items-center justify-center gap-1 mb-5">
-            <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-xl px-2 py-1.5">
-              <button
-                onClick={() => {
-                  let m = month - 1, y = year;
-                  if (m < 1) { m = 12; y -= 1; }
-                  setMonth(m); setYear(y);
-                }}
-                className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-800 transition-colors"
-                aria-label="Mes anterior"
-              >
-                <Icon name="ChevronLeft" size={15} />
-              </button>
-              <span className="text-sm font-semibold text-gray-800 min-w-[130px] text-center select-none">
-                {MONTHS[month - 1]} {year}
-              </span>
-              <button
-                onClick={() => {
-                  let m = month + 1, y = year;
-                  if (m > 12) { m = 1; y += 1; }
-                  setMonth(m); setYear(y);
-                }}
-                className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-800 transition-colors"
-                aria-label="Mes siguiente"
-              >
-                <Icon name="ChevronRight" size={15} />
-              </button>
-            </div>
-          </div>
-        )}
+  return <DashboardAppShell>
+    <PanelHeader title={<h1 className="text-base font-bold text-slate-900">Termómetro del negocio</h1>} subtitle={<p className="text-xs text-slate-500">Ventas, costos y resultado operativo del período.</p>} mobileActions={<HeaderActions navigate={navigate} />}><HeaderActions navigate={navigate} /></PanelHeader>
+    <DashboardLayoutContent innerClassName="lg:max-w-7xl">
+      <div className="flex items-center justify-center"><div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1.5 shadow-sm"><button type="button" onClick={() => changeMonth(-1)} aria-label="Mes anterior" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-blue-500"><Icon name="ChevronLeft" size={16} /></button><span className="min-w-36 text-center text-sm font-semibold text-slate-800">{MONTHS[month - 1]} {year}</span><button type="button" onClick={() => changeMonth(1)} aria-label="Mes siguiente" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-blue-500"><Icon name="ChevronRight" size={16} /></button></div></div>
 
-        {loading ? (
-          <div className="flex items-center justify-center py-16">
-            <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-          </div>
-        ) : (
-          <Dashboard
-            center={center}
-            costItems={costItems}
-            sales={sales}
-            dailySales={dailySales}
-            purchaseTotals={purchaseTotals}
-            purchases={purchases}
-            month={month}
-            year={year}
-            onEditSettings={(c) => setCenter(c)}
-            businessId={business.id}
-            navigate={navigate}
-            currency={business?.currency}
-          />
-        )}
-      </DashboardLayoutContent>
-    </DashboardAppShell>
-  );
+      {loading ? <div className="flex items-center justify-center py-20" role="status"><Icon name="Loader2" size={26} className="animate-spin text-blue-500" /><span className="sr-only">Cargando termómetro</span></div> : <>
+        {(!calculable || sales?.legacyCatalogRows > 0 || costs?.data?.some(item => item.missingMovement)) && <div className="space-y-2" role="alert">
+          {sales?.errors.crm && <p className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">No se pudieron cargar las ventas CRM/TPV.</p>}
+          {sales?.errors.catalog && <p className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">No se pudieron cargar las ventas del catálogo.</p>}
+          {costs?.error && <p className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">No se pudieron cargar los costos configurados.</p>}
+          {purchases?.error && <p className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">No se pudieron cargar las compras y gastos de proveedor.</p>}
+          {sales?.incompatibleCurrencyRows > 0 && <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">Hay {sales.incompatibleCurrencyRows} venta(s) del catálogo en una moneda distinta de {business?.currency || 'CLP'}. Se excluyeron y el resultado queda sin calcular.</p>}
+          {sales?.legacyCatalogRows > 0 && <p className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">Se reconocieron {sales.legacyCatalogRows} venta(s) legacy del catálogo usando su fecha de actualización porque no tenían paid_at.</p>}
+          {costs?.data?.some(item => item.missingMovement) && <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">Hay gastos vinculados a movimientos de Caja que ya no están disponibles. Se conservaron como gastos variables.</p>}
+        </div>}
+
+        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Indicadores del período">
+          <KpiCard label="Ventas del mes" value={fmt(salesMonth)} available={salesAvailable} tone="blue" note={salesAvailable ? `CRM/TPV ${fmt(sales.crmTotal)} · Catálogo ${fmt(sales.catalogTotal)}` : undefined} />
+          <KpiCard label="Costos fijos" value={fmt(snapshot.fixedCosts)} available={costsAvailable} tone="amber" note="Solo partidas configuradas como fijas." />
+          <KpiCard label="Gastos directos" value={fmt(snapshot.directExpenses)} available={costsAvailable && purchasesAvailable} tone="rose" note="Proveedor reconocido + otros gastos variables." />
+          <KpiCard label="Resultado operativo estimado" value={`${result > 0 ? '+' : result < 0 ? '−' : ''}${fmt(Math.abs(result))}`} available={calculable} tone={noCostsRegistered ? 'amber' : result > tolerance ? 'emerald' : result < -tolerance ? 'rose' : 'amber'} note={resultState} />
+        </section>
+
+        <OperatingCalendar month={month} year={year} snapshot={snapshot} calculable={calculable} tolerance={tolerance} fmt={fmt} />
+
+        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Composición de costos">
+          <SummaryBlock icon="Building2" title="Costos fijos" amount={costsAvailable ? fmt(snapshot.fixedCosts) : 'No disponible'} description="Partidas mensuales configuradas como fijas." tone="blue" />
+          <SummaryBlock icon="Receipt" title="Gastos directos" amount={costsAvailable && purchasesAvailable ? fmt(snapshot.directExpenses) : 'No disponible'} description={`Proveedor ${fmt(snapshot.supplierExpenses)} · Variables ${fmt(snapshot.variableExpenses)}`} tone="rose" />
+          <SummaryBlock icon="Package" title="Compras de mercadería" amount={purchasesAvailable ? fmt(snapshot.merchandise) : 'No disponible'} description="Se muestran por separado y no reducen el resultado operativo." tone="amber" />
+          <SummaryBlock icon="CircleHelp" title="Pendientes de clasificar" amount={purchasesAvailable ? fmt(snapshot.pendingClassification) : 'No disponible'} description="Servicios, otros, tipo vacío y notas de crédito sin tratamiento automático." />
+        </section>
+      </>}
+    </DashboardLayoutContent>
+  </DashboardAppShell>;
 }

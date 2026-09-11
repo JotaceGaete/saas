@@ -327,14 +327,21 @@ export const getSupplierPurchaseTotalsForPeriod = async (businessId, startDate, 
 
   const { data, error } = await supabase
     ?.from('wa_supplier_invoices')
-    ?.select('purchase_type, net_amount, tax_amount, total_amount')
+    ?.select('document_type, purchase_type, net_amount, tax_amount, total_amount')
     ?.eq('business_id', businessId)
     ?.gte('issue_date', startDate)
     ?.lt('issue_date', endDate);
 
   if (error) return { totals, totalTaxCredit: 0, totalOperational: 0, totalAmountAll: 0, error };
 
+  let pendingClassification = 0;
+  let totalAmountAll = 0;
   for (const row of data ?? []) {
+    totalAmountAll += Number(row.total_amount ?? 0);
+    if (row.document_type === 'nota_credito') {
+      pendingClassification += Number(row.total_amount ?? 0);
+      continue;
+    }
     const bucketKey = LEGACY_BUCKETS.includes(row.purchase_type) ? row.purchase_type : 'other';
     const bucket = totals[bucketKey];
     bucket.net += Number(row.net_amount ?? 0);
@@ -351,9 +358,8 @@ export const getSupplierPurchaseTotalsForPeriod = async (businessId, startDate, 
   const totalOperational = totals.gasto_con_iva.total + totals.gasto_sin_iva.total;
   // Reconciliación: la suma de los 4 buckets siempre debe igualar esto --
   // ninguna factura del período puede faltar del reporte.
-  const totalAmountAll = totals.mercaderia.total + totals.gasto_con_iva.total + totals.gasto_sin_iva.total + totals.other.total;
-
-  return { totals, totalTaxCredit, totalOperational, totalAmountAll, error: null };
+  pendingClassification += totals.other.total;
+  return { totals, totalTaxCredit, totalOperational, totalAmountAll, pendingClassification, error: null };
 };
 
 /**
@@ -367,7 +373,7 @@ export const getSupplierPurchaseTotalsForPeriod = async (businessId, startDate, 
 export const getSupplierInvoicesForPeriod = async (businessId, startDate, endDate) => {
   const { data, error } = await supabase
     ?.from('wa_supplier_invoices')
-    ?.select('purchase_type, issue_date, total_amount')
+    ?.select('document_type, purchase_type, issue_date, total_amount')
     ?.eq('business_id', businessId)
     ?.gte('issue_date', startDate)
     ?.lt('issue_date', endDate)
@@ -376,6 +382,7 @@ export const getSupplierInvoicesForPeriod = async (businessId, startDate, endDat
   return {
     data: (data ?? []).map((row) => ({
       purchaseType: row.purchase_type,
+      documentType: row.document_type,
       issueDate: row.issue_date,
       totalAmount: Number(row.total_amount ?? 0),
     })),
