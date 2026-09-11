@@ -14,19 +14,21 @@ export default function SuppliersSummaryCard({ businessId, currency = 'CLP' }) {
     let cancelled = false;
     (async () => {
       try {
-        const [{ getSuppliers, getAllBusinessDebts }] = await Promise.all([
+        const [{ getSuppliers }, { getSupplierInvoices }] = await Promise.all([
           import('../../../services/waBusinessService'),
+          import('../../../services/supplierInvoiceService'),
         ]);
-        const [{ data: suppliers }, { data: debts }] = await Promise.all([
+        const [{ data: suppliers }, { data: invoices }] = await Promise.all([
           getSuppliers(businessId),
-          getAllBusinessDebts(businessId),
+          getSupplierInvoices(businessId),
         ]);
         if (cancelled) return;
-        const today = new Date(); today.setHours(0, 0, 0, 0);
-        const pending = (debts ?? []).filter((d) => d.status === 'pending');
-        const overdue = pending.filter((d) => d.dueDate && new Date(d.dueDate) < today);
-        const totalPending = pending.reduce((s, d) => s + (d.balance ?? d.amount), 0);
-        const nextDue = pending.filter((d) => d.dueDate).sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate))[0];
+        // balance/isOverdue ya vienen derivados de wa_supplier_invoice_balances
+        // (PROVEEDORES-CORE-3) -- nunca recalculados acá.
+        const pending = (invoices ?? []).filter((inv) => inv.balance > 0);
+        const overdue = pending.filter((inv) => inv.isOverdue);
+        const totalPending = pending.reduce((s, inv) => s + inv.balance, 0);
+        const nextDue = pending.filter((inv) => inv.dueDate).sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate))[0];
         setData({ supplierCount: (suppliers ?? []).length, totalPending, overdueCount: overdue.length, nextDue });
       } catch (_) { /* silent */ }
       finally { if (!cancelled) setLoading(false); }

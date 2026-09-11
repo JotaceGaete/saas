@@ -12,7 +12,10 @@ const SUPPLIER_TYPES = [
 ];
 
 export default function SupplierFormModal({ open, onClose, onSave, supplier = null }) {
-  const [form, setForm] = useState({ name: '', contactName: '', phone: '', email: '', notes: '', supplierType: 'otros' });
+  const [form, setForm] = useState({
+    name: '', rut: '', legalName: '', address: '',
+    contactName: '', phone: '', email: '', notes: '', supplierType: 'otros',
+  });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -20,6 +23,9 @@ export default function SupplierFormModal({ open, onClose, onSave, supplier = nu
     if (open) {
       setForm({
         name: supplier?.name ?? '',
+        rut: supplier?.rut ?? '',
+        legalName: supplier?.legalName ?? '',
+        address: supplier?.address ?? '',
         contactName: supplier?.contactName ?? '',
         phone: supplier?.phone ?? '',
         email: supplier?.email ?? '',
@@ -79,6 +85,13 @@ export default function SupplierFormModal({ open, onClose, onSave, supplier = nu
           )}
 
           <Field label="Nombre del proveedor *" value={form.name} onChange={(v) => setForm((p) => ({ ...p, name: v }))} placeholder="Ej: Distribuidora Norte" />
+
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="RUT" value={form.rut} onChange={(v) => setForm((p) => ({ ...p, rut: v }))} placeholder="76.123.456-7" />
+            <Field label="Razón social" value={form.legalName} onChange={(v) => setForm((p) => ({ ...p, legalName: v }))} placeholder="Distribuidora Norte SpA" />
+          </div>
+
+          <Field label="Dirección" value={form.address} onChange={(v) => setForm((p) => ({ ...p, address: v }))} placeholder="Av. Siempre Viva 123" />
 
           {/* Categoría */}
           <div>
