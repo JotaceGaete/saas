@@ -24,6 +24,9 @@ const mapInvoiceRow = (row) => ({
   purchaseType: row?.purchase_type,
   netAmount: Number(row?.net_amount ?? 0),
   taxRate: Number(row?.tax_rate ?? 0),
+  // PROVEEDORES-CORE-4A: metadata de captura, nunca fuente de verdad
+  // contable -- ver comentario de la migración que agrega la columna.
+  taxIncluded: row?.tax_included ?? true,
   taxAmount: Number(row?.tax_amount ?? 0),
   totalAmount: Number(row?.total_amount ?? 0),
   notes: row?.notes,
@@ -96,6 +99,7 @@ export const createSupplierInvoice = async (businessId, supplierId, payload) => 
     purchase_type: payload?.purchaseType || null,
     net_amount: payload?.netAmount ?? 0,
     tax_rate: payload?.taxRate ?? 0,
+    tax_included: payload?.taxIncluded ?? true,
     tax_amount: payload?.taxAmount ?? 0,
     total_amount: payload?.totalAmount,
     notes: payload?.notes || null,
@@ -114,7 +118,7 @@ export const createSupplierInvoice = async (businessId, supplierId, payload) => 
 // que ya se cobró.
 const PROTECTED_INVOICE_FIELDS_WHEN_PAID = [
   'documentType', 'purchaseType', 'issueDate',
-  'netAmount', 'taxRate', 'taxAmount', 'totalAmount',
+  'netAmount', 'taxRate', 'taxIncluded', 'taxAmount', 'totalAmount',
 ];
 
 const INVOICE_ALREADY_PAID_MESSAGE =
@@ -156,6 +160,7 @@ export const updateSupplierInvoice = async (id, payload) => {
   if (payload?.purchaseType !== undefined) db.purchase_type = payload.purchaseType;
   if (payload?.netAmount !== undefined) db.net_amount = payload.netAmount;
   if (payload?.taxRate !== undefined) db.tax_rate = payload.taxRate;
+  if (payload?.taxIncluded !== undefined) db.tax_included = payload.taxIncluded;
   if (payload?.taxAmount !== undefined) db.tax_amount = payload.taxAmount;
   if (payload?.totalAmount !== undefined) db.total_amount = payload.totalAmount;
   if (payload?.notes !== undefined) db.notes = payload.notes;
@@ -248,4 +253,105 @@ export const getBusinessSupplierPayments = async (businessId) => {
     ?.order('payment_date', { ascending: false });
   if (error) return { data: null, error };
   return { data: (data ?? []).map(mapPaymentRow), error: null };
+};
+
+/**
+ * PROVEEDORES-CORE-4A — reemplazo canónico de
+ * crmService.getPurchaseTotalsForPeriod, consultando wa_supplier_invoices
+ * en vez de la tabla legacy crm_purchase_invoices (que queda congelada,
+ * sin nuevas escrituras, desde PROVEEDORES-CORE-4).
+ *
+ * Devuelve la MISMA forma que la función legacy a propósito -- no un
+ * {data, error} como el resto de este archivo -- para que un futuro
+ * CORE-4B pueda reemplazar el import en CrmCostCenter.jsx/CrmCostos.jsx
+ * (confirmado releyendo los 3 archivos, PROVEEDORES-CORE-4A review fix
+ * §1: CrmPurchases.jsx NUNCA consume `purchaseTotals`, arma su propio
+ * resumen local desde el array de facturas del período -- solo
+ * CrmCostCenter.jsx/ComprasWidget y CrmCostos.jsx/ComprasLinkPanel+
+ * IvaSummaryPanel lo hacen, y ambos leen exactamente
+ * `.totals.mercaderia.total`, `.totalOperational`, `.totalTaxCredit`) sin
+ * tocar ninguna línea de esas páginas. A diferencia de la legacy --que
+ * descarta el `error` de Supabase en silencio (`const { data } = await
+ * supabase...`)-- acá el error SÍ se expone en el campo `error` del mismo
+ * objeto: los consumidores actuales nunca lo leen, así que no cambia su
+ * comportamiento hoy, pero deja de esconder un fallo real detrás de
+ * totales en cero sin ninguna señal.
+ *
+ * SELECT normal bajo RLS (misma política que ya protege
+ * wa_supplier_invoices) -- no hace falta SECURITY DEFINER para una
+ * agregación de solo lectura.
+ *
+ * review fix (riesgo detectado antes de CORE-4B): la primera versión de
+ * esta función descartaba en silencio las facturas con purchase_type
+ * 'servicio'/'otros'/NULL -- valores que SÍ son alcanzables hoy desde
+ * /proveedores (a diferencia de crm_purchase_invoices, cuyo CHECK nunca
+ * permitió más que los 3 buckets legacy). Perder esas filas sin ningún
+ * error visible habría sido exactamente el tipo de pérdida silenciosa que
+ * esta unificación busca evitar. Se agrega un 4º bucket `other` que las
+ * acumula (net/tax/total, igual que los demás), y un `totalAmountAll` de
+ * reconciliación: SIEMPRE debe cumplirse que
+ * `totalAmountAll === mercaderia.total + gasto_con_iva.total +
+ * gasto_sin_iva.total + other.total` para el período -- ninguna fila
+ * puede desaparecer sin que la suma deje de cuadrar.
+ *
+ * IMPORTANTE (no inventar clasificación tributaria): `other` NUNCA se
+ * suma a totalTaxCredit ni a totalOperational. purchase_type por sí solo
+ * no determina si una compra 'servicio'/'otros' tiene crédito IVA
+ * recuperable o si es gasto operativo -- esa es una decisión de producto
+ * que esta función no puede tomar por su cuenta (ni por el nombre del
+ * tipo, ni asumiendo que tax_amount>0 implica crédito fiscal válido, algo
+ * que tampoco se puede inferir con certeza solo de los montos). Se
+ * preserva el importe en `other` para que CORE-4B decida, con contexto de
+ * producto, cómo mostrarlo -- nunca se esconde ni se fuerza dentro de una
+ * categoría existente.
+ *
+ * totalTaxCredit/totalOperational conservan EXACTAMENTE la misma fórmula
+ * que crmService.getPurchaseTotalsForPeriod ya tenía (confirmada leyendo
+ * su código fuente, no intuida): totalTaxCredit = IVA de mercadería + IVA
+ * de gasto_con_iva; totalOperational = total de gasto_con_iva + total de
+ * gasto_sin_iva (mercadería es inventario, nunca gasto operativo). Ningún
+ * consumidor real demostró una definición distinta -- se preserva tal
+ * cual, sin ampliarla a `other`.
+ */
+export const getSupplierPurchaseTotalsForPeriod = async (businessId, startDate, endDate) => {
+  const totals = {
+    mercaderia:    { net: 0, tax: 0, total: 0 },
+    gasto_con_iva: { net: 0, tax: 0, total: 0 },
+    gasto_sin_iva: { net: 0, tax: 0, total: 0 },
+    // servicio/otros/purchase_type NULL -- alcanzables solo en el modelo
+    // canónico (crm_purchase_invoices nunca los permitió). Nunca se
+    // pierden: se acumulan acá, sin semántica tributaria asumida.
+    other:         { net: 0, tax: 0, total: 0 },
+  };
+  const LEGACY_BUCKETS = ['mercaderia', 'gasto_con_iva', 'gasto_sin_iva'];
+
+  const { data, error } = await supabase
+    ?.from('wa_supplier_invoices')
+    ?.select('purchase_type, net_amount, tax_amount, total_amount')
+    ?.eq('business_id', businessId)
+    ?.gte('issue_date', startDate)
+    ?.lt('issue_date', endDate);
+
+  if (error) return { totals, totalTaxCredit: 0, totalOperational: 0, totalAmountAll: 0, error };
+
+  for (const row of data ?? []) {
+    const bucketKey = LEGACY_BUCKETS.includes(row.purchase_type) ? row.purchase_type : 'other';
+    const bucket = totals[bucketKey];
+    bucket.net += Number(row.net_amount ?? 0);
+    bucket.tax += Number(row.tax_amount ?? 0);
+    bucket.total += Number(row.total_amount ?? 0);
+  }
+
+  // Misma fórmula que crmService.getPurchaseTotalsForPeriod: IVA
+  // recuperable = mercadería + gasto con IVA; gasto operativo = gasto con
+  // IVA + gasto sin IVA (mercadería es inventario, no pérdida directa).
+  // `other` nunca entra en ninguna de las dos -- ver comentario de la
+  // función sobre por qué no se le asigna semántica tributaria inventada.
+  const totalTaxCredit = totals.mercaderia.tax + totals.gasto_con_iva.tax;
+  const totalOperational = totals.gasto_con_iva.total + totals.gasto_sin_iva.total;
+  // Reconciliación: la suma de los 4 buckets siempre debe igualar esto --
+  // ninguna factura del período puede faltar del reporte.
+  const totalAmountAll = totals.mercaderia.total + totals.gasto_con_iva.total + totals.gasto_sin_iva.total + totals.other.total;
+
+  return { totals, totalTaxCredit, totalOperational, totalAmountAll, error: null };
 };
