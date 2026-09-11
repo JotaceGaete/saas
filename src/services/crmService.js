@@ -1099,6 +1099,122 @@ export async function getCrmDailySalesForPeriod(businessId, month, year) {
   return byDay;
 }
 
+/**
+ * Lectura unificada para el Termómetro del negocio.
+ *
+ * CRM/TPV se reconoce por issue_date y excluye las facturas vinculadas a
+ * wa_orders. Catálogo se reconoce por paid_at (updated_at solo para filas
+ * legacy sin paid_at). Las fuentes se consultan por separado para que la UI
+ * pueda distinguir un cero real de una lectura incompleta.
+ */
+export async function getOperatingSalesForPeriod(businessId, month, year, businessCurrency = 'CLP') {
+  const fromDate = `${year}-${String(month).padStart(2, '0')}-01`;
+  const toDate = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+  const normalizedToDate = month === 12 ? `${year + 1}-01-01` : toDate;
+  const fromInstant = new Date(year, month - 1, 1, 0, 0, 0, 0).toISOString();
+  const toInstant = new Date(year, month, 1, 0, 0, 0, 0).toISOString();
+
+  const [crmResult, catalogResult] = await Promise.all([
+    supabase
+      .from('crm_invoices')
+      .select('total, issue_date')
+      .eq('business_id', businessId)
+      .neq('status', 'anulada')
+      .is('order_id', null)
+      .gte('issue_date', fromDate)
+      .lt('issue_date', normalizedToDate),
+    supabase
+      .from('wa_orders')
+      .select('total_amount, currency, paid_at, updated_at')
+      .eq('business_id', businessId)
+      .eq('payment_status', 'pagado')
+      .or(`and(paid_at.gte.${fromInstant},paid_at.lt.${toInstant}),and(paid_at.is.null,updated_at.gte.${fromInstant},updated_at.lt.${toInstant})`),
+  ]);
+
+  const dailySales = {};
+  let crmTotal = 0;
+  let catalogTotal = 0;
+  let legacyCatalogRows = 0;
+  let incompatibleCurrencyRows = 0;
+  const targetCurrency = String(businessCurrency || 'CLP').toUpperCase();
+
+  if (!crmResult.error) {
+    for (const row of crmResult.data || []) {
+      const amount = Number(row.total || 0);
+      const day = row.issue_date ? parseInt(row.issue_date.slice(8, 10), 10) : null;
+      crmTotal += amount;
+      if (day) dailySales[day] = (dailySales[day] || 0) + amount;
+    }
+  }
+
+  if (!catalogResult.error) {
+    for (const row of catalogResult.data || []) {
+      const rowCurrency = String(row.currency || targetCurrency).toUpperCase();
+      if (rowCurrency !== targetCurrency) {
+        incompatibleCurrencyRows += 1;
+        continue;
+      }
+      const economicDate = row.paid_at || row.updated_at;
+      if (!row.paid_at) legacyCatalogRows += 1;
+      const parsed = economicDate ? new Date(economicDate) : null;
+      if (!parsed || Number.isNaN(parsed.getTime())) continue;
+      const amount = Number(row.total_amount || 0);
+      const day = parsed.getDate();
+      catalogTotal += amount;
+      dailySales[day] = (dailySales[day] || 0) + amount;
+    }
+  }
+
+  return {
+    salesMonth: crmTotal + catalogTotal,
+    dailySales,
+    crmTotal,
+    catalogTotal,
+    legacyCatalogRows,
+    incompatibleCurrencyRows,
+    errors: {
+      crm: crmResult.error || null,
+      catalog: catalogResult.error || null,
+    },
+  };
+}
+
+/** Costos del período con fecha económica para gastos variables de Caja. */
+export async function getOperatingCostItemsForPeriod(businessId, month, year) {
+  const { data, error } = await supabase
+    .from('crm_cost_items')
+    .select('id, name, amount, type, category, source, source_movement_id, created_at')
+    .eq('business_id', businessId)
+    .eq('month', month)
+    .eq('year', year)
+    .order('created_at', { ascending: true });
+  if (error) return { data: null, error };
+
+  const movementIds = (data || []).map(item => item.source_movement_id).filter(Boolean);
+  let movementsById = {};
+  if (movementIds.length) {
+    const movementResult = await supabase
+      .from('crm_cash_movements')
+      .select('id, movement_date')
+      .in('id', movementIds);
+    if (movementResult.error) return { data: null, error: movementResult.error };
+    movementsById = Object.fromEntries((movementResult.data || []).map(row => [row.id, row]));
+  }
+
+  return {
+    data: (data || []).map(item => {
+      const movement = item.source_movement_id ? movementsById[item.source_movement_id] : null;
+      return {
+        ...item,
+        amount: Number(item.amount || 0),
+        economicDate: movement?.movement_date || (item.type === 'variable' ? item.created_at?.slice(0, 10) : null),
+        missingMovement: item.source === 'cash_outflow' && Boolean(item.source_movement_id && !movement),
+      };
+    }),
+    error: null,
+  };
+}
+
 export async function getCostCenter(businessId, month, year) {
   const { data } = await supabase
     .from('crm_cost_centers')
