@@ -43,6 +43,16 @@
  * (nunca una segunda versión); Pagos expandido reutiliza EXACTAMENTE el
  * mismo bloque de pagos. El bloque negro de Total+CTA final nunca queda
  * anidado dentro de ninguna de las dos secciones colapsables.
+ *
+ * TPV-CORE-4B agrega, mismo criterio: el carrito expandido en payment
+ * queda plenamente editable (confirmado que ya lo estaba a nivel de
+ * funciones -- addToCart/updateQty/removeItem nunca dependían de
+ * checkoutStep) más "+ Agregar producto" (reutiliza el buscador/grilla
+ * existente vía searchRef, nunca un catálogo duplicado) y "Volver a
+ * Cobro" (mobile, vuelve por scroll sin cambiar checkoutStep). También
+ * corrige que Confirmar venta no se bloqueaba por cartStockIssues como
+ * Cobrar ya lo hacía -- editar el carrito en payment podía dejarlo con
+ * stock insuficiente sin que el botón lo reflejara.
  */
 import { describe, it, expect } from 'vitest';
 import indexSource from './CrmTerminal.jsx?raw';
@@ -77,7 +87,10 @@ describe('CrmTerminal — lock síncrono contra doble submit (escenario 12)', ()
   });
 
   it('el botón de completar venta sigue deshabilitado mientras busy (defensa adicional, no la única)', () => {
-    expect(indexSource).toMatch(/disabled=\{cart\.length === 0 \|\| busy \|\| isPaymentInvalid\}/);
+    // TPV-CORE-4B agregó || hasStockIssues al final (sección 7: el
+    // carrito sigue editable en payment, así que Confirmar venta debe
+    // bloquearse igual que Cobrar si esa edición deja stock insuficiente).
+    expect(indexSource).toMatch(/disabled=\{cart\.length === 0 \|\| busy \|\| isPaymentInvalid \|\| hasStockIssues\}/);
   });
 });
 
@@ -623,9 +636,9 @@ describe('CrmTerminal — COBRAR deshabilitado si hay insuficiencia conocida (se
     expect(handleGoToPaymentMatch[0]).toMatch(/if \(hasStockIssues\) return;/);
   });
 
-  it('el botón desktop y el mobile muestran "Revisa N producto(s) sin stock suficiente" cerca del CTA', () => {
+  it('el botón desktop y el mobile muestran "Revisa N producto(s) sin stock suficiente" cerca del CTA -- en sale (Cobrar) y en payment (Confirmar venta, TPV-CORE-4B sección 7)', () => {
     const occurrences = (indexSource.match(/Revisa \{cartStockIssues\.size\} producto\{cartStockIssues\.size === 1 \? '' : 's'\} sin stock suficiente\./g) || []).length;
-    expect(occurrences).toBe(2);
+    expect(occurrences).toBe(4); // sale desktop + sale mobile + payment desktop + payment mobile
   });
 
   it('ambos disabled del CTA Cobrar (desktop y mobile) incluyen hasStockIssues', () => {
@@ -868,5 +881,159 @@ describe('CrmTerminal — no se duplicó ningún bloque reutilizado (carrito ni 
     expect(cartRowMatch).not.toBeNull();
     expect(cartRowMatch[0]).toMatch(/disabled=\{atStockLimit\}/);
     expect(cartRowMatch[0]).toMatch(/Ajustar a \{issue\.available\}/);
+  });
+});
+
+/**
+ * TPV-CORE-4B — el carrito sigue siendo plenamente editable durante
+ * checkoutStep='payment'. Mismo criterio de source-scan que el resto del
+ * archivo.
+ *
+ * Auditoría previa a implementar (documentada acá porque explica por qué
+ * la mayoría de estos tests confirman un comportamiento que YA estaba
+ * correcto, en vez de uno recién agregado): addToCart/updateQty/
+ * removeItem/addManualItem nunca referenciaban checkoutStep, y el
+ * cart.map de Zone 2 estaba gateado por cartExpanded (TPV-CORE-4), no
+ * por checkoutStep -- así que una vez expandido, el carrito YA era
+ * editable en payment con los controles reales. Lo que sí faltaba y se
+ * agrega acá: (a) una forma de AGREGAR productos sin abandonar payment
+ * ("+ Agregar producto", reutilizando el buscador/grilla existente,
+ * nunca un catálogo duplicado), y (b) que Confirmar venta se bloquee
+ * por cartStockIssues igual que Cobrar ya lo hacía -- antes de esta
+ * fase, editar el carrito durante payment podía dejarlo con stock
+ * insuficiente y aun así Confirmar venta no lo bloqueaba.
+ */
+describe('CrmTerminal — las funciones de edición del carrito nunca dependen de checkoutStep', () => {
+  it('addToCart no referencia checkoutStep', () => {
+    const addToCartMatch = indexSource.match(/const addToCart = \(product\) => \{[\s\S]*?\n {2}\};/);
+    expect(addToCartMatch).not.toBeNull();
+    expect(addToCartMatch[0]).not.toMatch(/checkoutStep/);
+  });
+
+  it('updateQty no referencia checkoutStep ni cambia payments/idempotency key', () => {
+    const updateQtyMatch = indexSource.match(/const updateQty = \(_key, delta\) => \{[\s\S]*?\n {2}\};/);
+    expect(updateQtyMatch).not.toBeNull();
+    expect(updateQtyMatch[0]).not.toMatch(/checkoutStep|setCheckoutStep|setPayments|saleIdempotencyKeyRef/);
+  });
+
+  it('removeItem no referencia checkoutStep ni cambia payments/idempotency key', () => {
+    const removeItemMatch = indexSource.match(/const removeItem = \(_key\) => \{[\s\S]*?\n {2}\};/);
+    expect(removeItemMatch).not.toBeNull();
+    expect(removeItemMatch[0]).not.toMatch(/checkoutStep|setCheckoutStep|setPayments|saleIdempotencyKeyRef/);
+  });
+
+  it('setCartQuantityTo (Ajustar a N) tampoco referencia checkoutStep', () => {
+    const setQtyMatch = indexSource.match(/const setCartQuantityTo = \(_key, quantity\) => \{[\s\S]*?\n {2}\};/);
+    expect(setQtyMatch).not.toBeNull();
+    expect(setQtyMatch[0]).not.toMatch(/checkoutStep/);
+  });
+
+  it('addManualItem no referencia checkoutStep', () => {
+    const addManualItemMatch = indexSource.match(/const addManualItem = \(\{ name, unit_price, quantity, note \}\) => \{[\s\S]*?\n {2}\};/);
+    expect(addManualItemMatch).not.toBeNull();
+    expect(addManualItemMatch[0]).not.toMatch(/checkoutStep/);
+  });
+
+  it('el cart.map de Zone 2 está gateado por cartExpanded, no por checkoutStep -- expandido en payment muestra los controles +/-/eliminar reales', () => {
+    const cartContentMatch = indexSource.match(/\{cart\.length === 0 \? \([\s\S]*?!cartExpanded \? \([\s\S]*?\{cart\.map\(item => \{[\s\S]*?\n {24}\}\)\}/);
+    expect(cartContentMatch).not.toBeNull();
+    expect(cartContentMatch[0]).not.toMatch(/checkoutStep/);
+    expect(cartContentMatch[0]).toMatch(/onClick=\{\(\) => updateQty\(item\._key, -1\)\}/);
+    expect(cartContentMatch[0]).toMatch(/onClick=\{\(\) => updateQty\(item\._key, 1\)\}/);
+    expect(cartContentMatch[0]).toMatch(/onClick=\{\(\) => removeItem\(item\._key\)\}/);
+  });
+});
+
+describe('CrmTerminal — total/paid/pending/change siguen siendo derivados (nunca estado propio)', () => {
+  it('no existen setSubtotal/setTotal/setPaidTotal/setPendingBalance/setChange -- son const calculados a partir de cart/payments en cada render', () => {
+    expect(indexSource).not.toMatch(/setSubtotal|setTotal\(|setPaidTotal|setPendingBalance|setChange\(/);
+    expect(indexSource).toMatch(/const subtotal = cart\.reduce/);
+    expect(indexSource).toMatch(/const total = subtotal - discountAmount;/);
+  });
+});
+
+describe('CrmTerminal — "+ Agregar producto" dentro del carrito expandido en payment (sección 3, 8)', () => {
+  it('el botón solo aparece en payment, dentro de la rama expandida del carrito', () => {
+    const addProductMatch = indexSource.match(/\{checkoutStep === 'payment' && \(\s*\n\s*<button\s*\n\s*type="button"\s*\n\s*onClick=\{\(\) => \{\s*\n\s*searchRef\.current\?\.scrollIntoView[\s\S]*?Agregar producto[\s\S]*?<\/button>\s*\n\s*\)\}/);
+    expect(addProductMatch).not.toBeNull();
+  });
+
+  it('nunca cambia checkoutStep, payments, customerId, discount, notes ni la idempotency key -- solo scroll + focus', () => {
+    const addProductMatch = indexSource.match(/onClick=\{\(\) => \{\s*\n\s*searchRef\.current\?\.scrollIntoView\([\s\S]*?\n\s*searchRef\.current\?\.focus\(\);\s*\n\s*\}\}/);
+    expect(addProductMatch).not.toBeNull();
+    expect(addProductMatch[0]).not.toMatch(/setCheckoutStep|setPayments|setCustomerId|setDiscount|setNotes|saleIdempotencyKeyRef|setCart\(|setCartExpanded/);
+  });
+
+  it('reutiliza searchRef -- el mismo input de búsqueda de la grilla izquierda, nunca un catálogo/modal nuevo', () => {
+    const occurrences = (indexSource.match(/ref=\{searchRef\}/g) || []).length;
+    expect(occurrences).toBe(1); // sigue habiendo un único input de búsqueda en todo el archivo
+  });
+
+  it('target táctil ≥44px', () => {
+    expect(indexSource).toMatch(/Agregar producto[\s\S]{0,40}<\/button>/);
+    const btnMatch = indexSource.match(/onClick=\{\(\) => \{\s*\n\s*searchRef\.current\?\.scrollIntoView[\s\S]{0,400}min-h-\[44px\]/);
+    expect(btnMatch).not.toBeNull();
+  });
+});
+
+describe('CrmTerminal — "Volver a Cobro" (sección 8/9/11): forma clara de volver sin cambiar checkoutStep ni obligar "Volver a la venta"', () => {
+  it('existe, solo en mobile (lg:hidden), solo cuando checkoutStep === payment', () => {
+    const backToPaymentMatch = indexSource.match(/\{checkoutStep === 'payment' && \(\s*\n\s*<button\s*\n\s*type="button"\s*\n\s*onClick=\{\(\) => cartSectionRef\.current\?\.scrollIntoView[\s\S]*?Volver a Cobro[\s\S]*?<\/button>\s*\n\s*\)\}/);
+    expect(backToPaymentMatch).not.toBeNull();
+    expect(backToPaymentMatch[0]).toMatch(/lg:hidden/);
+  });
+
+  it('nunca cambia checkoutStep -- solo hace scroll (distinto de handleBackToSale)', () => {
+    const backToPaymentMatch = indexSource.match(/onClick=\{\(\) => cartSectionRef\.current\?\.scrollIntoView\(\{ behavior: 'smooth', block: 'start' \}\)\}\s*\n\s*className="lg:hidden[^"]*"/);
+    expect(backToPaymentMatch).not.toBeNull();
+  });
+
+  it('target táctil ≥44px', () => {
+    expect(indexSource).toMatch(/Volver a Cobro[\s\S]{0,40}<\/button>/);
+    expect(indexSource).toMatch(/onClick=\{\(\) => cartSectionRef\.current\?\.scrollIntoView\(\{ behavior: 'smooth', block: 'start' \}\)\}\s*\n\s*className="lg:hidden[^"]*min-h-\[44px\][^"]*"/);
+  });
+});
+
+describe('CrmTerminal — "Volver a la venta" sigue existiendo pero ya no es la única forma de corregir (sección 9)', () => {
+  it('handleBackToSale sigue existiendo sin cambios de comportamiento', () => {
+    expect(indexSource).toMatch(/const handleBackToSale = \(\) => \{[\s\S]*?setCheckoutStep\('sale'\);[\s\S]*?setCartExpanded\(true\);[\s\S]*?\n {2}\};/);
+  });
+
+  it('además de handleBackToSale, ahora hay otras dos formas de operar sin salir de payment: editar el carrito in place y "Volver a Cobro"', () => {
+    expect(indexSource).toMatch(/Volver a Cobro/);
+    expect(indexSource).toMatch(/Agregar producto/);
+  });
+});
+
+describe('CrmTerminal — cartStockIssues bloquea Confirmar venta (sección 7) -- no solo Cobrar', () => {
+  it('el disabled de Confirmar venta (desktop y mobile) incluye hasStockIssues', () => {
+    const occurrences = (indexSource.match(/disabled=\{cart\.length === 0 \|\| busy \|\| isPaymentInvalid \|\| hasStockIssues\}/g) || []).length;
+    expect(occurrences).toBe(2); // desktop + mobile
+  });
+
+  it('handleRegister tiene un guard defensivo temprano además del disabled del botón', () => {
+    expect(handleRegisterMatch[0]).toMatch(/if \(cart\.length === 0\) return;\s*\n[\s\S]{0,400}if \(hasStockIssues\) return;/);
+  });
+
+  it('el aviso "Revisa N producto(s)" también aparece en la etapa payment (desktop y mobile), no solo en sale', () => {
+    const paymentBlockMatch = indexSource.match(/\{checkoutStep === 'payment' && \([\s\S]*?\n {20}\)\}\n\n {18}<\/div>\{\/\* end zone 3 \*\/\}/);
+    expect(paymentBlockMatch).not.toBeNull();
+    expect(paymentBlockMatch[0]).toMatch(/Revisa \{cartStockIssues\.size\}/);
+  });
+});
+
+describe('CrmTerminal — no se duplica el carrito ni la lógica de productos', () => {
+  it('sigue existiendo un único cart.map', () => {
+    const occurrences = (indexSource.match(/\{cart\.map\(item => [({]/g) || []).length;
+    expect(occurrences).toBe(1);
+  });
+
+  it('sigue existiendo una única grilla de productos (filtered.map)', () => {
+    const occurrences = (indexSource.match(/\{filtered\.map\(p => \{/g) || []).length;
+    expect(occurrences).toBe(1);
+  });
+
+  it('no se agregó ningún componente/modal de catálogo nuevo', () => {
+    expect(indexSource).not.toMatch(/ProductPickerModal|ProductSearchModal|CatalogModal/);
   });
 });

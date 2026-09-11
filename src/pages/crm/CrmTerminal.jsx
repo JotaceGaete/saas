@@ -765,6 +765,11 @@ function CrmTerminalUI() {
     // esto cubre la ventana de un doble click antes del re-render.
     if (submitLockRef.current) return;
     if (cart.length === 0) return;
+    // TPV-CORE-4B: el carrito sigue editable en 'payment' -- si esa
+    // edición dejó una línea sin stock suficiente, nunca enviar la venta
+    // (mismo guard defense-in-depth que handleGoToPayment; el disabled=
+    // del botón ya cubre el caso normal, esto cubre una llamada directa).
+    if (hasStockIssues) return;
     submitLockRef.current = true;
     setBusy(true);
     setErrorMsg(null);
@@ -1090,6 +1095,26 @@ function CrmTerminalUI() {
                       </button>
                     </div>
                   ) : null}
+
+                  {/* TPV-CORE-4B: en mobile, con carrito no vacío la columna
+                      izquierda queda debajo de la derecha (order-2, ver más
+                      abajo) -- "Agregar producto" trae al operador hasta
+                      acá sin salir de payment. Este aviso es la forma
+                      clara de volver, sin obligarlo a usar "Volver a la
+                      venta" (sección 9: esa sigue siendo una opción, no la
+                      única). Solo mobile -- en desktop la columna derecha
+                      (carrito + cobro) ya está siempre visible al lado,
+                      sin necesidad de scroll (sección 12).               */}
+                  {checkoutStep === 'payment' && (
+                    <button
+                      type="button"
+                      onClick={() => cartSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                      className="lg:hidden flex items-center justify-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5 min-h-[44px] text-xs font-bold text-blue-700"
+                    >
+                      <Icon name="ArrowLeft" size={13} />
+                      Volver a Cobro
+                    </button>
+                  )}
 
                   {/* Search */}
                   <div className="relative rounded-2xl border border-gray-200 bg-white p-2 shadow-sm">
@@ -1473,6 +1498,7 @@ function CrmTerminalUI() {
                         {discountAmount > 0 && <> · Descuento −{fmt(discountAmount, business?.currency)}</>}
                       </div>
                     ) : (
+                      <>
                       <div className="divide-y divide-gray-100 max-h-52 overflow-y-auto
                                       lg:flex-1 lg:min-h-0 lg:max-h-none lg:overflow-y-auto">
                         {cart.map(item => {
@@ -1563,6 +1589,30 @@ function CrmTerminalUI() {
                           );
                         })}
                       </div>
+                      {/* TPV-CORE-4B: dentro de payment, el carrito
+                          expandido debe seguir siendo el lugar para
+                          agregar productos sin abandonar el cobro --
+                          nunca fuerza checkoutStep='sale' ni toca
+                          payments/customerId/discount/notes/idempotency
+                          key. Reutiliza el buscador/grilla de la columna
+                          izquierda YA existente (searchRef ya apunta al
+                          input) en vez de construir un catálogo/modal
+                          duplicado (sección 3). En 'sale' no hace falta:
+                          el buscador ya está a un scroll natural.        */}
+                      {checkoutStep === 'payment' && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            searchRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            searchRef.current?.focus();
+                          }}
+                          className="flex items-center justify-center gap-1.5 mx-2 my-2 py-2.5 min-h-[44px] rounded-xl border border-dashed border-blue-200 bg-blue-50 hover:bg-blue-100 text-xs font-bold text-blue-700 transition-colors lg:flex-none"
+                        >
+                          <Icon name="Plus" size={14} />
+                          Agregar producto
+                        </button>
+                      )}
+                      </>
                     )}
                     </div>
                   </div>
@@ -1770,6 +1820,17 @@ function CrmTerminalUI() {
                             <span className="text-sm font-bold text-gray-300">Total</span>
                             <span className="truncate text-2xl font-black tracking-tight text-white xl:text-3xl">{fmt(total, business?.currency)}</span>
                           </div>
+                          {/* TPV-CORE-4B: el carrito ahora se puede seguir
+                              editando en payment -- si esa edición deja una
+                              línea sin stock suficiente, Confirmar venta
+                              debe bloquearse igual que Cobrar ya lo hacía
+                              (sección 7), nunca dejar avanzar hasta que la
+                              RPC lo rechace. */}
+                          {hasStockIssues && (
+                            <p className="text-center text-xs font-semibold text-red-400">
+                              Revisa {cartStockIssues.size} producto{cartStockIssues.size === 1 ? '' : 's'} sin stock suficiente.
+                            </p>
+                          )}
                           {requiresCustomerForPending && !customerId ? (
                             <div className="flex gap-2">
                               <button
@@ -1792,7 +1853,7 @@ function CrmTerminalUI() {
                           ) : (
                             <button
                               onClick={handleRegister}
-                              disabled={cart.length === 0 || busy || isPaymentInvalid}
+                              disabled={cart.length === 0 || busy || isPaymentInvalid || hasStockIssues}
                               className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-500 py-3.5 text-base font-black text-white shadow-lg shadow-emerald-950/30 transition-all hover:-translate-y-0.5 hover:bg-emerald-400 disabled:translate-y-0 disabled:bg-gray-800 disabled:text-gray-500 disabled:shadow-none xl:py-4 xl:text-lg"
                             >
                               {busy
@@ -1870,12 +1931,22 @@ function CrmTerminalUI() {
                 )}
                 <p className="truncate text-lg font-bold text-white leading-tight">{fmt(total, business?.currency)}</p>
                 {checkoutStep === 'payment' ? (
-                  <p className={`text-[10px] mt-0.5 ${isPaymentInvalid ? 'text-amber-400' : 'text-gray-400'}`}>
-                    {requiresCustomerForPending && !customerId
-                      ? `Faltan ${fmt(pendingBalance, business?.currency)} · selecciona cliente`
-                      : `Pagado ${fmt(paidTotal, business?.currency)} · Pendiente ${fmt(pendingBalance, business?.currency)}`
-                    }
-                  </p>
+                  hasStockIssues ? (
+                    // TPV-CORE-4B: el carrito sigue editable en payment --
+                    // si esa edición deja stock insuficiente, avisar acá
+                    // tiene prioridad sobre el resumen pagado/pendiente
+                    // (mismo criterio que bloquear el CTA más abajo).
+                    <p className="text-[10px] mt-0.5 text-red-400">
+                      Revisa {cartStockIssues.size} producto{cartStockIssues.size === 1 ? '' : 's'} sin stock suficiente.
+                    </p>
+                  ) : (
+                    <p className={`text-[10px] mt-0.5 ${isPaymentInvalid ? 'text-amber-400' : 'text-gray-400'}`}>
+                      {requiresCustomerForPending && !customerId
+                        ? `Faltan ${fmt(pendingBalance, business?.currency)} · selecciona cliente`
+                        : `Pagado ${fmt(paidTotal, business?.currency)} · Pendiente ${fmt(pendingBalance, business?.currency)}`
+                      }
+                    </p>
+                  )
                 ) : hasStockIssues && (
                   <p className="text-[10px] mt-0.5 text-red-400">
                     Revisa {cartStockIssues.size} producto{cartStockIssues.size === 1 ? '' : 's'} sin stock suficiente.
@@ -1904,7 +1975,7 @@ function CrmTerminalUI() {
               ) : (
                 <button
                   onClick={handleRegister}
-                  disabled={cart.length === 0 || busy || isPaymentInvalid}
+                  disabled={cart.length === 0 || busy || isPaymentInvalid || hasStockIssues}
                   className="shrink-0 px-4 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:bg-gray-700 disabled:text-gray-500 text-white font-bold text-sm transition-colors flex items-center gap-2"
                 >
                   {busy
