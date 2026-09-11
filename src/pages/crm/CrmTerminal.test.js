@@ -25,6 +25,16 @@
  * visibilidad; estos tests confirman que el JSX de pagos sigue siendo
  * exactamente el mismo bloque (no una copia) y que el nuevo estado no se
  * mete donde no corresponde (draft, handleRegister, applyDraft).
+ *
+ * TPV-STOCK-UX-1 agrega, mismo criterio: validación inmediata de stock
+ * (stockById/cartQtyByProduct/cartStockIssues), el guard de addToCart/
+ * updateQty, el indicador "Stock: N"/"Sin stock" en la grilla, la marca
+ * de reconciliación de un draft con cantidad > stock actual, el bloqueo
+ * de COBRAR, y el manejo del nuevo STOCK_INSUFFICIENT estructurado (ver
+ * crmService.js y su propio test para el parseo). crm_create_pos_sale
+ * sigue siendo la autoridad final bajo lock -- nada de esto la reemplaza,
+ * solo evita llegar hasta el servidor para enterarse de algo que el
+ * navegador ya sabe.
  */
 import { describe, it, expect } from 'vitest';
 import indexSource from './CrmTerminal.jsx?raw';
@@ -270,7 +280,7 @@ describe('CrmTerminal — carrito visible en mobile: botón "Ver carrito"', () =
 
 describe('CrmTerminal — targets táctiles ≥44px en los controles del carrito', () => {
   it('los 3 botones de fila de carrito (reducir/eliminar, aumentar, quitar) miden 44x44 (w-11 h-11), ya no 28x28 (w-7 h-7)', () => {
-    const cartRowMatch = indexSource.match(/\{cart\.map\(item => \([\s\S]*?\n\s{24}\)\)\}/);
+    const cartRowMatch = indexSource.match(/\{cart\.map\(item => \{[\s\S]*?\n {24}\}\)\}/);
     expect(cartRowMatch).not.toBeNull();
     const w11Count = (cartRowMatch[0].match(/w-11 h-11/g) || []).length;
     expect(w11Count).toBe(3);
@@ -328,7 +338,7 @@ describe('CrmTerminal — etapa Venta no muestra el bloque completo de pagos', (
 
   it('el CTA de Cobrar se deshabilita con el carrito vacío', () => {
     const saleBlockMatch = indexSource.match(/\n {20}\{checkoutStep === 'sale' && \([\s\S]*?(?=\n {20}\{checkoutStep === 'payment' && \()/);
-    expect(saleBlockMatch[0]).toMatch(/disabled=\{cart\.length === 0\}/);
+    expect(saleBlockMatch[0]).toMatch(/disabled=\{cart\.length === 0 \|\| hasStockIssues\}/);
   });
 });
 
@@ -366,8 +376,18 @@ describe('CrmTerminal — etapa Cobro reutiliza el bloque de pagos existente (no
 });
 
 describe('CrmTerminal — error de RPC mantiene la etapa payment y conserva la idempotency key', () => {
-  it('handleRegister nunca cambia checkoutStep -- ni en éxito ni en error, el paso solo cambia por handleGoToPayment/handleBackToSale/resetForm', () => {
-    expect(handleRegisterMatch[0]).not.toMatch(/setCheckoutStep/);
+  it('handleRegister solo cambia checkoutStep en la rama STOCK_INSUFFICIENT (TPV-STOCK-UX-1) -- nunca en éxito ni en cualquier otro error', () => {
+    // El único setCheckoutStep de toda la función debe estar DENTRO del
+    // branch STOCK_INSUFFICIENT (vuelve a 'sale' para que el cajero
+    // corrija) -- en éxito, y en cualquier otro error, el paso no cambia.
+    const stockBranchMatch = handleRegisterMatch[0].match(
+      /if \(error\.code === 'STOCK_INSUFFICIENT' && error\.stockInsufficient\) \{[\s\S]*?\n {8}\} else \{/,
+    );
+    expect(stockBranchMatch).not.toBeNull();
+    expect(stockBranchMatch[0]).toMatch(/setCheckoutStep\('sale'\);/);
+
+    const withoutStockBranch = handleRegisterMatch[0].replace(stockBranchMatch[0], '');
+    expect(withoutStockBranch).not.toMatch(/setCheckoutStep/);
   });
 
   it('el bloque de error de handleRegister no toca cart/payments/idempotency key -- permite reintentar sin perder nada', () => {
@@ -418,7 +438,7 @@ describe('CrmTerminal — mobile: CTA coherente, sin duplicar carrito, sin dos C
   });
 
   it('no se duplicó el JSX del carrito -- sigue existiendo un único cart.map', () => {
-    const occurrences = (indexSource.match(/\{cart\.map\(item => \(/g) || []).length;
+    const occurrences = (indexSource.match(/\{cart\.map\(item => [({]/g) || []).length;
     expect(occurrences).toBe(1);
   });
 
@@ -436,7 +456,7 @@ describe('CrmTerminal — cliente en etapa Cobro (sin duplicar estado)', () => {
 describe('CrmTerminal — targets táctiles de los nuevos CTA (TPV-CORE-3) ≥44px, sin regresionar los de TPV-CORE-2', () => {
   it('el botón desktop "Cobrar" y "Volver a la venta" declaran min-h-[44px]', () => {
     expect(indexSource).toMatch(/Cobrar \{fmt\(total, business\?\.currency\)\}/);
-    const cobrarBtnMatch = indexSource.match(/onClick=\{handleGoToPayment\}\s*\n\s*disabled=\{cart\.length === 0\}\s*\n\s*className="[^"]*min-h-\[44px\][^"]*"/);
+    const cobrarBtnMatch = indexSource.match(/onClick=\{handleGoToPayment\}\s*\n\s*disabled=\{cart\.length === 0 \|\| hasStockIssues\}\s*\n\s*className="[^"]*min-h-\[44px\][^"]*"/);
     expect(cobrarBtnMatch).not.toBeNull();
     const volverBtnMatch = indexSource.match(/onClick=\{handleBackToSale\}\s*\n\s*className="[^"]*min-h-\[44px\][^"]*"/);
     expect(volverBtnMatch).not.toBeNull();
@@ -448,9 +468,202 @@ describe('CrmTerminal — targets táctiles de los nuevos CTA (TPV-CORE-3) ≥44
   });
 
   it('los 3 botones +\\/-\\/eliminar del carrito siguen en w-11 h-11 (no regresionaron a w-7 h-7)', () => {
-    const cartRowMatch = indexSource.match(/\{cart\.map\(item => \([\s\S]*?\n\s{24}\)\)\}/);
+    const cartRowMatch = indexSource.match(/\{cart\.map\(item => \{[\s\S]*?\n {24}\}\)\}/);
     expect(cartRowMatch).not.toBeNull();
     const w11Count = (cartRowMatch[0].match(/w-11 h-11/g) || []).length;
     expect(w11Count).toBe(3);
+  });
+});
+
+/**
+ * TPV-STOCK-UX-1 — validación inmediata de stock en el TPV.
+ * Mismo criterio de source-scan que el resto del archivo: prueba que el
+ * MECANISMO (condiciones exactas, JSX, wiring) está en el código fuente
+ * en el lugar correcto -- nunca que React/el navegador lo ejecuta así.
+ * addToCart/updateQty son funciones puras de JS embebidas en el
+ * componente; sin un harness de render con estado real, se auditan por
+ * su texto fuente exacto, igual que el resto de este archivo desde
+ * TPV-CORE-1.
+ */
+describe('CrmTerminal — stockById/cartQtyByProduct/cartStockIssues: semántica NULL/0/N', () => {
+  it('el mapa de stock nunca convierte NULL en 0 -- guarda p.stock_actual tal cual (null incluido)', () => {
+    const stockByIdMatch = indexSource.match(/const stockById = useMemo\(\(\) => \{[\s\S]*?\n {2}\}, \[posProducts, allProducts\]\);/);
+    expect(stockByIdMatch).not.toBeNull();
+    expect(stockByIdMatch[0]).toMatch(/map\.set\(p\.id, p\.stock_actual\)/);
+    expect(stockByIdMatch[0]).not.toMatch(/\|\| 0|\?\? 0/);
+  });
+
+  it('addToCart: el guard usa comparación explícita contra null/undefined -- nunca !stockLimit (que trataría 0 como "sin límite")', () => {
+    const addToCartMatch = indexSource.match(/const addToCart = \(product\) => \{[\s\S]*?\n {2}\};/);
+    expect(addToCartMatch).not.toBeNull();
+    expect(addToCartMatch[0]).toMatch(/stockLimit !== null && stockLimit !== undefined && currentQty \+ 1 > stockLimit/);
+    expect(addToCartMatch[0]).not.toMatch(/if \(!stockLimit/);
+  });
+
+  it('stock NULL (sin control) nunca bloquea -- la condición del guard exige stockLimit !== null primero', () => {
+    // stockLimit === null -> "stockLimit !== null" es false -> el guard
+    // completo es false por cortocircuito -- nunca entra al bloque que
+    // bloquea el agregado, cualquiera sea currentQty.
+    const addToCartMatch = indexSource.match(/const addToCart = \(product\) => \{[\s\S]*?\n {2}\};/);
+    expect(addToCartMatch[0]).toMatch(/const stockLimit = product\.stock_actual; \/\/ null = sin control de stock/);
+  });
+
+  it('stock 0 bloquea -- currentQty (0) + 1 > 0 es true bajo la misma condición que cualquier N', () => {
+    const addToCartMatch = indexSource.match(/const addToCart = \(product\) => \{[\s\S]*?\n {2}\};/);
+    // La condición no distingue stockLimit===0 de stockLimit>0: ambos son
+    // "!== null && !== undefined", así que currentQty+1>stockLimit se
+    // evalúa igual -- con stockLimit=0 y currentQty=0, 1>0 es true.
+    expect(addToCartMatch[0]).toMatch(/currentQty \+ 1 > stockLimit/);
+  });
+
+  it('el feedback de "sin stock" usa setErrorMsg (el sistema visual existente) -- nunca alert()', () => {
+    const addToCartMatch = indexSource.match(/const addToCart = \(product\) => \{[\s\S]*?\n {2}\};/);
+    expect(addToCartMatch[0]).toMatch(/setErrorMsg\(`No hay más stock disponible de \$\{product\.name\}\. Disponible: \$\{stockLimit\}\.`\);/);
+    expect(indexSource).not.toMatch(/\balert\(/);
+  });
+
+  it('líneas manuales (product_id null) nunca entran a cartQtyByProduct/cartStockIssues', () => {
+    const cartQtyMatch = indexSource.match(/const cartQtyByProduct = useMemo\(\(\) => \{[\s\S]*?\n {2}\}, \[cart\]\);/);
+    expect(cartQtyMatch).not.toBeNull();
+    expect(cartQtyMatch[0]).toMatch(/if \(!item\.product_id\) return;/);
+
+    const issuesMatch = indexSource.match(/const cartStockIssues = useMemo\(\(\) => \{[\s\S]*?\n {2}\}, \[cart, stockById, cartQtyByProduct\]\);/);
+    expect(issuesMatch).not.toBeNull();
+    expect(issuesMatch[0]).toMatch(/if \(!item\.product_id\) return;/);
+  });
+
+  it('producto repetido no evade el límite -- cartQtyByProduct SUMA todas las líneas del mismo product_id, nunca mira una línea aislada', () => {
+    const cartQtyMatch = indexSource.match(/const cartQtyByProduct = useMemo\(\(\) => \{[\s\S]*?\n {2}\}, \[cart\]\);/);
+    expect(cartQtyMatch[0]).toMatch(/map\.set\(item\.product_id, \(map\.get\(item\.product_id\) \|\| 0\) \+ item\.quantity\);/);
+  });
+});
+
+describe('CrmTerminal — botón + del carrito respeta stock_actual (sección 5)', () => {
+  it('updateQty solo valida el límite cuando delta > 0 -- decrementar (delta < 0) nunca se bloquea, siempre puede volver a habilitar el +', () => {
+    const updateQtyMatch = indexSource.match(/const updateQty = \(_key, delta\) => \{[\s\S]*?\n {2}\};/);
+    expect(updateQtyMatch).not.toBeNull();
+    expect(updateQtyMatch[0]).toMatch(/if \(delta > 0 && i\.product_id\) \{/);
+  });
+
+  it('updateQty compara contra la cantidad TOTAL agregada del producto (cartQtyByProduct), no solo la línea actual', () => {
+    const updateQtyMatch = indexSource.match(/const updateQty = \(_key, delta\) => \{[\s\S]*?\n {2}\};/);
+    expect(updateQtyMatch[0]).toMatch(/const totalForProduct = cartQtyByProduct\.get\(i\.product_id\) \|\| i\.quantity;/);
+    expect(updateQtyMatch[0]).toMatch(/if \(totalForProduct \+ delta > stockLimit\) return i;/);
+  });
+
+  it('el botón + de cada línea se deshabilita visualmente (disabled + estilo atenuado) al llegar al límite', () => {
+    const cartRowMatch = indexSource.match(/\{cart\.map\(item => \{[\s\S]*?\n {24}\}\)\}/);
+    expect(cartRowMatch).not.toBeNull();
+    expect(cartRowMatch[0]).toMatch(/const atStockLimit = typeof stockLimit === 'number' && totalForProduct >= stockLimit;/);
+    expect(cartRowMatch[0]).toMatch(/disabled=\{atStockLimit\}/);
+    expect(cartRowMatch[0]).toMatch(/atStockLimit\s*\n\s*\? 'bg-gray-50 text-gray-300 cursor-not-allowed'/);
+  });
+
+  it('el botón − sigue sin ningún guard de stock -- solo el + lo tiene', () => {
+    const cartRowMatch = indexSource.match(/\{cart\.map\(item => \{[\s\S]*?\n {24}\}\)\}/);
+    const minusButtonMatch = cartRowMatch[0].match(/onClick=\{\(\) => updateQty\(item\._key, -1\)\}[\s\S]*?<\/button>/);
+    expect(minusButtonMatch).not.toBeNull();
+    expect(minusButtonMatch[0]).not.toMatch(/disabled=/);
+  });
+});
+
+describe('CrmTerminal — draft restaurado con cantidad > stock actual (sección 8): nunca se ajusta solo', () => {
+  it('applyDraft no referencia stock/stockById en absoluto -- restaura la cantidad EXACTA del draft, la reconciliación es responsabilidad del render, no de la restauración', () => {
+    const applyDraftMatch = indexSource.match(/const applyDraft = useCallback\(\(draft\) => \{[\s\S]*?\n {2}\}, \[\]\);/);
+    expect(applyDraftMatch).not.toBeNull();
+    expect(applyDraftMatch[0]).not.toMatch(/stock/i);
+  });
+
+  it('la línea con insuficiencia muestra "Stock disponible: X · En carrito: Y" en vez de corregirse en silencio', () => {
+    expect(indexSource).toMatch(/Stock disponible: \{issue\.available\} · En carrito: \{issue\.requested\}/);
+  });
+
+  it('ofrece "Ajustar a N" (reducir) y "Eliminar" -- ambos requieren un click explícito del cajero, ninguno se dispara solo', () => {
+    expect(indexSource).toMatch(/onClick=\{\(\) => setCartQuantityTo\(item\._key, issue\.available\)\}/);
+    expect(indexSource).toMatch(/Ajustar a \{issue\.available\}/);
+  });
+
+  it('setCartQuantityTo solo se invoca desde ese botón -- nunca automáticamente en un efecto/render', () => {
+    const setQtyDeclMatch = indexSource.match(/const setCartQuantityTo = \(_key, quantity\) => \{[\s\S]*?\n {2}\};/);
+    expect(setQtyDeclMatch).not.toBeNull();
+    const callSites = (indexSource.match(/setCartQuantityTo\(/g) || []).length;
+    expect(callSites).toBe(1); // solo el onClick de "Ajustar a N" -- la declaración usa `= (_key, quantity) =>`, no matchea este regex
+  });
+});
+
+describe('CrmTerminal — COBRAR deshabilitado si hay insuficiencia conocida (sección 12)', () => {
+  it('handleGoToPayment tiene un guard defensivo además del disabled del botón', () => {
+    const handleGoToPaymentMatch = indexSource.match(/const handleGoToPayment = \(\) => \{[\s\S]*?\n {2}\};/);
+    expect(handleGoToPaymentMatch).not.toBeNull();
+    expect(handleGoToPaymentMatch[0]).toMatch(/if \(hasStockIssues\) return;/);
+  });
+
+  it('el botón desktop y el mobile muestran "Revisa N producto(s) sin stock suficiente" cerca del CTA', () => {
+    const occurrences = (indexSource.match(/Revisa \{cartStockIssues\.size\} producto\{cartStockIssues\.size === 1 \? '' : 's'\} sin stock suficiente\./g) || []).length;
+    expect(occurrences).toBe(2);
+  });
+
+  it('ambos disabled del CTA Cobrar (desktop y mobile) incluyen hasStockIssues', () => {
+    const occurrences = (indexSource.match(/disabled=\{cart\.length === 0 \|\| hasStockIssues\}/g) || []).length;
+    expect(occurrences).toBe(2);
+  });
+});
+
+describe('CrmTerminal — STOCK_INSUFFICIENT server-side identifica el producto y vuelve a \'sale\' (secciones 10, 11)', () => {
+  const stockBranchMatch = handleRegisterMatch[0].match(
+    /if \(error\.code === 'STOCK_INSUFFICIENT' && error\.stockInsufficient\) \{[\s\S]*?\n {8}\} else \{/,
+  );
+
+  it('resuelve el nombre del producto desde el propio carrito enviado (nunca confía en que la RPC lo devuelva)', () => {
+    expect(stockBranchMatch).not.toBeNull();
+    expect(stockBranchMatch[0]).toMatch(/const productName = cart\.find\(\(i\) => i\.product_id === productId\)\?\.name \|\| 'un producto';/);
+  });
+
+  it('construye "Stock insuficiente para {nombre}. Solicitado: N · Disponible: M." -- no el mensaje genérico', () => {
+    expect(stockBranchMatch[0]).toMatch(
+      /setErrorMsg\(`Stock insuficiente para \$\{productName\}\. Solicitado: \$\{requested\} · Disponible: \$\{available\}\.`\);/,
+    );
+  });
+
+  it('vuelve automáticamente a la etapa sale', () => {
+    expect(stockBranchMatch[0]).toMatch(/setCheckoutStep\('sale'\);/);
+  });
+
+  it('refresca el catálogo (refreshProducts) -- sección 13, sin construir realtime', () => {
+    expect(stockBranchMatch[0]).toMatch(/refreshProducts\(\);/);
+    expect(indexSource).not.toMatch(/\.channel\(|\.subscribe\(/);
+  });
+
+  it('no toca cart/payments/customerId/discount/notes/idempotency key/draft -- permite reintentar con la MISMA venta', () => {
+    expect(stockBranchMatch[0]).not.toMatch(/setCart|setPayments|setCustomerId|setDiscount|setNotes|saleIdempotencyKeyRef|removePosTerminalDraft/);
+  });
+});
+
+describe('CrmTerminal — refreshProducts es reutilizable (montaje + retry tras STOCK_INSUFFICIENT)', () => {
+  it('refreshProducts está memoizado con useCallback y se usa tanto en el efecto de montaje como en handleRegister', () => {
+    expect(indexSource).toMatch(/const refreshProducts = useCallback\(\(\) => \{/);
+    const callSites = (indexSource.match(/refreshProducts\(\)/g) || []).length;
+    // 1 en el efecto de montaje + 1 en el branch STOCK_INSUFFICIENT.
+    expect(callSites).toBe(2);
+  });
+});
+
+describe('CrmTerminal — productos agotados/limitados en la grilla (sección 3)', () => {
+  it('stock_actual === 0 muestra "Sin stock" y deshabilita el botón', () => {
+    const gridMatch = indexSource.match(/\{filtered\.map\(p => \{[\s\S]*?\n {24}\}\)\}/);
+    expect(gridMatch).not.toBeNull();
+    expect(gridMatch[0]).toMatch(/const outOfStock = p\.stock_actual === 0;/);
+    expect(gridMatch[0]).toMatch(/disabled=\{outOfStock\}/);
+    expect(gridMatch[0]).toMatch(/Sin stock/);
+  });
+
+  it('stock_actual > 0 muestra "Stock: N" de forma compacta', () => {
+    const gridMatch = indexSource.match(/\{filtered\.map\(p => \{[\s\S]*?\n {24}\}\)\}/);
+    expect(gridMatch[0]).toMatch(/const hasStockLabel = typeof p\.stock_actual === 'number' && p\.stock_actual > 0;/);
+    expect(gridMatch[0]).toMatch(/Stock: \{p\.stock_actual\}/);
+  });
+
+  it('stock_actual === NULL no muestra ningún indicador de stock (ni "ilimitado" ni ningún texto)', () => {
+    expect(indexSource).not.toMatch(/ilimitado/i);
   });
 });

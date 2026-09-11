@@ -115,11 +115,28 @@ describe('createPosInvoice — mapeo de errores (nunca SQL crudo al usuario)', (
     expect(result.error.message).toBe('CREDIT_NO_CUSTOMER');
   });
 
-  it('STOCK_INSUFFICIENT se traduce a un mensaje legible', async () => {
+  it('STOCK_INSUFFICIENT (formato plano, legacy) se traduce a un mensaje legible sin datos estructurados', async () => {
     rpcMock.mockResolvedValue({ data: null, error: { message: 'STOCK_INSUFFICIENT' } });
     const result = await createPosInvoice('biz1', baseInput);
     expect(result.error.message).not.toBe('STOCK_INSUFFICIENT');
     expect(result.error.message).toMatch(/stock/i);
+    expect(result.error.stockInsufficient).toBeUndefined();
+  });
+
+  it('STOCK_INSUFFICIENT:<product_id>:<requested>:<available> (TPV-STOCK-UX-1) se parsea a datos estructurados', async () => {
+    const productId = '3fa85f64-5717-4562-b3fc-2c963f66afa6';
+    rpcMock.mockResolvedValue({ data: null, error: { message: `STOCK_INSUFFICIENT:${productId}:2:1` } });
+    const result = await createPosInvoice('biz1', baseInput);
+    expect(result.error.message).toMatch(/stock/i);
+    expect(result.error.code).toBe('STOCK_INSUFFICIENT');
+    expect(result.error.stockInsufficient).toEqual({ productId, requested: 2, available: 1 });
+  });
+
+  it('STOCK_INSUFFICIENT estructurado con un product_id malformado no lanza -- cae al mensaje genérico sin datos estructurados', async () => {
+    rpcMock.mockResolvedValue({ data: null, error: { message: 'STOCK_INSUFFICIENT:not-a-uuid:2:1' } });
+    const result = await createPosInvoice('biz1', baseInput);
+    expect(result.error.message).toMatch(/stock/i);
+    expect(result.error.stockInsufficient).toBeUndefined();
   });
 
   it('PRODUCT_NOT_FOUND se traduce a un mensaje legible', async () => {

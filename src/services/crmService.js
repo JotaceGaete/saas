@@ -785,8 +785,32 @@ const POS_SALE_ERROR_MESSAGES = {
   NOT_AUTHENTICATED: 'Tu sesión expiró. Inicia sesión nuevamente.',
 };
 
+// TPV-STOCK-UX-1: crm_create_pos_sale ahora lanza
+// STOCK_INSUFFICIENT:<product_id>:<requested_quantity>:<available_quantity>
+// (ver 20260911000000_tpv_stock_insufficient_details.sql) en vez del
+// literal plano. Se parsea acá para que el caller (CrmTerminal) pueda
+// señalar el producto exacto -- el NOMBRE se resuelve del lado del
+// cliente (ya lo tiene en su propio carrito), la RPC nunca lo devuelve.
+const STOCK_INSUFFICIENT_PATTERN = /^STOCK_INSUFFICIENT:([0-9a-fA-F-]{36}):(\d+):(\d+)$/;
+
+function parseStockInsufficientError(raw) {
+  const match = STOCK_INSUFFICIENT_PATTERN.exec(raw.trim());
+  if (!match) return null;
+  return {
+    productId: match[1],
+    requested: Number(match[2]),
+    available: Number(match[3]),
+  };
+}
+
 function mapPosSaleError(error) {
   const raw = String(error?.message || '');
+
+  const stockInsufficient = parseStockInsufficientError(raw);
+  if (stockInsufficient) {
+    return { message: POS_SALE_ERROR_MESSAGES.STOCK_INSUFFICIENT, code: 'STOCK_INSUFFICIENT', stockInsufficient };
+  }
+
   const code = [...POS_SALE_PRESERVED_ERROR_CODES, ...Object.keys(POS_SALE_ERROR_MESSAGES)]
     .find((key) => raw.includes(key));
   if (!code) return { message: 'No se pudo registrar la venta. Intenta nuevamente.' };

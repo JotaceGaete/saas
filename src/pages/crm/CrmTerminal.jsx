@@ -295,8 +295,12 @@ function CrmTerminalUI() {
     return () => clearTimeout(searchDebounceRef.current);
   }, [search]);
 
-  useEffect(() => {
-    if (!business?.id || !hasAccess) return;
+  // TPV-STOCK-UX-1: extraído del efecto de montaje para poder volver a
+  // llamarlo después de un STOCK_INSUFFICIENT server-side (sección 13) --
+  // no hay realtime todavía, esto es solo "usar la información más
+  // reciente disponible" con un refetch simple.
+  const refreshProducts = useCallback(() => {
+    if (!business?.id) return;
 
     // Carga rápida: solo productos visibles en TPV
     getPosProducts(business.id).then((result) => {
@@ -323,13 +327,19 @@ function CrmTerminalUI() {
       setAllProducts(list);
       allProductsRef.current = list;
     });
+  }, [business?.id]);
+
+  useEffect(() => {
+    if (!business?.id || !hasAccess) return;
+
+    refreshProducts();
 
     getCrmCustomers(business.id).then(({ data }) => {
       customers.current = data || [];
       setCustomersDisplay(data || []);
       setCustomersLoaded(true);
     });
-  }, [business?.id, hasAccess]);
+  }, [business?.id, hasAccess, refreshProducts]);
 
   const handleCreateCustomer = async (fields) => {
     const { data, error } = await createCrmCustomer(business.id, fields);
@@ -388,10 +398,66 @@ function CrmTerminalUI() {
     );
   }, [posProducts]);
 
+  // ── TPV-STOCK-UX-1: validación de stock en el TPV ─────────────────────────
+  // stock_actual === NULL  -> sin control de stock, cantidad ilimitada.
+  // stock_actual === 0     -> agotado.
+  // stock_actual === N > 0 -> máximo inmediato sugerido por el frontend.
+  // La RPC (crm_create_pos_sale, bajo FOR UPDATE) sigue siendo la autoridad
+  // final -- esto es solo ayuda de UX para no llegar hasta "Confirmar
+  // venta" para enterarse de un límite que el navegador ya conoce.
+
+  // productId -> stock_actual más reciente cargado (posProducts/allProducts,
+  // refrescados al montar y tras un STOCK_INSUFFICIENT server-side). Un
+  // producto ausente del mapa (todavía no cargado) no bloquea nada acá.
+  const stockById = useMemo(() => {
+    const map = new Map();
+    posProducts.forEach((p) => map.set(p.id, p.stock_actual));
+    allProducts.forEach((p) => map.set(p.id, p.stock_actual));
+    return map;
+  }, [posProducts, allProducts]);
+
+  // Cantidad TOTAL en el carrito por product_id -- suma todas las líneas
+  // del mismo producto, nunca valida una línea aislada (sección 6). Este
+  // componente ya fusiona líneas del mismo producto en addToCart, pero el
+  // cálculo no depende de eso -- sigue sumando todas las que hubiera.
+  const cartQtyByProduct = useMemo(() => {
+    const map = new Map();
+    cart.forEach((item) => {
+      if (!item.product_id) return; // línea manual -- nunca tiene stock
+      map.set(item.product_id, (map.get(item.product_id) || 0) + item.quantity);
+    });
+    return map;
+  }, [cart]);
+
+  // Líneas cuya cantidad conocida excede el stock disponible más reciente
+  // -- por un draft restaurado con una cantidad vieja, o porque otro
+  // cajero vendió stock mientras se armaba esta venta. Nunca se ajusta
+  // la cantidad sola (sección 8): solo se marca y bloquea Cobrar hasta
+  // que el usuario decida (ajustar o eliminar la línea).
+  const cartStockIssues = useMemo(() => {
+    const issues = new Map(); // product_id -> { available, requested }
+    cart.forEach((item) => {
+      if (!item.product_id) return;
+      const available = stockById.get(item.product_id);
+      if (available === null || available === undefined) return; // sin control de stock, o aún no cargado
+      const requested = cartQtyByProduct.get(item.product_id) || item.quantity;
+      if (requested > available) issues.set(item.product_id, { available, requested });
+    });
+    return issues;
+  }, [cart, stockById, cartQtyByProduct]);
+
+  const hasStockIssues = cartStockIssues.size > 0;
+
   const addToCart = (product) => {
+    const stockLimit = product.stock_actual; // null = sin control de stock
     setCart(prev => {
       if (prev.length === 0) getOrCreateSaleIdempotencyKey();
       const existing = prev.find(i => i._key === product.id);
+      const currentQty = existing ? existing.quantity : 0;
+      if (stockLimit !== null && stockLimit !== undefined && currentQty + 1 > stockLimit) {
+        setErrorMsg(`No hay más stock disponible de ${product.name}. Disponible: ${stockLimit}.`);
+        return prev;
+      }
       if (existing) {
         return prev.map(i => i._key === product.id ? { ...i, quantity: i.quantity + 1 } : i);
       }
@@ -416,13 +482,30 @@ function CrmTerminalUI() {
   const updateQty = (_key, delta) => {
     setCart(prev =>
       prev
-        .map(i => i._key === _key ? { ...i, quantity: i.quantity + delta } : i)
+        .map(i => {
+          if (i._key !== _key) return i;
+          if (delta > 0 && i.product_id) {
+            const stockLimit = stockById.get(i.product_id);
+            if (stockLimit !== null && stockLimit !== undefined) {
+              const totalForProduct = cartQtyByProduct.get(i.product_id) || i.quantity;
+              if (totalForProduct + delta > stockLimit) return i; // no incrementa más allá del stock disponible
+            }
+          }
+          return { ...i, quantity: i.quantity + delta };
+        })
         .filter(i => i.quantity > 0)
     );
   };
 
   const removeItem = (_key) => {
     setCart(prev => prev.filter(i => i._key !== _key));
+  };
+
+  // Reconciliación de draft/concurrencia (sección 8): reduce la cantidad
+  // de una línea a un valor exacto (ej. "Ajustar a 2") -- solo por acción
+  // explícita del usuario, nunca automático.
+  const setCartQuantityTo = (_key, quantity) => {
+    setCart(prev => prev.map(i => i._key === _key ? { ...i, quantity } : i).filter(i => i.quantity > 0));
   };
 
   const subtotal = cart.reduce((s, i) => s + i.unit_price * i.quantity, 0);
@@ -513,6 +596,11 @@ function CrmTerminalUI() {
   // borra carrito/cliente/descuento/notas/pagos/idempotency key/draft.
   const handleGoToPayment = () => {
     if (cart.length === 0) return;
+    // TPV-STOCK-UX-1: si el frontend ya sabe que hay una línea sin stock
+    // suficiente, ni siquiera deja pasar a la etapa de cobro -- el botón
+    // ya está disabled en la UI, este es el mismo guard defense-in-depth
+    // que el resto del componente usa junto a cada disabled=.
+    if (hasStockIssues) return;
     setCheckoutStep('payment');
   };
 
@@ -693,7 +781,24 @@ function CrmTerminalUI() {
       });
 
       if (error) {
-        setErrorMsg(error.message || 'No se pudo registrar el pago de la venta.');
+        // TPV-STOCK-UX-1: concurrencia real -- otro cajero vendió stock
+        // mientras se armaba esta venta y la validación frontend (con
+        // datos ya desactualizados) no lo detectó. La RPC es quien lo
+        // atrapa bajo lock (autoridad final, nunca se debilita). El
+        // nombre del producto se resuelve del propio carrito que se
+        // acaba de enviar -- la RPC nunca lo devuelve (ver crmService.js).
+        // Nunca borra cart/payments/customerId/discount/notes/key/draft:
+        // solo vuelve a 'sale' para que el cajero pueda corregir y
+        // reintentar con la MISMA idempotency key.
+        if (error.code === 'STOCK_INSUFFICIENT' && error.stockInsufficient) {
+          const { productId, requested, available } = error.stockInsufficient;
+          const productName = cart.find((i) => i.product_id === productId)?.name || 'un producto';
+          setErrorMsg(`Stock insuficiente para ${productName}. Solicitado: ${requested} · Disponible: ${available}.`);
+          setCheckoutStep('sale');
+          refreshProducts();
+        } else {
+          setErrorMsg(error.message || 'No se pudo registrar el pago de la venta.');
+        }
         return;
       }
 
@@ -1115,27 +1220,47 @@ function CrmTerminalUI() {
                     </div>
                   ) : (
                     <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-                      {filtered.map(p => (
-                        <button
-                          key={p.id}
-                          onClick={() => addToCart(p)}
-                          className="group flex flex-col gap-2.5 rounded-2xl border border-gray-200 bg-white p-2.5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-lg active:scale-[0.98]"
-                        >
-                          <ProductThumb product={p} />
-                          <div className="min-w-0 px-1 pb-1">
-                            {p.category && (
-                              <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wide truncate mb-1">{p.category}</p>
-                            )}
-                            <p className="min-h-[32px] text-sm font-bold text-gray-900 line-clamp-2 leading-snug group-hover:text-blue-700">{p.name}</p>
-                            <div className="mt-1.5 flex items-center justify-between gap-2">
-                              <p className="truncate text-base font-black text-blue-600">{fmt(p.price, business?.currency)}</p>
-                              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-50 text-blue-600 transition-colors group-hover:bg-blue-600 group-hover:text-white">
-                                <Icon name="Plus" size={15} />
-                              </span>
+                      {filtered.map(p => {
+                        // TPV-STOCK-UX-1: stock_actual NULL -> sin control de
+                        // stock, no se muestra ningún indicador (sección 3).
+                        const outOfStock = p.stock_actual === 0;
+                        const hasStockLabel = typeof p.stock_actual === 'number' && p.stock_actual > 0;
+                        return (
+                          <button
+                            key={p.id}
+                            onClick={() => { if (!outOfStock) addToCart(p); }}
+                            disabled={outOfStock}
+                            className={`group flex flex-col gap-2.5 rounded-2xl border p-2.5 text-left shadow-sm transition-all ${
+                              outOfStock
+                                ? 'border-gray-100 bg-gray-50 opacity-60 cursor-not-allowed'
+                                : 'border-gray-200 bg-white hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-lg active:scale-[0.98]'
+                            }`}
+                          >
+                            <ProductThumb product={p} />
+                            <div className="min-w-0 px-1 pb-1">
+                              {p.category && (
+                                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wide truncate mb-1">{p.category}</p>
+                              )}
+                              <p className="min-h-[32px] text-sm font-bold text-gray-900 line-clamp-2 leading-snug group-hover:text-blue-700">{p.name}</p>
+                              <div className="mt-1.5 flex items-center justify-between gap-2">
+                                <p className="truncate text-base font-black text-blue-600">{fmt(p.price, business?.currency)}</p>
+                                <span className={`flex h-7 w-7 items-center justify-center rounded-full transition-colors ${
+                                  outOfStock
+                                    ? 'bg-gray-200 text-gray-400'
+                                    : 'bg-blue-50 text-blue-600 group-hover:bg-blue-600 group-hover:text-white'
+                                }`}>
+                                  <Icon name="Plus" size={15} />
+                                </span>
+                              </div>
+                              {outOfStock ? (
+                                <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-red-500">Sin stock</p>
+                              ) : hasStockLabel && (
+                                <p className="mt-1 text-[10px] font-semibold text-gray-400">Stock: {p.stock_actual}</p>
+                              )}
                             </div>
-                          </div>
-                        </button>
-                      ))}
+                          </button>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -1287,8 +1412,20 @@ function CrmTerminalUI() {
                     ) : (
                       <div className="divide-y divide-gray-100 max-h-52 overflow-y-auto
                                       lg:flex-1 lg:min-h-0 lg:max-h-none lg:overflow-y-auto">
-                        {cart.map(item => (
-                          <div key={item._key} className="px-3 py-2.5 flex items-center gap-2">
+                        {cart.map(item => {
+                          // TPV-STOCK-UX-1: límite conocido para este producto
+                          // (null = sin control de stock) y si esta línea ya
+                          // excede el stock disponible más reciente (sección 8:
+                          // draft viejo, o venta concurrente de otro cajero).
+                          const stockLimit = item.product_id ? stockById.get(item.product_id) : null;
+                          const totalForProduct = item.product_id
+                            ? (cartQtyByProduct.get(item.product_id) || item.quantity)
+                            : item.quantity;
+                          const atStockLimit = typeof stockLimit === 'number' && totalForProduct >= stockLimit;
+                          const issue = item.product_id ? cartStockIssues.get(item.product_id) : null;
+                          return (
+                          <div key={item._key} className="px-3 py-2.5 flex flex-col gap-1.5">
+                            <div className="flex items-center gap-2">
                             <div className="flex-1 min-w-0">
                               <p className="text-xs font-semibold text-gray-800 truncate leading-snug flex items-center gap-1">
                                 {item.product_id == null && <span className="text-[9px] bg-purple-100 text-purple-600 px-1 py-0.5 rounded font-bold shrink-0">M</span>}
@@ -1311,8 +1448,13 @@ function CrmTerminalUI() {
                               <span className="w-6 text-center text-sm font-bold text-gray-800">{item.quantity}</span>
                               <button
                                 onClick={() => updateQty(item._key, 1)}
-                                title="Aumentar cantidad"
-                                className="w-11 h-11 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors text-gray-600"
+                                disabled={atStockLimit}
+                                title={atStockLimit ? `Sin más stock disponible (${stockLimit})` : 'Aumentar cantidad'}
+                                className={`w-11 h-11 rounded-lg flex items-center justify-center transition-colors ${
+                                  atStockLimit
+                                    ? 'bg-gray-50 text-gray-300 cursor-not-allowed'
+                                    : 'bg-gray-100 hover:bg-gray-200 text-gray-600'
+                                }`}
                               >
                                 <Icon name="Plus" size={12} color="currentColor" />
                               </button>
@@ -1330,8 +1472,33 @@ function CrmTerminalUI() {
                                 <Icon name="Trash2" size={13} color="currentColor" />
                               </button>
                             </div>
+                            </div>
+                            {issue && (
+                              <div className="flex items-center justify-between gap-2 rounded-lg bg-red-50 border border-red-100 px-2 py-1">
+                                <p className="text-[10px] font-semibold text-red-600">
+                                  Stock disponible: {issue.available} · En carrito: {issue.requested}
+                                </p>
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => setCartQuantityTo(item._key, issue.available)}
+                                    className="text-[10px] font-bold text-red-700 underline"
+                                  >
+                                    Ajustar a {issue.available}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => removeItem(item._key)}
+                                    className="text-[10px] font-bold text-red-700 underline"
+                                  >
+                                    Eliminar
+                                  </button>
+                                </div>
+                              </div>
+                            )}
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -1379,9 +1546,14 @@ function CrmTerminalUI() {
                             <span className="text-sm font-bold text-gray-300">Total</span>
                             <span className="truncate text-2xl font-black tracking-tight text-white xl:text-3xl">{fmt(total, business?.currency)}</span>
                           </div>
+                          {hasStockIssues && (
+                            <p className="text-center text-xs font-semibold text-red-400">
+                              Revisa {cartStockIssues.size} producto{cartStockIssues.size === 1 ? '' : 's'} sin stock suficiente.
+                            </p>
+                          )}
                           <button
                             onClick={handleGoToPayment}
-                            disabled={cart.length === 0}
+                            disabled={cart.length === 0 || hasStockIssues}
                             className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-500 py-3.5 text-base font-black text-white shadow-lg shadow-emerald-950/30 transition-all hover:-translate-y-0.5 hover:bg-emerald-400 disabled:translate-y-0 disabled:bg-gray-800 disabled:text-gray-500 disabled:shadow-none xl:py-4 xl:text-lg min-h-[44px]"
                           >
                             <Icon name="Wallet" size={18} />
@@ -1611,12 +1783,16 @@ function CrmTerminalUI() {
                   </p>
                 )}
                 <p className="truncate text-lg font-bold text-white leading-tight">{fmt(total, business?.currency)}</p>
-                {checkoutStep === 'payment' && (
+                {checkoutStep === 'payment' ? (
                   <p className={`text-[10px] mt-0.5 ${isPaymentInvalid ? 'text-amber-400' : 'text-gray-400'}`}>
                     {requiresCustomerForPending && !customerId
                       ? `Faltan ${fmt(pendingBalance, business?.currency)} · selecciona cliente`
                       : `Pagado ${fmt(paidTotal, business?.currency)} · Pendiente ${fmt(pendingBalance, business?.currency)}`
                     }
+                  </p>
+                ) : hasStockIssues && (
+                  <p className="text-[10px] mt-0.5 text-red-400">
+                    Revisa {cartStockIssues.size} producto{cartStockIssues.size === 1 ? '' : 's'} sin stock suficiente.
                   </p>
                 )}
               </div>
@@ -1624,7 +1800,7 @@ function CrmTerminalUI() {
                 <button
                   type="button"
                   onClick={handleGoToPayment}
-                  disabled={cart.length === 0}
+                  disabled={cart.length === 0 || hasStockIssues}
                   className="shrink-0 px-4 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:bg-gray-700 disabled:text-gray-500 text-white font-bold text-sm transition-colors flex items-center gap-2 min-h-[44px]"
                 >
                   <Icon name="Wallet" size={16} />
