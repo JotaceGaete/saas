@@ -1552,7 +1552,17 @@ export async function getRecentCashSessions(businessId, limit = 10) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FACTURAS DE COMPRA (crm_purchase_invoices)
+// FACTURAS DE COMPRA (crm_purchase_invoices) -- LEGACY, DEPRECADO
+// (PROVEEDORES-CORE-4B): wa_supplier_invoices (services/supplierInvoiceService.js)
+// es ahora la única fuente canónica de facturas/compras de proveedor.
+// crm_purchase_invoices quedó congelada en PROVEEDORES-CORE-4 (0 filas en
+// producción, sin escrituras nuevas) y las 4 funciones de abajo ya NO tienen
+// ningún caller activo de UI -- CrmPurchases.jsx (su único consumidor) fue
+// eliminado, y CrmCostCenter.jsx/CrmCostos.jsx migraron a
+// getSupplierPurchaseTotalsForPeriod/getSupplierInvoicesForPeriod. Se dejan
+// acá sin borrar (ni la tabla, ni estas funciones) hasta una auditoría
+// separada -- no tocar sin decisión de producto explícita.
+//
 // Requiere migración en Supabase Dashboard:
 //
 //   CREATE TABLE IF NOT EXISTS public.crm_purchase_invoices (

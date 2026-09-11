@@ -355,3 +355,30 @@ export const getSupplierPurchaseTotalsForPeriod = async (businessId, startDate, 
 
   return { totals, totalTaxCredit, totalOperational, totalAmountAll, error: null };
 };
+
+/**
+ * PROVEEDORES-CORE-4B — lista liviana de facturas de un período, para el
+ * desglose por día del Termómetro (CrmCostCenter/HealthCalendar), que
+ * antes consumía crmService.getPurchaseInvoices(businessId, {month, year}).
+ * Solo trae los 3 campos que ese desglose necesita -- no reemplaza a
+ * getSupplierInvoices/getSupplierInvoicesBySupplier (que traen la fila
+ * completa + balance derivado para las páginas de detalle).
+ */
+export const getSupplierInvoicesForPeriod = async (businessId, startDate, endDate) => {
+  const { data, error } = await supabase
+    ?.from('wa_supplier_invoices')
+    ?.select('purchase_type, issue_date, total_amount')
+    ?.eq('business_id', businessId)
+    ?.gte('issue_date', startDate)
+    ?.lt('issue_date', endDate)
+    ?.order('issue_date', { ascending: false });
+  if (error) return { data: null, error };
+  return {
+    data: (data ?? []).map((row) => ({
+      purchaseType: row.purchase_type,
+      issueDate: row.issue_date,
+      totalAmount: Number(row.total_amount ?? 0),
+    })),
+    error: null,
+  };
+};

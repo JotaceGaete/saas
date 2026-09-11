@@ -75,6 +75,48 @@ describe('Escenario 4 — factura con pagos (paidAmount>0) bloquea edición mone
   });
 });
 
+describe('PROVEEDORES-CORE-4B — taxIncluded en el payload', () => {
+  it('crear con "Incluido en el total" marcado (default) envía taxIncluded=true', () => {
+    const onSave = vi.fn().mockResolvedValue();
+    render(<SupplierInvoiceFormModal open onClose={() => {}} onSave={onSave} supplier={SUPPLIER} country="CL" />);
+    fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '450000' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Registrar factura' }));
+    const payload = onSave.mock.calls[0][0];
+    expect(payload.taxIncluded).toBe(true);
+  });
+
+  it('crear con "Incluido en el total" desmarcado envía taxIncluded=false', () => {
+    const onSave = vi.fn().mockResolvedValue();
+    render(<SupplierInvoiceFormModal open onClose={() => {}} onSave={onSave} supplier={SUPPLIER} country="CL" />);
+    fireEvent.click(screen.getByLabelText(/Incluido en el total/i));
+    fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '450000' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Registrar factura' }));
+    const payload = onSave.mock.calls[0][0];
+    expect(payload.taxIncluded).toBe(false);
+  });
+
+  it('editar una factura sin pagos (paidAmount=0) permite cambiar taxIncluded y lo envía', () => {
+    const onSave = vi.fn().mockResolvedValue();
+    const invoice = { id: 'inv1', documentType: 'factura', documentNumber: '18452', issueDate: '2026-09-10', totalAmount: 450000, taxRate: 19, paidAmount: 0 };
+    render(<SupplierInvoiceFormModal open onClose={() => {}} onSave={onSave} invoice={invoice} supplier={SUPPLIER} />);
+    expect(screen.getByLabelText(/Incluido en el total/i)).not.toBeDisabled();
+    fireEvent.click(screen.getByLabelText(/Incluido en el total/i));
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+    const payload = onSave.mock.calls[0][0];
+    expect(payload.taxIncluded).toBe(false);
+  });
+
+  it('editar una factura con pagos (paidAmount>0) nunca envía taxIncluded (checkbox deshabilitado)', () => {
+    const onSave = vi.fn().mockResolvedValue();
+    const invoice = { id: 'inv1', documentType: 'factura', documentNumber: '18452', issueDate: '2026-09-10', totalAmount: 450000, taxRate: 19, paidAmount: 100000 };
+    render(<SupplierInvoiceFormModal open onClose={() => {}} onSave={onSave} invoice={invoice} supplier={SUPPLIER} />);
+    expect(screen.getByLabelText(/Incluido en el total/i)).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+    const payload = onSave.mock.calls[0][0];
+    expect(payload).not.toHaveProperty('taxIncluded');
+  });
+});
+
 describe('Escenario 13 — nota_credito no aparece en la UI', () => {
   it('el selector de tipo de documento nunca ofrece "Nota de crédito"', () => {
     render(<SupplierInvoiceFormModal open onClose={() => {}} onSave={vi.fn()} supplier={SUPPLIER} />);

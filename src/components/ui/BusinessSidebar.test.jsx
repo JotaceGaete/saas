@@ -27,6 +27,17 @@ function renderSidebar(isAdmin) {
   );
 }
 
+// El submenú "Gestión del negocio" se auto-expande cuando el pathname
+// arranca con /crm o /proveedores (ver useEffect de BusinessSidebar).
+function renderSidebarAt(path, isAdmin = false) {
+  useAuth.mockReturnValue({ ...BASE_AUTH, isAdmin });
+  return render(
+    <MemoryRouter initialEntries={[path]}>
+      <BusinessSidebar />
+    </MemoryRouter>,
+  );
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   window.matchMedia = window.matchMedia || vi.fn(() => ({
@@ -68,5 +79,15 @@ describe('BusinessSidebar — renombrado de "CRM" y remoción del badge "Premium
   it('muestra el nuevo label en lenguaje llano "Gestión del negocio"', () => {
     renderSidebar(false);
     expect(screen.getAllByText('Gestión del negocio').length).toBeGreaterThan(0);
+  });
+});
+
+describe('10. PROVEEDORES-CORE-4B — sidebar ya no ofrece "Compras" duplicado bajo Gestión del negocio', () => {
+  it('el submenú tiene "Proveedores" pero ningún ítem "Compras"', () => {
+    renderSidebarAt('/proveedores');
+    expect(screen.getAllByText('Proveedores').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Compras')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Compras y Facturas/i)).not.toBeInTheDocument();
+    expect(screen.queryByText('Facturas de compra')).not.toBeInTheDocument();
   });
 });

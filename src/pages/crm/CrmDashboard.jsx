@@ -96,18 +96,20 @@ const MODULES = [
     planRequired: true,
   },
   {
-    id: 'compras',
-    title: 'Compras y Facturas',
-    description: 'Registra facturas recibidas y controla mercadería, gastos e IVA compra.',
-    bullets: ['Mercadería vs gasto operativo', 'IVA compras estimado', 'Historial por mes'],
+    // PROVEEDORES-CORE-4B: Proveedores reemplaza a "Compras y Facturas" como
+    // único punto de entrada operativo para facturas/compras de proveedor.
+    id: 'proveedores',
+    title: 'Proveedores',
+    description: 'Registra proveedores, facturas de compra y controla cuentas por pagar.',
+    bullets: ['Facturas y compras por proveedor', 'Cuentas por pagar', 'Historial de pagos'],
     icon: 'FileInput',
     iconBg: 'bg-rose-50',
     iconColor: 'text-rose-500',
     borderIdle: 'border-gray-200',
     borderHover: 'hover:border-rose-300',
     btnClass: 'bg-rose-600 hover:bg-rose-700 text-white',
-    path: '/crm/compras',
-    planRequired: true,
+    path: '/proveedores',
+    planRequired: false,
   },
   {
     id: 'barcodes',

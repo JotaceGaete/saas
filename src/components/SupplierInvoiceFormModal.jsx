@@ -107,6 +107,7 @@ export default function SupplierInvoiceFormModal({ open, onClose, onSave, invoic
             purchaseType: purchaseType || null,
             netAmount: calc.net_amount,
             taxRate: hasIva ? +taxRate : 0,
+            taxIncluded: hasIva ? taxIncluded : false,
             taxAmount: calc.tax_amount,
             totalAmount: calc.total_amount,
             notes: notes.trim() || null,
