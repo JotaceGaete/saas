@@ -667,3 +667,97 @@ describe('CrmTerminal — productos agotados/limitados en la grilla (sección 3)
     expect(indexSource).not.toMatch(/ilimitado/i);
   });
 });
+
+/**
+ * PRINT-2 — conecta la infraestructura de PRINT-1 (printService,
+ * buildSaleReceipt, printerConfigStorage) a la venta real. Mismo criterio
+ * de source-scan que el resto del archivo. La garantía central que se
+ * prueba acá es estructural: el efecto de impresión solo puede dispararse
+ * DESPUÉS de que ticketData ya se seteó (que a su vez solo ocurre tras un
+ * createPosInvoice exitoso) -- nunca antes, y reintentar nunca vuelve a
+ * llamar a createPosInvoice ni toca cart/payments/stock.
+ */
+describe('PRINT-2 — ya no usa window.print() en ninguna parte', () => {
+  it('el archivo no contiene ninguna llamada a window.print ni window.open', () => {
+    expect(indexSource).not.toMatch(/window\.print\(/);
+    expect(indexSource).not.toMatch(/window\.open\(/);
+  });
+
+  it('importa printService, buildSaleReceipt y printerConfigStorage de la infraestructura de PRINT-1 (no la duplica)', () => {
+    expect(indexSource).toMatch(/import \{ printService \} from 'lib\/printing\/printService';/);
+    expect(indexSource).toMatch(/import \{ buildSaleReceipt \} from 'lib\/printing\/receipts\/buildSaleReceipt';/);
+    expect(indexSource).toMatch(/import \{ buildPrinterConfigKey, readPrinterConfig \} from 'lib\/printing\/printerConfigStorage';/);
+  });
+});
+
+describe('PRINT-2 — la venta se guarda ANTES de imprimir (orden estructural)', () => {
+  it('printCurrentTicket depende de ticketData y no existe ninguna llamada a createPosInvoice fuera de handleRegister', () => {
+    const printCurrentTicketMatch = indexSource.match(/const printCurrentTicket = useCallback\(async \(\) => \{[\s\S]*?\n {2}\}, \[ticketData, business\]\);/);
+    expect(printCurrentTicketMatch).not.toBeNull();
+    expect(printCurrentTicketMatch[0]).toMatch(/if \(!ticketData\) return;/);
+
+    const createPosInvoiceCallSites = (indexSource.match(/createPosInvoice\(/g) || []).length;
+    expect(createPosInvoiceCallSites).toBe(1); // solo dentro de handleRegister
+  });
+
+  it('el efecto que dispara la impresión escucha ticketData -- el mismo estado que solo se setea tras la venta exitosa', () => {
+    const printEffectMatch = indexSource.match(/useEffect\(\(\) => \{\s*\n\s*if \(!ticketData\) return;\s*\n\s*const ticketId = String\(ticketData\.sale\?\.id[\s\S]*?\n {2}\}, \[ticketData, printCurrentTicket\]\);/);
+    expect(printEffectMatch).not.toBeNull();
+    expect(printEffectMatch[0]).toMatch(/printCurrentTicket\(\);/);
+  });
+
+  it('handleRegister no llama a printCurrentTicket/printService directamente -- solo setTicketData tras el éxito', () => {
+    expect(handleRegisterMatch[0]).not.toMatch(/printCurrentTicket|printService/);
+    expect(handleRegisterMatch[0]).toMatch(/setTicketData\(\{ sale: data, \.\.\.saleSnapshot \}\);/);
+  });
+});
+
+describe('PRINT-2 — falla de impresión: la venta queda registrada, nunca se repite ni se toca pago/stock', () => {
+  it('printCurrentTicket solo hace catch de la impresión -- nunca de una creación de venta', () => {
+    const printCurrentTicketMatch = indexSource.match(/const printCurrentTicket = useCallback\(async \(\) => \{[\s\S]*?\n {2}\}, \[ticketData, business\]\);/);
+    expect(printCurrentTicketMatch[0]).not.toMatch(/createPosInvoice|appliedPayments|removePosTerminalDraft/);
+    expect(printCurrentTicketMatch[0]).toMatch(/setPrintStatus\('error'\);/);
+  });
+
+  it('handleReprint reutiliza printCurrentTicket (mismo ticket ya construido) -- no vuelve a crear la venta', () => {
+    const handleReprintMatch = indexSource.match(/const handleReprint = useCallback\(\(\) => \{[\s\S]*?\n {2}\}, \[printCurrentTicket\]\);/);
+    expect(handleReprintMatch).not.toBeNull();
+    expect(handleReprintMatch[0]).toMatch(/printCurrentTicket\(\);/);
+    expect(handleReprintMatch[0]).not.toMatch(/createPosInvoice/);
+  });
+
+  it('el estado de impresión distingue idle/missing_printer/printing/success/error', () => {
+    expect(indexSource).toMatch(/const \[printStatus, setPrintStatus\] = useState\('idle'\);/);
+    expect(indexSource).toMatch(/setPrintStatus\('missing_printer'\);/);
+    expect(indexSource).toMatch(/setPrintStatus\('printing'\);/);
+    expect(indexSource).toMatch(/setPrintStatus\('success'\);/);
+    expect(indexSource).toMatch(/setPrintStatus\('error'\);/);
+  });
+
+  it('sin impresora configurada, no se intenta imprimir (no llama a printService)', () => {
+    const printCurrentTicketMatch = indexSource.match(/const printCurrentTicket = useCallback\(async \(\) => \{[\s\S]*?\n {2}\}, \[ticketData, business\]\);/);
+    const missingPrinterBranch = printCurrentTicketMatch[0].match(/if \(!printerConfig\.printerName\) \{[\s\S]*?\n {4}\}/);
+    expect(missingPrinterBranch).not.toBeNull();
+    expect(missingPrinterBranch[0]).not.toMatch(/printService/);
+  });
+
+  it('CrmThermalTicket recibe printStatus/printErrorMessage/onConfigurePrinter -- la UI de reintento vive en el ticket, no se reimplementa aparte', () => {
+    expect(indexSource).toMatch(/printStatus=\{printStatus\}/);
+    expect(indexSource).toMatch(/printErrorMessage=\{printErrorMessage\}/);
+    expect(indexSource).toMatch(/onConfigurePrinter=\{handleGoToPrintSettings\}/);
+  });
+});
+
+describe('PRINT-2 — cerrar el ticket o iniciar una nueva venta limpia el estado de impresión', () => {
+  it('handleCloseTicket y handleNewSale resetean printStatus/printErrorMessage a idle/null', () => {
+    const closeMatch = indexSource.match(/const handleCloseTicket = \(\) => \{[\s\S]*?\n {2}\};/);
+    expect(closeMatch).not.toBeNull();
+    expect(closeMatch[0]).toMatch(/setPrintStatus\('idle'\);/);
+    expect(closeMatch[0]).toMatch(/setPrintErrorMessage\(null\);/);
+
+    const newSaleMatch = indexSource.match(/const handleNewSale = \(\) => \{[\s\S]*?\n {2}\};/);
+    expect(newSaleMatch).not.toBeNull();
+    expect(newSaleMatch[0]).toMatch(/setPrintStatus\('idle'\);/);
+    expect(newSaleMatch[0]).toMatch(/setPrintErrorMessage\(null\);/);
+  });
+});

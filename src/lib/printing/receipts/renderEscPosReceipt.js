@@ -22,11 +22,12 @@ const CMD = {
 };
 
 // Columnas de texto habituales para fuente A a estos anchos de papel.
-// Solo afecta el largo de los separadores que arma buildTestReceipt --
-// el propio comando de corte/impresión no depende de esto.
+// Solo afecta el largo de los separadores que arman buildTestReceipt y
+// buildSaleReceipt -- el propio comando de corte/impresión no depende de
+// esto. Exportada para que ningún receipt builder duplique esta tabla.
 const COLUMNS_BY_WIDTH_MM = { 58: 32, 80: 48 };
 
-function columnsForWidth(paperWidthMm) {
+export function columnsForWidth(paperWidthMm) {
   return COLUMNS_BY_WIDTH_MM[paperWidthMm] || COLUMNS_BY_WIDTH_MM[80];
 }
 
@@ -44,7 +45,9 @@ function textBytes(text) {
   return bytes;
 }
 
-function stripDiacritics(value) {
+// Exportada para que ningún receipt builder (buildTestReceipt acá mismo,
+// buildSaleReceipt.js) duplique esta normalización.
+export function stripDiacritics(value) {
   return String(value ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '');
 }
 
