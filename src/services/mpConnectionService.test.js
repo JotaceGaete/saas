@@ -17,7 +17,9 @@ vi.mock('../lib/supabase', () => ({
   },
 }));
 
-import { getMercadoPagoConnectionStatus, startMercadoPagoOAuth, disconnectMercadoPago } from './mpConnectionService';
+import {
+  getMercadoPagoConnectionStatus, startMercadoPagoOAuth, disconnectMercadoPago, fetchMercadoPagoPointTerminals,
+} from './mpConnectionService';
 
 let assignMock;
 
@@ -117,6 +119,82 @@ describe('startMercadoPagoOAuth', () => {
     const sentBody = JSON.parse(options.body);
     expect(sentBody).not.toHaveProperty('businessId');
     expect(Object.keys(sentBody)).toEqual([]);
+  });
+});
+
+describe('fetchMercadoPagoPointTerminals — MP-POINT-0', () => {
+  it('hace POST a mp-point-terminals con el Bearer token', async () => {
+    global.fetch.mockResolvedValue({ ok: true, json: async () => ({ ok: true, terminals: [], total: 0 }) });
+
+    await fetchMercadoPagoPointTerminals();
+
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    const [url, options] = global.fetch.mock.calls[0];
+    expect(url).toContain('/functions/v1/mp-point-terminals');
+    expect(options.method).toBe('POST');
+    expect(options.headers.Authorization).toBe('Bearer valid.jwt.token');
+  });
+
+  it('sin sesión válida, no llama a fetch', async () => {
+    getSessionMock.mockResolvedValue({ data: { session: null }, error: null });
+    refreshSessionMock.mockResolvedValue({ data: { session: null }, error: null });
+    const result = await fetchMercadoPagoPointTerminals();
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(result.error).toBeTruthy();
+  });
+
+  it('lista vacía (cuenta sin terminales)', async () => {
+    global.fetch.mockResolvedValue({ ok: true, json: async () => ({ ok: true, terminals: [], total: 0 }) });
+    const result = await fetchMercadoPagoPointTerminals();
+    expect(result.data).toEqual({ terminals: [], total: 0 });
+    expect(result.error).toBeNull();
+  });
+
+  it('una terminal STANDALONE', async () => {
+    const terminal = { id: 'STANDALONE_1', posId: null, storeId: null, externalPosId: null, operatingMode: 'STANDALONE' };
+    global.fetch.mockResolvedValue({ ok: true, json: async () => ({ ok: true, terminals: [terminal], total: 1 }) });
+    const result = await fetchMercadoPagoPointTerminals();
+    expect(result.data.terminals).toEqual([terminal]);
+  });
+
+  it('una terminal PDV con store_id/pos_id', async () => {
+    const terminal = { id: 'PAX_A910__X', posId: '111', storeId: '222', externalPosId: 'CAJA1', operatingMode: 'PDV' };
+    global.fetch.mockResolvedValue({ ok: true, json: async () => ({ ok: true, terminals: [terminal], total: 1 }) });
+    const result = await fetchMercadoPagoPointTerminals();
+    expect(result.data.terminals).toEqual([terminal]);
+  });
+
+  it('token inválido/vencido propaga el reason MP_CONNECTION_EXPIRED', async () => {
+    global.fetch.mockResolvedValue({
+      ok: false, status: 409, json: async () => ({ error: 'La conexión de Mercado Pago expiró.', reason: 'MP_CONNECTION_EXPIRED' }),
+    });
+    const result = await fetchMercadoPagoPointTerminals();
+    expect(result.data).toBeNull();
+    expect(result.error.reason).toBe('MP_CONNECTION_EXPIRED');
+  });
+
+  it('error de API de Mercado Pago propaga el reason MP_UNEXPECTED_ERROR', async () => {
+    global.fetch.mockResolvedValue({
+      ok: false, status: 502, json: async () => ({ error: 'Mercado Pago devolvió un error inesperado.', reason: 'MP_UNEXPECTED_ERROR' }),
+    });
+    const result = await fetchMercadoPagoPointTerminals();
+    expect(result.error.reason).toBe('MP_UNEXPECTED_ERROR');
+  });
+
+  it('nunca envía un businessId propio en el body', async () => {
+    global.fetch.mockResolvedValue({ ok: true, json: async () => ({ ok: true, terminals: [], total: 0 }) });
+    await fetchMercadoPagoPointTerminals();
+    const [, options] = global.fetch.mock.calls[0];
+    expect(JSON.parse(options.body)).not.toHaveProperty('businessId');
+  });
+
+  it('cuenta sin conexión MP propaga el reason MP_NOT_CONNECTED', async () => {
+    global.fetch.mockResolvedValue({
+      ok: false, status: 409, json: async () => ({ error: 'Este negocio no tiene Mercado Pago conectado', reason: 'MP_NOT_CONNECTED' }),
+    });
+    const result = await fetchMercadoPagoPointTerminals();
+    expect(result.data).toBeNull();
+    expect(result.error.reason).toBe('MP_NOT_CONNECTED');
   });
 });
 

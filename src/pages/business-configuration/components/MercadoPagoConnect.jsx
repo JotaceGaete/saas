@@ -4,7 +4,22 @@ import {
   getMercadoPagoConnectionStatus,
   startMercadoPagoOAuth,
   disconnectMercadoPago,
+  fetchMercadoPagoPointTerminals,
 } from '../../../services/mpConnectionService';
+
+// MP-POINT-0 — mensajes comprensibles por reason de la Edge Function
+// (mp-point-terminals). Nunca se muestra el error crudo/técnico ni nada
+// que mencione tokens.
+const TERMINALS_ERROR_MESSAGES = {
+  MP_NOT_CONNECTED: 'Este negocio no tiene Mercado Pago conectado.',
+  MP_CONNECTION_EXPIRED: 'La conexión de Mercado Pago expiró. Reconéctala para poder buscar terminales.',
+  MP_TOKEN_REJECTED: 'Mercado Pago rechazó la conexión (token vencido o inválido). Reconéctala e intenta de nuevo.',
+  MP_FORBIDDEN: 'La cuenta de Mercado Pago conectada no tiene permiso para listar terminales.',
+  MP_UNEXPECTED_ERROR: 'Mercado Pago devolvió un error inesperado. Intenta nuevamente en unos minutos.',
+  MP_UNEXPECTED_RESPONSE: 'Mercado Pago devolvió una respuesta inesperada. Intenta nuevamente.',
+  MP_REQUEST_FAILED: 'No se pudo contactar a Mercado Pago. Revisa tu conexión e intenta de nuevo.',
+};
+const TERMINALS_DEFAULT_ERROR = 'No se pudo buscar terminales. Intenta nuevamente.';
 
 /**
  * MercadoPagoConnect — MP-OAUTH-1.
@@ -24,6 +39,13 @@ export default function MercadoPagoConnect() {
   const [disconnecting, setDisconnecting] = useState(false);
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
   const [error, setError] = useState('');
+
+  // MP-POINT-0 — diagnóstico temporal de terminales Point. Puramente de
+  // lectura: no permite cambiar operating_mode ni ninguna otra acción.
+  const [terminalsSearched, setTerminalsSearched] = useState(false);
+  const [terminalsLoading, setTerminalsLoading] = useState(false);
+  const [terminals, setTerminals] = useState([]);
+  const [terminalsError, setTerminalsError] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -53,6 +75,20 @@ export default function MercadoPagoConnect() {
           : 'No se pudo iniciar la conexión con Mercado Pago. Intenta nuevamente.',
       );
     }
+  };
+
+  const handleSearchTerminals = async () => {
+    setTerminalsLoading(true);
+    setTerminalsError('');
+    const { data, error: err } = await fetchMercadoPagoPointTerminals();
+    setTerminalsLoading(false);
+    setTerminalsSearched(true);
+    if (err) {
+      setTerminals([]);
+      setTerminalsError(TERMINALS_ERROR_MESSAGES[err.reason] || TERMINALS_DEFAULT_ERROR);
+      return;
+    }
+    setTerminals(data?.terminals ?? []);
   };
 
   const handleDisconnect = async () => {
@@ -189,6 +225,95 @@ export default function MercadoPagoConnect() {
         <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">
           <Icon name="AlertCircle" size={15} className="shrink-0 mt-0.5" />
           {error}
+        </div>
+      )}
+
+      {/* MP-POINT-0 — sección temporal de diagnóstico. Solo lectura: no
+          permite cambiar operating_mode ni ninguna otra acción sobre la
+          terminal. Solo visible con Mercado Pago conectado (sin conexión,
+          la Edge Function respondería MP_NOT_CONNECTED de todos modos). */}
+      {isConnected && (
+        <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+          <div className="px-4 py-3.5 border-b border-gray-100 flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-9 h-9 rounded-xl bg-slate-50 flex items-center justify-center shrink-0">
+                <Icon name="Tablet" size={17} color="#475569" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-gray-900">Terminales Point</p>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Diagnóstico: busca las terminales físicas registradas en esta cuenta de Mercado Pago.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={handleSearchTerminals}
+              disabled={terminalsLoading}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold transition-colors disabled:opacity-60 shrink-0"
+            >
+              {terminalsLoading ? (
+                <>
+                  <div className="w-3.5 h-3.5 border-2 border-white/50 border-t-white rounded-full animate-spin" />
+                  Buscando…
+                </>
+              ) : (
+                <>
+                  <Icon name="Search" size={13} />
+                  Buscar terminales
+                </>
+              )}
+            </button>
+          </div>
+
+          {terminalsError && (
+            <div className="px-4 py-3 flex items-start gap-2 bg-red-50 border-b border-red-100 text-xs text-red-700">
+              <Icon name="AlertCircle" size={14} className="shrink-0 mt-0.5" />
+              {terminalsError}
+            </div>
+          )}
+
+          {terminalsSearched && !terminalsError && terminals.length === 0 && (
+            <div className="px-4 py-4 text-xs text-gray-500">
+              Esta cuenta de Mercado Pago no tiene terminales Point registradas.
+            </div>
+          )}
+
+          {terminals.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-gray-100 text-gray-400">
+                    <th className="text-left font-semibold px-4 py-2">id</th>
+                    <th className="text-left font-semibold px-4 py-2">pos_id</th>
+                    <th className="text-left font-semibold px-4 py-2">store_id</th>
+                    <th className="text-left font-semibold px-4 py-2">external_pos_id</th>
+                    <th className="text-left font-semibold px-4 py-2">operating_mode</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {terminals.map((terminal, index) => (
+                    <tr key={terminal.id || index} className="border-b border-gray-50 last:border-0">
+                      <td className="px-4 py-2 font-mono text-gray-700">{terminal.id ?? '—'}</td>
+                      <td className="px-4 py-2 font-mono text-gray-700">{terminal.posId ?? '—'}</td>
+                      <td className="px-4 py-2 font-mono text-gray-700">{terminal.storeId ?? '—'}</td>
+                      <td className="px-4 py-2 font-mono text-gray-700">{terminal.externalPosId ?? '—'}</td>
+                      <td className="px-4 py-2">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-700">
+                          {terminal.operatingMode ?? '—'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {!terminalsSearched && (
+            <div className="px-4 py-4 text-xs text-gray-400">
+              Pulsa "Buscar terminales" para consultar Mercado Pago.
+            </div>
+          )}
         </div>
       )}
     </div>

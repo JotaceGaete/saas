@@ -46,6 +46,14 @@ verify_jwt = false
 [functions.merchant-mp-webhook]
 verify_jwt = false
 
+# MP-POINT-0: auditoría/diagnóstico de terminales Point de la cuenta MP
+# conectada (mp_connections, MP-OAUTH-1) -- solo lectura, no crea
+# órdenes ni cambia operating_mode. Mismo motivo que mp-oauth-disconnect:
+# valida el JWT ella misma vía supabase.auth.getUser() (CORS preflight
+# OPTIONS no lleva Authorization).
+[functions.mp-point-terminals]
+verify_jwt = false
+
 # plan-change-preview: same, JWT validated inside for auth.uid().
 [functions.plan-change-preview]
 verify_jwt = false

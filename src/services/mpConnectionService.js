@@ -18,6 +18,7 @@ const SUPABASE_URL = (import.meta.env?.VITE_SUPABASE_URL ?? '').replace(/\/$/, '
 const ANON_KEY     = getSupabasePublishableKey();
 const START_URL      = `${SUPABASE_URL}/functions/v1/mp-oauth-start`;
 const DISCONNECT_URL = `${SUPABASE_URL}/functions/v1/mp-oauth-disconnect`;
+const TERMINALS_URL  = `${SUPABASE_URL}/functions/v1/mp-point-terminals`;
 
 async function getToken() {
   try {
@@ -78,6 +79,35 @@ export async function startMercadoPagoOAuth() {
     return { error: null };
   } catch (err) {
     return { error: err };
+  }
+}
+
+/**
+ * MP-POINT-0 — busca las terminales Point de la cuenta MP conectada al
+ * negocio del usuario autenticado. Nunca recibe ni maneja un
+ * access_token: mp-point-terminals lo descifra y lo usa server-side, y
+ * solo devuelve el subconjunto seguro de cada terminal
+ * (id/posId/storeId/externalPosId/operatingMode). Puramente de lectura
+ * -- no crea órdenes ni cambia operating_mode.
+ * `error.reason` propaga el `reason` de la Edge Function (p. ej.
+ * `MP_NOT_CONNECTED`, `MP_CONNECTION_EXPIRED`, `MP_TOKEN_REJECTED`,
+ * `MP_FORBIDDEN`) para que la UI pueda mostrar un mensaje específico.
+ * @returns {Promise<{data: {terminals: Array, total: number|null}|null, error: (Error & {reason?: string})|null}>}
+ */
+export async function fetchMercadoPagoPointTerminals() {
+  const token = await getToken();
+  if (!token) return { data: null, error: new Error('No autenticado') };
+  try {
+    const res = await fetch(TERMINALS_URL, { method: 'POST', headers: authHeaders(token), body: JSON.stringify({}) });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const err = new Error(body?.error ?? `HTTP ${res.status}`);
+      if (body?.reason) err.reason = body.reason;
+      return { data: null, error: err };
+    }
+    return { data: { terminals: body?.terminals ?? [], total: body?.total ?? null }, error: null };
+  } catch (err) {
+    return { data: null, error: err };
   }
 }
 
