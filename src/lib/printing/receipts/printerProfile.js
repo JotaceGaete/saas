@@ -9,6 +9,32 @@
 // necesita ya calculado una sola vez: nadie más vuelve a calcular un
 // ancho de columnas o de logo por su cuenta.
 //
+// PRINT-4-BUG10 — BUG6/BUG7/BUG8 intentaron resolver el corte del logo
+// reduciendo `logoMaxWidthFraction` y horneando un margen izquierdo en el
+// bitmap (`padBitsLeft`). La prueba física de BUG8 fue concluyente: ese
+// margen horneado NO funciona como mecanismo de posicionamiento en esta
+// impresora -- cientos de columnas en blanco no son "gratis", consumen o
+// corrompen el mismo presupuesto de ancho que el contenido real. BUG9
+// confirmó que `ESC $` (posición absoluta) SÍ funciona, y también reveló
+// que el ancho nominal `printableWidthDots` (512 a 80mm) NO representa el
+// área horizontal realmente utilizable: un bloque en x=452 ya no cabe
+// completo. Por eso este archivo distingue TRES conceptos de ancho, no
+// dos:
+//   1. `printableWidthDots` -- ancho de línea NOMINAL de hoja de datos.
+//   2. `contentWidthDots` (vía getEffectivePrintableWidthDots) -- ancho
+//      para TEXTO tras descontar el margen de seguridad de ambos lados.
+//   3. `effectivePrintableWidthDots` -- ancho REAL calibrado físicamente
+//      dentro del cual una imagen (ESC */GS v 0) puede posicionarse con
+//      `ESC $` sin recortarse. Es un concepto DISTINTO de (2): el texto
+//      nunca mostró este problema (siempre se imprime con el motor de
+//      texto normal, no con comandos de imagen posicionados
+//      explícitamente), así que no hay razón para asumir que comparte el
+//      mismo límite. Ver PRINT-4-BUG10 en el historial de commits para el
+//      diagnóstico de calibración que determina su valor real por
+//      impresora -- HASTA tener ese resultado, el valor de acá es un
+//      placeholder conservador basado en la evidencia física disponible
+//      (ver comentario en PRINTER_PROFILES).
+//
 // Esto NO es un perfil de Star: son números conservadores para
 // "impresora térmica ESC/POS genérica de 80mm/58mm". El día que exista
 // un sistema real de perfiles de compatibilidad por impresora, ese
@@ -19,9 +45,10 @@
  * @typedef {Object} PrinterProfile
  * @property {number} paperWidthMm
  * @property {number} printableWidthDots - ancho de línea nominal del cabezal, en dots (a 203dpi/8 dots por mm).
- * @property {number} safeMarginDots - margen de seguridad POR LADO, restado del ancho nominal antes de calcular cualquier layout. Cubre tolerancia mecánica/de calibración -- no es decorativo.
+ * @property {number} safeMarginDots - margen de seguridad POR LADO, restado del ancho nominal antes de calcular el ancho de CONTENIDO DE TEXTO. Cubre tolerancia mecánica/de calibración -- no es decorativo.
+ * @property {number} effectivePrintableWidthDots - PRINT-4-BUG10: ancho REAL calibrado físicamente dentro del cual una imagen posicionada con `ESC $` no se recorta. Concepto DISTINTO de `contentWidthDots` (ese es para texto) -- ver comentario de archivo.
  * @property {number} dotsPerChar - ancho de un carácter de Fuente A en dots (12 es el valor estándar ESC/POS de 12x24 dots/carácter, no específico de marca).
- * @property {number} logoMaxWidthFraction - fracción (0-1) del ancho de CONTENIDO que el logo puede ocupar como máximo, dejando margen visible a los costados.
+ * @property {number} logoMaxWidthFraction - fracción (0-1) de `effectivePrintableWidthDots` que el logo puede ocupar como máximo, dejando margen visible a los costados.
  */
 
 /**
@@ -29,21 +56,21 @@
  * @property {number} paperWidthMm
  * @property {number} printableWidthDots
  * @property {number} safeMarginDots
- * @property {number} contentWidthDots - printableWidthDots - 2*safeMarginDots. Único ancho útil real.
+ * @property {number} contentWidthDots - printableWidthDots - 2*safeMarginDots. Ancho de CONTENIDO DE TEXTO (columnas) -- no usar para imágenes, ver `effectivePrintableWidthDots`.
  * @property {number} normalCharsPerLine - columnas de texto en tamaño normal. TODO helper de layout (wrap/separator/filas) usa este mismo número.
  * @property {number} doubleWidthCharsPerLine - floor(normalCharsPerLine / 2). El TOTAL en doble ancho se construye con ESTE número, nunca con normalCharsPerLine.
- * @property {number} logoMaxWidthDots - ancho máximo del logo en dots (fracción de contentWidthDots), ya listo para pasarle a fetchLogoRaster.
- * @property {number} logoLeftMarginDots - PRINT-4-BUG6: margen izquierdo explícito (en dots, medido desde la posición física 0 del cabezal) para el logo cuando ocupa `logoMaxWidthDots`. Centra el logo DENTRO del margen de seguridad en vez de depender de que la impresora centre `ESC *`/`GS v 0` por su cuenta -- ver escPosImage.js#padBitsLeft. Garantiza `logoLeftMarginDots + logoMaxWidthDots <= printableWidthDots - safeMarginDots`.
+ * @property {number} effectivePrintableWidthDots - PRINT-4-BUG10: ancho REAL calibrado dentro del cual una imagen puede posicionarse con `ESC $` sin recortarse. El centrado del logo se calcula como `floor((effectivePrintableWidthDots - logoWidthDots) / 2)`, medido desde la posición física 0 del cabezal -- nunca horneado como padding en el bitmap (ver escPosImage.js#buildAbsolutePositionCommand).
+ * @property {number} logoMaxWidthDots - ancho máximo del logo en dots (fracción de `effectivePrintableWidthDots`, NO de contentWidthDots), ya listo para pasarle a fetchLogoRaster.
  */
 
 const DOTS_PER_CHAR_FONT_A = 12;
-// PRINT-4-BUG6 — la prueba física de BUG5 (0.78, bajado de 0.82 en BUG4)
-// TODAVÍA mostró el logo cortado en el borde derecho: el ancho lógico ya
-// no es la única variable (ver `logoLeftMarginDots` más abajo y
-// escPosImage.js#padBitsLeft), pero además se pide explícitamente bajar
-// a 70% para esta impresora física -- "prefiero un logo claramente más
-// chico pero completo". No subir de 0.70 sin una nueva validación física
-// que lo confirme.
+// PRINT-4-BUG6/BUG10 — este valor en sí NO cambia por BUG10 ("no seguir
+// modificando porcentajes del logo para compensar el desplazamiento" --
+// el problema físico real era el mecanismo de posicionamiento, no el
+// tamaño). Lo que SÍ cambia en BUG10 es la base sobre la que se aplica:
+// antes era `contentWidthDots` (ancho de texto), ahora es
+// `effectivePrintableWidthDots` (ancho real calibrado para imágenes) --
+// ver getLogoMaxWidthDots.
 const LOGO_MAX_WIDTH_FRACTION = 0.70;
 
 // PRINT-4-BUG4/BUG5 — valores conservadores para el perfil físico
@@ -55,11 +82,35 @@ const LOGO_MAX_WIDTH_FRACTION = 0.70;
 // cifra de hoja de datos, deliberadamente ("prefiero perder milímetros
 // de ancho antes que cortar el logo o romper columnas"). Mismo criterio
 // para 58mm.
+//
+// PRINT-4-BUG10 — `effectivePrintableWidthDots` a 80mm: el diagnóstico de
+// geometría de BUG8/BUG9 confirmó físicamente que x=226 con un bloque de
+// 60 dots (hasta la columna 286) imprime completo, y que x=452 (hasta la
+// columna 512) ya NO cabe -- solo aparece una franja en el borde. El
+// valor real de corte está en algún punto entre 286 y 452, sin calibrar
+// todavía (ver el diagnóstico de calibración de borde derecho agregado en
+// este mismo commit). Hasta tener ese resultado, se usa 286 -- el último
+// límite CONFIRMADO por evidencia física, nunca un valor optimista sin
+// probar -- como placeholder conservador. Actualizar este valor en cuanto
+// la prueba física de calibración confirme el límite real.
+const EFFECTIVE_PRINTABLE_WIDTH_DOTS_80MM_PENDING_CALIBRATION = 286;
+
+// PRINT-4-BUG10 — a 58mm no existe NINGUNA prueba física todavía (ni de
+// este bug ni de ninguno anterior): no se sabe si esta impresora sufre el
+// mismo problema de posicionamiento a este ancho de papel. Como
+// placeholder conservador -- y para no inventar un número por
+// extrapolación sin evidencia -- se usa el mismo `contentWidthDots`
+// nominal (360 - 2*16 = 328) que ya se usaba para texto en este perfil.
+// Requiere su propio diagnóstico de calibración física antes de confiar
+// en él para un logo real en papel de 58mm.
+const EFFECTIVE_PRINTABLE_WIDTH_DOTS_58MM_UNCALIBRATED = 328;
+
 export const PRINTER_PROFILES = {
   80: {
     paperWidthMm: 80,
     printableWidthDots: 512,
     safeMarginDots: 24,
+    effectivePrintableWidthDots: EFFECTIVE_PRINTABLE_WIDTH_DOTS_80MM_PENDING_CALIBRATION,
     dotsPerChar: DOTS_PER_CHAR_FONT_A,
     logoMaxWidthFraction: LOGO_MAX_WIDTH_FRACTION,
   },
@@ -67,6 +118,7 @@ export const PRINTER_PROFILES = {
     paperWidthMm: 58,
     printableWidthDots: 360,
     safeMarginDots: 16,
+    effectivePrintableWidthDots: EFFECTIVE_PRINTABLE_WIDTH_DOTS_58MM_UNCALIBRATED,
     dotsPerChar: DOTS_PER_CHAR_FONT_A,
     logoMaxWidthFraction: LOGO_MAX_WIDTH_FRACTION,
   },
@@ -77,7 +129,13 @@ export function getPrinterProfile(paperWidthMm) {
   return PRINTER_PROFILES[paperWidthMm] || PRINTER_PROFILES[80];
 }
 
-/** Ancho realmente disponible tras descontar el margen de seguridad de AMBOS lados. */
+/**
+ * Ancho de CONTENIDO DE TEXTO tras descontar el margen de seguridad de
+ * AMBOS lados -- usado para columnas de texto/tabla de ítems/separadores.
+ * PRINT-4-BUG10: NO usar este valor para imágenes -- ver
+ * `effectivePrintableWidthDots` en PRINTER_PROFILES/buildLayout, un
+ * concepto distinto calibrado físicamente para ESC * y GS v 0.
+ */
 export function getEffectivePrintableWidthDots(profile) {
   const safeMargin = Math.max(0, profile.safeMarginDots || 0);
   return Math.max(1, Math.round(profile.printableWidthDots - safeMargin * 2));
@@ -89,20 +147,29 @@ export function getColumnsForProfile(profile) {
   return Math.max(1, Math.floor(getEffectivePrintableWidthDots(profile) / dotsPerChar));
 }
 
-/** Ancho máximo del logo en dots: una fracción del ancho de contenido, nunca el 100% -- deja margen visible a los costados. */
+/**
+ * Ancho máximo del logo en dots: una fracción de `effectivePrintableWidthDots`
+ * (PRINT-4-BUG10 -- el ancho REAL calibrado para imágenes, no el de
+ * contenido de texto), nunca el 100% -- deja margen visible a los
+ * costados dentro del área que sí se confirmó imprimible.
+ */
 export function getLogoMaxWidthDots(profile) {
   const fraction = Math.min(1, Math.max(0, profile.logoMaxWidthFraction ?? LOGO_MAX_WIDTH_FRACTION));
-  return Math.max(1, Math.round(getEffectivePrintableWidthDots(profile) * fraction));
+  const base = profile.effectivePrintableWidthDots || getEffectivePrintableWidthDots(profile);
+  return Math.max(1, Math.round(base * fraction));
 }
 
 /**
- * PRINT-4-BUG5 — ÚNICA función que el renderer debe llamar. Devuelve un
- * objeto {@link PrintLayout} completo y ya resuelto: ninguna sección del
- * ticket (texto, tabla de ítems, TOTAL en doble ancho, logo, separador)
- * vuelve a calcular su propio ancho -- todas leen de este mismo objeto.
- * `doubleWidthCharsPerLine` se deriva de `normalCharsPerLine` DESPUÉS de
- * calcularlo, nunca al revés (nunca se arma una línea con el ancho
- * normal para recién ahí activar doble ancho).
+ * PRINT-4-BUG5/BUG10 — ÚNICA función que el renderer debe llamar. Devuelve
+ * un objeto {@link PrintLayout} completo y ya resuelto: ninguna sección
+ * del ticket (texto, tabla de ítems, TOTAL en doble ancho, logo,
+ * separador) vuelve a calcular su propio ancho -- todas leen de este
+ * mismo objeto. `doubleWidthCharsPerLine` se deriva de
+ * `normalCharsPerLine` DESPUÉS de calcularlo, nunca al revés (nunca se
+ * arma una línea con el ancho normal para recién ahí activar doble
+ * ancho). `effectivePrintableWidthDots` (BUG10) es el ancho que el logo
+ * debe usar para centrarse con `ESC $` -- nunca `contentWidthDots` (ese
+ * es para texto) ni un margen horneado en píxeles (abandonado en BUG10).
  * @param {number} paperWidthMm
  * @returns {PrintLayout}
  */
@@ -111,15 +178,9 @@ export function buildLayout(paperWidthMm) {
   const contentWidthDots = getEffectivePrintableWidthDots(profile);
   const normalCharsPerLine = Math.max(1, Math.floor(contentWidthDots / (profile.dotsPerChar || DOTS_PER_CHAR_FONT_A)));
   const doubleWidthCharsPerLine = Math.max(1, Math.floor(normalCharsPerLine / 2));
+  const effectivePrintableWidthDots = Math.max(1, profile.effectivePrintableWidthDots || contentWidthDots);
   const logoMaxWidthDots = getLogoMaxWidthDots(profile);
   const safeMarginDots = Math.max(0, profile.safeMarginDots || 0);
-  // PRINT-4-BUG6 — margen izquierdo EXPLÍCITO para el logo, medido desde
-  // la posición física 0 del cabezal (no desde el borde del área de
-  // contenido): centra la caja de `logoMaxWidthDots` dentro del margen de
-  // seguridad. `fetchLogoRaster` recentra este valor si el logo real,
-  // por su relación de aspecto, termina más angosto que el máximo -- ver
-  // ese archivo.
-  const logoLeftMarginDots = safeMarginDots + Math.floor((contentWidthDots - logoMaxWidthDots) / 2);
 
   return {
     paperWidthMm: profile.paperWidthMm,
@@ -128,7 +189,7 @@ export function buildLayout(paperWidthMm) {
     contentWidthDots,
     normalCharsPerLine,
     doubleWidthCharsPerLine,
+    effectivePrintableWidthDots,
     logoMaxWidthDots,
-    logoLeftMarginDots,
   };
 }

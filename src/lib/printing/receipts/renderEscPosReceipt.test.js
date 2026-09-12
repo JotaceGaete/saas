@@ -9,6 +9,7 @@ const {
   renderEscPosReceipt, buildTestReceipt, buildRasterDiagnosticReceipt,
   buildImageCapabilityDiagnosticReceipt, buildCutCapabilityDiagnosticReceipt,
   buildLogoPositionDiagnosticReceipt, buildLogoGeometryDiagnosticReceipt, buildLogoPositionedDiagnosticReceipt,
+  buildRightEdgeCalibrationDiagnosticReceipt,
   columnsForWidth, wrapText, formatRowLines,
 } = await import('./renderEscPosReceipt');
 const { buildRasterCommand } = await import('./escPosImage');
@@ -282,7 +283,7 @@ describe('renderEscPosReceipt — tipos semánticos PRINT-4', () => {
     expect(includesSubsequence(bytes, [GS, 0x21, 0x11])).toBe(false);
   });
 
-  it('PRINT-4-BUG6: logo se inserta en ALIGN_LEFT, no centrado -- la posición horizontal ya viene horneada en el bitmap (ver leftMarginDots), no depende de que la impresora centre ESC */GS v 0', async () => {
+  it('PRINT-4-BUG6/BUG10: logo se inserta en ALIGN_LEFT, no centrado -- la posición horizontal la resuelve ESC $ dentro del comando, no depende de que la impresora centre ESC */GS v 0', async () => {
     const fakeRaster = new Uint8Array([GS, 0x76, 0x30, 0x00, 1, 0, 1, 0, 0xFF]);
     vi.mocked(fetchLogoRaster).mockResolvedValue({ command: fakeRaster, width: 8, height: 1 });
 
@@ -293,13 +294,13 @@ describe('renderEscPosReceipt — tipos semánticos PRINT-4', () => {
     expect(fetchLogoRaster).toHaveBeenCalledWith('https://x/logo.png', expect.objectContaining({ maxWidthDots: expect.any(Number) }));
   });
 
-  it('PRINT-4-BUG6: pasa layout.logoLeftMarginDots como leftMarginDots a fetchLogoRaster -- el margen es explícito, no delegado a ESC a', async () => {
+  it('PRINT-4-BUG10: pasa layout.effectivePrintableWidthDots a fetchLogoRaster -- el centrado real usa el ancho REAL calibrado, no contentWidthDots', async () => {
     vi.mocked(fetchLogoRaster).mockResolvedValue(null);
     for (const paperWidthMm of [80, 58]) {
       await renderEscPosReceipt({ lines: [{ type: 'logo', url: 'https://x/logo.png' }], paperWidthMm, feedLines: 0, cut: false });
       const layout = buildLayout(paperWidthMm);
       const [, options] = vi.mocked(fetchLogoRaster).mock.calls.at(-1);
-      expect(options.leftMarginDots).toBe(layout.logoLeftMarginDots);
+      expect(options.effectivePrintableWidthDots).toBe(layout.effectivePrintableWidthDots);
     }
   });
 
@@ -313,13 +314,22 @@ describe('renderEscPosReceipt — tipos semánticos PRINT-4', () => {
   });
 
   it('logo: usa un ancho máximo distinto según paperWidthMm (58 vs 80), sin hardcodear una única impresora', async () => {
+    // PRINT-4-BUG10: ya no se puede asumir que 80mm > 58mm en términos
+    // absolutos -- `effectivePrintableWidthDots` a 80mm quedó calibrado
+    // por evidencia física (286, BUG9) mientras que 58mm sigue sin
+    // calibrar (placeholder = su ancho de contenido de texto nominal,
+    // 328). Lo que este test verifica es que CADA paperWidthMm resuelve
+    // su propio valor desde el perfil (nunca un número fijo compartido),
+    // no una dirección específica.
     vi.mocked(fetchLogoRaster).mockResolvedValue(null);
     await renderEscPosReceipt({ lines: [{ type: 'logo', url: 'https://x/logo.png' }], paperWidthMm: 58, feedLines: 0, cut: false });
     await renderEscPosReceipt({ lines: [{ type: 'logo', url: 'https://x/logo.png' }], paperWidthMm: 80, feedLines: 0, cut: false });
     const calls = vi.mocked(fetchLogoRaster).mock.calls;
     const width58 = calls[0][1].maxWidthDots;
     const width80 = calls[1][1].maxWidthDots;
-    expect(width80).toBeGreaterThan(width58);
+    expect(width58).not.toBe(width80);
+    expect(width58).toBe(buildLayout(58).logoMaxWidthDots);
+    expect(width80).toBe(buildLayout(80).logoMaxWidthDots);
   });
 
   it('PRINT-4-BUG3: pasa receipt.imageMode como graphicsStrategyId a fetchLogoRaster (el renderer no decide la estrategia, solo la reenvía)', async () => {
@@ -934,5 +944,68 @@ describe('buildLogoPositionedDiagnosticReceipt — PRINT-4-BUG9', () => {
 
   it('el receipt resultante renderiza sin lanzar', async () => {
     await expect(renderEscPosReceipt(buildLogoPositionedDiagnosticReceipt({ paperWidthMm: 80 }))).resolves.not.toThrow();
+  });
+});
+
+// PRINT-4-BUG10 — BUG9 confirmó que ESC $ posiciona correctamente, pero
+// también reveló que printableWidthDots (512 a 80mm) no es el ancho real
+// imprimible: x=452 con un bloque de 60 dots ya no cupo completo. Este
+// diagnóstico ubica el límite exacto con 5 bloques de 20 dots (sin
+// relleno) en x=400/420/440/460/480.
+describe('buildRightEdgeCalibrationDiagnosticReceipt — PRINT-4-BUG10', () => {
+  const ESC = 0x1B;
+
+  it('produce 5 bloques `raw` de imagen (uno por posición x), cada uno precedido por su propio ALIGN_LEFT', () => {
+    const receipt = buildRightEdgeCalibrationDiagnosticReceipt({ paperWidthMm: 80 });
+    const rawLines = receipt.lines.filter((l) => l.type === 'raw');
+    expect(rawLines).toHaveLength(10); // 5 bloques x (ALIGN_LEFT + comando)
+    for (let i = 0; i < rawLines.length; i += 2) {
+      expect(rawLines[i].bytes).toEqual([ESC, 0x61, 0x00]); // ALIGN_LEFT
+    }
+  });
+
+  it('cada bloque de imagen mide EXACTAMENTE 20 columnas de datos -- nunca lleva relleno', () => {
+    const receipt = buildRightEdgeCalibrationDiagnosticReceipt({ paperWidthMm: 80 });
+    const rawLines = receipt.lines.filter((l) => l.type === 'raw');
+    const imageCommands = [rawLines[1], rawLines[3], rawLines[5], rawLines[7], rawLines[9]];
+    for (const { bytes: cmd } of imageCommands) {
+      const headerIdx = cmd.findIndex((b, i) => b === ESC && cmd[i + 1] === 0x2A && cmd[i + 2] === 0x00);
+      expect(cmd[headerIdx + 3]).toBe(20); // nL
+      expect(cmd[headerIdx + 4]).toBe(0); // nH
+    }
+  });
+
+  it('emite ESC $ con los 5 offsets EXACTOS pedidos: 400, 420, 440, 460, 480', () => {
+    const receipt = buildRightEdgeCalibrationDiagnosticReceipt({ paperWidthMm: 80 });
+    const rawLines = receipt.lines.filter((l) => l.type === 'raw');
+    const imageCommands = [rawLines[1], rawLines[3], rawLines[5], rawLines[7], rawLines[9]];
+    const offsets = imageCommands.map(({ bytes: cmd }) => {
+      const posIdx = cmd.findIndex((b, j) => b === ESC && cmd[j + 1] === 0x24);
+      return cmd[posIdx + 2] + cmd[posIdx + 3] * 256;
+    });
+    expect(offsets).toEqual([400, 420, 440, 460, 480]);
+  });
+
+  it('cada posición está claramente rotulada en el texto', () => {
+    const receipt = buildRightEdgeCalibrationDiagnosticReceipt({ paperWidthMm: 80 });
+    const labelLines = receipt.lines.filter((l) => l.text?.startsWith('x ='));
+    expect(labelLines.map((l) => l.text)).toEqual([
+      'x = 400 dots:', 'x = 420 dots:', 'x = 440 dots:', 'x = 460 dots:', 'x = 480 dots:',
+    ]);
+  });
+
+  it('nunca depende de red/Image/canvas/business -- no llama a fetchLogoRaster', async () => {
+    const receipt = buildRightEdgeCalibrationDiagnosticReceipt({ paperWidthMm: 80 });
+    await renderEscPosReceipt(receipt);
+    expect(fetchLogoRaster).not.toHaveBeenCalled();
+  });
+
+  it('siempre pide corte y nunca genera una venta -- receipt puramente sintético', () => {
+    const receipt = buildRightEdgeCalibrationDiagnosticReceipt({ paperWidthMm: 80 });
+    expect(receipt.cut).toBe(true);
+  });
+
+  it('el receipt resultante renderiza sin lanzar', async () => {
+    await expect(renderEscPosReceipt(buildRightEdgeCalibrationDiagnosticReceipt({ paperWidthMm: 80 }))).resolves.not.toThrow();
   });
 });

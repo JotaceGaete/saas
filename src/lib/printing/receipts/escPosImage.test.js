@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   rgbaToGrayscale, ditherFloydSteinberg, buildRasterCommand, buildColumnBitImageCommand,
-  buildTiledColumnBitImageCommand, padBitsLeft, buildVerticalMarkerBits, buildGeometryTestBits,
-  buildAbsolutePositionCommand, buildPositionedTiledColumnBitImageCommand,
+  buildTiledColumnBitImageCommand, buildVerticalMarkerBits, buildGeometryTestBits,
+  buildAbsolutePositionCommand,
 } from './escPosImage';
 
 // Todo este archivo trabaja sobre arrays de píxeles fijos -- ninguna de
@@ -91,6 +91,21 @@ describe('buildRasterCommand', () => {
     const bits = new Uint8Array(16);
     const command = buildRasterCommand(bits, 8, 2);
     expect(Array.from(command.slice(8))).toEqual([0, 0]);
+  });
+
+  // PRINT-4-BUG10 — `xDots` es un parámetro opcional nuevo: sin él, el
+  // comportamiento debe ser IDÉNTICO al histórico (compatibilidad total).
+  it('sin xDots, el comportamiento es idéntico al histórico (sin ESC $ antepuesto)', () => {
+    const bits = new Uint8Array(8 * 3);
+    expect(Array.from(buildRasterCommand(bits, 8, 3))).toEqual(Array.from(buildRasterCommand(bits, 8, 3, undefined)));
+    expect(Array.from(buildRasterCommand(bits, 8, 3))[0]).toBe(0x1D); // GS, no ESC
+  });
+
+  it('con xDots, antepone ESC $ nL nH antes del header GS v 0', () => {
+    const bits = new Uint8Array(8 * 3);
+    const command = Array.from(buildRasterCommand(bits, 8, 3, 100));
+    expect(command.slice(0, 4)).toEqual([0x1B, 0x24, 100, 0]); // ESC $ 100 0
+    expect(command.slice(4, 8)).toEqual([0x1D, 0x76, 0x30, 0x00]); // GS v 0 m, justo después
   });
 });
 
@@ -289,45 +304,89 @@ describe('buildTiledColumnBitImageCommand — PRINT-4-BUG3 (logo real vía ESC *
   });
 });
 
-// PRINT-4-BUG6 — el logo seguía cortándose en la prueba física de BUG5
-// pese a que el ancho lógico ya era conservador: la centrada vía `ESC a`
-// no se puede validar sin hardware real. `padBitsLeft` hornea el margen
-// izquierdo directamente en los píxeles ANTES de armar cualquier comando
-// (GS v 0 o ESC *), así que el offset horizontal deja de depender de
-// ningún estado de alineación de la impresora.
-describe('padBitsLeft — PRINT-4-BUG6 (margen izquierdo horneado en el bitmap)', () => {
-  it('sin padding (0), devuelve los mismos bits/width sin copiar', () => {
-    const bits = Uint8Array.from([1, 0, 0, 1]);
-    const result = padBitsLeft(bits, 2, 2, 0);
-    expect(result.bits).toBe(bits);
-    expect(result.width).toBe(2);
+// PRINT-4-BUG10 — la prueba física de BUG8 confirmó que el margen
+// horneado en píxeles (el antiguo `padBitsLeft`, ver commits de BUG6/BUG9,
+// eliminado en este mismo cambio) NO funciona como mecanismo de
+// posicionamiento en esta impresora: un bloque con ~226 columnas de
+// padding apareció comprimido contra el borde derecho, y uno con ~452
+// desapareció por completo. `buildTiledColumnBitImageCommand` reemplaza
+// ese mecanismo por `ESC $` (ver el describe de más abajo), y ya no
+// existe ninguna función de padding en este archivo -- el bitmap que
+// recibe la estrategia de gráficos SIEMPRE es el contenido real, nunca
+// contenido+relleno.
+describe('buildTiledColumnBitImageCommand — PRINT-4-BUG9/BUG10 (xDots: sin padding, posición explícita vía ESC $)', () => {
+  const ESC = 0x1B;
+  const LF = 0x0A;
+
+  it('el bitmap NO lleva ningún padding: el ancho de los datos es EXACTAMENTE `width`, nunca `xDots + width`', () => {
+    const width = 60;
+    const height = 8;
+    const bits = new Uint8Array(width * height).fill(1);
+    const command = Array.from(buildTiledColumnBitImageCommand(bits, width, height, 226));
+
+    // ESC 3 8, luego ESC $ nL nH, luego ESC * 0 nL nH (ancho = 60, NO 286)
+    expect(command.slice(0, 3)).toEqual([ESC, 0x33, 8]);
+    expect(command.slice(3, 7)).toEqual([ESC, 0x24, 226, 0]); // ESC $ 226 0
+    expect(command.slice(7, 12)).toEqual([ESC, 0x2A, 0x00, 60, 0]); // ESC * 0 60 0 -- SOLO 60 columnas
+    expect(command.length).toBe(3 + 4 + 5 + 60 + 1 + 2); // ESC3 + ESC$ + header + data + LF + ESC2
   });
 
-  it('agrega EXACTAMENTE `leftPaddingDots` columnas en blanco a la izquierda de cada fila', () => {
-    // 2x2, todo negro
-    const bits = Uint8Array.from([1, 1, 1, 1]);
-    const { bits: padded, width } = padBitsLeft(bits, 2, 2, 3);
-    expect(width).toBe(5);
-    expect(padded.length).toBe(5 * 2);
-    // fila 0: [0,0,0,1,1] -- 3 columnas en blanco, luego los 2 píxeles originales
-    expect(Array.from(padded.slice(0, 5))).toEqual([0, 0, 0, 1, 1]);
-    // fila 1: mismo patrón
-    expect(Array.from(padded.slice(5, 10))).toEqual([0, 0, 0, 1, 1]);
+  it('reemite ESC $ con el MISMO x antes de cada franja (una franja nueva resetea la posición horizontal)', () => {
+    const width = 10;
+    const height = 24; // 3 franjas de 8 dots
+    const bits = new Uint8Array(width * height).fill(1);
+    const command = Array.from(buildTiledColumnBitImageCommand(bits, width, height, 150));
+
+    let count = 0;
+    for (let i = 0; i < command.length - 3; i++) {
+      if (command[i] === ESC && command[i + 1] === 0x24 && command[i + 2] === (150 & 0xFF) && command[i + 3] === (150 >> 8)) count++;
+    }
+    expect(count).toBe(3); // una vez por franja
   });
 
-  it('preserva el contenido original exacto, solo desplazado -- nunca lo distorsiona ni lo recorta', () => {
-    const bits = Uint8Array.from([1, 0, 1, 0, 1, 0]); // 3x2: fila0=[1,0,1], fila1=[0,1,0]
-    const { bits: padded, width } = padBitsLeft(bits, 3, 2, 2);
-    expect(width).toBe(5);
-    expect(Array.from(padded.slice(0, 5))).toEqual([0, 0, 1, 0, 1]);
-    expect(Array.from(padded.slice(5, 10))).toEqual([0, 0, 0, 1, 0]);
+  it('con un ancho > 255 (MAX_ESC_STAR_WIDTH_DOTS), reposiciona con xDots + chunkStart antes de CADA chunk, no solo una vez por franja', () => {
+    const width = 300; // 2 chunks: 255 + 45
+    const height = 8;
+    const bits = new Uint8Array(width * height).fill(1);
+    const xDots = 100;
+    const command = Array.from(buildTiledColumnBitImageCommand(bits, width, height, xDots));
+
+    const positions = [];
+    for (let i = 0; i < command.length - 3; i++) {
+      if (command[i] === ESC && command[i + 1] === 0x24) positions.push(command[i + 2] + command[i + 3] * 256);
+    }
+    expect(positions).toEqual([100, 100 + 255]);
   });
 
-  it('un padding negativo se trata como 0 (nunca recorta el bitmap)', () => {
-    const bits = Uint8Array.from([1, 1]);
-    const result = padBitsLeft(bits, 2, 1, -5);
-    expect(result.bits).toBe(bits);
-    expect(result.width).toBe(2);
+  it('offset 0 (IZQUIERDA) produce ESC $ 0 0 antes del bloque', () => {
+    const bits = new Uint8Array(8 * 8).fill(1);
+    const command = Array.from(buildTiledColumnBitImageCommand(bits, 8, 8, 0));
+    const idx = command.findIndex((b, i) => b === ESC && command[i + 1] === 0x24);
+    expect(command.slice(idx, idx + 4)).toEqual([ESC, 0x24, 0, 0]);
+  });
+
+  it('preserva exactamente los píxeles reales (round-trip) -- el reposicionamiento no distorsiona el contenido', () => {
+    const width = 12;
+    const height = 8;
+    const bits = Uint8Array.from({ length: width * height }, (_, i) => (i % 3 === 0 ? 1 : 0));
+    const command = Array.from(buildTiledColumnBitImageCommand(bits, width, height, 40));
+    // datos: después de ESC3(3) + ESC$(4) + header ESC*(5)
+    const data = command.slice(3 + 4 + 5, 3 + 4 + 5 + width);
+    const expected = Array.from(buildColumnBitImageCommand(bits, width, height).slice(5));
+    expect(data).toEqual(expected);
+  });
+
+  it('termina cada franja con un LF y el comando completo con ESC 2, igual que la variante sin posicionar', () => {
+    const bits = new Uint8Array(8 * 8).fill(1);
+    const command = Array.from(buildTiledColumnBitImageCommand(bits, 8, 8, 50));
+    expect(command.slice(-2)).toEqual([ESC, 0x32]);
+    expect(command.includes(LF)).toBe(true);
+  });
+
+  it('sin xDots (3 argumentos, como los diagnósticos BUG1/2/3/8), produce bytes IDÉNTICOS al histórico -- ningún ESC $ de más', () => {
+    const bits = new Uint8Array(8 * 8).fill(1);
+    const withoutPosition = Array.from(buildTiledColumnBitImageCommand(bits, 8, 8));
+    expect(withoutPosition.some((b, i) => b === ESC && withoutPosition[i + 1] === 0x24)).toBe(false);
   });
 });
 
@@ -430,75 +489,5 @@ describe('buildAbsolutePositionCommand — PRINT-4-BUG9 (ESC $ nL nH)', () => {
 
   it('offset 0 (bloque IZQUIERDA) produce nL=0, nH=0', () => {
     expect(buildAbsolutePositionCommand(0)).toEqual([ESC, 0x24, 0, 0]);
-  });
-});
-
-describe('buildPositionedTiledColumnBitImageCommand — PRINT-4-BUG9 (sin padding, posición explícita)', () => {
-  const ESC = 0x1B;
-  const LF = 0x0A;
-
-  it('el bitmap NO lleva ningún padding: el ancho de los datos es EXACTAMENTE `width`, nunca `xDots + width`', () => {
-    const width = 60;
-    const height = 8;
-    const bits = new Uint8Array(width * height).fill(1);
-    const command = Array.from(buildPositionedTiledColumnBitImageCommand(bits, width, height, 226));
-
-    // ESC 3 8, luego ESC $ nL nH, luego ESC * 0 nL nH (ancho = 60, NO 286)
-    expect(command.slice(0, 3)).toEqual([ESC, 0x33, 8]);
-    expect(command.slice(3, 7)).toEqual([ESC, 0x24, 226, 0]); // ESC $ 226 0
-    expect(command.slice(7, 12)).toEqual([ESC, 0x2A, 0x00, 60, 0]); // ESC * 0 60 0 -- SOLO 60 columnas
-    expect(command.length).toBe(3 + 4 + 5 + 60 + 1 + 2); // ESC3 + ESC$ + header + data + LF + ESC2
-  });
-
-  it('reemite ESC $ con el MISMO x antes de cada franja (una franja nueva resetea la posición horizontal)', () => {
-    const width = 10;
-    const height = 24; // 3 franjas de 8 dots
-    const bits = new Uint8Array(width * height).fill(1);
-    const command = Array.from(buildPositionedTiledColumnBitImageCommand(bits, width, height, 150));
-
-    let count = 0;
-    for (let i = 0; i < command.length - 3; i++) {
-      if (command[i] === ESC && command[i + 1] === 0x24 && command[i + 2] === (150 & 0xFF) && command[i + 3] === (150 >> 8)) count++;
-    }
-    expect(count).toBe(3); // una vez por franja
-  });
-
-  it('con un ancho > 255 (MAX_ESC_STAR_WIDTH_DOTS), reposiciona con xDots + chunkStart antes de CADA chunk, no solo una vez por franja', () => {
-    const width = 300; // 2 chunks: 255 + 45
-    const height = 8;
-    const bits = new Uint8Array(width * height).fill(1);
-    const xDots = 100;
-    const command = Array.from(buildPositionedTiledColumnBitImageCommand(bits, width, height, xDots));
-
-    const positions = [];
-    for (let i = 0; i < command.length - 3; i++) {
-      if (command[i] === ESC && command[i + 1] === 0x24) positions.push(command[i + 2] + command[i + 3] * 256);
-    }
-    expect(positions).toEqual([100, 100 + 255]);
-  });
-
-  it('offset 0 (IZQUIERDA) produce ESC $ 0 0 antes del bloque', () => {
-    const bits = new Uint8Array(8 * 8).fill(1);
-    const command = Array.from(buildPositionedTiledColumnBitImageCommand(bits, 8, 8, 0));
-    const idx = command.findIndex((b, i) => b === ESC && command[i + 1] === 0x24);
-    expect(command.slice(idx, idx + 4)).toEqual([ESC, 0x24, 0, 0]);
-  });
-
-  it('preserva exactamente los píxeles reales (round-trip) -- el reposicionamiento no distorsiona el contenido', () => {
-    const width = 12;
-    const height = 8;
-    const bits = Uint8Array.from({ length: width * height }, (_, i) => (i % 3 === 0 ? 1 : 0));
-    const command = Array.from(buildPositionedTiledColumnBitImageCommand(bits, width, height, 40));
-    // datos: después de ESC3(3) + ESC$(4) + header ESC*(5)
-    const data = command.slice(3 + 4 + 5, 3 + 4 + 5 + width);
-    const expected = Array.from(buildColumnBitImageCommand(bits, width, height).slice(5));
-    expect(data).toEqual(expected);
-  });
-
-  it('termina cada franja con un LF y el comando completo con ESC 2, igual que la variante sin posicionar', () => {
-    const bits = new Uint8Array(8 * 8).fill(1);
-    const command = Array.from(buildPositionedTiledColumnBitImageCommand(bits, 8, 8, 50));
-    expect(command.slice(-2)).toEqual([ESC, 0x32]);
-    expect(command.includes(LF)).toBe(true);
   });
 });

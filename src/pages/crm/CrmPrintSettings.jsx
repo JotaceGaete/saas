@@ -8,6 +8,7 @@ import { printService } from 'lib/printing/printService';
 import {
   buildTestReceipt, buildImageCapabilityDiagnosticReceipt, buildCutCapabilityDiagnosticReceipt,
   buildLogoPositionDiagnosticReceipt, buildLogoGeometryDiagnosticReceipt, buildLogoPositionedDiagnosticReceipt,
+  buildRightEdgeCalibrationDiagnosticReceipt,
 } from 'lib/printing/receipts/renderEscPosReceipt';
 import { buildFinalValidationReceipt } from 'lib/printing/receipts/buildSaleReceipt';
 import { buildPrinterConfigKey, readPrinterConfig, writePrinterConfig } from 'lib/printing/printerConfigStorage';
@@ -151,6 +152,19 @@ export default function CrmPrintSettings() {
     () => buildLogoPositionedDiagnosticReceipt({ paperWidthMm: config.paperWidthMm }),
     'Diagnóstico de posición explícita enviado a la impresora.',
     'No se pudo imprimir el diagnóstico de posición explícita.',
+  );
+
+  // PRINT-4-BUG10 — BUG9 confirmó que ESC $ posiciona bien, pero también
+  // que el ancho nominal (512 a 80mm) no es el área realmente imprimible
+  // (x=452 ya no cupo completo). Este diagnóstico ubica el límite exacto
+  // con 5 bloques de 20 dots (sin relleno) en x=400/420/440/460/480. No
+  // genera ninguna venta.
+  const handlePrintRightEdgeCalibration = () => runDiagnosticPrint(
+    () => buildRightEdgeCalibrationDiagnosticReceipt({
+      paperWidthMm: config.paperWidthMm, imageMode: config.imageMode,
+    }),
+    'Diagnóstico de calibración de borde derecho enviado a la impresora.',
+    'No se pudo imprimir el diagnóstico de calibración.',
   );
 
   // PRINT-4-BUG3 — ejercita el camino de producción completo (logo real +
@@ -343,6 +357,23 @@ export default function CrmPrintSettings() {
               de geometría anterior mostró el bloque centrado/derecho recortado o desplazado -- eso
               confirma que el relleno en píxeles no funciona en esta impresora y hace falta este
               mecanismo en su lugar.
+            </p>
+          </div>
+
+          <div className="mt-2">
+            <button
+              type="button"
+              onClick={handlePrintRightEdgeCalibration}
+              disabled={!canPrint}
+              className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-300 px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+            >
+              <Icon name={printing ? 'Loader2' : 'Ruler'} size={15} className={printing ? 'animate-spin' : ''} />
+              Calibración de borde derecho (ESC $)
+            </button>
+            <p className="mt-1.5 text-xs text-slate-400">
+              Imprime 5 bloques de 20 dots en x=400, 420, 440, 460 y 480 (sin relleno). Anota hasta
+              qué x aparece el bloque COMPLETO, sin cortarse: ese valor calibra el ancho real
+              imprimible de esta impresora (hoy un placeholder conservador en el código).
             </p>
           </div>
 

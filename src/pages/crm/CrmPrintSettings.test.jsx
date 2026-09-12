@@ -253,6 +253,29 @@ describe('CrmPrintSettings — imprimir ticket de prueba', () => {
     expect(screen.getByRole('button', { name: /Diagnóstico de posición explícita/ })).toBeDisabled();
   });
 
+  it('PRINT-4-BUG10: la calibración de borde derecho imprime 5 bloques `raw` sin relleno, y pide corte', async () => {
+    render(<CrmPrintSettings />);
+    await screen.findByText('Conectado');
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'Impresora A' } });
+
+    const diagButton = screen.getByRole('button', { name: /Calibración de borde derecho/ });
+    expect(diagButton).not.toBeDisabled();
+    fireEvent.click(diagButton);
+
+    await waitFor(() => expect(printReceiptMock).toHaveBeenCalledTimes(1));
+    const [receipt, target] = printReceiptMock.mock.calls[0];
+    expect(target).toEqual({ printerName: 'Impresora A' });
+    expect(receipt.lines.filter((l) => l.type === 'raw')).toHaveLength(10); // 5 bloques x (ALIGN_LEFT + comando)
+    expect(receipt.cut).toBe(true);
+    expect(await screen.findByText('Diagnóstico de calibración de borde derecho enviado a la impresora.')).toBeInTheDocument();
+  });
+
+  it('la calibración de borde derecho está deshabilitada sin impresora seleccionada', async () => {
+    render(<CrmPrintSettings />);
+    await screen.findByText('Conectado');
+    expect(screen.getByRole('button', { name: /Calibración de borde derecho/ })).toBeDisabled();
+  });
+
   it('PRINT-4-BUG3: la impresión final de validación imprime un ticket completo (logo, items, TOTAL, corte) con datos sintéticos', async () => {
     render(<CrmPrintSettings />);
     await screen.findByText('Conectado');

@@ -10,7 +10,7 @@
 // URL rota, imagen corrupta, canvas no soportado) resuelve `null`, y
 // quien llama debe imprimir el ticket igual, sin logo.
 
-import { rgbaToGrayscale, ditherFloydSteinberg, padBitsLeft } from './escPosImage';
+import { rgbaToGrayscale, ditherFloydSteinberg } from './escPosImage';
 import { getGraphicsStrategy } from './escPosCapabilities';
 
 const DEFAULT_MAX_HEIGHT_DOTS = 220;
@@ -62,19 +62,18 @@ export function computeFitSize(naturalWidth, naturalHeight, maxWidth, maxHeight)
  *   defecto, la variante confirmada en el hardware de validación (ver
  *   escPosCapabilities.DEFAULT_GRAPHICS_STRATEGY_ID). Este módulo no
  *   sabe ni le importa qué impresora hay detrás de ese id.
- * @param {number} [options.leftMarginDots=0] - PRINT-4-BUG6: margen
- *   izquierdo explícito (en dots, medido desde la posición física 0 del
- *   cabezal) para la caja de `maxWidthDots` completa -- ver
- *   printerProfile.js#buildLayout (`logoLeftMarginDots`). Se recentra
- *   automáticamente para el ancho REAL del logo ya ajustado por relación
- *   de aspecto (que puede ser más angosto que `maxWidthDots`), y se
- *   hornea directamente en el bitmap (ver escPosImage.js#padBitsLeft) en
- *   vez de depender de que la impresora centre el comando de imagen por
- *   su cuenta -- la causa más probable de que el logo siguiera
- *   cortándose pese a que el ancho lógico ya era conservador.
+ * @param {number} [options.effectivePrintableWidthDots=0] - PRINT-4-BUG10:
+ *   ancho REAL calibrado físicamente (ver printerProfile.js#buildLayout)
+ *   dentro del cual el logo se centra. El bitmap enviado a la impresora
+ *   contiene EXCLUSIVAMENTE los píxeles reales del logo -- nunca padding
+ *   horizontal (abandonado tras la prueba física de PRINT-4-BUG8, que
+ *   demostró que cientos de columnas en blanco no son "gratis" en esta
+ *   impresora); la posición se fija en cambio con `ESC $` (ver
+ *   escPosImage.js#buildAbsolutePositionCommand), validado físicamente en
+ *   PRINT-4-BUG9.
  */
 export async function fetchLogoRaster(logoUrl, {
-  maxWidthDots, maxHeightDots = DEFAULT_MAX_HEIGHT_DOTS, graphicsStrategyId, leftMarginDots = 0,
+  maxWidthDots, maxHeightDots = DEFAULT_MAX_HEIGHT_DOTS, graphicsStrategyId, effectivePrintableWidthDots = 0,
 } = {}) {
   if (!logoUrl || !maxWidthDots) return null;
   try {
@@ -89,15 +88,17 @@ export async function fetchLogoRaster(logoUrl, {
 
     const grayscale = rgbaToGrayscale(imageData.data, width, height);
     const bits = ditherFloydSteinberg(grayscale, width, height);
-    // Recentra el margen dentro de la caja reservada (`maxWidthDots`): si
-    // el logo real quedó más angosto por su relación de aspecto, el
-    // margen izquierdo crece para mantenerlo centrado en la misma caja,
-    // nunca pegado a la izquierda de esa caja.
-    const effectiveLeftMarginDots = Math.max(0, leftMarginDots | 0) + Math.floor(Math.max(0, maxWidthDots - width) / 2);
-    const { bits: paddedBits, width: paddedWidth } = padBitsLeft(bits, width, height, effectiveLeftMarginDots);
+    // PRINT-4-BUG10 — centrado real: x se calcula sobre el ancho REAL del
+    // logo ya ajustado por relación de aspecto (puede ser más angosto que
+    // `maxWidthDots`), nunca sobre la caja máxima -- así el logo queda
+    // centrado en la impresora, no solo centrado dentro de una caja que a
+    // su vez no está centrada. `bits`/`width` van SIN modificar a la
+    // estrategia de gráficos -- el posicionamiento lo aplica ella misma
+    // vía `ESC $`, no un padding previo.
+    const xDots = Math.max(0, Math.floor((Math.max(0, effectivePrintableWidthDots) - width) / 2));
     const strategy = getGraphicsStrategy(graphicsStrategyId);
     return {
-      command: strategy.build(paddedBits, paddedWidth, height), width, height, leftMarginDots: effectiveLeftMarginDots,
+      command: strategy.build(bits, width, height, xDots), width, height, xDots,
     };
   } catch {
     return null;

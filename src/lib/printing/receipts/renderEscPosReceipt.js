@@ -16,7 +16,7 @@
 import { formatMoney } from 'utils/formatMoney';
 import { fetchLogoRaster } from './fetchLogoRaster';
 import {
-  buildRasterCommand, buildVerticalMarkerBits, buildGeometryTestBits, buildPositionedTiledColumnBitImageCommand,
+  buildRasterCommand, buildVerticalMarkerBits, buildGeometryTestBits, buildTiledColumnBitImageCommand,
 } from './escPosImage';
 import { GRAPHICS_STRATEGIES, CUT_STRATEGIES, getGraphicsStrategy } from './escPosCapabilities';
 import { buildLayout } from './printerProfile';
@@ -256,21 +256,23 @@ export async function renderEscPosReceipt(receipt) {
         // pasan tal cual -- este renderer no sabe ni le importa qué
         // impresora hay detrás. Sin imageMode, fetchLogoRaster cae al
         // default (la variante confirmada físicamente).
-        // PRINT-4-BUG6: el logo seguía cortándose en la prueba física de
-        // BUG5 pese a que el ancho lógico ya era conservador -- la causa
-        // más probable es la centrada vía `ESC a 1` (ALIGN_CENTER),
-        // que confía en que la impresora recentre cada franja de `ESC *`
-        // de forma idéntica. Se reemplaza por un margen izquierdo
-        // EXPLÍCITO (`layout.logoLeftMarginDots`) horneado directamente
-        // en el bitmap (ver fetchLogoRaster.js/escPosImage.js#padBitsLeft)
-        // y se imprime en ALIGN_LEFT: la posición horizontal ya no
-        // depende de ningún estado de alineación de la impresora.
+        // PRINT-4-BUG10 — BUG6 intentó centrar horneando un margen
+        // izquierdo en píxeles; la prueba física de BUG8 demostró que eso
+        // NO funciona en esta impresora (cientos de columnas en blanco no
+        // son "gratis", corrompen el mismo presupuesto de ancho que el
+        // contenido real). Se reemplaza por `ESC $` (posición absoluta,
+        // validado físicamente en BUG9): el bitmap que arma fetchLogoRaster
+        // contiene EXCLUSIVAMENTE los píxeles reales del logo, y se centra
+        // sobre `layout.effectivePrintableWidthDots` -- el ancho REAL
+        // calibrado, no el ancho de contenido de texto. Se imprime en
+        // ALIGN_LEFT porque la posición ya viene resuelta por `ESC $`, no
+        // por ningún estado de alineación de la impresora.
         // eslint-disable-next-line no-await-in-loop -- el orden de impresión importa, no se puede paralelizar
         const raster = await fetchLogoRaster(line.url, {
           maxWidthDots,
           maxHeightDots: LOGO_MAX_HEIGHT_DOTS,
           graphicsStrategyId: receipt?.imageMode,
-          leftMarginDots: layout.logoLeftMarginDots,
+          effectivePrintableWidthDots: layout.effectivePrintableWidthDots,
         });
         if (raster?.command?.length) {
           bytes.push(...CMD.ALIGN_LEFT);
@@ -670,7 +672,7 @@ export function buildLogoPositionedDiagnosticReceipt({ paperWidthMm = 80 } = {})
     lines.push({ type: 'raw', bytes: CMD.ALIGN_LEFT });
     lines.push({
       type: 'raw',
-      bytes: Array.from(buildPositionedTiledColumnBitImageCommand(solidBits, blockWidth, blockHeight, x)),
+      bytes: Array.from(buildTiledColumnBitImageCommand(solidBits, blockWidth, blockHeight, x)),
     });
     lines.push({ type: 'divider' });
   }
@@ -678,6 +680,62 @@ export function buildLogoPositionedDiagnosticReceipt({ paperWidthMm = 80 } = {})
 
   return {
     paperWidthMm,
+    lines,
+    feedLines: 4,
+    cut: true,
+  };
+}
+
+const EDGE_CALIBRATION_BLOCK_WIDTH_DOTS = 20;
+const EDGE_CALIBRATION_BLOCK_HEIGHT_DOTS = 40; // 5 franjas de 8 dots
+// PRINT-4-BUG10 — la prueba física de BUG9 dejó acotado el límite real
+// entre 286 (confirmado OK: x=226 + 60 de ancho) y 452 (confirmado roto:
+// solo aparece una franja). Estos 5 puntos cubren ese rango con
+// suficiente resolución para ubicar el límite exacto sin necesitar una
+// segunda ronda de calibración.
+const EDGE_CALIBRATION_X_POSITIONS_DOTS = [400, 420, 440, 460, 480];
+
+/**
+ * PRINT-4-BUG10 — BUG9 confirmó físicamente que `ESC $` posiciona
+ * correctamente (x=0 y x=226 imprimieron bien), pero también reveló que
+ * `printableWidthDots` (512 a 80mm) NO es el ancho realmente imprimible:
+ * x=452 con un bloque de 60 dots ya no cupo completo. Este diagnóstico
+ * determina el límite EXACTO: 5 bloques independientes de EXACTAMENTE
+ * `EDGE_CALIBRATION_BLOCK_WIDTH_DOTS` (20 dots) de ancho -- SIN relleno,
+ * sin imágenes de ancho completo -- posicionados con `ESC $` en x=400,
+ * 420, 440, 460 y 480. La prueba física debe anotar hasta qué x el
+ * bloque de 20 dots aparece COMPLETO (sin cortarse): ese es el valor a
+ * usar para calibrar `effectivePrintableWidthDots` en
+ * printerProfile.js (actualmente 286, un placeholder conservador basado
+ * solo en el límite inferior confirmado). Se fuerza `ALIGN_LEFT`
+ * explícito antes de cada bloque (líneas `raw`, sin pasar por el
+ * `ALIGN_CENTER` automático de `rasterBytes`) para que el modo de
+ * alineación de texto no interfiera con la posición absoluta bajo
+ * prueba. No genera ninguna venta ni toca el flujo de cobro.
+ */
+export function buildRightEdgeCalibrationDiagnosticReceipt({ paperWidthMm = 80, imageMode } = {}) {
+  const strategy = getGraphicsStrategy(imageMode);
+  const blockWidth = EDGE_CALIBRATION_BLOCK_WIDTH_DOTS;
+  const blockHeight = EDGE_CALIBRATION_BLOCK_HEIGHT_DOTS;
+  const solidBits = new Uint8Array(blockWidth * blockHeight).fill(1);
+
+  const lines = [
+    { text: 'CALIBRACION DE BORDE DERECHO (ESC $)', align: 'center', bold: true },
+    { type: 'divider' },
+    { text: `Cada bloque mide EXACTAMENTE ${blockWidth} dots de ancho, sin relleno. Anota hasta que posicion x aparece COMPLETO, sin cortarse.` },
+    { type: 'divider' },
+  ];
+  for (const x of EDGE_CALIBRATION_X_POSITIONS_DOTS) {
+    lines.push({ text: `x = ${x} dots:` });
+    lines.push({ type: 'raw', bytes: CMD.ALIGN_LEFT });
+    lines.push({ type: 'raw', bytes: Array.from(strategy.build(solidBits, blockWidth, blockHeight, x)) });
+    lines.push({ type: 'divider' });
+  }
+  lines.push({ text: 'FIN CALIBRACION DE BORDE DERECHO', align: 'center', bold: true });
+
+  return {
+    paperWidthMm,
+    imageMode,
     lines,
     feedLines: 4,
     cut: true,

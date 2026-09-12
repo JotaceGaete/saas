@@ -63,34 +63,44 @@ describe('getColumnsForProfile', () => {
   });
 });
 
+// PRINT-4-BUG10 — `getLogoMaxWidthDots` pasa a derivarse de
+// `profile.effectivePrintableWidthDots` (el ancho REAL calibrado
+// físicamente para imágenes, ver PRINT-4-BUG9/BUG10), NO de
+// `getEffectivePrintableWidthDots` (ese es el ancho de CONTENIDO DE TEXTO,
+// un concepto distinto -- ver comentario de archivo en printerProfile.js).
 describe('getLogoMaxWidthDots', () => {
-  it('nunca es el 100% del ancho efectivo -- deja margen visible a los costados', () => {
+  it('nunca es el 100% de effectivePrintableWidthDots -- deja margen visible a los costados', () => {
     const profile = PRINTER_PROFILES[80];
-    const effective = getEffectivePrintableWidthDots(profile);
     const logoMax = getLogoMaxWidthDots(profile);
-    expect(logoMax).toBeLessThan(effective);
+    expect(logoMax).toBeLessThan(profile.effectivePrintableWidthDots);
   });
 
-  it('usa exactamente la fracción configurada (BUG6: 0.70, bajada de 0.78 en BUG5 -- la prueba física siguió mostrando el logo cortado)', () => {
+  it('usa exactamente la fracción configurada (0.70) sobre effectivePrintableWidthDots, no sobre el ancho de contenido de texto', () => {
     const profile = PRINTER_PROFILES[80];
-    const effective = getEffectivePrintableWidthDots(profile);
     const logoMax = getLogoMaxWidthDots(profile);
-    expect(logoMax).toBe(Math.round(effective * 0.70));
+    expect(logoMax).toBe(Math.round(profile.effectivePrintableWidthDots * 0.70));
+    // asegura que NO se está usando por error el ancho de contenido de texto
+    // (un valor distinto, casi siempre mayor a effectivePrintableWidthDots)
+    expect(logoMax).not.toBe(Math.round(getEffectivePrintableWidthDots(profile) * 0.70));
   });
 
   it('nunca excede 0.70 -- no subir la fracción sin una nueva validación física que lo confirme (tolerancia de +-1 dot por redondeo)', () => {
     for (const profile of Object.values(PRINTER_PROFILES)) {
-      const effective = getEffectivePrintableWidthDots(profile);
       const logoMax = getLogoMaxWidthDots(profile);
-      expect(logoMax).toBeLessThanOrEqual(Math.round(effective * 0.70) + 1);
+      expect(logoMax).toBeLessThanOrEqual(Math.round(profile.effectivePrintableWidthDots * 0.70) + 1);
     }
   });
 
-  it('logo + márgenes nunca exceden el ancho imprimible nominal declarado', () => {
+  it('sin effectivePrintableWidthDots configurado, cae al ancho de contenido de texto (compatibilidad hacia atrás)', () => {
+    const profile = { printableWidthDots: 500, safeMarginDots: 20, logoMaxWidthFraction: 0.70 };
+    const fallbackContentWidth = getEffectivePrintableWidthDots(profile);
+    expect(getLogoMaxWidthDots(profile)).toBe(Math.round(fallbackContentWidth * 0.70));
+  });
+
+  it('logo nunca excede effectivePrintableWidthDots (nunca el ancho nominal completo del papel)', () => {
     for (const profile of Object.values(PRINTER_PROFILES)) {
       const logoMax = getLogoMaxWidthDots(profile);
-      const totalWithMargins = logoMax + profile.safeMarginDots * 2;
-      expect(totalWithMargins).toBeLessThanOrEqual(profile.printableWidthDots);
+      expect(logoMax).toBeLessThanOrEqual(profile.effectivePrintableWidthDots);
     }
   });
 });
@@ -107,7 +117,7 @@ describe('buildLayout', () => {
     expect(Object.keys(layout).sort()).toEqual([
       'contentWidthDots',
       'doubleWidthCharsPerLine',
-      'logoLeftMarginDots',
+      'effectivePrintableWidthDots',
       'logoMaxWidthDots',
       'normalCharsPerLine',
       'paperWidthMm',
@@ -130,39 +140,37 @@ describe('buildLayout', () => {
     }
   });
 
-  it('logoMaxWidthDots nunca excede el 70% de contentWidthDots (tolerancia de redondeo) y nunca llega al 100%', () => {
+  it('logoMaxWidthDots nunca excede el 70% de effectivePrintableWidthDots (tolerancia de redondeo) y nunca llega al 100%', () => {
     for (const paperWidthMm of [80, 58]) {
       const layout = buildLayout(paperWidthMm);
-      expect(layout.logoMaxWidthDots).toBeLessThanOrEqual(Math.ceil(layout.contentWidthDots * 0.70));
-      expect(layout.logoMaxWidthDots).toBeLessThan(layout.contentWidthDots);
+      expect(layout.logoMaxWidthDots).toBeLessThanOrEqual(Math.ceil(layout.effectivePrintableWidthDots * 0.70));
+      expect(layout.logoMaxWidthDots).toBeLessThan(layout.effectivePrintableWidthDots);
     }
   });
 
-  // PRINT-4-BUG6 — `logoLeftMarginDots` es el margen izquierdo EXPLÍCITO
-  // (medido desde la posición física 0 del cabezal) que renderEscPosReceipt
-  // pasa a fetchLogoRaster para hornearlo en el bitmap -- ver
-  // escPosImage.js#padBitsLeft. La invariante pedida explícitamente por el
-  // encargo es logoLeftMarginDots + logoMaxWidthDots <= printableWidthDots
-  // - safeMarginDots (nunca cruza el margen de seguridad derecho).
-  it('logoLeftMarginDots + logoMaxWidthDots nunca excede printableWidthDots - safeMarginDots', () => {
+  // PRINT-4-BUG10 — `effectivePrintableWidthDots` es el ancho REAL
+  // calibrado físicamente (ver PRINT-4-BUG9/BUG10) dentro del cual una
+  // imagen puede posicionarse con `ESC $` sin recortarse -- un concepto
+  // DISTINTO de `contentWidthDots` (ese es para texto). Reemplaza el
+  // margen horneado en píxeles (`logoLeftMarginDots`, BUG6) que la prueba
+  // física de BUG8 descartó por completo.
+  it('effectivePrintableWidthDots nunca excede printableWidthDots (nunca más ancho que el nominal)', () => {
     for (const paperWidthMm of [80, 58]) {
       const layout = buildLayout(paperWidthMm);
-      expect(layout.logoLeftMarginDots + layout.logoMaxWidthDots).toBeLessThanOrEqual(layout.printableWidthDots - layout.safeMarginDots);
+      expect(layout.effectivePrintableWidthDots).toBeLessThanOrEqual(layout.printableWidthDots);
     }
   });
 
-  it('logoLeftMarginDots nunca es menor al margen de seguridad izquierdo', () => {
-    for (const paperWidthMm of [80, 58]) {
-      const layout = buildLayout(paperWidthMm);
-      expect(layout.logoLeftMarginDots).toBeGreaterThanOrEqual(layout.safeMarginDots);
-    }
+  it('a 80mm, effectivePrintableWidthDots coincide con el placeholder calibrado por evidencia física de BUG9 (286, pendiente de calibración exacta)', () => {
+    const layout = buildLayout(80);
+    expect(layout.effectivePrintableWidthDots).toBe(286);
   });
 
-  it('centra la caja del logo dentro de contentWidthDots: logoLeftMarginDots = safeMarginDots + floor((contentWidthDots - logoMaxWidthDots) / 2)', () => {
+  it('effectivePrintableWidthDots viene del perfil, no se recalcula de forma independiente en buildLayout', () => {
     for (const paperWidthMm of [80, 58]) {
       const layout = buildLayout(paperWidthMm);
-      const expected = layout.safeMarginDots + Math.floor((layout.contentWidthDots - layout.logoMaxWidthDots) / 2);
-      expect(layout.logoLeftMarginDots).toBe(expected);
+      const profile = getPrinterProfile(paperWidthMm);
+      expect(layout.effectivePrintableWidthDots).toBe(profile.effectivePrintableWidthDots);
     }
   });
 
