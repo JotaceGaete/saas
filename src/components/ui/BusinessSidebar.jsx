@@ -11,11 +11,44 @@ import { buildWhatsAppUrl } from '../../utils/whatsapp';
 import { openWhatsAppUrl } from '../../utils/openWhatsAppUrl';
 import { SUPPORT_WHATSAPP_NUMBER } from '../../config/support';
 
+// Paso 2 del rediseño de navegación (reorden visual únicamente): las mismas
+// rutas y el mismo gating por plan de siempre, reagrupados sin la sección
+// "Gestión del negocio" como envoltorio único. Cada ítem que antes vivía
+// dentro de ese grupo mantiene su propio `premiumGated: true` para preservar
+// el comportamiento de clic actual (redirige a /planes en plan starter) --
+// antes esa bandera vivía una sola vez en el padre y cubría a todos.
 const NAV_ITEMS = [
-  { label: 'Mi tienda',          path: '/dashboard',              icon: 'Store' },
-  { label: 'Productos',          path: '/product-management',     icon: 'Package' },
+  { label: 'Mi Negocio',         path: '/dashboard',              icon: 'Store' },
+  {
+    label: 'Ventas',
+    path: '/crm/facturas',
+    icon: 'Receipt',
+    premiumGated: true,
+    subItems: [
+      { label: 'Resumen',        path: '/crm' },
+      { label: 'Notas de venta', path: '/crm/facturas' },
+      { label: 'Presupuestos',   path: '/crm/presupuestos' },
+      { label: 'TPV',            path: '/crm/terminal', highlight: true },
+    ],
+  },
+  { label: 'Clientes',           path: '/crm/clientes',           icon: 'Users',   premiumGated: true },
+  {
+    label: 'Caja y Gastos',
+    path: '/crm/caja',
+    icon: 'Wallet',
+    premiumGated: true,
+    subItems: [
+      { label: 'Caja',             path: '/crm/caja' },
+      { label: 'Centro de costos', path: '/crm/costos' },
+      { label: 'Proveedores',      path: '/proveedores' },
+    ],
+  },
+  { label: 'Inventario',         path: '/crm/stock',              icon: 'Boxes',   premiumGated: true },
+  { section: true, label: '—' },
+  { label: 'Catálogo',           path: '/product-management',     icon: 'Package' },
   { label: 'Pedidos',            path: '/orders',                 icon: 'ShoppingCart' },
   { label: 'Historial pedidos',  path: '/orders/historial',       icon: 'History' },
+  { section: true, label: '—' },
   { label: 'Configuración',      path: '/business-configuration', icon: 'Settings' },
   { label: 'Diseño',             path: '/design',                 icon: 'Palette' },
   { label: 'Plan y facturación', path: '/planes',                 icon: 'CreditCard' },
@@ -24,24 +57,6 @@ const NAV_ITEMS = [
   // Mismo mecanismo adminOnly que ya filtra los demás ítems administrativos
   // más abajo -- cuando se abra al público, basta con quitar esta línea.
   { label: 'Afiliados',          path: '/afiliados',              icon: 'Gift', adminOnly: true },
-  { section: true, label: '—' },
-  {
-    label: 'Gestión del negocio',
-    path: '/crm',
-    icon: 'Crown',
-    premiumGated: true,
-    subItems: [
-      { label: 'Resumen',          path: '/crm' },
-      { label: 'Clientes',         path: '/crm/clientes' },
-      { label: 'Presupuestos',     path: '/crm/presupuestos' },
-      { label: 'Notas de venta',   path: '/crm/facturas' },
-      { label: 'TPV',              path: '/crm/terminal', highlight: true },
-      { label: 'Caja',             path: '/crm/caja' },
-      { label: 'Centro de costos', path: '/crm/costos' },
-      { label: 'Inventario',       path: '/crm/stock' },
-      { label: 'Proveedores',      path: '/proveedores' },
-    ],
-  },
 ];
 
 export default function BusinessSidebar({ isCollapsed = false, onCollapsedChange }) {
@@ -58,8 +73,23 @@ export default function BusinessSidebar({ isCollapsed = false, onCollapsedChange
   useEffect(() => { setCollapsed(isCollapsed); }, [isCollapsed]);
   useEffect(() => { setMobileOpen(false); }, [location?.pathname]);
   useEffect(() => {
-    if (location?.pathname?.startsWith('/crm') || location?.pathname?.startsWith('/proveedores')) {
-      setExpandedItems(prev => ({ ...prev, '/crm': true }));
+    // Generalizado para el Paso 2: antes había un único grupo con subItems
+    // ("Gestión del negocio", clave '/crm'); ahora hay dos ("Ventas" y "Caja
+    // y Gastos"), cada uno con su propia clave. Misma idea de siempre --
+    // expandir el grupo cuyo path o el de alguno de sus subItems coincide con
+    // la ruta actual al montar -- generalizada a "cualquier item con
+    // subItems", en vez de hardcodear una sola clave.
+    const pathname = location?.pathname || '';
+    const matchesPath = (path) => pathname === path || pathname.startsWith(`${path}/`);
+    const toExpand = {};
+    NAV_ITEMS.forEach((item) => {
+      if (!item?.subItems) return;
+      const parentMatches = matchesPath(item.path);
+      const someSubMatches = item.subItems.some((sub) => matchesPath(sub.path));
+      if (parentMatches || someSubMatches) toExpand[item.path] = true;
+    });
+    if (Object.keys(toExpand).length > 0) {
+      setExpandedItems(prev => ({ ...prev, ...toExpand }));
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

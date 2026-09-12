@@ -1,11 +1,21 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
 vi.mock('contexts/AuthContext', () => ({
   useAuth: vi.fn(),
 }));
+
+// Solo para el test de navegación de "Notas de venta": los subItems del
+// sidebar son <button onClick={() => navigate(sub.path)}>, no <a href>, así
+// que se verifica llamando al navigate real (mockeado) -- mismo patrón que
+// src/pages/auth-callback/index.test.jsx.
+const navigateMock = vi.fn();
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual('react-router-dom');
+  return { ...actual, useNavigate: () => navigateMock };
+});
 
 import { useAuth } from 'contexts/AuthContext';
 import BusinessSidebar from './BusinessSidebar';
@@ -76,9 +86,70 @@ describe('BusinessSidebar — renombrado de "CRM" y remoción del badge "Premium
     expect(screen.queryByText('Premium')).not.toBeInTheDocument();
   });
 
-  it('muestra el nuevo label en lenguaje llano "Gestión del negocio"', () => {
+});
+
+describe('BusinessSidebar — reorden de la navegación (Paso 2)', () => {
+  it('ya no existe el grupo envoltorio "Gestión del negocio" del Paso 1', () => {
     renderSidebar(false);
-    expect(screen.getAllByText('Gestión del negocio').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Gestión del negocio')).not.toBeInTheDocument();
+  });
+
+  it('ya no muestra las etiquetas anteriores "Mi tienda" / "Productos" (renombradas) en el sidebar principal', () => {
+    // Alcance acotado al <nav> del sidebar: MobileBottomNav (otro componente,
+    // fuera de este paso) tiene su propio ítem "Productos" para /product-management.
+    renderSidebar(false);
+    const nav = screen.getByRole('navigation', { name: /navegación principal/i });
+    expect(within(nav).queryByText('Mi tienda')).not.toBeInTheDocument();
+    expect(within(nav).queryByText('Productos')).not.toBeInTheDocument();
+  });
+
+  it('muestra los nuevos ítems de primer nivel: Mi Negocio, Ventas, Clientes, Caja y Gastos, Inventario, Catálogo', () => {
+    renderSidebar(false);
+    ['Mi Negocio', 'Ventas', 'Clientes', 'Caja y Gastos', 'Inventario', 'Catálogo'].forEach((label) => {
+      expect(screen.getAllByText(label).length).toBeGreaterThan(0);
+    });
+  });
+
+  it('respeta el orden pedido: Mi Negocio, Ventas, Clientes, Caja y Gastos, Inventario, Catálogo, Pedidos, Historial pedidos, Configuración, Diseño, Plan y facturación, Ayuda', () => {
+    renderSidebar(false);
+    const nav = screen.getByRole('navigation', { name: /navegación principal/i });
+    const text = nav.textContent || '';
+    const order = [
+      'Mi Negocio', 'Ventas', 'Clientes', 'Caja y Gastos', 'Inventario',
+      'Catálogo', 'Pedidos', 'Historial pedidos',
+      'Configuración', 'Diseño', 'Plan y facturación', 'Ayuda',
+    ];
+    const indices = order.map((label) => text.indexOf(label));
+    indices.forEach((idx, i) => expect(idx, `"${order[i]}" debería estar presente`).toBeGreaterThan(-1));
+    for (let i = 1; i < indices.length; i++) {
+      expect(indices[i], `"${order[i]}" debería venir después de "${order[i - 1]}"`).toBeGreaterThan(indices[i - 1]);
+    }
+  });
+
+  it('Afiliados sigue siendo el último ítem visible para admin, después de Ayuda', () => {
+    renderSidebar(true);
+    const nav = screen.getByRole('navigation', { name: /navegación principal/i });
+    const text = nav.textContent || '';
+    expect(text.indexOf('Afiliados')).toBeGreaterThan(text.indexOf('Ayuda'));
+  });
+});
+
+describe('BusinessSidebar — "Notas de venta" navegable dentro de Ventas (fix de regresión, Paso 2)', () => {
+  it('al expandir "Ventas" y hacer clic en "Notas de venta", navega a /crm/facturas', () => {
+    // Los subItems son <button onClick={() => navigate(sub.path)}>, no <a href>
+    // -- se verifica la navegación real (mockeada) en vez de un atributo href
+    // que este componente no usa.
+    renderSidebar(false);
+    fireEvent.click(screen.getByText('Ventas'));
+    fireEvent.click(screen.getByText('Notas de venta'));
+    expect(navigateMock).toHaveBeenCalledWith('/crm/facturas');
+  });
+
+  it('"Resumen" (/crm) sigue existiendo sin cambios junto al nuevo "Notas de venta"', () => {
+    renderSidebar(false);
+    fireEvent.click(screen.getByText('Ventas'));
+    expect(screen.getByText('Resumen')).toBeInTheDocument();
+    expect(screen.getByText('Notas de venta')).toBeInTheDocument();
   });
 });
 
