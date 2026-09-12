@@ -168,6 +168,42 @@ export function buildGeometryTestBits(totalWidthDots, blockLeftDots, blockWidthD
   return bits;
 }
 
+/**
+ * PRINT-4-BUG13 — el logo real (circular en el archivo/preview) sale
+ * como un óvalo vertical en la impresión física, pese a que el pipeline
+ * JS (computeFitSize -> rasterizeImage -> ditherFloydSteinberg) preserva
+ * la relación de aspecto matemáticamente en cada paso -- revisado y
+ * confirmado en este mismo bug, sin cambios necesarios ahí. El sospechoso
+ * que queda es la conversión a bandas `ESC *` de 8 dots
+ * (buildTiledColumnBitImageCommand) + el avance vertical `ESC 3 8` entre
+ * ellas: `ESC 3 n` fija el espaciado de línea en `n` UNIDADES DE
+ * MOVIMIENTO VERTICAL, un parámetro de la especificación ESC/POS
+ * DISTINTO del paso horizontal fijo del cabezal de impresión -- si esta
+ * impresora nunca fue calibrada con `GS P` para igualar ambas unidades,
+ * su unidad de movimiento vertical por defecto podría no corresponder a
+ * "8 dots" en el mismo sentido que 8 columnas horizontales, y una imagen
+ * circular saldría alargada verticalmente aun cuando el bitmap enviado
+ * es matemáticamente 1:1. Este círculo relleno (junto con
+ * `buildGeometryTestBits`-style bloques sólidos para el cuadrado) sirve
+ * para medir ese factor físicamente, sin aplicar ninguna compensación
+ * todavía -- ver buildLogoAspectRatioDiagnosticReceipt en
+ * renderEscPosReceipt.js.
+ */
+export function buildFilledCircleBits(diameterDots) {
+  const size = Math.max(1, diameterDots | 0);
+  const bits = new Uint8Array(size * size);
+  const center = (size - 1) / 2;
+  const radius = size / 2;
+  for (let y = 0; y < size; y++) {
+    const dy = y - center;
+    for (let x = 0; x < size; x++) {
+      const dx = x - center;
+      if (dx * dx + dy * dy <= radius * radius) bits[y * size + x] = 1;
+    }
+  }
+  return bits;
+}
+
 const LF = 0x0A;
 const BAND_HEIGHT_DOTS = 8;
 

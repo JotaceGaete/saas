@@ -10,7 +10,7 @@ const {
   buildImageCapabilityDiagnosticReceipt, buildCutCapabilityDiagnosticReceipt,
   buildLogoPositionDiagnosticReceipt, buildLogoGeometryDiagnosticReceipt, buildLogoPositionedDiagnosticReceipt,
   buildRightEdgeCalibrationDiagnosticReceipt, buildRightEdgeFineCalibrationDiagnosticReceipt,
-  buildRightEdgeUltraFineCalibrationDiagnosticReceipt,
+  buildRightEdgeUltraFineCalibrationDiagnosticReceipt, buildLogoAspectRatioDiagnosticReceipt,
   columnsForWidth, wrapText, formatRowLines,
 } = await import('./renderEscPosReceipt');
 const { buildRasterCommand } = await import('./escPosImage');
@@ -1160,5 +1160,86 @@ describe('buildRightEdgeUltraFineCalibrationDiagnosticReceipt — PRINT-4-BUG12'
 
   it('el receipt resultante renderiza sin lanzar', async () => {
     await expect(renderEscPosReceipt(buildRightEdgeUltraFineCalibrationDiagnosticReceipt({ paperWidthMm: 80 }))).resolves.not.toThrow();
+  });
+});
+
+// PRINT-4-BUG13 — con posición/ancho/layout ya validados físicamente, el
+// único problema visible es que un logo circular sale como óvalo
+// vertical. El pipeline JS (computeFitSize/rasterizeImage/dither)
+// preserva la proporción matemáticamente -- confirmado por revisión de
+// código, sin cambios ahí. El sospechoso es la conversión a bandas
+// ESC * + el avance vertical ESC 3 8 entre ellas. Este diagnóstico mide
+// eso físicamente con un cuadrado y un círculo de 100x100, sin aplicar
+// ninguna compensación todavía.
+describe('buildLogoAspectRatioDiagnosticReceipt — PRINT-4-BUG13', () => {
+  const ESC = 0x1B;
+
+  it('produce 2 bloques `raw` de imagen (cuadrado y círculo), cada uno precedido por su propio ALIGN_LEFT', () => {
+    const receipt = buildLogoAspectRatioDiagnosticReceipt({ paperWidthMm: 80 });
+    const rawLines = receipt.lines.filter((l) => l.type === 'raw');
+    expect(rawLines).toHaveLength(4); // 2 formas x (ALIGN_LEFT + comando)
+    expect(rawLines[0].bytes).toEqual([ESC, 0x61, 0x00]);
+    expect(rawLines[2].bytes).toEqual([ESC, 0x61, 0x00]);
+  });
+
+  it('ambas formas miden EXACTAMENTE 100x100 dots lógicos (mismo ancho de datos ESC *, misma cantidad de franjas)', () => {
+    const receipt = buildLogoAspectRatioDiagnosticReceipt({ paperWidthMm: 80 });
+    const rawLines = receipt.lines.filter((l) => l.type === 'raw');
+    const [squareCmd, circleCmd] = [rawLines[1].bytes, rawLines[3].bytes];
+
+    for (const cmd of [squareCmd, circleCmd]) {
+      const headerIdx = cmd.findIndex((b, i) => b === ESC && cmd[i + 1] === 0x2A && cmd[i + 2] === 0x00);
+      expect(cmd[headerIdx + 3]).toBe(100); // nL -- 100 columnas, sin relleno
+      expect(cmd[headerIdx + 4]).toBe(0); // nH
+      // 100 dots de alto / 8 dots por franja = 13 franjas (12 completas + 1 parcial de 4)
+      const lfCount = cmd.filter((b) => b === 0x0A).length;
+      expect(lfCount).toBe(13);
+    }
+  });
+
+  it('ambas formas se centran con el MISMO x (ESC $), reutilizando el mecanismo ya validado en BUG9', () => {
+    const receipt = buildLogoAspectRatioDiagnosticReceipt({ paperWidthMm: 80 });
+    const rawLines = receipt.lines.filter((l) => l.type === 'raw');
+    const [squareCmd, circleCmd] = [rawLines[1].bytes, rawLines[3].bytes];
+
+    const firstX = (cmd) => {
+      const posIdx = cmd.findIndex((b, i) => b === ESC && cmd[i + 1] === 0x24);
+      return cmd[posIdx + 2] + cmd[posIdx + 3] * 256;
+    };
+    const squareX = firstX(squareCmd);
+    const circleX = firstX(circleCmd);
+    expect(squareX).toBe(circleX);
+    expect(squareX).toBeGreaterThanOrEqual(0);
+  });
+
+  it('el círculo tiene menos columnas negras que el cuadrado en la primera franja (banda superior, más angosta que el diámetro completo)', () => {
+    const receipt = buildLogoAspectRatioDiagnosticReceipt({ paperWidthMm: 80 });
+    const rawLines = receipt.lines.filter((l) => l.type === 'raw');
+    const [squareCmd, circleCmd] = [rawLines[1].bytes, rawLines[3].bytes];
+
+    const countNonZeroDataBytes = (cmd) => {
+      const headerIdx = cmd.findIndex((b, i) => b === ESC && cmd[i + 1] === 0x2A && cmd[i + 2] === 0x00);
+      const data = cmd.slice(headerIdx + 5, headerIdx + 5 + 100);
+      return data.filter((b) => b !== 0).length;
+    };
+    // primera franja del cuadrado: 100 columnas, todas con datos (banda sólida completa)
+    expect(countNonZeroDataBytes(squareCmd)).toBe(100);
+    // primera franja del círculo (la "punta" superior): bastante menos que 100
+    expect(countNonZeroDataBytes(circleCmd)).toBeLessThan(100);
+  });
+
+  it('nunca depende de red/Image/canvas/business -- no llama a fetchLogoRaster', async () => {
+    const receipt = buildLogoAspectRatioDiagnosticReceipt({ paperWidthMm: 80 });
+    await renderEscPosReceipt(receipt);
+    expect(fetchLogoRaster).not.toHaveBeenCalled();
+  });
+
+  it('siempre pide corte y nunca genera una venta -- receipt puramente sintético', () => {
+    const receipt = buildLogoAspectRatioDiagnosticReceipt({ paperWidthMm: 80 });
+    expect(receipt.cut).toBe(true);
+  });
+
+  it('el receipt resultante renderiza sin lanzar', async () => {
+    await expect(renderEscPosReceipt(buildLogoAspectRatioDiagnosticReceipt({ paperWidthMm: 80 }))).resolves.not.toThrow();
   });
 });

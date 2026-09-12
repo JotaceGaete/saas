@@ -9,7 +9,7 @@ import {
   buildTestReceipt, buildImageCapabilityDiagnosticReceipt, buildCutCapabilityDiagnosticReceipt,
   buildLogoPositionDiagnosticReceipt, buildLogoGeometryDiagnosticReceipt, buildLogoPositionedDiagnosticReceipt,
   buildRightEdgeCalibrationDiagnosticReceipt, buildRightEdgeFineCalibrationDiagnosticReceipt,
-  buildRightEdgeUltraFineCalibrationDiagnosticReceipt,
+  buildRightEdgeUltraFineCalibrationDiagnosticReceipt, buildLogoAspectRatioDiagnosticReceipt,
 } from 'lib/printing/receipts/renderEscPosReceipt';
 import { buildFinalValidationReceipt } from 'lib/printing/receipts/buildSaleReceipt';
 import { buildPrinterConfigKey, readPrinterConfig, writePrinterConfig } from 'lib/printing/printerConfigStorage';
@@ -193,6 +193,20 @@ export default function CrmPrintSettings() {
     }),
     'Diagnóstico de calibración de borde (8 dots) enviado a la impresora.',
     'No se pudo imprimir el diagnóstico de calibración de 8 dots.',
+  );
+
+  // PRINT-4-BUG13 — con posición/ancho/layout ya validados físicamente,
+  // queda el último problema: un logo circular sale como óvalo vertical.
+  // Este diagnóstico imprime un cuadrado y un círculo de 100x100 dots por
+  // la misma ruta de producción del logo, para medir el factor de
+  // distorsión vertical real (sospecha: el avance ESC 3 8 entre franjas).
+  // No aplica ninguna compensación, no genera ninguna venta.
+  const handlePrintLogoAspectRatioDiagnostic = () => runDiagnosticPrint(
+    () => buildLogoAspectRatioDiagnosticReceipt({
+      paperWidthMm: config.paperWidthMm, imageMode: config.imageMode,
+    }),
+    'Diagnóstico de aspecto (cuadrado/círculo) enviado a la impresora.',
+    'No se pudo imprimir el diagnóstico de aspecto.',
   );
 
   // PRINT-4-BUG3 — ejercita el camino de producción completo (logo real +
@@ -436,6 +450,23 @@ export default function CrmPrintSettings() {
               Imprime 6 bloques de solo 8 dots en x=448, 452, 456, 460, 464 y 468 (sin relleno). Usa
               este diagnóstico si la calibración fina anterior salió completa en las 6 posiciones:
               busca el límite más allá de 440 sin acercarse a la zona de wrap confirmada en 480.
+            </p>
+          </div>
+
+          <div className="mt-2">
+            <button
+              type="button"
+              onClick={handlePrintLogoAspectRatioDiagnostic}
+              disabled={!canPrint}
+              className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-300 px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+            >
+              <Icon name={printing ? 'Loader2' : 'Circle'} size={15} className={printing ? 'animate-spin' : ''} />
+              Diagnóstico de aspecto (cuadrado/círculo)
+            </button>
+            <p className="mt-1.5 text-xs text-slate-400">
+              Imprime un cuadrado y un círculo de 100x100 dots por la misma ruta del logo real. Si
+              salen alargados verticalmente, mide la relación alto/ancho física: ese es el factor de
+              corrección vertical necesario. Úsalo si un logo circular sale como óvalo en el ticket.
             </p>
           </div>
 

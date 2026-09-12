@@ -17,9 +17,10 @@ import { formatMoney } from 'utils/formatMoney';
 import { fetchLogoRaster } from './fetchLogoRaster';
 import {
   buildRasterCommand, buildVerticalMarkerBits, buildGeometryTestBits, buildTiledColumnBitImageCommand,
+  buildFilledCircleBits,
 } from './escPosImage';
 import { GRAPHICS_STRATEGIES, CUT_STRATEGIES, getGraphicsStrategy } from './escPosCapabilities';
-import { buildLayout } from './printerProfile';
+import { buildLayout, clampXDotsToPrintableArea } from './printerProfile';
 
 const ESC = 0x1B;
 const GS = 0x1D;
@@ -821,4 +822,81 @@ export function buildRightEdgeUltraFineCalibrationDiagnosticReceipt({ paperWidth
     title: 'CALIBRACION DE BORDE 8 DOTS (ESC $)',
     footer: 'FIN CALIBRACION DE BORDE 8 DOTS',
   });
+}
+
+const ASPECT_RATIO_TEST_SIZE_DOTS = 100;
+
+/**
+ * PRINT-4-BUG13 — con posicionamiento, ancho efectivo y layout del ticket
+ * ya validados físicamente (BUG9-BUG12), queda un único problema visible:
+ * el logo de Bonita Casualidad es circular en el archivo/preview, pero
+ * físicamente sale como un óvalo vertical. Revisión de código (sin
+ * cambios, solo verificación) de todo el pipeline ANTES de este
+ * diagnóstico:
+ *   - computeFitSize (fetchLogoRaster.js): preserva la relación de
+ *     aspecto matemáticamente -- confirmado, sin cambios.
+ *   - rasterizeImage (fetchLogoRaster.js): dibuja sobre un canvas de
+ *     EXACTAMENTE `width x height` (las dimensiones ya ajustadas) --
+ *     mapeo 1:1, no introduce ninguna distorsión.
+ *   - ditherFloydSteinberg (escPosImage.js): opera píxel a píxel, nunca
+ *     redimensiona.
+ *   - `bits`/`width`/`height` llegan sin modificar a `strategy.build`.
+ * Es decir: el pipeline JS completo preserva la proporción del logo
+ * matemáticamente hasta el último byte antes de construir el comando
+ * ESC/POS. El único sospechoso que queda es la conversión a bandas
+ * `ESC *` de 8 dots (buildTiledColumnBitImageCommand) + el avance
+ * vertical `ESC 3 8` entre ellas: `ESC 3 n` fija el espaciado de línea en
+ * `n` UNIDADES DE MOVIMIENTO VERTICAL -- un parámetro de la
+ * especificación ESC/POS que es, en general, INDEPENDIENTE del paso
+ * horizontal fijo del cabezal de impresión (`GS P` existe justamente para
+ * igualarlos, y este código nunca lo llama). Si el motor de avance de
+ * papel de esta impresora tiene una unidad de movimiento vertical por
+ * defecto más grande que "un dot horizontal equivalente", cada franja de
+ * 8 dots de alto avanzaría físicamente MÁS de 8 dots -- una imagen
+ * circular saldría alargada verticalmente aunque el bitmap enviado sea
+ * matemáticamente 1:1, exactamente el síntoma reportado.
+ *
+ * Este diagnóstico imprime, por la MISMA ruta de producción del logo
+ * (`buildTiledColumnBitImageCommand` vía `getGraphicsStrategy`, con el
+ * mismo `ESC $` ya validado en BUG9 para centrar): un cuadrado negro de
+ * `ASPECT_RATIO_TEST_SIZE_DOTS` (100x100 dots) y, debajo, un círculo
+ * relleno inscripto en un canvas de 100x100 (buildFilledCircleBits). Si
+ * el cuadrado sale físicamente más alto que ancho (o el círculo sale
+ * ovalado), la relación medida (alto real / 100 dots teóricos) es
+ * exactamente el factor de corrección vertical que haría falta -- no se
+ * aplica ninguna compensación todavía. No genera ninguna venta ni toca el
+ * flujo de cobro.
+ */
+export function buildLogoAspectRatioDiagnosticReceipt({ paperWidthMm = 80, imageMode } = {}) {
+  const layout = buildLayout(paperWidthMm);
+  const strategy = getGraphicsStrategy(imageMode);
+  const size = ASPECT_RATIO_TEST_SIZE_DOTS;
+  const x = clampXDotsToPrintableArea(layout.effectivePrintableWidthDots, size, Math.floor((layout.effectivePrintableWidthDots - size) / 2));
+
+  const squareBits = new Uint8Array(size * size).fill(1);
+  const circleBits = buildFilledCircleBits(size);
+
+  const lines = [
+    { text: 'DIAGNOSTICO DE ASPECTO (ESC *)', align: 'center', bold: true },
+    { type: 'divider' },
+    { text: `Cuadrado y circulo de ${size}x${size} dots teoricos. Medi ancho y alto FISICOS de cada uno: si no son iguales, esa relacion es la distorsion vertical real.` },
+    { type: 'divider' },
+    { text: `Cuadrado ${size}x${size} (x = ${x} dots):` },
+    { type: 'raw', bytes: CMD.ALIGN_LEFT },
+    { type: 'raw', bytes: Array.from(strategy.build(squareBits, size, size, x)) },
+    { type: 'divider' },
+    { text: `Circulo inscripto en ${size}x${size} (x = ${x} dots):` },
+    { type: 'raw', bytes: CMD.ALIGN_LEFT },
+    { type: 'raw', bytes: Array.from(strategy.build(circleBits, size, size, x)) },
+    { type: 'divider' },
+    { text: 'FIN DIAGNOSTICO DE ASPECTO', align: 'center', bold: true },
+  ];
+
+  return {
+    paperWidthMm,
+    imageMode,
+    lines,
+    feedLines: 4,
+    cut: true,
+  };
 }

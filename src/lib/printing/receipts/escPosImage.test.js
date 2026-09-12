@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   rgbaToGrayscale, ditherFloydSteinberg, buildRasterCommand, buildColumnBitImageCommand,
   buildTiledColumnBitImageCommand, buildVerticalMarkerBits, buildGeometryTestBits,
-  buildAbsolutePositionCommand,
+  buildAbsolutePositionCommand, buildFilledCircleBits,
 } from './escPosImage';
 
 // Todo este archivo trabaja sobre arrays de píxeles fijos -- ninguna de
@@ -489,5 +489,63 @@ describe('buildAbsolutePositionCommand — PRINT-4-BUG9 (ESC $ nL nH)', () => {
 
   it('offset 0 (bloque IZQUIERDA) produce nL=0, nH=0', () => {
     expect(buildAbsolutePositionCommand(0)).toEqual([ESC, 0x24, 0, 0]);
+  });
+});
+
+// PRINT-4-BUG13 — el logo real (circular en preview) sale como óvalo
+// vertical impreso, pese a que el pipeline JS preserva la relación de
+// aspecto matemáticamente. `buildFilledCircleBits` es un círculo
+// rasterizado puro (sin canvas real) para el diagnóstico de aspecto:
+// estos tests solo confirman que el círculo GENERADO es matemáticamente
+// correcto -- la pregunta real (si la impresora lo distorsiona) solo la
+// responde la prueba física.
+describe('buildFilledCircleBits — PRINT-4-BUG13 (círculo puro para el diagnóstico de aspecto)', () => {
+  it('el centro está encendido', () => {
+    const bits = buildFilledCircleBits(11);
+    const center = 5; // (11-1)/2
+    expect(bits[center * 11 + center]).toBe(1);
+  });
+
+  it('las cuatro esquinas están apagadas -- un círculo nunca llega a las esquinas del cuadrado que lo contiene', () => {
+    const size = 20;
+    const bits = buildFilledCircleBits(size);
+    expect(bits[0]).toBe(0); // esquina superior izquierda
+    expect(bits[size - 1]).toBe(0); // esquina superior derecha
+    expect(bits[(size - 1) * size]).toBe(0); // esquina inferior izquierda
+    expect(bits[size * size - 1]).toBe(0); // esquina inferior derecha
+  });
+
+  it('es simétrico horizontal y verticalmente (la fila/columna del medio son espejo)', () => {
+    const size = 21; // impar, para tener una fila/columna central exacta
+    const bits = buildFilledCircleBits(size);
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const mirroredX = size - 1 - x;
+        const mirroredY = size - 1 - y;
+        expect(bits[y * size + x]).toBe(bits[y * size + mirroredX]);
+        expect(bits[y * size + x]).toBe(bits[mirroredY * size + x]);
+      }
+    }
+  });
+
+  it('la proporción de píxeles encendidos se aproxima al área de un círculo (pi*r^2 / size^2 ~= 0.785)', () => {
+    const size = 100;
+    const bits = buildFilledCircleBits(size);
+    const filled = bits.reduce((sum, b) => sum + b, 0);
+    const ratio = filled / (size * size);
+    expect(ratio).toBeGreaterThan(0.7);
+    expect(ratio).toBeLessThan(0.85);
+  });
+
+  it('el ancho y el alto lógicos son iguales (size x size) -- cualquier distorsión observada físicamente NO viene de estos datos', () => {
+    const size = 100;
+    const bits = buildFilledCircleBits(size);
+    expect(bits.length).toBe(size * size);
+  });
+
+  it('nunca lanza con tamaños chicos o inválidos', () => {
+    expect(() => buildFilledCircleBits(1)).not.toThrow();
+    expect(() => buildFilledCircleBits(0)).not.toThrow();
+    expect(() => buildFilledCircleBits(-5)).not.toThrow();
   });
 });
