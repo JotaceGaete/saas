@@ -8,7 +8,7 @@ const { fetchLogoRaster } = await import('./fetchLogoRaster');
 const {
   renderEscPosReceipt, buildTestReceipt, buildRasterDiagnosticReceipt,
   buildImageCapabilityDiagnosticReceipt, buildCutCapabilityDiagnosticReceipt,
-  buildLogoPositionDiagnosticReceipt,
+  buildLogoPositionDiagnosticReceipt, buildLogoGeometryDiagnosticReceipt,
   columnsForWidth, wrapText, formatRowLines,
 } = await import('./renderEscPosReceipt');
 const { buildRasterCommand } = await import('./escPosImage');
@@ -530,6 +530,91 @@ describe('buildLogoPositionDiagnosticReceipt — PRINT-4-BUG6', () => {
     vi.mocked(fetchLogoRaster).mockResolvedValue(null);
     await expect(renderEscPosReceipt(buildLogoPositionDiagnosticReceipt({ business: { logoUrl: 'https://x/logo.png' } }))).resolves.not.toThrow();
     await expect(renderEscPosReceipt(buildLogoPositionDiagnosticReceipt({ business: {} }))).resolves.not.toThrow();
+  });
+});
+
+// PRINT-4-BUG8 — BUG7 no resolvió el corrimiento físico (el logo real
+// sigue apareciendo corrido al extremo derecho). Este diagnóstico imprime
+// tres bloques de posición absoluta conocida (izquierda/centro/derecha)
+// por la MISMA ruta ESC * del logo, para que una prueba física --no más
+// teoría-- diga dónde aparece realmente cada uno.
+describe('buildLogoGeometryDiagnosticReceipt — PRINT-4-BUG8', () => {
+  it('produce exactamente 3 bloques rasterBytes, con offsets teóricos distintos: 0, centro y width-blockWidth', () => {
+    const layout = buildLayout(80);
+    const receipt = buildLogoGeometryDiagnosticReceipt({ paperWidthMm: 80 });
+    const rasterLines = receipt.lines.filter((l) => l.type === 'rasterBytes');
+    expect(rasterLines).toHaveLength(3);
+
+    const labelLines = receipt.lines.filter((l) => l.text?.startsWith('Bloque '));
+    expect(labelLines).toHaveLength(3);
+    expect(labelLines[0].text).toContain('IZQUIERDA (offset teorico: 0 dots)');
+    expect(labelLines[2].text).toMatch(new RegExp(`DERECHA \\(offset teorico: ${layout.printableWidthDots - 60} dots\\)`));
+    // el offset del centro debe quedar estrictamente entre 0 y el de la derecha
+    const centerMatch = labelLines[1].text.match(/offset teorico: (\d+) dots/);
+    const centerOffset = Number(centerMatch[1]);
+    expect(centerOffset).toBeGreaterThan(0);
+    expect(centerOffset).toBeLessThan(layout.printableWidthDots - 60);
+  });
+
+  it('cada bloque, dentro de cada franja, suma exactamente printableWidthDots de columnas ESC * (misma fragmentación de BUG7)', () => {
+    const layout = buildLayout(80);
+    const receipt = buildLogoGeometryDiagnosticReceipt({ paperWidthMm: 80 });
+    const rasterLines = receipt.lines.filter((l) => l.type === 'rasterBytes');
+    const LF = 0x0A;
+    for (const rasterLine of rasterLines) {
+      const cmd = Array.from(rasterLine.command);
+      const bandEnds = [-1, ...cmd.map((b, i) => (b === LF ? i : -1)).filter((i) => i >= 0)];
+      for (let b = 0; b < bandEnds.length - 1; b++) {
+        const band = cmd.slice(bandEnds[b] + 1, bandEnds[b + 1]);
+        let bandWidth = 0;
+        for (let i = 0; i < band.length - 4; i++) {
+          if (band[i] === ESC && band[i + 1] === 0x2A && band[i + 2] === 0x00) {
+            bandWidth += band[i + 3] + band[i + 4] * 256;
+          }
+        }
+        expect(bandWidth).toBe(layout.printableWidthDots);
+      }
+    }
+  });
+
+  it('el bloque IZQUIERDA tiene su bit de bloque pegado a la marca de columna 0 (offset 0, sin margen adicional)', () => {
+    // Reconstruye la primera fila de píxeles del primer bloque a partir de
+    // los datos ESC * y confirma que las columnas iniciales (marca + bloque
+    // fundidos) están encendidas sin ningún hueco en blanco entre medio.
+    const receipt = buildLogoGeometryDiagnosticReceipt({ paperWidthMm: 80 });
+    const [leftBlockLine] = receipt.lines.filter((l) => l.type === 'rasterBytes');
+    const cmd = Array.from(leftBlockLine.command);
+    // Primer comando ESC * de la primera franja: [ESC,0x2A,0x00,nL,nH,d0,d1,...]
+    const headerIndex = cmd.findIndex((b, i) => b === ESC && cmd[i + 1] === 0x2A && cmd[i + 2] === 0x00);
+    const nL = cmd[headerIndex + 3];
+    const firstColumnByte = cmd[headerIndex + 5]; // primera columna de datos (byte vertical de 8 dots)
+    expect(nL).toBeGreaterThan(0);
+    expect(firstColumnByte).not.toBe(0x00); // fila superior de la marca/bloque -> bit prendido en la primera columna
+  });
+
+  it('nunca depende de red/Image/canvas ni de un negocio -- no llama a fetchLogoRaster', async () => {
+    const receipt = buildLogoGeometryDiagnosticReceipt({ paperWidthMm: 80 });
+    await renderEscPosReceipt(receipt);
+    expect(fetchLogoRaster).not.toHaveBeenCalled();
+  });
+
+  it('usa printableWidthDots distinto para 58mm y 80mm -- sin hardcodear una única impresora', () => {
+    const layout58 = buildLayout(58);
+    const layout80 = buildLayout(80);
+    const receipt58 = buildLogoGeometryDiagnosticReceipt({ paperWidthMm: 58 });
+    const receipt80 = buildLogoGeometryDiagnosticReceipt({ paperWidthMm: 80 });
+    expect(receipt58.paperWidthMm).toBe(58);
+    expect(receipt80.paperWidthMm).toBe(80);
+    expect(layout58.printableWidthDots).toBeLessThan(layout80.printableWidthDots);
+  });
+
+  it('siempre pide corte y nunca genera una venta -- receipt puramente sintético', () => {
+    const receipt = buildLogoGeometryDiagnosticReceipt({ paperWidthMm: 80 });
+    expect(receipt.cut).toBe(true);
+  });
+
+  it('el receipt resultante renderiza sin lanzar', async () => {
+    await expect(renderEscPosReceipt(buildLogoGeometryDiagnosticReceipt({ paperWidthMm: 80 }))).resolves.not.toThrow();
   });
 });
 

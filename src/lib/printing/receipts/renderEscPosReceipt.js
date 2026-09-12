@@ -15,7 +15,7 @@
 
 import { formatMoney } from 'utils/formatMoney';
 import { fetchLogoRaster } from './fetchLogoRaster';
-import { buildRasterCommand, buildVerticalMarkerBits } from './escPosImage';
+import { buildRasterCommand, buildVerticalMarkerBits, buildGeometryTestBits } from './escPosImage';
 import { GRAPHICS_STRATEGIES, CUT_STRATEGIES, getGraphicsStrategy } from './escPosCapabilities';
 import { buildLayout } from './printerProfile';
 
@@ -529,6 +529,77 @@ export function buildLogoPositionDiagnosticReceipt({ business, paperWidthMm = 80
   lines.push({ type: 'rasterBytes', command: strategy.build(rightMarkerBits, layout.printableWidthDots, LOGO_DIAGNOSTIC_MARKER_HEIGHT_DOTS) });
   lines.push({ type: 'divider' });
   lines.push({ text: 'FIN DIAGNOSTICO DE LOGO', align: 'center', bold: true });
+
+  return {
+    paperWidthMm,
+    imageMode,
+    lines,
+    feedLines: 4,
+    cut: true,
+  };
+}
+
+const GEOMETRY_TEST_BLOCK_WIDTH_DOTS = 60; // ~7.5mm a 203dpi -- visible, con margen de sobra a ambos lados
+const GEOMETRY_TEST_BLOCK_HEIGHT_DOTS = 40; // 5 franjas de 8 dots
+const GEOMETRY_TEST_MARK_THICKNESS_DOTS = 8;
+
+/**
+ * PRINT-4-BUG8 — BUG7 (fragmentar `ESC *` en bloques <=255 columnas) NO
+ * resolvió el corrimiento físico reportado: el logo real sigue apareciendo
+ * corrido al extremo derecho pese a la reducción de ancho, el margen
+ * horneado en el bitmap, el abandono de `ESC a 1` y la fragmentación en
+ * bloques. Se agotó lo que se puede corregir por análisis de código o
+ * tests -- hace falta una prueba física que revele, SIN NINGUNA suposición
+ * sobre el firmware, dónde aparece realmente un bitmap enviado por la
+ * MISMA ruta `ESC *` que usa el logo (`buildTiledColumnBitImageCommand`,
+ * vía `getGraphicsStrategy`/`escPosCapabilities` -- ningún código nuevo).
+ *
+ * Imprime tres imágenes independientes, cada una del ancho físico
+ * completo (`layout.printableWidthDots`, que a 80mm ya excede 255 dots y
+ * por lo tanto ejercita la misma fragmentación en bloques de BUG7) y cada
+ * una con:
+ *   - una marca de `GEOMETRY_TEST_MARK_THICKNESS_DOTS` en la columna 0
+ *     (el origen físico teórico del comando);
+ *   - una marca igual en la última columna (el borde físico teórico);
+ *   - UN bloque negro de prueba en una posición teórica distinta por
+ *     imagen: alineado a la izquierda (offset 0), centrado matemáticamente
+ *     ((printableWidthDots-ancho)/2), y alineado a la derecha
+ *     (printableWidthDots-ancho).
+ *
+ * Si el bloque "izquierda" no aparece pegado a la marca de columna 0, el
+ * problema es más fundamental que `logoLeftMarginDots` (el propio origen
+ * de coordenadas del comando no es lo que se asume, y hace falta
+ * posicionamiento horizontal explícito -- p. ej. `ESC $ nL nH` -- en vez
+ * de un margen horneado en píxeles). Si "derecha" muestra una
+ * discontinuidad justo en el borde entre los bloques de 255 columnas de
+ * BUG7, confirma que esos bloques NO se están concatenando horizontalmente
+ * en esta emulación. No genera ninguna venta ni toca el flujo de cobro.
+ */
+export function buildLogoGeometryDiagnosticReceipt({ paperWidthMm = 80, imageMode } = {}) {
+  const layout = buildLayout(paperWidthMm);
+  const strategy = getGraphicsStrategy(imageMode);
+  const width = layout.printableWidthDots;
+  const blockWidth = Math.min(GEOMETRY_TEST_BLOCK_WIDTH_DOTS, Math.max(1, width - 2 * GEOMETRY_TEST_MARK_THICKNESS_DOTS));
+
+  const positions = [
+    { label: 'IZQUIERDA', left: 0 },
+    { label: 'CENTRO MATEMATICO', left: Math.floor((width - blockWidth) / 2) },
+    { label: 'DERECHA', left: width - blockWidth },
+  ];
+
+  const lines = [
+    { text: 'DIAGNOSTICO DE GEOMETRIA (ESC *)', align: 'center', bold: true },
+    { type: 'divider' },
+    { text: `Ancho de referencia: ${width} dots. Cada bloque negro debe verse EXACTAMENTE en la posicion indicada, entre la marca de columna 0 y la marca de la ultima columna.` },
+    { type: 'divider' },
+  ];
+  for (const { label, left } of positions) {
+    const bits = buildGeometryTestBits(width, left, blockWidth, GEOMETRY_TEST_BLOCK_HEIGHT_DOTS, GEOMETRY_TEST_MARK_THICKNESS_DOTS);
+    lines.push({ text: `Bloque ${label} (offset teorico: ${left} dots):` });
+    lines.push({ type: 'rasterBytes', command: strategy.build(bits, width, GEOMETRY_TEST_BLOCK_HEIGHT_DOTS) });
+    lines.push({ type: 'divider' });
+  }
+  lines.push({ text: 'FIN DIAGNOSTICO DE GEOMETRIA', align: 'center', bold: true });
 
   return {
     paperWidthMm,

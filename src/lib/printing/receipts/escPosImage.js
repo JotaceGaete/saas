@@ -159,6 +159,36 @@ export function buildVerticalMarkerBits(totalWidthDots, markColumnDots, heightDo
   return bits;
 }
 
+/**
+ * PRINT-4-BUG8 — BUG7 (fragmentar `ESC *` en bloques <=255 columnas) NO
+ * resolvió el corrimiento físico reportado: el logo real sigue apareciendo
+ * corrido al extremo derecho. En vez de seguir ajustando por teoría, este
+ * bitmap arma, en UNA sola imagen del ancho físico completo
+ * (`totalWidthDots`), una marca en la columna 0 (el origen teórico), una
+ * marca en la última columna (el borde teórico) y un bloque negro de
+ * prueba en `blockLeftDots` -- así una prueba física puede leer
+ * directamente, sin ninguna suposición sobre el firmware, dónde aparece
+ * realmente cada posición. Reutiliza la MISMA ruta de construcción de
+ * bits que cualquier otro diagnóstico/logo -- nada de esto depende de
+ * `padBitsLeft` ni de ninguna lógica de centrado, es geometría absoluta.
+ */
+export function buildGeometryTestBits(totalWidthDots, blockLeftDots, blockWidthDots, heightDots, markThicknessDots = 8) {
+  const width = Math.max(1, totalWidthDots | 0);
+  const height = Math.max(1, heightDots | 0);
+  const markThickness = Math.max(1, Math.min(width, markThicknessDots | 0));
+  const blockWidth = Math.max(1, blockWidthDots | 0);
+  const blockLeft = Math.max(0, Math.min(width - 1, blockLeftDots | 0));
+  const blockRight = Math.min(width, blockLeft + blockWidth);
+  const bits = new Uint8Array(width * height);
+  for (let y = 0; y < height; y++) {
+    const row = y * width;
+    for (let x = 0; x < markThickness; x++) bits[row + x] = 1; // marca IZQUIERDA: columna 0..markThickness
+    for (let x = Math.max(0, width - markThickness); x < width; x++) bits[row + x] = 1; // marca DERECHA: última(s) columna(s)
+    for (let x = blockLeft; x < blockRight; x++) bits[row + x] = 1; // bloque de prueba en la posición a verificar
+  }
+  return bits;
+}
+
 const LF = 0x0A;
 const BAND_HEIGHT_DOTS = 8;
 

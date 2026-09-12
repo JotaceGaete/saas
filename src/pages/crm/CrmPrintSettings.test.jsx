@@ -207,6 +207,29 @@ describe('CrmPrintSettings — imprimir ticket de prueba', () => {
     expect(screen.getByRole('button', { name: /Diagnóstico de logo/ })).toBeDisabled();
   });
 
+  it('PRINT-4-BUG8: el diagnóstico de geometría imprime 3 bloques rasterBytes en posiciones distintas, y pide corte', async () => {
+    render(<CrmPrintSettings />);
+    await screen.findByText('Conectado');
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'Impresora A' } });
+
+    const diagButton = screen.getByRole('button', { name: /Diagnóstico de geometría/ });
+    expect(diagButton).not.toBeDisabled();
+    fireEvent.click(diagButton);
+
+    await waitFor(() => expect(printReceiptMock).toHaveBeenCalledTimes(1));
+    const [receipt, target] = printReceiptMock.mock.calls[0];
+    expect(target).toEqual({ printerName: 'Impresora A' });
+    expect(receipt.lines.filter((l) => l.type === 'rasterBytes')).toHaveLength(3);
+    expect(receipt.cut).toBe(true);
+    expect(await screen.findByText('Diagnóstico de geometría enviado a la impresora.')).toBeInTheDocument();
+  });
+
+  it('el diagnóstico de geometría está deshabilitado sin impresora seleccionada', async () => {
+    render(<CrmPrintSettings />);
+    await screen.findByText('Conectado');
+    expect(screen.getByRole('button', { name: /Diagnóstico de geometría/ })).toBeDisabled();
+  });
+
   it('PRINT-4-BUG3: la impresión final de validación imprime un ticket completo (logo, items, TOTAL, corte) con datos sintéticos', async () => {
     render(<CrmPrintSettings />);
     await screen.findByText('Conectado');

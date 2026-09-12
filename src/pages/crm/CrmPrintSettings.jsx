@@ -7,7 +7,7 @@ import Icon from 'components/AppIcon';
 import { printService } from 'lib/printing/printService';
 import {
   buildTestReceipt, buildImageCapabilityDiagnosticReceipt, buildCutCapabilityDiagnosticReceipt,
-  buildLogoPositionDiagnosticReceipt,
+  buildLogoPositionDiagnosticReceipt, buildLogoGeometryDiagnosticReceipt,
 } from 'lib/printing/receipts/renderEscPosReceipt';
 import { buildFinalValidationReceipt } from 'lib/printing/receipts/buildSaleReceipt';
 import { buildPrinterConfigKey, readPrinterConfig, writePrinterConfig } from 'lib/printing/printerConfigStorage';
@@ -126,6 +126,19 @@ export default function CrmPrintSettings() {
     }),
     'Diagnóstico de logo enviado a la impresora.',
     'No se pudo imprimir el diagnóstico de logo.',
+  );
+
+  // PRINT-4-BUG8 — el corrimiento hacia la derecha persistió pese a BUG6/BUG7:
+  // este diagnóstico imprime tres bloques de posición absoluta conocida
+  // (izquierda/centro/derecha) por la MISMA ruta ESC * del logo, para
+  // verificar físicamente -- sin ninguna suposición sobre el firmware --
+  // dónde aparece realmente cada uno. No genera ninguna venta.
+  const handlePrintLogoGeometryDiagnostic = () => runDiagnosticPrint(
+    () => buildLogoGeometryDiagnosticReceipt({
+      paperWidthMm: config.paperWidthMm, imageMode: config.imageMode,
+    }),
+    'Diagnóstico de geometría enviado a la impresora.',
+    'No se pudo imprimir el diagnóstico de geometría.',
   );
 
   // PRINT-4-BUG3 — ejercita el camino de producción completo (logo real +
@@ -281,6 +294,24 @@ export default function CrmPrintSettings() {
               Imprime una marca en el margen izquierdo esperado, el logo real del negocio y una marca
               en el margen derecho esperado. Úsalo si el logo del ticket real sale cortado o
               desplazado: si el logo toca o pasa alguna marca, avisa antes de repetir la prueba física.
+            </p>
+          </div>
+
+          <div className="mt-2">
+            <button
+              type="button"
+              onClick={handlePrintLogoGeometryDiagnostic}
+              disabled={!canPrint}
+              className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-300 px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+            >
+              <Icon name={printing ? 'Loader2' : 'Ruler'} size={15} className={printing ? 'animate-spin' : ''} />
+              Diagnóstico de geometría (ESC *)
+            </button>
+            <p className="mt-1.5 text-xs text-slate-400">
+              Imprime 3 bloques negros en posiciones exactas conocidas (izquierda, centro, derecha),
+              entre marcas de columna 0 y de la última columna, usando la misma ruta ESC * del logo.
+              Úsalo si el diagnóstico de logo sigue mostrando el logo desplazado: revela físicamente
+              dónde empieza realmente cada bloque, sin depender de ninguna suposición sobre esta impresora.
             </p>
           </div>
 

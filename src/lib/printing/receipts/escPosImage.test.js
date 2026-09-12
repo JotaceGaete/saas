@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   rgbaToGrayscale, ditherFloydSteinberg, buildRasterCommand, buildColumnBitImageCommand,
-  buildTiledColumnBitImageCommand, padBitsLeft, buildVerticalMarkerBits,
+  buildTiledColumnBitImageCommand, padBitsLeft, buildVerticalMarkerBits, buildGeometryTestBits,
 } from './escPosImage';
 
 // Todo este archivo trabaja sobre arrays de píxeles fijos -- ninguna de
@@ -347,5 +347,60 @@ describe('buildVerticalMarkerBits — PRINT-4-BUG6 (diagnóstico de margen)', ()
 
   it('una columna negativa se recorta a 0 en vez de lanzar', () => {
     expect(() => buildVerticalMarkerBits(10, -3, 2, 2)).not.toThrow();
+  });
+});
+
+// PRINT-4-BUG8 — BUG7 no resolvió el corrimiento físico del logo (sigue
+// apareciendo corrido al extremo derecho). `buildGeometryTestBits` es
+// geometría absoluta, sin ninguna lógica de centrado/margen -- solo
+// confirma que el bitmap generado tiene el bloque de prueba EXACTAMENTE
+// donde se le pide, para que la prueba física (no el análisis de código)
+// diga si la impresora lo respeta.
+describe('buildGeometryTestBits — PRINT-4-BUG8 (geometría absoluta para el diagnóstico físico)', () => {
+  it('marca la columna 0..markThicknessDots (izquierda) y las últimas markThicknessDots columnas (derecha), en toda fila', () => {
+    const bits = buildGeometryTestBits(20, 100, 1, 2, 3); // bloque fuera de rango a propósito -- no debe afectar las marcas
+    for (let y = 0; y < 2; y++) {
+      const row = Array.from(bits.slice(y * 20, y * 20 + 20));
+      expect(row.slice(0, 3)).toEqual([1, 1, 1]); // marca izquierda
+      expect(row.slice(17, 20)).toEqual([1, 1, 1]); // marca derecha
+    }
+  });
+
+  it('enciende exactamente el bloque de prueba en [blockLeftDots, blockLeftDots+blockWidthDots)', () => {
+    const bits = buildGeometryTestBits(30, 10, 5, 1, 2);
+    const row = Array.from(bits);
+    // marcas: [0,1] y [28,29]; bloque: [10..14]
+    expect(row).toEqual([
+      1, 1, 0, 0, 0, 0, 0, 0, 0, 0, // 0-9 (marca izquierda en 0-1)
+      1, 1, 1, 1, 1, 0, 0, 0, 0, 0, // 10-19 (bloque en 10-14)
+      0, 0, 0, 0, 0, 0, 0, 0, 1, 1, // 20-29 (marca derecha en 28-29)
+    ]);
+  });
+
+  it('un bloque a la izquierda (offset 0) queda pegado a la marca izquierda; uno a la derecha (offset width-blockWidth) queda pegado a la marca derecha', () => {
+    const width = 40;
+    const blockWidth = 6;
+    const leftBits = Array.from(buildGeometryTestBits(width, 0, blockWidth, 1, 2));
+    const rightBits = Array.from(buildGeometryTestBits(width, width - blockWidth, blockWidth, 1, 2));
+    // bloque izquierda se funde con la marca izquierda -> primeras 6 columnas encendidas (marca de 2 + bloque de 6, se superponen en 0-1)
+    expect(leftBits.slice(0, 6)).toEqual([1, 1, 1, 1, 1, 1]);
+    // bloque derecha se funde con la marca derecha -> últimas 6 columnas encendidas
+    expect(rightBits.slice(-6)).toEqual([1, 1, 1, 1, 1, 1]);
+  });
+
+  it('un bloque centrado matemáticamente queda a igual distancia de ambas marcas', () => {
+    const width = 100;
+    const blockWidth = 10;
+    const left = Math.floor((width - blockWidth) / 2); // 45
+    const bits = Array.from(buildGeometryTestBits(width, left, blockWidth, 1, 8));
+    const firstBlockCol = bits.findIndex((b, i) => b === 1 && i >= 8 && i < width - 8);
+    const lastBlockCol = width - 8 - 1 - Array.from(bits.slice(8, width - 8)).reverse().findIndex((b) => b === 1);
+    expect(firstBlockCol).toBe(left);
+    expect(lastBlockCol).toBe(left + blockWidth - 1);
+    expect(left).toBe(width - (left + blockWidth)); // distancia igual a ambos lados
+  });
+
+  it('nunca lanza con parámetros fuera de rango (bloque negativo, ancho mayor al total, etc.)', () => {
+    expect(() => buildGeometryTestBits(10, -50, 1000, 5, 100)).not.toThrow();
   });
 });
