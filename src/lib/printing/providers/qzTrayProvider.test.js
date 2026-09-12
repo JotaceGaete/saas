@@ -46,6 +46,8 @@ await qzTrayProvider.connect();
 qzMock.websocket.connect.mockClear();
 state.active = false;
 
+let consoleErrorSpy;
+
 beforeEach(() => {
   state.active = false;
   Object.values(qzMock.websocket).forEach((fn) => fn.mockClear?.());
@@ -55,10 +57,12 @@ beforeEach(() => {
   getValidTokenMock.mockReset().mockResolvedValue('valid-token');
   getSupabasePublishableKeyMock.mockReset().mockReturnValue('anon-key');
   vi.stubGlobal('fetch', vi.fn());
+  consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  consoleErrorSpy.mockRestore();
 });
 
 describe('qzTrayProvider.isAvailable', () => {
@@ -247,6 +251,45 @@ describe('PRINT-3A — signaturePromise llama al backend (Edge Function qz-sign)
     await getSignatureResolver('x')(resolve, reject);
     expect(global.fetch).not.toHaveBeenCalled();
     expect(reject).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringMatching(/sesión/i) }));
+  });
+});
+
+describe('PRINT-3A-BUG1 — cada fallo de firma se loguea con un código seguro (QZ Tray oculta el mensaje real)', () => {
+  function getSignatureResolver(toSign) {
+    const [signatureFactory] = qzMock.security.setSignaturePromise.mock.calls[0];
+    return signatureFactory(toSign);
+  }
+
+  it('sin sesión: loguea "QZ signing failed: NO_SESSION"', async () => {
+    getValidTokenMock.mockResolvedValue(null);
+    await getSignatureResolver('x')(vi.fn(), vi.fn());
+    expect(consoleErrorSpy).toHaveBeenCalledWith('QZ signing failed: NO_SESSION', '');
+  });
+
+  it('error de red: loguea "QZ signing failed: NETWORK_ERROR" con el detalle del fetch, nunca la sesión/JWT', async () => {
+    global.fetch.mockRejectedValue(new TypeError('Failed to fetch'));
+    await getSignatureResolver('x')(vi.fn(), vi.fn());
+    expect(consoleErrorSpy).toHaveBeenCalledWith('QZ signing failed: NETWORK_ERROR', 'Failed to fetch');
+    const loggedArgs = consoleErrorSpy.mock.calls.flat().join(' ');
+    expect(loggedArgs).not.toContain('valid-token');
+  });
+
+  it('HTTP no-ok: loguea "QZ signing failed: HTTP_<status>" con el error seguro del servidor', async () => {
+    global.fetch.mockResolvedValue({ ok: false, status: 403, json: async () => ({ error: 'Origen no permitido' }) });
+    await getSignatureResolver('x')(vi.fn(), vi.fn());
+    expect(consoleErrorSpy).toHaveBeenCalledWith('QZ signing failed: HTTP_403', 'Origen no permitido');
+  });
+
+  it('firma vacía/inválida: loguea "QZ signing failed: EMPTY_OR_INVALID_SIGNATURE"', async () => {
+    global.fetch.mockResolvedValue({ ok: true, json: async () => ({ ok: true }) });
+    await getSignatureResolver('x')(vi.fn(), vi.fn());
+    expect(consoleErrorSpy).toHaveBeenCalledWith('QZ signing failed: EMPTY_OR_INVALID_SIGNATURE', '');
+  });
+
+  it('una firma exitosa NUNCA loguea "QZ signing failed"', async () => {
+    global.fetch.mockResolvedValue({ ok: true, json: async () => ({ signature: 'abc' }) });
+    await getSignatureResolver('x')(vi.fn(), vi.fn());
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
   });
 });
 

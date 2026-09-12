@@ -761,3 +761,39 @@ describe('PRINT-2 — cerrar el ticket o iniciar una nueva venta limpia el estad
     expect(newSaleMatch[0]).toMatch(/setPrintErrorMessage\(null\);/);
   });
 });
+
+/**
+ * PRINT-3A-BUG1 — QZ Tray reemplaza cualquier rechazo de la signature
+ * promise por el genérico Error("Failed to sign request") (confirmado
+ * leyendo node_modules/qz-tray/qz-tray.js). Ese texto es jerga técnica
+ * para un cajero -- el cajero debe ver un mensaje simple, y el detalle
+ * real (ya logueado por qzTrayProvider.logSigningFailure) debe quedar
+ * también visible en la consola de CrmTerminal como respaldo.
+ */
+describe('PRINT-3A-BUG1 — mensaje simple al cajero cuando QZ oculta la causa real', () => {
+  const printCurrentTicketMatch = indexSource.match(/const printCurrentTicket = useCallback\(async \(\) => \{[\s\S]*?\n {2}\}, \[ticketData, business\]\);/);
+
+  it('printCurrentTicket loguea el error real en consola antes de fijar el mensaje al usuario', () => {
+    expect(printCurrentTicketMatch).not.toBeNull();
+    expect(printCurrentTicketMatch[0]).toMatch(/console\.error\('\[CrmTerminal\] fallo al imprimir el ticket:', err\);/);
+  });
+
+  it('"Failed to sign request" se traduce a un mensaje simple; cualquier otro error conserva su propio mensaje', () => {
+    const catchBlockMatch = printCurrentTicketMatch[0].match(/catch \(err\) \{[\s\S]*?\n {4}\}/);
+    expect(catchBlockMatch).not.toBeNull();
+    expect(catchBlockMatch[0]).toMatch(/err\?\.message === 'Failed to sign request'/);
+    expect(catchBlockMatch[0]).toMatch(/No se pudo autorizar la impresión\. La venta ya quedó registrada\./);
+    expect(catchBlockMatch[0]).toMatch(/err\?\.message \|\| 'No se pudo imprimir el ticket\.'/);
+  });
+
+  it('el mensaje simple nunca incluye jerga técnica ("Failed to sign", "QZ", códigos HTTP)', () => {
+    const friendlyMessageMatch = printCurrentTicketMatch[0].match(/'No se pudo autorizar la impresión\. La venta ya quedó registrada\.'/);
+    expect(friendlyMessageMatch).not.toBeNull();
+    expect(friendlyMessageMatch[0]).not.toMatch(/QZ|Failed|HTTP|sign/i);
+  });
+
+  it('el fallback catch no toca cart/payments/idempotency key/stock -- solo cambia el estado de impresión', () => {
+    const catchBlockMatch = printCurrentTicketMatch[0].match(/catch \(err\) \{[\s\S]*?\n {4}\}/);
+    expect(catchBlockMatch[0]).not.toMatch(/setCart|setPayments|saleIdempotencyKeyRef|createPosInvoice|refreshProducts/);
+  });
+});

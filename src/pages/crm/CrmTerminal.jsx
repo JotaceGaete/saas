@@ -303,8 +303,18 @@ function CrmTerminalUI() {
       await printService.printReceipt(receipt, { printerName: printerConfig.printerName });
       setPrintStatus('success');
     } catch (err) {
+      // PRINT-3A-BUG1: QZ Tray reemplaza cualquier rechazo de la firma por
+      // el genérico "Failed to sign request" (ver qzTrayProvider.js, que
+      // ya logueó la causa real con logSigningFailure antes de llegar
+      // acá). Ese texto es jerga técnica para un cajero -- acá se muestra
+      // un mensaje simple y se deja el detalle en consola.
+      console.error('[CrmTerminal] fallo al imprimir el ticket:', err);
       setPrintStatus('error');
-      setPrintErrorMessage(err?.message || 'No se pudo imprimir el ticket.');
+      setPrintErrorMessage(
+        err?.message === 'Failed to sign request'
+          ? 'No se pudo autorizar la impresión. La venta ya quedó registrada.'
+          : (err?.message || 'No se pudo imprimir el ticket.'),
+      );
     }
   }, [ticketData, business]);
 

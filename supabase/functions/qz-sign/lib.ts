@@ -54,8 +54,11 @@ export function buildCorsHeaders(origin: string | null): Record<string, string> 
 /**
  * Extrae el string exacto a firmar del body ya parseado. Nunca lo
  * transforma/normaliza -- QZ Tray verifica la firma contra sus propios
- * bytes, así que firmar una versión "limpiada" del string produciría una
- * firma que QZ rechaza igual que si no se hubiera firmado nada.
+ * bytes (en la práctica, un hash SHA-256 en hex del JSON
+ * {call,params,timestamp}, no el JSON en sí -- ver qz-tray.js
+ * `_qz.websocket.connection.sendData`), así que firmar una versión
+ * "limpiada" del string produciría una firma que QZ rechaza igual que si
+ * no se hubiera firmado nada.
  */
 export function extractSignPayload(body: unknown): string | null {
   if (!body || typeof body !== 'object') return null;
@@ -63,8 +66,17 @@ export function extractSignPayload(body: unknown): string | null {
   return typeof value === 'string' && value.length > 0 ? value : null;
 }
 
+/**
+ * PRINT-3A-BUG1: normaliza secuencias `\n` LITERALES (backslash + n, dos
+ * caracteres) a saltos de línea reales antes de quitar el encabezado/pie
+ * PEM. Es un no-op si el secreto ya tiene saltos de línea reales -- pero
+ * si se configuró (p. ej. pegado en un panel que escapa saltos de línea)
+ * con `\n` literales, sin esto la base64 queda corrupta y
+ * crypto.subtle.importKey falla con un error que no dice por qué.
+ */
 function pemToArrayBuffer(pem: string): ArrayBuffer {
   const base64 = pem
+    .replace(/\\n/g, '\n')
     .replace(/-----BEGIN [^-]+-----/, '')
     .replace(/-----END [^-]+-----/, '')
     .replace(/\s+/g, '');
@@ -113,10 +125,23 @@ export async function signWithPrivateKey(privateKeyPem: string, message: string)
     );
   }
 
-  const signatureBuffer = await crypto.subtle.sign(
-    'RSASSA-PKCS1-v1_5',
-    cryptoKey,
-    new TextEncoder().encode(message),
-  );
-  return arrayBufferToBase64(signatureBuffer);
+  let signatureBuffer: ArrayBuffer;
+  try {
+    signatureBuffer = await crypto.subtle.sign(
+      'RSASSA-PKCS1-v1_5',
+      cryptoKey,
+      new TextEncoder().encode(message),
+    );
+  } catch (err) {
+    throw new QzSignError(
+      'SIGN_FAILED',
+      `La clave importó correctamente pero crypto.subtle.sign falló: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
+  const signature = arrayBufferToBase64(signatureBuffer);
+  if (!signature) {
+    throw new QzSignError('EMPTY_SIGNATURE', 'La firma calculada quedó vacía.');
+  }
+  return signature;
 }

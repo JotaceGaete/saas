@@ -57,6 +57,13 @@ describe('isAllowedOrigin / buildCorsHeaders', () => {
     expect(isAllowedOrigin('https://mi-preview-123.vercel.app')).toBe(true);
   });
 
+  it('PRINT-3A-BUG1: acepta específicamente el origin real de producción https://go.ventalink.app', () => {
+    // Confirmado explícitamente por separado del test genérico de arriba:
+    // este es el origin exacto reportado en el bug, no una variante.
+    expect(isAllowedOrigin('https://go.ventalink.app')).toBe(true);
+    expect(buildCorsHeaders('https://go.ventalink.app')['Access-Control-Allow-Origin']).toBe('https://go.ventalink.app');
+  });
+
   it('rechaza null, vacío y dominios no reconocidos', () => {
     expect(isAllowedOrigin(null)).toBe(false);
     expect(isAllowedOrigin('https://evil.example.com')).toBe(false);
@@ -122,6 +129,47 @@ describe('signWithPrivateKey', () => {
     await expect(signWithPrivateKey('esto no es una clave PEM', 'x')).rejects.toBeInstanceOf(QzSignError);
     await expect(signWithPrivateKey('esto no es una clave PEM', 'x')).rejects.toMatchObject({ code: 'INVALID_PRIVATE_KEY' });
   });
+
+  it('PRINT-3A-BUG1: firma igual si el secreto tiene "\\n" LITERALES en vez de saltos de línea reales', async () => {
+    // Reproduce el escenario más probable de "clave PEM mal configurada":
+    // un secreto pegado en un panel/CLI que guardó el salto de línea como
+    // las dos letras backslash-n en vez de un salto real. Antes de la
+    // normalización en pemToArrayBuffer, esto corrompía la base64 y
+    // crypto.subtle.importKey fallaba con INVALID_PRIVATE_KEY aunque la
+    // clave en sí fuera perfectamente válida.
+    const { privateKeyPem, publicKey } = await generateTestKeyPair();
+    const escapedPem = privateKeyPem.replace(/\n/g, '\\n');
+    expect(escapedPem).not.toContain('\n'); // confirma que el fixture realmente no tiene saltos reales
+    expect(escapedPem).toContain('\\n');
+
+    const message = 'mensaje de prueba';
+    const signatureBase64 = await signWithPrivateKey(escapedPem, message);
+
+    const signatureBytes = Uint8Array.from(Buffer.from(signatureBase64, 'base64'));
+    const isValid = await crypto.subtle.verify(
+      'RSASSA-PKCS1-v1_5', publicKey, signatureBytes, new TextEncoder().encode(message),
+    );
+    expect(isValid).toBe(true);
+  });
+
+  it('firma correctamente un payload con la FORMA real que envía QZ Tray (hash SHA-256 en hex, no JSON)', async () => {
+    // Confirmado leyendo node_modules/qz-tray/qz-tray.js
+    // (_qz.websocket.connection.sendData): `toSign` es
+    // _qz.tools.hash(JSON.stringify({call,params,timestamp})), es decir
+    // un string hexadecimal de 64 caracteres -- nunca el JSON en sí. Esta
+    // función trata `toSign` como string opaco, así que no debería
+    // importar, pero se prueba explícitamente para no asumir de más.
+    const { privateKeyPem, publicKey } = await generateTestKeyPair();
+    const fakeSha256Hex = 'a3f5c9d1e2b47a6f8c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b';
+    expect(fakeSha256Hex).toHaveLength(64);
+
+    const signatureBase64 = await signWithPrivateKey(privateKeyPem, fakeSha256Hex);
+    const signatureBytes = Uint8Array.from(Buffer.from(signatureBase64, 'base64'));
+    const isValid = await crypto.subtle.verify(
+      'RSASSA-PKCS1-v1_5', publicKey, signatureBytes, new TextEncoder().encode(fakeSha256Hex),
+    );
+    expect(isValid).toBe(true);
+  });
 });
 
 describe('ninguna clave privada real vive en el código de esta función', () => {
@@ -147,5 +195,11 @@ describe('ninguna clave privada real vive en el código de esta función', () =>
     const successResponseMatch = indexSource.match(/jsonResponse\(\{ signature \}, 200, corsHeaders\);/);
     expect(successResponseMatch).not.toBeNull();
     expect(indexSource).not.toMatch(/privateKeyPem[^)]*jsonResponse|jsonResponse\([^)]*privateKeyPem/);
+  });
+
+  it('el diagnóstico del secreto solo loguea metadata (largo, prefijo, si tiene \\n literales) -- nunca console.log(privateKeyPem) directo', () => {
+    expect(indexSource).toMatch(/privateKeyPem\.length/);
+    expect(indexSource).not.toMatch(/console\.(log|error|warn)\([^)]*privateKeyPem\)/);
+    expect(indexSource).not.toMatch(/console\.(log|error|warn)\(`[^`]*\$\{privateKeyPem\}/);
   });
 });

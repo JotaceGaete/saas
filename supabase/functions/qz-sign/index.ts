@@ -23,6 +23,12 @@ function jsonResponse(body: Record<string, unknown>, status: number, corsHeaders
 Deno.serve(async (req) => {
   const origin = req.headers.get('origin');
   const corsHeaders = buildCorsHeaders(origin);
+  // Diagnóstico seguro: nunca el valor de Authorization, solo si vino.
+  // Si esto nunca aparece en los logs de la función, el problema está en
+  // el frontend (o antes, en el gateway) -- no llegó a ejecutarse nada
+  // de este archivo.
+  console.log('[qz-sign] request', req.method, '| origin:', origin ?? '(sin origin)',
+    '| tiene Authorization:', req.headers.has('authorization'));
 
   if (req.method === 'OPTIONS') {
     return new Response('ok', { status: 200, headers: corsHeaders });
@@ -75,6 +81,13 @@ Deno.serve(async (req) => {
     console.error('[qz-sign] QZ_SIGN_PRIVATE_KEY no está configurada');
     return jsonResponse({ error: 'Servicio de firma no configurado' }, 500, corsHeaders);
   }
+  // Diagnóstico seguro del secreto: SOLO metadata (largo, si empieza con
+  // el encabezado PEM esperado, si tiene "\n" literales en vez de saltos
+  // de línea reales) -- nunca el contenido. Ayuda a distinguir "el
+  // secreto no está" de "el secreto está pero mal pegado/formateado".
+  console.log('[qz-sign] QZ_SIGN_PRIVATE_KEY presente | longitud:', privateKeyPem.length,
+    '| empieza con -----BEGIN:', privateKeyPem.trimStart().startsWith('-----BEGIN'),
+    '| tiene \\n literales:', privateKeyPem.includes('\\n'));
 
   try {
     const signature = await signWithPrivateKey(privateKeyPem, toSign);

@@ -21,8 +21,32 @@ import { getSupabasePublishableKey } from 'lib/supabasePublishableKey';
 // Supabase). Si el certificado o el servicio de firma no están
 // configurados, la conexión falla con un mensaje claro en vez de caer en
 // silencio al modo "no firmado".
+//
+// IMPORTANTE (contrato real de qz-tray 2.3.x, confirmado leyendo
+// node_modules/qz-tray/qz-tray.js): `toSign` NO es el JSON
+// {call,params,timestamp} tal cual -- QZ lo hashea primero
+// (_qz.tools.hash, SHA-256, salida en hex) y firma ESE hash. No cambia
+// nuestro código (tratamos `toSign` como un string opaco, cualquiera sea
+// su forma), pero si algún día se necesita loguear o inspeccionar el
+// valor, no esperar ver el JSON original.
+//
+// PRINT-3A-BUG1: QZ Tray reemplaza CUALQUIER rechazo de la signature
+// promise por el mismo `Error("Failed to sign request")` genérico antes
+// de devolvérselo a quien llamó a connect()/print() (ver
+// _qz.websocket.connection.sendData en qz-tray.js) -- nuestro mensaje de
+// error real NUNCA llega hasta ahí. Por eso cada fallo de
+// requestQzSignature se loguea con logSigningFailure() ANTES de
+// rechazar: es la única forma de ver la causa real en producción.
 
 let securityConfigured = false;
+
+// Diagnóstico seguro: código corto + detalle no sensible. Nunca el JWT
+// completo, nunca la clave privada (que ni siquiera pasa por acá), nunca
+// el body completo de la respuesta si pudiera incluir algo más que
+// {error} o {signature}.
+function logSigningFailure(code, detail) {
+  console.error(`QZ signing failed: ${code}`, detail ?? '');
+}
 
 function getQzCertificate() {
   const cert = String(import.meta.env.VITE_QZ_CERTIFICATE || '').trim();
@@ -38,18 +62,21 @@ function getQzSignEndpoint() {
   return `${supabaseUrl}/functions/v1/qz-sign`;
 }
 
-// Pide la firma de `toSign` (el string exacto que QZ Tray construyó) al
-// backend -- nunca se firma en el cliente. Errores distintos y explícitos
-// para cada causa (sesión inválida, endpoint caído, respuesta rota,
-// backend rechazando la firma) en vez de un genérico "no se pudo firmar".
+// Pide la firma de `toSign` al backend -- nunca se firma en el cliente.
+// Cada fallo se loguea (logSigningFailure) con un código corto ANTES de
+// rechazar, porque QZ Tray reemplaza el mensaje real por uno genérico
+// (ver nota PRINT-3A-BUG1 arriba) -- sin este log, la causa real es
+// invisible incluso en desarrollo.
 async function requestQzSignature(toSign) {
   const token = await getValidToken();
   if (!token) {
+    logSigningFailure('NO_SESSION');
     throw new Error('No hay una sesión válida para firmar la solicitud QZ. Inicia sesión de nuevo.');
   }
 
   const anonKey = getSupabasePublishableKey();
   if (!anonKey) {
+    logSigningFailure('NO_ANON_KEY');
     throw new Error('Falta configurar la clave pública de Supabase (VITE_SUPABASE_PUBLISHABLE_KEY).');
   }
 
@@ -64,7 +91,13 @@ async function requestQzSignature(toSign) {
       },
       body: JSON.stringify({ request: toSign }),
     });
-  } catch {
+  } catch (err) {
+    // Cubre tanto "el fetch nunca salió" como "el navegador rechazó el
+    // preflight CORS" (p. ej. la Edge Function no tiene verify_jwt=false
+    // en supabase/config.toml y el gateway devuelve 401 al OPTIONS antes
+    // de que nuestro propio código de origen/JWT se ejecute) -- ambos se
+    // ven acá como un TypeError de fetch, nunca como respuesta HTTP.
+    logSigningFailure('NETWORK_ERROR', err?.message);
     throw new Error('No se pudo contactar el servicio de firma QZ (endpoint no disponible).');
   }
 
@@ -72,13 +105,16 @@ async function requestQzSignature(toSign) {
   try {
     payload = await response.json();
   } catch {
+    logSigningFailure(`INVALID_JSON_${response.status}`);
     throw new Error('El servicio de firma QZ devolvió una respuesta inválida.');
   }
 
   if (!response.ok) {
+    logSigningFailure(`HTTP_${response.status}`, payload?.error);
     throw new Error(payload?.error || `El servicio de firma QZ respondió con error (${response.status}).`);
   }
   if (typeof payload?.signature !== 'string' || !payload.signature) {
+    logSigningFailure('EMPTY_OR_INVALID_SIGNATURE');
     throw new Error('El servicio de firma QZ devolvió una firma inválida.');
   }
   return payload.signature;
