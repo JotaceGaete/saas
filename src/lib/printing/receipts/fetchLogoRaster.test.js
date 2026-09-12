@@ -132,6 +132,65 @@ describe('fetchLogoRaster', () => {
   });
 });
 
+// PRINT-4-BUG6 — el logo seguía cortándose en la prueba física de BUG5
+// pese a un ancho lógico ya conservador: en vez de confiar en que la
+// impresora centre `ESC */GS v 0` (vía `ESC a 1`), el margen izquierdo se
+// hornea directamente en el bitmap (ver escPosImage.js#padBitsLeft),
+// recentrado dentro de la caja reservada (`maxWidthDots`) si el logo real
+// terminó más angosto por su relación de aspecto.
+describe('fetchLogoRaster — PRINT-4-BUG6 (leftMarginDots horneado en el bitmap, no en ESC a)', () => {
+  it('sin leftMarginDots (default 0), igual centra el logo real dentro de la caja de maxWidthDots si quedó más angosto por relación de aspecto', async () => {
+    // Logo cuadrado 100x100 dentro de una caja de 480 dots de ancho -> el
+    // ancho real ajustado sigue siendo 100 (no lo agranda), así que debe
+    // quedar centrado: leftMarginDots = floor((480-100)/2) = 190.
+    installImageMock({ naturalWidth: 100, naturalHeight: 100 });
+    installCanvasMock({ imageData: { data: new Uint8ClampedArray(100 * 100 * 4) } });
+    const result = await fetchLogoRaster('https://cdn.example.com/logo.png', { maxWidthDots: 480, maxHeightDots: 100 });
+    expect(result.leftMarginDots).toBe(190);
+  });
+
+  it('con leftMarginDots explícito, lo suma al recentrado dentro de la caja (no lo reemplaza)', async () => {
+    installImageMock({ naturalWidth: 100, naturalHeight: 100 });
+    installCanvasMock({ imageData: { data: new Uint8ClampedArray(100 * 100 * 4) } });
+    const result = await fetchLogoRaster('https://cdn.example.com/logo.png', {
+      maxWidthDots: 480, maxHeightDots: 100, leftMarginDots: 24,
+    });
+    expect(result.leftMarginDots).toBe(24 + 190);
+  });
+
+  it('cuando el logo real ocupa TODO el maxWidthDots, leftMarginDots queda exactamente en el valor pedido (sin recentrado adicional)', async () => {
+    installImageMock({ naturalWidth: 480, naturalHeight: 100 });
+    installCanvasMock({ imageData: { data: new Uint8ClampedArray(480 * 100 * 4) } });
+    const result = await fetchLogoRaster('https://cdn.example.com/logo.png', {
+      maxWidthDots: 480, maxHeightDots: 100, leftMarginDots: 24,
+    });
+    expect(result.width).toBe(480);
+    expect(result.leftMarginDots).toBe(24);
+  });
+
+  it('el comando final incluye el margen horneado -- su ancho total en columnas crece exactamente leftMarginDots respecto del ancho real del logo (estrategia ESC *)', async () => {
+    installImageMock({ naturalWidth: 8, naturalHeight: 8 });
+    installCanvasMock({ imageData: { data: new Uint8ClampedArray(8 * 8 * 4) } });
+    const result = await fetchLogoRaster('https://cdn.example.com/logo.png', {
+      maxWidthDots: 8, maxHeightDots: 8, leftMarginDots: 5, graphicsStrategyId: 'bitImageEscStar',
+    });
+    // ESC * header: [ESC,0x2A,0x00,nL,nH] -- nL debe ser leftMarginDots + width real (5+8=13)
+    const escStarIndex = Array.from(result.command).findIndex((b, i) => b === 0x1B && result.command[i + 1] === 0x2A);
+    expect(result.command[escStarIndex + 3]).toBe(13); // nL
+    expect(result.command[escStarIndex + 4]).toBe(0); // nH
+  });
+
+  it('no altera result.width/result.height (siguen siendo las dimensiones REALES del logo, no las del bitmap con margen)', async () => {
+    installImageMock({ naturalWidth: 100, naturalHeight: 50 });
+    installCanvasMock({ imageData: { data: new Uint8ClampedArray(100 * 50 * 4) } });
+    const result = await fetchLogoRaster('https://cdn.example.com/logo.png', {
+      maxWidthDots: 480, maxHeightDots: 220, leftMarginDots: 30,
+    });
+    expect(result.width).toBe(100);
+    expect(result.height).toBe(50);
+  });
+});
+
 describe('computeFitSize', () => {
   it('reduce una imagen ancha para caber en la caja máxima preservando proporción', () => {
     expect(computeFitSize(1000, 500, 480, 220)).toEqual({ width: 440, height: 220 });

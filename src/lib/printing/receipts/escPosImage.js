@@ -108,6 +108,57 @@ export function buildColumnBitImageCommand(bits, width, height) {
   return new Uint8Array([...header, ...data]);
 }
 
+/**
+ * PRINT-4-BUG6 — la prueba física de BUG5 mostró el logo todavía cortado
+ * en el borde derecho pese a que `logoMaxWidthDots` ya era conservador:
+ * la causa más probable es que este renderer delegaba el posicionamiento
+ * horizontal del logo en `ESC a 1` (centrado), confiando en que la
+ * impresora recentre cada franja de `ESC *` de forma idéntica -- una
+ * suposición de firmware que no se puede validar sin hardware real. Este
+ * helper elimina esa dependencia por completo: en vez de pedirle a la
+ * impresora que centre, el margen izquierdo se hornea directamente en el
+ * bitmap ANTES de construir cualquier comando (agregando columnas en
+ * blanco a la izquierda), así que da igual qué estrategia lo imprima
+ * (`GS v 0` por filas o `ESC *` por franjas de 8 dots): cada franja
+ * reutiliza EXACTAMENTE el mismo ancho total (incluyendo el margen), por
+ * lo que un desplazamiento horizontal entre franjas deja de ser posible
+ * -- el offset ya no depende de ningún estado de alineación de la
+ * impresora, solo de los propios píxeles enviados.
+ */
+export function padBitsLeft(bits, width, height, leftPaddingDots) {
+  const padding = Math.max(0, leftPaddingDots | 0);
+  if (padding === 0) return { bits, width };
+  const paddedWidth = width + padding;
+  const padded = new Uint8Array(paddedWidth * height);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      padded[y * paddedWidth + padding + x] = bits[y * width + x];
+    }
+  }
+  return { bits: padded, width: paddedWidth };
+}
+
+/**
+ * PRINT-4-BUG6 — diagnóstico exclusivo de logo: una franja vertical
+ * sólida de `thicknessDots` de ancho en la columna `markColumnDots`, del
+ * mismo ancho total (`totalWidthDots`) que se le pasaría a la estrategia
+ * de gráficos real -- sirve para marcar físicamente dónde debería caer
+ * el margen izquierdo/derecho esperado, independiente del logo real del
+ * negocio (que puede no estar configurado, o tener cualquier forma).
+ */
+export function buildVerticalMarkerBits(totalWidthDots, markColumnDots, heightDots, thicknessDots = 4) {
+  const width = Math.max(1, totalWidthDots | 0);
+  const height = Math.max(1, heightDots | 0);
+  const thickness = Math.max(1, thicknessDots | 0);
+  const start = Math.max(0, Math.min(width - 1, markColumnDots | 0));
+  const end = Math.min(width, start + thickness);
+  const bits = new Uint8Array(width * height);
+  for (let y = 0; y < height; y++) {
+    for (let x = start; x < end; x++) bits[y * width + x] = 1;
+  }
+  return bits;
+}
+
 const LF = 0x0A;
 const BAND_HEIGHT_DOTS = 8;
 

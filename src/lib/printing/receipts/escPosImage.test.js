@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   rgbaToGrayscale, ditherFloydSteinberg, buildRasterCommand, buildColumnBitImageCommand,
-  buildTiledColumnBitImageCommand,
+  buildTiledColumnBitImageCommand, padBitsLeft, buildVerticalMarkerBits,
 } from './escPosImage';
 
 // Todo este archivo trabaja sobre arrays de píxeles fijos -- ninguna de
@@ -188,5 +188,67 @@ describe('buildTiledColumnBitImageCommand — PRINT-4-BUG3 (logo real vía ESC *
     const bits = new Uint8Array(6 * 17).fill(1);
     const command = buildTiledColumnBitImageCommand(bits, 6, 17);
     expect(command.every((b) => b >= 0 && b <= 255)).toBe(true);
+  });
+});
+
+// PRINT-4-BUG6 — el logo seguía cortándose en la prueba física de BUG5
+// pese a que el ancho lógico ya era conservador: la centrada vía `ESC a`
+// no se puede validar sin hardware real. `padBitsLeft` hornea el margen
+// izquierdo directamente en los píxeles ANTES de armar cualquier comando
+// (GS v 0 o ESC *), así que el offset horizontal deja de depender de
+// ningún estado de alineación de la impresora.
+describe('padBitsLeft — PRINT-4-BUG6 (margen izquierdo horneado en el bitmap)', () => {
+  it('sin padding (0), devuelve los mismos bits/width sin copiar', () => {
+    const bits = Uint8Array.from([1, 0, 0, 1]);
+    const result = padBitsLeft(bits, 2, 2, 0);
+    expect(result.bits).toBe(bits);
+    expect(result.width).toBe(2);
+  });
+
+  it('agrega EXACTAMENTE `leftPaddingDots` columnas en blanco a la izquierda de cada fila', () => {
+    // 2x2, todo negro
+    const bits = Uint8Array.from([1, 1, 1, 1]);
+    const { bits: padded, width } = padBitsLeft(bits, 2, 2, 3);
+    expect(width).toBe(5);
+    expect(padded.length).toBe(5 * 2);
+    // fila 0: [0,0,0,1,1] -- 3 columnas en blanco, luego los 2 píxeles originales
+    expect(Array.from(padded.slice(0, 5))).toEqual([0, 0, 0, 1, 1]);
+    // fila 1: mismo patrón
+    expect(Array.from(padded.slice(5, 10))).toEqual([0, 0, 0, 1, 1]);
+  });
+
+  it('preserva el contenido original exacto, solo desplazado -- nunca lo distorsiona ni lo recorta', () => {
+    const bits = Uint8Array.from([1, 0, 1, 0, 1, 0]); // 3x2: fila0=[1,0,1], fila1=[0,1,0]
+    const { bits: padded, width } = padBitsLeft(bits, 3, 2, 2);
+    expect(width).toBe(5);
+    expect(Array.from(padded.slice(0, 5))).toEqual([0, 0, 1, 0, 1]);
+    expect(Array.from(padded.slice(5, 10))).toEqual([0, 0, 0, 1, 0]);
+  });
+
+  it('un padding negativo se trata como 0 (nunca recorta el bitmap)', () => {
+    const bits = Uint8Array.from([1, 1]);
+    const result = padBitsLeft(bits, 2, 1, -5);
+    expect(result.bits).toBe(bits);
+    expect(result.width).toBe(2);
+  });
+});
+
+describe('buildVerticalMarkerBits — PRINT-4-BUG6 (diagnóstico de margen)', () => {
+  it('enciende exactamente `thicknessDots` columnas empezando en `markColumnDots`, en todas las filas', () => {
+    const bits = buildVerticalMarkerBits(10, 4, 3, 2);
+    for (let y = 0; y < 3; y++) {
+      const row = Array.from(bits.slice(y * 10, y * 10 + 10));
+      expect(row).toEqual([0, 0, 0, 0, 1, 1, 0, 0, 0, 0]);
+    }
+  });
+
+  it('nunca escribe fuera del ancho total, aunque la marca quede pegada al borde derecho', () => {
+    const bits = buildVerticalMarkerBits(10, 9, 1, 4);
+    expect(bits.length).toBe(10);
+    expect(Array.from(bits)).toEqual([0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
+  });
+
+  it('una columna negativa se recorta a 0 en vez de lanzar', () => {
+    expect(() => buildVerticalMarkerBits(10, -3, 2, 2)).not.toThrow();
   });
 });

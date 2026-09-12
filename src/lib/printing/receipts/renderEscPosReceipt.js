@@ -15,8 +15,8 @@
 
 import { formatMoney } from 'utils/formatMoney';
 import { fetchLogoRaster } from './fetchLogoRaster';
-import { buildRasterCommand } from './escPosImage';
-import { GRAPHICS_STRATEGIES, CUT_STRATEGIES } from './escPosCapabilities';
+import { buildRasterCommand, buildVerticalMarkerBits } from './escPosImage';
+import { GRAPHICS_STRATEGIES, CUT_STRATEGIES, getGraphicsStrategy } from './escPosCapabilities';
 import { buildLayout } from './printerProfile';
 
 const ESC = 0x1B;
@@ -254,12 +254,24 @@ export async function renderEscPosReceipt(receipt) {
         // pasan tal cual -- este renderer no sabe ni le importa qué
         // impresora hay detrás. Sin imageMode, fetchLogoRaster cae al
         // default (la variante confirmada físicamente).
+        // PRINT-4-BUG6: el logo seguía cortándose en la prueba física de
+        // BUG5 pese a que el ancho lógico ya era conservador -- la causa
+        // más probable es la centrada vía `ESC a 1` (ALIGN_CENTER),
+        // que confía en que la impresora recentre cada franja de `ESC *`
+        // de forma idéntica. Se reemplaza por un margen izquierdo
+        // EXPLÍCITO (`layout.logoLeftMarginDots`) horneado directamente
+        // en el bitmap (ver fetchLogoRaster.js/escPosImage.js#padBitsLeft)
+        // y se imprime en ALIGN_LEFT: la posición horizontal ya no
+        // depende de ningún estado de alineación de la impresora.
         // eslint-disable-next-line no-await-in-loop -- el orden de impresión importa, no se puede paralelizar
         const raster = await fetchLogoRaster(line.url, {
-          maxWidthDots, maxHeightDots: LOGO_MAX_HEIGHT_DOTS, graphicsStrategyId: receipt?.imageMode,
+          maxWidthDots,
+          maxHeightDots: LOGO_MAX_HEIGHT_DOTS,
+          graphicsStrategyId: receipt?.imageMode,
+          leftMarginDots: layout.logoLeftMarginDots,
         });
         if (raster?.command?.length) {
-          bytes.push(...CMD.ALIGN_CENTER);
+          bytes.push(...CMD.ALIGN_LEFT);
           bytes.push(...raster.command);
           bytes.push(LF);
         }
@@ -465,5 +477,64 @@ export function buildCutCapabilityDiagnosticReceipt({ paperWidthMm = 80 } = {}) 
     ],
     feedLines: 4,
     cut: false,
+  };
+}
+
+const LOGO_DIAGNOSTIC_MARKER_HEIGHT_DOTS = 48; // ~6mm a 203dpi -- visible sin depender del alto real del logo
+const LOGO_DIAGNOSTIC_MARKER_THICKNESS_DOTS = 4;
+
+/**
+ * PRINT-4-BUG6 — diagnóstico EXCLUSIVO de logo: imprime una marca vertical
+ * en el margen IZQUIERDO esperado (`layout.safeMarginDots`), el logo real
+ * del negocio (mismo camino de producción que un ticket real -- `type:
+ * 'logo'`, mismo `layout`, mismo `fetchLogoRaster`/`padBitsLeft`) y una
+ * marca vertical en el margen DERECHO esperado
+ * (`printableWidthDots - safeMarginDots`). Permite confirmar en una
+ * impresión física si el logo queda dentro de esas dos marcas, si se pasa
+ * del área segura, y si el offset horizontal se mantiene constante entre
+ * las franjas de 8 dots de `ESC *` (las marcas y el logo comparten la
+ * MISMA franja física, así que cualquier deriva sería visible como
+ * desalineación entre ellos). No genera ninguna venta ni toca el flujo de
+ * cobro -- receipt sintético, igual que el resto de los diagnósticos de
+ * PRINT-4.
+ */
+export function buildLogoPositionDiagnosticReceipt({ business, paperWidthMm = 80, imageMode } = {}) {
+  const layout = buildLayout(paperWidthMm);
+  const strategy = getGraphicsStrategy(imageMode);
+  const leftMarkerBits = buildVerticalMarkerBits(
+    layout.printableWidthDots, layout.safeMarginDots, LOGO_DIAGNOSTIC_MARKER_HEIGHT_DOTS, LOGO_DIAGNOSTIC_MARKER_THICKNESS_DOTS,
+  );
+  const rightMarkerBits = buildVerticalMarkerBits(
+    layout.printableWidthDots,
+    layout.printableWidthDots - layout.safeMarginDots - LOGO_DIAGNOSTIC_MARKER_THICKNESS_DOTS,
+    LOGO_DIAGNOSTIC_MARKER_HEIGHT_DOTS,
+    LOGO_DIAGNOSTIC_MARKER_THICKNESS_DOTS,
+  );
+
+  const lines = [
+    { text: 'DIAGNOSTICO DE LOGO', align: 'center', bold: true },
+    { type: 'divider' },
+    { text: 'Marca de margen IZQUIERDO esperado:' },
+    { type: 'rasterBytes', command: strategy.build(leftMarkerBits, layout.printableWidthDots, LOGO_DIAGNOSTIC_MARKER_HEIGHT_DOTS) },
+    { type: 'divider' },
+  ];
+  if (business?.logoUrl) {
+    lines.push({ text: 'Logo real del negocio (debe quedar completo, sin tocar ninguna marca):' });
+    lines.push({ type: 'logo', url: business.logoUrl });
+  } else {
+    lines.push({ text: 'Este negocio no tiene logo configurado (business.logoUrl vacio) -- solo se ven las marcas de margen.' });
+  }
+  lines.push({ type: 'divider' });
+  lines.push({ text: 'Marca de margen DERECHO esperado:' });
+  lines.push({ type: 'rasterBytes', command: strategy.build(rightMarkerBits, layout.printableWidthDots, LOGO_DIAGNOSTIC_MARKER_HEIGHT_DOTS) });
+  lines.push({ type: 'divider' });
+  lines.push({ text: 'FIN DIAGNOSTICO DE LOGO', align: 'center', bold: true });
+
+  return {
+    paperWidthMm,
+    imageMode,
+    lines,
+    feedLines: 4,
+    cut: true,
   };
 }

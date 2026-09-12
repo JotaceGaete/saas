@@ -7,6 +7,7 @@ import Icon from 'components/AppIcon';
 import { printService } from 'lib/printing/printService';
 import {
   buildTestReceipt, buildImageCapabilityDiagnosticReceipt, buildCutCapabilityDiagnosticReceipt,
+  buildLogoPositionDiagnosticReceipt,
 } from 'lib/printing/receipts/renderEscPosReceipt';
 import { buildFinalValidationReceipt } from 'lib/printing/receipts/buildSaleReceipt';
 import { buildPrinterConfigKey, readPrinterConfig, writePrinterConfig } from 'lib/printing/printerConfigStorage';
@@ -114,6 +115,17 @@ export default function CrmPrintSettings() {
     () => buildCutCapabilityDiagnosticReceipt({ paperWidthMm: config.paperWidthMm }),
     'Diagnóstico de corte enviado a la impresora.',
     'No se pudo imprimir el diagnóstico de corte.',
+  );
+
+  // PRINT-4-BUG6 — diagnóstico EXCLUSIVO de logo: marcas de margen
+  // izquierdo/derecho esperado + el logo real del negocio, para confirmar
+  // físicamente si queda dentro del área segura. No genera ninguna venta.
+  const handlePrintLogoPositionDiagnostic = () => runDiagnosticPrint(
+    () => buildLogoPositionDiagnosticReceipt({
+      business, paperWidthMm: config.paperWidthMm, imageMode: config.imageMode,
+    }),
+    'Diagnóstico de logo enviado a la impresora.',
+    'No se pudo imprimir el diagnóstico de logo.',
   );
 
   // PRINT-4-BUG3 — ejercita el camino de producción completo (logo real +
@@ -254,6 +266,23 @@ export default function CrmPrintSettings() {
             sale como símbolos, o el papel no se separa físicamente después de una variante de corte,
             esa variante no es compatible con esta impresora.
           </p>
+
+          <div className="mt-2">
+            <button
+              type="button"
+              onClick={handlePrintLogoPositionDiagnostic}
+              disabled={!canPrint}
+              className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-300 px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+            >
+              <Icon name={printing ? 'Loader2' : 'ScanLine'} size={15} className={printing ? 'animate-spin' : ''} />
+              Diagnóstico de logo (posición)
+            </button>
+            <p className="mt-1.5 text-xs text-slate-400">
+              Imprime una marca en el margen izquierdo esperado, el logo real del negocio y una marca
+              en el margen derecho esperado. Úsalo si el logo del ticket real sale cortado o
+              desplazado: si el logo toca o pasa alguna marca, avisa antes de repetir la prueba física.
+            </p>
+          </div>
 
           <div className="mt-3">
             <button

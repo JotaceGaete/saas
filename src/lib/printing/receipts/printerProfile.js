@@ -33,13 +33,18 @@
  * @property {number} normalCharsPerLine - columnas de texto en tamaño normal. TODO helper de layout (wrap/separator/filas) usa este mismo número.
  * @property {number} doubleWidthCharsPerLine - floor(normalCharsPerLine / 2). El TOTAL en doble ancho se construye con ESTE número, nunca con normalCharsPerLine.
  * @property {number} logoMaxWidthDots - ancho máximo del logo en dots (fracción de contentWidthDots), ya listo para pasarle a fetchLogoRaster.
+ * @property {number} logoLeftMarginDots - PRINT-4-BUG6: margen izquierdo explícito (en dots, medido desde la posición física 0 del cabezal) para el logo cuando ocupa `logoMaxWidthDots`. Centra el logo DENTRO del margen de seguridad en vez de depender de que la impresora centre `ESC *`/`GS v 0` por su cuenta -- ver escPosImage.js#padBitsLeft. Garantiza `logoLeftMarginDots + logoMaxWidthDots <= printableWidthDots - safeMarginDots`.
  */
 
 const DOTS_PER_CHAR_FONT_A = 12;
-// PRINT-4-BUG5 — bajado de 0.82 (BUG4) a 0.78: margen visible más
-// generoso a ambos lados del logo, explícitamente pedido ("no usar el
-// ancho completo del papel").
-const LOGO_MAX_WIDTH_FRACTION = 0.78;
+// PRINT-4-BUG6 — la prueba física de BUG5 (0.78, bajado de 0.82 en BUG4)
+// TODAVÍA mostró el logo cortado en el borde derecho: el ancho lógico ya
+// no es la única variable (ver `logoLeftMarginDots` más abajo y
+// escPosImage.js#padBitsLeft), pero además se pide explícitamente bajar
+// a 70% para esta impresora física -- "prefiero un logo claramente más
+// chico pero completo". No subir de 0.70 sin una nueva validación física
+// que lo confirme.
+const LOGO_MAX_WIDTH_FRACTION = 0.70;
 
 // PRINT-4-BUG4/BUG5 — valores conservadores para el perfil físico
 // ACTUALMENTE VALIDADO: la hoja de datos genérica de impresoras
@@ -107,14 +112,23 @@ export function buildLayout(paperWidthMm) {
   const normalCharsPerLine = Math.max(1, Math.floor(contentWidthDots / (profile.dotsPerChar || DOTS_PER_CHAR_FONT_A)));
   const doubleWidthCharsPerLine = Math.max(1, Math.floor(normalCharsPerLine / 2));
   const logoMaxWidthDots = getLogoMaxWidthDots(profile);
+  const safeMarginDots = Math.max(0, profile.safeMarginDots || 0);
+  // PRINT-4-BUG6 — margen izquierdo EXPLÍCITO para el logo, medido desde
+  // la posición física 0 del cabezal (no desde el borde del área de
+  // contenido): centra la caja de `logoMaxWidthDots` dentro del margen de
+  // seguridad. `fetchLogoRaster` recentra este valor si el logo real,
+  // por su relación de aspecto, termina más angosto que el máximo -- ver
+  // ese archivo.
+  const logoLeftMarginDots = safeMarginDots + Math.floor((contentWidthDots - logoMaxWidthDots) / 2);
 
   return {
     paperWidthMm: profile.paperWidthMm,
     printableWidthDots: profile.printableWidthDots,
-    safeMarginDots: profile.safeMarginDots,
+    safeMarginDots,
     contentWidthDots,
     normalCharsPerLine,
     doubleWidthCharsPerLine,
     logoMaxWidthDots,
+    logoLeftMarginDots,
   };
 }

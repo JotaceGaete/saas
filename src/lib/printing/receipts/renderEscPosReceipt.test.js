@@ -8,6 +8,7 @@ const { fetchLogoRaster } = await import('./fetchLogoRaster');
 const {
   renderEscPosReceipt, buildTestReceipt, buildRasterDiagnosticReceipt,
   buildImageCapabilityDiagnosticReceipt, buildCutCapabilityDiagnosticReceipt,
+  buildLogoPositionDiagnosticReceipt,
   columnsForWidth, wrapText, formatRowLines,
 } = await import('./renderEscPosReceipt');
 const { buildRasterCommand } = await import('./escPosImage');
@@ -281,15 +282,25 @@ describe('renderEscPosReceipt — tipos semánticos PRINT-4', () => {
     expect(includesSubsequence(bytes, [GS, 0x21, 0x11])).toBe(false);
   });
 
-  it('logo: cuando fetchLogoRaster resuelve un comando, se inserta centrado', async () => {
+  it('PRINT-4-BUG6: logo se inserta en ALIGN_LEFT, no centrado -- la posición horizontal ya viene horneada en el bitmap (ver leftMarginDots), no depende de que la impresora centre ESC */GS v 0', async () => {
     const fakeRaster = new Uint8Array([GS, 0x76, 0x30, 0x00, 1, 0, 1, 0, 0xFF]);
     vi.mocked(fetchLogoRaster).mockResolvedValue({ command: fakeRaster, width: 8, height: 1 });
 
     const bytes = await renderEscPosReceipt({ lines: [{ type: 'logo', url: 'https://x/logo.png' }], feedLines: 0, cut: false });
 
-    expect(includesSubsequence(bytes, [ESC, 0x61, 0x01])).toBe(true); // centrado
+    expect(includesSubsequence(bytes, [ESC, 0x61, 0x00])).toBe(true); // ALIGN_LEFT, no ALIGN_CENTER
     expect(includesSubsequence(bytes, Array.from(fakeRaster))).toBe(true);
     expect(fetchLogoRaster).toHaveBeenCalledWith('https://x/logo.png', expect.objectContaining({ maxWidthDots: expect.any(Number) }));
+  });
+
+  it('PRINT-4-BUG6: pasa layout.logoLeftMarginDots como leftMarginDots a fetchLogoRaster -- el margen es explícito, no delegado a ESC a', async () => {
+    vi.mocked(fetchLogoRaster).mockResolvedValue(null);
+    for (const paperWidthMm of [80, 58]) {
+      await renderEscPosReceipt({ lines: [{ type: 'logo', url: 'https://x/logo.png' }], paperWidthMm, feedLines: 0, cut: false });
+      const layout = buildLayout(paperWidthMm);
+      const [, options] = vi.mocked(fetchLogoRaster).mock.calls.at(-1);
+      expect(options.leftMarginDots).toBe(layout.logoLeftMarginDots);
+    }
   });
 
   it('logo: cuando fetchLogoRaster falla (resuelve null), el ticket igual imprime sin el logo, sin lanzar', async () => {
@@ -444,6 +455,68 @@ describe('buildRasterDiagnosticReceipt — PRINT-4-BUG1', () => {
 
   it('siempre pide corte, para que la prueba física quede completa', () => {
     expect(buildRasterDiagnosticReceipt().cut).toBe(true);
+  });
+});
+
+// PRINT-4-BUG6 — diagnóstico EXCLUSIVO de logo: marca de margen
+// izquierdo esperado + logo real + marca de margen derecho esperado, para
+// poder confirmar en una impresión física si el logo (ya reducido a 70%
+// de contentWidthDots, con el margen izquierdo horneado en el bitmap)
+// queda dentro del área segura, sin depender de ninguna venta real.
+describe('buildLogoPositionDiagnosticReceipt — PRINT-4-BUG6', () => {
+  it('con business.logoUrl, imprime marca izquierda, el logo real (type: logo) y marca derecha, en ese orden', async () => {
+    vi.mocked(fetchLogoRaster).mockResolvedValue(null);
+    const receipt = buildLogoPositionDiagnosticReceipt({ business: { logoUrl: 'https://x/logo.png' }, paperWidthMm: 80 });
+
+    const typesInOrder = receipt.lines.map((l) => l.type || 'text');
+    const leftMarkerIndex = typesInOrder.indexOf('rasterBytes');
+    const logoIndex = typesInOrder.indexOf('logo');
+    const rightMarkerIndex = typesInOrder.lastIndexOf('rasterBytes');
+    expect(leftMarkerIndex).toBeGreaterThanOrEqual(0);
+    expect(logoIndex).toBeGreaterThan(leftMarkerIndex);
+    expect(rightMarkerIndex).toBeGreaterThan(logoIndex);
+
+    await renderEscPosReceipt(receipt);
+    expect(fetchLogoRaster).toHaveBeenCalledWith('https://x/logo.png', expect.any(Object));
+  });
+
+  it('sin business.logoUrl, no incluye una línea type:logo y lo indica en el texto (no llama a fetchLogoRaster)', async () => {
+    const receipt = buildLogoPositionDiagnosticReceipt({ business: { name: 'Sin Logo' }, paperWidthMm: 80 });
+    expect(receipt.lines.some((l) => l.type === 'logo')).toBe(false);
+
+    await renderEscPosReceipt(receipt);
+    expect(fetchLogoRaster).not.toHaveBeenCalled();
+    const text = receipt.lines.map((l) => l.text).filter(Boolean).join('\n');
+    expect(text).toContain('no tiene logo configurado');
+  });
+
+  it('las dos marcas usan exactamente layout.safeMarginDots y printableWidthDots - safeMarginDots como columnas', async () => {
+    const layout = buildLayout(80);
+    const receipt = buildLogoPositionDiagnosticReceipt({ business: {}, paperWidthMm: 80 });
+    const rasterLines = receipt.lines.filter((l) => l.type === 'rasterBytes');
+    expect(rasterLines).toHaveLength(2);
+    // ESC * header: [ESC,0x2A,0x00,nL,nH] -- el ancho total pasado a la
+    // estrategia es siempre printableWidthDots (marca dibujada sobre el
+    // ancho físico completo, no sobre contentWidthDots).
+    for (const rasterLine of rasterLines) {
+      const cmd = Array.from(rasterLine.command);
+      const idx = cmd.findIndex((b, i) => b === ESC && cmd[i + 1] === 0x2A);
+      const nL = cmd[idx + 3];
+      const nH = cmd[idx + 4];
+      expect(nL + nH * 256).toBe(layout.printableWidthDots);
+    }
+  });
+
+  it('nunca genera una venta ni toca Supabase -- receipt puramente sintético, siempre pide corte', () => {
+    const receipt = buildLogoPositionDiagnosticReceipt({ business: {}, paperWidthMm: 80 });
+    expect(receipt.cut).toBe(true);
+    expect(receipt.lines.every((l) => typeof l === 'object')).toBe(true);
+  });
+
+  it('el receipt resultante renderiza sin lanzar, con y sin logo', async () => {
+    vi.mocked(fetchLogoRaster).mockResolvedValue(null);
+    await expect(renderEscPosReceipt(buildLogoPositionDiagnosticReceipt({ business: { logoUrl: 'https://x/logo.png' } }))).resolves.not.toThrow();
+    await expect(renderEscPosReceipt(buildLogoPositionDiagnosticReceipt({ business: {} }))).resolves.not.toThrow();
   });
 });
 

@@ -71,11 +71,19 @@ describe('getLogoMaxWidthDots', () => {
     expect(logoMax).toBeLessThan(effective);
   });
 
-  it('usa exactamente la fracción configurada (BUG5: 0.78, bajada de 0.82 en BUG4 para dejar más margen visible)', () => {
+  it('usa exactamente la fracción configurada (BUG6: 0.70, bajada de 0.78 en BUG5 -- la prueba física siguió mostrando el logo cortado)', () => {
     const profile = PRINTER_PROFILES[80];
     const effective = getEffectivePrintableWidthDots(profile);
     const logoMax = getLogoMaxWidthDots(profile);
-    expect(logoMax).toBe(Math.round(effective * 0.78));
+    expect(logoMax).toBe(Math.round(effective * 0.70));
+  });
+
+  it('nunca excede 0.70 -- no subir la fracción sin una nueva validación física que lo confirme (tolerancia de +-1 dot por redondeo)', () => {
+    for (const profile of Object.values(PRINTER_PROFILES)) {
+      const effective = getEffectivePrintableWidthDots(profile);
+      const logoMax = getLogoMaxWidthDots(profile);
+      expect(logoMax).toBeLessThanOrEqual(Math.round(effective * 0.70) + 1);
+    }
   });
 
   it('logo + márgenes nunca exceden el ancho imprimible nominal declarado', () => {
@@ -99,6 +107,7 @@ describe('buildLayout', () => {
     expect(Object.keys(layout).sort()).toEqual([
       'contentWidthDots',
       'doubleWidthCharsPerLine',
+      'logoLeftMarginDots',
       'logoMaxWidthDots',
       'normalCharsPerLine',
       'paperWidthMm',
@@ -121,11 +130,39 @@ describe('buildLayout', () => {
     }
   });
 
-  it('logoMaxWidthDots nunca excede el 78% de contentWidthDots (tolerancia de redondeo) y nunca llega al 100%', () => {
+  it('logoMaxWidthDots nunca excede el 70% de contentWidthDots (tolerancia de redondeo) y nunca llega al 100%', () => {
     for (const paperWidthMm of [80, 58]) {
       const layout = buildLayout(paperWidthMm);
-      expect(layout.logoMaxWidthDots).toBeLessThanOrEqual(Math.ceil(layout.contentWidthDots * 0.78));
+      expect(layout.logoMaxWidthDots).toBeLessThanOrEqual(Math.ceil(layout.contentWidthDots * 0.70));
       expect(layout.logoMaxWidthDots).toBeLessThan(layout.contentWidthDots);
+    }
+  });
+
+  // PRINT-4-BUG6 — `logoLeftMarginDots` es el margen izquierdo EXPLÍCITO
+  // (medido desde la posición física 0 del cabezal) que renderEscPosReceipt
+  // pasa a fetchLogoRaster para hornearlo en el bitmap -- ver
+  // escPosImage.js#padBitsLeft. La invariante pedida explícitamente por el
+  // encargo es logoLeftMarginDots + logoMaxWidthDots <= printableWidthDots
+  // - safeMarginDots (nunca cruza el margen de seguridad derecho).
+  it('logoLeftMarginDots + logoMaxWidthDots nunca excede printableWidthDots - safeMarginDots', () => {
+    for (const paperWidthMm of [80, 58]) {
+      const layout = buildLayout(paperWidthMm);
+      expect(layout.logoLeftMarginDots + layout.logoMaxWidthDots).toBeLessThanOrEqual(layout.printableWidthDots - layout.safeMarginDots);
+    }
+  });
+
+  it('logoLeftMarginDots nunca es menor al margen de seguridad izquierdo', () => {
+    for (const paperWidthMm of [80, 58]) {
+      const layout = buildLayout(paperWidthMm);
+      expect(layout.logoLeftMarginDots).toBeGreaterThanOrEqual(layout.safeMarginDots);
+    }
+  });
+
+  it('centra la caja del logo dentro de contentWidthDots: logoLeftMarginDots = safeMarginDots + floor((contentWidthDots - logoMaxWidthDots) / 2)', () => {
+    for (const paperWidthMm of [80, 58]) {
+      const layout = buildLayout(paperWidthMm);
+      const expected = layout.safeMarginDots + Math.floor((layout.contentWidthDots - layout.logoMaxWidthDots) / 2);
+      expect(layout.logoLeftMarginDots).toBe(expected);
     }
   });
 
