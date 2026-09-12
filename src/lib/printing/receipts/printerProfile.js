@@ -83,16 +83,21 @@ const LOGO_MAX_WIDTH_FRACTION = 0.70;
 // de ancho antes que cortar el logo o romper columnas"). Mismo criterio
 // para 58mm.
 //
-// PRINT-4-BUG10 — `effectivePrintableWidthDots` a 80mm: el diagnóstico de
-// geometría de BUG8/BUG9 confirmó físicamente que x=226 con un bloque de
-// 60 dots (hasta la columna 286) imprime completo, y que x=452 (hasta la
-// columna 512) ya NO cabe -- solo aparece una franja en el borde. El
-// valor real de corte está en algún punto entre 286 y 452, sin calibrar
-// todavía (ver el diagnóstico de calibración de borde derecho agregado en
-// este mismo commit). Hasta tener ese resultado, se usa 286 -- el último
-// límite CONFIRMADO por evidencia física, nunca un valor optimista sin
-// probar -- como placeholder conservador. Actualizar este valor en cuanto
-// la prueba física de calibración confirme el límite real.
+// PRINT-4-BUG10/BUG11 — `effectivePrintableWidthDots` a 80mm: el
+// diagnóstico de geometría de BUG8/BUG9 confirmó físicamente que x=226
+// con un bloque de 60 dots (hasta la columna 286) imprime completo. La
+// calibración gruesa de BUG10 (x=400/420/440/460/480) acotó el límite
+// real más precisamente: 420 completo, 440 parcial/cortado, y 460/480
+// (más allá del límite) producen "wrap" -- el bloque reaparece desde el
+// extremo izquierdo en vez de cortarse (ver clampXDotsToPrintableArea).
+// BUG11 agrega una calibración FINA (420/424/428/432/436/440) para
+// ubicar la última coordenada exacta -- pendiente de su resultado físico,
+// este valor SIGUE en 286 (el último límite confirmado con margen de
+// sobra, nunca un valor optimista sin probar). Actualizar en cuanto la
+// calibración fina confirme el límite real:
+// `effectivePrintableWidthDots = physicalRightEdgeDots - margen`, donde
+// `physicalRightEdgeDots = lastCompleteX + 20` (ancho del bloque de
+// calibración).
 const EFFECTIVE_PRINTABLE_WIDTH_DOTS_80MM_PENDING_CALIBRATION = 286;
 
 // PRINT-4-BUG10 — a 58mm no existe NINGUNA prueba física todavía (ni de
@@ -157,6 +162,38 @@ export function getLogoMaxWidthDots(profile) {
   const fraction = Math.min(1, Math.max(0, profile.logoMaxWidthFraction ?? LOGO_MAX_WIDTH_FRACTION));
   const base = profile.effectivePrintableWidthDots || getEffectivePrintableWidthDots(profile);
   return Math.max(1, Math.round(base * fraction));
+}
+
+// PRINT-4-BUG11 — la calibración gruesa de borde derecho (BUG10) mostró
+// algo más grave que un simple recorte: coordenadas más allá del límite
+// real (x=460/480 con printableWidthDots=512 asumido) NO se cortan
+// silenciosamente -- el bloque REAPARECE desde el extremo izquierdo del
+// papel ("wrap", probablemente la impresora interpreta la posición
+// módulo algún ancho de línea interno). Esto significa que un `xDots`
+// fuera de rango no es solo "un poco de contenido perdido": es contenido
+// impreso en una posición completamente distinta a la pedida, que puede
+// además superponerse con otro contenido ya impreso ahí. Por eso esta
+// guardia vive acá (perfil/capacidad de impresión), no dispersa en el
+// renderer: es la ÚNICA fuente de verdad sobre "qué coordenada x es
+// segura", y cualquier código que calcule un `xDots` para `ESC $` debe
+// pasar por acá antes de usarlo.
+/**
+ * Ajusta `xDots` para que NUNCA entre en la zona de wrap confirmada
+ * físicamente en PRINT-4-BUG11: garantiza `x >= 0` y
+ * `x + widthDots <= effectivePrintableWidthDots`. Si `widthDots` ya
+ * excede `effectivePrintableWidthDots` (no debería pasar -- ver
+ * `getLogoMaxWidthDots`, que ya lo acota --, pero esta función no confía
+ * en eso), prioriza `x = 0` (nunca negativo) antes que una coordenada
+ * dentro del rango de wrap.
+ * @param {number} effectivePrintableWidthDots - ancho REAL calibrado (ver PRINTER_PROFILES).
+ * @param {number} widthDots - ancho real del contenido a posicionar (p. ej. el logo ya ajustado por relación de aspecto).
+ * @param {number} xDots - x propuesto (p. ej. el resultado de centrar).
+ * @returns {number} x seguro, nunca fuera de [0, effectivePrintableWidthDots - widthDots] cuando ese rango es válido.
+ */
+export function clampXDotsToPrintableArea(effectivePrintableWidthDots, widthDots, xDots) {
+  const maxX = Math.max(0, (effectivePrintableWidthDots || 0) - (widthDots || 0));
+  const safeX = Math.max(0, xDots | 0);
+  return Math.min(maxX, safeX);
 }
 
 /**

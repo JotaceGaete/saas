@@ -8,7 +8,7 @@ import { printService } from 'lib/printing/printService';
 import {
   buildTestReceipt, buildImageCapabilityDiagnosticReceipt, buildCutCapabilityDiagnosticReceipt,
   buildLogoPositionDiagnosticReceipt, buildLogoGeometryDiagnosticReceipt, buildLogoPositionedDiagnosticReceipt,
-  buildRightEdgeCalibrationDiagnosticReceipt,
+  buildRightEdgeCalibrationDiagnosticReceipt, buildRightEdgeFineCalibrationDiagnosticReceipt,
 } from 'lib/printing/receipts/renderEscPosReceipt';
 import { buildFinalValidationReceipt } from 'lib/printing/receipts/buildSaleReceipt';
 import { buildPrinterConfigKey, readPrinterConfig, writePrinterConfig } from 'lib/printing/printerConfigStorage';
@@ -165,6 +165,20 @@ export default function CrmPrintSettings() {
     }),
     'Diagnóstico de calibración de borde derecho enviado a la impresora.',
     'No se pudo imprimir el diagnóstico de calibración.',
+  );
+
+  // PRINT-4-BUG11 — la calibración gruesa ubicó el límite entre 420
+  // (completo) y 440 (parcial/cortado), y reveló que coordenadas más
+  // allá del límite hacen "wrap" (el bloque reaparece a la izquierda en
+  // vez de cortarse). Esta calibración fina concentra bloques cada 4 dots
+  // entre 420 y 440 para ubicar la última coordenada exacta. No genera
+  // ninguna venta.
+  const handlePrintRightEdgeFineCalibration = () => runDiagnosticPrint(
+    () => buildRightEdgeFineCalibrationDiagnosticReceipt({
+      paperWidthMm: config.paperWidthMm, imageMode: config.imageMode,
+    }),
+    'Diagnóstico de calibración fina de borde enviado a la impresora.',
+    'No se pudo imprimir el diagnóstico de calibración fina.',
   );
 
   // PRINT-4-BUG3 — ejercita el camino de producción completo (logo real +
@@ -374,6 +388,23 @@ export default function CrmPrintSettings() {
               Imprime 5 bloques de 20 dots en x=400, 420, 440, 460 y 480 (sin relleno). Anota hasta
               qué x aparece el bloque COMPLETO, sin cortarse: ese valor calibra el ancho real
               imprimible de esta impresora (hoy un placeholder conservador en el código).
+            </p>
+          </div>
+
+          <div className="mt-2">
+            <button
+              type="button"
+              onClick={handlePrintRightEdgeFineCalibration}
+              disabled={!canPrint}
+              className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-300 px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+            >
+              <Icon name={printing ? 'Loader2' : 'Ruler'} size={15} className={printing ? 'animate-spin' : ''} />
+              Calibración fina de borde (ESC $)
+            </button>
+            <p className="mt-1.5 text-xs text-slate-400">
+              Imprime 6 bloques de 20 dots en x=420, 424, 428, 432, 436 y 440 (sin relleno). Usa este
+              diagnóstico después del anterior: concentra las posiciones alrededor del límite
+              encontrado para ubicar la última coordenada exacta en la que el bloque entra completo.
             </p>
           </div>
 

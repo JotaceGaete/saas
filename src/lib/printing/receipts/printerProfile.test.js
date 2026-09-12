@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   PRINTER_PROFILES, getPrinterProfile, getEffectivePrintableWidthDots, getColumnsForProfile, getLogoMaxWidthDots,
-  buildLayout,
+  buildLayout, clampXDotsToPrintableArea,
 } from './printerProfile';
 
 // PRINT-4-BUG4 — este módulo es la única fuente de verdad sobre "cuánto
@@ -184,5 +184,46 @@ describe('buildLayout', () => {
 
   it('paperWidthMm desconocido cae al perfil de 80mm, igual que getPrinterProfile', () => {
     expect(buildLayout(999).paperWidthMm).toBe(80);
+  });
+});
+
+// PRINT-4-BUG11 — la calibración gruesa de borde derecho (BUG10) reveló
+// que una coordenada x fuera de rango no solo recorta contenido: hace que
+// el bloque REAPAREZCA desde el extremo izquierdo del papel ("wrap").
+// `clampXDotsToPrintableArea` es la única fuente de verdad para evitar
+// que cualquier código que arme un `xDots` para `ESC $` entre en esa zona.
+describe('clampXDotsToPrintableArea — PRINT-4-BUG11 (guardia contra la zona de wrap)', () => {
+  it('un x ya dentro de rango no se modifica', () => {
+    expect(clampXDotsToPrintableArea(286, 100, 93)).toBe(93);
+  });
+
+  it('un x negativo se sube a 0 -- nunca negativo', () => {
+    expect(clampXDotsToPrintableArea(286, 100, -50)).toBe(0);
+  });
+
+  it('un x que haría x+widthDots exceder effectivePrintableWidthDots se recorta al máximo válido', () => {
+    // effectivePrintableWidthDots=286, widthDots=100 -> maxX = 186
+    expect(clampXDotsToPrintableArea(286, 100, 250)).toBe(186);
+  });
+
+  it('el resultado siempre satisface x >= 0 y x + widthDots <= effectivePrintableWidthDots, para un rango de casos', () => {
+    const cases = [
+      [286, 100, -999], [286, 100, 0], [286, 100, 93], [286, 100, 186], [286, 100, 999],
+      [512, 60, 452], [512, 60, 480], [328, 60, 0],
+    ];
+    for (const [eff, width, x] of cases) {
+      const safeX = clampXDotsToPrintableArea(eff, width, x);
+      expect(safeX).toBeGreaterThanOrEqual(0);
+      expect(safeX + width).toBeLessThanOrEqual(eff);
+    }
+  });
+
+  it('si widthDots ya excede effectivePrintableWidthDots, prioriza x=0 antes que una coordenada en la zona de wrap', () => {
+    expect(clampXDotsToPrintableArea(100, 200, 50)).toBe(0);
+  });
+
+  it('nunca lanza con valores undefined/NaN -- trata valores inválidos como 0', () => {
+    expect(() => clampXDotsToPrintableArea(undefined, undefined, undefined)).not.toThrow();
+    expect(clampXDotsToPrintableArea(undefined, undefined, undefined)).toBe(0);
   });
 });

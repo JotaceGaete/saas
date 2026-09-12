@@ -9,7 +9,7 @@ const {
   renderEscPosReceipt, buildTestReceipt, buildRasterDiagnosticReceipt,
   buildImageCapabilityDiagnosticReceipt, buildCutCapabilityDiagnosticReceipt,
   buildLogoPositionDiagnosticReceipt, buildLogoGeometryDiagnosticReceipt, buildLogoPositionedDiagnosticReceipt,
-  buildRightEdgeCalibrationDiagnosticReceipt,
+  buildRightEdgeCalibrationDiagnosticReceipt, buildRightEdgeFineCalibrationDiagnosticReceipt,
   columnsForWidth, wrapText, formatRowLines,
 } = await import('./renderEscPosReceipt');
 const { buildRasterCommand } = await import('./escPosImage');
@@ -1007,5 +1007,77 @@ describe('buildRightEdgeCalibrationDiagnosticReceipt — PRINT-4-BUG10', () => {
 
   it('el receipt resultante renderiza sin lanzar', async () => {
     await expect(renderEscPosReceipt(buildRightEdgeCalibrationDiagnosticReceipt({ paperWidthMm: 80 }))).resolves.not.toThrow();
+  });
+});
+
+// PRINT-4-BUG11 — la calibración gruesa (BUG10) ubicó el límite entre 420
+// (completo) y 440 (parcial/cortado), y reveló que x=460/480 (más allá del
+// límite) hacen "wrap": el bloque reaparece desde el extremo izquierdo en
+// vez de simplemente cortarse. Esta calibración fina concentra 6 bloques
+// de 20 dots cada 4 dots entre 420 y 440 para ubicar la última coordenada
+// exacta en la que el bloque completo todavía entra.
+describe('buildRightEdgeFineCalibrationDiagnosticReceipt — PRINT-4-BUG11', () => {
+  const ESC = 0x1B;
+
+  it('produce 6 bloques `raw` de imagen (uno por posición x), cada uno precedido por su propio ALIGN_LEFT', () => {
+    const receipt = buildRightEdgeFineCalibrationDiagnosticReceipt({ paperWidthMm: 80 });
+    const rawLines = receipt.lines.filter((l) => l.type === 'raw');
+    expect(rawLines).toHaveLength(12); // 6 bloques x (ALIGN_LEFT + comando)
+    for (let i = 0; i < rawLines.length; i += 2) {
+      expect(rawLines[i].bytes).toEqual([ESC, 0x61, 0x00]); // ALIGN_LEFT
+    }
+  });
+
+  it('emite ESC $ con los 6 offsets EXACTOS pedidos: 420, 424, 428, 432, 436, 440', () => {
+    const receipt = buildRightEdgeFineCalibrationDiagnosticReceipt({ paperWidthMm: 80 });
+    const rawLines = receipt.lines.filter((l) => l.type === 'raw');
+    const imageCommands = [rawLines[1], rawLines[3], rawLines[5], rawLines[7], rawLines[9], rawLines[11]];
+    const offsets = imageCommands.map(({ bytes: cmd }) => {
+      const posIdx = cmd.findIndex((b, j) => b === ESC && cmd[j + 1] === 0x24);
+      return cmd[posIdx + 2] + cmd[posIdx + 3] * 256;
+    });
+    expect(offsets).toEqual([420, 424, 428, 432, 436, 440]);
+  });
+
+  it('cada bloque de imagen mide EXACTAMENTE 20 columnas de datos -- nunca lleva relleno', () => {
+    const receipt = buildRightEdgeFineCalibrationDiagnosticReceipt({ paperWidthMm: 80 });
+    const rawLines = receipt.lines.filter((l) => l.type === 'raw');
+    const imageCommands = [rawLines[1], rawLines[3], rawLines[5], rawLines[7], rawLines[9], rawLines[11]];
+    for (const { bytes: cmd } of imageCommands) {
+      const headerIdx = cmd.findIndex((b, i) => b === ESC && cmd[i + 1] === 0x2A && cmd[i + 2] === 0x00);
+      expect(cmd[headerIdx + 3]).toBe(20); // nL
+      expect(cmd[headerIdx + 4]).toBe(0); // nH
+    }
+  });
+
+  it('usa un título/footer distintos de la calibración gruesa, para no confundir los resultados', () => {
+    const coarse = buildRightEdgeCalibrationDiagnosticReceipt({ paperWidthMm: 80 });
+    const fine = buildRightEdgeFineCalibrationDiagnosticReceipt({ paperWidthMm: 80 });
+    expect(fine.lines[0].text).not.toBe(coarse.lines[0].text);
+    expect(fine.lines[0].text).toContain('FINA');
+    expect(fine.lines.at(-1).text).toContain('FINA');
+  });
+
+  it('cada posición está claramente rotulada en el texto', () => {
+    const receipt = buildRightEdgeFineCalibrationDiagnosticReceipt({ paperWidthMm: 80 });
+    const labelLines = receipt.lines.filter((l) => l.text?.startsWith('x ='));
+    expect(labelLines.map((l) => l.text)).toEqual([
+      'x = 420 dots:', 'x = 424 dots:', 'x = 428 dots:', 'x = 432 dots:', 'x = 436 dots:', 'x = 440 dots:',
+    ]);
+  });
+
+  it('nunca depende de red/Image/canvas/business -- no llama a fetchLogoRaster', async () => {
+    const receipt = buildRightEdgeFineCalibrationDiagnosticReceipt({ paperWidthMm: 80 });
+    await renderEscPosReceipt(receipt);
+    expect(fetchLogoRaster).not.toHaveBeenCalled();
+  });
+
+  it('siempre pide corte y nunca genera una venta -- receipt puramente sintético', () => {
+    const receipt = buildRightEdgeFineCalibrationDiagnosticReceipt({ paperWidthMm: 80 });
+    expect(receipt.cut).toBe(true);
+  });
+
+  it('el receipt resultante renderiza sin lanzar', async () => {
+    await expect(renderEscPosReceipt(buildRightEdgeFineCalibrationDiagnosticReceipt({ paperWidthMm: 80 }))).resolves.not.toThrow();
   });
 });
