@@ -17,7 +17,7 @@ import { formatMoney } from 'utils/formatMoney';
 import { fetchLogoRaster } from './fetchLogoRaster';
 import { buildRasterCommand } from './escPosImage';
 import { GRAPHICS_STRATEGIES, CUT_STRATEGIES } from './escPosCapabilities';
-import { getPrinterProfile, getColumnsForProfile, getLogoMaxWidthDots } from './printerProfile';
+import { buildLayout } from './printerProfile';
 
 const ESC = 0x1B;
 const GS = 0x1D;
@@ -50,24 +50,16 @@ const CMD = {
   CUT_FULL: [GS, 0x56, 0x41, 0x00],    // GS V 65 0 — corte total (forma moderna) -- no usado por defecto, queda disponible
 };
 
-// PRINT-4-BUG4 — columnas de texto derivadas del PERFIL FÍSICO real
-// (ver printerProfile.js), no de una tabla fija desconectada del ancho
-// imprimible real. Reemplaza la tabla anterior {58:32, 80:48}, que
-// asumía la totalidad del ancho de línea nominal de hoja de datos sin
-// ningún margen de seguridad -- la causa de que columnas de importes y
-// separadores llegaran hasta el borde físico.
+// PRINT-4-BUG5 — `columnsForWidth` sigue existiendo (lo usan
+// buildTestReceipt y los diagnósticos más abajo) pero ya no calcula nada
+// por su cuenta: delega en buildLayout(), la ÚNICA fuente de verdad sobre
+// anchos. Ninguna sección del renderer vuelve a derivar columnas/ancho de
+// logo por su lado -- ver printerProfile.js para el objeto `layout`
+// completo (normalCharsPerLine, doubleWidthCharsPerLine, logoMaxWidthDots).
 export function columnsForWidth(paperWidthMm) {
-  return getColumnsForProfile(getPrinterProfile(paperWidthMm));
+  return buildLayout(paperWidthMm).normalCharsPerLine;
 }
 
-// PRINT-4-BUG4 — el ancho máximo del logo también se deriva del mismo
-// perfil físico (una fracción del ancho EFECTIVO, no del nominal), en
-// vez de una tabla de dots totalmente desconectada de las columnas de
-// texto -- ambas cosas ahora comparten una única fuente de verdad sobre
-// cuánto espacio hay de verdad.
-function logoMaxWidthDotsForWidth(paperWidthMm) {
-  return getLogoMaxWidthDots(getPrinterProfile(paperWidthMm));
-}
 const LOGO_MAX_HEIGHT_DOTS = 200;
 
 // Sin selección de codepage (fuera de alcance): cualquier carácter fuera
@@ -228,7 +220,13 @@ function formatItemLines(item, columns, defaultCurrency) {
  */
 export async function renderEscPosReceipt(receipt) {
   const paperWidthMm = receipt?.paperWidthMm || 80;
-  const columns = columnsForWidth(paperWidthMm);
+  // PRINT-4-BUG5 — único cálculo de layout de todo el render. Cada
+  // sección de más abajo (texto, ítems, TOTAL en doble ancho, logo,
+  // separador) lee de este mismo objeto -- ninguna vuelve a calcular su
+  // propio ancho. `columns` es un alias de `layout.normalCharsPerLine`
+  // para no reescribir cada uso más abajo.
+  const layout = buildLayout(paperWidthMm);
+  const columns = layout.normalCharsPerLine;
   const currency = receipt?.currency;
   const bytes = [...CMD.INIT];
 
@@ -242,7 +240,7 @@ export async function renderEscPosReceipt(receipt) {
   };
 
   const emitWrapped = (text, opts = {}) => {
-    const width = opts.double ? Math.max(1, Math.floor(columns / 2)) : columns;
+    const width = opts.double ? layout.doubleWidthCharsPerLine : columns;
     for (const wrapped of wrapText(text, width)) emit(wrapped, opts);
   };
 
@@ -250,7 +248,7 @@ export async function renderEscPosReceipt(receipt) {
     const type = line?.type || 'text';
     switch (type) {
       case 'logo': {
-        const maxWidthDots = logoMaxWidthDotsForWidth(paperWidthMm);
+        const maxWidthDots = layout.logoMaxWidthDots;
         // PRINT-4-BUG3: `imageMode` es un id de estrategia genérico (ver
         // escPosCapabilities.js) que buildSaleReceipt/printerConfigStorage
         // pasan tal cual -- este renderer no sabe ni le importa qué
@@ -304,21 +302,21 @@ export async function renderEscPosReceipt(receipt) {
         for (const itemLine of formatItemLines(line, columns, currency)) emit(itemLine);
         break;
       case 'total': {
-        // PRINT-4-BUG4 — el doble tamaño reduce a la mitad los caracteres
-        // por línea; el padding SIEMPRE se calcula con ese ancho reducido
-        // (halfWidth), nunca con `columns` completo y activando el doble
-        // tamaño después (eso fue justo lo que produjo, en la prueba
-        // física, "$25." en una línea y "000" en la siguiente -- la
-        // impresora desbordaba el ancho real en modo doble). Si
-        // etiqueta+monto no caben en una sola línea a mitad de ancho,
-        // formatRowLines ya resuelve el layout seguro (etiqueta en su
-        // propia línea, monto completo alineado a la derecha en la
-        // siguiente) -- se emite igual en doble tamaño, nunca se
-        // abandona el énfasis ni se divide el monto.
+        // PRINT-4-BUG4/BUG5 — el doble tamaño reduce a la mitad los
+        // caracteres por línea; el padding SIEMPRE se calcula con
+        // `layout.doubleWidthCharsPerLine` (ya calculado UNA sola vez al
+        // tope de esta función a partir de `normalCharsPerLine`), nunca
+        // con `columns` completo y activando el doble tamaño después (eso
+        // fue justo lo que produjo, en la prueba física, "$25." en una
+        // línea y "000" en la siguiente -- la impresora desbordaba el
+        // ancho real en modo doble). Si etiqueta+monto no caben en una
+        // sola línea a ese ancho, formatRowLines ya resuelve el layout
+        // seguro (etiqueta en su propia línea, monto completo alineado a
+        // la derecha en la siguiente) -- se emite igual en doble tamaño,
+        // nunca se abandona el énfasis ni se divide el monto.
         const amountStr = formatMoney(line.amount, line.currency ?? currency);
         if (line.emphasize) {
-          const halfWidth = Math.max(1, Math.floor(columns / 2));
-          for (const rowLine of formatRowLines(line.label, amountStr, halfWidth)) {
+          for (const rowLine of formatRowLines(line.label, amountStr, layout.doubleWidthCharsPerLine)) {
             emit(rowLine, { bold: true, double: true });
           }
           break;

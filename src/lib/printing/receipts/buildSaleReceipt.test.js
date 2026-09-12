@@ -328,10 +328,29 @@ describe('buildFinalValidationReceipt — PRINT-4-BUG3 (ticket de validación f�
 
     const bytes = await renderEscPosReceipt(receipt);
     const text = bytesToText(bytes);
-    expect(text).toContain('Producto de validacion A');
+    expect(text).toContain('Cafe');
+    expect(text).toContain('Producto de validacion con nombre');
+    expect(text).toContain('ajuste de linea');
     expect(text).toContain('TOTAL');
     expect(text).toContain('Descuento');
     expect(fetchLogoRaster).toHaveBeenCalled();
+  });
+
+  it('PRINT-4-BUG5: cubre los 4 montos pedidos por la validación de layout ($1.000, $24.000, $999.999, $1.000.000), producto corto y largo, pagos y footer', async () => {
+    vi.mocked(fetchLogoRaster).mockResolvedValue(null);
+    const receipt = buildFinalValidationReceipt({ business });
+    const bytes = await renderEscPosReceipt(receipt);
+    const text = bytesToText(bytes);
+
+    expect(text).toContain('$1.000');
+    expect(text).toContain('$24.000');
+    expect(text).toContain('$999.999');
+    expect(text).toContain('$1.000.000');
+    expect(text).toContain('Cafe');
+    expect(text).toContain('Producto de validacion con nombre');
+    expect(text).toContain('ajuste de linea');
+    expect(text).toContain('Pagos:');
+    expect(text).toContain('Gracias por su compra');
   });
 
   it('nunca crea ni referencia una venta real (usa datos sintéticos, no toca Supabase)', () => {

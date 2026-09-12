@@ -12,7 +12,7 @@ const {
 } = await import('./renderEscPosReceipt');
 const { buildRasterCommand } = await import('./escPosImage');
 const { GRAPHICS_STRATEGIES, CUT_STRATEGIES } = await import('./escPosCapabilities');
-const { getPrinterProfile, getColumnsForProfile } = await import('./printerProfile');
+const { getPrinterProfile, getColumnsForProfile, buildLayout } = await import('./printerProfile');
 
 const ESC = 0x1B;
 const GS = 0x1D;
@@ -27,6 +27,44 @@ function includesSubsequence(bytes, seq) {
     if (seq.every((v, j) => arr[i + j] === v)) return true;
   }
   return false;
+}
+
+// PRINT-4-BUG5 — el intento de BUG4 de medir "longitud de línea impresa"
+// dividiendo bytesToText(bytes) por '\n' contaba los bytes de comandos
+// ESC/GS (alineación, negrita, doble ancho) como si fueran texto
+// imprimible, dando falsos positivos de desborde. Este parser reconoce
+// exactamente los comandos que renderEscPosReceipt.js emite (CMD de ese
+// mismo archivo) y los descuenta, además de rastrear el estado de doble
+// ancho (GS ! 0x11 / GS ! 0x00) para poder distinguir qué línea se
+// imprimió en modo normal vs. doble -- así cada una se puede comparar
+// contra el ancho que realmente le corresponde
+// (normalCharsPerLine/doubleWidthCharsPerLine).
+function parseEscPosLines(bytes) {
+  const arr = Array.from(bytes);
+  const COMMANDS = [
+    [ESC, 0x40],             // ESC @ (init)
+    [ESC, 0x61, 0x00],       // ESC a 0 (align left)
+    [ESC, 0x61, 0x01],       // ESC a 1 (align center)
+    [ESC, 0x45, 0x01],       // ESC E 1 (bold on)
+    [ESC, 0x45, 0x00],       // ESC E 0 (bold off)
+    [GS, 0x56, 0x42, 0x00],  // GS V 66 0 (cut partial)
+    [GS, 0x56, 0x41, 0x00],  // GS V 65 0 (cut full)
+  ];
+  const lines = [];
+  let current = '';
+  let double = false;
+  let i = 0;
+  while (i < arr.length) {
+    if (arr[i] === GS && arr[i + 1] === 0x21 && arr[i + 2] === 0x11) { double = true; i += 3; continue; }
+    if (arr[i] === GS && arr[i + 1] === 0x21 && arr[i + 2] === 0x00) { double = false; i += 3; continue; }
+    const matched = COMMANDS.find((cmd) => cmd.every((b, j) => arr[i + j] === b));
+    if (matched) { i += matched.length; continue; }
+    if (arr[i] === 0x0A) { lines.push({ text: current, double }); current = ''; i += 1; continue; }
+    current += arr[i] < 256 ? String.fromCharCode(arr[i]) : '?';
+    i += 1;
+  }
+  if (current) lines.push({ text: current, double });
+  return lines;
 }
 
 afterEach(() => {
@@ -449,9 +487,9 @@ describe('buildTestReceipt', () => {
   });
 });
 
-describe('PRINT-4-BUG4 — un monto nunca se divide (nunca "$25." + "000")', () => {
-  const AMOUNTS_CLP = [1000, 25000, 126500, 999999, 1000000];
-  const EXPECTED_STRINGS = ['$1.000', '$25.000', '$126.500', '$999.999', '$1.000.000'];
+describe('PRINT-4-BUG4/BUG5 — un monto nunca se divide (nunca "$25." + "000")', () => {
+  const AMOUNTS_CLP = [1000, 24000, 25000, 126500, 999999, 1000000];
+  const EXPECTED_STRINGS = ['$1.000', '$24.000', '$25.000', '$126.500', '$999.999', '$1.000.000'];
 
   it('wrapText nunca corta un token de dinero, ni siquiera a un ancho absurdamente angosto', () => {
     for (const amount of EXPECTED_STRINGS) {
@@ -562,5 +600,91 @@ describe('PRINT-4-BUG4 — ítem: nombre y precio/total en filas separadas (nunc
     const priceLine = lines.find((l) => l.includes('c/u'));
     expect(priceLine).toContain('$24.000 c/u');
     expect(priceLine.trim().endsWith('$24.000')).toBe(true);
+  });
+});
+
+// PRINT-4-BUG5 — "el renderer sigue calculando elementos con anchos
+// inconsistentes": estos tests confirman que TODO lo que emite
+// renderEscPosReceipt respeta el ÚNICO objeto `layout` (buildLayout), sin
+// excepciones por sección. A diferencia de BUG4 (que solo probó que los
+// montos no se parten), acá se mide el LARGO REAL de cada línea impresa
+// (con el parser que descuenta bytes de comando, ver parseEscPosLines)
+// contra `layout.normalCharsPerLine`/`layout.doubleWidthCharsPerLine`.
+describe('PRINT-4-BUG5 — layout único: ninguna sección excede el ancho que le corresponde', () => {
+  it.each([80, 58])('ninguna línea normal (texto/fila/ítem/separador/encabezado) excede normalCharsPerLine a %imm', async (paperWidthMm) => {
+    const layout = buildLayout(paperWidthMm);
+    const bytes = await renderEscPosReceipt({
+      paperWidthMm,
+      lines: [
+        { text: 'Negocio de prueba con nombre largo', align: 'center' },
+        { type: 'divider' },
+        { text: 'Direccion: Av. Siempre Viva 1234, Local 5' },
+        { type: 'itemsHeader' },
+        { type: 'item', qty: 1, name: 'Producto corto', unitPrice: 1000, lineTotal: 1000, currency: 'CLP' },
+        { type: 'item', qty: 2, name: 'Producto con un nombre bastante mas largo que el anterior', unitPrice: 12000, lineTotal: 24000, currency: 'CLP' },
+        { type: 'divider' },
+        { type: 'row', left: 'Subtotal', amount: 999999, currency: 'CLP' },
+        { type: 'row', left: 'Descuento', amount: -500, currency: 'CLP' },
+        { type: 'total', label: 'Pagado en efectivo', amount: 1000000, currency: 'CLP' },
+        { type: 'divider' },
+        { text: 'Gracias por su compra', align: 'center' },
+      ],
+      feedLines: 0,
+      cut: false,
+    });
+
+    const lines = parseEscPosLines(bytes).filter((l) => !l.double);
+    expect(lines.length).toBeGreaterThan(0);
+    for (const { text } of lines) {
+      // Excepción explícita y única (ver MONEY_TOKEN_PATTERN): un monto
+      // jamás se corta aunque la línea supere el ancho -- nunca al revés.
+      const isMoneyOverflowLine = /^-?\$-?[\d.,]+$/.test(text.trim());
+      if (isMoneyOverflowLine) continue;
+      expect(text.length).toBeLessThanOrEqual(layout.normalCharsPerLine);
+    }
+  });
+
+  it.each([80, 58])('el TOTAL en doble ancho nunca excede doubleWidthCharsPerLine a %imm, aunque la etiqueta sea larga', async (paperWidthMm) => {
+    const layout = buildLayout(paperWidthMm);
+    const bytes = await renderEscPosReceipt({
+      paperWidthMm,
+      lines: [
+        { type: 'total', label: 'TOTAL', amount: 24000, currency: 'CLP', emphasize: true },
+        { type: 'total', label: 'TOTAL A PAGAR POR EL CLIENTE EN ESTA VENTA', amount: 999999, currency: 'CLP', emphasize: true },
+      ],
+      feedLines: 0,
+      cut: false,
+    });
+
+    const doubleLines = parseEscPosLines(bytes).filter((l) => l.double);
+    expect(doubleLines.length).toBeGreaterThan(0);
+    for (const { text } of doubleLines) {
+      const isMoneyOverflowLine = /^-?\$-?[\d.,]+$/.test(text.trim());
+      if (isMoneyOverflowLine) continue;
+      expect(text.length).toBeLessThanOrEqual(layout.doubleWidthCharsPerLine);
+    }
+  });
+
+  it.each([80, 58])('el separador usa EXACTAMENTE normalCharsPerLine caracteres a %imm, nunca más ni menos', async (paperWidthMm) => {
+    const layout = buildLayout(paperWidthMm);
+    const bytes = await renderEscPosReceipt({ paperWidthMm, lines: [{ type: 'divider' }], feedLines: 0, cut: false });
+    const [line] = parseEscPosLines(bytes);
+    expect(line.text.length).toBe(layout.normalCharsPerLine);
+    expect(line.text).toBe('-'.repeat(layout.normalCharsPerLine));
+  });
+
+  it.each([80, 58])('el logo pide exactamente layout.logoMaxWidthDots a fetchLogoRaster a %imm, siempre por debajo de contentWidthDots', async (paperWidthMm) => {
+    vi.mocked(fetchLogoRaster).mockResolvedValue(null);
+    const layout = buildLayout(paperWidthMm);
+    await renderEscPosReceipt({ lines: [{ type: 'logo', url: 'https://x/logo.png' }], paperWidthMm, feedLines: 0, cut: false });
+    const [, options] = vi.mocked(fetchLogoRaster).mock.calls.at(-1);
+    expect(options.maxWidthDots).toBe(layout.logoMaxWidthDots);
+    expect(options.maxWidthDots).toBeLessThan(layout.contentWidthDots);
+  });
+
+  it('columnsForWidth (usado por buildTestReceipt y diagnósticos) es un alias directo de buildLayout(...).normalCharsPerLine -- no un cálculo paralelo', () => {
+    for (const paperWidthMm of [80, 58]) {
+      expect(columnsForWidth(paperWidthMm)).toBe(buildLayout(paperWidthMm).normalCharsPerLine);
+    }
   });
 });

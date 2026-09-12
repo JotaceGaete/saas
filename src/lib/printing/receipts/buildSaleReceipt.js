@@ -216,13 +216,25 @@ export function buildSaleReceipt({
 }
 
 /**
- * PRINT-4-BUG3 — ticket de validación física final: ejercita el camino de
- * producción completo (buildSaleReceipt -> renderEscPosReceipt) con datos
- * de una venta sintética (nunca se guarda ni se toca la base de datos),
- * incluyendo logo, ítems con nombre largo, descuento y TOTAL destacado --
- * exactamente lo que pediría confirmar antes de dejar el logo/corte
- * activados para ventas reales. Pensado para el botón de diagnóstico en
- * CrmPrintSettings, no para el flujo de cobro.
+ * PRINT-4-BUG3/BUG5 — ticket de validación física final: ejercita el
+ * camino de producción completo (buildSaleReceipt -> renderEscPosReceipt)
+ * con datos de una venta sintética (nunca se guarda ni se toca la base de
+ * datos), incluyendo logo real del negocio, un producto de nombre corto y
+ * uno de nombre largo, pagos (fila "Pagos:" alineada, no solo el resumen),
+ * TOTAL destacado en doble ancho y footer -- exactamente lo que pediría
+ * confirmar antes de dejar el logo/corte activados para ventas reales.
+ * Pensado para el botón de diagnóstico en CrmPrintSettings, no para el
+ * flujo de cobro.
+ *
+ * PRINT-4-BUG5 — los montos se eligieron para cubrir EXACTAMENTE los
+ * casos pedidos por la validación de layout ($1.000, $24.000, $999.999,
+ * $1.000.000), no para representar una venta realista: subtotal (25.000)
+ * menos descuento (1.000) da un TOTAL de $24.000 (el mismo ejemplo del
+ * encargo de "TOTAL grande en una sola línea"); el pago de $1.000.000
+ * ejercita la fila de "Pagos:" alineada; `change` se fija en $999.999
+ * como valor de cobertura para la línea "Vuelto" -- deliberadamente NO es
+ * `paidAmount - total` (sería $976.000): este es un ticket de VALIDACIÓN
+ * de layout, no una venta real, y ya se etiqueta como tal más abajo.
  */
 export function buildFinalValidationReceipt({
   business, paperWidthMm = 80, autoCut = true, printLogo = true, imageMode,
@@ -231,17 +243,16 @@ export function buildFinalValidationReceipt({
     business,
     sale: { invoice_number: 999999 },
     items: [
-      { name: 'Producto de validacion A', unit_price: 4990, quantity: 2 },
-      { name: 'Producto de validacion con nombre largo para probar el ajuste de linea', unit_price: 1500, quantity: 1 },
+      { name: 'Cafe', unit_price: 1000, quantity: 1 },
+      { name: 'Producto de validacion con nombre largo para probar el ajuste de linea', unit_price: 24000, quantity: 1 },
     ],
     customer: { name: 'Cliente de prueba' },
     paymentMethod: 'cash',
-    payments: [],
-    discountAmount: 500,
-    subtotal: 11480,
-    total: 10980,
-    amountReceived: 15000,
-    change: 4020,
+    payments: [{ method: 'cash', amount: 1000000 }],
+    discountAmount: 1000,
+    subtotal: 25000,
+    total: 24000,
+    change: 999999,
     pendingBalance: 0,
     notes: 'Ticket de validacion final -- no corresponde a una venta real',
     createdAt: new Date().toISOString(),

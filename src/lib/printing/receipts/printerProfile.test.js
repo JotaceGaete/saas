@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   PRINTER_PROFILES, getPrinterProfile, getEffectivePrintableWidthDots, getColumnsForProfile, getLogoMaxWidthDots,
+  buildLayout,
 } from './printerProfile';
 
 // PRINT-4-BUG4 — este módulo es la única fuente de verdad sobre "cuánto
@@ -70,12 +71,11 @@ describe('getLogoMaxWidthDots', () => {
     expect(logoMax).toBeLessThan(effective);
   });
 
-  it('cae dentro del rango pedido (80-85% del ancho efectivo)', () => {
+  it('usa exactamente la fracción configurada (BUG5: 0.78, bajada de 0.82 en BUG4 para dejar más margen visible)', () => {
     const profile = PRINTER_PROFILES[80];
     const effective = getEffectivePrintableWidthDots(profile);
     const logoMax = getLogoMaxWidthDots(profile);
-    expect(logoMax / effective).toBeGreaterThanOrEqual(0.78);
-    expect(logoMax / effective).toBeLessThanOrEqual(0.86);
+    expect(logoMax).toBe(Math.round(effective * 0.78));
   });
 
   it('logo + márgenes nunca exceden el ancho imprimible nominal declarado', () => {
@@ -84,5 +84,60 @@ describe('getLogoMaxWidthDots', () => {
       const totalWithMargins = logoMax + profile.safeMarginDots * 2;
       expect(totalWithMargins).toBeLessThanOrEqual(profile.printableWidthDots);
     }
+  });
+});
+
+// PRINT-4-BUG5 — `buildLayout` es el objeto único del que TODO el
+// renderer debe leer: estos tests confirman su forma exacta y las
+// invariantes pedidas explícitamente (contentWidthDots derivado del
+// margen, doubleWidthCharsPerLine derivado de normalCharsPerLine DESPUÉS
+// de calcularlo -- nunca al revés -- y el logo siempre por debajo de la
+// fracción configurada del ancho de contenido).
+describe('buildLayout', () => {
+  it('devuelve exactamente las claves de PrintLayout, ninguna de más ni de menos', () => {
+    const layout = buildLayout(80);
+    expect(Object.keys(layout).sort()).toEqual([
+      'contentWidthDots',
+      'doubleWidthCharsPerLine',
+      'logoMaxWidthDots',
+      'normalCharsPerLine',
+      'paperWidthMm',
+      'printableWidthDots',
+      'safeMarginDots',
+    ].sort());
+  });
+
+  it('contentWidthDots = printableWidthDots - 2*safeMarginDots', () => {
+    for (const paperWidthMm of [80, 58]) {
+      const layout = buildLayout(paperWidthMm);
+      expect(layout.contentWidthDots).toBe(layout.printableWidthDots - 2 * layout.safeMarginDots);
+    }
+  });
+
+  it('doubleWidthCharsPerLine = floor(normalCharsPerLine / 2) -- se deriva DESPUÉS de calcular el ancho normal, nunca al revés', () => {
+    for (const paperWidthMm of [80, 58]) {
+      const layout = buildLayout(paperWidthMm);
+      expect(layout.doubleWidthCharsPerLine).toBe(Math.floor(layout.normalCharsPerLine / 2));
+    }
+  });
+
+  it('logoMaxWidthDots nunca excede el 78% de contentWidthDots (tolerancia de redondeo) y nunca llega al 100%', () => {
+    for (const paperWidthMm of [80, 58]) {
+      const layout = buildLayout(paperWidthMm);
+      expect(layout.logoMaxWidthDots).toBeLessThanOrEqual(Math.ceil(layout.contentWidthDots * 0.78));
+      expect(layout.logoMaxWidthDots).toBeLessThan(layout.contentWidthDots);
+    }
+  });
+
+  it('normalCharsPerLine coincide con getColumnsForProfile del mismo perfil -- una sola fuente de verdad, no dos cálculos paralelos', () => {
+    for (const paperWidthMm of [80, 58]) {
+      const layout = buildLayout(paperWidthMm);
+      const profile = getPrinterProfile(paperWidthMm);
+      expect(layout.normalCharsPerLine).toBe(getColumnsForProfile(profile));
+    }
+  });
+
+  it('paperWidthMm desconocido cae al perfil de 80mm, igual que getPrinterProfile', () => {
+    expect(buildLayout(999).paperWidthMm).toBe(80);
   });
 });
