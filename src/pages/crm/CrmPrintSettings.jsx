@@ -8,6 +8,7 @@ import { printService } from 'lib/printing/printService';
 import {
   buildTestReceipt, buildImageCapabilityDiagnosticReceipt, buildCutCapabilityDiagnosticReceipt,
 } from 'lib/printing/receipts/renderEscPosReceipt';
+import { buildFinalValidationReceipt } from 'lib/printing/receipts/buildSaleReceipt';
 import { buildPrinterConfigKey, readPrinterConfig, writePrinterConfig } from 'lib/printing/printerConfigStorage';
 
 // PRINT-1 — pantalla aislada de configuración/prueba de impresión térmica.
@@ -93,7 +94,7 @@ export default function CrmPrintSettings() {
     setPrinting(true);
     setPrintResult(null);
     try {
-      const receipt = buildReceipt({ paperWidthMm: config.paperWidthMm });
+      const receipt = buildReceipt();
       await printService.printReceipt(receipt, { printerName: config.printerName });
       setPrintResult({ ok: true, message: successMessage });
     } catch (err) {
@@ -104,15 +105,31 @@ export default function CrmPrintSettings() {
   };
 
   const handlePrintImageDiagnostic = () => runDiagnosticPrint(
-    buildImageCapabilityDiagnosticReceipt,
+    () => buildImageCapabilityDiagnosticReceipt({ paperWidthMm: config.paperWidthMm }),
     'Diagnóstico de imagen enviado a la impresora.',
     'No se pudo imprimir el diagnóstico de imagen.',
   );
 
   const handlePrintCutDiagnostic = () => runDiagnosticPrint(
-    buildCutCapabilityDiagnosticReceipt,
+    () => buildCutCapabilityDiagnosticReceipt({ paperWidthMm: config.paperWidthMm }),
     'Diagnóstico de corte enviado a la impresora.',
     'No se pudo imprimir el diagnóstico de corte.',
+  );
+
+  // PRINT-4-BUG3 — ejercita el camino de producción completo (logo real +
+  // ítems + descuento + TOTAL destacado + corte) con una venta sintética,
+  // para una última confirmación física antes de dejarlo activo para
+  // ventas reales. No genera ninguna venta ni toca el flujo de cobro.
+  const handlePrintFinalValidation = () => runDiagnosticPrint(
+    () => buildFinalValidationReceipt({
+      business,
+      paperWidthMm: config.paperWidthMm,
+      autoCut: config.autoCut,
+      printLogo: config.printLogo,
+      imageMode: config.imageMode,
+    }),
+    'Impresión final de validación enviada a la impresora.',
+    'No se pudo imprimir la validación final.',
   );
 
   const status = QZ_STATUS[qzStatus];
@@ -237,6 +254,23 @@ export default function CrmPrintSettings() {
             sale como símbolos, o el papel no se separa físicamente después de una variante de corte,
             esa variante no es compatible con esta impresora.
           </p>
+
+          <div className="mt-3">
+            <button
+              type="button"
+              onClick={handlePrintFinalValidation}
+              disabled={!canPrint}
+              className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-slate-900 px-3 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-40"
+            >
+              <Icon name={printing ? 'Loader2' : 'ReceiptText'} size={15} className={printing ? 'animate-spin' : ''} />
+              Impresión final de validación
+            </button>
+            <p className="mt-1.5 text-xs text-slate-400">
+              Imprime un ticket con datos de una venta simulada (nunca se guarda): logo del negocio,
+              ítems, descuento, TOTAL destacado y corte automático -- exactamente lo que vería un
+              cliente real. Úsalo como última confirmación antes de imprimir en ventas reales.
+            </p>
+          </div>
 
           {printResult && (
             <div className={`mt-4 flex items-start gap-2 rounded-xl border p-3 text-xs ${printResult.ok ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-rose-200 bg-rose-50 text-rose-700'}`}>

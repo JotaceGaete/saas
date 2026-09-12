@@ -689,10 +689,17 @@ describe('PRINT-2 — ya no usa window.print() en ninguna parte', () => {
     expect(indexSource).toMatch(/import \{ buildPrinterConfigKey, readPrinterConfig \} from 'lib\/printing\/printerConfigStorage';/);
   });
 
-  it('PRINT-4/PRINT-4-BUG1: pasa autoCut y printLogo de la config local a buildSaleReceipt (no hardcodea ninguno)', () => {
+  it('PRINT-4/PRINT-4-BUG1/BUG3: pasa autoCut, printLogo e imageMode de la config local a buildSaleReceipt (no hardcodea ninguno)', () => {
     const printCurrentTicketMatch = indexSource.match(/const printCurrentTicket = useCallback\(async \(\) => \{[\s\S]*?\n {2}\}, \[ticketData, business\]\);/);
     expect(printCurrentTicketMatch[0]).toMatch(/autoCut: printerConfig\.autoCut/);
     expect(printCurrentTicketMatch[0]).toMatch(/printLogo: printerConfig\.printLogo/);
+    expect(printCurrentTicketMatch[0]).toMatch(/imageMode: printerConfig\.imageMode/);
+  });
+
+  it('PRINT-4-BUG3: no hay ningún string de estrategia gráfica (bitImageEscStar/rasterGsV0) ni modelo de impresora hardcodeado en CrmTerminal', () => {
+    expect(indexSource).not.toMatch(/bitImageEscStar|rasterGsV0/);
+    expect(indexSource.toLowerCase()).not.toContain('tsp100');
+    expect(indexSource.toLowerCase()).not.toContain('tsp143');
   });
 });
 

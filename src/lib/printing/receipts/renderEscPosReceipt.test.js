@@ -271,6 +271,20 @@ describe('renderEscPosReceipt — tipos semánticos PRINT-4', () => {
     expect(width80).toBeGreaterThan(width58);
   });
 
+  it('PRINT-4-BUG3: pasa receipt.imageMode como graphicsStrategyId a fetchLogoRaster (el renderer no decide la estrategia, solo la reenvía)', async () => {
+    vi.mocked(fetchLogoRaster).mockResolvedValue(null);
+    await renderEscPosReceipt({
+      lines: [{ type: 'logo', url: 'https://x/logo.png' }], imageMode: 'rasterGsV0', feedLines: 0, cut: false,
+    });
+    expect(fetchLogoRaster).toHaveBeenCalledWith('https://x/logo.png', expect.objectContaining({ graphicsStrategyId: 'rasterGsV0' }));
+  });
+
+  it('PRINT-4-BUG3: sin imageMode en el receipt, pasa undefined -- fetchLogoRaster decide su propio default', async () => {
+    vi.mocked(fetchLogoRaster).mockResolvedValue(null);
+    await renderEscPosReceipt({ lines: [{ type: 'logo', url: 'https://x/logo.png' }], feedLines: 0, cut: false });
+    expect(fetchLogoRaster).toHaveBeenCalledWith('https://x/logo.png', expect.objectContaining({ graphicsStrategyId: undefined }));
+  });
+
   describe('PRINT-4-BUG1 — rasterBytes (comando de imagen ya construido, sin fetch)', () => {
     it('inserta el comando centrado, sin pasar por fetchLogoRaster', async () => {
       const bits = Uint8Array.from([1, 0, 0, 0, 0, 0, 0, 0]);
@@ -339,9 +353,12 @@ describe('buildImageCapabilityDiagnosticReceipt — PRINT-4-BUG2', () => {
     // Imagen A: header GS v 0 de 8 bytes + 8 bytes de datos (8x8, 1 byte/fila)
     expect(Array.from(rasterLines[0].command.slice(0, 3))).toEqual([0x1D, 0x76, 0x30]);
     expect(rasterLines[0].command.length).toBe(16);
-    // Imagen B: header ESC * de 5 bytes + 8 bytes de datos (8 columnas, 1 byte/columna)
-    expect(Array.from(rasterLines[1].command.slice(0, 2))).toEqual([0x1B, 0x2A]);
-    expect(rasterLines[1].command.length).toBe(13);
+    // Imagen B: una franja de 8 dots envuelta en ESC 3 8 ... LF ... ESC 2
+    // (ver buildTiledColumnBitImageCommand) -- el propio comando ESC *
+    // validado va adentro, no al principio.
+    expect(Array.from(rasterLines[1].command.slice(0, 3))).toEqual([0x1B, 0x33, 8]);
+    expect(Array.from(rasterLines[1].command.slice(3, 5))).toEqual([0x1B, 0x2A]);
+    expect(Array.from(rasterLines[1].command.slice(-2))).toEqual([0x1B, 0x32]);
     expect(GRAPHICS_STRATEGIES.rasterGsV0.id).toBe('rasterGsV0');
   });
 });

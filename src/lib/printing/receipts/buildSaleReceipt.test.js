@@ -5,7 +5,7 @@ vi.mock('./fetchLogoRaster', () => ({
 }));
 
 const { fetchLogoRaster } = await import('./fetchLogoRaster');
-const { buildSaleReceipt } = await import('./buildSaleReceipt');
+const { buildSaleReceipt, buildFinalValidationReceipt } = await import('./buildSaleReceipt');
 const { renderEscPosReceipt } = await import('./renderEscPosReceipt');
 
 const ESC = 0x1B;
@@ -122,6 +122,19 @@ describe('buildSaleReceipt', () => {
       const bytes = await renderEscPosReceipt(buildSaleReceipt(receiptWithLogo));
       expect(fetchLogoRaster).not.toHaveBeenCalled();
       expect(bytesToText(bytes)).toContain('MI NEGOCIO');
+    });
+
+    it('PRINT-4-BUG3: printLogo por defecto (sin especificar) sigue activo -- ya se confirmó ESC * en el hardware de validación', () => {
+      const receipt = buildSaleReceipt({ ...baseSale, business: { ...business, logoUrl: 'https://cdn.example.com/logo.png' } });
+      expect(receipt.lines.some((l) => l.type === 'logo')).toBe(true);
+    });
+
+    it('PRINT-4-BUG3: imageMode se pasa tal cual al Receipt para que el renderer elija la estrategia (el builder no decide cuál)', () => {
+      const receipt = buildSaleReceipt({ ...baseSale, imageMode: 'rasterGsV0' });
+      expect(receipt.imageMode).toBe('rasterGsV0');
+
+      const withoutImageMode = buildSaleReceipt(baseSale);
+      expect(withoutImageMode.imageMode).toBeUndefined();
     });
   });
 
@@ -286,5 +299,43 @@ describe('buildSaleReceipt', () => {
     expect(text).not.toContain('star');
     expect(text).not.toContain('tsp100');
     expect(text).not.toContain('epson');
+  });
+});
+
+describe('buildFinalValidationReceipt — PRINT-4-BUG3 (ticket de validación física final)', () => {
+  it('ejercita el camino real de producción: logo, items, descuento, TOTAL destacado y corte', async () => {
+    const fakeRaster = new Uint8Array([0x1B, 0x2A, 0x00, 1, 0, 0xFF]);
+    vi.mocked(fetchLogoRaster).mockResolvedValue({ command: fakeRaster, width: 8, height: 1 });
+
+    const receipt = buildFinalValidationReceipt({ business: { ...business, logoUrl: 'https://cdn.example.com/logo.png' } });
+    expect(receipt.lines.some((l) => l.type === 'logo')).toBe(true);
+
+    const bytes = await renderEscPosReceipt(receipt);
+    const text = bytesToText(bytes);
+    expect(text).toContain('Producto de validacion A');
+    expect(text).toContain('TOTAL');
+    expect(text).toContain('Descuento');
+    expect(fetchLogoRaster).toHaveBeenCalled();
+  });
+
+  it('nunca crea ni referencia una venta real (usa datos sintéticos, no toca Supabase)', () => {
+    const receipt = buildFinalValidationReceipt({ business });
+    const text = receipt.lines.map((l) => l.text).filter(Boolean).join('\n');
+    expect(text).toContain('no corresponde a una venta real');
+  });
+
+  it('respeta autoCut/printLogo/imageMode/paperWidthMm pasados por CrmPrintSettings', () => {
+    const receipt = buildFinalValidationReceipt({
+      business, autoCut: false, printLogo: false, imageMode: 'rasterGsV0', paperWidthMm: 58,
+    });
+    expect(receipt.cut).toBe(false);
+    expect(receipt.lines.some((l) => l.type === 'logo')).toBe(false);
+    expect(receipt.imageMode).toBe('rasterGsV0');
+    expect(receipt.paperWidthMm).toBe(58);
+  });
+
+  it('el receipt resultante renderiza sin lanzar', async () => {
+    vi.mocked(fetchLogoRaster).mockResolvedValue(null);
+    await expect(renderEscPosReceipt(buildFinalValidationReceipt({ business }))).resolves.not.toThrow();
   });
 });

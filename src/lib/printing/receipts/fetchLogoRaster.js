@@ -10,7 +10,8 @@
 // URL rota, imagen corrupta, canvas no soportado) resuelve `null`, y
 // quien llama debe imprimir el ticket igual, sin logo.
 
-import { rgbaToGrayscale, ditherFloydSteinberg, buildRasterCommand } from './escPosImage';
+import { rgbaToGrayscale, ditherFloydSteinberg } from './escPosImage';
+import { getGraphicsStrategy } from './escPosCapabilities';
 
 const DEFAULT_MAX_HEIGHT_DOTS = 220;
 
@@ -50,7 +51,19 @@ export function computeFitSize(naturalWidth, naturalHeight, maxWidth, maxHeight)
   return { width: Math.max(1, width), height: Math.max(1, height) };
 }
 
-export async function fetchLogoRaster(logoUrl, { maxWidthDots, maxHeightDots = DEFAULT_MAX_HEIGHT_DOTS } = {}) {
+/**
+ * @param {string} logoUrl
+ * @param {Object} [options]
+ * @param {number} options.maxWidthDots
+ * @param {number} [options.maxHeightDots]
+ * @param {string} [options.graphicsStrategyId] - PRINT-4-BUG3: id de
+ *   escPosCapabilities.GRAPHICS_STRATEGIES (p. ej. 'bitImageEscStar' o
+ *   'rasterGsV0'). Decide qué comando ESC/POS arma el logo -- por
+ *   defecto, la variante confirmada en el hardware de validación (ver
+ *   escPosCapabilities.DEFAULT_GRAPHICS_STRATEGY_ID). Este módulo no
+ *   sabe ni le importa qué impresora hay detrás de ese id.
+ */
+export async function fetchLogoRaster(logoUrl, { maxWidthDots, maxHeightDots = DEFAULT_MAX_HEIGHT_DOTS, graphicsStrategyId } = {}) {
   if (!logoUrl || !maxWidthDots) return null;
   try {
     const img = await loadImageElement(logoUrl);
@@ -64,7 +77,8 @@ export async function fetchLogoRaster(logoUrl, { maxWidthDots, maxHeightDots = D
 
     const grayscale = rgbaToGrayscale(imageData.data, width, height);
     const bits = ditherFloydSteinberg(grayscale, width, height);
-    return { command: buildRasterCommand(bits, width, height), width, height };
+    const strategy = getGraphicsStrategy(graphicsStrategyId);
+    return { command: strategy.build(bits, width, height), width, height };
   } catch {
     return null;
   }

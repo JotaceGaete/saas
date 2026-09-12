@@ -25,7 +25,7 @@
 // correcta sin que buildSaleReceipt ni CrmTerminal necesiten saber nada
 // de impresoras concretas.
 
-import { buildRasterCommand, buildColumnBitImageCommand } from './escPosImage';
+import { buildRasterCommand, buildTiledColumnBitImageCommand } from './escPosImage';
 
 export const GRAPHICS_STRATEGIES = {
   rasterGsV0: {
@@ -36,12 +36,26 @@ export const GRAPHICS_STRATEGIES = {
   bitImageEscStar: {
     id: 'bitImageEscStar',
     // "ESC *" -- pese al nombre de la variable, es un comando Epson
-    // genérico de la especificación ESC/POS original (bit image de 8/24
-    // dots por columna), no una extensión propietaria de Star.
-    label: 'ESC * (bit image por columnas, 8 dots)',
-    build: buildColumnBitImageCommand,
+    // genérico de la especificación ESC/POS original (bit image por
+    // columnas, en franjas de 8 dots -- ver
+    // buildTiledColumnBitImageCommand), no una extensión propietaria de
+    // Star.
+    label: 'ESC * (bit image por columnas, franjas de 8 dots)',
+    build: buildTiledColumnBitImageCommand,
   },
 };
+
+// PRINT-4-BUG3 — confirmado físicamente (hardware de validación: Star
+// TSP100 Cutter / TSP143, 80mm): `GS v 0` se imprime como texto literal,
+// `ESC *` imprime el patrón correctamente. Por eso `bitImageEscStar` pasa
+// a ser el default -- `rasterGsV0` NO se elimina, queda disponible para
+// perfiles de otras impresoras que sí lo soporten (Walinka no está
+// atada a este hardware).
+export const DEFAULT_GRAPHICS_STRATEGY_ID = 'bitImageEscStar';
+
+export function getGraphicsStrategy(id) {
+  return GRAPHICS_STRATEGIES[id] || GRAPHICS_STRATEGIES[DEFAULT_GRAPHICS_STRATEGY_ID];
+}
 
 export const CUT_STRATEGIES = {
   partialFunctionB: {

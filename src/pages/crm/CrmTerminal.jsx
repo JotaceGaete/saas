@@ -305,6 +305,7 @@ function CrmTerminalUI() {
         paperWidthMm: printerConfig.paperWidthMm,
         autoCut: printerConfig.autoCut,
         printLogo: printerConfig.printLogo,
+        imageMode: printerConfig.imageMode,
       });
       await printService.printReceipt(receipt, { printerName: printerConfig.printerName });
       setPrintStatus('success');

@@ -62,6 +62,9 @@ function formatDateTime(dt) {
  * @param {number} [params.paperWidthMm]
  * @param {boolean} [params.autoCut] - PRINT-4: si es false, el ticket no pide corte
  * @param {boolean} [params.printLogo] - PRINT-4-BUG1: si es false, nunca se agrega la línea de logo
+ * @param {string} [params.imageMode] - PRINT-4-BUG3: id de escPosCapabilities.GRAPHICS_STRATEGIES
+ *   (p. ej. 'bitImageEscStar' o 'rasterGsV0') que el renderer usará para el logo. Este builder
+ *   solo lo pasa tal cual -- no sabe qué significa ni qué impresora hay detrás.
  * @param {string} [params.cashierName] - PRINT-4: opcional, no hay hoy una fuente establecida para esto en CrmTerminal
  * @returns {import('./renderEscPosReceipt').Receipt}
  */
@@ -85,6 +88,7 @@ export function buildSaleReceipt({
   paperWidthMm = 80,
   autoCut = true,
   printLogo = true,
+  imageMode,
   cashierName,
 }) {
   const currency = business?.currency;
@@ -204,8 +208,46 @@ export function buildSaleReceipt({
   return {
     paperWidthMm,
     currency,
+    imageMode,
     lines,
     feedLines: 4,
     cut: autoCut !== false,
   };
+}
+
+/**
+ * PRINT-4-BUG3 — ticket de validación física final: ejercita el camino de
+ * producción completo (buildSaleReceipt -> renderEscPosReceipt) con datos
+ * de una venta sintética (nunca se guarda ni se toca la base de datos),
+ * incluyendo logo, ítems con nombre largo, descuento y TOTAL destacado --
+ * exactamente lo que pediría confirmar antes de dejar el logo/corte
+ * activados para ventas reales. Pensado para el botón de diagnóstico en
+ * CrmPrintSettings, no para el flujo de cobro.
+ */
+export function buildFinalValidationReceipt({
+  business, paperWidthMm = 80, autoCut = true, printLogo = true, imageMode,
+} = {}) {
+  return buildSaleReceipt({
+    business,
+    sale: { invoice_number: 999999 },
+    items: [
+      { name: 'Producto de validacion A', unit_price: 4990, quantity: 2 },
+      { name: 'Producto de validacion con nombre largo para probar el ajuste de linea', unit_price: 1500, quantity: 1 },
+    ],
+    customer: { name: 'Cliente de prueba' },
+    paymentMethod: 'cash',
+    payments: [],
+    discountAmount: 500,
+    subtotal: 11480,
+    total: 10980,
+    amountReceived: 15000,
+    change: 4020,
+    pendingBalance: 0,
+    notes: 'Ticket de validacion final -- no corresponde a una venta real',
+    createdAt: new Date().toISOString(),
+    paperWidthMm,
+    autoCut,
+    printLogo,
+    imageMode,
+  });
 }

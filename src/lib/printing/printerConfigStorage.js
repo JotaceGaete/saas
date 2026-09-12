@@ -12,6 +12,13 @@
 
 export const PRINTER_CONFIG_SCHEMA_VERSION = 1;
 const DEFAULT_PAPER_WIDTH_MM = 80;
+// PRINT-4-BUG3: id de estrategia de escPosCapabilities.GRAPHICS_STRATEGIES.
+// No se importa esa constante acá a propósito -- este archivo es
+// localStorage puro, sin lógica de impresión, así que solo conoce los ids
+// como strings; escPosCapabilities.getGraphicsStrategy es quien decide
+// qué hacer con ellos.
+const DEFAULT_IMAGE_MODE = 'bitImageEscStar';
+const KNOWN_IMAGE_MODES = new Set(['bitImageEscStar', 'rasterGsV0']);
 
 export function buildPrinterConfigKey(businessId) {
   const business = String(businessId || '').trim();
@@ -39,16 +46,16 @@ function defaultConfig() {
     // poder desactivarlo si alguna impresora/cuchilla no lo soporta bien,
     // sin bloquear nunca la venta si el corte falla o no está soportado.
     autoCut: true,
-    // PRINT-4-BUG1: la primera prueba física de PRINT-4 con logo salió con
-    // símbolos/basura en vez del ticket normal en el TSP100 probado -- la
-    // hipótesis más sólida es que el comando raster GS v 0 (o algo en la
-    // cadena de carga/rasterización) no es compatible con ese equipo, y
-    // como el logo se imprime primero, arrastra el resto del ticket. Por
-    // eso el logo queda APAGADO por defecto hasta validarlo con la prueba
-    // de diagnóstico (ver buildRasterDiagnosticReceipt) -- el soporte de
-    // imagen se conserva completo, listo para activarse por negocio una
-    // vez confirmado que el hardware lo soporta.
-    printLogo: false,
+    // PRINT-4-BUG1/BUG2/BUG3: la primera prueba física de PRINT-4 con logo
+    // salió con símbolos/basura -- se rastreó al comando raster `GS v 0`,
+    // no interpretado por el hardware de validación (Star TSP100 Cutter /
+    // TSP143), y el logo quedó apagado por defecto hasta confirmar una
+    // alternativa. El diagnóstico A/B confirmó físicamente que `ESC *`
+    // (bitImageEscStar) SÍ imprime correctamente en ese equipo, así que el
+    // logo se reactiva usando esa estrategia -- `GS v 0` (rasterGsV0) NO
+    // se elimina, queda disponible para perfiles de otras impresoras.
+    printLogo: true,
+    imageMode: DEFAULT_IMAGE_MODE,
   };
 }
 
@@ -61,9 +68,10 @@ function sanitizeConfig(raw) {
     ? raw.paperWidthMm
     : DEFAULT_PAPER_WIDTH_MM;
   const autoCut = raw.autoCut !== false;
-  const printLogo = raw.printLogo === true;
+  const printLogo = raw.printLogo !== false;
+  const imageMode = KNOWN_IMAGE_MODES.has(raw.imageMode) ? raw.imageMode : DEFAULT_IMAGE_MODE;
   return {
-    schemaVersion: PRINTER_CONFIG_SCHEMA_VERSION, printerName, paperWidthMm, autoCut, printLogo,
+    schemaVersion: PRINTER_CONFIG_SCHEMA_VERSION, printerName, paperWidthMm, autoCut, printLogo, imageMode,
   };
 }
 

@@ -216,8 +216,15 @@ export async function renderEscPosReceipt(receipt) {
     switch (type) {
       case 'logo': {
         const maxWidthDots = LOGO_MAX_WIDTH_DOTS_BY_PAPER_MM[paperWidthMm] || LOGO_MAX_WIDTH_DOTS_BY_PAPER_MM[80];
+        // PRINT-4-BUG3: `imageMode` es un id de estrategia genérico (ver
+        // escPosCapabilities.js) que buildSaleReceipt/printerConfigStorage
+        // pasan tal cual -- este renderer no sabe ni le importa qué
+        // impresora hay detrás. Sin imageMode, fetchLogoRaster cae al
+        // default (la variante confirmada físicamente).
         // eslint-disable-next-line no-await-in-loop -- el orden de impresión importa, no se puede paralelizar
-        const raster = await fetchLogoRaster(line.url, { maxWidthDots, maxHeightDots: LOGO_MAX_HEIGHT_DOTS });
+        const raster = await fetchLogoRaster(line.url, {
+          maxWidthDots, maxHeightDots: LOGO_MAX_HEIGHT_DOTS, graphicsStrategyId: receipt?.imageMode,
+        });
         if (raster?.command?.length) {
           bytes.push(...CMD.ALIGN_CENTER);
           bytes.push(...raster.command);

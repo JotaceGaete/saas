@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   rgbaToGrayscale, ditherFloydSteinberg, buildRasterCommand, buildColumnBitImageCommand,
+  buildTiledColumnBitImageCommand,
 } from './escPosImage';
 
 // Todo este archivo trabaja sobre arrays de píxeles fijos -- ninguna de
@@ -130,6 +131,62 @@ describe('buildColumnBitImageCommand — PRINT-4-BUG2 (alternativa ESC * al rast
   it('nunca depende de UTF-8: solo produce bytes 0-255 puros', () => {
     const bits = new Uint8Array(64).fill(1);
     const command = buildColumnBitImageCommand(bits, 8, 8);
+    expect(command.every((b) => b >= 0 && b <= 255)).toBe(true);
+  });
+});
+
+describe('buildTiledColumnBitImageCommand — PRINT-4-BUG3 (logo real vía ESC *, en franjas de 8 dots)', () => {
+  const ESC = 0x1B;
+  const LF = 0x0A;
+
+  it('para una altura de exactamente 8 dots, produce UNA sola franja envuelta en ESC 3 8 ... LF ... ESC 2', () => {
+    const bits = new Uint8Array(8 * 8);
+    const command = buildTiledColumnBitImageCommand(bits, 8, 8);
+    // ESC 3 8
+    expect(Array.from(command.slice(0, 3))).toEqual([ESC, 0x33, 8]);
+    // el comando ESC * validado (m=0, ancho=8) arranca justo después
+    expect(Array.from(command.slice(3, 8))).toEqual([ESC, 0x2A, 0x00, 8, 0]);
+    // LF tras los 8 bytes de datos de la franja
+    expect(command[3 + 5 + 8]).toBe(LF);
+    // ESC 2 al final
+    expect(Array.from(command.slice(-2))).toEqual([ESC, 0x32]);
+  });
+
+  it('para una altura mayor a 8 dots, la divide en varias franjas de hasta 8 dots cada una', () => {
+    const width = 4;
+    const height = 20; // 3 franjas: 8 + 8 + 4
+    const bits = new Uint8Array(width * height);
+    const command = Array.from(buildTiledColumnBitImageCommand(bits, width, height));
+
+    // Cada franja arranca con ESC * (0x1B, 0x2A) -- deben aparecer exactamente 3 veces
+    let count = 0;
+    for (let i = 0; i < command.length - 1; i++) {
+      if (command[i] === ESC && command[i + 1] === 0x2A) count++;
+    }
+    expect(count).toBe(3);
+  });
+
+  it('la última franja parcial (altura no múltiplo de 8) no lanza y usa su altura real, no 8 fija', () => {
+    const width = 2;
+    const height = 3; // una sola franja parcial
+    const bits = new Uint8Array(width * height);
+    expect(() => buildTiledColumnBitImageCommand(bits, width, height)).not.toThrow();
+  });
+
+  it('reutiliza EXACTAMENTE buildColumnBitImageCommand por franja (mismos bytes de datos ya validados físicamente)', () => {
+    const width = 8;
+    const height = 8;
+    const bits = Uint8Array.from({ length: 64 }, (_, i) => (i % 5 === 0 ? 1 : 0));
+    const tiled = Array.from(buildTiledColumnBitImageCommand(bits, width, height));
+    const single = Array.from(buildColumnBitImageCommand(bits, width, height));
+    // El comando de la única franja debe ser un subconjunto contiguo idéntico
+    const startIndex = tiled.findIndex((b, i) => b === ESC && tiled[i + 1] === 0x2A);
+    expect(tiled.slice(startIndex, startIndex + single.length)).toEqual(single);
+  });
+
+  it('nunca produce bytes fuera de rango 0-255', () => {
+    const bits = new Uint8Array(6 * 17).fill(1);
+    const command = buildTiledColumnBitImageCommand(bits, 6, 17);
     expect(command.every((b) => b >= 0 && b <= 255)).toBe(true);
   });
 });

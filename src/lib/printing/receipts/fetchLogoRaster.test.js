@@ -51,14 +51,16 @@ describe('fetchLogoRaster', () => {
     expect(await fetchLogoRaster('https://cdn.example.com/logo.png')).toBeNull();
   });
 
-  it('carga, rasteriza y ditherea el logo en un comando raster válido', async () => {
+  it('carga, rasteriza y ditherea el logo en un comando raster válido (graphicsStrategyId: rasterGsV0)', async () => {
     installImageMock({ naturalWidth: 100, naturalHeight: 50 });
     const pixelCount = 100 * 50;
     const data = new Uint8ClampedArray(pixelCount * 4);
     for (let i = 0; i < pixelCount; i++) data[i * 4 + 3] = 255; // opaco, RGB en 0 (negro)
     installCanvasMock({ imageData: { data } });
 
-    const result = await fetchLogoRaster('https://cdn.example.com/logo.png', { maxWidthDots: 480 });
+    const result = await fetchLogoRaster('https://cdn.example.com/logo.png', {
+      maxWidthDots: 480, graphicsStrategyId: 'rasterGsV0',
+    });
 
     expect(result).not.toBeNull();
     expect(result.width).toBe(100);
@@ -67,6 +69,32 @@ describe('fetchLogoRaster', () => {
     expect(result.command[0]).toBe(0x1D); // GS
     expect(result.command[1]).toBe(0x76); // v
     expect(result.command[2]).toBe(0x30); // 0
+  });
+
+  it('PRINT-4-BUG3: sin graphicsStrategyId, usa el default confirmado físicamente (ESC * / bitImageEscStar)', async () => {
+    installImageMock({ naturalWidth: 100, naturalHeight: 50 });
+    const pixelCount = 100 * 50;
+    const data = new Uint8ClampedArray(pixelCount * 4);
+    for (let i = 0; i < pixelCount; i++) data[i * 4 + 3] = 255;
+    installCanvasMock({ imageData: { data } });
+
+    const result = await fetchLogoRaster('https://cdn.example.com/logo.png', { maxWidthDots: 480 });
+
+    expect(result).not.toBeNull();
+    expect(result.command).toBeInstanceOf(Uint8Array);
+    expect(result.command[0]).toBe(0x1B); // ESC 3 n -- inicio del envoltorio de franjas ESC *
+    expect(result.command[1]).toBe(0x33);
+  });
+
+  it('un graphicsStrategyId desconocido no lanza -- cae al default', async () => {
+    installImageMock({ naturalWidth: 20, naturalHeight: 20 });
+    installCanvasMock({ imageData: { data: new Uint8ClampedArray(20 * 20 * 4) } });
+    const result = await fetchLogoRaster('https://cdn.example.com/logo.png', {
+      maxWidthDots: 480, graphicsStrategyId: 'no-existe',
+    });
+    expect(result).not.toBeNull();
+    expect(result.command[0]).toBe(0x1B);
+    expect(result.command[1]).toBe(0x33);
   });
 
   it('nunca distorsiona: reduce manteniendo proporción cuando el logo excede el ancho máximo', async () => {

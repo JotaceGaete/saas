@@ -107,3 +107,38 @@ export function buildColumnBitImageCommand(bits, width, height) {
   const header = [ESC, 0x2A, 0x00, width & 0xFF, (width >> 8) & 0xFF];
   return new Uint8Array([...header, ...data]);
 }
+
+const LF = 0x0A;
+const BAND_HEIGHT_DOTS = 8;
+
+/**
+ * PRINT-4-BUG3 — `ESC *` (ver buildColumnBitImageCommand) confirmado
+ * físicamente en el hardware de validación, pero solo cubre 8 dots de
+ * alto por invocación. Un logo real es mucho más alto, así que esta
+ * función lo divide en franjas horizontales de 8 dots y reutiliza EXACTO
+ * el mismo comando ya validado para cada una -- no se cambia de modo
+ * (m=0) ni se inventa nada nuevo por franja.
+ *
+ * Para que las franjas queden pegadas sin espacios ni superposición se
+ * usa `ESC 3 n` (avance de línea fino, en dots -- comando ESC/POS
+ * estándar, independiente de cualquier fabricante) fijado a 8 antes de
+ * la primera franja, un LF de 8 dots exactos después de cada una, y
+ * `ESC 2` (vuelve al espaciado de línea por defecto) al final para no
+ * afectar el texto que viene después de la imagen.
+ */
+export function buildTiledColumnBitImageCommand(bits, width, height) {
+  const bytes = [ESC, 0x33, BAND_HEIGHT_DOTS]; // ESC 3 8
+  for (let bandStart = 0; bandStart < height; bandStart += BAND_HEIGHT_DOTS) {
+    const bandHeight = Math.min(BAND_HEIGHT_DOTS, height - bandStart);
+    const bandBits = new Uint8Array(width * bandHeight);
+    for (let y = 0; y < bandHeight; y++) {
+      for (let x = 0; x < width; x++) {
+        bandBits[y * width + x] = bits[(bandStart + y) * width + x];
+      }
+    }
+    bytes.push(...buildColumnBitImageCommand(bandBits, width, bandHeight));
+    bytes.push(LF);
+  }
+  bytes.push(ESC, 0x32); // ESC 2 -- espaciado de línea por defecto
+  return new Uint8Array(bytes);
+}
