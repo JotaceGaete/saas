@@ -6,7 +6,7 @@ vi.mock('./fetchLogoRaster', () => ({
 
 const { fetchLogoRaster } = await import('./fetchLogoRaster');
 const { buildSaleReceipt, buildFinalValidationReceipt } = await import('./buildSaleReceipt');
-const { renderEscPosReceipt } = await import('./renderEscPosReceipt');
+const { renderEscPosReceipt, columnsForWidth } = await import('./renderEscPosReceipt');
 
 const ESC = 0x1B;
 const GS = 0x1D;
@@ -259,9 +259,9 @@ describe('buildSaleReceipt', () => {
   it('separadores más largos a 80mm que a 58mm', async () => {
     const divider80 = bytesToText(await renderEscPosReceipt(buildSaleReceipt({ ...baseSale, paperWidthMm: 80 })));
     const divider58 = bytesToText(await renderEscPosReceipt(buildSaleReceipt({ ...baseSale, paperWidthMm: 58 })));
-    expect(divider80).toContain('-'.repeat(48));
-    expect(divider58).toContain('-'.repeat(32));
-    expect(divider58).not.toContain('-'.repeat(48));
+    expect(divider80).toContain('-'.repeat(columnsForWidth(80)));
+    expect(divider58).toContain('-'.repeat(columnsForWidth(58)));
+    expect(divider58).not.toContain('-'.repeat(columnsForWidth(80)));
   });
 
   describe('PRINT-4 — corte automático (autoCut)', () => {
@@ -300,6 +300,22 @@ describe('buildSaleReceipt', () => {
     expect(text).not.toContain('tsp100');
     expect(text).not.toContain('epson');
   });
+
+  it('PRINT-4-BUG4: un TOTAL de $25.000 se imprime completo, nunca partido ("$25." + "000")', async () => {
+    const text = await renderText({
+      ...baseSale,
+      items: [{ name: 'Automatik 945', unit_price: 25000, quantity: 1 }],
+      subtotal: 25000,
+      discountAmount: 0,
+      total: 25000,
+      amountReceived: 25000,
+      change: 0,
+      payments: [{ method: 'cash', amount: 25000 }],
+    });
+    expect(text).toContain('$25.000');
+    expect(text).not.toMatch(/\$25\.\s*\n\s*000/);
+  });
+
 });
 
 describe('buildFinalValidationReceipt — PRINT-4-BUG3 (ticket de validación física final)', () => {

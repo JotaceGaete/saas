@@ -12,6 +12,7 @@ const {
 } = await import('./renderEscPosReceipt');
 const { buildRasterCommand } = await import('./escPosImage');
 const { GRAPHICS_STRATEGIES, CUT_STRATEGIES } = await import('./escPosCapabilities');
+const { getPrinterProfile, getColumnsForProfile } = await import('./printerProfile');
 
 const ESC = 0x1B;
 const GS = 0x1D;
@@ -100,10 +101,11 @@ describe('renderEscPosReceipt', () => {
 });
 
 describe('columnsForWidth', () => {
-  it('80mm -> 48 columnas, 58mm -> 32 columnas, ancho desconocido -> cae a 80mm', () => {
-    expect(columnsForWidth(80)).toBe(48);
-    expect(columnsForWidth(58)).toBe(32);
-    expect(columnsForWidth(999)).toBe(48);
+  it('80mm y 58mm derivan sus columnas del perfil físico (printerProfile.js); ancho desconocido -> cae a 80mm', () => {
+    expect(columnsForWidth(80)).toBe(getColumnsForProfile(getPrinterProfile(80)));
+    expect(columnsForWidth(58)).toBe(getColumnsForProfile(getPrinterProfile(58)));
+    expect(columnsForWidth(999)).toBe(columnsForWidth(80));
+    expect(columnsForWidth(80)).toBeGreaterThan(columnsForWidth(58));
   });
 });
 
@@ -151,7 +153,7 @@ describe('formatRowLines', () => {
 describe('renderEscPosReceipt — tipos semánticos PRINT-4', () => {
   it('divider imprime una línea de guiones del ancho de columnas configurado', async () => {
     const bytes = await renderEscPosReceipt({ lines: [{ type: 'divider' }], paperWidthMm: 80, feedLines: 0, cut: false });
-    expect(bytesToText(bytes)).toContain('-'.repeat(48));
+    expect(bytesToText(bytes)).toContain('-'.repeat(columnsForWidth(80)));
   });
 
   it('row con amount se formatea con formatMoney y queda alineado a la derecha', async () => {
@@ -444,5 +446,121 @@ describe('buildTestReceipt', () => {
   it('el receipt es serializable a ESC/POS sin lanzar', async () => {
     const receipt = buildTestReceipt({ businessName: 'Ñuñoa Panadería', printerName: 'X', paperWidthMm: 80 });
     await expect(renderEscPosReceipt(receipt)).resolves.not.toThrow();
+  });
+});
+
+describe('PRINT-4-BUG4 — un monto nunca se divide (nunca "$25." + "000")', () => {
+  const AMOUNTS_CLP = [1000, 25000, 126500, 999999, 1000000];
+  const EXPECTED_STRINGS = ['$1.000', '$25.000', '$126.500', '$999.999', '$1.000.000'];
+
+  it('wrapText nunca corta un token de dinero, ni siquiera a un ancho absurdamente angosto', () => {
+    for (const amount of EXPECTED_STRINGS) {
+      for (const width of [1, 2, 3, 4, 5, 8]) {
+        const lines = wrapText(amount, width);
+        expect(lines.some((l) => l === amount)).toBe(true);
+        expect(lines.join('')).not.toMatch(/^\$\d+\.$/); // nunca queda "$25." colgando como línea propia
+      }
+    }
+  });
+
+  it('wrapText no corta un monto aunque comparta texto con otras palabras que sí se envuelven', () => {
+    const lines = wrapText(`Pago recibido en efectivo ${EXPECTED_STRINGS[2]} gracias`, 6);
+    expect(lines).toContain(EXPECTED_STRINGS[2]);
+  });
+
+  it('formatRowLines nunca divide el monto aunque la etiqueta sea muy larga y fuerce el fallback multilínea', () => {
+    for (const amount of EXPECTED_STRINGS) {
+      const rows = formatRowLines('Una etiqueta extremadamente larga que jamas cabe junto al monto', amount, columnsForWidth(80));
+      const lastRow = rows[rows.length - 1];
+      expect(lastRow.trim().endsWith(amount)).toBe(true);
+      expect(rows.some((r) => /\$\d+\.$/.test(r.trim()))).toBe(false);
+    }
+  });
+
+  it.each(AMOUNTS_CLP.map((amount, i) => [amount, EXPECTED_STRINGS[i]]))(
+    'row con amount=%i renderiza el monto completo "%s" en 80mm y 58mm, nunca partido',
+    async (amount, expected) => {
+      for (const paperWidthMm of [80, 58]) {
+        const bytes = await renderEscPosReceipt({
+          lines: [{ type: 'row', left: 'Total', amount, currency: 'CLP' }],
+          paperWidthMm, feedLines: 0, cut: false,
+        });
+        const text = bytesToText(bytes);
+        expect(text).toContain(expected);
+      }
+    },
+  );
+
+  it.each(AMOUNTS_CLP.map((amount, i) => [amount, EXPECTED_STRINGS[i]]))(
+    'total emphasize con amount=%i renderiza "%s" completo en doble tamaño, en 80mm y 58mm',
+    async (amount, expected) => {
+      for (const paperWidthMm of [80, 58]) {
+        const bytes = await renderEscPosReceipt({
+          lines: [{ type: 'total', label: 'TOTAL', amount, currency: 'CLP', emphasize: true }],
+          paperWidthMm, feedLines: 0, cut: false,
+        });
+        const text = bytesToText(bytes);
+        expect(text).toContain(expected);
+        expect(includesSubsequence(bytes, [GS, 0x21, 0x11])).toBe(true); // sigue en doble tamaño
+      }
+    },
+  );
+
+  it.each(AMOUNTS_CLP.map((amount, i) => [amount, EXPECTED_STRINGS[i]]))(
+    'item con unitPrice/lineTotal=%i muestra el monto completo "%s" en la fila de precio unitario', async (amount, expected) => {
+      const bytes = await renderEscPosReceipt({
+        lines: [{ type: 'item', qty: 1, name: 'Producto', unitPrice: amount, lineTotal: amount, currency: 'CLP' }],
+        paperWidthMm: 80, feedLines: 0, cut: false,
+      });
+      const text = bytesToText(bytes);
+      expect(text).toContain(expected);
+    },
+  );
+
+  it('TOTAL $25.000 en doble tamaño: si etiqueta+monto no caben en una sola línea a mitad de ancho, la etiqueta y el monto van en líneas separadas pero el monto sigue completo', async () => {
+    // Fuerza el caso "no cabe" con una etiqueta larga -- igual debe
+    // quedar en doble tamaño (nunca se abandona el énfasis) y el monto
+    // nunca se corta.
+    const bytes = await renderEscPosReceipt({
+      lines: [{ type: 'total', label: 'TOTAL A PAGAR POR EL CLIENTE', amount: 25000, currency: 'CLP', emphasize: true }],
+      paperWidthMm: 58, feedLines: 0, cut: false,
+    });
+    const text = bytesToText(bytes);
+    expect(text).toContain('$25.000');
+    expect(includesSubsequence(bytes, [GS, 0x21, 0x11])).toBe(true);
+  });
+});
+
+describe('PRINT-4-BUG4 — logo respeta el ancho imprimible con margen visible', () => {
+  it('el maxWidthDots pedido a fetchLogoRaster es menor al ancho efectivo del perfil (nunca el 100%)', async () => {
+    vi.mocked(fetchLogoRaster).mockResolvedValue(null);
+    await renderEscPosReceipt({ lines: [{ type: 'logo', url: 'https://x/logo.png' }], paperWidthMm: 80, feedLines: 0, cut: false });
+    const [, options] = vi.mocked(fetchLogoRaster).mock.calls.at(-1);
+    const profile = getPrinterProfile(80);
+    expect(options.maxWidthDots).toBeLessThan(profile.printableWidthDots - profile.safeMarginDots * 2 + 1);
+    expect(options.maxWidthDots).toBeLessThan(profile.printableWidthDots);
+  });
+});
+
+describe('PRINT-4-BUG4 — ítem: nombre y precio/total en filas separadas (nunca comparten línea)', () => {
+  it('la primera línea del ítem es solo cantidad+nombre, el total nunca aparece ahí', async () => {
+    const bytes = await renderEscPosReceipt({
+      lines: [{ type: 'item', qty: 2, name: 'Automatik 945', unitPrice: 12000, lineTotal: 24000, currency: 'CLP' }],
+      paperWidthMm: 80, feedLines: 0, cut: false,
+    });
+    const lines = bytesToText(bytes).split('\n');
+    const nameLine = lines.find((l) => l.includes('Automatik 945'));
+    expect(nameLine).not.toContain('$24.000');
+  });
+
+  it('precio unitario y total de línea comparten la misma fila, con el total alineado a la derecha', async () => {
+    const bytes = await renderEscPosReceipt({
+      lines: [{ type: 'item', qty: 1, name: 'Automatik 945', unitPrice: 24000, lineTotal: 24000, currency: 'CLP' }],
+      paperWidthMm: 80, feedLines: 0, cut: false,
+    });
+    const lines = bytesToText(bytes).split('\n');
+    const priceLine = lines.find((l) => l.includes('c/u'));
+    expect(priceLine).toContain('$24.000 c/u');
+    expect(priceLine.trim().endsWith('$24.000')).toBe(true);
   });
 });

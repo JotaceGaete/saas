@@ -17,6 +17,7 @@ import { formatMoney } from 'utils/formatMoney';
 import { fetchLogoRaster } from './fetchLogoRaster';
 import { buildRasterCommand } from './escPosImage';
 import { GRAPHICS_STRATEGIES, CUT_STRATEGIES } from './escPosCapabilities';
+import { getPrinterProfile, getColumnsForProfile, getLogoMaxWidthDots } from './printerProfile';
 
 const ESC = 0x1B;
 const GS = 0x1D;
@@ -49,22 +50,24 @@ const CMD = {
   CUT_FULL: [GS, 0x56, 0x41, 0x00],    // GS V 65 0 — corte total (forma moderna) -- no usado por defecto, queda disponible
 };
 
-// Columnas de texto habituales para fuente A a estos anchos de papel. El
-// resto del renderer (wrap, tablas, alineación derecha) se apoya en este
-// número de columnas -- ES la abstracción que permite soportar 58mm sin
-// hardcodear nada más adelante.
-const COLUMNS_BY_WIDTH_MM = { 58: 32, 80: 48 };
-
+// PRINT-4-BUG4 — columnas de texto derivadas del PERFIL FÍSICO real
+// (ver printerProfile.js), no de una tabla fija desconectada del ancho
+// imprimible real. Reemplaza la tabla anterior {58:32, 80:48}, que
+// asumía la totalidad del ancho de línea nominal de hoja de datos sin
+// ningún margen de seguridad -- la causa de que columnas de importes y
+// separadores llegaran hasta el borde físico.
 export function columnsForWidth(paperWidthMm) {
-  return COLUMNS_BY_WIDTH_MM[paperWidthMm] || COLUMNS_BY_WIDTH_MM[80];
+  return getColumnsForProfile(getPrinterProfile(paperWidthMm));
 }
 
-// Puntos (dots) de ancho imprimible aproximados para el logo, a la
-// densidad estándar de cabezales térmicos de 203dpi -- 384 dots a 58mm y
-// 576 dots a 80mm son los anchos de línea habituales en la enorme mayoría
-// de impresoras térmicas ESC/POS (no un número específico de marca). Se
-// deja un margen prudente para no depender de calibraciones exactas.
-const LOGO_MAX_WIDTH_DOTS_BY_PAPER_MM = { 58: 320, 80: 480 };
+// PRINT-4-BUG4 — el ancho máximo del logo también se deriva del mismo
+// perfil físico (una fracción del ancho EFECTIVO, no del nominal), en
+// vez de una tabla de dots totalmente desconectada de las columnas de
+// texto -- ambas cosas ahora comparten una única fuente de verdad sobre
+// cuánto espacio hay de verdad.
+function logoMaxWidthDotsForWidth(paperWidthMm) {
+  return getLogoMaxWidthDots(getPrinterProfile(paperWidthMm));
+}
 const LOGO_MAX_HEIGHT_DOTS = 200;
 
 // Sin selección de codepage (fuera de alcance): cualquier carácter fuera
@@ -86,10 +89,25 @@ export function stripDiacritics(value) {
   return String(value ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '');
 }
 
-// Wrap por palabras a `width` columnas. Nunca trunca: una palabra más
-// larga que `width` se corta en pedazos de `width` (mejor que un
-// desborde impredecible en la impresora). Texto vacío -> [''] para que el
-// llamador siempre tenga al menos una línea que emitir.
+// PRINT-4-BUG4 — un monto es un token indivisible: "$25.000" nunca debe
+// convertirse en "$25." + "000" solo porque una línea no alcanza. La
+// prueba física mostró exactamente ese corte a mitad de camino cuando el
+// ancho disponible (mal calculado, ver printerProfile.js) quedaba más
+// angosto que el propio monto -- este detector evita que el camino
+// genérico de corte-de-palabras-largas (más abajo) toque un monto.
+const MONEY_TOKEN_PATTERN = /^-?\$-?[\d.,]+$/;
+
+function isIndivisibleToken(word) {
+  return MONEY_TOKEN_PATTERN.test(word);
+}
+
+// Wrap por palabras a `width` columnas. Nunca trunca una palabra normal
+// más larga que `width` de forma impredecible -- se corta en pedazos de
+// `width` (mejor que un desborde impredecible en la impresora) EXCEPTO
+// si la palabra es un token indivisible (un monto, ver arriba): ese
+// jamás se corta, aunque su línea quede más larga que `width` -- una
+// línea larga es preferible a un monto ilegible. Texto vacío -> [''] para
+// que el llamador siempre tenga al menos una línea que emitir.
 export function wrapText(text, width) {
   const safeWidth = Math.max(1, width | 0);
   const value = String(text ?? '');
@@ -103,6 +121,10 @@ export function wrapText(text, width) {
       if (current) {
         lines.push(current);
         current = '';
+      }
+      if (isIndivisibleToken(word)) {
+        lines.push(word);
+        continue;
       }
       let remaining = word;
       while (remaining.length > safeWidth) {
@@ -154,10 +176,23 @@ function formatQuantity(qty) {
   return `${num.toFixed(3).replace(/0+$/, '').replace(/\.$/, '')}x`;
 }
 
-// Línea(s) de un ítem del ticket: cabecera "Nx Producto ... $total"
-// (envuelta si el nombre es largo), sub-línea de precio unitario, y nota
-// opcional -- todo esto es presentación pura, por eso vive en el
-// renderer y no en buildSaleReceipt.
+// PRINT-4-BUG4 — precio unitario y total de línea van SIEMPRE juntos en
+// su propia fila (nunca compartida con el nombre del producto, que ya
+// compite por espacio contra el total): "  $24.000 c/u    $24.000". Se
+// intenta primero CON la indentación de dos espacios (más legible); si
+// no entra en una sola línea, se reintenta SIN indentación para ganar
+// esos caracteres antes de resignarse a partir en dos líneas -- nunca se
+// parte el monto en ningún caso (formatRowLines ya lo garantiza).
+function formatUnitPriceAndTotalLines(unitPriceStr, lineTotalStr, columns) {
+  const indentedRows = formatRowLines(`  ${unitPriceStr} c/u`, lineTotalStr, columns);
+  if (indentedRows.length === 1) return indentedRows;
+  return formatRowLines(`${unitPriceStr} c/u`, lineTotalStr, columns);
+}
+
+// Línea(s) de un ítem del ticket: cabecera "Nx Producto" (envuelta si el
+// nombre es largo, SOLA -- nunca comparte línea con el total) + fila de
+// precio unitario/total + nota opcional -- todo esto es presentación
+// pura, por eso vive en el renderer y no en buildSaleReceipt.
 function formatItemLines(item, columns, defaultCurrency) {
   const currency = item.currency ?? defaultCurrency;
   const qtyStr = formatQuantity(item.qty);
@@ -166,8 +201,8 @@ function formatItemLines(item, columns, defaultCurrency) {
   const lineTotalStr = formatMoney(item.lineTotal, currency);
   const header = `${qtyStr} ${name}`.trim();
 
-  const lines = [...formatRowLines(header, lineTotalStr, columns)];
-  lines.push(...wrapText(`  ${unitPriceStr} c/u`, columns));
+  const lines = [...wrapText(header, columns)];
+  lines.push(...formatUnitPriceAndTotalLines(unitPriceStr, lineTotalStr, columns));
   if (item.note) lines.push(...wrapText(`  ${stripDiacritics(item.note)}`, columns));
   return lines;
 }
@@ -215,7 +250,7 @@ export async function renderEscPosReceipt(receipt) {
     const type = line?.type || 'text';
     switch (type) {
       case 'logo': {
-        const maxWidthDots = LOGO_MAX_WIDTH_DOTS_BY_PAPER_MM[paperWidthMm] || LOGO_MAX_WIDTH_DOTS_BY_PAPER_MM[80];
+        const maxWidthDots = logoMaxWidthDotsForWidth(paperWidthMm);
         // PRINT-4-BUG3: `imageMode` es un id de estrategia genérico (ver
         // escPosCapabilities.js) que buildSaleReceipt/printerConfigStorage
         // pasan tal cual -- este renderer no sabe ni le importa qué
@@ -269,14 +304,24 @@ export async function renderEscPosReceipt(receipt) {
         for (const itemLine of formatItemLines(line, columns, currency)) emit(itemLine);
         break;
       case 'total': {
+        // PRINT-4-BUG4 — el doble tamaño reduce a la mitad los caracteres
+        // por línea; el padding SIEMPRE se calcula con ese ancho reducido
+        // (halfWidth), nunca con `columns` completo y activando el doble
+        // tamaño después (eso fue justo lo que produjo, en la prueba
+        // física, "$25." en una línea y "000" en la siguiente -- la
+        // impresora desbordaba el ancho real en modo doble). Si
+        // etiqueta+monto no caben en una sola línea a mitad de ancho,
+        // formatRowLines ya resuelve el layout seguro (etiqueta en su
+        // propia línea, monto completo alineado a la derecha en la
+        // siguiente) -- se emite igual en doble tamaño, nunca se
+        // abandona el énfasis ni se divide el monto.
         const amountStr = formatMoney(line.amount, line.currency ?? currency);
         if (line.emphasize) {
           const halfWidth = Math.max(1, Math.floor(columns / 2));
-          const doubleRows = formatRowLines(line.label, amountStr, halfWidth);
-          if (doubleRows.length === 1) {
-            emit(doubleRows[0], { bold: true, double: true });
-            break;
+          for (const rowLine of formatRowLines(line.label, amountStr, halfWidth)) {
+            emit(rowLine, { bold: true, double: true });
           }
+          break;
         }
         for (const rowLine of formatRowLines(line.label, amountStr, columns)) {
           emit(rowLine, { bold: true });
