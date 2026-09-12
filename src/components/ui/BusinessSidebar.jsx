@@ -36,6 +36,7 @@ const NAV_ITEMS = [
       { label: 'Presupuestos',     path: '/crm/presupuestos' },
       { label: 'Notas de venta',   path: '/crm/facturas' },
       { label: 'TPV',              path: '/crm/terminal', highlight: true },
+      { label: 'Impresión',        path: '/crm/impresion' },
       { label: 'Caja',             path: '/crm/caja' },
       { label: 'Centro de costos', path: '/crm/costos' },
       { label: 'Inventario',       path: '/crm/stock' },
