@@ -497,13 +497,26 @@ describe('buildLogoPositionDiagnosticReceipt — PRINT-4-BUG6', () => {
     expect(rasterLines).toHaveLength(2);
     // ESC * header: [ESC,0x2A,0x00,nL,nH] -- el ancho total pasado a la
     // estrategia es siempre printableWidthDots (marca dibujada sobre el
-    // ancho físico completo, no sobre contentWidthDots).
+    // ancho físico completo, no sobre contentWidthDots). PRINT-4-BUG7:
+    // si printableWidthDots > 255, cada FRANJA (delimitada por LF) viene
+    // partida en varios bloques ESC * consecutivos (ver
+    // buildTiledColumnBitImageCommand) -- se suman los nL+nH*256 dentro
+    // de cada franja por separado (nunca a través de todo el comando, que
+    // tiene varias franjas apiladas) para reconstruir el ancho total.
+    const LF = 0x0A;
     for (const rasterLine of rasterLines) {
       const cmd = Array.from(rasterLine.command);
-      const idx = cmd.findIndex((b, i) => b === ESC && cmd[i + 1] === 0x2A);
-      const nL = cmd[idx + 3];
-      const nH = cmd[idx + 4];
-      expect(nL + nH * 256).toBe(layout.printableWidthDots);
+      const bandEnds = [-1, ...cmd.map((b, i) => (b === LF ? i : -1)).filter((i) => i >= 0)];
+      for (let b = 0; b < bandEnds.length - 1; b++) {
+        const band = cmd.slice(bandEnds[b] + 1, bandEnds[b + 1]);
+        let bandWidth = 0;
+        for (let i = 0; i < band.length - 4; i++) {
+          if (band[i] === ESC && band[i + 1] === 0x2A && band[i + 2] === 0x00) {
+            bandWidth += band[i + 3] + band[i + 4] * 256;
+          }
+        }
+        expect(bandWidth).toBe(layout.printableWidthDots);
+      }
     }
   });
 

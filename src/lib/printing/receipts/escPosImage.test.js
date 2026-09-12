@@ -189,6 +189,103 @@ describe('buildTiledColumnBitImageCommand — PRINT-4-BUG3 (logo real vía ESC *
     const command = buildTiledColumnBitImageCommand(bits, 6, 17);
     expect(command.every((b) => b >= 0 && b <= 255)).toBe(true);
   });
+
+  // PRINT-4-BUG7 — el logo real (incluso ya achicado en BUG6) mide
+  // típicamente bastante más de 255 dots de ancho; el patrón de falla
+  // físico reportado (logo recortado y "deformado" a la derecha, en TODAS
+  // las pruebas con el logo real, mientras que los patrones de
+  // diagnóstico de 8x8 -- muy por debajo de 255 -- siempre imprimieron
+  // bien) es consistente con una emulación que solo confía en el byte
+  // bajo (nL) del ancho de `ESC *` e ignora/trunca nH. La corrección:
+  // ninguna franja emite un solo `ESC *` de más de 255 columnas -- se
+  // subdivide en bloques consecutivos (sin LF entre ellos) que la
+  // especificación ESC/POS pega horizontalmente en la misma línea.
+  describe('PRINT-4-BUG7 — ningún ESC * individual supera 255 columnas de ancho', () => {
+    it('un ancho de 300 (>255) produce DOS bloques ESC * consecutivos por franja, de 255 y 45 columnas, sin LF entre ellos', () => {
+      const width = 300;
+      const height = 8;
+      const bits = new Uint8Array(width * height);
+      const command = Array.from(buildTiledColumnBitImageCommand(bits, width, height));
+
+      // ESC 3 8 al inicio
+      expect(command.slice(0, 3)).toEqual([ESC, 0x33, 8]);
+
+      // Primer bloque: [ESC,0x2A,0x00, nL=255,nH=0] + 255 bytes de datos
+      let i = 3;
+      expect(command.slice(i, i + 5)).toEqual([ESC, 0x2A, 0x00, 255, 0]);
+      i += 5 + 255;
+      // Segundo bloque arranca INMEDIATAMENTE después (sin LF de por medio)
+      expect(command.slice(i, i + 5)).toEqual([ESC, 0x2A, 0x00, 45, 0]);
+      i += 5 + 45;
+      // Recién ahora el LF que cierra la franja completa
+      expect(command[i]).toBe(LF);
+    });
+
+    it('nunca emite un byte nL >= 256 (0-255 siempre) aunque el ancho real sea mucho mayor', () => {
+      const width = 700; // 3 bloques: 255 + 255 + 190
+      const bits = new Uint8Array(width * 8);
+      const command = Array.from(buildTiledColumnBitImageCommand(bits, width, 8));
+
+      const widths = [];
+      for (let idx = 0; idx < command.length - 4; idx++) {
+        if (command[idx] === ESC && command[idx + 1] === 0x2A && command[idx + 2] === 0x00) {
+          widths.push(command[idx + 3] + command[idx + 4] * 256);
+        }
+      }
+      expect(widths).toEqual([255, 255, 190]);
+      expect(widths.every((w) => w <= 255)).toBe(true);
+      expect(widths.reduce((a, b) => a + b, 0)).toBe(width);
+    });
+
+    it('reconstruye EXACTAMENTE el bitmap original al concatenar los bloques -- ningún píxel se pierde ni se desplaza en el corte', () => {
+      const width = 260; // 2 bloques: 255 + 5
+      const height = 8;
+      // patrón determinista, no trivial (evita falsos positivos con todo-cero o todo-uno)
+      const bits = Uint8Array.from({ length: width * height }, (_, idx) => (idx % 7 === 0 ? 1 : 0));
+      const command = Array.from(buildTiledColumnBitImageCommand(bits, width, height));
+
+      // bloque 1: columnas 0..254, bloque 2: columnas 255..259
+      const header1 = command.slice(3, 8);
+      const data1 = command.slice(8, 8 + 255);
+      const header2 = command.slice(8 + 255, 8 + 255 + 5);
+      const data2 = command.slice(8 + 255 + 5, 8 + 255 + 5 + 5);
+
+      expect(header1).toEqual([ESC, 0x2A, 0x00, 255, 0]);
+      expect(header2).toEqual([ESC, 0x2A, 0x00, 5, 0]);
+
+      const reconstructed = [...data1, ...data2];
+      const expected = Array.from(buildColumnBitImageCommand(bits, width, height).slice(5));
+      expect(reconstructed).toEqual(expected);
+    });
+
+    it('un ancho de exactamente 255 (límite) sigue produciendo UN solo bloque, sin dividir de más', () => {
+      const width = 255;
+      const bits = new Uint8Array(width * 8);
+      const command = Array.from(buildTiledColumnBitImageCommand(bits, width, 8));
+      let count = 0;
+      for (let idx = 0; idx < command.length - 1; idx++) {
+        if (command[idx] === ESC && command[idx + 1] === 0x2A) count++;
+      }
+      expect(count).toBe(1);
+    });
+
+    it('con altura mayor a 8 dots y ancho mayor a 255, cada franja tiene su propio LF de cierre (no se mezclan bloques de franjas distintas)', () => {
+      const width = 300;
+      const height = 16; // 2 franjas
+      const bits = new Uint8Array(width * height);
+      const command = Array.from(buildTiledColumnBitImageCommand(bits, width, height));
+
+      let lfCount = 0;
+      for (const b of command) if (b === LF) lfCount++;
+      expect(lfCount).toBe(2); // uno por franja, nunca uno por bloque
+
+      let escStarCount = 0;
+      for (let idx = 0; idx < command.length - 1; idx++) {
+        if (command[idx] === ESC && command[idx + 1] === 0x2A) escStarCount++;
+      }
+      expect(escStarCount).toBe(4); // 2 bloques x 2 franjas
+    });
+  });
 });
 
 // PRINT-4-BUG6 — el logo seguía cortándose en la prueba física de BUG5

@@ -162,20 +162,50 @@ export function buildVerticalMarkerBits(totalWidthDots, markColumnDots, heightDo
 const LF = 0x0A;
 const BAND_HEIGHT_DOTS = 8;
 
+// PRINT-4-BUG7 — el logo real (incluso ya achicado a 70% de
+// contentWidthDots en BUG6, más el margen izquierdo horneado) mide
+// TÍPICAMENTE bastante más de 255 dots de ancho a 80mm. `ESC * m nL nH`
+// codifica ese ancho en DOS bytes (nL + 256*nH) según la especificación
+// Epson original -- buildColumnBitImageCommand ya arma esos dos bytes
+// correctamente -- pero el patrón de falla físico reportado (logo
+// recortado y "deformado" hacia la derecha, consistente en TODAS las
+// pruebas con el logo real, mientras que los patrones de diagnóstico de
+// 8x8 -- muy por debajo de 255 -- siempre imprimieron bien) es exactamente
+// lo que se ve cuando una emulación ESC/POS solo confía en el byte bajo
+// (nL) del ancho e ignora o trunca nH: la impresora cree que el bloque de
+// datos termina antes de tiempo, y los bytes de imagen sobrantes se
+// interpretan como si fueran el comando/dato siguiente -- corrompiendo
+// visualmente el resto de esa franja (recorte + patrón irregular que
+// parece "estirado").
+//
+// La corrección no depende de confirmar esa hipótesis con certeza: para
+// eliminar el riesgo por completo, cada banda se sub-divide horizontalmente
+// en bloques de a lo sumo `MAX_ESC_STAR_WIDTH_DOTS` columnas, cada uno
+// emitido como su PROPIO comando `ESC *` (nL de 1 byte siempre exacto, sin
+// depender de que la impresora lea nH). Comandos `ESC *` consecutivos sin
+// un LF de por medio se imprimen pegados horizontalmente en la misma línea
+// -- comportamiento estándar de la especificación ESC/POS, no una
+// suposición nueva -- así que dividir en bloques no cambia el resultado
+// visual esperado en una impresora que sí soporta nH, y arregla las que no.
+const MAX_ESC_STAR_WIDTH_DOTS = 255;
+
 /**
- * PRINT-4-BUG3 — `ESC *` (ver buildColumnBitImageCommand) confirmado
+ * PRINT-4-BUG3/BUG7 — `ESC *` (ver buildColumnBitImageCommand) confirmado
  * físicamente en el hardware de validación, pero solo cubre 8 dots de
- * alto por invocación. Un logo real es mucho más alto, así que esta
- * función lo divide en franjas horizontales de 8 dots y reutiliza EXACTO
- * el mismo comando ya validado para cada una -- no se cambia de modo
- * (m=0) ni se inventa nada nuevo por franja.
+ * alto por invocación. Un logo real es mucho más alto (y más ancho que
+ * `MAX_ESC_STAR_WIDTH_DOTS`), así que esta función lo divide en franjas
+ * horizontales de 8 dots de alto, y cada franja además en bloques de a lo
+ * sumo `MAX_ESC_STAR_WIDTH_DOTS` columnas -- reutilizando EXACTO el mismo
+ * comando ya validado para cada bloque -- no se cambia de modo (m=0) ni se
+ * inventa nada nuevo.
  *
  * Para que las franjas queden pegadas sin espacios ni superposición se
  * usa `ESC 3 n` (avance de línea fino, en dots -- comando ESC/POS
  * estándar, independiente de cualquier fabricante) fijado a 8 antes de
- * la primera franja, un LF de 8 dots exactos después de cada una, y
- * `ESC 2` (vuelve al espaciado de línea por defecto) al final para no
- * afectar el texto que viene después de la imagen.
+ * la primera franja, un LF de 8 dots exactos después de cada una (nunca
+ * entre los bloques de una misma franja, para que queden pegados
+ * horizontalmente), y `ESC 2` (vuelve al espaciado de línea por defecto)
+ * al final para no afectar el texto que viene después de la imagen.
  */
 export function buildTiledColumnBitImageCommand(bits, width, height) {
   const bytes = [ESC, 0x33, BAND_HEIGHT_DOTS]; // ESC 3 8
@@ -187,7 +217,16 @@ export function buildTiledColumnBitImageCommand(bits, width, height) {
         bandBits[y * width + x] = bits[(bandStart + y) * width + x];
       }
     }
-    bytes.push(...buildColumnBitImageCommand(bandBits, width, bandHeight));
+    for (let chunkStart = 0; chunkStart < width; chunkStart += MAX_ESC_STAR_WIDTH_DOTS) {
+      const chunkWidth = Math.min(MAX_ESC_STAR_WIDTH_DOTS, width - chunkStart);
+      const chunkBits = new Uint8Array(chunkWidth * bandHeight);
+      for (let y = 0; y < bandHeight; y++) {
+        for (let x = 0; x < chunkWidth; x++) {
+          chunkBits[y * chunkWidth + x] = bandBits[y * width + chunkStart + x];
+        }
+      }
+      bytes.push(...buildColumnBitImageCommand(chunkBits, chunkWidth, bandHeight));
+    }
     bytes.push(LF);
   }
   bytes.push(ESC, 0x32); // ESC 2 -- espaciado de línea por defecto
