@@ -21,6 +21,9 @@ import {
   buildPosTerminalDraftSnapshot,
   isDraftFromToday,
 } from '../../lib/posTerminalDraftStorage';
+import { printService } from 'lib/printing/printService';
+import { buildSaleReceipt } from 'lib/printing/receipts/buildSaleReceipt';
+import { buildPrinterConfigKey, readPrinterConfig } from 'lib/printing/printerConfigStorage';
 
 const PAYMENT_METHODS = [
   { value: 'cash',          label: 'Efectivo',      icon: 'Banknote' },
@@ -275,18 +278,60 @@ function CrmTerminalUI() {
   const searchRef = useRef(null);
   const printedTicketRef = useRef(null);
 
-  const printTicketOnce = useCallback((ticketId) => {
-    if (!ticketId) return;
-    if (printedTicketRef.current === ticketId) return;
-    printedTicketRef.current = ticketId;
-    window.print();
-  }, []);
+  // PRINT-2 — impresión real del ticket vía PrintService/QZ Tray, sin el
+  // diálogo de impresión del navegador. La venta ya está guardada
+  // (crm_create_pos_sale) antes
+  // de que este efecto se dispare: reintentar o fallar acá nunca vuelve a
+  // crear la venta, duplicar un pago ni revertir stock -- solo reintenta
+  // el envío de los mismos bytes ya renderizados a la impresora.
+  // 'idle' | 'missing_printer' | 'printing' | 'success' | 'error'
+  const [printStatus, setPrintStatus] = useState('idle');
+  const [printErrorMessage, setPrintErrorMessage] = useState(null);
+
+  const printCurrentTicket = useCallback(async () => {
+    if (!ticketData) return;
+    const printerConfig = readPrinterConfig(buildPrinterConfigKey(business?.id));
+    if (!printerConfig.printerName) {
+      setPrintStatus('missing_printer');
+      setPrintErrorMessage(null);
+      return;
+    }
+    setPrintStatus('printing');
+    setPrintErrorMessage(null);
+    try {
+      const receipt = buildSaleReceipt({
+        business,
+        ...ticketData,
+        paperWidthMm: printerConfig.paperWidthMm,
+        autoCut: printerConfig.autoCut,
+        printLogo: printerConfig.printLogo,
+        imageMode: printerConfig.imageMode,
+      });
+      await printService.printReceipt(receipt, { printerName: printerConfig.printerName });
+      setPrintStatus('success');
+    } catch (err) {
+      // PRINT-3A-BUG1: QZ Tray reemplaza cualquier rechazo de la firma por
+      // el genérico "Failed to sign request" (ver qzTrayProvider.js, que
+      // ya logueó la causa real con logSigningFailure antes de llegar
+      // acá). Ese texto es jerga técnica para un cajero -- acá se muestra
+      // un mensaje simple y se deja el detalle en consola.
+      console.error('[CrmTerminal] fallo al imprimir el ticket:', err);
+      setPrintStatus('error');
+      setPrintErrorMessage(
+        err?.message === 'Failed to sign request'
+          ? 'No se pudo autorizar la impresión. La venta ya quedó registrada.'
+          : (err?.message || 'No se pudo imprimir el ticket.'),
+      );
+    }
+  }, [ticketData, business]);
 
   useEffect(() => {
     if (!ticketData) return;
-    const ticketId = ticketData.sale?.id ?? ticketData.sale?.invoice_number;
-    printTicketOnce(String(ticketId));
-  }, [ticketData, printTicketOnce]);
+    const ticketId = String(ticketData.sale?.id ?? ticketData.sale?.invoice_number);
+    if (!ticketId || printedTicketRef.current === ticketId) return;
+    printedTicketRef.current = ticketId;
+    printCurrentTicket();
+  }, [ticketData, printCurrentTicket]);
 
   // Debounce search → debouncedSearch
   useEffect(() => {
@@ -816,14 +861,25 @@ function CrmTerminalUI() {
 
   const handleCloseTicket = () => {
     setTicketData(null);
+    setPrintStatus('idle');
+    setPrintErrorMessage(null);
   };
 
+  // Reutilizada tanto por "Reimprimir" como por "Reintentar impresión":
+  // ambas reenvían el mismo ticket ya construido, nunca vuelven a crear
+  // la venta ni a tocar pagos/stock.
   const handleReprint = useCallback(() => {
-    window.print();
-  }, []);
+    printCurrentTicket();
+  }, [printCurrentTicket]);
+
+  const handleGoToPrintSettings = useCallback(() => {
+    navigate('/crm/impresion');
+  }, [navigate]);
 
   const handleNewSale = () => {
     setTicketData(null);
+    setPrintStatus('idle');
+    setPrintErrorMessage(null);
     resetForm();
   };
 
@@ -1866,6 +1922,9 @@ function CrmTerminalUI() {
           onNewSale={handleNewSale}
           onClose={handleCloseTicket}
           onReprint={handleReprint}
+          printStatus={printStatus}
+          printErrorMessage={printErrorMessage}
+          onConfigurePrinter={handleGoToPrintSettings}
         />
       )}
 

@@ -61,6 +61,12 @@ export default function CrmThermalTicket({
   onNewSale,
   onClose,
   onReprint,
+  // PRINT-2 — estado de la impresión real vía PrintService/QZ Tray.
+  // Opcionales y con default 'idle' para no romper ningún caller que no
+  // los pase: sin esto, el modal se comporta exactamente igual que antes.
+  printStatus = 'idle',
+  printErrorMessage = null,
+  onConfigurePrinter,
 }) {
   // Inject print styles while modal is open.
   // The print div is portaled directly into document.body so
@@ -349,6 +355,52 @@ export default function CrmThermalTicket({
               <Icon name="X" size={18} color="currentColor" />
             </button>
           </div>
+
+          {/* PRINT-2 — estado de la impresión real (QZ Tray), no del navegador */}
+          {printStatus === 'printing' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', backgroundColor: '#eff6ff', color: '#1d4ed8', fontSize: 12 }}>
+              <Icon name="Loader2" size={14} color="currentColor" className="animate-spin" />
+              Imprimiendo ticket…
+            </div>
+          )}
+          {printStatus === 'success' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', backgroundColor: '#ecfdf5', color: '#059669', fontSize: 12 }}>
+              <Icon name="CheckCircle2" size={14} color="currentColor" />
+              Ticket impreso correctamente.
+            </div>
+          )}
+          {printStatus === 'missing_printer' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 16px', backgroundColor: '#fffbeb', color: '#92400e', fontSize: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Icon name="AlertTriangle" size={14} color="currentColor" />
+                No hay una impresora configurada en este equipo.
+              </div>
+              {onConfigurePrinter && (
+                <button
+                  onClick={onConfigurePrinter}
+                  style={{ alignSelf: 'flex-start', border: '1px solid #fcd34d', background: '#fff', color: '#92400e', borderRadius: 8, padding: '5px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                >
+                  Configurar impresora
+                </button>
+              )}
+            </div>
+          )}
+          {printStatus === 'error' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 16px', backgroundColor: '#fef2f2', color: '#b91c1c', fontSize: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                <Icon name="AlertCircle" size={14} color="currentColor" />
+                <span>{printErrorMessage || 'No se pudo imprimir el ticket.'} La venta ya quedó registrada.</span>
+              </div>
+              {onReprint && (
+                <button
+                  onClick={onReprint}
+                  style={{ alignSelf: 'flex-start', border: '1px solid #fca5a5', background: '#fff', color: '#b91c1c', borderRadius: 8, padding: '5px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                >
+                  Reintentar impresión
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Ticket preview (screen only) */}
           {ticketBody}
