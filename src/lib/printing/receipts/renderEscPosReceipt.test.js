@@ -1,5 +1,11 @@
-import { describe, expect, it } from 'vitest';
-import { renderEscPosReceipt, buildTestReceipt } from './renderEscPosReceipt';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('./fetchLogoRaster', () => ({
+  fetchLogoRaster: vi.fn(),
+}));
+
+const { fetchLogoRaster } = await import('./fetchLogoRaster');
+const { renderEscPosReceipt, buildTestReceipt, columnsForWidth, wrapText, formatRowLines } = await import('./renderEscPosReceipt');
 
 const ESC = 0x1B;
 const GS = 0x1D;
@@ -16,37 +22,46 @@ function includesSubsequence(bytes, seq) {
   return false;
 }
 
+afterEach(() => {
+  vi.mocked(fetchLogoRaster).mockReset();
+});
+
 describe('renderEscPosReceipt', () => {
-  it('empieza con el comando de inicialización ESC @', () => {
-    const bytes = renderEscPosReceipt({ lines: [{ text: 'hola' }] });
+  it('empieza con el comando de inicialización ESC @', async () => {
+    const bytes = await renderEscPosReceipt({ lines: [{ text: 'hola' }] });
     expect(Array.from(bytes.slice(0, 2))).toEqual([ESC, 0x40]);
   });
 
-  it('termina con avance de papel y corte GS V 0 cuando cut !== false', () => {
-    const bytes = renderEscPosReceipt({ lines: [{ text: 'hola' }], feedLines: 2, cut: true });
-    const tail = Array.from(bytes.slice(-3));
-    expect(tail).toEqual([GS, 0x56, 0x00]); // GS V 0 -- corte total, al final de todo
-    expect(bytes[bytes.length - 4]).toBe(0x0A); // precedido por avance de papel
+  it('PRINT-4: termina con avance de papel y GS V 66 0 (corte PARCIAL, forma moderna de 2 bytes) cuando cut !== false', async () => {
+    const bytes = await renderEscPosReceipt({ lines: [{ text: 'hola' }], feedLines: 2, cut: true });
+    const tail = Array.from(bytes.slice(-4));
+    expect(tail).toEqual([GS, 0x56, 0x42, 0x00]); // GS V 66 0 -- corte parcial, forma parametrizada de 2 bytes
+    expect(bytes[bytes.length - 5]).toBe(0x0A); // precedido por avance de papel
   });
 
-  it('no agrega el comando de corte cuando cut === false', () => {
-    const bytes = renderEscPosReceipt({ lines: [{ text: 'hola' }], feedLines: 0, cut: false });
+  it('PRINT-4: la forma LEGACY de 1 byte (GS V 0) ya no se emite -- era la causa de que el TSP100 no cortara', async () => {
+    const bytes = await renderEscPosReceipt({ lines: [{ text: 'hola' }], cut: true });
+    expect(includesSubsequence(bytes, [GS, 0x56, 0x00])).toBe(false);
+  });
+
+  it('no agrega ningún comando de corte cuando cut === false (autoCut desactivado)', async () => {
+    const bytes = await renderEscPosReceipt({ lines: [{ text: 'hola' }], feedLines: 0, cut: false });
     expect(includesSubsequence(bytes, [GS, 0x56])).toBe(false);
   });
 
-  it('incluye el texto de cada línea', () => {
-    const bytes = renderEscPosReceipt({ lines: [{ text: 'Ticket de prueba' }], feedLines: 0, cut: false });
+  it('incluye el texto de cada línea', async () => {
+    const bytes = await renderEscPosReceipt({ lines: [{ text: 'Ticket de prueba' }], feedLines: 0, cut: false });
     expect(bytesToText(bytes)).toContain('Ticket de prueba');
   });
 
-  it('envuelve una línea en negrita con ESC E 1 / ESC E 0', () => {
-    const bytes = renderEscPosReceipt({ lines: [{ text: 'bold', bold: true }], feedLines: 0, cut: false });
+  it('envuelve una línea en negrita con ESC E 1 / ESC E 0', async () => {
+    const bytes = await renderEscPosReceipt({ lines: [{ text: 'bold', bold: true }], feedLines: 0, cut: false });
     expect(includesSubsequence(bytes, [ESC, 0x45, 0x01])).toBe(true);
     expect(includesSubsequence(bytes, [ESC, 0x45, 0x00])).toBe(true);
   });
 
-  it('envuelve una línea centrada con ESC a 1 y vuelve a ESC a 0 en la siguiente', () => {
-    const bytes = renderEscPosReceipt({
+  it('envuelve una línea centrada con ESC a 1 y vuelve a ESC a 0 en la siguiente', async () => {
+    const bytes = await renderEscPosReceipt({
       lines: [{ text: 'centro', align: 'center' }, { text: 'izquierda' }],
       feedLines: 0, cut: false,
     });
@@ -54,21 +69,200 @@ describe('renderEscPosReceipt', () => {
     expect(includesSubsequence(bytes, [ESC, 0x61, 0x00])).toBe(true);
   });
 
-  it('reemplaza caracteres fuera de Latin-1 por "?" en vez de bytes UTF-8 crudos', () => {
-    const bytes = renderEscPosReceipt({ lines: [{ text: '你好' }], feedLines: 0, cut: false });
-    const text = bytesToText(bytes);
-    expect(text).toContain('??');
+  it('reemplaza caracteres fuera de Latin-1 por "?" en vez de bytes UTF-8 crudos', async () => {
+    const bytes = await renderEscPosReceipt({ lines: [{ text: '你好' }], feedLines: 0, cut: false });
+    expect(bytesToText(bytes)).toContain('??');
   });
 
-  it('devuelve un Uint8Array', () => {
-    const bytes = renderEscPosReceipt({ lines: [{ text: 'x' }] });
+  it('devuelve un Uint8Array', async () => {
+    const bytes = await renderEscPosReceipt({ lines: [{ text: 'x' }] });
     expect(bytes).toBeInstanceOf(Uint8Array);
   });
 
-  it('sin lines no lanza y produce igual init + feed/corte', () => {
-    expect(() => renderEscPosReceipt({})).not.toThrow();
-    const bytes = renderEscPosReceipt({});
+  it('sin lines no lanza y produce igual init + feed/corte', async () => {
+    await expect(renderEscPosReceipt({})).resolves.not.toThrow();
+    const bytes = await renderEscPosReceipt({});
     expect(Array.from(bytes.slice(0, 2))).toEqual([ESC, 0x40]);
+  });
+
+  it('no muta el objeto Receipt original (el builder puede reutilizar los datos)', async () => {
+    const receipt = { lines: [{ type: 'item', qty: 2, name: 'Producto', unitPrice: 100, lineTotal: 200 }], feedLines: 1 };
+    const snapshot = JSON.parse(JSON.stringify(receipt));
+    await renderEscPosReceipt(receipt);
+    expect(receipt).toEqual(snapshot);
+  });
+});
+
+describe('columnsForWidth', () => {
+  it('80mm -> 48 columnas, 58mm -> 32 columnas, ancho desconocido -> cae a 80mm', () => {
+    expect(columnsForWidth(80)).toBe(48);
+    expect(columnsForWidth(58)).toBe(32);
+    expect(columnsForWidth(999)).toBe(48);
+  });
+});
+
+describe('wrapText', () => {
+  it('no envuelve texto que cabe en el ancho', () => {
+    expect(wrapText('hola mundo', 20)).toEqual(['hola mundo']);
+  });
+
+  it('envuelve por palabras sin truncar', () => {
+    const lines = wrapText('Producto con nombre muy largo que no cabe', 12);
+    expect(lines.every((l) => l.length <= 12)).toBe(true);
+    expect(lines.join(' ')).toContain('Producto');
+    expect(lines.join(' ')).toContain('largo');
+  });
+
+  it('una palabra más larga que el ancho se corta en pedazos, nunca se pierde contenido', () => {
+    const lines = wrapText('Supercalifragilisticoso', 8);
+    expect(lines.join('')).toBe('Supercalifragilisticoso');
+    expect(lines.every((l) => l.length <= 8)).toBe(true);
+  });
+
+  it('texto vacío devuelve una línea vacía, nunca lanza', () => {
+    expect(wrapText('', 10)).toEqual(['']);
+    expect(wrapText(undefined, 10)).toEqual(['']);
+  });
+});
+
+describe('formatRowLines', () => {
+  it('etiqueta y valor en una sola línea cuando caben, valor alineado a la derecha', () => {
+    const [line] = formatRowLines('Subtotal', '$1.000', 20);
+    expect(line.length).toBe(20);
+    expect(line.endsWith('$1.000')).toBe(true);
+    expect(line.startsWith('Subtotal')).toBe(true);
+  });
+
+  it('si no caben, la etiqueta se envuelve y el valor queda en su propia línea alineado a la derecha', () => {
+    const lines = formatRowLines('Una etiqueta bastante larga que no cabe', '$1.000', 12);
+    expect(lines.length).toBeGreaterThan(1);
+    const lastLine = lines[lines.length - 1];
+    expect(lastLine.endsWith('$1.000')).toBe(true);
+    expect(lastLine.length).toBe(12);
+  });
+});
+
+describe('renderEscPosReceipt — tipos semánticos PRINT-4', () => {
+  it('divider imprime una línea de guiones del ancho de columnas configurado', async () => {
+    const bytes = await renderEscPosReceipt({ lines: [{ type: 'divider' }], paperWidthMm: 80, feedLines: 0, cut: false });
+    expect(bytesToText(bytes)).toContain('-'.repeat(48));
+  });
+
+  it('row con amount se formatea con formatMoney y queda alineado a la derecha', async () => {
+    const bytes = await renderEscPosReceipt({
+      lines: [{ type: 'row', left: 'Subtotal', amount: 2700, currency: 'CLP' }],
+      paperWidthMm: 80, feedLines: 0, cut: false,
+    });
+    const text = bytesToText(bytes);
+    expect(text).toContain('Subtotal');
+    expect(text).toContain('$2.700');
+  });
+
+  it('row con amount negativo (descuento) muestra el signo menos', async () => {
+    const bytes = await renderEscPosReceipt({
+      lines: [{ type: 'row', left: 'Descuento', amount: -200, currency: 'CLP' }],
+      feedLines: 0, cut: false,
+    });
+    expect(bytesToText(bytes)).toContain('$-200');
+  });
+
+  it('itemsHeader imprime CANT/PRODUCTO y TOTAL', async () => {
+    const bytes = await renderEscPosReceipt({ lines: [{ type: 'itemsHeader' }], feedLines: 0, cut: false });
+    const text = bytesToText(bytes);
+    expect(text).toContain('CANT/PRODUCTO');
+    expect(text).toContain('TOTAL');
+  });
+
+  it('item con cantidad entera, nombre y total de línea', async () => {
+    const bytes = await renderEscPosReceipt({
+      lines: [{ type: 'item', qty: 2, name: 'Producto A', unitPrice: 1000, lineTotal: 2000, currency: 'CLP' }],
+      feedLines: 0, cut: false,
+    });
+    const text = bytesToText(bytes);
+    expect(text).toContain('2x Producto A');
+    expect(text).toContain('$2.000');
+    expect(text).toContain('$1.000 c/u');
+  });
+
+  it('item con cantidad decimal (venta por peso) se muestra sin ceros de relleno', async () => {
+    const bytes = await renderEscPosReceipt({
+      lines: [{ type: 'item', qty: 1.5, name: 'Queso', unitPrice: 4000, lineTotal: 6000, currency: 'CLP' }],
+      feedLines: 0, cut: false,
+    });
+    expect(bytesToText(bytes)).toContain('1.5x Queso');
+  });
+
+  it('item con nombre muy largo se envuelve en varias líneas, nunca se trunca', async () => {
+    const longName = 'Producto con un nombre extremadamente largo que jamas cabria en una sola linea de un ticket de 80mm';
+    const bytes = await renderEscPosReceipt({
+      lines: [{ type: 'item', qty: 1, name: longName, unitPrice: 500, lineTotal: 500, currency: 'CLP' }],
+      paperWidthMm: 80, feedLines: 0, cut: false,
+    });
+    const text = bytesToText(bytes);
+    for (const word of longName.split(' ')) expect(text).toContain(word);
+  });
+
+  it('item con nota agrega una línea adicional con la nota', async () => {
+    const bytes = await renderEscPosReceipt({
+      lines: [{ type: 'item', qty: 1, name: 'Producto B', unitPrice: 500, lineTotal: 500, note: 'Sin envolver', currency: 'CLP' }],
+      feedLines: 0, cut: false,
+    });
+    expect(bytesToText(bytes)).toContain('Sin envolver');
+  });
+
+  it('total emphasize=true usa doble tamaño (GS ! 0x11) cuando cabe en la mitad de las columnas', async () => {
+    const bytes = await renderEscPosReceipt({
+      lines: [{ type: 'total', label: 'TOTAL', amount: 2500, currency: 'CLP', emphasize: true }],
+      paperWidthMm: 80, feedLines: 0, cut: false,
+    });
+    expect(includesSubsequence(bytes, [GS, 0x21, 0x11])).toBe(true);
+    expect(bytesToText(bytes)).toContain('$2.500');
+  });
+
+  it('total con etiqueta muy larga no fuerza doble tamaño (cae a negrita normal, nunca se corta el monto)', async () => {
+    const bytes = await renderEscPosReceipt({
+      lines: [{ type: 'total', label: 'TOTAL A PAGAR POR EL CLIENTE EN ESTA VENTA', amount: 2500, currency: 'CLP', emphasize: true }],
+      paperWidthMm: 58, feedLines: 0, cut: false,
+    });
+    expect(bytesToText(bytes)).toContain('$2.500');
+  });
+
+  it('total sin emphasize nunca activa doble tamaño', async () => {
+    const bytes = await renderEscPosReceipt({
+      lines: [{ type: 'total', label: 'Pagado', amount: 2500, currency: 'CLP' }],
+      feedLines: 0, cut: false,
+    });
+    expect(includesSubsequence(bytes, [GS, 0x21, 0x11])).toBe(false);
+  });
+
+  it('logo: cuando fetchLogoRaster resuelve un comando, se inserta centrado', async () => {
+    const fakeRaster = new Uint8Array([GS, 0x76, 0x30, 0x00, 1, 0, 1, 0, 0xFF]);
+    vi.mocked(fetchLogoRaster).mockResolvedValue({ command: fakeRaster, width: 8, height: 1 });
+
+    const bytes = await renderEscPosReceipt({ lines: [{ type: 'logo', url: 'https://x/logo.png' }], feedLines: 0, cut: false });
+
+    expect(includesSubsequence(bytes, [ESC, 0x61, 0x01])).toBe(true); // centrado
+    expect(includesSubsequence(bytes, Array.from(fakeRaster))).toBe(true);
+    expect(fetchLogoRaster).toHaveBeenCalledWith('https://x/logo.png', expect.objectContaining({ maxWidthDots: expect.any(Number) }));
+  });
+
+  it('logo: cuando fetchLogoRaster falla (resuelve null), el ticket igual imprime sin el logo, sin lanzar', async () => {
+    vi.mocked(fetchLogoRaster).mockResolvedValue(null);
+    const bytes = await renderEscPosReceipt({
+      lines: [{ type: 'logo', url: 'https://x/roto.png' }, { text: 'Sigue el ticket' }],
+      feedLines: 0, cut: false,
+    });
+    expect(bytesToText(bytes)).toContain('Sigue el ticket');
+  });
+
+  it('logo: usa un ancho máximo distinto según paperWidthMm (58 vs 80), sin hardcodear una única impresora', async () => {
+    vi.mocked(fetchLogoRaster).mockResolvedValue(null);
+    await renderEscPosReceipt({ lines: [{ type: 'logo', url: 'https://x/logo.png' }], paperWidthMm: 58, feedLines: 0, cut: false });
+    await renderEscPosReceipt({ lines: [{ type: 'logo', url: 'https://x/logo.png' }], paperWidthMm: 80, feedLines: 0, cut: false });
+    const calls = vi.mocked(fetchLogoRaster).mock.calls;
+    const width58 = calls[0][1].maxWidthDots;
+    const width80 = calls[1][1].maxWidthDots;
+    expect(width80).toBeGreaterThan(width58);
   });
 });
 
@@ -106,8 +300,8 @@ describe('buildTestReceipt', () => {
     expect(receipt.cut).toBe(true);
   });
 
-  it('el receipt es serializable a ESC/POS sin lanzar', () => {
+  it('el receipt es serializable a ESC/POS sin lanzar', async () => {
     const receipt = buildTestReceipt({ businessName: 'Ñuñoa Panadería', printerName: 'X', paperWidthMm: 80 });
-    expect(() => renderEscPosReceipt(receipt)).not.toThrow();
+    await expect(renderEscPosReceipt(receipt)).resolves.not.toThrow();
   });
 });

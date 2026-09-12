@@ -299,7 +299,9 @@ function CrmTerminalUI() {
     setPrintStatus('printing');
     setPrintErrorMessage(null);
     try {
-      const receipt = buildSaleReceipt({ business, ...ticketData, paperWidthMm: printerConfig.paperWidthMm });
+      const receipt = buildSaleReceipt({
+        business, ...ticketData, paperWidthMm: printerConfig.paperWidthMm, autoCut: printerConfig.autoCut,
+      });
       await printService.printReceipt(receipt, { printerName: printerConfig.printerName });
       setPrintStatus('success');
     } catch (err) {

@@ -1,11 +1,18 @@
-import { formatMoney } from 'utils/formatMoney';
-import { columnsForWidth, stripDiacritics } from './renderEscPosReceipt';
+import { stripDiacritics } from './renderEscPosReceipt';
 
-// PRINT-2 — arma el Receipt (datos planos, sin React/DOM) de una venta real
-// del TPV. Recibe exactamente los mismos datos que CrmTerminal.jsx ya arma
-// en `ticketData`/`saleSnapshot` (ver auditoría PRINT-0 y
-// CrmThermalTicket.jsx, cuya UI en pantalla usa el mismo modelo) más el
-// `business` actual -- no lee nada de Supabase ni recalcula la venta.
+// PRINT-2/PRINT-4 — arma el Receipt (datos planos, sin React/DOM, sin
+// formatear moneda ni decidir layout) de una venta real del TPV. Recibe
+// exactamente los mismos datos que CrmTerminal.jsx ya arma en
+// `ticketData`/`saleSnapshot` (ver CrmThermalTicket.jsx, cuya UI en
+// pantalla usa el mismo modelo) más el `business` actual -- no lee nada
+// de Supabase ni recalcula la venta.
+//
+// PRINT-4: este builder solo decide QUÉ contenido semántico va en el
+// ticket (líneas tipadas con datos crudos: números, strings sin
+// formatear). El formato de moneda, el wrap de texto largo, el layout de
+// la tabla de ítems y los comandos ESC/POS son responsabilidad exclusiva
+// de renderEscPosReceipt.js -- este archivo nunca importa formatMoney ni
+// calcula anchos de columna.
 //
 // No decide nada de impresora/QZ Tray: eso es responsabilidad de
 // printService + el PrinterProvider configurado.
@@ -53,6 +60,8 @@ function formatDateTime(dt) {
  * @param {string} [params.notes]
  * @param {string} [params.createdAt]
  * @param {number} [params.paperWidthMm]
+ * @param {boolean} [params.autoCut] - PRINT-4: si es false, el ticket no pide corte
+ * @param {string} [params.cashierName] - PRINT-4: opcional, no hay hoy una fuente establecida para esto en CrmTerminal
  * @returns {import('./renderEscPosReceipt').Receipt}
  */
 export function buildSaleReceipt({
@@ -73,41 +82,59 @@ export function buildSaleReceipt({
   notes,
   createdAt,
   paperWidthMm = 80,
+  autoCut = true,
+  cashierName,
 }) {
   const currency = business?.currency;
-  const columns = columnsForWidth(paperWidthMm);
-  const money = (n) => formatMoney(n, currency);
   const lines = [];
-  const push = (text, opts = {}) => lines.push({ text, ...opts });
-  const divider = () => push('-'.repeat(columns));
+  const push = (line) => lines.push(line);
 
-  push(stripDiacritics(business?.name || 'Mi Negocio').toUpperCase(), { align: 'center', bold: true, double: true });
+  // Logo -- "recuperar el logo del negocio existente": la única fuente
+  // hoy es business.logoUrl (ver waBusinessService.mapBusinessFromDb:
+  // logo_url / designSettings.logoUrl). Si no existe, o si falla al
+  // cargar/rasterizar, el renderer simplemente omite esta línea -- el
+  // ticket igual imprime completo.
+  if (business?.logoUrl) push({ type: 'logo', url: business.logoUrl });
+
+  push({ text: stripDiacritics(business?.name || 'Mi Negocio').toUpperCase(), align: 'center', bold: true, double: true });
   // "RUT si existe" -- no hay hoy una columna de RUT fiscal del propio
-  // negocio en wa_businesses (ver auditoría PRINT-0); se soporta el campo
-  // por si se agrega más adelante, sin asumir que existe.
-  if (business?.rut) push(`RUT: ${business.rut}`, { align: 'center' });
-  if (business?.address) push(stripDiacritics(business.address), { align: 'center' });
-  if (business?.whatsapp) push(business.whatsapp, { align: 'center' });
-  push('Terminal de Ventas', { align: 'center' });
-  divider();
+  // negocio en wa_businesses; se soporta el campo por si se agrega más
+  // adelante, sin asumir que existe.
+  if (business?.rut) push({ text: `RUT: ${business.rut}`, align: 'center' });
+  if (business?.address) push({ text: stripDiacritics(business.address), align: 'center' });
+  if (business?.whatsapp) push({ text: business.whatsapp, align: 'center' });
+  push({ type: 'divider' });
 
   const ticketNumber = sale?.invoice_number ? `NV-${pad(sale.invoice_number)}` : `T-${Date.now().toString().slice(-6)}`;
-  push(`Ticket: ${ticketNumber}`);
-  push(`Fecha: ${formatDateTime(createdAt)}`);
-  push(`Cliente: ${stripDiacritics(customer?.name || 'Consumidor final')}`);
-  divider();
+  push({ text: `Ticket: ${ticketNumber}` });
+  push({ text: `Fecha: ${formatDateTime(createdAt)}` });
+  // Cajero -- no hay hoy una fuente establecida (CrmTerminal no maneja
+  // identidad de cajero); se soporta como parámetro opcional para no
+  // bloquear una futura integración, sin inventar ningún valor por defecto.
+  if (cashierName) push({ text: `Cajero: ${stripDiacritics(cashierName)}` });
+  push({ text: `Cliente: ${stripDiacritics(customer?.name || 'Consumidor final')}` });
+  push({ type: 'divider' });
 
-  for (const item of items) {
-    push(`${item.quantity}x ${stripDiacritics(item.name)}`);
-    push(`   ${money(item.unit_price)} c/u = ${money(item.unit_price * item.quantity)}`);
-    if (item.note) push(`   ${stripDiacritics(item.note)}`);
+  if (items.length > 0) {
+    push({ type: 'itemsHeader' });
+    for (const item of items) {
+      push({
+        type: 'item',
+        qty: item.quantity,
+        name: item.name,
+        unitPrice: item.unit_price,
+        lineTotal: Number(item.unit_price || 0) * Number(item.quantity || 0),
+        note: item.note,
+        currency,
+      });
+    }
+    push({ type: 'divider' });
   }
-  divider();
 
-  push(`Subtotal: ${money(subtotal)}`);
-  if (discountAmount > 0) push(`Descuento: -${money(discountAmount)}`);
-  push(`TOTAL: ${money(total)}`, { bold: true, double: true });
-  divider();
+  push({ type: 'row', left: 'Subtotal', amount: subtotal, currency });
+  if (discountAmount > 0) push({ type: 'row', left: 'Descuento', amount: -discountAmount, currency });
+  push({ type: 'total', label: 'TOTAL', amount: total, currency, emphasize: true });
+  push({ type: 'divider' });
 
   const normalizedPayments = (payments || [])
     .map((payment) => ({ method: payment.payment_method || payment.method, amount: Number(payment.amount || 0) }))
@@ -122,43 +149,49 @@ export function buildSaleReceipt({
     : Math.max(0, Number(total || 0) - paidAmount);
   const paymentState = pendingAmount <= 0 ? 'Pagada' : paidAmount > 0 ? 'Parcial' : 'Pendiente';
 
-  push(`Estado: ${paymentState}`, { bold: true });
+  push({ text: `Estado: ${paymentState}`, bold: true });
   if (normalizedPayments.length > 0) {
-    push('Pagos:');
+    push({ text: 'Pagos:' });
     for (const payment of normalizedPayments) {
-      push(`  ${PAYMENT_LABELS[payment.method] || payment.method}: ${money(payment.amount)}`);
+      push({ type: 'row', left: `  ${PAYMENT_LABELS[payment.method] || payment.method}`, amount: payment.amount, currency });
     }
   } else {
-    push(`Forma de pago: ${PAYMENT_LABELS[paymentMethod] || paymentMethod}`);
+    push({ text: `Forma de pago: ${PAYMENT_LABELS[paymentMethod] || paymentMethod}` });
   }
-  push(`Pagado: ${money(paidAmount)}`);
-  push(`Pendiente: ${money(pendingAmount)}`);
+  push({ type: 'row', left: 'Pagado', amount: paidAmount, currency });
+  push({ type: 'row', left: 'Pendiente', amount: pendingAmount, currency });
 
   if (normalizedPayments.length === 0 && paymentMethod === 'credit') {
     if (initialPaymentAmount != null && initialPaymentAmount > 0) {
-      push(`Metodo abono: ${PAYMENT_LABELS[initialPaymentMethod] || initialPaymentMethod || 'No informado'}`);
-      push(`Abono: ${money(initialPaymentAmount)}`, { bold: true });
+      push({ text: `Metodo abono: ${PAYMENT_LABELS[initialPaymentMethod] || initialPaymentMethod || 'No informado'}` });
+      push({ type: 'row', left: 'Abono', amount: initialPaymentAmount, currency, bold: true });
     }
   } else if (normalizedPayments.length === 0) {
-    if (amountReceived != null && amountReceived > 0) push(`Pago recibido: ${money(amountReceived)}`);
-    if (change != null && change > 0) push(`Vuelto: ${money(change)}`, { bold: true });
+    if (amountReceived != null && amountReceived > 0) push({ type: 'row', left: 'Pago recibido', amount: amountReceived, currency });
+    if (change != null && change > 0) push({ type: 'row', left: 'Vuelto', amount: change, currency, bold: true });
   } else if (change != null && change > 0) {
-    push(`Vuelto: ${money(change)}`, { bold: true });
+    push({ type: 'row', left: 'Vuelto', amount: change, currency, bold: true });
   }
 
   if (notes) {
-    divider();
-    push('Notas:');
-    push(stripDiacritics(notes));
+    push({ type: 'divider' });
+    push({ text: 'Notas:' });
+    push({ text: stripDiacritics(notes) });
   }
 
-  divider();
-  push('Gracias por su compra', { align: 'center' });
+  push({ type: 'divider' });
+  push({ text: 'Gracias por su compra', align: 'center' });
   if (business?.printLegend) {
     for (const legendLine of String(business.printLegend).split('\n')) {
-      if (legendLine.trim()) push(stripDiacritics(legendLine), { align: 'center' });
+      if (legendLine.trim()) push({ text: stripDiacritics(legendLine), align: 'center' });
     }
   }
 
-  return { lines, feedLines: 4, cut: true };
+  return {
+    paperWidthMm,
+    currency,
+    lines,
+    feedLines: 4,
+    cut: autoCut !== false,
+  };
 }

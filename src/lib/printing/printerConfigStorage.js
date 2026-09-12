@@ -34,6 +34,11 @@ function defaultConfig() {
     schemaVersion: PRINTER_CONFIG_SCHEMA_VERSION,
     printerName: null,
     paperWidthMm: DEFAULT_PAPER_WIDTH_MM,
+    // PRINT-4: corte automático al final del ticket. Se deja preparado
+    // como flag simple (sin un sistema de perfiles de impresora) para
+    // poder desactivarlo si alguna impresora/cuchilla no lo soporta bien,
+    // sin bloquear nunca la venta si el corte falla o no está soportado.
+    autoCut: true,
   };
 }
 
@@ -45,7 +50,10 @@ function sanitizeConfig(raw) {
   const paperWidthMm = Number.isFinite(raw.paperWidthMm) && raw.paperWidthMm > 0
     ? raw.paperWidthMm
     : DEFAULT_PAPER_WIDTH_MM;
-  return { schemaVersion: PRINTER_CONFIG_SCHEMA_VERSION, printerName, paperWidthMm };
+  const autoCut = raw.autoCut !== false;
+  return {
+    schemaVersion: PRINTER_CONFIG_SCHEMA_VERSION, printerName, paperWidthMm, autoCut,
+  };
 }
 
 /** Lee la config de impresión local; nunca lanza, siempre devuelve una config válida. */
