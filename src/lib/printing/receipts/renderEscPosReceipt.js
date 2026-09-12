@@ -703,9 +703,11 @@ const EDGE_CALIBRATION_X_POSITIONS_DOTS = [400, 420, 440, 460, 480];
  * determina el límite EXACTO: por defecto, 5 bloques independientes de
  * EXACTAMENTE `EDGE_CALIBRATION_BLOCK_WIDTH_DOTS` (20 dots) de ancho --
  * SIN relleno, sin imágenes de ancho completo -- posicionados con `ESC $`
- * en x=400, 420, 440, 460 y 480 (`xPositionsDots`, sobreescribible --
- * PRINT-4-BUG11 la reutiliza con posiciones más finas alrededor del
- * límite encontrado, ver buildRightEdgeFineCalibrationDiagnosticReceipt).
+ * en x=400, 420, 440, 460 y 480 (`xPositionsDots` y `blockWidthDots`,
+ * ambos sobreescribibles -- PRINT-4-BUG11/BUG12 reutilizan esto con
+ * posiciones más finas y bloques más angostos alrededor del límite
+ * encontrado, ver buildRightEdgeFineCalibrationDiagnosticReceipt y
+ * buildRightEdgeUltraFineCalibrationDiagnosticReceipt).
  * La prueba física debe anotar hasta qué x el bloque de 20 dots aparece
  * COMPLETO (sin cortarse): ese es el valor a usar para calibrar
  * `effectivePrintableWidthDots` en printerProfile.js (actualmente 286,
@@ -720,11 +722,12 @@ export function buildRightEdgeCalibrationDiagnosticReceipt({
   paperWidthMm = 80,
   imageMode,
   xPositionsDots = EDGE_CALIBRATION_X_POSITIONS_DOTS,
+  blockWidthDots = EDGE_CALIBRATION_BLOCK_WIDTH_DOTS,
   title = 'CALIBRACION DE BORDE DERECHO (ESC $)',
   footer = 'FIN CALIBRACION DE BORDE DERECHO',
 } = {}) {
   const strategy = getGraphicsStrategy(imageMode);
-  const blockWidth = EDGE_CALIBRATION_BLOCK_WIDTH_DOTS;
+  const blockWidth = blockWidthDots;
   const blockHeight = EDGE_CALIBRATION_BLOCK_HEIGHT_DOTS;
   const solidBits = new Uint8Array(blockWidth * blockHeight).fill(1);
 
@@ -781,5 +784,41 @@ export function buildRightEdgeFineCalibrationDiagnosticReceipt({ paperWidthMm = 
     xPositionsDots: FINE_EDGE_CALIBRATION_X_POSITIONS_DOTS,
     title: 'CALIBRACION FINA DE BORDE (ESC $)',
     footer: 'FIN CALIBRACION FINA DE BORDE',
+  });
+}
+
+// PRINT-4-BUG12 — la calibración fina (x=420 a 440, bloques de 20 dots)
+// resultó COMPLETA en las 6 posiciones: el límite real está más allá de
+// 440, todavía sin localizar. Para no volver a entrar en la zona de wrap
+// confirmada en x=460/480 (BUG11), esta ronda usa bloques mucho más
+// angostos (8 dots, el mínimo práctico -- una sola columna de byte
+// vertical) y avanza en pasos de 4 dots empezando recién en 448 (justo
+// después del último punto ya confirmado completo), sin superar 468 --
+// deliberadamente por debajo de 480 (la primera coordenada donde se
+// observó wrap) para no repetir esa zona.
+const ULTRA_FINE_EDGE_CALIBRATION_X_POSITIONS_DOTS = [448, 452, 456, 460, 464, 468];
+const ULTRA_FINE_EDGE_CALIBRATION_BLOCK_WIDTH_DOTS = 8;
+
+/**
+ * PRINT-4-BUG12 — variante de {@link buildRightEdgeCalibrationDiagnosticReceipt}
+ * con bloques de EXACTAMENTE 8 dots (en vez de 20) para localizar el
+ * borde físico con más precisión, en x=448/452/456/460/464/468 -- un
+ * rango elegido para continuar justo donde la calibración fina de BUG11
+ * dejó todo "completo" (440), sin acercarse a la zona de wrap ya
+ * confirmada en x=460 con bloques de 60 dots (BUG9) ni en x=460/480 con
+ * bloques de 20 dots (BUG10/BUG11) -- acá 460 se prueba con un bloque
+ * mucho más angosto (8 dots), así que sigue siendo información nueva, no
+ * una repetición. Mismo mecanismo exacto (`ESC $` explícito, `ALIGN_LEFT`
+ * forzado, sin relleno). El resultado físico (última x con el bloque de
+ * 8 dots completo) determina `physicalRightEdgeDots = lastCompleteX + 8`.
+ */
+export function buildRightEdgeUltraFineCalibrationDiagnosticReceipt({ paperWidthMm = 80, imageMode } = {}) {
+  return buildRightEdgeCalibrationDiagnosticReceipt({
+    paperWidthMm,
+    imageMode,
+    xPositionsDots: ULTRA_FINE_EDGE_CALIBRATION_X_POSITIONS_DOTS,
+    blockWidthDots: ULTRA_FINE_EDGE_CALIBRATION_BLOCK_WIDTH_DOTS,
+    title: 'CALIBRACION DE BORDE 8 DOTS (ESC $)',
+    footer: 'FIN CALIBRACION DE BORDE 8 DOTS',
   });
 }

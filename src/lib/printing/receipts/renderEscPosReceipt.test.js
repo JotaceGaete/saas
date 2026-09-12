@@ -10,6 +10,7 @@ const {
   buildImageCapabilityDiagnosticReceipt, buildCutCapabilityDiagnosticReceipt,
   buildLogoPositionDiagnosticReceipt, buildLogoGeometryDiagnosticReceipt, buildLogoPositionedDiagnosticReceipt,
   buildRightEdgeCalibrationDiagnosticReceipt, buildRightEdgeFineCalibrationDiagnosticReceipt,
+  buildRightEdgeUltraFineCalibrationDiagnosticReceipt,
   columnsForWidth, wrapText, formatRowLines,
 } = await import('./renderEscPosReceipt');
 const { buildRasterCommand } = await import('./escPosImage');
@@ -1079,5 +1080,85 @@ describe('buildRightEdgeFineCalibrationDiagnosticReceipt — PRINT-4-BUG11', () 
 
   it('el receipt resultante renderiza sin lanzar', async () => {
     await expect(renderEscPosReceipt(buildRightEdgeFineCalibrationDiagnosticReceipt({ paperWidthMm: 80 }))).resolves.not.toThrow();
+  });
+});
+
+// PRINT-4-BUG12 — la calibración fina (BUG11, x=420 a 440, bloques de 20
+// dots) resultó COMPLETA en las 6 posiciones: el límite real está más
+// allá de 440. Esta ronda usa bloques de 8 dots (el mínimo práctico) en
+// x=448/452/456/460/464/468 -- deliberadamente por debajo de 480, la
+// primera coordenada donde BUG10/BUG11 confirmaron wrap con bloques más
+// anchos, para no repetir esa zona.
+describe('buildRightEdgeUltraFineCalibrationDiagnosticReceipt — PRINT-4-BUG12', () => {
+  const ESC = 0x1B;
+
+  it('produce 6 bloques `raw` de imagen (uno por posición x), cada uno precedido por su propio ALIGN_LEFT', () => {
+    const receipt = buildRightEdgeUltraFineCalibrationDiagnosticReceipt({ paperWidthMm: 80 });
+    const rawLines = receipt.lines.filter((l) => l.type === 'raw');
+    expect(rawLines).toHaveLength(12); // 6 bloques x (ALIGN_LEFT + comando)
+    for (let i = 0; i < rawLines.length; i += 2) {
+      expect(rawLines[i].bytes).toEqual([ESC, 0x61, 0x00]); // ALIGN_LEFT
+    }
+  });
+
+  it('cada bloque de imagen mide EXACTAMENTE 8 columnas de datos -- nunca 20, nunca lleva relleno', () => {
+    const receipt = buildRightEdgeUltraFineCalibrationDiagnosticReceipt({ paperWidthMm: 80 });
+    const rawLines = receipt.lines.filter((l) => l.type === 'raw');
+    const imageCommands = [rawLines[1], rawLines[3], rawLines[5], rawLines[7], rawLines[9], rawLines[11]];
+    for (const { bytes: cmd } of imageCommands) {
+      const headerIdx = cmd.findIndex((b, i) => b === ESC && cmd[i + 1] === 0x2A && cmd[i + 2] === 0x00);
+      expect(cmd[headerIdx + 3]).toBe(8); // nL
+      expect(cmd[headerIdx + 4]).toBe(0); // nH
+    }
+  });
+
+  it('emite ESC $ con los 6 offsets EXACTOS pedidos: 448, 452, 456, 460, 464, 468', () => {
+    const receipt = buildRightEdgeUltraFineCalibrationDiagnosticReceipt({ paperWidthMm: 80 });
+    const rawLines = receipt.lines.filter((l) => l.type === 'raw');
+    const imageCommands = [rawLines[1], rawLines[3], rawLines[5], rawLines[7], rawLines[9], rawLines[11]];
+    const offsets = imageCommands.map(({ bytes: cmd }) => {
+      const posIdx = cmd.findIndex((b, j) => b === ESC && cmd[j + 1] === 0x24);
+      return cmd[posIdx + 2] + cmd[posIdx + 3] * 256;
+    });
+    expect(offsets).toEqual([448, 452, 456, 460, 464, 468]);
+  });
+
+  it('nunca alcanza ni supera 480 -- se mantiene deliberadamente lejos de la zona de wrap ya confirmada', () => {
+    const receipt = buildRightEdgeUltraFineCalibrationDiagnosticReceipt({ paperWidthMm: 80 });
+    const labelLines = receipt.lines.filter((l) => l.text?.startsWith('x ='));
+    const offsets = labelLines.map((l) => Number(l.text.match(/x = (\d+) dots/)[1]));
+    expect(Math.max(...offsets)).toBeLessThan(480);
+  });
+
+  it('usa un título/footer distintos de las calibraciones anteriores, para no confundir los resultados', () => {
+    const coarse = buildRightEdgeCalibrationDiagnosticReceipt({ paperWidthMm: 80 });
+    const fine = buildRightEdgeFineCalibrationDiagnosticReceipt({ paperWidthMm: 80 });
+    const ultraFine = buildRightEdgeUltraFineCalibrationDiagnosticReceipt({ paperWidthMm: 80 });
+    expect(ultraFine.lines[0].text).not.toBe(coarse.lines[0].text);
+    expect(ultraFine.lines[0].text).not.toBe(fine.lines[0].text);
+    expect(ultraFine.lines[0].text).toContain('8 DOTS');
+  });
+
+  it('cada posición está claramente rotulada en el texto', () => {
+    const receipt = buildRightEdgeUltraFineCalibrationDiagnosticReceipt({ paperWidthMm: 80 });
+    const labelLines = receipt.lines.filter((l) => l.text?.startsWith('x ='));
+    expect(labelLines.map((l) => l.text)).toEqual([
+      'x = 448 dots:', 'x = 452 dots:', 'x = 456 dots:', 'x = 460 dots:', 'x = 464 dots:', 'x = 468 dots:',
+    ]);
+  });
+
+  it('nunca depende de red/Image/canvas/business -- no llama a fetchLogoRaster', async () => {
+    const receipt = buildRightEdgeUltraFineCalibrationDiagnosticReceipt({ paperWidthMm: 80 });
+    await renderEscPosReceipt(receipt);
+    expect(fetchLogoRaster).not.toHaveBeenCalled();
+  });
+
+  it('siempre pide corte y nunca genera una venta -- receipt puramente sintético', () => {
+    const receipt = buildRightEdgeUltraFineCalibrationDiagnosticReceipt({ paperWidthMm: 80 });
+    expect(receipt.cut).toBe(true);
+  });
+
+  it('el receipt resultante renderiza sin lanzar', async () => {
+    await expect(renderEscPosReceipt(buildRightEdgeUltraFineCalibrationDiagnosticReceipt({ paperWidthMm: 80 }))).resolves.not.toThrow();
   });
 });
