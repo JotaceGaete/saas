@@ -15,7 +15,9 @@
 
 import { formatMoney } from 'utils/formatMoney';
 import { fetchLogoRaster } from './fetchLogoRaster';
-import { buildRasterCommand, buildVerticalMarkerBits, buildGeometryTestBits } from './escPosImage';
+import {
+  buildRasterCommand, buildVerticalMarkerBits, buildGeometryTestBits, buildPositionedTiledColumnBitImageCommand,
+} from './escPosImage';
 import { GRAPHICS_STRATEGIES, CUT_STRATEGIES, getGraphicsStrategy } from './escPosCapabilities';
 import { buildLayout } from './printerProfile';
 
@@ -604,6 +606,78 @@ export function buildLogoGeometryDiagnosticReceipt({ paperWidthMm = 80, imageMod
   return {
     paperWidthMm,
     imageMode,
+    lines,
+    feedLines: 4,
+    cut: true,
+  };
+}
+
+const POSITIONED_TEST_BLOCK_WIDTH_DOTS = 60;
+const POSITIONED_TEST_BLOCK_HEIGHT_DOTS = 40; // 5 franjas de 8 dots
+
+/**
+ * PRINT-4-BUG9 — la prueba física de BUG8 fue concluyente: el margen
+ * horneado en píxeles blancos (`padBitsLeft`, BUG6) NO funciona como
+ * mecanismo de posicionamiento en esta impresora/emulación. Un bloque
+ * "centro" con ~226 columnas de padding a la izquierda apareció comprimido
+ * contra el borde DERECHO del papel (no en el centro), y uno "derecha" con
+ * ~452 de padding desapareció por completo del área imprimible --
+ * cientos de columnas en blanco no son "gratis": consumen o corrompen el
+ * mismo presupuesto de ancho que el contenido real. Esto explica
+ * directamente por qué el logo real (que siempre necesitó un margen
+ * mucho más ancho que estos bloques de prueba) salía cortado/desplazado
+ * en todas las pruebas anteriores.
+ *
+ * Este diagnóstico prueba una estrategia distinta, SIN ningún padding:
+ * cada bloque de prueba mide EXACTAMENTE `POSITIONED_TEST_BLOCK_WIDTH_DOTS`
+ * (60 dots, sin una sola columna en blanco de más) y la posición
+ * horizontal se fija con `ESC $ nL nH` (posición absoluta, ver
+ * buildAbsolutePositionCommand en escPosImage.js) inmediatamente antes de
+ * cada franja/chunk de imagen -- nunca con píxeles agregados al bitmap.
+ * Se fuerza `ALIGN_LEFT` explícitamente antes de cada bloque (vía líneas
+ * `raw`, sin pasar por el `ALIGN_CENTER` automático del tipo
+ * `rasterBytes`) para que el modo de alineación de texto no interfiera
+ * con -- ni enmascare -- la posición absoluta que se está probando.
+ *
+ * Si esta prueba también falla, el problema no es el mecanismo de
+ * posicionamiento en sí sino algo más profundo (p. ej. la unidad de
+ * movimiento horizontal por defecto de `ESC $` en esta impresora no es 1
+ * dot nativo, o el ancho físico realmente disponible es menor al
+ * asumido) -- eso requiere reportar el resultado, no otra compensación.
+ * No genera ninguna venta ni toca el flujo de cobro.
+ */
+export function buildLogoPositionedDiagnosticReceipt({ paperWidthMm = 80 } = {}) {
+  const layout = buildLayout(paperWidthMm);
+  const width = layout.printableWidthDots;
+  const blockWidth = Math.min(POSITIONED_TEST_BLOCK_WIDTH_DOTS, width);
+  const blockHeight = POSITIONED_TEST_BLOCK_HEIGHT_DOTS;
+  const solidBits = new Uint8Array(blockWidth * blockHeight).fill(1);
+
+  const positions = [
+    { label: 'IZQUIERDA', x: 0 },
+    { label: 'CENTRO', x: Math.floor((width - blockWidth) / 2) },
+    { label: 'DERECHA', x: width - blockWidth },
+  ];
+
+  const lines = [
+    { text: 'DIAGNOSTICO DE POSICION EXPLICITA (ESC $)', align: 'center', bold: true },
+    { type: 'divider' },
+    { text: `Cada bloque mide EXACTAMENTE ${blockWidth} dots de ancho, sin relleno. La posicion horizontal se fija con ESC $ antes de cada franja, no con pixeles en blanco.` },
+    { type: 'divider' },
+  ];
+  for (const { label, x } of positions) {
+    lines.push({ text: `Bloque ${label} (x = ${x} dots):` });
+    lines.push({ type: 'raw', bytes: CMD.ALIGN_LEFT });
+    lines.push({
+      type: 'raw',
+      bytes: Array.from(buildPositionedTiledColumnBitImageCommand(solidBits, blockWidth, blockHeight, x)),
+    });
+    lines.push({ type: 'divider' });
+  }
+  lines.push({ text: 'FIN DIAGNOSTICO DE POSICION EXPLICITA', align: 'center', bold: true });
+
+  return {
+    paperWidthMm,
     lines,
     feedLines: 4,
     cut: true,

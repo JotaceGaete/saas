@@ -262,3 +262,71 @@ export function buildTiledColumnBitImageCommand(bits, width, height) {
   bytes.push(ESC, 0x32); // ESC 2 -- espaciado de línea por defecto
   return new Uint8Array(bytes);
 }
+
+// PRINT-4-BUG9 — la prueba física de BUG8 (bloques de posición absoluta
+// conocida, sin ningún logo real de por medio) fue concluyente: un bloque
+// "centro" con ~226 columnas de margen izquierdo horneadas en píxeles
+// blancos apareció comprimido contra el borde DERECHO del papel (no en el
+// centro), y uno "derecha" con ~452 columnas de margen desapareció por
+// completo del área imprimible. Esto descarta por completo el margen
+// horneado en el bitmap (padBitsLeft, BUG6) como mecanismo de
+// posicionamiento en esta impresora/emulación: cientos de columnas en
+// blanco NO son "gratis" -- consumen (o corrompen) el mismo presupuesto
+// de ancho que el contenido real, empujando o eliminando el contenido
+// real antes de que llegue a imprimirse.
+//
+// `ESC $ nL nH` (posición absoluta de impresión, especificación Epson
+// estándar) mueve el punto de impresión a `nL + nH*256` unidades de
+// movimiento horizontal desde el margen izquierdo, ANTES de imprimir lo
+// que sea que venga después -- acá se asume la unidad por defecto de esta
+// impresora (sin `GS P`) igual a 1 dot nativo, la asunción más común en
+// clones ESC/POS simples que no implementan unidades de movimiento
+// configurables; si las posiciones resultantes muestran un patrón de
+// escala constante (todo corrido por el mismo factor), eso apuntaría a
+// una unidad de movimiento distinta y haría falta `GS P` para fijarla.
+export function buildAbsolutePositionCommand(dotsFromLeft) {
+  const n = Math.max(0, dotsFromLeft | 0);
+  return [ESC, 0x24, n & 0xFF, (n >> 8) & 0xFF]; // ESC $ nL nH
+}
+
+/**
+ * PRINT-4-BUG9 — variante de `buildTiledColumnBitImageCommand` que NO
+ * agrega ni una sola columna de más al bitmap: `bits`/`width`/`height`
+ * son EXCLUSIVAMENTE el contenido real (el logo, o el bloque de prueba),
+ * sin ningún padding. La posición horizontal se fija con
+ * `buildAbsolutePositionCommand(xDots)` inmediatamente antes de CADA
+ * bloque `ESC *` -- una nueva línea de impresión (cada franja de 8 dots
+ * termina en un LF) siempre resetea la posición horizontal al margen
+ * izquierdo, así que no alcanza con posicionar una sola vez al principio;
+ * y cada chunk de <=255 columnas (ver MAX_ESC_STAR_WIDTH_DOTS, BUG7) dentro
+ * de una misma franja ancha se reposiciona también por separado (`xDots +
+ * chunkStart`), para no depender de que comandos `ESC *` consecutivos se
+ * concatenen horizontalmente por su cuenta -- la suposición que BUG7 no
+ * pudo confirmar físicamente.
+ */
+export function buildPositionedTiledColumnBitImageCommand(bits, width, height, xDots) {
+  const bytes = [ESC, 0x33, BAND_HEIGHT_DOTS]; // ESC 3 8
+  for (let bandStart = 0; bandStart < height; bandStart += BAND_HEIGHT_DOTS) {
+    const bandHeight = Math.min(BAND_HEIGHT_DOTS, height - bandStart);
+    const bandBits = new Uint8Array(width * bandHeight);
+    for (let y = 0; y < bandHeight; y++) {
+      for (let x = 0; x < width; x++) {
+        bandBits[y * width + x] = bits[(bandStart + y) * width + x];
+      }
+    }
+    for (let chunkStart = 0; chunkStart < width; chunkStart += MAX_ESC_STAR_WIDTH_DOTS) {
+      const chunkWidth = Math.min(MAX_ESC_STAR_WIDTH_DOTS, width - chunkStart);
+      const chunkBits = new Uint8Array(chunkWidth * bandHeight);
+      for (let y = 0; y < bandHeight; y++) {
+        for (let x = 0; x < chunkWidth; x++) {
+          chunkBits[y * chunkWidth + x] = bandBits[y * width + chunkStart + x];
+        }
+      }
+      bytes.push(...buildAbsolutePositionCommand(xDots + chunkStart));
+      bytes.push(...buildColumnBitImageCommand(chunkBits, chunkWidth, bandHeight));
+    }
+    bytes.push(LF);
+  }
+  bytes.push(ESC, 0x32); // ESC 2 -- espaciado de línea por defecto
+  return new Uint8Array(bytes);
+}

@@ -8,7 +8,7 @@ const { fetchLogoRaster } = await import('./fetchLogoRaster');
 const {
   renderEscPosReceipt, buildTestReceipt, buildRasterDiagnosticReceipt,
   buildImageCapabilityDiagnosticReceipt, buildCutCapabilityDiagnosticReceipt,
-  buildLogoPositionDiagnosticReceipt, buildLogoGeometryDiagnosticReceipt,
+  buildLogoPositionDiagnosticReceipt, buildLogoGeometryDiagnosticReceipt, buildLogoPositionedDiagnosticReceipt,
   columnsForWidth, wrapText, formatRowLines,
 } = await import('./renderEscPosReceipt');
 const { buildRasterCommand } = await import('./escPosImage');
@@ -857,5 +857,82 @@ describe('PRINT-4-BUG5 — layout único: ninguna sección excede el ancho que l
     for (const paperWidthMm of [80, 58]) {
       expect(columnsForWidth(paperWidthMm)).toBe(buildLayout(paperWidthMm).normalCharsPerLine);
     }
+  });
+});
+
+// PRINT-4-BUG9 — la prueba física de BUG8 confirmó que el margen horneado
+// en píxeles (padBitsLeft) NO posiciona nada en esta impresora: un bloque
+// "centro" con ~226 columnas de padding apareció comprimido contra el
+// borde derecho, y uno "derecha" con ~452 desapareció por completo. Este
+// diagnóstico prueba `ESC $` (posición absoluta) en su lugar, con bloques
+// que NUNCA llevan padding -- solo su ancho real (60 dots).
+describe('buildLogoPositionedDiagnosticReceipt — PRINT-4-BUG9', () => {
+  const ESC = 0x1B;
+
+  it('produce 3 bloques `raw`, cada uno precedido por su propio ALIGN_LEFT explícito', () => {
+    const receipt = buildLogoPositionedDiagnosticReceipt({ paperWidthMm: 80 });
+    const rawLines = receipt.lines.filter((l) => l.type === 'raw');
+    expect(rawLines).toHaveLength(6); // 3 bloques x (ALIGN_LEFT + comando posicionado)
+    for (let i = 0; i < rawLines.length; i += 2) {
+      expect(rawLines[i].bytes).toEqual([ESC, 0x61, 0x00]); // ALIGN_LEFT
+    }
+  });
+
+  it('cada bloque de imagen mide EXACTAMENTE 60 columnas de datos -- nunca width+xDots (sin padding)', () => {
+    const receipt = buildLogoPositionedDiagnosticReceipt({ paperWidthMm: 80 });
+    const rawLines = receipt.lines.filter((l) => l.type === 'raw');
+    // los comandos de imagen son los de índice impar (1,3,5): ALIGN_LEFT, comando, ALIGN_LEFT, comando, ...
+    const imageCommands = [rawLines[1], rawLines[3], rawLines[5]];
+    for (const { bytes: cmd } of imageCommands) {
+      const headerIdx = cmd.findIndex((b, i) => b === ESC && cmd[i + 1] === 0x2A && cmd[i + 2] === 0x00);
+      expect(cmd[headerIdx + 3]).toBe(60); // nL
+      expect(cmd[headerIdx + 4]).toBe(0); // nH
+    }
+  });
+
+  it('emite ESC $ con offsets EXACTOS: 0 (izquierda), (printableWidthDots-60)/2 (centro) y printableWidthDots-60 (derecha)', () => {
+    const layout = buildLayout(80);
+    const receipt = buildLogoPositionedDiagnosticReceipt({ paperWidthMm: 80 });
+    const rawLines = receipt.lines.filter((l) => l.type === 'raw');
+    const imageCommands = [rawLines[1], rawLines[3], rawLines[5]];
+    const expectedOffsets = [0, Math.floor((layout.printableWidthDots - 60) / 2), layout.printableWidthDots - 60];
+
+    imageCommands.forEach(({ bytes: cmd }, i) => {
+      const posIdx = cmd.findIndex((b, j) => b === ESC && cmd[j + 1] === 0x24);
+      const x = cmd[posIdx + 2] + cmd[posIdx + 3] * 256;
+      expect(x).toBe(expectedOffsets[i]);
+    });
+  });
+
+  it('los offsets de texto (labels) coinciden con los offsets reales emitidos en ESC $', () => {
+    const layout = buildLayout(80);
+    const receipt = buildLogoPositionedDiagnosticReceipt({ paperWidthMm: 80 });
+    const labelLines = receipt.lines.filter((l) => l.text?.startsWith('Bloque '));
+    expect(labelLines).toHaveLength(3);
+    expect(labelLines[0].text).toContain('x = 0 dots');
+    expect(labelLines[2].text).toContain(`x = ${layout.printableWidthDots - 60} dots`);
+  });
+
+  it('nunca depende de red/Image/canvas/business -- no llama a fetchLogoRaster', async () => {
+    const receipt = buildLogoPositionedDiagnosticReceipt({ paperWidthMm: 80 });
+    await renderEscPosReceipt(receipt);
+    expect(fetchLogoRaster).not.toHaveBeenCalled();
+  });
+
+  it('usa printableWidthDots distinto para 58mm y 80mm -- sin hardcodear una única impresora', () => {
+    const layout58 = buildLayout(58);
+    const layout80 = buildLayout(80);
+    const receipt58 = buildLogoPositionedDiagnosticReceipt({ paperWidthMm: 58 });
+    expect(receipt58.paperWidthMm).toBe(58);
+    expect(layout58.printableWidthDots).toBeLessThan(layout80.printableWidthDots);
+  });
+
+  it('siempre pide corte y nunca genera una venta -- receipt puramente sintético', () => {
+    const receipt = buildLogoPositionedDiagnosticReceipt({ paperWidthMm: 80 });
+    expect(receipt.cut).toBe(true);
+  });
+
+  it('el receipt resultante renderiza sin lanzar', async () => {
+    await expect(renderEscPosReceipt(buildLogoPositionedDiagnosticReceipt({ paperWidthMm: 80 }))).resolves.not.toThrow();
   });
 });

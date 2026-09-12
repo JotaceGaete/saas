@@ -7,7 +7,7 @@ import Icon from 'components/AppIcon';
 import { printService } from 'lib/printing/printService';
 import {
   buildTestReceipt, buildImageCapabilityDiagnosticReceipt, buildCutCapabilityDiagnosticReceipt,
-  buildLogoPositionDiagnosticReceipt, buildLogoGeometryDiagnosticReceipt,
+  buildLogoPositionDiagnosticReceipt, buildLogoGeometryDiagnosticReceipt, buildLogoPositionedDiagnosticReceipt,
 } from 'lib/printing/receipts/renderEscPosReceipt';
 import { buildFinalValidationReceipt } from 'lib/printing/receipts/buildSaleReceipt';
 import { buildPrinterConfigKey, readPrinterConfig, writePrinterConfig } from 'lib/printing/printerConfigStorage';
@@ -139,6 +139,18 @@ export default function CrmPrintSettings() {
     }),
     'Diagnóstico de geometría enviado a la impresora.',
     'No se pudo imprimir el diagnóstico de geometría.',
+  );
+
+  // PRINT-4-BUG9 — BUG8 confirmó físicamente que el margen horneado en
+  // píxeles blancos NO posiciona nada en esta impresora (un bloque con
+  // ~226 columnas de padding apareció comprimido contra el borde derecho,
+  // uno con ~452 desapareció). Este diagnóstico prueba ESC $ (posición
+  // absoluta) en su lugar, con bloques que nunca llevan padding -- solo
+  // su ancho real (60 dots). No genera ninguna venta.
+  const handlePrintLogoPositionedDiagnostic = () => runDiagnosticPrint(
+    () => buildLogoPositionedDiagnosticReceipt({ paperWidthMm: config.paperWidthMm }),
+    'Diagnóstico de posición explícita enviado a la impresora.',
+    'No se pudo imprimir el diagnóstico de posición explícita.',
   );
 
   // PRINT-4-BUG3 — ejercita el camino de producción completo (logo real +
@@ -312,6 +324,25 @@ export default function CrmPrintSettings() {
               entre marcas de columna 0 y de la última columna, usando la misma ruta ESC * del logo.
               Úsalo si el diagnóstico de logo sigue mostrando el logo desplazado: revela físicamente
               dónde empieza realmente cada bloque, sin depender de ninguna suposición sobre esta impresora.
+            </p>
+          </div>
+
+          <div className="mt-2">
+            <button
+              type="button"
+              onClick={handlePrintLogoPositionedDiagnostic}
+              disabled={!canPrint}
+              className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-300 px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+            >
+              <Icon name={printing ? 'Loader2' : 'MoveHorizontal'} size={15} className={printing ? 'animate-spin' : ''} />
+              Diagnóstico de posición explícita (ESC $)
+            </button>
+            <p className="mt-1.5 text-xs text-slate-400">
+              Imprime 3 bloques de 60 dots (izquierda, centro, derecha) SIN ningún relleno en blanco:
+              la posición se fija con el comando ESC $ antes de cada franja. Úsalo si el diagnóstico
+              de geometría anterior mostró el bloque centrado/derecho recortado o desplazado -- eso
+              confirma que el relleno en píxeles no funciona en esta impresora y hace falta este
+              mecanismo en su lugar.
             </p>
           </div>
 

@@ -230,6 +230,29 @@ describe('CrmPrintSettings — imprimir ticket de prueba', () => {
     expect(screen.getByRole('button', { name: /Diagnóstico de geometría/ })).toBeDisabled();
   });
 
+  it('PRINT-4-BUG9: el diagnóstico de posición explícita (ESC $) imprime 3 bloques `raw` sin relleno, y pide corte', async () => {
+    render(<CrmPrintSettings />);
+    await screen.findByText('Conectado');
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'Impresora A' } });
+
+    const diagButton = screen.getByRole('button', { name: /Diagnóstico de posición explícita/ });
+    expect(diagButton).not.toBeDisabled();
+    fireEvent.click(diagButton);
+
+    await waitFor(() => expect(printReceiptMock).toHaveBeenCalledTimes(1));
+    const [receipt, target] = printReceiptMock.mock.calls[0];
+    expect(target).toEqual({ printerName: 'Impresora A' });
+    expect(receipt.lines.filter((l) => l.type === 'raw')).toHaveLength(6); // 3 bloques x (ALIGN_LEFT + comando)
+    expect(receipt.cut).toBe(true);
+    expect(await screen.findByText('Diagnóstico de posición explícita enviado a la impresora.')).toBeInTheDocument();
+  });
+
+  it('el diagnóstico de posición explícita está deshabilitado sin impresora seleccionada', async () => {
+    render(<CrmPrintSettings />);
+    await screen.findByText('Conectado');
+    expect(screen.getByRole('button', { name: /Diagnóstico de posición explícita/ })).toBeDisabled();
+  });
+
   it('PRINT-4-BUG3: la impresión final de validación imprime un ticket completo (logo, items, TOTAL, corte) con datos sintéticos', async () => {
     render(<CrmPrintSettings />);
     await screen.findByText('Conectado');
