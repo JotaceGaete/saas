@@ -15,6 +15,7 @@
 
 import { formatMoney } from 'utils/formatMoney';
 import { fetchLogoRaster } from './fetchLogoRaster';
+import { buildRasterCommand } from './escPosImage';
 
 const ESC = 0x1B;
 const GS = 0x1D;
@@ -223,6 +224,18 @@ export async function renderEscPosReceipt(receipt) {
         }
         break;
       }
+      // PRINT-4-BUG1: comando raster ya construido (sin pasar por
+      // fetchLogoRaster/canvas) -- lo usa buildRasterDiagnosticReceipt para
+      // poder aislar, en una impresión física, si el problema está en el
+      // comando GS v 0 en sí (esta línea) o en la carga/rasterización de una
+      // imagen real (type: 'logo').
+      case 'rasterBytes':
+        if (line.command?.length) {
+          bytes.push(...CMD.ALIGN_CENTER);
+          bytes.push(...line.command);
+          bytes.push(LF);
+        }
+        break;
       case 'divider':
         emit('-'.repeat(columns));
         break;
@@ -291,6 +304,43 @@ export function buildTestReceipt({ businessName = 'Walinka', printerName = '', p
       { text: 'termica esta funcionando.' },
       divider,
       { text: 'Todo listo!', align: 'center', bold: true },
+    ],
+    feedLines: 4,
+    cut: true,
+  };
+}
+
+// PRINT-4-BUG1: bitmap fijo de diagnóstico (tablero de 8x8, sin depender
+// de ninguna imagen real) para poder aislar en una impresión física si el
+// comando GS v 0 en sí es compatible con la impresora, separado de
+// cualquier problema de carga/rasterización de un logo real.
+function buildCheckerboardBits(size) {
+  const bits = new Uint8Array(size * size);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) bits[y * size + x] = (x + y) % 2;
+  }
+  return bits;
+}
+
+/**
+ * Arma el Receipt de diagnóstico de PRINT-4-BUG1: texto ASCII conocido +
+ * un raster mínimo (tablero de 8x8) generado en el momento -- no requiere
+ * red ni un logo real. Sirve para la prueba física de dos pasos que pide
+ * el bug: (A) solo texto -- ver buildTestReceipt -- y (B) texto + este
+ * raster, para aislar si el fallo está en el comando de imagen en sí.
+ */
+export function buildRasterDiagnosticReceipt({ paperWidthMm = 80 } = {}) {
+  const bits = buildCheckerboardBits(8);
+  const command = buildRasterCommand(bits, 8, 8);
+  return {
+    paperWidthMm,
+    lines: [
+      { text: 'TEST WALINKA', align: 'center', bold: true },
+      { text: 'Prueba de imagen (diagnostico)', align: 'center' },
+      { type: 'divider' },
+      { type: 'rasterBytes', command },
+      { type: 'divider' },
+      { text: 'Fin de la prueba de imagen', align: 'center' },
     ],
     feedLines: 4,
     cut: true,

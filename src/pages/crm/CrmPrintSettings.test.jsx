@@ -138,6 +138,29 @@ describe('CrmPrintSettings — imprimir ticket de prueba', () => {
     expect(screen.getByText('Impresión del TPV')).toBeInTheDocument();
   });
 
+  it('PRINT-4-BUG1: la prueba de imagen (diagnóstico) imprime texto + un raster fijo, sin depender de un logo real', async () => {
+    render(<CrmPrintSettings />);
+    await screen.findByText('Conectado');
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'Impresora A' } });
+
+    const diagButton = screen.getByRole('button', { name: /Prueba de imagen/ });
+    expect(diagButton).not.toBeDisabled();
+    fireEvent.click(diagButton);
+
+    await waitFor(() => expect(printReceiptMock).toHaveBeenCalledTimes(1));
+    const [receipt, target] = printReceiptMock.mock.calls[0];
+    expect(target).toEqual({ printerName: 'Impresora A' });
+    expect(receipt.lines.some((l) => l.text?.includes('TEST WALINKA'))).toBe(true);
+    expect(receipt.lines.some((l) => l.type === 'rasterBytes')).toBe(true);
+    expect(await screen.findByText('Prueba de imagen enviada a la impresora.')).toBeInTheDocument();
+  });
+
+  it('la prueba de imagen (diagnóstico) también está deshabilitada sin impresora seleccionada', async () => {
+    render(<CrmPrintSettings />);
+    await screen.findByText('Conectado');
+    expect(screen.getByRole('button', { name: /Prueba de imagen/ })).toBeDisabled();
+  });
+
   it('nunca usa window.print ni abre una pestaña nueva', async () => {
     const printSpy = vi.spyOn(window, 'print').mockImplementation(() => {});
     const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);

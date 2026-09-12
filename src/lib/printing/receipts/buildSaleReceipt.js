@@ -61,6 +61,7 @@ function formatDateTime(dt) {
  * @param {string} [params.createdAt]
  * @param {number} [params.paperWidthMm]
  * @param {boolean} [params.autoCut] - PRINT-4: si es false, el ticket no pide corte
+ * @param {boolean} [params.printLogo] - PRINT-4-BUG1: si es false, nunca se agrega la línea de logo
  * @param {string} [params.cashierName] - PRINT-4: opcional, no hay hoy una fuente establecida para esto en CrmTerminal
  * @returns {import('./renderEscPosReceipt').Receipt}
  */
@@ -83,6 +84,7 @@ export function buildSaleReceipt({
   createdAt,
   paperWidthMm = 80,
   autoCut = true,
+  printLogo = true,
   cashierName,
 }) {
   const currency = business?.currency;
@@ -94,7 +96,19 @@ export function buildSaleReceipt({
   // logo_url / designSettings.logoUrl). Si no existe, o si falla al
   // cargar/rasterizar, el renderer simplemente omite esta línea -- el
   // ticket igual imprime completo.
-  if (business?.logoUrl) push({ type: 'logo', url: business.logoUrl });
+  //
+  // PRINT-4-BUG1: además de la fuente del logo, se exige `printLogo`
+  // (gateado por defecto por printerConfigStorage -- ver ese archivo). En
+  // la primera prueba física de PRINT-4, el ticket completo salió
+  // ilegible/con símbolos en vez del texto normal: la hipótesis más
+  // sólida es que el comando raster GS v 0 no es compatible (o algo en
+  // esa cadena rompe el parser) con el equipo probado, y como el logo se
+  // imprime PRIMERO, un fallo ahí arrastra el resto del ticket. Hasta
+  // validar con la prueba de diagnóstico (ver buildRasterDiagnosticReceipt
+  // en renderEscPosReceipt.js) que el raster funciona en el hardware real,
+  // queda apagado por defecto -- el código/soporte de imagen se conserva
+  // completo, listo para reactivarse por negocio.
+  if (business?.logoUrl && printLogo !== false) push({ type: 'logo', url: business.logoUrl });
 
   push({ text: stripDiacritics(business?.name || 'Mi Negocio').toUpperCase(), align: 'center', bold: true, double: true });
   // "RUT si existe" -- no hay hoy una columna de RUT fiscal del propio

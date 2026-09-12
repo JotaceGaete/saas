@@ -114,6 +114,15 @@ describe('buildSaleReceipt', () => {
       expect(text).toContain('MI NEGOCIO');
       expect(text).toContain('Ticket: NV-0042');
     });
+
+    it('PRINT-4-BUG1: printLogo=false nunca agrega la línea de logo, aunque business.logoUrl exista', async () => {
+      const receiptWithLogo = {
+        ...baseSale, business: { ...business, logoUrl: 'https://cdn.example.com/logo.png' }, printLogo: false,
+      };
+      const bytes = await renderEscPosReceipt(buildSaleReceipt(receiptWithLogo));
+      expect(fetchLogoRaster).not.toHaveBeenCalled();
+      expect(bytesToText(bytes)).toContain('MI NEGOCIO');
+    });
   });
 
   it('incluye cada ítem con cantidad, nombre y total de línea', async () => {

@@ -5,7 +5,10 @@ vi.mock('./fetchLogoRaster', () => ({
 }));
 
 const { fetchLogoRaster } = await import('./fetchLogoRaster');
-const { renderEscPosReceipt, buildTestReceipt, columnsForWidth, wrapText, formatRowLines } = await import('./renderEscPosReceipt');
+const {
+  renderEscPosReceipt, buildTestReceipt, buildRasterDiagnosticReceipt, columnsForWidth, wrapText, formatRowLines,
+} = await import('./renderEscPosReceipt');
+const { buildRasterCommand } = await import('./escPosImage');
 
 const ESC = 0x1B;
 const GS = 0x1D;
@@ -263,6 +266,47 @@ describe('renderEscPosReceipt — tipos semánticos PRINT-4', () => {
     const width58 = calls[0][1].maxWidthDots;
     const width80 = calls[1][1].maxWidthDots;
     expect(width80).toBeGreaterThan(width58);
+  });
+
+  describe('PRINT-4-BUG1 — rasterBytes (comando de imagen ya construido, sin fetch)', () => {
+    it('inserta el comando centrado, sin pasar por fetchLogoRaster', async () => {
+      const bits = Uint8Array.from([1, 0, 0, 0, 0, 0, 0, 0]);
+      const command = buildRasterCommand(bits, 8, 1);
+      const bytes = await renderEscPosReceipt({ lines: [{ type: 'rasterBytes', command }], feedLines: 0, cut: false });
+
+      expect(includesSubsequence(bytes, [ESC, 0x61, 0x01])).toBe(true);
+      expect(includesSubsequence(bytes, Array.from(command))).toBe(true);
+      expect(fetchLogoRaster).not.toHaveBeenCalled();
+    });
+
+    it('sin command (o vacío) no inserta nada ni lanza', async () => {
+      await expect(renderEscPosReceipt({ lines: [{ type: 'rasterBytes' }], feedLines: 0, cut: false })).resolves.not.toThrow();
+      const bytes = await renderEscPosReceipt({
+        lines: [{ type: 'rasterBytes', command: new Uint8Array(0) }, { text: 'sigue' }],
+        feedLines: 0, cut: false,
+      });
+      expect(bytesToText(bytes)).toContain('sigue');
+    });
+  });
+});
+
+describe('buildRasterDiagnosticReceipt — PRINT-4-BUG1', () => {
+  it('produce texto ASCII conocido y un bloque raster con el header GS v 0 correcto', async () => {
+    const receipt = buildRasterDiagnosticReceipt({ paperWidthMm: 80 });
+    const bytes = await renderEscPosReceipt(receipt);
+    const text = bytesToText(bytes);
+
+    expect(text).toContain('TEST WALINKA');
+    expect(includesSubsequence(bytes, [GS, 0x76, 0x30, 0x00])).toBe(true); // GS v 0 m
+  });
+
+  it('no depende de red/Image/canvas -- no llama a fetchLogoRaster', async () => {
+    await renderEscPosReceipt(buildRasterDiagnosticReceipt());
+    expect(fetchLogoRaster).not.toHaveBeenCalled();
+  });
+
+  it('siempre pide corte, para que la prueba física quede completa', () => {
+    expect(buildRasterDiagnosticReceipt().cut).toBe(true);
   });
 });
 

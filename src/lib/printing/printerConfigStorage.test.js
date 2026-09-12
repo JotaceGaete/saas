@@ -34,13 +34,13 @@ describe('readPrinterConfig sin dato guardado', () => {
   it('devuelve defaults seguros: sin impresora, 80mm, autoCut activado', () => {
     const config = readPrinterConfig(buildPrinterConfigKey('biz-nuevo'));
     expect(config).toEqual({
-      schemaVersion: PRINTER_CONFIG_SCHEMA_VERSION, printerName: null, paperWidthMm: 80, autoCut: true,
+      schemaVersion: PRINTER_CONFIG_SCHEMA_VERSION, printerName: null, paperWidthMm: 80, autoCut: true, printLogo: false,
     });
   });
 
   it('devuelve defaults si la key es null (sin businessId)', () => {
     expect(readPrinterConfig(null)).toEqual({
-      schemaVersion: PRINTER_CONFIG_SCHEMA_VERSION, printerName: null, paperWidthMm: 80, autoCut: true,
+      schemaVersion: PRINTER_CONFIG_SCHEMA_VERSION, printerName: null, paperWidthMm: 80, autoCut: true, printLogo: false,
     });
   });
 });
@@ -54,6 +54,7 @@ describe('write → read round-trip', () => {
       printerName: 'Star TSP143',
       paperWidthMm: 80,
       autoCut: true,
+      printLogo: false,
     });
   });
 
@@ -99,7 +100,7 @@ describe('sanitización', () => {
     writePrinterConfig(key, { printerName: 'X', paperWidthMm: 80, apiKey: 'secreto', authToken: 'no-deberia-estar' });
     const stored = JSON.parse(window.localStorage.getItem(key));
     expect(stored).toEqual({
-      schemaVersion: PRINTER_CONFIG_SCHEMA_VERSION, printerName: 'X', paperWidthMm: 80, autoCut: true,
+      schemaVersion: PRINTER_CONFIG_SCHEMA_VERSION, printerName: 'X', paperWidthMm: 80, autoCut: true, printLogo: false,
     });
   });
 
@@ -123,6 +124,26 @@ describe('sanitización', () => {
     });
   });
 
+  describe('PRINT-4-BUG1 — printLogo (apagado por defecto tras el bug de raster/logo)', () => {
+    it('por defecto (sin especificar) printLogo queda desactivado', () => {
+      const key = buildPrinterConfigKey('biz1');
+      writePrinterConfig(key, { printerName: 'X', paperWidthMm: 80 });
+      expect(readPrinterConfig(key).printLogo).toBe(false);
+    });
+
+    it('printLogo: true se persiste y se respeta al leer (activación explícita tras validar hardware)', () => {
+      const key = buildPrinterConfigKey('biz1');
+      writePrinterConfig(key, { printerName: 'X', paperWidthMm: 80, printLogo: true });
+      expect(readPrinterConfig(key).printLogo).toBe(true);
+    });
+
+    it('un valor no-booleano (truthy pero no === true) para printLogo cae al default (false)', () => {
+      const key = buildPrinterConfigKey('biz1');
+      writePrinterConfig(key, { printerName: 'X', paperWidthMm: 80, printLogo: 'si' });
+      expect(readPrinterConfig(key).printLogo).toBe(false);
+    });
+  });
+
   it('write con config inválida (no objeto) no persiste nada', () => {
     const key = buildPrinterConfigKey('biz1');
     writePrinterConfig(key, null);
@@ -136,7 +157,7 @@ describe('tolerancia a localStorage corrupto', () => {
     window.localStorage.setItem(key, '{not-json');
     expect(() => readPrinterConfig(key)).not.toThrow();
     expect(readPrinterConfig(key)).toEqual({
-      schemaVersion: PRINTER_CONFIG_SCHEMA_VERSION, printerName: null, paperWidthMm: 80, autoCut: true,
+      schemaVersion: PRINTER_CONFIG_SCHEMA_VERSION, printerName: null, paperWidthMm: 80, autoCut: true, printLogo: false,
     });
   });
 
@@ -144,12 +165,12 @@ describe('tolerancia a localStorage corrupto', () => {
     const key = buildPrinterConfigKey('biz1');
     window.localStorage.setItem(key, '"solo un string"');
     expect(readPrinterConfig(key)).toEqual({
-      schemaVersion: PRINTER_CONFIG_SCHEMA_VERSION, printerName: null, paperWidthMm: 80, autoCut: true,
+      schemaVersion: PRINTER_CONFIG_SCHEMA_VERSION, printerName: null, paperWidthMm: 80, autoCut: true, printLogo: false,
     });
 
     window.localStorage.setItem(key, '[1,2,3]');
     expect(readPrinterConfig(key)).toEqual({
-      schemaVersion: PRINTER_CONFIG_SCHEMA_VERSION, printerName: null, paperWidthMm: 80, autoCut: true,
+      schemaVersion: PRINTER_CONFIG_SCHEMA_VERSION, printerName: null, paperWidthMm: 80, autoCut: true, printLogo: false,
     });
   });
 
@@ -171,7 +192,7 @@ describe('tolerancia a localStorage corrupto', () => {
     try {
       expect(() => readPrinterConfig(key)).not.toThrow();
       expect(readPrinterConfig(key)).toEqual({
-      schemaVersion: PRINTER_CONFIG_SCHEMA_VERSION, printerName: null, paperWidthMm: 80, autoCut: true,
+      schemaVersion: PRINTER_CONFIG_SCHEMA_VERSION, printerName: null, paperWidthMm: 80, autoCut: true, printLogo: false,
     });
     } finally {
       window.localStorage.getItem = original;

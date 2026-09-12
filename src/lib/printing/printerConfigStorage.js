@@ -39,6 +39,16 @@ function defaultConfig() {
     // poder desactivarlo si alguna impresora/cuchilla no lo soporta bien,
     // sin bloquear nunca la venta si el corte falla o no está soportado.
     autoCut: true,
+    // PRINT-4-BUG1: la primera prueba física de PRINT-4 con logo salió con
+    // símbolos/basura en vez del ticket normal en el TSP100 probado -- la
+    // hipótesis más sólida es que el comando raster GS v 0 (o algo en la
+    // cadena de carga/rasterización) no es compatible con ese equipo, y
+    // como el logo se imprime primero, arrastra el resto del ticket. Por
+    // eso el logo queda APAGADO por defecto hasta validarlo con la prueba
+    // de diagnóstico (ver buildRasterDiagnosticReceipt) -- el soporte de
+    // imagen se conserva completo, listo para activarse por negocio una
+    // vez confirmado que el hardware lo soporta.
+    printLogo: false,
   };
 }
 
@@ -51,8 +61,9 @@ function sanitizeConfig(raw) {
     ? raw.paperWidthMm
     : DEFAULT_PAPER_WIDTH_MM;
   const autoCut = raw.autoCut !== false;
+  const printLogo = raw.printLogo === true;
   return {
-    schemaVersion: PRINTER_CONFIG_SCHEMA_VERSION, printerName, paperWidthMm, autoCut,
+    schemaVersion: PRINTER_CONFIG_SCHEMA_VERSION, printerName, paperWidthMm, autoCut, printLogo,
   };
 }
 

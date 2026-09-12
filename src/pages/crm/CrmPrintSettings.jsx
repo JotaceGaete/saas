@@ -5,7 +5,7 @@ import DashboardAppShell from 'components/ui/DashboardAppShell';
 import PanelHeader from 'components/ui/PanelHeader';
 import Icon from 'components/AppIcon';
 import { printService } from 'lib/printing/printService';
-import { buildTestReceipt } from 'lib/printing/receipts/renderEscPosReceipt';
+import { buildTestReceipt, buildRasterDiagnosticReceipt } from 'lib/printing/receipts/renderEscPosReceipt';
 import { buildPrinterConfigKey, readPrinterConfig, writePrinterConfig } from 'lib/printing/printerConfigStorage';
 
 // PRINT-1 — pantalla aislada de configuración/prueba de impresión térmica.
@@ -76,6 +76,27 @@ export default function CrmPrintSettings() {
       setPrintResult({ ok: true, message: 'Ticket de prueba enviado a la impresora.' });
     } catch (err) {
       setPrintResult({ ok: false, message: err?.message || 'No se pudo imprimir el ticket de prueba.' });
+    } finally {
+      setPrinting(false);
+    }
+  };
+
+  // PRINT-4-BUG1 — prueba física mínima para aislar si el comando de
+  // imagen ESC/POS (GS v 0) es compatible con esta impresora: un raster
+  // fijo de 8x8 generado en el momento, sin depender de ningún logo real
+  // ni de la red. Si esto sale con símbolos/basura, el problema es el
+  // comando de imagen en sí (o algo antes de él); si sale bien, el
+  // problema estaba en la carga/rasterización de un logo real concreto.
+  const handlePrintImageDiagnostic = async () => {
+    if (!config.printerName || printing) return;
+    setPrinting(true);
+    setPrintResult(null);
+    try {
+      const receipt = buildRasterDiagnosticReceipt({ paperWidthMm: config.paperWidthMm });
+      await printService.printReceipt(receipt, { printerName: config.printerName });
+      setPrintResult({ ok: true, message: 'Prueba de imagen enviada a la impresora.' });
+    } catch (err) {
+      setPrintResult({ ok: false, message: err?.message || 'No se pudo imprimir la prueba de imagen.' });
     } finally {
       setPrinting(false);
     }
@@ -175,6 +196,23 @@ export default function CrmPrintSettings() {
               <Icon name={printing ? 'Loader2' : 'Printer'} size={15} className={printing ? 'animate-spin' : ''} />
               Imprimir ticket de prueba
             </button>
+          </div>
+
+          <div className="mt-2">
+            <button
+              type="button"
+              onClick={handlePrintImageDiagnostic}
+              disabled={!canPrint}
+              className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-300 px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+            >
+              <Icon name={printing ? 'Loader2' : 'Image'} size={15} className={printing ? 'animate-spin' : ''} />
+              Prueba de imagen (diagnóstico)
+            </button>
+            <p className="mt-1.5 text-xs text-slate-400">
+              Imprime texto conocido más un pequeño patrón de imagen. Úsalo si el logo del ticket
+              real sale con símbolos extraños: si esta prueba también falla, el problema es el
+              comando de imagen en esta impresora, no un logo en particular.
+            </p>
           </div>
 
           {printResult && (

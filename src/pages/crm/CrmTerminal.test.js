@@ -688,6 +688,12 @@ describe('PRINT-2 — ya no usa window.print() en ninguna parte', () => {
     expect(indexSource).toMatch(/import \{ buildSaleReceipt \} from 'lib\/printing\/receipts\/buildSaleReceipt';/);
     expect(indexSource).toMatch(/import \{ buildPrinterConfigKey, readPrinterConfig \} from 'lib\/printing\/printerConfigStorage';/);
   });
+
+  it('PRINT-4/PRINT-4-BUG1: pasa autoCut y printLogo de la config local a buildSaleReceipt (no hardcodea ninguno)', () => {
+    const printCurrentTicketMatch = indexSource.match(/const printCurrentTicket = useCallback\(async \(\) => \{[\s\S]*?\n {2}\}, \[ticketData, business\]\);/);
+    expect(printCurrentTicketMatch[0]).toMatch(/autoCut: printerConfig\.autoCut/);
+    expect(printCurrentTicketMatch[0]).toMatch(/printLogo: printerConfig\.printLogo/);
+  });
 });
 
 describe('PRINT-2 — la venta se guarda ANTES de imprimir (orden estructural)', () => {

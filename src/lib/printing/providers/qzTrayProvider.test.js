@@ -138,6 +138,62 @@ describe('qzTrayProvider.print', () => {
   });
 });
 
+// ─── PRINT-4-BUG1: fidelidad exacta del payload enviado a QZ ────────────────
+//
+// El bug reportado (símbolos/basura en vez del ticket) es sobre la
+// SERIALIZACIÓN de bytes hacia QZ. Los 1781 tests que pasaban antes de este
+// bug validaban el CONTENIDO del Receipt, pero ninguno verificaba, byte a
+// byte, que lo que efectivamente le llega a `qz.print()` sea una
+// reconstrucción exacta del Uint8Array original -- estos tests cierran esa
+// brecha decodificando el base64 real que recibe el mock y comparándolo
+// contra los bytes de entrada.
+describe('qzTrayProvider.print — fidelidad exacta del payload (PRINT-4-BUG1)', () => {
+  function decodeBase64ToBytes(base64) {
+    return Uint8Array.from(Buffer.from(base64, 'base64'));
+  }
+
+  it('el envelope siempre es { type: "raw", format: "command", flavor: "base64" } -- el único formato que este provider conoce', async () => {
+    await qzTrayProvider.print('Impresora A', new Uint8Array([0x1B, 0x40]));
+    const [, dataArg] = qzMock.print.mock.calls[0];
+    expect(dataArg).toHaveLength(1);
+    expect(dataArg[0]).toMatchObject({ type: 'raw', format: 'command', flavor: 'base64' });
+    expect(typeof dataArg[0].data).toBe('string');
+  });
+
+  it('un payload con bytes 0x00 y 0xFF embebidos (como el comando de corte y datos de imagen) sobrevive intacto el viaje a base64', async () => {
+    const original = new Uint8Array([0x00, 0xFF, 0x1D, 0x56, 0x42, 0x00, 0x80, 0x01, 0x00, 0xFF, 0xFF, 0x00]);
+    await qzTrayProvider.print('Impresora A', original);
+    const [, dataArg] = qzMock.print.mock.calls[0];
+    const roundTripped = decodeBase64ToBytes(dataArg[0].data);
+    expect(Array.from(roundTripped)).toEqual(Array.from(original));
+  });
+
+  it('un payload grande tipo raster (cientos de bytes binarios variados) se reconstruye byte a byte sin pérdidas', async () => {
+    const original = new Uint8Array(2000);
+    for (let i = 0; i < original.length; i++) original[i] = (i * 37 + 11) % 256; // patrón pseudoaleatorio determinista, cubre 0..255
+    await qzTrayProvider.print('Impresora A', original);
+    const [, dataArg] = qzMock.print.mock.calls[0];
+    const roundTripped = decodeBase64ToBytes(dataArg[0].data);
+    expect(roundTripped.length).toBe(original.length);
+    expect(Array.from(roundTripped)).toEqual(Array.from(original));
+  });
+
+  it('un comando GS v 0 (header + data) real, generado por escPosImage.buildRasterCommand, llega intacto', async () => {
+    const { buildRasterCommand } = await import('../receipts/escPosImage');
+    const bits = Uint8Array.from({ length: 64 }, (_, i) => i % 3 === 0 ? 1 : 0); // 8x8
+    const raster = buildRasterCommand(bits, 8, 8);
+
+    await qzTrayProvider.print('Impresora A', raster);
+    const [, dataArg] = qzMock.print.mock.calls[0];
+    const roundTripped = decodeBase64ToBytes(dataArg[0].data);
+
+    expect(Array.from(roundTripped)).toEqual(Array.from(raster));
+    // Header GS v 0 m xL xH yL yH -- confirma que el propio contenido
+    // reconstruido conserva la cabecera esperada, no solo el largo total.
+    expect(Array.from(roundTripped.slice(0, 8))).toEqual([0x1D, 0x76, 0x30, 0x00, 1, 0, 8, 0]);
+  });
+});
+
 // ─── PRINT-3A: firma de solicitudes QZ Tray ─────────────────────────────────
 
 describe('PRINT-3A — configuración de seguridad antes de conectar', () => {
