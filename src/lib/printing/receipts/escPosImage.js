@@ -78,3 +78,32 @@ export function buildRasterCommand(bits, width, height) {
   ];
   return new Uint8Array([...header, ...data]);
 }
+
+const ESC = 0x1B;
+
+/**
+ * PRINT-4-BUG2 — alternativa ESC/POS ESTÁNDAR al raster `GS v 0`: el bit
+ * image por columnas `ESC * m nL nH d1..dk` (comando Epson genérico de la
+ * especificación ESC/POS original, no una extensión de ningún
+ * fabricante). Se usa cuando `GS v 0` no es interpretado por una
+ * emulación/firmware dada -- ver escPosCapabilities.js. Bits monocromos
+ * (1=negro), un byte VERTICAL de 8 dots por columna (modo m=0, "8-dot
+ * single density"), MSB = dot superior. Solo soporta alturas de hasta 8
+ * dots: alcanza para el diagnóstico físico; el modo de 24 dots (varias
+ * bandas apiladas) no se implementa porque no hace falta todavía.
+ */
+export function buildColumnBitImageCommand(bits, width, height) {
+  if (height > 8) {
+    throw new Error('buildColumnBitImageCommand solo soporta alturas de hasta 8 dots (modo de 8-dot single density)');
+  }
+  const data = new Uint8Array(width);
+  for (let x = 0; x < width; x++) {
+    let column = 0;
+    for (let y = 0; y < height; y++) {
+      if (bits[y * width + x]) column |= 0x80 >> y;
+    }
+    data[x] = column;
+  }
+  const header = [ESC, 0x2A, 0x00, width & 0xFF, (width >> 8) & 0xFF];
+  return new Uint8Array([...header, ...data]);
+}

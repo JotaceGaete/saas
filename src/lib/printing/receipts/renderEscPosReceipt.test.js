@@ -6,9 +6,12 @@ vi.mock('./fetchLogoRaster', () => ({
 
 const { fetchLogoRaster } = await import('./fetchLogoRaster');
 const {
-  renderEscPosReceipt, buildTestReceipt, buildRasterDiagnosticReceipt, columnsForWidth, wrapText, formatRowLines,
+  renderEscPosReceipt, buildTestReceipt, buildRasterDiagnosticReceipt,
+  buildImageCapabilityDiagnosticReceipt, buildCutCapabilityDiagnosticReceipt,
+  columnsForWidth, wrapText, formatRowLines,
 } = await import('./renderEscPosReceipt');
 const { buildRasterCommand } = await import('./escPosImage');
+const { GRAPHICS_STRATEGIES, CUT_STRATEGIES } = await import('./escPosCapabilities');
 
 const ESC = 0x1B;
 const GS = 0x1D;
@@ -287,6 +290,83 @@ describe('renderEscPosReceipt — tipos semánticos PRINT-4', () => {
       });
       expect(bytesToText(bytes)).toContain('sigue');
     });
+  });
+
+  describe('PRINT-4-BUG2 — raw (bytes ESC/POS crudos, sin alinear, para inyectar variantes de comando)', () => {
+    it('inserta los bytes tal cual, sin ESC a de por medio', async () => {
+      const bytes = await renderEscPosReceipt({
+        lines: [{ type: 'raw', bytes: [0x1D, 0x56, 0x01] }],
+        feedLines: 0, cut: false,
+      });
+      expect(includesSubsequence(bytes, [0x1D, 0x56, 0x01])).toBe(true);
+    });
+
+    it('sin bytes (o vacío) no inserta nada ni lanza', async () => {
+      await expect(renderEscPosReceipt({ lines: [{ type: 'raw' }], feedLines: 0, cut: false })).resolves.not.toThrow();
+      const bytes = await renderEscPosReceipt({
+        lines: [{ type: 'raw', bytes: [] }, { text: 'sigue' }],
+        feedLines: 0, cut: false,
+      });
+      expect(bytesToText(bytes)).toContain('sigue');
+    });
+  });
+});
+
+describe('buildImageCapabilityDiagnosticReceipt — PRINT-4-BUG2', () => {
+  it('identifica ambas variantes de imagen con texto antes/después, y no pide corte propio', async () => {
+    const receipt = buildImageCapabilityDiagnosticReceipt({ paperWidthMm: 80 });
+    expect(receipt.cut).toBe(false);
+
+    const bytes = await renderEscPosReceipt(receipt);
+    const text = bytesToText(bytes);
+    expect(text).toContain('Antes de Imagen A');
+    expect(text).toContain('Despues de Imagen A');
+    expect(text).toContain('Antes de Imagen B');
+    expect(text).toContain('Despues de Imagen B');
+    expect(includesSubsequence(bytes, [GS, 0x76, 0x30])).toBe(true); // GS v 0 (Imagen A)
+    expect(includesSubsequence(bytes, [ESC, 0x2A])).toBe(true); // ESC * (Imagen B)
+  });
+
+  it('no depende de red/Image/canvas -- no llama a fetchLogoRaster', async () => {
+    await renderEscPosReceipt(buildImageCapabilityDiagnosticReceipt());
+    expect(fetchLogoRaster).not.toHaveBeenCalled();
+  });
+
+  it('usa las mismas estrategias nombradas expuestas por escPosCapabilities (no duplica los comandos)', async () => {
+    const receipt = buildImageCapabilityDiagnosticReceipt();
+    const rasterLines = receipt.lines.filter((l) => l.type === 'rasterBytes');
+    expect(rasterLines).toHaveLength(2);
+    // Imagen A: header GS v 0 de 8 bytes + 8 bytes de datos (8x8, 1 byte/fila)
+    expect(Array.from(rasterLines[0].command.slice(0, 3))).toEqual([0x1D, 0x76, 0x30]);
+    expect(rasterLines[0].command.length).toBe(16);
+    // Imagen B: header ESC * de 5 bytes + 8 bytes de datos (8 columnas, 1 byte/columna)
+    expect(Array.from(rasterLines[1].command.slice(0, 2))).toEqual([0x1B, 0x2A]);
+    expect(rasterLines[1].command.length).toBe(13);
+    expect(GRAPHICS_STRATEGIES.rasterGsV0.id).toBe('rasterGsV0');
+  });
+});
+
+describe('buildCutCapabilityDiagnosticReceipt — PRINT-4-BUG2', () => {
+  it('identifica ambas variantes de corte con texto antes/después, y no agrega un corte final propio', async () => {
+    const receipt = buildCutCapabilityDiagnosticReceipt({ paperWidthMm: 80 });
+    expect(receipt.cut).toBe(false);
+
+    const bytes = await renderEscPosReceipt(receipt);
+    const text = bytesToText(bytes);
+    expect(text).toContain('Antes de Corte A');
+    expect(text).toContain('Despues de Corte A');
+    expect(text).toContain('Antes de Corte B');
+    expect(text).toContain('Despues de Corte B');
+    expect(includesSubsequence(bytes, CUT_STRATEGIES.partialFunctionB.bytes)).toBe(true);
+    expect(includesSubsequence(bytes, CUT_STRATEGIES.partialFunctionALegacy.bytes)).toBe(true);
+  });
+
+  it('Corte A aparece antes que Corte B en el flujo de bytes (orden determinístico del diagnóstico)', async () => {
+    const bytes = Array.from(await renderEscPosReceipt(buildCutCapabilityDiagnosticReceipt()));
+    const indexA = bytes.join(',').indexOf(CUT_STRATEGIES.partialFunctionB.bytes.join(','));
+    const indexB = bytes.join(',').indexOf(CUT_STRATEGIES.partialFunctionALegacy.bytes.join(','));
+    expect(indexA).toBeGreaterThan(-1);
+    expect(indexB).toBeGreaterThan(indexA);
   });
 });
 

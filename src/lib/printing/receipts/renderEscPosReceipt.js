@@ -16,6 +16,7 @@
 import { formatMoney } from 'utils/formatMoney';
 import { fetchLogoRaster } from './fetchLogoRaster';
 import { buildRasterCommand } from './escPosImage';
+import { GRAPHICS_STRATEGIES, CUT_STRATEGIES } from './escPosCapabilities';
 
 const ESC = 0x1B;
 const GS = 0x1D;
@@ -224,17 +225,25 @@ export async function renderEscPosReceipt(receipt) {
         }
         break;
       }
-      // PRINT-4-BUG1: comando raster ya construido (sin pasar por
-      // fetchLogoRaster/canvas) -- lo usa buildRasterDiagnosticReceipt para
-      // poder aislar, en una impresión física, si el problema está en el
-      // comando GS v 0 en sí (esta línea) o en la carga/rasterización de una
-      // imagen real (type: 'logo').
+      // PRINT-4-BUG1/BUG2: comando de imagen ya construido (sin pasar por
+      // fetchLogoRaster/canvas) -- centrado, igual que un logo real. Lo usan
+      // los diagnósticos de compatibilidad para poder aislar, en una
+      // impresión física, si el problema está en el comando de gráficos en
+      // sí (esta línea) o en la carga/rasterización de una imagen real
+      // (type: 'logo'). Command-agnóstico: sirve tanto para GS v 0 como
+      // para cualquier otra variante (ver escPosCapabilities.js).
       case 'rasterBytes':
         if (line.command?.length) {
           bytes.push(...CMD.ALIGN_CENTER);
           bytes.push(...line.command);
           bytes.push(LF);
         }
+        break;
+      // PRINT-4-BUG2: bytes ESC/POS crudos, sin alineación ni salto de
+      // línea implícito -- usado por el diagnóstico de corte para inyectar
+      // una variante de comando de corte en un punto exacto del ticket.
+      case 'raw':
+        if (line.bytes?.length) bytes.push(...line.bytes);
         break;
       case 'divider':
         emit('-'.repeat(columns));
@@ -344,5 +353,67 @@ export function buildRasterDiagnosticReceipt({ paperWidthMm = 80 } = {}) {
     ],
     feedLines: 4,
     cut: true,
+  };
+}
+
+/**
+ * PRINT-4-BUG2 — diagnóstico A/B de comandos de GRÁFICOS: imprime el
+ * mismo patrón de 8x8 con dos comandos ESC/POS estándar distintos (ver
+ * escPosCapabilities.js), cada uno con texto identificador antes/después,
+ * para poder confirmar en una impresión física cuál interpreta realmente
+ * la impresora -- sin generar ninguna venta ni tocar el flujo de cobro.
+ * No pide corte (cut: false): el diagnóstico de corte es un ticket
+ * separado (ver buildCutCapabilityDiagnosticReceipt) para no mezclar
+ * variables.
+ */
+export function buildImageCapabilityDiagnosticReceipt({ paperWidthMm = 80 } = {}) {
+  const bits = buildCheckerboardBits(8);
+  return {
+    paperWidthMm,
+    lines: [
+      { text: 'DIAGNOSTICO DE IMAGEN', align: 'center', bold: true },
+      { type: 'divider' },
+      { text: `Antes de Imagen A (${GRAPHICS_STRATEGIES.rasterGsV0.label})` },
+      { type: 'rasterBytes', command: GRAPHICS_STRATEGIES.rasterGsV0.build(bits, 8, 8) },
+      { text: 'Despues de Imagen A' },
+      { type: 'divider' },
+      { text: `Antes de Imagen B (${GRAPHICS_STRATEGIES.bitImageEscStar.label})` },
+      { type: 'rasterBytes', command: GRAPHICS_STRATEGIES.bitImageEscStar.build(bits, 8, 8) },
+      { text: 'Despues de Imagen B' },
+      { type: 'divider' },
+      { text: 'FIN DIAGNOSTICO DE IMAGEN', align: 'center', bold: true },
+    ],
+    feedLines: 4,
+    cut: false,
+  };
+}
+
+/**
+ * PRINT-4-BUG2 — diagnóstico A/B de comandos de CORTE: inyecta dos
+ * variantes de corte estándar ESC/POS distintas (ver
+ * escPosCapabilities.js) en puntos identificados del ticket con texto
+ * antes/después de cada una. Si una variante corta, el papel queda
+ * físicamente separado en ese punto -- la señal es visible sin ambigüedad.
+ * No agrega un corte final propio (cut: false): las dos líneas `raw` SON
+ * las pruebas.
+ */
+export function buildCutCapabilityDiagnosticReceipt({ paperWidthMm = 80 } = {}) {
+  return {
+    paperWidthMm,
+    lines: [
+      { text: 'DIAGNOSTICO DE CORTE', align: 'center', bold: true },
+      { type: 'divider' },
+      { text: `Antes de Corte A (${CUT_STRATEGIES.partialFunctionB.label})` },
+      { type: 'raw', bytes: CUT_STRATEGIES.partialFunctionB.bytes },
+      { text: 'Despues de Corte A' },
+      { type: 'divider' },
+      { text: `Antes de Corte B (${CUT_STRATEGIES.partialFunctionALegacy.label})` },
+      { type: 'raw', bytes: CUT_STRATEGIES.partialFunctionALegacy.bytes },
+      { text: 'Despues de Corte B' },
+      { type: 'divider' },
+      { text: 'FIN DIAGNOSTICO DE CORTE', align: 'center', bold: true },
+    ],
+    feedLines: 4,
+    cut: false,
   };
 }

@@ -138,27 +138,48 @@ describe('CrmPrintSettings — imprimir ticket de prueba', () => {
     expect(screen.getByText('Impresión del TPV')).toBeInTheDocument();
   });
 
-  it('PRINT-4-BUG1: la prueba de imagen (diagnóstico) imprime texto + un raster fijo, sin depender de un logo real', async () => {
+  it('PRINT-4-BUG2: el diagnóstico de imagen (A/B) imprime ambas variantes ESC/POS con texto identificador, sin depender de un logo real', async () => {
     render(<CrmPrintSettings />);
     await screen.findByText('Conectado');
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'Impresora A' } });
 
-    const diagButton = screen.getByRole('button', { name: /Prueba de imagen/ });
+    const diagButton = screen.getByRole('button', { name: /Diagnóstico de imagen/ });
     expect(diagButton).not.toBeDisabled();
     fireEvent.click(diagButton);
 
     await waitFor(() => expect(printReceiptMock).toHaveBeenCalledTimes(1));
     const [receipt, target] = printReceiptMock.mock.calls[0];
     expect(target).toEqual({ printerName: 'Impresora A' });
-    expect(receipt.lines.some((l) => l.text?.includes('TEST WALINKA'))).toBe(true);
-    expect(receipt.lines.some((l) => l.type === 'rasterBytes')).toBe(true);
-    expect(await screen.findByText('Prueba de imagen enviada a la impresora.')).toBeInTheDocument();
+    expect(receipt.lines.some((l) => l.text?.includes('Antes de Imagen A'))).toBe(true);
+    expect(receipt.lines.some((l) => l.text?.includes('Antes de Imagen B'))).toBe(true);
+    expect(receipt.lines.filter((l) => l.type === 'rasterBytes')).toHaveLength(2);
+    expect(await screen.findByText('Diagnóstico de imagen enviado a la impresora.')).toBeInTheDocument();
   });
 
-  it('la prueba de imagen (diagnóstico) también está deshabilitada sin impresora seleccionada', async () => {
+  it('PRINT-4-BUG2: el diagnóstico de corte (A/B) imprime ambas variantes con texto identificador, sin cortar de más', async () => {
     render(<CrmPrintSettings />);
     await screen.findByText('Conectado');
-    expect(screen.getByRole('button', { name: /Prueba de imagen/ })).toBeDisabled();
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'Impresora A' } });
+
+    const diagButton = screen.getByRole('button', { name: /Diagnóstico de corte/ });
+    expect(diagButton).not.toBeDisabled();
+    fireEvent.click(diagButton);
+
+    await waitFor(() => expect(printReceiptMock).toHaveBeenCalledTimes(1));
+    const [receipt, target] = printReceiptMock.mock.calls[0];
+    expect(target).toEqual({ printerName: 'Impresora A' });
+    expect(receipt.cut).toBe(false);
+    expect(receipt.lines.some((l) => l.text?.includes('Antes de Corte A'))).toBe(true);
+    expect(receipt.lines.some((l) => l.text?.includes('Antes de Corte B'))).toBe(true);
+    expect(receipt.lines.filter((l) => l.type === 'raw')).toHaveLength(2);
+    expect(await screen.findByText('Diagnóstico de corte enviado a la impresora.')).toBeInTheDocument();
+  });
+
+  it('los diagnósticos de imagen y corte están deshabilitados sin impresora seleccionada', async () => {
+    render(<CrmPrintSettings />);
+    await screen.findByText('Conectado');
+    expect(screen.getByRole('button', { name: /Diagnóstico de imagen/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Diagnóstico de corte/ })).toBeDisabled();
   });
 
   it('nunca usa window.print ni abre una pestaña nueva', async () => {

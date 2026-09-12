@@ -5,7 +5,9 @@ import DashboardAppShell from 'components/ui/DashboardAppShell';
 import PanelHeader from 'components/ui/PanelHeader';
 import Icon from 'components/AppIcon';
 import { printService } from 'lib/printing/printService';
-import { buildTestReceipt, buildRasterDiagnosticReceipt } from 'lib/printing/receipts/renderEscPosReceipt';
+import {
+  buildTestReceipt, buildImageCapabilityDiagnosticReceipt, buildCutCapabilityDiagnosticReceipt,
+} from 'lib/printing/receipts/renderEscPosReceipt';
 import { buildPrinterConfigKey, readPrinterConfig, writePrinterConfig } from 'lib/printing/printerConfigStorage';
 
 // PRINT-1 — pantalla aislada de configuración/prueba de impresión térmica.
@@ -81,26 +83,37 @@ export default function CrmPrintSettings() {
     }
   };
 
-  // PRINT-4-BUG1 — prueba física mínima para aislar si el comando de
-  // imagen ESC/POS (GS v 0) es compatible con esta impresora: un raster
-  // fijo de 8x8 generado en el momento, sin depender de ningún logo real
-  // ni de la red. Si esto sale con símbolos/basura, el problema es el
-  // comando de imagen en sí (o algo antes de él); si sale bien, el
-  // problema estaba en la carga/rasterización de un logo real concreto.
-  const handlePrintImageDiagnostic = async () => {
+  // PRINT-4-BUG2 — diagnóstico de compatibilidad: envía por separado dos
+  // variantes de comando ESC/POS estándar (ninguna específica de Star ni
+  // de ningún otro fabricante -- ver escPosCapabilities.js) para que la
+  // prueba física diga cuál interpreta realmente esta impresora. No
+  // genera ninguna venta ni toca el flujo de cobro.
+  const runDiagnosticPrint = async (buildReceipt, successMessage, failureMessage) => {
     if (!config.printerName || printing) return;
     setPrinting(true);
     setPrintResult(null);
     try {
-      const receipt = buildRasterDiagnosticReceipt({ paperWidthMm: config.paperWidthMm });
+      const receipt = buildReceipt({ paperWidthMm: config.paperWidthMm });
       await printService.printReceipt(receipt, { printerName: config.printerName });
-      setPrintResult({ ok: true, message: 'Prueba de imagen enviada a la impresora.' });
+      setPrintResult({ ok: true, message: successMessage });
     } catch (err) {
-      setPrintResult({ ok: false, message: err?.message || 'No se pudo imprimir la prueba de imagen.' });
+      setPrintResult({ ok: false, message: err?.message || failureMessage });
     } finally {
       setPrinting(false);
     }
   };
+
+  const handlePrintImageDiagnostic = () => runDiagnosticPrint(
+    buildImageCapabilityDiagnosticReceipt,
+    'Diagnóstico de imagen enviado a la impresora.',
+    'No se pudo imprimir el diagnóstico de imagen.',
+  );
+
+  const handlePrintCutDiagnostic = () => runDiagnosticPrint(
+    buildCutCapabilityDiagnosticReceipt,
+    'Diagnóstico de corte enviado a la impresora.',
+    'No se pudo imprimir el diagnóstico de corte.',
+  );
 
   const status = QZ_STATUS[qzStatus];
   const savedPrinterMissing = Boolean(config.printerName) && qzStatus === 'connected' && !printers.includes(config.printerName);
@@ -198,22 +211,32 @@ export default function CrmPrintSettings() {
             </button>
           </div>
 
-          <div className="mt-2">
+          <div className="mt-2 flex flex-col gap-2 sm:flex-row">
             <button
               type="button"
               onClick={handlePrintImageDiagnostic}
               disabled={!canPrint}
-              className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-300 px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+              className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-300 px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40"
             >
               <Icon name={printing ? 'Loader2' : 'Image'} size={15} className={printing ? 'animate-spin' : ''} />
-              Prueba de imagen (diagnóstico)
+              Diagnóstico de imagen (A/B)
             </button>
-            <p className="mt-1.5 text-xs text-slate-400">
-              Imprime texto conocido más un pequeño patrón de imagen. Úsalo si el logo del ticket
-              real sale con símbolos extraños: si esta prueba también falla, el problema es el
-              comando de imagen en esta impresora, no un logo en particular.
-            </p>
+            <button
+              type="button"
+              onClick={handlePrintCutDiagnostic}
+              disabled={!canPrint}
+              className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-300 px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+            >
+              <Icon name={printing ? 'Loader2' : 'Scissors'} size={15} className={printing ? 'animate-spin' : ''} />
+              Diagnóstico de corte (A/B)
+            </button>
           </div>
+          <p className="mt-1.5 text-xs text-slate-400">
+            Cada diagnóstico prueba dos comandos ESC/POS estándar distintos, con texto "Antes/Después"
+            entre cada uno. Úsalos si el logo o el corte del ticket real no funcionan: si una imagen
+            sale como símbolos, o el papel no se separa físicamente después de una variante de corte,
+            esa variante no es compatible con esta impresora.
+          </p>
 
           {printResult && (
             <div className={`mt-4 flex items-start gap-2 rounded-xl border p-3 text-xs ${printResult.ok ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-rose-200 bg-rose-50 text-rose-700'}`}>

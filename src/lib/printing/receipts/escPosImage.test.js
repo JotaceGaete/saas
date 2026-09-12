@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { rgbaToGrayscale, ditherFloydSteinberg, buildRasterCommand } from './escPosImage';
+import {
+  rgbaToGrayscale, ditherFloydSteinberg, buildRasterCommand, buildColumnBitImageCommand,
+} from './escPosImage';
 
 // Todo este archivo trabaja sobre arrays de píxeles fijos -- ninguna de
 // estas funciones toca Image/canvas/fetch (eso vive en
@@ -87,5 +89,47 @@ describe('buildRasterCommand', () => {
     const bits = new Uint8Array(16);
     const command = buildRasterCommand(bits, 8, 2);
     expect(Array.from(command.slice(8))).toEqual([0, 0]);
+  });
+});
+
+describe('buildColumnBitImageCommand — PRINT-4-BUG2 (alternativa ESC * al raster GS v 0)', () => {
+  const ESC = 0x1B;
+
+  it('arma el header ESC * m nL nH con m=0 (8-dot single density) y ancho correcto', () => {
+    const bits = new Uint8Array(8 * 3); // 8 columnas, 3 dots de alto
+    const command = buildColumnBitImageCommand(bits, 8, 3);
+    expect(Array.from(command.slice(0, 5))).toEqual([ESC, 0x2A, 0x00, 8, 0]);
+    expect(command.length).toBe(5 + 8); // header + 1 byte por columna
+  });
+
+  it('empaqueta cada columna en un byte vertical, MSB = dot superior', () => {
+    // columna 0: dot superior (y=0) negro, resto blanco -> bit7 = 1 -> 0x80
+    const bits = Uint8Array.from([
+      1, 0, // y=0
+      0, 0, // y=1
+      0, 0, // y=2
+    ]);
+    const command = buildColumnBitImageCommand(bits, 2, 3);
+    expect(command[5]).toBe(0x80); // columna 0
+    expect(command[6]).toBe(0x00); // columna 1
+  });
+
+  it('el dot inferior de una columna de 8 enciende el bit menos significativo', () => {
+    const width = 1;
+    const height = 8;
+    const bits = new Uint8Array(width * height);
+    bits[7 * width] = 1; // y=7 (última fila), única columna
+    const command = buildColumnBitImageCommand(bits, width, height);
+    expect(command[5]).toBe(0x01);
+  });
+
+  it('lanza si se pide una altura mayor a 8 dots (modo de 24 dots no implementado)', () => {
+    expect(() => buildColumnBitImageCommand(new Uint8Array(9), 1, 9)).toThrow(/8 dots/);
+  });
+
+  it('nunca depende de UTF-8: solo produce bytes 0-255 puros', () => {
+    const bits = new Uint8Array(64).fill(1);
+    const command = buildColumnBitImageCommand(bits, 8, 8);
+    expect(command.every((b) => b >= 0 && b <= 255)).toBe(true);
   });
 });
