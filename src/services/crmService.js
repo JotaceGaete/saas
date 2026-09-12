@@ -11,6 +11,36 @@ function assertFeature(planSlug, feature) {
   }
 }
 
+// TPV-BUG — mitigación de "GET .../crm_payments -> 401 Unauthorized".
+// Un 401 ocurre en la capa de autenticación (JWT ausente/inválido/
+// expirado) ANTES de que Postgres evalúe ninguna policy de RLS -- una
+// policy de SELECT que deniega filas nunca produce 401 (produce 200 con
+// un array vacío), así que esto NO es algo que una migración de RLS
+// pueda corregir. La causa más probable es un access token vencido (ej.
+// la pestaña de Caja quedó abierta/en segundo plano largo rato y el
+// refresh automático de supabase-js no alcanzó a correr a tiempo).
+// Mitigación: si una consulta a crm_payments falla con una señal de
+// sesión/JWT, se refresca la sesión UNA vez y se reintenta UNA vez --
+// nunca reintentos indefinidos, nunca oculta un error real distinto.
+function isAuthSessionError(error) {
+  if (!error) return false;
+  const status = error.status || error.statusCode;
+  const code = String(error.code || '');
+  const message = String(error.message || '').toLowerCase();
+  return status === 401
+    || code === 'PGRST301'
+    || message.includes('jwt')
+    || message.includes('unauthorized')
+    || message.includes('invalid token');
+}
+
+async function withAuthRetry(queryFactory) {
+  const first = await queryFactory();
+  if (!isAuthSessionError(first?.error)) return first;
+  await supabase.auth.refreshSession();
+  return queryFactory();
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1552,7 +1582,7 @@ export async function getPaymentsForSession(businessId, sessionId) {
   // This is the canonical field — created_at can differ due to timezone offsets.
   const sessionDate = session.date || session.opened_at.slice(0, 10);
 
-  const { data, error } = await supabase
+  const { data, error } = await withAuthRetry(() => supabase
     .from('crm_payments')
     .select('id, amount, payment_method, payment_status, payment_date, created_at, invoice_id, customer_id, notes, reference, cash_session_id, voided_at')
     .eq('business_id', businessId)
@@ -1560,7 +1590,7 @@ export async function getPaymentsForSession(businessId, sessionId) {
     .eq('payment_status', 'received')
     .is('voided_at', null)
     .neq('payment_method', 'credit')
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false }));
   if (error) throw error;
 
   return (data || []).map(p => ({ ...p, payment_method: normalizePaymentMethod(p.payment_method || 'other') }));
@@ -1572,7 +1602,7 @@ export async function getCashSessionPayments(businessId, session) {
   const paymentSelect = 'id, business_id, invoice_id, amount, currency, payment_method, payment_status, payment_date, reference, notes, created_at, voided_at, voided_by, void_reason, cash_session_id';
   const sessionEnd = session.closed_at || new Date().toISOString();
 
-  const linkedQuery = supabase
+  const linkedQuery = () => supabase
     .from('crm_payments')
     .select(paymentSelect)
     .eq('business_id', businessId)
@@ -1580,7 +1610,7 @@ export async function getCashSessionPayments(businessId, session) {
     .eq('cash_session_id', session.id)
     .neq('payment_method', 'credit');
 
-  const legacyQuery = supabase
+  const legacyQuery = () => supabase
     .from('crm_payments')
     .select(paymentSelect)
     .eq('business_id', businessId)
@@ -1590,7 +1620,7 @@ export async function getCashSessionPayments(businessId, session) {
     .lte('created_at', sessionEnd)
     .neq('payment_method', 'credit');
 
-  const [linkedRes, legacyRes] = await Promise.all([linkedQuery, legacyQuery]);
+  const [linkedRes, legacyRes] = await Promise.all([withAuthRetry(linkedQuery), withAuthRetry(legacyQuery)]);
   const error = linkedRes.error || legacyRes.error;
   if (error) return { data: [], error };
 
@@ -1609,14 +1639,14 @@ export async function getCashSessionPayments(businessId, session) {
 }
 
 export async function getCashDayPayments(businessId, date = getLocalDateString()) {
-  const { data, error } = await supabase
+  const { data, error } = await withAuthRetry(() => supabase
     .from('crm_payments')
     .select('id, business_id, invoice_id, amount, currency, payment_method, payment_status, payment_date, reference, notes, created_at, voided_at, voided_by, void_reason, cash_session_id')
     .eq('business_id', businessId)
     .eq('payment_date', date)
     .eq('payment_status', 'received')
     .neq('payment_method', 'credit')
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false }));
   return {
     data: (data || []).map(payment => ({
       ...payment,

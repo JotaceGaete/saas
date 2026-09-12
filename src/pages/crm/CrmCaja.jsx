@@ -68,8 +68,19 @@ CREATE POLICY "owner delete" ON crm_cash_sessions
     EXISTS (SELECT 1 FROM wa_businesses WHERE id = business_id AND user_id = auth.uid())
   );`;
 
+// TPV-BUG — mensaje explícito para no dejar que un admin "viendo como
+// negocio" intente abrir/cerrar caja: `impersonateBusiness` (AuthContext)
+// solo cambia qué `business` ve la UI, nunca la sesión real de Supabase.
+// El admin sigue autenticado como sí mismo, así que ese INSERT/UPDATE
+// sería rechazado por RLS (correctamente: el admin de verdad no es dueño
+// de ese negocio) -- mejor evitar el intento y explicarlo, en vez de
+// dejar que llegue un error crudo de Postgres a la pantalla.
+const IMPERSONATION_BLOCKED_MESSAGE =
+  'No puedes abrir ni cerrar caja mientras ves este negocio como administrador (modo "ver como negocio"). '
+  + 'Esta acción solo puede hacerla el propio negocio, con su sesión real.';
+
 export default function CrmCaja() {
-  const { business, user } = useAuth();
+  const { business, user, isImpersonating } = useAuth();
   const navigate = useNavigate();
   const currency = business?.currency;
 
@@ -133,6 +144,10 @@ export default function CrmCaja() {
   }, [session, business?.id]);
 
   const handleOpen = async () => {
+    if (isImpersonating) {
+      setError(IMPERSONATION_BLOCKED_MESSAGE);
+      return;
+    }
     setSubmitting(true);
     setError(null);
     setRlsError(false);
@@ -162,6 +177,11 @@ export default function CrmCaja() {
   };
 
   const handleClose = async () => {
+    if (isImpersonating) {
+      setError(IMPERSONATION_BLOCKED_MESSAGE);
+      setShowCloseConfirm(false);
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {

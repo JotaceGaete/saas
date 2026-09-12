@@ -13,19 +13,27 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const rpcMock = vi.fn();
 const fromMock = vi.fn();
+const refreshSessionMock = vi.fn();
 
 vi.mock('../lib/supabase', () => ({
   supabase: {
     rpc: (...args) => rpcMock(...args),
     from: (...args) => fromMock(...args),
+    auth: {
+      refreshSession: (...args) => refreshSessionMock(...args),
+    },
   },
 }));
 
-import { createPosInvoice, getOperatingCostItemsForPeriod, getOperatingSalesForPeriod } from './crmService';
+import {
+  createPosInvoice, getOperatingCostItemsForPeriod, getOperatingSalesForPeriod,
+  getCashDayPayments, getCashSessionPayments,
+} from './crmService';
 
 beforeEach(() => {
   rpcMock.mockReset();
   fromMock.mockReset();
+  refreshSessionMock.mockReset().mockResolvedValue({ data: { session: {} }, error: null });
 });
 
 function queryResult(result, calls = []) {
@@ -318,5 +326,78 @@ describe('createPosInvoice — mapeo de errores (nunca SQL crudo al usuario)', (
     await expect(createPosInvoice('biz1', baseInput)).resolves.toEqual(
       expect.objectContaining({ data: null }),
     );
+  });
+});
+
+/**
+ * TPV-BUG — mitigación de "GET .../crm_payments -> 401 Unauthorized".
+ * Un 401 es un problema de sesión/JWT, no de RLS (una policy de SELECT
+ * que deniega filas nunca produce 401) -- por eso la mitigación es acá,
+ * en el cliente (refrescar la sesión y reintentar UNA vez), no en una
+ * migración. Estos tests verifican el mecanismo de retry en sí, no que
+ * el 401 real de producción esté "resuelto" (eso no se puede probar sin
+ * una sesión Supabase real).
+ */
+describe('TPV-BUG — reintento tras 401 en consultas a crm_payments', () => {
+  it('getCashDayPayments: un error con status 401 dispara refreshSession y reintenta UNA vez', async () => {
+    fromMock
+      .mockReturnValueOnce(queryResult({ data: null, error: { status: 401, message: 'JWT expired' } }))
+      .mockReturnValueOnce(queryResult({ data: [{ id: 'p1', payment_method: 'cash' }], error: null }));
+
+    const result = await getCashDayPayments('biz1', '2026-09-12');
+
+    expect(refreshSessionMock).toHaveBeenCalledTimes(1);
+    expect(fromMock).toHaveBeenCalledTimes(2);
+    expect(result.error).toBeNull();
+    expect(result.data).toHaveLength(1);
+  });
+
+  it('getCashDayPayments: un error PGRST301 (JWT expired, código de PostgREST) también dispara el retry', async () => {
+    fromMock
+      .mockReturnValueOnce(queryResult({ data: null, error: { code: 'PGRST301', message: 'JWT expired' } }))
+      .mockReturnValueOnce(queryResult({ data: [], error: null }));
+
+    await getCashDayPayments('biz1');
+
+    expect(refreshSessionMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('getCashDayPayments: un error que NO es de sesión (ej. RLS/permiso) nunca dispara refreshSession ni reintenta', async () => {
+    fromMock.mockReturnValueOnce(queryResult({
+      data: null,
+      error: { code: '42501', message: 'permission denied for table crm_payments' },
+    }));
+
+    const result = await getCashDayPayments('biz1');
+
+    expect(refreshSessionMock).not.toHaveBeenCalled();
+    expect(fromMock).toHaveBeenCalledTimes(1);
+    expect(result.error).toEqual({ code: '42501', message: 'permission denied for table crm_payments' });
+  });
+
+  it('getCashDayPayments: si el reintento TAMBIÉN falla, el error se propaga (nunca reintenta una segunda vez)', async () => {
+    fromMock
+      .mockReturnValueOnce(queryResult({ data: null, error: { status: 401, message: 'JWT expired' } }))
+      .mockReturnValueOnce(queryResult({ data: null, error: { status: 401, message: 'JWT expired' } }));
+
+    const result = await getCashDayPayments('biz1');
+
+    expect(refreshSessionMock).toHaveBeenCalledTimes(1);
+    expect(fromMock).toHaveBeenCalledTimes(2);
+    expect(result.error).toEqual({ status: 401, message: 'JWT expired' });
+  });
+
+  it('getCashSessionPayments: un 401 en cualquiera de las dos consultas paralelas (linked/legacy) también reintenta', async () => {
+    const session = { id: 'sess1', opened_at: '2026-09-12T10:00:00.000Z', closed_at: null };
+    fromMock
+      .mockReturnValueOnce(queryResult({ data: null, error: { status: 401, message: 'JWT expired' } })) // linked, 1er intento
+      .mockReturnValueOnce(queryResult({ data: [], error: null })) // legacy, 1er intento (no falla)
+      .mockReturnValueOnce(queryResult({ data: [{ id: 'p1', payment_method: 'cash', created_at: '2026-09-12T11:00:00.000Z' }], error: null })); // linked, retry
+
+    const result = await getCashSessionPayments('biz1', session);
+
+    expect(refreshSessionMock).toHaveBeenCalledTimes(1);
+    expect(result.error).toBeNull();
+    expect(result.data).toHaveLength(1);
   });
 });
