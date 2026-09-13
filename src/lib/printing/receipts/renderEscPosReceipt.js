@@ -19,7 +19,9 @@ import {
   buildRasterCommand, buildVerticalMarkerBits, buildGeometryTestBits, buildTiledColumnBitImageCommand,
   buildFilledCircleBits,
 } from './escPosImage';
-import { GRAPHICS_STRATEGIES, CUT_STRATEGIES, getGraphicsStrategy } from './escPosCapabilities';
+import {
+  GRAPHICS_STRATEGIES, CUT_STRATEGIES, getGraphicsStrategy, getCutStrategy,
+} from './escPosCapabilities';
 import { buildLayout, clampXDotsToPrintableArea } from './printerProfile';
 
 const ESC = 0x1B;
@@ -49,6 +51,12 @@ const CMD = {
   // sin cortar, más tolerante en impresoras/cuchillas distintas que un
   // corte total. Es comando estándar Epson/ESC-POS, no específico de
   // Star/TSP100.
+  //
+  // PRINT-5 — estos dos quedan solo como referencia/documentación de los
+  // bytes históricos; el corte real de un receipt ya NO se arma acá
+  // directamente, sino a través de `getCutStrategy(receipt.cutStrategyId)`
+  // (ver el final de renderEscPosReceipt) -- CUT_STRATEGIES['gs-v-modern']
+  // en escPosCapabilities.js contiene estos mismos bytes.
   CUT_PARTIAL: [GS, 0x56, 0x42, 0x00], // GS V 66 0 — corte parcial (forma moderna, 2 bytes de parámetro)
   CUT_FULL: [GS, 0x56, 0x41, 0x00],    // GS V 65 0 — corte total (forma moderna) -- no usado por defecto, queda disponible
 };
@@ -228,7 +236,16 @@ export async function renderEscPosReceipt(receipt) {
   // separador) lee de este mismo objeto -- ninguna vuelve a calcular su
   // propio ancho. `columns` es un alias de `layout.normalCharsPerLine`
   // para no reescribir cada uso más abajo.
-  const layout = buildLayout(paperWidthMm);
+  //
+  // PRINT-5 — `receipt.effectivePrintableWidthDots` (opcional): override
+  // del ancho REAL calibrado para imágenes, propio de un perfil de
+  // compatibilidad (ver printerCompatibilityProfiles.js). Sin él (el caso
+  // de todo receipt histórico/actual, incluido el perfil `generic80`),
+  // buildLayout usa el valor validado en PRINTER_PROFILES -- comportamiento
+  // IDÉNTICO al de siempre. Nunca afecta `contentWidthDots`/columnas de
+  // texto/TOTAL (ver buildLayout en printerProfile.js) -- eso sigue
+  // viniendo exclusivamente de `paperWidthMm`.
+  const layout = buildLayout(paperWidthMm, { effectivePrintableWidthDots: receipt?.effectivePrintableWidthDots });
   const columns = layout.normalCharsPerLine;
   const currency = receipt?.currency;
   const bytes = [...CMD.INIT];
@@ -352,7 +369,19 @@ export async function renderEscPosReceipt(receipt) {
 
   const feedLines = Number.isFinite(receipt?.feedLines) ? receipt.feedLines : 3;
   for (let i = 0; i < feedLines; i++) bytes.push(LF);
-  if (receipt?.cut !== false) bytes.push(...CMD.CUT_PARTIAL);
+  // PRINT-5 — `receipt.cutStrategyId` (opcional): qué comando de corte
+  // enviar (ver escPosCapabilities.js#CUT_STRATEGIES). Sin él, cae al
+  // default histórico (`gs-v-modern` = CMD.CUT_PARTIAL) -- bytes IDÉNTICOS
+  // a los que este renderer siempre emitió. `receipt.cut !== false` sigue
+  // siendo el interruptor maestro (si se intenta cortar); `cutStrategyId:
+  // 'none'` es una segunda forma, a nivel de estrategia, de no emitir
+  // ningún byte de corte aunque `cut` no sea `false` -- las dos formas
+  // conviven porque una es "el cajero decidió no cortar" y la otra es
+  // "esta impresora no tiene ninguna variante de corte compatible".
+  if (receipt?.cut !== false) {
+    const cutStrategy = getCutStrategy(receipt?.cutStrategyId);
+    if (cutStrategy.bytes.length > 0) bytes.push(...cutStrategy.bytes);
+  }
   return new Uint8Array(bytes);
 }
 
@@ -381,6 +410,66 @@ export function buildTestReceipt({ businessName = 'Walinka', printerName = '', p
       divider,
       { text: 'Todo listo!', align: 'center', bold: true },
     ],
+    feedLines: 4,
+    cut: true,
+  };
+}
+
+/**
+ * PRINT-5 — "Probar corte": ticket mínimo (sin logo, sin datos de venta)
+ * que solo confirma que el papel se separa físicamente con la estrategia
+ * de corte configurada (`cutStrategyId`, ver escPosCapabilities.js#
+ * CUT_STRATEGIES) -- pensado para el botón simple de `/crm/impresion`
+ * (nunca menciona ESC/POS/GS V en pantalla, eso queda en el nombre técnico
+ * interno de `cutStrategyId`). Distinto de `buildTestReceipt` (que
+ * siempre usa el corte por defecto): este SÍ respeta la estrategia de
+ * corte elegida, para poder re-probar solo el corte después de cambiarla
+ * sin reimprimir un ticket completo.
+ */
+export function buildCutTestReceipt({ paperWidthMm = 80, cutStrategyId } = {}) {
+  return {
+    paperWidthMm,
+    cutStrategyId,
+    lines: [
+      { text: 'Prueba de corte', align: 'center', bold: true },
+      { text: 'Si el papel se separo solo,', align: 'center' },
+      { text: 'el corte esta funcionando.', align: 'center' },
+    ],
+    feedLines: 4,
+    cut: true,
+  };
+}
+
+/**
+ * PRINT-5 — "Probar logo": ticket mínimo con ÚNICAMENTE el logo del
+ * negocio (mismo camino de producción que una venta real -- `type: 'logo'`,
+ * mismo `fetchLogoRaster`/estrategia de gráficos configurada), sin datos
+ * de venta ni corte forzado por una estrategia distinta a la configurada.
+ * Si el negocio no tiene logo configurado, el ticket lo dice en vez de
+ * fallar -- igual que cualquier otro ticket sin logo.
+ */
+export function buildLogoTestReceipt({
+  business, paperWidthMm = 80, imageMode, effectivePrintableWidthDots, cutStrategyId,
+} = {}) {
+  const lines = [
+    { text: 'Prueba de logo', align: 'center', bold: true },
+    { type: 'divider' },
+  ];
+  if (business?.logoUrl) {
+    lines.push({ type: 'logo', url: business.logoUrl });
+    lines.push({ type: 'divider' });
+    lines.push({ text: 'Si el logo se ve completo y', align: 'center' });
+    lines.push({ text: 'sin deformar, esta funcionando.', align: 'center' });
+  } else {
+    lines.push({ text: 'Este negocio no tiene un logo', align: 'center' });
+    lines.push({ text: 'configurado todavia.', align: 'center' });
+  }
+  return {
+    paperWidthMm,
+    imageMode,
+    effectivePrintableWidthDots,
+    cutStrategyId,
+    lines,
     feedLines: 4,
     cut: true,
   };
@@ -470,12 +559,12 @@ export function buildCutCapabilityDiagnosticReceipt({ paperWidthMm = 80 } = {}) 
     lines: [
       { text: 'DIAGNOSTICO DE CORTE', align: 'center', bold: true },
       { type: 'divider' },
-      { text: `Antes de Corte A (${CUT_STRATEGIES.partialFunctionB.label})` },
-      { type: 'raw', bytes: CUT_STRATEGIES.partialFunctionB.bytes },
+      { text: `Antes de Corte A (${CUT_STRATEGIES['gs-v-modern'].label})` },
+      { type: 'raw', bytes: CUT_STRATEGIES['gs-v-modern'].bytes },
       { text: 'Despues de Corte A' },
       { type: 'divider' },
-      { text: `Antes de Corte B (${CUT_STRATEGIES.partialFunctionALegacy.label})` },
-      { type: 'raw', bytes: CUT_STRATEGIES.partialFunctionALegacy.bytes },
+      { text: `Antes de Corte B (${CUT_STRATEGIES['gs-v-legacy'].label})` },
+      { type: 'raw', bytes: CUT_STRATEGIES['gs-v-legacy'].bytes },
       { text: 'Despues de Corte B' },
       { type: 'divider' },
       { text: 'FIN DIAGNOSTICO DE CORTE', align: 'center', bold: true },

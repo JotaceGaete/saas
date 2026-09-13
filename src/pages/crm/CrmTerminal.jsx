@@ -306,6 +306,12 @@ function CrmTerminalUI() {
         autoCut: printerConfig.autoCut,
         printLogo: printerConfig.printLogo,
         imageMode: printerConfig.imageMode,
+        // PRINT-5 — capa de perfiles de compatibilidad (ver
+        // printerCompatibilityProfiles.js): mismo patrón que los cuatro
+        // campos de arriba, solo pasa lo que ya está guardado en la config
+        // local de este dispositivo -- no decide nada acá.
+        cutStrategyId: printerConfig.cutStrategyId,
+        effectivePrintableWidthDots: printerConfig.effectivePrintableWidthDots,
       });
       await printService.printReceipt(receipt, { printerName: printerConfig.printerName });
       setPrintStatus('success');

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   GRAPHICS_STRATEGIES, CUT_STRATEGIES, DEFAULT_GRAPHICS_STRATEGY_ID, getGraphicsStrategy,
+  DEFAULT_CUT_STRATEGY_ID, getCutStrategy,
 } from './escPosCapabilities';
 
 // PRINT-4-BUG2/BUG3 — esta capa define QUÉ variantes de comando ESC/POS
@@ -52,6 +53,22 @@ describe('GRAPHICS_STRATEGIES', () => {
   });
 });
 
+// PRINT-5 — perfil `textOnly80`: para una impresora que no interpreta
+// bien ningún comando de gráficos, "sin imagen" es una estrategia más,
+// no un caso especial fuera de GRAPHICS_STRATEGIES.
+describe('GRAPHICS_STRATEGIES.none — PRINT-5 (perfil textOnly80)', () => {
+  it('produce un comando vacío, nunca null/undefined', () => {
+    const command = GRAPHICS_STRATEGIES.none.build(new Uint8Array(64), 8, 8);
+    expect(command).toBeInstanceOf(Uint8Array);
+    expect(command.length).toBe(0);
+  });
+
+  it('tiene id y label legible, sin mencionar marcas', () => {
+    expect(GRAPHICS_STRATEGIES.none.id).toBe('none');
+    expect(GRAPHICS_STRATEGIES.none.label.toLowerCase()).not.toContain('star');
+  });
+});
+
 describe('DEFAULT_GRAPHICS_STRATEGY_ID / getGraphicsStrategy — PRINT-4-BUG3', () => {
   it('el default es bitImageEscStar (confirmado físicamente en el hardware de validación)', () => {
     expect(DEFAULT_GRAPHICS_STRATEGY_ID).toBe('bitImageEscStar');
@@ -69,16 +86,16 @@ describe('DEFAULT_GRAPHICS_STRATEGY_ID / getGraphicsStrategy — PRINT-4-BUG3', 
 });
 
 describe('CUT_STRATEGIES', () => {
-  it('partialFunctionB es el comando GS V 66 0 (2 bytes de parámetro)', () => {
-    expect(CUT_STRATEGIES.partialFunctionB.bytes).toEqual([0x1D, 0x56, 0x42, 0x00]);
+  it('gs-v-modern es el comando GS V 66 0 (2 bytes de parámetro)', () => {
+    expect(CUT_STRATEGIES['gs-v-modern'].bytes).toEqual([0x1D, 0x56, 0x42, 0x00]);
   });
 
-  it('partialFunctionALegacy es el comando GS V 1 (1 byte, legacy)', () => {
-    expect(CUT_STRATEGIES.partialFunctionALegacy.bytes).toEqual([0x1D, 0x56, 0x01]);
+  it('gs-v-legacy es el comando GS V 1 (1 byte, legacy)', () => {
+    expect(CUT_STRATEGIES['gs-v-legacy'].bytes).toEqual([0x1D, 0x56, 0x01]);
   });
 
-  it('las dos variantes de corte son distintas entre sí', () => {
-    expect(CUT_STRATEGIES.partialFunctionB.bytes).not.toEqual(CUT_STRATEGIES.partialFunctionALegacy.bytes);
+  it('las dos variantes de corte con bytes son distintas entre sí', () => {
+    expect(CUT_STRATEGIES['gs-v-modern'].bytes).not.toEqual(CUT_STRATEGIES['gs-v-legacy'].bytes);
   });
 
   it('ninguna etiqueta menciona una marca/modelo de impresora', () => {
@@ -86,5 +103,30 @@ describe('CUT_STRATEGIES', () => {
       expect(strategy.label.toLowerCase()).not.toContain('star');
       expect(strategy.label.toLowerCase()).not.toContain('tsp100');
     }
+  });
+
+  // PRINT-5 — "sin corte" es una estrategia más (bytes vacíos), no un
+  // caso especial: deja que el flag `cut`/`autoCut` (booleano, si se
+  // intenta cortar) y `cutStrategyId` (qué bytes enviar si se intenta)
+  // sean ortogonales.
+  it('none produce cero bytes', () => {
+    expect(CUT_STRATEGIES.none.bytes).toEqual([]);
+  });
+});
+
+describe('DEFAULT_CUT_STRATEGY_ID / getCutStrategy — PRINT-5', () => {
+  it('el default es gs-v-modern (mismo comando histórico, único que este renderer emitía antes de esta capa)', () => {
+    expect(DEFAULT_CUT_STRATEGY_ID).toBe('gs-v-modern');
+    expect(getCutStrategy(undefined)).toBe(CUT_STRATEGIES['gs-v-modern']);
+  });
+
+  it('un id conocido devuelve esa estrategia exacta', () => {
+    expect(getCutStrategy('gs-v-legacy')).toBe(CUT_STRATEGIES['gs-v-legacy']);
+    expect(getCutStrategy('none')).toBe(CUT_STRATEGIES.none);
+  });
+
+  it('un id desconocido/inválido cae al default en vez de lanzar', () => {
+    expect(getCutStrategy('algo-que-no-existe')).toBe(CUT_STRATEGIES['gs-v-modern']);
+    expect(getCutStrategy(null)).toBe(CUT_STRATEGIES['gs-v-modern']);
   });
 });

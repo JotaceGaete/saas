@@ -136,6 +136,16 @@ describe('buildSaleReceipt', () => {
       const withoutImageMode = buildSaleReceipt(baseSale);
       expect(withoutImageMode.imageMode).toBeUndefined();
     });
+
+    it('PRINT-5: cutStrategyId y effectivePrintableWidthDots se pasan tal cual al Receipt -- este builder tampoco decide nada de eso', () => {
+      const receipt = buildSaleReceipt({ ...baseSale, cutStrategyId: 'gs-v-legacy', effectivePrintableWidthDots: 400 });
+      expect(receipt.cutStrategyId).toBe('gs-v-legacy');
+      expect(receipt.effectivePrintableWidthDots).toBe(400);
+
+      const withoutThem = buildSaleReceipt(baseSale);
+      expect(withoutThem.cutStrategyId).toBeUndefined();
+      expect(withoutThem.effectivePrintableWidthDots).toBeUndefined();
+    });
   });
 
   it('incluye cada ítem con cantidad, nombre y total de línea', async () => {
@@ -367,6 +377,14 @@ describe('buildFinalValidationReceipt — PRINT-4-BUG3 (ticket de validación f�
     expect(receipt.lines.some((l) => l.type === 'logo')).toBe(false);
     expect(receipt.imageMode).toBe('rasterGsV0');
     expect(receipt.paperWidthMm).toBe(58);
+  });
+
+  it('PRINT-5: respeta cutStrategyId/effectivePrintableWidthDots pasados por CrmPrintSettings', () => {
+    const receipt = buildFinalValidationReceipt({
+      business, cutStrategyId: 'gs-v-legacy', effectivePrintableWidthDots: 400,
+    });
+    expect(receipt.cutStrategyId).toBe('gs-v-legacy');
+    expect(receipt.effectivePrintableWidthDots).toBe(400);
   });
 
   it('el receipt resultante renderiza sin lanzar', async () => {

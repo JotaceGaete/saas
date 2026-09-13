@@ -43,6 +43,18 @@ export const GRAPHICS_STRATEGIES = {
     label: 'ESC * (bit image por columnas, franjas de 8 dots)',
     build: buildTiledColumnBitImageCommand,
   },
+  // PRINT-5 — estrategia "sin imagen": para una impresora que no
+  // interpreta bien ningún comando de gráficos (perfil `textOnly80`), no
+  // hay ninguna variante de imagen que probar -- build() nunca se llama en
+  // la práctica (fetchLogoRaster.js corta antes de cargar/rasterizar nada
+  // cuando la estrategia resuelta es esta), pero se deja como comando
+  // vacío real (no `null`/`undefined`) para que cualquier código que sí
+  // llegue a invocarla se comporte como "no imprimir nada", nunca lance.
+  none: {
+    id: 'none',
+    label: 'Sin imagen (solo texto)',
+    build: () => new Uint8Array(0),
+  },
 };
 
 // PRINT-4-BUG3 — confirmado físicamente (hardware de validación: Star
@@ -57,15 +69,41 @@ export function getGraphicsStrategy(id) {
   return GRAPHICS_STRATEGIES[id] || GRAPHICS_STRATEGIES[DEFAULT_GRAPHICS_STRATEGY_ID];
 }
 
+// PRINT-5 — ids renombrados de `partialFunctionB`/`partialFunctionALegacy`
+// a `gs-v-modern`/`gs-v-legacy`: mismos bytes YA validados físicamente
+// (PRINT-4), solo un nombre más descriptivo para la capa de
+// perfiles/compatibilidad (ver printerCompatibilityProfiles.js) -- ningún
+// comando cambia.
 export const CUT_STRATEGIES = {
-  partialFunctionB: {
-    id: 'partialFunctionB',
+  'gs-v-modern': {
+    id: 'gs-v-modern',
     label: 'GS V 66 0 (Funcion B moderna, parcial, 2 bytes de parametro)',
     bytes: [0x1D, 0x56, 0x42, 0x00],
   },
-  partialFunctionALegacy: {
-    id: 'partialFunctionALegacy',
+  'gs-v-legacy': {
+    id: 'gs-v-legacy',
     label: 'GS V 1 (Funcion A legacy, parcial, 1 byte)',
     bytes: [0x1D, 0x56, 0x01],
   },
+  // PRINT-5 — "sin corte": para una impresora cuya cuchilla no responde a
+  // ninguna variante de `GS V`, o simplemente para dejar que el cajero
+  // corte manualmente. Distinto del flag `autoCut`/`receipt.cut` (que
+  // decide SI se intenta cortar): esta es una estrategia más, seleccionable
+  // igual que las otras, que produce cero bytes de corte.
+  none: {
+    id: 'none',
+    label: 'Sin corte (no se envia ningun comando)',
+    bytes: [],
+  },
 };
+
+// PRINT-5 — default histórico: el único comando de corte que este
+// renderer emitía antes de esta capa de perfiles (`CMD.CUT_PARTIAL` en
+// renderEscPosReceipt.js) era exactamente `gs-v-modern`. Cualquier
+// receipt/config sin `cutStrategyId` explícito debe seguir produciendo
+// bytes IDÉNTICOS a los ya validados físicamente.
+export const DEFAULT_CUT_STRATEGY_ID = 'gs-v-modern';
+
+export function getCutStrategy(id) {
+  return CUT_STRATEGIES[id] || CUT_STRATEGIES[DEFAULT_CUT_STRATEGY_ID];
+}

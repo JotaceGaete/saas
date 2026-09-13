@@ -65,6 +65,16 @@ function formatDateTime(dt) {
  * @param {string} [params.imageMode] - PRINT-4-BUG3: id de escPosCapabilities.GRAPHICS_STRATEGIES
  *   (p. ej. 'bitImageEscStar' o 'rasterGsV0') que el renderer usará para el logo. Este builder
  *   solo lo pasa tal cual -- no sabe qué significa ni qué impresora hay detrás.
+ * @param {string} [params.cutStrategyId] - PRINT-5: id de escPosCapabilities.CUT_STRATEGIES
+ *   (p. ej. 'gs-v-modern', 'gs-v-legacy' o 'none') que el renderer usará para el corte cuando
+ *   `autoCut` no sea `false`. Sin especificar, el renderer cae al default histórico
+ *   ('gs-v-modern') -- mismos bytes que este renderer siempre emitió. Este builder solo lo
+ *   pasa tal cual, igual que `imageMode`.
+ * @param {number} [params.effectivePrintableWidthDots] - PRINT-5: override puntual del ancho
+ *   REAL calibrado para imágenes (ver printerProfile.js#buildLayout), propio de un perfil de
+ *   compatibilidad. Sin especificar (o `null`/`<=0`), el renderer usa el valor validado del
+ *   perfil físico de 80mm -- comportamiento idéntico al histórico. Nunca afecta el layout de
+ *   texto/columnas/TOTAL (un concepto distinto, ver printerProfile.js).
  * @param {string} [params.cashierName] - PRINT-4: opcional, no hay hoy una fuente establecida para esto en CrmTerminal
  * @returns {import('./renderEscPosReceipt').Receipt}
  */
@@ -89,6 +99,8 @@ export function buildSaleReceipt({
   autoCut = true,
   printLogo = true,
   imageMode,
+  cutStrategyId,
+  effectivePrintableWidthDots,
   cashierName,
 }) {
   const currency = business?.currency;
@@ -209,6 +221,8 @@ export function buildSaleReceipt({
     paperWidthMm,
     currency,
     imageMode,
+    cutStrategyId,
+    effectivePrintableWidthDots,
     lines,
     feedLines: 4,
     cut: autoCut !== false,
@@ -237,7 +251,7 @@ export function buildSaleReceipt({
  * de layout, no una venta real, y ya se etiqueta como tal más abajo.
  */
 export function buildFinalValidationReceipt({
-  business, paperWidthMm = 80, autoCut = true, printLogo = true, imageMode,
+  business, paperWidthMm = 80, autoCut = true, printLogo = true, imageMode, cutStrategyId, effectivePrintableWidthDots,
 } = {}) {
   return buildSaleReceipt({
     business,
@@ -260,5 +274,7 @@ export function buildFinalValidationReceipt({
     autoCut,
     printLogo,
     imageMode,
+    cutStrategyId,
+    effectivePrintableWidthDots,
   });
 }

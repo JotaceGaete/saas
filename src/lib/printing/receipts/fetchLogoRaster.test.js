@@ -268,6 +268,45 @@ describe('fetchLogoRaster — PRINT-4-BUG13 (compensación vertical para ESC *)'
   });
 });
 
+// PRINT-5 — perfil `textOnly80`: para una impresora que no interpreta
+// ningún comando de gráficos, fetchLogoRaster debe devolver null SIN
+// intentar cargar ni rasterizar nada -- ni red (Image), ni canvas.
+describe('fetchLogoRaster — PRINT-5 (graphicsStrategyId: \'none\', perfil textOnly80)', () => {
+  it('devuelve null sin instanciar Image ni tocar el canvas', async () => {
+    const imageConstructorSpy = vi.fn();
+    class MockImage {
+      constructor() {
+        imageConstructorSpy();
+        this.onload = null;
+        this.onerror = null;
+      }
+
+      // eslint-disable-next-line class-methods-use-this -- necesita existir en el mock, no usa `this`
+      set src(_value) {}
+    }
+    vi.stubGlobal('Image', MockImage);
+    const createElementSpy = vi.spyOn(document, 'createElement');
+
+    const result = await fetchLogoRaster('https://cdn.example.com/logo.png', {
+      maxWidthDots: 100, maxHeightDots: 100, graphicsStrategyId: 'none',
+    });
+
+    expect(result).toBeNull();
+    expect(imageConstructorSpy).not.toHaveBeenCalled();
+    expect(createElementSpy).not.toHaveBeenCalledWith('canvas');
+  });
+
+  it('con logoUrl y maxWidthDots válidos igual devuelve null (no es el camino "sin logo configurado")', async () => {
+    vi.stubGlobal('Image', class {
+      set src(_value) {}
+    });
+    const result = await fetchLogoRaster('https://cdn.example.com/logo-real.png', {
+      maxWidthDots: 480, graphicsStrategyId: 'none',
+    });
+    expect(result).toBeNull();
+  });
+});
+
 describe('computeFitSize', () => {
   it('reduce una imagen ancha para caber en la caja máxima preservando proporción', () => {
     expect(computeFitSize(1000, 500, 480, 220)).toEqual({ width: 440, height: 220 });
