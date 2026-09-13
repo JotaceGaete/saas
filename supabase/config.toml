@@ -111,3 +111,17 @@ verify_jwt = false
 # 401 {"error":"Method not allowed"} antes de que el handler responda al preflight.
 [functions.admin-impersonate]
 verify_jwt = false
+
+# qz-sign (PRINT-3A/PRINT-3A-BUG1): firma solicitudes QZ Tray, valida
+# origen y JWT ella misma dentro del handler (nunca service_role) --
+# misma razón que el resto de esta lista: el preflight OPTIONS del
+# navegador no lleva Authorization, así que con verify_jwt=true (default
+# de la plataforma cuando la función no tiene entrada acá) el gateway
+# devuelve 401 ANTES de que el handler pueda responder el preflight o
+# ejecutar su propia validación de origen/JWT. Esta entrada faltaba en el
+# PR original de PRINT-3A -- causa raíz confirmada de "Failed to sign
+# request": el fetch del frontend a qz-sign nunca llegaba a ejecutar
+# nuestro código, fallaba en el preflight/gateway, y QZ Tray reemplaza
+# cualquier rechazo de la signaturePromise por ese mensaje genérico.
+[functions.qz-sign]
+verify_jwt = false

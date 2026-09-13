@@ -42,6 +42,7 @@ import CrmCash from './pages/crm/CrmCash';
 import CrmCostCenter from './pages/crm/CrmCostCenter';
 import CrmCostos from './pages/crm/CrmCostos';
 import CrmBarcodes from './pages/crm/CrmBarcodes';
+import CrmPrintSettings from './pages/crm/CrmPrintSettings';
 import Login from './pages/login';
 import AuthCallback from './pages/auth-callback';
 import ResetPassword from './pages/reset-password';
@@ -140,6 +141,7 @@ const Routes = () => {
             <Route path="/crm/presupuestos/:id"   element={<RequireCrm><CrmQuoteEditor /></RequireCrm>} />
             <Route path="/crm/stock"              element={<RequireCrm><CrmStock /></RequireCrm>} />
             <Route path="/crm/terminal"           element={<RequireCrm><CrmTerminal /></RequireCrm>} />
+            <Route path="/crm/impresion"          element={<RequireCrm><FeatureGate feature="pos"><CrmPrintSettings /></FeatureGate></RequireCrm>} />
             <Route path="/crm/caja"               element={<RequireCrm><CrmCash /></RequireCrm>} />
             <Route path="/crm/cost-center"        element={<RequireCrm><CrmCostCenter /></RequireCrm>} />
             <Route path="/crm/facturas"           element={<RequireCrm><FeatureGate feature="invoices"><CrmInvoices /></FeatureGate></RequireCrm>} />
