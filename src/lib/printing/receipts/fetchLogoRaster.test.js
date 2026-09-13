@@ -101,12 +101,18 @@ describe('fetchLogoRaster', () => {
     expect(result.command[1]).toBe(0x33);
   });
 
-  it('nunca distorsiona: reduce manteniendo proporción cuando el logo excede el ancho máximo', async () => {
+  it('nunca distorsiona el ajuste de caja: reduce manteniendo proporción cuando el logo excede el ancho máximo (rasterGsV0, sin compensación ESC *)', async () => {
     installImageMock({ naturalWidth: 1000, naturalHeight: 500 });
     const data = new Uint8ClampedArray(1000 * 500 * 4);
     installCanvasMock({ imageData: { data } });
 
-    const result = await fetchLogoRaster('https://cdn.example.com/logo-ancho.png', { maxWidthDots: 480, maxHeightDots: 220 });
+    // graphicsStrategyId explícito en 'rasterGsV0': esta ruta no pasa por
+    // bandas ESC * (ver PRINT-4-BUG13 más abajo), así que computeFitSize es
+    // la única transformación de tamaño -- debe preservar la proporción
+    // matemáticamente, sin ningún ajuste posterior.
+    const result = await fetchLogoRaster('https://cdn.example.com/logo-ancho.png', {
+      maxWidthDots: 480, maxHeightDots: 220, graphicsStrategyId: 'rasterGsV0',
+    });
 
     expect(result.width).toBeLessThanOrEqual(480);
     expect(result.height).toBeLessThanOrEqual(220);
@@ -190,14 +196,75 @@ describe('fetchLogoRaster — PRINT-4-BUG10 (ESC $ para centrar, sin padding en 
     expect(cmd[escStarIdx + 4]).toBe(0); // nH
   });
 
-  it('no altera result.width/result.height (siguen siendo las dimensiones REALES del logo)', async () => {
+  it('no altera result.width (sigue siendo el ancho REAL del logo); result.height, con la estrategia rasterGsV0, tampoco', async () => {
     installImageMock({ naturalWidth: 100, naturalHeight: 50 });
     installCanvasMock({ imageData: { data: new Uint8ClampedArray(100 * 50 * 4) } });
     const result = await fetchLogoRaster('https://cdn.example.com/logo.png', {
-      maxWidthDots: 480, maxHeightDots: 220, effectivePrintableWidthDots: 300,
+      maxWidthDots: 480, maxHeightDots: 220, effectivePrintableWidthDots: 300, graphicsStrategyId: 'rasterGsV0',
     });
     expect(result.width).toBe(100);
     expect(result.height).toBe(50);
+  });
+});
+
+// PRINT-4-BUG13 — prueba física del diagnóstico de aspecto: un raster de
+// 100x100 dots enviado por la ruta ESC * (bitImageEscStar, la estrategia
+// por defecto) midió físicamente 25mm de ancho x 37mm de alto. Se compensa
+// reduciendo SOLO el alto del raster (verticalCorrectionFactor = 25/37)
+// antes de rasterizar -- ver escPosImage.js#applyEscStarVerticalCorrection.
+describe('fetchLogoRaster — PRINT-4-BUG13 (compensación vertical para ESC *)', () => {
+  it('un logo de 100x100 (estrategia ESC * por defecto) se corrige a ~100x68 antes de armar las bandas', async () => {
+    installImageMock({ naturalWidth: 100, naturalHeight: 100 });
+    const { fakeCanvas } = installCanvasMock({ imageData: { data: new Uint8ClampedArray(100 * 100 * 4) } });
+    const result = await fetchLogoRaster('https://cdn.example.com/logo-circular.png', {
+      maxWidthDots: 100, maxHeightDots: 100,
+    });
+    expect(result.width).toBe(100);
+    expect(result.height).toBe(68);
+    // el canvas se rasteriza YA con el alto corregido -- la compensación
+    // ocurre antes de convertir a escala de grises/dither, no después.
+    expect(fakeCanvas.height).toBe(68);
+  });
+
+  it('con graphicsStrategyId explícito en bitImageEscStar, aplica la misma compensación', async () => {
+    installImageMock({ naturalWidth: 100, naturalHeight: 100 });
+    installCanvasMock({ imageData: { data: new Uint8ClampedArray(100 * 100 * 4) } });
+    const result = await fetchLogoRaster('https://cdn.example.com/logo-circular.png', {
+      maxWidthDots: 100, maxHeightDots: 100, graphicsStrategyId: 'bitImageEscStar',
+    });
+    expect(result.height).toBe(68);
+  });
+
+  it('con graphicsStrategyId rasterGsV0, NO aplica la compensación (esa ruta no pasa por bandas ESC *)', async () => {
+    installImageMock({ naturalWidth: 100, naturalHeight: 100 });
+    installCanvasMock({ imageData: { data: new Uint8ClampedArray(100 * 100 * 4) } });
+    const result = await fetchLogoRaster('https://cdn.example.com/logo-circular.png', {
+      maxWidthDots: 100, maxHeightDots: 100, graphicsStrategyId: 'rasterGsV0',
+    });
+    expect(result.height).toBe(100);
+  });
+
+  it('nunca deforma el ancho: solo la dimensión vertical se ve afectada', async () => {
+    installImageMock({ naturalWidth: 200, naturalHeight: 100 });
+    installCanvasMock({ imageData: { data: new Uint8ClampedArray(200 * 100 * 4) } });
+    const result = await fetchLogoRaster('https://cdn.example.com/logo-rectangular.png', {
+      maxWidthDots: 200, maxHeightDots: 100,
+    });
+    expect(result.width).toBe(200);
+    expect(result.height).toBe(68);
+  });
+
+  it('cada llamada calcula la corrección desde el raster fuente: reimprimir el mismo logo no acumula la compensación', async () => {
+    installImageMock({ naturalWidth: 100, naturalHeight: 100 });
+    installCanvasMock({ imageData: { data: new Uint8ClampedArray(100 * 100 * 4) } });
+    const first = await fetchLogoRaster('https://cdn.example.com/logo-circular.png', { maxWidthDots: 100, maxHeightDots: 100 });
+
+    installImageMock({ naturalWidth: 100, naturalHeight: 100 });
+    installCanvasMock({ imageData: { data: new Uint8ClampedArray(100 * 100 * 4) } });
+    const second = await fetchLogoRaster('https://cdn.example.com/logo-circular.png', { maxWidthDots: 100, maxHeightDots: 100 });
+
+    expect(first.height).toBe(68);
+    expect(second.height).toBe(68); // NO round(68 * 25/37) = 46 -- cada llamada parte de 100, no del resultado anterior
   });
 });
 

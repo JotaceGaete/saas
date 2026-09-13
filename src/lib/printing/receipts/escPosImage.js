@@ -204,6 +204,33 @@ export function buildFilledCircleBits(diameterDots) {
   return bits;
 }
 
+/**
+ * PRINT-4-BUG13 — resultado de la prueba física del diagnóstico de arriba:
+ * un cuadrado/círculo de 100x100 dots teóricos, impreso por la ruta ESC *
+ * (`buildTiledColumnBitImageCommand`, franjas de 8 dots + `ESC 3 8`), midió
+ * físicamente 25mm de ancho x 37mm de alto -- el avance vertical entre
+ * franjas resulta en un paso mayor al paso horizontal del cabezal, así que
+ * todo lo que pasa por esta estrategia sale más alto de lo enviado.
+ * `verticalCorrectionFactor = anchoFisicoMm / altoFisicoMm = 25/37`
+ * comprime la ALTURA del raster fuente para que, tras esa distorsión física
+ * conocida, el resultado impreso vuelva a ser 1:1 -- el ancho nunca se
+ * toca (no hay distorsión horizontal reportada).
+ */
+export const ESC_STAR_VERTICAL_CORRECTION_FACTOR = 25 / 37;
+
+/**
+ * Aplica `ESC_STAR_VERTICAL_CORRECTION_FACTOR` a una altura de raster
+ * fuente. Función pura (sin estado): quien llama debe partir siempre de la
+ * altura original/fuente (p. ej. la calculada por `computeFitSize` en
+ * fetchLogoRaster.js a partir de las dimensiones naturales de la imagen
+ * recién cargada) -- nunca de una altura ya corregida en una llamada
+ * anterior, o la compensación se aplicaría de forma acumulativa en
+ * reimpresiones sucesivas.
+ */
+export function applyEscStarVerticalCorrection(sourceHeight) {
+  return Math.max(1, Math.round(sourceHeight * ESC_STAR_VERTICAL_CORRECTION_FACTOR));
+}
+
 const LF = 0x0A;
 const BAND_HEIGHT_DOTS = 8;
 

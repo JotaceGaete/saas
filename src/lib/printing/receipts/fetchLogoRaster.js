@@ -10,8 +10,8 @@
 // URL rota, imagen corrupta, canvas no soportado) resuelve `null`, y
 // quien llama debe imprimir el ticket igual, sin logo.
 
-import { rgbaToGrayscale, ditherFloydSteinberg } from './escPosImage';
-import { getGraphicsStrategy } from './escPosCapabilities';
+import { rgbaToGrayscale, ditherFloydSteinberg, applyEscStarVerticalCorrection } from './escPosImage';
+import { getGraphicsStrategy, GRAPHICS_STRATEGIES } from './escPosCapabilities';
 
 const DEFAULT_MAX_HEIGHT_DOTS = 220;
 
@@ -71,6 +71,12 @@ export function computeFitSize(naturalWidth, naturalHeight, maxWidth, maxHeight)
  *   impresora); la posición se fija en cambio con `ESC $` (ver
  *   escPosImage.js#buildAbsolutePositionCommand), validado físicamente en
  *   PRINT-4-BUG9.
+ *
+ * PRINT-4-BUG13: cuando la estrategia resuelta es `bitImageEscStar` (ESC *,
+ * el default), el alto real del raster se corrige con
+ * `escPosImage.js#applyEscStarVerticalCorrection` antes de rasterizar --
+ * `result.height` refleja ese alto YA corregido, nunca el alto "natural"
+ * ajustado solo por `computeFitSize`. `result.width` no se toca.
  */
 export async function fetchLogoRaster(logoUrl, {
   maxWidthDots, maxHeightDots = DEFAULT_MAX_HEIGHT_DOTS, graphicsStrategyId, effectivePrintableWidthDots = 0,
@@ -82,7 +88,20 @@ export async function fetchLogoRaster(logoUrl, {
     const naturalHeight = img.naturalHeight || img.height;
     if (!naturalWidth || !naturalHeight) return null;
 
-    const { width, height } = computeFitSize(naturalWidth, naturalHeight, maxWidthDots, maxHeightDots);
+    const strategy = getGraphicsStrategy(graphicsStrategyId);
+    const { width, height: fitHeight } = computeFitSize(naturalWidth, naturalHeight, maxWidthDots, maxHeightDots);
+    // PRINT-4-BUG13 — la conversión a bandas ESC * (buildTiledColumnBitImageCommand)
+    // distorsiona verticalmente el resultado físico (ver escPosImage.js#
+    // ESC_STAR_VERTICAL_CORRECTION_FACTOR); se compensa acá, ANTES de
+    // rasterizar, reduciendo únicamente el alto -- el ancho, el centrado vía
+    // `ESC $` (calculado más abajo sobre este mismo `width`) y la propia
+    // estrategia ESC * quedan intactos. `fitHeight` sale siempre de las
+    // dimensiones naturales de la imagen recién cargada (nunca de un alto ya
+    // corregido en una llamada previa), así que reimpresiones sucesivas no
+    // acumulan la compensación.
+    const height = strategy.id === GRAPHICS_STRATEGIES.bitImageEscStar.id
+      ? applyEscStarVerticalCorrection(fitHeight)
+      : fitHeight;
     const imageData = rasterizeImage(img, width, height);
     if (!imageData) return null;
 
@@ -96,7 +115,6 @@ export async function fetchLogoRaster(logoUrl, {
     // estrategia de gráficos -- el posicionamiento lo aplica ella misma
     // vía `ESC $`, no un padding previo.
     const xDots = Math.max(0, Math.floor((Math.max(0, effectivePrintableWidthDots) - width) / 2));
-    const strategy = getGraphicsStrategy(graphicsStrategyId);
     return {
       command: strategy.build(bits, width, height, xDots), width, height, xDots,
     };

@@ -3,6 +3,7 @@ import {
   rgbaToGrayscale, ditherFloydSteinberg, buildRasterCommand, buildColumnBitImageCommand,
   buildTiledColumnBitImageCommand, buildVerticalMarkerBits, buildGeometryTestBits,
   buildAbsolutePositionCommand, buildFilledCircleBits,
+  ESC_STAR_VERTICAL_CORRECTION_FACTOR, applyEscStarVerticalCorrection,
 } from './escPosImage';
 
 // Todo este archivo trabaja sobre arrays de píxeles fijos -- ninguna de
@@ -547,5 +548,39 @@ describe('buildFilledCircleBits — PRINT-4-BUG13 (círculo puro para el diagnó
     expect(() => buildFilledCircleBits(1)).not.toThrow();
     expect(() => buildFilledCircleBits(0)).not.toThrow();
     expect(() => buildFilledCircleBits(-5)).not.toThrow();
+  });
+});
+
+// PRINT-4-BUG13 — la prueba física del diagnóstico de arriba (cuadrado y
+// círculo de 100x100 dots teóricos, impresos por la ruta ESC *) midió
+// físicamente 25mm de ancho x 37mm de alto: el avance vertical entre
+// franjas de `ESC 3 8` no equivale al mismo paso físico que una columna
+// horizontal en esta impresora. `verticalCorrectionFactor = 25/37` corrige
+// esa distorsión comprimiendo la ALTURA del raster fuente antes de armar
+// las bandas -- nunca el ancho.
+describe('ESC_STAR_VERTICAL_CORRECTION_FACTOR / applyEscStarVerticalCorrection — PRINT-4-BUG13', () => {
+  it('el factor es exactamente 25/37 (medición física: 25mm de ancho x 37mm de alto)', () => {
+    expect(ESC_STAR_VERTICAL_CORRECTION_FACTOR).toBeCloseTo(0.6756756757, 9);
+  });
+
+  it('un raster de 100 dots de alto se corrige a ~68 dots (100 * 25/37 = 67.56... -> 68)', () => {
+    expect(applyEscStarVerticalCorrection(100)).toBe(68);
+  });
+
+  it('aplicado al alto físico medido (37), vuelve aproximadamente al valor teórico (25)', () => {
+    expect(applyEscStarVerticalCorrection(37)).toBe(25);
+  });
+
+  it('nunca produce una altura menor a 1 dot, aunque la entrada sea 0 o negativa', () => {
+    expect(applyEscStarVerticalCorrection(0)).toBe(1);
+    expect(applyEscStarVerticalCorrection(-10)).toBe(1);
+  });
+
+  it('es una función pura: la misma entrada siempre produce la misma salida (no acumula estado entre llamadas)', () => {
+    expect(applyEscStarVerticalCorrection(100)).toBe(applyEscStarVerticalCorrection(100));
+    // aplicarla dos veces seguidas (simulando un uso incorrecto) SÍ compone
+    // -- por eso quien llama (fetchLogoRaster.js) debe partir siempre del
+    // alto fuente, nunca de un resultado ya corregido.
+    expect(applyEscStarVerticalCorrection(applyEscStarVerticalCorrection(100))).not.toBe(68);
   });
 });
