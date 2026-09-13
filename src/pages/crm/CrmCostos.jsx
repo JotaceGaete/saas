@@ -257,7 +257,16 @@ function FixedCostRow({ item, onEdit, onDelete, currency = 'CLP' }) {
 function FixedCostsCard({ items, businessId, month, year, onReload, currency = 'CLP' }) {
   const [showModal, setShowModal] = useState(false);
   const [editItem, setEditItem]   = useState(null);
-  const total = items.reduce((s, i) => s + (i.amount || 0), 0);
+  // CAJA-COSTOS-1 — el total de esta tarjeta ("Costos fijos mensuales")
+  // debe sumar SOLO type='fixed'. Antes sumaba todos los items sin
+  // filtrar, incluidos los variables creados automáticamente desde Caja
+  // (source='cash_outflow'), inflando el total fijo -- ver auditoría
+  // CAJA vs COSTOS. Esos items variables siguen visibles en la misma
+  // lista (no se ocultan datos), solo se excluyen de este total.
+  const fixedItems = items.filter(i => i.type === 'fixed');
+  const variableItems = items.filter(i => i.type !== 'fixed');
+  const total = fixedItems.reduce((s, i) => s + (i.amount || 0), 0);
+  const variableTotal = variableItems.reduce((s, i) => s + (i.amount || 0), 0);
 
   const handleEdit = (item) => { setEditItem(item); setShowModal(true); };
   const handleClose = () => { setShowModal(false); setEditItem(null); };
@@ -304,9 +313,16 @@ function FixedCostsCard({ items, businessId, month, year, onReload, currency = '
       </div>
 
       {items.length > 0 && (
-        <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50/60 px-5 py-4">
-          <span className="text-sm font-semibold text-slate-600">Total costos fijos</span>
-          <span className="text-lg font-bold tabular-nums text-slate-900">{fmt(total, currency)}</span>
+        <div className="border-t border-slate-100 bg-slate-50/60 px-5 py-4">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-semibold text-slate-600">Total costos fijos</span>
+            <span className="text-lg font-bold tabular-nums text-slate-900">{fmt(total, currency)}</span>
+          </div>
+          {variableTotal > 0 && (
+            <p className="mt-1.5 text-xs text-slate-400">
+              No incluye {fmt(variableTotal, currency)} en gastos variables desde Caja (marcados "Desde caja" arriba).
+            </p>
+          )}
         </div>
       )}
 
@@ -332,11 +348,17 @@ function FixedCostsCard({ items, businessId, month, year, onReload, currency = '
 // = días calendario del mes -- modo legacy, ver src/lib/finance/operatingCalendar.js.
 
 function CostsSummaryHero({
-  totalFijos, totalOperacional, currency, navigate,
+  totalFijos, totalVariableCash = 0, totalOperacional, currency, navigate,
   operatingDaysInMonth, fixedCostPerOperatingDay, operatingDaysConfigured, monthLabel,
 }) {
-  const totalMes = totalFijos + totalOperacional;
+  // CAJA-COSTOS-1 — totalFijos ya no incluye los costos variables creados
+  // desde Caja (ver CrmCostos() más abajo); totalVariableCash los suma
+  // aparte para que "Total costos del mes" siga siendo el total real y no
+  // pierda esos montos silenciosamente.
+  const totalMes = totalFijos + totalVariableCash + totalOperacional;
   const fijosShare = totalMes > 0 ? Math.round((totalFijos / totalMes) * 100) : 0;
+  const variableShare = totalMes > 0 ? Math.round((totalVariableCash / totalMes) * 100) : 0;
+  const comprasShare = Math.max(0, 100 - fijosShare - variableShare);
 
   return (
     <div className="rounded-2xl border border-white/5 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6 text-white shadow-sm sm:p-8">
@@ -350,6 +372,12 @@ function CostsSummaryHero({
               <p className="text-[11px] uppercase tracking-wide text-white/40">Costos fijos</p>
               <p className="text-sm font-semibold tabular-nums text-white/90">{fmt(totalFijos, currency)}</p>
             </div>
+            {totalVariableCash > 0 && (
+              <div>
+                <p className="text-[11px] uppercase tracking-wide text-white/40">Otros gastos (Caja)</p>
+                <p className="text-sm font-semibold tabular-nums text-white/90">{fmt(totalVariableCash, currency)}</p>
+              </div>
+            )}
             <div>
               <p className="text-[11px] uppercase tracking-wide text-white/40">Compras</p>
               <p className="text-sm font-semibold tabular-nums text-white/90">{fmt(totalOperacional, currency)}</p>
@@ -360,11 +388,15 @@ function CostsSummaryHero({
             <div className="mt-4 max-w-xs">
               <div className="flex h-1.5 w-full overflow-hidden rounded-full bg-white/10">
                 <div className="h-full bg-blue-400" style={{ width: `${fijosShare}%` }} />
-                <div className="h-full bg-amber-400" style={{ width: `${100 - fijosShare}%` }} />
+                {totalVariableCash > 0 && <div className="h-full bg-rose-400" style={{ width: `${variableShare}%` }} />}
+                <div className="h-full bg-amber-400" style={{ width: `${comprasShare}%` }} />
               </div>
               <div className="mt-1.5 flex items-center gap-3 text-[11px] text-white/40">
                 <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-blue-400" />Fijos {fijosShare}%</span>
-                <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-amber-400" />Compras {100 - fijosShare}%</span>
+                {totalVariableCash > 0 && (
+                  <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-rose-400" />Otros {variableShare}%</span>
+                )}
+                <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-amber-400" />Compras {comprasShare}%</span>
               </div>
             </div>
           )}
@@ -548,7 +580,17 @@ export default function CrmCostos() {
 
   const handlePeriodChange = (nextMonth, nextYear) => { setMonth(nextMonth); setYear(nextYear); };
 
-  const totalFijos      = costItems.reduce((s, i) => s + (i.amount || 0), 0);
+  // CAJA-COSTOS-1 — totalFijos (usado por el hero, el total del mes y el
+  // costo fijo por día operativo) debe sumar SOLO type='fixed'. Antes
+  // sumaba todo costItems sin filtrar, incluidos los variables creados
+  // automáticamente desde una salida de Caja (source='cash_outflow'),
+  // inflando el total mostrado como "fijo" -- ver auditoría CAJA vs
+  // COSTOS y FixedCostsCard más abajo (mismo criterio, mismo filtro).
+  const totalFijos      = costItems.filter(i => i.type === 'fixed').reduce((s, i) => s + (i.amount || 0), 0);
+  // Costos variables ya existentes (hoy, únicamente los creados desde Caja
+  // con propósito new_expense, source='cash_outflow') -- se muestran aparte
+  // para que "Total costos del mes" no pierda estos montos.
+  const totalVariableCash = costItems.filter(i => i.type !== 'fixed').reduce((s, i) => s + (i.amount || 0), 0);
   const totalOperacional = purchaseTotals?.totalOperational || 0;
 
   // OPERATING-CALENDAR-1 — mismo helper que CrmCostCenter.jsx (Termómetro).
@@ -615,6 +657,7 @@ export default function CrmCostos() {
               <div className="flex flex-col gap-6 xl:col-span-2">
                 <CostsSummaryHero
                   totalFijos={totalFijos}
+                  totalVariableCash={totalVariableCash}
                   totalOperacional={totalOperacional}
                   currency={business?.currency}
                   navigate={navigate}

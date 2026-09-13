@@ -318,3 +318,41 @@ describe('pantalla', () => {
     expect(within(kpis).queryByText('Sin costos registrados este mes')).not.toBeInTheDocument();
   });
 });
+
+describe('CAJA-COSTOS-1 — no duplicar el costo de un adelanto de sueldo', () => {
+  it('caso de aceptación: sueldo fijo $600.000 + adelanto (sin crm_cost_item, movement_purpose=cost_payment) -- el costo mensual sigue siendo $600.000', () => {
+    // Un adelanto con movement_purpose='cost_payment' NUNCA genera un
+    // crm_cost_item (ver create_cash_movement_with_purpose) -- por lo
+    // tanto costItems solo trae el sueldo fijo, exactamente como si el
+    // adelanto no hubiera existido desde la perspectiva del Termómetro.
+    const result = calculateOperatingSnapshot({
+      month: 9, year: 2026, dailySales: {},
+      costItems: [{ id: 'sueldo-juan', type: 'fixed', amount: 600000 }],
+    });
+    expect(result.fixedCosts).toBe(600000);
+    expect(result.variableExpenses).toBe(0);
+    expect(result.directExpenses).toBe(0);
+  });
+
+  it('un new_expense (p. ej. reparación) sí entra como variable, sin tocar fixedCosts', () => {
+    const result = calculateOperatingSnapshot({
+      month: 9, year: 2026, dailySales: {},
+      costItems: [
+        { id: 'sueldo-juan', type: 'fixed', amount: 600000 },
+        { id: 'reparacion', type: 'variable', amount: 40000, source: 'cash_outflow', economicDate: '2026-09-05' },
+      ],
+    });
+    expect(result.fixedCosts).toBe(600000);
+    expect(result.variableExpenses).toBe(40000);
+    expect(result.directExpenses).toBe(40000);
+  });
+
+  it('un crm_cost_item histórico source=cash_outflow sin movement_purpose (legacy) se sigue sumando exactamente igual que hoy', () => {
+    const result = calculateOperatingSnapshot({
+      month: 9, year: 2026, dailySales: {},
+      costItems: [{ id: 'legacy1', type: 'variable', amount: 15000, source: 'cash_outflow', economicDate: '2026-09-02' }],
+    });
+    expect(result.variableExpenses).toBe(15000);
+    expect(result.daily(2).variable).toBe(15000);
+  });
+});

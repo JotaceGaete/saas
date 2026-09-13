@@ -1795,6 +1795,40 @@ export const CASH_MOVEMENT_CATEGORIES_IN = [
   { value: 'other',      label: 'Otro',                    isExpense: false },
 ];
 
+// CAJA-COSTOS-1 — propósito económico de una salida, DISTINTO de category.
+// category describe qué se pagó (sueldos, arriendo, ...); purpose describe
+// si esa salida representa un costo NUEVO o el pago de uno que ya está
+// contemplado (fijo o de otra naturaleza). Solo new_expense genera un
+// crm_cost_item -- ver create_cash_movement_with_purpose. Lenguaje sin
+// jerga contable, pensado para mostrarse directo en el modal de Caja.
+export const CASH_MOVEMENT_PURPOSES = [
+  {
+    value: 'new_expense',
+    label: 'Gasto del negocio',
+    helper: 'Esta salida también se registrará como un nuevo gasto.',
+  },
+  {
+    value: 'cost_payment',
+    label: 'Pago de un costo registrado',
+    helper: 'El dinero saldrá de caja, pero no se creará un nuevo costo.',
+  },
+  {
+    value: 'inventory_purchase',
+    label: 'Compra de mercadería',
+    helper: 'Se registrará la salida de dinero. La compra no se descontará como gasto operativo inmediato.',
+  },
+  {
+    value: 'owner_withdrawal',
+    label: 'Retiro del dueño',
+    helper: 'Se registrará la salida de caja sin afectar el resultado del negocio.',
+  },
+  {
+    value: 'other_non_operating',
+    label: 'Otro movimiento',
+    helper: 'Se registrará únicamente el movimiento de caja.',
+  },
+];
+
 // Lookup unificado para mostrar etiquetas en la tabla
 const _ALL_MOVEMENT_CATEGORIES = [
   ...CASH_MOVEMENT_CATEGORIES_OUT,
@@ -1805,19 +1839,48 @@ export function getCashMovementCategoryLabel(value) {
 }
 
 export async function createCashMovement(businessId, {
-  sessionId     = null,
+  sessionId         = null,
   direction,
   amount,
   reason,
-  category      = 'other',
-  paymentMethod = 'cash',
-  notes         = null,
-  createdBy     = null,
-  isExpense     = false,
-  month         = null,
-  year          = null,
+  category          = 'other',
+  paymentMethod     = 'cash',
+  notes             = null,
+  createdBy         = null,
+  isExpense         = false,
+  movementPurpose   = null,
+  relatedCostItemId = null,
+  month             = null,
+  year              = null,
 } = {}) {
-  // Movimiento con gasto vinculado: usar RPC atómica
+  // CAJA-COSTOS-1 — flujo nuevo con propósito explícito: RPC atómica
+  // separada de la legacy de abajo. Decide por sí misma (server-side) si
+  // corresponde crear un crm_cost_item -- solo movementPurpose='new_expense'
+  // lo hace; para cost_payment/inventory_purchase/owner_withdrawal/
+  // other_non_operating crea únicamente el movimiento. No reemplaza ni
+  // altera el comportamiento del flujo legacy (isExpense) que sigue abajo.
+  if (movementPurpose && direction === 'out') {
+    const now = new Date();
+    const { data, error } = await supabase.rpc('create_cash_movement_with_purpose', {
+      p_business_id:          businessId,
+      p_session_id:           sessionId || null,
+      p_direction:            direction,
+      p_amount:               amount,
+      p_reason:               reason.trim(),
+      p_category:             category,
+      p_payment_method:       paymentMethod,
+      p_notes:                notes || null,
+      p_created_by:           createdBy || null,
+      p_movement_date:        getLocalDateString(),
+      p_month:                month ?? (now.getMonth() + 1),
+      p_year:                 year ?? now.getFullYear(),
+      p_movement_purpose:     movementPurpose,
+      p_related_cost_item_id: movementPurpose === 'cost_payment' ? (relatedCostItemId || null) : null,
+    });
+    return { data, error };
+  }
+
+  // Movimiento con gasto vinculado (legacy): usar RPC atómica
   if (isExpense && direction === 'out') {
     const now = new Date();
     const { data, error } = await supabase.rpc('create_cash_movement_with_expense', {

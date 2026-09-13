@@ -79,8 +79,11 @@ const EMPTY_TOTALS = {
   error: null,
 };
 
-const FIXED_ITEM = { id: 'cost1', category: 'rent', name: 'Arriendo Local', amount: 400000, source: null };
-const CASH_ITEM = { id: 'cost2', category: 'utilities', name: 'Luz', amount: 60000, source: 'cash_outflow' };
+const FIXED_ITEM = { id: 'cost1', category: 'rent', name: 'Arriendo Local', amount: 400000, type: 'fixed', source: null };
+// CAJA-COSTOS-1 — un ítem cash_outflow SIEMPRE es type='variable' (ver
+// create_cash_movement_with_purpose/create_cash_movement_with_expense),
+// nunca 'fixed'.
+const CASH_ITEM = { id: 'cost2', category: 'utilities', name: 'Luz', amount: 60000, type: 'variable', source: 'cash_outflow' };
 
 beforeEach(() => {
   navigateMock.mockReset();
@@ -253,14 +256,19 @@ describe('Rediseño — costos fijos: agregar/editar/eliminar sigue funcionando'
     expect(screen.queryByLabelText('Eliminar Luz')).not.toBeInTheDocument();
   });
 
-  it('muestra el total de costos fijos en el footer de la tarjeta', async () => {
+  it('CAJA-COSTOS-1: el footer "Total costos fijos" suma SOLO type=fixed -- $400.000, nunca $460.000', async () => {
     getCostItemsMock.mockResolvedValue([FIXED_ITEM, CASH_ITEM]);
     renderPage();
     await waitFor(() => expect(screen.getByText('Total costos fijos')).toBeInTheDocument());
-    // 400.000 + 60.000 -- puede repetirse en el hero (desglose "Costos fijos"),
-    // por eso se busca específicamente en la fila del footer de la tarjeta.
+    // 400.000 (FIXED_ITEM) -- CASH_ITEM (60.000, type='variable') NO debe sumarse aquí.
+    // Puede repetirse en el hero (desglose "Costos fijos"), por eso se busca
+    // específicamente en la fila del footer de la tarjeta.
     const footerLabel = screen.getByText('Total costos fijos');
-    expect(within(footerLabel.parentElement).getByText('$460.000')).toBeInTheDocument();
+    expect(within(footerLabel.parentElement.parentElement).getByText('$400.000')).toBeInTheDocument();
+    expect(screen.queryByText('$460.000')).not.toBeInTheDocument();
+    // El monto variable sigue visible (no se ocultan datos), solo excluido del total fijo.
+    expect(screen.getByText(/No incluye \$60\.000 en gastos variables desde Caja/)).toBeInTheDocument();
+    expect(screen.getByText('Luz')).toBeInTheDocument();
   });
 
   it('sin costos fijos, muestra un empty state en vez de una lista vacía', async () => {
@@ -320,7 +328,7 @@ describe('OPERATING-CALENDAR-1 — costo fijo por día operativo (dentro del her
   });
 
   it('sin operatingDays configurado (legacy), usa días calendario del mes -- nunca /20 -- y muestra el aviso de estimación', async () => {
-    getCostItemsMock.mockResolvedValue([{ id: 'c1', category: 'rent', name: 'Arriendo', amount: 300000 }]);
+    getCostItemsMock.mockResolvedValue([{ id: 'c1', category: 'rent', name: 'Arriendo', amount: 300000, type: 'fixed' }]);
     renderPage();
     expect(await screen.findByText('Costo fijo por día operativo')).toBeInTheDocument();
     expect(screen.queryByText('Costo fijo diario estimado')).not.toBeInTheDocument();
@@ -331,7 +339,7 @@ describe('OPERATING-CALENDAR-1 — costo fijo por día operativo (dentro del her
 
   it('con operatingDays configurado, usa días operativos (no calendario, no /20) y no muestra el aviso de estimación', async () => {
     business = { ...business, operatingDays: MON_SAT_SCHEDULE };
-    getCostItemsMock.mockResolvedValue([{ id: 'c1', category: 'rent', name: 'Arriendo', amount: 26000 }]);
+    getCostItemsMock.mockResolvedValue([{ id: 'c1', category: 'rent', name: 'Arriendo', amount: 26000, type: 'fixed' }]);
     renderPage();
     expect(await screen.findByText('Costo fijo por día operativo')).toBeInTheDocument();
     expect(screen.getByText('Basado en 26 días operativos en Septiembre.')).toBeInTheDocument();
@@ -340,10 +348,33 @@ describe('OPERATING-CALENDAR-1 — costo fijo por día operativo (dentro del her
   });
 
   it('el botón "Configura tus días de operación" navega a /business-configuration?tab=operations', async () => {
-    getCostItemsMock.mockResolvedValue([{ id: 'c1', category: 'rent', name: 'Arriendo', amount: 300000 }]);
+    getCostItemsMock.mockResolvedValue([{ id: 'c1', category: 'rent', name: 'Arriendo', amount: 300000, type: 'fixed' }]);
     renderPage();
     const button = await screen.findByRole('button', { name: 'Configura tus días de operación' });
     fireEvent.click(button);
     expect(navigateMock).toHaveBeenCalledWith('/business-configuration?tab=operations');
+  });
+});
+
+describe('CAJA-COSTOS-1 — CASO 6: un costo variable desde Caja no infla el costo fijo diario', () => {
+  it('con fijos $900.000 (sueldo + arriendo) + 1 variable cash_outflow $40.000, el costo fijo diario se calcula sobre $900.000, no $940.000', async () => {
+    getCostItemsMock.mockResolvedValue([
+      { id: 'sueldo',   category: 'salaries', name: 'Sueldo Juan', amount: 600000, type: 'fixed' },
+      { id: 'arriendo', category: 'rent',     name: 'Arriendo',    amount: 300000, type: 'fixed' },
+      { id: 'reparacion', category: 'other', name: 'Reparación', amount: 40000, type: 'variable', source: 'cash_outflow' },
+    ]);
+    renderPage();
+
+    // "Costos fijos mensuales" (footer de la tarjeta) = 900.000, nunca 940.000.
+    const footerLabel = await screen.findByText('Total costos fijos');
+    expect(within(footerLabel.parentElement.parentElement).getByText('$900.000')).toBeInTheDocument();
+    expect(screen.queryByText('$940.000')).not.toBeInTheDocument();
+
+    // Costo fijo por día operativo: 900.000 / 30 días calendario (septiembre 2026, sin operatingDays) = 30.000.
+    expect(await screen.findByText('Costo fijo por día operativo')).toBeInTheDocument();
+    expect(screen.getByText('$30.000')).toBeInTheDocument();
+
+    // El gasto variable sigue visible en la lista de costos (no se ocultan datos).
+    expect(screen.getByText('Reparación')).toBeInTheDocument();
   });
 });
