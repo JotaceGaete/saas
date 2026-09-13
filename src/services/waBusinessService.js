@@ -391,6 +391,9 @@ const mapBusinessFromDb = (row) => {
   printLegend: row?.print_legend || null,
   print_legend: row?.print_legend || null,
   designSettings,
+  // OPERATING-CALENDAR-1 — null = no configurado (legacy: todos los días
+  // calendario cuentan como operativos), ver src/lib/finance/operatingCalendar.js.
+  operatingDays: row?.operating_days || null,
   orderMessageTemplate: row?.order_message_template || null,
   planSlug: row?.plan_slug || 'starter',
   planExpiresAt: row?.plan_expires_at ?? null,
@@ -794,6 +797,9 @@ export async function updateBusiness(businessId, updates) {
   if (updates?.slug !== undefined)        dbUpdates.slug = updates?.slug;
   if (updates?.isActive !== undefined)    dbUpdates.is_active = updates?.isActive;
   if (updates?.designSettings !== undefined) dbUpdates.design_settings = updates?.designSettings;
+  // OPERATING-CALENDAR-1 — ver mapBusinessFromDb; `null` explícito borra la
+  // configuración (vuelve a modo legacy), nunca se infiere ni se rellena acá.
+  if (updates?.operatingDays !== undefined) dbUpdates.operating_days = updates?.operatingDays ?? null;
   if (updates?.rubroId !== undefined) dbUpdates.rubro_id = updates?.rubroId || null;
   if (updates?.instagramUrl !== undefined) dbUpdates.instagram_url = normalizeSharedSocialUrl(updates.instagramUrl, 'https://instagram.com');
   if (updates?.tiktokUrl    !== undefined) dbUpdates.tiktok_url    = normalizeTikTokUrl(updates.tiktokUrl);
