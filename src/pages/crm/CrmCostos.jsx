@@ -15,6 +15,7 @@ import {
 } from 'services/crmService';
 import { getSupplierPurchaseTotalsForPeriod } from 'services/supplierInvoiceService';
 import { getEffectivePlanSlug } from 'services/waBusinessService';
+import { getOperatingDaysForMonth, calculateFixedCostPerOperatingDay } from 'lib/finance/operatingCalendar';
 
 const MONTHS = [
   'Enero','Febrero','Marzo','Abril','Mayo','Junio',
@@ -45,10 +46,6 @@ const CATEGORY_STYLE = {
   other:     { icon: 'Tag',       bg: 'bg-slate-100',  fg: 'text-slate-500' },
 };
 const DEFAULT_CATEGORY_STYLE = { icon: 'Receipt', bg: 'bg-slate-100', fg: 'text-slate-500' };
-
-// Días laborales usados solo como base de la ESTIMACIÓN de costo fijo
-// diario del hero -- no es un cálculo contable, ver CostsSummaryHero.
-const ESTIMATED_WORKING_DAYS_PER_MONTH = 20;
 
 const fmt = (n, currency = 'CLP') => formatMoney(n, currency);
 
@@ -328,10 +325,17 @@ function FixedCostsCard({ items, businessId, month, year, onReload, currency = '
 }
 
 // ─── Hero financiero ───────────────────────────────────────────────────────────
+// OPERATING-CALENDAR-1 — el "costo fijo diario" del hero usa el MISMO helper
+// que el Termómetro (CrmCostCenter.jsx): días operativos configurados en
+// wa_businesses.operating_days, no una constante fija de "días laborales"
+// (antes: totalFijos / 20). Sin operatingDays configurado, operatingDaysInMonth
+// = días calendario del mes -- modo legacy, ver src/lib/finance/operatingCalendar.js.
 
-function CostsSummaryHero({ totalFijos, totalOperacional, currency, navigate }) {
+function CostsSummaryHero({
+  totalFijos, totalOperacional, currency, navigate,
+  operatingDaysInMonth, fixedCostPerOperatingDay, operatingDaysConfigured, monthLabel,
+}) {
   const totalMes = totalFijos + totalOperacional;
-  const dailyEstimate = totalFijos / ESTIMATED_WORKING_DAYS_PER_MONTH;
   const fijosShare = totalMes > 0 ? Math.round((totalFijos / totalMes) * 100) : 0;
 
   return (
@@ -375,16 +379,31 @@ function CostsSummaryHero({ totalFijos, totalOperacional, currency, navigate }) 
         </button>
       </div>
 
-      <div className="mt-6 flex items-center gap-3 border-t border-white/10 pt-5">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/10">
-          <Icon name="Gauge" size={17} />
-        </span>
-        <div className="min-w-0">
-          <p className="text-[11px] uppercase tracking-wide text-white/40">Costo fijo diario estimado</p>
-          <p className="text-lg font-bold tabular-nums text-white">{fmt(dailyEstimate, currency)}</p>
-          <p className="text-[11px] text-white/40">Estimación basada en {ESTIMATED_WORKING_DAYS_PER_MONTH} días laborales — no es una cifra contable exacta.</p>
+      {totalFijos > 0 && (
+        <div className="mt-6 flex items-start gap-3 border-t border-white/10 pt-5">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/10">
+            <Icon name="CalendarDays" size={17} />
+          </span>
+          <div className="min-w-0">
+            <p className="text-[11px] uppercase tracking-wide text-white/40">Costo fijo por día operativo</p>
+            <p className="text-lg font-bold tabular-nums text-white">{fmt(fixedCostPerOperatingDay, currency)}</p>
+            <p className="text-[11px] text-white/40">Basado en {operatingDaysInMonth} días operativos en {monthLabel}.</p>
+            {!operatingDaysConfigured && (
+              <p className="mt-1.5 text-[11px] text-amber-300/90">
+                Estimación basada en todos los días del mes.{' '}
+                <button
+                  type="button"
+                  onClick={() => navigate('/business-configuration?tab=operations')}
+                  className="font-semibold underline hover:text-amber-200"
+                >
+                  Configura tus días de operación
+                </button>{' '}
+                para mejorar el cálculo.
+              </p>
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -532,6 +551,12 @@ export default function CrmCostos() {
   const totalFijos      = costItems.reduce((s, i) => s + (i.amount || 0), 0);
   const totalOperacional = purchaseTotals?.totalOperational || 0;
 
+  // OPERATING-CALENDAR-1 — mismo helper que CrmCostCenter.jsx (Termómetro).
+  const operatingDays = business?.operatingDays ?? null;
+  const operatingDaysInMonth = getOperatingDaysForMonth(operatingDays, month, year);
+  const fixedCostPerOperatingDay = calculateFixedCostPerOperatingDay(totalFijos, operatingDaysInMonth);
+  const operatingDaysConfigured = operatingDays != null;
+
   if (!isPro) {
     return (
       <DashboardAppShell>
@@ -593,6 +618,10 @@ export default function CrmCostos() {
                   totalOperacional={totalOperacional}
                   currency={business?.currency}
                   navigate={navigate}
+                  operatingDaysInMonth={operatingDaysInMonth}
+                  fixedCostPerOperatingDay={fixedCostPerOperatingDay}
+                  operatingDaysConfigured={operatingDaysConfigured}
+                  monthLabel={MONTHS[month - 1]}
                 />
 
                 <FixedCostsCard

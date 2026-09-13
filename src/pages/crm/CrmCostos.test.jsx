@@ -21,8 +21,10 @@ vi.mock('components/ui/PanelHeader', () => ({
   default: ({ title, subtitle, children, mobileActions }) => <div>{title}{subtitle}{children}{mobileActions}</div>,
 }));
 
+let business = { id: 'biz1', currency: 'CLP', planSlug: 'business', planExpiresAt: null, trialExpiresAt: null };
+
 vi.mock('contexts/AuthContext', () => ({
-  useAuth: () => ({ business: { id: 'biz1', currency: 'CLP', planSlug: 'business', planExpiresAt: null, trialExpiresAt: null } }),
+  useAuth: () => ({ business }),
 }));
 
 vi.mock('config/planFeatures', () => ({ canUseFeature: () => true }));
@@ -86,6 +88,7 @@ beforeEach(() => {
     getPurchaseTotalsForPeriodMock, getSupplierPurchaseTotalsForPeriodMock].forEach((m) => m.mockReset());
   getCostItemsMock.mockResolvedValue([]);
   getSupplierPurchaseTotalsForPeriodMock.mockResolvedValue(OK_TOTALS);
+  business = { id: 'biz1', currency: 'CLP', planSlug: 'business', planExpiresAt: null, trialExpiresAt: null };
 });
 
 afterEach(() => cleanup());
@@ -147,14 +150,6 @@ describe('Rediseño — hero financiero', () => {
     await waitFor(() => expect(screen.getByText('Total costos del mes')).toBeInTheDocument());
     // total = 400.000 (fijos) + 50.000 (operacional) = 450.000
     expect(screen.getByText('$450.000')).toBeInTheDocument();
-  });
-
-  it('el costo fijo diario estimado es totalFijos / 20 y está rotulado como estimación', async () => {
-    getCostItemsMock.mockResolvedValue([FIXED_ITEM]); // 400.000
-    renderPage();
-    await waitFor(() => expect(screen.getByText('Costo fijo diario estimado')).toBeInTheDocument());
-    expect(screen.getByText('$20.000')).toBeInTheDocument(); // 400.000 / 20
-    expect(screen.getByText(/Estimación basada en 20 días laborales/i)).toBeInTheDocument();
   });
 
   it('el botón "Ver Termómetro del Negocio" navega a /crm/cost-center', async () => {
@@ -308,5 +303,47 @@ describe('Rediseño — layout ancho (sin columna angosta centrada)', () => {
     expect(container.querySelector('.xl\\:grid-cols-3')).not.toBeNull();
     // el viejo layout comprimía todo en max-w-lg mx-auto -- no debe quedar rastro de eso
     expect(container.querySelector('.max-w-lg')).toBeNull();
+  });
+});
+
+describe('OPERATING-CALENDAR-1 — costo fijo por día operativo (dentro del hero rediseñado)', () => {
+  // Septiembre 2026 (mes actual en estas pruebas): 30 días calendario,
+  // lunes-sábado -> 26 días operativos (4 domingos: 6, 13, 20, 27).
+  const MON_SAT_SCHEDULE = {
+    monday: true, tuesday: true, wednesday: true, thursday: true, friday: true, saturday: true, sunday: false,
+  };
+
+  it('sin costos fijos registrados, no muestra el bloque de costo fijo diario', async () => {
+    renderPage();
+    await waitFor(() => expect(getSupplierPurchaseTotalsForPeriodMock).toHaveBeenCalled());
+    expect(screen.queryByText('Costo fijo por día operativo')).not.toBeInTheDocument();
+  });
+
+  it('sin operatingDays configurado (legacy), usa días calendario del mes -- nunca /20 -- y muestra el aviso de estimación', async () => {
+    getCostItemsMock.mockResolvedValue([{ id: 'c1', category: 'rent', name: 'Arriendo', amount: 300000 }]);
+    renderPage();
+    expect(await screen.findByText('Costo fijo por día operativo')).toBeInTheDocument();
+    expect(screen.queryByText('Costo fijo diario estimado')).not.toBeInTheDocument();
+    expect(screen.getByText('Basado en 30 días operativos en Septiembre.')).toBeInTheDocument();
+    expect(screen.getByText(/Estimación basada en todos los días del mes/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Configura tus días de operación' })).toBeInTheDocument();
+  });
+
+  it('con operatingDays configurado, usa días operativos (no calendario, no /20) y no muestra el aviso de estimación', async () => {
+    business = { ...business, operatingDays: MON_SAT_SCHEDULE };
+    getCostItemsMock.mockResolvedValue([{ id: 'c1', category: 'rent', name: 'Arriendo', amount: 26000 }]);
+    renderPage();
+    expect(await screen.findByText('Costo fijo por día operativo')).toBeInTheDocument();
+    expect(screen.getByText('Basado en 26 días operativos en Septiembre.')).toBeInTheDocument();
+    expect(screen.getByText('$1.000')).toBeInTheDocument();
+    expect(screen.queryByText(/Estimación basada en todos los días del mes/)).not.toBeInTheDocument();
+  });
+
+  it('el botón "Configura tus días de operación" navega a /business-configuration?tab=operations', async () => {
+    getCostItemsMock.mockResolvedValue([{ id: 'c1', category: 'rent', name: 'Arriendo', amount: 300000 }]);
+    renderPage();
+    const button = await screen.findByRole('button', { name: 'Configura tus días de operación' });
+    fireEvent.click(button);
+    expect(navigateMock).toHaveBeenCalledWith('/business-configuration?tab=operations');
   });
 });

@@ -10,6 +10,7 @@ import Icon from 'components/AppIcon';
 import { getOperatingCostItemsForPeriod, getOperatingSalesForPeriod } from 'services/crmService';
 import { getSupplierInvoicesForPeriod } from 'services/supplierInvoiceService';
 import { getEffectivePlanSlug } from 'services/waBusinessService';
+import { getOperatingDaysForMonth, isOperatingDay, calculateFixedCostPerOperatingDay } from 'lib/finance/operatingCalendar';
 
 const MONTHS = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 const RECOGNIZED_EXPENSE_TYPES = new Set(['gasto_con_iva', 'gasto_sin_iva']);
@@ -19,9 +20,20 @@ export function monetaryTolerance(currency) {
   return ZERO_DECIMAL_CURRENCIES.has(String(currency || 'CLP').toUpperCase()) ? 1 : 0.01;
 }
 
-export function classifyDailyResult({ result, tolerance, future = false, calculable = true, hasData = true }) {
+// OPERATING-CALENDAR-1 — prioridad de clasificación (en este orden):
+//   1. calculable=false (error real de carga)  -> 'nodata'
+//   2. future (fecha aún no ocurrida)           -> 'future'
+//   3. closed (día no operativo programado)     -> 'closed'
+//   4. clasificación financiera normal (hasData/result)
+// Un día futuro Y no operativo (p. ej. un domingo del mes próximo) queda
+// como 'future', nunca 'closed' -- todavía no corresponde evaluar nada de
+// ese día, ni siquiera si estaba programado para operar.
+export function classifyDailyResult({
+  result, tolerance, future = false, calculable = true, hasData = true, closed = false,
+}) {
   if (!calculable) return 'nodata';
   if (future) return 'future';
+  if (closed) return 'closed';
   if (!hasData) return 'inactive';
   if (result > tolerance) return 'winning';
   if (result < -tolerance) return 'losing';
@@ -33,8 +45,14 @@ function dayOf(date) {
   return /^\d{4}-\d{2}-\d{2}/.test(value) ? Number(value.slice(8, 10)) : null;
 }
 
-export function calculateOperatingSnapshot({ costItems = [], purchases = [], dailySales = {}, month, year }) {
+export function calculateOperatingSnapshot({
+  costItems = [], purchases = [], dailySales = {}, month, year, operatingDays = null,
+}) {
   const daysInMonth = new Date(year, month, 0).getDate();
+  // OPERATING-CALENDAR-1 — sin `operatingDays` configurado (null), esto
+  // devuelve `daysInMonth`: comportamiento legacy idéntico al histórico,
+  // ver src/lib/finance/operatingCalendar.js.
+  const operatingDaysInMonth = getOperatingDaysForMonth(operatingDays, month, year);
   const fixedItems = costItems.filter(item => item.type === 'fixed' && !item.excluded);
   const variableItems = costItems.filter(item => item.type === 'variable' && !item.excluded);
   const fixedCosts = fixedItems.reduce((sum, item) => sum + Number(item.amount || 0), 0);
@@ -66,16 +84,27 @@ export function calculateOperatingSnapshot({ costItems = [], purchases = [], dai
     if (day) variableByDay[day] = (variableByDay[day] || 0) + Number(item.amount || 0);
   }
 
-  const fixedDaily = fixedCosts / daysInMonth;
+  // OPERATING-CALENDAR-1 — antes: `fixedCosts / daysInMonth` (días
+  // calendario). Ahora: `fixedCosts / operatingDaysInMonth` (días
+  // PROGRAMADOS para operar) -- el total mensual (`fixedCosts`) no cambia,
+  // solo cómo se distribuye entre los días que realmente cuentan.
+  const fixedDaily = calculateFixedCostPerOperatingDay(fixedCosts, operatingDaysInMonth);
   const directExpenses = supplierExpenses + variableExpenses;
   return {
     fixedCosts, variableExpenses, supplierExpenses, directExpenses,
-    merchandise, pendingClassification, fixedDaily,
+    merchandise, pendingClassification, fixedDaily, operatingDaysInMonth, daysInMonth,
     daily(day) {
       const sales = Number(dailySales[day] || 0);
       const supplier = Number(supplierByDay[day] || 0);
       const variable = Number(variableByDay[day] || 0);
-      return { sales, supplier, variable, fixed: fixedDaily, result: sales - supplier - variable - fixedDaily };
+      // Un día no operativo (cerrado programado) nunca carga costo fijo --
+      // NO deja de calcularse: si hubo ventas/gastos registrados ese día
+      // igual se reflejan, solo `fixed` queda en 0. La clasificación como
+      // "Cerrado" (ver classifyDailyResult) es responsabilidad de quien
+      // llama, con este mismo flag `operating`.
+      const operating = isOperatingDay(operatingDays, new Date(year, month - 1, day));
+      const fixed = operating ? fixedDaily : 0;
+      return { sales, supplier, variable, fixed, operating, result: sales - supplier - variable - fixed };
     },
   };
 }
@@ -107,6 +136,12 @@ const DAY_STATE = {
   inactive: { label: 'Sin actividad', cell: 'border-slate-200 bg-slate-50 text-slate-400', result: 'text-slate-400' },
   future: { label: 'Próximo', cell: 'border-slate-100 bg-slate-50/60 text-slate-300 cursor-not-allowed', result: 'text-slate-300' },
   nodata: { label: 'Sin datos', cell: 'border-slate-200 bg-slate-50 text-slate-400', result: 'text-slate-400' },
+  // OPERATING-CALENDAR-1 — día no operativo programado (p. ej. un domingo
+  // para un negocio lunes-sábado). Deliberadamente neutral, distinto de
+  // "Próximo" (día futuro, gris más claro/cursor-not-allowed) y de "Sin
+  // datos" (error real de carga): acá sí sabemos qué pasó, el negocio
+  // simplemente no estaba programado para operar ese día.
+  closed: { label: 'Cerrado', cell: 'border-slate-200 bg-slate-100 text-slate-500', result: 'text-slate-400' },
 };
 const DAY_STATE_WITH_AMOUNT = new Set(['winning', 'breaking', 'losing']);
 
@@ -133,7 +168,11 @@ function OperatingCalendar({ month, year, snapshot, calculable, tolerance, fmt }
     const future = currentMonth && day > now.getDate();
     const values = snapshot.daily(day);
     const hasData = snapshot.fixedCosts > 0 || values.sales > 0 || values.supplier > 0 || values.variable > 0;
-    const state = classifyDailyResult({ result: values.result, tolerance, future, calculable, hasData });
+    // OPERATING-CALENDAR-1 — `values.operating` viene de snapshot.daily();
+    // classifyDailyResult ya prioriza `future` por sobre `closed`, así que
+    // no hace falta condicionar acá -- un domingo del mes próximo queda
+    // "Próximo", nunca "Cerrado".
+    const state = classifyDailyResult({ result: values.result, tolerance, future, calculable, hasData, closed: !values.operating });
     return { day, values, state, future };
   });
   const selected = days.find(item => item.day === selectedDay);
@@ -191,7 +230,13 @@ export default function CrmCostCenter() {
   useEffect(() => { load(); }, [load]);
   const costItems = costs?.data || [];
   const purchaseRows = purchases?.data || [];
-  const snapshot = useMemo(() => calculateOperatingSnapshot({ costItems, purchases: purchaseRows, dailySales: sales?.dailySales || {}, month, year }), [costItems, purchaseRows, sales, month, year]);
+  const operatingDays = business?.operatingDays ?? null;
+  const snapshot = useMemo(
+    () => calculateOperatingSnapshot({
+      costItems, purchases: purchaseRows, dailySales: sales?.dailySales || {}, month, year, operatingDays,
+    }),
+    [costItems, purchaseRows, sales, month, year, operatingDays],
+  );
   const salesAvailable = Boolean(sales) && !sales.errors.crm && !sales.errors.catalog && sales.incompatibleCurrencyRows === 0;
   const costsAvailable = Boolean(costs) && !costs.error;
   const purchasesAvailable = Boolean(purchases) && !purchases.error;

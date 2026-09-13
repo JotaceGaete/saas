@@ -30,6 +30,13 @@ const salesOk = {
   legacyCatalogRows: 0, incompatibleCurrencyRows: 0, errors: { crm: null, catalog: null },
 };
 
+// OPERATING-CALENDAR-1 — septiembre 2026: día 6 es domingo (ver
+// operatingCalendar.test.js), día 7 es lunes. Lunes-sábado -> 26 días
+// operativos (4 domingos: 6, 13, 20, 27).
+const MON_SAT_SCHEDULE = {
+  monday: true, tuesday: true, wednesday: true, thursday: true, friday: true, saturday: true, sunday: false,
+};
+
 beforeEach(() => {
   navigateMock.mockReset();
   business = { id: 'biz1', currency: 'CLP', planSlug: 'business', planExpiresAt: null, trialExpiresAt: null };
@@ -126,6 +133,90 @@ describe('cálculo operativo', () => {
   it('día pasado sin ventas y con costo fijo es pérdida (rojo)', () => {
     const result = calculateOperatingSnapshot({ month: 9, year: 2026, dailySales: {}, costItems: [{ type: 'fixed', amount: 300 }] });
     expect(classifyDailyResult({ result: result.daily(2).result, tolerance: 1, hasData: true })).toBe('losing');
+  });
+});
+
+describe('OPERATING-CALENDAR-1 — calendario operativo', () => {
+  it('sin operatingDays configurado (legacy), el costo fijo diario usa días calendario y todos los días son operativos', () => {
+    const result = calculateOperatingSnapshot({ month: 9, year: 2026, dailySales: {}, costItems: [{ type: 'fixed', amount: 30000 }] });
+    expect(result.operatingDaysInMonth).toBe(30);
+    expect(result.fixedDaily).toBeCloseTo(1000, 9);
+    for (let day = 1; day <= 30; day++) expect(result.daily(day).operating).toBe(true);
+  });
+
+  it('con operatingDays configurado, el costo fijo diario usa días operativos, no días calendario', () => {
+    const result = calculateOperatingSnapshot({
+      month: 9, year: 2026, dailySales: {}, costItems: [{ type: 'fixed', amount: 26000 }], operatingDays: MON_SAT_SCHEDULE,
+    });
+    expect(result.operatingDaysInMonth).toBe(26);
+    expect(result.fixedDaily).toBeCloseTo(1000, 9);
+  });
+
+  it('un domingo (no operativo programado) no carga costo fijo aunque haya costos fijos configurados', () => {
+    const result = calculateOperatingSnapshot({
+      month: 9, year: 2026, dailySales: {}, costItems: [{ type: 'fixed', amount: 26000 }], operatingDays: MON_SAT_SCHEDULE,
+    });
+    const sunday = result.daily(6); // 2026-09-06 es domingo.
+    expect(sunday.operating).toBe(false);
+    expect(sunday.fixed).toBe(0);
+  });
+
+  it('un día operativo sin ventas igual soporta su costo fijo diario -- no es "cerrado"', () => {
+    const result = calculateOperatingSnapshot({
+      month: 9, year: 2026, dailySales: {}, costItems: [{ type: 'fixed', amount: 26000 }], operatingDays: MON_SAT_SCHEDULE,
+    });
+    const monday = result.daily(7); // 2026-09-07 es lunes.
+    expect(monday.operating).toBe(true);
+    expect(monday.fixed).toBeCloseTo(1000, 9);
+  });
+
+  it('la suma del costo fijo diario en todos los días operativos reconstruye el total mensual', () => {
+    const result = calculateOperatingSnapshot({
+      month: 9, year: 2026, dailySales: {}, costItems: [{ type: 'fixed', amount: 26000 }], operatingDays: MON_SAT_SCHEDULE,
+    });
+    let sum = 0;
+    for (let day = 1; day <= result.daysInMonth; day++) {
+      const values = result.daily(day);
+      if (values.operating) sum += values.fixed;
+    }
+    expect(sum).toBeCloseTo(26000, 9);
+  });
+
+  it('cambiar de mes recalcula la cantidad de días operativos (N)', () => {
+    const septiembre = calculateOperatingSnapshot({ month: 9, year: 2026, dailySales: {}, costItems: [], operatingDays: MON_SAT_SCHEDULE });
+    const febrero = calculateOperatingSnapshot({ month: 2, year: 2026, dailySales: {}, costItems: [], operatingDays: MON_SAT_SCHEDULE });
+    expect(septiembre.operatingDaysInMonth).not.toBe(febrero.operatingDaysInMonth);
+  });
+
+  it('nunca divide por días con ventas -- un mes sin ninguna venta registrada sigue calculando operatingDaysInMonth desde el calendario', () => {
+    const result = calculateOperatingSnapshot({ month: 9, year: 2026, dailySales: {}, costItems: [{ type: 'fixed', amount: 26000 }], operatingDays: MON_SAT_SCHEDULE });
+    expect(result.operatingDaysInMonth).toBe(26);
+  });
+
+  it('classifyDailyResult: un día no operativo programado es "closed", con prioridad sobre la clasificación financiera', () => {
+    expect(classifyDailyResult({ result: -500, tolerance: 1, closed: true })).toBe('closed');
+    expect(classifyDailyResult({ result: 0, tolerance: 1, closed: true, hasData: false })).toBe('closed');
+  });
+
+  it('classifyDailyResult: un día futuro y no operativo se marca "future", nunca "closed"', () => {
+    expect(classifyDailyResult({ result: 0, tolerance: 1, future: true, closed: true })).toBe('future');
+  });
+
+  it('con operatingDays configurado, un domingo pasado se muestra como "Cerrado" en el calendario', async () => {
+    business = { ...business, operatingDays: MON_SAT_SCHEDULE };
+    getOperatingCostsMock.mockResolvedValue({ data: [{ type: 'fixed', amount: 26000 }], error: null });
+    render(<CrmCostCenter />);
+    await screen.findByRole('region', { name: 'Indicadores del período' });
+    expect(await screen.findByRole('button', { name: '6: Cerrado' })).toBeInTheDocument();
+  });
+
+  it('con operatingDays configurado, un lunes operativo sin ventas no se muestra como "Cerrado"', async () => {
+    business = { ...business, operatingDays: MON_SAT_SCHEDULE };
+    getOperatingCostsMock.mockResolvedValue({ data: [{ type: 'fixed', amount: 26000 }], error: null });
+    render(<CrmCostCenter />);
+    await screen.findByRole('region', { name: 'Indicadores del período' });
+    expect(await screen.findByRole('button', { name: '7: Bajo equilibrio' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '7: Cerrado' })).not.toBeInTheDocument();
   });
 });
 

@@ -17,7 +17,7 @@ import DynamicWhatsAppField from 'components/DynamicWhatsAppField';
 import { getCountryLabels, getCountryCode } from '../../config/country';
 import InstallAppBlock from './components/InstallAppBlock';
 import SettingsSwitch from './components/SettingsSwitch';
-import { Building2, CreditCard, Palette, Sparkles, Wallet } from 'lucide-react';
+import { Building2, CalendarDays, CreditCard, Palette, Sparkles, Wallet } from 'lucide-react';
 import { truncateAtWordBoundary } from '../../utils/textTruncate';
 import CountryIsoSelect from '../../components/country/CountryIsoSelect';
 import {
@@ -35,6 +35,7 @@ import LocationPicker from './components/LocationPicker';
 import BusinessCategoriesManager from './components/BusinessCategoriesManager';
 import CustomDomainSettings from './components/CustomDomainSettings';
 import MercadoPagoConnect from './components/MercadoPagoConnect';
+import OperatingDaysSettings from './components/OperatingDaysSettings';
 import { BUSINESS_MODES, getRecommendedBusinessModeFromRubro } from '../../lib/business-mode';
 
 const BUSINESS_DESCRIPTION_MAX = 280;
@@ -560,6 +561,9 @@ export default function BusinessConfiguration() {
     if (tabParam === 'mercadopago') {
       setSettingsTab('mercadopago');
     }
+    if (tabParam === 'operations') {
+      setSettingsTab('operations');
+    }
     if (mpParam === 'connected') {
       showToast('Mercado Pago conectado correctamente.', 'success');
     } else if (mpParam === 'error') {
@@ -1029,6 +1033,12 @@ export default function BusinessConfiguration() {
       label: 'Pagos',
       description: 'Conecta tu cuenta de Mercado Pago',
       Icon: Wallet,
+    },
+    {
+      id: 'operations',
+      label: 'Operación',
+      description: 'Días en que funciona tu negocio',
+      Icon: CalendarDays,
     },
   ];
 
@@ -1901,6 +1911,21 @@ export default function BusinessConfiguration() {
                   </div>
                 </div>
                 <MercadoPagoConnect />
+              </div>
+            )}
+
+            {settingsTab === 'operations' && business?.id && (
+              <div className={`${cardClass} mb-8`}>
+                <div className="flex items-center gap-3 mb-5">
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(2,132,199,0.1)' }}>
+                    <Icon name="CalendarDays" size={18} color="#0284c7" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-text-primary)' }}>Días de operación</h2>
+                    <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Define en qué días funciona tu negocio</p>
+                  </div>
+                </div>
+                <OperatingDaysSettings />
               </div>
             )}
 
