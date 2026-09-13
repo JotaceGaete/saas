@@ -13,9 +13,11 @@ import {
   PAYMENT_METHOD_LABELS,
   CASH_MOVEMENT_CATEGORIES_OUT,
   CASH_MOVEMENT_CATEGORIES_IN,
+  CASH_MOVEMENT_PURPOSES,
   getCashMovementCategoryLabel,
   closeCashSession,
   createCashMovement,
+  getCostItems,
   getCashDayMovements,
   getCashDayPayments,
   getCashSessionMovements,
@@ -552,40 +554,61 @@ function VoidPaymentModal({ payment, currency, busy, submitError, onConfirm, onC
   );
 }
 
-function CashMovementModal({ defaultDirection = 'out', busy, onSubmit, onCancel }) {
+function CashMovementModal({ defaultDirection = 'out', businessId, currency, busy, onSubmit, onCancel }) {
   const [direction,  setDirection]  = useState(defaultDirection);
   const [amount,     setAmount]     = useState('');
   const [reason,     setReason]     = useState('');
   const [category,   setCategory]   = useState('');
-  const [isExpense,  setIsExpense]  = useState(false);
+  const [purpose,    setPurpose]    = useState('');
+  const [relatedCostItemId, setRelatedCostItemId] = useState('');
+  const [fixedCostItems,    setFixedCostItems]    = useState([]);
+  const [loadingCostItems,  setLoadingCostItems]  = useState(false);
   const [notes,      setNotes]      = useState('');
   const [error,      setError]      = useState('');
 
-  const categories    = direction === 'out' ? CASH_MOVEMENT_CATEGORIES_OUT : CASH_MOVEMENT_CATEGORIES_IN;
-  const selectedCat   = categories.find(c => c.value === category);
-  const canBeExpense  = direction === 'out' && (selectedCat?.isExpense ?? false);
+  const categories      = direction === 'out' ? CASH_MOVEMENT_CATEGORIES_OUT : CASH_MOVEMENT_CATEGORIES_IN;
+  const isOut            = direction === 'out';
+  const selectedPurpose  = CASH_MOVEMENT_PURPOSES.find(p => p.value === purpose);
 
-  // Resetear categoría al cambiar dirección
-  useEffect(() => { setCategory(''); setIsExpense(false); setError(''); }, [direction]);
-  // Si la nueva categoría no puede ser gasto, desmarcar automáticamente
-  useEffect(() => { if (!canBeExpense) setIsExpense(false); }, [canBeExpense]);
+  // Resetear categoría/propósito al cambiar dirección -- el selector de
+  // propósito (CAJA-COSTOS-1) solo aplica a salidas.
+  useEffect(() => { setCategory(''); setPurpose(''); setRelatedCostItemId(''); setError(''); }, [direction]);
+
+  // "Pago de un costo registrado": cargar los costos fijos del mes actual
+  // para el selector opcional de costo relacionado. Solo type='fixed' en
+  // esta primera versión (ver auditoría CAJA-COSTOS-1).
+  useEffect(() => {
+    let cancelled = false;
+    async function loadFixedCostItems() {
+      if (purpose !== 'cost_payment' || !businessId) { setFixedCostItems([]); return; }
+      setLoadingCostItems(true);
+      const now = new Date();
+      const items = await getCostItems(businessId, now.getMonth() + 1, now.getFullYear());
+      if (!cancelled) {
+        setFixedCostItems((items || []).filter(item => item.type === 'fixed'));
+        setLoadingCostItems(false);
+      }
+    }
+    loadFixedCostItems();
+    return () => { cancelled = true; };
+  }, [purpose, businessId]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!amount || parseMoneyInput(amount) <= 0) { setError('Ingresa un monto válido.'); return; }
     if (!reason.trim()) { setError('El motivo es obligatorio.'); return; }
     if (!category) { setError('Selecciona una categoría.'); return; }
+    if (isOut && !purpose) { setError('Selecciona qué tipo de salida es.'); return; }
     onSubmit({
       direction,
-      amount:    parseMoneyInput(amount),
-      reason:    reason.trim(),
+      amount:             parseMoneyInput(amount),
+      reason:             reason.trim(),
       category,
-      isExpense: canBeExpense && isExpense,
-      notes:     notes.trim() || null,
+      movementPurpose:    isOut ? purpose : null,
+      relatedCostItemId:  isOut && purpose === 'cost_payment' ? (relatedCostItemId || null) : null,
+      notes:              notes.trim() || null,
     });
   };
-
-  const isOut = direction === 'out';
 
   return (
     <div className="fixed inset-0 z-modal flex items-center justify-center bg-slate-900/40 px-4">
@@ -678,22 +701,56 @@ function CashMovementModal({ defaultDirection = 'out', busy, onSubmit, onCancel 
             />
           </div>
 
-          {/* Registrar como gasto — solo visible para categorías que son gastos */}
-          {canBeExpense && (
-            <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-orange-200 bg-orange-50 px-3 py-3">
-              <input
-                type="checkbox"
-                checked={isExpense}
-                onChange={e => setIsExpense(e.target.checked)}
-                className="mt-0.5 h-4 w-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500"
-              />
-              <div>
-                <p className="text-sm font-semibold text-orange-800">Registrar también como gasto del negocio</p>
-                <p className="text-xs text-orange-600 mt-0.5">
-                  Aparecerá en Costos del mes y afectará la utilidad en el Centro de Costos.
-                </p>
-              </div>
-            </label>
+          {/* Propósito de la salida (CAJA-COSTOS-1) — separa "salió dinero"
+              de "nació un costo nuevo". Sin jerga contable: pregunta
+              simple + explicación corta de qué va a pasar. */}
+          {isOut && (
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold text-gray-500">
+                ¿Qué tipo de salida es? <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={purpose}
+                onChange={e => { setPurpose(e.target.value); setError(''); }}
+                className="w-full rounded-xl border border-red-200 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-red-400"
+              >
+                <option value="">— Selecciona —</option>
+                {CASH_MOVEMENT_PURPOSES.map(p => (
+                  <option key={p.value} value={p.value}>{p.label}</option>
+                ))}
+              </select>
+              {selectedPurpose && (
+                <p className="mt-1.5 text-xs text-gray-500">{selectedPurpose.helper}</p>
+              )}
+            </div>
+          )}
+
+          {/* "Pago de un costo registrado" — vínculo opcional a un costo
+              fijo existente, solo para explicar qué representa la salida.
+              No modifica el monto del costo ni lo marca como pagado. */}
+          {isOut && purpose === 'cost_payment' && (
+            <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+              <label className="mb-1.5 block text-xs font-semibold text-gray-500">
+                Costo relacionado (opcional)
+              </label>
+              <select
+                value={relatedCostItemId}
+                onChange={e => setRelatedCostItemId(e.target.value)}
+                disabled={loadingCostItems}
+                className="w-full rounded-xl border border-gray-200 bg-white px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
+              >
+                <option value="">— Sin especificar —</option>
+                {fixedCostItems.map(item => (
+                  <option key={item.id} value={item.id}>
+                    {item.name} — {formatMoney(item.amount, currency)}
+                  </option>
+                ))}
+              </select>
+              {loadingCostItems && <p className="mt-1 text-xs text-gray-400">Cargando costos…</p>}
+              {!loadingCostItems && fixedCostItems.length === 0 && (
+                <p className="mt-1 text-xs text-gray-400">No hay costos fijos registrados este mes.</p>
+              )}
+            </div>
           )}
 
           {/* Notas opcionales */}
@@ -1333,6 +1390,8 @@ export default function CrmCash() {
 
               {showMovementForm && (
                 <CashMovementModal
+                  businessId={business?.id}
+                  currency={business?.currency}
                   busy={busy}
                   onSubmit={handleCreateMovement}
                   onCancel={() => setShowMovementForm(false)}
