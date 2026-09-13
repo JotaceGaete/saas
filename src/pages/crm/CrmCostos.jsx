@@ -33,7 +33,65 @@ const CATEGORIES = [
 
 const CATEGORY_LABELS = Object.fromEntries(CATEGORIES.map(c => [c.value, c.label]));
 
+// Icono + acento pastel por categoría -- solo presentación, no altera datos.
+// "other"/categorías desconocidas caen en un icono neutral.
+const CATEGORY_STYLE = {
+  rent:      { icon: 'Building2', bg: 'bg-blue-50',    fg: 'text-blue-600' },
+  salaries:  { icon: 'Users',     bg: 'bg-violet-50',  fg: 'text-violet-600' },
+  utilities: { icon: 'Zap',       bg: 'bg-amber-50',   fg: 'text-amber-600' },
+  services:  { icon: 'Wifi',      bg: 'bg-cyan-50',    fg: 'text-cyan-600' },
+  taxes:     { icon: 'Landmark',  bg: 'bg-slate-100',  fg: 'text-slate-600' },
+  supplies:  { icon: 'Package',   bg: 'bg-emerald-50', fg: 'text-emerald-600' },
+  other:     { icon: 'Tag',       bg: 'bg-slate-100',  fg: 'text-slate-500' },
+};
+const DEFAULT_CATEGORY_STYLE = { icon: 'Receipt', bg: 'bg-slate-100', fg: 'text-slate-500' };
+
+// Días laborales usados solo como base de la ESTIMACIÓN de costo fijo
+// diario del hero -- no es un cálculo contable, ver CostsSummaryHero.
+const ESTIMATED_WORKING_DAYS_PER_MONTH = 20;
+
 const fmt = (n, currency = 'CLP') => formatMoney(n, currency);
+
+// ─── Selector de período (header) ─────────────────────────────────────────────
+// Mismo patrón ya validado en CrmCostCenter.jsx (el Termómetro, al que esta
+// misma pantalla enlaza): flechas anterior/siguiente + una única etiqueta de
+// texto, en vez de dos <select> pegados uno al otro -- eso era la causa de
+// que "Septiembre" y "2026" se vieran encimados.
+
+function PeriodSelector({ month, year, onChange }) {
+  const changeMonth = (delta) => {
+    let nextMonth = month + delta;
+    let nextYear = year;
+    if (nextMonth < 1) { nextMonth = 12; nextYear -= 1; }
+    if (nextMonth > 12) { nextMonth = 1; nextYear += 1; }
+    onChange(nextMonth, nextYear);
+  };
+
+  return (
+    <div className="inline-flex w-full items-center justify-between gap-1 rounded-xl border border-slate-200 bg-white p-1.5 shadow-sm sm:w-auto">
+      <button
+        type="button"
+        onClick={() => changeMonth(-1)}
+        aria-label="Mes anterior"
+        className="rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+      >
+        <Icon name="ChevronLeft" size={16} />
+      </button>
+      <span className="flex items-center gap-1.5 px-1">
+        <Icon name="Calendar" size={14} className="text-slate-400 shrink-0" />
+        <span className="min-w-36 text-center text-sm font-semibold text-slate-800">{MONTHS[month - 1]} {year}</span>
+      </span>
+      <button
+        type="button"
+        onClick={() => changeMonth(1)}
+        aria-label="Mes siguiente"
+        className="rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+      >
+        <Icon name="ChevronRight" size={16} />
+      </button>
+    </div>
+  );
+}
 
 // ─── Modal para añadir/editar costo fijo ──────────────────────────────────────
 
@@ -130,9 +188,12 @@ function CostItemModal({ item, businessId, month, year, onClose, onSaved }) {
 
 // ─── Fila de costo fijo ───────────────────────────────────────────────────────
 
-function CostRow({ item, onEdit, onDelete, currency = 'CLP' }) {
+function FixedCostRow({ item, onEdit, onDelete, currency = 'CLP' }) {
   const [confirming, setConfirming] = useState(false);
   const fromCash = item.source === 'cash_outflow';
+  const style = fromCash
+    ? { icon: 'Wallet', bg: 'bg-orange-50', fg: 'text-orange-600' }
+    : (CATEGORY_STYLE[item.category] || DEFAULT_CATEGORY_STYLE);
 
   const handleDelete = async () => {
     if (!confirming) { setConfirming(true); return; }
@@ -141,57 +202,62 @@ function CostRow({ item, onEdit, onDelete, currency = 'CLP' }) {
   };
 
   return (
-    <div className={`flex items-center justify-between gap-3 py-3 border-b border-gray-50 last:border-0 ${fromCash ? 'opacity-90' : ''}`}>
-      <div className="flex items-center gap-2.5 min-w-0">
-        <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${fromCash ? 'bg-orange-50' : 'bg-blue-50'}`}>
-          <Icon name={fromCash ? 'Wallet' : 'Tag'} size={13} color={fromCash ? '#ea580c' : '#2563eb'} />
+    <div className="group flex items-center gap-4 px-5 py-4 transition-colors hover:bg-slate-50/70">
+      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${style.bg}`}>
+        <Icon name={style.icon} size={17} className={style.fg} />
+      </span>
+
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <p className="truncate font-medium text-slate-900">{item.name || CATEGORY_LABELS[item.category] || 'Costo'}</p>
+          {fromCash && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-1.5 py-0.5 text-[10px] font-semibold text-orange-700">
+              <Icon name="Wallet" size={9} />
+              Desde caja
+            </span>
+          )}
         </div>
-        <div className="min-w-0">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <p className="text-sm font-medium text-gray-800 truncate">{item.name || CATEGORY_LABELS[item.category] || 'Costo'}</p>
-            {fromCash && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-1.5 py-0.5 text-[10px] font-bold text-orange-700">
-                <Icon name="Wallet" size={9} />
-                Desde caja
-              </span>
-            )}
-          </div>
-          <p className="text-[11px] text-gray-400">{CATEGORY_LABELS[item.category] || item.category}</p>
-        </div>
+        <p className="text-sm text-slate-500">{CATEGORY_LABELS[item.category] || item.category}</p>
       </div>
-      <div className="flex items-center gap-2 shrink-0">
-        <span className="text-sm font-bold text-gray-800">{fmt(item.amount, currency)}</span>
+
+      <div className="flex shrink-0 items-center gap-1">
+        <span className="font-semibold tabular-nums text-slate-900">{fmt(item.amount, currency)}</span>
         {fromCash ? (
           <span
             title="Registrado desde Caja — editar desde el módulo de Caja"
-            className="p-1.5 text-gray-300 cursor-not-allowed select-none"
+            className="p-2 text-slate-300 cursor-not-allowed select-none"
           >
-            <Icon name="Lock" size={13} />
+            <Icon name="Lock" size={14} />
           </span>
         ) : (
-          <>
-            <button onClick={() => onEdit(item)} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600">
-              <Icon name="Pencil" size={13} />
+          <div className="flex items-center gap-0.5 opacity-50 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+            <button
+              onClick={() => onEdit(item)}
+              aria-label={`Editar ${item.name || CATEGORY_LABELS[item.category] || 'costo'}`}
+              className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+            >
+              <Icon name="Pencil" size={14} />
             </button>
             <button
               onClick={handleDelete}
-              className={`p-1.5 rounded-lg text-sm font-medium transition-colors ${
-                confirming ? 'bg-red-100 text-red-600 hover:bg-red-200' : 'text-gray-400 hover:bg-gray-100 hover:text-red-500'
+              aria-label={confirming ? 'Confirmar eliminar' : `Eliminar ${item.name || CATEGORY_LABELS[item.category] || 'costo'}`}
+              className={`rounded-lg p-2 transition-colors ${
+                confirming ? 'bg-red-100 text-red-600 hover:bg-red-200' : 'text-slate-400 hover:bg-slate-100 hover:text-red-500'
               }`}
               title={confirming ? 'Confirmar eliminar' : 'Eliminar'}
             >
-              {confirming ? <Icon name="Check" size={13} /> : <Icon name="Trash2" size={13} />}
+              {confirming ? <Icon name="Check" size={14} /> : <Icon name="Trash2" size={14} />}
             </button>
-          </>
+          </div>
         )}
       </div>
     </div>
   );
 }
 
-// ─── Panel costos fijos ───────────────────────────────────────────────────────
+// ─── Tarjeta costos fijos ───────────────────────────────────────────────────────
 
-function FixedCostsPanel({ items, businessId, month, year, onReload, currency = 'CLP' }) {
+function FixedCostsCard({ items, businessId, month, year, onReload, currency = 'CLP' }) {
   const [showModal, setShowModal] = useState(false);
   const [editItem, setEditItem]   = useState(null);
   const total = items.reduce((s, i) => s + (i.amount || 0), 0);
@@ -199,46 +265,51 @@ function FixedCostsPanel({ items, businessId, month, year, onReload, currency = 
   const handleEdit = (item) => { setEditItem(item); setShowModal(true); };
   const handleClose = () => { setShowModal(false); setEditItem(null); };
   const handleSaved = () => { handleClose(); onReload(); };
+  const handleAdd = () => { setEditItem(null); setShowModal(true); };
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-      <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-xl bg-blue-100 flex items-center justify-center">
-            <Icon name="Building2" size={15} color="#2563eb" />
-          </div>
-          <div>
-            <p className="text-sm font-bold text-gray-800">Costos fijos mensuales</p>
-            <p className="text-[11px] text-gray-400">Arriendo, sueldos, servicios, etc.</p>
+    <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-sm transition-shadow hover:shadow-md">
+      <div className="flex items-center justify-between gap-3 px-5 py-4">
+        <div className="flex items-center gap-3 min-w-0">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50">
+            <Icon name="Building2" size={16} className="text-blue-600" />
+          </span>
+          <div className="min-w-0">
+            <p className="font-semibold text-slate-900">Costos fijos mensuales</p>
+            <p className="text-sm text-slate-500">Arriendo, servicios, sueldos y otros gastos recurrentes.</p>
           </div>
         </div>
         <button
-          onClick={() => { setEditItem(null); setShowModal(true); }}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold"
+          onClick={handleAdd}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700"
         >
-          <Icon name="Plus" size={12} />
-          Agregar
+          <Icon name="Plus" size={14} />
+          Agregar costo
         </button>
       </div>
 
-      <div className="px-5">
+      <div className="border-t border-slate-100">
         {items.length === 0 ? (
-          <div className="py-8 text-center">
-            <Icon name="Building2" size={28} color="#d1d5db" className="mx-auto mb-2" />
-            <p className="text-sm text-gray-400">Sin costos fijos registrados</p>
-            <p className="text-xs text-gray-300 mt-0.5">Agrega arriendo, sueldos, servicios básicos, etc.</p>
+          <div className="flex flex-col items-center py-14 text-center px-5">
+            <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-50">
+              <Icon name="Building2" size={22} className="text-slate-300" />
+            </span>
+            <p className="mt-3 text-sm font-medium text-slate-500">Sin costos fijos registrados</p>
+            <p className="mt-1 max-w-xs text-sm text-slate-400">Agrega arriendo, sueldos, servicios básicos y otros gastos que se repiten cada mes.</p>
           </div>
         ) : (
-          items.map(item => (
-            <CostRow key={item.id} item={item} onEdit={handleEdit} onDelete={onReload} currency={currency} />
-          ))
+          <div className="divide-y divide-slate-50">
+            {items.map(item => (
+              <FixedCostRow key={item.id} item={item} onEdit={handleEdit} onDelete={onReload} currency={currency} />
+            ))}
+          </div>
         )}
       </div>
 
       {items.length > 0 && (
-        <div className="px-5 py-3 bg-blue-50 border-t border-blue-100 flex justify-between items-center">
-          <span className="text-xs font-semibold text-blue-700">Total costos fijos</span>
-          <span className="text-base font-black text-blue-900">{fmt(total, currency)}</span>
+        <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50/60 px-5 py-4">
+          <span className="text-sm font-semibold text-slate-600">Total costos fijos</span>
+          <span className="text-lg font-bold tabular-nums text-slate-900">{fmt(total, currency)}</span>
         </div>
       )}
 
@@ -256,70 +327,166 @@ function FixedCostsPanel({ items, businessId, month, year, onReload, currency = 
   );
 }
 
-// ─── Widget Compras (link) ────────────────────────────────────────────────────
+// ─── Hero financiero ───────────────────────────────────────────────────────────
 
-function ComprasLinkPanel({ purchaseTotals, navigate, currency = 'CLP' }) {
+function CostsSummaryHero({ totalFijos, totalOperacional, currency, navigate }) {
+  const totalMes = totalFijos + totalOperacional;
+  const dailyEstimate = totalFijos / ESTIMATED_WORKING_DAYS_PER_MONTH;
+  const fijosShare = totalMes > 0 ? Math.round((totalFijos / totalMes) * 100) : 0;
+
+  return (
+    <div className="rounded-2xl border border-white/5 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6 text-white shadow-sm sm:p-8">
+      <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-widest text-white/50">Total costos del mes</p>
+          <p className="mt-2 text-4xl font-bold tracking-tight tabular-nums sm:text-5xl">{fmt(totalMes, currency)}</p>
+
+          <div className="mt-4 flex flex-wrap gap-x-8 gap-y-3">
+            <div>
+              <p className="text-[11px] uppercase tracking-wide text-white/40">Costos fijos</p>
+              <p className="text-sm font-semibold tabular-nums text-white/90">{fmt(totalFijos, currency)}</p>
+            </div>
+            <div>
+              <p className="text-[11px] uppercase tracking-wide text-white/40">Compras</p>
+              <p className="text-sm font-semibold tabular-nums text-white/90">{fmt(totalOperacional, currency)}</p>
+            </div>
+          </div>
+
+          {totalMes > 0 && (
+            <div className="mt-4 max-w-xs">
+              <div className="flex h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                <div className="h-full bg-blue-400" style={{ width: `${fijosShare}%` }} />
+                <div className="h-full bg-amber-400" style={{ width: `${100 - fijosShare}%` }} />
+              </div>
+              <div className="mt-1.5 flex items-center gap-3 text-[11px] text-white/40">
+                <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-blue-400" />Fijos {fijosShare}%</span>
+                <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-amber-400" />Compras {100 - fijosShare}%</span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <button
+          onClick={() => navigate('/crm/cost-center')}
+          className="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/15 sm:w-auto"
+        >
+          <Icon name="BarChart2" size={15} />
+          Ver Termómetro del Negocio
+        </button>
+      </div>
+
+      <div className="mt-6 flex items-center gap-3 border-t border-white/10 pt-5">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/10">
+          <Icon name="Gauge" size={17} />
+        </span>
+        <div className="min-w-0">
+          <p className="text-[11px] uppercase tracking-wide text-white/40">Costo fijo diario estimado</p>
+          <p className="text-lg font-bold tabular-nums text-white">{fmt(dailyEstimate, currency)}</p>
+          <p className="text-[11px] text-white/40">Estimación basada en {ESTIMATED_WORKING_DAYS_PER_MONTH} días laborales — no es una cifra contable exacta.</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Tarjeta Compras y facturas ────────────────────────────────────────────────
+
+function PurchasesCard({ purchaseTotals, navigate, currency = 'CLP', monthLabel }) {
   const hasError = Boolean(purchaseTotals?.error);
   const mercaderiaTotal  = purchaseTotals?.totals?.mercaderia?.total  || 0;
   const operacionalTotal = purchaseTotals?.totalOperational           || 0;
   const otherTotal       = purchaseTotals?.totals?.other?.total       || 0;
+  const totalAmountAll   = purchaseTotals?.totalAmountAll             || 0;
   const hasData = mercaderiaTotal > 0 || operacionalTotal > 0 || otherTotal > 0;
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-      <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
-        <div className="w-8 h-8 rounded-xl bg-rose-50 flex items-center justify-center">
-          <Icon name="FileInput" size={15} color="#e11d48" />
-        </div>
-        <div>
-          <p className="text-sm font-bold text-gray-800">Compras y Facturas recibidas</p>
-          <p className="text-[11px] text-gray-400">Mercadería, gastos con y sin IVA</p>
+    <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-sm transition-shadow hover:shadow-md">
+      <div className="flex items-center gap-3 px-5 py-4">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100">
+          <Icon name="Receipt" size={16} className="text-slate-600" />
+        </span>
+        <div className="min-w-0">
+          <p className="font-semibold text-slate-900">Compras y facturas recibidas</p>
+          <p className="text-sm text-slate-500">Mercadería, insumos y gastos variables.</p>
         </div>
       </div>
 
-      <div className="px-5 py-4">
+      <div className="border-t border-slate-100 px-5 py-5">
         {hasError ? (
-          <p className="text-sm text-red-500 mb-4">No se pudieron cargar las compras del período.</p>
+          <p className="mb-4 text-sm text-red-600">No se pudieron cargar las compras del período.</p>
         ) : hasData ? (
-          <div className="space-y-2 mb-4">
-            {mercaderiaTotal > 0 && (
-              <div className="flex justify-between items-center">
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-blue-400 shrink-0" />
-                  <span className="text-xs text-gray-500">Mercadería</span>
+          <div className="mb-5 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-slate-500">Compras del mes</span>
+              <span className="font-semibold tabular-nums text-slate-900">{fmt(totalAmountAll, currency)}</span>
+            </div>
+            <div className="space-y-2 border-t border-slate-100 pt-3">
+              {mercaderiaTotal > 0 && (
+                <div className="flex items-center justify-between">
+                  <span className="inline-flex items-center gap-2 text-xs text-slate-500">
+                    <span className="h-2 w-2 shrink-0 rounded-full bg-blue-400" />
+                    Mercadería
+                  </span>
+                  <span className="text-sm font-medium tabular-nums text-slate-700">{fmt(mercaderiaTotal, currency)}</span>
                 </div>
-                <span className="text-sm font-semibold text-gray-700">{fmt(mercaderiaTotal, currency)}</span>
-              </div>
-            )}
-            {operacionalTotal > 0 && (
-              <div className="flex justify-between items-center">
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
-                  <span className="text-xs text-gray-500">Gastos operativos</span>
+              )}
+              {operacionalTotal > 0 && (
+                <div className="flex items-center justify-between">
+                  <span className="inline-flex items-center gap-2 text-xs text-slate-500">
+                    <span className="h-2 w-2 shrink-0 rounded-full bg-amber-400" />
+                    Gastos operativos
+                  </span>
+                  <span className="text-sm font-medium tabular-nums text-slate-700">{fmt(operacionalTotal, currency)}</span>
                 </div>
-                <span className="text-sm font-semibold text-gray-700">{fmt(operacionalTotal, currency)}</span>
-              </div>
-            )}
-            {otherTotal > 0 && (
-              <div className="flex justify-between items-center">
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-gray-400 shrink-0" />
-                  <span className="text-xs text-gray-500">Otros / Servicios</span>
+              )}
+              {otherTotal > 0 && (
+                <div className="flex items-center justify-between">
+                  <span className="inline-flex items-center gap-2 text-xs text-slate-500">
+                    <span className="h-2 w-2 shrink-0 rounded-full bg-slate-400" />
+                    Otros / Servicios
+                  </span>
+                  <span className="text-sm font-medium tabular-nums text-slate-700">{fmt(otherTotal, currency)}</span>
                 </div>
-                <span className="text-sm font-semibold text-gray-700">{fmt(otherTotal, currency)}</span>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         ) : (
-          <p className="text-sm text-gray-400 mb-4">Sin compras registradas este período</p>
+          <div className="mb-5 flex flex-col items-center py-6 text-center">
+            <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-50">
+              <Icon name="ReceiptText" size={22} className="text-slate-300" />
+            </span>
+            <p className="mt-3 text-sm font-medium text-slate-600">No has registrado compras o facturas en {monthLabel}.</p>
+            <p className="mt-1 text-sm text-slate-400">Regístralas para conocer el costo real de operación de tu negocio.</p>
+          </div>
         )}
+
         <button
           onClick={() => navigate('/proveedores')}
-          className="w-full py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold transition-colors flex items-center justify-center gap-2"
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-700"
         >
-          <Icon name="ExternalLink" size={14} />
-          Ir a Compras y Facturas
+          <Icon name={hasData ? 'ExternalLink' : 'Plus'} size={14} />
+          {hasData ? 'Ir a Compras y Facturas' : 'Registrar compra o factura'}
         </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Tip Walinka ───────────────────────────────────────────────────────────────
+
+function WalinkaFinancialTip() {
+  return (
+    <div className="rounded-2xl border border-blue-100 bg-blue-50/50 p-4">
+      <div className="flex items-start gap-3">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-100">
+          <Icon name="Lightbulb" size={14} className="text-blue-600" />
+        </span>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-blue-900">Tip Walinka</p>
+          <p className="mt-1 text-sm leading-relaxed text-blue-800/80">
+            Registrar tus compras y facturas permite que el Termómetro calcule mejor la rentabilidad real de tu negocio.
+          </p>
+        </div>
       </div>
     </div>
   );
@@ -360,9 +527,10 @@ export default function CrmCostos() {
 
   useEffect(() => { load(); }, [load]);
 
+  const handlePeriodChange = (nextMonth, nextYear) => { setMonth(nextMonth); setYear(nextYear); };
+
   const totalFijos      = costItems.reduce((s, i) => s + (i.amount || 0), 0);
   const totalOperacional = purchaseTotals?.totalOperational || 0;
-  const totalMes         = totalFijos + totalOperacional;
 
   if (!isPro) {
     return (
@@ -381,6 +549,8 @@ export default function CrmCostos() {
     );
   }
 
+  const periodSelector = <PeriodSelector month={month} year={year} onChange={handlePeriodChange} />;
+
   return (
     <DashboardAppShell>
       <PanelHeader
@@ -391,43 +561,21 @@ export default function CrmCostos() {
         }
         subtitle={
           <p className="text-xs" style={{ color: 'var(--color-muted-foreground)' }}>
-            {MONTHS[month - 1]} {year}
+            Controla los gastos de tu negocio y entiende cuánto necesitas vender para cubrirlos.
           </p>
         }
-      />
+        mobileActions={periodSelector}
+      >
+        {periodSelector}
+      </PanelHeader>
 
-      <DashboardLayoutContent>
-        {/* Selector de período */}
-        <div className="flex items-center gap-2 mb-5 max-w-lg mx-auto flex-wrap">
-          <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-xl px-3 py-2">
-            <Icon name="Calendar" size={14} color="#9ca3af" />
-            <select value={month} onChange={e => setMonth(+e.target.value)}
-              className="text-sm text-gray-700 border-0 focus:outline-none bg-transparent pr-1">
-              {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-            </select>
-            <select value={year} onChange={e => setYear(+e.target.value)}
-              className="text-sm text-gray-700 border-0 focus:outline-none bg-transparent pr-1">
-              {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
-            </select>
-          </div>
-
-          {/* Link al Termómetro */}
-          <button
-            onClick={() => navigate('/crm/cost-center')}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold border border-indigo-200 transition-colors"
-          >
-            <Icon name="BarChart2" size={13} />
-            Ver Termómetro
-          </button>
-        </div>
-
+      <DashboardLayoutContent innerClassName="lg:max-w-7xl">
         {loading ? (
           <div className="flex items-center justify-center py-16">
             <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
           </div>
         ) : (
-          <div className="space-y-4 max-w-lg mx-auto">
-
+          <>
             {purchaseTotals?.error && (
               <div className="flex items-start gap-2 rounded-2xl border border-red-200 bg-red-50 p-4 text-xs text-red-600">
                 <Icon name="AlertTriangle" size={16} className="shrink-0 mt-0.5" />
@@ -438,42 +586,36 @@ export default function CrmCostos() {
               </div>
             )}
 
-            {/* Resumen total del mes */}
-            {totalMes > 0 && (
-              <div className="rounded-2xl bg-gradient-to-r from-slate-800 to-slate-700 p-4 text-white">
-                <p className="text-white/60 text-xs font-semibold uppercase tracking-widest mb-1">Total costos del mes</p>
-                <p className="text-3xl font-black tabular-nums">{fmt(totalMes, business?.currency)}</p>
-                <div className="mt-3 flex gap-4 flex-wrap">
-                  {totalFijos > 0 && (
-                    <div>
-                      <p className="text-white/50 text-[10px] uppercase tracking-wide">Fijos</p>
-                      <p className="text-white/90 text-sm font-bold">{fmt(totalFijos, business?.currency)}</p>
-                    </div>
-                  )}
-                  {totalOperacional > 0 && (
-                    <div>
-                      <p className="text-white/50 text-[10px] uppercase tracking-wide">Compras/Gastos</p>
-                      <p className="text-white/90 text-sm font-bold">{fmt(totalOperacional, business?.currency)}</p>
-                    </div>
-                  )}
-                </div>
+            <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+              <div className="flex flex-col gap-6 xl:col-span-2">
+                <CostsSummaryHero
+                  totalFijos={totalFijos}
+                  totalOperacional={totalOperacional}
+                  currency={business?.currency}
+                  navigate={navigate}
+                />
+
+                <FixedCostsCard
+                  items={costItems}
+                  businessId={business.id}
+                  month={month}
+                  year={year}
+                  onReload={load}
+                  currency={business?.currency}
+                />
               </div>
-            )}
 
-            {/* Panel costos fijos */}
-            <FixedCostsPanel
-              items={costItems}
-              businessId={business.id}
-              month={month}
-              year={year}
-              onReload={load}
-              currency={business?.currency}
-            />
-
-            {/* Link a Compras */}
-            <ComprasLinkPanel purchaseTotals={purchaseTotals} navigate={navigate} currency={business?.currency} />
-
-          </div>
+              <div className="flex flex-col gap-6 xl:col-span-1">
+                <PurchasesCard
+                  purchaseTotals={purchaseTotals}
+                  navigate={navigate}
+                  currency={business?.currency}
+                  monthLabel={MONTHS[month - 1]}
+                />
+                <WalinkaFinancialTip />
+              </div>
+            </div>
+          </>
         )}
       </DashboardLayoutContent>
     </DashboardAppShell>
