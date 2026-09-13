@@ -368,6 +368,128 @@ describe('CrmPrintSettings — imprimir ticket de prueba', () => {
     expect(screen.getByRole('button', { name: /Impresión final de validación/ })).toBeDisabled();
   });
 
+  describe('PRINT-5 — modo de impresión (Recomendado/Compatibilidad/Solo texto)', () => {
+    it('por defecto (sin config guardada) el modo Recomendado aparece seleccionado', async () => {
+      render(<CrmPrintSettings />);
+      await screen.findByText('Conectado');
+      expect(screen.getByRole('button', { name: /^Recomendado/ })).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByRole('button', { name: /^Compatibilidad/ })).toHaveAttribute('aria-pressed', 'false');
+      expect(screen.getByRole('button', { name: /Solo texto/ })).toHaveAttribute('aria-pressed', 'false');
+    });
+
+    it('ningún texto ESC/POS (ESC *, GS v 0, GS V, ESC $) aparece fuera de "Opciones avanzadas"', async () => {
+      const { container } = render(<CrmPrintSettings />);
+      await screen.findByText('Conectado');
+      const clone = container.cloneNode(true);
+      clone.querySelector('details')?.remove();
+      expect(clone.textContent).not.toMatch(/ESC \*|GS v 0|GS V|ESC \$/);
+    });
+
+    it('elegir "Compatibilidad" persiste imageMode rasterGsV0 y cutStrategyId gs-v-legacy', async () => {
+      render(<CrmPrintSettings />);
+      await screen.findByText('Conectado');
+      fireEvent.click(screen.getByRole('button', { name: /^Compatibilidad/ }));
+
+      const key = buildPrinterConfigKey('biz1');
+      const stored = JSON.parse(window.localStorage.getItem(key));
+      expect(stored.profileId).toBe('compatibility80');
+      expect(stored.imageMode).toBe('rasterGsV0');
+      expect(stored.cutStrategyId).toBe('gs-v-legacy');
+      expect(stored.printLogo).toBe(true);
+      expect(screen.getByRole('button', { name: /^Compatibilidad/ })).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it('elegir "Solo texto" persiste printLogo false e imageMode none, y deshabilita "Probar logo"', async () => {
+      render(<CrmPrintSettings />);
+      await screen.findByText('Conectado');
+      fireEvent.click(screen.getByRole('button', { name: /Solo texto/ }));
+
+      const key = buildPrinterConfigKey('biz1');
+      const stored = JSON.parse(window.localStorage.getItem(key));
+      expect(stored.profileId).toBe('textOnly80');
+      expect(stored.printLogo).toBe(false);
+      expect(stored.imageMode).toBe('none');
+      expect(screen.getByRole('button', { name: /Probar logo/ })).toBeDisabled();
+      expect(screen.getByText(/no imprime logo/)).toBeInTheDocument();
+    });
+
+    it('volver a "Recomendado" después de "Solo texto" restaura printLogo true', async () => {
+      render(<CrmPrintSettings />);
+      await screen.findByText('Conectado');
+      fireEvent.change(screen.getByRole('combobox'), { target: { value: 'Impresora A' } });
+      fireEvent.click(screen.getByRole('button', { name: /Solo texto/ }));
+      fireEvent.click(screen.getByRole('button', { name: /^Recomendado/ }));
+
+      const key = buildPrinterConfigKey('biz1');
+      const stored = JSON.parse(window.localStorage.getItem(key));
+      expect(stored.profileId).toBe('generic80');
+      expect(stored.printLogo).toBe(true);
+      expect(screen.getByRole('button', { name: /Probar logo/ })).not.toBeDisabled();
+    });
+  });
+
+  describe('PRINT-5 — pruebas simples (Probar logo / Probar corte)', () => {
+    it('"Probar logo" imprime un ticket con la línea de logo del negocio', async () => {
+      business = { id: 'biz1', name: 'Mi Negocio', currency: 'CLP', logoUrl: 'https://cdn.example.com/logo.png' };
+      render(<CrmPrintSettings />);
+      await screen.findByText('Conectado');
+      fireEvent.change(screen.getByRole('combobox'), { target: { value: 'Impresora A' } });
+
+      fireEvent.click(screen.getByRole('button', { name: /Probar logo/ }));
+
+      await waitFor(() => expect(printReceiptMock).toHaveBeenCalledTimes(1));
+      const [receipt, target] = printReceiptMock.mock.calls[0];
+      expect(target).toEqual({ printerName: 'Impresora A' });
+      expect(receipt.lines.some((l) => l.type === 'logo' && l.url === 'https://cdn.example.com/logo.png')).toBe(true);
+      expect(await screen.findByText('Prueba de logo enviada a la impresora.')).toBeInTheDocument();
+    });
+
+    it('"Probar logo" sin logo configurado igual imprime (mensaje en el ticket, nunca falla)', async () => {
+      render(<CrmPrintSettings />);
+      await screen.findByText('Conectado');
+      fireEvent.change(screen.getByRole('combobox'), { target: { value: 'Impresora A' } });
+
+      fireEvent.click(screen.getByRole('button', { name: /Probar logo/ }));
+
+      await waitFor(() => expect(printReceiptMock).toHaveBeenCalledTimes(1));
+      const [receipt] = printReceiptMock.mock.calls[0];
+      expect(receipt.lines.some((l) => l.type === 'logo')).toBe(false);
+      expect(await screen.findByText('Prueba de logo enviada a la impresora.')).toBeInTheDocument();
+    });
+
+    it('"Probar corte" imprime un ticket corto y pide corte', async () => {
+      render(<CrmPrintSettings />);
+      await screen.findByText('Conectado');
+      fireEvent.change(screen.getByRole('combobox'), { target: { value: 'Impresora A' } });
+
+      fireEvent.click(screen.getByRole('button', { name: /Probar corte/ }));
+
+      await waitFor(() => expect(printReceiptMock).toHaveBeenCalledTimes(1));
+      const [receipt, target] = printReceiptMock.mock.calls[0];
+      expect(target).toEqual({ printerName: 'Impresora A' });
+      expect(receipt.cut).toBe(true);
+      expect(await screen.findByText('Prueba de corte enviada a la impresora.')).toBeInTheDocument();
+    });
+
+    it('"Probar logo" y "Probar corte" están deshabilitados sin impresora seleccionada', async () => {
+      render(<CrmPrintSettings />);
+      await screen.findByText('Conectado');
+      expect(screen.getByRole('button', { name: /Probar logo/ })).toBeDisabled();
+      expect(screen.getByRole('button', { name: /Probar corte/ })).toBeDisabled();
+    });
+  });
+
+  describe('PRINT-5 — Opciones avanzadas colapsadas por defecto', () => {
+    it('el bloque "Opciones avanzadas" existe como <details> colapsado (sin el atributo open)', async () => {
+      render(<CrmPrintSettings />);
+      await screen.findByText('Conectado');
+      const summary = screen.getByText('Opciones avanzadas');
+      const details = summary.closest('details');
+      expect(details).not.toBeNull();
+      expect(details).not.toHaveAttribute('open');
+    });
+  });
+
   it('nunca usa window.print ni abre una pestaña nueva', async () => {
     const printSpy = vi.spyOn(window, 'print').mockImplementation(() => {});
     const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);

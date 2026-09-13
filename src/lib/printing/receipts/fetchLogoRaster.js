@@ -82,13 +82,20 @@ export async function fetchLogoRaster(logoUrl, {
   maxWidthDots, maxHeightDots = DEFAULT_MAX_HEIGHT_DOTS, graphicsStrategyId, effectivePrintableWidthDots = 0,
 } = {}) {
   if (!logoUrl || !maxWidthDots) return null;
+  const strategy = getGraphicsStrategy(graphicsStrategyId);
+  // PRINT-5 — perfil `textOnly80` (estrategia 'none'): ni siquiera intenta
+  // cargar/rasterizar la imagen -- cero fetch de red, cero canvas, cero
+  // riesgo de que un logo roto/lento interfiera con este perfil. En la
+  // práctica `buildSaleReceipt` ya nunca emite la línea `logo` cuando
+  // `printLogo` es `false` (el valor por defecto de este perfil), así que
+  // este chequeo es una segunda capa de seguridad, no el único mecanismo.
+  if (strategy.id === GRAPHICS_STRATEGIES.none.id) return null;
   try {
     const img = await loadImageElement(logoUrl);
     const naturalWidth = img.naturalWidth || img.width;
     const naturalHeight = img.naturalHeight || img.height;
     if (!naturalWidth || !naturalHeight) return null;
 
-    const strategy = getGraphicsStrategy(graphicsStrategyId);
     const { width, height: fitHeight } = computeFitSize(naturalWidth, naturalHeight, maxWidthDots, maxHeightDots);
     // PRINT-4-BUG13 — la conversión a bandas ESC * (buildTiledColumnBitImageCommand)
     // distorsiona verticalmente el resultado físico (ver escPosImage.js#

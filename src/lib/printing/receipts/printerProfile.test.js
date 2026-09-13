@@ -187,6 +187,43 @@ describe('buildLayout', () => {
   });
 });
 
+// PRINT-5 — capa de perfiles de compatibilidad: un perfil puede calibrar
+// su propio `effectivePrintableWidthDots` (p. ej. una impresora de 80mm
+// con menos área imprimible que la validada) sin tocar el resto del
+// layout. Sin `overrides` (o con uno inválido), buildLayout debe seguir
+// produciendo EXACTAMENTE el mismo layout que antes de esta capa.
+describe('buildLayout — overrides.effectivePrintableWidthDots (PRINT-5)', () => {
+  it('sin overrides, el layout es idéntico al histórico (mismo objeto que buildLayout(paperWidthMm))', () => {
+    expect(buildLayout(80, {})).toEqual(buildLayout(80));
+    expect(buildLayout(80, undefined)).toEqual(buildLayout(80));
+  });
+
+  it('con un override válido, effectivePrintableWidthDots y logoMaxWidthDots lo reflejan', () => {
+    const base = buildLayout(80);
+    const overridden = buildLayout(80, { effectivePrintableWidthDots: 400 });
+    expect(overridden.effectivePrintableWidthDots).toBe(400);
+    expect(overridden.logoMaxWidthDots).toBeGreaterThan(base.logoMaxWidthDots);
+    expect(overridden.logoMaxWidthDots).toBeLessThan(400);
+  });
+
+  it('un override NUNCA cambia contentWidthDots/normalCharsPerLine/doubleWidthCharsPerLine -- eso es ancho de TEXTO, un concepto distinto', () => {
+    const base = buildLayout(80);
+    const overridden = buildLayout(80, { effectivePrintableWidthDots: 400 });
+    expect(overridden.contentWidthDots).toBe(base.contentWidthDots);
+    expect(overridden.normalCharsPerLine).toBe(base.normalCharsPerLine);
+    expect(overridden.doubleWidthCharsPerLine).toBe(base.doubleWidthCharsPerLine);
+    expect(overridden.printableWidthDots).toBe(base.printableWidthDots);
+    expect(overridden.safeMarginDots).toBe(base.safeMarginDots);
+  });
+
+  it('un override inválido (0, negativo, NaN, no numérico) se ignora -- se comporta como si no hubiera overrides', () => {
+    const base = buildLayout(80);
+    for (const invalid of [0, -50, NaN, 'no-numero', null, undefined]) {
+      expect(buildLayout(80, { effectivePrintableWidthDots: invalid })).toEqual(base);
+    }
+  });
+});
+
 // PRINT-4-BUG11 — la calibración gruesa de borde derecho (BUG10) reveló
 // que una coordenada x fuera de rango no solo recorta contenido: hace que
 // el bloque REAPAREZCA desde el extremo izquierdo del papel ("wrap").

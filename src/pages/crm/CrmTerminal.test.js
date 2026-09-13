@@ -696,6 +696,12 @@ describe('PRINT-2 — ya no usa window.print() en ninguna parte', () => {
     expect(printCurrentTicketMatch[0]).toMatch(/imageMode: printerConfig\.imageMode/);
   });
 
+  it('PRINT-5: pasa cutStrategyId y effectivePrintableWidthDots de la config local a buildSaleReceipt (misma capa de perfiles de compatibilidad, no hardcodea ninguno)', () => {
+    const printCurrentTicketMatch = indexSource.match(/const printCurrentTicket = useCallback\(async \(\) => \{[\s\S]*?\n {2}\}, \[ticketData, business\]\);/);
+    expect(printCurrentTicketMatch[0]).toMatch(/cutStrategyId: printerConfig\.cutStrategyId/);
+    expect(printCurrentTicketMatch[0]).toMatch(/effectivePrintableWidthDots: printerConfig\.effectivePrintableWidthDots/);
+  });
+
   it('PRINT-4-BUG3: no hay ningún string de estrategia gráfica (bitImageEscStar/rasterGsV0) ni modelo de impresora hardcodeado en CrmTerminal', () => {
     expect(indexSource).not.toMatch(/bitImageEscStar|rasterGsV0/);
     expect(indexSource.toLowerCase()).not.toContain('tsp100');

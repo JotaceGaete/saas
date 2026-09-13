@@ -11,10 +11,11 @@ const {
   buildLogoPositionDiagnosticReceipt, buildLogoGeometryDiagnosticReceipt, buildLogoPositionedDiagnosticReceipt,
   buildRightEdgeCalibrationDiagnosticReceipt, buildRightEdgeFineCalibrationDiagnosticReceipt,
   buildRightEdgeUltraFineCalibrationDiagnosticReceipt, buildLogoAspectRatioDiagnosticReceipt,
+  buildLogoTestReceipt, buildCutTestReceipt,
   columnsForWidth, wrapText, formatRowLines,
 } = await import('./renderEscPosReceipt');
 const { buildRasterCommand } = await import('./escPosImage');
-const { GRAPHICS_STRATEGIES, CUT_STRATEGIES } = await import('./escPosCapabilities');
+const { GRAPHICS_STRATEGIES, CUT_STRATEGIES, getCutStrategy } = await import('./escPosCapabilities');
 const { getPrinterProfile, getColumnsForProfile, buildLayout } = await import('./printerProfile');
 
 const ESC = 0x1B;
@@ -347,6 +348,132 @@ describe('renderEscPosReceipt — tipos semánticos PRINT-4', () => {
     expect(fetchLogoRaster).toHaveBeenCalledWith('https://x/logo.png', expect.objectContaining({ graphicsStrategyId: undefined }));
   });
 
+  // PRINT-5 — capa de perfiles de compatibilidad: `receipt.cutStrategyId`
+  // decide qué comando de corte se emite, `receipt.effectivePrintableWidthDots`
+  // decide el ancho de referencia para centrar imágenes. Ambos opcionales:
+  // sin ellos, comportamiento IDÉNTICO al histórico (ver los tests de más
+  // arriba, que no los usan y siguen pasando sin tocarlos).
+  describe('PRINT-5 — receipt.cutStrategyId (estrategia de corte configurable)', () => {
+    it('sin cutStrategyId, el corte final es EXACTAMENTE gs-v-modern (idéntico al histórico GS V 66 0)', async () => {
+      const bytes = await renderEscPosReceipt({ lines: [{ text: 'hola' }], feedLines: 0, cut: true });
+      const tail = Array.from(bytes.slice(-CUT_STRATEGIES['gs-v-modern'].bytes.length));
+      expect(tail).toEqual(CUT_STRATEGIES['gs-v-modern'].bytes);
+    });
+
+    it('con cutStrategyId: gs-v-legacy, el corte final es el comando legacy de 1 byte (GS V 1)', async () => {
+      const bytes = await renderEscPosReceipt({ lines: [{ text: 'hola' }], feedLines: 0, cut: true, cutStrategyId: 'gs-v-legacy' });
+      const tail = Array.from(bytes.slice(-CUT_STRATEGIES['gs-v-legacy'].bytes.length));
+      expect(tail).toEqual(CUT_STRATEGIES['gs-v-legacy'].bytes);
+      expect(tail).not.toEqual(CUT_STRATEGIES['gs-v-modern'].bytes);
+    });
+
+    it('con cutStrategyId: none, NO emite ningún byte de corte aunque cut sea true', async () => {
+      const bytes = await renderEscPosReceipt({ lines: [{ text: 'hola' }], feedLines: 0, cut: true, cutStrategyId: 'none' });
+      expect(includesSubsequence(bytes, [GS, 0x56])).toBe(false);
+    });
+
+    it('cut: false sigue ganando -- ningún cutStrategyId emite bytes si cut es false', async () => {
+      const bytes = await renderEscPosReceipt({
+        lines: [{ text: 'hola' }], feedLines: 0, cut: false, cutStrategyId: 'gs-v-legacy',
+      });
+      expect(includesSubsequence(bytes, [GS, 0x56])).toBe(false);
+    });
+
+    it('un cutStrategyId desconocido cae al default en vez de lanzar', async () => {
+      const bytes = await renderEscPosReceipt({ lines: [{ text: 'hola' }], feedLines: 0, cut: true, cutStrategyId: 'no-existe' });
+      const tail = Array.from(bytes.slice(-CUT_STRATEGIES['gs-v-modern'].bytes.length));
+      expect(tail).toEqual(CUT_STRATEGIES['gs-v-modern'].bytes);
+    });
+
+    it('coincide con getCutStrategy para cualquier id conocido -- una sola fuente de verdad, no dos tablas', async () => {
+      for (const id of ['gs-v-modern', 'gs-v-legacy', 'none', undefined]) {
+        const bytes = await renderEscPosReceipt({ lines: [{ text: 'x' }], feedLines: 0, cut: true, cutStrategyId: id });
+        const expected = getCutStrategy(id).bytes;
+        if (expected.length === 0) {
+          expect(includesSubsequence(bytes, [GS, 0x56])).toBe(false);
+        } else {
+          expect(Array.from(bytes.slice(-expected.length))).toEqual(expected);
+        }
+      }
+    });
+  });
+
+  describe('PRINT-5 — receipt.effectivePrintableWidthDots (override de ancho efectivo para imágenes)', () => {
+    it('sin override, pasa el effectivePrintableWidthDots calibrado del perfil a fetchLogoRaster (comportamiento histórico)', async () => {
+      vi.mocked(fetchLogoRaster).mockResolvedValue(null);
+      await renderEscPosReceipt({ lines: [{ type: 'logo', url: 'https://x/logo.png' }], paperWidthMm: 80, feedLines: 0, cut: false });
+      expect(fetchLogoRaster).toHaveBeenCalledWith('https://x/logo.png', expect.objectContaining({
+        effectivePrintableWidthDots: buildLayout(80).effectivePrintableWidthDots,
+      }));
+    });
+
+    it('con override, pasa ESE valor a fetchLogoRaster en vez del calibrado por defecto', async () => {
+      vi.mocked(fetchLogoRaster).mockResolvedValue(null);
+      await renderEscPosReceipt({
+        lines: [{ type: 'logo', url: 'https://x/logo.png' }], paperWidthMm: 80, feedLines: 0, cut: false, effectivePrintableWidthDots: 400,
+      });
+      expect(fetchLogoRaster).toHaveBeenCalledWith('https://x/logo.png', expect.objectContaining({ effectivePrintableWidthDots: 400 }));
+    });
+
+    it('un override inválido (0/negativo/no numérico) se ignora -- cae al calibrado por defecto', async () => {
+      vi.mocked(fetchLogoRaster).mockResolvedValue(null);
+      for (const invalid of [0, -50, 'ancho', null]) {
+        vi.mocked(fetchLogoRaster).mockClear();
+        // eslint-disable-next-line no-await-in-loop -- test secuencial simple
+        await renderEscPosReceipt({
+          lines: [{ type: 'logo', url: 'https://x/logo.png' }], paperWidthMm: 80, feedLines: 0, cut: false, effectivePrintableWidthDots: invalid,
+        });
+        expect(fetchLogoRaster).toHaveBeenCalledWith('https://x/logo.png', expect.objectContaining({
+          effectivePrintableWidthDots: buildLayout(80).effectivePrintableWidthDots,
+        }));
+      }
+    });
+
+    it('nunca afecta las columnas de texto/TOTAL -- un divider con override sigue midiendo columnsForWidth(80)', async () => {
+      const bytes = await renderEscPosReceipt({
+        lines: [{ type: 'divider' }], paperWidthMm: 80, feedLines: 0, cut: false, effectivePrintableWidthDots: 400,
+      });
+      expect(bytesToText(bytes)).toContain('-'.repeat(columnsForWidth(80)));
+    });
+  });
+
+  describe('PRINT-5 — buildLogoTestReceipt/buildCutTestReceipt (pruebas simples de /crm/impresion)', () => {
+    it('buildLogoTestReceipt con logoUrl arma una línea type: logo y pide corte', async () => {
+      const receipt = buildLogoTestReceipt({ business: { logoUrl: 'https://x/logo.png' }, paperWidthMm: 80 });
+      expect(receipt.lines.some((l) => l.type === 'logo' && l.url === 'https://x/logo.png')).toBe(true);
+      expect(receipt.cut).toBe(true);
+    });
+
+    it('buildLogoTestReceipt sin logoUrl no arma ninguna línea type: logo, y no lanza al renderizar', async () => {
+      const receipt = buildLogoTestReceipt({ business: {}, paperWidthMm: 80 });
+      expect(receipt.lines.some((l) => l.type === 'logo')).toBe(false);
+      await expect(renderEscPosReceipt(receipt)).resolves.not.toThrow();
+    });
+
+    it('buildLogoTestReceipt reenvía imageMode/effectivePrintableWidthDots al receipt (misma capa que el logo real)', () => {
+      const receipt = buildLogoTestReceipt({
+        business: { logoUrl: 'https://x/logo.png' }, paperWidthMm: 80, imageMode: 'rasterGsV0', effectivePrintableWidthDots: 400,
+      });
+      expect(receipt.imageMode).toBe('rasterGsV0');
+      expect(receipt.effectivePrintableWidthDots).toBe(400);
+    });
+
+    it('buildCutTestReceipt pide corte y reenvía cutStrategyId', async () => {
+      const receipt = buildCutTestReceipt({ paperWidthMm: 80, cutStrategyId: 'gs-v-legacy' });
+      expect(receipt.cut).toBe(true);
+      expect(receipt.cutStrategyId).toBe('gs-v-legacy');
+      const bytes = await renderEscPosReceipt(receipt);
+      const tail = Array.from(bytes.slice(-CUT_STRATEGIES['gs-v-legacy'].bytes.length));
+      expect(tail).toEqual(CUT_STRATEGIES['gs-v-legacy'].bytes);
+    });
+
+    it('ninguno de los dos genera una venta ni depende de datos de venta -- ambos renderizan sin lanzar con datos mínimos', async () => {
+      vi.mocked(fetchLogoRaster).mockResolvedValue(null);
+      await expect(renderEscPosReceipt(buildLogoTestReceipt({}))).resolves.not.toThrow();
+      await expect(renderEscPosReceipt(buildCutTestReceipt({}))).resolves.not.toThrow();
+    });
+  });
+
   describe('PRINT-4-BUG1 — rasterBytes (comando de imagen ya construido, sin fetch)', () => {
     it('inserta el comando centrado, sin pasar por fetchLogoRaster', async () => {
       const bits = Uint8Array.from([1, 0, 0, 0, 0, 0, 0, 0]);
@@ -436,14 +563,14 @@ describe('buildCutCapabilityDiagnosticReceipt — PRINT-4-BUG2', () => {
     expect(text).toContain('Despues de Corte A');
     expect(text).toContain('Antes de Corte B');
     expect(text).toContain('Despues de Corte B');
-    expect(includesSubsequence(bytes, CUT_STRATEGIES.partialFunctionB.bytes)).toBe(true);
-    expect(includesSubsequence(bytes, CUT_STRATEGIES.partialFunctionALegacy.bytes)).toBe(true);
+    expect(includesSubsequence(bytes, CUT_STRATEGIES['gs-v-modern'].bytes)).toBe(true);
+    expect(includesSubsequence(bytes, CUT_STRATEGIES['gs-v-legacy'].bytes)).toBe(true);
   });
 
   it('Corte A aparece antes que Corte B en el flujo de bytes (orden determinístico del diagnóstico)', async () => {
     const bytes = Array.from(await renderEscPosReceipt(buildCutCapabilityDiagnosticReceipt()));
-    const indexA = bytes.join(',').indexOf(CUT_STRATEGIES.partialFunctionB.bytes.join(','));
-    const indexB = bytes.join(',').indexOf(CUT_STRATEGIES.partialFunctionALegacy.bytes.join(','));
+    const indexA = bytes.join(',').indexOf(CUT_STRATEGIES['gs-v-modern'].bytes.join(','));
+    const indexB = bytes.join(',').indexOf(CUT_STRATEGIES['gs-v-legacy'].bytes.join(','));
     expect(indexA).toBeGreaterThan(-1);
     expect(indexB).toBeGreaterThan(indexA);
   });

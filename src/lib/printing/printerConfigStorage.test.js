@@ -17,6 +17,10 @@ const DEFAULTS = {
   autoCut: true,
   printLogo: true,
   imageMode: 'bitImageEscStar',
+  // PRINT-5
+  profileId: 'generic80',
+  cutStrategyId: 'gs-v-modern',
+  effectivePrintableWidthDots: null,
 };
 
 beforeEach(() => {
@@ -165,6 +169,117 @@ describe('sanitización', () => {
     const key = buildPrinterConfigKey('biz1');
     writePrinterConfig(key, null);
     expect(window.localStorage.getItem(key)).toBeNull();
+  });
+
+  describe('PRINT-5 — profileId', () => {
+    it('por defecto (sin especificar) usa generic80 ("Recomendado")', () => {
+      const key = buildPrinterConfigKey('biz1');
+      writePrinterConfig(key, { printerName: 'X', paperWidthMm: 80 });
+      expect(readPrinterConfig(key).profileId).toBe('generic80');
+    });
+
+    it('un profileId conocido se persiste y se respeta al leer', () => {
+      const key = buildPrinterConfigKey('biz1');
+      writePrinterConfig(key, { printerName: 'X', paperWidthMm: 80, profileId: 'compatibility80' });
+      expect(readPrinterConfig(key).profileId).toBe('compatibility80');
+      writePrinterConfig(key, { printerName: 'X', paperWidthMm: 80, profileId: 'textOnly80' });
+      expect(readPrinterConfig(key).profileId).toBe('textOnly80');
+    });
+
+    it('un profileId desconocido/inválido cae al default en vez de persistir basura', () => {
+      const key = buildPrinterConfigKey('biz1');
+      writePrinterConfig(key, { printerName: 'X', paperWidthMm: 80, profileId: 'starEspecial' });
+      expect(readPrinterConfig(key).profileId).toBe('generic80');
+    });
+  });
+
+  describe('PRINT-5 — cutStrategyId', () => {
+    it('por defecto (sin especificar) usa gs-v-modern (mismo comando histórico único que existía antes de esta capa)', () => {
+      const key = buildPrinterConfigKey('biz1');
+      writePrinterConfig(key, { printerName: 'X', paperWidthMm: 80 });
+      expect(readPrinterConfig(key).cutStrategyId).toBe('gs-v-modern');
+    });
+
+    it('cutStrategyId: gs-v-legacy/none se persisten y se respetan al leer', () => {
+      const key = buildPrinterConfigKey('biz1');
+      writePrinterConfig(key, { printerName: 'X', paperWidthMm: 80, cutStrategyId: 'gs-v-legacy' });
+      expect(readPrinterConfig(key).cutStrategyId).toBe('gs-v-legacy');
+      writePrinterConfig(key, { printerName: 'X', paperWidthMm: 80, cutStrategyId: 'none' });
+      expect(readPrinterConfig(key).cutStrategyId).toBe('none');
+    });
+
+    it('un valor desconocido/inválido cae al default en vez de persistir basura', () => {
+      const key = buildPrinterConfigKey('biz1');
+      writePrinterConfig(key, { printerName: 'X', paperWidthMm: 80, cutStrategyId: 'algo-raro' });
+      expect(readPrinterConfig(key).cutStrategyId).toBe('gs-v-modern');
+    });
+  });
+
+  describe('PRINT-5 — effectivePrintableWidthDots (override de ancho efectivo por impresora)', () => {
+    it('por defecto (sin especificar) queda en null -- usa el valor calibrado del perfil físico, sin override', () => {
+      const key = buildPrinterConfigKey('biz1');
+      writePrinterConfig(key, { printerName: 'X', paperWidthMm: 80 });
+      expect(readPrinterConfig(key).effectivePrintableWidthDots).toBeNull();
+    });
+
+    it('un número finito positivo se persiste y se respeta al leer', () => {
+      const key = buildPrinterConfigKey('biz1');
+      writePrinterConfig(key, { printerName: 'X', paperWidthMm: 80, effectivePrintableWidthDots: 400 });
+      expect(readPrinterConfig(key).effectivePrintableWidthDots).toBe(400);
+    });
+
+    it('un valor inválido (0, negativo, NaN, no numérico) cae a null en vez de persistir basura', () => {
+      const key = buildPrinterConfigKey('biz1');
+      for (const invalid of [0, -10, NaN, 'ancho']) {
+        writePrinterConfig(key, { printerName: 'X', paperWidthMm: 80, effectivePrintableWidthDots: invalid });
+        expect(readPrinterConfig(key).effectivePrintableWidthDots).toBeNull();
+      }
+    });
+  });
+});
+
+// PRINT-5 — requisito explícito: una config guardada por PRINT-1 a PRINT-4
+// (sin profileId/cutStrategyId/effectivePrintableWidthDots en el JSON)
+// debe seguir leyéndose sin lanzar y producir los defaults nuevos
+// (equivalentes al comportamiento que esa config YA tenía en la práctica).
+describe('PRINT-5 — config antigua (v1, sin campos nuevos) → defaults nuevos', () => {
+  it('un JSON v1 crudo en localStorage se lee con los tres campos nuevos en su default', () => {
+    const key = buildPrinterConfigKey('biz-legacy');
+    const legacyV1Config = {
+      schemaVersion: 1,
+      printerName: 'Impresora del local',
+      paperWidthMm: 80,
+      autoCut: true,
+      printLogo: true,
+      imageMode: 'bitImageEscStar',
+    };
+    window.localStorage.setItem(key, JSON.stringify(legacyV1Config));
+
+    const config = readPrinterConfig(key);
+    expect(config.printerName).toBe('Impresora del local');
+    expect(config.profileId).toBe('generic80');
+    expect(config.cutStrategyId).toBe('gs-v-modern');
+    expect(config.effectivePrintableWidthDots).toBeNull();
+    // El schemaVersion se re-escribe al de esta versión del código al leer.
+    expect(config.schemaVersion).toBe(PRINTER_CONFIG_SCHEMA_VERSION);
+  });
+
+  it('un JSON v1 con imageMode rasterGsV0 preserva ese campo (no lo pisa el default nuevo)', () => {
+    const key = buildPrinterConfigKey('biz-legacy-2');
+    window.localStorage.setItem(key, JSON.stringify({
+      schemaVersion: 1, printerName: 'X', paperWidthMm: 80, autoCut: true, printLogo: true, imageMode: 'rasterGsV0',
+    }));
+    const config = readPrinterConfig(key);
+    expect(config.imageMode).toBe('rasterGsV0');
+    // El corte no tenía forma de configurarse antes: sigue siendo el único que existía.
+    expect(config.cutStrategyId).toBe('gs-v-modern');
+  });
+
+  it('no lanza con una config v1 sin schemaVersion en absoluto', () => {
+    const key = buildPrinterConfigKey('biz-legacy-3');
+    window.localStorage.setItem(key, JSON.stringify({ printerName: 'X', paperWidthMm: 80 }));
+    expect(() => readPrinterConfig(key)).not.toThrow();
+    expect(readPrinterConfig(key)).toEqual({ ...DEFAULTS, printerName: 'X' });
   });
 });
 

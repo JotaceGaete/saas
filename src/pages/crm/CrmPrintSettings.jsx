@@ -10,20 +10,33 @@ import {
   buildLogoPositionDiagnosticReceipt, buildLogoGeometryDiagnosticReceipt, buildLogoPositionedDiagnosticReceipt,
   buildRightEdgeCalibrationDiagnosticReceipt, buildRightEdgeFineCalibrationDiagnosticReceipt,
   buildRightEdgeUltraFineCalibrationDiagnosticReceipt, buildLogoAspectRatioDiagnosticReceipt,
+  buildLogoTestReceipt, buildCutTestReceipt,
 } from 'lib/printing/receipts/renderEscPosReceipt';
 import { buildFinalValidationReceipt } from 'lib/printing/receipts/buildSaleReceipt';
 import { buildPrinterConfigKey, readPrinterConfig, writePrinterConfig } from 'lib/printing/printerConfigStorage';
+import { listCompatibilityProfiles, getCompatibilityProfile, matchCompatibilityProfileId } from 'lib/printing/receipts/printerCompatibilityProfiles';
 
 // PRINT-1 — pantalla aislada de configuración/prueba de impresión térmica.
 // No toca CrmTerminal.jsx ni el flujo de cobro: solo permite elegir la
 // impresora de este equipo (vía QZ Tray) y enviarle un ticket de prueba.
 // La impresión automática al cobrar queda fuera de este alcance.
+//
+// PRINT-5 — esta pantalla pasa a tener DOS capas: (1) un flujo simple
+// (impresora + modo Recomendado/Compatibilidad/Solo texto + pruebas
+// básicas) pensado para un usuario normal, sin ningún término ESC/POS
+// visible; (2) los diagnósticos técnicos que ya existían desde PRINT-4,
+// sin cambios de comportamiento, ahora colapsados bajo "Opciones
+// avanzadas". Elegir un modo solo materializa ids de capacidades ya
+// validadas (ver printerCompatibilityProfiles.js) en la config local --
+// nunca ejecuta lógica nueva de impresión.
 
 const QZ_STATUS = {
   checking: { label: 'Verificando…', dot: 'bg-slate-300' },
   connected: { label: 'Conectado', dot: 'bg-emerald-500' },
   disconnected: { label: 'Desconectado', dot: 'bg-slate-300 border border-slate-400' },
 };
+
+const MODE_ICONS = { generic80: 'Sparkles', compatibility80: 'Wrench', textOnly80: 'FileText' };
 
 export default function CrmPrintSettings() {
   const { business } = useAuth();
@@ -68,6 +81,27 @@ export default function CrmPrintSettings() {
     if (configKey) writePrinterConfig(configKey, next);
   };
 
+  // PRINT-5 — elegir un modo (Recomendado/Compatibilidad/Solo texto) solo
+  // materializa los campos concretos de ese perfil (ver
+  // printerCompatibilityProfiles.js) en la config guardada -- el resto de
+  // la pantalla/el flujo de venta real (CrmTerminal.jsx) nunca vuelve a
+  // mirar `profileId` para decidir qué imprimir, solo estos campos.
+  const handleSelectMode = (profileId) => {
+    const profile = getCompatibilityProfile(profileId);
+    const next = {
+      ...config,
+      profileId: profile.id,
+      imageMode: profile.imageMode,
+      cutStrategyId: profile.cutStrategyId,
+      printLogo: profile.printLogo,
+      autoCut: profile.autoCut,
+      effectivePrintableWidthDots: profile.effectivePrintableWidthDots ?? null,
+    };
+    setConfig(next);
+    setPrintResult(null);
+    if (configKey) writePrinterConfig(configKey, next);
+  };
+
   const handlePrintTest = async () => {
     if (!config.printerName || printing) return;
     setPrinting(true);
@@ -82,6 +116,46 @@ export default function CrmPrintSettings() {
       setPrintResult({ ok: true, message: 'Ticket de prueba enviado a la impresora.' });
     } catch (err) {
       setPrintResult({ ok: false, message: err?.message || 'No se pudo imprimir el ticket de prueba.' });
+    } finally {
+      setPrinting(false);
+    }
+  };
+
+  // PRINT-5 — "Probar logo"/"Probar corte": mismo patrón simple que
+  // handlePrintTest, sin ningún término ESC/POS en los mensajes -- pensado
+  // para que un usuario normal confirme, con un solo click, si el logo o
+  // el corte funcionan con el modo elegido, sin tener que interpretar un
+  // diagnóstico técnico.
+  const handlePrintLogoTest = async () => {
+    if (!config.printerName || printing) return;
+    setPrinting(true);
+    setPrintResult(null);
+    try {
+      const receipt = buildLogoTestReceipt({
+        business,
+        paperWidthMm: config.paperWidthMm,
+        imageMode: config.imageMode,
+        effectivePrintableWidthDots: config.effectivePrintableWidthDots,
+      });
+      await printService.printReceipt(receipt, { printerName: config.printerName });
+      setPrintResult({ ok: true, message: 'Prueba de logo enviada a la impresora.' });
+    } catch (err) {
+      setPrintResult({ ok: false, message: err?.message || 'No se pudo imprimir la prueba de logo.' });
+    } finally {
+      setPrinting(false);
+    }
+  };
+
+  const handlePrintCutTest = async () => {
+    if (!config.printerName || printing) return;
+    setPrinting(true);
+    setPrintResult(null);
+    try {
+      const receipt = buildCutTestReceipt({ paperWidthMm: config.paperWidthMm, cutStrategyId: config.cutStrategyId });
+      await printService.printReceipt(receipt, { printerName: config.printerName });
+      setPrintResult({ ok: true, message: 'Prueba de corte enviada a la impresora.' });
+    } catch (err) {
+      setPrintResult({ ok: false, message: err?.message || 'No se pudo imprimir la prueba de corte.' });
     } finally {
       setPrinting(false);
     }
@@ -220,6 +294,8 @@ export default function CrmPrintSettings() {
       autoCut: config.autoCut,
       printLogo: config.printLogo,
       imageMode: config.imageMode,
+      cutStrategyId: config.cutStrategyId,
+      effectivePrintableWidthDots: config.effectivePrintableWidthDots,
     }),
     'Impresión final de validación enviada a la impresora.',
     'No se pudo imprimir la validación final.',
@@ -228,6 +304,11 @@ export default function CrmPrintSettings() {
   const status = QZ_STATUS[qzStatus];
   const savedPrinterMissing = Boolean(config.printerName) && qzStatus === 'connected' && !printers.includes(config.printerName);
   const canPrint = qzStatus === 'connected' && Boolean(config.printerName) && !printing;
+  // PRINT-5 — una config guardada por PRINT-1 a PRINT-4 nunca tuvo
+  // `profileId`; sanitizeConfig ya lo rellena con 'generic80', pero por si
+  // alguna vez llega vacío/desconocido igual se infiere algo razonable
+  // para resaltar en el selector -- ver matchCompatibilityProfileId.
+  const selectedModeId = config.profileId || matchCompatibilityProfileId(config);
 
   return (
     <DashboardAppShell>
@@ -300,6 +381,36 @@ export default function CrmPrintSettings() {
             <p className="mt-1.5 text-sm font-semibold text-slate-700">{config.paperWidthMm} mm</p>
           </div>
 
+          {/* PRINT-5 — selector de modo: sin ESC/POS a la vista. Cada
+              opción es un perfil de printerCompatibilityProfiles.js;
+              elegirla guarda de inmediato los campos concretos que ese
+              perfil implica. */}
+          <div className="mt-5">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Modo de impresión</p>
+            <div className="mt-1.5 grid grid-cols-1 gap-2 sm:grid-cols-3">
+              {listCompatibilityProfiles().map((profile) => {
+                const selected = selectedModeId === profile.id;
+                return (
+                  <button
+                    key={profile.id}
+                    type="button"
+                    onClick={() => handleSelectMode(profile.id)}
+                    aria-pressed={selected}
+                    className={`flex flex-col items-start gap-1 rounded-xl border p-3 text-left transition-colors ${
+                      selected ? 'border-slate-900 bg-slate-900/5' : 'border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    <span className="flex items-center gap-1.5 text-sm font-semibold text-slate-800">
+                      <Icon name={MODE_ICONS[profile.id] || 'Settings'} size={14} />
+                      {profile.label}
+                    </span>
+                    <span className="text-xs text-slate-500">{profile.description}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           <div className="mt-5 flex flex-col gap-2 sm:flex-row">
             <button
               type="button"
@@ -321,32 +432,65 @@ export default function CrmPrintSettings() {
             </button>
           </div>
 
+          {/* PRINT-5 — pruebas simples, sin jerga técnica: validan logo y
+              corte por separado con el modo actualmente elegido. */}
           <div className="mt-2 flex flex-col gap-2 sm:flex-row">
             <button
               type="button"
-              onClick={handlePrintImageDiagnostic}
-              disabled={!canPrint}
+              onClick={handlePrintLogoTest}
+              disabled={!canPrint || config.printLogo === false}
               className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-300 px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40"
             >
               <Icon name={printing ? 'Loader2' : 'Image'} size={15} className={printing ? 'animate-spin' : ''} />
-              Diagnóstico de imagen (A/B)
+              Probar logo
             </button>
             <button
               type="button"
-              onClick={handlePrintCutDiagnostic}
+              onClick={handlePrintCutTest}
               disabled={!canPrint}
               className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-300 px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40"
             >
               <Icon name={printing ? 'Loader2' : 'Scissors'} size={15} className={printing ? 'animate-spin' : ''} />
-              Diagnóstico de corte (A/B)
+              Probar corte
             </button>
           </div>
-          <p className="mt-1.5 text-xs text-slate-400">
-            Cada diagnóstico prueba dos comandos ESC/POS estándar distintos, con texto "Antes/Después"
-            entre cada uno. Úsalos si el logo o el corte del ticket real no funcionan: si una imagen
-            sale como símbolos, o el papel no se separa físicamente después de una variante de corte,
-            esa variante no es compatible con esta impresora.
-          </p>
+          {config.printLogo === false && (
+            <p className="mt-1.5 text-xs text-slate-400">
+              El modo "Solo texto" no imprime logo -- cambia a "Recomendado" o "Compatibilidad" para probarlo.
+            </p>
+          )}
+
+          <details className="mt-5 rounded-xl border border-slate-200 p-3">
+            <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Opciones avanzadas
+            </summary>
+
+            <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+              <button
+                type="button"
+                onClick={handlePrintImageDiagnostic}
+                disabled={!canPrint}
+                className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-300 px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+              >
+                <Icon name={printing ? 'Loader2' : 'Image'} size={15} className={printing ? 'animate-spin' : ''} />
+                Diagnóstico de imagen (A/B)
+              </button>
+              <button
+                type="button"
+                onClick={handlePrintCutDiagnostic}
+                disabled={!canPrint}
+                className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-300 px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+              >
+                <Icon name={printing ? 'Loader2' : 'Scissors'} size={15} className={printing ? 'animate-spin' : ''} />
+                Diagnóstico de corte (A/B)
+              </button>
+            </div>
+            <p className="mt-1.5 text-xs text-slate-400">
+              Cada diagnóstico prueba dos comandos ESC/POS estándar distintos, con texto "Antes/Después"
+              entre cada uno. Úsalos si el logo o el corte del ticket real no funcionan: si una imagen
+              sale como símbolos, o el papel no se separa físicamente después de una variante de corte,
+              esa variante no es compatible con esta impresora.
+            </p>
 
           <div className="mt-2">
             <button
@@ -486,6 +630,7 @@ export default function CrmPrintSettings() {
               cliente real. Úsalo como última confirmación antes de imprimir en ventas reales.
             </p>
           </div>
+          </details>
 
           {printResult && (
             <div className={`mt-4 flex items-start gap-2 rounded-xl border p-3 text-xs ${printResult.ok ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-rose-200 bg-rose-50 text-rose-700'}`}>

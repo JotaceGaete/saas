@@ -208,15 +208,34 @@ export function clampXDotsToPrintableArea(effectivePrintableWidthDots, widthDots
  * debe usar para centrarse con `ESC $` -- nunca `contentWidthDots` (ese
  * es para texto) ni un margen horneado en píxeles (abandonado en BUG10).
  * @param {number} paperWidthMm
+ * @param {Object} [overrides] - PRINT-5: overrides puntuales de un perfil de
+ *   compatibilidad (ver printerCompatibilityProfiles.js), NUNCA del
+ *   perfil físico completo -- hoy solo soporta `effectivePrintableWidthDots`.
+ * @param {number} [overrides.effectivePrintableWidthDots] - ancho REAL
+ *   calibrado a usar en vez del de `PRINTER_PROFILES[paperWidthMm]` (p. ej.
+ *   una impresora de 80mm con menos área imprimible que la validada). Debe
+ *   ser un número finito > 0; cualquier otro valor (undefined, 0, negativo,
+ *   NaN) se ignora y buildLayout se comporta EXACTAMENTE igual que sin
+ *   `overrides` -- así todo caller histórico (sin segundo argumento) sigue
+ *   produciendo el mismo layout de siempre. Nunca toca `contentWidthDots`/
+ *   `normalCharsPerLine`/`doubleWidthCharsPerLine` (ancho de TEXTO, un
+ *   concepto distinto -- ver comentario de archivo): solo el ancho para
+ *   posicionar imágenes (`effectivePrintableWidthDots`/`logoMaxWidthDots`).
  * @returns {PrintLayout}
  */
-export function buildLayout(paperWidthMm) {
+export function buildLayout(paperWidthMm, overrides = {}) {
   const profile = getPrinterProfile(paperWidthMm);
   const contentWidthDots = getEffectivePrintableWidthDots(profile);
   const normalCharsPerLine = Math.max(1, Math.floor(contentWidthDots / (profile.dotsPerChar || DOTS_PER_CHAR_FONT_A)));
   const doubleWidthCharsPerLine = Math.max(1, Math.floor(normalCharsPerLine / 2));
-  const effectivePrintableWidthDots = Math.max(1, profile.effectivePrintableWidthDots || contentWidthDots);
-  const logoMaxWidthDots = getLogoMaxWidthDots(profile);
+
+  const overrideRaw = overrides?.effectivePrintableWidthDots;
+  const hasEffectiveWidthOverride = Number.isFinite(overrideRaw) && overrideRaw > 0;
+  const imageProfile = hasEffectiveWidthOverride
+    ? { ...profile, effectivePrintableWidthDots: overrideRaw }
+    : profile;
+  const effectivePrintableWidthDots = Math.max(1, imageProfile.effectivePrintableWidthDots || contentWidthDots);
+  const logoMaxWidthDots = getLogoMaxWidthDots(imageProfile);
   const safeMarginDots = Math.max(0, profile.safeMarginDots || 0);
 
   return {
