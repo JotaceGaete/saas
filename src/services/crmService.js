@@ -1804,18 +1804,18 @@ export const CASH_MOVEMENT_CATEGORIES_IN = [
 export const CASH_MOVEMENT_PURPOSES = [
   {
     value: 'new_expense',
-    label: 'Gasto del negocio',
-    helper: 'Esta salida también se registrará como un nuevo gasto.',
+    label: 'Gasto nuevo del día',
+    helper: 'Esta salida se registrará como un nuevo gasto y afectará el resultado del día.',
   },
   {
     value: 'cost_payment',
-    label: 'Pago de un costo registrado',
-    helper: 'El dinero saldrá de caja, pero no se creará un nuevo costo.',
+    label: 'Pago de costo o factura ya registrada',
+    helper: 'El dinero saldrá de caja, pero no se creará un nuevo gasto.',
   },
   {
     value: 'inventory_purchase',
     label: 'Compra de mercadería',
-    helper: 'Se registrará la salida de dinero. La compra no se descontará como gasto operativo inmediato.',
+    helper: 'Se registrará la salida de dinero sin descontarla como gasto operativo inmediato.',
   },
   {
     value: 'owner_withdrawal',
