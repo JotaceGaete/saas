@@ -6,7 +6,7 @@ import PanelHeader from 'components/ui/PanelHeader';
 import CrmBreadcrumb from 'components/ui/CrmBreadcrumb';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
-import { getCrmQuotes, updateCrmQuote, duplicateCrmQuote, convertQuoteToInvoice, formatQuoteNumber, getQuoteDocLabel } from '../../services/crmService';
+import { getCrmQuotes, updateCrmQuote, duplicateCrmQuote, formatQuoteNumber, formatInvoiceNumber, getQuoteDocLabel } from '../../services/crmService';
 import { formatMoney } from '../../utils/formatMoney';
 
 const STATUS_STYLES = {
@@ -53,13 +53,13 @@ export default function CrmQuotes() {
     else load();
   };
 
-  const handleConvert = async (q) => {
-    if (!window.confirm(`¿Convertir ${formatQuoteNumber(q.quote_number, business?.documentTitleType)} en factura interna?`)) return;
-    setBusy(q.id + 'conv');
-    const { data, error } = await convertQuoteToInvoice(q.id);
-    setBusy('');
-    if (data?.id) navigate(`/crm/facturas/${data.id}`);
-    else if (error) alert('Error: ' + error.message);
+  // QUOTE-TO-SALE-1: "Crear nota de venta" NUNCA crea nada acá -- solo
+  // navega al editor de una NV nueva, pasando el presupuesto de origen
+  // como query param. El editor la precarga (cliente/ítems/condiciones)
+  // pero la fila en crm_invoices recién se crea si el usuario pulsa
+  // Guardar ahí. Aceptar un presupuesto jamás crea una nota de venta.
+  const handleCreateInvoice = (q) => {
+    navigate(`/crm/facturas/nueva?quote=${q.id}`);
   };
 
   const docLabel = getQuoteDocLabel(business?.documentTitleType);
@@ -209,17 +209,21 @@ export default function CrmQuotes() {
                   )}
                   {q.status === 'aceptado' && !q.converted_to_invoice_id && (
                     <button
-                      onClick={() => handleConvert(q)}
+                      onClick={() => handleCreateInvoice(q)}
                       disabled={!!busy}
                       className="inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 font-medium"
                     >
-                      <Icon name="ArrowRightCircle" size={13} />Convertir a factura
+                      <Icon name="ArrowRightCircle" size={13} />Crear nota de venta
                     </button>
                   )}
                   {q.converted_to_invoice_id && (
-                    <span className="inline-flex items-center gap-1.5 text-xs px-3 py-2 text-gray-400">
-                      <Icon name="CheckCircle2" size={13} />Facturado
-                    </span>
+                    <button
+                      onClick={() => navigate(`/crm/facturas/${q.converted_to_invoice_id}`)}
+                      className="inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 font-medium"
+                    >
+                      <Icon name="CheckCircle2" size={13} />
+                      Nota de venta creada{q.crm_invoices?.invoice_number != null ? ` · ${formatInvoiceNumber(q.crm_invoices.invoice_number)}` : ''}
+                    </button>
                   )}
                 </div>
               </div>
