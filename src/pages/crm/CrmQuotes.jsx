@@ -38,11 +38,26 @@ export default function CrmQuotes() {
 
   const fmt = (n) => formatMoney(n, business?.currency);
 
+  // BUG-FIX: antes esta función ignoraba el error de updateCrmQuote y
+  // siempre llamaba a load() -- si el UPDATE fallaba (RLS, red, etc.) la
+  // UI recargaba la MISMA fila sin cambios y no pasaba nada visible. Ahora
+  // se muestra el error (mecanismo ya usado en este mismo archivo antes
+  // de QUOTE-TO-SALE-1, ver handleConvert histórico, y en CrmBarcodes.jsx)
+  // y solo se refresca la lista si la fila devuelta confirma el nuevo
+  // status.
   const handleStatus = async (id, status) => {
     setBusy(id + status);
-    await updateCrmQuote(id, { status });
-    await load();
+    const { data, error } = await updateCrmQuote(id, { status });
     setBusy('');
+    if (error) {
+      alert('No se pudo actualizar el estado: ' + (error.message || 'error desconocido'));
+      return;
+    }
+    if (data?.status !== status) {
+      alert('No se pudo confirmar la actualización del estado. Intenta nuevamente.');
+      return;
+    }
+    await load();
   };
 
   const handleDuplicate = async (id) => {
