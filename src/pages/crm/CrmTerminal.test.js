@@ -442,8 +442,24 @@ describe('CrmTerminal — mobile: CTA coherente, sin duplicar carrito, sin dos C
     expect(occurrences).toBe(1);
   });
 
-  it('la etapa payment reemplaza el detalle del carrito por un resumen compacto (no repite el listado de ítems)', () => {
-    expect(indexSource).toMatch(/checkoutStep === 'payment' \? \(\s*\n\s*<div className="px-4 py-3 text-xs text-gray-500">/);
+  it('la etapa payment NO oculta ni reemplaza el listado de ítems por un resumen colapsado -- el carrito debe seguir visible durante el cobro', () => {
+    expect(indexSource).not.toMatch(/checkoutStep === 'payment' \? \(\s*\n\s*<div className="px-4 py-3 text-xs text-gray-500">/);
+  });
+
+  it('en payment cada línea del carrito sigue mostrando cantidad, precio unitario y subtotal (mismo cart.map, no una copia agregada)', () => {
+    const cartMapMatch = indexSource.match(/\{cart\.map\(item => \{[\s\S]*?const editable = checkoutStep === 'sale';[\s\S]*?fmt\(item\.unit_price \* item\.quantity, business\?\.currency\)[\s\S]*?\n {6}\)\}/);
+    expect(cartMapMatch).not.toBeNull();
+    // En payment (editable=false) se sigue mostrando cantidad × nombre, precio unitario c/u y subtotal.
+    expect(cartMapMatch[0]).toMatch(/\{!editable && <span className="text-gray-400">\{item\.quantity\}×<\/span>\}/);
+    expect(cartMapMatch[0]).toMatch(/\{fmt\(item\.unit_price, business\?\.currency\)\} c\/u/);
+  });
+
+  it('en payment se ocultan los controles de edición (steppers +/-, eliminar, ajuste de stock) para no tocar el carrito a mitad de cobro', () => {
+    const cartMapMatch = indexSource.match(/\{cart\.map\(item => \{[\s\S]*?const editable = checkoutStep === 'sale';[\s\S]*?\n {6}\)\}/);
+    expect(cartMapMatch).not.toBeNull();
+    expect(cartMapMatch[0]).toMatch(/\{editable && \(\s*\n\s*<div className="flex items-center gap-1 shrink-0">/);
+    expect(cartMapMatch[0]).toMatch(/\{editable && \(\s*\n\s*<button\s*\n\s*onClick=\{\(\) => removeItem\(item\._key\)\}/);
+    expect(cartMapMatch[0]).toMatch(/\{editable && issue && \(/);
   });
 });
 

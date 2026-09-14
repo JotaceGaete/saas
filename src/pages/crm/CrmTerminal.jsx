@@ -1457,23 +1457,24 @@ function CrmTerminalUI() {
 
                     {/* Cart items — flex-1 min-h-0 overflow-y-auto on desktop;
                         max-h cap on mobile so the page doesn't get too long.
-                        TPV-CORE-3: en 'payment' se reemplaza por un resumen
-                        compacto (sección 5) -- el detalle artículo por
-                        artículo es responsabilidad de la etapa 'sale'; el
-                        cajero vuelve con "Volver a la venta" para editarlo. */}
+                        TPV-CORE-3: en 'payment' se sigue renderizando EL
+                        MISMO listado (un único cart.map, sin segunda copia
+                        del carrito) -- producto, cantidad, precio unitario
+                        y subtotal por línea permanecen visibles mientras se
+                        cobra; solo se ocultan los controles de edición
+                        (steppers +/-, eliminar, ajuste de stock) para no
+                        permitir tocar el carrito a mitad de un cobro y para
+                        ganar espacio vertical. El cajero edita cantidades
+                        volviendo con "Volver a la venta". */}
                     {cart.length === 0 ? (
                       <div className="px-4 py-10 text-center lg:flex-1 lg:flex lg:flex-col lg:items-center lg:justify-center">
                         <Icon name="ShoppingCart" size={32} className="mx-auto mb-2 text-gray-200" />
                         <p className="text-gray-400 text-sm">Toca un producto para agregarlo</p>
                       </div>
-                    ) : checkoutStep === 'payment' ? (
-                      <div className="px-4 py-3 text-xs text-gray-500">
-                        <span className="font-bold text-gray-700">{cartCount}</span> {cartCount === 1 ? 'artículo' : 'artículos'} · Subtotal {fmt(subtotal, business?.currency)}
-                        {discountAmount > 0 && <> · Descuento −{fmt(discountAmount, business?.currency)}</>}
-                      </div>
                     ) : (
-                      <div className="divide-y divide-gray-100 max-h-52 overflow-y-auto
-                                      lg:flex-1 lg:min-h-0 lg:max-h-none lg:overflow-y-auto">
+                      <div className={`divide-y divide-gray-100 overflow-y-auto
+                                      lg:flex-1 lg:min-h-0 lg:max-h-none lg:overflow-y-auto
+                                      ${checkoutStep === 'payment' ? 'max-h-40' : 'max-h-52'}`}>
                         {cart.map(item => {
                           // TPV-STOCK-UX-1: límite conocido para este producto
                           // (null = sin control de stock) y si esta línea ya
@@ -1485,57 +1486,63 @@ function CrmTerminalUI() {
                             : item.quantity;
                           const atStockLimit = typeof stockLimit === 'number' && totalForProduct >= stockLimit;
                           const issue = item.product_id ? cartStockIssues.get(item.product_id) : null;
+                          const editable = checkoutStep === 'sale';
                           return (
-                          <div key={item._key} className="px-3 py-2.5 flex flex-col gap-1.5">
+                          <div key={item._key} className={editable ? "px-3 py-2.5 flex flex-col gap-1.5" : "px-3 py-1.5 flex flex-col gap-1"}>
                             <div className="flex items-center gap-2">
                             <div className="flex-1 min-w-0">
                               <p className="text-xs font-semibold text-gray-800 truncate leading-snug flex items-center gap-1">
                                 {item.product_id == null && <span className="text-[9px] bg-purple-100 text-purple-600 px-1 py-0.5 rounded font-bold shrink-0">M</span>}
+                                {!editable && <span className="text-gray-400">{item.quantity}×</span>}
                                 {item.name}
                               </p>
                               <p className="text-[11px] text-gray-400 mt-0.5">{fmt(item.unit_price, business?.currency)} c/u</p>
                               {item.note && <p className="text-[10px] text-gray-400 italic truncate">{item.note}</p>}
                             </div>
-                            <div className="flex items-center gap-1 shrink-0">
-                              <button
-                                onClick={() => updateQty(item._key, -1)}
-                                title={item.quantity === 1 ? 'Quitar del carrito' : 'Reducir cantidad'}
-                                className="w-11 h-11 rounded-lg bg-gray-100 hover:bg-red-50 hover:text-red-500 flex items-center justify-center transition-colors text-gray-600"
-                              >
-                                {item.quantity === 1
-                                  ? <Icon name="Trash2" size={12} color="currentColor" />
-                                  : <Icon name="Minus" size={12} color="currentColor" />
-                                }
-                              </button>
-                              <span className="w-6 text-center text-sm font-bold text-gray-800">{item.quantity}</span>
-                              <button
-                                onClick={() => updateQty(item._key, 1)}
-                                disabled={atStockLimit}
-                                title={atStockLimit ? `Sin más stock disponible (${stockLimit})` : 'Aumentar cantidad'}
-                                className={`w-11 h-11 rounded-lg flex items-center justify-center transition-colors ${
-                                  atStockLimit
-                                    ? 'bg-gray-50 text-gray-300 cursor-not-allowed'
-                                    : 'bg-gray-100 hover:bg-gray-200 text-gray-600'
-                                }`}
-                              >
-                                <Icon name="Plus" size={12} color="currentColor" />
-                              </button>
-                            </div>
+                            {editable && (
+                              <div className="flex items-center gap-1 shrink-0">
+                                <button
+                                  onClick={() => updateQty(item._key, -1)}
+                                  title={item.quantity === 1 ? 'Quitar del carrito' : 'Reducir cantidad'}
+                                  className="w-11 h-11 rounded-lg bg-gray-100 hover:bg-red-50 hover:text-red-500 flex items-center justify-center transition-colors text-gray-600"
+                                >
+                                  {item.quantity === 1
+                                    ? <Icon name="Trash2" size={12} color="currentColor" />
+                                    : <Icon name="Minus" size={12} color="currentColor" />
+                                  }
+                                </button>
+                                <span className="w-6 text-center text-sm font-bold text-gray-800">{item.quantity}</span>
+                                <button
+                                  onClick={() => updateQty(item._key, 1)}
+                                  disabled={atStockLimit}
+                                  title={atStockLimit ? `Sin más stock disponible (${stockLimit})` : 'Aumentar cantidad'}
+                                  className={`w-11 h-11 rounded-lg flex items-center justify-center transition-colors ${
+                                    atStockLimit
+                                      ? 'bg-gray-50 text-gray-300 cursor-not-allowed'
+                                      : 'bg-gray-100 hover:bg-gray-200 text-gray-600'
+                                  }`}
+                                >
+                                  <Icon name="Plus" size={12} color="currentColor" />
+                                </button>
+                              </div>
+                            )}
                             <div className="flex items-center gap-1.5 shrink-0">
-                              <span className="text-sm font-bold text-gray-900 min-w-[52px] text-right">
+                              <span className={editable ? "text-sm font-bold text-gray-900 min-w-[52px] text-right" : "text-xs font-bold text-gray-900"}>
                                 {fmt(item.unit_price * item.quantity, business?.currency)}
                               </span>
-                              <button
-                                onClick={() => removeItem(item._key)}
-                                title="Eliminar producto"
-                                aria-label="Eliminar producto del carrito"
-                                className="w-11 h-11 rounded-lg bg-red-50 hover:bg-red-100 flex items-center justify-center transition-colors text-red-400 hover:text-red-600"
-                              >
-                                <Icon name="Trash2" size={13} color="currentColor" />
-                              </button>
+                              {editable && (
+                                <button
+                                  onClick={() => removeItem(item._key)}
+                                  title="Eliminar producto"
+                                  aria-label="Eliminar producto del carrito"
+                                  className="w-11 h-11 rounded-lg bg-red-50 hover:bg-red-100 flex items-center justify-center transition-colors text-red-400 hover:text-red-600"
+                                >
+                                  <Icon name="Trash2" size={13} color="currentColor" />
+                                </button>
+                              )}
                             </div>
                             </div>
-                            {issue && (
+                            {editable && issue && (
                               <div className="flex items-center justify-between gap-2 rounded-lg bg-red-50 border border-red-100 px-2 py-1">
                                 <p className="text-[10px] font-semibold text-red-600">
                                   Stock disponible: {issue.available} · En carrito: {issue.requested}
@@ -1561,6 +1568,12 @@ function CrmTerminalUI() {
                           </div>
                           );
                         })}
+                        {checkoutStep === 'payment' && discountAmount > 0 && (
+                          <div className="px-3 py-1.5 flex items-center justify-between text-xs font-semibold text-red-500">
+                            <span>Descuento</span>
+                            <span>−{fmt(discountAmount, business?.currency)}</span>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
