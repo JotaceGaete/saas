@@ -367,9 +367,18 @@ function MovementsTable({
                     ) : readOnly ? (
                       /* Caja cerrada = histórica/auditable: nunca se modifica un
                          movimiento pasado desde acá. Un cobro con invoice_id real
-                         (TPV u otro origen que registre la venta) puede consultarse
-                         y reimprimirse; un movimiento manual (o un pago sin
-                         invoice_id) no tiene ninguna acción válida en este contexto. */
+                         puede consultarse ("Ver venta") sin importar su origen.
+                         "Reimprimir" es más estricto -- solo existe un comprobante
+                         original que reimprimir cuando la venta se creó vía TPV
+                         (crm_create_pos_sale, invoice.source === 'pos'): es el
+                         único flujo que hoy imprime algo (CrmTerminal.jsx). Un
+                         abono a cuenta corriente o un pago de pedido de catálogo
+                         (invoice.source === 'crm') nunca generó un ticket -- y
+                         además una misma invoice 'crm' puede acumular varios
+                         abonos independientes, así que reconstruir "el" recibo
+                         desde el estado actual de la venta no representaría este
+                         pago puntual. Un movimiento manual (o un pago sin
+                         invoice_id) no tiene ninguna acción válida acá. */
                       isPayment && entry.invoice_id ? (
                         <div className="flex items-center justify-end gap-1.5">
                           <button
@@ -379,15 +388,17 @@ function MovementsTable({
                           >
                             Ver venta
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => onReprintReceipt?.(entry)}
-                            disabled={reprintingId === entry.id}
-                            className="flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-bold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                          >
-                            {reprintingId === entry.id && <Icon name="Loader2" size={12} className="animate-spin" />}
-                            Reimprimir
-                          </button>
+                          {entry.invoice?.source === 'pos' && (
+                            <button
+                              type="button"
+                              onClick={() => onReprintReceipt?.(entry)}
+                              disabled={reprintingId === entry.id}
+                              className="flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-bold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                            >
+                              {reprintingId === entry.id && <Icon name="Loader2" size={12} className="animate-spin" />}
+                              Reimprimir
+                            </button>
+                          )}
                         </div>
                       ) : (
                         <span className="text-xs text-gray-400">—</span>
@@ -1464,6 +1475,14 @@ export default function CrmCash() {
       ]);
       if (invErr || !invoice) throw new Error(invErr?.message || 'No se pudo cargar la venta original.');
       if (sumErr) throw new Error(sumErr.message);
+      // Defensa en profundidad: el botón ya solo se muestra para
+      // invoice.source === 'pos' (ver MovementsTable) -- único origen que
+      // efectivamente imprimió un comprobante alguna vez (CrmTerminal.jsx).
+      // Un abono a cuenta corriente o un pago de pedido de catálogo nunca
+      // tuvo un ticket real que reimprimir.
+      if (invoice.source !== 'pos') {
+        throw new Error('Este pago no tiene un comprobante original para reimprimir.');
+      }
 
       const receipt = buildSaleReceipt({
         business,

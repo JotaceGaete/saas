@@ -653,10 +653,19 @@ describe('CASH-SESSION-DETAIL-MODAL', () => {
  * válida en este contexto.
  */
 describe('CASH-DETAIL-HISTORICAL-ACTIONS — caja cerrada = histórica/auditable', () => {
+  // CASH-DETAIL-REPRINT-SCOPE — invoice.source distingue si alguna vez
+  // existió un comprobante real impreso (solo 'pos', vía crm_create_pos_sale
+  // + CrmTerminal.jsx). "Ver venta" no depende del origen -- cualquier
+  // invoice_id real navega a la Nota de Venta.
   const TPV_PAYMENT = {
     id: 'pay-tpv', amount: 12000, payment_method: 'card', reference: 'TPV NV-0580',
     notes: null, created_at: '2026-09-12T11:00:00Z', currency: 'CLP',
-    voided_at: null, invoice_id: 'inv-580',
+    voided_at: null, invoice_id: 'inv-580', invoice: { source: 'pos' },
+  };
+  const ABONO_PAYMENT_CRM_SOURCE = {
+    id: 'pay-abono', amount: 3000, payment_method: 'cash', reference: 'Abono cuenta corriente',
+    notes: null, created_at: '2026-09-12T08:45:00Z', currency: 'CLP',
+    voided_at: null, invoice_id: 'inv-901', invoice: { source: 'crm' },
   };
   const MANUAL_PAYMENT_NO_INVOICE = {
     id: 'pay-manual', amount: 3000, payment_method: 'cash', reference: null,
@@ -669,24 +678,35 @@ describe('CASH-DETAIL-HISTORICAL-ACTIONS — caja cerrada = histórica/auditable
   };
   const INVOICE_580 = {
     id: 'inv-580', invoice_number: 580, subtotal: 12000, discount_amount: 0, total: 12000,
-    notes: null, issue_date: '2026-09-12',
+    notes: null, issue_date: '2026-09-12', source: 'pos',
     wa_customers: { id: 'cust1', name: 'Cliente TPV' },
     crm_invoice_items: [
       { id: 'item1', name: 'Producto A', description: null, unit_price: 12000, quantity: 1, sort_order: 1 },
+    ],
+  };
+  const INVOICE_901_CRM_SOURCE = {
+    id: 'inv-901', invoice_number: 901, subtotal: 3000, discount_amount: 0, total: 3000,
+    notes: null, issue_date: '2026-09-10', source: 'crm',
+    wa_customers: { id: 'cust2', name: 'Cliente cuenta corriente' },
+    crm_invoice_items: [
+      { id: 'item2', name: 'Servicio', description: null, unit_price: 3000, quantity: 1, sort_order: 1 },
     ],
   };
 
   beforeEach(() => {
     getCashRecentSessionsMock.mockResolvedValue({ data: [openSession, closedSession], error: null });
     getCashSessionPaymentsMock.mockImplementation((_bizId, session) => {
-      if (session.id === 'sess0') return Promise.resolve({ data: [TPV_PAYMENT, MANUAL_PAYMENT_NO_INVOICE], error: null });
+      if (session.id === 'sess0') return Promise.resolve({ data: [TPV_PAYMENT, ABONO_PAYMENT_CRM_SOURCE, MANUAL_PAYMENT_NO_INVOICE], error: null });
       return Promise.resolve({ data: [], error: null });
     });
     getCashSessionMovementsMock.mockImplementation((_bizId, sessionId) => {
       if (sessionId === 'sess0') return Promise.resolve({ data: [MANUAL_MOVEMENT_OUT], error: null });
       return Promise.resolve({ data: [], error: null });
     });
-    getCrmInvoiceMock.mockResolvedValue({ data: INVOICE_580, error: null });
+    getCrmInvoiceMock.mockImplementation((invoiceId) => {
+      if (invoiceId === 'inv-901') return Promise.resolve({ data: INVOICE_901_CRM_SOURCE, error: null });
+      return Promise.resolve({ data: INVOICE_580, error: null });
+    });
     getInvoicePaymentSummaryMock.mockResolvedValue({
       data: {
         invoice: { id: 'inv-580', total: 12000 }, total: 12000, paid: 12000, pending: 0,
@@ -715,18 +735,28 @@ describe('CASH-DETAIL-HISTORICAL-ACTIONS — caja cerrada = histórica/auditable
     expect(within(modal).queryByText('Anular')).not.toBeInTheDocument();
   });
 
-  it('un cobro con invoice_id real (TPV) muestra "Ver venta" y "Reimprimir"', async () => {
+  it('un cobro con invoice_id real (TPV, invoice.source === "pos") muestra "Ver venta" y "Reimprimir"', async () => {
     const { modal } = await openClosedSessionDetail();
-    await within(modal).findByText('TPV NV-0580');
-    expect(within(modal).getByRole('button', { name: 'Ver venta' })).toBeInTheDocument();
-    expect(within(modal).getByRole('button', { name: 'Reimprimir' })).toBeInTheDocument();
+    const row = (await within(modal).findByText('TPV NV-0580')).closest('tr');
+    expect(within(row).getByRole('button', { name: 'Ver venta' })).toBeInTheDocument();
+    expect(within(row).getByRole('button', { name: 'Reimprimir' })).toBeInTheDocument();
   });
 
   it('"Ver venta" navega usando el invoice_id real de la venta, no el texto de la referencia', async () => {
     const { modal } = await openClosedSessionDetail();
-    await within(modal).findByText('TPV NV-0580');
-    fireEvent.click(within(modal).getByRole('button', { name: 'Ver venta' }));
+    const row = (await within(modal).findByText('TPV NV-0580')).closest('tr');
+    fireEvent.click(within(row).getByRole('button', { name: 'Ver venta' }));
     expect(navigateMock).toHaveBeenCalledWith('/crm/facturas/inv-580');
+  });
+
+  it('un abono a cuenta corriente (invoice.source === "crm") muestra "Ver venta" pero NO "Reimprimir" -- nunca existió un comprobante original que reimprimir', async () => {
+    const { modal } = await openClosedSessionDetail();
+    const row = (await within(modal).findByText('Abono cuenta corriente')).closest('tr');
+    expect(within(row).getByRole('button', { name: 'Ver venta' })).toBeInTheDocument();
+    expect(within(row).queryByRole('button', { name: 'Reimprimir' })).not.toBeInTheDocument();
+
+    fireEvent.click(within(row).getByRole('button', { name: 'Ver venta' }));
+    expect(navigateMock).toHaveBeenCalledWith('/crm/facturas/inv-901');
   });
 
   it('un movimiento manual (o un pago sin invoice_id) no muestra ninguna acción en el detalle histórico', async () => {

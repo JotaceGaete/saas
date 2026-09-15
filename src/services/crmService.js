@@ -1569,7 +1569,12 @@ export async function getPaymentsForSession(businessId, sessionId) {
 export async function getCashSessionPayments(businessId, session) {
   if (!session?.opened_at) return { data: [], error: null };
 
-  const paymentSelect = 'id, business_id, invoice_id, amount, currency, payment_method, payment_status, payment_date, reference, notes, created_at, voided_at, voided_by, void_reason, cash_session_id';
+  // `invoice:crm_invoices(source)` -- necesario para decidir si "Reimprimir"
+  // aplica (ver CrmCash.jsx): solo una venta 'pos' (crm_create_pos_sale) tuvo
+  // alguna vez un comprobante real impreso por CrmTerminal. Un embed de
+  // PostgREST sobre invoice_id (FK ya existente), no una relación/columna
+  // nueva.
+  const paymentSelect = 'id, business_id, invoice_id, amount, currency, payment_method, payment_status, payment_date, reference, notes, created_at, voided_at, voided_by, void_reason, cash_session_id, invoice:crm_invoices(source)';
   const sessionEnd = session.closed_at || new Date().toISOString();
 
   const linkedQuery = supabase
