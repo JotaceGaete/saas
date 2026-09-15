@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import DashboardAppShell from 'components/ui/DashboardAppShell';
 import DashboardLayoutContent from 'components/ui/DashboardLayoutContent';
@@ -109,16 +109,110 @@ function turnTimeRange(session) {
     : fmtTime(session.opened_at);
 }
 
-function SectionButton({ open, onClick, children }) {
+// ─── Rediseño UI — KPIs, tabs y menú de acciones de fila ──────────────────────
+// Presentación pura: no cambia datos, cálculos ni handlers existentes.
+
+function KpiCard({ label, value, toneClass = 'text-gray-900', emphasize = false }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"
-    >
-      <Icon name={open ? 'ChevronUp' : 'ChevronDown'} size={15} />
-      {children}
-    </button>
+    <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+      <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">{label}</p>
+      <p className={`mt-1.5 tabular-nums font-black ${emphasize ? 'text-2xl' : 'text-lg'} ${toneClass}`}>
+        {value}
+      </p>
+    </div>
+  );
+}
+
+const CASH_TABS = [
+  { key: 'movimientos', label: 'Movimientos', icon: 'FileText' },
+  { key: 'resumen', label: 'Resumen del día', icon: 'BarChart3' },
+  { key: 'historial', label: 'Historial de cajas', icon: 'History' },
+];
+
+function CashTabs({ active, onChange }) {
+  return (
+    <div className="flex w-full flex-wrap gap-1 rounded-xl border border-gray-200 bg-white p-1 shadow-sm sm:w-auto">
+      {CASH_TABS.map(tab => (
+        <button
+          key={tab.key}
+          type="button"
+          onClick={() => onChange(tab.key)}
+          aria-pressed={active === tab.key}
+          className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-bold transition-colors ${
+            active === tab.key ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-50'
+          }`}
+        >
+          <Icon name={tab.icon} size={14} />
+          {tab.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// Menú "(...)" para las acciones secundarias de una fila del historial
+// (Editar / Reabrir / Cerrar) -- "Ver detalle" queda como acción principal
+// fuera del menú.
+function RowActionsMenu({ session, busy, onEdit, onReopen, onClose }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (ref.current && !ref.current.contains(event.target)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(value => !value)}
+        aria-label="Más acciones"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+      >
+        <Icon name="MoreHorizontal" size={16} />
+      </button>
+      {open && (
+        <div role="menu" className="absolute right-0 z-10 mt-1 w-44 overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => { setOpen(false); onEdit(); }}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-bold text-gray-700 hover:bg-gray-50"
+          >
+            <Icon name="Pencil" size={14} />
+            Editar
+          </button>
+          {session.status === 'open' ? (
+            <button
+              type="button"
+              role="menuitem"
+              disabled={busy}
+              onClick={() => { setOpen(false); onClose(); }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-bold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              <Icon name="LockKeyhole" size={14} />
+              Cerrar caja
+            </button>
+          ) : (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => { setOpen(false); onReopen(); }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-bold text-emerald-700 hover:bg-emerald-50"
+            >
+              <Icon name="RotateCcw" size={14} />
+              Reabrir
+            </button>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -883,9 +977,9 @@ export default function CrmCash() {
   const [showOpenForm, setShowOpenForm] = useState(false);
   const [editingSession, setEditingSession] = useState(null);
   const [detailSessionId, setDetailSessionId] = useState(null);
-  const [showDayBreakdown, setShowDayBreakdown] = useState(false);
-  const [showMovements, setShowMovements] = useState(false);
-  const [showHistory, setShowHistory] = useState(false);
+  // Barra de navegación secundaria (rediseño): una sola sección visible a la
+  // vez, en vez de 3 toggles independientes que podían quedar todos abiertos.
+  const [activeTab, setActiveTab] = useState('movimientos');
   const [editingPayment, setEditingPayment] = useState(null);
   const [voidingPayment, setVoidingPayment] = useState(null);
   const [showMovementForm, setShowMovementForm] = useState(false);
@@ -969,8 +1063,8 @@ export default function CrmCash() {
     setDayPayments(dayPaymentsRes.data || []);
     setDayMovements(dayMovementsRes.data || []);
     setShowOpenForm(noSessionToday);
-    // When there's no session today, auto-expand history so past sessions are visible
-    if (noSessionToday && recentList.length > 0) setShowHistory(true);
+    // When there's no session today, jump to the history tab so past sessions are visible
+    if (noSessionToday && recentList.length > 0) setActiveTab('historial');
     setLoading(false);
   }, [business?.id, hasAccess, today]);
 
@@ -984,16 +1078,6 @@ export default function CrmCash() {
   const detailSession   = detailSessionId ? allSessions.find(s => s.id === detailSessionId) : null;
   const detailPayments  = detailSession ? (sessionPayments[detailSession.id] || []) : [];
   const detailMvts      = detailSession ? (sessionMovements[detailSession.id] || []) : [];
-
-  // eslint-disable-next-line no-console
-  console.log('[PROD CrmCash]', {
-    businessId: business?.id,
-    allSessions,
-    sessions,
-    currentSession,
-    detailSession,
-    sessionLoadErrors,
-  });
 
   const daySummary        = useMemo(() => summarizePayments(dayPayments), [dayPayments]);
   const dayTotal          = useMemo(() => totalPayments(dayPayments), [dayPayments]);
@@ -1137,15 +1221,8 @@ export default function CrmCash() {
   };
 
   const openDetail = (sessionId) => {
-    // eslint-disable-next-line no-console
-    console.log('[Cash movements debug]', {
-      currentSessionId: currentSession?.id,
-      detailSessionId: sessionId,
-      showMovements,
-      loadError: sessionLoadErrors[sessionId] || null,
-    });
     setDetailSessionId(sessionId);
-    setShowHistory(true);
+    setActiveTab('historial');
   };
 
   if (!hasAccess) {
@@ -1173,9 +1250,6 @@ export default function CrmCash() {
 
   return (
     <DashboardAppShell>
-      <div style={{ position: 'fixed', top: 8, right: 8, zIndex: 99999, background: 'green', color: 'white', padding: 8, fontSize: 12, fontFamily: 'monospace' }}>
-        PROD CAJA 3fc4df3
-      </div>
       <PanelHeader
         title={
           <><CrmBreadcrumb section="Caja diaria" /><h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Caja diaria</h1></>
@@ -1188,7 +1262,7 @@ export default function CrmCash() {
       />
 
       <DashboardLayoutContent>
-        <div className="mx-auto max-w-5xl space-y-4">
+        <div className="mx-auto w-full max-w-5xl min-w-0 space-y-4">
           {errorMsg && (
             <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
               <Icon name="AlertCircle" size={16} className="mt-0.5 shrink-0" />
@@ -1205,61 +1279,50 @@ export default function CrmCash() {
             </div>
           ) : (
             <>
-              <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                   <div className="min-w-0">
-                    <div className={`mb-2 inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-bold ${
+                    <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${
                       openSession ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-600'
                     }`}>
-                      <Icon name={openSession ? 'UnlockKeyhole' : 'LockKeyhole'} size={13} />
-                      Estado: {openSession ? 'Caja abierta' : 'Caja cerrada'}
+                      <span className={`h-1.5 w-1.5 rounded-full ${openSession ? 'bg-emerald-500' : 'bg-gray-400'}`} />
+                      {openSession ? 'CAJA ABIERTA' : currentSession ? 'CAJA CERRADA' : 'SIN CAJA ABIERTA HOY'}
+                    </span>
+
+                    <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1">
+                      <span className="text-base font-bold text-gray-900">
+                        {currentSession ? turnLabel(currentSession, sessions) : 'Sin caja abierta'}
+                      </span>
+                      <span className="capitalize text-sm text-gray-400">{fmtDate(today)}</span>
                     </div>
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-600">
-                      <span className="capitalize">{fmtDate(today)}</span>
-                      <span>{currentSession ? turnLabel(currentSession, sessions) : 'Sin caja abierta'}</span>
-                    </div>
+
                     {currentSession && (
-                      <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-gray-400">
-                        <span>
-                          Apertura: <strong className="text-gray-600">{fmtTime(currentSession.opened_at)}</strong>
-                        </span>
+                      <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500">
                         <span>
                           Responsable:{' '}
-                          <strong className="text-gray-600">
+                          <span className="font-medium text-gray-700">
                             {currentSession.opened_by === user?.id
                               ? (user?.user_metadata?.name || user?.email || '—')
                               : 'otro usuario'}
-                          </strong>
+                          </span>
                         </span>
-                      </div>
-                    )}
-                    {currentSession && (
-                      <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm">
-                        {toNumber(currentSession.initial_amount) > 0 && (
+                        <span>
+                          Apertura: <span className="font-medium text-gray-700">{fmtTime(currentSession.opened_at)}</span>
+                        </span>
+                        {currentSession.closed_at && (
                           <span>
-                            Fondo inicial: <strong className="text-gray-700">{formatMoney(toNumber(currentSession.initial_amount), business?.currency)}</strong>
+                            Cierre: <span className="font-medium text-gray-700">{fmtTime(currentSession.closed_at)}</span>
                           </span>
                         )}
-                        <span>
-                          Cobros: <strong className="text-emerald-700">{formatMoney(sessionTotal, business?.currency)}</strong>
-                        </span>
-                        {sessionOutflows > 0 && (
-                          <span>
-                            Salidas: <strong className="text-red-600">−{formatMoney(sessionOutflows, business?.currency)}</strong>
-                          </span>
-                        )}
-                        <span>
-                          Saldo en caja: <strong className="text-gray-900">{formatMoney(currentBalance, business?.currency)}</strong>
-                        </span>
                       </div>
                     )}
-                    <div className="mt-2 space-y-1 text-xs text-gray-400">
-                      <p>La caja registra pagos reales, no ventas pendientes.</p>
-                      <p>Puedes abrir mas de una caja por dia para cambios de turno.</p>
-                    </div>
+
+                    <p className="mt-3 text-xs text-gray-400">
+                      La caja registra pagos reales, no ventas pendientes. Puedes abrir más de una caja por día para cambios de turno.
+                    </p>
                   </div>
 
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex shrink-0 flex-wrap gap-2">
                     {!openSession && (
                       <button
                         onClick={() => setShowOpenForm(true)}
@@ -1272,7 +1335,7 @@ export default function CrmCash() {
                       <button
                         onClick={() => handleClose(openSession.id)}
                         disabled={busy}
-                        className="rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-bold text-white hover:bg-gray-800 disabled:opacity-50"
+                        className="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-50"
                       >
                         Cerrar caja
                       </button>
@@ -1297,49 +1360,39 @@ export default function CrmCash() {
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
-                <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4 lg:grid-cols-5">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Fondo inicial</p>
-                    <p className="mt-1 text-lg font-black text-gray-500">{formatMoney(toNumber(currentSession?.initial_amount), business?.currency)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Cobros de la caja</p>
-                    <p className="mt-1 text-lg font-black text-emerald-700">{formatMoney(sessionTotal, business?.currency)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Salidas de la caja</p>
-                    <p className="mt-1 text-lg font-black text-red-600">{sessionOutflows > 0 ? `−${formatMoney(sessionOutflows, business?.currency)}` : '—'}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Saldo de caja</p>
-                    <p className="mt-1 text-lg font-black text-gray-900">{formatMoney(currentBalance, business?.currency)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Cajas hoy</p>
-                    <p className="mt-1 text-lg font-black text-gray-900">{sessions.length}</p>
-                  </div>
-                </div>
+              <div className="my-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+                <KpiCard
+                  label="Fondo inicial"
+                  value={formatMoney(toNumber(currentSession?.initial_amount), business?.currency)}
+                  toneClass="text-gray-500"
+                />
+                <KpiCard
+                  label="Cobros de la caja"
+                  value={`${sessionTotal > 0 ? '+' : ''}${formatMoney(sessionTotal, business?.currency)}`}
+                  toneClass="text-emerald-700"
+                />
+                <KpiCard
+                  label="Salidas / Gastos"
+                  value={sessionOutflows > 0 ? `−${formatMoney(sessionOutflows, business?.currency)}` : formatMoney(0, business?.currency)}
+                  toneClass={sessionOutflows > 0 ? 'text-red-600' : 'text-gray-400'}
+                />
+                <KpiCard
+                  label="Saldo en caja"
+                  value={formatMoney(currentBalance, business?.currency)}
+                  emphasize
+                />
               </div>
 
-              <div className="flex flex-wrap gap-2">
-                <SectionButton open={showMovements} onClick={() => setShowMovements(value => !value)}>
-                  Ver movimientos
-                </SectionButton>
-                <SectionButton open={showDayBreakdown} onClick={() => setShowDayBreakdown(value => !value)}>
-                  Resumen del día completo
-                </SectionButton>
-                <SectionButton open={showHistory} onClick={() => setShowHistory(value => !value)}>
-                  Ver historial de cajas
-                </SectionButton>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <CashTabs active={activeTab} onChange={setActiveTab} />
                 {openSession && (
                   <button
                     type="button"
                     onClick={() => setShowMovementForm(true)}
-                    className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-bold text-red-700 hover:bg-red-100"
+                    className="flex items-center justify-center gap-2 rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-bold text-white hover:bg-gray-800"
                   >
-                    <Icon name="ArrowUpRight" size={15} />
-                    Registrar movimiento
+                    <Icon name="Plus" size={15} />
+                    Registrar movimiento / gasto
                   </button>
                 )}
               </div>
@@ -1413,45 +1466,51 @@ export default function CrmCash() {
                 />
               )}
 
-              {showMovements && currentSession && (
-                <div className="space-y-3">
-                  <div className="rounded-2xl border border-gray-100 bg-white p-4">
-                    <p className="text-sm font-bold text-gray-900">{turnLabel(currentSession, sessions)}</p>
-                    <p className="mt-1 text-xs text-gray-400">
-                      {turnTimeRange(currentSession)} · Saldo: {formatMoney(currentBalance, business?.currency)}
-                    </p>
+              {activeTab === 'movimientos' && (
+                currentSession ? (
+                  <div className="space-y-3">
+                    <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+                      <p className="text-sm font-bold text-gray-900">{turnLabel(currentSession, sessions)}</p>
+                      <p className="mt-1 text-xs text-gray-400">
+                        {turnTimeRange(currentSession)} · Saldo: {formatMoney(currentBalance, business?.currency)}
+                      </p>
+                    </div>
+                    <MovementsTable
+                      payments={currentPayments}
+                      movements={currentMvts}
+                      currency={business?.currency}
+                      onEditPayment={setEditingPayment}
+                      onVoidPayment={setVoidingPayment}
+                      onVoidMovement={setVoidingMovement}
+                      sessionOpen={currentSession?.status === 'open'}
+                    />
                   </div>
-                  <MovementsTable
-                    payments={currentPayments}
-                    movements={currentMvts}
-                    currency={business?.currency}
-                    onEditPayment={setEditingPayment}
-                    onVoidPayment={setVoidingPayment}
-                    onVoidMovement={setVoidingMovement}
-                    sessionOpen={currentSession?.status === 'open'}
-                  />
+                ) : (
+                  <div className="rounded-2xl border border-gray-100 bg-white px-5 py-10 text-center shadow-sm">
+                    <Icon name="Wallet" size={30} className="mx-auto mb-3 text-gray-200" />
+                    <p className="text-sm font-semibold text-gray-600">No hay una caja abierta hoy todavía.</p>
+                    <p className="mt-1 text-xs text-gray-400">Abre una caja para empezar a registrar movimientos.</p>
+                  </div>
+                )
+              )}
+
+              {activeTab === 'resumen' && (
+                <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+                  <p className="mb-3 text-xs font-bold uppercase tracking-wide text-gray-400">
+                    Resumen del día — por método de pago
+                  </p>
+                  <MethodBreakdown summary={daySummary} currency={business?.currency} />
+                  <p className="mt-3 text-right text-xs text-gray-400">
+                    Total del día: <strong className="text-gray-700">{formatMoney(dayTotal, business?.currency)}</strong>
+                    {dayOutflows > 0 && (
+                      <> · Salidas: <strong className="text-red-600">−{formatMoney(dayOutflows, business?.currency)}</strong></>
+                    )}
+                  </p>
                 </div>
               )}
 
-              {showDayBreakdown && (
-                <div className="space-y-3">
-                  <div className="rounded-2xl border border-gray-100 bg-white p-4">
-                    <p className="mb-3 text-xs font-bold uppercase tracking-wide text-gray-400">
-                      Resumen del día completo — por método de pago
-                    </p>
-                    <MethodBreakdown summary={daySummary} currency={business?.currency} />
-                    <p className="mt-3 text-right text-xs text-gray-400">
-                      Total del día: <strong className="text-gray-700">{formatMoney(dayTotal, business?.currency)}</strong>
-                      {dayOutflows > 0 && (
-                        <> · Salidas: <strong className="text-red-600">−{formatMoney(dayOutflows, business?.currency)}</strong></>
-                      )}
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {showHistory && (
-                <div className="rounded-2xl border border-gray-100 bg-white p-4">
+              {activeTab === 'historial' && (
+                <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
                   {allSessions.length === 0 ? (
                     <div className="py-8 text-center">
                       <Icon name="Wallet" size={30} className="mx-auto mb-3 text-gray-200" />
@@ -1463,56 +1522,38 @@ export default function CrmCash() {
                         const payments  = sessionPayments[session.id] || [];
                         const movements = sessionMovements[session.id] || [];
                         const total     = calcSessionBalance(session, payments, movements);
-                        const isToday   = session.date === today;
                         return (
-                          <div key={session.id} className="flex flex-col gap-3 py-3 lg:flex-row lg:items-center lg:justify-between">
-                            <div className="min-w-0 text-sm text-gray-700">
-                              <span className="font-bold text-gray-900">{fmtDate(session.date)}</span>
-                              {!isToday && (
-                                <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500">
-                                  {session.date}
+                          <div key={session.id} className="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-sm font-bold capitalize text-gray-900">{fmtDate(session.date)}</span>
+                                <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                                  session.status === 'open' ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'
+                                }`}>
+                                  {session.status === 'open' ? 'Abierta' : 'Cerrada'}
                                 </span>
-                              )}
-                              <span className="mx-2 text-gray-300">|</span>
-                              <span className={session.status === 'open' ? 'font-semibold text-emerald-600' : ''}>
-                                {session.status === 'open' ? 'Abierta' : 'Cerrada'}
-                              </span>
-                              <span className="mx-2 text-gray-300">|</span>
-                              <span>{turnTimeRange(session)}</span>
-                              <span className="mx-2 text-gray-300">|</span>
-                              <span className="text-gray-400">Inicial: {formatMoney(toNumber(session.initial_amount), business?.currency)}</span>
-                              <span className="mx-2 text-gray-300">|</span>
-                              <span className="font-bold text-gray-900">Saldo: {formatMoney(total, business?.currency)}</span>
+                              </div>
+                              <p className="mt-0.5 text-xs text-gray-400">{turnTimeRange(session)}</p>
                             </div>
-                            <div className="flex flex-wrap gap-2">
-                              <button
-                                onClick={() => openDetail(session.id)}
-                                className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold text-gray-700 hover:bg-gray-50"
-                              >
-                                Ver detalle
-                              </button>
-                              <button
-                                onClick={() => setEditingSession(session)}
-                                className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold text-gray-700 hover:bg-gray-50"
-                              >
-                                Editar
-                              </button>
-                              {session.status === 'open' ? (
+                            <div className="flex items-center gap-4 sm:gap-6">
+                              <span className="text-sm font-black tabular-nums text-gray-900">
+                                {formatMoney(total, business?.currency)}
+                              </span>
+                              <div className="flex items-center gap-1">
                                 <button
-                                  onClick={() => handleClose(session.id)}
-                                  disabled={busy}
-                                  className="rounded-lg bg-gray-900 px-3 py-2 text-xs font-bold text-white hover:bg-gray-800 disabled:opacity-50"
+                                  onClick={() => openDetail(session.id)}
+                                  className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-bold text-gray-700 hover:bg-gray-50"
                                 >
-                                  Cerrar
+                                  Ver detalle
                                 </button>
-                              ) : (
-                                <button
-                                  onClick={() => handleReopen(session.id)}
-                                  className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700"
-                                >
-                                  Reabrir
-                                </button>
-                              )}
+                                <RowActionsMenu
+                                  session={session}
+                                  busy={busy}
+                                  onEdit={() => setEditingSession(session)}
+                                  onReopen={() => handleReopen(session.id)}
+                                  onClose={() => handleClose(session.id)}
+                                />
+                              </div>
                             </div>
                           </div>
                         );
