@@ -832,3 +832,194 @@ describe('PRINT-3A-BUG1 — mensaje simple al cajero cuando QZ oculta la causa r
     expect(catchBlockMatch[0]).not.toMatch(/setCart|setPayments|saleIdempotencyKeyRef|createPosInvoice|refreshProducts/);
   });
 });
+
+/**
+ * TPV-CATEGORY-QUICK-FILTERS — filtros táctiles rápidos por categoría.
+ *
+ * Auditoría previa: la barra de categorías, el estado activeCategory, el
+ * filtrado por categoría (fuera de búsqueda) y el reset en resetForm() YA
+ * existían en el componente antes de este ticket -- category es una
+ * columna TEXT simple en wa_products (sin category_id/tabla aparte), y
+ * `categories` se deriva de posProducts.map(p => p.category), así que
+ * nunca puede aparecer una categoría sin productos visibles en el TPV.
+ * Lo que faltaba, y es lo que agrega este ticket:
+ *   1) combinar categoría + búsqueda de texto (antes la búsqueda ignoraba
+ *      activeCategory por completo);
+ *   2) que muchas categorías no desparramen el layout en varias filas
+ *      (antes era flex-wrap sin límite, ahora scroll horizontal).
+ * findExactProduct (código de barras/SKU exacto) es un camino aparte que
+ * SIEMPRE ignoró activeCategory -- eso no cambia acá, sigue así a propósito.
+ */
+const filteredMemoMatch = indexSource.match(
+  /const filtered = useMemo\(\(\) => \{[\s\S]*?\n {2}\}, \[posProducts, allProducts, debouncedSearch, isSearching, activeCategory\]\);/,
+);
+const findExactProductMatch = indexSource.match(
+  /const findExactProduct = useCallback\(\(code\) => \{[\s\S]*?\n {2}\}, \[posProducts\]\);/,
+);
+const categoryChipsMatch = indexSource.match(
+  /\{\/\* Category chips[\s\S]*?\n {18}\)\}\n\n {18}\{\/\* Manual item button \*\/\}/,
+);
+
+describe('TPV-CATEGORY-QUICK-FILTERS — fuente de categorías (sin modelo nuevo)', () => {
+  it('categories se deriva de posProducts.map(p => p.category), ordenado y sin duplicados -- nunca hardcodeada', () => {
+    expect(indexSource).toMatch(
+      /const categories = useMemo\(\(\) => \{\s*\n\s*const cats = \[\.\.\.new Set\(posProducts\.map\(p => p\.category\)\.filter\(Boolean\)\)\]\.sort\(\);/,
+    );
+  });
+
+  it('ningún nombre de categoría de ejemplo del ticket aparece hardcodeado como string literal', () => {
+    for (const example of ['Lácteos', 'Bebidas', 'Panadería', 'Herramientas', 'Tornillos', 'Pinturas', 'Electricidad', 'Hamburguesas', 'Completos']) {
+      expect(indexSource).not.toContain(`'${example}'`);
+      expect(indexSource).not.toContain(`"${example}"`);
+    }
+  });
+
+  it('category es un campo plano del producto (p.category) -- no existe category_id/categoryId', () => {
+    expect(indexSource).not.toMatch(/category_id|categoryId/);
+  });
+});
+
+describe('TPV-CATEGORY-QUICK-FILTERS — "Todos" y selección (CASO A)', () => {
+  it('"Todos" es el primer botón, antes del map de categorías reales', () => {
+    expect(categoryChipsMatch).not.toBeNull();
+    const todosIdx = categoryChipsMatch[0].indexOf('Todos');
+    const mapIdx = categoryChipsMatch[0].indexOf('categories.map(cat =>');
+    expect(todosIdx).toBeGreaterThan(-1);
+    expect(mapIdx).toBeGreaterThan(-1);
+    expect(todosIdx).toBeLessThan(mapIdx);
+    expect(categoryChipsMatch[0]).toMatch(/onClick=\{\(\) => setActiveCategory\(''\)\}/);
+  });
+
+  it('activeCategory arranca en \'\' (Todos) por defecto -- estado inicial', () => {
+    expect(indexSource).toMatch(/const \[activeCategory, setActiveCategory\] = useState\(''\);/);
+  });
+
+  it('tocar una categoría la selecciona; tocarla de nuevo vuelve a Todos (toggle)', () => {
+    expect(categoryChipsMatch[0]).toMatch(/onClick=\{\(\) => setActiveCategory\(cat === activeCategory \? '' : cat\)\}/);
+  });
+});
+
+describe('TPV-CATEGORY-QUICK-FILTERS — filtrado (CASO B) y combinación con búsqueda (CASO D)', () => {
+  it('sin búsqueda: filtra posProducts por p.category === activeCategory', () => {
+    expect(filteredMemoMatch).not.toBeNull();
+    expect(filteredMemoMatch[0]).toMatch(
+      /let list = posProducts;\s*\n\s*if \(activeCategory\) list = list\.filter\(p => p\.category === activeCategory\);/,
+    );
+  });
+
+  it('CASO D: con búsqueda, activeCategory también restringe los resultados (categoría + texto combinados con AND)', () => {
+    expect(filteredMemoMatch[0]).toMatch(/\(!activeCategory \|\| p\.category === activeCategory\)/);
+  });
+
+  it('con categoría "Todos" (activeCategory vacío) la condición no restringe nada -- la búsqueda sigue cubriendo todo el catálogo', () => {
+    // "!activeCategory || ..." -- con activeCategory === '' el primer
+    // operando es true, así que el AND externo no excluye nada por categoría.
+    const guardMatch = filteredMemoMatch[0].match(/\(!activeCategory \|\| p\.category === activeCategory\) &&/);
+    expect(guardMatch).not.toBeNull();
+  });
+
+  it('activeCategory está en las dependencias del useMemo -- el filtrado se recalcula al cambiar de categoría (CASO E)', () => {
+    expect(filteredMemoMatch[0]).toMatch(/\}, \[posProducts, allProducts, debouncedSearch, isSearching, activeCategory\]\);/);
+  });
+});
+
+describe('TPV-CATEGORY-QUICK-FILTERS — código de barras nunca bloqueado por categoría (CASO G)', () => {
+  it('findExactProduct busca en TODOS los productos activos, sin referenciar activeCategory', () => {
+    expect(findExactProductMatch).not.toBeNull();
+    expect(findExactProductMatch[0]).not.toMatch(/activeCategory/);
+    expect(findExactProductMatch[0]).toMatch(/allProductsRef\.current/);
+  });
+
+  it('el Enter del buscador intenta primero el match exacto (findExactProduct) antes que la lista filtrada por categoría', () => {
+    const keyDownMatch = indexSource.match(/onKeyDown=\{e => \{[\s\S]*?\n {22}\}\}/);
+    expect(keyDownMatch).not.toBeNull();
+    const exactIdx = keyDownMatch[0].indexOf('findExactProduct(search)');
+    const filteredFallbackIdx = keyDownMatch[0].indexOf('filtered.length === 1');
+    expect(exactIdx).toBeGreaterThan(-1);
+    expect(filteredFallbackIdx).toBeGreaterThan(-1);
+    expect(exactIdx).toBeLessThan(filteredFallbackIdx);
+  });
+});
+
+describe('TPV-CATEGORY-QUICK-FILTERS — persistencia de la categoría durante la venta (CASOS C, E)', () => {
+  it('addToCart nunca toca activeCategory -- agregar un producto no cambia la categoría seleccionada', () => {
+    const addToCartMatch = indexSource.match(/const addToCart = \(product\) => \{[\s\S]*?\n {2}\};/);
+    expect(addToCartMatch).not.toBeNull();
+    expect(addToCartMatch[0]).not.toMatch(/setActiveCategory/);
+  });
+
+  it('cambiar de categoría (setActiveCategory) nunca toca el carrito', () => {
+    expect(categoryChipsMatch[0]).not.toMatch(/setCart/);
+  });
+
+  it('resetForm sí resetea activeCategory a \'\' -- coherente con que ya limpia el resto del intento de venta (search, cliente, pagos, etc.)', () => {
+    const resetFormMatch = indexSource.match(/const resetForm = \(\) => \{[\s\S]*?\n {2}\};/);
+    expect(resetFormMatch).not.toBeNull();
+    expect(resetFormMatch[0]).toMatch(/setActiveCategory\(''\);/);
+  });
+});
+
+// Solo el código JSX real, sin los comentarios /* ... */ que lo explican
+// (que a propósito mencionan en prosa lo que NO se hizo -- "flex-wrap",
+// "Más" -- y harían falsear estas aserciones negativas si se escanearan).
+const categoryChipsCodeOnly = categoryChipsMatch
+  ? categoryChipsMatch[0].replace(/\/\*[\s\S]*?\*\//g, '')
+  : '';
+
+describe('TPV-CATEGORY-QUICK-FILTERS — muchas categorías, sin layout roto (CASO F)', () => {
+  it('la fila de categorías usa scroll horizontal (overflow-x-auto + flex-nowrap), no flex-wrap', () => {
+    expect(categoryChipsCodeOnly).toMatch(/flex flex-nowrap gap-2 overflow-x-auto/);
+    expect(categoryChipsCodeOnly).not.toMatch(/flex-wrap/);
+  });
+
+  it('no introduce un menú "Más"/dropdown/select nuevo -- una sola fila deslizable', () => {
+    expect(categoryChipsCodeOnly).not.toMatch(/Más|dropdown|Dropdown|<select/);
+  });
+
+  it('cada chip (Todos + categorías) es shrink-0 -- no se comprime al haber muchas categorías', () => {
+    expect((categoryChipsMatch[0].match(/shrink-0/g) || []).length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('TPV-CATEGORY-QUICK-FILTERS — estado visual activo (sección 8)', () => {
+  it('"Todos" y cada categoría comparten el mismo par de estilos activo/inactivo', () => {
+    const activeStyle = 'bg-gray-900 text-white border-gray-900';
+    const inactiveStyle = 'bg-white text-gray-600 border-gray-200 hover:border-gray-400';
+    const escape = (s) => s.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&');
+    expect((categoryChipsMatch[0].match(new RegExp(escape(activeStyle), 'g')) || []).length).toBe(2);
+    expect((categoryChipsMatch[0].match(new RegExp(escape(inactiveStyle), 'g')) || []).length).toBe(2);
+  });
+});
+
+describe('TPV-CATEGORY-QUICK-FILTERS — responsive/touch (sección 10) sin librerías nuevas', () => {
+  it('usa scrollbar-hide -- utilidad ya existente en tailwind.css, mismo patrón que la barra de categorías del catálogo público', () => {
+    expect(categoryChipsMatch[0]).toMatch(/scrollbar-hide/);
+  });
+
+  it('habilita scroll táctil suave en iOS (WebkitOverflowScrolling: touch)', () => {
+    expect(categoryChipsMatch[0]).toMatch(/WebkitOverflowScrolling: 'touch'/);
+  });
+
+  it('la fila de categorías vive en la columna izquierda (catálogo), antes de la Zone 2 del carrito -- nunca la desplaza', () => {
+    const chipsIdx = indexSource.indexOf('{/* Category chips');
+    const cartZoneIdx = indexSource.indexOf('Zone 2: Cart card');
+    expect(chipsIdx).toBeGreaterThan(-1);
+    expect(cartZoneIdx).toBeGreaterThan(-1);
+    expect(chipsIdx).toBeLessThan(cartZoneIdx);
+  });
+});
+
+describe('TPV-CATEGORY-QUICK-FILTERS — sin regresiones en carrito/pagos/stock/impresión (sección 12)', () => {
+  it('las funciones centrales de carrito/pago/venta/impresión siguen presentes sin cambios de firma', () => {
+    expect(indexSource).toMatch(/const updateQty = \(_key, delta\) => \{/);
+    expect(indexSource).toMatch(/const removeItem = \(_key\) => \{/);
+    expect(indexSource).toMatch(/const handleRegister = async \(\) => \{/);
+    expect(indexSource).toMatch(/const printCurrentTicket = useCallback\(async \(\) => \{/);
+  });
+
+  it('activeCategory/categories no aparecen en el payload que arma handleRegister (createPosInvoice)', () => {
+    const handleRegisterMatch = indexSource.match(/const handleRegister = async \(\) => \{[\s\S]*?\n {2}\};/);
+    expect(handleRegisterMatch).not.toBeNull();
+    expect(handleRegisterMatch[0]).not.toMatch(/activeCategory/);
+  });
+});

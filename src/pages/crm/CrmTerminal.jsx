@@ -420,12 +420,22 @@ function CrmTerminalUI() {
       const q = normalize(debouncedSearch);
       // Si no hay productos en allProducts todavía, buscamos en posProducts como fallback
       const pool = allProducts.length > 0 ? allProducts : posProducts;
+      // TPV-CATEGORY-QUICK-FILTERS: la categoría activa también acota la
+      // búsqueda por texto (sección 5) -- categoría + término de búsqueda
+      // solo muestra, dentro de esa categoría, lo que además matchea el
+      // texto. El match exacto de código de barras/SKU (findExactProduct,
+      // más abajo) es un camino totalmente aparte que NUNCA se filtra por
+      // categoría -- así el escaneo de un
+      // producto de otro rubro sigue agregándolo sin fricción (sección G).
       const results = pool.filter(p =>
-        normalize(p.name).includes(q) ||
-        (p.public_code && normalize(p.public_code).includes(q)) ||
-        (p.sku         && normalize(p.sku).includes(q)) ||
-        (p.barcode     && normalize(p.barcode).includes(q)) ||
-        (p.category    && normalize(p.category).includes(q))
+        (!activeCategory || p.category === activeCategory) &&
+        (
+          normalize(p.name).includes(q) ||
+          (p.public_code && normalize(p.public_code).includes(q)) ||
+          (p.sku         && normalize(p.sku).includes(q)) ||
+          (p.barcode     && normalize(p.barcode).includes(q)) ||
+          (p.category    && normalize(p.category).includes(q))
+        )
       ).slice(0, 50);
       console.log(`[TPV-diag] search "${debouncedSearch}" → pool=${pool.length} results=${results.length}`);
       return results;
@@ -1182,12 +1192,24 @@ function CrmTerminalUI() {
                     </button>
                   </div>
 
-                  {/* Category chips */}
+                  {/* Category chips — TPV-CATEGORY-QUICK-FILTERS: fila con
+                      scroll horizontal táctil en vez de flex-wrap. Con
+                      pocas categorías entra en una línea sin cambios
+                      visibles; con muchas (sección 7/CASO F) no se
+                      desparrama en varias filas empujando la grilla hacia
+                      abajo -- se desliza con swipe/trackpad, sin agregar un
+                      menú "Más" nuevo. Mismo patrón (overflow-x-auto +
+                      scrollbar-hide + snap) que la barra de categorías del
+                      catálogo público (public-catalog/index.jsx), simplificado
+                      sin drag-scroll ni flechas por ser un control interno. */}
                   {categories.length > 0 && (
-                    <div className="flex gap-2 flex-wrap">
+                    <div
+                      className="flex flex-nowrap gap-2 overflow-x-auto scrollbar-hide touch-pan-x snap-x snap-proximity -mx-0.5 px-0.5"
+                      style={{ WebkitOverflowScrolling: 'touch' }}
+                    >
                       <button
                         onClick={() => setActiveCategory('')}
-                        className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+                        className={`shrink-0 snap-start px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
                           activeCategory === ''
                             ? 'bg-gray-900 text-white border-gray-900'
                             : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'
@@ -1199,7 +1221,7 @@ function CrmTerminalUI() {
                         <button
                           key={cat}
                           onClick={() => setActiveCategory(cat === activeCategory ? '' : cat)}
-                          className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+                          className={`shrink-0 snap-start px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
                             activeCategory === cat
                               ? 'bg-gray-900 text-white border-gray-900'
                               : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'
