@@ -570,9 +570,10 @@ END $$;
 
 DO $$
 DECLARE
-  v_session UUID := current_setting('test.session10')::uuid;
-  v_caught  BOOLEAN := false;
-  v_msg     TEXT;
+  v_session   UUID := current_setting('test.session10')::uuid;
+  v_caught    BOOLEAN := false;
+  v_msg       TEXT;
+  v_sqlstate  TEXT;
 BEGIN
   -- Segundo intento de cierre de la MISMA sesión (ya cerrada) -- debe fallar.
   BEGIN
@@ -584,11 +585,23 @@ BEGIN
   EXCEPTION WHEN OTHERS THEN
     v_caught := true;
     v_msg := SQLERRM;
+    v_sqlstate := SQLSTATE;
   END;
 
   ASSERT v_caught, 'FAIL escenario 10: el segundo intento de cierre debería haber lanzado una excepción';
-  ASSERT v_msg = 'La caja ya está cerrada',
-    'FAIL escenario 10: el mensaje del segundo intento debería ser exactamente ''La caja ya está cerrada'', fue: ' || v_msg;
+  -- Verificación semántica ASCII-safe: comparar el mensaje EXACTO contra
+  -- 'La caja ya está cerrada' es frágil frente a clientes psql/Windows con
+  -- client_encoding distinto de UTF-8 (mojibake real observado en la 'á'
+  -- durante una corrida local -- el rechazo era correcto, solo la
+  -- comparación de bytes fallaba). Se verifica el SQLSTATE exacto (23514,
+  -- el mismo que usa RAISE EXCEPTION 'La caja ya está cerrada' en la RPC)
+  -- más un LIKE anclado en el prefijo/sufijo 100% ASCII del mensaje, sin
+  -- tocar el carácter acentuado -- no debilita lo que se verifica, solo
+  -- deja de depender de un byte sensible al encoding del cliente.
+  ASSERT v_sqlstate = '23514',
+    'FAIL escenario 10: el segundo intento debería fallar con SQLSTATE 23514, fue ' || COALESCE(v_sqlstate, 'NULL');
+  ASSERT v_msg LIKE 'La caja ya%cerrada',
+    'FAIL escenario 10: el mensaje del segundo intento debería empezar con ''La caja ya'' y terminar en ''cerrada'', fue: ' || v_msg;
 
   RAISE NOTICE 'OK: escenario 10 (parte 2/2) — el segundo intento de cierre de la misma sesión fue rechazado con: %', v_msg;
 END $$;
@@ -638,10 +651,11 @@ SELECT set_config('request.jwt.claims', json_build_object('sub','00000000-0000-0
 
 DO $$
 DECLARE
-  v_session UUID := current_setting('test.session_bonus')::uuid;
-  v_caught  BOOLEAN := false;
-  v_msg     TEXT;
-  v_result  JSONB;
+  v_session   UUID := current_setting('test.session_bonus')::uuid;
+  v_caught    BOOLEAN := false;
+  v_msg       TEXT;
+  v_sqlstate  TEXT;
+  v_result    JSONB;
 BEGIN
   -- Contado ($9.500) distinto de esperado ($10.000), sin observación -> falla.
   BEGIN
@@ -653,9 +667,14 @@ BEGIN
   EXCEPTION WHEN OTHERS THEN
     v_caught := true;
     v_msg := SQLERRM;
+    v_sqlstate := SQLSTATE;
   END;
-  ASSERT v_caught AND v_msg LIKE 'Debes indicar una observación%',
-    'FAIL bonus: cerrar con diferencia y sin observación debería fallar con "Debes indicar una observación...", fue caught=' || v_caught || ' msg=' || COALESCE(v_msg, 'NULL');
+  -- Mismo criterio ASCII-safe que el escenario 10: SQLSTATE exacto + LIKE
+  -- anclado antes de la palabra acentuada ('observación') en vez de
+  -- comparar el mensaje completo, para no depender de un byte sensible al
+  -- encoding del cliente psql.
+  ASSERT v_caught AND v_sqlstate = '23514' AND v_msg LIKE 'Debes indicar una%',
+    'FAIL bonus: cerrar con diferencia y sin observación debería fallar con SQLSTATE 23514 y mensaje que empiece con "Debes indicar una...", fue caught=' || v_caught || ' sqlstate=' || COALESCE(v_sqlstate, 'NULL') || ' msg=' || COALESCE(v_msg, 'NULL');
   RAISE NOTICE 'OK: bonus (1/2) — diferencia sin observación FALLA con: %', v_msg;
 
   -- La MISMA diferencia, ahora con observación -> éxito.
