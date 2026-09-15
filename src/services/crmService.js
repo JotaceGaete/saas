@@ -68,6 +68,9 @@ function calcDocTotals(items) {
 export const PAYMENT_METHOD_LABELS = {
   cash: 'Efectivo',
   card: 'Tarjeta',
+  debit_card: 'Débito',
+  credit_card: 'Crédito',
+  mercado_pago: 'Mercado Pago',
   bank_transfer: 'Transferencia',
   check: 'Cheque',
   credit: 'Cuenta corriente',
@@ -97,6 +100,20 @@ export function normalizePaymentMethod(method) {
     'tarjeta debito': 'card',
     'tarjeta de credito': 'card',
     'tarjeta de debito': 'card',
+    // CAJA-CIERRE-CONCILIACION-1 -- débito/crédito separados, solo para
+    // ventas NUEVAS (ver CrmTerminal.jsx). Deliberadamente sin agregar
+    // sinónimos que ya apuntan a 'card' arriba ('tarjeta debito', 'tarjeta
+    // credito', etc.) -- esos siguen siendo 'card' genérico, sin
+    // reclasificar filas históricas.
+    debit_card: 'debit_card',
+    debito: 'debit_card',
+    debit: 'debit_card',
+    credit_card: 'credit_card',
+    credito: 'credit_card',
+    mercado_pago: 'mercado_pago',
+    mercadopago: 'mercado_pago',
+    'mercado pago': 'mercado_pago',
+    mp: 'mercado_pago',
     bank_transfer: 'bank_transfer',
     transferencia: 'bank_transfer',
     'transferencia bancaria': 'bank_transfer',
@@ -122,7 +139,12 @@ export function isCashRelevantPaymentMethod(method) {
   return normalizePaymentMethod(method) !== 'credit';
 }
 
-export const REAL_PAYMENT_METHODS = ['cash', 'card', 'bank_transfer', 'check', 'other'];
+// No tiene callers activos fuera de este archivo hoy (CrmTerminal.jsx
+// define su propio REAL_PAYMENT_METHODS, con objetos {value,label,icon},
+// sin importar este) -- se mantiene exportado y se amplía igual por si
+// algún consumidor futuro lo usa como fuente de verdad de "medios que
+// representan dinero real recibido en caja".
+export const REAL_PAYMENT_METHODS = ['cash', 'card', 'debit_card', 'credit_card', 'mercado_pago', 'bank_transfer', 'check', 'other'];
 
 export function isActiveReceivedPayment(payment) {
   return (
@@ -1538,6 +1560,37 @@ export async function closeCashSession(sessionId) {
     .select()
     .single();
   return { data, error };
+}
+
+// CAJA-CIERRE-CONCILIACION-1 -- cierre con arqueo por medio de pago.
+// Reemplaza a closeCashSession() como flujo principal desde CrmCash.jsx
+// (el asistente de conciliación). Toda la validación/lógica vive en la RPC
+// crm_close_cash_session (SECURITY DEFINER): calcula lo esperado
+// server-side, exige conciliar cada medio con actividad real y persiste un
+// snapshot inmutable en crm_cash_session_reconciliations. Este wrapper solo
+// desempaqueta el JSONB de retorno.
+export async function closeCashSessionReconciled(sessionId, { reconciliations, closingNotes } = {}) {
+  const { data, error } = await supabase.rpc('crm_close_cash_session', {
+    p_session_id: sessionId,
+    p_reconciliations: reconciliations || [],
+    p_closing_notes: closingNotes || null,
+  });
+  if (error) return { data: null, error };
+  return { data, error: null };
+}
+
+// Snapshot de conciliación ya persistido para una caja cerrada por el
+// asistente. Ausente (data=[]) para cajas cerradas antes de esta feature o
+// por cualquier otro camino -- el caller debe tratarlo como "sin arqueo
+// registrado", nunca recalcularlo desde crm_payments/crm_cash_movements.
+export async function getCashSessionReconciliation(businessId, sessionId) {
+  const { data, error } = await supabase
+    .from('crm_cash_session_reconciliations')
+    .select('*')
+    .eq('business_id', businessId)
+    .eq('session_id', sessionId)
+    .order('payment_method', { ascending: true });
+  return { data: data || [], error };
 }
 
 export async function getPaymentsForSession(businessId, sessionId) {
