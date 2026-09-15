@@ -65,6 +65,8 @@ const getCashSessionPaymentsMock = vi.fn();
 const getCashSessionMovementsMock = vi.fn();
 const createCashMovementMock = vi.fn();
 const getCostItemsMock = vi.fn();
+const reopenCashSessionMock = vi.fn();
+const updateCashSessionMock = vi.fn();
 
 vi.mock('services/crmService', () => ({
   PAYMENT_METHOD_LABELS,
@@ -85,9 +87,9 @@ vi.mock('services/crmService', () => ({
   getLocalDateString: () => '2026-09-13',
   getOpenCashSession: (...a) => getOpenCashSessionMock(...a),
   openCashSession: vi.fn(),
-  reopenCashSession: vi.fn(),
+  reopenCashSession: (...a) => reopenCashSessionMock(...a),
   updateCrmPayment: vi.fn(),
-  updateCashSession: vi.fn(),
+  updateCashSession: (...a) => updateCashSessionMock(...a),
   voidCashMovement: vi.fn(),
   voidCrmPayment: vi.fn(),
 }));
@@ -119,7 +121,7 @@ beforeEach(() => {
   [
     getOpenCashSessionMock, getCashSessionsForDateMock, getCashDayPaymentsMock, getCashDayMovementsMock,
     getCashRecentSessionsMock, getCashSessionPaymentsMock, getCashSessionMovementsMock,
-    createCashMovementMock, getCostItemsMock,
+    createCashMovementMock, getCostItemsMock, reopenCashSessionMock, updateCashSessionMock,
   ].forEach(m => m.mockReset());
 
   getOpenCashSessionMock.mockResolvedValue({ data: openSession, error: null });
@@ -131,6 +133,8 @@ beforeEach(() => {
   getCashSessionMovementsMock.mockResolvedValue({ data: [], error: null });
   createCashMovementMock.mockResolvedValue({ data: { movement_id: 'mv1', cost_item_id: null }, error: null });
   getCostItemsMock.mockResolvedValue(FIXED_COST_ITEMS);
+  reopenCashSessionMock.mockResolvedValue({ data: { ...closedSession, status: 'open' }, error: null });
+  updateCashSessionMock.mockResolvedValue({ data: closedSession, error: null });
 });
 
 afterEach(cleanup);
@@ -541,5 +545,108 @@ describe('CASH-SESSION-DETAIL-MODAL', () => {
     const { modal } = await openDetailFor(0); // openSession sigue abierta
     expect(within(modal).getByText('Saldo esperado')).toBeInTheDocument();
     expect(within(modal).queryByText('Saldo final')).not.toBeInTheDocument();
+  });
+
+  it('el desglose por método de pago pertenece exclusivamente a la sesión seleccionada', async () => {
+    const { modal } = await openDetailFor(1); // closedSession: CLOSED_PAYMENT es 'card' $8.000, nada en efectivo
+    // "Tarjeta"/"Efectivo" también aparecen como detalle del pago en la tabla
+    // de movimientos del mismo modal -- se acota al bloque del desglose.
+    const breakdown = within(modal).getByText('Cobros por método de pago').closest('div');
+    const cardRow = within(breakdown).getByText('Tarjeta').closest('div');
+    expect(within(cardRow).getByText(formatMoney(8000, 'CLP'))).toBeInTheDocument();
+    const cashRow = within(breakdown).getByText('Efectivo').closest('div');
+    expect(within(cashRow).getByText(formatMoney(0, 'CLP'))).toBeInTheDocument();
+  });
+
+  it('abrir sucesivamente dos cajas distintas actualiza todos los datos del modal, sin dejar rastro de la anterior', async () => {
+    render(<CrmCash />);
+    fireEvent.click(await screen.findByRole('button', { name: /Historial de cajas/ }));
+    await screen.findByText(/12 de septiembre de 2026/i);
+
+    // 1) Abrir el detalle de la caja CERRADA (sess0).
+    let detailButtons = screen.getAllByRole('button', { name: 'Ver detalle' });
+    fireEvent.click(detailButtons[1]);
+    let closeBtn = await screen.findByRole('button', { name: 'Cerrar detalle' });
+    let modal = closeBtn.closest('.fixed');
+    expect(within(modal).getByText('Venta ayer')).toBeInTheDocument();
+    expect(within(modal).getByText(formatMoney(10000, 'CLP'))).toBeInTheDocument();
+
+    // 2) Cerrarlo y abrir el detalle de la caja ABIERTA (sess1), sin recargar la página.
+    fireEvent.click(closeBtn);
+    await waitFor(() => expect(screen.queryByText('Resumen')).not.toBeInTheDocument());
+    detailButtons = screen.getAllByRole('button', { name: 'Ver detalle' });
+    fireEvent.click(detailButtons[0]);
+    closeBtn = await screen.findByRole('button', { name: 'Cerrar detalle' });
+    modal = closeBtn.closest('.fixed');
+
+    // Los datos son 100% los de sess1 -- nada de sess0 sobrevive al cambio.
+    expect(within(modal).getByText('Venta hoy')).toBeInTheDocument();
+    expect(within(modal).queryByText('Venta ayer')).not.toBeInTheDocument();
+    expect(within(modal).queryByText(formatMoney(10000, 'CLP'))).not.toBeInTheDocument();
+  });
+
+  it('cerrar el modal y volver a abrir el detalle de la MISMA caja no arrastra estado ni duplica el contenido', async () => {
+    render(<CrmCash />);
+    fireEvent.click(await screen.findByRole('button', { name: /Historial de cajas/ }));
+    await screen.findByText(/12 de septiembre de 2026/i);
+
+    let detailButtons = screen.getAllByRole('button', { name: 'Ver detalle' });
+    fireEvent.click(detailButtons[1]);
+    let closeBtn = await screen.findByRole('button', { name: 'Cerrar detalle' });
+    fireEvent.click(closeBtn);
+    await waitFor(() => expect(screen.queryByText('Resumen')).not.toBeInTheDocument());
+
+    detailButtons = screen.getAllByRole('button', { name: 'Ver detalle' });
+    fireEvent.click(detailButtons[1]);
+    closeBtn = await screen.findByRole('button', { name: 'Cerrar detalle' });
+    const modal = closeBtn.closest('.fixed');
+
+    // Un solo modal montado, con los mismos datos correctos -- no quedaron
+    // dos copias superpuestas del contenido anterior.
+    expect(within(modal).getAllByText('Venta ayer').length).toBe(1);
+    expect(within(modal).getByText(formatMoney(10000, 'CLP'))).toBeInTheDocument();
+  });
+});
+
+/**
+ * CASH-SESSION-ROW-ACTIONS — confirma que "Editar" y "Reabrir" del menú
+ * "..." siguen funcionando de verdad (llaman a los servicios reales), no
+ * solo que el botón exista. Comportamiento sin cambios en este trabajo --
+ * solo se agrega la prueba que faltaba.
+ */
+describe('CASH-SESSION-ROW-ACTIONS — Editar y Reabrir siguen funcionando', () => {
+  beforeEach(() => {
+    getCashRecentSessionsMock.mockResolvedValue({ data: [openSession, closedSession], error: null });
+  });
+
+  it('"Reabrir" en el menú "..." de una caja cerrada llama a reopenCashSession con su id', async () => {
+    // handleReopen bloquea reabrir si ya hay OTRA caja abierta (regla real de
+    // negocio) -- para probar que el llamado realmente ocurre, no debe haber
+    // ninguna caja abierta en este escenario.
+    getOpenCashSessionMock.mockResolvedValue({ data: null, error: null });
+    render(<CrmCash />);
+    fireEvent.click(await screen.findByRole('button', { name: /Historial de cajas/ }));
+    await screen.findByText(/12 de septiembre de 2026/i);
+    const menuButtons = screen.getAllByRole('button', { name: 'Más acciones' });
+    fireEvent.click(menuButtons[1]); // fila de closedSession (sess0)
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Reabrir' }));
+    await waitFor(() => expect(reopenCashSessionMock).toHaveBeenCalledWith('sess0'));
+  });
+
+  it('"Editar" en el menú "..." abre el formulario y guardar llama a updateCashSession con el id y los valores nuevos', async () => {
+    render(<CrmCash />);
+    fireEvent.click(await screen.findByRole('button', { name: /Historial de cajas/ }));
+    await screen.findByText(/12 de septiembre de 2026/i);
+    const menuButtons = screen.getAllByRole('button', { name: 'Más acciones' });
+    fireEvent.click(menuButtons[1]);
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Editar' }));
+
+    await screen.findByText('Editar caja');
+    fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '15000' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+
+    await waitFor(() => expect(updateCashSessionMock).toHaveBeenCalledWith(
+      'sess0', expect.objectContaining({ initial_amount: 15000 }),
+    ));
   });
 });
