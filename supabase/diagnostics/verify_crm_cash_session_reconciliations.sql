@@ -449,6 +449,26 @@ BEGIN
   RAISE NOTICE 'OK: escenario 8 — tras el intento fallido, la sesión sigue ''open'' y no quedó ninguna fila de conciliación persistida (rollback completo del intento)';
 END $$;
 
+-- Limpieza explícita: la sesión de este escenario quedó deliberadamente
+-- 'open' a propósito (para poder verificar arriba que el intento fallido
+-- no la cerró ni dejó conciliaciones). Una vez verificado eso, hay que
+-- liberarla -- si no, el escenario siguiente no puede abrir SU propia
+-- sesión para el mismo v_biz (uq_crm_cash_sessions_one_open_per_business
+-- permite solo una caja 'open' por negocio a la vez, y todo este script
+-- reutiliza un único negocio de prueba). Cierre directo de la fila, no vía
+-- la RPC: crm_close_cash_session ya quedó probada en los demás escenarios,
+-- esto es únicamente higiene de fixtures para no romper el aislamiento del
+-- siguiente bloque.
+DO $$
+DECLARE
+  v_session UUID := current_setting('test.session8')::uuid;
+BEGIN
+  UPDATE public.crm_cash_sessions
+  SET status = 'closed', closed_at = now()
+  WHERE id = v_session;
+  RAISE NOTICE 'OK: escenario 8 — limpieza: sesión de prueba liberada (cerrada directamente, sin pasar por la RPC) para no bloquear uq_crm_cash_sessions_one_open_per_business en el escenario siguiente';
+END $$;
+
 -- ══════════════════════════════════════════════════════════════════════════
 -- ESCENARIO 9: un medio SIN actividad en la sesión (nunca apareció en
 -- crm_payments/crm_cash_movements) NO es exigido -- cerrar sin esa línea
