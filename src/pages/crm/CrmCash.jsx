@@ -25,6 +25,7 @@ import {
   getCashRecentSessions,
   getCashSessionsForDate,
   getCrmInvoice,
+  getInvoicePaymentSummary,
   getLocalDateString,
   getOpenCashSession,
   openCashSession,
@@ -34,6 +35,9 @@ import {
   voidCashMovement,
   voidCrmPayment,
 } from 'services/crmService';
+import { printService } from 'lib/printing/printService';
+import { buildSaleReceipt } from 'lib/printing/receipts/buildSaleReceipt';
+import { buildPrinterConfigKey, readPrinterConfig } from 'lib/printing/printerConfigStorage';
 
 const METHOD_ORDER = ['cash', 'card', 'bank_transfer', 'check', 'other'];
 
@@ -246,7 +250,10 @@ function MethodBreakdown({ summary, currency }) {
   );
 }
 
-function MovementsTable({ payments, movements, currency, onEditPayment, onVoidPayment, onVoidMovement, sessionOpen }) {
+function MovementsTable({
+  payments, movements, currency, onEditPayment, onVoidPayment, onVoidMovement, sessionOpen,
+  readOnly = false, onViewSale, onReprintReceipt, reprintingId,
+}) {
   const entries = mergeEntries(payments, movements);
 
   if (entries.length === 0) {
@@ -357,6 +364,45 @@ function MovementsTable({ payments, movements, currency, onEditPayment, onVoidPa
                   <td className="whitespace-nowrap px-5 py-3 text-right">
                     {isVoided ? (
                       <span className="text-xs text-gray-400">—</span>
+                    ) : readOnly ? (
+                      /* Caja cerrada = histórica/auditable: nunca se modifica un
+                         movimiento pasado desde acá. Un cobro con invoice_id real
+                         puede consultarse ("Ver venta") sin importar su origen.
+                         "Reimprimir" es más estricto -- solo existe un comprobante
+                         original que reimprimir cuando la venta se creó vía TPV
+                         (crm_create_pos_sale, invoice.source === 'pos'): es el
+                         único flujo que hoy imprime algo (CrmTerminal.jsx). Un
+                         abono a cuenta corriente o un pago de pedido de catálogo
+                         (invoice.source === 'crm') nunca generó un ticket -- y
+                         además una misma invoice 'crm' puede acumular varios
+                         abonos independientes, así que reconstruir "el" recibo
+                         desde el estado actual de la venta no representaría este
+                         pago puntual. Un movimiento manual (o un pago sin
+                         invoice_id) no tiene ninguna acción válida acá. */
+                      isPayment && entry.invoice_id ? (
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => onViewSale?.(entry.invoice_id)}
+                            className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-bold text-gray-700 hover:bg-gray-50"
+                          >
+                            Ver venta
+                          </button>
+                          {entry.invoice?.source === 'pos' && (
+                            <button
+                              type="button"
+                              onClick={() => onReprintReceipt?.(entry)}
+                              disabled={reprintingId === entry.id}
+                              className="flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-bold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                            >
+                              {reprintingId === entry.id && <Icon name="Loader2" size={12} className="animate-spin" />}
+                              Reimprimir
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-400">—</span>
+                      )
                     ) : isPayment ? (
                       <div className="flex items-center justify-end gap-1.5">
                         <button
@@ -424,6 +470,7 @@ function MovementsTable({ payments, movements, currency, onEditPayment, onVoidPa
 function CashSessionDetailModal({
   session, sessions, payments, movements, currency, user, loadError,
   onClose, onEditPayment, onVoidPayment, onVoidMovement,
+  onViewSale, onReprintReceipt, reprintingId, reprintError,
 }) {
   if (!session) return null;
 
@@ -464,6 +511,13 @@ function CashSessionDetailModal({
               <p className="font-semibold">No se pudieron cargar todos los movimientos de esta caja</p>
               {loadError.payments && <p className="mt-1">Pagos: {loadError.payments}</p>}
               {loadError.movements && <p className="mt-1">Movimientos: {loadError.movements}</p>}
+            </div>
+          )}
+
+          {reprintError && (
+            <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              <p className="font-semibold">No se pudo reimprimir el comprobante</p>
+              <p className="mt-1">{reprintError}</p>
             </div>
           )}
 
@@ -556,6 +610,10 @@ function CashSessionDetailModal({
               onVoidPayment={onVoidPayment}
               onVoidMovement={onVoidMovement}
               sessionOpen={session.status === 'open'}
+              readOnly={session.status !== 'open'}
+              onViewSale={onViewSale}
+              onReprintReceipt={onReprintReceipt}
+              reprintingId={reprintingId}
             />
           </div>
         </div>
@@ -1392,6 +1450,66 @@ export default function CrmCash() {
     navigate(`/crm/facturas/${invoiceId}`);
   };
 
+  // Reimpresión de un comprobante histórico (caja cerrada): solo lee la
+  // venta ya guardada (getCrmInvoice/getInvoicePaymentSummary) y reenvía el
+  // mismo comprobante a la impresora -- mismo patrón "Reimprimir" ya
+  // probado en CrmTerminal.jsx. Nunca crea una venta/pago/movimiento
+  // nuevo, no toca stock ni la caja: printService.printReceipt solo envía
+  // bytes a la impresora.
+  const [reprintingId, setReprintingId] = useState(null);
+  const [reprintError, setReprintError] = useState('');
+
+  const handleReprintReceipt = async (payment) => {
+    if (!payment?.invoice_id || reprintingId) return;
+    setReprintError('');
+    const printerConfig = readPrinterConfig(buildPrinterConfigKey(business?.id));
+    if (!printerConfig.printerName) {
+      setReprintError('No hay una impresora configurada en este equipo. Configúrala en Configuración de impresión.');
+      return;
+    }
+    setReprintingId(payment.id);
+    try {
+      const [{ data: invoice, error: invErr }, { data: summary, error: sumErr }] = await Promise.all([
+        getCrmInvoice(payment.invoice_id),
+        getInvoicePaymentSummary(payment.invoice_id),
+      ]);
+      if (invErr || !invoice) throw new Error(invErr?.message || 'No se pudo cargar la venta original.');
+      if (sumErr) throw new Error(sumErr.message);
+      // Defensa en profundidad: el botón ya solo se muestra para
+      // invoice.source === 'pos' (ver MovementsTable) -- único origen que
+      // efectivamente imprimió un comprobante alguna vez (CrmTerminal.jsx).
+      // Un abono a cuenta corriente o un pago de pedido de catálogo nunca
+      // tuvo un ticket real que reimprimir.
+      if (invoice.source !== 'pos') {
+        throw new Error('Este pago no tiene un comprobante original para reimprimir.');
+      }
+
+      const receipt = buildSaleReceipt({
+        business,
+        sale: invoice,
+        items: (invoice.crm_invoice_items || []).map(item => ({ ...item, note: item.description })),
+        customer: invoice.wa_customers,
+        payments: summary?.payments || [],
+        subtotal: invoice.subtotal,
+        discountAmount: invoice.discount_amount,
+        total: invoice.total,
+        notes: invoice.notes,
+        createdAt: invoice.issue_date,
+        paperWidthMm: printerConfig.paperWidthMm,
+        autoCut: printerConfig.autoCut,
+        printLogo: printerConfig.printLogo,
+        imageMode: printerConfig.imageMode,
+        cutStrategyId: printerConfig.cutStrategyId,
+        effectivePrintableWidthDots: printerConfig.effectivePrintableWidthDots,
+      });
+      await printService.printReceipt(receipt, { printerName: printerConfig.printerName });
+    } catch (err) {
+      setReprintError(err?.message || 'No se pudo reimprimir el comprobante.');
+    } finally {
+      setReprintingId(null);
+    }
+  };
+
   const openDetail = (sessionId) => {
     setDetailSessionId(sessionId);
     setActiveTab('historial');
@@ -1645,10 +1763,14 @@ export default function CrmCash() {
                   currency={business?.currency}
                   user={user}
                   loadError={sessionLoadErrors[detailSession.id]}
-                  onClose={() => setDetailSessionId(null)}
+                  onClose={() => { setDetailSessionId(null); setReprintError(''); }}
                   onEditPayment={setEditingPayment}
                   onVoidPayment={setVoidingPayment}
                   onVoidMovement={setVoidingMovement}
+                  onViewSale={handleEditSale}
+                  onReprintReceipt={handleReprintReceipt}
+                  reprintingId={reprintingId}
+                  reprintError={reprintError}
                 />
               )}
 

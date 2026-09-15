@@ -67,6 +67,8 @@ const createCashMovementMock = vi.fn();
 const getCostItemsMock = vi.fn();
 const reopenCashSessionMock = vi.fn();
 const updateCashSessionMock = vi.fn();
+const getCrmInvoiceMock = vi.fn();
+const getInvoicePaymentSummaryMock = vi.fn();
 
 vi.mock('services/crmService', () => ({
   PAYMENT_METHOD_LABELS,
@@ -83,7 +85,8 @@ vi.mock('services/crmService', () => ({
   getCashSessionPayments: (...a) => getCashSessionPaymentsMock(...a),
   getCashRecentSessions: (...a) => getCashRecentSessionsMock(...a),
   getCashSessionsForDate: (...a) => getCashSessionsForDateMock(...a),
-  getCrmInvoice: vi.fn(),
+  getCrmInvoice: (...a) => getCrmInvoiceMock(...a),
+  getInvoicePaymentSummary: (...a) => getInvoicePaymentSummaryMock(...a),
   getLocalDateString: () => '2026-09-13',
   getOpenCashSession: (...a) => getOpenCashSessionMock(...a),
   openCashSession: vi.fn(),
@@ -92,6 +95,27 @@ vi.mock('services/crmService', () => ({
   updateCashSession: (...a) => updateCashSessionMock(...a),
   voidCashMovement: vi.fn(),
   voidCrmPayment: vi.fn(),
+}));
+
+// CASH-DETAIL-HISTORICAL-ACTIONS — "Reimprimir" reutiliza exactamente la
+// misma infraestructura de impresión ya probada en CrmTerminal (printService
+// + buildSaleReceipt + printerConfigStorage), mockeada acá solo para
+// verificar que CrmCash la invoca con los datos correctos -- sin duplicar
+// las pruebas de renderizado ESC/POS, que ya viven en sus propios archivos.
+const printReceiptMock = vi.fn();
+vi.mock('lib/printing/printService', () => ({
+  printService: { printReceipt: (...a) => printReceiptMock(...a) },
+}));
+
+const buildSaleReceiptMock = vi.fn(() => ({ lines: [] }));
+vi.mock('lib/printing/receipts/buildSaleReceipt', () => ({
+  buildSaleReceipt: (...a) => buildSaleReceiptMock(...a),
+}));
+
+const readPrinterConfigMock = vi.fn();
+vi.mock('lib/printing/printerConfigStorage', () => ({
+  buildPrinterConfigKey: (businessId) => (businessId ? `walinka:printing:${businessId}` : null),
+  readPrinterConfig: (...a) => readPrinterConfigMock(...a),
 }));
 
 import CrmCash from './CrmCash';
@@ -122,6 +146,7 @@ beforeEach(() => {
     getOpenCashSessionMock, getCashSessionsForDateMock, getCashDayPaymentsMock, getCashDayMovementsMock,
     getCashRecentSessionsMock, getCashSessionPaymentsMock, getCashSessionMovementsMock,
     createCashMovementMock, getCostItemsMock, reopenCashSessionMock, updateCashSessionMock,
+    getCrmInvoiceMock, getInvoicePaymentSummaryMock, printReceiptMock, buildSaleReceiptMock, readPrinterConfigMock,
   ].forEach(m => m.mockReset());
 
   getOpenCashSessionMock.mockResolvedValue({ data: openSession, error: null });
@@ -135,6 +160,13 @@ beforeEach(() => {
   getCostItemsMock.mockResolvedValue(FIXED_COST_ITEMS);
   reopenCashSessionMock.mockResolvedValue({ data: { ...closedSession, status: 'open' }, error: null });
   updateCashSessionMock.mockResolvedValue({ data: closedSession, error: null });
+  getCrmInvoiceMock.mockResolvedValue({ data: null, error: null });
+  getInvoicePaymentSummaryMock.mockResolvedValue({ data: null, error: null });
+  buildSaleReceiptMock.mockReturnValue({ lines: [] });
+  readPrinterConfigMock.mockReturnValue({
+    printerName: 'EPSON-TM-T20', paperWidthMm: 80, autoCut: true, printLogo: true,
+    imageMode: 'bitImageEscStar', cutStrategyId: 'gs-v-modern', effectivePrintableWidthDots: null,
+  });
 });
 
 afterEach(cleanup);
@@ -605,6 +637,203 @@ describe('CASH-SESSION-DETAIL-MODAL', () => {
     // dos copias superpuestas del contenido anterior.
     expect(within(modal).getAllByText('Venta ayer').length).toBe(1);
     expect(within(modal).getByText(formatMoney(10000, 'CLP'))).toBeInTheDocument();
+  });
+});
+
+/**
+ * CASH-DETAIL-HISTORICAL-ACTIONS — una caja cerrada es histórica/auditable:
+ * su detalle nunca debe permitir modificar un movimiento pasado. "Editar"/
+ * "Anular" desaparecen por completo (no solo deshabilitados) y, para un
+ * cobro con invoice_id real (la relación nunca se infiere del texto de
+ * `reference`, p. ej. "TPV NV-0580"), se ofrecen "Ver venta" (navega a la
+ * Nota de Venta real) y "Reimprimir" (reconstruye el comprobante ya emitido
+ * reutilizando getCrmInvoice/getInvoicePaymentSummary + buildSaleReceipt/
+ * printService, sin crear ninguna venta/pago/movimiento nuevo). Un
+ * movimiento manual (o un pago sin invoice_id) no tiene ninguna acción
+ * válida en este contexto.
+ */
+describe('CASH-DETAIL-HISTORICAL-ACTIONS — caja cerrada = histórica/auditable', () => {
+  // CASH-DETAIL-REPRINT-SCOPE — invoice.source distingue si alguna vez
+  // existió un comprobante real impreso (solo 'pos', vía crm_create_pos_sale
+  // + CrmTerminal.jsx). "Ver venta" no depende del origen -- cualquier
+  // invoice_id real navega a la Nota de Venta.
+  const TPV_PAYMENT = {
+    id: 'pay-tpv', amount: 12000, payment_method: 'card', reference: 'TPV NV-0580',
+    notes: null, created_at: '2026-09-12T11:00:00Z', currency: 'CLP',
+    voided_at: null, invoice_id: 'inv-580', invoice: { source: 'pos' },
+  };
+  const ABONO_PAYMENT_CRM_SOURCE = {
+    id: 'pay-abono', amount: 3000, payment_method: 'cash', reference: 'Abono cuenta corriente',
+    notes: null, created_at: '2026-09-12T08:45:00Z', currency: 'CLP',
+    voided_at: null, invoice_id: 'inv-901', invoice: { source: 'crm' },
+  };
+  const MANUAL_PAYMENT_NO_INVOICE = {
+    id: 'pay-manual', amount: 3000, payment_method: 'cash', reference: null,
+    notes: 'Abono directo en caja', created_at: '2026-09-12T09:30:00Z', currency: 'CLP',
+    voided_at: null, invoice_id: null,
+  };
+  const MANUAL_MOVEMENT_OUT = {
+    id: 'mv-gasto', direction: 'out', amount: 5000, reason: 'Compra de insumos',
+    category: 'supplies', notes: null, created_at: '2026-09-12T10:00:00Z', voided_at: null,
+  };
+  const INVOICE_580 = {
+    id: 'inv-580', invoice_number: 580, subtotal: 12000, discount_amount: 0, total: 12000,
+    notes: null, issue_date: '2026-09-12', source: 'pos',
+    wa_customers: { id: 'cust1', name: 'Cliente TPV' },
+    crm_invoice_items: [
+      { id: 'item1', name: 'Producto A', description: null, unit_price: 12000, quantity: 1, sort_order: 1 },
+    ],
+  };
+  const INVOICE_901_CRM_SOURCE = {
+    id: 'inv-901', invoice_number: 901, subtotal: 3000, discount_amount: 0, total: 3000,
+    notes: null, issue_date: '2026-09-10', source: 'crm',
+    wa_customers: { id: 'cust2', name: 'Cliente cuenta corriente' },
+    crm_invoice_items: [
+      { id: 'item2', name: 'Servicio', description: null, unit_price: 3000, quantity: 1, sort_order: 1 },
+    ],
+  };
+
+  beforeEach(() => {
+    getCashRecentSessionsMock.mockResolvedValue({ data: [openSession, closedSession], error: null });
+    getCashSessionPaymentsMock.mockImplementation((_bizId, session) => {
+      if (session.id === 'sess0') return Promise.resolve({ data: [TPV_PAYMENT, ABONO_PAYMENT_CRM_SOURCE, MANUAL_PAYMENT_NO_INVOICE], error: null });
+      return Promise.resolve({ data: [], error: null });
+    });
+    getCashSessionMovementsMock.mockImplementation((_bizId, sessionId) => {
+      if (sessionId === 'sess0') return Promise.resolve({ data: [MANUAL_MOVEMENT_OUT], error: null });
+      return Promise.resolve({ data: [], error: null });
+    });
+    getCrmInvoiceMock.mockImplementation((invoiceId) => {
+      if (invoiceId === 'inv-901') return Promise.resolve({ data: INVOICE_901_CRM_SOURCE, error: null });
+      return Promise.resolve({ data: INVOICE_580, error: null });
+    });
+    getInvoicePaymentSummaryMock.mockResolvedValue({
+      data: {
+        invoice: { id: 'inv-580', total: 12000 }, total: 12000, paid: 12000, pending: 0,
+        status: 'pagada', payments: [{ amount: 12000, payment_method: 'card' }],
+      },
+      error: null,
+    });
+  });
+
+  async function openClosedSessionDetail() {
+    render(<CrmCash />);
+    fireEvent.click(await screen.findByRole('button', { name: /Historial de cajas/ }));
+    await screen.findByText(/12 de septiembre de 2026/i);
+    const detailButtons = screen.getAllByRole('button', { name: 'Ver detalle' });
+    fireEvent.click(detailButtons[1]); // fila 1 = closedSession (sess0)
+    const closeBtn = await screen.findByRole('button', { name: 'Cerrar detalle' });
+    const modal = closeBtn.closest('.fixed');
+    return { modal, closeBtn };
+  }
+
+  it('no muestra "Editar" ni "Anular" (ni deshabilitado) para ningún movimiento del detalle histórico', async () => {
+    const { modal } = await openClosedSessionDetail();
+    await within(modal).findByText('TPV NV-0580');
+    expect(within(modal).queryByRole('button', { name: 'Editar' })).not.toBeInTheDocument();
+    expect(within(modal).queryByRole('button', { name: 'Anular' })).not.toBeInTheDocument();
+    expect(within(modal).queryByText('Anular')).not.toBeInTheDocument();
+  });
+
+  it('un cobro con invoice_id real (TPV, invoice.source === "pos") muestra "Ver venta" y "Reimprimir"', async () => {
+    const { modal } = await openClosedSessionDetail();
+    const row = (await within(modal).findByText('TPV NV-0580')).closest('tr');
+    expect(within(row).getByRole('button', { name: 'Ver venta' })).toBeInTheDocument();
+    expect(within(row).getByRole('button', { name: 'Reimprimir' })).toBeInTheDocument();
+  });
+
+  it('"Ver venta" navega usando el invoice_id real de la venta, no el texto de la referencia', async () => {
+    const { modal } = await openClosedSessionDetail();
+    const row = (await within(modal).findByText('TPV NV-0580')).closest('tr');
+    fireEvent.click(within(row).getByRole('button', { name: 'Ver venta' }));
+    expect(navigateMock).toHaveBeenCalledWith('/crm/facturas/inv-580');
+  });
+
+  it('un abono a cuenta corriente (invoice.source === "crm") muestra "Ver venta" pero NO "Reimprimir" -- nunca existió un comprobante original que reimprimir', async () => {
+    const { modal } = await openClosedSessionDetail();
+    const row = (await within(modal).findByText('Abono cuenta corriente')).closest('tr');
+    expect(within(row).getByRole('button', { name: 'Ver venta' })).toBeInTheDocument();
+    expect(within(row).queryByRole('button', { name: 'Reimprimir' })).not.toBeInTheDocument();
+
+    fireEvent.click(within(row).getByRole('button', { name: 'Ver venta' }));
+    expect(navigateMock).toHaveBeenCalledWith('/crm/facturas/inv-901');
+  });
+
+  it('un movimiento manual (o un pago sin invoice_id) no muestra ninguna acción en el detalle histórico', async () => {
+    const { modal } = await openClosedSessionDetail();
+    await within(modal).findByText('Compra de insumos');
+
+    const manualPaymentRow = within(modal).getByText('Abono directo en caja').closest('tr');
+    expect(within(manualPaymentRow).queryByRole('button')).not.toBeInTheDocument();
+
+    const manualExpenseRow = within(modal).getByText('Compra de insumos').closest('tr');
+    expect(within(manualExpenseRow).queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it('"Reimprimir" reconstruye el comprobante desde la venta guardada y solo imprime -- no crea ninguna venta/pago/movimiento nuevo', async () => {
+    const { modal } = await openClosedSessionDetail();
+    await within(modal).findByText('TPV NV-0580');
+    fireEvent.click(within(modal).getByRole('button', { name: 'Reimprimir' }));
+
+    await waitFor(() => expect(printReceiptMock).toHaveBeenCalledTimes(1));
+    expect(getCrmInvoiceMock).toHaveBeenCalledWith('inv-580');
+    expect(getInvoicePaymentSummaryMock).toHaveBeenCalledWith('inv-580');
+    expect(buildSaleReceiptMock).toHaveBeenCalledTimes(1);
+    const receiptArgs = buildSaleReceiptMock.mock.calls[0][0];
+    expect(receiptArgs.sale).toBe(INVOICE_580);
+    expect(receiptArgs.total).toBe(12000);
+    expect(printReceiptMock).toHaveBeenCalledWith({ lines: [] }, { printerName: 'EPSON-TM-T20' });
+    // Nunca crea un movimiento nuevo ni toca la caja.
+    expect(createCashMovementMock).not.toHaveBeenCalled();
+  });
+
+  it('si no hay impresora configurada, "Reimprimir" muestra un aviso y no llama a printService', async () => {
+    readPrinterConfigMock.mockReturnValue({
+      printerName: null, paperWidthMm: 80, autoCut: true, printLogo: true,
+      imageMode: 'bitImageEscStar', cutStrategyId: 'gs-v-modern', effectivePrintableWidthDots: null,
+    });
+    const { modal } = await openClosedSessionDetail();
+    await within(modal).findByText('TPV NV-0580');
+    fireEvent.click(within(modal).getByRole('button', { name: 'Reimprimir' }));
+
+    expect(await within(modal).findByText(/No se pudo reimprimir el comprobante/)).toBeInTheDocument();
+    expect(within(modal).getByText(/No hay una impresora configurada/)).toBeInTheDocument();
+    expect(printReceiptMock).not.toHaveBeenCalled();
+    expect(getCrmInvoiceMock).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * CASH-DETAIL-HISTORICAL-ACTIONS-REGRESSION — la pestaña "Movimientos" (caja
+ * abierta operativa) nunca pasa `readOnly`: Editar/Anular siguen
+ * funcionando exactamente igual que antes de este trabajo. Este trabajo
+ * solo cambia el detalle histórico de una caja cerrada.
+ */
+describe('CASH-DETAIL-HISTORICAL-ACTIONS-REGRESSION — pestaña Movimientos sin cambios', () => {
+  const OPEN_PAYMENT = {
+    id: 'pay-open-reg', amount: 4000, payment_method: 'cash', reference: null,
+    notes: 'Venta mostrador', created_at: '2026-09-13T09:00:00Z', currency: 'CLP',
+    voided_at: null, invoice_id: 'inv-999',
+  };
+
+  beforeEach(() => {
+    getCashSessionPaymentsMock.mockImplementation((_bizId, session) => {
+      if (session.id === 'sess1') return Promise.resolve({ data: [OPEN_PAYMENT], error: null });
+      return Promise.resolve({ data: [], error: null });
+    });
+  });
+
+  it('un cobro de la caja abierta sigue mostrando "Editar" y "Anular" activo (no "Ver venta"/"Reimprimir")', async () => {
+    render(<CrmCash />);
+    const detailCell = await screen.findByText('Venta mostrador');
+    // Se acota a la fila del movimiento: la tarjeta hero de la caja activa
+    // también tiene su propio botón "Editar" (para editar la caja, no el
+    // movimiento), fuera del alcance de este trabajo.
+    const row = detailCell.closest('tr');
+    expect(within(row).getByRole('button', { name: 'Editar' })).toBeInTheDocument();
+    expect(within(row).getByRole('button', { name: 'Anular' })).toBeInTheDocument();
+    expect(within(row).queryByRole('button', { name: 'Ver venta' })).not.toBeInTheDocument();
+    expect(within(row).queryByRole('button', { name: 'Reimprimir' })).not.toBeInTheDocument();
   });
 });
 
