@@ -99,6 +99,15 @@ const openSession = {
   date: '2026-09-13', notes: null,
 };
 
+// CAJA-TURNOS-UI-REFRESH — caja cerrada de un día anterior, para probar la
+// tabla de Historial de Cajas (horario, fecha sin duplicar, monto en negrita,
+// acciones agrupadas en el menú "...").
+const closedSession = {
+  id: 'sess0', status: 'closed', initial_amount: 10000,
+  opened_at: '2026-09-12T08:22:00Z', closed_at: '2026-09-12T17:17:00Z', opened_by: 'user1',
+  date: '2026-09-12', notes: null,
+};
+
 const FIXED_COST_ITEMS = [
   { id: 'cost-sueldo', name: 'Sueldo Juan', amount: 600000, type: 'fixed', category: 'salaries' },
   { id: 'cost-arriendo', name: 'Arriendo', amount: 450000, type: 'fixed', category: 'rent' },
@@ -275,5 +284,119 @@ describe('CashMovementModal — payload enviado a createCashMovement', () => {
     await waitFor(() => expect(createCashMovementMock).toHaveBeenCalledTimes(1));
     const [, payload] = createCashMovementMock.mock.calls[0];
     expect(payload).toMatchObject({ movementPurpose: 'owner_withdrawal', relatedCostItemId: null });
+  });
+});
+
+/**
+ * CAJA-TURNOS-UI-REFRESH — rediseño visual de la pantalla de Caja: hero de
+ * estado activo, panel de KPIs, tabs (Movimientos/Resumen/Historial) y tabla
+ * de historial simplificada. Puramente presentacional: no cambia handlers,
+ * cálculos ni el modal de movimiento (ya cubierto arriba).
+ */
+describe('CAJA-TURNOS-UI-REFRESH — hero, KPIs y tabs', () => {
+  it('no expone código técnico de entorno en el frontend (banner de debug eliminado)', async () => {
+    render(<CrmCash />);
+    await screen.findByText('CAJA ABIERTA');
+    expect(screen.queryByText(/PROD CAJA/)).not.toBeInTheDocument();
+  });
+
+  it('el hero muestra el badge "CAJA ABIERTA" cuando hay una caja abierta', async () => {
+    render(<CrmCash />);
+    expect(await screen.findByText('CAJA ABIERTA')).toBeInTheDocument();
+  });
+
+  it('sin caja abierta ni cerrada hoy, el badge indica "SIN CAJA ABIERTA HOY"', async () => {
+    getOpenCashSessionMock.mockResolvedValue({ data: null, error: null });
+    getCashSessionsForDateMock.mockResolvedValue({ data: [], error: null });
+    getCashRecentSessionsMock.mockResolvedValue({ data: [], error: null });
+    render(<CrmCash />);
+    expect(await screen.findByText('SIN CAJA ABIERTA HOY')).toBeInTheDocument();
+  });
+
+  it('el panel de KPIs muestra las 4 tarjetas: Fondo inicial, Cobros de la caja, Salidas / Gastos, Saldo en caja', async () => {
+    render(<CrmCash />);
+    await screen.findByText('CAJA ABIERTA');
+    expect(screen.getByText('Fondo inicial')).toBeInTheDocument();
+    expect(screen.getByText('Cobros de la caja')).toBeInTheDocument();
+    expect(screen.getByText('Salidas / Gastos')).toBeInTheDocument();
+    expect(screen.getByText('Saldo en caja')).toBeInTheDocument();
+  });
+
+  it('las tabs muestran una sola sección a la vez -- Movimientos por defecto, Resumen al cambiar de tab', async () => {
+    render(<CrmCash />);
+    await screen.findByText('CAJA ABIERTA');
+    expect(screen.queryByText(/Resumen del día — por método de pago/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Resumen del día/ }));
+    expect(await screen.findByText(/Resumen del día — por método de pago/)).toBeInTheDocument();
+    // Al cambiar de tab, la caja de "Movimientos" (única sección con "· Saldo:") deja de estar montada.
+    expect(screen.queryByText(/· Saldo:/)).not.toBeInTheDocument();
+  });
+
+  it('el botón "Registrar movimiento / gasto" sigue abriendo el modal de movimiento', async () => {
+    await openMovementModal();
+    expect(screen.getByText('Registrar movimiento de caja')).toBeInTheDocument();
+  });
+});
+
+describe('CAJA-TURNOS-UI-REFRESH — tabla de Historial de Cajas', () => {
+  beforeEach(() => {
+    getCashRecentSessionsMock.mockResolvedValue({ data: [openSession, closedSession], error: null });
+  });
+
+  async function openHistoryTab() {
+    render(<CrmCash />);
+    fireEvent.click(await screen.findByRole('button', { name: /Historial de cajas/ }));
+    return screen.findByText(/12 de septiembre de 2026/i);
+  }
+
+  it('no duplica la fecha -- no muestra el tag crudo AAAA-MM-DD junto al formato largo', async () => {
+    await openHistoryTab();
+    expect(screen.queryByText('2026-09-12')).not.toBeInTheDocument();
+  });
+
+  it('muestra el horario del turno en texto tenue (formato "hh:mm a./p. m. - hh:mm a./p. m.")', async () => {
+    await openHistoryTab();
+    expect(screen.getByText(/08:22.*05:17/)).toBeInTheDocument();
+  });
+
+  it('muestra el saldo final en negrita', async () => {
+    await openHistoryTab();
+    const row = (await screen.findByText(/12 de septiembre de 2026/i)).closest('div').parentElement.parentElement;
+    const amount = within(row).getByText(/\$/);
+    expect(amount.className).toMatch(/font-black/);
+  });
+
+  it('deja "Ver detalle" como acción principal visible y agrupa Editar/Reabrir en un menú "..."', async () => {
+    await openHistoryTab();
+
+    expect(screen.getAllByRole('button', { name: 'Ver detalle' }).length).toBe(2);
+    // Editar/Reabrir de cada fila no son botones sueltos -- viven dentro del menú "...".
+    expect(screen.queryByRole('menuitem', { name: 'Editar' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Reabrir' })).not.toBeInTheDocument();
+
+    const menuButtons = screen.getAllByRole('button', { name: 'Más acciones' });
+    expect(menuButtons.length).toBe(2);
+
+    // Fila de la caja cerrada (sess0, índice 1 en [openSession, closedSession]) -- ofrece "Reabrir".
+    fireEvent.click(menuButtons[1]);
+    expect(await screen.findByRole('menuitem', { name: 'Editar' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Reabrir' })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Cerrar caja' })).not.toBeInTheDocument();
+  });
+
+  it('en la fila de una caja abierta, el menú "..." ofrece "Cerrar caja" en vez de "Reabrir"', async () => {
+    await openHistoryTab();
+    const menuButtons = screen.getAllByRole('button', { name: 'Más acciones' });
+    fireEvent.click(menuButtons[0]);
+    expect(await screen.findByRole('menuitem', { name: 'Cerrar caja' })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Reabrir' })).not.toBeInTheDocument();
+  });
+
+  it('"Ver detalle" sigue abriendo el detalle de la caja seleccionada', async () => {
+    await openHistoryTab();
+    const detailButtons = screen.getAllByRole('button', { name: 'Ver detalle' });
+    fireEvent.click(detailButtons[1]);
+    expect(await screen.findByText('Ocultar detalle')).toBeInTheDocument();
   });
 });
