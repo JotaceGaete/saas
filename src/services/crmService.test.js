@@ -214,16 +214,17 @@ describe('getOperatingSalesForPeriod — ventas CRM/TPV + catálogo', () => {
 });
 
 /**
- * getSalesTaxSummaryForPeriod — TAX-SUMMARY-1: desglose de ventas por tipo
- * de documento (Factura/Boleta electrónica/Pago electrónico) para el
+ * getSalesTaxSummaryForPeriod — TAX-SUMMARY-1: desglose COMERCIAL de
+ * ventas por canal (Factura/Boleta electrónica/Pago electrónico) para el
  * resumen "Compras y Ventas" de Costos. Misma fuente y mismos filtros de
- * exclusión que getOperatingSalesForPeriod (ver esa suite arriba) -- estos
- * tests cubren específicamente la clasificación por source y que el IVA
- * nunca se calcula ni se guarda acá (eso es responsabilidad del caller,
- * ver utils/tax/vatRates.test.js).
+ * exclusión que getOperatingSalesForPeriod (ver esa suite arriba). Estos
+ * tests cubren la clasificación por canal y confirman que la función
+ * nunca calcula ni devuelve IVA -- este desglose es comercial (una Nota
+ * de Venta no es un DTE), no tributario, y el caller (CrmCostos.jsx) no
+ * lo usa para calcular IVA débito de ventas.
  */
-describe('getSalesTaxSummaryForPeriod — desglose por tipo de documento (TAX-SUMMARY-1)', () => {
-  it('crm_invoices con source=pos se suman como "boleta"; source=crm como "factura"', async () => {
+describe('getSalesTaxSummaryForPeriod — desglose comercial por canal (TAX-SUMMARY-1)', () => {
+  it('crm_invoices con source=pos se suman como "boleta"; source=crm como "factura" (clasificación comercial, no confirma DTE emitido)', async () => {
     fromMock.mockImplementation(table => table === 'crm_invoices'
       ? queryResult({
         data: [

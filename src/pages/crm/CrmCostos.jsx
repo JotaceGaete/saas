@@ -17,7 +17,6 @@ import {
 import { getSupplierPurchaseTotalsForPeriod } from 'services/supplierInvoiceService';
 import { getEffectivePlanSlug } from 'services/waBusinessService';
 import { getOperatingDaysForMonth, calculateFixedCostPerOperatingDay } from 'lib/finance/operatingCalendar';
-import { getVatRateForCountry, splitTaxIncludedAmount } from 'utils/tax/vatRates';
 
 const MONTHS = [
   'Enero','Febrero','Marzo','Abril','Mayo','Junio',
@@ -527,12 +526,25 @@ function PurchasesCard({ purchaseTotals, navigate, currency = 'CLP', monthLabel 
 
 // ─── TAX-SUMMARY-1 — Ventas + IVA del mes (referencial para el contador) ────────
 //
-// El IVA de ventas se CALCULA acá, con la tasa del país del negocio -- NUNCA
-// se guarda en crm_invoices ni en ningún lado (decisión de producto: no
-// tocar el modelo de venta/cobro por este reporte). El IVA de compras
-// (totalTaxCredit) en cambio ya es un dato REAL capturado factura por
-// factura en /proveedores -- se muestra tal cual, no se recalcula.
-function SalesVatSummaryCard({ salesSummary, purchaseTotals, currency = 'CLP', vatRatePercent, monthLabel }) {
+// Concepto COMERCIAL vs concepto TRIBUTARIO, separados a propósito:
+//   - "Ventas del mes" y su desglose por canal (Factura/Boleta/Pago
+//     electrónico) son ventas COMERCIALES: crm_invoices ("Nota de Venta")
+//     es un documento interno de Walinka, no un DTE, y su status/pago no
+//     cambia eso -- una Nota de Venta pendiente, pagada o entregada sigue
+//     siendo solo una venta comercial. Esto SÍ sigue contando como venta
+//     operativa, igual que antes.
+//   - IVA débito (ventas) NO se calcula: Walinka no tiene forma confiable
+//     de saber si una Nota de Venta, boleta o pago electrónico registrado
+//     corresponde a una Boleta o Factura afecta realmente emitida (no hay
+//     folio/DTE en el modelo actual). Calcularlo desde el total comercial
+//     sumaría como IVA operaciones que tal vez nunca tuvieron un documento
+//     tributario detrás, o duplicaría IVA si una misma operación ya fue
+//     facturada aparte. Por eso esta tarjeta declara el dato como no
+//     calculable en vez de estimarlo.
+//   - IVA crédito (compras) sí se muestra: es un dato REAL capturado
+//     factura por factura en /proveedores (totalTaxCredit), respaldado por
+//     el documento del proveedor que el usuario cargó -- no se recalcula.
+function SalesVatSummaryCard({ salesSummary, purchaseTotals, currency = 'CLP', monthLabel }) {
   const hasError = Boolean(salesSummary?.errors?.crm || salesSummary?.errors?.catalog);
   const boletaTotal          = salesSummary?.boleta          || 0;
   const facturaTotal         = salesSummary?.factura         || 0;
@@ -540,7 +552,6 @@ function SalesVatSummaryCard({ salesSummary, purchaseTotals, currency = 'CLP', v
   const totalVentas          = salesSummary?.total           || 0;
   const hasData = totalVentas > 0;
 
-  const ivaVentas  = splitTaxIncludedAmount(totalVentas, vatRatePercent).tax;
   const ivaCompras = purchaseTotals?.totalTaxCredit || 0;
 
   return (
@@ -566,6 +577,9 @@ function SalesVatSummaryCard({ salesSummary, purchaseTotals, currency = 'CLP', v
               <span className="font-semibold tabular-nums text-slate-900">{fmt(totalVentas, currency)}</span>
             </div>
             <div className="space-y-2 border-t border-slate-100 pt-3">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                Desglose comercial por canal
+              </p>
               {facturaTotal > 0 && (
                 <div className="flex items-center justify-between">
                   <span className="inline-flex items-center gap-2 text-xs text-slate-500">
@@ -595,11 +609,16 @@ function SalesVatSummaryCard({ salesSummary, purchaseTotals, currency = 'CLP', v
               )}
             </div>
             <div className="space-y-2 border-t border-slate-100 pt-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-slate-500">IVA débito (ventas, {vatRatePercent}% estimado)</span>
-                <span className="text-sm font-medium tabular-nums text-slate-700">{fmt(ivaVentas, currency)}</span>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-slate-500">IVA débito (ventas)</span>
+                  <span className="text-xs font-medium text-slate-400">No calculable</span>
+                </div>
+                <p className="text-[11px] leading-relaxed text-slate-400">
+                  Tus Notas de Venta, boletas y pagos electrónicos son documentos comerciales internos, no Documentos Tributarios Electrónicos (DTE). Walinka no puede confirmar qué ventas tienen una boleta o factura afecta realmente emitida, así que no calcula el IVA débito por ti.
+                </p>
               </div>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between pt-1">
                 <span className="text-xs text-slate-500">IVA crédito (compras registradas)</span>
                 <span className="text-sm font-medium tabular-nums text-slate-700">{fmt(ivaCompras, currency)}</span>
               </div>
@@ -616,7 +635,7 @@ function SalesVatSummaryCard({ salesSummary, purchaseTotals, currency = 'CLP', v
 
         <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-slate-400">
           <Icon name="Info" size={12} className="mt-0.5 shrink-0" />
-          Cifras referenciales calculadas por Walinka a partir de tus ventas y compras registradas. No reemplazan tu declaración de IVA ni documentos tributarios oficiales.
+          Cifras de ventas comerciales y de IVA de compras, referenciales, calculadas por Walinka a partir de tus Notas de Venta y facturas de proveedor registradas. No reemplazan tu declaración de IVA ni documentos tributarios oficiales.
         </p>
       </div>
     </div>
@@ -791,7 +810,6 @@ export default function CrmCostos() {
                   salesSummary={salesSummary}
                   purchaseTotals={purchaseTotals}
                   currency={business?.currency}
-                  vatRatePercent={getVatRateForCountry(business?.countryCodeDb)}
                   monthLabel={MONTHS[month - 1]}
                 />
                 <WalinkaFinancialTip />

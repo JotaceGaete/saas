@@ -400,10 +400,12 @@ describe('CAJA-COSTOS-1 — CASO 6: un costo variable desde Caja no infla el cos
 });
 
 /**
- * TAX-SUMMARY-1 — tarjeta "Ventas e IVA del mes". IVA de ventas SIEMPRE
- * calculado (nunca persistido); IVA de compras es el dato real ya
- * capturado por getSupplierPurchaseTotalsForPeriod (totalTaxCredit), no
- * se recalcula acá.
+ * TAX-SUMMARY-1 — tarjeta "Ventas e IVA del mes". Concepto comercial
+ * (Ventas del mes + desglose por canal) separado del tributario: el IVA
+ * débito de ventas NO se calcula (una Nota de Venta/boleta/pago
+ * electrónico registrado no confirma un DTE realmente emitido); el IVA
+ * crédito de compras sí se muestra, con el dato real ya capturado por
+ * getSupplierPurchaseTotalsForPeriod (totalTaxCredit), sin recalcularlo.
  */
 describe('TAX-SUMMARY-1 — tarjeta "Ventas e IVA del mes"', () => {
   it('llama a getSalesTaxSummaryForPeriod(businessId, month, year, currency) para el período visible', async () => {
@@ -438,10 +440,21 @@ describe('TAX-SUMMARY-1 — tarjeta "Ventas e IVA del mes"', () => {
     expect(within(row).getByText('$8.000')).toBeInTheDocument();
   });
 
-  it('etiqueta el IVA de ventas como estimado, con la tasa del país (19% cuando no hay country_code, default Chile)', async () => {
+  it('el IVA débito de ventas se muestra como "No calculable", nunca como un monto estimado (una Nota de Venta no es un DTE)', async () => {
     getSalesTaxSummaryForPeriodMock.mockResolvedValue(SALES_SUMMARY_OK);
     renderPage();
-    expect(await screen.findByText(/IVA débito \(ventas, 19% estimado\)/)).toBeInTheDocument();
+
+    expect(await screen.findByText('IVA débito (ventas)')).toBeInTheDocument();
+    expect(screen.getByText('No calculable')).toBeInTheDocument();
+    expect(screen.getByText(/Walinka no puede confirmar qué ventas tienen una boleta o factura afecta realmente emitida/)).toBeInTheDocument();
+    // No debe haber ningún monto asociado a IVA débito (nada de "19%" ni "estimado").
+    expect(screen.queryByText(/IVA débito.*estimado/)).not.toBeInTheDocument();
+  });
+
+  it('el desglose por canal se etiqueta explícitamente como comercial, no tributario', async () => {
+    getSalesTaxSummaryForPeriodMock.mockResolvedValue(SALES_SUMMARY_OK);
+    renderPage();
+    expect(await screen.findByText('Desglose comercial por canal')).toBeInTheDocument();
   });
 
   it('siempre muestra el aviso de que las cifras son referenciales, no un documento tributario oficial', async () => {

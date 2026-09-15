@@ -1180,35 +1180,43 @@ export async function getOperatingSalesForPeriod(businessId, month, year, busine
 }
 
 /**
- * TAX-SUMMARY-1 — desglose de ventas del período por tipo de documento,
- * para el resumen "Compras y Ventas" que ayuda a cuadrar el reporte
- * mensual que envía el contador (Factura / Boleta electrónica / Pago
- * electrónico). Función NUEVA, separada de getOperatingSalesForPeriod
+ * TAX-SUMMARY-1 — desglose COMERCIAL de ventas del período por canal
+ * (Factura / Boleta electrónica / Pago electrónico), para el resumen
+ * "Compras y Ventas" que ayuda a cuadrar el reporte mensual que envía el
+ * contador. Función NUEVA, separada de getOperatingSalesForPeriod
  * (Termómetro) a propósito: mismas dos fuentes y mismos filtros de
  * exclusión, pero esa función ya tiene consumidores reales con su forma
  * actual (crmTotal/catalogTotal) -- no se le agrega un tercer bucket para
  * no arriesgar esos consumidores por un reporte nuevo y no relacionado.
  *
- * Clasificación (confirmada en el propio schema, no supuesta):
- *   - crm_invoices.source = 'pos'  -> venta de mostrador/TPV -> "boleta".
- *     (crm_create_pos_sale siempre inserta source='pos', ver
- *     20260910220000_crm_pos_atomic_sale.sql).
- *   - crm_invoices.source = 'crm'  -> factura emitida manualmente ->
- *     "factura" (default de la columna; createCrmInvoice nunca pasa
- *     source, ver 20260531200000_crm_invoices_source.sql).
- *   - wa_orders pagados                -> checkout del catálogo público
- *     (Mercado Pago) -> "pago electrónico".
+ * IMPORTANTE -- esto es un desglose COMERCIAL, no tributario:
+ *   - crm_invoices ("Nota de Venta") es un documento comercial interno de
+ *     Walinka, no un DTE. Que source='pos' (venta de mostrador/TPV, ver
+ *     crm_create_pos_sale en 20260910220000_crm_pos_atomic_sale.sql) o
+ *     source='crm' (default de la columna, ver
+ *     20260531200000_crm_invoices_source.sql) NO significa que exista una
+ *     Boleta o Factura electrónica realmente emitida -- Walinka no lo
+ *     registra ni puede confirmarlo.
+ *   - wa_orders pagados (checkout del catálogo público / Mercado Pago)
+ *     tampoco implica un DTE emitido: confirma un cobro, no un documento
+ *     tributario.
+ *   - Por lo tanto estos tres buckets (boleta/factura/pagoElectronico) NO
+ *     deben usarse para calcular IVA débito. Sirven solo para mostrar el
+ *     volumen de ventas comerciales por canal, igual que hace el
+ *     Termómetro con crmTotal/catalogTotal. El caller (SalesVatSummaryCard
+ *     en CrmCostos.jsx) no calcula ni muestra un IVA débito a partir de
+ *     estos totales -- ver el comentario de esa tarjeta para el porqué.
  *
- * Mismo criterio contable que ya usa getOperatingSalesForPeriod: se
- * excluyen únicamente las crm_invoices anuladas -- el IVA se devenga al
- * EMITIR el documento (issue_date), no al cobrarlo, así que 'pendiente' y
- * 'parcial' cuentan igual que 'pagada'. No es un cambio de criterio: es
- * el mismo `neq('status', 'anulada')` que ya existía.
+ * Mismo criterio de inclusión que ya usa getOperatingSalesForPeriod para
+ * las ventas comerciales: se excluyen únicamente las crm_invoices
+ * anuladas -- 'pendiente' y 'parcial' cuentan igual que 'pagada' porque
+ * son ventas comerciales igualmente válidas (el status/pago de una Nota
+ * de Venta no determina si existe o no un DTE detrás). No es un cambio de
+ * criterio: es el mismo `neq('status', 'anulada')` que ya existía.
  *
- * Esta función NUNCA calcula ni guarda IVA -- solo agrega totales ya
- * facturados (source-of-truth: crm_invoices.total / wa_orders.total_amount).
- * El desglose neto/IVA es responsabilidad del caller (ver
- * utils/tax/vatRates.js), puramente informativo y no persistido.
+ * Esta función NUNCA calcula ni guarda IVA -- solo agrega totales
+ * comerciales ya registrados (source-of-truth: crm_invoices.total /
+ * wa_orders.total_amount).
  */
 export async function getSalesTaxSummaryForPeriod(businessId, month, year, businessCurrency = 'CLP') {
   const fromDate = `${year}-${String(month).padStart(2, '0')}-01`;
