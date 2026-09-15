@@ -12,10 +12,12 @@ import {
   createCostItem,
   updateCostItem,
   deleteCostItem,
+  getSalesTaxSummaryForPeriod,
 } from 'services/crmService';
 import { getSupplierPurchaseTotalsForPeriod } from 'services/supplierInvoiceService';
 import { getEffectivePlanSlug } from 'services/waBusinessService';
 import { getOperatingDaysForMonth, calculateFixedCostPerOperatingDay } from 'lib/finance/operatingCalendar';
+import { getVatRateForCountry, splitTaxIncludedAmount } from 'utils/tax/vatRates';
 
 const MONTHS = [
   'Enero','Febrero','Marzo','Abril','Mayo','Junio',
@@ -523,6 +525,104 @@ function PurchasesCard({ purchaseTotals, navigate, currency = 'CLP', monthLabel 
   );
 }
 
+// ─── TAX-SUMMARY-1 — Ventas + IVA del mes (referencial para el contador) ────────
+//
+// El IVA de ventas se CALCULA acá, con la tasa del país del negocio -- NUNCA
+// se guarda en crm_invoices ni en ningún lado (decisión de producto: no
+// tocar el modelo de venta/cobro por este reporte). El IVA de compras
+// (totalTaxCredit) en cambio ya es un dato REAL capturado factura por
+// factura en /proveedores -- se muestra tal cual, no se recalcula.
+function SalesVatSummaryCard({ salesSummary, purchaseTotals, currency = 'CLP', vatRatePercent, monthLabel }) {
+  const hasError = Boolean(salesSummary?.errors?.crm || salesSummary?.errors?.catalog);
+  const boletaTotal          = salesSummary?.boleta          || 0;
+  const facturaTotal         = salesSummary?.factura         || 0;
+  const pagoElectronicoTotal = salesSummary?.pagoElectronico || 0;
+  const totalVentas          = salesSummary?.total           || 0;
+  const hasData = totalVentas > 0;
+
+  const ivaVentas  = splitTaxIncludedAmount(totalVentas, vatRatePercent).tax;
+  const ivaCompras = purchaseTotals?.totalTaxCredit || 0;
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-sm transition-shadow hover:shadow-md">
+      <div className="flex items-center gap-3 px-5 py-4">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-50">
+          <Icon name="TrendingUp" size={16} className="text-emerald-600" />
+        </span>
+        <div className="min-w-0">
+          <p className="font-semibold text-slate-900">Ventas e IVA del mes</p>
+          <p className="text-sm text-slate-500">Resumen de apoyo para tu contador.</p>
+        </div>
+      </div>
+
+      <div className="border-t border-slate-100 px-5 py-5">
+        {hasError && (
+          <p className="mb-3 text-xs text-red-600">No se pudieron cargar todas las ventas del período; las cifras pueden estar incompletas.</p>
+        )}
+        {hasData ? (
+          <div className="mb-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-slate-500">Ventas del mes</span>
+              <span className="font-semibold tabular-nums text-slate-900">{fmt(totalVentas, currency)}</span>
+            </div>
+            <div className="space-y-2 border-t border-slate-100 pt-3">
+              {facturaTotal > 0 && (
+                <div className="flex items-center justify-between">
+                  <span className="inline-flex items-center gap-2 text-xs text-slate-500">
+                    <span className="h-2 w-2 shrink-0 rounded-full bg-indigo-400" />
+                    Factura
+                  </span>
+                  <span className="text-sm font-medium tabular-nums text-slate-700">{fmt(facturaTotal, currency)}</span>
+                </div>
+              )}
+              {boletaTotal > 0 && (
+                <div className="flex items-center justify-between">
+                  <span className="inline-flex items-center gap-2 text-xs text-slate-500">
+                    <span className="h-2 w-2 shrink-0 rounded-full bg-blue-400" />
+                    Boleta electrónica
+                  </span>
+                  <span className="text-sm font-medium tabular-nums text-slate-700">{fmt(boletaTotal, currency)}</span>
+                </div>
+              )}
+              {pagoElectronicoTotal > 0 && (
+                <div className="flex items-center justify-between">
+                  <span className="inline-flex items-center gap-2 text-xs text-slate-500">
+                    <span className="h-2 w-2 shrink-0 rounded-full bg-amber-400" />
+                    Pago electrónico
+                  </span>
+                  <span className="text-sm font-medium tabular-nums text-slate-700">{fmt(pagoElectronicoTotal, currency)}</span>
+                </div>
+              )}
+            </div>
+            <div className="space-y-2 border-t border-slate-100 pt-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-slate-500">IVA débito (ventas, {vatRatePercent}% estimado)</span>
+                <span className="text-sm font-medium tabular-nums text-slate-700">{fmt(ivaVentas, currency)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-slate-500">IVA crédito (compras registradas)</span>
+                <span className="text-sm font-medium tabular-nums text-slate-700">{fmt(ivaCompras, currency)}</span>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="mb-4 flex flex-col items-center py-6 text-center">
+            <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-50">
+              <Icon name="ReceiptText" size={22} className="text-slate-300" />
+            </span>
+            <p className="mt-3 text-sm font-medium text-slate-600">No hay ventas registradas en {monthLabel}.</p>
+          </div>
+        )}
+
+        <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-slate-400">
+          <Icon name="Info" size={12} className="mt-0.5 shrink-0" />
+          Cifras referenciales calculadas por Walinka a partir de tus ventas y compras registradas. No reemplazan tu declaración de IVA ni documentos tributarios oficiales.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // ─── Tip Walinka ───────────────────────────────────────────────────────────────
 
 function WalinkaFinancialTip() {
@@ -559,6 +659,7 @@ export default function CrmCostos() {
 
   const [costItems,      setCostItems]      = useState([]);
   const [purchaseTotals, setPurchaseTotals] = useState(null);
+  const [salesSummary,   setSalesSummary]   = useState(null);
   const [loading,        setLoading]        = useState(true);
 
   const load = useCallback(async () => {
@@ -567,12 +668,14 @@ export default function CrmCostos() {
     // Mismo rango [from, to) que usaba crmService.getPurchaseTotalsForPeriod.
     const from = `${year}-${String(month).padStart(2, '0')}-01`;
     const to   = new Date(year, month, 1).toISOString().slice(0, 10);
-    const [items, pt] = await Promise.all([
+    const [items, pt, sales] = await Promise.all([
       getCostItems(business.id, month, year),
       getSupplierPurchaseTotalsForPeriod(business.id, from, to),
+      getSalesTaxSummaryForPeriod(business.id, month, year, business?.currency),
     ]);
     setCostItems(items || []);
     setPurchaseTotals(pt);
+    setSalesSummary(sales);
     setLoading(false);
   }, [business?.id, month, year]);
 
@@ -682,6 +785,13 @@ export default function CrmCostos() {
                   purchaseTotals={purchaseTotals}
                   navigate={navigate}
                   currency={business?.currency}
+                  monthLabel={MONTHS[month - 1]}
+                />
+                <SalesVatSummaryCard
+                  salesSummary={salesSummary}
+                  purchaseTotals={purchaseTotals}
+                  currency={business?.currency}
+                  vatRatePercent={getVatRateForCountry(business?.countryCodeDb)}
                   monthLabel={MONTHS[month - 1]}
                 />
                 <WalinkaFinancialTip />

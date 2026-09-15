@@ -1179,6 +1179,98 @@ export async function getOperatingSalesForPeriod(businessId, month, year, busine
   };
 }
 
+/**
+ * TAX-SUMMARY-1 — desglose de ventas del período por tipo de documento,
+ * para el resumen "Compras y Ventas" que ayuda a cuadrar el reporte
+ * mensual que envía el contador (Factura / Boleta electrónica / Pago
+ * electrónico). Función NUEVA, separada de getOperatingSalesForPeriod
+ * (Termómetro) a propósito: mismas dos fuentes y mismos filtros de
+ * exclusión, pero esa función ya tiene consumidores reales con su forma
+ * actual (crmTotal/catalogTotal) -- no se le agrega un tercer bucket para
+ * no arriesgar esos consumidores por un reporte nuevo y no relacionado.
+ *
+ * Clasificación (confirmada en el propio schema, no supuesta):
+ *   - crm_invoices.source = 'pos'  -> venta de mostrador/TPV -> "boleta".
+ *     (crm_create_pos_sale siempre inserta source='pos', ver
+ *     20260910220000_crm_pos_atomic_sale.sql).
+ *   - crm_invoices.source = 'crm'  -> factura emitida manualmente ->
+ *     "factura" (default de la columna; createCrmInvoice nunca pasa
+ *     source, ver 20260531200000_crm_invoices_source.sql).
+ *   - wa_orders pagados                -> checkout del catálogo público
+ *     (Mercado Pago) -> "pago electrónico".
+ *
+ * Mismo criterio contable que ya usa getOperatingSalesForPeriod: se
+ * excluyen únicamente las crm_invoices anuladas -- el IVA se devenga al
+ * EMITIR el documento (issue_date), no al cobrarlo, así que 'pendiente' y
+ * 'parcial' cuentan igual que 'pagada'. No es un cambio de criterio: es
+ * el mismo `neq('status', 'anulada')` que ya existía.
+ *
+ * Esta función NUNCA calcula ni guarda IVA -- solo agrega totales ya
+ * facturados (source-of-truth: crm_invoices.total / wa_orders.total_amount).
+ * El desglose neto/IVA es responsabilidad del caller (ver
+ * utils/tax/vatRates.js), puramente informativo y no persistido.
+ */
+export async function getSalesTaxSummaryForPeriod(businessId, month, year, businessCurrency = 'CLP') {
+  const fromDate = `${year}-${String(month).padStart(2, '0')}-01`;
+  const toDate = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+  const normalizedToDate = month === 12 ? `${year + 1}-01-01` : toDate;
+  const fromInstant = new Date(year, month - 1, 1, 0, 0, 0, 0).toISOString();
+  const toInstant = new Date(year, month, 1, 0, 0, 0, 0).toISOString();
+
+  const [crmResult, catalogResult] = await Promise.all([
+    supabase
+      .from('crm_invoices')
+      .select('total, source')
+      .eq('business_id', businessId)
+      .neq('status', 'anulada')
+      .is('order_id', null)
+      .gte('issue_date', fromDate)
+      .lt('issue_date', normalizedToDate),
+    supabase
+      .from('wa_orders')
+      .select('total_amount, currency, paid_at, updated_at')
+      .eq('business_id', businessId)
+      .eq('payment_status', 'pagado')
+      .or(`and(paid_at.gte.${fromInstant},paid_at.lt.${toInstant}),and(paid_at.is.null,updated_at.gte.${fromInstant},updated_at.lt.${toInstant})`),
+  ]);
+
+  let boletaTotal = 0;
+  let facturaTotal = 0;
+  if (!crmResult.error) {
+    for (const row of crmResult.data || []) {
+      const amount = Number(row.total || 0);
+      if (row.source === 'pos') boletaTotal += amount;
+      else facturaTotal += amount;
+    }
+  }
+
+  let pagoElectronicoTotal = 0;
+  let incompatibleCurrencyRows = 0;
+  const targetCurrency = String(businessCurrency || 'CLP').toUpperCase();
+  if (!catalogResult.error) {
+    for (const row of catalogResult.data || []) {
+      const rowCurrency = String(row.currency || targetCurrency).toUpperCase();
+      if (rowCurrency !== targetCurrency) {
+        incompatibleCurrencyRows += 1;
+        continue;
+      }
+      pagoElectronicoTotal += Number(row.total_amount || 0);
+    }
+  }
+
+  return {
+    boleta: boletaTotal,
+    factura: facturaTotal,
+    pagoElectronico: pagoElectronicoTotal,
+    total: boletaTotal + facturaTotal + pagoElectronicoTotal,
+    incompatibleCurrencyRows,
+    errors: {
+      crm: crmResult.error || null,
+      catalog: catalogResult.error || null,
+    },
+  };
+}
+
 /** Costos del período con fecha económica para gastos variables de Caja. */
 export async function getOperatingCostItemsForPeriod(businessId, month, year) {
   const { data, error } = await supabase

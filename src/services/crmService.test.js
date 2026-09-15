@@ -21,7 +21,7 @@ vi.mock('../lib/supabase', () => ({
   },
 }));
 
-import { createPosInvoice, getOperatingCostItemsForPeriod, getOperatingSalesForPeriod } from './crmService';
+import { createPosInvoice, getOperatingCostItemsForPeriod, getOperatingSalesForPeriod, getSalesTaxSummaryForPeriod } from './crmService';
 
 beforeEach(() => {
   rpcMock.mockReset();
@@ -210,6 +210,113 @@ describe('getOperatingSalesForPeriod — ventas CRM/TPV + catálogo', () => {
     const result = await getOperatingSalesForPeriod('biz1', 9, 2026, 'CLP');
     expect(orderCalls).toContainEqual(['eq', 'payment_status', 'pagado']);
     expect(result.salesMonth).toBe(0);
+  });
+});
+
+/**
+ * getSalesTaxSummaryForPeriod — TAX-SUMMARY-1: desglose de ventas por tipo
+ * de documento (Factura/Boleta electrónica/Pago electrónico) para el
+ * resumen "Compras y Ventas" de Costos. Misma fuente y mismos filtros de
+ * exclusión que getOperatingSalesForPeriod (ver esa suite arriba) -- estos
+ * tests cubren específicamente la clasificación por source y que el IVA
+ * nunca se calcula ni se guarda acá (eso es responsabilidad del caller,
+ * ver utils/tax/vatRates.test.js).
+ */
+describe('getSalesTaxSummaryForPeriod — desglose por tipo de documento (TAX-SUMMARY-1)', () => {
+  it('crm_invoices con source=pos se suman como "boleta"; source=crm como "factura"', async () => {
+    fromMock.mockImplementation(table => table === 'crm_invoices'
+      ? queryResult({
+        data: [
+          { total: 117000, source: 'pos' },
+          { total: 23000, source: 'crm' },
+        ],
+        error: null,
+      })
+      : queryResult({ data: [], error: null }));
+    const result = await getSalesTaxSummaryForPeriod('biz1', 9, 2026, 'CLP');
+    expect(result.boleta).toBe(117000);
+    expect(result.factura).toBe(23000);
+  });
+
+  it('wa_orders pagados se suman como "pago electrónico"', async () => {
+    fromMock.mockImplementation(table => table === 'crm_invoices'
+      ? queryResult({ data: [], error: null })
+      : queryResult({ data: [{ total_amount: 269000, currency: 'CLP', paid_at: '2026-09-05T12:00:00Z' }], error: null }));
+    const result = await getSalesTaxSummaryForPeriod('biz1', 9, 2026, 'CLP');
+    expect(result.pagoElectronico).toBe(269000);
+  });
+
+  it('total = boleta + factura + pago electrónico (reconciliación con el reporte del contador)', async () => {
+    fromMock.mockImplementation(table => table === 'crm_invoices'
+      ? queryResult({
+        data: [
+          { total: 117000, source: 'pos' },
+          { total: 23000, source: 'crm' },
+        ],
+        error: null,
+      })
+      : queryResult({ data: [{ total_amount: 269000, currency: 'CLP', paid_at: '2026-09-05T12:00:00Z' }], error: null }));
+    const result = await getSalesTaxSummaryForPeriod('biz1', 9, 2026, 'CLP');
+    expect(result.total).toBe(409000);
+  });
+
+  it('excluye crm_invoices anuladas (mismo filtro que getOperatingSalesForPeriod)', async () => {
+    const crmCalls = [];
+    fromMock.mockImplementation(table => table === 'crm_invoices'
+      ? queryResult({ data: [], error: null }, crmCalls)
+      : queryResult({ data: [], error: null }));
+    await getSalesTaxSummaryForPeriod('biz1', 9, 2026, 'CLP');
+    expect(crmCalls).toContainEqual(['neq', 'status', 'anulada']);
+  });
+
+  it('NO exige status=pagada -- pendiente y parcial cuentan igual (el IVA se devenga al emitir, no al cobrar)', async () => {
+    const crmCalls = [];
+    fromMock.mockImplementation(table => table === 'crm_invoices'
+      ? queryResult({ data: [{ total: 10000, source: 'pos' }], error: null }, crmCalls)
+      : queryResult({ data: [], error: null }));
+    const result = await getSalesTaxSummaryForPeriod('biz1', 9, 2026, 'CLP');
+    // No debe filtrar por status='pagada' -- solo excluye 'anulada'.
+    expect(crmCalls).not.toContainEqual(['eq', 'status', 'pagada']);
+    expect(result.boleta).toBe(10000);
+  });
+
+  it('excluye crm_invoices vinculadas a un pedido del catálogo (order_id IS NULL) para no duplicar con wa_orders', async () => {
+    const crmCalls = [];
+    fromMock.mockImplementation(table => table === 'crm_invoices'
+      ? queryResult({ data: [], error: null }, crmCalls)
+      : queryResult({ data: [], error: null }));
+    await getSalesTaxSummaryForPeriod('biz1', 9, 2026, 'CLP');
+    expect(crmCalls).toContainEqual(['is', 'order_id', null]);
+  });
+
+  it('no mezcla moneda incompatible en el bucket de pago electrónico', async () => {
+    fromMock.mockImplementation(table => table === 'crm_invoices'
+      ? queryResult({ data: [], error: null })
+      : queryResult({ data: [{ total_amount: 999, currency: 'USD', paid_at: '2026-09-08T12:00:00Z' }], error: null }));
+    const result = await getSalesTaxSummaryForPeriod('biz1', 9, 2026, 'CLP');
+    expect(result.pagoElectronico).toBe(0);
+    expect(result.incompatibleCurrencyRows).toBe(1);
+  });
+
+  it('nunca calcula ni devuelve un campo de IVA -- eso es responsabilidad exclusiva del caller', async () => {
+    fromMock.mockImplementation(table => table === 'crm_invoices'
+      ? queryResult({ data: [{ total: 100000, source: 'crm' }], error: null })
+      : queryResult({ data: [], error: null }));
+    const result = await getSalesTaxSummaryForPeriod('biz1', 9, 2026, 'CLP');
+    expect(result).not.toHaveProperty('tax');
+    expect(result).not.toHaveProperty('iva');
+    expect(result).not.toHaveProperty('vat');
+  });
+
+  it('conserva los errores de cada fuente por separado, igual que getOperatingSalesForPeriod', async () => {
+    fromMock.mockImplementation(table => table === 'crm_invoices'
+      ? queryResult({ data: null, error: { message: 'crm down' } })
+      : queryResult({ data: [], error: null }));
+    const result = await getSalesTaxSummaryForPeriod('biz1', 9, 2026, 'CLP');
+    expect(result.errors.crm).toEqual({ message: 'crm down' });
+    expect(result.errors.catalog).toBeNull();
+    expect(result.boleta).toBe(0);
+    expect(result.factura).toBe(0);
   });
 });
 
