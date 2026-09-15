@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import DashboardAppShell from 'components/ui/DashboardAppShell';
 import DashboardLayoutContent from 'components/ui/DashboardLayoutContent';
 import PanelHeader from 'components/ui/PanelHeader';
@@ -13,6 +13,8 @@ import {
   createCrmCustomer,
   formatInvoiceNumber,
   updateCrmInvoiceStatus,
+  getCrmQuote,
+  formatQuoteNumber,
 } from '../../services/crmService';
 import { getProducts } from '../../services/waBusinessService';
 import { listPaymentsByInvoice, createPayment } from '../../services/crmPaymentsService';
@@ -64,10 +66,15 @@ export default function CrmInvoiceEditor() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { business } = useAuth();
+  const [searchParams] = useSearchParams();
   const isNew = !id || id === 'nueva';
+  // QUOTE-TO-SALE-1: /crm/facturas/nueva?quote=<quoteId> -- origen opcional
+  // del presupuesto a precargar. Solo tiene efecto mientras isNew: no se
+  // usa para editar una NV ya guardada.
+  const sourceQuoteId = isNew ? (searchParams.get('quote') || '') : '';
   const chargeMenuRef = useRef(null);
 
-  const [pageLoading, setPageLoading] = useState(!isNew);
+  const [pageLoading, setPageLoading] = useState(!isNew || !!sourceQuoteId);
   const [saving, setSaving] = useState(false);
   const [customers, setCustomers] = useState([]);
   const [products, setProducts] = useState([]);
@@ -77,6 +84,7 @@ export default function CrmInvoiceEditor() {
   const [showProductModal, setShowProductModal] = useState(false);
   const [showChargeMenu, setShowChargeMenu] = useState(false);
   const [showNewCustomer, setShowNewCustomer] = useState(false);
+  const [sourceQuote, setSourceQuote] = useState(null);
 
   // Pagos
   const [payments, setPayments] = useState([]);
@@ -122,8 +130,37 @@ export default function CrmInvoiceEditor() {
         setPageLoading(false);
         listPaymentsByInvoice(id).then((r) => setPayments(r.data || []));
       });
+    } else if (sourceQuoteId) {
+      // QUOTE-TO-SALE-1: precarga desde el presupuesto de origen. Esto es
+      // SOLO lectura del presupuesto (getCrmQuote) -- no crea ni modifica
+      // nada. El usuario ve todo precargado y editable; la fila en
+      // crm_invoices recién se crea si pulsa Guardar (handleSave).
+      getCrmQuote(sourceQuoteId).then(({ data, error }) => {
+        if (!error && data) {
+          setSourceQuote(data);
+          setCustomerId(data.customer_id || '');
+          setNotes(data.notes || '');
+          setItems(
+            (data.crm_quote_items || []).map((it) => ({
+              product_id: it.product_id,
+              name: it.name,
+              description: it.description,
+              unit_price: it.unit_price,
+              quantity: it.quantity,
+              discount_pct: it.discount_pct,
+              discount_type: it.discount_type || 'percentage',
+              subtotal: it.subtotal,
+            }))
+          );
+          setPaymentTerms(data.payment_terms || '');
+          setDeliveryDays(data.delivery_days || '');
+          setDeliveryMethod(data.delivery_method || '');
+          setCommercialNotes(data.commercial_notes || '');
+        }
+        setPageLoading(false);
+      });
     }
-  }, [business?.id, id, isNew]);
+  }, [business?.id, id, isNew, sourceQuoteId]);
 
   useEffect(() => {
     if (!showChargeMenu) return;
@@ -269,6 +306,11 @@ export default function CrmInvoiceEditor() {
         discount_type: i.discount_type || 'percentage',
         sort_order: idx,
       })),
+      // QUOTE-TO-SALE-1: solo al crear (isNew) y solo si vino de un
+      // presupuesto. createCrmInvoice guarda quote_id y recién ahí --
+      // después de crear la NV correctamente -- vincula el presupuesto
+      // vía converted_to_invoice_id. updateCrmInvoice ignora esta clave.
+      quoteId: isNew && sourceQuoteId ? sourceQuoteId : undefined,
     };
 
     setSaving(true);
@@ -503,6 +545,12 @@ export default function CrmInvoiceEditor() {
           {saveError && (
             <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
               <Icon name="AlertCircle" size={16} />{saveError}
+            </div>
+          )}
+          {isNew && sourceQuote && (
+            <div className="flex items-center gap-2 p-3 rounded-lg text-sm border bg-blue-50 border-blue-200 text-blue-700">
+              <Icon name="FileInput" size={16} />
+              Precargada desde el presupuesto {formatQuoteNumber(sourceQuote.quote_number, business?.documentTitleType)}. Revisa y edita lo que necesites antes de guardar.
             </div>
           )}
           {!isNew && (

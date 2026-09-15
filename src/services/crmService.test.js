@@ -21,7 +21,7 @@ vi.mock('../lib/supabase', () => ({
   },
 }));
 
-import { createPosInvoice, getOperatingCostItemsForPeriod, getOperatingSalesForPeriod } from './crmService';
+import { createPosInvoice, getOperatingCostItemsForPeriod, getOperatingSalesForPeriod, createCrmInvoice } from './crmService';
 
 beforeEach(() => {
   rpcMock.mockReset();
@@ -318,5 +318,139 @@ describe('createPosInvoice — mapeo de errores (nunca SQL crudo al usuario)', (
     await expect(createPosInvoice('biz1', baseInput)).resolves.toEqual(
       expect.objectContaining({ data: null }),
     );
+  });
+});
+
+/**
+ * createCrmInvoice — vínculo con presupuesto (QUOTE-TO-SALE-1).
+ *
+ * Regla de negocio: aceptar un presupuesto NUNCA crea una nota de venta.
+ * La NV solo se crea cuando el usuario guarda el editor precargado, y el
+ * vínculo hacia el presupuesto (crm_quotes.converted_to_invoice_id) se
+ * escribe recién DESPUÉS de crear la NV (header + ítems) correctamente --
+ * nunca antes. Si el presupuesto ya tiene una NV vinculada, no se crea una
+ * segunda (guard optimista + índice único crm_invoices_quote_id_uq como
+ * autoridad final ante carreras).
+ */
+const invoiceItem = { name: 'Producto', unit_price: 1000, quantity: 1 };
+
+describe('createCrmInvoice — vínculo con presupuesto (QUOTE-TO-SALE-1)', () => {
+  it('sin quoteId: nunca consulta ni actualiza crm_quotes', async () => {
+    rpcMock.mockResolvedValue({ data: 7, error: null });
+    fromMock.mockImplementation((table) => {
+      if (table === 'crm_invoices') return queryResult({ data: { id: 'inv1', invoice_number: 7 }, error: null });
+      if (table === 'crm_invoice_items') return queryResult({ data: null, error: null });
+      throw new Error(`no debería tocar la tabla ${table} sin quoteId`);
+    });
+
+    const { data, error } = await createCrmInvoice('biz1', { items: [invoiceItem] });
+
+    expect(error).toBeNull();
+    expect(data).toEqual({ id: 'inv1', invoice_number: 7 });
+    expect(fromMock).not.toHaveBeenCalledWith('crm_quotes');
+  });
+
+  it('quoteId ya convertido (pre-check optimista): no crea nada, retorna error amigable, nunca pide número de factura', async () => {
+    fromMock.mockImplementation((table) => {
+      if (table === 'crm_quotes') return queryResult({ data: { converted_to_invoice_id: 'inv-old' }, error: null });
+      throw new Error(`no debería crear nada en ${table}`);
+    });
+
+    const { data, error } = await createCrmInvoice('biz1', { items: [invoiceItem], quoteId: 'q1' });
+
+    expect(data).toBeNull();
+    expect(error.message).toBe('Ya existe una nota de venta para este presupuesto.');
+    expect(error.code).toBe('QUOTE_ALREADY_CONVERTED');
+    expect(rpcMock).not.toHaveBeenCalled();
+  });
+
+  it('quoteId sin convertir: guarda quote_id en la NV y, solo después de crear los ítems, vincula converted_to_invoice_id', async () => {
+    rpcMock.mockResolvedValue({ data: 9, error: null });
+    const quoteCalls = [];
+    const invoiceCalls = [];
+    let quoteFromCallCount = 0;
+    fromMock.mockImplementation((table) => {
+      if (table === 'crm_quotes') {
+        quoteFromCallCount += 1;
+        return queryResult({ data: { converted_to_invoice_id: null }, error: null }, quoteCalls);
+      }
+      if (table === 'crm_invoices') return queryResult({ data: { id: 'inv3', invoice_number: 9 }, error: null }, invoiceCalls);
+      if (table === 'crm_invoice_items') return queryResult({ data: null, error: null });
+      throw new Error(`tabla inesperada: ${table}`);
+    });
+
+    const { data, error } = await createCrmInvoice('biz1', { items: [invoiceItem], quoteId: 'q1' });
+
+    expect(error).toBeNull();
+    expect(data).toEqual({ id: 'inv3', invoice_number: 9 });
+
+    const insertCall = invoiceCalls.find((c) => c[0] === 'insert');
+    expect(insertCall[1]).toMatchObject({ quote_id: 'q1' });
+
+    // from('crm_quotes') se llama dos veces: 1) pre-check, 2) el UPDATE de vínculo.
+    expect(quoteFromCallCount).toBe(2);
+    const updateCall = quoteCalls.find((c) => c[0] === 'update');
+    expect(updateCall[1]).toEqual({ converted_to_invoice_id: 'inv3' });
+    expect(quoteCalls).toContainEqual(['eq', 'id', 'q1']);
+    expect(quoteCalls).toContainEqual(['is', 'converted_to_invoice_id', null]);
+    // El vínculo nunca toca status ni ningún otro campo del presupuesto --
+    // queda intacto como documento histórico.
+    expect(updateCall[1]).not.toHaveProperty('status');
+  });
+
+  it('condición de carrera: la violación del índice único crm_invoices_quote_id_uq se traduce a mensaje amigable, nunca SQL crudo', async () => {
+    rpcMock.mockResolvedValue({ data: 10, error: null });
+    fromMock.mockImplementation((table) => {
+      // Pre-check pasa porque otro request ganó la carrera después de leerlo.
+      if (table === 'crm_quotes') return queryResult({ data: { converted_to_invoice_id: null }, error: null });
+      if (table === 'crm_invoices') return queryResult({
+        data: null,
+        error: { code: '23505', message: 'duplicate key value violates unique constraint "crm_invoices_quote_id_uq"' },
+      });
+      throw new Error(`no debería llegar a ${table}`);
+    });
+
+    const { data, error } = await createCrmInvoice('biz1', { items: [invoiceItem], quoteId: 'q1' });
+
+    expect(data).toBeNull();
+    expect(error.message).toBe('Ya existe una nota de venta para este presupuesto.');
+    expect(error.message).not.toMatch(/duplicate key|constraint/i);
+  });
+
+  it('otra violación de índice único (no relacionada a quote_id) NO se enmascara con el mensaje de "ya existe una NV"', async () => {
+    rpcMock.mockResolvedValue({ data: 12, error: null });
+    fromMock.mockImplementation((table) => {
+      if (table === 'crm_invoices') return queryResult({
+        data: null,
+        error: { code: '23505', message: 'duplicate key value violates unique constraint "crm_invoices_number_unique"' },
+      });
+      throw new Error(`no debería tocar ${table}`);
+    });
+
+    const { data, error } = await createCrmInvoice('biz1', { items: [invoiceItem] });
+
+    expect(data).toBeNull();
+    expect(error.message).toBe('duplicate key value violates unique constraint "crm_invoices_number_unique"');
+  });
+
+  it('si falla el insert de ítems, NO vincula el presupuesto -- el link solo ocurre después de crear la NV completa', async () => {
+    rpcMock.mockResolvedValue({ data: 11, error: null });
+    let quoteFromCallCount = 0;
+    fromMock.mockImplementation((table) => {
+      if (table === 'crm_quotes') {
+        quoteFromCallCount += 1;
+        return queryResult({ data: { converted_to_invoice_id: null }, error: null });
+      }
+      if (table === 'crm_invoices') return queryResult({ data: { id: 'inv4', invoice_number: 11 }, error: null });
+      if (table === 'crm_invoice_items') return queryResult({ data: null, error: { message: 'items insert failed' } });
+      throw new Error(`tabla inesperada: ${table}`);
+    });
+
+    const { data, error } = await createCrmInvoice('biz1', { items: [invoiceItem], quoteId: 'q1' });
+
+    expect(data).toBeNull();
+    expect(error.message).toBe('items insert failed');
+    // Solo el pre-check tocó crm_quotes -- el UPDATE de vínculo nunca se ejecutó.
+    expect(quoteFromCallCount).toBe(1);
   });
 });
