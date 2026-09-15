@@ -28,7 +28,8 @@ const {
   PAYMENT_METHOD_LABELS, CASH_MOVEMENT_CATEGORIES_OUT, CASH_MOVEMENT_CATEGORIES_IN, CASH_MOVEMENT_PURPOSES,
 } = vi.hoisted(() => ({
   PAYMENT_METHOD_LABELS: {
-    cash: 'Efectivo', card: 'Tarjeta', bank_transfer: 'Transferencia', check: 'Cheque', credit: 'Cuenta corriente', other: 'Otro',
+    cash: 'Efectivo', card: 'Tarjeta', debit_card: 'Débito', credit_card: 'Crédito', mercado_pago: 'Mercado Pago',
+    bank_transfer: 'Transferencia', check: 'Cheque', credit: 'Cuenta corriente', other: 'Otro',
   },
   CASH_MOVEMENT_CATEGORIES_OUT: [
     { value: 'owner_withdrawal', label: 'Retiro del dueño',    isExpense: false },
@@ -63,6 +64,8 @@ const getCashDayMovementsMock = vi.fn();
 const getCashRecentSessionsMock = vi.fn();
 const getCashSessionPaymentsMock = vi.fn();
 const getCashSessionMovementsMock = vi.fn();
+const getCashSessionReconciliationMock = vi.fn();
+const closeCashSessionReconciledMock = vi.fn();
 const createCashMovementMock = vi.fn();
 const getCostItemsMock = vi.fn();
 const reopenCashSessionMock = vi.fn();
@@ -76,13 +79,14 @@ vi.mock('services/crmService', () => ({
   CASH_MOVEMENT_CATEGORIES_IN,
   CASH_MOVEMENT_PURPOSES,
   getCashMovementCategoryLabel: (value) => [...CASH_MOVEMENT_CATEGORIES_OUT, ...CASH_MOVEMENT_CATEGORIES_IN].find(c => c.value === value)?.label ?? value,
-  closeCashSession: vi.fn(),
+  closeCashSessionReconciled: (...a) => closeCashSessionReconciledMock(...a),
   createCashMovement: (...a) => createCashMovementMock(...a),
   getCostItems: (...a) => getCostItemsMock(...a),
   getCashDayMovements: (...a) => getCashDayMovementsMock(...a),
   getCashDayPayments: (...a) => getCashDayPaymentsMock(...a),
   getCashSessionMovements: (...a) => getCashSessionMovementsMock(...a),
   getCashSessionPayments: (...a) => getCashSessionPaymentsMock(...a),
+  getCashSessionReconciliation: (...a) => getCashSessionReconciliationMock(...a),
   getCashRecentSessions: (...a) => getCashRecentSessionsMock(...a),
   getCashSessionsForDate: (...a) => getCashSessionsForDateMock(...a),
   getCrmInvoice: (...a) => getCrmInvoiceMock(...a),
@@ -145,6 +149,7 @@ beforeEach(() => {
   [
     getOpenCashSessionMock, getCashSessionsForDateMock, getCashDayPaymentsMock, getCashDayMovementsMock,
     getCashRecentSessionsMock, getCashSessionPaymentsMock, getCashSessionMovementsMock,
+    getCashSessionReconciliationMock, closeCashSessionReconciledMock,
     createCashMovementMock, getCostItemsMock, reopenCashSessionMock, updateCashSessionMock,
     getCrmInvoiceMock, getInvoicePaymentSummaryMock, printReceiptMock, buildSaleReceiptMock, readPrinterConfigMock,
   ].forEach(m => m.mockReset());
@@ -156,6 +161,8 @@ beforeEach(() => {
   getCashRecentSessionsMock.mockResolvedValue({ data: [openSession], error: null });
   getCashSessionPaymentsMock.mockResolvedValue({ data: [], error: null });
   getCashSessionMovementsMock.mockResolvedValue({ data: [], error: null });
+  getCashSessionReconciliationMock.mockResolvedValue({ data: [], error: null });
+  closeCashSessionReconciledMock.mockResolvedValue({ data: { session: {}, reconciliations: [] }, error: null });
   createCashMovementMock.mockResolvedValue({ data: { movement_id: 'mv1', cost_item_id: null }, error: null });
   getCostItemsMock.mockResolvedValue(FIXED_COST_ITEMS);
   reopenCashSessionMock.mockResolvedValue({ data: { ...closedSession, status: 'open' }, error: null });
@@ -877,5 +884,157 @@ describe('CASH-SESSION-ROW-ACTIONS — Editar y Reabrir siguen funcionando', () 
     await waitFor(() => expect(updateCashSessionMock).toHaveBeenCalledWith(
       'sess0', expect.objectContaining({ initial_amount: 15000 }),
     ));
+  });
+});
+
+/**
+ * CAJA-CIERRE-CONCILIACION-1 — "Cerrar caja" abre el asistente de
+ * conciliación (CloseCashSessionWizard) en vez de cerrar directo. Cubre:
+ * Efectivo siempre visible, medios sin actividad ocultos por defecto,
+ * "+ Agregar medio", validación de monto/observación obligatorios, el
+ * payload exacto enviado a closeCashSessionReconciled y el error del
+ * servidor mostrado sin swallow.
+ */
+describe('CAJA-CIERRE-CONCILIACION-1 — CloseCashSessionWizard', () => {
+  async function openCloseWizard() {
+    render(<CrmCash />);
+    const trigger = await screen.findByRole('button', { name: 'Cerrar caja' });
+    fireEvent.click(trigger);
+    const heading = await screen.findByText('Cerrar caja — conciliación');
+    return { modal: heading.closest('.fixed') };
+  }
+
+  it('el botón "Cerrar caja" abre el asistente en vez de cerrar directo', async () => {
+    const { modal } = await openCloseWizard();
+    expect(within(modal).getByText('Efectivo')).toBeInTheDocument();
+    expect(closeCashSessionReconciledMock).not.toHaveBeenCalled();
+  });
+
+  it('Efectivo siempre aparece (esperado $0 incluido) y los demás medios sin actividad no aparecen', async () => {
+    const { modal } = await openCloseWizard();
+    // { selector: 'p' } acota a las etiquetas de fila (<p>) -- el <select>
+    // "+ Agregar medio" también ofrece estos medios como <option>, y ese
+    // texto no debe confundirse con una fila ya visible.
+    expect(within(modal).getByText('Efectivo', { selector: 'p' })).toBeInTheDocument();
+    expect(within(modal).getByText(formatMoney(0, 'CLP'))).toBeInTheDocument();
+    expect(within(modal).queryByText('Débito', { selector: 'p' })).not.toBeInTheDocument();
+    expect(within(modal).queryByText('Mercado Pago', { selector: 'p' })).not.toBeInTheDocument();
+    expect(within(modal).queryByText('Transferencia', { selector: 'p' })).not.toBeInTheDocument();
+    // Sí deben seguir ofrecidos como opción para agregar manualmente.
+    expect(within(modal).getByText('Débito', { selector: 'option' })).toBeInTheDocument();
+  });
+
+  it('un medio con actividad real (Débito) aparece automáticamente con su esperado', async () => {
+    getCashSessionPaymentsMock.mockImplementation((_bizId, session) => {
+      if (session.id === 'sess1') {
+        return Promise.resolve({
+          data: [{ id: 'p1', amount: 50000, payment_method: 'debit_card', voided_at: null }],
+          error: null,
+        });
+      }
+      return Promise.resolve({ data: [], error: null });
+    });
+    const { modal } = await openCloseWizard();
+    const row = within(modal).getByText('Débito').closest('div').parentElement;
+    expect(within(row).getByText(formatMoney(50000, 'CLP'))).toBeInTheDocument();
+    expect(within(row).getByText('¿Qué total muestra el terminal?')).toBeInTheDocument();
+  });
+
+  it('"+ Agregar medio" permite sumar un medio sin actividad (caso excepcional)', async () => {
+    const { modal } = await openCloseWizard();
+    // Por defecto solo hay una fila (Efectivo) -- ningún botón "Quitar"
+    // (esa fila nunca se puede quitar).
+    expect(within(modal).queryByRole('button', { name: 'Quitar' })).not.toBeInTheDocument();
+    fireEvent.change(within(modal).getByDisplayValue('+ Agregar medio'), { target: { value: 'check' } });
+    fireEvent.click(within(modal).getByRole('button', { name: 'Agregar' }));
+    // Ahora hay una segunda fila (Cheque) -- sí se puede quitar.
+    expect(within(modal).getByRole('button', { name: 'Quitar' })).toBeInTheDocument();
+    const row = within(modal).getByText('Cheque').closest('div').parentElement;
+    expect(within(row).getByText('Monto conciliado')).toBeInTheDocument();
+  });
+
+  it('bloquea el envío si falta el monto conciliado de un medio visible', async () => {
+    const { modal } = await openCloseWizard();
+    fireEvent.click(within(modal).getByRole('button', { name: 'Cerrar caja' }));
+    expect(within(modal).getByText(/Falta indicar el monto conciliado de Efectivo/)).toBeInTheDocument();
+    expect(closeCashSessionReconciledMock).not.toHaveBeenCalled();
+  });
+
+  it('con diferencia entre esperado y conciliado, exige observación antes de enviar', async () => {
+    const { modal } = await openCloseWizard();
+    fireEvent.change(within(modal).getByPlaceholderText('0'), { target: { value: '5000' } });
+    fireEvent.click(within(modal).getByRole('button', { name: 'Cerrar caja' }));
+    expect(within(modal).getByText(/Debes indicar una observación/)).toBeInTheDocument();
+    expect(closeCashSessionReconciledMock).not.toHaveBeenCalled();
+  });
+
+  it('envía el payload exacto a closeCashSessionReconciled (sin filtrar filas sin diferencia) y recarga tras éxito', async () => {
+    const { modal } = await openCloseWizard();
+    fireEvent.change(within(modal).getByPlaceholderText('0'), { target: { value: '0' } });
+    fireEvent.click(within(modal).getByRole('button', { name: 'Cerrar caja' }));
+
+    await waitFor(() => expect(closeCashSessionReconciledMock).toHaveBeenCalledTimes(1));
+    const [sessionId, payload] = closeCashSessionReconciledMock.mock.calls[0];
+    expect(sessionId).toBe('sess1');
+    expect(payload.reconciliations).toEqual([{ payment_method: 'cash', reconciled_amount: 0, notes: null }]);
+    expect(payload.closingNotes).toBeNull();
+
+    // Cierra el wizard y vuelve a cargar los datos de la caja.
+    await waitFor(() => expect(screen.queryByText('Cerrar caja — conciliación')).not.toBeInTheDocument());
+    expect(getOpenCashSessionMock.mock.calls.length).toBeGreaterThan(1);
+  });
+
+  it('si el servidor rechaza el cierre (medio omitido detectado tarde), muestra el mensaje exacto sin swallow', async () => {
+    closeCashSessionReconciledMock.mockResolvedValue({
+      data: null,
+      error: { message: 'Falta conciliar debit_card: tuvo actividad de 50000 en este turno' },
+    });
+    const { modal } = await openCloseWizard();
+    fireEvent.change(within(modal).getByPlaceholderText('0'), { target: { value: '0' } });
+    fireEvent.click(within(modal).getByRole('button', { name: 'Cerrar caja' }));
+    expect(await within(modal).findByText('Falta conciliar debit_card: tuvo actividad de 50000 en este turno')).toBeInTheDocument();
+  });
+});
+
+/**
+ * CAJA-CIERRE-CONCILIACION-1 — el detalle histórico de una caja usa el
+ * snapshot de crm_cash_session_reconciliations cuando existe (nunca lo
+ * recalcula), y muestra "Sin arqueo registrado" cuando no hay snapshot
+ * (caja cerrada antes de esta feature).
+ */
+describe('CAJA-CIERRE-CONCILIACION-1 — detalle histórico usa el snapshot de conciliación', () => {
+  beforeEach(() => {
+    getCashRecentSessionsMock.mockResolvedValue({ data: [openSession, closedSession], error: null });
+  });
+
+  async function openClosedDetail() {
+    render(<CrmCash />);
+    fireEvent.click(await screen.findByRole('button', { name: /Historial de cajas/ }));
+    await screen.findByText(/12 de septiembre de 2026/i);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Ver detalle' })[1]); // fila 1 = closedSession
+    const closeBtn = await screen.findByRole('button', { name: 'Cerrar detalle' });
+    return { modal: closeBtn.closest('.fixed') };
+  }
+
+  it('con snapshot, reemplaza el resumen en vivo por la tabla Esperado/Conciliado/Diferencia', async () => {
+    getCashSessionReconciliationMock.mockImplementation((_bizId, sessionId) => {
+      if (sessionId === 'sess0') {
+        return Promise.resolve({
+          data: [{ id: 'r1', payment_method: 'cash', expected_amount: 10000, reconciled_amount: 9500, difference: -500 }],
+          error: null,
+        });
+      }
+      return Promise.resolve({ data: [], error: null });
+    });
+    const { modal } = await openClosedDetail();
+    expect(await within(modal).findByText(formatMoney(9500, 'CLP'))).toBeInTheDocument();
+    expect(within(modal).getByText(formatMoney(10000, 'CLP'))).toBeInTheDocument();
+    expect(within(modal).queryByText('Sin arqueo registrado')).not.toBeInTheDocument();
+  });
+
+  it('sin snapshot, mantiene el resumen en vivo (fallback) y muestra la etiqueta "Sin arqueo registrado"', async () => {
+    const { modal } = await openClosedDetail();
+    expect(await within(modal).findByText('Sin arqueo registrado')).toBeInTheDocument();
+    expect(within(modal).getByText('Resumen')).toBeInTheDocument();
   });
 });

@@ -15,13 +15,14 @@ import {
   CASH_MOVEMENT_CATEGORIES_IN,
   CASH_MOVEMENT_PURPOSES,
   getCashMovementCategoryLabel,
-  closeCashSession,
+  closeCashSessionReconciled,
   createCashMovement,
   getCostItems,
   getCashDayMovements,
   getCashDayPayments,
   getCashSessionMovements,
   getCashSessionPayments,
+  getCashSessionReconciliation,
   getCashRecentSessions,
   getCashSessionsForDate,
   getCrmInvoice,
@@ -40,6 +41,28 @@ import { buildSaleReceipt } from 'lib/printing/receipts/buildSaleReceipt';
 import { buildPrinterConfigKey, readPrinterConfig } from 'lib/printing/printerConfigStorage';
 
 const METHOD_ORDER = ['cash', 'card', 'bank_transfer', 'check', 'other'];
+
+// CAJA-CIERRE-CONCILIACION-1 — vocabulario propio del asistente de cierre
+// (los 8 medios que acepta crm_close_cash_session). Deliberadamente
+// separado de METHOD_ORDER: ese sigue alimentando "Cobros por método de
+// pago" (MethodBreakdown) sin cambios, y ampliarlo ahí reclasificaría una
+// UI que no pidió cambios. El wizard necesita distinguir debit_card/
+// credit_card/mercado_pago, que METHOD_ORDER no conoce.
+const RECONCILE_ALL_METHODS = ['cash', 'debit_card', 'credit_card', 'mercado_pago', 'bank_transfer', 'card', 'check', 'other'];
+
+// Pregunta corta y sin jerga contable por medio de pago -- mismo tono que
+// pidió el negocio ("Según Walinka deberías tener: Efectivo $58.000 →
+// ¿Cuánto contaste?").
+const RECONCILE_QUESTION_LABELS = {
+  cash: '¿Cuánto contaste?',
+  debit_card: '¿Qué total muestra el terminal?',
+  credit_card: '¿Qué total muestra el terminal?',
+  mercado_pago: '¿Qué total muestra MP?',
+  bank_transfer: '¿Qué total confirmaste?',
+  card: 'Monto conciliado',
+  check: 'Monto conciliado',
+  other: 'Monto conciliado',
+};
 
 function fmtDate(date) {
   if (!date) return '';
@@ -87,6 +110,41 @@ function calcSessionBalance(session, payments = [], movements = []) {
   const manualIn  = movements.filter(m => !m.voided_at && m.direction === 'in').reduce((s, m) => s + toNumber(m.amount), 0);
   const outs      = movements.filter(m => !m.voided_at && m.direction === 'out').reduce((s, m) => s + toNumber(m.amount), 0);
   return initial + inflows + manualIn - outs;
+}
+
+// Efectivo esperado, SOLO para el wizard de cierre (display previo,
+// cliente/no confiable -- el servidor lo recalcula 100% en
+// crm_close_cash_session y es la fuente de verdad real). Misma fórmula que
+// el bloque 'cash' de la RPC: fondo inicial + cobros cash + entradas
+// manuales cash - salidas manuales cash.
+function calcExpectedCash(session, payments = [], movements = []) {
+  const initial = toNumber(session?.initial_amount);
+  const cashIn = payments
+    .filter(p => !p.voided_at && p.payment_method === 'cash')
+    .reduce((s, p) => s + toNumber(p.amount), 0);
+  const manualIn = movements
+    .filter(m => !m.voided_at && m.direction === 'in' && m.payment_method === 'cash')
+    .reduce((s, m) => s + toNumber(m.amount), 0);
+  const manualOut = movements
+    .filter(m => !m.voided_at && m.direction === 'out' && m.payment_method === 'cash')
+    .reduce((s, m) => s + toNumber(m.amount), 0);
+  return initial + cashIn + manualIn - manualOut;
+}
+
+// Esperado por método NO-efectivo, SOLO para el wizard de cierre. No
+// reutiliza summarizePayments (ese sigue sirviendo a MethodBreakdown, sin
+// cambios) porque necesita conocer debit_card/credit_card/mercado_pago.
+// 'credit' (cuenta corriente) queda deliberadamente excluido -- no es
+// dinero recibido en la sesión.
+function calcExpectedByMethod(payments = []) {
+  const totals = {};
+  for (const payment of payments) {
+    if (payment.voided_at) continue;
+    const method = payment.payment_method;
+    if (!method || method === 'cash' || method === 'credit') continue;
+    totals[method] = (totals[method] || 0) + toNumber(payment.amount);
+  }
+  return totals;
 }
 
 function totalMovementsOut(movements = []) {
@@ -467,8 +525,55 @@ function MovementsTable({
 // exclusivamente por session.id (getCashSessionPayments/getCashSessionMovements
 // en CrmCash), nunca desde la caja activa ni mezclados con otro turno del mismo
 // día -- ver auditoría en el mensaje de commit.
+// Tabla Esperado | Conciliado | Diferencia -- snapshot INMUTABLE de
+// crm_cash_session_reconciliations. Nunca se recalcula desde
+// crm_payments/crm_cash_movements: si algo cambió después del cierre (p.
+// ej. una anulación posterior), este número sigue siendo el que el cajero
+// realmente vio y confirmó al cerrar.
+function ReconciliationSummaryTable({ reconciliation, session, currency }) {
+  return (
+    <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <p className="text-xs font-bold uppercase tracking-wide text-gray-400">Arqueo de cierre</p>
+        <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">Conciliado</span>
+      </div>
+      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+        <table className="min-w-full divide-y divide-gray-100 text-sm">
+          <thead className="bg-gray-50 text-left text-[11px] font-bold uppercase tracking-wide text-gray-400">
+            <tr>
+              <th className="px-3 py-2">Medio</th>
+              <th className="px-3 py-2 text-right">Esperado</th>
+              <th className="px-3 py-2 text-right">Conciliado</th>
+              <th className="px-3 py-2 text-right">Diferencia</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {reconciliation.map(row => (
+              <tr key={row.id || row.payment_method}>
+                <td className="px-3 py-2 font-medium text-gray-700">
+                  {PAYMENT_METHOD_LABELS[row.payment_method] || row.payment_method}
+                </td>
+                <td className="px-3 py-2 text-right text-gray-600">{formatMoney(toNumber(row.expected_amount), currency)}</td>
+                <td className="px-3 py-2 text-right text-gray-600">{formatMoney(toNumber(row.reconciled_amount), currency)}</td>
+                <td className={`px-3 py-2 text-right font-bold ${
+                  toNumber(row.difference) > 0 ? 'text-emerald-700' : toNumber(row.difference) < 0 ? 'text-red-600' : 'text-gray-500'
+                }`}>
+                  {toNumber(row.difference) > 0 ? '+' : ''}{formatMoney(toNumber(row.difference), currency)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {session.closing_notes && (
+        <p className="mt-2 text-xs text-gray-500">Observación: {session.closing_notes}</p>
+      )}
+    </div>
+  );
+}
+
 function CashSessionDetailModal({
-  session, sessions, payments, movements, currency, user, loadError,
+  session, sessions, payments, movements, currency, user, loadError, reconciliation,
   onClose, onEditPayment, onVoidPayment, onVoidMovement,
   onViewSale, onReprintReceipt, reprintingId, reprintError,
 }) {
@@ -480,10 +585,12 @@ function CashSessionDetailModal({
   const salidas          = totalMovementsOut(movements);
   const methodSummary    = summarizePayments(payments);
   // cash_difference/expected_cash/counted_cash existen en el esquema
-  // (arqueo de cierre) pero closeCashSession() hoy nunca los escribe -- por
-  // eso este bloque solo aparece cuando el dato realmente existe para esta
-  // caja puntual, en vez de mostrar un "—" fijo en todas.
+  // (arqueo de cierre) desde antes de este trabajo -- este bloque de
+  // fallback (sin snapshot en crm_cash_session_reconciliations) solo
+  // aparece cuando el dato realmente existe para esta caja puntual, en vez
+  // de mostrar un "—" fijo en todas.
   const hasArqueo = session.cash_difference !== null && session.cash_difference !== undefined;
+  const hasReconciliation = Array.isArray(reconciliation) && reconciliation.length > 0;
 
   return (
     <div className="fixed inset-0 z-modal flex items-center justify-center bg-slate-900/40 px-4 py-6">
@@ -536,64 +643,73 @@ function CashSessionDetailModal({
             </div>
           </div>
 
-          <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
-            <p className="mb-3 text-xs font-bold uppercase tracking-wide text-gray-400">Resumen</p>
-            <div className="space-y-1.5 text-sm">
-              <div className="flex items-center justify-between">
-                <span className="text-gray-500">Fondo inicial</span>
-                <span className="font-semibold text-gray-700">{formatMoney(toNumber(session.initial_amount), currency)}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-gray-500">Cobros del turno</span>
-                <span className="font-semibold text-emerald-700">+{formatMoney(cobros, currency)}</span>
-              </div>
-              {entradasManuales > 0 && (
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-500">Entradas manuales</span>
-                  <span className="font-semibold text-blue-600">+{formatMoney(entradasManuales, currency)}</span>
-                </div>
+          {hasReconciliation ? (
+            <ReconciliationSummaryTable reconciliation={reconciliation} session={session} currency={currency} />
+          ) : (
+            <div className="relative rounded-2xl border border-gray-100 bg-gray-50 p-4">
+              <p className="mb-3 text-xs font-bold uppercase tracking-wide text-gray-400">Resumen</p>
+              {session.status !== 'open' && (
+                <span className="absolute right-4 top-4 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700">
+                  Sin arqueo registrado
+                </span>
               )}
-              {salidas > 0 && (
+              <div className="space-y-1.5 text-sm">
                 <div className="flex items-center justify-between">
-                  <span className="text-gray-500">Salidas / Gastos</span>
-                  <span className="font-semibold text-red-600">−{formatMoney(salidas, currency)}</span>
+                  <span className="text-gray-500">Fondo inicial</span>
+                  <span className="font-semibold text-gray-700">{formatMoney(toNumber(session.initial_amount), currency)}</span>
                 </div>
-              )}
-              <div className="flex items-center justify-between border-t border-gray-200 pt-1.5">
-                <span className="font-bold text-gray-900">Saldo {session.status === 'open' ? 'esperado' : 'final'}</span>
-                <span className="text-base font-black text-gray-900">{formatMoney(balance, currency)}</span>
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-500">Cobros del turno</span>
+                  <span className="font-semibold text-emerald-700">+{formatMoney(cobros, currency)}</span>
+                </div>
+                {entradasManuales > 0 && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-500">Entradas manuales</span>
+                    <span className="font-semibold text-blue-600">+{formatMoney(entradasManuales, currency)}</span>
+                  </div>
+                )}
+                {salidas > 0 && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-500">Salidas / Gastos</span>
+                    <span className="font-semibold text-red-600">−{formatMoney(salidas, currency)}</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between border-t border-gray-200 pt-1.5">
+                  <span className="font-bold text-gray-900">Saldo {session.status === 'open' ? 'esperado' : 'final'}</span>
+                  <span className="text-base font-black text-gray-900">{formatMoney(balance, currency)}</span>
+                </div>
               </div>
-            </div>
 
-            {hasArqueo && (
-              <div className="mt-3 space-y-1.5 border-t border-gray-200 pt-3 text-sm">
-                <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Arqueo de cierre</p>
-                {session.expected_cash != null && (
+              {hasArqueo && (
+                <div className="mt-3 space-y-1.5 border-t border-gray-200 pt-3 text-sm">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Arqueo de cierre</p>
+                  {session.expected_cash != null && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-500">Efectivo esperado</span>
+                      <span className="font-semibold text-gray-700">{formatMoney(toNumber(session.expected_cash), currency)}</span>
+                    </div>
+                  )}
+                  {session.counted_cash != null && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-500">Efectivo contado</span>
+                      <span className="font-semibold text-gray-700">{formatMoney(toNumber(session.counted_cash), currency)}</span>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between">
-                    <span className="text-gray-500">Efectivo esperado</span>
-                    <span className="font-semibold text-gray-700">{formatMoney(toNumber(session.expected_cash), currency)}</span>
+                    <span className="text-gray-500">Diferencia</span>
+                    <span className={`font-bold ${
+                      session.cash_difference > 0 ? 'text-emerald-700' : session.cash_difference < 0 ? 'text-red-600' : 'text-gray-700'
+                    }`}>
+                      {session.cash_difference > 0 ? '+' : ''}{formatMoney(toNumber(session.cash_difference), currency)}
+                    </span>
                   </div>
-                )}
-                {session.counted_cash != null && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-500">Efectivo contado</span>
-                    <span className="font-semibold text-gray-700">{formatMoney(toNumber(session.counted_cash), currency)}</span>
-                  </div>
-                )}
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-500">Diferencia</span>
-                  <span className={`font-bold ${
-                    session.cash_difference > 0 ? 'text-emerald-700' : session.cash_difference < 0 ? 'text-red-600' : 'text-gray-700'
-                  }`}>
-                    {session.cash_difference > 0 ? '+' : ''}{formatMoney(toNumber(session.cash_difference), currency)}
-                  </span>
+                  {session.closing_notes && (
+                    <p className="text-xs text-gray-500">{session.closing_notes}</p>
+                  )}
                 </div>
-                {session.closing_notes && (
-                  <p className="text-xs text-gray-500">{session.closing_notes}</p>
-                )}
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          )}
 
           <div>
             <p className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-400">Cobros por método de pago</p>
@@ -1120,6 +1236,211 @@ function CashMovementModal({ defaultDirection = 'out', businessId, currency, bus
   );
 }
 
+// ─── Asistente de cierre de caja (conciliación por medio de pago) ─────────────
+// "Cerrar caja" ya no cierra al primer click: abre este wizard, que muestra
+// "lo que Walinka dice que deberías tener" por medio de pago (cálculo
+// CLIENTE, solo para mostrar -- crm_close_cash_session recalcula todo
+// server-side y es la única fuente de verdad real) y pide el monto
+// realmente contado/confirmado por el cajero. Efectivo siempre aparece
+// (ritual físico obligatorio aunque el esperado sea $0); los demás medios
+// solo si tuvieron actividad real en la sesión -- "+ Agregar medio" permite
+// sumar un medio sin actividad para un caso excepcional. El payload manda
+// TODAS las filas visibles/agregadas, sin filtrar las que no tienen
+// diferencia -- igual que esperan closeCashSessionReconciled/RPC.
+function CloseCashSessionWizard({ session, payments, movements, currency, busy, serverError, onSubmit, onCancel }) {
+  const expectedCash = calcExpectedCash(session, payments, movements);
+  const expectedByMethod = calcExpectedByMethod(payments);
+
+  const [methods, setMethods] = useState(() => {
+    const initial = ['cash'];
+    for (const method of RECONCILE_ALL_METHODS) {
+      if (method === 'cash') continue;
+      if (Math.abs(expectedByMethod[method] || 0) > 0) initial.push(method);
+    }
+    return initial;
+  });
+  const [amounts, setAmounts] = useState({});
+  const [notesByMethod, setNotesByMethod] = useState({});
+  const [observation, setObservation] = useState('');
+  const [addMethodValue, setAddMethodValue] = useState('');
+  const [error, setError] = useState('');
+
+  const expectedFor = (method) => (method === 'cash' ? expectedCash : (expectedByMethod[method] || 0));
+  const availableToAdd = RECONCILE_ALL_METHODS.filter(m => !methods.includes(m));
+
+  const handleAddMethod = () => {
+    if (!addMethodValue) return;
+    setMethods(prev => [...prev, addMethodValue]);
+    setAddMethodValue('');
+  };
+
+  const handleRemoveMethod = (method) => {
+    if (method === 'cash') return;
+    setMethods(prev => prev.filter(m => m !== method));
+    setAmounts(prev => {
+      const next = { ...prev };
+      delete next[method];
+      return next;
+    });
+  };
+
+  let anyDiff = false;
+  for (const method of methods) {
+    const raw = amounts[method];
+    if (raw === undefined || raw === '') continue;
+    if (parseMoneyInput(raw) !== expectedFor(method)) anyDiff = true;
+  }
+
+  const handleSubmit = (event) => {
+    event.preventDefault();
+    setError('');
+    for (const method of methods) {
+      const raw = amounts[method];
+      if (raw === undefined || raw === '') {
+        setError(`Falta indicar el monto conciliado de ${PAYMENT_METHOD_LABELS[method] || method}.`);
+        return;
+      }
+    }
+    if (anyDiff && !observation.trim()) {
+      setError('Debes indicar una observación: hay diferencias en la conciliación.');
+      return;
+    }
+    const reconciliations = methods.map(method => ({
+      payment_method: method,
+      reconciled_amount: parseMoneyInput(amounts[method]),
+      notes: (notesByMethod[method] || '').trim() || null,
+    }));
+    onSubmit({ reconciliations, closingNotes: observation.trim() || null });
+  };
+
+  return (
+    <div className="fixed inset-0 z-modal flex items-center justify-center bg-slate-900/40 px-4 py-6">
+      <form onSubmit={handleSubmit} className="flex max-h-full w-full max-w-xl flex-col rounded-2xl border border-gray-100 bg-white shadow-xl">
+        <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
+          <h3 className="text-sm font-bold text-gray-900">Cerrar caja — conciliación</h3>
+          <button type="button" onClick={onCancel} className="text-gray-400 hover:text-gray-600" aria-label="Cancelar">
+            <Icon name="X" size={17} />
+          </button>
+        </div>
+
+        <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
+          <p className="text-xs text-gray-500">
+            Según Walinka, esto es lo que deberías tener en cada medio de pago. Compáralo con lo real y cuenta cualquier diferencia.
+          </p>
+
+          {(serverError || error) && (
+            <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              {serverError || error}
+            </div>
+          )}
+
+          <div className="space-y-3">
+            {methods.map(method => {
+              const expected = expectedFor(method);
+              const raw = amounts[method] ?? '';
+              const reconciled = raw === '' ? null : parseMoneyInput(raw);
+              const diff = reconciled === null ? null : reconciled - expected;
+              return (
+                <div key={method} className="rounded-xl border border-gray-100 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-bold text-gray-900">{PAYMENT_METHOD_LABELS[method] || method}</p>
+                    {method !== 'cash' && (
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveMethod(method)}
+                        className="text-xs font-semibold text-gray-400 hover:text-red-500"
+                      >
+                        Quitar
+                      </button>
+                    )}
+                  </div>
+                  <div className="mt-1 flex items-center justify-between text-xs text-gray-500">
+                    <span>Según Walinka deberías tener</span>
+                    <span className="font-semibold text-gray-700">{formatMoney(expected, currency)}</span>
+                  </div>
+                  <label className="mt-2 block text-xs font-semibold text-gray-500">
+                    {RECONCILE_QUESTION_LABELS[method] || 'Monto conciliado'}
+                  </label>
+                  <div className="relative mt-1">
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">$</span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={fmtMoneyInput(raw)}
+                      onChange={e => { setAmounts(prev => ({ ...prev, [method]: e.target.value.replace(/\D/g, '') })); setError(''); }}
+                      placeholder="0"
+                      className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-7 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                  {diff !== null && diff !== 0 && (
+                    <p className={`mt-1.5 text-xs font-bold ${diff > 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                      Diferencia: {diff > 0 ? '+' : ''}{formatMoney(diff, currency)}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {availableToAdd.length > 0 && (
+            <div className="flex items-center gap-2">
+              <select
+                value={addMethodValue}
+                onChange={e => setAddMethodValue(e.target.value)}
+                className="flex-1 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
+              >
+                <option value="">+ Agregar medio</option>
+                {availableToAdd.map(m => (
+                  <option key={m} value={m}>{PAYMENT_METHOD_LABELS[m] || m}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={handleAddMethod}
+                disabled={!addMethodValue}
+                className="rounded-xl border border-gray-200 px-3 py-2.5 text-xs font-bold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              >
+                Agregar
+              </button>
+            </div>
+          )}
+
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-gray-500">
+              Observación {anyDiff && <span className="text-red-500">*</span>}
+            </label>
+            <textarea
+              value={observation}
+              onChange={e => { setObservation(e.target.value); setError(''); }}
+              rows={3}
+              placeholder={anyDiff ? 'Explica la diferencia encontrada…' : 'Opcional'}
+              className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            />
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-2 border-t border-gray-100 px-5 py-3 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-50"
+          >
+            Cancelar
+          </button>
+          <button
+            type="submit"
+            disabled={busy}
+            className="flex items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-50"
+          >
+            {busy && <Icon name="Loader2" size={15} className="animate-spin" />}
+            Cerrar caja
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 function CashSessionForm({ title, initialValue = '', notesValue = '', busy, submitLabel, onSubmit, onCancel }) {
   const [amount, setAmount] = useState(String(initialValue || ''));
   const [notes, setNotes] = useState(notesValue || '');
@@ -1220,6 +1541,13 @@ export default function CrmCash() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  // CAJA-CIERRE-CONCILIACION-1 — "Cerrar caja" abre este wizard en vez de
+  // cerrar al primer click. reconciliationBySession cachea el snapshot
+  // (crm_cash_session_reconciliations) por sesión, para el detalle
+  // histórico -- [] real (sin filas) se distingue de "todavía no se pidió".
+  const [closingSessionId, setClosingSessionId] = useState(null);
+  const [closeError, setCloseError] = useState('');
+  const [reconciliationBySession, setReconciliationBySession] = useState({});
 
   const planSlug = getEffectivePlanSlug(
     business?.planSlug,
@@ -1310,6 +1638,34 @@ export default function CrmCash() {
   const detailSession   = detailSessionId ? allSessions.find(s => s.id === detailSessionId) : null;
   const detailPayments  = detailSession ? (sessionPayments[detailSession.id] || []) : [];
   const detailMvts      = detailSession ? (sessionMovements[detailSession.id] || []) : [];
+  const detailReconciliation = detailSession ? (reconciliationBySession[detailSession.id] ?? null) : null;
+
+  // El wizard puede abrirse tanto desde el botón principal (currentSession,
+  // normalmente hoy) como desde el menú "..." de una fila del historial --
+  // en ambos casos ya tenemos sus pagos/movimientos cargados en los mapas
+  // de `load()` (historyLoad cubre sessionsList + allUnique), sin volver a
+  // pedirlos.
+  const closingSession  = closingSessionId ? allSessions.find(s => s.id === closingSessionId) || (closingSessionId === currentSession?.id ? currentSession : null) : null;
+  const closingPayments = closingSessionId ? (sessionPayments[closingSessionId] || []) : [];
+  const closingMvts     = closingSessionId ? (sessionMovements[closingSessionId] || []) : [];
+
+  // Snapshot de conciliación del detalle histórico -- se pide una sola vez
+  // por sesión (cache en reconciliationBySession) y nunca se recalcula
+  // desde crm_payments/crm_cash_movements.
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchReconciliation() {
+      if (!detailSessionId || !business?.id) return;
+      if (reconciliationBySession[detailSessionId] !== undefined) return;
+      const { data } = await getCashSessionReconciliation(business.id, detailSessionId);
+      if (!cancelled) {
+        setReconciliationBySession(prev => ({ ...prev, [detailSessionId]: data || [] }));
+      }
+    }
+    fetchReconciliation();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detailSessionId, business?.id]);
 
   const daySummary        = useMemo(() => summarizePayments(dayPayments), [dayPayments]);
   const dayTotal          = useMemo(() => totalPayments(dayPayments), [dayPayments]);
@@ -1338,16 +1694,26 @@ export default function CrmCash() {
     await load();
   };
 
-  const handleClose = async (sessionId = openSession?.id) => {
+  // "Cerrar caja" ya no cierra directo -- abre el wizard de conciliación
+  // (CloseCashSessionWizard). El cierre real ocurre en handleSubmitClose,
+  // vía la RPC crm_close_cash_session.
+  const handleOpenCloseWizard = (sessionId = openSession?.id) => {
     if (!sessionId) return;
+    setCloseError('');
+    setClosingSessionId(sessionId);
+  };
+
+  const handleSubmitClose = async ({ reconciliations, closingNotes }) => {
+    if (!closingSessionId) return;
     setBusy(true);
-    setErrorMsg('');
-    const { error } = await closeCashSession(sessionId);
+    setCloseError('');
+    const { error } = await closeCashSessionReconciled(closingSessionId, { reconciliations, closingNotes });
     setBusy(false);
     if (error) {
-      setErrorMsg(error.message);
+      setCloseError(error.message || 'No se pudo cerrar la caja.');
       return;
     }
+    setClosingSessionId(null);
     await load();
   };
 
@@ -1621,7 +1987,7 @@ export default function CrmCash() {
                     )}
                     {openSession && (
                       <button
-                        onClick={() => handleClose(openSession.id)}
+                        onClick={() => handleOpenCloseWizard(openSession.id)}
                         disabled={busy}
                         className="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-50"
                       >
@@ -1763,6 +2129,7 @@ export default function CrmCash() {
                   currency={business?.currency}
                   user={user}
                   loadError={sessionLoadErrors[detailSession.id]}
+                  reconciliation={detailReconciliation}
                   onClose={() => { setDetailSessionId(null); setReprintError(''); }}
                   onEditPayment={setEditingPayment}
                   onVoidPayment={setVoidingPayment}
@@ -1771,6 +2138,20 @@ export default function CrmCash() {
                   onReprintReceipt={handleReprintReceipt}
                   reprintingId={reprintingId}
                   reprintError={reprintError}
+                />
+              )}
+
+              {closingSession && (
+                <CloseCashSessionWizard
+                  key={closingSession.id}
+                  session={closingSession}
+                  payments={closingPayments}
+                  movements={closingMvts}
+                  currency={business?.currency}
+                  busy={busy}
+                  serverError={closeError}
+                  onSubmit={handleSubmitClose}
+                  onCancel={() => { setClosingSessionId(null); setCloseError(''); }}
                 />
               )}
 
@@ -1859,7 +2240,7 @@ export default function CrmCash() {
                                   busy={busy}
                                   onEdit={() => setEditingSession(session)}
                                   onReopen={() => handleReopen(session.id)}
-                                  onClose={() => handleClose(session.id)}
+                                  onClose={() => handleOpenCloseWizard(session.id)}
                                 />
                               </div>
                             </div>

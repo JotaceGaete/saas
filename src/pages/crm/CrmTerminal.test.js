@@ -832,3 +832,42 @@ describe('PRINT-3A-BUG1 — mensaje simple al cajero cuando QZ oculta la causa r
     expect(catchBlockMatch[0]).not.toMatch(/setCart|setPayments|saleIdempotencyKeyRef|createPosInvoice|refreshProducts/);
   });
 });
+
+/**
+ * CAJA-CIERRE-CONCILIACION-1 — el selector de método de pago separa
+ * débito/crédito (antes un único 'card' genérico) y agrega Mercado Pago,
+ * para que el asistente de cierre de caja pueda conciliar cada terminal
+ * por separado. No reclasifica ventas históricas ('card' sigue existiendo
+ * en filas ya guardadas, solo deja de ser una opción nueva) -- mismo
+ * criterio de source-scan que el resto de este archivo.
+ */
+describe('CAJA-CIERRE-CONCILIACION-1 — PAYMENT_METHODS: débito/crédito separados + Mercado Pago', () => {
+  const paymentMethodsMatch = indexSource.match(/const PAYMENT_METHODS = \[[\s\S]*?\n\];/);
+
+  it('PAYMENT_METHODS existe y ya no ofrece un valor genérico \'card\'', () => {
+    expect(paymentMethodsMatch).not.toBeNull();
+    expect(paymentMethodsMatch[0]).not.toMatch(/value: 'card'/);
+  });
+
+  it('incluye debit_card (Débito), credit_card (Crédito) y mercado_pago (Mercado Pago)', () => {
+    expect(paymentMethodsMatch[0]).toMatch(/\{ value: 'debit_card',\s+label: 'Débito'/);
+    expect(paymentMethodsMatch[0]).toMatch(/\{ value: 'credit_card',\s+label: 'Crédito'/);
+    expect(paymentMethodsMatch[0]).toMatch(/\{ value: 'mercado_pago',\s+label: 'Mercado Pago'/);
+  });
+
+  it('conserva cash, bank_transfer, check, other y credit sin cambios de value', () => {
+    for (const value of ['cash', 'bank_transfer', 'check', 'other', 'credit']) {
+      expect(paymentMethodsMatch[0]).toMatch(new RegExp(`value: '${value}'`));
+    }
+  });
+
+  it('REAL_PAYMENT_METHODS sigue excluyendo únicamente \'credit\' (cuenta corriente)', () => {
+    expect(indexSource).toMatch(/const REAL_PAYMENT_METHODS = PAYMENT_METHODS\.filter\(\(method\) => method\.value !== 'credit'\);/);
+  });
+
+  it('addPayment ya no agrega una fila nueva con method: \'card\' (ya no es una opción válida del selector)', () => {
+    const addPaymentMatch = indexSource.match(/const addPayment = \(\) => \{[\s\S]*?\n  \};/);
+    expect(addPaymentMatch).not.toBeNull();
+    expect(addPaymentMatch[0]).not.toMatch(/method: 'card'/);
+  });
+});

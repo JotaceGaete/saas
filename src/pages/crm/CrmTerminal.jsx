@@ -25,13 +25,22 @@ import { printService } from 'lib/printing/printService';
 import { buildSaleReceipt } from 'lib/printing/receipts/buildSaleReceipt';
 import { buildPrinterConfigKey, readPrinterConfig } from 'lib/printing/printerConfigStorage';
 
+// CAJA-CIERRE-CONCILIACION-1 -- 'card' genérico se reemplaza por
+// debit_card/credit_card para ventas NUEVAS (permite conciliar cada
+// terminal por separado en el asistente de cierre de caja). Las ventas
+// históricas con payment_method='card' NO se reclasifican -- siguen
+// siendo 'card' en crm_payments, solo cambia qué puede elegir el cajero
+// de ahora en adelante. Se agrega mercado_pago como medio propio (antes
+// cabía forzado dentro de 'other' o 'card').
 const PAYMENT_METHODS = [
-  { value: 'cash',          label: 'Efectivo',      icon: 'Banknote' },
-  { value: 'bank_transfer', label: 'Transferencia', icon: 'ArrowLeftRight' },
-  { value: 'card',          label: 'Tarjeta',       icon: 'CreditCard' },
-  { value: 'check',         label: 'Cheque',        icon: 'BadgeCheck' },
-  { value: 'other',         label: 'Otro',          icon: 'MoreHorizontal' },
-  { value: 'credit',        label: 'Cta. cte.',     icon: 'BookUser' },
+  { value: 'cash',          label: 'Efectivo',       icon: 'Banknote' },
+  { value: 'debit_card',    label: 'Débito',         icon: 'CreditCard' },
+  { value: 'credit_card',   label: 'Crédito',        icon: 'CreditCard' },
+  { value: 'mercado_pago',  label: 'Mercado Pago',   icon: 'Wallet' },
+  { value: 'bank_transfer', label: 'Transferencia',  icon: 'ArrowLeftRight' },
+  { value: 'check',         label: 'Cheque',         icon: 'BadgeCheck' },
+  { value: 'other',         label: 'Otro',           icon: 'MoreHorizontal' },
+  { value: 'credit',        label: 'Cta. cte.',      icon: 'BookUser' },
 ];
 
 const REAL_PAYMENT_METHODS = PAYMENT_METHODS.filter((method) => method.value !== 'credit');
@@ -631,7 +640,7 @@ function CrmTerminalUI() {
   const addPayment = () => {
     setPayments((prev) => [
       ...prev,
-      { id: `payment_${Date.now()}_${prev.length}`, method: 'card', amount: '' },
+      { id: `payment_${Date.now()}_${prev.length}`, method: 'debit_card', amount: '' },
     ]);
   };
 
