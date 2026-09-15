@@ -48,11 +48,11 @@ const {
     { value: 'other',      label: 'Otro',                    isExpense: false },
   ],
   CASH_MOVEMENT_PURPOSES: [
-    { value: 'new_expense',          label: 'Gasto del negocio',              helper: 'Esta salida también se registrará como un nuevo gasto.' },
-    { value: 'cost_payment',         label: 'Pago de un costo registrado',    helper: 'El dinero saldrá de caja, pero no se creará un nuevo costo.' },
-    { value: 'inventory_purchase',   label: 'Compra de mercadería',           helper: 'Se registrará la salida de dinero. La compra no se descontará como gasto operativo inmediato.' },
-    { value: 'owner_withdrawal',     label: 'Retiro del dueño',               helper: 'Se registrará la salida de caja sin afectar el resultado del negocio.' },
-    { value: 'other_non_operating',  label: 'Otro movimiento',                helper: 'Se registrará únicamente el movimiento de caja.' },
+    { value: 'new_expense',          label: 'Gasto nuevo del día',                    helper: 'Esta salida se registrará como un nuevo gasto y afectará el resultado del día.' },
+    { value: 'cost_payment',         label: 'Pago de costo o factura ya registrada',  helper: 'El dinero saldrá de caja, pero no se creará un nuevo gasto.' },
+    { value: 'inventory_purchase',   label: 'Compra de mercadería',                   helper: 'Se registrará la salida de dinero sin descontarla como gasto operativo inmediato.' },
+    { value: 'owner_withdrawal',     label: 'Retiro del dueño',                       helper: 'Se registrará la salida de caja sin afectar el resultado del negocio.' },
+    { value: 'other_non_operating',  label: 'Otro movimiento',                        helper: 'Se registrará únicamente el movimiento de caja.' },
   ],
 }));
 
@@ -194,7 +194,7 @@ describe('CashMovementModal — selector de propósito (Salida)', () => {
     }
   });
 
-  it('nunca preselecciona "Gasto del negocio" -- el selector arranca vacío', async () => {
+  it('nunca preselecciona "Gasto nuevo del día" -- el selector arranca vacío', async () => {
     await openMovementModal();
     const select = screen.getByText('¿Qué tipo de salida es?').closest('div').querySelector('select');
     expect(select.value).toBe('');
@@ -225,7 +225,7 @@ describe('CashMovementModal — selector de propósito (Salida)', () => {
   });
 });
 
-describe('CashMovementModal — "Pago de un costo registrado"', () => {
+describe('CashMovementModal — "Pago de costo o factura ya registrada"', () => {
   it('al elegir esta opción, muestra el selector de costo relacionado cargando solo type=fixed', async () => {
     await openMovementModal();
     const purposeSelect = screen.getByText('¿Qué tipo de salida es?').closest('div').querySelector('select');
@@ -240,7 +240,7 @@ describe('CashMovementModal — "Pago de un costo registrado"', () => {
     expect(within(relatedSelect).queryByRole('option', { name: /Reparación/ })).not.toBeInTheDocument();
   });
 
-  it('para otros propósitos (p. ej. Gasto del negocio) NO muestra el selector de costo relacionado', async () => {
+  it('para otros propósitos (p. ej. Gasto nuevo del día) NO muestra el selector de costo relacionado', async () => {
     await openMovementModal();
     const purposeSelect = screen.getByText('¿Qué tipo de salida es?').closest('div').querySelector('select');
     fireEvent.change(purposeSelect, { target: { value: 'new_expense' } });
@@ -321,6 +321,118 @@ describe('CashMovementModal — payload enviado a createCashMovement', () => {
     await waitFor(() => expect(createCashMovementMock).toHaveBeenCalledTimes(1));
     const [, payload] = createCashMovementMock.mock.calls[0];
     expect(payload).toMatchObject({ movementPurpose: 'owner_withdrawal', relatedCostItemId: null });
+  });
+
+  it('CASO B (factura de proveedor ya registrada, sin costo relacionado): cost_payment sin related_cost_item_id envía igual, sin bloquear el envío', async () => {
+    await openMovementModal();
+    fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '200000' } });
+    fireEvent.change(screen.getByPlaceholderText(/Ej: Rollos térmicos/), { target: { value: 'Pago factura proveedor X' } });
+    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: 'services' } });
+    fireEvent.change(screen.getByText('¿Qué tipo de salida es?').closest('div').querySelector('select'), { target: { value: 'cost_payment' } });
+
+    // "Costo relacionado (opcional)" aparece, pero no se toca -- una
+    // factura de proveedor ya registrada puede no tener vínculo directo
+    // con crm_cost_items todavía.
+    await screen.findByText('Costo relacionado (opcional)');
+    fireEvent.click(screen.getByRole('button', { name: 'Registrar salida' }));
+
+    await waitFor(() => expect(createCashMovementMock).toHaveBeenCalledTimes(1));
+    const [, payload] = createCashMovementMock.mock.calls[0];
+    expect(payload).toMatchObject({ movementPurpose: 'cost_payment', relatedCostItemId: null, category: 'services' });
+  });
+});
+
+describe('CashMovementModal — categoría y propósito son cosas distintas (sección 6)', () => {
+  it('Sueldos / Comisiones + "Pago de costo o factura ya registrada" -> no crea costo nuevo', async () => {
+    await openMovementModal();
+    fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '600000' } });
+    fireEvent.change(screen.getByPlaceholderText(/Ej: Rollos térmicos/), { target: { value: 'Pago sueldo Juan' } });
+    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: 'salaries' } });
+    fireEvent.change(screen.getByText('¿Qué tipo de salida es?').closest('div').querySelector('select'), { target: { value: 'cost_payment' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Registrar salida' }));
+
+    await waitFor(() => expect(createCashMovementMock).toHaveBeenCalledTimes(1));
+    expect(createCashMovementMock.mock.calls[0][1]).toMatchObject({ category: 'salaries', movementPurpose: 'cost_payment' });
+  });
+
+  it('Arriendo + "Pago de costo o factura ya registrada" -> no crea costo nuevo', async () => {
+    await openMovementModal();
+    fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '450000' } });
+    fireEvent.change(screen.getByPlaceholderText(/Ej: Rollos térmicos/), { target: { value: 'Pago arriendo' } });
+    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: 'rent' } });
+    fireEvent.change(screen.getByText('¿Qué tipo de salida es?').closest('div').querySelector('select'), { target: { value: 'cost_payment' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Registrar salida' }));
+
+    await waitFor(() => expect(createCashMovementMock).toHaveBeenCalledTimes(1));
+    expect(createCashMovementMock.mock.calls[0][1]).toMatchObject({ category: 'rent', movementPurpose: 'cost_payment' });
+  });
+
+  it('Servicios + "Gasto nuevo del día" -> SÍ afecta el resultado (movementPurpose=new_expense)', async () => {
+    await openMovementModal();
+    fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '35000' } });
+    fireEvent.change(screen.getByPlaceholderText(/Ej: Rollos térmicos/), { target: { value: 'Internet no presupuestado' } });
+    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: 'services' } });
+    fireEvent.change(screen.getByText('¿Qué tipo de salida es?').closest('div').querySelector('select'), { target: { value: 'new_expense' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Registrar salida' }));
+
+    await waitFor(() => expect(createCashMovementMock).toHaveBeenCalledTimes(1));
+    expect(createCashMovementMock.mock.calls[0][1]).toMatchObject({ category: 'services', movementPurpose: 'new_expense' });
+  });
+
+  it('Servicios + "Pago de costo o factura ya registrada" -> NO afecta el resultado -- la MISMA categoría, distinto propósito', async () => {
+    await openMovementModal();
+    fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '35000' } });
+    fireEvent.change(screen.getByPlaceholderText(/Ej: Rollos térmicos/), { target: { value: 'Internet ya presupuestado' } });
+    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: 'services' } });
+    fireEvent.change(screen.getByText('¿Qué tipo de salida es?').closest('div').querySelector('select'), { target: { value: 'cost_payment' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Registrar salida' }));
+
+    await waitFor(() => expect(createCashMovementMock).toHaveBeenCalledTimes(1));
+    expect(createCashMovementMock.mock.calls[0][1]).toMatchObject({ category: 'services', movementPurpose: 'cost_payment' });
+  });
+});
+
+describe('CashMovementModal — "Gasto nuevo del día" nunca se ofrece para categorías que por definición no son gasto', () => {
+  it('Depósito bancario: no ofrece "Gasto nuevo del día" como opción', async () => {
+    await openMovementModal();
+    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: 'bank_deposit' } });
+    const purposeSelect = screen.getByText('¿Qué tipo de salida es?').closest('div').querySelector('select');
+    expect(within(purposeSelect).queryByRole('option', { name: 'Gasto nuevo del día' })).not.toBeInTheDocument();
+    // Las 4 opciones no generadoras de costo siguen disponibles.
+    expect(within(purposeSelect).getByRole('option', { name: 'Pago de costo o factura ya registrada' })).toBeInTheDocument();
+    expect(within(purposeSelect).getByRole('option', { name: 'Otro movimiento' })).toBeInTheDocument();
+  });
+
+  it('Retiro del dueño: no ofrece "Gasto nuevo del día" como opción', async () => {
+    await openMovementModal();
+    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: 'owner_withdrawal' } });
+    const purposeSelect = screen.getByText('¿Qué tipo de salida es?').closest('div').querySelector('select');
+    expect(within(purposeSelect).queryByRole('option', { name: 'Gasto nuevo del día' })).not.toBeInTheDocument();
+  });
+
+  it('si el usuario tenía "Gasto nuevo del día" elegido y cambia a Depósito bancario, el propósito se limpia (no queda una combinación inválida en silencio)', async () => {
+    await openMovementModal();
+    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: 'services' } });
+    const purposeSelect = screen.getByText('¿Qué tipo de salida es?').closest('div').querySelector('select');
+    fireEvent.change(purposeSelect, { target: { value: 'new_expense' } });
+    expect(purposeSelect.value).toBe('new_expense');
+
+    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: 'bank_deposit' } });
+    expect(purposeSelect.value).toBe('');
+  });
+
+  it('Depósito bancario nunca puede enviarse con movementPurpose=new_expense (imposible de seleccionar en la UI)', async () => {
+    await openMovementModal();
+    fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '300000' } });
+    fireEvent.change(screen.getByPlaceholderText(/Ej: Rollos térmicos/), { target: { value: 'Depósito banco' } });
+    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: 'bank_deposit' } });
+    fireEvent.change(screen.getByText('¿Qué tipo de salida es?').closest('div').querySelector('select'), { target: { value: 'other_non_operating' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Registrar salida' }));
+
+    await waitFor(() => expect(createCashMovementMock).toHaveBeenCalledTimes(1));
+    const [, payload] = createCashMovementMock.mock.calls[0];
+    expect(payload.movementPurpose).not.toBe('new_expense');
+    expect(payload).toMatchObject({ category: 'bank_deposit', movementPurpose: 'other_non_operating' });
   });
 });
 
